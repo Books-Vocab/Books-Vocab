@@ -407,4 +407,77 @@ grep -q 'missing @ObserveInjection' "$TMP/probe_injection_negative.out" \
 
 echo ""
 echo "injection-lint: $pass passed, $fail failed"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# IMP-20260808-e03c92 — codemod must share the lint's path and zero-scan gates
+#
+# The codemod is invoked directly by maintainers and has the same absolute
+# VIEWS_ROOT shape as the lint. Keep these probes on a temporary tree so the
+# test does not modify the checkout or depend on today's Swift inventory.
+# ═════════════════════════════════════════════════════════════════════════════
+
+run_codemod_probe() {   # $1 = Views root, $2 = output file, rest = argv -> echo rc
+  local root="$1" out="$2" rc=0
+  shift 2
+  ( cd "$WORKSPACE/ops" && "${PYRUN[@]}" -c '
+import sys
+from pathlib import Path
+import inject_codemod as m
+m.VIEWS_ROOT = Path(sys.argv[1])
+sys.argv = ["inject_codemod.py", *sys.argv[2:]]
+raise SystemExit(m.main())
+' "$root" "$@" ) >"$out" 2>&1 || rc=$?
+  echo "$rc"
+}
+
+CODEMOD_TREE="$TMP/codemod-trees"
+mkdir -p "$CODEMOD_TREE/normal" "$CODEMOD_TREE/empty" \
+         "$CODEMOD_TREE/allskipped/Debug" \
+         "$CODEMOD_TREE/Debug/checkout_named_like_a_skip_fragment"
+cat >"$CODEMOD_TREE/normal/Welcome.swift" <<'SWIFT'
+struct Welcome: View {
+    var body: some View {
+        EmptyView()
+    }
+}
+SWIFT
+cp "$CODEMOD_TREE/normal/Welcome.swift" \
+   "$CODEMOD_TREE/allskipped/Debug/Welcome.swift"
+cp "$CODEMOD_TREE/normal/Welcome.swift" \
+   "$CODEMOD_TREE/Debug/checkout_named_like_a_skip_fragment/Welcome.swift"
+
+section "inject_codemod path and zero-scan guards"
+before_sum="$(cksum <"$CODEMOD_TREE/normal/Welcome.swift")"
+rc="$(run_codemod_probe "$CODEMOD_TREE/normal" "$TMP/codemod_normal.out" --dry-run --report)"
+after_sum="$(cksum <"$CODEMOD_TREE/normal/Welcome.swift")"
+if [[ "$rc" -eq 0 ]] && grep -q 'Scanned: 1' "$TMP/codemod_normal.out" \
+   && [[ "$before_sum" == "$after_sum" ]]; then
+  ok "codemod normal dry-run scans one file and writes nothing"
+else
+  fail_t "codemod normal dry-run → rc=$rc, expected Scanned: 1 and no write"
+  sed 's/^/      /' "$TMP/codemod_normal.out"
+fi
+
+rc="$(run_codemod_probe \
+  "$CODEMOD_TREE/Debug/checkout_named_like_a_skip_fragment" \
+  "$TMP/codemod_debug_parent.out" --dry-run)"
+if [[ "$rc" -eq 0 ]] && grep -q 'Scanned: 1' "$TMP/codemod_debug_parent.out"; then
+  ok "codemod ignores a Debug/ directory above the scan root"
+else
+  fail_t "codemod scan root under Debug/ → rc=$rc, expected Scanned: 1"
+  sed 's/^/      /' "$TMP/codemod_debug_parent.out"
+fi
+
+for case_dir in empty allskipped; do
+  rc="$(run_codemod_probe "$CODEMOD_TREE/$case_dir" "$TMP/codemod_$case_dir.out" --dry-run)"
+  if [[ "$rc" -eq 2 ]] && grep -qi 'scanned 0 files' "$TMP/codemod_$case_dir.out"; then
+    ok "codemod $case_dir scope fails closed with an explicit zero-scan error"
+  else
+    fail_t "codemod $case_dir scope → rc=$rc, expected non-zero explicit zero-scan error"
+    sed 's/^/      /' "$TMP/codemod_$case_dir.out"
+  fi
+done
+
+echo ""
+echo "injection-lint + inject-codemod: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]

@@ -44,9 +44,8 @@ from pathlib import Path
 # ops/injection_baseline.txt the gate would have read *that* one and forgiven
 # everything. ops/backlog.py carried the identical line and was ROOT-anchored on
 # 2026-08-07 after the second shape was measured there; ops/inject_codemod.py:27
-# (which shares this tool's grammar) had ROOT-anchoring right all along — but only
-# that: it still feeds absolute paths to should_skip_path and still reports a
-# zero-file run as success (IMP-20260808-e03c92).
+# shares this tool's grammar and now uses scan-root-relative skip paths plus the
+# same fail-closed zero-scan contract (IMP-20260808-e03c92).
 ROOT = Path(__file__).resolve().parents[1]
 VIEWS_ROOT = ROOT / "ios/BooksAndVocab/Views"
 
