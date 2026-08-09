@@ -1997,6 +1997,23 @@ def test_a_dirty_primary_broadcast_marker_expires_with_the_day(tmp_path, monkeyp
     assert mailbox.read_text().count("kg-cutover-block") == 2
 
 
+def test_a_dirty_primary_broadcast_names_the_blocked_worktree(tmp_path):
+    primary = tmp_path / "p"
+    primary.mkdir()
+    mailbox = primary / MODULE.COORDINATION_BROADCAST_REL
+
+    assert MODULE._broadcast_cutover_block(
+        primary, "feat/x", ["a.txt"], worktree="/w/tr ee\nX")
+    branch_lines = [line for line in mailbox.read_text().splitlines()
+                    if line.startswith("被擋的分支")]
+    assert branch_lines == ["被擋的分支:`feat/x` (worktree `/w/tr ee\\nX`)"]
+
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", ["b.txt"])
+    branch_lines = [line for line in mailbox.read_text().splitlines()
+                    if line.startswith("被擋的分支")]
+    assert branch_lines[-1] == "被擋的分支:`feat/x`"
+
+
 @gitmark
 def test_cutover_refused_when_primary_not_on_main(scratch):
     tmp_path, repo, remote = scratch
