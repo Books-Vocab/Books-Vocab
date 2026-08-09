@@ -92,8 +92,9 @@ struct ReaderPreviewStyleSourceTests {
         for font in ReaderFont.allCases {
             #expect(
                 UIFont(name: font.previewFontName, size: 12) != nil,
-                "ReaderFont.\(font.rawValue) 的 previewFontName「\(font.previewFontName)」"
-                    + "不是已註冊的字體 —— 預覽會靜靜退回系統字體"
+                // 必須是**單一**字串字面量：`#expect` 的第二參數是 `Comment?`，
+                // 用 `+` 接起來就變成 String，整個測試 target 編不過。
+                "ReaderFont.\(font.rawValue) 的 previewFontName「\(font.previewFontName)」不是已註冊的字體 —— 預覽會靜靜退回系統字體"
             )
         }
     }
