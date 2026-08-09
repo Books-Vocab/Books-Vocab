@@ -737,3 +737,7 @@ mkdir -p build/snapshots && cp -R "$container/tmp/kg-catalog-snapshots/." build/
 - `docs/reference/ui/components.md` — 現有 component / pattern inventory，開新 UI 前先查
 - `docs/reference/ui/state_matrix.md` — 各主畫面 state coverage matrix，補 UX 時先查有哪些狀態不能漏
 - `docs/sop/architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解
+
+## App Review refresh-anchor 實測附註
+
+**IMP-20260808-60a5b7（2026-08-09）**：票面候選順序「先 refresh-anchor --commit、再 desired --commit --bundle-dir」在本隔離環境未證明為安全順序，故不可寫成 `gateCheck=pass` 的操作結論。實測的完整 evidence 尚未齊全，`status` gate 為 block（48 blocks，含 `desired.manifest-sha256`）：`refresh-anchor --commit` 先跑 gate 並以 `rc=2`、`status=block`、`anchor.gate-blocked` 拒絕；本段以 `gateCheck=block` 作為 normalized receipt label，原始 JSON 沒有 `gateCheck` 欄位，且沒有寫 spec 也沒有重建 bundle。其後 `desired --commit` 為 `rc=0`、`manifest.verdict.status=pass`，但它不執行 App Review gate，不能把這個 producer pass 當成 `gateCheck=pass`。反向的「先 desired、再 refresh-anchor」同樣是 `desired --commit` `rc=0` 後，`refresh-anchor --commit` `rc=2`／`gateCheck=block`；本輪未使用 `--acknowledge-gate-block`。因此不要由這次輸出推導免旗標安全順序，也不要用 override 把 block 變成常規；先補齊 typed evidence，讓 `status` 真正為 pass，再另行保存一輪 `refresh-anchor` 回報 `gateCheck=pass` 的實測，才可更新本段。

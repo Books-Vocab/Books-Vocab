@@ -108,3 +108,7 @@ Use this skill when the user asks to run the migrated source command `release`.
 - **不代替 repo 宣稱上架**。`ios/<x.y.z>` 只能由 `shipped ios` 從 ASC 查證後產生；工具 refuse 時不要用 `--commit` 繞過，那是人工斷言、要使用者拍板。
 - **App Review BLOCK 是 submit hard stop**：只能查狀態或修 typed evidence，不能手動 submit／resubmit，**也不能用 `refresh-anchor --commit` 移動錨點把 block 抹掉**（見上段）。
 - `tag`/`release` 前 working tree 若有非版號檔的雜變更，先問使用者。
+
+## App Review refresh-anchor 實測附註
+
+**IMP-20260808-60a5b7（2026-08-09）**：票面候選順序「先 refresh-anchor --commit、再 desired --commit --bundle-dir」在本隔離環境未證明為安全順序，故不可寫成 `gateCheck=pass` 的操作結論。完整 evidence 尚未齊全，`status` gate 為 block（48 blocks，含 `desired.manifest-sha256`）：`refresh-anchor --commit` 的實測為 `rc=2`、`status=block`、`anchor.gate-blocked`；本段以 `gateCheck=block` 作為 normalized receipt label，原始 JSON 沒有 `gateCheck` 欄位，且沒有寫 spec 也沒有重建 bundle。其後 `desired --commit` 為 `rc=0`、`manifest.verdict.status=pass`，但它不執行 App Review gate。反向順序同樣是 `desired --commit` `rc=0` 後，`refresh-anchor --commit` `rc=2`／`gateCheck=block`；本輪未使用 `--acknowledge-gate-block`。不得由這次輸出推導免旗標安全順序或把 override 變成常規；先補齊 typed evidence，讓 `status` 真正為 pass，再另行保存 `refresh-anchor` 回報 `gateCheck=pass` 的實測，才可更新本段。
