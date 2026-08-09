@@ -6504,6 +6504,75 @@ def test_close_wave_refuses_foreign_active_worktrees_before_any_mutation(
     assert "will not cross its boundary" in output
 
 
+def test_delivery_json_tool_rejects_invalid_success_receipt_and_relays_stderr(
+        tmp_path, monkeypatch, capsys):
+    def fake_runner(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["fake"], returncode=0, stdout="{}\n", stderr="child diagnostic\n"
+        )
+
+    monkeypatch.setattr(MODULE, "run_streamed_command", fake_runner)
+    rc, payload = MODULE._delivery_json_tool(
+        tmp_path / "fake.py", tmp_path, ["probe"], label="receipt-probe",
+        expected_schema="expected.v1", required_keys=("records",),
+    )
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert "invalid success receipt" in payload["error"]
+    assert "schema" in payload["contract_errors"][0]
+    assert payload["receipt"] == {}
+    assert "child diagnostic" in capsys.readouterr().err
+
+
+def test_delivery_anchor_commit_refuses_staged_or_unstaged_foreign_paths(
+        tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo,
+                   check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    backlog = repo / "docs" / "runbook" / "backlog"
+    backlog.mkdir(parents=True)
+    ticket = backlog / "IMP-20260809-anchor.json"
+    ticket.write_text("closed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=repo, check=True)
+    ticket.write_text("closed-again\n", encoding="utf-8")
+    (repo / "foreign.txt").write_text("must stay\n", encoding="utf-8")
+
+    rc, payload = MODULE._delivery_anchor_commit(
+        repo, applied_ids=["IMP-20260809-anchor"]
+    )
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert payload["outside_paths"] == ["foreign.txt"]
+    assert payload["missing_paths"] == []
+    assert subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=repo,
+                          check=True, capture_output=True, text=True).stdout == ""
+
+
+def test_close_wave_refuses_malformed_persisted_state_before_registry(
+        tmp_path, monkeypatch, capsys):
+    state = tmp_path / "registry.json"
+    integration_state = state.parent / "worktree_integrations" / "delivery-wave.json"
+    integration_state.parent.mkdir(parents=True, exist_ok=True)
+    integration_state.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
+    monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
+    monkeypatch.setattr(MODULE, "_delivery_primary_dirty", lambda _primary: [])
+    args = argparse.Namespace(
+        state=str(state), json=True, base="main", slug="delivery-wave",
+        branches=["feat/source"], commit=True,
+    )
+
+    rc = MODULE.cmd_close_wave(args)
+
+    assert rc == MODULE.EXIT_BLOCK
+    payload = json.loads(capsys.readouterr().out)
+    assert "unreadable or malformed" in payload["error"]
+
+
 # --------------------------------------------------------------------------
 # claim preconditions: a ticket has to be workable before it can be taken
 #

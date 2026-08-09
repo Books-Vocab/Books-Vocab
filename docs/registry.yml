@@ -196,10 +196,13 @@ documents:
       - env_var_changed
       - db_schema_changed
       - ops_command_changed
+      - delivery_loop_changed
     sources:
       - backend/
       - "!backend/tests/"
       - ops/backlog.py
+      - ops/lib/lock_wait.py
+      - ops/worktree_orchestrate.py
       - ops/tests/test_backlog.py
       - ops/
       - "!ops/tests/test_docs_*.sh"
@@ -547,6 +550,7 @@ documents:
       - release_workflow_changed
       - deploy_trigger_changed
       - reconciler_ref_changed
+      - delivery_loop_changed
     sources:
       - ops/release.sh
       - ops/worktree_orchestrate.py
@@ -571,6 +575,7 @@ documents:
       - ops_change_flow_changed
       - hard_stop_condition_changed
       - production_entrypoint_changed
+      - delivery_loop_changed
     sources:
       # repo-root，不在任何 ops/ glob 底下：少了它，改動生產部署命令本身完全不產生
       # impact hint，而測它的 ops/test_devops.sh 反而會（IMP-0052 同一形狀的控制面版本）

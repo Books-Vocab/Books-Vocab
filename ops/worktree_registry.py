@@ -78,6 +78,7 @@ Exit codes: 0 ok | 1 partial failure (sweep --commit) | 64 usage error |
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -683,8 +684,6 @@ def _try_acquire_ledger_lock_nb(state_path: Path) -> bool:
     """True if the ledger lock is currently free (non-blocking acquire+release),
     False if another open file description holds it. Inspection/tests only — never a
     substitute for holding `_ledger_lock` across a real read-modify-write."""
-    import fcntl
-
     lock_path = state_path.with_name(state_path.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)

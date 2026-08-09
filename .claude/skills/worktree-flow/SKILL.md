@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "隔離工作樹 intent→commit/hand-back 預設流程，以及明示授權後的 gate→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent，或要求把工作樹整合進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。預設假設多 session 並行，完成 commit 與 hand-back 後停止；只有使用者明示目前沒有其他 agent/session 工作且授權 gate+cutover，才進 develop 平面。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。"
+description: "隔離工作樹 intent→commit/hand-back 預設流程，以及明示授權後的 gate→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent，或要求把工作樹整合進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。預設假設多 session 並行，完成 commit 與 hand-back 後停止；只有使用者明示目前沒有其他 agent/session 工作且授權 gate+cutover，才進 develop 平面。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。"
 user-invocable: true
 version: 2.1.0
 ---
@@ -11,11 +11,22 @@ version: 2.1.0
 
 ## 預設停止點（授權邊界）
 
-**永遠先假設同 repo 有多個 session 同時工作。** 正常情況做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 branch／worktree／HEAD，然後停止。不要自行跑會觸發 Gate 的 `integrate`、`gate`、`land`、`cutover`、`resolve`、`sync` 或 `deploy`；批次純組裝只准使用 `integrate ... --commit --no-gate`，完成後同樣 hand-back。
+**永遠先假設同 repo 有多個 session 同時工作。** 正常情況做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 branch／worktree／HEAD，然後停止。不要自行跑會觸發 Gate 的 `integrate`、`gate`、`land`、`cutover`、`resolve`、`close-wave`、`sync` 或 `deploy`；批次純組裝只准使用 `integrate ... --commit --no-gate`，完成後同樣 hand-back。
 
-只有使用者在當下明示兩件事，才可越過停止點：① 現在沒有其他 agent/session 在工作；② 授權本 session 直接跑 gate + cutover。缺任一項都停在 hand-back。一般工作樹的 branch-local `catchup` 可在授權前用來追主幹，但成功後必須重新 `hand-back` 更新 SHA 並停止；有存活 integration state 的整合樹禁止 catchup，處理方式見「批次整合」。授權解鎖的是 develop 平面會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）／`gate`／`land`／`cutover`／`resolve`。`sync`、`deploy`、`release` 仍須使用者另有明示的 backup／release 意圖。這是協調政策，不放寬任何工具護欄；一旦獲授權，仍完整走 catchup（一般工作樹需要時）→ fresh gate → cutover，不能拿 targeted test 代替 Gate。
+只有使用者在當下明示兩件事，才可越過停止點：① 現在沒有其他 agent/session 在工作；② 授權本 session 直接跑 gate + cutover。缺任一項都停在 hand-back。一般工作樹的 branch-local `catchup` 可在授權前用來追主幹，但成功後必須重新 `hand-back` 更新 SHA 並停止；有存活 integration state 的整合樹禁止 catchup，處理方式見「批次整合」。授權解鎖的是 develop 平面會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）／`gate`／`land`／`cutover`／`resolve`／`close-wave`；其中 `close-wave` 是收斂協調器，會依既定順序串起這些原語。`sync`、`deploy`、`release` 仍須使用者另有明示的 backup／release 意圖。這是協調政策，不放寬任何工具護欄；一旦獲授權，仍完整走 catchup（一般工作樹需要時）→ fresh gate → cutover，不能拿 targeted test 代替 Gate。
 
 `--commit` 只控制各命令的**主要落地動作**，不是「沒帶就整個命令零副作用」的通則；`--json` 也只改輸出。出生／登記簿生命週期動詞沒有 dry-run：orchestrator `open`／`adopt` 與 registry `register`／`hand-back`／`resolve` 呼叫即寫。另有三個必記例外：`gate` 除 `--plan-only` 外會執行檢查並寫 verdict／history／失敗 log；`freeze on|off` 直接建立／刪除鎖，只有 `freeze status` 唯讀；`preflight` 不論 `--commit` 都會 `git fetch --prune`，該旗標只控制 sweep clearance。`open --backlog`／`--next-backlog` 必須在建立 branch/path 前原子取得獨佔認領；`hand-back` 必須立即寫入與當下 branch tip 綁定的交回戳記。呼叫前以子命令 help 為準，不可從有無 `--commit` 推導純讀性。
+
+## 可溝通的兩條 lane（命名 SoT）
+
+這是平行能力 lane，不是上下級階層：
+
+- **票務隊（Ticket Stewards）**：`add` → 必要時 `verify` → `groom`。它負責把問題變成可排序、可執行的 dispatch-ready ticket，不負責領票實作。
+- **交付隊（Delivery Team）**：從 `dispatch` 取票、`open --next-backlog`／`open --backlog` 認領、修復、驗收、`stage`、commit、hand-back。隊內可有一個**收斂協調器（Delivery Integrator）**統籌整批收尾；它不是第三個 team。
+
+兩種方法也固定命名：**票單閉環（ticketed-loop）**是完整的 `add/verify/groom → dispatch → claim → fix → stage → hand-back → close-wave → anchor/validate`；**直修道（direct-fix）**是使用者明示「直接改、不登記」時，`open` 不帶 backlog、局部驗證、commit、hand-back，刻意不偽造 ticket lifecycle。鎖競爭是正常等待：核心工具以指數退避、stderr heartbeat、非競爭錯誤 fail-closed，lane 不需要互相輪詢喊話。
+
+`close-wave` 是交付隊收斂協調器的可重入入口：它把批次組裝、唯一 fresh Gate、cutover、來源／整合樹 resolve、anchor、validate 串成一條可恢復流程；同一 `--slug` 重跑即可續接。它不會自動 `sync` 或 `deploy`，也不會跨越外部 active worktree 邊界。
 
 ## 拓樸：本地 main 為主幹（core mental model）
 
@@ -216,7 +227,7 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 
 - **bootstrap 悖論**（primary checkout 過舊、連本工具鏈都沒有）→ 裸 `git worktree add -b <branch> <path> origin/main`（純 git 原語，不需任何 repo 工具）→ `cd <path>` → `ops/worktree_orchestrate.py adopt --intent "<why>"`（`--worktree` 預設 cwd）補登記 ledger，之後回到本 skill 頂端的授權邊界。
 - **primary 落後 origin**（本地 main 反被 origin 超前——在本地為主模型下**不正常**，只發生在：剛 clone 的機器、或 felix 部署 clone 其 main 追 origin、或別台 push 了東西）→ `sync-main`（dry-run 預設）。護欄三綠才動：tracked-clean（untracked 不擋）＋ primary 在 main 上且無 merge/rebase 進行中 ＋ 嚴格落後 origin（ancestor check）。分岔的 main **絕不** auto-merge/rebase——refusal 指向 cutover。**注意方向**：sync-main 是 origin→本地（追上 origin）；日常開發機的本地 main 是超前 origin 的，sync-main 在那是 noop。
-- **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/catchup/**integrate**/land/cutover/sync/sync-main/**deploy** 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
+- **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/catchup/**integrate**/**close-wave**/land/cutover/sync/sync-main/**deploy** 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
 - **primary 上的 tracked 檔實質修改**（做著做著冒出來的）→ 撤離：`git diff` 導出 patch → worktree 內 apply → commit + hand-back → primary `git checkout --` 還原；之後仍回到頂端授權邊界。primary 只允許「可再生」變更，絕不在 local main commit。
 
 ## 批次整合（N 個工作樹 → 一次落地）
@@ -338,6 +349,19 @@ git rerere diff
    那條規則只住在 `cutover` 裡，`integrate` 不重判——這是「不重造 gate」硬邊界的直接後果，
    而不是省事。
 5. **resolve 每一條來源分支**——見下方警告。
+
+### `close-wave`：交付隊的自動閉環收尾
+
+當所有來源 worker 都已 commit + hand-back，且使用者已明示目前沒有其他 agent/session 並授權 Gate + cutover，收斂協調器使用：
+
+```bash
+./ops/worktree_orchestrate.py close-wave \
+  --slug <wave-slug> --branches <source-a> <source-b> ... --commit --json
+```
+
+它先以 `integrate --commit --no-gate` 建立／續接整合 state，再由整合樹自己的 orchestrator 跑唯一 fresh Gate；通過後依序 cutover、以 `--via-integration main` resolve 來源、`backlog.py anchor --commit`、只提交 backlog closure metadata、`backlog.py validate --baseline-check`，最後才 resolve 整合樹。任何衝突或 Gate／resolve／anchor 阻斷都保留 state，修正後**用同一 slug 重跑**；它會先拒絕 primary dirty 與未列入本波的 active worktree，絕不誤殺 Catalog 或其他 session。這是可重入的協調入口，不是新的 develop plane，也不執行 `sync`／`deploy`。
+
+未取得授權時仍只能 `integrate --commit --no-gate` 純組裝並 hand-back；不要把 `close-wave` 當成 worker 的收尾命令。
 
 ### 多輪同步、一次原子落地
 

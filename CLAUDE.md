@@ -62,7 +62,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
 review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receipt 契約」的白名單。
 
-**預設假設多 session 並行,落地權在取得使用者明示授權的整合者,不在各票。** 受派 worker 無例外,只做到自己工作樹裡 commit + hand-back；尚未取得授權的整合者可對一般工作樹做 branch-local `catchup`，或用 `integrate ... --commit --no-gate` 純組裝，但完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup，main 前進時須 abort/驗來源/teardown/重建。只有握有整批視野且使用者已明示「目前沒有其他 agent/session 工作、可直接 gate + cutover」的整合 session 可執行 develop 平面會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）/ `gate` / `land` / `cutover` / `resolve`。這項授權不包含 `sync` / `deploy` / `release`；三者仍須明示 backup / release 意圖。理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
+**預設假設多 session 並行,落地權在取得使用者明示授權的整合者,不在各票。** 受派 worker 無例外,只做到自己工作樹裡 commit + hand-back；尚未取得授權的整合者可對一般工作樹做 branch-local `catchup`，或用 `integrate ... --commit --no-gate` 純組裝，但完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup，main 前進時須 abort/驗來源/teardown/重建。只有握有整批視野且使用者已明示「目前沒有其他 agent/session 工作、可直接 gate + cutover」的整合 session 可執行 develop 平面會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）/ `gate` / `land` / `cutover` / `resolve`，或直接使用串接上述原語的 `close-wave`。這項授權不包含 `sync` / `deploy` / `release`；三者仍須明示 backup / release 意圖。理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
 
 **要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
 且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有
@@ -141,7 +141,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→commit/hand-back 預設流程，以及各自明示意圖下的 develop / backup / release 三平面。編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/catchup/land/integrate/cutover/resolve/sync/deploy/sync-main/freeze）。預設假設多 session 並行；只有使用者明示目前無其他 agent/session 且授權 gate + cutover 才進 develop 平面，此授權不解鎖 sync/deploy/release。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
+| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→commit/hand-back 預設流程，以及各自明示意圖下的 develop / backup / release 三平面。編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze）。預設假設多 session 並行；只有使用者明示目前無其他 agent/session 且授權 gate + cutover 才進 develop 平面，此授權不解鎖 sync/deploy/release。兩條 lane 叫**票務隊／交付隊**，完整票路徑叫**票單閉環**，免票明示修復叫**直修道**；收斂協調器用 `close-wave`。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。

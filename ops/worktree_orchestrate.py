@@ -78,6 +78,10 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              that rule keeps living in exactly one place). cherry-pick rather than
              merge, so a branch cannot smuggle in commits nobody named. dry-run
              default.
+  close-wave  the Delivery Team coordinator verb: resume one named batch through
+              integrate -> one fresh gate -> cutover -> source/integration resolve
+              -> backlog anchor -> validate. It refuses foreign active worktrees,
+              never syncs or deploys, and reruns the same slug after a named stop.
   catchup    the step `gate` and `cutover` BOTH send you to when the trunk moved
              under the branch: rebase the worktree onto local `main`. A CLEAN rebase
              — any conflict aborts and comes back to you. It is a verb rather than a
@@ -130,7 +134,7 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              A diverged main is never auto-merged — land unique commits via cutover.
              dry-run default.
   freeze     stop-the-world surgery lock (on --reason / off / status). While frozen,
-             open/adopt/catchup/integrate/cutover/sync-main/sync/deploy refuse (every
+             open/adopt/catchup/integrate/close-wave/cutover/sync-main/sync/deploy refuse (every
              step that gives birth, rewrites history or advances a ref); draining
              steps (resolve, sweep, preflight, gate) stay allowed so the flow can be
              quiesced for repo surgery (history rewrite, gc, shared hooks/config).
@@ -5166,6 +5170,8 @@ def _delivery_json_tool(
     argv: list[str],
     *,
     label: str,
+    expected_schema: str | None = None,
+    required_keys: tuple[str, ...] = (),
 ) -> tuple[int, dict[str, Any]]:
     """Run one existing orchestrator/registry verb and decode its JSON receipt.
 
@@ -5189,26 +5195,54 @@ def _delivery_json_tool(
         )
     except OSError as exc:
         return 127, {"error": f"could not start {label}: {exc}"}
+    except KeyboardInterrupt:
+        return EXIT_BLOCK, {
+            "error": f"{label} was interrupted; resumable state was left in place",
+            "interrupted": True,
+        }
+    diagnostic = (completed.stderr or "").strip()
+    if diagnostic:
+        # The streaming runner keeps child stderr separate so the coordinator's
+        # stdout remains one JSON document.  Relay it after completion as well:
+        # otherwise a child can fail with useful evidence that is invisible to the
+        # operator who is watching the parent process.
+        print(diagnostic, file=sys.stderr, flush=True)
     raw = (completed.stdout or "").strip()
+    child_rc = completed.returncode if completed.returncode is not None else EXIT_BLOCK
     if not raw:
-        return completed.returncode, {
+        return child_rc or EXIT_BLOCK, {
             "error": f"{label} returned no JSON payload",
-            "stderr": (completed.stderr or "")[-4000:],
+            "stderr": diagnostic[-4000:],
         }
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        return completed.returncode, {
+        return child_rc or EXIT_BLOCK, {
             "error": f"{label} returned invalid JSON: {exc}",
             "stdout_tail": raw[-4000:],
-            "stderr": (completed.stderr or "")[-4000:],
+            "stderr": diagnostic[-4000:],
         }
     if not isinstance(payload, dict):
-        return completed.returncode, {
+        return child_rc or EXIT_BLOCK, {
             "error": f"{label} returned JSON {type(payload).__name__}, expected object",
             "payload": payload,
         }
-    return completed.returncode, payload
+    if child_rc == EXIT_OK:
+        contract_errors: list[str] = []
+        if expected_schema and payload.get("schema") != expected_schema:
+            contract_errors.append(
+                f"schema {payload.get('schema')!r} != {expected_schema!r}"
+            )
+        missing = [key for key in required_keys if key not in payload]
+        if missing:
+            contract_errors.append("missing keys: " + ", ".join(missing))
+        if contract_errors:
+            return EXIT_BLOCK, {
+                "error": f"{label} returned an invalid success receipt",
+                "contract_errors": contract_errors,
+                "receipt": payload,
+            }
+    return child_rc, payload
 
 
 def _delivery_state_paths(args: argparse.Namespace) -> tuple[Path, list[Path]]:
@@ -5230,18 +5264,112 @@ def _delivery_load_json(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _delivery_integration_error(
+    payload: Any,
+    *,
+    label: str,
+    slug: str,
+    base: str,
+    branches: list[str],
+    require_gated: bool,
+    require_live_worktree: bool,
+) -> str | None:
+    """Validate a persisted integration receipt before using its identity.
+
+    A resumable coordinator must not let a stale slug borrow another run's state,
+    branch, base, or worktree.  This is deliberately a schema/identity check rather
+    than a best-effort ``dict.get`` chain: malformed local state is a blocked receipt,
+    never an invitation to start a fresh integration with the same name.
+    """
+    if not isinstance(payload, dict):
+        return f"{label} is not a JSON object"
+    if payload.get("schema") != INTEGRATE_SCHEMA:
+        return (f"{label} has schema {payload.get('schema')!r}, expected "
+                f"{INTEGRATE_SCHEMA!r}")
+    if payload.get("slug") != slug:
+        return f"{label} belongs to slug {payload.get('slug')!r}, not {slug!r}"
+    if payload.get("base") != base:
+        return (f"{label} was created with base {payload.get('base')!r}, not "
+                f"{base!r}")
+    stored_branches = payload.get("branches")
+    if not isinstance(stored_branches, list) or any(
+        not isinstance(branch, str) for branch in stored_branches
+    ):
+        return f"{label} has malformed branches"
+    if stored_branches != branches:
+        return (f"{label} branch list {stored_branches!r} does not match "
+                f"{branches!r}")
+    if not isinstance(payload.get("worktree"), str) or not payload["worktree"]:
+        return f"{label} has no worktree identity"
+    if not isinstance(payload.get("branch"), str) or not payload["branch"]:
+        return f"{label} has no integration branch identity"
+    if require_gated and payload.get("status") != "gated":
+        return (f"{label} status is {payload.get('status')!r}, expected 'gated' "
+                "before close-wave cutover")
+    worktree = Path(payload["worktree"])
+    if not worktree.is_absolute():
+        return f"{label} worktree path is not absolute: {worktree}"
+    if worktree.exists():
+        actual_branch = _current_branch(str(worktree))
+        if actual_branch != payload["branch"]:
+            return (f"{label} worktree is on {actual_branch!r}, expected "
+                    f"{payload['branch']!r}")
+    elif require_live_worktree:
+        return f"{label} worktree is missing: {worktree}"
+    return None
+
+
+def _delivery_state_error(
+    *,
+    args: argparse.Namespace,
+    state_path: Path,
+    manifest_path: Path | None,
+    error: str,
+    mode: str = "stopped",
+) -> int:
+    _emit({
+        "schema": DELIVERY_SCHEMA,
+        "step": "close-wave",
+        "mode": mode,
+        "slug": args.slug,
+        "state_file": str(state_path) if state_path.exists() else None,
+        "manifest": str(manifest_path) if manifest_path and manifest_path.exists() else None,
+        "error": error,
+        "next": "inspect the named state/manifest; do not delete it blindly",
+    }, args.json, f"✗ close-wave refused: {error}")
+    return EXIT_BLOCK
+
+
 def _delivery_registry_records(args: argparse.Namespace) -> tuple[int, list[dict[str, Any]]]:
-    registry_script = Path(__file__).with_name("worktree_registry.py")
+    registry_script = primary_root() / "ops" / "worktree_registry.py"
     argv = ["list"]
     if args.state:
         argv += ["--state", args.state]
     rc, payload = _delivery_json_tool(
-        registry_script, primary_root(), argv, label="registry-list"
+        registry_script, primary_root(), argv, label="registry-list",
+        expected_schema="kg.worktree.registry.v1", required_keys=("records",),
     )
     records = payload.get("records")
     if rc != EXIT_OK or not isinstance(records, list):
         return rc or EXIT_BLOCK, []
     return EXIT_OK, [record for record in records if isinstance(record, dict)]
+
+
+def _delivery_foreign_active(
+    records: list[dict[str, Any]], allowed_branches: set[str]
+) -> list[dict[str, Any]]:
+    """Return active records outside the explicitly named wave boundary."""
+    return [
+        {
+            "branch": record.get("branch"),
+            "path": record.get("path"),
+            "intent": record.get("intent"),
+            "handed_back_sha": record.get("handed_back_sha"),
+        }
+        for record in records
+        if record.get("status") == wr.STATUS_ACTIVE
+        and record.get("branch") not in allowed_branches
+    ]
 
 
 def _delivery_primary_dirty(primary: Path) -> list[str]:
@@ -5251,7 +5379,9 @@ def _delivery_primary_dirty(primary: Path) -> list[str]:
     return [line for line in output.splitlines() if line.strip()]
 
 
-def _delivery_anchor_commit(primary: Path) -> tuple[int, dict[str, Any]]:
+def _delivery_anchor_commit(
+    primary: Path, *, applied_ids: list[str], already_committed: bool = False,
+) -> tuple[int, dict[str, Any]]:
     """Commit only the closure rows materialized by ``anchor``.
 
     ``backlog.py anchor`` intentionally writes data but does not invent a git
@@ -5259,22 +5389,53 @@ def _delivery_anchor_commit(primary: Path) -> tuple[int, dict[str, Any]]:
     path check is the safety boundary: a concurrent edit in primary must never be
     swept into this automatic commit.
     """
-    rc, changed = _git(["diff", "--name-only"], cwd=primary)
+    expected_paths: set[str] = set()
+    for ticket_id in applied_ids:
+        if not isinstance(ticket_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id):
+            return EXIT_BLOCK, {
+                "error": "anchor receipt contains an unsafe ticket id",
+                "ticket_id": ticket_id,
+            }
+        expected_paths.add(f"docs/runbook/backlog/{ticket_id}.json")
+
+    rc, changed = _git(["diff", "--name-only", "HEAD", "--"], cwd=primary)
     if rc != EXIT_OK:
         return EXIT_BLOCK, {"error": f"cannot inspect anchor diff: {changed}"}
-    paths = [line for line in changed.splitlines() if line]
+    untracked_rc, untracked = _git(
+        ["ls-files", "--others", "--exclude-standard", "--"], cwd=primary
+    )
+    if untracked_rc != EXIT_OK:
+        return EXIT_BLOCK, {"error": f"cannot inspect untracked files: {untracked}"}
+    paths = {
+        line for line in (changed + "\n" + untracked).splitlines() if line
+    }
+    if not paths and expected_paths and already_committed:
+        return EXIT_OK, {
+            "committed": False,
+            "already_committed": True,
+            "paths": [],
+        }
+    if not paths and expected_paths:
+        return EXIT_BLOCK, {
+            "error": "anchor receipt declared applied tickets but primary has no changes",
+            "missing_paths": sorted(expected_paths),
+            "paths": [],
+        }
     if not paths:
         return EXIT_OK, {"committed": False, "paths": []}
-    outside = [path for path in paths if not path.startswith("docs/runbook/backlog/")]
-    if outside:
+    outside = sorted(paths - expected_paths)
+    missing = sorted(expected_paths - paths)
+    if outside or missing:
         return EXIT_BLOCK, {
-            "error": "primary changed outside backlog closure paths; refusing to commit "
-                     "another session's work",
+            "error": "primary changed paths do not exactly match the anchor receipt; "
+                     "refusing to commit another session's work",
             "outside_paths": outside,
-            "paths": paths,
+            "missing_paths": missing,
+            "paths": sorted(paths),
+            "expected_paths": sorted(expected_paths),
         }
     add_rc, add_output = _git_mutation(
-        ["add", "--", "docs/runbook/backlog"],
+        ["add", "--", *sorted(expected_paths)],
         cwd=primary,
         label="delivery-anchor-stage",
     )
@@ -5294,15 +5455,107 @@ def _delivery_anchor_commit(primary: Path) -> tuple[int, dict[str, Any]]:
     if commit_rc != EXIT_OK:
         return EXIT_BLOCK, {
             "error": f"could not commit anchor output: {commit_output}",
-            "paths": paths,
+            "paths": sorted(paths),
         }
     tip_rc, tip = _git(["rev-parse", "HEAD"], cwd=primary)
     return (EXIT_OK if tip_rc == EXIT_OK else EXIT_BLOCK), {
         "committed": True,
-        "paths": paths,
+        "paths": sorted(paths),
         "sha": tip if tip_rc == EXIT_OK else None,
         "output": commit_output[-2000:],
     }
+
+
+def _delivery_anchor_and_commit(
+    args: argparse.Namespace, primary: Path, allowed: set[str], slug: str,
+    manifest_path: Path | None,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Linearize the primary-side anchor and its exact-path metadata commit."""
+    steps: list[dict[str, Any]] = []
+    with _main_advance_lock(primary):
+        dirty = _delivery_primary_dirty(primary)
+        if dirty:
+            steps.append({
+                "name": "anchor-guard",
+                "error": "primary became dirty before anchor",
+                "dirty_files": dirty,
+            })
+            return EXIT_BLOCK, steps
+        rrc, records = _delivery_registry_records(args)
+        if rrc != EXIT_OK:
+            steps.append({"name": "anchor-guard", "rc": rrc,
+                          "error": "could not read the worktree registry"})
+            return EXIT_BLOCK, steps
+        foreign = _delivery_foreign_active(records, allowed)
+        if foreign:
+            steps.append({"name": "anchor-guard", "error": "foreign active worktree appeared",
+                          "foreign_active": foreign})
+            return EXIT_BLOCK, steps
+
+        anchor_rc, anchor_payload = _delivery_json_tool(
+            primary / "ops" / "backlog.py",
+            primary,
+            ["anchor", "--commit"],
+            label=f"anchor:{slug}",
+            expected_schema="kg.backlog.anchor.v1",
+            required_keys=("applied", "problems"),
+        )
+        steps.append({"name": "anchor", "rc": anchor_rc, "payload": anchor_payload})
+        applied = anchor_payload.get("applied")
+        if anchor_rc != EXIT_OK or anchor_payload.get("problems"):
+            return anchor_rc or EXIT_BLOCK, steps
+        if not isinstance(applied, list) or any(
+            not isinstance(ticket_id, str) for ticket_id in applied
+        ):
+            steps.append({"name": "anchor-guard",
+                          "error": "anchor receipt has malformed applied ids"})
+            return EXIT_BLOCK, steps
+
+        already_committed = False
+        if manifest_path is not None:
+            persisted = _delivery_load_json(manifest_path)
+            marker = persisted.get("close_wave") if persisted else None
+            if isinstance(marker, dict):
+                saved_ids = marker.get("anchor_ids")
+                if not applied and isinstance(saved_ids, list) and all(
+                    isinstance(ticket_id, str) for ticket_id in saved_ids
+                ):
+                    applied = list(saved_ids)
+                already_committed = marker.get("anchor_committed") is True
+            if persisted is None:
+                steps.append({"name": "anchor-guard",
+                              "error": "integration manifest disappeared before anchor receipt was saved"})
+                return EXIT_BLOCK, steps
+            persisted["close_wave"] = {
+                "anchor_ids": applied,
+                "anchor_committed": already_committed,
+            }
+            try:
+                _integrate_save(manifest_path, persisted)
+            except OSError as exc:
+                steps.append({"name": "anchor-guard",
+                              "error": f"could not persist anchor receipt: {exc}"})
+                return EXIT_BLOCK, steps
+
+        anchor_commit_rc, anchor_commit = _delivery_anchor_commit(
+            primary, applied_ids=applied, already_committed=already_committed,
+        )
+        steps.append({"name": "anchor-commit", "rc": anchor_commit_rc,
+                      "payload": anchor_commit})
+        if anchor_commit_rc == EXIT_OK and manifest_path is not None:
+            persisted = _delivery_load_json(manifest_path)
+            if persisted is not None:
+                persisted["close_wave"] = {
+                    "anchor_ids": applied,
+                    "anchor_committed": True,
+                }
+                try:
+                    _integrate_save(manifest_path, persisted)
+                except OSError as exc:
+                    steps.append({"name": "anchor-guard",
+                                  "error": f"could not persist committed anchor receipt: {exc}"})
+                    return EXIT_BLOCK, steps
+        return anchor_commit_rc, steps
 
 
 def cmd_close_wave(args: argparse.Namespace) -> int:
@@ -5314,6 +5567,18 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
     active worktree is visible, so a Catalog or unrelated session cannot be
     resolved accidentally.
     """
+    if not SLUG_RE.match(args.slug or ""):
+        _emit({
+            "schema": DELIVERY_SCHEMA,
+            "step": "close-wave",
+            "error": "slug must match ^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "slug": args.slug,
+        }, args.json, "✗ close-wave refused: invalid slug")
+        return EXIT_USAGE
+    if args.state:
+        # All child verbs must receive the same absolute path even though they run
+        # from primary, the integration tree, and source worktrees respectively.
+        args.state = str(Path(args.state).expanduser().resolve())
     blocked = _freeze_guard(args.state, "close-wave", args.json)
     if blocked is not None:
         return blocked
@@ -5331,29 +5596,42 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
         return EXIT_BLOCK
 
     state_path, manifests = _delivery_state_paths(args)
-    integration_state = _delivery_load_json(state_path) if state_path.exists() else None
-    manifest = _delivery_load_json(manifests[0]) if manifests else None
+    manifest_path = manifests[0] if manifests else None
+    state_exists = state_path.exists()
+    manifest_exists = manifest_path is not None and manifest_path.exists()
+    integration_state = _delivery_load_json(state_path) if state_exists else None
+    manifest = (_delivery_load_json(manifest_path)
+                if manifest_exists and manifest_path else None)
+    if state_exists and integration_state is None:
+        return _delivery_state_error(
+            args=args, state_path=state_path, manifest_path=manifest_path,
+            error="integration state exists but is unreadable or malformed",
+        )
+    if manifest_exists and manifest is None:
+        return _delivery_state_error(
+            args=args, state_path=state_path, manifest_path=manifest_path,
+            error="completed integration manifest exists but is unreadable or malformed",
+        )
+
     branches = list(args.branches or [])
-    if integration_state is not None:
-        state_branches = list(integration_state.get("branches") or [])
+    persisted = integration_state or manifest
+    if persisted is not None:
+        state_branches = persisted.get("branches")
+        if not isinstance(state_branches, list) or any(
+            not isinstance(branch, str) for branch in state_branches
+        ):
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="persisted integration identity has malformed branches",
+            )
+        state_branches = list(state_branches)
         if branches and branches != state_branches:
             _emit({
                 "schema": DELIVERY_SCHEMA, "step": "close-wave",
-                "error": "--branches differs from the in-flight integration state",
+                "error": "--branches differs from persisted integration state",
                 "expected_branches": state_branches, "received_branches": branches,
                 "state_file": str(state_path),
-            }, args.json,
-                "✗ close-wave refused: resume with the original branch list")
-            return EXIT_USAGE
-        branches = state_branches
-    elif manifest is not None:
-        state_branches = list(manifest.get("branches") or [])
-        if branches and branches != state_branches:
-            _emit({
-                "schema": DELIVERY_SCHEMA, "step": "close-wave",
-                "error": "--branches differs from the completed integration manifest",
-                "expected_branches": state_branches, "received_branches": branches,
-                "manifest": str(manifests[0]),
+                "manifest": str(manifest_path) if manifest_path else None,
             }, args.json,
                 "✗ close-wave refused: resume with the original branch list")
             return EXIT_USAGE
@@ -5365,6 +5643,42 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             "slug": args.slug,
         }, args.json, "✗ close-wave: --branches <source-branch ...> is required")
         return EXIT_USAGE
+
+    state_identity_error = (_delivery_integration_error(
+        integration_state, label="integration state", slug=args.slug,
+        base=args.base, branches=branches, require_gated=False,
+        require_live_worktree=True,
+    ) if integration_state is not None else None)
+    if state_identity_error:
+        return _delivery_state_error(
+            args=args, state_path=state_path, manifest_path=manifest_path,
+            error=state_identity_error,
+        )
+    manifest_marker = manifest.get("close_wave") if isinstance(manifest, dict) else None
+    manifest_delivery_status = (
+        manifest_marker.get("status") if isinstance(manifest_marker, dict) else None
+    )
+    manifest_identity_error = (_delivery_integration_error(
+        manifest, label="completed integration manifest", slug=args.slug,
+        base=args.base, branches=branches, require_gated=True,
+        require_live_worktree=manifest_delivery_status not in ("validated", "completed"),
+    ) if manifest is not None else None)
+    if manifest_identity_error:
+        return _delivery_state_error(
+            args=args, state_path=state_path, manifest_path=manifest_path,
+            error=manifest_identity_error,
+        )
+    if integration_state is not None and manifest is not None:
+        for key in ("worktree", "branch"):
+            if integration_state.get(key) != manifest.get(key):
+                return _delivery_state_error(
+                    args=args, state_path=state_path, manifest_path=manifest_path,
+                    error=f"integration state and manifest disagree on {key}",
+                )
+        # integrate writes the manifest before unlinking state.  In that crash
+        # window the gated manifest is authoritative; never run Gate twice from
+        # the older receipt.
+        integration_state = None
 
     allowed = set(branches)
     if integration_state and integration_state.get("branch"):
@@ -5378,17 +5692,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             "error": "could not read the worktree registry; no closure was attempted",
         }, args.json, "✗ close-wave refused: registry-list failed")
         return EXIT_BLOCK
-    foreign = [
-        {
-            "branch": record.get("branch"),
-            "path": record.get("path"),
-            "intent": record.get("intent"),
-            "handed_back_sha": record.get("handed_back_sha"),
-        }
-        for record in records
-        if record.get("status") == wr.STATUS_ACTIVE
-        and record.get("branch") not in allowed
-    ]
+    foreign = _delivery_foreign_active(records, allowed)
     if foreign:
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave",
@@ -5399,16 +5703,68 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             + "\n".join(f"  {item['branch']} @ {item['path']}" for item in foreign))
         return EXIT_BLOCK
 
+    if args.commit and manifest is not None and manifest_delivery_status == "completed":
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "already-closed", "slug": args.slug, "branches": branches,
+            "integration_branch": manifest.get("branch"),
+            "manifest": str(manifest_path) if manifest_path else None,
+        }, args.json,
+            f"✓ close-wave {args.slug}: already closed; no sync/deploy run")
+        return EXIT_OK
+
+    if (args.commit and manifest is not None
+            and manifest_delivery_status == "validated"
+            and not Path(str(manifest.get("worktree"))).is_dir()):
+        rrc, recovery_records = _delivery_registry_records(args)
+        if rrc != EXIT_OK:
+            return EXIT_BLOCK
+        active_allowed = [
+            record for record in recovery_records
+            if record.get("status") == wr.STATUS_ACTIVE
+            and record.get("branch") in set(branches) | {manifest.get("branch")}
+        ]
+        if active_allowed:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="validated close-wave lost its integration worktree while an allowed active record remains",
+            )
+        recovered = _delivery_load_json(manifest_path) if manifest_path else None
+        if recovered is None:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="validated close-wave manifest disappeared during recovery",
+            )
+        recovered["close_wave"] = {
+            **(recovered.get("close_wave") or {}),
+            "status": "completed",
+        }
+        try:
+            _integrate_save(manifest_path, recovered)
+        except OSError as exc:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=f"could not persist recovered close-wave completion: {exc}",
+            )
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "recovered", "slug": args.slug, "branches": branches,
+            "integration_branch": manifest.get("branch"),
+            "manifest": str(manifest_path) if manifest_path else None,
+        }, args.json,
+            f"✓ close-wave {args.slug}: recovered after teardown; no sync/deploy run")
+        return EXIT_OK
+
     if not args.commit:
         plan = [
             "integrate --commit --no-gate (fresh) or --continue --commit (resume)",
             "integrated-tree fresh Gate",
             "cutover --commit",
             "resolve every source with --via-integration main",
-            "resolve the integration tree",
             "backlog.py anchor --commit",
             "commit only docs/runbook/backlog closure metadata",
             "backlog.py validate --baseline-check",
+            "resolve the integration tree",
         ]
         if integration_state:
             next_step = "integrate --continue --commit"
@@ -5420,7 +5776,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "dry-run",
             "slug": args.slug, "branches": branches, "allowed_branches": sorted(allowed),
             "state_file": str(state_path) if integration_state else None,
-            "manifest": str(manifests[0]) if manifest else None,
+            "manifest": str(manifest_path) if manifest else None,
             "plan": plan, "next_step": next_step,
         }, args.json,
             f"# close-wave {args.slug} (dry-run)\n  " + "\n  ".join(plan)
@@ -5428,13 +5784,15 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     steps: list[dict[str, Any]] = []
-    orchestrator = Path(__file__)
+    coordinator_orchestrator = Path(__file__).resolve()
+    primary_orchestrator = primary / "ops" / "worktree_orchestrate.py"
+    target_base = _local_trunk(args.base)
     integration_worktree: Path | None = None
     integration_branch: str | None = None
 
     if integration_state is None and manifest is None:
         integrate_rc, integrate_payload = _delivery_json_tool(
-            orchestrator,
+            coordinator_orchestrator,
             primary,
             [
                 "integrate", "--slug", args.slug, "--branches", *branches,
@@ -5442,6 +5800,8 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                 *_state_arg(args.state),
             ],
             label=f"integrate:{args.slug}",
+            expected_schema=INTEGRATE_SCHEMA,
+            required_keys=("worktree", "branch"),
         )
         steps.append({"name": "integrate-pick", "rc": integrate_rc,
                       "payload": integrate_payload})
@@ -5460,6 +5820,17 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                    "steps": steps}, args.json,
                   "✗ close-wave refused: integrate did not leave state")
             return EXIT_BLOCK
+        integration_error = _delivery_integration_error(
+            integration_state, label="integration state", slug=args.slug,
+            base=args.base, branches=branches, require_gated=False,
+            require_live_worktree=True,
+        )
+        if integration_error:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=integration_error,
+            )
+        allowed.add(str(integration_state["branch"]))
 
     if integration_state is not None:
         integration_worktree = Path(str(integration_state["worktree"]))
@@ -5473,6 +5844,8 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                 "--base", args.base, *_state_arg(args.state),
             ],
             label=f"integrate-gate:{args.slug}",
+            expected_schema=INTEGRATE_SCHEMA,
+            required_keys=("worktree", "branch", "manifest"),
         )
         steps.append({"name": "integrate-gate", "rc": continue_rc,
                       "payload": continue_payload})
@@ -5482,8 +5855,43 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                    "next": "fix/resume the named integrated-tree issue, then rerun close-wave"},
                   args.json, "✗ close-wave stopped: integrated-tree Gate is not non-block")
             return continue_rc or EXIT_BLOCK
-        manifest_path = continue_payload.get("manifest")
-        manifest = _delivery_load_json(Path(manifest_path)) if manifest_path else None
+        manifest_value = continue_payload.get("manifest")
+        manifest_path = Path(str(manifest_value)) if manifest_value else None
+        manifest = (_delivery_load_json(manifest_path)
+                    if manifest_path and manifest_path.exists() else None)
+        if manifest_path is None or manifest is None:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="integrate reported success but left no readable manifest",
+            )
+        manifest_error = _delivery_integration_error(
+            manifest, label="completed integration manifest", slug=args.slug,
+            base=args.base, branches=branches, require_gated=True,
+            require_live_worktree=True,
+        )
+        if manifest_error:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=manifest_error,
+            )
+        integration_state = None
+        allowed.add(str(manifest.get("branch")))
+
+    # The opening registry snapshot is not enough: a peer may start while the
+    # integrated Gate is running.  Recheck before the irreversible develop step.
+    rrc, records = _delivery_registry_records(args)
+    if rrc != EXIT_OK:
+        return EXIT_BLOCK
+    foreign = _delivery_foreign_active(records, allowed)
+    if foreign:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "error": "another active worktree appeared before cutover",
+            "allowed_branches": sorted(allowed), "foreign_active": foreign,
+        }, args.json,
+            "✗ close-wave stopped before cutover: another active worktree appeared\n"
+            + "\n".join(f"  {item['branch']} @ {item['path']}" for item in foreign))
+        return EXIT_BLOCK
 
     if manifest is not None:
         integration_worktree = integration_worktree or Path(str(manifest["worktree"]))
@@ -5496,7 +5904,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
         return EXIT_BLOCK
 
     ancestor_rc, _ = _git(
-        ["merge-base", "--is-ancestor", integration_branch, args.base], cwd=primary
+        ["merge-base", "--is-ancestor", integration_branch, target_base], cwd=primary
     )
     if ancestor_rc == 0:
         steps.append({"name": "cutover", "mode": "already-landed", "branch": integration_branch})
@@ -5510,6 +5918,8 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                 "--base", args.base, *_state_arg(args.state),
             ],
             label=f"cutover:{args.slug}",
+            expected_schema=SCHEMA,
+            required_keys=("landed",),
         )
         steps.append({"name": "cutover", "rc": cutover_rc,
                       "payload": cutover_payload})
@@ -5543,13 +5953,16 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                   f"✗ close-wave stopped: source worktree missing for {branch}")
             return EXIT_BLOCK
         resolve_rc, resolve_payload = _delivery_json_tool(
-            orchestrator,
+            primary_orchestrator,
             primary,
             [
                 "resolve", "--worktree", str(source_path),
-                "--via-integration", args.base, "--commit", *_state_arg(args.state),
+                "--base", target_base, "--via-integration", target_base,
+                "--commit", *_state_arg(args.state),
             ],
             label=f"resolve-source:{branch}",
+            expected_schema=SCHEMA,
+            required_keys=("step",),
         )
         steps.append({"name": "resolve-source", "branch": branch, "rc": resolve_rc,
                       "payload": resolve_payload})
@@ -5560,6 +5973,55 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                   f"✗ close-wave stopped resolving source {branch}")
             return resolve_rc
 
+    anchor_rc, anchor_steps = _delivery_anchor_and_commit(
+        args, primary, allowed, args.slug, manifest_path
+    )
+    steps.extend(anchor_steps)
+    anchor_commit_rc = anchor_rc
+    if anchor_commit_rc != EXIT_OK:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
+              "✗ close-wave stopped: anchor metadata was not committed")
+        return EXIT_BLOCK
+
+    validate_rc, validate_payload = _delivery_json_tool(
+        primary / "ops" / "backlog.py",
+        primary,
+        ["validate", "--baseline-check"],
+        label=f"validate:{args.slug}",
+        expected_schema="kg.backlog.validate.v1",
+        required_keys=("problems", "ok"),
+    )
+    steps.append({"name": "validate", "rc": validate_rc,
+                  "payload": validate_payload})
+    if validate_rc != EXIT_OK:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
+              "✗ close-wave stopped: backlog validation is not green")
+        return validate_rc
+
+    if manifest_path is not None:
+        validated_manifest = _delivery_load_json(manifest_path)
+        if validated_manifest is None:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="integration manifest disappeared after validation",
+            )
+        validated_manifest["close_wave"] = {
+            **(validated_manifest.get("close_wave") or {}),
+            "status": "validated",
+        }
+        try:
+            _integrate_save(manifest_path, validated_manifest)
+        except OSError as exc:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=f"could not persist validated close-wave state: {exc}",
+            )
+
+    # Keep teardown last.  If anchor or validation stops, the integration worktree
+    # and manifest remain available for the same slug to resume; deleting them first
+    # would leave a successful landing with no way to finish the lifecycle.
     rrc, records = _delivery_registry_records(args)
     if rrc != EXIT_OK:
         return EXIT_BLOCK
@@ -5574,13 +6036,15 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                       "branch": integration_branch})
     else:
         resolve_rc, resolve_payload = _delivery_json_tool(
-            orchestrator,
+            primary_orchestrator,
             primary,
             [
-                "resolve", "--worktree", str(integration_worktree), "--commit",
-                *_state_arg(args.state),
+                "resolve", "--worktree", str(integration_worktree),
+                "--base", target_base, "--commit", *_state_arg(args.state),
             ],
             label=f"resolve-integration:{args.slug}",
+            expected_schema=SCHEMA,
+            required_keys=("step",),
         )
         steps.append({"name": "resolve-integration", "rc": resolve_rc,
                       "payload": resolve_payload})
@@ -5591,58 +6055,32 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                   "✗ close-wave stopped resolving the integration tree")
             return resolve_rc
 
-    dirty = _delivery_primary_dirty(primary)
-    if dirty:
-        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
-               "error": "primary became dirty before anchor; refusing to absorb unrelated work",
-               "dirty_files": dirty, "steps": steps}, args.json,
-              "✗ close-wave refused before anchor: primary became dirty\n"
-              + "\n".join(f"  {path}" for path in dirty))
-        return EXIT_BLOCK
-
-    anchor_rc, anchor_payload = _delivery_json_tool(
-        primary / "ops" / "backlog.py",
-        primary,
-        ["anchor", "--commit"],
-        label=f"anchor:{args.slug}",
-    )
-    steps.append({"name": "anchor", "rc": anchor_rc, "payload": anchor_payload})
-    if anchor_rc != EXIT_OK or anchor_payload.get("problems"):
-        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
-               "mode": "stopped", "slug": args.slug, "steps": steps,
-               "next": "fix/unstage the named anchor row, then rerun close-wave"}, args.json,
-              "✗ close-wave stopped: backlog anchor refused")
-        return anchor_rc or EXIT_BLOCK
-
-    anchor_commit_rc, anchor_commit = _delivery_anchor_commit(primary)
-    steps.append({"name": "anchor-commit", "rc": anchor_commit_rc,
-                  "payload": anchor_commit})
-    if anchor_commit_rc != EXIT_OK:
-        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
-               "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
-              "✗ close-wave stopped: anchor metadata was not committed")
-        return EXIT_BLOCK
-
-    validate_rc, validate_payload = _delivery_json_tool(
-        primary / "ops" / "backlog.py",
-        primary,
-        ["validate", "--baseline-check"],
-        label=f"validate:{args.slug}",
-    )
-    steps.append({"name": "validate", "rc": validate_rc,
-                  "payload": validate_payload})
-    if validate_rc != EXIT_OK:
-        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
-               "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
-              "✗ close-wave stopped: backlog validation is not green")
-        return validate_rc
+    if manifest_path is not None:
+        completed_manifest = _delivery_load_json(manifest_path)
+        if completed_manifest is None:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="integration manifest disappeared after resolve",
+            )
+        completed_manifest["close_wave"] = {
+            **(completed_manifest.get("close_wave") or {}),
+            "status": "completed",
+        }
+        try:
+            _integrate_save(manifest_path, completed_manifest)
+        except OSError as exc:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=f"could not persist completed close-wave state: {exc}",
+            )
 
     _emit({
         "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "committed",
         "slug": args.slug, "branches": branches, "integration_branch": integration_branch,
         "steps": steps, "primary_dirty": _delivery_primary_dirty(primary),
     }, args.json,
-        f"✓ close-wave {args.slug}: integrated, gated, cut over, resolved, anchored, validated\n"
+        f"✓ close-wave {args.slug}: integrated, gated, cut over, sources resolved, "
+        "anchored, validated, integration tree resolved\n"
         "  sync/deploy intentionally not run")
     return EXIT_OK
 
@@ -6849,7 +7287,7 @@ def build_parser() -> argparse.ArgumentParser:
     dp.set_defaults(func=cmd_deploy)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
-                        "births/landings/publishes (open/adopt/catchup/integrate/"
+                        "births/landings/publishes (open/adopt/catchup/integrate/close-wave/"
                         "cutover/sync-main/sync/deploy) until `off`; draining steps "
                         "(resolve/sweep/preflight/gate) stay allowed")
     add_common(fz)
