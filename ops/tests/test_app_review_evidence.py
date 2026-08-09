@@ -594,6 +594,27 @@ def test_refresh_anchor_commit_refuses_while_gate_blocks(
     assert published == []  # refused before paying for a rebuild
 
 
+def test_release_docs_record_measured_refresh_anchor_ordering_limitations():
+    """Both release surfaces must preserve the measured, not assumed, recipe."""
+    required = (
+        "先 refresh-anchor --commit、再 desired --commit --bundle-dir",
+        "refresh-anchor --commit",
+        "desired --commit",
+        "rc=2",
+        "rc=0",
+        "gateCheck=block",
+        "manifest.verdict.status=pass",
+        "未證明為安全順序",
+    )
+    for relative_path in (
+        "docs/sop/ios.md",
+        ".claude/skills/source-command-release/SKILL.md",
+    ):
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        missing = [marker for marker in required if marker not in text]
+        assert not missing, f"{relative_path} 缺少實測契約: {missing}"
+
+
 def test_refresh_anchor_refusal_previews_blocks_and_reports_the_total(
     tmp_path: Path, monkeypatch, capsys
 ):
