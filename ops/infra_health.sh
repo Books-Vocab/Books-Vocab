@@ -142,7 +142,7 @@ if [[ -n "$CERT_RAW" ]]; then
   [[ -n "$ep" ]] && CERT_DAYS=$(( (ep - $(date +%s)) / 86400 ))
 fi
 
-# ── 3. HTTPS 端點探針（本地 curl，一次驗 DNS+TLS+Caddy+FastAPI）────────────
+# ── 3. HTTPS 端點探針（本地 curl，一次驗 DNS+TLS+Cloudflare Tunnel+FastAPI）────
 log "[infra-health] 探 HTTPS $PROBE_URL …"
 if [[ -n "${KG_HEALTH_HTTP_CODE:-}" ]]; then
   HTTP_CODE="$KG_HEALTH_HTTP_CODE"

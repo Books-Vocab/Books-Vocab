@@ -9,6 +9,7 @@
 #   - backend change + smoke 全綠 → deployed（compose up、deploy.log 有新行、VERSION 更新）
 #   - backend change + smoke 失敗 → rolled-back（git reset --hard ROLLBACK_SHA、
 #     compose 第二次 up、poison 寫入、exit 非 0）
+#   - smoke unreachable 但 infra 拿到 HTTP status → rolled-back（服務鏈證據優先）
 #   - poison 命中同 sha → poisoned-skip（compose 不 build）
 #   - --dry-run + backend change → dry-run（compose/pull 完全不呼叫、VERSION/state/log 未變）
 #   - lock 已被別人持有 → locked（exit 0、不 build）
@@ -458,6 +459,27 @@ EOF
   ext_calls="$(cat "$SC/external_calls" 2>/dev/null || echo 0)"
   [[ "$ext_calls" -ge 2 ]] && ok "host-outage[$shape]: 探針真的重試到預算用盡（$ext_calls 次）" || bad "host-outage[$shape]: 只打了 $ext_calls 次 — 沒重試就宣告量不到"
 done
+
+section "外部 smoke 斷線但 infra 回真實 HTTP 502 → 回滾（不是同一場斷網）"
+# 兩關量測不同時刻：smoke 燒完預算後，infra 可能已拿到真實 HTTP 回應。
+# 這代表服務鏈有證據，不得因 smoke unreachable 而放行。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|502|boom
+wordnexus.lol/api/health|401|{\"detail\":\"x\"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+ERRLOG="$SC/recon.err"
+out="$(MOCK_EXTERNAL_FAIL_FIRST=2 run_recon --once 2>"$ERRLOG")"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "rolled-back" ]] && ok "outage-then-status:rolled-back: verdict rolled-back" || bad "outage-then-status:rolled-back: expected rolled-back, got '$v' (out=$out)"
+[[ "$rc" -ne 0 ]] && ok "outage-then-status: exit non-zero" || bad "outage-then-status: expected non-zero exit"
+grep -q "reason=infra" "$DEPLOYLOG" && ok "outage-then-status: reason=infra" || bad "outage-then-status: missing reason=infra"
+grep -q "^poison $SHA_NEW " "$STATE" && ok "outage-then-status: poison written" || bad "outage-then-status: missing poison"
+grep -q "http_code=502" "$INFRALOG" && ok "outage-then-status: infra really got HTTP 502" || bad "outage-then-status: infra did not get HTTP 502"
+grep -q "external attempt" "$ERRLOG" && ok "outage-then-status: smoke exhausted its budget" || bad "outage-then-status: smoke retry evidence missing"
+ext_calls="$(cat "$SC/external_calls" 2>/dev/null || echo 0)"
+[[ "$ext_calls" -ge 3 ]] && ok "outage-then-status: external calls >= 3 ($ext_calls)" || bad "outage-then-status: expected >= 3 external calls, got $ext_calls"
 
 section "斷網當下 infra_health 另有 http_probe 以外的 crit → 仍必須回滾（不得把整關關掉）"
 # 上一段放行的**只能是**「同一場斷網的第二個症狀」。如果 infra_health 還告訴你容器不見了
