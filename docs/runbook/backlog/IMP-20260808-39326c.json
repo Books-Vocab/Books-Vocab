@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "`ops/docs_lint.sh` 判定一份 generated 文檔與它的 generator 輸出不一致時，只印「產物與 generator 輸出不一致（跑 $check 看差異）」——**不說差在哪幾行**。\n\n實測代價（2026-08-08，dogfood 批次一）：一位受派者只加了 18 行 Swift modifier，docs gate 就轉 ERROR。他必須自己把 generator 的 stdout 導出來手動 diff，才分得出「這是我造成的」還是「這是每天自轉紅的既有 debt」——而那個分辨**直接決定他要不要動這個檔**。分不出來的預設行為是「重生一份帶進自己的 commit」，於是一個 repo 級產物被夾進一條與它無關的分支，成為 fan-out 批次的衝突源。\n\n本條原本是 `IMP-20260808-b63206` 內文標註的「順帶一條可獨立修的小的」。b63206 的處置是把 `docs/snapshot/ios_baseline.md` 移出版控，那會讓 registry 的 generated entry 歸零、這個具體事故不再重演——**但 `docs_lint.sh` 那條規則與訊息一行未動，對任何未來新增的 generated entry 照樣施壓、照樣不說差在哪**。所以拆票：不拆的話，母票一結案，這條就隨它一起蒸發。",
   "fix_site": "ops/docs_lint.sh:231（generated drift 判定分支）",
+  "fixed_by": [
+    "b07cba9da2c6159bca3b5b12b4b4d831c09232d7"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-39326c",
@@ -15,6 +18,10 @@
   "scope": "一支把關腳本裡加一段印差異的輸出，加上用合成資料寫的三條測試。",
   "severity": "low",
   "source": "IMP-20260808-b63206 內文標註的「順帶一條」；母票處置為移除產物，不拆票它會隨母票結案一起蒸發",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:machine-gate",
+  "verified_evidence": "ticket=IMP-20260808-39326c\ncode_commit=194eb9c3d3ea9054a7d47f44b18e36d2870c52e1\nmetadata_commit=b07cba9da2c6159bca3b5b12b4b4d831c09232d7\ngate=ops/worktree_orchestrate.py gate --worktree .claude/worktrees/third-round-docs-diff --json\ngate_verdict=pass\ngate_block=review-receipts,ops-shell-syntax,ops-shell-scan,ops-shell:test_docs_lint.sh,ops-shell:test_docs_lint_generated_diff.sh,backlog-validate,data-plane:ops/docs_lint.sh\nacceptance=bash ops/tests/test_docs_lint_generated_diff.sh\nacceptance_result=6 passed, 0 failed\nregression=bash ops/tests/test_docs_lint_generated_check.sh\nregression_result=29 passed, 0 failed\nvalidation=./ops/backlog.py validate --baseline-check --json\nvalidation_result=0 problems\ncutover=pass; local main=b07cba9da; deploy=not-run"
 }
