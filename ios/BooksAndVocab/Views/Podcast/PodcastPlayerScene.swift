@@ -192,9 +192,12 @@ struct PodcastPlayerScene: View {
             }
         }
         .sheet(isPresented: $showNotebookPicker) {
-            if let series = loadedSeries {
-                PodcastNotebookPicker(series: series)
+            Group {
+                if let series = loadedSeries {
+                    PodcastNotebookPicker(series: series)
+                }
             }
+            .appAppearanceScheme()
         }
         .sheet(isPresented: $showSettingsPopover) {
             NavigationStack {
@@ -220,6 +223,7 @@ struct PodcastPlayerScene: View {
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
+            .appAppearanceScheme()
         }
         .task(id: activeEpisodeId) {
             guard loadedEpisodeId != activeEpisodeId else { return }

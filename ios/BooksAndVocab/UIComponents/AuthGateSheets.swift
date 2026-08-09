@@ -25,7 +25,7 @@ struct MonetizationGateState {
 extension View {
     func loginSheet(isPresented: Binding<Bool>) -> some View {
         sheet(isPresented: isPresented) {
-            LoginSheet()
+            LoginSheet().appAppearanceScheme()
         }
     }
 
