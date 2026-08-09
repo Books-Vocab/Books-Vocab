@@ -169,6 +169,7 @@ from lib.streaming_command import run_streamed_command  # noqa: E402
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
 GATE_INPUT_SCHEMA = "kg.worktree.gate-input.v1"
+GATE_PROGRESS_SCHEMA = "kg.worktree.gate-progress.v1"
 FREEZE_SCHEMA = "kg.worktree.freeze.v1"
 EXIT_OK = 0
 EXIT_USAGE = 64
@@ -1738,6 +1739,26 @@ def _gate_record_path(state: str | None, worktree: str) -> Path:
         base_dir = wr.default_state_path().parent
     key = hashlib.sha256(_norm(worktree).encode()).hexdigest()[:16]
     return base_dir / "worktree_gates" / f"{key}.json"
+
+
+def _gate_progress_path(state: str | None, worktree: str) -> Path:
+    """Where the live progress sidecar is recorded, separate from the verdict."""
+    record_path = _gate_record_path(state, worktree)
+    return record_path.with_name(f"{record_path.stem}.progress.json")
+
+
+def _gate_progress_lock(state: str | None):
+    """Serialize progress ownership without adding a second lock-file family."""
+    state_path = Path(state).resolve() if state else wr.default_state_path()
+    return wr._ledger_lock(state_path)
+
+
+def _read_gate_progress(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _tracked_paths(worktree: str) -> list[str] | None:
@@ -3495,7 +3516,62 @@ def cmd_gate(args: argparse.Namespace) -> int:
                       base=args.base)
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
+    progress_path = _gate_progress_path(args.state, worktree)
+    progress_started = time.monotonic()
+    run_id = f"{head[:12]}-{os.getpid()}-{time.monotonic_ns()}"
+    print(f"[worktree][gate] phase=plan gates={len(plan)} progress={progress_path} "
+          f"run_id={run_id}", file=sys.stderr, flush=True)
+    completed: list[dict[str, str]] = []
+    progress_generation: int | None = None
+
+    def publish_progress(*, claim: bool = False) -> None:
+        nonlocal progress_generation
+        done = len(completed)
+        current = plan[done]["name"] if done < len(plan) else None
+        progress = {
+            "schema": GATE_PROGRESS_SCHEMA,
+            "run_id": run_id,
+            "worktree": worktree,
+            "head_sha": head,
+            "plan_total": len(plan),
+            "done": done,
+            "current": current,
+            "elapsed": round(time.monotonic() - progress_started, 3),
+            "completed": list(completed),
+        }
+        try:
+            with _gate_progress_lock(args.state):
+                existing = _read_gate_progress(progress_path)
+                if claim:
+                    previous_generation = (existing or {}).get("generation", 0)
+                    if (not isinstance(previous_generation, int)
+                            or isinstance(previous_generation, bool)
+                            or previous_generation < 0):
+                        previous_generation = 0
+                    progress_generation = previous_generation + 1
+                elif (progress_generation is None
+                      or not existing
+                      or existing.get("run_id") != run_id
+                      or existing.get("generation") != progress_generation):
+                    owner = (existing or {}).get("run_id", "unknown")
+                    generation = (existing or {}).get("generation", "unknown")
+                    print(f"[worktree][gate] phase=progress progress={progress_path} "
+                          f"write=skipped reason=stale-run owner_run_id={owner} "
+                          f"owner_generation={generation} run_id={run_id}",
+                          file=sys.stderr, flush=True)
+                    return
+                progress["generation"] = progress_generation
+                _write_atomic(progress_path,
+                              json.dumps(progress, indent=2, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            # Progress is observational, not a verdict input. Keep the gate running but
+            # name a broken progress surface instead of silently losing the live view.
+            print(f"[worktree][gate] phase=progress progress={progress_path} "
+                  f"write=failed error={type(exc).__name__}: {exc}",
+                  file=sys.stderr, flush=True)
+
     if not args.plan_only:
+        publish_progress(claim=True)
         previous, previous_error = _read_gate_record(rec_path)
         tracked = _tracked_paths(worktree)
         for spec in plan:
@@ -3511,18 +3587,24 @@ def cmd_gate(args: argparse.Namespace) -> int:
             reused, reason = _reuse_gate(spec, current_input, previous, previous_error, orch,
                                          args.base)
             if reused is not None:
-                results.append(reused)
-                continue
-            result = _run_gate(spec, worktree, record_path=rec_path, state=args.state)
-            result["reused"] = False
-            result["reused_from_head"] = None
-            result["reuse"] = {
-                "decision": "rerun",
-                "source_head": previous.get("head_sha") if previous else None,
-                "reason": reason,
-            }
-            result["input"] = current_input
+                result = reused
+            else:
+                result = _run_gate(spec, worktree, record_path=rec_path, state=args.state)
+                result["reused"] = False
+                result["reused_from_head"] = None
+                result["reuse"] = {
+                    "decision": "rerun",
+                    "source_head": previous.get("head_sha") if previous else None,
+                    "reason": reason,
+                }
+                result["input"] = current_input
             results.append(result)
+            completed.append({"name": result["name"], "status": result["status"]})
+            publish_progress()
+            print(f"[worktree][gate] phase=gate gate={result['name']} "
+                  f"status={result['status']} done={len(completed)}/{len(plan)} "
+                  f"elapsed={time.monotonic() - progress_started:.1f}s "
+                  f"progress={progress_path}", file=sys.stderr, flush=True)
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
 
     now = _head_sha(worktree)
@@ -5872,6 +5954,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     # reason the gate-cache path is resolved NOW — its default-state branch derives
     # the ledger anchor from the process cwd, which teardown may be about to remove.
     gate_cache = _gate_record_path(args.state, worktree)
+    gate_progress = _gate_progress_path(args.state, worktree)
     steps: list[dict[str, Any]] = []
 
     def _plan(label: str, gargs: list[str], cwd: Path, *, critical: bool = False) -> None:
@@ -6030,6 +6113,18 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         except OSError:
             pass
 
+    # The live progress sidecar follows the verdict's lifecycle. Use the same short
+    # lock as publishers so a concurrent gate cannot interleave its atomic replace
+    # with this cleanup.
+    gate_progress_removed = False
+    try:
+        with _gate_progress_lock(args.state):
+            if gate_progress.exists():
+                gate_progress.unlink()
+                gate_progress_removed = True
+    except OSError:
+        pass
+
     # Said out loud, and deliberately NOT blocking. The anchor queue is gitignored
     # and per-machine, so nothing downstream of this teardown can notice a closure
     # that landed but was never written into the store: not the gate, not docs lint,
@@ -6083,6 +6178,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                "resolved": "merged", "executed": results, "failures": failures,
                "aborted_after": aborted_after,
                "gate_cache_removed": gate_cache_removed,
+               "gate_progress_removed": gate_progress_removed,
                "gate_logs_removed": gate_logs_removed,
                "staged_closures": integrated_closures,
                "pending_anchor": pending_anchor,
@@ -6092,6 +6188,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         human.append(f"  {'✓' if r['ok'] else '✗'} {r['cmd']}   # {r['label']}")
     if gate_cache_removed:
         human.append("  ✓ dropped gate-record cache")
+    if gate_progress_removed:
+        human.append("  ✓ dropped gate-progress sidecar")
     if gate_logs_removed:
         human.append(f"  ✓ dropped {gate_logs_removed} failed-gate output log(s)")
     if pending_anchor:
