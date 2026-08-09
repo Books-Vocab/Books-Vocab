@@ -64,8 +64,14 @@ extension ReaderSettingsPresenter {
 
     // MARK: Preview
 
-    /// 即時預覽擺在控制項**之前**，與複習卡版面編輯器同一個順序邏輯
-    /// （預覽 → 控制項 → 說明 footer）：先讓人看到現在長什麼樣，再讓人動旋鈕。
+    /// 即時預覽擺在控制項**之前**：先讓人看到現在長什麼樣，再讓人動旋鈕。
+    ///
+    /// **與複習卡版面編輯器順序相反，這是刻意的不是不一致**（別「對齊」回去）。
+    /// 共用的規則是「預覽緊貼它所控制的東西」：這一頁的控制項全頁共用同一份
+    /// `ReaderSettings`，所以預覽只需要一張、擺頁首涵蓋全部；`ReviewCardLayoutEditor`
+    /// 的預覽是**該複習方向專屬**的（辨識 / 產出各一張，`VocabularyCardMode`；每張
+    /// 本身都已兩面都畫），所以它擺在各自 Picker 的
+    /// 正下方（見 `ReviewCardLayoutEditor.swift:directionSection`）。
     ///
     /// 每一格都直接讀 binding 的當前值，沒有 draft、沒有 snapshot ——
     /// 所以它必然與正下方那些控制項一致，不需要靠誰記得同步。
