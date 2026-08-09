@@ -297,6 +297,15 @@ extension TodayReviewPresenter {
         // Same rule as the front face: draw the gap the solver charged.
         VStack(alignment: .leading, spacing: layout.sectionSpacing) {
 
+            // 難度徽章畫在答案字**上方**、右對齊 —— 出貨版一直是這樣（見
+            // a5885e228^ 的 combinedAnswerContent）。canonicalOrder 救不了這件事：
+            // 它只排 field 彼此的先後，排不了 field 與 core 的先後。
+            reviewBackFieldColumn(
+                blockFields: plan.back.aboveCore,
+                currentCard: currentCard,
+                layout: layout
+            )
+
             // Answer word + its section rule form ONE core section: the rule is the
             // core's own chrome (as on the shipped card), so it is measured with the
             // core rather than competing with the profile's fields for a slot.
@@ -327,7 +336,9 @@ extension TodayReviewPresenter {
                     }
                 }
 
-                if ReviewCardLayoutSolver.drawsAnswerDivider(fields: plan.back.blockFields) {
+                // 這條線的規則是「答案底下還有東西才畫」。難度搬到上面之後，若使用者
+                // 只開難度，底下已無內容 —— 再畫就是憑空多一條懸空分隔線。
+                if ReviewCardLayoutSolver.drawsAnswerDivider(fields: plan.back.belowCore) {
                     CardSectionDivider(horizontalPadding: 0)
                 }
             }
@@ -341,34 +352,54 @@ extension TodayReviewPresenter {
                 )
             }
 
-            ForEach(plan.back.blockFields, id: \.self) { field in
-                reviewOptionalField(
-                    field,
-                    currentCard: currentCard,
-                    face: .back,
-                    policy: layout.policy(for: .field(field))
-                )
-                    .background {
-                        reviewMeasurementProbes(
-                            field,
-                            currentCard: currentCard,
-                            face: .back
-                        )
-                    }
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                        recordReviewSectionHeight(
-                            height,
-                            currentCard: currentCard,
-                            face: .back,
-                            section: .field(field),
-                            level: layout.policy(for: .field(field)).measurementLevel
-                        )
-                    }
-            }
+            reviewBackFieldColumn(
+                blockFields: plan.back.belowCore,
+                currentCard: currentCard,
+                layout: layout
+            )
         }
         .reviewCardFaceChrome(.back)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: layout.cardHeight, alignment: .topLeading)
+    }
+
+    /// 背面的一整欄 block 欄位。
+    ///
+    /// **body 只能是那個 ForEach**，不可包一層 VStack / Group-with-spacing：solver 收的是
+    /// `max(sections.count - 1, 0)` 個 gap，而 ForEach 在 VStack 裡是攤平的（core + n 個
+    /// 欄位 = n+1 個 sibling / n 個 gap）。包一層會讓外層只剩三個 sibling（兩個 gap）
+    /// ＋內層自帶 spacing，畫出來的間距與 solver 記帳的間距當場分家；而且 aboveCore 為空
+    /// 時 ForEach 貢獻 0 個 child，包 VStack 則多一個高度 0 卻仍吃一個 gap 的幽靈 child。
+    @ViewBuilder
+    private func reviewBackFieldColumn(
+        blockFields: [ReviewCardField],
+        currentCard: TodayReviewPresenterState.CurrentCard,
+        layout: ReviewCardLayoutSolver.Result
+    ) -> some View {
+        ForEach(blockFields, id: \.self) { field in
+            reviewOptionalField(
+                field,
+                currentCard: currentCard,
+                face: .back,
+                policy: layout.policy(for: .field(field))
+            )
+                .background {
+                    reviewMeasurementProbes(
+                        field,
+                        currentCard: currentCard,
+                        face: .back
+                    )
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    recordReviewSectionHeight(
+                        height,
+                        currentCard: currentCard,
+                        face: .back,
+                        section: .field(field),
+                        level: layout.policy(for: .field(field)).measurementLevel
+                    )
+                }
+        }
     }
 
     // MARK: Link Strip
