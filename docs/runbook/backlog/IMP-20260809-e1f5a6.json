@@ -1,6 +1,6 @@
 {
   "acceptance": "雙向契約：shared Python source、server、app.js 與 profile select 集合完全相等；來源新增但前端漏加、前端殘留但來源已刪兩個方向都由 mutation 正控證明會紅；一致的多 profile fixture 負控必須綠，且 parser 不把註解或其他 select 的字串算成 profile。",
-  "acceptance_cmd": "cd lab/podcast && uv run --with fastapi --with \"uvicorn[standard]\" --with python-multipart --with httpx --with pytest pytest -q monitor/test_server.py -k agent_profile_allowlist_contract",
+  "acceptance_cmd": "bash -c 'set -e; cd lab/podcast; N=$(uv run --with fastapi --with \"uvicorn[standard]\" --with python-multipart --with httpx --with pytest pytest --collect-only -q monitor/test_server.py -k agent_profile_allowlist_contract | grep -c \"::\"); [ \"${N}\" -ge 1 ]; uv run --with fastapi --with \"uvicorn[standard]\" --with python-multipart --with httpx --with pytest pytest -q monitor/test_server.py -k agent_profile_allowlist_contract'",
   "brief": "下架一個選項時，前端頁面可能還留著它而沒有任何檢查會發現，使用者於是選得到一個送出後才會失敗的選項。",
   "category": "tool",
   "cost": "S",
