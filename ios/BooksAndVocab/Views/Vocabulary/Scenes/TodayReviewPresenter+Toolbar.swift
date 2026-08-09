@@ -100,24 +100,24 @@ struct ReviewTopBar: View, Equatable {
                 systemImage: model.isAutoPlaying ? "play.circle.fill" : "play.circle",
                 tone: autoplayTone,
                 label: L10n.string(model.isAutoPlaying ? "vocab.chromeIcon.todayReview.autoplay.on" : "vocab.chromeIcon.todayReview.autoplay.off"),
+                identifier: "todayReview.autoplayToggle",
                 action: onToggleAutoPlay
             )
             .disabled(!isAutoplayActionable)
             // 穩定 identifier:此鍵的 a11y label 會隨播放狀態在「開啟/關閉自動播放」
             // 之間翻轉,UI 測試若靠 label 選取就會在狀態切換的那一刻選不到。
-            .accessibilityIdentifier("todayReview.autoplayToggle")
             // Layout editor sits between autoplay and close. Gated on the same
             // `isCardInteractive` lock the rest of the chrome uses, so it cannot
             // open mid-fling / mid-advance.
             VocabChromeIconButton(
                 systemImage: "rectangle.split.2x1",
                 label: L10n.string("todayReview.layoutEditor.open"),
+                identifier: "todayReview.layoutEditor.open",
                 action: {
                     guard model.isCardInteractive else { return }
                     onAdjustLayout()
                 }
             )
-            .accessibilityIdentifier("todayReview.layoutEditor.open")
 
             #if targetEnvironment(macCatalyst)
             VocabChromeIconButton(
@@ -130,6 +130,7 @@ struct ReviewTopBar: View, Equatable {
             VocabChromeIconButton(
                 systemImage: "xmark",
                 label: L10n.string("vocab.chromeIcon.todayReview.close"),
+                identifier: "todayReview.close",
                 action: onClose
             )
         }

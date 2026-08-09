@@ -17,7 +17,7 @@ struct TodayReviewPage {
 
     /// Top-bar xmark chrome button (L10n `vocab.chromeIcon.todayReview.close`).
     var closeButton: XCUIElement {
-        app.buttons["關閉今日複習"]
+        element("todayReview.close")
     }
 
     /// Top-bar entry to the shared review-card layout editor (between autoplay
