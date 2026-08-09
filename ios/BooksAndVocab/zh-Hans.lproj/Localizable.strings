@@ -1189,3 +1189,7 @@
 "reviewCardLayout.sample.explanation" = "指在没有刻意寻找的情况下，偶然遇见美好事物的能力或事件。";
 "reviewCardLayout.sample.book" = "示例书";
 "reviewCardLayout.sample.chapter" = "示例章节";
+
+/* reader-settings-preview · APP-20260809-ca8e30 即時預覽 */
+"reader.settings.section.preview" = "预览";
+"reader.settings.preview.accessibilityLabel" = "阅读设置的实时预览";

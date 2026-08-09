@@ -17,6 +17,7 @@ struct ReaderSettingsPanel: View {
     private var presenterState: ReaderSettingsPresenter.State {
         .init(
             fontSizeText: String(format: "%.2gx", settings.fontSize),
+            fontScale: settings.fontSize,
             canDecreaseFontSize: settings.fontSize > 0.75,
             canIncreaseFontSize: settings.fontSize < 2.0
         )
@@ -86,6 +87,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
     let canDecreaseFontSize: Bool
     let canIncreaseFontSize: Bool
 
+    @State private var fontScale: Double = 1.0
     @State private var lineHeight: Double = 1.5
     @State private var font: ReaderFont = .serif
     @State private var theme: ReaderTheme = .sepia
@@ -97,6 +99,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
     private var state: ReaderSettingsPresenter.State {
         .init(
             fontSizeText: initialFontSizeText,
+            fontScale: fontScale,
             canDecreaseFontSize: canDecreaseFontSize,
             canIncreaseFontSize: canIncreaseFontSize
         )
@@ -120,8 +123,10 @@ struct ReaderSettingsPanelPreviewHarness: View {
         ReaderSettingsPresenter(
             state: state,
             bindings: bindings,
-            onDecreaseFontSize: {},
-            onIncreaseFontSize: {},
+            // Catalog / #Preview 也走真的加減，否則預覽卡在 harness 裡是死的，
+            // 而「改設定會不會即時反映」正是這個 scenario 要看的事。
+            onDecreaseFontSize: { fontScale = max(0.75, fontScale - 0.125) },
+            onIncreaseFontSize: { fontScale = min(2.0, fontScale + 0.125) },
             onSelectTheme: { theme = $0 },
             onSelectUnderlineOpacity: { underlineOpacity = $0 },
             onDismiss: {}
