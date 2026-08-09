@@ -4717,16 +4717,26 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     # Producer-side collision checks are not enough: this shared gitignored JSONL
     # can contain legacy or hand-written rows. A duplicate ready id used to be
     # written twice, with queue order deciding the final payload/status, and then
-    # both rows were consumed. Reject it before acceptance or any store write.
-    seen_ready: set[str] = set()
-    duplicate_ready: set[str] = set()
-    for row in ready:
-        entry_id = row.get("id")
-        if not isinstance(entry_id, str):
+    # both rows were consumed. When a Delivery Team filters by branch, the peer's
+    # row is deferred but still participates in the collision: letting the first
+    # team close it would allow a later team to overwrite its provenance. Reject
+    # selected ids against the whole stamped queue before acceptance or any store
+    # write.
+    ready_by_id: dict[str, list[dict]] = {}
+    for row in rows:
+        if not row.get("landed_sha"):
             continue
-        if entry_id in seen_ready:
-            duplicate_ready.add(entry_id)
-        seen_ready.add(entry_id)
+        entry_id = row.get("id")
+        if isinstance(entry_id, str):
+            ready_by_id.setdefault(entry_id, []).append(row)
+    selected_ids = {
+        row.get("id") for row in ready
+        if isinstance(row.get("id"), str)
+    }
+    duplicate_ready = {
+        entry_id for entry_id, matching in ready_by_id.items()
+        if entry_id in selected_ids and len(matching) > 1
+    }
     problems: list[dict] = [
         {
             "id": entry_id,

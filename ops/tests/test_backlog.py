@@ -3641,6 +3641,44 @@ def test_anchor_refuses_duplicate_ready_staged_add_ids_without_consuming_the_que
     assert queue.read_bytes() == before_queue
 
 
+def test_anchor_branch_filter_refuses_duplicate_ready_ids_across_delivery_teams(
+        tmp_path, capsys
+):
+    """A filtered wave must not hide a peer's ready row for the same ticket.
+
+    Delivery Teams are allowed to run in parallel, but a ticket may have only one
+    closure provenance.  Looking only at the selected branch lets team-a close the
+    row and team-b close it later, silently replacing team-a's evidence.
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    entry = _add(store, detail="cross-team duplicate closure")
+    entry = BACKLOG.update_entry(store, entry["id"], **_groom_kwargs())
+    rows = [
+        {"id": entry["id"], "verdict": "CONFIRMED-FIXED", "by": "agent:team-a",
+         "evidence": "team-a acceptance", "status": "fixed", "at": "2026-08-09",
+         "branch": "feat/team-a", "landed_sha": "a" * 40},
+        {"id": entry["id"], "verdict": "CONFIRMED-FIXED", "by": "agent:team-b",
+         "evidence": "team-b acceptance", "status": "fixed", "at": "2026-08-09",
+         "branch": "feat/team-b", "landed_sha": "b" * 40},
+    ]
+    BACKLOG.write_queue(queue, rows)
+    before_entry = (store / f"{entry['id']}.json").read_bytes()
+    before_queue = queue.read_bytes()
+
+    assert BACKLOG.main([
+        "anchor", "--store", str(store), "--queue", str(queue),
+        "--branches", "feat/team-a", "--commit", "--json",
+    ]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applied"] == []
+    assert any(
+        p["id"] == entry["id"] and "duplicate ready rows" in p["error"]
+        for p in payload["problems"]
+    ), payload["problems"]
+    assert (store / f"{entry['id']}.json").read_bytes() == before_entry
+    assert queue.read_bytes() == before_queue
+
+
 def test_anchor_refuses_ready_add_and_closure_for_the_same_id_atomically(
     tmp_path, capsys
 ):

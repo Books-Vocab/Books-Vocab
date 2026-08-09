@@ -3211,6 +3211,13 @@ def cmd_freeze(args: argparse.Namespace) -> int:
 
 
 def cmd_sync_main(args: argparse.Namespace) -> int:
+    """Serialize the complete origin->local primary fast-forward transition."""
+    primary = primary_root()
+    with _main_advance_lock(primary):
+        return _cmd_sync_main_locked(args, primary)
+
+
+def _cmd_sync_main_locked(args: argparse.Namespace, primary: Path) -> int:
     """Guarded fast-forward of the PRIMARY checkout's local main to origin/main.
 
     The historical 'never ff the user's local main' rule guards against LOSSY moves;
@@ -3230,8 +3237,6 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
               f"✗ base must be an origin/* ref, got {base!r}")
         return EXIT_USAGE
     local = base.split("/", 1)[1]
-    primary = primary_root()
-
     def _refuse(reason: str) -> int:
         _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "refused",
                "reason": reason, "primary": str(primary)}, args.json,
