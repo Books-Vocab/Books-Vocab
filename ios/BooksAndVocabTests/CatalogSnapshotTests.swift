@@ -565,17 +565,34 @@ private let catalogSnapshotCompileFlagEnabled = false
         let fixedClock: String
         let observedAt: String
 
+        private static func catalogFallbackNow() -> Date {
+            var components = DateComponents()
+            components.year = 2026
+            components.month = 6
+            components.day = 1
+            components.hour = 12
+            guard let date = Calendar.current.date(from: components) else {
+                preconditionFailure("Catalog appearance fallback clock date components are invalid")
+            }
+            return date
+        }
+
         static func current() -> Self {
             let environment = ProcessInfo.processInfo.environment
             let summary = FixtureDatasetStore.debugSummary()
             let datasetID = summary.components(separatedBy: " @ ").count == 2
                 ? summary.components(separatedBy: " @ ")[0]
                 : ""
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
             return Self(
                 sourceCommit: environment["KG_REVIEW_SOURCE_COMMIT"] ?? "",
                 datasetID: datasetID,
                 datasetSHA256: environment["KG_FIXTURE_DATASET_SHA256"] ?? "",
-                fixedClock: FixtureDatasetStore.marketingCapture()?.reviewClock?.frozenNow ?? "",
+                fixedClock: formatter.string(
+                    from: MarketingReviewClock.now(fallback: Self.catalogFallbackNow())
+                ),
                 observedAt: ISO8601DateFormatter().string(from: Date())
             )
         }
@@ -989,6 +1006,13 @@ private let catalogSnapshotCompileFlagEnabled = false
             Self.appearanceCaptureID(requested: "light", relPath: identityInputs[0].1) == captureIDs[0],
             "appearance proof IDs must be deterministic"
         )
+    }
+
+    @Test func appearanceProvenanceUsesTheCatalogMarketingClock() {
+        let fixedClock = AppearanceProvenance.current().fixedClock
+
+        #expect(!fixedClock.isEmpty)
+        #expect(fixedClock.hasSuffix("Z"))
     }
 
     @Test func appearanceSidecarRejectsTraitMismatchAndIdenticalSensitivePairs() throws {
