@@ -86,8 +86,10 @@ struct PendingTipsResetTests {
     ///  (a) 本 suite 與其餘會動 AppLanguageStore.shared 的 suite 全是 @MainActor，
     ///      而本函式非 async、body 內無 suspension point ⇒ 單一 main-actor job，
     ///      插不進別的測試；
-    ///  (b) 即使插得進來，`.standard` 上該 key 的唯一寫入者仍是 setLanguage→mark，
-    ///      所以「mark 被拿掉」這個回歸必紅。
+    ///  (b) 即使插得進來，`.standard` 上該 key 的寫入者只有兩個——setLanguage→mark
+    ///      與 AppLanguageStore 的 KVS observer→mark（APP-20260808-9293ba）——
+    ///      兩者皆在 main actor 上（observer 註冊時 `queue: .main`），且測試環境不會
+    ///      收到跨裝置 KVS 通知，所以「mark 被拿掉」這個回歸仍必紅。
     @Test func setLanguageMarksPendingReset() {
         let store = AppLanguageStore.shared
         store.setLanguage(.english)
