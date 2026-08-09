@@ -120,6 +120,20 @@ final class AppLanguageStore: ObservableObject {
                   value != self.selection
             else { return }
             self.selection = value
+            // 語言有兩條寫入 `selection` 的路徑：Settings UI 走 `setLanguage(_:)`，
+            // 跨裝置 KVS 變更走這裡。TipKit 的 reset 旗標本來只長在前者上，所以在
+            // A 機切語言、B 機同步收到之後，B 機的 view tree 會整棵換成新語言，
+            // TipKit datastore 裡已渲染的提示文案卻留在舊語言。
+            //
+            // mark 必須留在上面那道 `keys.contains(Keys.selectedLanguage)` 之後：
+            // 四個 store 共用 `NSUbiquitousKeyValueStore.default` 同一個通知，
+            // 提前 mark 會讓調字級或深色模式也把 TipKit 的 MaxDisplayCount 進度與
+            // Event 捐獻史整包清掉——那個代價只有「真的換了語言」時才值得付。
+            //
+            // 這裡同樣**不能**就地 `Tips.resetDatastore()`（APP-20260806-498c25），
+            // 也不能改叫 `setLanguage(_:)`：那會把剛收到的值寫回 KVS，而
+            // `CloudPreferencesSync.set` 只有 debounce、沒有 echo guard。
+            PendingTipsReset.mark(in: self.defaults)
         }
     }
 
