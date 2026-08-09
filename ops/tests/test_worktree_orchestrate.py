@@ -6472,9 +6472,13 @@ def test_land_asks_the_primary_dirty_before_gate_question_exactly_once(
         f"got {asked}")
 
 
-def test_close_wave_refuses_foreign_active_worktrees_before_any_mutation(
+def test_close_wave_does_not_block_on_foreign_active_worktrees(
         tmp_path, monkeypatch, capsys):
-    """The coordinator cannot cross an unrelated live lane (e.g. Catalog)."""
+    """A Delivery Team may finish while another team still owns worktrees.
+
+    The resolver still receives only this wave's explicit branches; unrelated
+    active records are not a reason to make every team communicate manually.
+    """
     monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
     monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
     monkeypatch.setattr(MODULE, "_delivery_primary_dirty", lambda _primary: [])
@@ -6493,15 +6497,16 @@ def test_close_wave_refuses_foreign_active_worktrees_before_any_mutation(
         base="main",
         slug="delivery-wave",
         branches=["feat/source"],
-        commit=True,
+        commit=False,
+        sync=False,
     )
 
     rc = MODULE.cmd_close_wave(args)
 
-    assert rc == MODULE.EXIT_BLOCK
+    assert rc == MODULE.EXIT_OK
     output = capsys.readouterr().out
-    assert "feat/catalog-agent-tool" in output
-    assert "will not cross its boundary" in output
+    assert "feat/catalog-agent-tool" not in output
+    assert "foreign active" not in output
 
 
 def test_delivery_json_tool_rejects_invalid_success_receipt_and_relays_stderr(
@@ -6695,11 +6700,11 @@ def test_delivery_anchor_replays_manifest_after_post_commit_marker_failure(
             )
             return MODULE.EXIT_OK, {
                 "schema": "kg.backlog.anchor.v1", "mode": "commit",
-                "applied": [ticket_id], "problems": [],
+                "applied": [ticket_id], "problems": [], "unstamped": [],
             }
         return MODULE.EXIT_OK, {
             "schema": "kg.backlog.anchor.v1", "mode": "commit",
-            "applied": [], "problems": [],
+            "applied": [], "problems": [], "unstamped": [],
         }
 
     real_save = MODULE._integrate_save
@@ -7372,6 +7377,50 @@ def test_integrate_continue_no_gate_then_gate_runs_alone_on_the_final_tree(scrat
 
 
 @gitmark
+def test_integrate_append_fans_in_late_children_without_running_a_premature_gate(scratch):
+    """A Delivery Team master may integrate children as they hand back.
+
+    Append extends the same round state and worktree, preserves source ownership,
+    and remains pick-only even when the caller forgets --no-gate. The master
+    chooses when the expected child set is complete and then runs the one final
+    Gate through --continue.
+    """
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _seed_handoff(state, repo, "feat/a", a)
+
+    rc, first = _run_json([
+        "integrate", "--slug", "round", "--branches", "feat/a",
+        "--state", state, "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, first
+    assert first["mode"] == "picked", first
+    wt = first["worktree"]
+    assert MODULE.gate_history_rows(state) == []
+
+    b = _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
+    _seed_handoff(state, repo, "feat/b", b)
+    rc, appended = _run_json([
+        "integrate", "--slug", "round", "--append", "--branches", "feat/b",
+        "--state", state, "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, appended
+    assert appended["mode"] == "picked", appended
+    assert appended["gated"] is False, appended
+    assert appended["branches"] == ["feat/a", "feat/b"], appended
+    assert [item["sha"] for item in appended["picked"]] == [a, b], appended
+    assert (Path(wt) / "a.txt").read_text() == "a\n"
+    assert (Path(wt) / "b.txt").read_text() == "b\n"
+    saved = json.loads(MODULE._integrate_state_path(state, "round").read_text())
+    assert saved["branches"] == ["feat/a", "feat/b"], saved
+    assert saved["planned_total"] == 2, saved
+    assert saved["queue"] == [], saved
+    assert saved["gate_pending"] is True, saved
+    assert MODULE.gate_history_rows(state) == []
+
+
+@gitmark
 def test_integrate_runs_the_gate_once_for_the_whole_batch(scratch):
     """Counted from the gate's OWN journal, not from a number integrate reports about
     itself. A per-branch implementation would report `gate_runs: 1` just as happily."""
@@ -7574,7 +7623,12 @@ def test_integrate_is_wired_into_the_parser():
     ns = p.parse_args(["integrate", "--slug", "b", "--branches", "x", "y"])
     assert ns.func is MODULE.cmd_integrate
     assert ns.branches == ["x", "y"] and ns.commit is False
-    assert ns.allow_unhanded is False
+    assert ns.allow_unhanded is False and ns.append is False
+    cw = p.parse_args([
+        "close-wave", "--slug", "wave", "--branches", "x", "--sync",
+    ])
+    assert cw.func is MODULE.cmd_close_wave
+    assert cw.sync is True and cw.commit is False
 
 
 @gitmark
