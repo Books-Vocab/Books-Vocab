@@ -9,6 +9,11 @@ import SwiftUI
 /// The editor writes straight through to `ReviewCardLayoutStore`, so the card
 /// behind a sheet re-lays out as a toggle flips; it owns no draft copy that could
 /// disagree with what the card is drawing.
+///
+/// 版面：與「複習節奏」「閱讀設定」同一套原生心智模型 —— `Form` + `Section`
+/// (`SettingsSectionHeader` / `SettingsSectionFooter`)，選擇 = `Picker`，
+/// 開關 = `Toggle`，鎖定列 = `LabeledContent`。分隔線與列高一律由平台畫，
+/// 不再有卡片背景與自繪分隔（APP-20260808-240a94 / f0770b）。
 struct ReviewCardLayoutEditor: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -24,18 +29,11 @@ struct ReviewCardLayoutEditor: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: AppShellMetrics.sectionSpacing) {
-                pickerSection
-                previewSection
-                fieldsSection
-                SettingsSectionFooter(L10n.string("reviewCardLayout.footer"))
-            }
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppShellMetrics.pageTopPadding)
-            .padding(.bottom, AppShellMetrics.pageBottomPadding)
+        Form {
+            pickerSection
+            previewSection
+            fieldsSection
         }
-        .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle(L10n.string("reviewCardLayout.title"))
         .inlineNavigationBarTitle()
         .toolbar {
@@ -64,18 +62,14 @@ struct ReviewCardLayoutEditor: View {
     // MARK: - Pickers
 
     private var pickerSection: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(
-                title: L10n.string("reviewCardLayout.mode.section"),
-                icon: "rectangle.split.2x1"
-            )
-
+        Section {
             Picker(L10n.string("reviewCardLayout.mode.section"), selection: $mode) {
                 ForEach(VocabularyCardMode.allCases, id: \.rawValue) { candidate in
                     Text(candidate.localizedTitle).tag(candidate)
                 }
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .accessibilityIdentifier("reviewCardLayout.modePicker")
 
             Picker(L10n.string("reviewCardLayout.preview.title"), selection: $face) {
@@ -83,16 +77,20 @@ struct ReviewCardLayoutEditor: View {
                 Text(L10n.string("reviewCardLayout.face.back")).tag(ReviewCardFace.back)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .accessibilityIdentifier("reviewCardLayout.facePicker")
+        } header: {
+            SettingsSectionHeader(
+                title: L10n.string("reviewCardLayout.mode.section"),
+                icon: "rectangle.split.2x1"
+            )
         }
     }
 
     // MARK: - Preview
 
     private var previewSection: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: L10n.string("reviewCardLayout.preview.title"), icon: "eye")
-
+        Section {
             VStack(alignment: .leading, spacing: AppSpacing.s2) {
                 previewRow(title: lockedRowTitle, isLocked: true)
 
@@ -107,9 +105,9 @@ struct ReviewCardLayoutEditor: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(appSkin.spacing.cardPadding)
-            .settingsCard()
             .accessibilityIdentifier("reviewCardLayout.preview")
+        } header: {
+            SettingsSectionHeader(title: L10n.string("reviewCardLayout.preview.title"), icon: "eye")
         }
     }
 
@@ -128,53 +126,41 @@ struct ReviewCardLayoutEditor: View {
     // MARK: - Rows
 
     private var fieldsSection: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: L10n.string("reviewCardLayout.fields.section"), icon: "checklist")
+        Section {
+            lockedRow
 
-            VStack(spacing: 0) {
-                lockedRow
-
-                ForEach(ReviewCardField.canonicalOrder, id: \.self) { field in
-                    SettingsDivider()
-                    fieldRow(field)
-                }
+            ForEach(ReviewCardField.canonicalOrder, id: \.self) { field in
+                fieldRow(field)
             }
-            .settingsCard()
+        } header: {
+            SettingsSectionHeader(title: L10n.string("reviewCardLayout.fields.section"), icon: "checklist")
+        } footer: {
+            SettingsSectionFooter(L10n.string("reviewCardLayout.footer"))
         }
     }
 
+    /// 題目/答案那一列：`LabeledContent` 而非 Toggle —— 沒有開關就是它的契約。
     private var lockedRow: some View {
-        AppKeyValueRow(icon: "lock.fill", label: lockedRowTitle, style: .settings(appSkin)) {
+        LabeledContent {
             Text(L10n.string("reviewCardLayout.locked.caption"))
-                .font(appSkin.typography.caption)
-                .foregroundStyle(appSkin.palette.tertiaryText)
+        } label: {
+            Label(lockedRowTitle, systemImage: "lock.fill")
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("reviewCardLayout.lockedRow")
     }
 
     private func fieldRow(_ field: ReviewCardField) -> some View {
-        HStack(spacing: appSkin.spacing.inlineGap) {
+        Toggle(isOn: binding(for: field)) {
             VStack(alignment: .leading, spacing: AppSpacing.s1) {
                 Text(L10n.string(field.titleKey))
-                    .font(appSkin.typography.body)
-                    .foregroundStyle(appSkin.palette.primaryText)
                 Text(L10n.string(field.captionKey))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: AppSpacing.s2)
-
-            Toggle("", isOn: binding(for: field))
-                .labelsHidden()
-                .tint(appSkin.palette.accent)
-                .accessibilityLabel(L10n.string(field.titleKey))
-                .accessibilityIdentifier("reviewCardLayout.toggle.\(field.rawValue)")
         }
-        .padding(.horizontal, appSkin.spacing.cardPadding)
-        .padding(.vertical, appSkin.spacing.controlVerticalPadding)
+        .accessibilityIdentifier("reviewCardLayout.toggle.\(field.rawValue)")
     }
 
     private func binding(for field: ReviewCardField) -> Binding<Bool> {
