@@ -113,9 +113,11 @@ def test_load_profile_and_build_commands():
         "marketing-demo",
     ]
     assert "--commit" not in dry_run_commands[0]
+    assert "--replace" in dry_run_commands[0]
 
     commit_commands = build_ops_edit_commands(profile, commit=True)
     assert "--commit" in commit_commands[0]
+    assert "--replace" in commit_commands[0]
     assert commit_commands[1][2] == "user-config-set"
     assert commit_commands[2][2] == "notebook-update"
 

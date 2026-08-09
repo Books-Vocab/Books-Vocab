@@ -304,6 +304,7 @@ def build_ops_edit_commands(profile: CaptureProfile, *, commit: bool) -> list[li
             "seed",
             profile.materialize.uid,
             str(profile.materialize.seed_file),
+            "--replace",
             "--json",
         ]
     ]
