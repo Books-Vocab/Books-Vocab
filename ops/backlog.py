@@ -3296,6 +3296,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_update = sub.add_parser(
         "update",
         help="change fields on an existing entry (DRY-RUN by default, --commit to land)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Acceptance contract for grooming:\n"
+            f"  From {ACCEPTANCE_PROOF_SINCE} onward, provide exactly one of the "
+            f"stored proof fields {ACCEPTANCE_PROOF[0]} or {ACCEPTANCE_PROOF[1]} "
+            "when stamping a groom badge; both is a conflict and neither is a "
+            "missing proof.\n"
+            "  acceptance_cmd is checked with `bash -n` when written, then run "
+            f"with `bash -c` from the repo root at close time (up to "
+            f"{ACCEPTANCE_TIMEOUT_SECONDS} seconds for this one command).\n"
+            "  `--acceptance-expect-rc` supports INVERTED detectors whose non-zero "
+            f"exit is the pass; audit-criteria uses a separate "
+            f"{AUDIT_TIMEOUT_SECONDS}-second per-criterion budget."
+        ),
     )
     _add_store_arg(p_update)
     p_update.add_argument("id")
@@ -3352,7 +3366,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--acceptance-cmd", dest="acceptance_cmd",
         help="the command `anchor --commit` ACTUALLY RUNS before closing this entry. "
              "This is the field that makes `fixed` mean something a machine checked; "
-             "`--acceptance` alone is prose nothing reads")
+            "`--acceptance` alone is prose nothing reads. See `update --help` epilog "
+            "for the complete acceptance contract")
     p_update.add_argument(
         "--acceptance-expect-rc", dest="acceptance_expect_rc", type=int,
         help="exit code --acceptance-cmd must produce (default 0). Not decoration: "
