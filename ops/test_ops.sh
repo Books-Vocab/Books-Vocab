@@ -144,7 +144,11 @@ run_one() {
     lint-baselines)     ./ops/tests/test_lint_baselines.sh ;;
     injection-lint)     ./ops/tests/test_injection_lint.sh ;;
     ui-fixture-lint)    ./ops/tests/test_ui_fixture_lint.sh ;;
-    ops-ci-coverage)    ./ops/tests/test_ops_ci_coverage.sh ;;
+    ops-ci-coverage)
+      ./ops/tests/test_ops_ci_coverage.sh &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_ci_expected_fail_exclusions.py
+      ;;
     gate-can-fail)      ./ops/tests/test_gate_can_fail.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;

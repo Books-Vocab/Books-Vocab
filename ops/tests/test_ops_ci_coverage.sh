@@ -10,6 +10,7 @@
 # Usage:
 #   ./ops/tests/test_ops_ci_coverage.sh                     # assert classification is total
 #   ./ops/tests/test_ops_ci_coverage.sh --print-linux-groups # emit the CI group list
+#   ./ops/tests/test_ops_ci_coverage.sh --print-excluded-groups # emit excluded groups
 #
 # ── 為什麼理由要帶 token（IMP-0054，2026-08-04）────────────────────────────────
 # 原本每筆排除只帶一段散文理由。「required reason」讓排除看起來被稽核過，但**沒有任何
@@ -176,6 +177,10 @@ UNGROUPED_TESTS=(
 
 if [[ "${1:-}" == "--print-linux-groups" ]]; then
   printf '%s\n' "${LINUX_GROUPS[@]}"
+  exit 0
+fi
+if [[ "${1:-}" == "--print-excluded-groups" ]]; then
+  printf '%s\n' "${EXCLUDED_GROUPS[@]%%|*}"
   exit 0
 fi
 
