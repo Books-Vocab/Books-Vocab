@@ -21,7 +21,7 @@ Books & Vocab 使用 Notion-inspired 的 design token 系統（純淨表面、bo
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
-| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRoundness`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast）。⚠️ 系統 bar 的**材質**不在此列——那歸平台，見北極星 #1；app 這層管的是 tint / 字型 / 自繪 chrome |
+| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRoundness`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast）。⚠️ 原生元件的**材質 / 圓角 / 陰影**不在此列——取材與舉證見 `component_sourcing`；app 自繪 chrome 才由這層管 tint / 字型 / token |
 | Vocabulary Skin | `VocabSkin`（Palette / Typography / Spacing） | Vocabulary feature 所有 View |
 | Reader | `ReaderContentStyle` | EPUB/PDF reader 內容樣式 |
 
@@ -31,7 +31,63 @@ Books & Vocab 使用 Notion-inspired 的 design token 系統（純淨表面、bo
 - `@Environment(\.vocabSkin)` — Vocabulary 層
 - 不可硬建 instance
 
+### 元件取材政策（2026-08-08 定案，原生優先）
+
+KG UI 的預設路徑是先找 iOS 26 原生元件：`List` / `Form` + `Section`、`Toggle`、`Stepper`、`Picker`（`.segmented` / `.palette`）、`LabeledContent`、`Menu`、`sheet` + `presentationDetents`，以及系統 toolbar / `navigationTitle`。原生元件已提供的材質、圓角、陰影與互動行為交給平台；**想要自繪必須先寫下原生做不到什麼**，不能只以「想要不同外觀」作為理由。
+
+合格的舉證格式直接對照既有 `AppFloatingChrome`：它具名說明 Reader 關掉 `navigationBar` / `tabBar`、系統 toolbar 會改變 webview 高度，進而觸發 ReadiumCSS multicol 重排與 `totalProgression` 偏移。這種「具名 API + 因果鏈」才足以支持自繪例外。
+
+<!-- ui-policy: component-sourcing -->
+```json
+{
+  "component_sourcing": {
+    "version": 2,
+    "decided": "2026-08-08",
+    "supersedes": "mochi-polaris-v1",
+    "default": "native",
+    "burden_of_proof": "custom",
+    "native_default_components": [
+      "List",
+      "Form",
+      "Toggle",
+      "Stepper",
+      "Picker",
+      "LabeledContent",
+      "Menu",
+      "presentationDetents"
+    ],
+    "custom_precedents": [
+      {
+        "symbol": "AppFloatingChrome",
+        "file": "ios/BooksAndVocab/UIComponents/AppFloatingChrome.swift",
+        "reason": "Reader hides navigationBar and tabBar; a real toolbar resizes the webview, triggering ReadiumCSS multicol reflow and shifting totalProgression"
+      }
+    ],
+    "token_scope": {
+      "AppTheme": "app-drawn",
+      "VocabSkin": "app-drawn",
+      "AppRoundness": "app-drawn",
+      "AppElevation": "app-drawn"
+    },
+    "surrendered": [
+      "serif-section-titles-in-native-list-rows",
+      "custom-section-spacing-rhythm"
+    ],
+    "retained": [
+      "nav-bar-serif-title-via-AppFonts.configureGlobalAppearance"
+    ]
+  }
+}
+```
+
+`AppTheme` / `VocabSkin` / `AppRoundness` / `AppElevation` 從此只在 app 自繪的形狀上有效；改用原生 `List` / `Form` / `Toggle` / `Stepper` 後，圓角、陰影與材質歸系統，不得再以 `.appElevation(.zN)` / `AppRoundedRect` 覆蓋原生元件。`ops/ui_token_lint.py` 對 raw padding / shadow / radius / color literal 的禁令方向不變，只是適用面明確收斂到自繪區。
+
+原生化在 List row 內具名放棄襯線 section title 與自訂間距節奏；仍保留 nav bar 襯線標題，因 `AppFonts.configureGlobalAppearance()` 的 appearance proxy 已由實測證明是目前仍有效的作用。
+
+<!-- ui-policy: mochi-polaris-v1 status=superseded -->
 ### Mochi 化北極星五條（2026-05 拍板）
+
+本段的 #1 已由上方 `component_sourcing` 取材政策吸收並擴大（從 bar 擴至所有元件）；#2–#5 對 app 自繪的形狀仍有效，對原生元件不適用。
 
 KG UI 對齊 [mochi.cards](https://mochi.cards/docs/api/) editorial 質感。以下五條為 hard rule，新 view / refactor PR 違反 → review block。
 

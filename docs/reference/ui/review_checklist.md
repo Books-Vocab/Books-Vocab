@@ -63,15 +63,17 @@ Scope: `ios/BooksAndVocab`
 - [ ] 關鍵狀態有對應的 `#Preview` 嗎？
 - [ ] preview 是否能固定高價值狀態（不依賴真實登入或後端）？
 
-### 6. Mochi pass（北極星五條）
+### 6. 元件取材與 Mochi pass（component_sourcing）
 
-對齊 `docs/sop/ui-design.md` 的 Mochi 化北極星：
+對齊 `docs/sop/ui-design.md` 的 `component_sourcing` 政策：原生元件優先；只有自繪控制項需要提出舉證。
 
-- [ ] 內容層是否單色 `pageBackground`？**系統 bar**（nav/tab/toolbar）是否放手交給平台——沒有自繪 `.background`、沒有第二層 `glassEffect`？（自繪的 in-content bar 不適用本項，照常用 token）
-- [ ] cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 16` 的 hr-style divider？**玻璃元件是否沒有多描一圈邊？**
-- [ ] shadow 是否限制在 z0 / z1（list/resting）或 z2 以上（sheet/drawer/modal/overlay）？無 raw `.shadow(...)`？**玻璃元件是否沒有多疊 `.appElevation`？**
-- [ ] 強調色是否限制在四軸（`brandHero` / `ctaCritical` / `accent` / `inlineCode`）內？無第五色亂入？
-- [ ] 非按鈕互動是否只動 bg-color / opacity，無 transform？
+<!-- ui-policy: component-sourcing -->
+- [ ] 有自繪控制項時，是否寫下原生做不到什麼（格式對照 `AppFloatingChrome.swift` 註解）？
+- [ ] **僅適用 app 自繪區：**內容層是否單色 `pageBackground`？系統 bar（nav/tab/toolbar）是否放手交給平台——沒有自繪 `.background`、沒有第二層 `glassEffect`？
+- [ ] **僅適用 app 自繪區：**cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 16` 的 hr-style divider？玻璃元件是否沒有多描一圈邊？
+- [ ] **僅適用 app 自繪區：**shadow 是否限制在 z0 / z1（list/resting）或 z2 以上（sheet/drawer/modal/overlay）？無 raw `.shadow(...)`？玻璃元件是否沒有多疊 `.appElevation`？
+- [ ] **僅適用 app 自繪區：**強調色是否限制在四軸（`brandHero` / `ctaCritical` / `accent` / `inlineCode`）內？無第五色亂入？
+- [ ] **僅適用 app 自繪區：**非按鈕互動是否只動 bg-color / opacity，無 transform？
 
 ---
 
