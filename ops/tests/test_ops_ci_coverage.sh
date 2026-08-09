@@ -60,6 +60,7 @@ LINUX_GROUPS=(
   capability-matrix
   worktree-orchestrator
   script-help
+  install-hooks
   lib-sourcing
   backlog
   gen-ios-baseline

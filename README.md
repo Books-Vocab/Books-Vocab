@@ -106,6 +106,10 @@ uv run uvicorn kg.api:app --reload --port 8000
 
 # 設計系統 token 重新生成
 npm run build                  # tokens.json → DesignTokens.swift / web CSS
+
+# 本地 git hooks（每個 clone 各裝一次；core.hooksPath 是本地設定，commit 帶不過去）
+./ops/install_hooks.sh          # 安裝
+./ops/install_hooks.sh --check  # 驗證已安裝
 ```
 
 > 詳細工程約定、文檔路由與運維 SOP 見 [`CLAUDE.md`](CLAUDE.md) 與 [`docs/`](docs/)。

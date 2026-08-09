@@ -256,7 +256,7 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 | web 生成鏈 | `ops/gen_web_tokens.py`(DTCG → web CSS,見 ops 表) |
 | **SoT 方向**(接線後二分) | **已接線 scalar**(`AppRoundness`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,47 值):tokens.json→`npm run build`→`DesignTokens.swift`→iOS 引用,Figma 改值重編即生效。**未接線**(全部顏色+`WCAGContrastTests`、`AppMotion`、`LineSpacing`、`AppSkin`):iOS Swift literal 為 SoT、tokens.json 鏡像。設計師接 tokens.json 的 SOP 見 `docs/sop/figma-token-workflow.md` |
 | Guard(三層)| **值** `ops/token_drift_check.py`(SoT-inversion-aware:已接線解析 `DesignTokens.*` 引用回值、未接線比 literal)+ **生成** `gen_web_tokens.py --check` + `gen_figma_sets.py --check`(on-disk CSS/sidecar ↔ tokens 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
-| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + `npm run build:check`;由 `.github/workflows/design-system.yml`(相關路徑變動才跑;含 `npm ci`)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
+| 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + `npm run build:check`;由 `.github/workflows/design-system.yml`(相關路徑變動才跑;含 `npm ci`)與 `.githooks/pre-commit`(需先跑 `ops/install_hooks.sh` 裝到本 clone（`--check` 可驗）;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
 | 一次性遷移工具 | `ops/migrate_tokens_to_dtcg.py`(自研格式 → DTCG,已執行完成,留檔) |
 | 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源,component_fidelity 守護對象) |
 | 消費副本 | `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |

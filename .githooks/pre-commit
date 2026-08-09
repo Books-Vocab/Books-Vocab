@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # pre-commit — design-system 與 UI quality gate 的本地 best-effort 檢查。
 #
-# 啟用（一次性，已由建置時設好）: git config core.hooksPath .githooks
-# 停用: git config --unset core.hooksPath
+# 啟用（每個 clone 各跑一次，不隨 commit 傳播）: ops/install_hooks.sh
+# 驗證: ops/install_hooks.sh --check   停用: ops/install_hooks.sh --uninstall
 #
 # 設計：只在相關路徑被 stage 時才跑（否則每次 commit 太重）；缺 uv/node/rg
 # 時告警跳過而非 brick commit（CI 才是硬 gate）。
