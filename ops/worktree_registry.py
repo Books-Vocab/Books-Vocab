@@ -1119,12 +1119,18 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
     state = load_state(state_path)
     records: list[dict[str, Any]] = state["records"]
 
-    target_path = _norm(args.path or os.getcwd())
+    if args.path is not None:
+        target_path = _norm(args.path)
+    elif args.branch is None:
+        target_path = _norm(str(repo_root()))
+    else:
+        target_path = None
     candidates = [
         r for r in records
         if r.get("status") == STATUS_ACTIVE
         and ((args.branch is None or r.get("branch") == args.branch)
-             and (args.path is None or (r.get("path") and _norm(r["path"]) == target_path)))
+             and (target_path is None
+                  or (r.get("path") and _norm(r["path"]) == target_path)))
     ]
     if not candidates:
         selector = f"branch={args.branch}" if args.branch else f"path={target_path}"
