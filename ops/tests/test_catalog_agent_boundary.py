@@ -135,8 +135,13 @@ def test_ui_world_scenario_context_is_optional() -> None:
 
 
 def test_retired_app_review_renderer_contract_is_absent() -> None:
-    source = (ROOT / "ops/app_review_gate.py").read_text(encoding="utf-8")
+    source = "\n".join(
+        (ROOT / path).read_text(encoding="utf-8")
+        for path in ("ops/app_review_gate.py", "ops/asc_reviewer_mirror.py")
+    )
     for token in (
+        "kg.app_review.submission.v1",
+        "requiredEvidence",
         "capture-profile",
         "promotion-closure",
         "render-spec",
@@ -160,6 +165,9 @@ def test_catalog_session_lifecycle_checks_live_lease_ownership_and_cleans_start_
     assert "SIM_LEASE_SKIP_BOOT=1 cmd_simulator_lease --json" in source
     assert 'release_status="$(jq -r \'.status\' <<<"$release_json")"' in source
     assert '[[ "$release_status" == "ok" ]]' in source
+    assert "KG_IOS_CATALOG_SESSION_MAX_SECONDS" in source
+    assert "sessionLifetimeSeconds" in source
+    assert "while :; do sleep 300; done" not in source
 
 
 def _catalog_shell_prelude(tmp_path: Path, session: str, owner_token: str) -> tuple[str, Path, Path]:
@@ -238,6 +246,47 @@ catalog_close --session {session}
     assert result.returncode == 77, result.stderr
     assert not state.exists()
     assert log.read_text(encoding="utf-8").count("simctl erase SIM-1") == 1
+
+
+def test_catalog_release_disarms_abort_trap_before_lease_handoff(tmp_path: Path) -> None:
+    session = "catalog-released"
+    script, state, log = _catalog_shell_prelude(tmp_path, session, owner_token=session)
+    script += f"""
+cmd_simulator_release() {{ printf '%s\\n' '{{"status":"ok"}}'; }}
+(
+  set -e
+  CATALOG_ACTIVE_SESSION={session}
+  CATALOG_ACTIVE_UDID=SIM-1
+  CATALOG_ACTIVE_LEASE_DIR={shlex.quote(str(tmp_path / 'leases' / 'lease-1'))}
+  catalog_arm_cleanup
+  catalog_release_session {session} >/dev/null
+  false
+)
+[[ $? -eq 1 ]] || exit 80
+[[ ! -f {shlex.quote(str(state))} ]] || exit 81
+[[ "$(grep -c 'simctl erase SIM-1' {shlex.quote(str(log))})" -eq 1 ]] || exit 82
+"""
+
+    result = subprocess.run(["bash", "-c", script], text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_catalog_abort_never_touches_simulator_without_current_lease_token(tmp_path: Path) -> None:
+    session = "catalog-abort-stale"
+    script, state, log = _catalog_shell_prelude(tmp_path, session, owner_token="new-owner")
+    script += f"""
+rm -f {shlex.quote(str(state))}
+CATALOG_ACTIVE_SESSION={session}
+CATALOG_ACTIVE_UDID=SIM-1
+CATALOG_ACTIVE_LEASE_DIR={shlex.quote(str(tmp_path / 'leases' / 'lease-1'))}
+catalog_abort_active_session
+[[ ! -s {shlex.quote(str(log))} ]] || exit 80
+"""
+
+    result = subprocess.run(["bash", "-c", script], text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_catalog_start_trap_erases_and_releases_owned_simulator(tmp_path: Path) -> None:

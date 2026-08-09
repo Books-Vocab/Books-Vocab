@@ -472,7 +472,7 @@ def _load_live_bundle(
     )
     desired = _require_exact_keys(
         audit.get("desired"),
-        {"schema", "manifestSHA256", "build", "locale", "target", "outputs"},
+        {"schema", "manifestSHA256", "build", "locale", "displayType", "outputs"},
         label="live mirror desired",
     )
     _require_exact_keys(
@@ -668,6 +668,19 @@ def _load_live_bundle(
     desired_manifest_payload = (path / "desired" / "manifest.json").read_bytes()
     if _sha(desired_manifest_payload) != desired.get("manifestSHA256"):
         raise GateError("live mirror nested desired manifest hash drift")
+    nested_desired = json.loads(desired_manifest_payload)
+    for label, item in (
+        ("project", ((nested_desired.get("build") or {}).get("project") or {})),
+        ("dataset", (nested_desired.get("dataset") or {})),
+    ):
+        source_rel = item.get("path")
+        if not isinstance(source_rel, str):
+            raise GateError(f"live mirror nested desired {label} path is invalid")
+        rel = f"desired/{source_rel}"
+        semantic_paths.add(rel)
+        payload = (path / rel).read_bytes()
+        if _sha(payload) != item.get("sha256"):
+            raise GateError(f"live mirror nested desired {label} drift: {rel}")
     for index, item in enumerate(desired.get("outputs") or []):
         file_name = item.get("fileName")
         if not isinstance(file_name, str) or not _SAFE_FILE_RE.fullmatch(file_name):

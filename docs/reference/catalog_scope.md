@@ -34,6 +34,8 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 ./ops/ios_ops.sh catalog close --session <session-id>
 ```
 
+`open` 的 keeper 預設存活 1800 秒（沿用 simulator pool TTL）；可用 `KG_IOS_CATALOG_SESSION_MAX_SECONDS` 縮短或延長。keeper 到期後 lease 進入可回收狀態，遺忘／崩潰的 agent 不會永久佔住 slot；若 slot 已被重新租用，舊 session 的 `capture`／`close` 會在碰 simulator 前拒絕。
+
 自動化 consumer 應加 `--json`，不要解析人類輸出。`list` / `open` 必須明示 `--dataset <name>` 或 `--dataset-file <path>`；host 會先以 `ops/ui_world_manifest.py validate` 驗證，再用 deflate-base64 注入 app。
 
 ## 安全邊界
@@ -42,7 +44,7 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 - 每次 `open` 都租用 disposable simulator；資料、Documents、UserDefaults 與 Keychain 不接觸日常 app/simulator 狀態。
 - Catalog 不帶 `-isolatedAuthSession`，不會觸發 persistent auth purge。
 - 預設 server 指向 `127.0.0.1:9`，封閉網路副作用；UI World 無效、app 未 ready、session 不存在或 screenshot 失敗都 fail loud。
-- `close` 只釋放 session receipt 具名擁有的 simulator，不操作其他開發 session。
+- cleanup、`capture`、`close` 都必須同時核對 lease directory、UDID 與 owner token；lease handoff 前先解除 destructive trap，不操作已轉手的 simulator。
 
 ## 維護原則
 

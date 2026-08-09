@@ -22,7 +22,7 @@ struct VocabularyListView: View {
 
     let notebookId: String
     /// Initial review-state tab + sort forwarded to `KGVocabView`. Defaults keep
-    /// the shipped behaviour; the marketing catalog scene opens on "已複習".
+    /// the shipped behaviour; the optional `Reviewed · Dense` scenario opens on "已複習".
     let initialReviewStates: Set<VocabularyReviewState>
     let initialSort: KGVocabSortOption
 

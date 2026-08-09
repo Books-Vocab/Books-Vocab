@@ -70,12 +70,11 @@ struct RepoFixtureDatasetsContractTests {
         #expect(!document.syncPresenter.isEmpty)
         #expect(Set(document.syncPresenter.keys).isSubset(of: Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue))))
 
-        // Marketing capture domain (Phase 1 data plane): present with a real
-        // reader passage + Word Detail hero, but a null clock in the checked-in
-        // generated fixture (the frozen clock only lands in a marketing emit).
-        let marketing = try #require(document.scenarioContext, "generated demo must declare scenarioContext")
-        #expect(marketing.reviewClock == nil, "checked-in generated fixture must keep reviewClock null (frozen only at emit)")
-        let passage = try #require(marketing.readerPassage, "scenarioContext must declare readerPassage")
+        // Optional scenario context carries reusable Reader/Word Detail content;
+        // the checked-in generated fixture intentionally leaves its clock null.
+        let scenario = try #require(document.scenarioContext, "generated demo must declare scenarioContext")
+        #expect(scenario.reviewClock == nil, "checked-in generated fixture must keep reviewClock null")
+        let passage = try #require(scenario.readerPassage, "scenarioContext must declare readerPassage")
         #expect(!passage.paragraphs.isEmpty)
         #expect(passage.activeWords == [passage.activeWord])
         // The active word must appear as a token in the passage (punctuation-trimmed).

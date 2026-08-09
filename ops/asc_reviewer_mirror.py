@@ -40,7 +40,7 @@ from asc_text_bundle import (  # noqa: E402
 
 AUDIT_SCHEMA = "kg.app_review.asc_audit.v1"
 BUNDLE_SCHEMA = "kg.app_review.asc_mirror_bundle.v1"
-DESIRED_SCHEMA = "kg.app_review.submission.v1"
+DESIRED_SCHEMA = "kg.app_review.manual_asc_bundle.v1"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -62,20 +62,6 @@ _REVIEW_SECRET_FIELDS = (
     "demoAccountPassword",
     "notes",
 )
-_REQUIRED_DESIRED_EVIDENCE_IDS = (
-    "build-tuple",
-    "source-commit",
-    "capture-profile",
-    "ui-world",
-    "fixed-clock",
-    "device-locale",
-    "render-spec",
-    "promotion-closure",
-    "output-checksums",
-    "provenance",
-)
-
-
 class MirrorError(RuntimeError):
     """Required desired/live evidence could not be asserted safely."""
 
@@ -136,6 +122,25 @@ def _read_json(path: Path, *, label: str) -> dict[str, Any]:
     return value
 
 
+def _exact_mapping(value: Any, keys: set[str], *, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != keys:
+        actual = sorted(value) if isinstance(value, dict) else type(value).__name__
+        raise MirrorError(f"{label} must contain exact keys {sorted(keys)}; got {actual}")
+    return value
+
+
+def _bundle_payload(bundle: Path, rel: Any, *, label: str) -> tuple[str, bytes]:
+    if not isinstance(rel, str) or not rel:
+        raise MirrorError(f"{label} path is invalid")
+    parts = Path(rel).parts
+    if Path(rel).is_absolute() or not parts or any(part in {"", ".", ".."} for part in parts):
+        raise MirrorError(f"{label} path is unsafe: {rel}")
+    path = bundle.joinpath(*parts)
+    if not path.is_file():
+        raise MirrorError(f"{label} is missing: {path}")
+    return rel, path.read_bytes()
+
+
 def _validate_observed_at(value: str) -> None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -153,69 +158,84 @@ def _desired(bundle: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     manifest = _read_json(manifest_path, label="desired manifest")
     if manifest.get("schema") != DESIRED_SCHEMA:
         raise MirrorError(f"desired manifest schema must be {DESIRED_SCHEMA}")
-    if ((manifest.get("verdict") or {}).get("status")) != "pass":
+    _exact_mapping(
+        manifest,
+        {"schema", "verdict", "build", "source", "dataset", "fixedClock", "locale", "displayType", "outputs"},
+        label="desired manifest",
+    )
+    verdict = _exact_mapping(manifest.get("verdict"), {"status"}, label="desired verdict")
+    if verdict.get("status") != "pass":
         raise MirrorError("desired reviewer evidence verdict must be pass")
-    evidence = ((manifest.get("verdict") or {}).get("requiredEvidence"))
-    if not isinstance(evidence, list):
-        raise MirrorError("desired requiredEvidence must be a closed verified list")
-    evidence_ids: list[str] = []
-    for item in evidence:
-        if (
-            not isinstance(item, dict)
-            or set(item) != {"id", "status"}
-            or not isinstance(item.get("id"), str)
-            or item.get("status") != "verified"
-        ):
-            raise MirrorError("desired requiredEvidence contains unknown or unverified evidence")
-        evidence_ids.append(item["id"])
-    if evidence_ids != list(_REQUIRED_DESIRED_EVIDENCE_IDS):
-        raise MirrorError(
-            "desired requiredEvidence IDs/order do not match the closed contract"
-        )
-    build = manifest.get("build") or {}
+    build = _exact_mapping(
+        manifest.get("build"), {"marketingVersion", "buildNumber", "project"}, label="desired build"
+    )
+    project = _exact_mapping(build.get("project"), {"path", "sha256"}, label="desired build.project")
+    source = _exact_mapping(manifest.get("source"), {"commit"}, label="desired source")
+    dataset = _exact_mapping(
+        manifest.get("dataset"), {"schema", "id", "path", "sha256"}, label="desired dataset"
+    )
     marketing = build.get("marketingVersion")
     number = build.get("buildNumber")
     if not isinstance(marketing, str) or not marketing or not isinstance(number, str) or not number:
         raise MirrorError("desired manifest build tuple is incomplete")
-    capture = manifest.get("capture") or {}
-    locale = capture.get("locale")
-    render_spec = ((capture.get("renderSpec") or {}).get("value") or {})
-    shots = render_spec.get("shots")
+    if not isinstance(source.get("commit"), str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", source["commit"]):
+        raise MirrorError("desired source commit is invalid")
+    if dataset.get("schema") != "kg.fixture.dataset.v2" or not isinstance(dataset.get("id"), str) or not dataset["id"]:
+        raise MirrorError("desired dataset identity is invalid")
+    fixed_clock = manifest.get("fixedClock")
+    if not isinstance(fixed_clock, str):
+        raise MirrorError("desired fixedClock is invalid")
+    _validate_observed_at(fixed_clock)
+    locale = manifest.get("locale")
+    display_type = manifest.get("displayType")
     outputs = manifest.get("outputs")
     if not isinstance(locale, str) or not locale:
         raise MirrorError("desired manifest locale is missing")
-    if render_spec.get("target") != "promotion" or not isinstance(shots, list) or not shots:
-        raise MirrorError("desired render target must be promotion with non-empty shots")
-    if not isinstance(outputs, list) or len(outputs) != len(shots):
-        raise MirrorError("desired shots and outputs must have exact cardinality")
+    if not isinstance(display_type, str) or not display_type:
+        raise MirrorError("desired manifest displayType is missing")
+    if not isinstance(outputs, list) or not outputs:
+        raise MirrorError("desired outputs must be a non-empty list")
 
     desired_files: dict[str, bytes] = {"manifest.json": manifest_bytes}
+    expected_paths: set[str] = set()
+    for label, item in (("project", project), ("dataset", dataset)):
+        rel, payload = _bundle_payload(bundle, item.get("path"), label=f"desired {label}")
+        if not _SHA256_RE.fullmatch(str(item.get("sha256") or "")) or _sha256(payload) != item["sha256"]:
+            raise MirrorError(f"desired {label} hash mismatch: {rel}")
+        expected_paths.add(rel)
+        desired_files[rel] = payload
+
     normalized_outputs: list[dict[str, Any]] = []
     names: set[str] = set()
-    for index, (shot, output) in enumerate(zip(shots, outputs, strict=True)):
-        if not isinstance(shot, dict) or not isinstance(output, dict):
-            raise MirrorError(f"desired shot/output at index {index} must be an object")
+    output_ids: set[str] = set()
+    for index, output in enumerate(outputs):
+        output = _exact_mapping(
+            output, {"id", "appearance", "file", "byteSize", "sha256"}, label=f"desired output {index}"
+        )
+        output_id = output.get("id")
+        if not isinstance(output_id, str) or not output_id or output_id in output_ids:
+            raise MirrorError(f"desired output id is invalid or duplicated: {output_id}")
+        output_ids.add(output_id)
+        if output.get("appearance") not in {"light", "dark"}:
+            raise MirrorError(f"desired output appearance is invalid: {output.get('appearance')}")
         rel = output.get("file")
-        expected_rel = f"outputs/{shot.get('outputName')}"
-        if rel != expected_rel or Path(str(rel)).parts != ("outputs", str(shot.get("outputName"))):
+        rel, payload = _bundle_payload(bundle, rel, label=f"desired output {index}")
+        if len(Path(rel).parts) != 2 or Path(rel).parts[0] != "outputs":
             raise MirrorError(f"desired output path mismatch at index {index}: {rel}")
         name = Path(rel).name
         if not _SAFE_NAME_RE.fullmatch(name) or not name.lower().endswith(".png") or name in names:
             raise MirrorError(f"desired output filename is unsafe or duplicated: {name}")
         names.add(name)
-        path = bundle / rel
-        if not path.is_file():
-            raise MirrorError(f"desired output is missing: {path}")
-        payload = path.read_bytes()
         digest = _sha256(payload)
         if digest != output.get("sha256") or len(payload) != output.get("byteSize"):
             raise MirrorError(f"desired output checksum/size drift: {rel}")
         width, height = _png_dimensions(payload)
+        expected_paths.add(rel)
         desired_files[rel] = payload
         normalized_outputs.append(
             {
                 "order": index + 1,
-                "shotID": output.get("shotID"),
+                "shotID": output_id,
                 "fileName": name,
                 "sha256": digest,
                 "sourceMD5": _md5(payload),
@@ -224,13 +244,23 @@ def _desired(bundle: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
                 "height": height,
             }
         )
+    actual_paths = {
+        item.relative_to(bundle).as_posix()
+        for item in bundle.rglob("*")
+        if item.is_file() and item != manifest_path
+    }
+    if actual_paths != expected_paths:
+        raise MirrorError(
+            f"desired evidence closure is not exact: missing={sorted(expected_paths - actual_paths)} "
+            f"extra={sorted(actual_paths - expected_paths)}"
+        )
     return (
         {
             "schema": DESIRED_SCHEMA,
             "manifestSHA256": _sha256(manifest_bytes),
             "build": {"marketingVersion": marketing, "buildNumber": number},
             "locale": locale,
-            "target": render_spec.get("target"),
+            "displayType": display_type,
             "outputs": normalized_outputs,
         },
         desired_files,
@@ -689,6 +719,10 @@ def run_audit(
     desired, desired_files = _desired(desired_bundle)
     if locale != desired["locale"]:
         raise MirrorError(f"requested locale {locale} does not match desired locale {desired['locale']}")
+    if display_type != desired["displayType"]:
+        raise MirrorError(
+            f"requested display type {display_type} does not match desired display type {desired['displayType']}"
+        )
     resolved_version_id = version_id or _resolve_version_id(
         client, app_id, desired["build"]["marketingVersion"]
     )

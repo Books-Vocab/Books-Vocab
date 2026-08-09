@@ -581,6 +581,8 @@ scenario 是按需加入的 debug 入口，不是新 UI 的完成條件，也沒
 `capture` 透過 `simctl io screenshot` 擷取已顯示在真 window 的畫面，因此會經過 iOS 系統 compositor，可正確觀察 iOS 26 Liquid Glass、backdrop sampling、WebKit 與系統陰影。禁止改回 `CALayer.render(in:)` 的 offscreen 快照；它繞過 compositor，正是舊工具看不到 iOS 26 按鈕材質的根因。
 
 Catalog 僅在 `DEBUG && targetEnvironment(simulator)` 編譯；每次 `open` 使用 disposable simulator，預設網路指向不可達 localhost。它不產生批次 snapshot、gallery、contact sheet、視覺回歸、App Review 證據或 App Store／網站行銷素材。
+
+互動 session 預設保證 keeper 存活 1800 秒；需要更長 debug 時在 `open` 前設定 `KG_IOS_CATALOG_SESSION_MAX_SECONDS`。即使 agent crash 或忘記 `close`，keeper 到期後 pool 仍可回收該 slot。
 ## 參考文件
 
 - `docs/sop/ui-design.md` — Motion Contract + 設計系統規範

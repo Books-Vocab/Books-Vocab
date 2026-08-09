@@ -39,65 +39,49 @@ def _png(width: int, height: int, marker: str) -> bytes:
 
 def _desired_bundle(tmp_path: Path, names: list[str]) -> Path:
     bundle = tmp_path / "desired"
+    inputs_dir = bundle / "inputs"
     outputs_dir = bundle / "outputs"
+    inputs_dir.mkdir(parents=True)
     outputs_dir.mkdir(parents=True)
+    project = b"MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6;"
+    dataset = b'{"schema":"kg.fixture.dataset.v2","datasetID":"dataset-1"}'
+    (inputs_dir / "project.pbxproj").write_bytes(project)
+    (inputs_dir / "ui_world.json").write_bytes(dataset)
     outputs = []
-    shots = []
     for index, name in enumerate(names, start=1):
         payload = _png(1284, 2778, name)
         (outputs_dir / name).write_bytes(payload)
         shot_id = f"shot-{index}"
         outputs.append(
             {
-                "shotID": shot_id,
-                "sourceScenario": f"Scenario/{index}",
+                "id": shot_id,
                 "appearance": "light",
                 "file": f"outputs/{name}",
                 "byteSize": len(payload),
                 "sha256": hashlib.sha256(payload).hexdigest(),
             }
         )
-        shots.append(
-            {
-                "id": shot_id,
-                "sourceScenario": f"Scenario/{index}",
-                "appearance": "light",
-                "outputName": name,
-                "copy": {"title": f"Title {index}", "subtitle": f"Subtitle {index}"},
-            }
-        )
     manifest = {
-        "schema": "kg.app_review.submission.v1",
-        "verdict": {
-            "status": "pass",
-            "requiredEvidence": [
-                {"id": evidence_id, "status": "verified"}
-                for evidence_id in (
-                    "build-tuple",
-                    "source-commit",
-                    "capture-profile",
-                    "ui-world",
-                    "fixed-clock",
-                    "device-locale",
-                    "render-spec",
-                    "promotion-closure",
-                    "output-checksums",
-                    "provenance",
-                )
-            ],
-        },
-        "build": {"marketingVersion": "2.0.0", "buildNumber": "6"},
-        "capture": {
-            "locale": "zh-Hant",
-            "renderSpec": {
-                "value": {
-                    "variant": "app-store",
-                    "target": "promotion",
-                    "sourceMode": "snapshot-derived",
-                    "shots": shots,
-                }
+        "schema": "kg.app_review.manual_asc_bundle.v1",
+        "verdict": {"status": "pass"},
+        "build": {
+            "marketingVersion": "2.0.0",
+            "buildNumber": "6",
+            "project": {
+                "path": "inputs/project.pbxproj",
+                "sha256": hashlib.sha256(project).hexdigest(),
             },
         },
+        "source": {"commit": "a" * 40},
+        "dataset": {
+            "schema": "kg.fixture.dataset.v2",
+            "id": "dataset-1",
+            "path": "inputs/ui_world.json",
+            "sha256": hashlib.sha256(dataset).hexdigest(),
+        },
+        "fixedClock": "2026-07-13T08:00:00Z",
+        "locale": "zh-Hant",
+        "displayType": "APP_IPHONE_65",
         "outputs": outputs,
     }
     (bundle / "manifest.json").write_text(
@@ -468,15 +452,15 @@ def test_api_error_fails_closed_without_leaking_detail(tmp_path: Path):
     assert client.secret_password not in str(caught.value)
 
 
-def test_desired_required_evidence_unknown_never_reaches_live_api(tmp_path: Path):
+def test_desired_unknown_manifest_field_never_reaches_live_api(tmp_path: Path):
     mod = _load_module()
     desired_bundle = _desired_bundle(tmp_path, ["one.png"])
     manifest_path = desired_bundle / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["verdict"]["requiredEvidence"][0]["status"] = "unknown"
+    manifest["capture"] = {"renderSpec": {"target": "promotion"}}
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(mod.MirrorError, match="requiredEvidence"):
+    with pytest.raises(mod.MirrorError, match="exact keys"):
         mod.run_audit(
             FakeASCClient(desired_bundle),
             desired_bundle=desired_bundle,
