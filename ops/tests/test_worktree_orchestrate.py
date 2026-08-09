@@ -3551,6 +3551,106 @@ def test_gate_marks_a_changed_worktree_as_nonempty(scratch):
 
 
 @gitmark
+def test_gate_publishes_independent_progress_without_polluting_json(
+        scratch, monkeypatch, capsys):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "progress-reg.json")
+    wt = _open_wt(state, slug="progress-gate")
+    # Make the impact plan contain two gates while keeping this regression offline.
+    source = Path(wt) / "ops" / "tests" / "test_worktree_orchestrate.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("# changed test fixture\n", encoding="utf-8")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "change orchestrator"], wt)
+
+    def fake_run_gate(spec, worktree, *, record_path=None, state=None):
+        return {"name": spec["name"], "category": spec["category"],
+                "level": spec["level"], "status": "pass", "rc": 0,
+                "summary": "stubbed gate"}
+
+    progress_path = MODULE._gate_progress_path(state, wt)
+    atomic_writes = []
+    write_atomic = MODULE._write_atomic
+
+    def recording_write_atomic(path, body):
+        atomic_writes.append((path, body))
+        write_atomic(path, body)
+
+    monkeypatch.setattr(MODULE, "_run_gate", fake_run_gate)
+    monkeypatch.setattr(MODULE, "_write_atomic", recording_write_atomic)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    stdout = json.dumps(gate)
+    assert json.loads(stdout)["verdict"] == "pass"
+
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert len(atomic_writes) == len(gate["gates"]) + 1
+    assert [path for path, _ in atomic_writes] == [progress_path] * len(atomic_writes)
+    assert all(json.loads(body)["schema"] == MODULE.GATE_PROGRESS_SCHEMA
+               for _, body in atomic_writes)
+    assert progress["run_id"]
+    assert progress["generation"] >= 1
+    assert progress["head_sha"] == gate["head_sha"]
+    assert progress["plan_total"] == len(gate["plan"]) == 2
+    assert progress["done"] == progress["plan_total"]
+    assert progress["current"] is None
+    assert progress["completed"] == [
+        {"name": result["name"], "status": result["status"]}
+        for result in gate["gates"]
+    ]
+
+    stderr = capsys.readouterr().err
+    assert f"phase=plan gates={progress['plan_total']}" in stderr
+    for result in gate["gates"]:
+        assert f"phase=gate gate={result['name']}" in stderr
+        assert f"status={result['status']}" in stderr
+    assert str(progress_path) in stderr
+
+
+@gitmark
+def test_newer_gate_owns_progress_sidecar_against_stale_run(scratch, monkeypatch):
+    """A slower older gate must not publish after a newer run takes ownership."""
+    tmp_path, repo, _remote = scratch
+    state_path = str(tmp_path / "concurrent-progress.json")
+    wt = _open_wt(state_path, slug="concurrent-progress")
+    source = Path(wt) / "ops" / "tests" / "test_worktree_orchestrate.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("# changed test fixture\n", encoding="utf-8")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "change orchestrator"], wt)
+
+    nested = False
+    runs = []
+    newer_progress = []
+
+    def fake_run_gate(spec, worktree, *, record_path=None, state=None):
+        nonlocal nested
+        if not nested:
+            nested = True
+            rc, newer = _run_json(["gate", "--worktree", wt, "--state", state_path,
+                                   "--json"])
+            assert rc == MODULE.EXIT_OK, newer
+            runs.append(newer)
+            newer_progress.append(json.loads(
+                MODULE._gate_progress_path(state_path, wt).read_text()))
+        return {"name": spec["name"], "category": spec["category"],
+                "level": spec["level"], "status": "pass", "rc": 0,
+                "summary": "stubbed gate"}
+
+    monkeypatch.setattr(MODULE, "_run_gate", fake_run_gate)
+    rc, older = _run_json(["gate", "--worktree", wt, "--state", state_path, "--json"])
+    assert rc == MODULE.EXIT_OK, older
+    assert len(runs) == 1
+    newer = runs[0]
+    progress = json.loads(MODULE._gate_progress_path(state_path, wt).read_text())
+    assert newer_progress[0]["run_id"] == progress["run_id"]
+    assert newer["head_sha"] == older["head_sha"]
+    assert progress["generation"] > 1
+    assert progress["done"] == progress["plan_total"] == len(newer["gates"])
+
+
+@gitmark
 def test_gate_warns_when_the_primary_is_dirty(scratch):
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "primary-dirty.json")
@@ -7495,6 +7595,9 @@ def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch)
     assert ops_first["input"]["files"] == ["ops/lib/foo.py", "ops/tests/test_foo.py"]
     assert ops_first["input"]["fingerprint"]
     assert ops_first["reuse"]["decision"] == "rerun"
+    progress_path = MODULE._gate_progress_path(state, wt)
+    first_progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    first_run_id = first_progress["run_id"]
 
     (Path(wt) / "notes.txt").write_text("unrelated backlog follow-up\n")
     _git(["add", "notes.txt"], wt)
@@ -7513,11 +7616,27 @@ def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch)
         {"name": "ops-pytest", "source_head": first_head, "reason": "input_unchanged"}
     ]
 
+    progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert progress["head_sha"] == second["head_sha"]
+    assert progress["run_id"] != first_run_id
+    assert progress["done"] == progress["plan_total"] == len(second["gates"])
+    assert progress["completed"] == [
+        {"name": result["name"], "status": result["status"]}
+        for result in second["gates"]
+    ]
+
+    # The progress sidecar is deliberately not a cutover input. Invalidating it must
+    # not affect the verdict record produced above.
+    progress_path.write_text("not-json\n", encoding="utf-8")
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
                          "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, cut
     assert cut["gate_reuse"]["reused"][0]["source_head"] == first_head
-    _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--json"])
+    rc, resolved = _run_json(["resolve", "--worktree", wt, "--state", state,
+                              "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, resolved
+    assert resolved["gate_progress_removed"] is True
+    assert not progress_path.exists(), "resolve must leave no progress sidecar residue"
 
 
 def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypatch):
@@ -7642,6 +7761,13 @@ def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypat
     assert unknown_scope["kind"] == "tracked-ios-surface"
     assert "ops/ios_build.sh" in unknown_scope["files"]
     assert "ops/ios_test.sh" in unknown_scope["files"]
+
+
+def test_gate_progress_treats_invalid_utf8_as_unreadable(tmp_path):
+    progress_path = tmp_path / "gate.progress.json"
+    progress_path.write_bytes(b"\xff\xfe\n")
+
+    assert MODULE._read_gate_progress(progress_path) is None
 
 
 def test_ios_gate_input_map_covers_declared_shell_dependencies():
