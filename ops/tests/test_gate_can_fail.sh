@@ -142,32 +142,41 @@ assert_green() {  # <gate> <expected marker> <output file> <rc>
 }
 
 section "every block-level gate declares BOTH directions"
-BLOCK_GATES="$(
+PROBE_COVERAGE="$(
   "$UV_BIN" run --no-project --python 3.13 python - <<'PY'
+import json
 import importlib.util as u
 s = u.spec_from_file_location("wo", "ops/worktree_orchestrate.py")
 m = u.module_from_spec(s); s.loader.exec_module(m)
-probes = [
-    ["ios/BooksAndVocab/Views/X.swift"],
-    ["ios/BooksAndVocabUITests/FooTests.swift"],
-    ["ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift"],
-    ["docs/reference/tech_index.md"],
-    ["backend/src/kg/app.py"], ["backend/tests/test_x.py"],
-    ["ops/worktree_orchestrate.py"], ["ops/docs_lint.sh"],
-    ["design-system/tokens.json"],
-    ["ops/ui_quality_plane.yml"],
-    ["docs/runbook/backlog/IMP-0001.json"],
-    ["ops/i18n_baseline.txt"],
-    ["README.md"],
-]
-names = set()
-for files in probes:
-    for g in m.plan_gates(files, ops_test_exists=lambda rel: True, base="main"):
-        if g["level"] == "block":
-            names.add(g["name"].split(":")[0])
-print("\n".join(sorted(names)))
+print(json.dumps(m.gate_probe_coverage(), sort_keys=True))
 PY
 )"
+BLOCK_GATES="$(
+  printf '%s\n' "$PROBE_COVERAGE" | "$UV_BIN" run --no-project --python 3.13 python -c '
+import json, sys
+print("\n".join(json.load(sys.stdin)["reachable"]))
+'
+)"
+PROBE_UNPROBED="$(
+  printf '%s\n' "$PROBE_COVERAGE" | "$UV_BIN" run --no-project --python 3.13 python -c '
+import json, sys
+print("\n".join(json.load(sys.stdin)["unprobed"]))
+'
+)"
+PROBE_STALE="$(
+  printf '%s\n' "$PROBE_COVERAGE" | "$UV_BIN" run --no-project --python 3.13 python -c '
+import json, sys
+print("\n".join(json.load(sys.stdin)["stale"]))
+'
+)"
+while IFS= read -r g; do
+  [[ -z "$g" ]] && continue
+  fail_t "$g is a block gate reachable from plan_gates but has no probe path — add a representative path to gate_probe_corpus() or explain it in GATE_PROBE_UNDERIVABLE"
+done <<<"$PROBE_UNPROBED"
+while IFS= read -r g; do
+  [[ -z "$g" ]] && continue
+  fail_t "$g is reached by a probe path but the AST extractor did not declare it — add extractor support for this gate construction"
+done <<<"$PROBE_STALE"
 [[ -n "$BLOCK_GATES" ]] || fail_t "enumerated zero block gates — the probe is broken, not the coverage"
 declared_cheap=""
 while IFS= read -r g; do

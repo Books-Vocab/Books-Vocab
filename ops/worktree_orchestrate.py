@@ -142,6 +142,7 @@ Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused /
 from __future__ import annotations
 
 import argparse
+import ast
 import errno
 import hashlib
 import io
@@ -1019,6 +1020,106 @@ def plan_gates(changed_files: list[str],
     # "pass (incl. empty)" branch is unreachable from cmd_gate.
     gates.append(_internal("coverage", "meta", "warn", note=note, **cov))
     return gates
+
+
+def gate_probe_corpus() -> list[list[str]]:
+    """Return representative paths for every gate family the router can expose.
+
+    Route facts that already have a data table are derived from that table.  The
+    remaining paths are representative shapes: the AST extractor below is the
+    guard that reports when this corpus misses a future route.
+    """
+    return (
+        [[key] for key in sorted(DATA_PLANE_OWNERS)]
+        + [[f"{BACKLOG_STORE_DIR}IMP-0001.json"], ["ops/backlog.py"]]
+        + [[f"ios/BooksAndVocabUITests/{name}.swift"]
+           for name in sorted(_LIVE_ONLY_UITEST_CLASSES)]
+        + [
+            ["ios/BooksAndVocab/Views/X.swift"],
+            ["ios/BooksAndVocabUITests/FooTests.swift"],
+            ["docs/reference/tech_index.md"],
+            ["backend/src/kg/app.py"],
+            ["backend/tests/test_x.py"],
+            ["ops/worktree_orchestrate.py"],
+            ["ops/docs_lint.sh"],
+            ["design-system/tokens.json"],
+            ["ops/i18n_baseline.txt"],
+            ["README.md"],
+        ]
+    )
+
+
+GATE_PROBE_UNDERIVABLE: dict[str, str] = {}
+
+
+def _ast_gate_name(expr: ast.expr) -> str | None:
+    """Extract the static family prefix from a gate name expression."""
+    if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+        name = expr.value
+    elif isinstance(expr, ast.JoinedStr):
+        if not expr.values or not (
+            isinstance(expr.values[0], ast.Constant)
+            and isinstance(expr.values[0].value, str)
+        ):
+            return None
+        name = expr.values[0].value
+    else:
+        return None
+    return name.split(":", 1)[0]
+
+
+def block_gate_families_declared(source: str | None = None) -> set[str]:
+    """AST-extract block gate families declared inside ``plan_gates``.
+
+    Reading ``__file__`` rather than a repository-relative path is important for
+    mutation probes that load a modified copy of this module from a temporary
+    directory.
+    """
+    source_text = Path(__file__).read_text() if source is None else source
+    tree = ast.parse(source_text, filename=str(Path(__file__)))
+    plan = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+         and node.name == "plan_gates"),
+        None,
+    )
+    if plan is None:
+        return set()
+
+    families: set[str] = set()
+    level_positions = {"_shell": 3, "_internal": 2}
+    for node in ast.walk(plan):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        position = level_positions.get(node.func.id)
+        if position is None or len(node.args) <= position:
+            continue
+        level = node.args[position]
+        if not (isinstance(level, ast.Constant) and level.value == "block"):
+            continue
+        if not node.args:
+            continue
+        family = _ast_gate_name(node.args[0])
+        if family:
+            families.add(family)
+    return families
+
+
+def gate_probe_coverage() -> dict[str, list[str]]:
+    """Compare AST-declared block families with reachable corpus families."""
+    declared = block_gate_families_declared()
+    reachable: set[str] = set()
+    for files in gate_probe_corpus():
+        for gate in plan_gates(files, ops_test_exists=lambda rel: True, base="main"):
+            if gate.get("level") == "block":
+                reachable.add(str(gate["name"]).split(":", 1)[0])
+    derivable_exceptions = set(GATE_PROBE_UNDERIVABLE)
+    return {
+        "declared": sorted(declared),
+        "reachable": sorted(reachable),
+        "unprobed": sorted(declared - reachable - derivable_exceptions),
+        "stale": sorted(reachable - declared),
+    }
 
 
 # The closed vocabulary a gate result may carry. Named once so `aggregate_verdict`
