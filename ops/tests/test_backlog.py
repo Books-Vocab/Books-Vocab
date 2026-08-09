@@ -34,6 +34,7 @@ import inspect
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -6557,6 +6558,36 @@ def test_audit_criteria_leaves_a_red_criterion_in_the_uninteresting_bucket(tmp_p
 
     assert [row["id"] for row in payload["red"]] == [healthy]
     assert payload["green"] == []
+
+
+def test_audit_criteria_puts_pytest_with_no_tests_collected_in_error(
+        tmp_path, capsys):
+    """A typo'd pytest selector is an unrunnable criterion, not a red defect."""
+    suite = tmp_path / "test_selector_target.py"
+    suite.write_text("def test_existing():\n    pass\n", encoding="utf-8")
+    cmd = ("uv run --no-project --with pytest python -m pytest -q "
+           f"{shlex.quote(str(suite))} -k selector_that_does_not_exist")
+    store = tmp_path / "s"
+    broken = _criteria_target(store, detail="empty pytest selection", cmd=cmd)
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert payload["green"] == []
+    assert payload["red"] == []
+    assert [row["id"] for row in payload["error"]] == [broken], payload
+    assert payload["error"][0]["rc"] == 5
+    assert payload["error"][0]["reason"] == "no-tests-collected"
+
+
+def test_audit_criteria_keeps_non_pytest_rc5_as_red(tmp_path, capsys):
+    """Exit 5 is only pytest's unrunnable signal when the command is pytest."""
+    store = tmp_path / "s"
+    failed = _criteria_target(store, detail="ordinary rc five", cmd="exit 5")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["red"]] == [failed], payload
+    assert payload["error"] == []
 
 
 def test_audit_criteria_names_the_last_clause_of_a_silent_failure(tmp_path, capsys):

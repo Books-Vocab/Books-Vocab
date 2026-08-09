@@ -4435,16 +4435,17 @@ AUDIT_CAVEAT = (
     # long bucket nobody scrolls, and a criterion can land there for a reason that has
     # nothing to do with its subject too. Measured on today's population: 49 of 81
     # criteria call `grep` (exit 2 when the file it names is gone) and 18 run
-    # `pytest -k <expr>` (exit 5 when the filter selects nothing). Both read as "the
-    # defect is still there, carry on". The confirmed case this command was built for
-    # was a NEGATED grep, so it surfaced as green — the un-negated majority fails the
-    # other way and this sweep cannot see it. Nothing here can: only the shell's own
-    # 126/127 mean "could not run", and every other code belongs to a program that
-    # chose it, so a wider rc table would be a guess wearing a classifier's clothes.
+    # `pytest -k <expr>` (exit 5 when the filter selects nothing). The pytest shape is
+    # now identified as `error`; the un-negated grep majority still fails the other
+    # way and this sweep cannot see it. The confirmed case this command was built for
+    # was a NEGATED grep, so it surfaced as green. Nothing here can interpret every
+    # program-specific code: a wider rc table would be a guess wearing a classifier's
+    # clothes.
     "And `red` is not a clean bill of health: an rc this tool cannot interpret "
-    "(grep's 2 for a missing file, pytest's 5 for a filter that selected nothing) "
-    "lands there too, so a criterion that stopped testing its subject is invisible "
-    "here whenever it fails for the wrong reason rather than passing for one. "
+    "(grep's 2 for a missing file, or another program-specific code) lands there "
+    "too, so a criterion that stopped testing its subject is invisible here whenever "
+    "it fails for the wrong reason rather than passing for one. A pytest-shaped "
+    "command's rc=5 is reported as `error` / `no-tests-collected`. "
     "For an unexpected rc, the runner executes the criterion a second time under "
     "`bash -x` and records the last traced command as `failing_clause`; this is "
     "diagnostic evidence, not a new verdict, and may repeat side effects."
@@ -4455,6 +4456,36 @@ AUDIT_CAVEAT = (
 # carry on" about a command that never executed — which is this entry's own defect
 # reproduced inside the tool built to find it.
 _SHELL_CANNOT_RUN = {127: "command-not-found", 126: "not-executable"}
+
+
+def _looks_like_pytest_command(cmd: str) -> bool:
+    """Recognize pytest as the command, not merely as an argument value."""
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return False
+    for index, token in enumerate(tokens):
+        if Path(token).name != "pytest":
+            continue
+        if index == 0 or tokens[index - 1] in {"-m", "run", "env", "command",
+                                                "&&", ";", "||", "|"}:
+            return True
+        # `uv run --with pytest pytest ...`: the first occurrence names the
+        # dependency and the second is the executable.
+        if index >= 2 and tokens[index - 2] == "--with":
+            return True
+    return False
+
+
+def _criterion_unrunnable_reason(cmd: str, rc: int) -> str | None:
+    """Return a reason when the shell/tool did not produce criterion evidence."""
+    if rc in _SHELL_CANNOT_RUN:
+        return _SHELL_CANNOT_RUN[rc]
+    # Pytest reserves rc=5 for "no tests collected". Restrict this interpretation
+    # to pytest-shaped commands: rc=5 is a legitimate failure code elsewhere.
+    if rc == 5 and _looks_like_pytest_command(cmd):
+        return "no-tests-collected"
+    return None
 
 # Static findings that stop a criterion being run at all, mapped to the word the
 # report uses. Read off `_check_acceptance_cmd` rather than re-implemented: a second
@@ -4509,15 +4540,14 @@ def _audit_one(entry: dict, timeout_seconds: float) -> tuple[str, dict]:
                      elapsed_s=round(elapsed, 1), output_tail=tail)
     if rc is None:
         return "timeout", {**row, "timeout_seconds": timeout_seconds}
-    if rc in _SHELL_CANNOT_RUN:
+    unrunnable_reason = _criterion_unrunnable_reason(cmd, rc)
+    if unrunnable_reason:
         # Checked BEFORE the expect_rc comparison, and that ordering decides both
         # halves of a rare case: an entry whose `acceptance_expect_rc` is itself 126
         # or 127 gets NO verdict from this sweep — neither the green it would have
-        # been graded nor the red. That is the right answer in both directions. The
-        # shell writes these codes when it could not run what it was named, so they
-        # are not evidence about the defect, and an expectation built on one is an
-        # expectation that "the command stays missing".
-        return "error", {**row, "reason": _SHELL_CANNOT_RUN[rc],
+        # been graded nor the red. The same rule applies to pytest rc=5: it means
+        # the selector collected nothing, not that the criterion answered red.
+        return "error", {**row, "reason": unrunnable_reason,
                            "failing_clause": ""}
     if rc != expect_rc:
         row["failing_clause"] = _trace_failed_clause(
