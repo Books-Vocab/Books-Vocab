@@ -325,11 +325,15 @@ git rerere diff
    而不是省事。
 5. **resolve 每一條來源分支**——見下方警告。
 
-**收尾（N=10 實測 floor 必定 10/10 拒絕，用 `--via-integration` 一行過）**：
+**收尾（先保留手刻管線的歷史量測，再列真正 `integrate` 的量測）**：
 
-> ⚠ **本段以下所有 N=10 數字（含後面 `--via-integration` 那組）量的是 `worktree_loadtest.py` 自己手刻的那條管線，不是 `integrate` 指令**（`worktree_loadtest.py:batch_mode` 至今仍自己跑 raw `git cherry-pick`）。差別不只是重複實作：**那條管線帶著 `integrate` 刻意沒有的 `resolve_keep_both` 自動解衝突器**，所以「9/10 衝突但全綠」在 loadtest 是自動達成的，換成 `integrate` 需要人介入九次。把它讀成「用 `integrate` 會怎樣」會高估。接線與數字歸屬待 `IMP-20260808-ffd566`。
+> ⚠ **下列 2026-08-08 的 N=10 數字（含後面 `--via-integration` 那組）是手刻管線的歷史量測，不是 `integrate` 指令**。差別不只是重複實作：**那條管線帶著 `integrate` 刻意沒有的 `resolve_keep_both` 自動解衝突器**，所以「9/10 衝突但全綠」在手刻管線是自動達成的，換成 `integrate` 則由工具停下、再由 harness 明確解衝突後續跑。舊數字保留作歷史，不可當成 `integrate` 的可靠度證據；真正入口的新量測見下方。
 
-`ops/worktree_loadtest.py --mode batch -n 10 --conflict shared` 量到：整合本身全綠（9/10 cherry-pick 衝突、零列遺失、gate 跑 1 次、cutover landed、27.9 秒），但**十條來源分支全部拒絕拆除**。所以請把下面這段當成必經流程而不是例外處理，並先讀 `IMP-20260808-77f2bd`——那條在提議讓工具自己跑審計。批次整合過的分支清不掉，而**兩道拒絕的理由不同**——`sweep` 對「工作樹還在」的分支一律 KEEP（那與包含性無關），`resolve` 才是被包含性判準擋下。後者的判準是「這分支動過的每個檔，main 現在是不是就是這分支的版本」；而
+`ops/worktree_loadtest.py --mode batch -n 10 --conflict shared` 在 2026-08-08 的手刻管線量到：整合本身全綠（9/10 cherry-pick 衝突、零列遺失、gate 跑 1 次、cutover landed、27.9 秒），但**十條來源分支全部拒絕拆除**。
+
+2026-08-09 接線後以同一命令重跑真正的 `integrate` 管線：**10/10 commit、9/10 由 `integrate` 停在 shared 衝突、10/10 rows 保留、Gate=`warn` 且 0 BLOCK、cutover landed、85.3 秒、10/10 來源分支經 `--via-integration` 審計拆除、殘留 0、`validate` 0 problems**。這組才是 `integrate` 的量測；它證明的是工具能在衝突後由明確 resolver 續跑並保留資料，不把舊手刻數字冒充成新入口的證據。
+
+所以請把下面這段當成必經流程而不是例外處理，並先讀 `IMP-20260808-77f2bd`——那條在提議讓工具自己跑審計。批次整合過的分支清不掉，而**兩道拒絕的理由不同**——`sweep` 對「工作樹還在」的分支一律 KEEP（那與包含性無關），`resolve` 才是被包含性判準擋下。後者的判準是「這分支動過的每個檔，main 現在是不是就是這分支的版本」；而
 cherry-pick 之後若 review 修補又改了同一批檔，main 上是**更新**的版本，工具分不出「被更好的
 版本取代」與「根本沒進去」，於是保守拒絕。**那是對的**——寬鬆到能放行這種情況的規則，同樣會
 放行真正沒落地的工作（實測：正是這個拒絕暴露了一顆整合時被漏掉的 commit）。
