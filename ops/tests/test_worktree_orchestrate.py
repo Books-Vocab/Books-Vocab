@@ -3224,6 +3224,30 @@ def test_sync_main_ff_when_strictly_behind(scratch):
 
 
 @gitmark
+def test_sync_main_commit_serializes_primary_advance(scratch, monkeypatch):
+    """origin->local ff must share the primary-advance lock with cutover."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _advance_origin_main(tmp_path, repo, "locked")
+    events = []
+    real_lock = MODULE._main_advance_lock
+
+    @contextmanager
+    def observed_lock(primary):
+        events.append(("enter", Path(primary).resolve()))
+        with real_lock(primary):
+            yield
+        events.append(("exit", Path(primary).resolve()))
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", observed_lock)
+    rc, result = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+
+    assert rc == MODULE.EXIT_OK
+    assert result["verdict"] == "ff"
+    assert events == [("enter", repo.resolve()), ("exit", repo.resolve())]
+
+
+@gitmark
 def test_sync_main_refuses_dirty_primary(scratch):
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
