@@ -1,21 +1,24 @@
 {
-  "acceptance": "測試先在舊版重現 memory-usage 的 macOS 失敗與 caddy-status secret marker 外洩；修後 macOS fixture 與 Felix live 都回穩定的記憶體欄位，cloudflared 狀態只含安全欄位且 stdout/stderr 完全找不到注入 marker，兩個 typed command 的遠端失敗仍以非零回傳，既有危險命令 guard 不回歸。",
-  "acceptance_cmd": "bash ops/test_devops.sh && ./ops/devops_kg_safe.sh memory-usage >/dev/null && ./ops/devops_kg_safe.sh caddy-status >/dev/null && ./ops/docs_lint.sh",
+  "acceptance": "測試先在舊版重現memory-usage的macOS失敗與caddy-status secret marker外洩；修後macOS fixture與Felix live的--json stdout都只能含allowlisted schema。memory-usage必精確回total_mb、available_mb、swap_total_mb、swap_used_mb四個數值，total_mb>0、0≤available_mb≤total_mb、0≤swap_used_mb≤swap_total_mb；fixture改變vm_stat/sysctl時輸出必跟著改，常數JSON必紅；caddy-status只能回status、label、pid_count，fixture涵蓋active/inactive/unknown且輸出必跟launchctl狀態改變；Felix live在正式健康前提下必為active且pid_count≥1，永不含argv、plist arguments、token或raw path。fake transport/process以stdout與stderr各自注入secret marker，兩條通道都不得出現；live成功路徑捕捉stderr且必為空；底層vm_stat/sysctl/launchctl、transport或JSON解析失敗須保留非零，既有危險命令guard不回歸。",
+  "acceptance_cmd": "bash -c 'set -e; bash ops/test_devops.sh; bash ops/test_infra_health.sh; err=$(mktemp); trap \"rm -f -- \\\"$err\\\"\" EXIT; mem=$(./ops/devops_kg_safe.sh memory-usage --json 2>\"$err\"); test ! -s \"$err\"; printf \"%s\\n\" \"$mem\" | jq -e \"keys == [\\\"available_mb\\\",\\\"swap_total_mb\\\",\\\"swap_used_mb\\\",\\\"total_mb\\\"] and all(.[]; type == \\\"number\\\" and . >= 0) and .total_mb > 0 and .available_mb <= .total_mb and .swap_used_mb <= .swap_total_mb\" >/dev/null; : >\"$err\"; tunnel=$(./ops/devops_kg_safe.sh caddy-status --json 2>\"$err\"); test ! -s \"$err\"; printf \"%s\\n\" \"$tunnel\" | jq -e \"keys == [\\\"label\\\",\\\"pid_count\\\",\\\"status\\\"] and .status == \\\"active\\\" and .label == \\\"com.cloudflare.cloudflared\\\" and (.pid_count | type == \\\"number\\\" and . >= 1)\" >/dev/null; ./ops/docs_lint.sh'",
+  "blocked_by": [
+    "IMP-20260809-af05b3"
+  ],
   "brief": "Felix 的記憶體檢查目前必定失敗，入口狀態檢查還會把敏感啟動參數整串印出來，操作者既拿不到數字又可能洩密。",
   "category": "cli",
   "date": "2026-08-09",
-  "detail": "ops/devops_kg_safe.sh 的 memory-usage 固定送出 Linux-only `free -m`，但正式 standby Felix 是 macOS，live run 回 command not found；同檔 caddy-status 固定送出 `pgrep -lf 'cloudflared.*tunnel'`，`-l` 會輸出完整 process argv。2026-08-09 實測因此把 remotely-managed tunnel token 帶進 agent tool log。修法必使用 macOS 可攜且已有實證的 `vm_stat`／`sysctl` 解析或復用 infra_health.sh 的結構化欄位；入口檢查以 launchctl 狀態或不帶 argv 的存在性 probe 判定，只輸出 active/inactive、label 與必要 PID/count，永遠不輸出 command line。測試不可只 grep 固定新字串：要用 fake process/transport 注入 secret marker，證明 stdout/stderr 均不含它；也要證明 memory command 在 macOS fixture 產出 total/available/swap 且非零退出會被保留。此票不旋轉已暴露 token；token rotation 是帳號持有人另行執行的外部安全動作。",
-  "fix_site": "ops/devops_kg_safe.sh；ops/infra_health.sh；ops/test_devops.sh；ops/test_infra_health.sh；docs/reference/tech_index.md",
-  "groomed_against": "57c2f2204c30",
+  "detail": "ops/devops_kg_safe.sh的memory-usage固定送出Linux-only free -m，但正式standby Felix是macOS，live run回command not found；同檔caddy-status使用pgrep -lf，-l會輸出完整process argv。2026-08-09實測因此把remotely-managed tunnel token帶進agent tool log，屬IMP-0053修復後的新surface recurrence而非同一張已關閉票。本票blocked_by IMP-20260809-af05b3，等該票先完成同一command registry/main parser重構後再接typed flags，避免平行改同一行域。修法必復用infra_health.sh既有vm_stat/sysctl記憶體解析的單一來源，但ownership縮到macOS memory probe block，不碰IMP-20260807-3d47fd擁有的http_probe/reconciler行域；caddy-status改讀launchctl service state或不回顯argv的存在性probe。兩個typed command新增--json，stdout只允許固定schema，stderr只放不含raw command/path的phase與error code。測試不能只grep固定新字串：fake process/transport要分別在stdout/stderr注入secret marker並斷言兩者皆無；live驗收捕捉stdout與stderr：stderr成功路徑必空，stdout用jq驗exact keys/type與跨欄位不變式；Felix正式健康時cloudflared必active且pid_count≥1，不能丟/dev/null。底層probe失敗、JSON不完整與remote失敗均非零。此票不旋轉已暴露token；rotation是帳號持有人另行執行的外部安全動作。",
+  "fix_site": "ops/devops_kg_safe.sh::{typed argv parser,memory-usage,caddy-status}；ops/infra_health.sh:macOS vm_stat/sysctl memory probe block only；ops/test_devops.sh:{memory-usage,caddy-status fixtures}；ops/test_infra_health.sh:memory fixture only；docs/reference/tech_index.md",
+  "groomed_against": "44d0c76c5c34",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:platform-steward",
   "id": "IMP-20260809-f4517a",
-  "plan": "1. 先把現有 `free -m` 與 `pgrep -lf` 契約測試改成行為紅測試：macOS fixture 必回 total/available/swap，cloudflared fixture 的 secret marker 不得出現在任何輸出。2. memory-usage 復用 infra_health 的 vm_stat/sysctl 單一解析來源或抽出共用 helper，避免再維護第二份換算；輸出提供穩定 text/JSON surface，底層失敗保留非零。3. caddy-status 改讀 launchctl service state或使用不回顯 argv 的存在性 probe，只輸出狀態、label 與必要 PID/count；禁止 `pgrep -l`、`ps command` 與 raw plist arguments。4. 更新 typed mapping 測試、執行 surface scan，只有 registry trigger 命中才同步 tech index。5. 在 Felix live 跑兩個唯讀命令，先以 secret-pattern detector 過濾再呈現結果，確認不再洩漏且不碰服務狀態。",
+  "plan": "1. 等IMP-20260809-af05b3先收斂command registry/main parser，再把free -m與pgrep -lf mapping改成行為紅測試：macOS fixture必回固定JSON欄位且不同vm_stat/sysctl輸入產生不同值，常數JSON紅；cloudflared active/inactive/unknown fixture必跟launchctl狀態變化；fake process/transport在stdout與stderr各注入secret marker，兩條通道都不可見；probe/transport/parse失敗須非零。2. 抽出或復用infra_health的vm_stat/sysctl單一解析helper，只改macOS memory probe行域；page size動態解析，輸出total/available/swap四個非負number，缺欄fail closed。3. caddy-status改讀launchctl service state或無argv存在性probe，只輸出status、固定label與pid_count；禁止pgrep -l、ps command、raw plist arguments/path。4. 讓typed parser只接受這兩個subcommand的封閉--json flag，不重新開放任意argv；stdout單一JSON，stderr secret-safe。5. 更新test_devops與test_infra_health、跑agent-facing surface scan並同步tech index。6. Felix live捕捉兩個JSON與stderr，stderr成功路徑必空；memory驗total>0及available/swap關係，cloudflared在正式健康前提下驗active且pid_count≥1；不回顯raw payload，不碰服務狀態。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": "修正兩個既有唯讀主機檢查與其契約測試，屬同一支小型維運命令列工具改動。",
   "severity": "high",
-  "source": "2026-08-09 Felix live audit：typed memory-usage 在 macOS 執行 Linux 的 free -m 而失敗；caddy-status 的 pgrep -lf 將 cloudflared 完整 argv 與 tunnel token 印進工具輸出。",
+  "source": "2026-08-09 Felix live audit：typed memory-usage在macOS執行Linux的free -m而失敗；caddy-status的pgrep -lf將cloudflared完整argv與tunnel token印進工具輸出。Secret-safe probe屬IMP-0053關閉後在新typed surface上的recurrence，不標duplicate。",
   "status": "triaged",
   "stream": "IMP"
 }
