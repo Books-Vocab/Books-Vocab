@@ -143,6 +143,7 @@ enum AppSpacing {
     /// hairline — 僅用於 divider / progress / 微縫隙
     static let hairline: CGFloat = DesignTokens.Space.Scale.hairline
     /// 2pt 微縫隙 — 8pt grid 例外，僅限極小貼合間距
+    /// `AppSpacing.microGap` is the 2pt scale alias; keep it distinct from `AppSkin.Spacing.rowMicroGap`.
     static let microGap: CGFloat = DesignTokens.Space.Scale.micro
     /// 3pt 微縫隙 — 8pt grid 例外
     static let tinyGap: CGFloat = DesignTokens.Space.Scale.tiny
