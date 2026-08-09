@@ -311,9 +311,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 #### V19. Today Review Session — `overlay`（swipe deck + fold + reveal）— KEEP
 `Vocabulary/Scenes/TodayReviewView.swift` + `TodayReviewPresenter.swift` — front / back / swiping-fling / autoplay / completion / multi-card / long-content overflow
-- `[組件]` **Review Fold Card**（`ReviewFoldSurface.swift` + `TodayReviewPresenter+CardContent.swift`）— front-single / answer-open / production(cloze) / recognition / collapsing — **KEEP 但需 consolidate**（現拆 3 個 engineering surface：Segment/Chevron Pill/Paper Fold → 合併單一卡組件）
+- `[組件]` **Review Fold Card**（`ReviewFoldSurface.swift` + `ReviewCardView.swift`）— front-single / answer-open / production(cloze) / recognition / collapsing — **KEEP 但需 consolidate**（現拆 3 個 engineering surface：Segment/Chevron Pill/Paper Fold → 合併單一卡組件）
 - `[組件]` **Swipe Deck**（`TodayReviewSwipeDeck.swift`）— idle/rising/single/next-preview — **NEW**（簽名級 2-deep 旋轉卡疊）
-- `[組件]` **Card Answer Link Strip**（`TodayReviewPresenter+CardContent.swift`）— has-links / no-links — **NEW**
+- `[組件]` **Card Answer Link Strip**（`ReviewCardView.swift`）— has-links / no-links — **NEW**
 - Autoplay Control Bar（`TodayReviewPresenter+Toolbar.swift`）— playing/paused/sound/speed/at-start/at-end —（折入 Autoplay scenario）
 - Completion celebration（`TodayReviewPresenter.swift`）— bounce-in —（折入 Completed scenario）
 
