@@ -458,6 +458,16 @@ echo "$cachemiss_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="cache
   && ok "catalog snapshots exitCode 87 surfaces cache-miss (not generic test-failure)" || fail_t "catalog cache-miss signal wrong: $cachemiss_json"
 grep -q 'phase=cache miss' "$cachemiss_err" \
   && ok "catalog cache-miss emits human-readable stderr hint" || fail_t "catalog cache-miss stderr hint missing: $(cat "$cachemiss_err")"
+reuse_exit_stale="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_reuse_build_exit_code stale 65')"
+reuse_exit_miss="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_reuse_build_exit_code miss 0')"
+reuse_exit_unknown="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_reuse_build_exit_code not-applicable 0')"
+[[ "$reuse_exit_stale" == "65" && "$reuse_exit_miss" == "87" && "$reuse_exit_unknown" == "87" ]] \
+  && ok "reuse-build cache hit + run failure keeps real exit code (87 reserved for true cache miss)" \
+  || fail_t "reuse-build exit decider wrong: stale=$reuse_exit_stale miss=$reuse_exit_miss unknown=$reuse_exit_unknown"
+grep -q 'catalog_reuse_build_exit_code "$cache_status"' "$IOS_OPS_CATALOG_LIB" \
+  && ! grep -qE '^[[:space:]]*rc=87$' "$IOS_OPS_CATALOG_LIB" \
+  && ok "reuse-build exit code goes through the decider (no bare rc=87 left)" \
+  || fail_t "reuse-build decider not wired at call site"
 salvage_err="$catalog_tmp/sv.err"
 salvage_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json 2>"$salvage_err" || true)"
 echo "$salvage_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" and .test.exitCode==65 and .artifacts.containerPngCount==2 and .artifacts.pngCount==2 and .copy.salvaged==true and .copy.exitCode==0 and (any(.errors[]; .key=="catalog-salvage" and .status=="info" and .pngCount==2 and .containerPngCount==2)) and (all(.errors[]; .key!="catalog-copy"))' >/dev/null \
