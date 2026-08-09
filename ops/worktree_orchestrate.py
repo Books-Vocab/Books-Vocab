@@ -457,8 +457,9 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
                           # toolchain does not (see this function's docstring).
                           f"If you did not need THIS ticket specifically, "
                           f"`ops/backlog.py dispatch` lists the ones that are "
-                          f"already groomed, unresolved and unclaimed — i.e. the "
-                          f"ones you can take right now without grooming anything"})
+                          f"already groomed, unresolved, unclaimed and unblocked — "
+                          f"i.e. the ones you can take right now without grooming "
+                          f"anything"})
     return problems
 
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {

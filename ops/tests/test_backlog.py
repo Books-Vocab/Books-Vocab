@@ -5008,7 +5008,7 @@ def _groomed_ticket(store, *, status=None, fixed_by=None, resolution=None, **ove
 
 
 def _dispatch_store(tmp_path):
-    """One store carrying a member of every class the three clauses discriminate."""
+    """One store carrying a member of every class the four clauses discriminate."""
     store = tmp_path / "s"
     takeable = _groomed_ticket(store, detail="groomed, unresolved, free — the only takeable one")
     ungroomed = _add(store, detail="nobody has worked out how to fix this")
@@ -5020,8 +5020,8 @@ def _dispatch_store(tmp_path):
                        refused=refused, claimed=claimed)
 
 
-def test_dispatch_is_the_intersection_of_three_clauses_each_with_its_own_negative(tmp_path):
-    """Groomed AND unresolved AND unclaimed — and each clause is load-bearing.
+def test_dispatch_is_the_intersection_of_four_clauses_each_with_its_own_negative(tmp_path):
+    """Groomed AND unresolved AND unclaimed AND unblocked — all load-bearing.
 
     Asserted as three separate absences against ONE positive control in the same
     store, because a filter that returns the empty set satisfies every negative
@@ -5139,7 +5139,7 @@ def test_dispatch_says_what_it_cannot_see(tmp_path, capsys, monkeypatch):
     assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     scope = payload["dispatch"]
-    assert scope["clauses"] == ["groomed", "unresolved", "unclaimed"], scope
+    assert scope["clauses"] == ["groomed", "unresolved", "unclaimed", "unblocked"], scope
     assert "optimistic" in scope["held_scope"].lower(), scope["held_scope"]
     assert "overlay.json" in scope["snooze_scope"], scope["snooze_scope"]
 
@@ -5147,6 +5147,84 @@ def test_dispatch_says_what_it_cannot_see(tmp_path, capsys, monkeypatch):
     human = capsys.readouterr().out
     assert "optimistic" in human.lower(), human
     assert "snooze" in human.lower(), human
+
+
+def test_dispatch_respects_blocking_edges_across_narrow_filters(tmp_path):
+    """A blocker is read from the whole store, not only from filtered hits."""
+    store = tmp_path / "s"
+    blocker = _groomed_ticket(store, severity="low", detail="the blocker")
+    free = _groomed_ticket(store, severity="high", detail="an unrelated free ticket")
+    blocked = _groomed_ticket(store, severity="high", detail="the blocked ticket")
+    BACKLOG.update_entry(store, blocked["id"], blocked_by=[blocker["id"]])
+
+    all_ids = [p["id"] for p in BACKLOG.list_entries(store, dispatch=True, held={})]
+    high_ids = [p["id"] for p in BACKLOG.list_entries(
+        store, dispatch=True, held={}, severity="high")]
+    assert blocker["id"] in all_ids
+    assert free["id"] in high_ids
+    assert blocked["id"] not in all_ids
+    assert blocked["id"] not in high_ids
+
+    BACKLOG.update_entry(store, blocker["id"], status="fixed", fixed_by=["abc1234"])
+    released = [p["id"] for p in BACKLOG.list_entries(store, dispatch=True, held={})]
+    assert blocked["id"] in released
+
+
+def test_blocking_graph_validation_distinguishes_legal_edges_cycles_and_unknowns(tmp_path):
+    """Only malformed graph structure is a validation problem."""
+    store = tmp_path / "s"
+    left = _add(store, detail="left")
+    right = _add(store, detail="right")
+    BACKLOG.update_entry(store, left["id"], blocked_by=[right["id"]])
+    assert BACKLOG.validate_store(store, commit_state=lambda _: "ok") == []
+
+    BACKLOG.update_entry(store, right["id"], blocked_by=[left["id"]])
+    kinds = {p["kind"] for p in BACKLOG.validate_store(
+        store, commit_state=lambda _: "ok")}
+    assert "blocked-by-cycle" in kinds
+
+    BACKLOG.update_entry(store, right["id"], blocked_by=[])
+    BACKLOG.update_entry(store, left["id"], blocked_by=["IMP-20260101-ghost"])
+    kinds = {p["kind"] for p in BACKLOG.validate_store(
+        store, commit_state=lambda _: "ok")}
+    assert "blocked-by-unknown-id" in kinds
+
+
+def test_dispatch_reports_withheld_blockers_and_advertises_all_clauses(
+        tmp_path, capsys, monkeypatch):
+    """A withheld ticket must be visible in both machine and human output."""
+    store = tmp_path / "s"
+    blocker = _groomed_ticket(store, detail="the blocker")
+    blocked = _groomed_ticket(store, detail="the blocked ticket")
+    BACKLOG.update_entry(store, blocked["id"], blocked_by=[blocker["id"]])
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    scope = payload["dispatch"]
+    assert scope["clauses"] == ["groomed", "unresolved", "unclaimed", "unblocked"]
+    assert scope["withheld_blocked"] == [
+        {"id": blocked["id"], "waiting_on": [blocker["id"]]}]
+
+    assert BACKLOG.main(["dispatch", "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    assert any(blocked["id"] in line and blocker["id"] in line
+               for line in human.splitlines()), human
+
+    commands = BACKLOG._subcommands(BACKLOG.build_parser())
+    help_text = (commands["list"].format_help()
+                 + commands["dispatch"].format_help())
+    for clause in BACKLOG.DISPATCH_CLAUSES:
+        assert clause in help_text
+
+
+def test_blocked_by_is_a_reachable_mutable_and_showable_field():
+    """The relation cannot be stored without being updateable and visible."""
+    assert "blocked_by" in BACKLOG.MUTABLE_FIELDS
+    assert "blocked_by" in BACKLOG.SHOW_FIELD_ORDER
+    commands = BACKLOG._subcommands(BACKLOG.build_parser())
+    update_flags = {o for a in commands["update"]._actions for o in a.option_strings}
+    assert "--blocked-by" in update_flags
 
 
 def test_dispatch_refuses_the_combinations_that_are_empty_by_construction(tmp_path, capsys):

@@ -211,6 +211,11 @@ VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of",
 # the loophole this field is shaped to avoid being.
 TRACE_FIELDS = ("fixed_by", "fixed_elsewhere")
 
+# A relation is not a cached status: it is the directed edge "this entry waits
+# on that entry".  Whether the edge currently withholds work is derived from the
+# target's live status, so there is no second `blocked` truth to drift.
+RELATION_FIELDS = ("blocked_by",)
+
 # One number, two doors. `reanchor` used to search 2000 commits from the CLI and
 # 800 from a direct call, because the parser and the function signature each
 # carried their own literal. That matters more here than it looks: a miss inside
@@ -1031,6 +1036,71 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
     return problems
 
 
+def _blocking_ids(payload: dict) -> list[str]:
+    """Return a well-shaped blocking edge list; malformed values validate red."""
+    value = payload.get("blocked_by")
+    if value is None:
+        return []
+    return value if isinstance(value, list) else []
+
+
+def _check_blocking_graph(payloads: list[tuple[str, dict]]) -> list[dict]:
+    """Validate cross-entry blocking edges without treating legal edges as errors."""
+    ids = {payload.get("id") for _, payload in payloads}
+    paths = {payload.get("id"): path for path, payload in payloads}
+    graph: dict[str, list[str]] = {}
+    problems: list[dict] = []
+
+    for path, payload in payloads:
+        entry_id = payload.get("id")
+        value = payload.get("blocked_by")
+        if value is not None and (
+            not isinstance(value, list)
+            or any(not isinstance(blocker, str) for blocker in value)
+        ):
+            problems.append({"kind": "blocked-by-invalid", "id": entry_id,
+                             "path": path})
+            graph[entry_id] = []
+            continue
+        blockers = list(dict.fromkeys(value or []))
+        graph[entry_id] = blockers
+        for blocker in blockers:
+            if blocker == entry_id:
+                problems.append({"kind": "blocked-by-self", "id": entry_id,
+                                 "blocked_by": blocker, "path": path})
+            elif blocker not in ids:
+                problems.append({"kind": "blocked-by-unknown-id", "id": entry_id,
+                                 "blocked_by": blocker, "path": path})
+
+    # DFS only over known, non-self edges. Report each cycle once even though a
+    # cycle is encountered from every node in it.
+    state: dict[str, int] = {}
+    reported: set[tuple[str, ...]] = set()
+
+    def visit(node: str, stack: list[str]) -> None:
+        state[node] = 1
+        stack.append(node)
+        for blocker in graph.get(node, []):
+            if blocker not in graph or blocker == node:
+                continue
+            if state.get(blocker, 0) == 1:
+                cycle = stack[stack.index(blocker):] + [blocker]
+                key = tuple(sorted(set(cycle)))
+                if key not in reported:
+                    reported.add(key)
+                    problems.append({"kind": "blocked-by-cycle", "id": node,
+                                     "cycle": cycle, "path": paths.get(node)})
+            elif state.get(blocker, 0) == 0:
+                visit(blocker, stack)
+        stack.pop()
+        state[node] = 2
+
+    for entry_id in graph:
+        if state.get(entry_id, 0) == 0:
+            visit(entry_id, [])
+    return problems
+
+
 def _git(*args: str, repo: Path | None = None) -> subprocess.CompletedProcess:
     # The repo is a PARAMETER, defaulting to ROOT — never the caller's cwd. The
     # shas in this ledger name commits in the checkout the ledger lives in, and
@@ -1134,6 +1204,7 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         # explicitly refused to sign. Name the gap instead of inheriting it.
         problems.append({"kind": "commit-state-unavailable", "repo": str(GIT_REPO)})
 
+    payloads: list[tuple[str, dict]] = []
     for path in sorted(store.glob("*.json")):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1143,9 +1214,14 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         if not isinstance(payload, dict):
             problems.append({"kind": "unparseable", "path": str(path), "error": "not an object"})
             continue
+        payloads.append((str(path), payload))
         for problem in validate_entry(payload, entry_id=path.stem,
                                       commit_state=commit_state):
             problems.append({**problem, "path": str(path)})
+
+    for problem in _check_blocking_graph(payloads):
+        problems.append({k: v for k, v in problem.items() if k != "path"}
+                        | {"path": problem.get("path")})
 
     return problems
 
@@ -1329,6 +1405,7 @@ MUTABLE_FIELDS = (
     + GROOM_FIELDS
     + AUDIT_FIELDS
     + TRACE_FIELDS
+    + RELATION_FIELDS
 )
 
 
@@ -1358,6 +1435,7 @@ def _splice_before(fields: tuple[str, ...], anchor: str,
 SHOW_FIELD_ORDER = (
     _splice_before(REQUIRED_FIELDS, "detail", BRIEF_FIELDS)
     + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + AUDIT_FIELDS + TRACE_FIELDS
+    + RELATION_FIELDS
 )
 
 # Digest fields the `update` parser still accepts — solely so that reaching for
@@ -1617,6 +1695,9 @@ def list_entries(
                 f"{flag} and --dispatch are empty by construction: {why}. Drop one "
                 f"— `--dispatch` for what to take next, `{flag}` on its own to look "
                 f"at that set.")
+    open_ids = ({p.get("id") for p in _iter_entries(store)
+                 if p.get("status") not in ("fixed", "wont-fix")}
+                if dispatch else set())
     if missing_brief and status in ("fixed", "wont-fix"):
         # Empty by construction, and an empty result here reads as "no such debt"
         # — while 96 closed entries carry no brief today. Same treatment, and the
@@ -1706,7 +1787,7 @@ def list_entries(
                 if any(pattern.search(str(p.get(f) or "")) for f in fields)]
     if dispatch:
         # THE queue the operating constitution names, expressed as the intersection
-        # of its own three clauses and nothing else. It sits last, like `--grep`, so
+        # of its own four clauses and nothing else. It sits last, like `--grep`, so
         # every filter above ANDs with it rather than being replaced by it.
         #
         # `held` is INJECTED rather than derived here, so the CLI's claim column and
@@ -1722,6 +1803,12 @@ def list_entries(
                 and p.get("status") not in ("fixed", "wont-fix")
                 # unclaimed
                 and p.get("id") not in claimed]
+        # Resolve blockers against the whole store, not `hits`: a narrow query
+        # may filter out a low-severity blocker while still returning its high
+        # severity dependent. Reading only the survivors would make the edge
+        # disappear exactly when a caller narrows the question.
+        hits = [p for p in hits
+                if not any(blocker in open_ids for blocker in _blocking_ids(p))]
         # A queue somebody takes the TOP of, so worst-first, then oldest-first.
         # `_sort_key` is (date, id), which is right for an inventory and wrong
         # here: it puts last week's `low` ahead of today's `high`.
@@ -2626,10 +2713,11 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
     if dispatch_flag:
         parser.add_argument(
             "--dispatch", action="store_true",
-            help="WHAT TO TAKE NEXT — the intersection of three clauses: groomed "
+            help="WHAT TO TAKE NEXT — the intersection of four clauses: groomed "
                  "(`groomed_by` set, which `validate` guarantees implies "
                  "plan/acceptance/fix_site) AND unresolved (status is not fixed or "
-                 "wont-fix) AND unclaimed (no worktree on this machine holds it). "
+                 "wont-fix) AND unclaimed (no worktree on this machine holds it) "
+                 "AND unblocked (no unresolved `blocked_by` edge). "
                  "Sorted worst-first, then oldest-first. Two things it CANNOT see, "
                  "both printed with the result: the claim ledger is per-machine, so "
                  "across machines this queue is OPTIMISTIC; and board deferrals live "
@@ -2760,7 +2848,7 @@ def build_parser() -> argparse.ArgumentParser:
     # both doors would keep returning *a* list.
     p_dispatch = sub.add_parser(
         "dispatch",
-        help="what to take next: groomed AND unresolved AND unclaimed, worst first "
+        help="what to take next: groomed AND unresolved AND unclaimed AND unblocked, worst first "
              "(identical to `list --dispatch`; accepts every `list` filter)",
     )
     _add_list_filters(p_dispatch, dispatch_flag=False)
@@ -3022,6 +3110,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
         help="commit(s) that made the defect stop being true; required by status=fixed. "
              "Fill it AFTER the fix lands — see reanchor if a rebase orphans one",
+    )
+    p_update.add_argument(
+        "--blocked-by", dest="blocked_by", nargs="*", metavar="ID",
+        help="ticket id(s) that must be fixed before this ticket is dispatched; "
+             "pass the flag with no ids to clear the edge",
     )
     p_update.add_argument(
         "--fixed-elsewhere", dest="fixed_elsewhere",
@@ -3819,7 +3912,7 @@ _AUDIT_UNRUNNABLE = {"acceptance-cmd-does-not-parse": "does-not-parse",
 def _audit_population(store: Path) -> list[dict]:
     """Groomed AND unresolved, worst-first.
 
-    Two of `dispatch`'s three clauses and pointedly not the third: a ticket somebody
+    Two of `dispatch`'s four clauses and pointedly not the other two: a ticket somebody
     is holding is exactly as likely to carry a lying criterion as an unclaimed one,
     and dropping it would make the sweep's coverage a function of who happens to be
     working today. Ungroomed entries are excluded because they have no criterion, and
@@ -4199,7 +4292,7 @@ def _cmd_verify(args) -> int:
 # reaches into a machine-local path to answer a question it advertises would be
 # right on one machine and silently wrong everywhere else. If it is ever wired in,
 # it goes through an explicit `--overlay PATH`.
-DISPATCH_CLAUSES = ("groomed", "unresolved", "unclaimed")
+DISPATCH_CLAUSES = ("groomed", "unresolved", "unclaimed", "unblocked")
 DISPATCH_HELD_SCOPE = (
     "claims are derived from THIS machine's worktree ledger (gitignored, "
     "per-machine). Another machine's claims are invisible, so across machines this "
@@ -4210,6 +4303,22 @@ DISPATCH_SNOOZE_SCOPE = (
     "(~/kg-board-state/overlay.json), outside this repo on purpose, so a snoozed "
     "entry is still offered here."
 )
+
+
+def _withheld_blocked(store: Path, candidates: list[dict], held: dict) -> list[dict]:
+    """Describe entries removed only by the derived `unblocked` clause."""
+    open_ids = {p.get("id") for p in _iter_entries(store)
+                if p.get("status") not in ("fixed", "wont-fix")}
+    withheld = []
+    for payload in candidates:
+        if (str(payload.get("groomed_by") or "").strip()
+                and payload.get("status") not in ("fixed", "wont-fix")
+                and payload.get("id") not in held):
+            waiting_on = [blocker for blocker in _blocking_ids(payload)
+                          if blocker in open_ids]
+            if waiting_on:
+                withheld.append({"id": payload.get("id"), "waiting_on": waiting_on})
+    return sorted(withheld, key=lambda row: row["id"])
 
 
 def _cmd_list(args) -> int:
@@ -4228,24 +4337,29 @@ def _cmd_list(args) -> int:
             "contains UNCLAIMED entries. Drop one — `--dispatch` for what to take "
             "next, `--held` on its own to see who is on what.")
 
-    entries = select_entries(
-        args.store,
-        unverified=getattr(args, "unverified", False),
-        stale_days=args.stale_days if getattr(args, "stale", False) else None,
-        status=args.status,
-        stream=args.stream,
-        severity=args.severity,
-        category=args.category,
-        groomed=args.groomed,
-        ungroomed=args.ungroomed,
-        acceptance_manual=args.acceptance_manual,
-        acceptance_green_expected=getattr(args, "acceptance_green_expected", False),
-        fixed_elsewhere=getattr(args, "fixed_elsewhere", False),
-        missing_brief=getattr(args, "missing_brief", False),
-        grep=getattr(args, "grep", None),
-        dispatch=dispatch,
-        held=held,
-    )
+    selection = {
+        "unverified": getattr(args, "unverified", False),
+        "stale_days": args.stale_days if getattr(args, "stale", False) else None,
+        "status": args.status,
+        "stream": args.stream,
+        "severity": args.severity,
+        "category": args.category,
+        "groomed": args.groomed,
+        "ungroomed": args.ungroomed,
+        "acceptance_manual": args.acceptance_manual,
+        "acceptance_green_expected": getattr(args, "acceptance_green_expected", False),
+        "fixed_elsewhere": getattr(args, "fixed_elsewhere", False),
+        "missing_brief": getattr(args, "missing_brief", False),
+        "grep": getattr(args, "grep", None),
+        "dispatch": dispatch,
+        "held": held,
+    }
+    entries = select_entries(args.store, **selection)
+    withheld_blocked = []
+    if dispatch:
+        unfiltered = {**selection, "dispatch": False}
+        withheld_blocked = _withheld_blocked(
+            args.store, select_entries(args.store, **unfiltered), held)
     if getattr(args, "held", False):
         entries = [e for e in entries if e["id"] in held]
 
@@ -4258,7 +4372,8 @@ def _cmd_list(args) -> int:
                           "held": held, "held_scope": "this machine's worktrees only",
                           **({"dispatch": {"clauses": list(DISPATCH_CLAUSES),
                                            "held_scope": DISPATCH_HELD_SCOPE,
-                                           "snooze_scope": DISPATCH_SNOOZE_SCOPE}}
+                                           "snooze_scope": DISPATCH_SNOOZE_SCOPE,
+                                           "withheld_blocked": withheld_blocked}}
                              if dispatch else {})},
                          ensure_ascii=False))
         return 0
@@ -4275,6 +4390,9 @@ def _cmd_list(args) -> int:
               f"`./ops/worktree_orchestrate.py open --backlog <id>`.")
         print(f"  scope: {DISPATCH_HELD_SCOPE}")
         print(f"  scope: {DISPATCH_SNOOZE_SCOPE}")
+        for withheld in withheld_blocked:
+            waiting_on = ", ".join(withheld["waiting_on"])
+            print(f"  withheld (blocked): {withheld['id']} waiting on {waiting_on}")
         return 0
     print(f"\n{len(entries)} entries; {len(held)} ticket(s) claimed by a worktree "
           f"ON THIS MACHINE (the ledger is per-machine — elsewhere this column is "
