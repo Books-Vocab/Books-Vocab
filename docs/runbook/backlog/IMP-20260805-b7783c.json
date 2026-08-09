@@ -7,6 +7,10 @@
   "date": "2026-08-05",
   "detail": "microGap 同名不同值：AppSpacing.microGap = DesignTokens.Space.Scale.micro = 2（17 個檔使用）vs AppSkin.baseSpacing.microGap = 6（19 個檔使用）。用量幾乎對半分，兩者都活著。後果：讀碼時無法從 .microGap 判斷實際間距，AppTabSelector 的實際高度因此在 37 或 46.5pt 之間無法靜態斷定。建議擇一改名（例如 skin 那個改 rowMicroGap）讓名字重新具備判別力。",
   "fix_site": "ios/BooksAndVocab/Models/AppSkin.swift:170  (struct Spacing 的 microGap 欄位)",
+  "fixed_by": [
+    "5eda8cd454cbc20b140e0dce3a90b98bab06f763",
+    "30e5be5e5759839b204e7822e18bbbb94478cdc5"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-b7783c",
@@ -16,6 +20,10 @@
   "scope": "iOS 二十來處改個名字，連帶三份設計設定檔跟著改，不新增測試。",
   "severity": "med",
   "source": "圓角系統盤點時實測",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r3-b7783c",
+  "verified_evidence": "bash -c 'set -e; test -f ios/BooksAndVocab/Models/AppSkin.swift; if grep -rqn \"spacing\\.microGap\" ios --include=\"*.swift\"; then echo \"skin microGap still ambiguous\" >&2; exit 1; fi; grep -q \"let rowMicroGap: CGFloat\" ios/BooksAndVocab/Models/AppSkin.swift; grep -q \"rowMicroGap: 6,\" ios/BooksAndVocab/Models/AppSkin+BaseValues.swift; grep -q \"AppSpacing.microGap\" ios/BooksAndVocab/Models/AppMetrics.swift; ./ops/token_drift_check.py >/dev/null'"
 }

@@ -7,6 +7,9 @@
   "date": "2026-08-05",
   "detail": "ops/i18n_lint.sh 的 XCSTRINGS 變數指向 ios/BooksAndVocab/Localization/Localizable.xcstrings，該檔不存在（該目錄只有 L10n.swift）。實際的在地化正本是五個 <locale>.lproj/Localizable.strings。變數目前沒有被 --baseline-check 路徑用到所以不會炸，但它會誤導下一個讀這支腳本的人以為專案已遷到 String Catalog。刪掉或改指真實路徑。",
   "fix_site": "ops/i18n_lint.sh:44（XCSTRINGS 變數）+ :181-206（scan_xcstrings_needs_review）+ :351/:357/:359/:385-387/:405（呼叫點、計數、total、報告區塊、摘要行）+ :2（檔頭說明）",
+  "fixed_by": [
+    "c857eaf32d847e038bf261ce7c820f79d56a9696"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-b7e6e4",
@@ -16,6 +19,10 @@
   "scope": "刪掉一支檢查腳本裡整段用不到的程式，實際數字不會變；不加測試。",
   "severity": "low",
   "source": "worktree feat/word-detail-actions",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "r3-b7e6e4",
+  "verified_evidence": "IMP-20260805-b7e6e4 verification evidence\n\nRED\nbash -c 'test -f ops/i18n_lint.sh && ! grep -qF \"Localizable.xcstrings\" ops/i18n_lint.sh && ./ops/i18n_lint.sh --baseline-check'\nrc=1 (before modification; expected red)\n\nGREEN\nbash -c 'test -f ops/i18n_lint.sh && ! grep -qF \"Localizable.xcstrings\" ops/i18n_lint.sh && ./ops/i18n_lint.sh --baseline-check'\nrc=0\n[i18n_lint] total: 0 (raw=0 return=0 fmt=0 missing_keys=0 en_cjk=0 plural=0 localized_calls=346)\n[i18n_lint] ok: 0 <= baseline 0\n\nSHELL SYNTAX\nbash -n ops/i18n_lint.sh\nrc=0\n\nBASELINE REGRESSION\n./ops/i18n_lint.sh --baseline-check\nrc=0\n[i18n_lint] total: 0 (raw=0 return=0 fmt=0 missing_keys=0 en_cjk=0 plural=0 localized_calls=346)\n[i18n_lint] ok: 0 <= baseline 0\n\nDOCS IMPACT\n./ops/docs_impact.py --files ops/i18n_lint.sh --explain\nrc=0; exact candidates: docs/sop/i18n_lint.md, docs/sop/i18n_plural_keys.md; broad candidate: docs/reference/tech_index.md\n./ops/docs_impact.py --surface-scan 'Localizable\\.xcstrings|xcstrings='\nrc=0; one real stale reference at docs/sop/i18n_lint.md:37; not changed because assigned write scope is ops/i18n_lint.sh only\n\nDIFF CHECK\ngit diff --check\nrc=0"
 }
