@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "`docs/registry.yml:648` 的 `sop.backup` entry 其 `sources` 不含 `devops.sh`，所以 `ops/docs_impact.py` **結構性地看不見**任何 L2 備份相關的程式改動——改了備份行為不會有人提醒你同步那份 SOP。\n\n實測 2026-08-08：受派者修 `devops.sh:cmd_backup`（rsync flavor 分流，改變了備份在 macOS 上到底能不能跑）時，impact 工具沒有點名 `docs/sop/backup.md`；那份 doc 當時仍寫著「L2 OFFLINE」，與修完的行為相反。是 review agent 人工比對抓到的，不是工具。\n\n同族但不同條：`docs/sop/backup.md` 與 `backup_restore.md` 的內容漂移已在該批一併修掉，本條要修的是**控制面的 sources 宣告**，否則下次照樣看不見。",
   "fix_site": "docs/registry.yml:642,docs/registry.yml:625,ops/tests/test_docs_impact.sh:98",
+  "fixed_by": [
+    "e9e4795ba477589e40bffc2bd0c737d8b8a82f05"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-1ab82f",
@@ -16,6 +19,10 @@
   "scope": "docs registry 的兩個 backup source 清單、docs impact 回歸測試與技術索引對齊。",
   "severity": "med",
   "source": "dogfood batch 1：impact 工具沒點名，靠 review agent 人工抓到",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }

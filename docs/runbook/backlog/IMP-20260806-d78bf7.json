@@ -7,6 +7,9 @@
   "date": "2026-08-06",
   "detail": "ops/gen_ios_baseline.sh 的 ASYNC_FUNC / MAIN_ACTOR 修好後仍是 grep 近似,不是 Swift lexer,殘餘誤差已量測(2026-08-06,對照一支會剝除註解/字串並走平衡括號的 lexer):ASYNC_FUNC 292 vs 真值 290 —— 多算的 2 筆是『本身不 async、但參數帶 @escaping () async -> 的 func』(ios/BooksAndVocab/Platform/PlatformCompatibility.swift:88、Views/Reader/ReadiumNavigatorSupport.swift:16);MAIN_ACTOR 252 與 lexer 完全一致。另有兩個目前實測 0 次的洞:/* 區塊註解 */ 內行首的 `) async` 會被第二條 arm 誤收(單行 // 註解不會,已驗),字串字面量內的 @MainActor / ) async 也無法排除。要 100% 精確就得從 grep 換成會剝註解與字串的 tokenizer,那是換工具不是改 pattern,故獨立登記。",
   "fix_site": "ops/gen_ios_baseline.sh:ASYNC_FUNC/MAIN_ACTOR 兩條賦值行（新增 ops/swift_decl_count.py + ops/tests/test_swift_decl_count.py）",
+  "fixed_by": [
+    "50195db57caa914ff349969bcc91de8a07726f5f"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-d78bf7",
@@ -16,6 +19,10 @@
   "scope": "新增一支小型解析工具與它的測試、改產生腳本兩行、補幾個測試案例，再重出那份統計。",
   "severity": "low",
   "source": "IMP-20260805-958999 修 async func counter 時實測到的殘餘誤差",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }

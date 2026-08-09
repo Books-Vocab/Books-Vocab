@@ -8,6 +8,9 @@
   "date": "2026-08-07",
   "detail": "`ops/infra_health.sh:115`：`HTTP_CODE=\"$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \"$PROBE_URL\" 2>/dev/null || echo 000)\"`。curl 失敗時 `-w` 已經無條件把 `000` 寫到 stdout，`|| echo 000` 再補一次 → 2026-08-07 實測 `HTTP_CODE=[000000] len=6`。\n\n**真正的危害在 `--json` 輸出，不在人讀那一欄。** `:207` 的 `is_num \"$raw\"` 判為數值就**裸印**（`\"raw\":%s`），而 `000000` 與 `000` 都通過 `is_num` 卻都是**非法 JSON**（JSON 不允許前導零）。三組實測：\n  `KG_HEALTH_HTTP_CODE=000000` → JSON PARSE FAIL: Expecting ',' delimiter (col 940)\n  `KG_HEALTH_HTTP_CODE=000`    → JSON PARSE FAIL: Expecting ',' delimiter (col 937)\n  `KG_HEALTH_HTTP_CODE=200`    → JSON OK\n**所以「把 000000 改回 000」修不好任何東西**——那正是本條初稿提的修法，被 review 當場以上面三組實測推翻。\n\n契約今天沒炸，是因為唯一的 JSON 消費者 `ops/kg_reconcile.sh` 的 `infra_crit_keys` 用 `tr` + `sed` **刮字串**而不是真的 parse。契約靠一個字串刮取型消費者僥倖存活——下一個老實用 `json.loads` 的消費者，會在 HTTPS 探針失敗時（也就是最需要讀它的時候）拿到解析錯誤。初稿把危害寫成「raw 欄位變成一個不存在的六位數，下游若做數值判斷會出錯」，那是把「值不對」當成問題，而真正的問題是「整份文件語法非法」。",
   "fix_site": "ops/infra_health.sh:115,ops/infra_health.sh:199,ops/infra_health.sh:207,ops/test_infra_health.sh:98",
+  "fixed_by": [
+    "30b1a270bff217e0274dae52685d5a553f4940b9"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260807-67a7f4",
@@ -17,8 +20,10 @@
   "scope": "改一支健康檢查腳本的兩個地方，外加三組情境各驗一次；不動別的檔案。",
   "severity": "med",
   "source": "立單初稿被 review 推翻後重立",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }

@@ -7,6 +7,9 @@
   "date": "2026-08-06",
   "detail": "手動部署路徑的 smoke（devops.sh:159 verify_post_deploy）用 `health_http=$(curl ... || echo \"000\")`，而真 curl 連不出去時**自己會先印 000 再非零退出**（2026-08-06 對無法解析主機名實測：stdout=[000]、rc=6）。於是兩段 000 被串成 `000000`，下面 case 的 `000)` 分支**永遠匹配不到**，落到 `*)` 印出「異常 HTTP=000000」。rc 兩邊都是 1 所以部署仍正確失敗，但操作者拿到的是無意義碼、而不是「網路斷或 TLS 失敗」這個正確診斷；那句寫給人看的訊息形同死碼。sentry-test 那段（devops.sh:183）同款寫法，同樣症狀。測試抓不到是因為替身不忠實：ops/tests/test_deploy_smoke.sh:78-79 對 code=000 靜默 exit 6（註解甚至明寫「stdout 空」），於是 health_http 只拿到 fallback 的 \"000\"、剛好命中那條分支，case 8 因此假綠。修法與 IMP-0061 於 ops/kg_reconcile.sh 所做的相同：改 `|| true` + 補預設值，並讓 mock 印出真 curl 的形狀。",
   "fix_site": "devops.sh:159 與 :183（verify_post_deploy 的 health / sentry 兩段 curl）+ ops/tests/test_deploy_smoke.sh:77-79（mock curl 的 code=000 分支）",
+  "fixed_by": [
+    "6e057f49134d83f1a7b83c49c531a35ae0ea5c67"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-8031bc",
@@ -16,6 +19,10 @@
   "scope": "部署腳本改兩處，測試裡那個不忠實的假指令改成照真實行為模擬，再補兩條輸出斷言。",
   "severity": "low",
   "source": "IMP-0061 修復時實測發現",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }
