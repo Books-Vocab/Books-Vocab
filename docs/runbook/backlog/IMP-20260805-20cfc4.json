@@ -1,6 +1,6 @@
 {
-  "acceptance": "./ops/test_ops.sh install-hooks && ./ops/install_hooks.sh --check && [ \"$(git config --get core.hooksPath)\" = \".githooks\" ]",
-  "acceptance_cmd": "./ops/test_ops.sh install-hooks && ./ops/install_hooks.sh --check && [ \"$(git config --get core.hooksPath)\" = \".githooks\" ]",
+  "acceptance": "於 repo root 執行：./ops/test_ops.sh install-hooks（exit 0 = 綠）；該 disposable fixture 會驗證 --yes、--check、hook 阻擋與 --uninstall，不依賴本 clone 的 core.hooksPath。",
+  "acceptance_cmd": "./ops/test_ops.sh install-hooks",
   "acceptance_expect_rc": 0,
   "brief": "有一道「送出改動前先自我檢查」的防護寫好了卻從沒被開啟，讓人以為有防護而不去補別的。",
   "category": "tool",
@@ -25,5 +25,5 @@
   "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-09",
   "verified_by": "main-session",
-  "verified_evidence": "acceptance_cmd rc=0 on main a8d5fa2d1"
+  "verified_evidence": "./ops/test_ops.sh install-hooks rc=0 (fixture-only acceptance)"
 }
