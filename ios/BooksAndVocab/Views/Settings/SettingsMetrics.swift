@@ -9,6 +9,9 @@ enum AppSettingsMetrics {
     static let accountAvatarSize: CGFloat = 46
     static let socialBadgeSize: CGFloat = 22
 
+    // 複習節奏那三個 review* 常數（模式塊間距 / stepper 間距 / 數值欄寬）
+    // 隨 APP-20260808-240a94 退場：那一頁改用原生 Picker + Stepper，列的幾何由平台決定。
+
     // MARK: - SettingsSelectionTile（settings + reader 合併後的唯一選擇塊）
 
     /// 合併前兩份實作真正的差異就是 padding 的責任歸屬：settings 版內建、
