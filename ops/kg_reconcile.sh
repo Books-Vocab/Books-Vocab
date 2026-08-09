@@ -294,6 +294,14 @@ infra_crit_keys() {
     | sed -n 's/.*"key":"\([^"]*\)".*"status":"crit".*/\1/p'
 }
 
+# 從 infra_health --json 抽出指定 metric 的 value（每筆一個字串）。
+# 與 infra_crit_keys 共用同一個 zero-dependency JSON 形狀契約；讀不到時回空字串，
+# 呼叫端必須 fail-closed，不能把「看不懂」當成「無 HTTP 回應」。
+infra_metric_value() {
+  printf '%s' "$1" | tr '{' '\n' \
+    | sed -n "s/.*\"key\":\"$2\".*\"value\":\"\([^\"]*\)\".*/\1/p" | head -1
+}
+
 # infra_health 的 CRIT 是否**完全可歸因於同一場斷網**——即它只是「這台機器連不出去」
 # 的第二個症狀，而不是關於這次部署或這台機器的新證據。
 #
@@ -303,22 +311,29 @@ infra_crit_keys() {
 # 回滾 + poison——理由換了個字，行為與修法前一模一樣，而且同一輪 tick 會先發「故不回滾」
 # 再發「回滾」兩則互相矛盾的 ALERT（IMP-0061 review D1 實測）。
 #
-# 兩個條件都成立才算同一場斷網：
+# 三個條件都成立才算同一場斷網：
 #   ① 本輪外部 smoke 已**獨立且重試到預算用盡**地證明拿不到任何 HTTP 回應（unreachable）；
 #   ② infra_health 唯一越線的指標就是它自己那支對外 HTTPS 探針（key=http_probe），
 #      而呼叫端把 KG_HEALTH_PROBE_URL 釘成 smoke 剛探過的同一個 URL，所以「同一個問題被
 #      問了兩次」是結構上為真，不是靠兩邊預設值碰巧相同。
+#   ③ 這支探針的 value 是 `000` 或 `000000`，代表連 HTTP 回應都沒有；任何真實 status
+#      （包括 502/530/1033）都是服務鏈的新證據，不能歸因為同一場斷網。
 # 其餘任何 crit（容器不見了/磁碟爆了/記憶體/tunnel 掛了/憑證過期/host 指標收不到…）都是
 # 關於這台機器或這個服務的真證據 → 照舊擋下並回滾。**斷網不是 infra 這一關的免死金牌**，
 # 否則就是用一個更大的洞蓋掉小洞。
 # 抽不出任何 crit key（JSON 壞掉/版本不合/被替換）→ 無法歸因就不放行（fail-closed）：
 # 「看不懂」絕不等於「沒問題」。
 infra_crit_is_same_outage() {
-  local crit_keys
+  local crit_keys http_probe_value
   [[ "$EXTERNAL_SMOKE_CLASS" == "unreachable" ]] || return 1
   crit_keys="$(infra_crit_keys "$1")"
   # 恰好一個且就是它：多筆會帶換行，字串比對自然不等；空字串（讀不懂）也不等。
   [[ "$crit_keys" == "http_probe" ]] || return 1
+  http_probe_value="$(infra_metric_value "$1" "http_probe")"
+  case "$http_probe_value" in
+    000|000000) ;;
+    *) return 1 ;;
+  esac
   return 0
 }
 
