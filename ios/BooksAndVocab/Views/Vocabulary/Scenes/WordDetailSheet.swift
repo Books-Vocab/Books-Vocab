@@ -19,6 +19,9 @@ struct WordDetailSheet: View {
     let allEntries: [VocabularyEntry]
     private let wrapInNavigation: Bool
     private let showsInlineChrome: Bool
+    /// `nil` = 沿用 `showsInlineChrome`（app 內所有宿主）。只有截圖／行銷這種
+    /// 需要「有 chrome 但不入鏡生命週期動作」的呈現路徑才顯式指定。
+    private let explicitLifecycleActions: Bool?
     private let onInlineClose: (() -> Void)?
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
@@ -27,6 +30,7 @@ struct WordDetailSheet: View {
         allEntries: [VocabularyEntry] = [],
         wrapInNavigation: Bool = true,
         showsInlineChrome: Bool? = nil,
+        showsLifecycleActions: Bool? = nil,
         onClose: (() -> Void)? = nil,
         linkedCardStack: Binding<[VocabularyEntry]>? = nil,
         presentsEagerly: Bool = false
@@ -35,6 +39,7 @@ struct WordDetailSheet: View {
         self.allEntries = allEntries
         self.wrapInNavigation = wrapInNavigation
         self.showsInlineChrome = showsInlineChrome ?? wrapInNavigation
+        self.explicitLifecycleActions = showsLifecycleActions
         self.onInlineClose = onClose
         self.externalLinkedCardStack = linkedCardStack
         // Catalog / snapshot seam: seed the presentation synchronously so a
@@ -203,7 +208,10 @@ struct WordDetailSheet: View {
     /// header，所以標題列的封存鈕在那裡根本不會被渲染。若不一併把刪除關掉，那個「點連結
     /// 進來看一眼」的疊層就會變成**只能刪、不能封存**：風險軸完全相反。從同一個旗標推導，
     /// 兩者就不會靠紀律各自漂移。要在那裡管理這張卡，正常開啟它即可。
-    private var offersLifecycleActions: Bool { showsInlineChrome }
+    ///
+    /// `showsLifecycleActions` 是唯一的例外閥門，給截圖／行銷這種「要 chrome、不要
+    /// destructive 列入鏡」的呈現路徑用；不傳就是上面那條推導，app 內行為不變。
+    private var offersLifecycleActions: Bool { explicitLifecycleActions ?? showsInlineChrome }
 
     private var shouldUseLinkedOverlayStack: Bool {
         // 有外部 stack binding 時，overlay 由外部 LinkedCardOverlayStack 管理，不重複渲染
