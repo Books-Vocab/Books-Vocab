@@ -1,0 +1,14 @@
+{
+  "brief": "獨立審查程序仍在運作時，等待入口連續回傳空結果，主流程無法判斷該繼續等還是停止。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "本 session 派出 code-reviewer agent 019fe6c8-431c-73c3-9310-fafabc65b0e4 後，multi_agent_v1 wait_agent 連續三次各等待 30 秒，皆回 status={} 與 timed_out=true；send_input interrupt=true 要求立即收斂後，下一次 wait 仍為空。close_agent 隨後回 previous_status=running，證明不是 agent 已結束而 client 漏讀一次。這使 bounded review 無法區分 pending_init、running、失聯或已完成，driving agent 只能靠時間猜測並手動關閉。等待逾時時至少應回每個 target 的當前狀態；interrupt 應有可觀察的 accepted-to-stopping 狀態或有限期完成語意。",
+  "id": "IMP-20260809-d68749",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "釐清一個背景代理等待與中斷狀態協定，並補可重現的狀態回報測試。",
+  "severity": "med",
+  "source": "R6-R8 bounded metadata review dogfood",
+  "status": "open",
+  "stream": "IMP"
+}
