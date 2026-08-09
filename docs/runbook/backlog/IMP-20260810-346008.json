@@ -1,0 +1,14 @@
+{
+  "brief": "發布前檢查會因已移除的內部依賴中斷，維護者無法可靠判斷 iOS 是否可發布。",
+  "category": "tool",
+  "date": "2026-08-10",
+  "detail": "執行 ./ops/ios_ops.sh workflow release --json 時，ops/lib/ios_ops_release.sh:245 仍呼叫 catalog_uv_bin；該命令不存在，streaming wrapper 因空 executable 收到 PermissionError，最後把 app-review gate 回報成 gate.execution block。專用 ./ops/release.sh resubmit ios dry-run 不受此錯誤影響。",
+  "id": "IMP-20260810-346008",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 iOS release helper、相關測試與必要文件。",
+  "severity": "med",
+  "source": "iOS TestFlight dry-run",
+  "status": "open",
+  "stream": "IMP"
+}
