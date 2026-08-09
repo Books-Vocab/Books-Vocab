@@ -37,6 +37,7 @@
 #   ./ops/ios_test.sh --configuration Release  # Release-equivalent build/test provenance
 #   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
 #   KG_IOS_TEST_ALLOW_SHARED_SIM=1 ./ops/ios_test.sh ...         # explicit opt-out for single-machine debugging
+#   KG_IOS_TEST_LOG_IDLE_LIMIT=300 ./ops/ios_test.sh ...          # fail after 300s without log writes
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -58,6 +59,11 @@ DESTINATION=''            # resolved after arg parsing (see device resolution be
 DESTINATION_OVERRIDE=''   # set by --destination (full xcodebuild destination string)
 DEVICE_OVERRIDE="${KG_IOS_TEST_DEVICE:-}"  # set by --device (name or UDID); enables per-agent simulators
 AUTO_LEASE="${KG_IOS_TEST_AUTOLEASE:-0}"   # --lease: claim a pool simulator for this run, release on exit
+LOG_IDLE_LIMIT="${KG_IOS_TEST_LOG_IDLE_LIMIT:-0}"  # 0 disables the stalled-log hard stop
+if [[ ! "$LOG_IDLE_LIMIT" =~ ^[0-9]+$ ]]; then
+  echo "[ios_test] warning: ignoring non-numeric KG_IOS_TEST_LOG_IDLE_LIMIT=$LOG_IDLE_LIMIT (using 0)" >&2
+  LOG_IDLE_LIMIT=0
+fi
 LEASED_DEVICE=''                            # udid of an auto-leased simulator, released in cleanup
 LEASE_OWNER_TOKEN="kg-ios-test-$$-$(date +%s)-${RANDOM:-0}"
 SIMULATOR_BOOT_SELECTOR=''
@@ -1049,7 +1055,7 @@ emit_new_test_output() {
 }
 
 last_test_event() {
-  grep -E "^(Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|[[:space:]]*[✘✗] Test .+ failed|[✔✘✓✗] Test run with)" "$TMPOUT" \
+  grep -E "^(Test Suite '.+' (started|passed|failed)|Test Case '.+' (started|passed|failed|skipped)|[[:space:]]*[✘✗] Test .+ failed|[✔✘✓✗] Test run with|Fatal error:)" "$TMPOUT" \
     | tail -1 \
     | sed 's/^[[:space:]]*//'
 }
@@ -1160,7 +1166,7 @@ xctestrun_has_live_demo_env() {
 
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
-  local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
+  local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event log_idle xcode_start_ms xcode_end_ms log_missing
   if [[ "$LIVE_DEMO" -eq 1 ]]; then
     STAGED_DATASET_XCTESTRUN="${xctestrun_path%.xctestrun}_live_demo_$$.scoped.xctestrun"
     if ! stage_live_demo_xctestrun "$xctestrun_path" "$STAGED_DATASET_XCTESTRUN"; then
@@ -1215,6 +1221,13 @@ run_xcodebuild_test_without_building_once() {
       echo "[ios_test] warning: xcodebuild log path disappeared while test was running: $TMPOUT" >&2
       break
     fi
+    log_idle="$(log_idle_seconds "$TMPOUT")"
+    if [[ "$LOG_IDLE_LIMIT" -gt 0 && "$log_idle" -gt "$LOG_IDLE_LIMIT" ]]; then
+      echo "[ios_test] error: xcodebuild log idle=${log_idle}s exceeded KG_IOS_TEST_LOG_IDLE_LIMIT=${LOG_IDLE_LIMIT}s (pid=$xcode_pid, log=$TMPOUT)" >&2
+      tail -40 "$TMPOUT" >&2 || true
+      kill "$xcode_pid" 2>/dev/null || true
+      break
+    fi
     emitted_this_loop=0
     if [[ "$current_line" -gt "$last_line" ]]; then
       emit_new_test_output "$((last_line + 1))" "$current_line"
@@ -1228,7 +1241,7 @@ run_xcodebuild_test_without_building_once() {
       elapsed=$((now - START))
       recent_event="$(last_test_event)"
       [[ -n "$recent_event" ]] || recent_event="xcodebuild still running"
-      echo "[ios_test] … still running (${elapsed}s, pid=$xcode_pid, log=$TMPOUT) — last: $recent_event"
+      echo "[ios_test] … still running (${elapsed}s, pid=$xcode_pid, log=$TMPOUT, idle=${log_idle}s) — last: $recent_event"
       heartbeat_at="$now"
       tick_at="$now"
     elif [[ "$emitted_this_loop" -eq 0 && $((now - tick_at)) -ge 3 ]]; then
