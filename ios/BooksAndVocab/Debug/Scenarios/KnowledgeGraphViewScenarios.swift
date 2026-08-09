@@ -153,8 +153,8 @@ private struct KnowledgeGraphViewScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    // QA fallback anchor (2026-06-01 12:00) for a non-marketing render. A frozen
-    // marketing world overrides it via `MarketingReviewClock` so the graph aligns
+    // QA fallback anchor (2026-06-01 12:00). An injected scenarioContext clock
+    // overrides it via `FixtureReviewClock` so the graph aligns
     // to the anchor day: with a stale 38-days-early anchor every card is
     // not-yet-due and every node renders green, flattening the ReviewGradient.
     private static let qaFallbackNow: Date = {
@@ -169,7 +169,7 @@ private struct KnowledgeGraphViewScene: View {
         return date
     }()
 
-    private static var fixedNow: Date { MarketingReviewClock.now(fallback: qaFallbackNow) }
+    private static var fixedNow: Date { FixtureReviewClock.now(fallback: qaFallbackNow) }
 
     private static let frozenStore: ReviewSettingsStore = {
         var settings = ReviewSettings.default

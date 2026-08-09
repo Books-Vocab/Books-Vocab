@@ -106,7 +106,6 @@ def _restage_desired_project(tmp_path: Path, payload: bytes) -> None:
     manifest = json.loads(manifest_path.read_text())
     (tmp_path / "desired" / "inputs" / "project.pbxproj").write_bytes(payload)
     manifest["build"]["project"]["sha256"] = _sha(payload)
-    manifest["provenance"]["inputDigests"]["project"] = _sha(payload)
     _json(manifest_path, manifest)
     manifest_bytes = manifest_path.read_bytes()
 
@@ -138,107 +137,36 @@ def _write_fixture_world(tmp_path: Path) -> Path:
     target["datasetSHA256"] = _sha(dataset)
     project = b"MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6;"
     target["sourceCommit"] = _commit_project(tmp_path, project)
-    profile = b'{"schema":"kg.capture.profile.v1","id":"profile-1"}'
-    promotion = b'{"schema":"kg.app_review.promotion_manifest.v1"}'
     (desired / "inputs" / "project.pbxproj").write_bytes(project)
-    (desired / "inputs" / "capture_profile.json").write_bytes(profile)
-    (desired / "inputs" / "promotion_manifest.json").write_bytes(promotion)
     (desired / "outputs").mkdir(parents=True)
     (desired / "outputs" / "live.png").write_bytes(image)
-    render_value = {
-        "target": "promotion",
-        "shots": [
-            {
-                "id": "desired",
-                "outputName": "live.png",
-                "copy": {"title": "Desired title", "subtitle": "Desired subtitle"},
-            }
-        ],
-    }
-    render_hash = _sha(
-        json.dumps(render_value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    )
     desired_manifest = {
-        "schema": "kg.app_review.submission.v1",
-        "verdict": {
-            "status": "pass",
-            "requiredEvidence": [
-                {"id": evidence_id, "status": "verified"}
-                for evidence_id in (
-                    "build-tuple",
-                    "source-commit",
-                    "capture-profile",
-                    "ui-world",
-                    "fixed-clock",
-                    "device-locale",
-                    "render-spec",
-                    "promotion-closure",
-                    "output-checksums",
-                    "provenance",
-                )
-            ],
-        },
+        "schema": "kg.app_review.manual_asc_bundle.v1",
+        "verdict": {"status": "pass"},
         "build": {
             "marketingVersion": "2.0.0",
             "buildNumber": "6",
             "project": {"path": "inputs/project.pbxproj", "sha256": _sha(project)},
         },
         "source": {"commit": target["sourceCommit"]},
-        "capture": {
-            "profile": {
-                "schema": "kg.capture.profile.v1",
-                "id": "profile-1",
-                "path": "inputs/capture_profile.json",
-                "sha256": _sha(profile),
-            },
-            "dataset": {
-                "schema": "kg.fixture.dataset.v2",
-                "id": target["datasetID"],
-                "sha256": target["datasetSHA256"],
-                "path": "inputs/ui_world.json",
-            },
-            "device": {"destination": "platform=iOS Simulator,name=iPhone 17 Pro Max"},
-            "fixedClock": "2026-07-13T08:00:00Z",
-            "locale": "zh-Hant",
-            "promotionManifest": {
-                "schema": "kg.app_review.promotion_manifest.v1",
-                "path": "inputs/promotion_manifest.json",
-                "sha256": _sha(promotion),
-            },
-            "renderSpec": {
-                "sha256": render_hash,
-                "value": render_value,
-            },
+        "dataset": {
+            "schema": "kg.fixture.dataset.v2",
+            "id": target["datasetID"],
+            "sha256": target["datasetSHA256"],
+            "path": "inputs/ui_world.json",
         },
+        "fixedClock": "2026-07-13T08:00:00Z",
+        "locale": "zh-Hant",
+        "displayType": target["screenshotDisplayType"],
         "outputs": [
             {
-                "shotID": "desired",
-                "sourceScenario": "Reader/Live",
+                "id": "desired",
                 "appearance": "light",
                 "file": "outputs/live.png",
                 "byteSize": len(image),
                 "sha256": _sha(image),
             }
         ],
-        "provenance": {
-            "generators": [{"path": "ops/reviewer_evidence.py", "sha256": "9" * 64}],
-            "inputDigests": {
-                "dataset": target["datasetSHA256"],
-                "profile": _sha(profile),
-                "project": _sha(project),
-                "promotionManifest": _sha(promotion),
-                "renderSpec": render_hash,
-            },
-            "rebuild": {
-                "dataset": "inputs/ui_world.json",
-                "deviceDestination": "platform=iOS Simulator,name=iPhone 17 Pro Max",
-                "entrypoint": "ops/capture_profile.py",
-                "fixedClock": "2026-07-13T08:00:00Z",
-                "locale": "zh-Hant",
-                "profile": "inputs/capture_profile.json",
-            },
-            "sourceCommit": target["sourceCommit"],
-        },
     }
     _json(desired / "manifest.json", desired_manifest)
     desired_hash = _sha((desired / "manifest.json").read_bytes())
@@ -256,7 +184,7 @@ def _write_fixture_world(tmp_path: Path) -> Path:
         "mode": "read-only",
         "verdict": {"status": "pass", "mismatchCount": 0},
         "desired": {
-            "schema": "kg.app_review.submission.v1",
+            "schema": "kg.app_review.manual_asc_bundle.v1",
             "manifestSHA256": desired_hash,
             "build": {"marketingVersion": "2.0.0", "buildNumber": "6"},
             "locale": "zh-Hant",
@@ -843,12 +771,12 @@ def test_phase2_screenshot_order_and_source_checksum_are_reasserted(
     assert message in invalid["actual"]
 
 
-def test_phase1_required_objects_are_not_optional(tmp_path: Path):
+def test_manual_bundle_required_objects_are_not_optional(tmp_path: Path):
     mod = _load_module()
     spec = _write_fixture_world(tmp_path)
     manifest_path = tmp_path / "desired" / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    del manifest["capture"]["profile"]
+    del manifest["dataset"]
     _json(manifest_path, manifest)
 
     result = mod.evaluate_gate(
@@ -1069,7 +997,6 @@ def test_desired_source_commit_blob_that_cannot_be_read_blocks_instead_of_skippi
     manifest_path = tmp_path / "desired" / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["source"]["commit"] = "c" * 40
-    manifest["provenance"]["sourceCommit"] = "c" * 40
     _json(manifest_path, manifest)
 
     result = mod.evaluate_gate(

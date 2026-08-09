@@ -9,7 +9,7 @@
  "remove": [
   {
    "word": "slut",
-   "reason": "貶抑性髒詞，不能出現在行銷截圖或審查員面前"
+   "reason": "貶抑性髒詞，不適合出現在一般 UI demo"
   },
   {
    "word": "orgy",
@@ -17,7 +17,7 @@
   },
   {
    "word": "debauchery",
-   "reason": "縱慾主題露骨，不適合行銷素材"
+   "reason": "縱慾主題露骨，不適合一般 UI demo"
   },
   {
    "word": "lascivious",
@@ -29,7 +29,7 @@
   },
   {
    "word": "perverse",
-   "reason": "釋義「變態的」直接顯示在卡面，行銷場景不合適"
+   "reason": "釋義「變態的」直接顯示在卡面，一般 UI demo 不合適"
   },
   {
    "word": "cleavage",
@@ -69,7 +69,7 @@
   },
   {
    "word": "strip",
-   "reason": "例句含露骨性內容（refuse to strip / 王的寢宮場景），行銷截圖硬傷"
+   "reason": "例句含露骨性內容（refuse to strip / 王的寢宮場景），一般 UI demo 不合適"
   },
   {
    "word": "innuendo",

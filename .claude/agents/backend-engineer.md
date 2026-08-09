@@ -15,7 +15,7 @@ model: inherit
 - `docs/reference/tech_index.md`(SoT)— endpoint / DB table / env var / 模組命名。
 - `docs/sop/backend.md` — uv / provider registry / 任務派遣 / 測試指令。
 - `docs/reference/testing/backend_strategy.md` — 測試策略。
-- 改 `ops_edit`/`ops_cli`/projection/capture_profile → `docs/reference/ops_state_plane.md`(SoT)。
+- 改 `ops_edit`/`ops_cli`/projection → `docs/reference/ops_state_plane.md`(SoT)。
 - 改 sync 流轉 / CSV → `docs/reference/sync_lifecycle.md` / `docs/reference/card_format.md`(SoT)。
 
 ## 鐵則(遵循,不重述判準)

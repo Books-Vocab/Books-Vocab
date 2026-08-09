@@ -912,15 +912,21 @@ cmd_simulator_lease() {
       rm -rf "$leasedir" 2>/dev/null || true
       continue
     fi
-    # Boot, and surface a real boot failure instead of returning ok with a dead
-    # device. `simctl boot` errors when already booted, so on its failure we
-    # re-check the state and only treat NON-Booted as a true failure.
-    if ! xcrun simctl bootstatus "$udid" -b >/dev/null 2>&1 \
-       && ! xcrun simctl boot "$udid" >/dev/null 2>&1 \
-       && [[ "$(simulator_device_state "$udid")" != "Booted" ]]; then
-      echo "[ios_ops] error: failed to boot leased simulator $name ($udid); trying next slot" >&2
-      rm -rf "$leasedir" 2>/dev/null || true
-      continue
+    # Catalog owns a stronger lifecycle: it erases the newly leased device and
+    # then boots it with a heartbeat + deadline. Its internal seam skips this
+    # redundant pre-erase boot; the public simulator lease command remains
+    # unchanged and always returns a booted device.
+    if [[ "${SIM_LEASE_SKIP_BOOT:-0}" != "1" ]]; then
+      # Boot, and surface a real boot failure instead of returning ok with a dead
+      # device. `simctl boot` errors when already booted, so on its failure we
+      # re-check the state and only treat NON-Booted as a true failure.
+      if ! xcrun simctl bootstatus "$udid" -b >/dev/null 2>&1 \
+         && ! xcrun simctl boot "$udid" >/dev/null 2>&1 \
+         && [[ "$(simulator_device_state "$udid")" != "Booted" ]]; then
+        echo "[ios_ops] error: failed to boot leased simulator $name ($udid); trying next slot" >&2
+        rm -rf "$leasedir" 2>/dev/null || true
+        continue
+      fi
     fi
     if [[ "$json" -eq 1 ]]; then
       jq -nc --arg name "$name" --arg udid "$udid" --arg leaseDir "$leasedir" \

@@ -238,6 +238,16 @@ else
   fail_t "B5 cmd_simulator_lease collapses both refusal modes into one counter"
 fi
 
+# Catalog erases immediately after leasing, so booting here would add a whole
+# redundant cold boot before the erase. The internal seam may skip only this
+# boot step; identity validation and lease ownership must still run first.
+if grep -q 'SIM_LEASE_SKIP_BOOT' "$LEASE" \
+   && awk '/simulator_pool_assert_disposable/{guard=NR} /SIM_LEASE_SKIP_BOOT/{skip=NR} END{exit !(guard && skip && guard < skip)}' "$LEASE"; then
+  ok "B6 Catalog may skip only the redundant post-guard lease boot"
+else
+  fail_t "B6 SIM_LEASE_SKIP_BOOT missing or bypasses the disposability guard"
+fi
+
 # ── C. the reader does not need the device booted ────────────────────────────
 section "C. reader is boot-independent (macOS)"
 if ! command -v plutil >/dev/null 2>&1; then

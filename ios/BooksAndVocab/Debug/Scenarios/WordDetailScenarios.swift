@@ -16,7 +16,7 @@ enum WordDetailScenarios {
             Scenario("Rich entry", layout: .fill) {
                 MainActor.assumeIsolated {
                     AppThemeContainer {
-                        // presentsEagerly: the catalog snapshot renders synchronously
+                        // presentsEagerly: Catalog opens the scene synchronously
                         // and does not await WordDetailSheet's deferred presentation
                         // `.task`, so seed the card up front (otherwise the shot
                         // captures the "載入中" loading placeholder). Data still pins
@@ -29,7 +29,7 @@ enum WordDetailScenarios {
             Scenario("Minimal entry", layout: .fill) {
                 MainActor.assumeIsolated {
                     AppThemeContainer {
-                        // presentsEagerly: same catalog-snapshot seam as "Rich entry".
+                        // presentsEagerly: same immediate-presentation seam as "Rich entry".
                         // Data still pins the `.wordDetail` QA seed (terse entry).
                         WordDetailSheet(entry: Self.entry(.minimal), allEntries: Self.entries(), presentsEagerly: true)
                     }
@@ -39,12 +39,12 @@ enum WordDetailScenarios {
             // Full-content inspection state. Renders the complete Word Detail card — definition,
             // pronunciation, example, related words — content-vertically pinned to
             // the top (unlike Today Review's fold, whose front card overlaps the
-            // answer). Driven by `marketingCapture.wordDetail`: entries[0] is the
+            // answer). Driven by `scenarioContext.wordDetail`: entries[0] is the
             // focused hero, the whole seed is `allEntries` so its graph links
             // resolve to real related cards.
             Scenario("Full Content", layout: .fill) {
                 MainActor.assumeIsolated {
-                    Self.marketingSheet()
+                    Self.fullContentSheet()
                 }
             }
         }
@@ -109,19 +109,19 @@ enum WordDetailScenarios {
         }
     }
 
-    /// Materializes the marketing Word Detail seed (`marketingCapture.wordDetail`)
+    /// Materializes the structured Word Detail seed (`scenarioContext.wordDetail`)
     /// into `VocabularyEntry` models. `entries[0]` is the focused hero card; the
     /// rest are its graph-link targets, so `WordDetailSheet(allEntries:)` resolves
     /// the related-word links to real cards. Distinct from the `.wordDetail` QA
     /// seed (ephemeral/terse), which the QA scenarios keep pinning.
     @MainActor
-    private static func marketingEntries() -> [VocabularyEntry] {
-        guard let seed = FixtureDatasetStore.marketingCapture()?.wordDetail else {
-            preconditionFailure("marketingCapture.wordDetail is required for the Word Detail marketing catalog scene")
+    private static func fullContentEntries() -> [VocabularyEntry] {
+        guard let seed = FixtureDatasetStore.scenarioContext()?.wordDetail else {
+            preconditionFailure("scenarioContext.wordDetail is required for the Word Detail Full Content scenario")
         }
         precondition(
             !seed.entries.isEmpty,
-            "marketingCapture.wordDetail must declare at least one entry (the focused hero card)"
+            "scenarioContext.wordDetail must declare at least one entry (the focused hero card)"
         )
         return seed.entries.map {
             UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
@@ -132,16 +132,16 @@ enum WordDetailScenarios {
     /// closures inside `MainActor.assumeIsolated` break `Scenario` init overload
     /// resolution). `entries[0]` is the hero; the whole seed is `allEntries`.
     @MainActor
-    private static func marketingSheet() -> some View {
-        let entries = marketingEntries()
+    private static func fullContentSheet() -> some View {
+        let entries = fullContentEntries()
         return AppThemeContainer {
-            // presentsEagerly: the catalog snapshot captures synchronously and
-            // does not await WordDetailSheet's deferred presentation `.task`, so
-            // seed the card presentation up front (otherwise the shot captures the
+            // presentsEagerly: Catalog opens the scene synchronously and does not
+            // await WordDetailSheet's deferred presentation `.task`, so seed the
+            // card presentation up front (otherwise the first frame captures the
             // "載入中" loading placeholder).
             // showsLifecycleActions: false — 封存／刪除是卡片管理動作，不屬於
-            // 官網 review_card 那句「釋義、發音、例句、關聯詞——一張卡片全掌握」的
-            // 構圖；預設會連 destructive 色的刪除列一起入鏡。頂列 chrome 保留
+            // pure content inspection state；預設會連 destructive 色的刪除列一起
+            // 顯示。頂列 chrome 保留
             //（不可改用 wrapInNavigation: false，那會連 chrome 一起關掉）。
             WordDetailSheet(
                 entry: entries[0],
@@ -150,10 +150,8 @@ enum WordDetailScenarios {
                 presentsEagerly: true
             )
         }
-        // Force light: website.json marks the review_card shot `appearance: light`;
-        // keeps the card a clean white surface, consistent with the reader/vocab
-        // marketing shots (AppThemeContainer(.system) would otherwise follow the
-        // dark sim).
+        // Force light to keep the content-inspection state deterministic when the
+        // Simulator itself is dark.
         .environment(\.colorScheme, .light)
         .environmentObject(AppAppearanceStore.preview)
     }

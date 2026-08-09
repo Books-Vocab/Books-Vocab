@@ -1,4 +1,4 @@
-"""shape_history.py（行銷帳號複習歷史敘事塑形）契約測試。
+"""shape_history.py（UI World 複習歷史塑形）契約測試。
 
 覆蓋四類不變量：
 1. 確定性 / 冪等 — 同輸入 byte 相等；shape(shape(x)) == shape(x)（塑形只讀
@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-MA_DIR = ROOT / "ops" / "demo" / "marketing_account"
+SEED_DIR = ROOT / "ops" / "demo" / "ui_world_seed"
 DEMO_DIR = ROOT / "ops" / "demo"
 
 
@@ -43,7 +43,7 @@ def _load_module(name: str, directory: Path):
     return module
 
 
-shape_history = _load_module("shape_history", MA_DIR)
+shape_history = _load_module("shape_history", SEED_DIR)
 spec_world = _load_module("spec_world", DEMO_DIR)
 
 
@@ -258,8 +258,8 @@ class TestFreshGreenCohort:
         return out
 
     def test_fresh_green_cards_exist_on_committed_spec(self):
-        spec = json.loads((MA_DIR / "marketing_account_spec.json").read_text("utf-8"))
-        plan = json.loads((MA_DIR / "history_plan.json").read_text("utf-8"))
+        spec = json.loads((SEED_DIR / "scenario_account_spec.json").read_text("utf-8"))
+        plan = json.loads((SEED_DIR / "history_plan.json").read_text("utf-8"))
         anchor = date.fromisoformat(plan["anchor_day"])
         fresh = self._fresh_primary(spec, "人物群像", anchor)
         assert len(fresh) >= 8, f"fresh-green 卡太少: {len(fresh)}"
@@ -374,8 +374,8 @@ class TestDueIntervalScatter:
 
     def test_committed_due_intervals_scatter(self):
         import statistics
-        spec = json.loads((MA_DIR / "marketing_account_spec.json").read_text("utf-8"))
-        plan = json.loads((MA_DIR / "history_plan.json").read_text("utf-8"))
+        spec = json.loads((SEED_DIR / "scenario_account_spec.json").read_text("utf-8"))
+        plan = json.loads((SEED_DIR / "history_plan.json").read_text("utf-8"))
         reshaped = shape_history.shape(spec, plan)
         ivs = self._due_intervals_days(reshaped, plan)
         assert len(ivs) >= 8, ivs
@@ -450,20 +450,20 @@ class TestFailLoud:
             shape_history.shape(_spec(), _plan(schema="kg.other.v1"))
 
 
-class TestCommittedMarketingSpec:
+class TestCommittedScenarioSpec:
     """committed spec v2 的 drift gate：塑形是冪等的，重跑必 byte 相等。"""
 
     @pytest.fixture()
     def committed(self) -> tuple[dict, dict]:
-        spec = json.loads((MA_DIR / "marketing_account_spec.json").read_text("utf-8"))
-        plan = json.loads((MA_DIR / "history_plan.json").read_text("utf-8"))
+        spec = json.loads((SEED_DIR / "scenario_account_spec.json").read_text("utf-8"))
+        plan = json.loads((SEED_DIR / "history_plan.json").read_text("utf-8"))
         return spec, plan
 
     def test_shape_is_idempotent_on_committed_spec(self, committed):
         spec, plan = committed
         reshaped = shape_history.shape(spec, plan)
         assert _dumps(reshaped) == _dumps(spec), (
-            "committed marketing spec 與 shape_history 輸出 drift；"
+            "committed scenario spec 與 shape_history 輸出 drift；"
             "重跑 shape_history.py 並 commit spec v2")
 
     def test_committed_spec_meets_narrative(self, committed):

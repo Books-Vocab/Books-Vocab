@@ -145,7 +145,7 @@ enum ReaderPresentationMetrics {
     /// 呈現「調大 / 調鬆」的**方向與幅度**，不保證與某一本書逐像素相同。
     enum SettingsPreview {
         /// 基準字級（fontScale = 1.0 時的 pt）。取 20pt 與行銷截圖用的
-        /// `ReaderMarketingProse.fontSize` 同值，那個值當初就是照出貨預設挑的。
+        /// `ReaderScenarioProse.fontSize` 同值，那個值當初就是照出貨預設挑的。
         static let baseFontSize: CGFloat = 20
         /// 字體的內在行高倍率。CSS `line-height: L` 算的是整個行盒＝L × 字級，
         /// 而 SwiftUI `lineSpacing` 是「在字體自然行高之外再加多少」，兩者差的

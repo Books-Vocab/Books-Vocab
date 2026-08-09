@@ -52,6 +52,15 @@ def test_validate_accepts_repo_ui_world():
     assert dataset_id == "marketing_demo"
 
 
+def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):
+    data = _marketing_demo()
+    data.pop("scenarioContext")
+    path = tmp_path / "minimal_context.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert validate_fixture_dataset_file(path) == "marketing_demo"
+
+
 def test_validate_accepts_all_repo_and_generated_ui_worlds():
     repo_worlds = sorted((ROOT / "ops" / "fixtures" / "ui_worlds").glob("*.json"))
     generated_worlds = [ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"]

@@ -192,6 +192,14 @@ enum CatalogAgentContract {
                 )
             })
         }
+        let duplicates = Dictionary(grouping: registered, by: \.id)
+            .filter { $0.value.count > 1 }
+            .keys
+            .sorted()
+        precondition(
+            duplicates.isEmpty,
+            "Duplicate Catalog scenario IDs: \(duplicates.joined(separator: ", "))"
+        )
         return registered.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
     }
 

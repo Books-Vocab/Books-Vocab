@@ -110,11 +110,12 @@ LINUX_GROUPS=(
   #    origin/main，且逐份實測全部 active doc 的 verified_against 都能從 origin/main
   #    可達 —— 那個理由現在是假的，所以收進來。
   docs-lint
-  # ── IMP-20260805-947062 收編的 4 個 group ──────────────────────────────────
+  # ── IMP-20260805-947062 收編的 groups + Catalog agent boundary ────────────
   # 全都跑在 --no-project sandbox（stdlib + pytest），逐支在 macOS 實測過。
   streaming-command
   app-review
   demo-data
+  catalog-agent
   uitest-contact-sheet
 )
 

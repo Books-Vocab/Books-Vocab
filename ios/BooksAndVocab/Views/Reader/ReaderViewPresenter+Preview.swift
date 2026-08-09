@@ -66,28 +66,28 @@ struct ReaderChromePreviewScene: View {
         .enableInjection()
     }
 
-    /// Translation-overlay content. For the marketing prose page it is driven by
-    /// `marketingCapture.readerPassage` (so the tapped word, its part of speech,
+    /// Translation-overlay content. For the structured prose page it is driven by
+    /// `scenarioContext.readerPassage` (so the tapped word, its part of speech,
     /// translation and explanation stay consistent with the highlighted word in
     /// the prose). Every other (skeleton) scene keeps the original "resilient"
-    /// sample so QA overlay snapshots are unaffected.
-    struct MarketingTranslationContent {
+    /// sample so independent QA scenarios are unaffected.
+    struct ScenarioTranslationContent {
         let word: String
         let partOfSpeech: String
         let translation: String
         let explanation: String
     }
 
-    static func translationContent(for pageContent: ReaderPreviewPageContent) -> MarketingTranslationContent {
-        if pageContent == .prose, let passage = FixtureDatasetStore.marketingCapture()?.readerPassage {
-            return MarketingTranslationContent(
+    static func translationContent(for pageContent: ReaderPreviewPageContent) -> ScenarioTranslationContent {
+        if pageContent == .prose, let passage = FixtureDatasetStore.scenarioContext()?.readerPassage {
+            return ScenarioTranslationContent(
                 word: passage.activeWord,
                 partOfSpeech: passage.activePartOfSpeech,
                 translation: passage.activeTranslation,
                 explanation: passage.activeExplanation
             )
         }
-        return MarketingTranslationContent(
+        return ScenarioTranslationContent(
             word: "resilient",
             partOfSpeech: "adj.",
             translation: "有韌性的；能快速恢復的",
@@ -111,7 +111,7 @@ struct ReaderChromePreviewScene: View {
             case .skeleton:
                 skeletonPageContent
             case .prose:
-                ReaderMarketingProse()
+                ReaderScenarioProse()
             }
         }
     }
@@ -148,9 +148,9 @@ struct ReaderChromePreviewScene: View {
     }
 }
 
-// MARK: - Marketing prose (real book content for App Store / website shot)
+// MARK: - Structured scenario prose
 
-/// One rendered word of the marketing prose, with its highlight emphasis.
+/// One rendered word of the scenario prose, with its highlight emphasis.
 struct ProseToken: Equatable {
     enum Emphasis: Equatable {
         case none   // plain body text
@@ -246,13 +246,13 @@ struct ReaderProseFlowLayout: Layout {
     }
 }
 
-/// Native SwiftUI book prose used only for the marketing capture. Original
+/// Native SwiftUI book prose used by the structured Reader scenario. Original
 /// (non-copyrighted) literary text on the reader's sepia paper, in the reader's
 /// default serif (Cormorant Garamond), with saved-vocab highlighter bands.
-struct ReaderMarketingProse: View {
+struct ReaderScenarioProse: View {
     @ObserveInjection private var inject
     // Reader default body font (ReaderFont.serif → Cormorant Garamond) so the
-    // shot matches the shipped reader default. Registered via ios/Info.plist UIAppFonts.
+    // scene matches the shipped reader default. Registered via ios/Info.plist UIAppFonts.
     private static let fontName = "CormorantGaramond-Regular"
     private static let fontSize: CGFloat = 20
     private static let lineSpacing: CGFloat = 8
@@ -287,9 +287,8 @@ struct ReaderMarketingProse: View {
     private static let activeOutlineWidth: CGFloat = 1
     private static let activeOutlineInset: CGFloat = 1.5
 
-    /// Resolved page content: real marketing prose (`marketingCapture.readerPassage`,
-    /// projected from real book cards by Phase 1) when a marketing world is
-    /// injected, otherwise the original literary fallback so a bare Xcode
+    /// Resolved page content from `scenarioContext.readerPassage` when declared,
+    /// otherwise the original literary fallback so a bare Xcode
     /// #Preview stays self-contained. Highlight words come from the passage's
     /// real card words; the tokenizer stays a pure, content-agnostic function.
     struct Passage {
@@ -311,7 +310,7 @@ struct ReaderMarketingProse: View {
     )
 
     static var resolvedPassage: Passage {
-        guard let passage = FixtureDatasetStore.marketingCapture()?.readerPassage else {
+        guard let passage = FixtureDatasetStore.scenarioContext()?.readerPassage else {
             return fallbackPassage
         }
         return Passage(
@@ -379,7 +378,7 @@ struct ReaderMarketingProse: View {
     }
 }
 
-#Preview("Reader Chrome / Marketing Content") {
+#Preview("Reader Chrome / Structured Content") {
     // Force light appearance: in the shipped reader the sepia paper is strongly
     // coupled to the light skin, so the translation card must resolve to the
     // light theme's white card (a dark card over sepia never occurs in-app).
