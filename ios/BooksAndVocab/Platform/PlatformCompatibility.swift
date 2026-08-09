@@ -19,13 +19,18 @@ extension View {
         self.navigationBarTitleDisplayMode(.large)
     }
 
+    /// `appAppearanceScheme()`：cover 是另一個 presentation host，呈現後不會再跟著
+    /// root 的 `preferredColorScheme` 換 —— 理由寫在 `AppAppearanceMode.swift`。
+    /// 掛在 seam 上，呼叫端就不必自己記得。
     @ViewBuilder
     func platformFullScreenCover<Content: View>(
         isPresented: Binding<Bool>,
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        self.fullScreenCover(isPresented: isPresented, onDismiss: onDismiss, content: content)
+        self.fullScreenCover(isPresented: isPresented, onDismiss: onDismiss) {
+            content().appAppearanceScheme()
+        }
     }
 
     @ViewBuilder
@@ -34,7 +39,9 @@ extension View {
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping (Item) -> Content
     ) -> some View {
-        self.fullScreenCover(item: item, onDismiss: onDismiss, content: content)
+        self.fullScreenCover(item: item, onDismiss: onDismiss) { value in
+            content(value).appAppearanceScheme()
+        }
     }
 
     func dismissKeyboard() {

@@ -90,6 +90,7 @@ struct SharedDeckDetailView: View {
                     Task { await performCopy(notebookName: name) }
                 }
             )
+            .appAppearanceScheme()
         }
         .task(id: deckId) { await load() }
         .enableInjection()

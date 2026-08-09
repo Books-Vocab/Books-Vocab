@@ -90,8 +90,11 @@ struct ReaderView: View {
         }
         // 閱讀設定改由系統 sheet 呈現（APP-20260808-240a94）：detents 與
         // drag indicator 由平台提供，取代原本自繪的底部 overlay 卡片 + handle。
+        // `appAppearanceScheme()`：這一頁的主題選擇器寫的是**整個 app** 的外觀，
+        // 而 sheet 呈現後不會再跟著 root 換 —— 少了它，選深色的當下原生 Form 會
+        // 留在淺色，section header 直接消失（APP-20260809-f1b8cb）。
         .sheet(isPresented: isReaderSettingsPresented) {
-            settingsPanelContent
+            settingsPanelContent.appAppearanceScheme()
         }
         .safeAreaInset(edge: .top) {
             TipView(LongPressTip())

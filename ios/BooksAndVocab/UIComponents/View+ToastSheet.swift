@@ -7,7 +7,7 @@ extension View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         sheet(isPresented: isPresented, onDismiss: onDismiss) {
-            content().toastOverlay()
+            content().toastOverlay().appAppearanceScheme()
         }
     }
 
@@ -17,7 +17,7 @@ extension View {
         @ViewBuilder content: @escaping (Item) -> Content
     ) -> some View {
         sheet(item: item, onDismiss: onDismiss) { value in
-            content(value).toastOverlay()
+            content(value).toastOverlay().appAppearanceScheme()
         }
     }
 

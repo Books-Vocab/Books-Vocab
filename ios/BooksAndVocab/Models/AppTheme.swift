@@ -195,5 +195,21 @@ struct AppThemeContainer<Content: View>: View {
             .appTheme(theme)
             .appSkin(.themed(theme))
             .tint(theme.palette.tint)
+            // 把外觀解析成**具體**的 light / dark 供 sheet 邊界重新宣告
+            // （見 `appResolvedColorScheme`）。
+            //
+            // `??` 的短路是這行成立的條件，不是風格：`colorScheme` 在這裡讀到的是
+            // **視窗**的 scheme，不是裝置的 —— `preferredColorScheme` 是往上傳的
+            // preference，會以 window trait 的形式再落回來，連這個容器一起蓋到。
+            // 兩邊各自安全的理由不同：selection 不是 `.system` 時左手邊就贏了，
+            // **這一行的**右手邊不會被求值（上面 `theme` 那行仍無條件把 colorScheme
+            // 交給 `AppTheme.resolve`，那是另一件事）；selection 是 `.system` 時
+            // root 宣告的是 `preferredColorScheme(nil)`，沒有 override，此時視窗的
+            // scheme 才等於裝置的。已量測（2026-08-09，跟隨系統 ∧ sheet 開著時
+            // 反覆翻轉裝置外觀，畫面每次都跟著走）：sheet 內宣告的具體 scheme
+            // 不會外洩把視窗釘住，所以「沒有 override」這個前提沒有被本修法破壞。
+            // **不要**在這裡加第二個讀 `colorScheme` 的用途 —— 那個用途不會有
+            // 短路保護它。
+            .environment(\.appResolvedColorScheme, appearanceStore.selection.colorScheme ?? colorScheme)
     }
 }
