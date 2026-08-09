@@ -704,6 +704,121 @@ def _try_acquire_ledger_lock_nb(state_path: Path) -> bool:
         os.close(fd)
 
 
+def claim_integration_sources(
+    state_path: Path,
+    *,
+    source_refs: dict[str, str],
+    integration_branch: str,
+    integration_slug: str,
+    claimed_at: str,
+) -> dict[str, Any]:
+    """Reserve handed-back source branches for exactly one integration owner.
+
+    Ticket claims prevent two workers from doing the same ticket; this is the
+    corresponding boundary one level up. Without it, two round coordinators can
+    legally consume the same immutable hand-back SHA into two integration trees.
+    The reservation is all-or-nothing and shares the canonical ledger lock.
+    """
+    state_path = Path(state_path).resolve()
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        records = state["records"]
+        active: dict[str, list[dict[str, Any]]] = {}
+        for record in records:
+            if record.get("status") == STATUS_ACTIVE and record.get("branch"):
+                active.setdefault(str(record["branch"]), []).append(record)
+
+        conflicts: list[dict[str, Any]] = []
+        selected: list[dict[str, Any]] = []
+        owners = active.get(integration_branch, [])
+        if len(owners) != 1:
+            conflicts.append({
+                "branch": integration_branch,
+                "reason": "integration branch has no unique active registry record",
+                "active_records": len(owners),
+            })
+        elif owners[0].get("teardown_started_at"):
+            conflicts.append({
+                "branch": integration_branch,
+                "reason": "integration branch teardown already started",
+                "teardown_started_at": owners[0].get("teardown_started_at"),
+            })
+        for branch, expected_sha in source_refs.items():
+            matches = active.get(branch, [])
+            if len(matches) != 1:
+                conflicts.append({
+                    "branch": branch,
+                    "reason": "source branch has no unique active registry record",
+                    "active_records": len(matches),
+                })
+                continue
+            record = matches[0]
+            if record.get("teardown_started_at"):
+                conflicts.append({
+                    "branch": branch,
+                    "reason": "source branch teardown already started",
+                    "teardown_started_at": record.get("teardown_started_at"),
+                })
+                continue
+            handed_back = record.get("handed_back_sha")
+            if handed_back != expected_sha:
+                conflicts.append({
+                    "branch": branch, "reason": "hand-back SHA changed",
+                    "expected_sha": expected_sha, "handed_back_sha": handed_back,
+                })
+                continue
+            owner = record.get("integration_owner")
+            if owner and owner.get("branch") != integration_branch:
+                conflicts.append({
+                    "branch": branch,
+                    "reason": "source branch already reserved by another integration",
+                    "owner": owner,
+                })
+                continue
+            selected.append(record)
+
+        if conflicts:
+            return {"ok": False, "integration_branch": integration_branch,
+                    "claimed": [], "conflicts": conflicts}
+
+        claim = {"branch": integration_branch, "slug": integration_slug,
+                 "claimed_at": claimed_at}
+        for record in selected:
+            record["integration_owner"] = {**claim,
+                                           "source_sha": record["handed_back_sha"]}
+        save_state(state_path, state)
+        return {"ok": True, "integration_branch": integration_branch,
+                "claimed": sorted(source_refs), "conflicts": []}
+
+
+def release_integration_sources(state_path: Path, *, integration_branch: str) -> list[str]:
+    """Release active source reservations owned by an aborted integration."""
+    state_path = Path(state_path).resolve()
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        released: list[str] = []
+        for record in state["records"]:
+            owner = record.get("integration_owner") or {}
+            if record.get("status") == STATUS_ACTIVE \
+                    and owner.get("branch") == integration_branch:
+                released.append(str(record.get("branch")))
+                record.pop("integration_owner", None)
+        if released:
+            save_state(state_path, state)
+        return sorted(released)
+
+
+def integration_sources_owned_by(state_path: Path, integration_branch: str) -> list[str]:
+    """Read active source branches still assigned to an integration branch."""
+    state = load_state(Path(state_path).resolve())
+    return sorted(
+        str(record.get("branch"))
+        for record in state.get("records") or []
+        if record.get("status") == STATUS_ACTIVE
+        and (record.get("integration_owner") or {}).get("branch") == integration_branch
+    )
+
+
 # ============================================================================
 # CLI adapter — the ONLY place a clock is read (or --at overrides it).
 # ============================================================================
@@ -805,6 +920,24 @@ def cmd_register(args: argparse.Namespace) -> int:
         and (r.get("branch") == args.branch
              or (r.get("path") and _norm(r["path"]) == _norm(path)))
     ]
+    if args.exclusive and matches:
+        conflicts = [
+            {"branch": r.get("branch"), "path": r.get("path"),
+             "backlog": list(r.get("backlog") or []),
+             "claimed_at": r.get("claimed_at")}
+            for r in matches
+        ]
+        payload = {
+            "schema": SCHEMA, "action": "refused",
+            "reason": "worktree identity already active",
+            "branch": args.branch, "path": path, "conflicts": conflicts,
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"✗ [{args.branch}] or {path} is already active; exclusive "
+                  "registration is only for a new worktree birth", file=sys.stderr)
+        return EXIT_CLAIMED
     # ---- claim: at most one ACTIVE record may hold a given backlog ticket ----
     #
     # This check lives here, and not in a wrapper around register.
@@ -1316,6 +1449,13 @@ def build_parser() -> argparse.ArgumentParser:
              "record. Omit to leave an existing claim untouched; pass with no ids "
              "to give it up. A claim lives exactly as long as the record is active, "
              "so `resolve` and `sweep` release it with no extra step.",
+    )
+    reg.add_argument(
+        "--exclusive", action="store_true",
+        help="new-birth mode: refuse when branch OR path already has an active "
+             "record instead of idempotently upserting it. `open` uses this so two "
+             "concurrent callers with the same slug cannot share one record and "
+             "let the loser's cleanup resolve the winner's claim; `adopt` omits it.",
     )
     reg.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     reg.set_defaults(func=cmd_register)

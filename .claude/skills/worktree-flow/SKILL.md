@@ -46,7 +46,9 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 ```
 **先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 由 intent 自動判定）。記下回傳的 `path`。
 
-`--backlog` 的 id 從哪來：`./ops/backlog.py dispatch`（＝`list --dispatch`；已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋，worst-first）。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。dispatch 有三個它會自己說出來的盲點：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**，而跨票前置關係只以 store 內 `blocked_by` 的狀態為準。
+單一協調者可先用 `./ops/backlog.py dispatch` 再明示 `--backlog`。**兩個以上協調者同步取票時改用 `--next-backlog`**：工具在同一把本機 registry lock 內，以 backlog 的既有 dispatch predicate/worst-first 排序選第一張尚未認領的票並立即登記；兩邊會拿到不同票，不會都讀到同一份 top-N snapshot 再讓敗方整批重試。明示 `--backlog` 也不能繞過未解的 `blocked_by`；同 slug/path 的第二次 `open` 由 exclusive birth 拒絕，不會把第一個成功者當成 idempotent update。
+
+`dispatch`（＝`list --dispatch`）的集合是已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋，worst-first。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。它仍有兩個範圍邊界：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
 
 **波次結案流程（hunter 全程不碰 store）**：修好後在自己的工作樹跑 `./ops/backlog.py stage <id> --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>'（命令含反引號時用 `--evidence-file <路徑>`）`（無 `--status`，恆為 `fixed`）——寫進 gitignored 的 `<primary>/.cache/backlog_anchor_queue.jsonl`，**不碰 store**（理由是那顆 sha：rebase 前你不知道落地 sha，自己填就是 orphaned `fixed_by`；「不重生 view」那半個舊理由已隨 view 移出版控退場）。`cutover` 在**所有 post-ff refusal 之後**把真正的落地 sha 蓋上去（payload 的 `staged_closures`），波次結束開一條 worktree 跑 `./ops/backlog.py anchor --commit` 一次回填（全有或全無，未蓋 sha 的 row 會被具名保留而不是靜默套用；壞掉的 row 用 `./ops/backlog.py unstage <id> --commit` 取下，這是 all-or-nothing 的逃生口）。`resolve` 拆樹時會把這條分支還沒回填的結案**列出來但不擋**（payload 的 `pending_anchor`）——這是**正常狀態不是警告**（stage→cutover→resolve 本來就在 anchor 之前），列它是因為拆樹後那些 id 只剩 gitignored 檔裡一行；gate、docs lint 與任何讀 store 的入口都看不到它。
 
@@ -238,6 +240,8 @@ Gate 與 commit 不會把它當成程式碼。受派者的暫存檔一律寫進�
 
 它只讀目前 checkout 的 branch 與 `HEAD`，把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；不跑 gate、cutover、sync 或 deploy。整合者的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過「沒有戳記」，不能繞過 tip mismatch；正常批次不應使用。
 
+`integrate --commit` 另會把每條有 hand-back 的來源在 registry 內**原子保留給該 integration branch**；另一輪若重複納入同一來源，會具名列出 owner 並拒絕，敗方剛開的空整合樹會自清。`--abort --commit` 釋放保留；正常完成後保留持續到來源分支被 resolve。只要來源仍 active，連 `--force` 都不能先刪 integration tree，避免先抹掉唯一的來源→整合 owner 邊。
+
 **Gate-first review 與批次規模（有界，不追求完美）**：Gate 是預設的機器 review。普通 fan-out 的受派者做到 commit；整合者在合併後跑一次 fresh Gate，Gate BLOCK 就退回修正，Gate 通過且 receipt 完整即可落地，不因文字或風格 NIT 無限追加 LLM reviewer。LLM review 只對高風險或複雜 scope 作例外；同一個完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 就停在 adjudication，由 driving agent 決定修、接受或列 follow-up，不自動派第三輪。
 
 若例外情況確實需要同時派 LLM reviewer，批次大小用當下量到的 slot 上限推導，不背魔術數字：令 `S`=可同時存活的 agent slot、`R`=保留給協調/收尾的安全餘裕、`W`=受派者、`L`=同時 reviewer，必須滿足 `W + L ≤ S − R`；若每位受派者各佔一位 reviewer，則 `W ≤ floor((S − R) / 2)`。本機實測 `S=20`，取 `R=2` 時理論上限為 9，實務預設收在 **8**；若不派 LLM reviewer，則不套用除以二，仍按衝突面與整合成本決定批次。撞頂時不得重試或用 `Reviewed-by: self` 偽造已審；具名記錄「LLM review 未取得」，由整合後 fresh Gate 承擔機器 review，複雜 scope 再由 driving agent 做一次有界裁決。
@@ -322,11 +326,18 @@ git rerere diff
    整合狀態，**工作樹留著**（拆除是 `resolve` 的事，也只有它會過 landed-floor）。
 3. **合併後那一次 gate 由 `integrate` 自己跑**，verdict **綁整合後的 HEAD**，不是任一原分支的
    HEAD——那正是本段開頭那五筆 BLOCK 逃掉的地方。in-flight 狀態存在
-   `<anchor>/.cache/worktree_integrations/<slug>.json`（per-machine、gitignored）。
+   `<anchor>/.cache/worktree_integrations/<slug>.json`（per-machine、gitignored），以 per-slug lock
+   序列化 start/continue/abort 並以 atomic replace 寫入。Gate BLOCK 時 state 保留，修完用
+   `--continue --commit` 只重走 Gate（其中輸入未變的成功 gate 會依 input fingerprint 重用）；
+   pass/warn 後 state 移成 `completed/<slug>-<head>.json` manifest，保留來源 SHA、pick 對應與 verdict。
 4. **`integrate` 不落地**：verdict 非 block 後**你**再跑一次 `cutover`。「非 block 才准落地」
    那條規則只住在 `cutover` 裡，`integrate` 不重判——這是「不重造 gate」硬邊界的直接後果，
    而不是省事。
 5. **resolve 每一條來源分支**——見下方警告。
+
+### 兩輪同步、一次原子落地
+
+第四／第五輪可各自在不同 slug 的 integration tree 同步 `integrate`；兩邊完成後，分別對兩條 integration branch 執行 `worktree_registry.py hand-back`，再由第三棵 parent integration tree 把這兩條 branch 當來源 `integrate`。parent 的 Gate 才是跨輪組合證據，最後只對 parent `cutover` 一次，所以 final cutover 前本地 main 完全不動。落地後依序：來源 workers 用 `resolve --via-integration main` → 第四／第五輪 integration trees 用同一方式 resolve → parent tree 一般 resolve。`--via-integration REF` 只接受已是 base 祖先的 REF；未落地的 round branch 即使 patch audit 對得上，也不能授權拆來源。
 
 **收尾（先保留手刻管線的歷史量測，再列真正 `integrate` 的量測）**：
 
