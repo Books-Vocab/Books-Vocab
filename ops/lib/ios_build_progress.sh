@@ -27,6 +27,26 @@
 #     SwiftCompile line format (xcodebuild without -quiet):
 #       SwiftCompile normal arm64 [Compiling\ name.swift] /abs/path.swift (in target 'T' from project 'P')
 
+log_idle_seconds() {
+  local f="$1" m now
+  [[ -f "$f" ]] || { printf '0\n'; return 0; }
+
+  # BSD stat is used on macOS; GNU stat is the Linux fallback. Do not turn a
+  # metadata probe failure into a false stalled signal.
+  m=$(stat -f %m "$f" 2>/dev/null) || m=""
+  if [[ ! "$m" =~ ^[0-9]+$ ]]; then
+    m=$(stat -c %Y "$f" 2>/dev/null) || m=""
+  fi
+  [[ "$m" =~ ^[0-9]+$ ]] || { printf '0\n'; return 0; }
+
+  now=$(date +%s)
+  if [[ "$now" -lt "$m" ]]; then
+    printf '0\n'
+  else
+    printf '%s\n' "$(( now - m ))"
+  fi
+}
+
 count_compile_events() {
   local count
   count=$(grep -cE '^(SwiftCompile|CompileC) ' "$1" 2>/dev/null || true)
