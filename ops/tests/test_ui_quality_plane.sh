@@ -230,11 +230,11 @@ if [[ -z "$missing_run" ]]; then
 else
   fail_t "manual mechanisms with no run: $missing_run — these resolve to no command and stay unrun without failing"
 fi
-# Identity, not count: three mechanisms wired to the wrong ids would satisfy a
+# Identity, not count: two mechanisms wired to the wrong ids would satisfy a
 # count and the failure message could not say which.
 ui_world_ids="$(jq -r '[.[] | select((.requires // []) | index("ui-world")) | .id] | sort | join(",")' <<<"$PLANE_JSON")"
-if [[ "$ui_world_ids" == "behavior.uitest_flows,perf.review_flip_probe,snapshot.catalog" ]]; then
-  ok "the UI World dependency sits on exactly the three mechanisms that take a dataset"
+if [[ "$ui_world_ids" == "behavior.uitest_flows,perf.review_flip_probe" ]]; then
+  ok "the UI World dependency sits on exactly the two mechanisms that take a dataset"
 else
   fail_t "requires: ui-world is on [$ui_world_ids]"
 fi

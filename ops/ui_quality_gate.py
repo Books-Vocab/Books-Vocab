@@ -390,7 +390,7 @@ def main() -> int:
         if resolved_args is UNRUNNABLE and gate != "manual" and "run" not in mech:
             # The plane only requires `run:` of the gates it owns (`gate:
             # manual`); `cmd_validate` exempts the rest, and some of them
-            # cannot have one — snapshot.catalog_coverage's entrypoint is a
+            # cannot have one — snapshot.review_card_layout_golden's entrypoint is a
             # Swift test file enforced by `ios_ops.sh test`. Failing them here
             # would make the validator and the runner disagree about the same
             # file and turn `--include-ci` permanently red on a clean tree.

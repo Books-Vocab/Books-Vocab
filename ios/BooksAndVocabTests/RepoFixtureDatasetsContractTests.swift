@@ -81,7 +81,7 @@ struct RepoFixtureDatasetsContractTests {
         let passageTokens = Set(passage.paragraphs.flatMap { $0.split(separator: " ") }
             .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ",.;:!?\u{201C}\u{201D}\u{2018}\u{2019}\"'")) })
         #expect(passageTokens.contains(passage.activeWord), "active word must appear as a token in readerPassage")
-        let wordDetail = try #require(marketing.wordDetail, "scenarioContext must declare wordDetail")
+        let wordDetail = try #require(scenario.wordDetail, "scenarioContext must declare wordDetail")
         #expect(wordDetail.entries.first?.word == passage.activeWord, "wordDetail hero must match the reader passage active word")
 
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
