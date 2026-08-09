@@ -193,6 +193,15 @@ UNGROUPED_TESTS=(
   "ops/test_ops.sh|the aggregate dispatcher itself, not a test — ops/worktree_orchestrate.py:OPS_SHELL_UNROUTABLE_TESTS states the same exemption for the cutover plane"
 )
 
+# path|reason —— tracked test files reached only through an optional group.
+# These are deliberately named instead of folded into UNGROUPED_TESTS: the files
+# are runnable, just not part of DEFAULT_TESTS or CI. Promoting the optional
+# group is a separate decision from this coverage check.
+OPTIONAL_ONLY_TESTS=(
+  "ops/test_asc.sh|only reached through optional group asc, which is not in DEFAULT_TESTS or CI; promoting asc is a separate decision"
+  "ops/tests/test_asc_text_bundle.py|only reached through optional group asc, which is not in DEFAULT_TESTS or CI; promoting asc is a separate decision"
+)
+
 if [[ "${1:-}" == "--print-linux-groups" ]]; then
   printf '%s\n' "${LINUX_GROUPS[@]}"
   exit 0
@@ -260,17 +269,63 @@ ok_if_clean "classification contains no stale entries"
 # test_streaming_command.py 是鐵律 5 heartbeat 契約唯一的 `[machine]` 守衛、
 # test_app_review_gate.py 守送審。**從不執行的守衛跟永遠通過的守衛在輸出上無法區分。**
 section "every tracked test file is reachable from some group"
-# run_one 是「某個 group 實際 EXECUTE 什麼」的 SoT。先剝註解再比對：在註解裡提到一個
-# 路徑不是執行，少了這道 sed，任何人都能靠寫一行註解讓這條檢查閉嘴。
+# run_one 是「某個 group 實際 EXECUTE 什麼」的 SoT。只解析 DEFAULT_TESTS 指向的 case
+# body；OPTIONAL_TESTS 的 case 不屬於 CI 覆蓋面。先剝註解再比對：在註解裡提到一個路徑
+# 不是執行，少了這道 sed，任何人都能靠寫一行註解讓這條檢查閉嘴。
 #
-# **已知邊界（IMP-20260806-79f81c）**：run_one 也包含 OPTIONAL_TESTS 的 case，所以
-# 「只被 optional group 跑得到」的檔案在這裡算綠，但它不在預設套件也不在 CI——是原本
-# 那個洞的弱化版，不是零覆蓋。今天有兩支處在這個狀態（ops/test_asc.sh、
-# ops/tests/test_asc_text_bundle.py，都只掛在 asc）。沒有一併收緊是因為那會牽動
-# 「asc 該不該進預設套件」這個獨立決策，不該夾帶進覆蓋率修補。別把這段讀成全覆蓋。
+# `run_one` 有 case 互相呼叫（例如 release-surfaces），所以從 DEFAULT_TESTS 開始遞迴
+# 展開 literal `run_one <group>` 呼叫；只把這些 case body 的路徑收進 REACHABLE。
 REACHABLE=(); TRACKED=()
 while IFS= read -r l; do REACHABLE+=("$l"); done < <(
-  awk '/^run_one\(\) \{/{f=1} f{print} f&&/^\}/{exit}' ops/test_ops.sh \
+  awk -v defaults="${DECLARED[*]}" '
+    BEGIN {
+      default_count = split(defaults, default_groups, /[[:space:]]+/)
+      for (i = 1; i <= default_count; i++) {
+        if (default_groups[i] != "") selected[default_groups[i]] = 1
+      }
+    }
+    /^run_one\(\)[[:space:]]*\{/ { in_function = 1; next }
+    in_function && /^[[:space:]]*case[[:space:]]+\"\$1\"[[:space:]]+in/ { in_case = 1; next }
+    in_case && /^[[:space:]]*esac[[:space:]]*$/ { in_case = 0; exit }
+    in_case && /^[[:space:]]*[[:alnum:]_-]+\)/ {
+      branch = $0
+      sub(/^[[:space:]]*/, "", branch)
+      sub(/\).*/, "", branch)
+      current = branch
+      body[current] = $0 "\n"
+      if ($0 ~ /;;[[:space:]]*$/) current = ""
+      next
+    }
+    in_case && current != "" {
+      body[current] = body[current] $0 "\n"
+      if ($0 ~ /;;[[:space:]]*$/) current = ""
+    }
+    END {
+      changed = 1
+      while (changed) {
+        changed = 0
+        for (group in selected) {
+          if (!(group in body)) continue
+          line_count = split(body[group], lines, /\n/)
+          for (i = 1; i <= line_count; i++) {
+            code = lines[i]
+            sub(/[[:space:]]*#.*/, "", code)
+            if (match(code, /run_one[[:space:]]+[[:alnum:]_-]+/)) {
+              call = substr(code, RSTART, RLENGTH)
+              sub(/^run_one[[:space:]]+/, "", call)
+              if (!(call in selected)) {
+                selected[call] = 1
+                changed = 1
+              }
+            }
+          }
+        }
+      }
+      for (group in selected) {
+        if (group in body) printf "%s", body[group]
+      }
+    }
+  ' ops/test_ops.sh \
     | sed 's/[[:space:]]*#.*$//' \
     | grep -oE 'ops/(tests/)?test_[A-Za-z0-9_]+\.(sh|py)' | sort -u
 )
@@ -288,10 +343,12 @@ else
     for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
     exempt=0
     for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
-    if (( reach + exempt == 0 )); then
+    optional=0
+    for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
+    if (( reach + exempt + optional == 0 )); then
       fail_t "$f is reachable from no group — register it in ops/test_ops.sh run_one, or name it in UNGROUPED_TESTS with a reason"
-    elif (( reach + exempt == 2 )); then
-      fail_t "$f is both run by a group and named exempt — pick one"
+    elif (( reach + exempt + optional > 1 )); then
+      fail_t "$f is both reached by a DEFAULT group and/or named in multiple exception tables — pick one"
     fi
   done
   # 反向 stale，比照 164-170 行：改名後留下的豁免是一支永久的消音器。
@@ -299,6 +356,13 @@ else
     p="${u%%|*}"; found=0
     for f in "${TRACKED[@]}"; do [[ "$f" == "$p" ]] && found=1; done
     (( found == 1 )) || fail_t "$p is named exempt but is not a tracked test file — stale entry"
+  done
+  for u in "${OPTIONAL_ONLY_TESTS[@]}"; do
+    p="${u%%|*}"; found=0; reach=0
+    for f in "${TRACKED[@]}"; do [[ "$f" == "$p" ]] && found=1; done
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$p" ]] && reach=1; done
+    (( found == 1 )) || fail_t "$p is named optional-only but is not a tracked test file — stale entry"
+    (( reach == 0 )) || fail_t "$p is named optional-only but is reachable from DEFAULT_TESTS — remove the exception"
   done
   ok_if_clean "all ${#TRACKED[@]} tracked test file(s) are reachable or named-exempt"
 fi
@@ -495,9 +559,9 @@ while IFS= read -r srcline; do
     fail_t "table source executes at parse time (backtick or \$( ): ${srcline#"${srcline%%[![:space:]]*}"}"
     danger=1
   fi
-done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|PATH_FALSIFY_UNSOUND|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
+done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|PATH_FALSIFY_UNSOUND|UNGROUPED_TESTS|OPTIONAL_ONLY_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
 # 自測：解析不到表就代表 awk 抓錯範圍，上面的迴圈零圈跑完會長得像「沒有危險寫法」。
-tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|PATH_FALSIFY_UNSOUND|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
+tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|PATH_FALSIFY_UNSOUND|UNGROUPED_TESTS|OPTIONAL_ONLY_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
 if (( tbl_lines < 10 )); then
   fail_t "only parsed $tbl_lines line(s) of the table literals out of $SELF — the probe is broken, not the table"
 elif (( danger == 0 )); then
