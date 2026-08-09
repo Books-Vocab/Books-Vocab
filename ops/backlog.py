@@ -1299,6 +1299,15 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         # explicitly refused to sign. Name the gap instead of inheriting it.
         problems.append({"kind": "commit-state-unavailable", "repo": str(GIT_REPO)})
 
+    # `glob("*.json")` is deliberately non-recursive: a legal entry under
+    # `<store>/archive` is invisible to validate, ratchet, list, and render.
+    # The orchestrator deliberately routes only top-level entries to avoid a
+    # vacuous pass, while coverage is only a warning; assert the flat-store
+    # invariant here so the two choices cannot silently hide a nested entry.
+    for path in sorted(store.iterdir()):
+        if not path.is_file() or path.suffix != ".json":
+            problems.append({"kind": "stray-path", "path": str(path)})
+
     payloads: list[tuple[str, dict]] = []
     for path in sorted(store.glob("*.json")):
         try:
