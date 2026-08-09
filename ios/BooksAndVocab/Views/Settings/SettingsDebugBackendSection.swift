@@ -82,7 +82,6 @@ struct SettingsDebugBackendSection: View {
                         .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))
                 }
             }
-            .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

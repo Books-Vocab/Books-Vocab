@@ -46,14 +46,8 @@ enum ReaderMetrics {
     static let settingsControlHorizontalPadding: CGFloat = 14
     static let settingsControlVerticalPadding: CGFloat = 14
 
-    // MARK: - Settings divider
-
-    /// 設定面板分隔線透明度
-    static let settingsDividerOpacity: Double = 0.6
-
     // MARK: - Vocab settings
 
-    static let vocabOptionVerticalPadding: CGFloat = 10
     /// 主題選項列尾端的色票（原本是 selection tile 內的整條色帶，
     /// 改成原生 inline picker 後縮為一列內的小色塊）。
     static let vocabThemeSwatchWidth: CGFloat = 28

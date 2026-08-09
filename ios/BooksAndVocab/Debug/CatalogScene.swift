@@ -143,7 +143,6 @@ struct CatalogScene: View {
             "Vocab Shell · Tab Selector", // generic VocabTabSelector<ID: Hashable>
             "Review Fold · Paper Fold",   // PaperFoldModifier is a ViewModifier, not a View
             "Vocab Scene Shell",          // generic VocabSceneShell<Content> — no single metatype
-            "Reader Selection Tile",      // generic ReaderSelectionTile<Content> — no single metatype
         ]
 
         static let entries: [ManifestEntry] = [
@@ -259,7 +258,6 @@ struct CatalogScene: View {
             .init(id: "notebook_cover", surfaces: [block("Notebook Cover", .notebook, NotebookCoverView.self)], register: NotebookCoverScenarios.register),
             .init(id: "link_reason_sheet", surfaces: [overlay("Link Reason Sheet", .vocabulary, LinkReasonSheet.self)], register: LinkReasonSheetScenarios.register),
             .init(id: "reader_notebook_picker", surfaces: [overlay("Reader Notebook Picker", .reader, ReaderNotebookPicker.self)], register: ReaderNotebookPickerScenarios.register),
-            .init(id: "reader_selection_tile", surfaces: [block("Reader Selection Tile", .reader)], register: ReaderSelectionTileScenarios.register),
             .init(id: "subscription_views", surfaces: [block("Subscription Views · Gate Card", .monetization, ProAccessGateCard.self)], register: SubscriptionViewsScenarios.register),
             .init(id: "podcast_continue_card", surfaces: [block("Podcast Continue Card", .podcast, PodcastContinueCard.self)], register: PodcastContinueCardScenarios.register),
             .init(
