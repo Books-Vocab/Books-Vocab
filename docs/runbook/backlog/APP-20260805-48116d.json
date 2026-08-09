@@ -1,6 +1,6 @@
 {
   "acceptance": "紅：今日 WordDetailSheet.swift 完全沒有 `showsLifecycleActions` 這個符號，`marketingSheet()` 的建構式也沒帶它，rc=1。綠：兩者同時成立——型別上真的有這個參數（防止只在 scenario 端寫個編譯不過的 label），且行銷 scenario 的那一次建構明確傳 `showsLifecycleActions: false`（判準把搜尋窗限縮在 `func marketingSheet(` 之後 1200 字元內，所以同檔另外三處 WordDetailSheet 建構不會假滿足）。in-memory 正控已驗證兩步改完後翻綠。",
-  "acceptance_cmd": "python3 -c 'import io,os,sys; s=\"ios/BooksAndVocab/Debug/Scenarios/WordDetailScenarios.swift\"; w=\"ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift\"; sys.exit(3) if not (os.path.isfile(s) and os.path.isfile(w)) else None; a=io.open(s,encoding=\"utf-8\").read(); b=io.open(w,encoding=\"utf-8\").read(); i=a.find(\"func marketingSheet(\"); sys.exit(3) if i < 0 else None; body=a[i:i+1200]; sys.exit(0 if (\"showsLifecycleActions\" in b and \"showsLifecycleActions: false\" in body) else 1)'",
+  "acceptance_cmd": "uv run --no-project --python 3.13 python -c 'import io,os,sys; s=\"ios/BooksAndVocab/Debug/Scenarios/WordDetailScenarios.swift\"; w=\"ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift\"; sys.exit(3) if not (os.path.isfile(s) and os.path.isfile(w)) else None; a=io.open(s,encoding=\"utf-8\").read(); b=io.open(w,encoding=\"utf-8\").read(); i=a.find(\"func marketingSheet(\"); sys.exit(3) if i < 0 else None; body=a[i:i+1200]; sys.exit(0 if (\"showsLifecycleActions\" in b and \"showsLifecycleActions: false\" in body) else 1)'",
   "acceptance_expect_rc": 0,
   "brief": "官網那張單字卡宣傳圖下次重做時會多出一列紅色刪除鍵，跟旁邊的文案對不上。",
   "category": "content",
