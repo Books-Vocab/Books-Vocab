@@ -1,0 +1,14 @@
+{
+  "brief": "Reviewer dispatch capacity can leave a delivery wave without machine-visible review evidence",
+  "category": "tool",
+  "date": "2026-08-10",
+  "detail": "While reviewing commit 02b5a07bb0a7acc5e349194ee3bb1314f9d4b6c0, multi_agent_v1__spawn_agent returned agent thread limit reached; sending the follow-up to the existing reviewer produced a submission but no response within the bounded wait. Fresh machine gates and tests passed, but review_audit still reports missing receipts.",
+  "id": "IMP-20260810-528736",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "one reviewer-dispatch path, one bounded retry or queue policy, and regression coverage",
+  "severity": "med",
+  "source": "Reviewer dispatch was rejected by the agent thread limit and the existing reviewer follow-up timed out during final Delivery Team closure",
+  "status": "open",
+  "stream": "IMP"
+}
