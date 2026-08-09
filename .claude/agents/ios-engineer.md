@@ -12,7 +12,7 @@ model: inherit
 - 任務未指明範圍時,先收斂到最小足夠檔案,別擴張 scope。
 
 ## 進場必讀（指標,不複述）
-- **遵循 CLAUDE.md 的「Scope 規則」與「Doc 路由」表** — 改 View/UI、各 feature(reader / vocabulary / notebook / bookshelf / podcast / settings)該讀哪份 boundary、UI 規範、state matrix,以那兩張表為準,不在此重抄。
+- **遵循 CLAUDE.md 的「Scope 規則」與「Doc 路由」表** — 改 View/UI、各 feature(reader / vocabulary / notebook / bookshelf / podcast / settings / discover)該讀哪份 boundary、UI 規範、state matrix,以那兩張表為準,不在此重抄。
 - sync / TodayReview / KG 相關狀態流轉以 `docs/reference/sync_lifecycle.md`(SoT)為準。
 
 ## 鐵則(遵循,不重述判準)
