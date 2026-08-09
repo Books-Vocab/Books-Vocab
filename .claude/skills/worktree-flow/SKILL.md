@@ -288,6 +288,32 @@ ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --comm
 ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --commit --json
 ```
    只跑一次綁定最終 HEAD 的 Gate。`--no-gate` 不產生 verdict，也不改變 `cutover` 的放行規則。
+   ### 衝突：rerere 可能先動手，而且不出聲
+   先在目前這個 clone 檢查 `git config --get rerere.enabled`。若輸出 `true` 且
+   `rerere.autoUpdate` 未設，Git 可能已把先前記錄的解法寫進工作區，但索引仍顯示 `UU`。
+   因此看到 `UU <file>` 卻找不到衝突標記，不代表 cherry-pick 半途崩潰；這是 rerere 可能替你
+   預解了檔案。這個設定是 `.git/config` 的 per-clone 狀態，不進版控；oscar 於 2026-08-08
+   實測為 `true`，felix 的兩個 clone 實測為 unset，所以每次要以當下檢查為準。
+
+   還剩哪些衝突未解的憑證是 `git rerere status`，不是掃衝突標記。文件本身可能描述衝突標記，
+   未以行首錨定的 grep 會把散文當成殘留；`docs-conflict-markers` gate 的行首檢查只回答「已
+   commit 的檔案是否留有標記」，不回答「rerere 預解是否正確」，兩件事不能互換。
+
+   對 rerere 預解的檔案，在 `git add` 之前先取差集：
+```
+git diff --name-only --diff-filter=U
+git rerere status
+git rerere diff
+```
+   對差集中沒有列在 `git rerere status` 的檔案，逐檔看 `git rerere diff` 究竟改了什麼；不接受
+   該預解時，使用 `git rerere forget <path>`，或用 `git checkout -m <path>` /
+   `git checkout --conflict=diff3 <path>` 把真正的衝突取回來，確認後才 `git add`。不要因為檔案
+   裡沒有標記就目視掃過後直接收下。
+
+   rerere replay 的是另一個脈絡下對同一衝突雜湊做過的決定；雜湊相同不代表這次仍然正確。
+   rr-cache 條目預設保留 60 天（`gc.rerereResolved`），所以它是需要驗證的 resolver，不是正確性
+   證明。
+
    解法原則不變：生成產物重跑 generator，不手改；表格列用前後綴接合再修散文；純新增的
    程式碼 hunk 取兩邊。要放棄整批用 `--abort --commit`——它只解掉進行中的 cherry-pick 並忘掉
    整合狀態，**工作樹留著**（拆除是 `resolve` 的事，也只有它會過 landed-floor）。
