@@ -1,0 +1,14 @@
+{
+  "brief": "父整合者無法自動知道所有子批次是否到齊，只能靠人手輸入分支並重新拼出票與版本的對應。",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "R6、R7 與三棵 R8 child integration 都已 hand-back，但現行 parent 必須由操作者手打五個 branch 名稱並以 git cherry 人工確認是否吸收。R8 receipts 同時把 feat/r6-land 稱為 parent，而 R6 manifest 把同一 branch 定義為 child，顯示 batch identity 與 parent role 不在機器狀態中。需要 batch-scoped handed-back child queue 與 parent reserve：自動列出唯一 child 集合、拒絕缺 child、重複吸收、stale tip、票數不符或 outcome 遺失；parent manifest 要保存 ticket -> source SHA -> child SHA -> parent SHA -> acceptance -> closure 狀態，queue 未對帳歸零前不得宣稱 ready-for-gate。這張從 child hand-back 後開始，不重做 worker claim 或 hand-back seal。",
+  "id": "IMP-20260809-bd9172",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "父子批次佇列、整合清單與結案追溯，橫跨整合器、登記簿及測試。",
+  "severity": "high",
+  "source": "R6-R8 pressure-test architecture review",
+  "status": "open",
+  "stream": "IMP"
+}

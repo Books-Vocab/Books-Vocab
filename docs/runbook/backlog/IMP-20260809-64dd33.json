@@ -1,0 +1,14 @@
+{
+  "brief": "查一個正在執行的工作也必須掃描並輸出整份歷史紀錄，協調者白等且浪費大量閱讀空間。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "唯讀調查在 60 筆 active 狀態下兩次呼叫 worktree_registry.py list --json；CLI 沒有 active、branch、slug、fields、summary 或 no-liveness 投影，因此每個小問題都必須分類並輸出整份歷史 ledger，再靠 jq 丟棄。兩次 live classification 各約 27 秒；R6 報告觀測約 4,014 行，R8 觀測約 153 KB、44 秒。需要 fail-closed 的 compact query surface，至少支援 active-only、branch/slug/path 精確查詢、欄位投影、summary/conflicts，以及可選的 no-liveness 快路徑；預設 agent-facing output 應只含決策欄位與完整 artifact 路徑。不得改變既有完整 list --json schema。",
+  "id": "IMP-20260809-64dd33",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "登記簿查詢介面與效能測試，一支工具的中型改善。",
+  "severity": "med",
+  "source": "R6-R8 pressure-test architecture review",
+  "status": "open",
+  "stream": "IMP"
+}

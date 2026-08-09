@@ -1,0 +1,14 @@
+{
+  "brief": "批次整合暫停後沒有正式的唯讀狀態入口，操作者只能猜測下一步或直接讀內部暫存。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "integrate --no-gate 已是正式入口，會保留 in-flight JSON 並停在 gate_pending；但 integrate help 沒有只讀 status/inspect。R6 因嘗試不存在的狀態命令產生無效背景程序，操作者目前只能直接讀 .cache/worktree_integrations 或從 prose 推測 picked、remaining、conflicts、gate 狀態與 next command。需要 slug-scoped mutation-free status，回傳 phase、worktree、branch、base、HEAD、source tips、picked/remaining/conflicts、gate_pending、gate record freshness、reservation owner 與唯一 next action；state 不存在或 branch/tip 漂移要具名區分。不得讓 inspect 隱式 continue、gate、abort 或建立 worktree。",
+  "id": "IMP-20260809-6f38c6",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "整合器增加一個唯讀查詢面與狀態測試，屬中型改善。",
+  "severity": "med",
+  "source": "R6-R8 pressure-test architecture review",
+  "status": "open",
+  "stream": "IMP"
+}
