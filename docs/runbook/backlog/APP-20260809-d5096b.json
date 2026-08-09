@@ -1,0 +1,17 @@
+{
+  "brief": "英日韓介面上六個「關閉」按鈕顯示成「Off / オフ / 끄기」——該寫「關窗」的地方寫成了「關掉開關」。繁中簡中看起來正常，所以一直沒人發現。",
+  "build": "feat/reader-settings-preview @ 60fa9a622（缺陷早於本分支，非本分支引入）",
+  "category": "correctness",
+  "date": "2026-08-09",
+  "detail": "Localizable.strings 的重複鍵後者覆蓋前者，而中文字面當 key 讓不同語意的字串撞在同一個 key 上。\nen.lproj 目前有 20 個重複鍵，其中 6 個兩筆值不同；最嚴重的是 \"關閉\"。\n\n\"關閉\" 在 en.lproj 定義兩次：line 216 = \"Close\"、line 589 = \"Off\"。後者勝出，\n所以全 app 的 \"關閉\" 一律解析成 \"Off\"（ja \"オフ\"、ko \"끄기\"）。\n\n但這個 key 有 7 個呼叫點，其中 6 個語意是「關閉視窗 / 收起」，只有 1 個是「關」：\n\n意思是 Close（現在錯誤顯示 Off / オフ / 끄기）：\n  - Views/Vocabulary/Scenes/SyncPresenter.swift:99          dismiss 按鈕\n  - Views/Vocabulary/Scenes/ArchivedVocabSheet.swift:74     dismiss 按鈕\n  - Views/Vocabulary/Scenes/TodayReviewPhaseView.swift:91   關閉動作\n  - Views/Vocabulary/Scenes/TodayReviewShortcutCatalog.swift:62,79  Esc 鍵說明\n  - Views/Bookshelf/BookshelfCopy.swift:24                  closeTitle\n  - Views/Settings/TranslationLanguageSettingsView.swift:25 dismiss 按鈕\n\n意思真的是 Off（唯一正確者）：\n  - Views/Podcast/PodcastSettingsPopover.swift:110          睡眠計時器 .off 選項\n\nzh-Hant / zh-Hans 兩筆值相同（都是「關閉」），所以繁中簡中看起來完全正常 ——\n這個 bug 只在 en / ja / ko 顯現，也是它一直沒被發現的原因。\n\n同類但較輕的一筆：\"自動連結\" 也重複且值不同（Auto-Connect / Auto-link），\n呼叫點在 SettingsPreferencesSection.swift 與 WelcomeView.swift，兩處文案不一致。\n\n另有 4 個重複且值不同的鍵已無呼叫點（字級倍率 / 排版 / 生字標記 / 開發者與除錯），\n屬死資料，可順手清掉但無使用者影響 —— 其中三個是 APP-20260809-ca8e30 把閱讀設定\n改成 reader.settings.* dot-key 之後留下的孤兒。\n\n根因與 APP-20260809-ca8e30 第四列同一條：用中文字面當 L10n key。修法方向是把撞名的\nkey 改成 dot-key（例如 common.close / podcast.sleepTimer.off），而不是去調整重複鍵的\n先後順序 —— 後者只是把賭注換一邊押。\n\n建議一併加一道 lint：Localizable.strings 出現重複鍵即 fail。今天沒有任何機制擋得住它，\n而這 20 個重複鍵就是在沒人反對的情況下長出來的。",
+  "id": "APP-20260809-d5096b",
+  "repro": "把 app 語言切成 English（或日文 / 韓文）→ 開任一個有關閉鍵的 sheet（詞庫同步、封存單字、翻譯語言設定）→ 按鈕寫的是「Off」而不是「Close」",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "iOS：把撞名的中文字面 key 改成 dot-key，約 7 個呼叫點加五份 strings；另建議補一道重複鍵 lint。",
+  "severity": "med",
+  "source": "做 APP-20260809-ca8e30 換 L10n key 時量到（ios-engineer）",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}
