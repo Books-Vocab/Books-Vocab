@@ -18,7 +18,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from asc_get import get, mint_token  # noqa: E402
 
 APP_ID = os.environ.get("ASC_APP_ID", "6759816274")
 
@@ -28,6 +27,16 @@ def die(msg):
 
 
 def main():
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.parse_args()
+
+    from asc_get import get, mint_token
+
     try:
         token = mint_token()
     except OSError as exc:
