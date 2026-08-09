@@ -4151,7 +4151,7 @@ def test_add_refuses_groom_flags_by_name_and_says_where_they_belong(tmp_path, ca
         assert BACKLOG.main([*base, flag, value]) == 64, flag
         err = capsys.readouterr().err
         assert flag in err, f"{flag} was refused without being named: {err}"
-        assert "update" in err, f"{flag}'s refusal does not say where it belongs: {err}"
+        assert "groom" in err, f"{flag}'s refusal does not say where it belongs: {err}"
     # nothing was written on any of those refusals
     assert not list(store.glob("*.json")) if store.exists() else True
     # ...and the ordinary path still works
@@ -5143,7 +5143,136 @@ def test_deduping_the_refusal_does_not_swallow_distinct_defects(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# 25. `dispatch` — the queue the operating constitution already names
+# 25. `groom` — one typed act between filing and dispatch
+#
+# `update` can express every field for migrations and unusual repairs, but it
+# cannot teach the ordinary workflow: an agent had to know six field names,
+# remember that the stamp makes `triaged` honest, and infer that verification is
+# an independent question.  The named door below must remain a thin atomic act,
+# not a second implementation of the groom invariants.
+# --------------------------------------------------------------------------
+
+
+def _groom_argv(store: Path, entry_id: str, *extra: str) -> list[str]:
+    return [
+        "groom", entry_id, "--store", str(store),
+        "--brief", BRIEF_TEXT,
+        "--scope", SCOPE_TEXT,
+        "--plan", "open ops/x.py:10, replace the stale predicate, run the test",
+        "--acceptance", "the focused regression turns green",
+        "--fix-site", "ops/x.py:10",
+        "--by", "agent:platform-steward",
+        *extra,
+    ]
+
+
+def test_groom_is_an_atomic_dry_run_by_default(tmp_path, capsys, monkeypatch):
+    store = tmp_path / "s"
+    entry = _add(store)
+    before = (store / f"{entry['id']}.json").read_bytes()
+    monkeypatch.setattr(BACKLOG, "_main_commit", lambda repo=None: "abc1234")
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true", "--json")) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema"] == "kg.backlog.groom.v1"
+    assert payload["mode"] == "dry-run"
+    assert payload["entry"]["status"] == "triaged"
+    assert payload["entry"]["groomed_by"] == "agent:platform-steward"
+    assert payload["entry"]["groomed_against"] == "abc1234"
+    assert (store / f"{entry['id']}.json").read_bytes() == before
+
+
+def test_groom_commit_makes_an_unresolved_entry_dispatchable(
+    tmp_path, capsys, monkeypatch
+):
+    store = tmp_path / "s"
+    entry = _add(store)
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+    monkeypatch.setattr(BACKLOG, "_main_commit", lambda repo=None: "abc1234")
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-manual",
+        "requires a signed-in device gesture", "--commit", "--json")) == 0
+    groomed = json.loads(capsys.readouterr().out)
+    assert groomed["mode"] == "commit"
+    assert groomed["entry"]["status"] == "triaged"
+
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
+    dispatched = json.loads(capsys.readouterr().out)
+    assert [row["id"] for row in dispatched["entries"]] == [entry["id"]]
+
+
+def test_groom_requires_exactly_one_acceptance_proof(tmp_path, capsys):
+    store = tmp_path / "s"
+    entry = _add(store)
+
+    assert BACKLOG.main(_groom_argv(store, entry["id"], "--json")) == 64
+    missing = json.loads(capsys.readouterr().out)
+    assert "exactly one" in missing["error"].lower()
+    assert "acceptance_cmd" in missing["error"]
+    assert "acceptance_manual" in missing["error"]
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true",
+        "--acceptance-manual", "a human must inspect it", "--json")) == 64
+    conflicting = json.loads(capsys.readouterr().out)
+    assert "exactly one" in conflicting["error"].lower()
+
+
+@pytest.mark.parametrize("status", ["fixed", "wont-fix"])
+def test_groom_refuses_to_reopen_a_closed_entry(tmp_path, capsys, status):
+    store = tmp_path / "s"
+    entry = _add(store)
+    changes = {"status": status}
+    if status == "fixed":
+        changes["fixed_by"] = ["abc1234"]
+    else:
+        changes["resolution"] = "the operational cost exceeds the value"
+    BACKLOG.update_entry(store, entry["id"], **changes)
+    before = (store / f"{entry['id']}.json").read_bytes()
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true", "--commit",
+        "--json")) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert "closed" in payload["error"].lower()
+    assert "reopen" in payload["error"].lower()
+    assert (store / f"{entry['id']}.json").read_bytes() == before
+
+
+def test_groom_help_names_its_boundary_with_verify_and_dispatch(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        BACKLOG.build_parser().parse_args(["groom", "--help"])
+    assert excinfo.value.code == 0
+    help_text = capsys.readouterr().out.lower()
+    assert "verify" in help_text, help_text
+    assert "dispatch" in help_text, help_text
+    assert "dry-run" in help_text, help_text
+
+
+def test_lifecycle_is_a_machine_readable_contract_not_tribal_knowledge(capsys):
+    assert BACKLOG.main(["lifecycle", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema"] == "kg.backlog.lifecycle.v1"
+    acts = {item["id"]: item for item in payload["acts"]}
+    assert acts["verify"]["required_for_dispatch"] is False
+    assert acts["groom"]["required_for_dispatch"] is True
+    assert acts["dispatch"]["writes_store"] is False
+    assert set(acts["close"]["branches"]) == {"single", "wave", "decline"}
+    assert payload["terminal_statuses"] == ["fixed", "wont-fix"]
+
+    scenarios = {item["id"] for item in payload["scenarios"]}
+    assert {
+        "fresh-report", "uncertain-or-stale", "reporter-also-verifies",
+        "duplicate", "manual-acceptance", "batch-wave", "recurrence",
+    } <= scenarios
+
+
+# --------------------------------------------------------------------------
+# 26. `dispatch` — the queue the operating constitution already names
 #     (IMP-20260808-573a09)
 #
 # CLAUDE.md nominalises `dispatch` in three places ("take one from `dispatch`",
@@ -5663,6 +5792,67 @@ def test_add_accepts_an_explicit_commit_without_changing_the_fast_default(
     default = json.loads(capsys.readouterr().out)
     assert default["mode"] == "commit"
     assert (default_store / f"{default['entry']['id']}.json").exists()
+
+
+def test_add_library_dry_run_never_executes_a_stored_acceptance_command(tmp_path):
+    """`commit=False` covers side effects as well as the final JSON write."""
+    store = tmp_path / "s"
+    marker = tmp_path / "acceptance-ran"
+    entry = _add(store)
+    BACKLOG.update_entry(
+        store, entry["id"],
+        **_groom_kwargs(acceptance_cmd=f"touch {marker}"),
+    )
+    stored = BACKLOG.load_entry(store, entry["id"])
+
+    BACKLOG.add_entry(
+        store,
+        stream=stored["stream"], date=stored["date"], source=stored["source"],
+        category=stored["category"], severity=stored["severity"], status="fixed",
+        detail=stored["detail"], resolution=stored.get("resolution", ""),
+        entry_id=stored["id"], extra=stored, overwrite=True,
+        _gate=True, commit=False,
+    )
+
+    assert not marker.exists(), "add_entry(commit=False) executed acceptance_cmd"
+
+
+def test_add_success_reports_whether_it_created_or_reused_the_entry(tmp_path, capsys):
+    store = tmp_path / "s"
+
+    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--json"]) == 0
+    created = json.loads(capsys.readouterr().out)
+    assert created["written"] is True
+    assert created["created"] is True
+    assert created["existing"] is False
+
+    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--json"]) == 0
+    reused = json.loads(capsys.readouterr().out)
+    assert reused["written"] is False
+    assert reused["created"] is False
+    assert reused["existing"] is True
+
+
+@pytest.mark.parametrize(
+    ("mode_flags", "expected_mode"),
+    [([], "commit"), (["--dry-run"], "dry-run")],
+)
+def test_add_refusal_reports_mode_and_that_nothing_was_written(
+    tmp_path, capsys, mode_flags, expected_mode
+):
+    store = tmp_path / "s"
+    rc = BACKLOG.main([
+        "add", "--store", str(store), *_ADD, "--status", "triaged",
+        *mode_flags, "--json",
+    ])
+
+    assert rc == 64
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["mode"] == expected_mode
+    assert payload["written"] is False
+    assert f"mode={expected_mode}" in captured.err
+    assert "written=false" in captured.err
 
 
 def test_add_refuses_a_triaged_entry_with_no_next_action_and_leaves_no_file(tmp_path, capsys):

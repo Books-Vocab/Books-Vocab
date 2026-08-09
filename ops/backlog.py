@@ -1339,7 +1339,7 @@ def add_entry(
         except (EntryNotFound, OSError, ValueError):
             stored = {}
         _gate_closure(stored or {"id": entry_id or "(new entry)"},
-                      {"status": status}, commit=True)
+                      {"status": status}, commit=commit)
 
     payload = {
         "schema": SCHEMA,
@@ -2959,6 +2959,16 @@ def build_parser() -> argparse.ArgumentParser:
         p_add.add_argument(flag, dest=f"groom_only_{flag.lstrip('-').replace('-', '_')}",
                            help=argparse.SUPPRESS)
 
+    p_lifecycle = sub.add_parser(
+        "lifecycle",
+        help="explain the ticket state machine, actor boundaries and common paths",
+        description=(
+            "Read-only contract for a ticket from filing to terminal disposition. "
+            "Use --json when an agent or another tool needs the same model."
+        ),
+    )
+    p_lifecycle.add_argument("--json", action="store_true")
+
     p_list = sub.add_parser("list", help="list entries")
     _add_list_filters(p_list, dispatch_flag=True)
 
@@ -3146,6 +3156,77 @@ def build_parser() -> argparse.ArgumentParser:
              "(cannot be combined with --baseline-check)")
     _add_store_arg(p_validate)
     p_validate.add_argument("--json", action="store_true")
+
+    p_groom = sub.add_parser(
+        "groom",
+        help="turn one unresolved report into executable, dispatchable work "
+             "(DRY-RUN by default, --commit to land)",
+        description=(
+            "Work out HOW an unresolved report will be fixed, as one atomic act. "
+            "This sets status=triaged plus brief/scope/plan/acceptance/fix_site "
+            "and the groom stamp; a committed result can enter `dispatch` if it "
+            "is also unclaimed and unblocked. This is NOT `verify`: verify asks "
+            "whether the reported claim is still true and is optional unless the "
+            "claim is stale or uncertain. Groom asks whether the ticket is "
+            "executable and is required before dispatch. Closed tickets stay "
+            "closed; a recurrence is a new `add`. DRY-RUN by default."
+        ),
+    )
+    _add_store_arg(p_groom)
+    p_groom.add_argument("id")
+    p_groom.add_argument(
+        "--brief", required=True,
+        help="one plain sentence: what is broken or missing and who feels it",
+    )
+    p_groom.add_argument(
+        "--scope", required=True,
+        help="one plain sentence of size/cost; not the code anchor",
+    )
+    p_groom.add_argument(
+        "--plan", required=True,
+        help="steps concrete enough for a small model to execute without re-deriving",
+    )
+    p_groom.add_argument(
+        "--acceptance", required=True,
+        help="prose describing the red-then-green success condition",
+    )
+    p_groom.add_argument(
+        "--acceptance-cmd", dest="acceptance_cmd",
+        help="machine-checkable command used by the closure gate; exactly one of "
+             "this and --acceptance-manual is required",
+    )
+    p_groom.add_argument(
+        "--acceptance-expect-rc", dest="acceptance_expect_rc", type=int,
+        help="exit code --acceptance-cmd must return (default 0)",
+    )
+    p_groom.add_argument(
+        "--acceptance-manual", dest="acceptance_manual",
+        help="why no command can express acceptance; exactly one of this and "
+             "--acceptance-cmd is required and remains countable",
+    )
+    p_groom.add_argument(
+        "--acceptance-green-expected", dest="acceptance_green_expected",
+        help="why the command is expected to be green before implementation; "
+             "requires --acceptance-cmd and remains countable",
+    )
+    p_groom.add_argument(
+        "--fix-site", dest="fix_site", required=True,
+        help="primary code/document anchor the executor should inspect first",
+    )
+    p_groom.add_argument(
+        "--by", dest="groomed_by", required=True,
+        help="who worked out the ticket, e.g. agent:platform-steward",
+    )
+    p_groom.add_argument(
+        "--at", dest="groomed_at",
+        help="YYYY-MM-DD (default: today)",
+    )
+    p_groom.add_argument(
+        "--against", dest="groomed_against",
+        help="local-main commit the plan was checked against (default: current local main)",
+    )
+    p_groom.add_argument("--commit", action="store_true")
+    p_groom.add_argument("--json", action="store_true")
 
     p_update = sub.add_parser(
         "update",
@@ -3411,16 +3492,124 @@ def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
     return None
 
 
+def _lifecycle_contract() -> dict:
+    """One machine-readable model for help text, skills and automation."""
+    return {
+        "schema": "kg.backlog.lifecycle.v1",
+        "terminal_statuses": ["fixed", "wont-fix"],
+        "invariants": [
+            "verify checks whether a claim is true; groom makes a ticket executable",
+            "verification is orthogonal and never a dispatch prerequisite",
+            "dispatch means groomed AND unresolved AND unclaimed AND unblocked",
+            "ownership lives in the worktree registry, never in a stored in-progress status",
+            "closed tickets stay closed; recurrence is a new filed occurrence",
+        ],
+        "acts": [
+            {
+                "id": "add", "actor": "recorder", "command": "backlog.py add",
+                "meaning": "preserve an observed problem after deduplication",
+                "writes_store": True, "write_mode": "immediate-default",
+                "required_for_dispatch": True,
+            },
+            {
+                "id": "verify", "actor": "verifier", "command": "backlog.py verify",
+                "meaning": "re-derive whether the claim is still true and attach rerunnable evidence",
+                "writes_store": True, "write_mode": "dry-run-default",
+                "required_for_dispatch": False,
+            },
+            {
+                "id": "groom", "actor": "groomer", "command": "backlog.py groom",
+                "meaning": "atomically set triaged plus brief/scope/plan/acceptance/fix_site",
+                "writes_store": True, "write_mode": "dry-run-default",
+                "required_for_dispatch": True,
+            },
+            {
+                "id": "dispatch", "actor": "worker", "command": "backlog.py dispatch",
+                "meaning": "read the worst-first takeable queue",
+                "writes_store": False, "write_mode": "read-only",
+                "required_for_dispatch": False,
+            },
+            {
+                "id": "claim", "actor": "worker",
+                "command": "worktree_orchestrate.py open --backlog <id>",
+                "meaning": "claim exclusively in the local worktree registry and begin work",
+                "writes_store": False, "write_mode": "registry-write",
+                "required_for_dispatch": False,
+            },
+            {
+                "id": "close", "actor": "worker-or-integrator",
+                "command": "verify/update or stage/anchor",
+                "meaning": "prove the authored acceptance and preserve landing traceability",
+                "writes_store": True, "write_mode": "explicit",
+                "required_for_dispatch": False,
+                "branches": ["single", "wave", "decline"],
+                "branch_commands": {
+                    "single": "verify --status fixed --fixed-by/--fixed-elsewhere --commit",
+                    "wave": "stage -> cutover/resolve stamps landing -> anchor --commit",
+                    "decline": "update --status wont-fix --resolution <reason> --commit",
+                },
+            },
+        ],
+        "scenarios": [
+            {
+                "id": "fresh-report",
+                "path": "dedupe -> add -> groom -> dispatch -> claim -> implement -> close",
+            },
+            {
+                "id": "uncertain-or-stale",
+                "path": "verify first; groom only if the claim survives re-verification",
+            },
+            {
+                "id": "reporter-also-verifies",
+                "path": "the recorder may also verify when they actually ran rerunnable evidence; roles may share an actor but stamps stay separate",
+            },
+            {
+                "id": "duplicate",
+                "path": "verify DUPLICATE-OF-<id> -> update wont-fix with the canonical id and reason",
+            },
+            {
+                "id": "manual-acceptance",
+                "path": "groom --acceptance-manual <why>; the exception remains explicitly countable",
+            },
+            {
+                "id": "batch-wave",
+                "path": "workers stage evidence; the integrator lands once and anchor closes the wave atomically",
+            },
+            {
+                "id": "recurrence",
+                "path": "do not reopen through groom; dedupe and add a new dated occurrence",
+            },
+        ],
+    }
+
+
+def _cmd_lifecycle(args) -> int:
+    contract = _lifecycle_contract()
+    if args.json:
+        print(json.dumps(contract, ensure_ascii=False))
+        return 0
+
+    print("Ticket lifecycle (roles may share an actor; acts and evidence stay separate):")
+    for act in contract["acts"]:
+        required = "required before dispatch" if act["required_for_dispatch"] else "orthogonal"
+        print(f"  {act['id']:<8} {act['actor']:<20} {required}: {act['meaning']}")
+    print("Terminal: fixed (proved + traced) / wont-fix (reasoned decline).")
+    print("Common scenarios:")
+    for scenario in contract["scenarios"]:
+        print(f"  {scenario['id']}: {scenario['path']}")
+    return 0
+
+
 def _cmd_add(args) -> int:
     reached = [f for f in GROOM_ONLY_FLAGS
                if getattr(args, f"groom_only_{f.lstrip('-').replace('-', '_')}", None) is not None]
     if reached:
         raise BacklogError(
-            f"{', '.join(reached)} belong to `update`, not `add` — grooming is a "
+            f"{', '.join(reached)} belong to `groom`, not `add` — grooming is a "
             f"separate act from filing, and it has to be: a badge you can apply while "
             f"filing is a badge that costs nothing.\n"
             f"  file it first:  ./ops/backlog.py add ... --json   (prints the new id)\n"
-            f"  then groom it:  ./ops/backlog.py update <id> {' '.join(reached)} ... --commit")
+            f"  then groom it:  ./ops/backlog.py groom <id> --help")
     # The fourth door. `add --status fixed` writes the status directly, and before
     # this it ran no acceptance at all — the review reproduced it end to end. `add`
     # has no `--commit` (it lands immediately, a named exception to the dry-run
@@ -3431,6 +3620,12 @@ def _cmd_add(args) -> int:
     # alternative is a `fixed` that never passed through the gate at all and is
     # indistinguishable in the store from one that did. Counting it is the point.
     commit = not args.dry_run
+    candidate_id = args.entry_id or make_entry_id(
+        stream=args.stream, date=args.date, source=args.source, detail=args.detail
+    )
+    existed_before = bool(
+        _SAFE_ID_RE.match(candidate_id) and entry_path(args.store, candidate_id).exists()
+    )
     acceptance = _gate_closure({"id": "(new entry)"}, {"status": args.status},
                                commit=commit)
     entry = add_entry(
@@ -3452,14 +3647,21 @@ def _cmd_add(args) -> int:
         commit=commit,
     )
     mode = "commit" if commit else "dry-run"
+    written = commit and not existed_before
     if args.json:
-        print(json.dumps({"schema": "kg.backlog.add.v1", "mode": mode, "entry": entry,
+        print(json.dumps({"schema": "kg.backlog.add.v1", "mode": mode,
+                          "written": written, "created": written,
+                          "existing": existed_before, "entry": entry,
                           **({"acceptance": acceptance} if acceptance else {})},
                          ensure_ascii=False))
     else:
         print(f"{entry['id']}  [{entry['stream']}/{entry['category']}/{entry['severity']}]")
-        print(f"  mode={mode}; {entry['detail'][:120]}")
-        if not commit:
+        print(f"  mode={mode}; written={str(written).lower()}; "
+              f"created={str(written).lower()}; existing={str(existed_before).lower()}; "
+              f"{entry['detail'][:120]}")
+        if existed_before:
+            print("  nothing written; an identical entry already exists")
+        elif not commit:
             print("  nothing written; rerun without --dry-run (or pass --commit) to file it")
     return 0
 
@@ -4781,6 +4983,36 @@ def _cmd_validate(args) -> int:
     return 2 if problems else 0
 
 
+def _cmd_groom(args) -> int:
+    """Typed lifecycle door; `_cmd_update` remains the sole mutation engine."""
+    before = load_entry(args.store, args.id)
+    if before.get("status") in ("fixed", "wont-fix"):
+        raise BacklogError(
+            f"{args.id} is closed (status={before.get('status')}); `groom` never "
+            "reopens closed tickets. If the problem recurred, file the new "
+            "occurrence with `add` so the old closure remains an honest audit trail"
+        )
+
+    proofs = [
+        field for field in ("acceptance_cmd", "acceptance_manual")
+        if str(getattr(args, field, None) or "").strip()
+    ]
+    if len(proofs) != 1:
+        raise BacklogError(
+            "groom requires exactly one acceptance proof: acceptance_cmd for a "
+            "machine-checkable gate OR acceptance_manual with the reason no "
+            "command can express it"
+        )
+
+    # `triaged` means somebody decided the next action. A complete groom plan is
+    # exactly that decision, so leaving the status open would create two answers
+    # to the same question. Verification remains independent: no verified_* field
+    # is touched here, and dispatch does not require one.
+    args.status = "triaged"
+    args.groomed_at = args.groomed_at or _today()
+    return _cmd_update(args)
+
+
 def _cmd_update(args) -> int:
     # Derived from MUTABLE_FIELDS, not a second hand-written list. The previous
     # hand-written tuple happened to be a subset, so the dry-run path and the
@@ -4867,7 +5099,7 @@ def _cmd_update(args) -> int:
         # has no entry" from "the write did nothing", and had to re-query to find out
         # a successful write had happened. `add` and `show` already answer this way.
         print(json.dumps(
-            {"schema": "kg.backlog.update.v1",
+            {"schema": f"kg.backlog.{args.command}.v1",
              "mode": "commit" if args.commit else "dry-run",
              "id": args.id, "changes": diff, "entry": after,
              # Present only when this write was an act of closing, and then it
@@ -5179,6 +5411,7 @@ def main(argv: list[str] | None = None) -> int:
         return refusal
     handlers = {
         "add": _cmd_add,
+        "lifecycle": _cmd_lifecycle,
         "list": _cmd_list,
         # The SAME handler, not a wrapper around it: two entry points into one
         # implementation is the contract this subcommand exists to keep.
@@ -5186,6 +5419,7 @@ def main(argv: list[str] | None = None) -> int:
         "audit-criteria": _cmd_audit_criteria,
         "show": _cmd_show,
         "validate": _cmd_validate,
+        "groom": _cmd_groom,
         "update": _cmd_update,
         "import": _cmd_import,
         "render": _cmd_render,
@@ -5208,10 +5442,17 @@ def main(argv: list[str] | None = None) -> int:
         # were byte-identical apart from the return — the same hand-copied-second-time
         # shape this module criticises everywhere else, and nothing would have gone
         # red if they drifted.
-        print(f"ERROR {exc}", file=sys.stderr)
+        failure_context = {}
+        if args.command == "add":
+            mode = "dry-run" if getattr(args, "dry_run", False) else "commit"
+            failure_context = {"mode": mode, "written": False}
+            print(f"ERROR [mode={mode}; written=false] {exc}", file=sys.stderr)
+        else:
+            print(f"ERROR {exc}", file=sys.stderr)
         if getattr(args, "json", False):
             print(json.dumps({"schema": f"kg.backlog.{args.command}.v1", "ok": False,
-                              "error": str(exc), "command": args.command},
+                              "error": str(exc), "command": args.command,
+                              **failure_context},
                              ensure_ascii=False))
         # The codes this CLI actually uses are 0 / 1 / 2 / 64 (argparse adds its own
         # 2 for a malformed command line):
