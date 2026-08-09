@@ -372,5 +372,68 @@ if grep -q "origin-unreachable" /tmp/kg_docs_lint_origin_missing.out; then
 fi
 require_grep "ERROR: 0" /tmp/kg_docs_lint_origin_missing.out
 
-cleanup_anchor
+# --- reanchor orphan verified_against(IMP-20260806-32b6ee) ---
+# reanchor 只掃 tracked docs；沿用真實 doc 做 fixture，測完以備份復原，避免
+# untracked fixture 被跳過，也避免把測試 anchor 留在工作樹。
+reanchor_doc="docs/sop/doc_sync.md"
+reanchor_doc_backup="$(mktemp /tmp/kg_docs_lint_reanchor_doc.XXXXXX)"
+cp -p "$reanchor_doc" "$reanchor_doc_backup"
+cleanup_reanchor() {
+  cp -p "$reanchor_doc_backup" "$reanchor_doc"
+  rm -f "$reanchor_doc_backup"
+  cleanup_anchor
+}
+trap cleanup_reanchor EXIT
+
+write_reanchor_anchor() {
+  new_anchor="$1"
+  reanchor_tmp="${reanchor_doc}.reanchor-test.$$"
+  awk -v new_anchor="$new_anchor" '
+    /^verified_against:/ && !replaced {
+      sub(/^verified_against:[[:space:]]*.*/, "verified_against: " new_anchor)
+      replaced=1
+    }
+    { print }
+  ' "$reanchor_doc" > "$reanchor_tmp"
+  mv "$reanchor_tmp" "$reanchor_doc"
+}
+
+# 9) stable patch-id 唯一匹配:orphan commit 與 HEAD 使用相同 parent/tree，
+#    因而 diff 等價但 object 不在 HEAD 祖先鏈；dry-run 不應改 doc。
+reanchor_candidate="$(git rev-parse HEAD)"
+reanchor_parent="$(git rev-parse "${reanchor_candidate}^")"
+reanchor_orphan_sha="$(git -c user.email=docs-lint@example.test -c user.name="docs-lint fixture" commit-tree "${reanchor_candidate}^{tree}" -p "$reanchor_parent" -m "docs_lint reanchor orphan fixture")"
+if git merge-base --is-ancestor "$reanchor_orphan_sha" HEAD; then
+  echo "fixture bug: reanchor orphan commit 竟然可達 HEAD: $reanchor_orphan_sha" >&2
+  exit 1
+fi
+write_reanchor_anchor "$reanchor_orphan_sha"
+cp -p "$reanchor_doc" /tmp/kg_docs_lint_reanchor_before_dry_run.out
+run_capture /tmp/kg_docs_lint_reanchor_dry_run.out ./ops/docs_lint.sh --reanchor --search-depth 1
+require_grep "patch-id match" /tmp/kg_docs_lint_reanchor_dry_run.out
+require_grep "mapped=1 unmatched=0" /tmp/kg_docs_lint_reanchor_dry_run.out
+if ! cmp -s /tmp/kg_docs_lint_reanchor_before_dry_run.out "$reanchor_doc"; then
+  echo "reanchor dry-run 不得改寫 tracked doc" >&2
+  exit 1
+fi
+
+# 10) --commit 落地唯一映射後，該 doc 應可通過既有 --files gate。
+run_capture /tmp/kg_docs_lint_reanchor_commit.out ./ops/docs_lint.sh --reanchor --search-depth 1 --commit
+require_grep "landed 1 mapping(s) (--commit)" /tmp/kg_docs_lint_reanchor_commit.out
+require_grep "verified_against: $(git rev-parse --short=9 "$reanchor_candidate")" "$reanchor_doc"
+run_capture /tmp/kg_docs_lint_reanchor_files.out ./ops/docs_lint.sh --files "$reanchor_doc"
+require_grep "ERROR: 0" /tmp/kg_docs_lint_reanchor_files.out
+
+# 11) patch-id 無匹配時具名報錯並非零，絕不猜測鄰近 commit。
+reanchor_unmatched_sha="$(git -c user.email=docs-lint@example.test -c user.name="docs-lint fixture" commit-tree "HEAD^{tree}" -p HEAD -m "docs_lint reanchor unmatched fixture")"
+write_reanchor_anchor "$reanchor_unmatched_sha"
+if ./ops/docs_lint.sh --reanchor --search-depth 1 >/tmp/kg_docs_lint_reanchor_unmatched.out 2>&1; then
+  echo "reanchor unmatched fixture 不應被猜測成成功" >&2
+  dump_file /tmp/kg_docs_lint_reanchor_unmatched.out
+  exit 1
+fi
+require_grep "$reanchor_doc" /tmp/kg_docs_lint_reanchor_unmatched.out
+require_grep "patch-id 無唯一匹配(0 個候選),不猜" /tmp/kg_docs_lint_reanchor_unmatched.out
+
+cleanup_reanchor
 trap - EXIT
