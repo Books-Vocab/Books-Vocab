@@ -376,7 +376,15 @@ extension TodayReviewPresenter {
         currentCard: TodayReviewPresenterState.CurrentCard,
         layout: ReviewCardLayoutSolver.Result
     ) -> some View {
-        ForEach(blockFields, id: \.self) { field in
+        // id: \.element 維持原本 id: \.self 的 view identity（不要換成 \.offset）。
+        ForEach(Array(blockFields.enumerated()), id: \.element) { index, field in
+            // rule 畫在欄位**前面**、當 VStack 的同層 sibling —— 不包進被量測的子樹，
+            // 否則 natural 含線、隱藏 probe 量的另外兩階不含，階梯一壓縮就再度出現
+            // 「solver 相信的高度 != 畫面畫的高度」。
+            if ReviewCardLayoutSolver.drawsFieldDivider(face: .back, atIndex: index) {
+                CardSectionDivider(horizontalPadding: 0)
+            }
+
             reviewOptionalField(
                 field,
                 currentCard: currentCard,
@@ -513,6 +521,11 @@ extension TodayReviewPresenter {
         // 高度已經被 `.core` 的 onGeometryChange 量進去了——再配一格就是替同一段
         // 內容付兩次錢，而且多收一個 foldSectionSpacing。
         let fields = face == .front ? plan.front.blockFields : plan.back.blockFields
+        // 同一組 blockFields 的兩欄分割（core 之上／之下）。hairline 逐欄記帳：
+        // 一欄的第一格貼的是 core 不是另一格，接起來算 n-1 會多收一條。
+        let columns = face == .front
+            ? [plan.front.aboveCore, plan.front.belowCore]
+            : [plan.back.aboveCore, plan.back.belowCore]
         let defaults: [ReviewCardLayoutSolver.Section: ReviewCardLayoutSolver.Measurement] = [
             .core: .init(naturalHeight: face == .front ? 112 : 132),
             .field(.partOfSpeech): .init(naturalHeight: 22),
@@ -537,7 +550,8 @@ extension TodayReviewPresenter {
             fields: fields,
             measurements: measurements,
             viewportHeight: availableHeight,
-            minimumHeight: face == .front ? 0 : answerCardHeight
+            minimumHeight: face == .front ? 0 : answerCardHeight,
+            columns: columns
         ))
     }
 

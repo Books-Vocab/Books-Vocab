@@ -34,8 +34,11 @@ struct ReviewCardRenderPlanTests {
             .answer,
             .answerDivider,
             .field(.graphLinks),
+            .fieldDivider,
             .field(.example),
+            .fieldDivider,
             .field(.explanation),
+            .fieldDivider,
             .field(.collocations)
         ])
     }

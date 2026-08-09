@@ -124,6 +124,7 @@ struct ReviewCardLayoutGoldenTests {
         case .prompt: "prompt"
         case .answer: "answer"
         case .answerDivider: "answerDivider"
+        case .fieldDivider: "fieldDivider"
         case .field(let field): "field.\(field.rawValue)"
         }
     }

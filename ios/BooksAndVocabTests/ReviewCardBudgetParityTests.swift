@@ -170,5 +170,50 @@ struct ReviewCardDefaultParityTests {
         #expect(!ReviewCardLayoutSolver.drawsAnswerDivider(fields: tierOnly.back.belowCore))
         #expect(tierOnly.back.rows == [.field(.difficultyTier), .answer])
     }
+
+    /// 重構前背面走 `CardDocumentView`，相鄰 block 之間插一條 `.divider`。改由 solver
+    /// 驅動的 VStack 逐欄位渲染後只剩間距。補回來時它必須**同時**被畫出來與被記帳，
+    /// 否則就是 be3f9b642 整篇在修的那一族缺陷（solver 相信的高度 != 畫面畫的高度）。
+    @Test func back_face_draws_a_rule_between_adjacent_sections_and_charges_it() {
+        // (a) 張數：不領頭、不收尾；正面沒有 rule。
+        #expect(ReviewCardLayoutSolver.fieldDividerCount(face: .back, fields: []) == 0)
+        #expect(ReviewCardLayoutSolver.fieldDividerCount(face: .back, fields: [.example]) == 0)
+        #expect(ReviewCardLayoutSolver.fieldDividerCount(
+            face: .back,
+            fields: [.example, .explanation, .collocations]
+        ) == 2)
+        #expect(ReviewCardLayoutSolver.fieldDividerCount(
+            face: .front,
+            fields: [.example, .explanation, .collocations]
+        ) == 0)
+        // 每一欄各自記帳：接起來當一欄算會多收一條。
+        #expect(ReviewCardLayoutSolver.fieldDividerCount(
+            face: .back,
+            columns: [[.difficultyTier], [.example, .explanation, .collocations]]
+        ) == 2)
+
+        // (b) predicate 本身。
+        #expect(!ReviewCardLayoutSolver.drawsFieldDivider(face: .back, atIndex: 0))
+        #expect(ReviewCardLayoutSolver.drawsFieldDivider(face: .back, atIndex: 1))
+        #expect(!ReviewCardLayoutSolver.drawsFieldDivider(face: .front, atIndex: 1))
+
+        // (c) 預算：4 段內容 + 2 條 rule = 6 個 child → 5 個 gap。
+        let fields: [ReviewCardField] = [.example, .explanation, .collocations]
+        let sections = [ReviewCardLayoutSolver.Section.core] + fields.map(ReviewCardLayoutSolver.Section.field)
+        let measurements = Dictionary(uniqueKeysWithValues: sections.map {
+            ($0, ReviewCardLayoutSolver.Measurement(naturalHeight: 40))
+        })
+        let input = ReviewCardLayoutSolver.Input(
+            face: .back,
+            fields: fields,
+            measurements: measurements,
+            viewportHeight: 4000,
+            minimumHeight: 0
+        )
+        #expect(input.dividerCount == 2)
+        #expect(input.dividerHeight == AppMetrics.dividerThin)
+        #expect(ReviewCardLayoutSolver.solve(input).cardHeight
+            == 40 * 4 + AppMetrics.dividerThin * 2 + TodayReviewMetrics.foldSectionSpacing * 5)
+    }
 }
 
