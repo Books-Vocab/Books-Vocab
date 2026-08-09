@@ -115,6 +115,29 @@ build_ui_test_variant_id() {
 UI_TEST_FLOW_ID=""
 UI_TEST_VARIANT_ID=""
 
+# `generic/platform=iOS` is used by the live-only cutover gate as a compile
+# target, never as an install/run destination. Compilability is independent of
+# a developer signing identity, so that one path builds unsigned. Exact-device
+# runs keep normal signing because their products must be installable.
+ios_test_signing_mode() {
+  local destination="$1"
+  if [[ "$destination" == "generic/platform=iOS" ]]; then
+    printf 'unsigned-generic-device\n'
+  elif [[ "$destination" == *"platform=iOS"* && "$destination" == *"Simulator"* ]]; then
+    printf 'simulator\n'
+  elif [[ "$destination" == *"platform=iOS"* ]]; then
+    printf 'signed-device\n'
+  else
+    printf 'default\n'
+  fi
+}
+
+ios_test_signing_args() {
+  if [[ "$(ios_test_signing_mode "$1")" == "unsigned-generic-device" ]]; then
+    printf '%s\n' "CODE_SIGNING_ALLOWED=NO" "CODE_SIGNING_REQUIRED=NO"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
@@ -234,6 +257,11 @@ else
   SIMULATOR_BOOT_SELECTOR="$DEFAULT_SIMULATOR"
 fi
 
+IOS_TEST_SIGNING_ARGS=()
+while IFS= read -r signing_arg; do
+  [[ -n "$signing_arg" ]] && IOS_TEST_SIGNING_ARGS+=("$signing_arg")
+done < <(ios_test_signing_args "$DESTINATION")
+
 if [[ "$DESTINATION" == *"Mac Catalyst"* || "$DESTINATION" == *"platform=macOS"* ]]; then
   echo "[ios_test] error: Mac Catalyst / macOS destinations are not supported by ios_test.sh" >&2
   echo "[ios_test]   ios_test.sh is iOS-only: its cache and product resolver do not understand the Catalyst bundle layout" >&2
@@ -314,6 +342,10 @@ ios_test_build_cache_key() {
     printf 'scheme=%s\n' "$TEST_SCHEME"
     printf 'configuration=%s\n' "$CONFIGURATION"
     printf 'coverage=%s\n' "$COVERAGE_ENABLED"
+    # Unsigned generic-device compile products are not installable on a real
+    # device. Keep them out of the signed exact-device cache even though both
+    # destinations share the same platform token (`ios`).
+    printf 'signing=%s\n' "$(ios_test_signing_mode "$DESTINATION")"
     printf 'xcode=%s\n' "$xcode_version"
     # Hash all inputs in a single shasum process instead of one fork per file
     # (~5.3s -> ~0.05s for ~556 files). Paths are already sorted+unique and
@@ -1269,6 +1301,7 @@ rebuild_test_cache() {
     -scheme "$TEST_SCHEME" \
     -configuration "$CONFIGURATION" \
     -destination "$DESTINATION" \
+    ${IOS_TEST_SIGNING_ARGS[@]+"${IOS_TEST_SIGNING_ARGS[@]}"} \
     ${COVERAGE_XCODEBUILD_ARGS[@]+"${COVERAGE_XCODEBUILD_ARGS[@]}"} \
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \

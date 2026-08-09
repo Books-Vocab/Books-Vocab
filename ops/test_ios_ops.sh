@@ -1733,6 +1733,38 @@ echo "$missing_diag_json" | jq -e --arg log "$ios_test_retry_tmp/never-created.l
   && ok "ios_diagnostics reports missing fallback log as machine-readable error" || fail_t "ios_diagnostics missing-log fallback invalid: $missing_diag_json"
 rm -rf "$ios_test_retry_tmp"
 
+section "ios_test generic device compile is unsigned and cache-isolated"
+# The live-only Release gate uses generic/platform=iOS only to prove that the
+# UITest target compiles. It must not require an iOS Development identity, and
+# its unsigned products must never be reused by an exact-device run that needs
+# signed/installable products.
+ios_test_signing_mode_fn="$(sed -n '/^ios_test_signing_mode()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+ios_test_signing_args_fn="$(sed -n '/^ios_test_signing_args()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$ios_test_signing_mode_fn" && -n "$ios_test_signing_args_fn" ]]; then
+  generic_signing_mode="$(bash -lc "$ios_test_signing_mode_fn"$'\n''ios_test_signing_mode generic/platform=iOS')"
+  exact_signing_mode="$(bash -lc "$ios_test_signing_mode_fn"$'\n''ios_test_signing_mode platform=iOS,id=00008140-000000000000001E')"
+  simulator_signing_mode="$(bash -lc "$ios_test_signing_mode_fn"$'\n''ios_test_signing_mode platform=iOS\ Simulator,name=iPhone\ 17\ Pro\ Max')"
+  generic_signing_args="$(bash -lc "$ios_test_signing_mode_fn"$'\n'"$ios_test_signing_args_fn"$'\n''ios_test_signing_args generic/platform=iOS')"
+  exact_signing_args="$(bash -lc "$ios_test_signing_mode_fn"$'\n'"$ios_test_signing_args_fn"$'\n''ios_test_signing_args platform=iOS,id=00008140-000000000000001E')"
+  simulator_signing_args="$(bash -lc "$ios_test_signing_mode_fn"$'\n'"$ios_test_signing_args_fn"$'\n''ios_test_signing_args platform=iOS\ Simulator,name=iPhone\ 17\ Pro\ Max')"
+  [[ "$generic_signing_mode" == unsigned-generic-device \
+      && "$generic_signing_args" == *CODE_SIGNING_ALLOWED=NO* \
+      && "$generic_signing_args" == *CODE_SIGNING_REQUIRED=NO* ]] \
+    && ok "generic/platform=iOS compile is explicitly unsigned" \
+    || fail_t "generic device signing contract invalid: mode=$generic_signing_mode args=$generic_signing_args"
+  [[ "$exact_signing_mode" == signed-device && -z "$exact_signing_args" ]] \
+    && ok "exact-device tests keep normal signing" \
+    || fail_t "exact-device signing was overridden: mode=$exact_signing_mode args=$exact_signing_args"
+  [[ "$simulator_signing_mode" == simulator && -z "$simulator_signing_args" ]] \
+    && ok "simulator tests keep normal signing behavior" \
+    || fail_t "simulator signing was overridden: mode=$simulator_signing_mode args=$simulator_signing_args"
+else
+  fail_t "ios_test lacks the generic-device signing-mode seam"
+fi
+grep -q 'IOS_TEST_SIGNING_ARGS\[@\]' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "real build-for-testing invocation consumes signing args" \
+  || fail_t "signing args are not wired into the real xcodebuild invocation"
+
 section "ios_test destination-aware cache readiness"
 # Regression for IMP-0033. `ios_test_cached_products_ready` keyed the SDK suffix
 # off a `platform=iOS,` substring — WITH a trailing comma — so the comma-less
@@ -1740,12 +1772,11 @@ section "ios_test destination-aware cache readiness"
 # uses fell back to iphonesimulator, could never see its own Release-iphoneos
 # products, and reported productsReady:false on a complete cache. The sentinel
 # is written behind the same predicate, so that cache also stayed permanently
-# cold (a full Release rebuild every run).
+# cold (a full Release rebuild every run). The generic compile is unsigned, so
+# its cache key must differ from an exact-device run's signed products.
 #
 # Hermetic: `--cache-status` never builds, so this fabricates the product layout
-# a real build-for-testing leaves behind. `generic/platform=iOS` and
-# `platform=iOS,id=<udid>` hash to the SAME cache key (platform token `ios`), so
-# one fabricated root probes both destinations.
+# a real unsigned build-for-testing leaves behind for `generic/platform=iOS`.
 ios_cache_probe_root="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_cache_probe.XXXXXX")"
 ios_cache_status_json() {
   KG_IOS_TEST_CACHE_ROOT="$ios_cache_probe_root" \
@@ -1778,12 +1809,16 @@ echo "$ios_cache_generic_raw" | jq -e '.schema=="kg.ios.test-cache.v1"' >/dev/nu
 ios_cache_ready_for() {
   ios_cache_status_json "$1" | sed -n '/^{/,$p' | jq -r '.cache.productsReady' 2>/dev/null
 }
+ios_cache_exact_root="$(ios_cache_status_json 'platform=iOS,id=00008140-000000000000001E' | jq -r '.cache.derivedDataRoot')"
+[[ "$ios_cache_exact_root" != "$ios_cache_derived_root" ]] \
+  && ok "unsigned generic cache is isolated from signed exact-device cache" \
+  || fail_t "generic and exact-device destinations still share one cache root"
 [[ "$(ios_cache_ready_for 'generic/platform=iOS')" == true ]] \
   && ok "generic/platform=iOS sees its own Release-iphoneos products" \
   || fail_t "generic/platform=iOS reports productsReady=false on a complete iphoneos cache (IMP-0033)"
-[[ "$(ios_cache_ready_for 'platform=iOS,id=00008140-000000000000001E')" == true ]] \
-  && ok "platform=iOS,id=<udid> sees the same Release-iphoneos products" \
-  || fail_t "exact-device destination lost iphoneos readiness"
+[[ "$(ios_cache_ready_for 'platform=iOS,id=00008140-000000000000001E')" == false ]] \
+  && ok "exact-device destination refuses unsigned generic products" \
+  || fail_t "exact-device destination reused unsigned generic products"
 
 # Negative: iphoneos readiness must not be satisfiable by simulator products.
 rm -rf "$ios_cache_products/Release-iphoneos"

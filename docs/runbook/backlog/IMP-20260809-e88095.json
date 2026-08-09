@@ -1,0 +1,21 @@
+{
+  "acceptance": "未修版本的結構測試因沒有 generic-device signing mode 與快取隔離而紅；修後 shell 回歸測試綠，且 Gate 原命令在沒有 iOS Development identity 的本機可成功產出 Release-iphoneos test cache。expect rc = 0。",
+  "acceptance_cmd": "bash -c 'set -e; test -f ops/ios_test.sh; test -f ops/test_ios_ops.sh; ./ops/test_ios_ops.sh; ./ops/ios_ops.sh test --ui --configuration Release --destination generic/platform=iOS --prepare-cache --json >/dev/null'",
+  "acceptance_expect_rc": 0,
+  "brief": "只做編譯檢查的閘門卻要求開發憑證，沒有該憑證的正常開發機永遠無法通過。",
+  "category": "tool",
+  "date": "2026-08-09",
+  "detail": "第三輪 round3-land Gate 的 ios-live-demo-uitest-compile 執行 `ops/ios_ops.sh test --ui --configuration Release --destination generic/platform=iOS --prepare-cache --json`，在普通 iOS build、Catalyst build、unit tests 全綠後，9.3 秒內以 xcodebuild exit 65 失敗。保留的 build log 明確只有兩個阻塞：BooksAndVocab 與 BooksAndVocabUITests 找不到 team XNSH5U9FNV 的 iOS Development 憑證私鑰。本機只有有效 Apple Distribution identity。這道 gate 宣稱驗的是 Release iphoneos 編譯，不是 archive 或簽章；要求 Development identity 讓它在這類正常開發機上結構性不可能綠。另有快取污染風險：generic/platform=iOS 與 exact-device 目前共用 platform=iOS cache key；若只加不簽章旗標，實機路徑可能誤用 unsigned products，因此 signing mode 必須進 cache key。",
+  "fix_site": "ops/ios_test.sh signing args + ios_test_build_cache_key + rebuild_test_cache; ops/test_ios_ops.sh destination-aware signing regression",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "round3-integrator",
+  "id": "IMP-20260809-e88095",
+  "plan": "在 ops/ios_test.sh 建立單一 signing-mode 述詞：只有 destination 精確為 generic/platform=iOS 的 compile-only cache 路徑加入 CODE_SIGNING_ALLOWED=NO 與 CODE_SIGNING_REQUIRED=NO；實機 UDID與 simulator 路徑保持原樣。把 signing mode 納入 ios_test_build_cache_key，避免 unsigned generic cache 被 exact-device 重新使用。rebuild_test_cache 的真實 xcodebuild 呼叫消費同一組 signing args。於 ops/test_ios_ops.sh 補三個正控：generic 路徑輸出 unsigned 且 cache key 與 exact-device 不同；exact-device 與 simulator 不含 signing override；再以 source pin 證明真實 build-for-testing 呼叫消費該陣列。最後跑 test_ios_ops、原 Gate 命令與整批 Gate。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "調整一支 iOS 測試腳本的簽章模式與快取鍵，並補一組 shell 回歸測試。",
+  "severity": "high",
+  "source": "round3-land gate 9748a23c55822e86",
+  "status": "open",
+  "stream": "IMP"
+}
