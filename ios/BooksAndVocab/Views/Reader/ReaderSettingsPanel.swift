@@ -19,13 +19,16 @@ struct ReaderSettingsPanel: View {
     @ObserveInjection private var inject
     @Bindable var settings: ReaderSettings
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
+    /// 解析 `.system` 外觀要靠它 —— 與 `ReaderSettings.resolvedTheme` 同一條路。
+    @Environment(\.colorScheme) private var colorScheme
 
     private var presenterState: ReaderSettingsPresenter.State {
         .init(
             fontSizeText: settings.fontSizeText,
             fontScale: settings.fontSize,
             canDecreaseFontSize: settings.fontSize > 0.75,
-            canIncreaseFontSize: settings.fontSize < 2.0
+            canIncreaseFontSize: settings.fontSize < 2.0,
+            previewTheme: appearanceStore.resolvedReaderTheme(systemColorScheme: colorScheme)
         )
     }
 
@@ -146,7 +149,9 @@ struct ReaderSettingsPanelPreviewHarness: View {
             fontSizeText: ReaderSettings.fontSizeText(for: resolvedFontScale),
             fontScale: resolvedFontScale,
             canDecreaseFontSize: canDecreaseFontSize,
-            canIncreaseFontSize: canIncreaseFontSize
+            canIncreaseFontSize: canIncreaseFontSize,
+            // harness 的 theme 是直接的三選一，沒有 `.system` 要解析。
+            previewTheme: theme
         )
     }
 

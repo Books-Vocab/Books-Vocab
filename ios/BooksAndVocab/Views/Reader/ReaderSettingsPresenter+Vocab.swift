@@ -75,7 +75,7 @@ extension ReaderSettingsPresenter {
                 font: bindings.font.wrappedValue,
                 fontScale: state.fontScale,
                 lineHeight: bindings.lineHeight.wrappedValue,
-                theme: bindings.theme.wrappedValue,
+                theme: state.previewTheme,
                 vocabHighlightPreferences: VocabHighlightPreferences(
                     colorPreset: bindings.vocabHighlightColorPreset.wrappedValue,
                     opacity: bindings.underlineOpacity.wrappedValue
@@ -152,7 +152,7 @@ extension ReaderSettingsPresenter {
 
     private func themeOptionLabel(_ theme: ReaderTheme) -> some View {
         HStack(spacing: AppSpacing.s2) {
-            Label(theme.rawValue, systemImage: theme.icon)
+            Label(theme.displayName, systemImage: theme.icon)
             AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(appSkin.readerThemeSwatchColor(theme))
                 .frame(

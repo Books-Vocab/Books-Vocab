@@ -16,6 +16,14 @@ struct ReaderSettingsPresenter: View {
         let fontScale: Double
         let canDecreaseFontSize: Bool
         let canIncreaseFontSize: Bool
+        /// 閱讀器**實際會渲染**的主題，給即時預覽用。
+        ///
+        /// 不可以拿 `bindings.theme` 代替：那個 binding 是給三選一 Picker 的，
+        /// 讀的是 `AppAppearanceMode.readerTheme`，它把 `.system` 壓成 `.light`。
+        /// 閱讀器本體走的卻是 `resolvedReaderTheme(systemColorScheme:)`。兩者在
+        /// 「外觀＝跟隨系統 ＋ 裝置是深色」時會分岔 —— 閱讀器是暗的，預覽卻是
+        /// 亮的，正好在使用者最需要相信預覽的地方說謊。
+        let previewTheme: ReaderTheme
     }
 
     struct Bindings {
@@ -57,57 +65,64 @@ struct ReaderSettingsPresenter: View {
 
 #Preview("ReaderSettings / Default") {
     AppThemeContainer {
-        ReaderSettingsPresenter(
-            state: .init(
-                fontSizeText: "17pt",
-                fontScale: 1.0,
-                canDecreaseFontSize: true,
-                canIncreaseFontSize: true
-            ),
-            bindings: .init(
-                lineHeight: .constant(1.4),
-                font: .constant(.serif),
-                theme: .constant(.light),
-                underlineOpacity: .constant(0.35),
-                vocabHighlightColorPreset: .constant(.paper),
-                showHitTestingDebug: .constant(false),
-                scrollMode: .constant(false)
-            ),
-            onDecreaseFontSize: {},
-            onIncreaseFontSize: {},
-            onSelectTheme: { _ in },
-            onSelectUnderlineOpacity: { _ in },
-            onResetToDefaults: {}
-        )
-        .padding()
+        // 頁面已不自帶 NavigationStack（那是兩個入口各自的 chrome），preview
+        // 自己補一層才看得到標題列與 `.primaryAction` 上的重置選單。
+        NavigationStack {
+            ReaderSettingsPresenter(
+                state: .init(
+                    fontSizeText: "1x",
+                    fontScale: 1.0,
+                    canDecreaseFontSize: true,
+                    canIncreaseFontSize: true,
+                    previewTheme: .light
+                ),
+                bindings: .init(
+                    lineHeight: .constant(1.4),
+                    font: .constant(.serif),
+                    theme: .constant(.light),
+                    underlineOpacity: .constant(0.35),
+                    vocabHighlightColorPreset: .constant(.paper),
+                    showHitTestingDebug: .constant(false),
+                    scrollMode: .constant(false)
+                ),
+                onDecreaseFontSize: {},
+                onIncreaseFontSize: {},
+                onSelectTheme: { _ in },
+                onSelectUnderlineOpacity: { _ in },
+                onResetToDefaults: {}
+            )
+        }
     }
     .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("ReaderSettings / Bounds") {
     AppThemeContainer {
-        ReaderSettingsPresenter(
-            state: .init(
-                fontSizeText: "0.75x",
-                fontScale: 0.75,
-                canDecreaseFontSize: false,
-                canIncreaseFontSize: true
-            ),
-            bindings: .init(
-                lineHeight: .constant(2.5),
-                font: .constant(.sans),
-                theme: .constant(.dark),
-                underlineOpacity: .constant(0.0),
-                vocabHighlightColorPreset: .constant(.rose),
-                showHitTestingDebug: .constant(true),
-                scrollMode: .constant(true)
-            ),
-            onDecreaseFontSize: {},
-            onIncreaseFontSize: {},
-            onSelectTheme: { _ in },
-            onSelectUnderlineOpacity: { _ in },
-            onResetToDefaults: {}
-        )
+        NavigationStack {
+            ReaderSettingsPresenter(
+                state: .init(
+                    fontSizeText: "0.75x",
+                    fontScale: 0.75,
+                    canDecreaseFontSize: false,
+                    canIncreaseFontSize: true,
+                    previewTheme: .dark
+                ),
+                bindings: .init(
+                    lineHeight: .constant(2.5),
+                    font: .constant(.sans),
+                    theme: .constant(.dark),
+                    underlineOpacity: .constant(0.0),
+                    vocabHighlightColorPreset: .constant(.rose),
+                    showHitTestingDebug: .constant(true),
+                    scrollMode: .constant(true)
+                ),
+                onDecreaseFontSize: {},
+                onIncreaseFontSize: {},
+                onSelectTheme: { _ in },
+                onSelectUnderlineOpacity: { _ in },
+                onResetToDefaults: {}
+            )
+        }
     }
     .preferredColorScheme(.dark)
     .environmentObject(AppAppearanceStore.preview)

@@ -1229,3 +1229,6 @@
 "reader.settings.highlight.opacity.strong" = "深";
 "reader.settings.debug.hitTesting" = "顯示點擊熱區";
 "reader.settings.debug.footer" = "用於校正閱讀器點擊熱區。";
+"reader.theme.light" = "淺色";
+"reader.theme.sepia" = "暖紙";
+"reader.theme.dark" = "深色";
