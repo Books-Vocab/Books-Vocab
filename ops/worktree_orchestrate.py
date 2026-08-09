@@ -2549,7 +2549,11 @@ def _run_verified_against(worktree: str, files: list[str]) -> dict[str, Any]:
         sha = m.group(1)
         rc, _ = _git(["rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"], cwd=worktree)
         if rc != 0:
-            bad.append(f"{rel} -> {sha}")
+            bad.append(f"{rel} -> {sha} (absent)")
+            continue
+        rc, _ = _git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=worktree)
+        if rc != 0:
+            bad.append(f"{rel} -> {sha} (orphan)")
     if bad:
         return {"status": "warn", "rc": 1,
                 "summary": f"verified_against unreachable for {len(bad)} doc(s): {', '.join(bad[:5])}"}

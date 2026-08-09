@@ -1362,6 +1362,58 @@ def _git(args, cwd):
     ).stdout.strip()
 
 
+@gitmark
+def test_verified_against_requires_head_reachability(tmp_path):
+    repo = tmp_path / "verified-against"
+    (repo / "docs").mkdir(parents=True)
+    _git(["init", "-q", "-b", "main"], repo)
+    _git(["config", "user.email", "probe@example.test"], repo)
+    _git(["config", "user.name", "probe"], repo)
+    doc = repo / "docs" / "x.md"
+
+    def anchor(sha):
+        doc.write_text(
+            "<!-- doc-meta\nverified_against: " + sha + "\n-->\n",
+            encoding="utf-8",
+        )
+
+    anchor("0000000")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "base"], repo)
+    base = _git(["rev-parse", "HEAD"], repo)
+    _git(["checkout", "-q", "-b", "wt-fixture"], repo)
+    (repo / "note.txt").write_text("worktree commit\n", encoding="utf-8")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "branch"], repo)
+    branch = _git(["rev-parse", "HEAD"], repo)
+    orphan = _git(
+        ["-c", "user.email=probe@example.test", "-c", "user.name=probe",
+         "commit-tree", "HEAD^{tree}", "-m", "orphan"],
+        repo,
+    )
+
+    reachability = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", orphan, "HEAD"],
+        cwd=str(repo), capture_output=True, text=True,
+    )
+    assert reachability.returncode != 0
+
+    anchor(base)
+    assert MODULE._run_verified_against(str(repo), ["docs/x.md"])["status"] == "pass"
+    anchor(branch)
+    assert MODULE._run_verified_against(str(repo), ["docs/x.md"])["status"] == "pass"
+
+    anchor("0" * 40)
+    absent = MODULE._run_verified_against(str(repo), ["docs/x.md"])
+    assert absent["status"] != "pass"
+    assert "absent" in absent["summary"]
+
+    anchor(orphan)
+    orphan_result = MODULE._run_verified_against(str(repo), ["docs/x.md"])
+    assert orphan_result["status"] != "pass"
+    assert "orphan" in orphan_result["summary"]
+
+
 def _local_branches(repo):
     return set(_git(["for-each-ref", "--format=%(refname:short)", "refs/heads"], repo).split())
 
