@@ -1,0 +1,21 @@
+{
+  "acceptance": "測試先在舊版重現 memory-usage 的 macOS 失敗與 caddy-status secret marker 外洩；修後 macOS fixture 與 Felix live 都回穩定的記憶體欄位，cloudflared 狀態只含安全欄位且 stdout/stderr 完全找不到注入 marker，兩個 typed command 的遠端失敗仍以非零回傳，既有危險命令 guard 不回歸。",
+  "acceptance_cmd": "bash ops/test_devops.sh && ./ops/devops_kg_safe.sh memory-usage >/dev/null && ./ops/devops_kg_safe.sh caddy-status >/dev/null && ./ops/docs_lint.sh",
+  "brief": "Felix 的記憶體檢查目前必定失敗，入口狀態檢查還會把敏感啟動參數整串印出來，操作者既拿不到數字又可能洩密。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "ops/devops_kg_safe.sh 的 memory-usage 固定送出 Linux-only `free -m`，但正式 standby Felix 是 macOS，live run 回 command not found；同檔 caddy-status 固定送出 `pgrep -lf 'cloudflared.*tunnel'`，`-l` 會輸出完整 process argv。2026-08-09 實測因此把 remotely-managed tunnel token 帶進 agent tool log。修法必使用 macOS 可攜且已有實證的 `vm_stat`／`sysctl` 解析或復用 infra_health.sh 的結構化欄位；入口檢查以 launchctl 狀態或不帶 argv 的存在性 probe 判定，只輸出 active/inactive、label 與必要 PID/count，永遠不輸出 command line。測試不可只 grep 固定新字串：要用 fake process/transport 注入 secret marker，證明 stdout/stderr 均不含它；也要證明 memory command 在 macOS fixture 產出 total/available/swap 且非零退出會被保留。此票不旋轉已暴露 token；token rotation 是帳號持有人另行執行的外部安全動作。",
+  "fix_site": "ops/devops_kg_safe.sh；ops/infra_health.sh；ops/test_devops.sh；ops/test_infra_health.sh；docs/reference/tech_index.md",
+  "groomed_against": "57c2f2204c30",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:platform-steward",
+  "id": "IMP-20260809-f4517a",
+  "plan": "1. 先把現有 `free -m` 與 `pgrep -lf` 契約測試改成行為紅測試：macOS fixture 必回 total/available/swap，cloudflared fixture 的 secret marker 不得出現在任何輸出。2. memory-usage 復用 infra_health 的 vm_stat/sysctl 單一解析來源或抽出共用 helper，避免再維護第二份換算；輸出提供穩定 text/JSON surface，底層失敗保留非零。3. caddy-status 改讀 launchctl service state或使用不回顯 argv 的存在性 probe，只輸出狀態、label 與必要 PID/count；禁止 `pgrep -l`、`ps command` 與 raw plist arguments。4. 更新 typed mapping 測試、執行 surface scan，只有 registry trigger 命中才同步 tech index。5. 在 Felix live 跑兩個唯讀命令，先以 secret-pattern detector 過濾再呈現結果，確認不再洩漏且不碰服務狀態。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "修正兩個既有唯讀主機檢查與其契約測試，屬同一支小型維運命令列工具改動。",
+  "severity": "high",
+  "source": "2026-08-09 Felix live audit：typed memory-usage 在 macOS 執行 Linux 的 free -m 而失敗；caddy-status 的 pgrep -lf 將 cloudflared 完整 argv 與 tunnel token 印進工具輸出。",
+  "status": "triaged",
+  "stream": "IMP"
+}

@@ -1,0 +1,24 @@
+{
+  "acceptance": "測試證明來源只來自指定 clean commit、受保護的 dev/prod/data/secrets roots 完全不讀寫、所有 admission 紅態均在啟動 child 前具名拒絕、同時只有一個 heavy job、timeout／訊號會殺完整 process group、任何輸出都不含注入的 secret marker；成功收據完整綁定 source/profile/spec/host/rc/duration/log digest，所有路徑在成功與失敗後皆可冪等清理，production health probe 的紅態與執行中惡化都會 fail closed。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_executor.py && ./ops/docs_lint.sh",
+  "blocked_by": [
+    "IMP-20260809-aa70b0"
+  ],
+  "brief": "Felix 的開發副本既落後又與正式服務共機，直接進去跑檢查會測錯版本，重工作還可能搶走正式站資源。",
+  "category": "tool",
+  "date": "2026-08-09",
+  "detail": "Felix 不可被視為 Oscar 的同質 clone：它沒有完整 Xcode，開發 clone 漂移，內建碟約剩 82 GiB，且正式 API、Cloudflare connector、備份、reconciler 與其他常駐服務都在同一台。executor 必須完全避開 ~/project/kg 與 ~/kg-prod：Oscar 產生 clean committed tree 的 deterministic source capsule 與 manifest，Felix 只在 ~/.cache/kg-compute/jobs/<job_id> 解開並執行 profile 的 canonical spec；共享 uv download cache 可用，但 venv、輸出與暫存須 job-local。v1 不支援 dirty working tree、iOS/Xcode、Git metadata-dependent profile、production data／secret、production port 或任意 shell。執行前 live admission 至少檢查 hostname/capability、memory available、load、內建碟、正式 API health、backup/reconcile 狀態與一把 kernel-released single-heavy-job lock；不合格回 reason code，不排隊霸佔資源。worker 只能輸出安全 phase／PID／bytes／elapsed，禁止 raw argv、environment、process command line 與 secret；完成回傳 source SHA/tree digest、profile/spec digest、host/tool versions、rc、duration、artifact/log digest、admission snapshot 與 cleanup 結果。中斷、timeout、失敗皆須清 child process group 與 job scratch；收據與 log 先回 Oscar 才可刪遠端 job。",
+  "fix_site": "ops/compute_worker.py；ops/lib/compute_capsule.py；ops/lib/compute_admission.py；ops/lib/compute_receipt.py；ops/tests/test_compute_executor.py；docs/policy/safety.md；docs/reference/host_topology.md",
+  "groomed_against": "57c2f2204c30",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:platform-steward",
+  "id": "IMP-20260809-1c4bcf",
+  "plan": "1. 先以 fake host／fake production probe 寫紅測試，覆蓋錯 SHA、dirty source、路徑穿越、未知 capability、負載／記憶體／磁碟不足、正式 API 不健康、backup/reconcile active、第二個重工作、timeout、中斷、secret marker 與清理失敗。2. 實作 deterministic capsule manifest；只納入指定 commit 的 tracked tree，拒絕 symlink escape、special file、ignored secret 與超額大小，遠端 materialize 前後驗 tree digest。3. 實作 Felix worker 與 admission policy；以 fcntl lock 限制一個 heavy job，child 用獨立 process group，沿用 bounded streaming runner 的 heartbeat／capture 語意。4. profile canonical spec 只能由前一張契約解析，不允許 worker 接收 raw argv。5. 產出版本化 compute receipt，安全帶回 log/artifact 後做冪等清理；遠端 dev/prod clone、worktree registry、本地 main 與 gate record 必須保持不變。6. 以 stub 故障矩陣跑全測試，並依 docs control plane 同步 production admission 的 safety 與 host topology 契約；真正跨機 smoke 留給依賴本票的 Oscar façade，以免 worker 票反向依賴尚未存在的 transport。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "新增一個受控遠端 worker、來源膠囊、資源准入、單工作鎖、收據與清理生命週期，屬中型工具改動。",
+  "severity": "high",
+  "source": "2026-08-09 雙機 live audit：Oscar 的 KG 在 57c2f220，Felix 開發副本在 fdb03386、落後 origin/main 649 commits，且 Felix 與正式 API、備份與 reconciler 共機。",
+  "status": "triaged",
+  "stream": "IMP"
+}
