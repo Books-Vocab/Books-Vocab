@@ -229,6 +229,11 @@ Live-only worktree gate 例外：修改 `LiveDemoAccessUITests.swift` 時，`wor
 檔案、指紋與 rerun 理由；未知 scope、legacy record、輸入或定義變動、`block`/`inconclusive` 來源
 一律重跑。這是成本最佳化，不是跳過 fresh-HEAD 安全護欄。
 
+iOS 可執行 gate 的 input scope 依 command delegate 分離：`ios-build` / Catalyst 雜湊 iOS tree、
+`ios_ops.sh` 共用載入面與 build runner；unit/UI/live-demo compile 改雜湊同一共用面與 test runner。
+因此只修 `ios_test.sh` 時可重用已綠 build，改共用 dispatcher/helper 時兩者仍重跑；未具名的新
+iOS gate 保守退回完整 iOS surface，不能自行取得窄 scope。
+
 空 diff 仍可合法重跑，但 gate record 會以 `no_changed_files=true` 明示「沒有變更路徑被驗證」；人讀輸出會警告，`--receipt-line` 會加 `no-changes`，避免把合法 re-gate 或錯樹空跑誤讀成新修改已被驗證。
 
 linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_dirty_error`；primary 有未提交 tracked 檔時只在人讀輸出具名警告，不改 gate verdict 或 exit code，避免把共用 primary 的合法並行工作誤擋。
