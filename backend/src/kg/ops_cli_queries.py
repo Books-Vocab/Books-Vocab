@@ -21,8 +21,8 @@ from kg.ops_shared import (
     resolve_uid,
     table_columns,
 )
-from kg.ops_world_diff import diff_world_state, load_expectation
-from kg.ops_world_export import WorldExportError, export_seed_spec
+from kg.ops_world_diff import diff_seed_spec, diff_world_state, load_expectation
+from kg.ops_world_export import SEED_SPEC_SCHEMA, WorldExportError, export_seed_spec
 from kg.ops_world_projection import SCHEMA as WORLD_STATE_SCHEMA
 from kg.ops_world_projection import WorldProjectionError, project_user_world
 from kg.quota_service import token_cost_usd
@@ -204,13 +204,18 @@ def cmd_world_export(args: argparse.Namespace) -> None:
 def cmd_world_diff(args: argparse.Namespace) -> None:
     dd = data_dir()
     uid = resolve_uid(args.uid, dd)
-    try:
-        actual = project_user_world(uid, data_root=dd)
-    except WorldProjectionError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
     expected = load_expectation(args.spec)
-    payload = diff_world_state(actual, expected)
+    if expected.get("schema") == SEED_SPEC_SCHEMA:
+        try:
+            actual, warnings = export_seed_spec(uid, data_root=dd)
+        except WorldExportError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        for warning in warnings:
+            print(f"warning: {warning}", file=sys.stderr)
+        payload = diff_seed_spec(actual, expected)
+    else:
+        payload = diff_world_state(project_user_world(uid, data_root=dd), expected)
     payload["user_id"] = uid
     payload["specPath"] = str(args.spec)
     if args.json:
@@ -222,6 +227,8 @@ def cmd_world_diff(args: argparse.Namespace) -> None:
     print(f"mismatches: {payload['mismatchCount']}")
     for mismatch in payload["mismatches"][:10]:
         print(f"- {mismatch['path']}: {mismatch['kind']}")
+    if payload.get("unverified"):
+        print(f"unverified: {len(payload['unverified'])}")
 
 
 def cmd_quota_overview(args: argparse.Namespace) -> None:
