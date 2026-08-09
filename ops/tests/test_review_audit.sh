@@ -349,6 +349,55 @@ EOF
   && ok "an empty grooming commit cannot claim the exemption" \
   || fail_t "empty grooming passed: $(grep -m1 GROOMEMPTY "$MR/last.txt")"
 
+section "generated-snapshot is a checked artifact exemption"
+# The allowlist is deliberately one exact tracked output today. A broad
+# snapshot glob would turn hand-edited snapshots and unrelated ledger changes
+# into review-free commits.
+mr_case
+mkdir -p "$MR/repo/ops"
+printf 'baseline\n' >"$MR/repo/ops/injection_baseline.txt"
+git -C "$MR/repo" add -A
+git -C "$MR/repo" commit -q -F - <<'EOF'
+ops: GENERATEDONLY refresh the declared generated artifact
+
+Review-Exempt: generated-snapshot
+EOF
+[[ "$(verdict_for GENERATEDONLY)" == "ok" ]] \
+  && ok "a pure declared generated artifact is exempt" \
+  || fail_t "declared generated artifact was not exempt: $(grep -m1 GENERATEDONLY "$MR/last.txt")"
+
+mr_case
+mkdir -p "$MR/repo/docs/runbook/backlog"
+mkdir -p "$MR/repo/ops"
+printf '{"plan":"groomed"}\n' >"$MR/repo/docs/runbook/backlog/G2.json"
+printf 'baseline\n' >"$MR/repo/ops/injection_baseline.txt"
+git -C "$MR/repo" add -A
+git -C "$MR/repo" commit -q -F - <<'EOF'
+ops: GENERATEDMIXED generated artifact plus ledger
+
+Review-Exempt: generated-snapshot
+EOF
+if [[ "$(verdict_for GENERATEDMIXED)" == "block" ]] \
+   && grep -q 'docs/runbook/backlog/G2.json' "$MR/last.txt"; then
+  ok "generated-snapshot blocks and names an undeclared path"
+else
+  fail_t "undeclared generated path slipped past: $(grep -m1 GENERATEDMIXED "$MR/last.txt")"
+fi
+
+mr_case
+git -C "$MR/repo" commit -q --allow-empty -F - <<'EOF'
+ops: INVALIDTOKEN invalid exemption
+
+Review-Exempt: not-a-token
+EOF
+if [[ "$(verdict_for INVALIDTOKEN)" == "block" ]] \
+   && grep -q 'trivial-typo' "$MR/last.txt" \
+   && grep -q 'machine-repair' "$MR/last.txt"; then
+  ok "invalid exemption names the allowed token set"
+else
+  fail_t "invalid exemption omitted allowed tokens: $(grep -m1 INVALIDTOKEN "$MR/last.txt")"
+fi
+
 rm -rf "$MR"
 
 section "single-line-small-file exemption is machine-checked (IMP-0065)"

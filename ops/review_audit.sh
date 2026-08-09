@@ -30,6 +30,24 @@ BASE="origin/main"
 REV_RANGE=""
 JSON=0
 
+# Keep this list executable rather than duplicating it in the decision branch.
+# `generated-snapshot` is checked below against the declared output paths; the
+# other tokens are intentionally receipt-only exemptions.
+ALLOWED_EXEMPTIONS=(
+  trivial-typo
+  rename-only
+  format-only
+  generated-snapshot
+  single-line-small-file
+  machine-repair
+  backlog-grooming
+)
+# There is no generated-output registry entry for this artifact today. Keep the
+# allowlist next to the gate and update it deliberately when a new generated
+# output becomes tracked; a broad docs/snapshot glob would make unrelated docs
+# changes review-exempt.
+GENERATED_PATHS=(ops/injection_baseline.txt)
+
 usage() {
   awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
 }
@@ -131,8 +149,30 @@ EXEMPTION_FAIL_REASON=""
 is_allowed_exemption() {
   local token="$1" files="$2" line stray=""
   EXEMPTION_NOTE=""
+  if [[ "$token" == "generated-snapshot" ]]; then
+    if [[ -z "${files//[[:space:]]/}" ]]; then
+      EXEMPTION_NOTE="generated-snapshot requires at least one declared generated output"
+      return 1
+    fi
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      local generated allowed=0
+      for generated in "${GENERATED_PATHS[@]}"; do
+        if [[ "$line" == "$generated" ]]; then
+          allowed=1
+          break
+        fi
+      done
+      [[ "$allowed" -eq 1 ]] || stray+="${stray:+, }$line"
+    done <<<"$files"
+    if [[ -z "$stray" ]]; then
+      return 0
+    fi
+    EXEMPTION_NOTE="generated-snapshot only covers declared outputs (${GENERATED_PATHS[*]}); this commit also touches: $stray"
+    return 1
+  fi
   case "$token" in
-    trivial-typo|rename-only|format-only|generated-snapshot|single-line-small-file)
+    trivial-typo|rename-only|format-only|single-line-small-file)
       return 0
       ;;
     machine-repair|backlog-grooming)
@@ -250,7 +290,7 @@ while IFS= read -r sha; do
       if [[ -n "$EXEMPTION_FAIL_REASON" ]]; then
         note="invalid Review-Exempt: $review_exempt ($EXEMPTION_FAIL_REASON)"
       else
-        note="invalid Review-Exempt: $review_exempt${EXEMPTION_NOTE:+ — $EXEMPTION_NOTE}"
+        note="invalid Review-Exempt: $review_exempt${EXEMPTION_NOTE:+ — $EXEMPTION_NOTE} — allowed: ${ALLOWED_EXEMPTIONS[*]}"
       fi
       invalid_exemption_count=$((invalid_exemption_count + 1))
       block_count=$((block_count + 1))
