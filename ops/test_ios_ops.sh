@@ -2,7 +2,9 @@
 # test_ios_ops.sh — structure tests for unified iOS ops entrypoint.
 set -euo pipefail
 
-WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+WORKSPACE="${KG_TEST_IOS_OPS_WORKSPACE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 IOS_OPS="$WORKSPACE/ops/ios_ops.sh"
 IOS_OPS_XCODE_LIB="$WORKSPACE/ops/lib/ios_ops_xcode.sh"
 IOS_OPS_LOGS_LIB="$WORKSPACE/ops/lib/ios_ops_logs.sh"
@@ -21,6 +23,84 @@ pass=0; fail=0
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; }
+
+usage() {
+  cat <<'EOF'
+Usage: ops/test_ios_ops.sh [--list | --section <name>]
+
+Run the complete iOS ops structure suite, list its named sections, or run one
+independent section. Section mode is intended for focused local feedback; the
+full suite remains the release/cutover evidence.
+EOF
+}
+
+section_names() {
+  awk '/^section "/ { line=$0; sub(/^section "/, "", line); sub(/"$/, "", line); print line }' "$SCRIPT_PATH"
+}
+
+run_section() {
+  local selected="$1" tmp rc
+  tmp="$(mktemp "${TMPDIR:-/tmp}/kg-test-ios-ops.XXXXXX")"
+  {
+    awk '/^section "/ { exit } { print }' "$SCRIPT_PATH"
+    awk -v wanted="$selected" '
+      /^section "/ {
+        title=$0
+        sub(/^section "/, "", title)
+        sub(/"$/, "", title)
+        if (inside) exit
+        if (title == wanted) { inside=1; print; next }
+      }
+      inside { print }
+    ' "$SCRIPT_PATH"
+    cat <<'EOF'
+
+echo ""
+echo "══════════════════════════════"
+echo "  passed: $pass  failed: $fail"
+echo "══════════════════════════════"
+[[ $fail -eq 0 ]]
+EOF
+  } >"$tmp"
+  export KG_TEST_IOS_OPS_WORKSPACE="$WORKSPACE"
+  if bash "$tmp"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  rm -f "$tmp"
+  return "$rc"
+}
+
+case "${1:-}" in
+  --help|-h)
+    usage
+    exit 0
+    ;;
+  --list)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    section_names
+    exit 0
+    ;;
+  --section)
+    [[ $# -eq 2 && -n "${2:-}" ]] || { usage >&2; exit 2; }
+    if ! section_names | grep -Fxq -- "$2"; then
+      echo "unknown section: $2" >&2
+      echo "available sections:" >&2
+      section_names >&2
+      exit 1
+    fi
+    run_section "$2"
+    exit $?
+    ;;
+  "")
+    ;;
+  *)
+    echo "unknown argument: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
 
 section "Syntax and executable bits"
 for f in "$IOS_OPS" "$IOS_OPS_CORE_LIB" "$IOS_OPS_XCODE_LIB" "$IOS_OPS_LOGS_LIB" "$IOS_OPS_RUNS_LIB" "$IOS_OPS_SNAPSHOT_LIB" "$IOS_OPS_SIMULATOR_LIB" "$IOS_OPS_CATALOG_LIB" "$IOS_OPS_RELEASE_LIB" "$IOS_OPS_COMMANDS_LIB" "$IOS_LOCK_WAIT_LIB" "$IOS_ARCHIVE" "$IOS_DIAG"; do
