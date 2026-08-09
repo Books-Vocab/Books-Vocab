@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="kg-csrf" content="{{CSRF_TOKEN}}">
+  <meta name="kg-app-revision" content="{{APP_REVISION}}">
+  <title>KG 懸賞板</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header id="trust-strip" class="trust-strip" aria-live="polite">
+    <strong id="trust-state">正在確認資料…</strong>
+    <span id="trust-detail"></span>
+  </header>
+  <nav id="tabs" aria-label="看板篩選">
+    <button type="button" data-tab="now" aria-pressed="true">現在</button>
+    <button type="button" data-tab="blocked" aria-pressed="false">阻塞</button>
+    <button type="button" data-tab="inflight" aria-pressed="false">進行中</button>
+    <button type="button" data-tab="all" aria-pressed="false">全部</button>
+  </nav>
+  <main>
+    <section id="metrics" class="metrics" aria-label="當前決策指標"></section>
+    <details class="history">
+      <summary>歷史統計</summary>
+      <div id="history"></div>
+    </details>
+    <label class="search">搜尋票號或摘要
+      <input id="search" type="search" inputmode="search" autocomplete="off">
+    </label>
+    <p id="status" role="status"></p>
+    <section id="tickets" class="tickets" aria-live="polite"></section>
+  </main>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
