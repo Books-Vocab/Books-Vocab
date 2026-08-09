@@ -54,6 +54,26 @@ struct ReviewCardViewportTests {
             == TodayReviewMetrics.revealZoneMinHeight)
     }
 
+    /// `frontHeight` 是天花板，不是繪製高度。彈性 frame 給了 max 之後是**貪婪**的
+    /// （回報 min(max, 父提案)），所以「只有一個單字」的正面照樣吃掉 VStack 提案的
+    /// 一半，底下留 341pt 沒人用的空白。正面必須貼合已解出的內容。
+    @Test func the_front_face_hugs_its_content_between_a_floor_and_the_budget() {
+        let viewport = ReviewCardViewport(containerHeight: 767)
+        let chrome = ReviewCardChrome.verticalInset(for: .front)
+
+        // 短卡貼合：內容 86 + chrome 78 = 164，遠小於 frontHeight。
+        #expect(viewport.frontDrawnHeight(solvedContentHeight: 86, chrome: 78) == 164)
+        // 地板：內容縮到 0 也不會比 frontMinHeight 矮。
+        #expect(viewport.frontDrawnHeight(solvedContentHeight: 0, chrome: 78)
+            == TodayReviewMetrics.frontMinHeight)
+        // 天花板：solver 的 scroll fallback 分支解出滿版時，行為與今天相同。
+        #expect(viewport.frontDrawnHeight(solvedContentHeight: 10_000, chrome: chrome)
+            == viewport.frontHeight)
+        // 正面縮了，背面自動變大 —— 兩者共用同一份 contentHeight。
+        let drawn = viewport.frontDrawnHeight(solvedContentHeight: 86, chrome: 78)
+        #expect(viewport.backHeight(frontOccupied: drawn) == viewport.contentHeight - drawn)
+    }
+
     /// The defect in one assertion. 600pt container: the honest front budget is
     /// 600 − 16 inset − 180 reveal zone − 78 front chrome = 326pt, while the raw
     /// height gives the solver 522pt. A face measuring 468pt therefore "fits" on

@@ -28,6 +28,12 @@ extension TodayReviewPresenter {
     ) -> some View {
         let card = currentCard.card
         let layout = reviewCardLayout(for: currentCard, face: .front, availableHeight: viewport.frontHeight)
+        // `viewport.frontHeight` 是天花板，不是繪製高度：正面貼合解出的內容（保留
+        // 120pt 地板），剩下的空間讓給 reveal zone / 背面，不再被貪婪 frame 吃掉一半。
+        let drawnHeight = viewport.frontDrawnHeight(
+            solvedContentHeight: layout.cardHeight,
+            chrome: ReviewCardChrome.verticalInset(for: .front)
+        )
         let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
         if interactive, let clock = TodayReviewState.flingClock {
             PerfLog.review.mark("front.gap", "w=\(card.word) \(PerfChannel.ms(since: clock))ms (fling->current-front body)")
@@ -40,11 +46,11 @@ extension TodayReviewPresenter {
             frontFaceContent(
                 currentCard,
                 layout: layout,
-                viewport: viewport,
+                drawnHeight: drawnHeight,
                 measuresSections: interactive
             )
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(minHeight: layout.cardHeight, alignment: .topLeading)
+            .frame(height: drawnHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .onTapGesture {
                 guard !showsAnswer, interactive, isCardInteractive else { return }
@@ -74,16 +80,17 @@ extension TodayReviewPresenter {
     private func frontFaceContent(
         _ currentCard: TodayReviewPresenterState.CurrentCard,
         layout: ReviewCardLayoutSolver.Result,
-        viewport: ReviewCardViewport,
+        drawnHeight: CGFloat,
         measuresSections: Bool
     ) -> some View {
-        // Same number the solver was handed — the clamp and the budget are one value.
-        let maxHeight = max(viewport.frontHeight, 1)
+        // 具體高度，不是上界：`.frame(maxHeight:)` 會把父層提案照單全收（彈性 frame
+        // 是貪婪的），內容只有一行單字時也一樣。`drawnHeight` 由解出的內容推導，
+        // 所以畫出來的高度與 solver 記帳的高度仍是同一個值。
         if layout.requiresScrollFallback {
             ScrollView(.vertical) {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
             }
-                .frame(maxHeight: maxHeight)
+                .frame(height: drawnHeight, alignment: .top)
         } else {
             ViewThatFits(in: .vertical) {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
@@ -92,7 +99,7 @@ extension TodayReviewPresenter {
                     reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                 }
             }
-            .frame(maxHeight: maxHeight)
+            .frame(height: drawnHeight, alignment: .top)
         }
     }
 
