@@ -53,7 +53,9 @@ final class ReaderTranslationHandler {
     /// 最近一次成功啟動的翻譯 / 解釋 lookup metadata，用於失敗後 retry。
     /// `kind` 區分使用者觸發的是 quick-translate（word）/ phrase / explain，
     /// 以便 retry 時呼叫對應流程而不弄錯模式。
-    @ObservationIgnored
+    /// 刻意**不**標 `@ObservationIgnored`：三個 view body（ReaderView+Panels /
+    /// PDFReaderView / PodcastPlayerScene）拿它當 retry 按鈕的顯示條件，
+    /// 投影給 view 的狀態必須在 observation 圖上。
     var lastLookup: LastLookup?
 
     enum LookupKind {
