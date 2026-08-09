@@ -41,6 +41,7 @@ model: inherit
     --repro "<重現步驟>" \
     --build "<看到問題的 build,例:main @ 917ad3e4b, Debug, iPhone 17 Pro Max iOS 26.4>"
   ```
+  若你是批次 wave worker（交回 commit、由整合者統一落地），上式加 `--stage`：票只進共用 gitignored queue，由整合者 `anchor --commit` 實體化，不把 filing 混進自己的修復 diff。一般單線工作才使用裸 `add` 立即落地。
   `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2)。**`--detail` 的文字含反引號 / `$` / 跳脫字元時改用 `--detail-file <路徑>`**——雙引號 shell 字串裡的反引號是命令替換,會在工具看到之前把你的句子改掉而沒有任何人抗議;`--plan` / `--resolution` / `--acceptance` / `--repro` 等自由文字欄位都有同名 `-file` 孿生,`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**——不填照樣立得出單,只是那筆單沒人重現得了。category 名單見 `--help`。**`--brief` / `--scope` 立單時就寫**:那是手機看板上唯一顯示得出來的東西(卡片否則只有 `detail` 前 400 字的技術散文),而 APP 票正是使用者真的碰得到、`brief` 最有內容可寫的那一類——`brief` 寫「使用者會遇到什麼」,`scope` 寫「多大」,都不寫檔名行號。梳理階段工具本來就會要求(蓋 groom 戳記時當場擋),立單時寫比事後回填便宜。
   `--surface` 用 `docs/reference/feature_boundary/` 的**檔名**,讓 entry 直接指到 scope map(注意 `discover.md` 講的是 Explore / 共享牌組,檔名與 UI 名不同)。
 - **不要塞進 `--stream IMP`**——那是 `platform-steward` 的工具摩擦 queue,混流會讓 triage 失效(理由寫在 `ops/backlog.py` 的 `STREAMS` 註解)。分流判準見 `kg-receipt` 的「Stream 分流」,本檔不複述。

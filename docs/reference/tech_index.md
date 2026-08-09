@@ -186,6 +186,10 @@ cutover 前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml`
 
 | `ops/tests/test_shell_alias_coverage.sh` | alias coverage regression：在隔離工作樹把 source 腳本改成保留原文但不執行，要求 target 測試由 `PROVEN` 轉為非零；`--self-test` 驗證 `NOT-COVERED` / `PROVEN` / `BASELINE-RED` 三種 verdict 與接線，`--prove <script>` 實證單一腳本。回歸入口：`./ops/test_ops.sh alias-coverage`；起因是 `OPS_SHELL_TEST_ALIASES` 的「target 提及 source」檢查只有必要性、沒有充分性（IMP-0055）。 |
 
+### backlog wave filing
+
+一般裸 `backlog.py add` 立即寫入 store；批次 worker 發現新問題時用 `backlog.py add --stage`，只 append 到共用 gitignored queue，由整合者落地後以 `anchor --commit` 實體化。queue 內同一 ready id 出現多列（add/add、add/closure）時 anchor 全波拒絕且不消費任何 row，避免列序覆蓋證據或狀態。
+
 ### backlog acceptance diagnostics
 
 `audit-criteria` 與結案閘共用 `_execute_criterion`。判準以非預期 rc 失敗時，工具只在失敗路徑以 `bash -x` 重跑一次，將最後一條 trace 寫入 `failing_clause`；`output_tail` 仍保留判準自己的輸出，兩者不可互相取代。這是診斷證據而非新 verdict，且可能重複副作用；`error`（命令根本跑不起來）保留空的 `failing_clause`，不把 shell failure 誤歸因成判準失敗。

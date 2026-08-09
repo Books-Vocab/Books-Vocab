@@ -3605,6 +3605,68 @@ def test_staging_one_id_twice_refuses_rather_than_replacing_the_first_evidence(t
         "--replace must swap the row, not append a second one")
 
 
+def test_anchor_refuses_duplicate_ready_staged_add_ids_without_consuming_the_queue(
+    tmp_path, capsys
+):
+    """The consumer must defend itself even when the producer was bypassed.
+
+    `_stage_add` rejects this shape, but the queue is a shared gitignored JSONL and
+    may contain legacy or hand-written rows.  Treating its rows as a dict keyed by
+    id made the latter payload silently overwrite the former while both rows were
+    consumed.
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    first = BACKLOG.add_entry(
+        store, stream="IMP", date="2026-08-09", source="first",
+        category="tool", severity="high", status="open",
+        detail="duplicate staged add", brief="first payload",
+        scope="one queue row", commit=False,
+    )
+    second = {**first, "brief": "second payload"}
+    BACKLOG.write_queue(queue, [
+        {"kind": "add", "id": first["id"], "entry": first,
+         "branch": "feat/first", "landed_sha": "a" * 40},
+        {"kind": "add", "id": first["id"], "entry": second,
+         "branch": "feat/second", "landed_sha": "b" * 40},
+    ])
+    before_queue = queue.read_bytes()
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applied"] == []
+    assert any(p["id"] == first["id"] and "duplicate ready rows" in p["error"]
+               for p in payload["problems"]), payload["problems"]
+    assert not (store / f"{first['id']}.json").exists()
+    assert queue.read_bytes() == before_queue
+
+
+def test_anchor_refuses_ready_add_and_closure_for_the_same_id_atomically(
+    tmp_path, capsys
+):
+    """An add/closure collision must not let write order decide final status."""
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    entry = _add(store, detail="duplicate add and closure")
+    BACKLOG.write_queue(queue, [
+        {"kind": "add", "id": entry["id"], "entry": entry,
+         "branch": "feat/add", "landed_sha": "a" * 40},
+        {"id": entry["id"], "verdict": "CONFIRMED-FIXED", "by": "agent:closer",
+         "evidence": "ran it", "status": "fixed", "at": "2026-08-09",
+         "branch": "feat/closure", "landed_sha": "b" * 40},
+    ])
+    before_entry = (store / f"{entry['id']}.json").read_bytes()
+    before_queue = queue.read_bytes()
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applied"] == []
+    assert any(p["id"] == entry["id"] and "duplicate ready rows" in p["error"]
+               for p in payload["problems"]), payload["problems"]
+    assert (store / f"{entry['id']}.json").read_bytes() == before_entry
+    assert queue.read_bytes() == before_queue
+
+
 def test_unstage_is_the_way_past_a_row_that_blocks_the_whole_wave(tmp_path, capsys):
     """`anchor` is all-or-nothing, so one unusable row stops everyone.
 

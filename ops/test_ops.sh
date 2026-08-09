@@ -116,7 +116,8 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_worktree_registry.py \
-        ops/tests/test_worktree_state.py
+        ops/tests/test_worktree_state.py &&
+      ./ops/tests/test_worktree_registry.sh
       ;;
     backlog)
       # Both files are stdlib-only on purpose, so they run under the same
