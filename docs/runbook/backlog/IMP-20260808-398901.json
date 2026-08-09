@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "2026-08-06 那波重構（a5885e228 / be3f9b642 / c907585a0）同時造成六處\n可見的畫面退化（見同日登記的 APP 票），而該批 commit 的驗證欄寫著：\n  ReviewCard* + ReviewChromeSlice + TodayReviewAutoplayInterruption 82/82\n  ios_ops.sh build exit=0、--catalyst exit=0\n  i18n_lint total=0、ui_token / plain_deadzone baseline-check 0 findings\n全綠。\n\n原因是這些 gate 全部只看得見「值」與「符號」，看不見「畫面」：\n- 單元測試驗的是 solver 的算術，不是渲染結果\n- ui_token / i18n / deadzone 是靜態掃描\n- catalog snapshot 機制存在（Debug/Scenarios/ 有 TodayReviewScenarios、ReviewFoldScenarios），\n  但沒有任何一條會在版面改變時轉紅\n\n值得注意的是 be3f9b642 的 commit message **自己列出**難度標籤位移是「已知差異」——\n也就是作者知道畫面變了，而流程裡沒有任何一處會因此擋下來，只能靠人事後用肉眼發現。\n這次確實是使用者用肉眼發現的。\n\n這是「守衛看不見自己該看見的東西」這一族的又一例。",
   "fix_site": "ops/ui_quality_plane.yml:263, ops/ui_quality_plane.py:28, ops/test_ops.sh:88, ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift:112, ios/BooksAndVocab/Models/ReviewCardLayoutProfile.swift:99, ios/BooksAndVocabTests/ReviewCardLayoutGoldenTests.swift (new), ios/BooksAndVocabTests/Golden/review_card_layout.json (new), ops/tests/test_review_card_layout_golden.sh (new)",
+  "fixed_by": [
+    "60135a68ff4f490591e29fd1e51b06a670c84511"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-398901",
@@ -16,6 +19,10 @@
   "scope": "替複習卡補一道會失敗的版面守衛，或把它納入既有的目錄快照。",
   "severity": "high",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:machine-gate",
+  "verified_evidence": "./ops/backlog.py show IMP-20260808-398901 --json | uv run --no-project --python 3.13 python -c 'import json,sys,subprocess; e=json.load(sys.stdin)[\"entry\"]; raise SystemExit(subprocess.run([\"bash\",\"-c\",e[\"acceptance_cmd\"]], text=True).returncode)'\nResult: enforced review-card layout guard: ['snapshot.review_card_layout_golden']; exit 0.\nSupporting targeted gates: ReviewCardRenderPlanTests 22/22; ReviewCardLayoutGoldenTests 1/1; review-card-golden 2/2; review-cycle 23/23."
 }
