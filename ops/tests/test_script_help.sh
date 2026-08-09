@@ -10,6 +10,7 @@
 #   6. worktree_orchestrate.py --help → exit 0 + 列出 preflight/gate/cutover 子指令
 #   7. worktree_registry.py sweep --help → exit 0 + 揭示 --exclude-current 旗標
 #   8. shell_scan.sh --help → exit 0 + 印出 Usage
+#   9. asc_shipped.py --help → exit 0 + 印出 ASC_APP_ID
 #
 # 另外委派一次跨檔掃描給 ops/shell_scan.sh（實作已搬過去，見檔尾那一段的理由）。
 
@@ -94,6 +95,18 @@ out=$(run_help "ops/worktree_orchestrate.py"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "worktree_orchestrate help exits 0" 0 "$rc" "$log"
 assert_log_contains "worktree_orchestrate help" "preflight" "$log"
 assert_log_contains "worktree_orchestrate help" "cutover" "$log"
+
+section "asc_shipped help"
+out=$(run_help "ops/asc_shipped.py"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "asc_shipped help exits 0" 0 "$rc" "$log"
+assert_log_contains "asc_shipped help" "ASC_APP_ID" "$log"
+
+section "asc_shipped lazy import"
+log="$TMPDIR/log_asc_shipped_lazy_$RANDOM.txt"
+uv run --no-project --python 3.13 python -S "$WORKTREE/ops/asc_shipped.py" --help >"$log" 2>&1
+rc=$?
+assert_rc "asc_shipped help without site packages exits 0" 0 "$rc" "$log"
+assert_log_contains "asc_shipped help without site packages" "ASC_APP_ID" "$log"
 
 # ── 跨檔掃描：委派給 ops/shell_scan.sh ──────────────────────────────────────
 # 這段的實作 2026-08-08 搬進 `ops/shell_scan.sh`，因為它**沒有任何 gate 會跑**：
