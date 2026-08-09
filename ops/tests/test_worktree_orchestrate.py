@@ -612,6 +612,13 @@ def test_shell_routing_resolves_against_the_real_repo():
     assert "ops-shell-untested" not in gates
 
 
+def test_catalog_shell_routes_to_its_behavioral_boundary_test():
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["ops/lib/ios_ops_catalog.sh"], ops_test_exists=real))
+    assert "ops-shell:test_catalog_agent_boundary.py" in gates
+    assert "ops-shell-untested" not in gates
+
+
 def test_a_repo_root_shell_script_is_routed_like_any_other():
     """`devops.sh` is the production deploy command and lives at the repo root, so the
     original `ops/`-prefixed filter skipped it entirely — the single highest-consequence

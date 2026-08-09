@@ -8,6 +8,9 @@ CATALOG_SESSION_ROOT="${KG_IOS_CATALOG_SESSION_ROOT:-$ROOT/.cache/catalog-agent}
 CATALOG_ACTIVE_SESSION=""
 CATALOG_ACTIVE_UDID=""
 CATALOG_ACTIVE_KEEPER_PID=""
+CATALOG_ACTIVE_LEASE_DIR=""
+CATALOG_ACTIVE_SESSION_MAX_SECONDS=""
+CATALOG_RELEASE_JSON=""
 
 catalog_stop_keeper() {
   local session="$1" keeper_pid="$2" command=""
@@ -31,7 +34,7 @@ catalog_abort_active_session() {
   if [[ -n "$state" && -f "$state" ]]; then
     keeper_pid="$(jq -r '.keeperPid // empty' "$state" 2>/dev/null || true)"
     catalog_release_session "$CATALOG_ACTIVE_SESSION" >/dev/null 2>&1 || true
-  elif [[ -n "$CATALOG_ACTIVE_UDID" && -n "$CATALOG_ACTIVE_SESSION" ]]; then
+  elif catalog_active_lease_is_current; then
     xcrun simctl terminate "$CATALOG_ACTIVE_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
     xcrun simctl shutdown "$CATALOG_ACTIVE_UDID" >/dev/null 2>&1 || true
     xcrun simctl erase "$CATALOG_ACTIVE_UDID" >/dev/null 2>&1 || true
@@ -49,6 +52,16 @@ catalog_arm_cleanup() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
   trap 'exit 129' HUP
+}
+
+catalog_active_lease_is_current() {
+  [[ -n "$CATALOG_ACTIVE_SESSION" \
+     && -n "$CATALOG_ACTIVE_UDID" \
+     && -n "$CATALOG_ACTIVE_LEASE_DIR" \
+     && "$CATALOG_ACTIVE_LEASE_DIR" == "$SIM_LEASE_ROOT"/* \
+     && -d "$CATALOG_ACTIVE_LEASE_DIR" \
+     && "$(cat "$CATALOG_ACTIVE_LEASE_DIR/udid" 2>/dev/null)" == "$CATALOG_ACTIVE_UDID" \
+     && "$(cat "$CATALOG_ACTIVE_LEASE_DIR/owner_token" 2>/dev/null)" == "$CATALOG_ACTIVE_SESSION" ]]
 }
 
 catalog_usage() {
@@ -106,6 +119,7 @@ catalog_emit() {
     (if .device then "[ios][catalog] device=\(.device.udid) name=\(.device.name)" else empty end),
     (if .scenario then "[ios][catalog] scenario=\(.scenario)" else empty end),
     (if .artifact then "[ios][catalog] png=\(.artifact.path) \(.artifact.width)x\(.artifact.height)" else empty end),
+    (if .sessionLifetimeSeconds then "[ios][catalog] keeper-lifetime=\(.sessionLifetimeSeconds)s" else empty end),
     (if .scenarios then (.scenarios[] | "[ios][catalog] \(.id)") else empty end),
     (if .closeCommand then "[ios][catalog] close=\(.closeCommand)" else empty end)
   ' <<<"$payload"
@@ -200,6 +214,12 @@ catalog_release_session() {
     echo "✗ Catalog could not erase its disposable Simulator during close" >&2
     return 1
   }
+  # Release transfers the simulator back to the shared pool. From this point
+  # onward an EXIT/signal trap must never run the destructive fallback against
+  # the same UDID: another process may lease it immediately. If this command is
+  # interrupted or refuses, the bounded keeper leaves the still-owned lease
+  # recoverable instead of guessing that ownership survived.
+  catalog_disarm_cleanup
   release_json="$(cmd_simulator_release --device "$udid" --owner-token "$owner_token" --json)" || return 1
   release_status="$(jq -r '.status' <<<"$release_json")"
   [[ "$release_status" == "ok" ]] || {
@@ -208,7 +228,7 @@ catalog_release_session() {
   }
   catalog_stop_keeper "$session" "$keeper_pid"
   rm -f "$state"
-  printf '%s\n' "$release_json"
+  CATALOG_RELEASE_JSON="$release_json"
 }
 
 catalog_wait_for_ready() {
@@ -243,10 +263,26 @@ catalog_start_session() {
 
   CATALOG_ACTIVE_SESSION="catalog-$(date -u '+%Y%m%dT%H%M%SZ')-$$-$RANDOM"
   CATALOG_ACTIVE_UDID=""
+  CATALOG_ACTIVE_LEASE_DIR=""
+  CATALOG_ACTIVE_SESSION_MAX_SECONDS="${KG_IOS_CATALOG_SESSION_MAX_SECONDS:-${SIM_LEASE_TTL:-1800}}"
+  [[ "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" =~ ^[0-9]+$ \
+     && "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" -gt 0 ]] || {
+    echo "✗ KG_IOS_CATALOG_SESSION_MAX_SECONDS must be a positive integer" >&2
+    return 1
+  }
   mkdir -p "$CATALOG_SESSION_ROOT"
   build_log="$CATALOG_SESSION_ROOT/$CATALOG_ACTIVE_SESSION.build.log"
 
-  nohup bash -c 'while :; do sleep 300; done' "$CATALOG_ACTIVE_SESSION" \
+  # The keeper makes the lease survive the short-lived `catalog open` CLI, but
+  # it is deliberately bounded. After it exits, the simulator pool's existing
+  # TTL stale-lease rule can reclaim a forgotten/crashed session.
+  nohup bash -c '
+    limit="$1"
+    while (( SECONDS < limit )); do
+      remaining=$((limit - SECONDS))
+      (( remaining > 15 )) && sleep 15 || sleep "$remaining"
+    done
+  ' "$CATALOG_ACTIVE_SESSION" "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" \
     </dev/null >/dev/null 2>&1 &
   CATALOG_ACTIVE_KEEPER_PID="$!"
   disown "$CATALOG_ACTIVE_KEEPER_PID" 2>/dev/null || true
@@ -266,6 +302,7 @@ catalog_start_session() {
   CATALOG_ACTIVE_UDID="$(jq -r '.udid' <<<"$lease_json")"
   CATALOG_ACTIVE_DEVICE_NAME="$(jq -r '.name' <<<"$lease_json")"
   lease_dir="$(jq -r '.leaseDir' <<<"$lease_json")"
+  CATALOG_ACTIVE_LEASE_DIR="$lease_dir"
   catalog_prepare_clean_simulator "$CATALOG_ACTIVE_UDID" || return 1
 
   if ! uv run --python 3.13 python "$ROOT/ops/lib/streaming_command.py" \
@@ -328,6 +365,7 @@ catalog_start_session() {
     --arg indexPath "$index_path" \
     --arg leaseDir "$lease_dir" \
     --argjson keeperPid "$CATALOG_ACTIVE_KEEPER_PID" \
+    --argjson sessionMaxSeconds "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" \
     '{
       schema:"kg.ios.catalog-agent.session.v1",
       session:$session,
@@ -336,6 +374,7 @@ catalog_start_session() {
       ownerToken:$ownerToken,
       leaseDir:$leaseDir,
       keeperPid:$keeperPid,
+      sessionMaxSeconds:$sessionMaxSeconds,
       dataset:$dataset,
       appearance:$appearance,
       scenario:(if $scenario == "" then null else $scenario end),
@@ -367,10 +406,8 @@ catalog_list() {
     echo "✗ Catalog app wrote an invalid scenario index" >&2
     return 1
   }
-  release="$(catalog_release_session "$CATALOG_ACTIVE_SESSION")" || return 1
-  # The lease is gone now. Disarm before formatting output so a later jq/stdout
-  # failure can never erase a simulator that another process has just leased.
-  catalog_disarm_cleanup
+  catalog_release_session "$CATALOG_ACTIVE_SESSION" || return 1
+  release="$CATALOG_RELEASE_JSON"
   payload="$(jq -n \
     --argjson scenarios "$scenarios" \
     --argjson release "$release" \
@@ -394,11 +431,13 @@ catalog_open() {
     --arg dataset "$CATALOG_DATASET_FILE" \
     --arg appearance "$CATALOG_APPEARANCE" \
     --argjson scenario "$scenario_json" \
+    --argjson sessionLifetimeSeconds "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" \
     --arg closeCommand "./ops/ios_ops.sh catalog close --session $CATALOG_ACTIVE_SESSION" \
     '{
       schema:"kg.ios.catalog-agent.v1",status:"ok",action:"open",session:$session,
       renderer:"simulator-window",device:{udid:$udid,name:$name,appearance:$appearance},
-      dataset:{path:$dataset},scenario:($scenario.id // null),closeCommand:$closeCommand
+      dataset:{path:$dataset},scenario:($scenario.id // null),
+      sessionLifetimeSeconds:$sessionLifetimeSeconds,closeCommand:$closeCommand
     }')"
   catalog_emit "$CATALOG_JSON" "$payload"
   catalog_disarm_cleanup
@@ -450,11 +489,10 @@ catalog_close() {
   [[ -f "$state" ]] || { echo "✗ Catalog session not found: $session" >&2; return 1; }
   CATALOG_ACTIVE_SESSION="$session"
   CATALOG_ACTIVE_UDID="$(jq -r '.udid' "$state")"
+  CATALOG_ACTIVE_LEASE_DIR="$(jq -r '.leaseDir' "$state")"
   catalog_arm_cleanup
-  release="$(catalog_release_session "$session")" || return 1
-  # Ownership ended inside catalog_release_session; never leave the destructive
-  # abort trap armed while formatting a best-effort response.
-  catalog_disarm_cleanup
+  catalog_release_session "$session" || return 1
+  release="$CATALOG_RELEASE_JSON"
   payload="$(jq -n --arg session "$session" --argjson release "$release" \
     '{schema:"kg.ios.catalog-agent.v1",status:"ok",action:"close",session:$session,release:$release}')"
   catalog_emit "$json" "$payload"

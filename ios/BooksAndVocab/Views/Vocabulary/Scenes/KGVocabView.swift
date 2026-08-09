@@ -53,8 +53,8 @@ struct KGVocabView: View {
         self.onEntrySelected = onEntrySelected
         self.onStartReview = onStartReview
         // Seed the review-state tab + sort. Defaults preserve the shipped
-        // behaviour (no filter, review-priority sort); the marketing catalog
-        // scene opens on the "已複習" tab so the fresh-green cohort is on screen.
+        // behaviour (no filter, review-priority sort); the optional
+        // `Reviewed · Dense` scenario opens on "已複習" to show that cohort.
         self._selectedReviewStates = State(initialValue: initialReviewStates)
         self._selectedRoleFilter = State(initialValue: initialRoleFilter)
         self._sortOption = State(initialValue: initialSort)

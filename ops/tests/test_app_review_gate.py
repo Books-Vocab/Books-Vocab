@@ -116,12 +116,20 @@ def _restage_desired_project(tmp_path: Path, payload: bytes) -> None:
 
     live = tmp_path / "live"
     (live / "desired" / "manifest.json").write_bytes(manifest_bytes)
+    (live / "desired" / "inputs" / "project.pbxproj").write_bytes(payload)
     audit_path = live / "audit.json"
     audit = json.loads(audit_path.read_text())
     audit["desired"]["manifestSHA256"] = _sha(manifest_bytes)
     _json(audit_path, audit)
     files = []
-    for rel in ("audit.json", "desired/manifest.json", "desired/outputs/live.png", "live/images/01_live.png"):
+    for rel in (
+        "audit.json",
+        "desired/manifest.json",
+        "desired/inputs/project.pbxproj",
+        "desired/inputs/ui_world.json",
+        "desired/outputs/live.png",
+        "live/images/01_live.png",
+    ):
         blob = (live / rel).read_bytes()
         files.append({"path": rel, "byteSize": len(blob), "sha256": _sha(blob)})
     _json(live / "manifest.json", {"schema": "kg.app_review.asc_mirror_bundle.v1", "files": files})
@@ -179,6 +187,9 @@ def _write_fixture_world(tmp_path: Path) -> Path:
     (live / "desired" / "outputs").mkdir(parents=True)
     (live / "desired" / "manifest.json").write_bytes((desired / "manifest.json").read_bytes())
     (live / "desired" / "outputs" / "live.png").write_bytes(image)
+    (live / "desired" / "inputs").mkdir(parents=True)
+    (live / "desired" / "inputs" / "project.pbxproj").write_bytes(project)
+    (live / "desired" / "inputs" / "ui_world.json").write_bytes(dataset)
     audit = {
         "schema": "kg.app_review.asc_audit.v1",
         "mode": "read-only",
@@ -188,7 +199,7 @@ def _write_fixture_world(tmp_path: Path) -> Path:
             "manifestSHA256": desired_hash,
             "build": {"marketingVersion": "2.0.0", "buildNumber": "6"},
             "locale": "zh-Hant",
-            "target": "promotion",
+            "displayType": target["screenshotDisplayType"],
             "outputs": [
                 {
                     "order": 1,
@@ -293,6 +304,8 @@ def _write_fixture_world(tmp_path: Path) -> Path:
     for rel in (
         "audit.json",
         "desired/manifest.json",
+        "desired/inputs/project.pbxproj",
+        "desired/inputs/ui_world.json",
         "desired/outputs/live.png",
         live_rel,
     ):
