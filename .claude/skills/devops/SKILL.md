@@ -83,7 +83,7 @@ ops-cli cost-overview [--range R]         # 全用戶 cost 排名
 ops-cli fleet-overview                     # 跨用戶體檢：每用戶 cards/links/月cost + FLEET TOTAL（免逐用戶 loop）
 ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
 ops-cli world-state <uid>                  # 穩定投影 actual world（config/notebooks/cards/graph_*.json）
-ops-cli world-diff <uid> <spec.json>       # 用 kg.ops_world_expectation.v1 比對 actual，拿穩定 mismatch path
+ops-cli world-diff <uid> <spec.json>       # expectation 做投影比對；kg.seed_spec.v1 做 world-export 嚴格雙向比對
 ops-cli world-export <uid> [--out <path>]  # 帳號 vocab 層 → ops-edit seed 相容 spec（kg.seed_spec.v1，唯讀、確定式排序、stdout 純 JSON；不可重放資料走 stderr warning）
 ops-cli timeseries <metric> [--bucket day|week|month] [--range R] [--uid all|<uid>] [--fill-zero]
                                            # 時間序列趨勢；metric=cost|calls|active_users（預設 bucket=day, range=30d, uid=all）
