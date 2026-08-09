@@ -21,7 +21,10 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.coreIsLocked)
         #expect(plan.front.fields == [.partOfSpeech])
         #expect(plan.back.fields == [.difficultyTier, .graphLinks, .example, .explanation, .collocations])
-        #expect(plan.front.rows == [.prompt, .field(.partOfSpeech)])
+        // 詞性貼在核心詞的基線上，所以正面只剩核心那一列。
+        #expect(plan.front.inlineFields == [.partOfSpeech])
+        #expect(plan.front.blockFields.isEmpty)
+        #expect(plan.front.rows == [.prompt])
         #expect(plan.back.rows == [
             .answer,
             .answerDivider,
@@ -43,11 +46,13 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.front.fields == [.graphLinks, .example])
         #expect(plan.back.fields == [.example, .partOfSpeech])
         #expect(plan.front.rows == [.prompt, .field(.graphLinks), .field(.example)])
+        // 背面開了詞性也只是貼著答案字，不會多長一列出來。
+        #expect(plan.back.inlineFields == [.partOfSpeech])
+        #expect(plan.back.blockFields == [.example])
         #expect(plan.back.rows == [
             .answer,
             .answerDivider,
-            .field(.example),
-            .field(.partOfSpeech)
+            .field(.example)
         ])
         #expect(profile.recognition.front == [.graphLinks, .example])
         #expect(profile.recognition.back == [.example, .partOfSpeech])
@@ -92,6 +97,35 @@ struct ReviewCardRenderPlanTests {
 
         #expect(plan.front.rows == [.prompt])
         #expect(plan.back.rows == [.answer])
+    }
+
+    /// 「畫在哪」是渲染的性質，不是 profile 的性質。恰好只有詞性是核心詞的附屬標註。
+    @Test func part_of_speech_is_the_only_field_that_shares_the_core_row() {
+        #expect(ReviewCardField.allCases.filter(\.rendersInlineWithCore) == [.partOfSpeech])
+    }
+
+    /// 重構後 solver 把詞性當一個獨立 section 計預算（fallback 22pt）並多收一個
+    /// foldSectionSpacing，正面因此高出一列＋一個間距。這一則把省下來的量釘死。
+    @Test func the_budget_no_longer_charges_a_section_for_an_inline_field() {
+        let measurements: [ReviewCardLayoutSolver.Section: ReviewCardLayoutSolver.Measurement] = [
+            .core: .init(naturalHeight: 112),
+            .field(.partOfSpeech): .init(naturalHeight: 22)
+        ]
+        func solvedHeight(_ fields: [ReviewCardField]) -> CGFloat {
+            ReviewCardLayoutSolver.solve(.init(
+                face: .front,
+                fields: fields,
+                measurements: measurements,
+                viewportHeight: 4000,
+                minimumHeight: 0
+            )).cardHeight
+        }
+
+        #expect(solvedHeight([.partOfSpeech]) - solvedHeight([])
+            == 22 + TodayReviewMetrics.foldSectionSpacing)
+        // 而渲染端交給 solver 的正是 blockFields，所以那 46pt 今天不再被收。
+        let plan = ReviewCardRenderPlan.make(profile: .default, mode: .recognition, availability: all)
+        #expect(plan.front.blockFields.isEmpty)
     }
 
     /// 挖空是「這一面還沒給答案」的性質，不是例句的性質。重構把 `mode: .cloze`

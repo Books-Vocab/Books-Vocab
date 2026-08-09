@@ -2,7 +2,7 @@
   "modes": {
     "recognition": {
       "front": {
-        "rows": ["prompt", "field.partOfSpeech"]
+        "rows": ["prompt"]
       },
       "back": {
         "rows": [
@@ -18,7 +18,7 @@
     },
     "production": {
       "front": {
-        "rows": ["prompt", "field.partOfSpeech", "field.example"]
+        "rows": ["prompt", "field.example"]
       },
       "back": {
         "rows": [

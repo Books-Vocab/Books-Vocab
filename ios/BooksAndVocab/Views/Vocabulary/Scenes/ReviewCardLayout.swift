@@ -109,6 +109,24 @@ struct ReviewCardViewport: Equatable {
     }
 }
 
+extension ReviewCardField {
+    /// 這一列畫在核心列**之內**——與單字／答案同一條 `firstTextBaseline`——而不是
+    /// 自己佔一列。詞性是單字的附屬標註，重構前它就是核心 HStack 內的 sibling；
+    /// 成為獨立欄位後正面多出一列＋一個 24pt 間距，讀起來也像一個獨立欄位。
+    ///
+    /// 用 switch 而非 `self == .partOfSpeech`：日後新增 case 時編譯器會逼人表態。
+    var rendersInlineWithCore: Bool {
+        switch self {
+        case .partOfSpeech: true
+        case .difficultyTier: false
+        case .example: false
+        case .explanation: false
+        case .collocations: false
+        case .graphLinks: false
+        }
+    }
+}
+
 struct ReviewCardRenderPlan: Equatable {
     enum Row: Equatable {
         case prompt
@@ -118,8 +136,27 @@ struct ReviewCardRenderPlan: Equatable {
     }
 
     struct Face: Equatable {
+        /// 這一面啟用的全部欄位，**含 inline 的**。編輯器與既有測試讀它。
         let fields: [ReviewCardField]
-        let rows: [Row]
+        /// 核心列本身：正面是題目、背面是答案。
+        let coreRow: Row
+
+        /// 畫在核心列基線上的欄位。
+        var inlineFields: [ReviewCardField] { fields.filter { $0.rendersInlineWithCore } }
+
+        /// 自己佔一列的欄位。solver **只**替這些配 section 預算——inline 欄位的高度
+        /// 已經含在 `.core` 的量測裡，再配一格就是多一列＋多一個 gap。
+        var blockFields: [ReviewCardField] { fields.filter { !$0.rendersInlineWithCore } }
+
+        /// 真正畫出來的列序。inline 欄位不在其中：它們沒有自己的列。
+        var rows: [Row] {
+            let blocks = blockFields
+            let answerRule = coreRow == .answer
+                && ReviewCardLayoutSolver.drawsAnswerDivider(fields: blocks)
+            return [coreRow]
+                + (answerRule ? [Row.answerDivider] : [])
+                + blocks.map(Row.field)
+        }
     }
 
     /// Prompt and answer are mode semantics, rather than optional profile fields.
@@ -133,15 +170,10 @@ struct ReviewCardRenderPlan: Equatable {
         availability: ReviewCardContentAvailability
     ) -> Self {
         let layout = profile.layout(for: mode)
-        let frontFields = layout.front.filter(availability.contains)
-        let backFields = layout.back.filter(availability.contains)
-        let backRows: [Row] = [.answer]
-            + (ReviewCardLayoutSolver.drawsAnswerDivider(fields: backFields) ? [.answerDivider] : [])
-            + backFields.map(Row.field)
         return Self(
             coreIsLocked: true,
-            front: .init(fields: frontFields, rows: [.prompt] + frontFields.map(Row.field)),
-            back: .init(fields: backFields, rows: backRows)
+            front: .init(fields: layout.front.filter(availability.contains), coreRow: .prompt),
+            back: .init(fields: layout.back.filter(availability.contains), coreRow: .answer)
         )
     }
 }
