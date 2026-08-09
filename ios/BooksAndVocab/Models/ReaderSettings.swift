@@ -224,10 +224,15 @@ final class ReaderSettings {
         }
     }
 
-    /// 字級倍率的顯示字串。閱讀設定頁的 Stepper 與設定▸偏好 的摘要列共用，
-    /// 免得兩個入口把同一個數字 format 成不同樣子。
+    /// 字級倍率的顯示字串。閱讀設定頁的 Stepper、設定▸偏好 的摘要列、以及
+    /// Catalog harness 共用，免得同一個數字在不同入口 format 成不同樣子。
+    /// static 版本給沒有 `ReaderSettings` 實例的呼叫端（harness）。
+    static func fontSizeText(for scale: Double) -> String {
+        String(format: "%.2gx", scale)
+    }
+
     var fontSizeText: String {
-        String(format: "%.2gx", fontSize)
+        Self.fontSizeText(for: fontSize)
     }
 
     var vocabHighlightPreferences: VocabHighlightPreferences {

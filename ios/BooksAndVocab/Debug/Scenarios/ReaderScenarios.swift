@@ -108,7 +108,7 @@ enum ReaderScenarios {
             Scenario("Normal", layout: .fill) {
                 AppThemeContainer {
                     ReaderSettingsPanelPreviewHarness(
-                        initialFontSizeText: "1.0x",
+                        initialFontScale: 1.0,
                         canDecreaseFontSize: true,
                         canIncreaseFontSize: true
                     )
@@ -118,7 +118,7 @@ enum ReaderScenarios {
             Scenario("Bounds (min)", layout: .fill) {
                 AppThemeContainer {
                     ReaderSettingsPanelPreviewHarness(
-                        initialFontSizeText: "0.75x",
+                        initialFontScale: 0.75,
                         canDecreaseFontSize: false,
                         canIncreaseFontSize: true
                     )
@@ -128,7 +128,7 @@ enum ReaderScenarios {
             Scenario("Bounds (max)", layout: .fill) {
                 AppThemeContainer {
                     ReaderSettingsPanelPreviewHarness(
-                        initialFontSizeText: "2.0x",
+                        initialFontScale: 2.0,
                         canDecreaseFontSize: true,
                         canIncreaseFontSize: false
                     )
