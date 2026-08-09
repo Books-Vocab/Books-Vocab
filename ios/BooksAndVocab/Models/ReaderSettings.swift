@@ -28,12 +28,31 @@ enum ReaderFont: String, CaseIterable, Identifiable {
         return ReaderFont(rawValue: raw)
     }
 
+    /// WebView 端的 CSS family。`buildFontFaceCSS()` 用同名 `@font-face` 把
+    /// bundle 裡的 TTF 餵給 WKWebView。
     var family: FontFamily {
         switch self {
         case .serif:      return FontFamily("Cormorant Garamond")
         case .crimsonPro: return FontFamily("Crimson Pro")
         case .sans:       return FontFamily("Elms Sans")
         case .mono:       return FontFamily("Space Mono")
+        }
+    }
+
+    /// 原生端的**同一批字檔**，給 `Font.custom(_:size:)`。閱讀設定的即時預覽
+    /// 靠這個跟閱讀器用到同一個字體檔（`ios/BooksAndVocab/Resources/*.ttf`，
+    /// 已列在 Info.plist 的 UIAppFonts）。
+    ///
+    /// **必須是 PostScript name，不是檔名** —— Crimson Pro 的 PostScript name 是
+    /// `CrimsonProRoman-Regular`（檔名卻是 `CrimsonPro-Regular.ttf`）。名字給錯時
+    /// `Font.custom` 不會報錯，只會靜靜退回系統字體，預覽就變成在騙人。
+    /// 這四個值是用 fontTools 讀 name table (nameID 6) 量出來的。
+    var previewFontName: String {
+        switch self {
+        case .serif:      return "CormorantGaramond-Regular"
+        case .crimsonPro: return "CrimsonProRoman-Regular"
+        case .sans:       return "ElmsSans-Regular"
+        case .mono:       return "SpaceMono-Regular"
         }
     }
 
@@ -71,6 +90,25 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
         case .dark:  return "moon.stars.fill"
         }
 }
+
+    /// 紙色 —— App 覆寫掉 Readium 的 `--RS__backgroundColor`，經
+    /// `EPUBPreferences.backgroundColor` 送進 WebView。
+    var paperColor: SwiftUI.Color {
+        switch self {
+        case .light: return AppColors.paperLight
+        case .sepia: return AppColors.paperSepia
+        case .dark:  return AppColors.paperDark
+        }
+    }
+
+    /// 墨色 —— App **沒有**覆寫，沿用 Readium 主題的 `--RS__textColor`。
+    /// 與 `paperColor` 成對放在這裡，新增主題時兩個都得填，漏一個編不過。
+    var inkColor: SwiftUI.Color {
+        switch self {
+        case .light, .sepia: return AppColors.readerInkLight
+        case .dark:          return AppColors.readerInkDark
+        }
+    }
 }
 
 struct ReaderViewConfiguration: Equatable {
@@ -291,17 +329,9 @@ final class ReaderSettings {
 
     // MARK: - Readium 轉換
 
-    private static func paperColor(for theme: ReaderTheme) -> SwiftUI.Color {
-        switch theme {
-        case .light: return AppColors.paperLight
-        case .sepia: return AppColors.paperSepia
-        case .dark:  return AppColors.paperDark
-        }
-    }
-
     func viewConfiguration(systemColorScheme: ColorScheme) -> ReaderViewConfiguration {
         let theme = resolvedTheme(systemColorScheme: systemColorScheme)
-        let paper = Self.paperColor(for: theme)
+        let paper = theme.paperColor
         return ReaderViewConfiguration(
             paperColor: paper,
             epubPreferences: EPUBPreferences(

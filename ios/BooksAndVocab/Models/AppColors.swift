@@ -36,6 +36,16 @@ enum AppColors {
     static let paperSepiaDeep = Color(red: 0.96, green: 0.93, blue: 0.87)
     static let paperDark      = Color(red: 0.098, green: 0.098, blue: 0.098)
 
+    // ── 閱讀器正文墨色 ────────────────────────────────────────────────
+    // 從**出貨的 Readium 主題**量到的，不是配的：ReadiumCSS 的 `--RS__textColor`
+    // 在 default / sepia 是 #121212、在 night 是 #FEFEFE
+    // （Readium_ReadiumNavigator.bundle/Assets/Static/readium-css/
+    //  ReadiumCSS-before.css:281、ReadiumCSS-after.css:247/321）。
+    // App 只覆寫背景（`EPUBPreferences.backgroundColor` ← paper*），墨色沿用
+    // Readium 主題，所以閱讀設定的原生預覽要對得上就得用這兩個值。
+    static let readerInkLight = Color(red: 0.071, green: 0.071, blue: 0.071) // #121212
+    static let readerInkDark  = Color(red: 0.996, green: 0.996, blue: 0.996) // #FEFEFE
+
     // ── 主題強調色（Morandi grey-blue · 取代 Notion 連結藍）─────────────
     // light: #4D7396（~4.99:1 on 白卡） · 由原 #3078A1 降飽和度至 ~36%
     // dark:  #85A4C2（~6.77:1 on 深灰頁面 #191919） · 由原 #5E9FD0 降飽和度至 ~30%
