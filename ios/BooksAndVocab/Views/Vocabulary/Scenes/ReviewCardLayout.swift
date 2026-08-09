@@ -169,6 +169,15 @@ enum ReviewCardChrome {
     }
 }
 
+/// Cloze 只在「這一面還沒給答案」時成立，也就是 production 的題目面。
+/// 其餘三種 (face, cardMode) 組合上目標詞本來就已經露出，挖空藏不住任何東西，
+/// 只會把讀者該看到的高亮拿掉（重構前背面走 CardDocumentView，預設就是 .highlight）。
+enum ReviewCardExampleRendering {
+    static func mode(face: ReviewCardFace, cardMode: VocabularyCardMode) -> CardRichTextMode {
+        face == .front && cardMode == .production ? .cloze : .highlight
+    }
+}
+
 enum ReviewCardExplanationContent {
     static func rawMarkdown(from paragraphs: [CardDocumentParagraph]) -> String {
         paragraphs.map(\.rawMarkdown).joined(separator: "\n")

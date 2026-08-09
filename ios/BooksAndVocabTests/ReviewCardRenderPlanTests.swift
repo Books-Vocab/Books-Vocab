@@ -93,6 +93,15 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.front.rows == [.prompt])
         #expect(plan.back.rows == [.answer])
     }
+
+    /// 挖空是「這一面還沒給答案」的性質，不是例句的性質。重構把 `mode: .cloze`
+    /// 寫死在正反面共用的渲染點上，於是翻開後的背面仍然把目標詞挖掉＝答案只給一半。
+    @Test func cloze_belongs_only_to_the_production_prompt() {
+        #expect(ReviewCardExampleRendering.mode(face: .front, cardMode: .production) == .cloze)
+        #expect(ReviewCardExampleRendering.mode(face: .back, cardMode: .production) == .highlight)
+        #expect(ReviewCardExampleRendering.mode(face: .front, cardMode: .recognition) == .highlight)
+        #expect(ReviewCardExampleRendering.mode(face: .back, cardMode: .recognition) == .highlight)
+    }
 }
 
 struct ReviewCardLayoutSolverTests {
