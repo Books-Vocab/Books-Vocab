@@ -110,7 +110,7 @@ struct ReviewCalendarPresenter: View {
                 .disabled(!canGoForward)
                 .accessibilityLabel(L10n.string("calendar.month.next"))
             }
-            .padding(.horizontal, appSkin.spacing.microGap)
+            .padding(.horizontal, appSkin.spacing.rowMicroGap)
 
             VocabCalendarGrid(
                 displayedMonth: displayedMonth,
@@ -182,7 +182,7 @@ struct ReviewCalendarPresenter: View {
                 .font(appSkin.typography.monoLabel)
                 .foregroundStyle(appSkin.palette.quaternaryText)
         }
-        .padding(.vertical, appSkin.spacing.microGap)
+        .padding(.vertical, appSkin.spacing.rowMicroGap)
     }
 
     // MARK: - Helpers

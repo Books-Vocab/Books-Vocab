@@ -57,7 +57,7 @@ struct KnowledgeGraphPresenter: View {
                             Spacer()
                             graphLegend
                                 .padding(.trailing, appSkin.metrics.overlayDrawerHorizontalInset)
-                                .padding(.top, appSkin.spacing.microGap)
+                                .padding(.top, appSkin.spacing.rowMicroGap)
                         }
                         Spacer()
                     }
@@ -140,7 +140,7 @@ struct KnowledgeGraphPresenter: View {
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
                         VocabSectionHeader(title: KnowledgeGraphCopy.forcesSectionTitle)
-                            .padding(.bottom, appSkin.spacing.microGap)
+                            .padding(.bottom, appSkin.spacing.rowMicroGap)
                         VocabSliderRow(label: KnowledgeGraphCopy.centerForceTitle, value: bindings.centerForce, range: 0...1, format: "%.2f")
                         VocabSliderRow(label: KnowledgeGraphCopy.repelForceTitle, value: bindings.repelForce, range: 0...1, format: "%.2f")
                         VocabSliderRow(label: KnowledgeGraphCopy.linkForceTitle, value: bindings.linkForce, range: 0...1, format: "%.2f")
@@ -152,7 +152,7 @@ struct KnowledgeGraphPresenter: View {
 
                     VStack(spacing: 0) {
                         VocabSectionHeader(title: KnowledgeGraphCopy.displaySectionTitle)
-                            .padding(.bottom, appSkin.spacing.microGap)
+                            .padding(.bottom, appSkin.spacing.rowMicroGap)
                         VocabSliderRow(label: KnowledgeGraphCopy.nodeSizeTitle, value: bindings.nodeSize, range: 1...10, format: "%.1f")
                         VocabSliderRow(label: KnowledgeGraphCopy.linkThicknessTitle, value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
 
@@ -163,7 +163,7 @@ struct KnowledgeGraphPresenter: View {
                         }
                         .toggleStyle(.switch)
                         .tint(appSkin.palette.accent)
-                        .padding(.top, appSkin.spacing.microGap)
+                        .padding(.top, appSkin.spacing.rowMicroGap)
                     }
                 }
                 .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
@@ -204,7 +204,7 @@ struct KnowledgeGraphPresenter: View {
             }
         }
         .padding(.horizontal, appSkin.spacing.inlineGap)
-        .padding(.vertical, appSkin.spacing.microGap)
+        .padding(.vertical, appSkin.spacing.rowMicroGap)
         // 舊值是 `radii.chip`，但這裡不是 chip —— 是一塊 ~51pt 高的圖例面板
         // （漸層條 + 兩行標籤 + padding）。chip 的語意對應 `pill`，套在這個尺寸上會
         // 得到 r≈25pt 的膠囊，把面板讀成一顆藥丸。依短邊取 `control`（r≈7.7pt，

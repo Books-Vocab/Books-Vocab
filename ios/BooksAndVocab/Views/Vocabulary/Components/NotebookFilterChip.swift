@@ -19,7 +19,7 @@ struct NotebookFilterChip: View {
         Button {
             showPicker = true
         } label: {
-            HStack(spacing: skin.spacing.microGap) {
+            HStack(spacing: skin.spacing.rowMicroGap) {
                 Image(systemName: filter.isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                     .font(skin.typography.caption)
                 Text(chipLabel)

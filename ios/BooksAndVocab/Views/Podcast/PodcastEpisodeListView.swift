@@ -339,7 +339,7 @@ struct PodcastEpisodeListView: View {
                 Spacer()
                 sortMenu
             }
-            .padding(.horizontal, skin.spacing.microGap)
+            .padding(.horizontal, skin.spacing.rowMicroGap)
 
             ListSectionCard {
                 ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in

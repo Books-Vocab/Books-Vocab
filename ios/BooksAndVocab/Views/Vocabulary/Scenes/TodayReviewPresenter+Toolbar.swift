@@ -419,7 +419,7 @@ extension TodayReviewPresenter {
     #if targetEnvironment(macCatalyst)
     var shortcutRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: appSkin.spacing.microGap) {
+            HStack(spacing: appSkin.spacing.rowMicroGap) {
                 ForEach(activeShortcutHints) { hint in
                     ShortcutHintChip(hint: hint)
                 }
@@ -530,7 +530,7 @@ struct ShortcutHintChip: View {
     let hint: TodayReviewShortcutHint
 
     var body: some View {
-        HStack(spacing: appSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.rowMicroGap) {
             ShortcutKeyCap(key: hint.key)
             Text(hint.label)
                 .font(appSkin.typography.caption)

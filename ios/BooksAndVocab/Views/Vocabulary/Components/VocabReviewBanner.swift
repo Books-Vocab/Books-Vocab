@@ -47,7 +47,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: skin.spacing.microGap)
+            Spacer(minLength: skin.spacing.rowMicroGap)
 
             filterContent
 

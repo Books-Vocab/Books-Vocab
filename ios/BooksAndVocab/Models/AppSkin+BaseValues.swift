@@ -75,7 +75,7 @@ extension AppSkin {
         sectionGap: 14,
         inlineGap: 8,
         rowPadding: 9,
-        microGap: 6,
+        rowMicroGap: 6,
         chipHorizontalPadding: 10,
         chipVerticalPadding: 6,
         chipVerticalPaddingLoose: 8,

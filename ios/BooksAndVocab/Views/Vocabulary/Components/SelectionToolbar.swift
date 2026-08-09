@@ -34,7 +34,7 @@ struct SelectionToolbar: View {
     @ViewBuilder
     private func toolbarButton(label: String, systemImage: String, tone: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: appSkin.spacing.microGap) {
+            VStack(spacing: appSkin.spacing.rowMicroGap) {
                 Image(systemName: systemImage)
                     .font(appSkin.typography.iconMedium)
                 Text(label)

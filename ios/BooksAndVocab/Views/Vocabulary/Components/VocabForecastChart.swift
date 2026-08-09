@@ -140,7 +140,7 @@ struct VocabForecastChart: View {
         Text("\(bucket.label): \(bucket.count)")
             .font(appSkin.typography.monoLabel)
             .foregroundStyle(appSkin.palette.primaryText)
-            .padding(.horizontal, appSkin.spacing.microGap)
+            .padding(.horizontal, appSkin.spacing.rowMicroGap)
             .padding(.vertical, AppSpacing.microGap)
             .background(
                 AppRoundedRect(roundness: AppRoundness.pill)

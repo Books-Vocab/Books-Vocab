@@ -57,7 +57,7 @@ struct VocabCalendarGrid: View {
     }
 
     var body: some View {
-        VStack(spacing: appSkin.spacing.microGap) {
+        VStack(spacing: appSkin.spacing.rowMicroGap) {
             // Weekday header
             LazyVGrid(columns: columns, spacing: AppSpacing.s1) {
                 ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in

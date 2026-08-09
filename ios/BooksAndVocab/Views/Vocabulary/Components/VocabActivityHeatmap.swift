@@ -63,7 +63,7 @@ struct VocabActivityHeatmap: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
             ScrollView(.horizontal, showsIndicators: false) {
                 ScrollViewReader { proxy in
                     HStack(alignment: .top, spacing: 0) {
@@ -81,7 +81,7 @@ struct VocabActivityHeatmap: View {
                                 }
                             }
                         }
-                        .padding(.trailing, appSkin.spacing.microGap)
+                        .padding(.trailing, appSkin.spacing.rowMicroGap)
 
                         HStack(spacing: cellSpacing) {
                             ForEach(Array(grid.enumerated()), id: \.offset) { weekIndex, column in
@@ -101,7 +101,7 @@ struct VocabActivityHeatmap: View {
             }
 
             // Legend
-            HStack(spacing: appSkin.spacing.microGap) {
+            HStack(spacing: appSkin.spacing.rowMicroGap) {
                 Text("少".localized)
                     .font(appSkin.typography.monoLabel)
                     .foregroundStyle(appSkin.palette.quaternaryText)

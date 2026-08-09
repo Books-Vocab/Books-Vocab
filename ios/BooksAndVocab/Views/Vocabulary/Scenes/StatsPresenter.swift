@@ -306,14 +306,14 @@ struct StatsPresenter: View {
             Button {
                 retryGraphLoad()
             } label: {
-                HStack(spacing: appSkin.spacing.microGap) {
+                HStack(spacing: appSkin.spacing.rowMicroGap) {
                     Image(systemName: "arrow.clockwise")
                         .font(appSkin.typography.iconSmall)
                     Text(StatsCopy.retryTitle)
                         .font(appSkin.typography.caption)
                 }
                 .padding(.horizontal, appSkin.spacing.inlineGap)
-                .padding(.vertical, appSkin.spacing.microGap)
+                .padding(.vertical, appSkin.spacing.rowMicroGap)
                 .background(appSkin.palette.warningBg, in: AppRoundedRect(roundness: AppRoundness.pill))
                 .foregroundStyle(appSkin.palette.warning)
             }
@@ -463,8 +463,8 @@ struct StatsPresenter: View {
         systemImage: String
     ) -> some View {
         VocabCard {
-            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
-                HStack(spacing: appSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
+                HStack(spacing: appSkin.spacing.rowMicroGap) {
                     Image(systemName: systemImage)
                         .font(appSkin.typography.iconSmall)
                         .foregroundStyle(appSkin.palette.tertiaryText)
@@ -489,7 +489,7 @@ struct StatsPresenter: View {
     private func heatmapSection(_ summary: StatsPresentation.Summary) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Button { showCalendar = true } label: {
-                HStack(spacing: appSkin.spacing.microGap) {
+                HStack(spacing: appSkin.spacing.rowMicroGap) {
                     sectionHeader(title: StatsCopy.calendarTitle, systemImage: "calendar")
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -550,7 +550,7 @@ struct StatsPresenter: View {
     }
 
     private func sectionHeader(title: String, systemImage: String) -> some View {
-        HStack(spacing: appSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.rowMicroGap) {
             Image(systemName: systemImage)
                 .font(appSkin.typography.iconSmall)
             Text(title)

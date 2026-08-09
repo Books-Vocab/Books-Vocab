@@ -167,7 +167,7 @@ struct AppSkin {
         let sectionGap: CGFloat
         let inlineGap: CGFloat
         let rowPadding: CGFloat
-        let microGap: CGFloat
+        let rowMicroGap: CGFloat
         let chipHorizontalPadding: CGFloat
         let chipVerticalPadding: CGFloat
         let chipVerticalPaddingLoose: CGFloat
@@ -354,4 +354,3 @@ extension AppSkin {
     }
 }
 #endif
-

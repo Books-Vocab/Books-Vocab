@@ -26,7 +26,7 @@ struct VocabSectionHeader: View {
     var trailingText: String? = nil
 
     var body: some View {
-        HStack(spacing: appSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.rowMicroGap) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .font(appSkin.typography.iconTiny)
