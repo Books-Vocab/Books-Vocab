@@ -114,9 +114,11 @@ assert_red() {  # <gate> <expected marker> <output file> <rc>
   local g="$1" marker="$2" out="$3" rc="$4"
   if [[ "$rc" -eq 0 ]]; then
     fail_t "$g stayed green on a known-bad input"
+    record_proof "$g" red attempted
   elif ! grep -qF -- "$marker" "$out"; then
     fail_t "$g exited $rc but not for the expected reason (no '$marker' in output) — a non-zero exit from a different cause is not a proof"
     head -5 "$out" | sed 's/^/      /'
+    record_proof "$g" red attempted
   else
     ok "$g goes red on a known-bad input, citing '$marker' (exit $rc)"
     record_proof "$g" red executed
@@ -128,9 +130,11 @@ assert_green() {  # <gate> <expected marker> <output file> <rc>
   if [[ "$rc" -ne 0 ]]; then
     fail_t "$g cannot go green on a known-good input (exit $rc) — a gate that only ever goes red blocks everything and teaches people to bypass the process"
     tail -5 "$out" | sed 's/^/      /'
+    record_proof "$g" green attempted
   elif ! grep -qF -- "$marker" "$out"; then
     fail_t "$g exited 0 but without '$marker' — a green no-op is not a green check"
     head -5 "$out" | sed 's/^/      /'
+    record_proof "$g" green attempted
   else
     ok "$g goes green on a known-good input, citing '$marker'"
     record_proof "$g" green executed
@@ -229,13 +233,19 @@ passed_n="$(summary_field passed "$TMP/uiq_clean.out")"
 printf 'import SwiftUI\n\nstruct KGCanFailProbe: View {\n    @ObserveInjection private var inject\n    var body: some View {\n        Text("紅燈探針")\n            .enableInjection()\n    }\n}\n' >"$PROBE"
 rc=0; "${UIQ[@]}" >"$TMP/uiq_probe.out" 2>&1 || rc=$?
 rm -f "$PROBE"
-assert_red ui-quality-fast "failed=1 " "$TMP/uiq_probe.out" "$rc"
+base_failed="$(summary_field failed "$TMP/uiq_clean.out")"
+if [[ -z "$base_failed" ]]; then
+  fail_t "ui-quality-fast clean output has no failed count; cannot derive a relative red expectation"
+  base_failed=0
+fi
+probe_failed=$((base_failed + 1))
+assert_red ui-quality-fast "failed=$probe_failed " "$TMP/uiq_probe.out" "$rc"
 # marker is substring-matched, so keep the trailing space: bare "failed=1" also matches
 # "failed=13". Harmless at five mechanisms, a false green if this helper is ever reused.
 failed_n="$(summary_field failed "$TMP/uiq_probe.out")"
-[[ "${failed_n:-0}" -eq 1 ]] \
-  && ok "ui-quality-fast's red failed exactly the one lint the probe violates" \
-  || fail_t "ui-quality-fast's red reported ${failed_n:-0} failing mechanisms — expected exactly 1 (the raw-CJK lint)"
+[[ "${failed_n:-0}" -eq "$probe_failed" ]] \
+  && ok "ui-quality-fast's red failed exactly one more mechanism than the clean baseline ($base_failed -> $probe_failed)" \
+  || fail_t "ui-quality-fast's red reported ${failed_n:-0} failing mechanisms — expected clean baseline $base_failed + 1 = $probe_failed"
 
 # --- review-receipts ------------------------------------------------------------
 # KG_REVIEW_AUDIT_ROOT is kept EXPLICIT, not stylistic. review_audit.sh used to cd to
@@ -522,15 +532,18 @@ section "what is declared cheap was actually executed"
 # `expensive|cheap`, writing no proof body, and having one historical pass in the journal
 # would satisfy the whole contract.
 missing=""
+attempted_but_failed=""
 for want in $declared_cheap; do
   case " $PROVEN " in
     *" $want:executed "*|*" $want:fixture "*) ;;
+    *" $want:attempted "*) attempted_but_failed="$attempted_but_failed $want" ;;
     *) missing="$missing $want" ;;
   esac
 done
 extra=""
 for got in $PROVEN; do
   [[ "${got##*:}" == "journal" ]] && continue     # journal greens are extras by design
+  [[ "${got##*:}" == "attempted" ]] && continue
   entry="${got%:*}"
   case " $declared_cheap " in
     *" $entry "*) continue ;;
@@ -538,8 +551,9 @@ for got in $PROVEN; do
   extra="$extra $entry"
 done
 [[ -z "$missing" ]] || fail_t "declared cheap but never executed here:$missing"
+[[ -z "$attempted_but_failed" ]] || fail_t "proof ran and FAILED:$attempted_but_failed"
 [[ -z "$extra" ]] || fail_t "executed a proof for something not declared cheap:$extra"
-[[ -z "$missing" && -z "$extra" ]] && ok "declared-cheap set matches executed set"
+[[ -z "$missing" && -z "$attempted_but_failed" && -z "$extra" ]] && ok "declared-cheap set matches executed set"
 
 echo ""
 echo "gate-can-fail: $pass passed, $fail failed"
