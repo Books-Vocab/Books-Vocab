@@ -1208,3 +1208,5 @@
 /* reader-settings-preview · APP-20260809-ca8e30 即時預覽 */
 "reader.settings.section.preview" = "預覽";
 "reader.settings.preview.accessibilityLabel" = "閱讀設定的即時預覽";
+"reader.settings.reset" = "恢復預設";
+"reader.settings.reset.all" = "恢復預設閱讀設定";

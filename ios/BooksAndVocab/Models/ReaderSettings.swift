@@ -161,21 +161,32 @@ final class ReaderSettings {
     private let kScrollMode = "reader_settings_scrollMode"
     private var cloudObserver: NSObjectProtocol?
 
-    var font: ReaderFont = .serif {
+    // MARK: - 出廠預設
+    //
+    // 屬性初始值與 `resetToDefaults()` 共讀這四個常數。以前預設值只存在於屬性
+    // 宣告的行尾，任何「恢復預設」都得抄一份 —— 抄了就會與真正的預設分岔。
+
+    static let defaultFont: ReaderFont = .serif
+    static let defaultFontSize: Double = 1.0
+    static let defaultLineHeight: Double = 1.4
+    static let defaultScrollMode = false
+    static let defaultShowHitTestingDebug = false
+
+    var font: ReaderFont = ReaderSettings.defaultFont {
         didSet {
             defaults.set(font.rawValue, forKey: kFont)
             cloud.set(font.rawValue, forKey: kFont)
         }
     }
 
-    var fontSize: Double = 1.0 {
+    var fontSize: Double = ReaderSettings.defaultFontSize {
         didSet {
             defaults.set(fontSize, forKey: kFontSize)
             cloud.set(fontSize, forKey: kFontSize)
         }
     }
 
-    var lineHeight: Double = 1.4 {
+    var lineHeight: Double = ReaderSettings.defaultLineHeight {
         didSet {
             defaults.set(lineHeight, forKey: kLineHeight)
             cloud.set(lineHeight, forKey: kLineHeight)
@@ -184,7 +195,7 @@ final class ReaderSettings {
 
     /// 翻頁(false) / 連續捲動(true)。iCloud 以 Double 編碼同步
     /// （CloudPreferencesSync 僅 String/Double，Bool 走 0.0/1.0）。
-    var scrollMode: Bool = false {
+    var scrollMode: Bool = ReaderSettings.defaultScrollMode {
         didSet {
             defaults.set(scrollMode, forKey: kScrollMode)
             cloud.set(scrollMode ? 1.0 : 0.0, forKey: kScrollMode)
@@ -197,7 +208,7 @@ final class ReaderSettings {
         AppAppearanceStore.shared.resolvedReaderTheme(systemColorScheme: systemColorScheme)
     }
 
-    var underlineOpacity: Double = 0.22 {
+    var underlineOpacity: Double = VocabHighlightPreferences.defaultOpacity {
         didSet {
             defaults.set(underlineOpacity, forKey: kUnderlineOpacity)
             defaults.set(underlineOpacity, forKey: kVocabHighlightOpacity)
@@ -206,7 +217,7 @@ final class ReaderSettings {
         }
     }
 
-    var vocabHighlightColorPreset: VocabHighlightColorPreset = .paper {
+    var vocabHighlightColorPreset: VocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset {
         didSet {
             defaults.set(vocabHighlightColorPreset.rawValue, forKey: kVocabHighlightColorPreset)
             cloud.set(vocabHighlightColorPreset.rawValue, forKey: kVocabHighlightColorPreset)
@@ -220,7 +231,7 @@ final class ReaderSettings {
         )
     }
 
-    var showHitTestingDebug: Bool = false {
+    var showHitTestingDebug: Bool = ReaderSettings.defaultShowHitTestingDebug {
         didSet { defaults.set(showHitTestingDebug, forKey: kShowHitTestingDebug) }
     }
 
@@ -325,6 +336,29 @@ final class ReaderSettings {
                 break
             }
         }
+    }
+
+    // MARK: - 恢復預設
+
+    /// 把這個型別**自己擁有**的每一項設定寫回出廠值。
+    ///
+    /// 逐項指派而不是重建物件：每個 `didSet` 才會照常落地 UserDefaults 並推去
+    /// iCloud KVS，否則重置只活在記憶體裡，下次啟動又跑回舊值。
+    ///
+    /// **主題刻意不在內**：閱讀設定頁上的「主題」其實是全域的
+    /// `AppAppearanceStore`（設定▸偏好▸外觀 是同一個開關），不是 ReaderSettings
+    /// 的欄位。把它一起重置等於從一個叫「閱讀設定」的頁面改掉整個 app 的外觀；
+    /// 而且 `.system` 這個真正的預設值在本頁的三選一 Picker 裡根本表達不出來
+    /// （`AppAppearanceMode.readerTheme` 會把它壓成 `.light`），重置完畫面會
+    /// 顯示一個與實際狀態不符的選項。
+    func resetToDefaults() {
+        font = Self.defaultFont
+        fontSize = Self.defaultFontSize
+        lineHeight = Self.defaultLineHeight
+        scrollMode = Self.defaultScrollMode
+        vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset
+        underlineOpacity = VocabHighlightPreferences.default.opacity
+        showHitTestingDebug = Self.defaultShowHitTestingDebug
     }
 
     // MARK: - Readium 轉換

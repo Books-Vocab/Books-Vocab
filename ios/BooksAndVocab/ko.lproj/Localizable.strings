@@ -1193,3 +1193,5 @@
 /* reader-settings-preview · APP-20260809-ca8e30 即時預覽 */
 "reader.settings.section.preview" = "미리 보기";
 "reader.settings.preview.accessibilityLabel" = "리더 설정 실시간 미리 보기";
+"reader.settings.reset" = "기본값으로";
+"reader.settings.reset.all" = "리더 설정을 기본값으로";

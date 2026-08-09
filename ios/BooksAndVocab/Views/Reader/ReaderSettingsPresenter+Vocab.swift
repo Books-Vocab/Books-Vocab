@@ -33,6 +33,7 @@ extension ReaderSettingsPresenter {
             .navigationTitle(L10n.string("閱讀設定"))
             .inlineNavigationBarTitle()
             .toolbar {
+                ToolbarItem(placement: .primaryAction) { resetMenu }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.string("完成"), action: onDismiss)
                         .accessibilityIdentifier("reader.settings.done")
@@ -41,6 +42,24 @@ extension ReaderSettingsPresenter {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("reader.settingsPanel")
         }
+    }
+
+    // MARK: Reset
+
+    /// 與 `ReviewCardLayoutEditor.resetMenu` 同形：`.primaryAction` 上一個
+    /// 逆時針箭頭選單，唯一一個 destructive 項目，identifier 走同一個
+    /// `<scope>.resetMenu` 後綴慣例。兩頁的重置手感因此一致。
+    private var resetMenu: some View {
+        Menu {
+            Button(L10n.string("reader.settings.reset.all"), role: .destructive) {
+                onResetToDefaults()
+            }
+            .accessibilityIdentifier("reader.settings.reset.all")
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+        }
+        .accessibilityLabel(L10n.string("reader.settings.reset"))
+        .accessibilityIdentifier("reader.settings.resetMenu")
     }
 
     // MARK: Preview
