@@ -23,7 +23,12 @@ struct ReviewFoldSurface<Content: View>: View {
 
     var body: some View {
         content()
-            .background(appSkin.palette.cardBackground.opacity(0.985))
+            // 卡面必須完全不透明：它是這張卡的最底層，正下方 z 序就是 preview slot
+            // （整層 opacity 0.72、縮放 0.975、下移 5pt 的**下一張真卡**）。舊值 0.985
+            // 的 1.5% 縫隙讓下一張的單字以 0.72×0.015 ≈ 1.1% 透出（實測灰階 253 vs
+            // 卡片白 255），在白底大字上剛好可辨；那 1.5% 換不到任何視覺效果——卡片
+            // 下方就是 pageBackground。三個主題的 cardBackground 都是不透明色值。
+            .background(appSkin.palette.cardBackground)
             .clipShape(shape)
             .overlay(shape.stroke(appSkin.palette.cardBorder.opacity(borderOpacity), lineWidth: 1))
             .overlay(alignment: .top) {
