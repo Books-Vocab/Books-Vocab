@@ -90,27 +90,14 @@ METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 # `ios_release.sh` have always sourced it; this script was the odd one out.
 # shellcheck source=lib/ios_build_progress.sh
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# Install provenance is written beside every successful installable iOS app.
+# shellcheck source=lib/ios_install_provenance.sh
+source "$SCRIPT_DIR/lib/ios_install_provenance.sh"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
-# DerivedData policy: one shared, bounded cache anchored at the MAIN repo
-# (resolved via git-common-dir, so every worktree maps to the same path). This
-# avoids both failure modes:
-#   - global default location → a new path-hashed orphan per worktree (110G leak)
-#   - worktree-local cache    → zero cross-worktree reuse, ModuleCache rebuilt
-#                               from scratch in every worktree
-# Concurrent corruption is a non-issue: all builds serialize on the global
-# shlock above. Override with KG_IOS_BUILD_DERIVED_DATA_ROOT. If git-common-dir
-# can't be resolved, fall back to worktree-local so the build never breaks.
-if [[ -n "${KG_IOS_BUILD_DERIVED_DATA_ROOT:-}" ]]; then
-  DERIVED_DATA_ROOT="$KG_IOS_BUILD_DERIVED_DATA_ROOT"
-else
-  GIT_COMMON_DIR="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-  if [[ -n "$GIT_COMMON_DIR" && -d "$GIT_COMMON_DIR" ]]; then
-    DERIVED_DATA_ROOT="$(dirname "$GIT_COMMON_DIR")/.cache/ios-build-derived-data"
-  else
-    DERIVED_DATA_ROOT="$PROJECT_ROOT/.cache/ios-build-derived-data"
-  fi
-fi
+# DerivedData remains one shared, bounded cache anchored at the MAIN repo;
+# install provenance, not cache isolation, distinguishes its producer.
+DERIVED_DATA_ROOT="$(kg_ios_shared_derived_data_root "$PROJECT_ROOT")"
 
 if [[ ! -d "$XCODEPROJ" ]]; then
   echo "error: $XCODEPROJ not found" >&2
@@ -238,6 +225,12 @@ if [[ -x "$DIAGNOSTICS" ]]; then
   "$DIAGNOSTICS" --xcresult "$RESULT_BUNDLE" --log "$TMPOUT" --result "$diag_result" --limit 40 || true
 else
   echo "[ios_build] diagnostics unavailable: $DIAGNOSTICS" >&2
+fi
+
+if [[ $EXIT_CODE -eq 0 ]]; then
+  if ! kg_ios_write_install_provenance "$PROJECT_ROOT" "$DERIVED_DATA_ROOT" "$CONFIGURATION" "$DESTINATION"; then
+    EXIT_CODE=1
+  fi
 fi
 
 # Machine-readable verdict file — survives even when stdout/stderr is piped

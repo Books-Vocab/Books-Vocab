@@ -56,6 +56,7 @@ DEFAULT_TESTS=(
   gen-ios-baseline
   ios-signal-traps
   sim-pool-disposable
+  ios-install-provenance
   ios-ops
   ios-run-verdict
   ios-cache-evict
@@ -184,6 +185,9 @@ run_one() {
       ;;
     sim-pool-disposable)
       ./ops/tests/test_ios_ops_sim_pool_disposable.sh
+      ;;
+    ios-install-provenance)
+      ./ops/tests/test_ios_install_provenance.sh
       ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
