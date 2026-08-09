@@ -53,14 +53,11 @@ enum UITestFixture: Equatable {
 
 enum UITestLaunchProfile: String {
     case standard
-    case clean
 
     var launchArguments: [String] {
         switch self {
         case .standard:
             return []
-        case .clean:
-            return ["-resetContainer"]
         }
     }
 }

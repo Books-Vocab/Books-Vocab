@@ -5,9 +5,37 @@
 //  Core user-journey coverage using Page Object pattern.
 //
 
+import Foundation
 import XCTest
 
 final class BooksAndVocabUITests: UITestCase {
+
+    func testLaunchProfileArgumentsHaveAppConsumers() throws {
+        let helper = try source(relativePath: "ios/BooksAndVocabUITests/Helpers/UITestAppLaunch.swift")
+        let runtimeOptions = try source(relativePath: "ios/BooksAndVocab/Support/AppRuntimeOptions.swift")
+        let bootstrap = try source(relativePath: "ios/BooksAndVocab/AppBootstrap.swift")
+
+        let profileStart = try XCTUnwrap(helper.range(of: "enum UITestLaunchProfile"))
+        let configurationStart = try XCTUnwrap(
+            helper.range(of: "struct UITestLaunchConfiguration", range: profileStart.upperBound..<helper.endIndex)
+        )
+        let profileSource = String(helper[profileStart.lowerBound..<configurationStart.lowerBound])
+        let regex = try NSRegularExpression(pattern: #""(-[^"]+)""#)
+        let matches = regex.matches(
+            in: profileSource,
+            range: NSRange(profileSource.startIndex..<profileSource.endIndex, in: profileSource)
+        )
+        let profileArguments = matches.compactMap { match in
+            Range(match.range(at: 1), in: profileSource).map { String(profileSource[$0]) }
+        }
+
+        for argument in profileArguments {
+            XCTAssertTrue(
+                runtimeOptions.contains(argument) || bootstrap.contains(argument),
+                "Launch profile argument \(argument) must have an AppRuntimeOptions or AppBootstrap consumer"
+            )
+        }
+    }
 
     // MARK: - Launch & Shell
 
@@ -69,10 +97,21 @@ final class BooksAndVocabUITests: UITestCase {
 
     @MainActor
     func testBookshelfEmptyStateVisibleWhenNoBooks() throws {
-        let app = launchApp(profile: .clean)
+        let app = launchApp()
 
         let bookshelf = AppPage(app: app).goToBookshelf()
         bookshelf.assertEmptyStateVisible()
+    }
+
+    private func source(relativePath: String) throws -> String {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryRoot.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
     }
 
     // MARK: - Notebook Flows
