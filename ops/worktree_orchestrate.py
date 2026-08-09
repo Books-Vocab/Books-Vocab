@@ -154,6 +154,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2241,12 +2242,15 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
     try:
         path = _gate_history_path(state)
         path.parent.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        run_id = uuid.uuid4().hex
         wt_key = hashlib.sha256(_norm(worktree).encode()).hexdigest()[:16]
         with path.open("a", encoding="utf-8") as fh:
-            for r in results:
+            for idx, r in enumerate(results):
+                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
                 fh.write(json.dumps({
                     "ts": ts,
+                    "run_id": run_id,
+                    "idx": idx,
                     "gate": r["name"],
                     # colon-suffixed gates (ios-test-ui:<Class>) are per-diff instances
                     # of ONE check; capability lives at the base name.
@@ -2254,6 +2258,7 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     "status": r.get("status"),
                     "rc": r.get("rc"),
                     "level": r.get("level"),
+                    "dur_s": r.get("dur_s"),
                     # False only for gates that never started (spawn failure). A row
                     # for a check that did not run must not be usable as evidence
                     # about whether that check can pass.
@@ -2595,7 +2600,7 @@ def _run_streamed_command(
     gate_name: str,
     heartbeat_interval: float = 20.0,
     capture_limit: int = 64 * 1024,
-) -> tuple[int, str]:
+) -> tuple[int, str, float]:
     completed = run_streamed_command(
         command,
         cwd=cwd,
@@ -2606,7 +2611,7 @@ def _run_streamed_command(
         capture_limit=capture_limit,
         merge_stderr=True,
     )
-    return completed.returncode, completed.stdout
+    return completed.returncode, completed.stdout, completed.elapsed_s
 
 
 def _failed_gate_summary(returncode: int, output: str, tail: str,
@@ -2688,6 +2693,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     result = {"name": name, "category": spec["category"], "level": level}
     machine_before = _machine_state(state)
     if spec["kind"] == "internal":
+        started = time.monotonic()
         if name == "docs-conflict-markers":
             result.update(_run_conflict_markers(worktree, spec["files"]))
         elif name == "coverage":
@@ -2711,6 +2717,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
             result.update(_run_verified_against(worktree, spec["files"]))
         else:  # advisory-only gate (e.g. backend-tests-advisory)
             result.update({"status": "warn", "rc": 0, "summary": spec.get("note", "advisory")})
+        result["dur_s"] = round(time.monotonic() - started, 6)
         result["machine_state"] = _machine_state_record(machine_before, _machine_state(state))
         return result
 
@@ -2732,10 +2739,12 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     # branch. Measured 2026-08-05: `ops/test_ios_ops.sh` at 371 passed / 1 failed inside
     # a batch gate, 371 green and exit 0 when rerun alone.
     tags_before = _tag_snapshot(worktree)
+    started = time.monotonic()
     try:
-        returncode, output = _run_streamed_command(
+        returncode, output, dur_s = _run_streamed_command(
             spec["cmd"], cwd=cwd, gate_name=name, capture_limit=GATE_CAPTURE_LIMIT,
         )
+        result["dur_s"] = round(dur_s, 6)
     except OSError as exc:
         # The router and the tools it routes to can be different generations
         # (IMP-0045): a branch that deleted a script leaves a stale router still
@@ -2764,6 +2773,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # recorded", steering the reader away from their own bug. rc alone cannot
         # carry this: a tool that RAN and exited 127 is a real red.
         result.update({"status": "block" if level == "block" else "warn", "rc": 127,
+                       "dur_s": round(time.monotonic() - started, 6),
                        "executed": False, "summary": summary,
                        "machine_state": _machine_state_record(
                            machine_before, _machine_state(state))})

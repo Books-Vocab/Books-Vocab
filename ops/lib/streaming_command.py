@@ -121,10 +121,10 @@ def run_streamed_command(
     Either way the child's ``LC_CTYPE`` is this module's choice, not the caller's —
     see ``CHILD_LC_CTYPE`` and ``_child_env`` for why that is not a detail.
 
-    The returned ``CompletedProcess`` carries one extra attribute, ``timed_out``:
-    True iff THIS function enforced ``timeout_seconds``. ``returncode == 124``
-    cannot answer that — a child may exit 124 by itself — see the assignment at the
-    end of this function.
+    The returned ``CompletedProcess`` carries two extra attributes: ``elapsed_s`` is
+    this runner's monotonic wall time, and ``timed_out`` is True iff THIS function
+    enforced ``timeout_seconds``. ``returncode == 124`` cannot answer the latter — a
+    child may exit 124 by itself — see the assignments at the end of this function.
     """
     if heartbeat_interval <= 0:
         raise ValueError("heartbeat_interval must be positive")
@@ -288,6 +288,9 @@ def run_streamed_command(
     stdout = tails["stdout"].decode("utf-8", errors="replace")
     stderr = None if merge_stderr else tails["stderr"].decode("utf-8", errors="replace")
     result = subprocess.CompletedProcess(command, returncode, stdout, stderr)
+    # Preserve the exact monotonic value that produced the done heartbeat. Re-parsing
+    # its one-decimal rendering would discard the precision needed by short gates.
+    result.elapsed_s = elapsed
     # The one fact only this function knows, stated instead of left to be inferred.
     #
     # `returncode == 124` is what this runner writes when IT enforced the deadline
