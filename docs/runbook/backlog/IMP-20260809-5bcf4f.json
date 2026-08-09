@@ -1,0 +1,14 @@
+{
+  "brief": "登記一個新問題會弄髒共用工作區而擋住別人落地，結案卻不會——於是回報問題比保持沉默貴。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "`backlog.py` 對「結案」與「開票」的寫入面不對稱，而不對稱的方向剛好抑制\n最該被發出的訊號。\n\n結案：`stage <id>` 把結案意圖寫進 `<primary>/.cache/backlog_anchor_queue.jsonl`\n（gitignored，全 worktree 共用），`cutover` 蓋上真正的落地 sha，波次結束\n`anchor --commit` 一次回填。全程不碰版控檔，primary 保持乾淨。\n\n開票：`add` 沒有任何等價路徑。它直接寫 `docs/runbook/backlog/<id>.json`，\n那是 tracked 檔。在 primary 執行 = primary 立刻 dirty。後果不只是自己：\n- `cutover` 的 ff 前檢查會拒（worktree_orchestrate.py:2630）\n- `land` 在取號後、進 gate 前就拒（:3023），並具名列出 dirty_files\n- 那些 dirty_files 會被下一個看到的人讀成「有人把編輯漏進 primary 了」\n`--store` 不是解法：指到別的目錄只是讓那張票不在 store 裡，沒有任何機制會回收它。\n\n實測後果（2026-08-09 本輪 fan-out）：三條工作樹在飛時，受派者回報了三筆工具債。\n整合者（主 session）當下的選項全都是壞的——弄髒 primary 擋掉自己這批的 cutover、\n在 primary 的 local main 上 commit（違反 worktree-flow 明文政策）、塞進某條\n不相干的工作樹（污染那條分支的 diff 與 gate、並把這張票的落地綁在那條分支上）、\n或是延後（然後靠記性）。當下選了延後，理由寫成「add 會弄髒 primary」——\n那個理由成立，但它推不出那個結論。這正是本票要消滅的東西：一個讓\n「說有東西壞了」比「保持沉默」更貴的介面，會系統性地少收到報告。\n\n值得注意的是這個形狀在本 repo **已經被認得過一次**：`stage`/`anchor` 的存在\n就是為了讓結案不弄髒 primary。缺的只是把同一個解法推廣到另一半。",
+  "id": "IMP-20260809-5bcf4f",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支 CLI 加一條延後寫入路徑與它的回填，含佇列可見性與測試。",
+  "severity": "med",
+  "source": "2026-08-09 三樹 fan-out 整合者實際踩到",
+  "status": "open",
+  "stream": "IMP"
+}
