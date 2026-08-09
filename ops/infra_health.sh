@@ -147,7 +147,8 @@ log "[infra-health] 探 HTTPS $PROBE_URL …"
 if [[ -n "${KG_HEALTH_HTTP_CODE:-}" ]]; then
   HTTP_CODE="$KG_HEALTH_HTTP_CODE"
 else
-  HTTP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$PROBE_URL" 2>/dev/null || echo 000)"
+  HTTP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$PROBE_URL" 2>/dev/null)" || HTTP_CODE=000
+  [[ -z "$HTTP_CODE" ]] && HTTP_CODE=000
 fi
 
 # ── 4. 套閾值 → status ─────────────────────────────────────────────────────
@@ -317,7 +318,7 @@ if [[ "$DEPLOY_DRIFT" == "1" ]]; then
 fi
 
 # ── 5. 輸出 ────────────────────────────────────────────────────────────────
-is_num() { [[ "$1" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; }
+is_num() { [[ "$1" =~ ^-?(0|[1-9][0-9]*)(\.[0-9]+)?$ ]]; }
 if [[ "$JSON" -eq 1 ]]; then
   printf '{"overall":"%s","domain":"%s","metrics":[' "$overall" "$DOMAIN"
   first=1

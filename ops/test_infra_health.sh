@@ -139,6 +139,21 @@ section "HTTPS 探針：200 → ok + raw=200"
 echo "$js" | py 'import sys,json;d=json.load(sys.stdin);h=[m for m in d["metrics"] if m["key"]=="http_probe"][0];assert h["status"]=="ok" and h["raw"]==200,h' \
   && ok "HTTPS 200 ok + raw=200" || fail_t "HTTPS 200 未 ok"
 
+section "HTTPS 探針：前導零 raw 仍須是合法 JSON"
+echo "$(KG_HEALTH_HTTP_CODE=000 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);h=[m for m in d["metrics"] if m["key"]=="http_probe"][0];assert h["value"]=="000",h' \
+  && ok "HTTP_CODE=000 → JSON 合法且 value=000" || fail_t "HTTP_CODE=000 → JSON 非法或 value 不符"
+echo "$(KG_HEALTH_HTTP_CODE=000000 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);h=[m for m in d["metrics"] if m["key"]=="http_probe"][0];assert h["value"]=="000000",h' \
+  && ok "HTTP_CODE=000000 → JSON 合法且保留 value" || fail_t "HTTP_CODE=000000 → JSON 非法或 value 不符"
+
+section "HTTPS 探針：真 curl 失敗不得雙寫 http code"
+# 不經 run_health：它以 ${KG_HEALTH_HTTP_CODE:-200} 注入正控，空值會繞過 curl。
+echo "$(env -u KG_HEALTH_HTTP_CODE KG_BASE="$STUB" KG_HEALTH_CERT_ENDDATE="$FUTURE_CERT" KG_HEALTH_PROBE_URL=file:///dev/null/kg-health-probe bash "$SCRIPT" --json 2>/dev/null || true)" | py 'import sys,json;d=json.load(sys.stdin);h=[m for m in d["metrics"] if m["key"]=="http_probe"][0];assert len(h["value"])==3,h' \
+  && ok "真 curl 失敗 → http_probe.value 長度 3" || fail_t "真 curl 失敗 → http_probe.value 非三位"
+
+section "通用 raw 路徑：前導零 metric 不得破壞 JSON"
+echo "$(KG_TEST_DISK=007 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);m=[x for x in d["metrics"] if x["key"]=="disk_pct"][0];assert "007" in m["value"],m' \
+  && ok "disk_pct=007 → JSON 合法且 metric 保留" || fail_t "disk_pct=007 → JSON 非法或 metric 消失"
+
 section "Swap：使用 63% → ok（macOS 門檻 warn70/crit90；中度 swap 為常態）"
 echo "$(KG_TEST_SWAP_USED=1300 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);s=[m for m in d["metrics"] if m["key"]=="swap_used_pct"][0];assert s["status"]=="ok",s' \
   && ok "swap 63% ok" || fail_t "swap 63% 未 ok"
