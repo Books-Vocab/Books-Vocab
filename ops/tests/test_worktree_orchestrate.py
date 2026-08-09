@@ -7166,6 +7166,104 @@ def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch)
     _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--json"])
 
 
+def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypatch):
+    """A test-runner repair must not invalidate already-green build gates.
+
+    This is the concrete retry shape: the first run compiled successfully but an iOS
+    test gate failed; the repair changes only ios_test.sh.  Build and test both consume
+    ios_ops.sh, but only the test gate consumes ios_test.sh.
+    """
+    monkeypatch.setattr(MODULE, "_git", lambda *args, **kwargs: (0, ""))
+    tracked = [
+        "ios/App.swift",
+        "ops/ios_ops.sh",
+        "ops/ios_build.sh",
+        "ops/ios_test.sh",
+        "ops/lib/ios_ops_core.sh",
+        "ops/lib/ios_build_progress.sh",
+        "ops/lib/ios_test_discovery.sh",
+    ]
+    for rel in tracked:
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{rel}\n")
+
+    specs = _by_name(MODULE.plan_gates(
+        ["ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift"],
+        ops_test_exists=lambda rel: rel in tracked,
+    ))
+    build = specs["ios-build"]
+    test = specs["ios-test-unit"]
+    live_compile = specs["ios-live-demo-uitest-compile"]
+    build_before = MODULE._gate_input_scope(build, str(tmp_path), tracked[:1], tracked)
+    test_before = MODULE._gate_input_scope(test, str(tmp_path), tracked[:1], tracked)
+    live_before = MODULE._gate_input_scope(
+        live_compile, str(tmp_path), tracked[:1], tracked)
+
+    assert "ops/ios_ops.sh" in build_before["files"]
+    assert "ops/ios_ops.sh" in test_before["files"]
+    assert "ops/ios_build.sh" in build_before["files"]
+    assert "ops/ios_test.sh" not in build_before["files"]
+    assert "ops/ios_test.sh" in test_before["files"]
+    assert "ops/ios_build.sh" not in test_before["files"]
+    assert live_before["kind"] == "tracked-ios-test-surface"
+    assert "ops/ios_test.sh" in live_before["files"]
+
+    previous = {
+        "schema": MODULE.GATE_SCHEMA,
+        "base": "main",
+        "head_sha": "a" * 40,
+        "orchestrator": {"sha256": "same"},
+        "gates": [
+            {"name": "ios-build", "category": "ios", "level": "block",
+             "status": "pass", "rc": 0, "summary": "green", "input": build_before},
+            {"name": "ios-test-unit", "category": "ios", "level": "block",
+             "status": "pass", "rc": 0, "summary": "green", "input": test_before},
+        ],
+    }
+    (tmp_path / "ops/ios_test.sh").write_text("repaired test runner\n")
+    build_after = MODULE._gate_input_scope(build, str(tmp_path), tracked[:1], tracked)
+    test_after = MODULE._gate_input_scope(test, str(tmp_path), tracked[:1], tracked)
+
+    reused, reason = MODULE._reuse_gate(
+        build, build_after, previous, None, {"sha256": "same"})
+    assert reused is not None and reason == "input_unchanged"
+    rerun, reason = MODULE._reuse_gate(
+        test, test_after, previous, None, {"sha256": "same"})
+    assert rerun is None and reason == "input_content_changed"
+
+    # A shared dispatcher edit still invalidates both commands; the optimization
+    # may narrow proven dependencies, never wish them away.
+    (tmp_path / "ops/ios_test.sh").write_text("ops/ios_test.sh\n")
+    (tmp_path / "ops/ios_ops.sh").write_text("changed shared dispatcher\n")
+    build_shared = MODULE._gate_input_scope(build, str(tmp_path), tracked[:1], tracked)
+    test_shared = MODULE._gate_input_scope(test, str(tmp_path), tracked[:1], tracked)
+    for spec, current in ((build, build_shared), (test, test_shared)):
+        reused, reason = MODULE._reuse_gate(
+            spec, current, previous, None, {"sha256": "same"})
+        assert reused is None and reason == "input_content_changed"
+
+
+def test_ios_gate_input_map_covers_declared_shell_dependencies():
+    """A new sourced helper must not silently sit outside the reuse fingerprint."""
+    def declared_libs(rel):
+        text = (ROOT / rel).read_text()
+        return {f"ops/lib/{name}" for name in re.findall(
+            r"(?:source|METRICS_LIB=)[^\n]*?/lib/([A-Za-z0-9_]+[.]sh)", text)}
+
+    common = set(MODULE._IOS_OPS_COMMON_INPUTS)
+    common.update(
+        p.relative_to(ROOT).as_posix()
+        for p in (ROOT / "ops/lib").glob("ios_ops_*.sh")
+    )
+    assert declared_libs("ops/ios_ops.sh") <= common
+    assert declared_libs("ops/lib/ios_ops_catalog.sh") <= common
+    assert declared_libs("ops/ios_build.sh") <= (
+        common | set(MODULE._IOS_BUILD_INPUTS))
+    assert declared_libs("ops/ios_test.sh") <= (
+        common | set(MODULE._IOS_TEST_INPUTS))
+
+
 @gitmark
 def test_gate_reuse_is_fail_safe_for_changed_unknown_legacy_and_bad_sources(
         scratch, monkeypatch):
