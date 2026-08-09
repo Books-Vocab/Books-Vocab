@@ -1460,7 +1460,25 @@ def add_entry(
         # name (GROOM_ONLY_FLAGS). A hint pointing at a second dead end is worse
         # than none.
         hint = ""
-        if any(p["kind"] == "no-next-action" for p in problems):
+        bad_category = next(
+            (p for p in problems if p["kind"] == "bad-category"), None
+        )
+        if bad_category is not None:
+            allowed = ", ".join(CATEGORIES[stream])
+            other_stream = next(
+                other for other in STREAMS if other != stream
+                and bad_category["value"] in CATEGORIES[other]
+            ) if any(
+                bad_category["value"] in CATEGORIES[other]
+                for other in STREAMS if other != stream
+            ) else None
+            ownership = f" ({bad_category['value']} is {other_stream}-only)" \
+                if other_stream else ""
+            hint = (
+                f"\n  invalid category {bad_category['value']!r} for stream {stream}"
+                f" — allowed: {allowed}{ownership}"
+            )
+        elif any(p["kind"] == "no-next-action" for p in problems):
             hint = (
                 "\n  `--status triaged` claims the next step is decided, so the entry "
                 "owes one. Two ways out:\n"
