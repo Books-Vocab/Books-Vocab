@@ -28,6 +28,8 @@
 #   ops/docs_lint.sh <docs/...md> [<docs/...md> ...]  # 相當於 --files
 #   ops/docs_lint.sh --registry      # 只驗證 docs/registry.yml
 #   ops/docs_lint.sh --audit|--all   # 全 repo audit(可暴露既有 debt)
+#   ops/docs_lint.sh --reanchor [--commit]  # dry-run/落地 orphan verified_against 映射
+#   ops/docs_lint.sh --reanchor --search-depth <n>  # 限制 patch-id 搜尋視窗
 #   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
 #   STALE_THRESHOLD=10 ops/docs_lint.sh
 #   KG_DOCS_LINT_ORIGIN_REF=origin/prod ops/docs_lint.sh   # 換 anchor 可達性的參考 ref
@@ -53,6 +55,9 @@ MODE="gate"
 SINCE_REV=""
 FILE_ARGS=()
 GATE_BASE=""
+REANCHOR_COMMIT=0
+REANCHOR_SEARCH_DEPTH="${KG_DOCS_LINT_REANCHOR_SEARCH_DEPTH:-2000}"
+REANCHOR_SEARCH_DEPTH_SET=0
 
 usage() {
   # 印檔頭註解:跳過 shebang,一路印到第一行非註解為止。**不要改回寫死行號**——
@@ -98,6 +103,23 @@ while [ "$#" -gt 0 ]; do
       MODE="audit"
       shift
       ;;
+    --reanchor)
+      MODE="reanchor"
+      shift
+      ;;
+    --commit)
+      REANCHOR_COMMIT=1
+      shift
+      ;;
+    --search-depth)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for --search-depth" >&2
+        exit 2
+      fi
+      REANCHOR_SEARCH_DEPTH="$2"
+      REANCHOR_SEARCH_DEPTH_SET=1
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -121,6 +143,29 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ "$REANCHOR_COMMIT" -eq 1 ] && [ "$MODE" != "reanchor" ]; then
+  echo "ERROR --commit 只適用於 --reanchor" >&2
+  exit 2
+fi
+
+if [ "$MODE" != "reanchor" ] && [ "$REANCHOR_SEARCH_DEPTH_SET" -eq 1 ]; then
+  echo "ERROR --search-depth 只適用於 --reanchor" >&2
+  exit 2
+fi
+
+if [ "$MODE" = "reanchor" ]; then
+  case "$REANCHOR_SEARCH_DEPTH" in
+    ''|*[!0-9]*)
+      echo "ERROR --search-depth 必須是正整數: $REANCHOR_SEARCH_DEPTH" >&2
+      exit 2
+      ;;
+    0)
+      echo "ERROR --search-depth 必須大於 0" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 REQUIRED_FIELDS="tier authority update_trigger scope verified_against"
 VALID_TIERS="policy sop reference snapshot runbook archive assets"
@@ -373,8 +418,180 @@ files_docs() {
   printf '%s\n' "${FILE_ARGS[@]}" | sort -u
 }
 
+tracked_docs() {
+  git ls-files --cached -- 'docs/*.md' 'docs/**/*.md' | filter_docs
+}
+
+doc_meta_value() {
+  file="$1"
+  field="$2"
+  awk -v wanted="$field" '
+    /<!-- doc-meta/ { in_meta=1 }
+    in_meta && $0 ~ ("^" wanted ":") {
+      value=$0
+      sub("^[^:]*:[[:space:]]*", "", value)
+      sub(/^"/, "", value)
+      sub(/"$/, "", value)
+      print value
+      exit
+    }
+    in_meta && /-->/ { exit }
+  ' "$file"
+}
+
+reanchor_patch_id() {
+  # Match the existing backlog.py reanchor contract: whole-commit patch-id,
+  # so a conflict-resolved or otherwise partial rewrite is never guessed.
+  git show --no-ext-diff "$1" 2>/dev/null \
+    | git patch-id --stable 2>/dev/null \
+    | sed -n '1s/[[:space:]].*//p'
+}
+
+reanchor_rewrite_anchor() {
+  file="$1"
+  old="$2"
+  new="$3"
+  tmp="$(mktemp "${file}.reanchor.XXXXXX")" || return 1
+  if ! awk -v old="$old" -v new="$new" '
+    /^verified_against:/ && !replaced {
+      value=$0
+      sub(/^verified_against:[[:space:]]*/, "", value)
+      sub(/^"/, "", value)
+      sub(/"$/, "", value)
+      if (value == old) {
+        line=$0
+        sub(old, new, line)
+        print line
+        replaced=1
+        next
+      }
+    }
+    { print }
+  ' "$file" > "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  file_mode="$(stat -f '%Lp' "$file" 2>/dev/null || true)"
+  if [ -z "$file_mode" ]; then
+    file_mode="$(stat -c '%a' "$file" 2>/dev/null || true)"
+  fi
+  if [ -n "$file_mode" ] && ! chmod "$file_mode" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! mv "$tmp" "$file"; then
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
+run_reanchor() {
+  REANCHOR_TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_docs_reanchor.XXXXXX")"
+  trap 'if [ -n "${REANCHOR_TMPDIR:-}" ]; then rm -rf "$REANCHOR_TMPDIR"; fi' EXIT
+
+  docs_tmp="$REANCHOR_TMPDIR/docs"
+  orphans_tmp="$REANCHOR_TMPDIR/orphans"
+  candidates_tmp="$REANCHOR_TMPDIR/candidates"
+  index_tmp="$REANCHOR_TMPDIR/index"
+  moves_tmp="$REANCHOR_TMPDIR/moves"
+  : > "$orphans_tmp"
+  : > "$moves_tmp"
+  tracked_docs > "$docs_tmp"
+
+  orphan_count=0
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    verified="$(doc_meta_value "$file" verified_against)"
+    case "$verified" in
+      ''|*[!0-9a-f]*) continue ;;
+    esac
+    verified_length="${#verified}"
+    [ "$verified_length" -ge 7 ] && [ "$verified_length" -le 40 ] || continue
+
+    verified_sha=""
+    if ! verified_sha="$(git rev-parse --verify --quiet "${verified}^{commit}" 2>/dev/null)"; then
+      continue
+    fi
+    if git merge-base --is-ancestor "$verified_sha" HEAD 2>/dev/null; then
+      continue
+    fi
+    printf '%s\t%s\t%s\n' "$file" "$verified" "$verified_sha" >> "$orphans_tmp"
+    orphan_count=$((orphan_count+1))
+  done < "$docs_tmp"
+
+  if [ "$orphan_count" -eq 0 ]; then
+    echo "reanchor: 0 orphaned verified_against anchors"
+    return 0
+  fi
+
+  if ! git rev-list --max-count="$REANCHOR_SEARCH_DEPTH" HEAD > "$candidates_tmp"; then
+    echo "ERROR reanchor — 無法讀取 HEAD commit 搜尋視窗" >&2
+    return 1
+  fi
+
+  : > "$index_tmp"
+  indexed_count=0
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    candidate_pid="$(reanchor_patch_id "$candidate" || true)"
+    if [ -n "$candidate_pid" ]; then
+      printf '%s\t%s\n' "$candidate_pid" "$candidate" >> "$index_tmp"
+      indexed_count=$((indexed_count+1))
+    fi
+  done < "$candidates_tmp"
+
+  mapped_count=0
+  unmatched_count=0
+  while IFS="$(printf '\t')" read -r file old old_sha; do
+    [ -n "$file" ] || continue
+    old_pid="$(reanchor_patch_id "$old_sha" || true)"
+    hits=""
+    if [ -n "$old_pid" ]; then
+      hits="$(awk -F '\t' -v wanted="$old_pid" '$1 == wanted { print $2 }' "$index_tmp")"
+    fi
+    hit_count="$(printf '%s\n' "$hits" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+    if [ "$hit_count" -eq 1 ]; then
+      new="$(printf '%s\n' "$hits" | sed -n '1p' | xargs git rev-parse --short=9)"
+      echo "$file: $old -> $new (patch-id match)"
+      printf '%s\t%s\t%s\n' "$file" "$old" "$new" >> "$moves_tmp"
+      mapped_count=$((mapped_count+1))
+    else
+      echo "ERROR $file — verified_against $old: patch-id 無唯一匹配(${hit_count} 個候選),不猜" >&2
+      unmatched_count=$((unmatched_count+1))
+    fi
+  done < "$orphans_tmp"
+
+  landed_count=0
+  if [ "$REANCHOR_COMMIT" -eq 1 ]; then
+    while IFS="$(printf '\t')" read -r file old new; do
+      [ -n "$file" ] || continue
+      if ! reanchor_rewrite_anchor "$file" "$old" "$new"; then
+        echo "ERROR $file — reanchor --commit 無法原子改寫 verified_against" >&2
+        return 1
+      fi
+      landed_count=$((landed_count+1))
+    done < "$moves_tmp"
+    echo "reanchor: landed $landed_count mapping(s) (--commit)"
+  else
+    echo "reanchor: dry-run; pass --commit to land $mapped_count mapping(s)"
+  fi
+
+  echo "reanchor: orphaned=$orphan_count indexed=$indexed_count mapped=$mapped_count unmatched=$unmatched_count search-depth=$REANCHOR_SEARCH_DEPTH"
+  [ "$unmatched_count" -eq 0 ]
+}
+
 echo "docs_lint: mode=$MODE"
 validate_registry
+
+if [ "$MODE" = "reanchor" ]; then
+  if run_reanchor; then
+    reanchor_rc=0
+  else
+    reanchor_rc=$?
+  fi
+  [ "$errors" -gt 0 ] && exit 1
+  exit "$reanchor_rc"
+fi
 
 if [ "$MODE" = "registry" ]; then
   echo ""
