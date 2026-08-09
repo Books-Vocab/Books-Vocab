@@ -421,9 +421,13 @@ struct PodcastEpisodeListView: View {
             let url = URL(string: urlStr)
         else { return }
         Task { @MainActor in
-            guard let token = await kgService.authTokenWithoutInvalidation() else { return }
-            let headers = ["Authorization": "Bearer \(token)"]
+            guard let headers = await Self.audioPreloadHeaders(kgService: kgService) else { return }
             PodcastAssetPreloader.shared.preload(url: url, headers: headers)
         }
+    }
+
+    static func audioPreloadHeaders(kgService: any KGServing) async -> [String: String]? {
+        guard let token = await kgService.authTokenWithoutInvalidation() else { return nil }
+        return ["Authorization": "Bearer \(token)"]
     }
 }

@@ -331,8 +331,7 @@ struct PodcastHomeView: View {
     /// shelf 點進幾乎瞬間 `.ready`。受 preloader 自身 LRU(5) 上限。
     @MainActor
     private func warmFollowedSeriesAudio() async {
-        guard let token = await kgService.authTokenWithoutInvalidation() else { return }
-        let headers = ["Authorization": "Bearer \(token)"]
+        guard let headers = await Self.audioPreloadHeaders(kgService: kgService) else { return }
         for series in podcastSeries where series.isFollowed {
             guard
                 let first = series.episodes
@@ -343,6 +342,11 @@ struct PodcastHomeView: View {
             else { continue }
             PodcastAssetPreloader.shared.preload(url: url, headers: headers)
         }
+    }
+
+    static func audioPreloadHeaders(kgService: any KGServing) async -> [String: String]? {
+        guard let token = await kgService.authTokenWithoutInvalidation() else { return nil }
+        return ["Authorization": "Bearer \(token)"]
     }
 
     /// Series context-menu 追蹤切換。樂觀翻轉 + 失敗回滾，與

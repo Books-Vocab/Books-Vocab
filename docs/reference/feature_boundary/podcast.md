@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Podcast/
-verified_against: dcb7b705f
+verified_against: 785f64052908b6bd5fb0fa406767cbee7db03cba
 -->
 # Podcast Feature Boundary
 
@@ -63,6 +63,8 @@ verified_against: dcb7b705f
 | `PodcastAssetPreloader.swift` | @MainActor singleton；warm AVFoundation HTTP/2 連線（tap-on-row + bookshelf-appear）；LRU-5, 60s TTL；失敗即 evict |
 | `PodcastDownloadManager.swift` | @MainActor @Observable singleton；URLSession.background 跑離線下載；落地 `episode.localAudioPath`（Documents/podcast-downloads/<seriesId>/<remoteId>.mp3）；progress / failed 由 `@Query` 觀察。`configure(podcastEnabled:)` 於 gate off（Release）時拒收 ModelContainer，manager 保持 inert（測試 `PodcastDownloadManagerGateTests`）|
 | `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空 server list（`/api/podcasts` 回 `[]`，S3 index.json 短暫讀不到時）視為非權威 → reconcile 跳過 series tombstone（不 soft-delete），對稱 episode 層 empty-episodes 守衛、不 throw。**封面快取**：upsert 後以 bounded concurrency 跑 `cacheCoverIfNeeded`，把 `coverImageURL`（有值才）認證下載成 `Documents/podcast-covers/<sid>_<v>.png`（legacy 無 `?v=` 時退 `<sid>.png`）→ 寫 `PodcastSeries.coverImagePath`（HTTP 2xx + `image/png` + PNG magic 守門、best-effort、失敗退程序化封面、不 abort sync）；**server 撤回封面**（`coverImageURL` 轉 nil/空）時 `upsertSeries` 清掉 `coverImagePath` + best-effort 刪當前 path/legacy `<sid>.png`，避免 stale 快取永久渲染且不以 prefix 誤刪其他 `_` series；`LocalDataCleanerService.purgePodcastCovers` 於 logout/account-switch 清除 disk + memory cover cache。**觸發來源**：`PodcastHomeView` `.task`/`.refreshable` + `KGService.backgroundSync`（與 vocab 管線併行的 podcast leg，見 §同步觸發）。**請求形狀見下方 §catalog 請求形狀** |
+
+**認證邊界（silent-failure regression）**：catalog browse 與背景預熱不得以 `currentAuthToken()` 作可選 token 前置檢查——過期 token 會先觸發全域 logout，再才 throw。`optionallyAuthedResponseData`、`PodcastHomeView.warmFollowedSeriesAudio` 與 `PodcastEpisodeListView.warmConnection` 一律使用 `authTokenWithoutInvalidation()`；過期/缺 token 時 browse 走 guest 或 audio prewarm 直接 skip，絕不寫 `sessionExpiredReason` 或呼叫 logout。使用者主動的 required-auth 下載、播放、字幕仍保留 `currentAuthToken()`，並由其錯誤路徑負責登入處理。回歸錨點為 `PodcastSilentFailureTests` 的 optional browse 與兩個 audio-preload header seam 測試。 |
 
 ### catalog 請求形狀（2026-08-06 起：穩態 1 趟）
 
