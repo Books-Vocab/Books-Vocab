@@ -65,6 +65,17 @@ BASELINE_FILE = (
 )
 LOGGER = logging.getLogger(__name__)
 
+_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+
+
+def strip_comments(source: str) -> str:
+    """Blank Swift comments while preserving newlines for line diagnostics."""
+
+    def blank(match: re.Match[str]) -> str:
+        return "".join("\n" if char == "\n" else " " for char in match.group())
+
+    return _COMMENT_RE.sub(blank, source)
+
 # View-injection grammar shared with the codemod (single source of truth).
 from _inject_shared import (  # noqa: E402
     SHIM,
@@ -92,16 +103,56 @@ def _display(path: Path) -> str:
         return str(path)
 
 
+def _is_instance_stored_property(line: str) -> bool:
+    """Return whether a direct struct member line declares an instance value."""
+    stripped = line.strip()
+    match = re.search(r"\b(var|let)\b", stripped)
+    if not match:
+        return False
+
+    prefix = stripped[: match.start()]
+    if re.search(r"\b(?:static|class)\b", prefix):
+        return False
+    if re.search(
+        r"\b(?:func|init|deinit|subscript|enum|struct|protocol|typealias|case|if|guard|for|while|switch)\b",
+        prefix,
+    ):
+        return False
+
+    # A computed property opens its accessor body before any stored value;
+    # an initializer closure has `=` first and remains a stored property.
+    brace = stripped.find("{")
+    equals = stripped.find("=")
+    return brace < 0 or (equals >= 0 and equals < brace)
+
+
+def _injection_before_first_stored_property(lines: list[str], struct_index: int) -> bool:
+    """Check the struct body up to its first instance stored property."""
+    depth = lines[struct_index].count("{") - lines[struct_index].count("}")
+    observed = False
+    for line in lines[struct_index + 1 :]:
+        if depth <= 0:
+            break
+        if depth == 1:
+            if "@ObserveInjection" in line:
+                observed = True
+            if _is_instance_stored_property(line):
+                return observed
+        depth += line.count("{") - line.count("}")
+    return observed
+
+
 def scan_file(path: Path) -> list[str]:
     """Return list of finding strings for this file."""
     label = _display(path)
     text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    code = strip_comments(text)
+    lines = code.splitlines()
     findings: list[str] = []
     preview_depth = 0
 
-    has_observe = "@ObserveInjection" in text
-    has_import = "import Inject" in text
+    has_observe = "@ObserveInjection" in code
+    has_import = "import Inject" in code
 
     # R3: the import must match what the project actually links (see
     # inject_package_linked). Either direction is a compile-time fact, not a
@@ -138,16 +189,12 @@ def scan_file(path: Path) -> list[str]:
         if "View" not in protocol_list:
             continue
         name = m.group("name")
-        # Look ahead for @ObserveInjection
-        j = i + 1
-        while j < len(lines) and lines[j].strip() == "":
-            j += 1
-        if j >= len(lines) or "@ObserveInjection" not in lines[j]:
+        if not _injection_before_first_stored_property(lines, i):
             findings.append(f"{label}:{i+1}: struct {name}: View missing @ObserveInjection")
 
     # R2: per-file arity
-    obs_count = text.count("@ObserveInjection")
-    enable_count = text.count(".enableInjection()")
+    obs_count = code.count("@ObserveInjection")
+    enable_count = code.count(".enableInjection()")
     if obs_count != enable_count:
         findings.append(
             f"{label}: arity mismatch — @ObserveInjection={obs_count}, "
