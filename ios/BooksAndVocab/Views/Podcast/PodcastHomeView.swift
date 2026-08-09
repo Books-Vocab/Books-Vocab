@@ -331,12 +331,7 @@ struct PodcastHomeView: View {
     /// shelf 點進幾乎瞬間 `.ready`。受 preloader 自身 LRU(5) 上限。
     @MainActor
     private func warmFollowedSeriesAudio() async {
-        let token: String
-        do {
-            token = try await kgService.currentAuthToken()
-        } catch {
-            return  // No auth → preload would 401; skip silently.
-        }
+        guard let token = await kgService.authTokenWithoutInvalidation() else { return }
         let headers = ["Authorization": "Bearer \(token)"]
         for series in podcastSeries where series.isFollowed {
             guard

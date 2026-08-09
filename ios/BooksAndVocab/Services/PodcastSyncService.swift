@@ -171,26 +171,33 @@ final class PodcastSyncService {
     /// podcast *browse* endpoints (`/api/podcasts`, `/{sid}`, `/{sid}/cover`)
     /// admit guests, so we attach the Bearer token only when one is present —
     /// a logged-out user can still load the catalog/showcase. Playback
-    /// endpoints stay on `authedData` (they require a real user). `try?` on the
-    /// token: a true guest has none (no side effect); an expired one still
-    /// triggers the normal session-invalidation path inside currentAuthToken.
-    static func optionallyAuthedData(from urlString: String, kgService: any KGServing) async throws -> Data {
-        let (data, _) = try await optionallyAuthedResponseData(from: urlString, kgService: kgService)
+    /// endpoints stay on `authedData` (they require a real user). An expired
+    /// token is treated as absent without invalidating the session.
+    static func optionallyAuthedData(
+        from urlString: String,
+        kgService: any KGServing,
+        session: URLSession = sharedURLSession
+    ) async throws -> Data {
+        let (data, _) = try await optionallyAuthedResponseData(
+            from: urlString, kgService: kgService, session: session
+        )
         return data
     }
 
     static func optionallyAuthedResponseData(
-        from urlString: String, kgService: any KGServing
+        from urlString: String,
+        kgService: any KGServing,
+        session: URLSession = sharedURLSession
     ) async throws -> (Data, URLResponse) {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        if let token = try? await kgService.currentAuthToken() {
+        if let token = await kgService.authTokenWithoutInvalidation() {
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        return try await sharedURLSession.data(for: request)
+        return try await session.data(for: request)
     }
 
     // MARK: - Cover image cache (remote → local file, rendered by NotebookCoverView)
