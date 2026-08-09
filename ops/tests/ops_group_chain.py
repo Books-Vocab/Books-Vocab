@@ -1,4 +1,7 @@
 #!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# ///
 """Static command-chain inventory for ``ops/test_ops.sh`` groups.
 
 The CI exclusion falsifier masks binaries through ``PATH``.  That experiment
@@ -18,6 +21,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[2]
 GROUP_ARM_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\)(.*)$")
 REPO_PATH_RE = re.compile(
     r"(?P<path>ops/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.(?:sh|py)\b)"
@@ -123,6 +127,12 @@ def parse_dispatcher(source: str) -> dict[str, str]:
     if not arms:
         raise ValueError("run_one() yielded no group arms")
     return arms
+
+
+def case_arms() -> dict[str, str]:
+    """Return the current dispatcher arms, excluding the ``*`` fallback."""
+
+    return parse_dispatcher((ROOT / "ops/test_ops.sh").read_text())
 
 
 def _repo_path(root: Path, reference: str, current: Path) -> Path | None:
@@ -238,6 +248,14 @@ def _absolute_call(segment: str) -> str | None:
             candidate = candidate[len(word) :].lstrip()
             continue
         if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", word):
+            # An assignment containing an absolute path is data, not a call.
+            # Keep assignments that prefix a real command (``VAR=x /bin/foo``)
+            # traversable, but do not report ``VAR=/usr/bin/foo``.
+            if "$(" in word:
+                substitution = re.search(r"\$\(\s*(?P<path>/(?:usr|bin|sbin|opt|Applications|System)/[^\s;&|()]+)", candidate)
+                return substitution.group("path") if substitution else None
+            if candidate == word:
+                return None
             candidate = candidate[len(word) :].lstrip()
             continue
         break
@@ -311,6 +329,29 @@ def scan_group(root: Path, group: str) -> list[AbsoluteCall]:
     return sorted(calls, key=lambda call: (str(call.source), call.line, call.path))
 
 
+def chain(group: str) -> list[Path]:
+    """Return the files reachable from one dispatcher group."""
+
+    return sorted(parse_group_files(ROOT, group))
+
+
+def abs_calls_in_file(path: Path) -> list[tuple[int, str]]:
+    """Return absolute command calls as ``(line, stripped source)`` pairs."""
+
+    hits: list[tuple[int, str]] = []
+    for line_number, line in _logical_shell_lines(path.read_text(errors="replace").splitlines()):
+        clean = _strip_shell_comment(line)
+        if any(_absolute_call(segment) is not None for segment in _command_segments(clean)):
+            hits.append((line_number, line.strip()))
+    return hits
+
+
+def abs_calls(group: str) -> list[tuple[Path, int, str]]:
+    """Return ``(relative source path, line, command)`` for a group."""
+
+    return [(call.source, call.line, call.command) for call in scan_group(ROOT, group)]
+
+
 def _report(root: Path, groups: list[str]) -> list[dict[str, object]]:
     return [
         {
@@ -322,7 +363,47 @@ def _report(root: Path, groups: list[str]) -> list[dict[str, object]]:
     ]
 
 
+def _positional_cli(argv: list[str]) -> int | None:
+    if not argv or argv[0] not in {"chain", "abs-calls", "abs-calls-file"}:
+        return None
+
+    command = argv[0]
+    try:
+        if command == "chain" and len(argv) == 2:
+            for path in chain(argv[1]):
+                print(path.relative_to(ROOT))
+            return 0
+        if command == "abs-calls" and len(argv) in {2, 3}:
+            calls = abs_calls(argv[1])
+            if len(argv) == 3 and argv[2] == "--count":
+                print(len(calls))
+            elif len(argv) == 2:
+                for path, line, text in calls:
+                    print(f"{path}:{line}:{text}")
+            else:
+                raise ValueError("abs-calls accepts only --count as an optional flag")
+            return 0
+        if command == "abs-calls-file" and len(argv) == 2:
+            path = Path(argv[1])
+            if not path.is_absolute():
+                path = (Path.cwd() / path).resolve()
+            for line, text in abs_calls_in_file(path):
+                print(f"{line}:{text}")
+            return 0
+    except (KeyError, ValueError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"usage: {command} <group> [--count]", file=sys.stderr)
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    positional_result = _positional_cli(argv)
+    if positional_result is not None:
+        return positional_result
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--group", action="append", dest="groups")

@@ -174,13 +174,11 @@ EXCLUDED_GROUPS=(
   "review-probe|data-ui-world|case 14 (test_review_probe.sh:133-145) resolves ops/fixtures/ui_worlds/marketing_demo.json:58, an absolute path to an UNTRACKED 16MB .m4a — the very dependency this table already excludes ui-quality-gate for. Admitting it while excluding ui-quality-gate was self-contradictory"
 )
 
-# group|token|reason —— a bin-* exclusion whose command chain contains an
-# absolute command. PATH masking cannot falsify that claim, so the group is
-# declared rather than silently reported as proven. The scanner below checks
-# this table in both directions: every declaration must have a real call, and
-# every bin-* exclusion with a real call must be declared here.
+# group|reason —— command-chain absolute calls make PATH falsification
+# incomplete. This is a declaration, not an exemption: the section below
+# reconciles it against the scanner in both directions.
 PATH_FALSIFY_UNSOUND=(
-  "ios-ops|bin-xcode|its real shell command chain reaches absolute macOS tools (including /usr/bin/log), so PATH masking cannot falsify the exclusion"
+  "ios-ops|ops/lib/ios_ops_logs.sh:67,90 directly call /usr/bin/log; :165,209 build command names with an /usr/bin/ prefix, so a static PATH scan cannot be complete"
 )
 
 # path|reason —— tracked test files that intentionally belong to no group.
@@ -444,95 +442,43 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
 done
 ok_if_clean "all ${#EXCLUDED_GROUPS[@]} exclusion(s) carry a known token and a reason"
 
-path_falsify_unsound() {
-  local wanted="$1" entry
-  for entry in "${PATH_FALSIFY_UNSOUND[@]}"; do
-    [[ "${entry%%|*}" == "$wanted" ]] && return 0
+is_falsify_unsound() {  # group 是否宣告為「PATH 證偽不完備」
+  local group="$1" declaration
+  (( ${#PATH_FALSIFY_UNSOUND[@]} == 0 )) && return 1
+  for declaration in "${PATH_FALSIFY_UNSOUND[@]}"; do
+    [[ "${declaration%%|*}" == "$group" ]] && return 0
   done
   return 1
 }
 
-section "absolute calls are declared where PATH falsification is unsound"
-chain_args=()
-for entry in "${EXCLUDED_GROUPS[@]}"; do
-  group="${entry%%|*}"
-  rest="${entry#*|}"
-  token="${rest%%|*}"
-  [[ "$token" == bin-* ]] && chain_args+=(--group "$group")
-done
-
-chain_rows=()
-chain_probe_ok=1
-if ! chain_report="$(
-  "$UV_BIN" run --quiet --no-project --python 3.13 python "$GROUP_CHAIN_TOOL" "${chain_args[@]}"
-)"; then
-  fail_t "group-chain probe failed — cannot establish absolute-path coverage"
-  chain_probe_ok=0
-else
-  while IFS=$'\t' read -r chain_group chain_location chain_path chain_command; do
-    [[ -n "$chain_group" ]] || continue
-    chain_rows+=("${chain_group}"$'\t'"${chain_location}"$'\t'"${chain_path}"$'\t'"${chain_command}")
-  done <<<"$chain_report"
-  if (( ${#chain_rows[@]} == 0 )); then
-    fail_t "group-chain probe found no rows for bin-* exclusions — the probe is broken, not the groups"
-    chain_probe_ok=0
+section "absolute-path invocations in a bin-* chain are declared"
+for e in "${EXCLUDED_GROUPS[@]}"; do
+  g="${e%%|*}"; rest="${e#*|}"; tok="${rest%%|*}"
+  [[ "$tok" == bin-* ]] || continue
+  n="$(./ops/tests/ops_group_chain.py abs-calls "$g" --count 2>/dev/null)" || n=""
+  if [[ ! "$n" =~ ^[0-9]+$ ]]; then
+    fail_t "$g: ops_group_chain.py abs-calls did not return a number — probe failure, not classification"
+    continue
   fi
-fi
-
-if (( chain_probe_ok )); then
-  for entry in "${PATH_FALSIFY_UNSOUND[@]}"; do
-    group="${entry%%|*}"
-    rest="${entry#*|}"
-    token="${rest%%|*}"
-    why="${rest#*|}"
-    found_exclusion=0
-    exclusion_token=""
-    for excluded in "${EXCLUDED_GROUPS[@]}"; do
-      excluded_group="${excluded%%|*}"
-      excluded_rest="${excluded#*|}"
-      excluded_token="${excluded_rest%%|*}"
-      if [[ "$excluded_group" == "$group" ]]; then
-        found_exclusion=1
-        exclusion_token="$excluded_token"
-      fi
+  if is_falsify_unsound "$g"; then declared=1; else declared=0; fi
+  if (( n > 0 && declared == 0 )); then
+    fail_t "$g: command chain has $n absolute-path call(s) that bypass PATH masking, but PATH_FALSIFY_UNSOUND does not declare it"
+  elif (( n == 0 && declared == 1 )); then
+    fail_t "$g: PATH_FALSIFY_UNSOUND declares an incomplete PATH falsification, but the scanner found no absolute call — stale declaration"
+  fi
+done
+# 反向：宣告了一個不是 bin-* 排除的 group。
+if (( ${#PATH_FALSIFY_UNSOUND[@]} > 0 )); then
+  for d in "${PATH_FALSIFY_UNSOUND[@]}"; do
+    dg="${d%%|*}"; matched=0
+    for e in "${EXCLUDED_GROUPS[@]}"; do
+      rest="${e#*|}"
+      [[ "${e%%|*}" == "$dg" && "${rest%%|*}" == bin-* ]] && matched=1
     done
-    row_count=0
-    example=""
-    for row in "${chain_rows[@]}"; do
-      row_group="${row%%$'\t'*}"
-      if [[ "$row_group" == "$group" ]]; then
-        row_count=$((row_count + 1))
-        [[ -n "$example" ]] || example="${row#*$'\t'}"
-      fi
-    done
-    if (( found_exclusion == 0 )); then
-      fail_t "$group is PATH_FALSIFY_UNSOUND but is not an EXCLUDED_GROUPS entry"
-    elif [[ "$token" != "$exclusion_token" || "$token" != bin-* ]]; then
-      fail_t "$group PATH_FALSIFY_UNSOUND token '$token' disagrees with exclusion token '$exclusion_token'"
-    elif (( row_count == 0 )); then
-      fail_t "$group PATH_FALSIFY_UNSOUND has no absolute call in its parsed command chain — stale declaration"
-    elif [[ -z "$why" ]]; then
-      fail_t "$group PATH_FALSIFY_UNSOUND has no reason"
-    else
-      ok "$group declared unsound for PATH falsification ($row_count absolute call(s); example: $example)"
-    fi
+    (( matched == 1 )) || fail_t "PATH_FALSIFY_UNSOUND declares '$dg', but it is not a bin-* exclusion"
   done
-
-  for entry in "${EXCLUDED_GROUPS[@]}"; do
-    group="${entry%%|*}"
-    rest="${entry#*|}"
-    token="${rest%%|*}"
-    [[ "$token" == bin-* ]] || continue
-    row_count=0
-    for row in "${chain_rows[@]}"; do
-      [[ "${row%%$'\t'*}" == "$group" ]] && row_count=$((row_count + 1))
-    done
-    if (( row_count > 0 )) && ! path_falsify_unsound "$group"; then
-      fail_t "$group has $row_count absolute call(s) but no PATH_FALSIFY_UNSOUND declaration"
-    fi
-  done
-  ok_if_clean "PATH_FALSIFY_UNSOUND matches the parsed bin-* command chains"
 fi
+ok_if_clean "all bin-* exclusion(s) agree with the chain scanner"
 
 # 這張表是**資料**，不該執行。反引號寫進雙引號陣列元素會被 bash 做命令替換：本檔第一版
 # 的理由裡引用了那條有問題的 grep 當例證，結果它真的被執行、真的吃到 SIGPIPE，
@@ -594,7 +540,7 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
   rest="${e#*|}"; tok="${rest%%|*}"
   [[ "$tok" == bin-* ]] || continue
   [[ "${e%%|*}" == "ops-ci-coverage" ]] && continue   # 與下面的自指守衛對齊
-  path_falsify_unsound "${e%%|*}" && continue
+  is_falsify_unsound "${e%%|*}" && continue
   [[ "$(token_denials "$tok")" == "__UNKNOWN__" ]] && continue
   toolchain_usable "$tok" && falsify_will_run=1
 done
@@ -620,21 +566,12 @@ else
 fi
 rm -rf "$fx"
 
-# 絕對路徑呼叫不再靠一條掃錯檔案的 grep 假裝被覆蓋；上面的 scanner 從 dispatcher
-# case arm 解析每個 group 的真實 shell chain，並以 PATH_FALSIFY_UNSOUND 明示限制。
+# 絕對路徑呼叫已由上面的宣告式 section 對帳；這裡仍實跑 PATH 可證偽的 denial，
+# 但對含絕對路徑的命令鏈只輸出相容性結論，不宣稱已證明完整相依。
 section "every PATH-falsifiable bin-* exclusion dies when its binary is denied"
 for e in "${EXCLUDED_GROUPS[@]}"; do
   g="${e%%|*}"; rest="${e#*|}"; tok="${rest%%|*}"
   [[ "$tok" == bin-* ]] || continue
-  if path_falsify_unsound "$g"; then
-    unsound_calls=0
-    for row in "${chain_rows[@]}"; do
-      [[ "${row%%$'\t'*}" == "$g" ]] && unsound_calls=$((unsound_calls + 1))
-    done
-    echo "  · $g: skipped — PATH_FALSIFY_UNSOUND ($unsound_calls absolute call(s)); declaration is not a proof" >&2
-    skipped=$((skipped+1))
-    continue
-  fi
   # 自己不能證偽自己：下面是 `./ops/test_ops.sh "$g"`，$g 是本 group 就無限遞迴。
   # 今天走不到（ops-ci-coverage 在 LINUX_GROUPS 裡），但那是一個單字的距離。
   [[ "$g" == "ops-ci-coverage" ]] && { fail_t "$g cannot falsify itself — the falsifier would re-invoke this script forever"; continue; }
@@ -666,6 +603,8 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
   echo "  … $g: falsifying (denying:$denials)…" >&2
   if run_denied "$denials" ./ops/test_ops.sh "$g"; then
     fail_t "$g claims '$tok' but passed with [$denials] denied — the reason is false; move it to LINUX_GROUPS or state the real dependency"
+  elif is_falsify_unsound "$g"; then
+    ok "$g passes undenied and dies with [$denials] denied — consistent with '$tok', but its chain has absolute-path invocations that walk past the shim, so this is not proof of it"
   else
     ok "$g passes undenied and dies without [$denials]"
   fi
