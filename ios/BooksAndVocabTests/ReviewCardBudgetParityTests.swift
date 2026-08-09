@@ -171,19 +171,19 @@ struct ReviewCardDefaultParityTests {
 
         // 難度搬到 core 之上後，「背面只開難度」底下已經沒有東西了 —— 那條線若照畫
         // 就是一條懸空的分隔線，正是這條規則當初存在的理由。
+        // 版面自 APP-20260808-7f0f3a 起只有兩個 preset，表達不了「背面只有難度」。
+        // 精簡背面是 [.difficultyTier, .graphLinks]，把圖譜連結標成不可用即得到同一個面
+        // —— 驗的本來就是 availability 過濾後的結果，不是 profile 能不能任意組合。
         let tierOnly = ReviewCardRenderPlan.make(
-            profile: ReviewCardLayoutProfile(
-                recognition: .init(front: [], back: [.difficultyTier]),
-                production: .init(front: [], back: [])
-            ),
+            profile: ReviewCardLayoutProfile(recognition: .compact, production: .compact),
             mode: .recognition,
             availability: .init(
-                partOfSpeech: true,
+                partOfSpeech: false,
                 difficultyTier: true,
-                example: true,
-                explanation: true,
-                collocations: true,
-                graphLinks: true
+                example: false,
+                explanation: false,
+                collocations: false,
+                graphLinks: false
             )
         )
         #expect(tierOnly.back.aboveCore == [.difficultyTier])
