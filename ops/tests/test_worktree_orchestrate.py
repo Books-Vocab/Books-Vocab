@@ -7252,6 +7252,43 @@ def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypat
             spec, current, previous, None, {"sha256": "same"})
         assert reused is None and reason == "input_content_changed"
 
+    # Runtime helpers are verdict inputs too.  A diagnostics edit affects both
+    # runners; UI-world data/validation affects test gates but not app builds.
+    for rel in ("ops/ios_ops.sh", "ops/ios_test.sh"):
+        (tmp_path / rel).write_text(f"{rel}\n")
+    runtime_mutations = [
+        ("ops/ios_diagnostics.py", True, True),
+        ("ops/ui_world_manifest.py", False, True),
+        ("ops/fixtures/ui_worlds/marketing_demo.json", False, True),
+    ]
+    for rel, invalidates_build, invalidates_test in runtime_mutations:
+        path = tmp_path / rel
+        original = path.read_text()
+        path.write_text("mutated runtime input\n")
+        for spec, before, should_invalidate in (
+            (build, build_before, invalidates_build),
+            (test, test_before, invalidates_test),
+        ):
+            current = MODULE._gate_input_scope(spec, str(tmp_path), tracked[:1], tracked)
+            prior = {**previous, "gates": [
+                {"name": spec["name"], "category": "ios", "level": "block",
+                 "status": "pass", "rc": 0, "summary": "green", "input": before},
+            ]}
+            reused, reason = MODULE._reuse_gate(
+                spec, current, prior, None, {"sha256": "same"})
+            if should_invalidate:
+                assert reused is None and reason == "input_content_changed", rel
+            else:
+                assert reused is not None and reason == "input_unchanged", rel
+        path.write_text(original)
+
+    unknown = MODULE._internal("future-ios-gate", "ios", "block")
+    unknown_scope = MODULE._gate_input_scope(
+        unknown, str(tmp_path), tracked[:1], tracked)
+    assert unknown_scope["kind"] == "tracked-ios-surface"
+    assert "ops/ios_build.sh" in unknown_scope["files"]
+    assert "ops/ios_test.sh" in unknown_scope["files"]
+
 
 def test_ios_gate_input_map_covers_declared_shell_dependencies():
     """A new sourced helper must not silently sit outside the reuse fingerprint."""
