@@ -46,7 +46,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime
-import fcntl
 import hashlib
 import inspect
 import json
@@ -68,6 +67,7 @@ DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
 DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
@@ -446,24 +446,10 @@ def _view_lock():
     rather than not at all — the pre-existing behaviour, no worse than before.
     """
     lock_path = ROOT / ".cache" / "backlog_view.lock"
-    fd = None
-    try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-    except OSError as exc:
-        print(f"backlog: view lock unavailable ({exc}); refreshing unserialized",
-              file=sys.stderr)
-        if fd is not None:
-            os.close(fd)
-            fd = None
-    try:
+    with exclusive_lock(lock_path, label="backlog-view", fail_closed=False) as acquired:
+        if not acquired:
+            print("backlog: view lock unavailable; refreshing unserialized", file=sys.stderr)
         yield
-    finally:
-        if fd is not None:
-            with contextlib.suppress(OSError):
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
 
 
 def _write_atomic(path: Path, text: str) -> None:
@@ -518,23 +504,13 @@ def _entry_lock(path: Path):
     """
     key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()
     lock_path = ROOT / ".cache" / "backlog_entry_locks" / f"{key}.lock"
-    fd = None
     try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-    except OSError as exc:
-        if fd is not None:
-            os.close(fd)
+        with exclusive_lock(lock_path, label=f"backlog-entry:{path.name}"):
+            yield
+    except LockUnavailable as exc:
         raise BacklogError(
             f"entry lock unavailable for {path.name}: {exc}; nothing was written"
         ) from exc
-    try:
-        yield
-    finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
 
 
 # ---------------------------------------------------------------------------
@@ -4007,25 +3983,14 @@ def _queue_lock(queue: Path):
     _both_modules` pins the agreement, because nothing else would notice.
     """
     lock_path = Path(queue).with_name(Path(queue).name + ".lock")
-    fd = None
     try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-    except OSError as exc:
-        if fd is not None:
-            os.close(fd)
+        with exclusive_lock(lock_path, label=f"backlog-queue:{queue.name}"):
+            yield
+    except LockUnavailable as exc:
         raise BacklogError(
             f"queue lock unavailable ({exc}); refusing to stage rather than append "
             f"unserialized — an unlocked append loses rows silently. Lock: {lock_path}"
         ) from exc
-    try:
-        yield
-    finally:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        finally:
-            os.close(fd)
 
 
 def read_queue(path: Path) -> list[dict]:
