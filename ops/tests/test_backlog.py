@@ -299,6 +299,25 @@ def test_validate_is_clean_on_a_healthy_store(tmp_path):
     assert BACKLOG.validate_store(store) == []
 
 
+def test_validate_flags_a_stray_path_in_the_store(tmp_path):
+    store = tmp_path / "backlog"
+    _add(store, detail="the ordinary top-level entry")
+
+    archive = store / "archive"
+    archive.mkdir()
+    _add(archive, detail="a legal entry hidden below the store root")
+
+    kinds = {problem["kind"] for problem in BACKLOG.validate_store(store)}
+    assert "stray-path" in kinds
+
+    clean_store = tmp_path / "clean-backlog"
+    _add(clean_store, detail="the ordinary top-level entry")
+    clean_kinds = {
+        problem["kind"] for problem in BACKLOG.validate_store(clean_store)
+    }
+    assert "stray-path" not in clean_kinds
+
+
 def test_validate_reports_unparseable_entry_rather_than_crashing(tmp_path):
     store = tmp_path / "backlog"
     _add(store)
