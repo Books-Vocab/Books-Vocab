@@ -91,7 +91,7 @@ if [[ "$RC" -eq 0 ]]; then
 else
   fail_t "slow dry-run exited $RC"
 fi
-for id in structure.ui_deadcode perf.review_flip_probe visual.catalog_regression; do
+for id in structure.ui_deadcode structure.ui_graph behavior.uitest_flows perf.review_flip_probe; do
   if grep -q "$id" <<<"$OUT"; then
     ok "slow tier lists $id"
   else
