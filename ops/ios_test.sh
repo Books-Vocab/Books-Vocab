@@ -96,6 +96,7 @@ EVIDENCE_APPEARANCE=""
 EVIDENCE_KIND="release-equivalent-simulator"
 LIVE_DEMO=0
 DEMO_ACCOUNT_IDENTITY_SHA256=""
+INCONCLUSIVE_REASON=""
 
 build_ui_test_variant_id() {
   local parts=()
@@ -1226,6 +1227,7 @@ run_xcodebuild_test_without_building_once() {
       echo "[ios_test] error: xcodebuild log idle=${log_idle}s exceeded KG_IOS_TEST_LOG_IDLE_LIMIT=${LOG_IDLE_LIMIT}s (pid=$xcode_pid, log=$TMPOUT)" >&2
       tail -40 "$TMPOUT" >&2 || true
       kill "$xcode_pid" 2>/dev/null || true
+      INCONCLUSIVE_REASON="log-idle-timeout"
       break
     fi
     emitted_this_loop=0
@@ -2102,7 +2104,7 @@ else
   # spurious 0 up to 1 so an inconclusive run can never exit green.
   [[ "$EXIT_CODE" -eq 0 ]] && EXIT_CODE=1
   echo "RESULT=inconclusive EXIT=$EXIT_CODE caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
-  write_json_verdict "inconclusive" "$EXIT_CODE" "" ""
+  write_json_verdict "inconclusive" "$EXIT_CODE" "$INCONCLUSIVE_REASON" ""
   print_timing_summary
   emit_ui_runner_lifecycle
   echo "[ios_test] ? inconclusive (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
