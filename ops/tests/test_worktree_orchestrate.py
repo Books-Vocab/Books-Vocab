@@ -6472,6 +6472,38 @@ def test_land_asks_the_primary_dirty_before_gate_question_exactly_once(
         f"got {asked}")
 
 
+def test_close_wave_refuses_foreign_active_worktrees_before_any_mutation(
+        tmp_path, monkeypatch, capsys):
+    """The coordinator cannot cross an unrelated live lane (e.g. Catalog)."""
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
+    monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
+    monkeypatch.setattr(MODULE, "_delivery_primary_dirty", lambda _primary: [])
+    monkeypatch.setattr(
+        MODULE,
+        "_delivery_registry_records",
+        lambda _args: (MODULE.EXIT_OK, [
+            {"status": "active", "branch": "feat/source", "path": "/wt/source"},
+            {"status": "active", "branch": "feat/catalog-agent-tool",
+             "path": "/wt/catalog", "intent": "Catalog cutover"},
+        ]),
+    )
+    args = argparse.Namespace(
+        state=None,
+        json=True,
+        base="main",
+        slug="delivery-wave",
+        branches=["feat/source"],
+        commit=True,
+    )
+
+    rc = MODULE.cmd_close_wave(args)
+
+    assert rc == MODULE.EXIT_BLOCK
+    output = capsys.readouterr().out
+    assert "feat/catalog-agent-tool" in output
+    assert "will not cross its boundary" in output
+
+
 # --------------------------------------------------------------------------
 # claim preconditions: a ticket has to be workable before it can be taken
 #
