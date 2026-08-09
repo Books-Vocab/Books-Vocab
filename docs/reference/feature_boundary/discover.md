@@ -66,7 +66,7 @@ verified_against: a55244f5b
 
 ## 改動規則
 
-- **新增 Explore 畫面 / 元件** → `Views/Explore/`；動工前讀 `docs/sop/ui-design.md` + `docs/reference/ui/{components,review_checklist,state_matrix}.md`；deck cover 復用 `NotebookCoverView`。⛔ **FROZEN 2026-08-05**：原本這裡要求「每新 full-screen View 必 register `Debug/CatalogScene.swift` surface + UI-World scenario」——**該義務已解除**，新畫面不進 catalog（`CatalogCoverageTests` 的覆蓋契約以 `ScreenID.allCases` 為軸，不會因為多了一個 View 而紅）。正本：`docs/reference/catalog_scope.md` §FROZEN。
+- **新增 Explore 畫面 / 元件** → `Views/Explore/`；動工前讀 `docs/sop/ui-design.md` + `docs/reference/ui/{components,review_checklist,state_matrix}.md`；deck cover 復用 `NotebookCoverView`。Catalog 是按需使用的 agent UI 工作台：只有反覆 debug／展示有價值時才自願新增 UI World scenario，不設覆蓋義務。正本：`docs/reference/catalog_scope.md`。
 - **改共享牌組 wire / model** → `Models/SharedTypes.swift`（lenient decode）+ `Models/SharedDeck.swift`（@Model，改欄位須 verify SwiftData lightweight migration）。**絕不** reuse `Notebook @Model`。
 - **改 browse / sync 邏輯** → `Services/SharedDeckCatalogService.swift`（reconcile 純邏輯保 empty-response guard；`syncAll` 全目錄分頁保截斷對稱化）。
 - **改複製流程（copy）** → client 走 `Views/Explore/SharedDeckCopyController.swift` + `Services/KGService+Decks.swift`（stable idempotencyKey、post-copy notebook-first targeted pull）；server-side clone 不變量與 `POST /api/decks/{deckId}/copy` 見 `docs/reference/tech_index.md`。**官方牌組可複製性**由 emitter curation guard `_assert_copyable` 在 emit 前把關（擋同 deck 內 NOCASE 同形字碰撞，否則 copy 端撞私人 `Card` `UNIQUE(content COLLATE NOCASE, notebook_id)` 致 count mismatch）——見 `docs/reference/tech_index.md` `build_official.py` 條目。

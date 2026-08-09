@@ -18,18 +18,6 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-lc", "cd lab/podcast && ./start.sh --bg 8765 && tail -f monitor.log"],
       "port": 8765
-    },
-    {
-      "name": "ui-asset-gallery",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-lc", "DIR=$(uv run ops/catalog_review_entry.py current 2>/dev/null | uv run python -c 'import json,sys; print(json.load(sys.stdin)[\"blessed\"][\"root\"])'); exec uv run python -m http.server \"${PORT:-8788}\" --directory \"$DIR\""],
-      "autoPort": true
-    },
-    {
-      "name": "gallery-admin",
-      "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "python", "-m", "http.server", "8791", "--directory", "/Users/chenliangyu/project/kg/.claude/worktrees/gallery-admin/build/snapshots/gallery-admin-preview"],
-      "port": 8791
     }
   ]
 }

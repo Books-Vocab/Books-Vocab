@@ -6,10 +6,6 @@ dist/
 # hand-authored and kg-tokens.css is the linkable artifact — track them.
 !design-system/dist/
 !design-system/dist/**
-# Promotion screenshot dist files are canonical marketing deliverables.
-!promotion/screenshots/dist/
-!promotion/screenshots/dist/**
-
 # lab/ — track source code only; ignore binaries/credentials/sandboxes
 lab/podcast/workspaces/
 lab/podcast/voice_samples/

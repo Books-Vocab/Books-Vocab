@@ -1,13 +1,7 @@
-"""spec_world.py — kg.seed_spec.v1 → UI World v2 四 domain 的確定式投影（純函式）。
+"""kg.seed_spec.v1 → UI World v2 四個資料 domain 的確定式純函式投影。
 
-FROZEN 2026-08-05 — 停止擴張，不停止運作。凍結範圍與理由見
-`docs/reference/catalog_scope.md` §FROZEN。投影規則不再隨 iOS seed 演進同步；
-本檔仍可跑，送審與行銷截圖要用時直接呼叫即可。要復業先讀該節，別直接改。
-
-行銷帳號系統 Phase 2/6：`ops_cli world-export` 導出的 seed spec（Phase 1，
-backend/src/kg/ops_world_export.py）→ iOS UI World v2 fixture 的
-vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
-「改帳號資料 → 分鐘級重生 fixture → 截圖」視覺迭代迴圈的投影核心。
+輸入可來自 ``ops_cli world-export``；輸出供 Catalog 或 UITest 以相同的
+UI World 注入面使用。這裡只塑造結構化資料，不負責任何圖片生成或發布。
 
 契約（違反 = fail-loud，不靜默降級）：
 * 輸入必須是 `kg.seed_spec.v1`（schema / notebooks / cards / links 結構驗證，
@@ -19,12 +13,11 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
   graphLinksByKind / reviewHistory refs），對齊 `ops/ui_world_manifest.py` 與
   Swift FixtureDatasetStore 的 fail-fast decode 契約。
 * fixture id 只用 app-known id（FIXTURE_DOMAIN_IDS）；本模組**只回傳
-  spec-derived 的 fixture id**，UI-chrome / gallery 語意的 id（如
+  spec-derived 的 fixture id**，UI-chrome 語意的 id（如
   notebook.coverGallery、todayReview.longContent）由 emit_ios 沿用 baseline。
 
 映射語意（deterministic selection rules）：
-* primary notebook = active 卡最多者（tie-break: is_default、再 spec 順序）——
-  真實帳號的預設單字本常是空殼，行銷資料住在別本。
+* primary notebook = active 卡最多者（tie-break: is_default、再 spec 順序）。
 * 卡片依 spec 順序；同 notebook 內同 content 去重（keep-first；fixture 要求
   seed 內 word 唯一）。
 * due 排序 = 有 next_review_at 者依 (next_review_at, word) 升冪在前（越過期
@@ -54,18 +47,16 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
   必須 resolve 到同 seed entries（Swift KG 圖面以 Set(entries.kgCardId) 驗證）
   → 子集投影時 prune 指向子集外的 link；todayReview 卡不 prune（baseline 語意
   即容許 cross-seed 顯示 chips）。
-* 仍投影的 populated/dense fixtures 帶 catalog 端最低量斷言（vocabListPopulated
+* 仍投影的 populated/dense fixtures 帶 consumer 端最低量斷言（vocabListPopulated
   ≥4、vocabListLong ≥40、statsPopulated ≥8 卡/≥12 事件、reviewCalendarDense
   ≥70 事件、knowledgeGraphPopulated = primary 全 active（與 statsPopulated 對齊，
   全螢幕圖 = 縮圖放大版）、reviewDeck.phaseMulti ==3）：
-  這是行銷 spec 的資料量責任，投影器不擋薄 spec（測試/沙盒 spec 合法），量不足
-  時對應 catalog surface 會 fail-loud。
+  投影器不擋薄 spec（測試/沙盒 spec 合法），量不足時對應 scenario 會 fail-loud。
 * statsPopulated = primary 全 active 卡 + 全量合成事件（cap
   _HISTORY_STATS_MAX）：它是 Stats / ReviewCalendar 的敘事底稿（streak / 學習
   日曆 / totalCards）；只投影小樣本時 streak 與 heatmap 必崩。shellNavigation
-  維持 _STATS_ENTRIES_MAX 小樣本（chrome smoke，非敘事面）。複習歷史敘事的
-  上游 owner = ops/demo/marketing_account/shape_history.py（塑形 spec 的
-  review 日期欄位），本模組只忠實合成，不造敘事。
+  維持 _STATS_ENTRIES_MAX 小樣本（chrome smoke）。本模組只忠實合成輸入的
+  review 日期欄位，不自行創造牆鐘相關狀態。
 
 測試：ops/tests/test_demo_ios_spec_emitter.py。
 """
@@ -101,11 +92,11 @@ _MAX_GAP_HOURS = 24.0 * 30   # 單段間隔上限（30 天）
 _DATE_ADDED_LEAD_HOURS = 24.0  # dateAdded 至少早於最早 review 錨點 24h（卡先加入才被複習）
 _DATE_ADDED_FALLBACK_ANCHOR = "2026-01-01T00:00:00Z"  # spec 全無日期素材時的固定錨點
 
-# reader passage 投影（marketingCapture.readerPassage）：hero 卡 + 幾張同 notebook
+# reader passage 投影（scenarioContext.readerPassage）：hero 卡 + 幾張同 notebook
 # 真實卡的 example 拼成閱讀頁；highlight 詞只取「單 token」的 **marker**，確保 iOS
 # ReaderProseTokenizer（以空白切詞、標點 trim）能真正命中並上高亮帶。
 _READER_SUPPORTING_MAX = 4     # hero 之外的 vocab-highlight 卡上限
-_READER_PARAGRAPH_COUNT = 2    # 段落數（對齊現行 ReaderMarketingProse 2 段版型）
+_READER_PARAGRAPH_COUNT = 2    # 段落數（對齊現行 ReaderScenarioProse 2 段版型）
 # reader passage 欄位契約（SoT；emit_ios / ui_world_manifest 驗證此鍵集）。
 READER_PASSAGE_KEYS = frozenset({
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
@@ -325,7 +316,7 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
 
     # primary = active 卡最多的 notebook（tie-break: is_default、再 spec 順序）。
     # 不能只看 is_default:真實帳號的預設單字本（user-create 建的「我的單字本」）
-    # 常是空的，行銷資料住在另一本。
+    # 常是空的，主要資料住在另一本。
     def _active_count(nb: dict[str, Any]) -> int:
         return sum(1 for c in cards_by_nb[nb["name"]] if not c["is_archived"])
 
@@ -617,7 +608,7 @@ def _today_session(queue: list[dict[str, Any]], *, nb_name: str, stage: str,
 
 
 # --------------------------------------------------------------------------- #
-# reader passage projection（marketingCapture.readerPassage）
+# reader passage projection（scenarioContext.readerPassage）
 # --------------------------------------------------------------------------- #
 def _bare_token(word: str) -> str:
     """對齊 ReaderProseTokenizer 的 match-trim：去頭尾標點後的裸詞（用於高亮比對）。"""
@@ -660,14 +651,14 @@ def _reader_candidates(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _hero_rank(card: dict[str, Any]) -> tuple[Any, ...]:
-    """行銷 hero 卡的內容驅動排序 key（取 max）：有 graph link 者優先、去標記
+    """Scenario 主卡的內容驅動排序 key（取 max）：有 graph link 者優先、去標記
     example 越長越前、review_streak 高者優先、word 昇冪 tie-break。非硬編某字。"""
     return (bool(card["links"]), len(card["_prose"]), card["review_streak"], card["word"])
 
 
-def _marketing_hero(world: dict[str, Any]) -> dict[str, Any]:
-    """跨 shot 共用的 hero 卡：primary active、單詞、example 帶單 token `**marker**`，
-    依 `_hero_rank` 取最佳。reader activeWord 與 wordDetail 聚焦字共用它 → 四圖敘事
+def _scenario_hero(world: dict[str, Any]) -> dict[str, Any]:
+    """跨 scenario 共用的主卡：primary active、單詞、example 帶單 token `**marker**`，
+    依 `_hero_rank` 取最佳。Reader activeWord 與 Word Detail 聚焦字共用它，
     一致（同一真實字），且完全內容驅動、零硬編。無合格卡則 fail-loud。"""
     candidates = _reader_candidates(world["cards_by_nb"][world["primary"]["name"]])
     if not candidates:
@@ -679,13 +670,13 @@ def _marketing_hero(world: dict[str, Any]) -> dict[str, Any]:
 
 
 def derive_reader_passage(spec: dict[str, Any]) -> dict[str, Any]:
-    """seed spec → reader 行銷頁段落資料（純函式、確定式，零 wall-clock）。
+    """seed spec → Reader scenario 段落資料（純函式、確定式，零 wall-clock）。
 
-    取 primary notebook 的真實卡：hero 卡（剛點選、對應譯文 overlay，= 跨 shot 共用
-    _marketing_hero）+ 數張同 notebook 卡，各以其真實 example 拼成閱讀段落，高亮各卡
+    取 primary notebook 的真實卡：主卡（剛點選、對應譯文 overlay，= 跨 scenario 共用
+    _scenario_hero）+ 數張同 notebook 卡，各以其真實 example 拼成閱讀段落，高亮各卡
     的 `**marker**` 詞。
 
-    欄位契約（供 Phase 2 iOS ReaderMarketingProse 資料化）：
+    欄位契約（供 iOS ReaderScenarioProse 資料化）：
       bookTitle          str   來源本子名（沿用 notebook 名，不吃 spec 的 cards[].source）
       activeWord         str   剛點選的字（= hero marker，落在 activeWords）
       activePartOfSpeech str|null
@@ -699,7 +690,7 @@ def derive_reader_passage(spec: dict[str, Any]) -> dict[str, Any]:
     world = _normalize(spec)
     primary = world["primary"]
     candidates = _reader_candidates(world["cards_by_nb"][primary["name"]])
-    hero = _marketing_hero(world)  # 與 wordDetail 共用 → 四圖同一 hero 字
+    hero = _scenario_hero(world)  # 與 wordDetail 共用同一主字
     supporting = [c for c in candidates if c["word"] != hero["word"]][:_READER_SUPPORTING_MAX]
 
     ordered = [hero, *supporting]
@@ -740,11 +731,11 @@ def _seed_entries(cards: list[dict[str, Any]], primary: dict[str, Any],
 
 
 def derive_word_detail(spec: dict[str, Any]) -> dict[str, Any]:
-    """spec → `marketingCapture.wordDetail`（vocab-seed 形狀）：hero 卡（entries[0]=
+    """spec → `scenarioContext.wordDetail`（vocab-seed 形狀）：hero 卡（entries[0]=
     聚焦字）+ 其 graph-link 目標卡（同 primary active），使 WordDetailSheet 的「關聯詞」
-    區塊在 seed 內自足解析。供 Phase 2「Word Detail · Sheet/Marketing」scene 以
-    entries[0] 為聚焦字；hero 與 reader activeWord 共用同一字（有合格 marker 卡時）→
-    四圖敘事一致；無 marker 卡的一般 spec 退取有 link 者、否則首張 active 卡。
+    區塊在 seed 內自足解析。供「Word Detail · Sheet/Full Content」scenario 以
+    entries[0] 為聚焦字；主卡與 Reader activeWord 共用同一字（有合格 marker 卡時）；
+    無 marker 卡的一般 spec 退取有 link 者、否則首張 active 卡。
     """
     world = _normalize(spec)
     primary = world["primary"]
@@ -856,7 +847,7 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         "archivedEmpty": _vocab_seed(primary, []),
         # 全螢幕知識圖 = Stats 縮圖關聯圖的放大版：同 primary active 全集，
         # 讓兩面自洽（縮圖 182 詞 → 點進去仍 182 詞的濃密圖）。舊 linked[:24]
-        # 窗口把跨窗 link 全過濾掉，只剩零星 3 節點，是行銷/QA 都不該有的空洞。
+        # 窗口把跨窗 link 全過濾掉，只剩零星 3 節點，是 UI inspection 不該有的空洞。
         "knowledgeGraphPopulated": _vocab_seed(primary, entries(active)),
         "knowledgeGraphEmpty": _vocab_seed(primary, []),
         "shellNavigation": _vocab_seed(primary, entries(stats_cards), shell_history),

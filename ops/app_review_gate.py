@@ -71,18 +71,6 @@ _TARGET_KEYS = {
     "screenshotDisplayType",
     "demoAccountIdentitySHA256",
 }
-_REQUIRED_DESIRED_EVIDENCE = (
-    "build-tuple",
-    "source-commit",
-    "capture-profile",
-    "ui-world",
-    "fixed-clock",
-    "device-locale",
-    "render-spec",
-    "promotion-closure",
-    "output-checksums",
-    "provenance",
-)
 _REVIEW_FIELDS = {
     "contactFirstName",
     "contactLastName",
@@ -708,178 +696,98 @@ def _load_desired_bundle(
     workspace_root: Path,
     files: dict[str, bytes],
 ) -> tuple[dict[str, Any], str]:
+    """Load a release-owner supplied ASC image bundle.
+
+    The bundle records the final PNG bytes and the source/UI World they were
+    approved against. It intentionally has no capture profile, renderer,
+    promotion manifest, rebuild recipe, or generator provenance contract.
+    """
     manifest, manifest_bytes = _read_json(path / "manifest.json", label="desired evidence")
-    if manifest.get("schema") != "kg.app_review.submission.v1":
+    if manifest.get("schema") != "kg.app_review.manual_asc_bundle.v1":
         raise GateError("desired evidence schema is invalid")
     _require_exact_keys(
         manifest,
-        {"schema", "verdict", "build", "source", "capture", "outputs", "provenance"},
+        {"schema", "verdict", "build", "source", "dataset", "fixedClock", "locale", "displayType", "outputs"},
         label="desired manifest",
     )
-    verdict = _require_exact_keys(
-        manifest.get("verdict"), {"status", "requiredEvidence"}, label="desired verdict"
-    )
-    evidence = verdict.get("requiredEvidence")
-    if verdict.get("status") != "pass" or evidence != [
-        {"id": evidence_id, "status": "verified"}
-        for evidence_id in _REQUIRED_DESIRED_EVIDENCE
-    ]:
-        raise GateError("desired evidence requiredEvidence is not the closed verified contract")
+    verdict = _require_exact_keys(manifest.get("verdict"), {"status"}, label="desired verdict")
+    if verdict.get("status") != "pass":
+        raise GateError("desired evidence verdict is not pass")
     build = _require_exact_keys(
-        manifest.get("build"),
-        {"marketingVersion", "buildNumber", "project"},
-        label="desired build",
+        manifest.get("build"), {"marketingVersion", "buildNumber", "project"}, label="desired build"
     )
     project = _require_exact_keys(
         build.get("project"), {"path", "sha256"}, label="desired build.project"
     )
-    source = _require_exact_keys(
-        manifest.get("source"), {"commit"}, label="desired source"
-    )
-    capture = _require_exact_keys(
-        manifest.get("capture"),
-        {"profile", "dataset", "device", "fixedClock", "locale", "promotionManifest", "renderSpec"},
-        label="desired capture",
-    )
-    profile = _require_exact_keys(
-        capture.get("profile"), {"schema", "id", "path", "sha256"}, label="desired profile"
-    )
+    source = _require_exact_keys(manifest.get("source"), {"commit"}, label="desired source")
     dataset = _require_exact_keys(
-        capture.get("dataset"), {"schema", "id", "path", "sha256"}, label="desired dataset"
+        manifest.get("dataset"), {"schema", "id", "path", "sha256"}, label="desired dataset"
     )
-    device = _require_exact_keys(
-        capture.get("device"), {"destination"}, label="desired device"
-    )
-    promotion = _require_exact_keys(
-        capture.get("promotionManifest"),
-        {"schema", "path", "sha256"},
-        label="desired promotionManifest",
-    )
-    render_spec = _require_exact_keys(
-        capture.get("renderSpec"), {"sha256", "value"}, label="desired renderSpec"
-    )
-    if not isinstance(render_spec.get("value"), dict) or render_spec.get("sha256") != _json_sha(
-        render_spec.get("value")
-    ):
-        raise GateError("desired renderSpec hash mismatch")
-    provenance = _require_exact_keys(
-        manifest.get("provenance"),
-        {"generators", "inputDigests", "rebuild", "sourceCommit"},
-        label="desired provenance",
-    )
-    input_digests = _require_exact_keys(
-        provenance.get("inputDigests"),
-        {"dataset", "profile", "project", "promotionManifest", "renderSpec"},
-        label="desired provenance.inputDigests",
-    )
-    rebuild = _require_exact_keys(
-        provenance.get("rebuild"),
-        {"dataset", "deviceDestination", "entrypoint", "fixedClock", "locale", "profile"},
-        label="desired provenance.rebuild",
-    )
-    generators = provenance.get("generators")
-    if not isinstance(generators, list) or not generators:
-        raise GateError("desired provenance.generators must be non-empty")
-    for index, generator in enumerate(generators):
-        _require_exact_keys(
-            generator, {"path", "sha256"}, label=f"desired provenance.generator {index}"
-        )
-        if not isinstance(generator.get("path"), str) or not _SHA_RE.fullmatch(
-            str(generator.get("sha256"))
-        ):
-            raise GateError(f"desired provenance.generator {index} is invalid")
-    if provenance.get("sourceCommit") != source.get("commit"):
-        raise GateError("desired provenance sourceCommit drift")
-    digest_bindings = {
-        "dataset": dataset.get("sha256"),
-        "profile": profile.get("sha256"),
-        "project": project.get("sha256"),
-        "promotionManifest": promotion.get("sha256"),
-        "renderSpec": render_spec.get("sha256"),
-    }
-    if input_digests != digest_bindings:
-        raise GateError("desired provenance inputDigests drift")
-    rebuild_bindings = {
-        "dataset": dataset.get("path"),
-        "deviceDestination": device.get("destination"),
-        "entrypoint": rebuild.get("entrypoint"),
-        "fixedClock": capture.get("fixedClock"),
-        "locale": capture.get("locale"),
-        "profile": profile.get("path"),
-    }
-    if (
-        rebuild != rebuild_bindings
-        or not isinstance(rebuild.get("entrypoint"), str)
-        or not rebuild["entrypoint"]
-    ):
-        raise GateError("desired provenance rebuild bindings drift")
-    # Everything above is the bundle agreeing with itself, which a bundle built
-    # from the working tree does just as well as one built from the commit it
-    # names.  This is the only check that leaves the bundle to ask git what
-    # `source.commit` actually contains.
+    if dataset.get("schema") != "kg.fixture.dataset.v2":
+        raise GateError("desired dataset schema is invalid")
+    _parse_time(str(manifest.get("fixedClock") or ""), label="desired fixedClock")
+    if not isinstance(manifest.get("locale"), str) or not manifest["locale"]:
+        raise GateError("desired locale is invalid")
+    if not isinstance(manifest.get("displayType"), str) or not manifest["displayType"]:
+        raise GateError("desired displayType is invalid")
+
     blob_sha, unresolved = _git_blob_sha256(
         workspace_root, str(source.get("commit") or ""), _PROJECT_SOURCE_PATH
     )
     if unresolved is not None:
-        raise GateError(
-            f"desired build.project cannot be checked against source commit: {unresolved}"
-        )
+        raise GateError(f"desired build.project cannot be checked against source commit: {unresolved}")
     if blob_sha != project.get("sha256"):
         raise GateError(
             "desired build.project sha256 does not match source commit blob: "
             f"commit={source.get('commit')} path={_PROJECT_SOURCE_PATH} "
             f"blob={blob_sha} manifest={project.get('sha256')}"
         )
+
     desired_files: dict[str, bytes] = {}
     _map_file(desired_files, "inputs/desired/manifest.json", manifest_bytes)
-    referenced = [
-        ("project", project.get("path"), project.get("sha256")),
-        ("capture profile", profile.get("path"), profile.get("sha256")),
-        ("capture dataset", dataset.get("path"), dataset.get("sha256")),
-        ("promotion manifest", promotion.get("path"), promotion.get("sha256")),
-    ]
-    expected_source_paths: set[str] = set()
-    for label, rel, expected_sha in referenced:
-        # Not named `source`: that name holds the manifest's source block, which
-        # the checks above still need to mean what it says.
-        staged = _relative_path(path, rel, label=label)
+    expected_paths: set[str] = set()
+    for label, item in (("project", project), ("dataset", dataset)):
+        rel = item.get("path")
+        staged = _relative_path(path, rel, label=f"desired {label}")
         payload = staged.read_bytes() if staged.is_file() else b""
-        if not payload or not isinstance(expected_sha, str) or _sha(payload) != expected_sha:
+        if not payload or not _SHA_RE.fullmatch(str(item.get("sha256") or "")) or _sha(payload) != item["sha256"]:
             raise GateError(f"desired {label} hash mismatch: {rel}")
-        expected_source_paths.add(rel)
+        expected_paths.add(rel)
         _map_file(desired_files, f"inputs/desired/{rel}", payload)
+
     outputs = manifest.get("outputs")
     if not isinstance(outputs, list) or not outputs:
         raise GateError("desired outputs must be non-empty")
+    seen_ids: set[str] = set()
     for index, item in enumerate(outputs):
         _require_exact_keys(
-            item,
-            {"shotID", "sourceScenario", "appearance", "file", "byteSize", "sha256"},
-            label=f"desired output {index}",
+            item, {"id", "appearance", "file", "byteSize", "sha256"}, label=f"desired output {index}"
         )
+        output_id = item.get("id")
+        if not isinstance(output_id, str) or not output_id or output_id in seen_ids:
+            raise GateError(f"desired output id is invalid or duplicated: {output_id}")
+        seen_ids.add(output_id)
         staged = _relative_path(path, item.get("file"), label=f"desired output {index}")
         payload = staged.read_bytes() if staged.is_file() else b""
-        if (
-            not payload
-            or len(payload) != item.get("byteSize")
-            or _sha(payload) != item.get("sha256")
-        ):
+        if not payload or len(payload) != item.get("byteSize") or _sha(payload) != item.get("sha256"):
             raise GateError(f"desired output hash/size mismatch: {item.get('file')}")
-        expected_source_paths.add(item["file"])
+        expected_paths.add(item["file"])
         _map_file(desired_files, f"inputs/desired/{item['file']}", payload)
-    actual_source_paths = {
+
+    actual_paths = {
         item.relative_to(path).as_posix()
         for item in path.rglob("*")
         if item.is_file() and item.relative_to(path).as_posix() != "manifest.json"
     }
-    if actual_source_paths != expected_source_paths:
+    if actual_paths != expected_paths:
         raise GateError(
-            f"desired evidence closure is not exact: missing={sorted(expected_source_paths - actual_source_paths)} "
-            f"extra={sorted(actual_source_paths - expected_source_paths)}"
+            f"desired evidence closure is not exact: missing={sorted(expected_paths - actual_paths)} "
+            f"extra={sorted(actual_paths - expected_paths)}"
         )
     for rel, payload in desired_files.items():
         _map_file(files, rel, payload)
     return manifest, _sha(manifest_bytes)
+
 
 
 def _load_optional_json(
@@ -1041,8 +949,9 @@ def evaluate_gate(
             "marketingVersion": ((desired.get("build") or {}).get("marketingVersion")),
             "buildNumber": ((desired.get("build") or {}).get("buildNumber")),
             "sourceCommit": ((desired.get("source") or {}).get("commit")),
-            "datasetID": (((desired.get("capture") or {}).get("dataset") or {}).get("id")),
-            "datasetSHA256": (((desired.get("capture") or {}).get("dataset") or {}).get("sha256")),
+            "datasetID": ((desired.get("dataset") or {}).get("id")),
+            "datasetSHA256": ((desired.get("dataset") or {}).get("sha256")),
+            "screenshotDisplayType": desired.get("displayType"),
         }
         for key, actual in desired_values.items():
             if actual != target[key]:
@@ -1186,8 +1095,8 @@ def evaluate_gate(
         for key, target_key in (("datasetID", "datasetID"), ("sha256", "datasetSHA256")):
             if world.get(key) != target[target_key]:
                 _block(blocks, f"{prefix}.world.{key}", target[target_key], world.get(key))
-        if desired and world.get("fixedClock") != ((desired.get("capture") or {}).get("fixedClock")):
-            _block(blocks, f"{prefix}.world.fixedClock", (desired.get("capture") or {}).get("fixedClock"), world.get("fixedClock"))
+        if desired and world.get("fixedClock") != desired.get("fixedClock"):
+            _block(blocks, f"{prefix}.world.fixedClock", desired.get("fixedClock"), world.get("fixedClock"))
         result = journey.get("result") or {}
         shape_ok = _exact_keys(
             result,

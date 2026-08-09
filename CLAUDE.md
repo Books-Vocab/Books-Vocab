@@ -189,7 +189,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 |---|---|
 | 查功能是否已實作(避免重造) | `docs/reference/product_surface.md` **(SoT)** |
 | 查 endpoint / DB table / env var / iOS 模組叫什麼 | `docs/reference/tech_index.md` **(SoT)** |
-| 改 `ops_edit`/`ops_cli`/projection/capture_profile(加可斷言欄位 / 疊 scenario 層 / 防雙面 drift) | `docs/reference/ops_state_plane.md` **(SoT)** |
+| 改 `ops_edit`/`ops_cli`/UI World projection(加可斷言欄位 / 疊 scenario 層 / 防雙面 drift) | `docs/reference/ops_state_plane.md` **(SoT)** |
 | 改 iOS Reader 任何檔案 | `docs/reference/feature_boundary/reader.md` |
 | 改 iOS Vocab / Sync / TodayReview / KG | `docs/reference/feature_boundary/vocabulary.md`(scope map) + `docs/reference/sync_lifecycle.md` **(SoT)**(狀態流轉) |
 | 改 iOS Notebook(list / card / cover / edit sheet) | `docs/reference/feature_boundary/notebook.md` |

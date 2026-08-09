@@ -23,7 +23,7 @@ import SwiftData
 /// are materialized into a fresh in-memory store. Catalog uses a DEBUG seam to
 /// skip non-render side effects (`healthCheck`, `KGVocabView.loadInitialData`)
 /// so the full-screen surface stays deterministic and does not trigger real
-/// sync/network work during snapshot runs.
+/// sync/network work during tool sessions.
 enum VocabularyListViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Vocabulary List View") {
@@ -76,25 +76,18 @@ enum VocabularyListViewScenarios {
                 )
             }
             // Dense reviewed-state inspection. Opens on the "已複習" tab with the review clock
-            // frozen at the marketing anchor day, so the fresh-green cohort Phase 1
-            // shaped (~16 low-count cards, ratio 0.001–0.038) sorts to the top of
+            // frozen at the UI World's anchor day, so the fresh-green cohort
+            // (~16 low-count cards, ratio 0.001–0.038) sorts to the top of
             // the tab and the progress bars read as a green→amber gradient instead
             // of the flat all-expired list the default "複習優先" sort captured.
             Scenario("Reviewed · Dense", layout: .fill) {
-                // Force light so this high-density state stays deterministic while
-                // the reader marketing shot so the website set reads as one light
-                // family (the Knowledge Graph WKWebView stays its own dark viz).
-                // 門檻對齊凍結 world：`vocabulary.vocabListPopulated` 只有 5 筆
-                // entry、4 筆可見。原本的 80 是行銷密度時代的宣告，凍結後補資料
-                // 等於繼續餵 catalog（違反 catalog_scope.md §FROZEN 紅線），所以
-                // 改的是斷言不是 world。對帳測試：
-                // ops/tests/test_catalog_scene_expectations.py
+                // Force light so this high-density state stays deterministic.
                 VocabularyListViewScene(
-                    fixture: .reviewedMarketing,
+                    fixture: .reviewedFrozen,
                     auth: .signedIn,
                     expected: .visibleAtLeast(4),
                     initialReviewStates: [.reviewed],
-                    reviewSettingsStore: VocabularyListViewScene.marketingFrozenStore
+                    reviewSettingsStore: VocabularyListViewScene.fixtureFrozenStore
                 )
                 .environment(\.colorScheme, .light)
             }
@@ -110,7 +103,7 @@ private enum VocabularyListFixture {
     case long
     case empty
     case syncing
-    case reviewedMarketing
+    case reviewedFrozen
 
     var vocabularyID: UIWorldVocabularyFixtureID {
         switch self {
@@ -124,7 +117,7 @@ private enum VocabularyListFixture {
             return .vocabListEmpty
         case .syncing:
             return .vocabListSyncing
-        case .reviewedMarketing:
+        case .reviewedFrozen:
             // Full active primary account (same projection as the KG populated
             // graph), so the reviewed tab shows the whole learned cohort.
             return .vocabListPopulated
@@ -148,8 +141,8 @@ private struct VocabularyListViewScene: View {
     let syncCoordinator: SyncCoordinator
     let notebookId: String
     let initialReviewStates: Set<VocabularyReviewState>
-    /// Optional frozen review clock. `nil` keeps the env-default store; the
-    /// marketing scene injects a store paused at the marketing anchor day so the
+    /// Optional frozen review clock. `nil` keeps the env-default store; this
+    /// scene injects a store paused at the UI World's anchor day so the
     /// reviewed-tab ratios (and thus row colours / sort) are deterministic.
     let reviewSettingsStore: ReviewSettingsStore?
 
@@ -206,9 +199,9 @@ private struct VocabularyListViewScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    /// QA fallback anchor (2026-06-01 12:00); overridden by the frozen marketing
-    /// clock when a marketing world is injected. Shared shape with the Knowledge
-    /// Graph scene so both marketing shots read the same anchor day.
+    /// QA fallback anchor (2026-06-01 12:00); overridden by scenarioContext's
+    /// frozen clock. Shared with the Knowledge Graph scene so both views read
+    /// the same anchor day.
     private static let qaFallbackNow: Date = {
         var comps = DateComponents()
         comps.year = 2026
@@ -216,15 +209,15 @@ private struct VocabularyListViewScene: View {
         comps.day = 1
         comps.hour = 12
         guard let date = Calendar.current.date(from: comps) else {
-            preconditionFailure("Vocabulary marketing catalog fallback now date components are invalid")
+            preconditionFailure("Vocabulary Catalog fallback date components are invalid")
         }
         return date
     }()
 
-    static let marketingFrozenStore: ReviewSettingsStore = {
+    static let fixtureFrozenStore: ReviewSettingsStore = {
         var settings = ReviewSettings.default
         settings.isProgressPaused = true
-        settings.progressPausedAt = MarketingReviewClock.now(fallback: qaFallbackNow)
+        settings.progressPausedAt = FixtureReviewClock.now(fallback: qaFallbackNow)
         return ReviewSettingsStore(previewSettings: settings)
     }()
 

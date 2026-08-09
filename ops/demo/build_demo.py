@@ -74,7 +74,7 @@ def _build_parser() -> argparse.ArgumentParser:
         sp = sub.add_parser(name, parents=[globals_parent], help=f"run the {name} emitter")
         sp.set_defaults(target=name)
         if name == "emit-ios":
-            # SPEC MODE (marketing-account projector): derive the
+            # SPEC MODE (UI World seed projector): derive the
             # vocabulary/notebook/reviewDeck/todayReview domains from a Phase-1
             # `ops_cli world-export` seed spec; every other domain follows the
             # committed baseline. Writes ONLY to --out; the committed generated

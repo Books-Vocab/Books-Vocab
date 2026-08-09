@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 917ad3e4b
+verified_against: 57c2f2204
 -->
 # Books & Vocab iOS 開發技能
 
@@ -89,7 +89,7 @@ build/test/archive 共用 `/tmp/kg-ios-build.lock`；test 的 simulator executio
 
 `ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`1=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步。`block` 來自 readiness 或 workflow，其中包含 App Review evidence gate，所以缺 producer、缺/漂移/過期證據不能再以 GUI manual step 繞過。
 
-`./ops/app_review_evidence.py plan|status --spec ops/app_review/<version>.json` 是送審證據控制面：兩者都逐筆列 artifact、typed producer、authority 與 next command；`plan` 驗 producer 宣告 shape 與 artifact 是否存在，`status` 才執行完整 gate 並回報實際 block reason。`desired` 從 tracked capture profile、tracked promotion PNG 與 deterministic UI World generator 重建 bundle，不依賴目的 bundle 內的輸入；它以 `--commit --bundle-dir` 寫本地 bundle，其餘 `urls|journey|journey-run|demo-run|appearance|attest` 由對應 producer 以 `--commit --out` 寫本地 evidence。`refresh-anchor` 是唯一被認可的 `target.desiredManifestSHA256` 寫入路徑（dry-run 預設，`--commit` 才寫，只碰那一個欄位）——錨點過去四次都靠手改 JSON，那正是它會腐爛的機制。但可追溯不等於正當：`--commit` 會先跑一次 App Review gate，verdict 非 pass（含 gate 跑不起來）就以 `anchor.gate-blocked:<codes>` refuse（rc 2、不寫檔也不重建 bundle），因為送審前移動錨點恰好會抹掉 `desired.manifest-sha256` 那條 block；要覆寫需具名的 `--acknowledge-gate-block`（人工斷言、需使用者拍板；它讓 gate 失去否決權但仍查詢一次，把當下 codes 記進報告的 `gateBlocks`）。政策見 `.claude/skills/source-command-release/SKILL.md` §App Store submit hard stop。注意 `desired` 讀的是 spec `target.sourceCommit` 那顆 commit 的 pbxproj（`git cat-file blob`），不是工作樹；commit 不可達即 BLOCK，不回退。**`app_review_gate.py` 現在會自己再算一次**：它獨立以該 commit 的 blob 重算 `build.project.sha256`，不符或算不出來（commit 不可達／路徑不存在／無 git）都是 `desired.invalid` BLOCK——所以用舊工具產的 bundle 會在這裡被擋下，不是重跑 producer 就好，要確認 bundle 真的對應那顆 commit。**兩個新的 dirty-tree 硬停**：(a) `journey-run` / `demo-run` 的 verdict 帶 `sourceTreeDirty`，為 `true`（或欄位缺席）時 consumer 拒絕把該 run 歸給 spec 的 commit；(b) 帶 dataset 的 `ios_ops.sh catalog snapshots` 在 `ios/` 有未提交改動時直接 `source-commit-failed`（rc 65）。實務結論：**證據一律在乾淨樹上產**，先 commit 再跑 producer。`urls` 只做 spec 宣告 URL 的 HTTPS GET，拒 redirect/error 並記錄 body SHA；`journey-run` 固定呼叫 `ios_ops.sh test --ui --configuration Release`，`ios_test.sh` 在 verdict `options` 寫入 producer identity、實際 build/source/dataset/fixed-clock 與 execution 綁定，consumer 不接受 caller 自填 `releaseEvidence`；`appearance` 同時驗 catalog proof 與 run receipt 後才 stage spec 指定 artifact。
+`./ops/app_review_evidence.py plan|status --spec ops/app_review/<version>.json` 是送審證據控制面：`plan` 列 artifact、typed producer、authority 與 next command，`status` 執行完整 gate 並回報 block reason。最終 ASC desired bundle 是 release owner 提供的人工輸入；本工具不生成或改寫截圖 bundle，也沒有 Catalog appearance producer。其餘 `urls|journey|journey-run|demo-run|attest` 依 checked spec 產生封閉證據；`journey-run` / `demo-run` 的 dirty tree verdict 仍 fail closed。
 
 證據控制面的長 child command 不得成為黑盒：desired shape/build/bundle、journey、physical demo 與 gate evaluation 都會把 `start` / `spawned` / 每 20 秒 `heartbeat` 寫到 stderr；child 正常 exit 時另寫 `done` + rc，stdout 仍只輸出最終 JSON。中斷會向上拋出並清除整個 child process group。若 stderr 超過 20 秒無進度，視為 runner 缺陷，不得靜默等候或把它解讀為健康。**心跳本身不是健康證明**：`heartbeat` 另帶 `stalled` 等前進判準（欄位語意正本為 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落），`stalled=true` 連續累積代表 child 活著但**沒有輸出**（不等於沒在做事——等鎖、慢下載、還沒啟動完成都會安靜），該查而不是該等。
 
@@ -113,7 +113,7 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 `ios_ops.sh snapshot --json` 是 agent 第一輪狀態入口:schema 為 `kg.ios.snapshot.v1`,合併 project、Organizer latest、TestFlight latest、`readiness[]`、release `workflow.steps[]`、release `gate` verdict、Xcode `xcode` inventory、Simulator `simulator` 狀態與最近 `runs`。頂層 `summary` 是第一屏判讀層:`summary.verdict=pass|warn|block`,`summary.counts` 不只聚合 gate/build/test/archive/xcode/simulator/runtime counts,也直接提升 `doctor.summary.counts` 與 `workflow.summary.counts` 成 `readinessOk|readinessWarns|readinessBlocks|workflowReady|workflowTodos|workflowWarns|workflowBlocks|workflowManual`,讓 agent 不必再下鑽 `.readiness[]` / `.workflow.steps[]` 才知道 release 管理面狀態。`summary.nextActions[]` 會把 gate hard-stop/todo/manual、build/test/archive diagnostics、xcode/simulator observation errors 轉成可直接執行或檢查的 action。非 JSON 文字模式也共用同一份 snapshot JSON formatter,第一行固定是 `[ios][summary]`,後續先列 `[ios][next]`,不再輸出舊式 `phase=doctor` dump。`runs.build.diagnostics` / `runs.test.diagnostics` / `runs.archive.diagnostics` 仍保留完整 `kg.ios.diagnostics.v1`,讓第一輪 payload 就有可行動問題,不用再二次跑 `issues` 或 grep log。預設不查 unified log,所以 `logs` 欄位為 `null`;需要 Xcode Console 視角時加 `--include-logs --log-since 5m --log-limit 200`,snapshot 會內嵌同一份 `kg.ios.logs.v1`。預設會查 `kg.ios.xcode.v1` 讓 agent 第一輪就有 scheme/destination/simulator inventory 視角;需要快速 dashboard 時加 `--skip-xcode`,此時 `xcode:null`。預設也會查 `kg.ios.simulator.v1` 讓 agent 第一輪知道 booted device、app container 與 BooksAndVocab process `running|stopped|skipped|unknown`;需要跳過 Simulator GUI 狀態時加 `--skip-simulator`,此時 `simulator:null`。沒有 booted simulator 時 snapshot 仍回 0 並把 `.simulator.status` 設為 `error`,避免 dashboard 因觀測缺口中斷;log provider 失敗則仍傳遞非零 exit。snapshot 只做觀測並回傳 gate 物件,不因 gate warn/block 自己失敗;需要 hard-stop exit code 時跑 `ios_ops.sh gate release --json`。它仍是 read-only，只組合既有 `doctor --json`、`workflow release --json`、gate helper、`xcode --json`、`simulator status --json`、`runs --json` 與可選 `logs --json`;人要看文字 dashboard 可用 `ios_ops.sh snapshot` 或 alias `dashboard`。
 
-`ios_ops.sh quality list|impact|validate` 是 iOS façade 上的 UI 品質控制面 discovery 入口，read-only 委派 `ops/ui_quality_plane.py`。改 UI 檔時先用 `./ops/ios_ops.sh quality impact --files <paths...> --json` 取得 static-code / structure / state-snapshot / behavior / perf / visual-regression 候選 gate，再依語意決定跑哪個 gate；這讓新 agent 不必先知道 `ui_quality_plane.py` 的內部路徑。
+`ios_ops.sh quality list|impact|validate` 是 iOS façade 上的 UI 品質控制面 discovery 入口，read-only 委派 `ops/ui_quality_plane.py`。改 UI 檔時先用 `./ops/ios_ops.sh quality impact --files <paths...> --json` 取得 static-code / structure / behavior / perf 候選 gate，再依語意決定跑哪個 gate。Catalog 是按需視覺工作台，不是品質 plane 的強制 coverage 或 visual-regression gate。
 
 改複習卡版面或 `ReviewCardLayoutProfile` 時，必須同步更新 `ios/BooksAndVocabTests/Golden/review_card_layout.json`，並讓 `ReviewCardLayoutGoldenTests` 與 `review-card-golden` 回歸組在同一個變更中通過。
 
@@ -187,9 +187,9 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 - `./ops/ios_ops.sh build --json` / 一般 `test --json` 會把 delegate stdout/stderr 導到 stderr，stdout 保留單一 `kg.ios.run.v1` payload；`test --coverage --json` 會在同一 payload 內嵌 `coverage: kg.ios.coverage.v1`；已存在原生 JSON 契約的 `test --cache-status|--prepare-cache|--clean-cache --json` 維持原 schema，不再包一層 run report。
 - **裸方法名（positional）會反查自己的容器**：`test --ui testLaunchShowsAllTabs` 這種不含 `/` 的參數，runner 會掃該 scope 的 test 目錄，把方法歸到它**自己所屬**的 `class` / `@Suite` 容器（Swift Testing id 會帶簽名如 `foo()`），不再硬拼成「與 target 同名的 class」。找不到就在 **parse 期 exit 1**（訊息會指向 `Class/method` 規則），不會白跑一整輪 build+test 才在尾端撞 false-green guard。**「找不到」會分辨兩種成因**：名字真的不存在 → 印通用規則；名字其實住在**另一個 target**（少給 `--ui` / `--unit`，最常見的形狀就是拿 UI test 名字跑預設 unit scope）→ 錯誤會**指名它所屬的 target/容器**並印出可直接複製的修正命令。兩種都仍 exit 1，runner **不會**自作主張改跑另一個 scope。掃描**不遞迴**：測試若放在子目錄就找不到，改用 `Class/method` 形式——那是永遠直通、不做存在性檢查的逃生口（例：`test --ui ExploreNavigationUITests/testExploreTabIsReachableAndRendersSection`）。
 - `--ui` 會把 discovery target 切到 `BooksAndVocabUITests`，支援 `--file` / method selector；未明示時會自動帶 `--ui-launch-profile ui-smoke`，把 UI smoke 驗證切到較輕的 app launch profile。若要回到完整 startup 行為做 baseline / A/B，明示 `--ui-launch-profile standard`。
-- `--ui` 實際執行必須明示 `--dataset <name>` / `--dataset-file <path>`。**⛔ UI World 自 2026-08-05 起 FROZEN：seam 照常可用，world 內容凍結不再演進；見 `docs/reference/catalog_scope.md` §FROZEN。**named dataset 解析到 `ops/fixtures/ui_worlds/<name>.json`；UI World（`kg.fixture.dataset.v2`）同時管理資料、auth session、Keychain token state、entitlements、UserDefaults/iCloud KVS preferences、SwiftData row state 與 file-backed asset manifest；v2 schema 必須正好是 `kg.fixture.dataset.v2`，`datasetID` 必填非空，且所有 top-level domain 都必須明確宣告，空也要寫成空物件，不能靠 decoder 缺省補空。注入機制是複製一份 staged `*.scoped.xctestrun` 並 upsert `TestingEnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64`（值＝base64(raw DEFLATE)，`ops/lib/fixture_dataset_env.sh` 產生——plaintext base64 的 multi-MB world 會超過 ~1MB spawn env block 而靜默進不了 app；`test-without-building` 不會把行內 env 傳進 runner process；app 端仍向後相容 plaintext `KG_FIXTURE_DATASET_B64`，雙 key 同設 fail-loud），UITest 端 `UITestLaunchConfiguration` 再轉發進 app `launchEnvironment`，被 `FixtureDatasetStore.require*Seed` / `requireInstalledAssetURL` 消費；malformed seed arg、舊 schema、缺 schema、空 datasetID、未知 fixture domain/id、缺 world、缺 top-level domain、缺 key、缺 auth token state、缺 entitlement seed、缺 settings subscription/account detail/account section/preferences/review seed、缺 row/source state、缺 asset、缺 `installAs`、byteSize 不符、sha256 不符、seed 過程拋錯都直接 fail hard；auth fixture 必須明示 isLoggedIn/userId/token/keychainTokenState/displayName/email/authError/isAuthenticating/provider/providerUserId，且任何 logged-in seed 的 userId 必須非空；settings fixture 必須明示 auth/preferences/reviewSettings/kg/subscription/syncSummary/bookSync/about/danger/manualLoginUserId/debugLocalServerURL，nullable slice/欄位也要寫 null。auth keychainTokenState 只能是 `available` / `readFailed` / `absent`，available 必須有 readable token，readFailed 必須有 persisted userId 且不可帶 token，absent 必須 logged-out 且不可帶 token，所以 nil token 不再被偷當成唯一登入真相；preferences 會在 seed 前寫入標準 UserDefaults + iCloud KVS seam，SwiftData notebook/vocabulary rows 的 `syncStatus` / `actionType` / archive / reader-exclusion 狀態由 manifest 明示，notebook row 的 `isDefault` / `sortOrder`、notebook entry 的 `context` / `explanation` / `partOfSpeech` / `bookTitle` / `chapterTitle`（另可帶 optional review scheduling 欄位 `reviewIntervalHours` / `nextReviewAt` / `lastReviewedAt` / `reviewCount`——可整組缺席，帶了才餵 NotebookStatsCalculator 的到期徽章與進度條；key set 對齊 `ops/ui_world_manifest.py` 的 `NOTEBOOK_ENTRY_OPTIONAL_REVIEW_KEYS`）、review/vocabulary/reader entry 的 `bookTitle`、`chapterTitle`、`kgCardId`、`difficultyTier`、`reviewMode`、`reviewExamples`、`collocations`、`rootForm`、`inflections`、review scheduling counters、`graphLinksByKind`、reviewHistory-to-entry references、vocabulary/reviewDeck unique entry words 與 reviewDeck 的 `notebookRemoteId` / `notebookName` 也必須明示，nullable 欄位也要寫 `null`，不由 seed helper 回退預設。asset 會先驗 source path + byteSize + sha256 + contentType，安裝後再驗 installed byteSize + sha256，並依 `installAs` materialize 到 app Documents。Bookshelf `Book` row 必須明示 title/author/fileName/format/bookAssetRef/progression/preferredNotebookId/dateAdded/dateLastRead，非空 preferredNotebookId 必須 resolve 到同一 UI World notebook domain，並由 `bookAssetRef` 指向 `assets.books.*`，且 repo dataset contract 要求安裝路徑正好是 `Books/<fileName>`，避免 row 存在但書檔缺失。Catalog Bookshelf seed registry 必須由 `BookshelfFixtureID.allCases` 全量對應 UI World `bookshelf.*` seed，repo UI World 與 generated demo manifest 的 bookshelf key set 必須完全等於 enum，不可在 `BookshelfFixtures` 內建本地 `.init(...)` rows；有書的 seed 必須明示 `bookAssetRef`、`progression`、`preferredNotebookId`、`dateLastRead` 等 row state，nullable 欄位也要寫 `null`，並通過 asset byteSize / sha256 / contentType 與 Book.format 驗證。Catalog podcast episode 的 `durationSec` 必須明示；Catalog Podcast seed registry 必須由 `PodcastFixtureID.allCases` 全量對應 UI World `podcast.*` seed，repo UI World 與 generated demo manifest 的 podcast key set 必須完全等於 enum，不可在 `PodcastFixtures` 內建本地 `.init(...)` rows；generated demo 也必須宣告 `runtimePodcast.*` 與 audio/subtitle assets，且 runtime download refs 必須 resolve 到 installable asset 並通過 byteSize / sha256 驗證。Catalog Paywall 的 free/pro/cancelled/admin subscription 狀態也必須取 UI World `entitlements.*` seed，不可在 Debug source 另造 `KGSubscriptionStatus`；Catalog Settings seed registry 必須由 `SettingsFixtureID.allCases` 全量對應 UI World `settings.*` seed，repo UI World 與 generated demo manifest 的 settings key set 必須完全等於 enum；Catalog Settings Subscription Section 的 active/loading/pricing/free 狀態必須取 UI World `settings.*.subscription` seed，其中 free section 是 `settings.subscription_free`；Catalog Settings Account Detail / Account Section 的 subscribed/deleting/logged-out/long-identity/logged-out-error 狀態必須取 UI World `settings.*` seed，其中 long identity stress 是 `settings.account_long_identity`、logged-out error 是 `settings.account_logged_out_error`；Catalog Settings Preferences Section 的 auto-sync on/off/hidden 狀態必須取 UI World `settings.*.preferences` seed，其中 auto-sync off 是 `settings.preferences_auto_sync_off`、logged-out/no-sync-row 是 `settings.preferences_logged_out_no_sync`；Catalog Settings Review Section 的 relaxed/intensive/custom/paused 狀態必須取 UI World `settings.*.reviewSettings` seed，其中 relaxed 是 `settings.subscription_free`、intensive 是 `settings.preferences_auto_sync_off`、custom 是 `settings.account_long_identity`、paused 是 `settings.preferences_logged_out_no_sync`；Catalog Notebook seed registry 必須由 `NotebookFixtureID.allCases` 全量對應 UI World `notebook.*` seed，repo UI World 與 generated demo manifest 的 notebook key set 必須完全等於 enum，不可在 `NotebookFixtures` 內建本地 `.init(...)` rows。Catalog Today Review seed registry 必須由 `TodayReviewFixtureID.allCases` 全量對應 UI World `todayReview.*` seed，repo UI World 與 generated demo manifest 的 todayReview key set 必須完全等於 enum，不可在 `TodayReviewFixtures` 內建本地 `.init(...)` rows 或 `TodayReviewCardSeed(...)` 常數；`longContent` 僅屬 preview/catalog，不進 snapshot。Runtime podcast series 的 `color`、`coverPattern`、`sortOrder`、每集 `durationSec` / `previewDurationSec` 與 `download` 都必須明示；`download` 有值時其 `audioAssetRef` 與 `subtitleAssetRef` 也必須明示，nullable 欄位要寫 `null`；`download` 有值才安裝 audio/subtitle asset 並寫入 `localAudioPath` / `localSubtitlePath`，沒有值代表未下載，不由舊 fixture 常數推導。端到端證明測試：`FixtureDatasetUITests`，repo dataset contract：`RepoFixtureDatasetsContractTests`。
+- `--ui` 實際執行必須明示 `--dataset <name>` / `--dataset-file <path>`。named dataset 解析到 `ops/fixtures/ui_worlds/<name>.json`；UI World（`kg.fixture.dataset.v2`）結構化描述資料、auth、Keychain token state、entitlements、preferences、SwiftData rows 與 file-backed assets。runner 以 deflate-base64 注入 app；完整 schema、跨引用與資產完整性由 `ops/ui_world_manifest.py validate` 和 app decoder fail-fast 驗證。
 - **改 UI 測試的 bookshelf fixture id 前先跑 `./ops/ui_fixture_lint.sh`（秒級，不編譯）**。它把「傳了 enum 的 *case 名稱* 而非 rawValue」從一場模擬器 crash 降成一行 `file:line`：`BookshelfFixtureID` 的 rawValue 是 snake_case（`with_books_library`），傳 camelCase 的 `withBooksLibrary` 會讓 `BookshelfFixtureID(rawValue:)` 回 nil、app 在 init 就 `preconditionFailure`，測試以「crashed in \<external symbol\>」形式紅掉。這個錯誤形狀在 repo 裡活了兩個月沒人發現，因為**沒有任何日常 gate 會跑 UI target**（cutover 只在分支動到 UITest 檔案時路由 UI 測試，整套 UI suite 又因已知 flakiness 被刻意排除在 block gate 外）。lint 已註冊進 `ops/ui_quality_plane.yml`（`static.ui_fixture_id`，fast tier），`--list` 印出當前 allowlist，行內豁免走 `// ui-fixture-allow: <reason>`（在 UITests 目錄裡引用壞形狀寫回歸註解時用它，別去改 lint）。另一半是排程 sweep `ops/launchd/com.kg.uisweep.plist`（每日跑完整 UI target，**advisory、跑在 oscar**，felix 沒有 Xcode），細節見 `docs/reference/tech_index.md`。
-- `--dataset` / `--dataset-file` 不只 app 端 decode 會驗：host-side `ios_test.sh` 會先跑 `ops/ui_world_manifest.py validate`，通過才 base64/stage 到 xctestrun；`catalog snapshots`、`ui_quality_gate.py`、`uitest_flow_matrix.py` 也用同一 validator 做 preflight，invalid world 不會進 simulator 或 dry-run plan。
+- `--dataset` / `--dataset-file` 不只 app 端 decode 會驗：host-side `ios_test.sh` 與 `catalog list|open` 都先跑 `ops/ui_world_manifest.py validate`；`ui_quality_gate.py` 與 `uitest_flow_matrix.py` 也共用該 preflight。invalid world 不會進 simulator 或 dry-run plan。
 - `--launch-benchmark` 是正式的 UI launch perf 入口，固定跑 `BooksAndVocabUITests/testLaunchPerformance`；目前以 XCTest 內建 `XCTApplicationLaunchMetric` 預設行為為準，會在第一屏輸出 `appLaunchAverageMs` / `appLaunchSamples` 供比較。
 - `--coverage` 會對 `build-for-testing` / `test-without-building` 加 `-enableCodeCoverage YES`，測試後用 `ops/ios_coverage.py` 讀 `xccov view --report --json` 產出 `kg.ios.coverage.v1`。`summary.lowestFiles[]` 預設列出 selected target 最低覆蓋的前 10 個檔案，第一屏會印前三個 `[ios][coverage][low]`，用來決定下一輪補測試焦點。`--coverage-fail-under <percent>` 低於 BooksAndVocab target line coverage 門檻時，即使 tests passed 也會讓 run 以 `reason=coverage-fail-under` 失敗；coverage build cache key 會和一般 test 分開，避免重用無 coverage 的 `.xctestrun`。只調 parser 輸出時可直接跑 `ops/ios_coverage.py --max-low-files <n>`。
 - `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
@@ -257,11 +257,7 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 - 任何「好像有變快」都不算結論，除非 timing 已回寫到 verdict JSON / `runs` / `snapshot`；沒有進控制面的數字，下一輪 agent 就無法延續判讀。
 - 若某個優化旗標沒有在 xcresult sample count 或 timing 上留下可驗證差異，就不要把它留成表面功能。
 - **先分「排隊」再分「執行」**:build/test/archive verdict 都有 `timings.lockWaitMs`(共享 `/tmp/kg-ios-build.lock` 的排隊等待,三者同義)。一個 run 看起來慢,先看 `lockWaitMs` 是不是卡在別的 worktree 後面,再看 `xcodebuildMs`/`testInvocationMs` 等執行段;沒有 lock-wait 數字時,排隊延遲會偽裝成執行慢。
-- **catalog 長任務不是黑盒**:`catalog snapshots` 的 build-for-testing / test-without-building / full-test 階段會發 `[ios][catalog] phase=<label> start/running/done` 到 **stderr**(預設開,每 ~20s 帶 elapsed/pid/last log line),`stdout` 維持純 `kg.ios.catalog.v1` JSON。執行期沒輸出別急著 `ps`/xcresult 旁路觀測,先看 stderr heartbeat;細粒度 phase trace 仍由 `KG_IOS_OPS_CATALOG_TRACE=1` 開。
-- **cache-miss 不是 test failure**:`catalog snapshots --reuse-build` 命中 stale/缺失 cache 時頂層 `status:"cache-miss"`(非 `error`)、`errors[].catalog-cache` 帶可行動 hint、stderr 印一行提示；但 cache hit 後 test-without-building 失敗會回 `status:"error"` 與 `errors[].catalog-test` / `xcodebuild-test-failed`（`cache.status="stale"`，可能帶 `copy.salvaged=true`），不會偽裝成 cache-miss。看到 `cache-miss` 就跑 `catalog prepare` 或拿掉 `--reuse-build`,不要當成程式碼壞掉去追。
 - **uniform image 改走 warning 語意**:`uniform-image-detected` 現在只會讓 `validation.status:"warn"` 與頂層 `status:"warn"`，不再把已成功產出的 PNG 誤判成 fatal `error`。真正 fatal 的仍是 `png-count-mismatch`、degenerate dimensions、xcodebuild/test/copy 失敗。
-- **失敗也會搶救 PNG**:full run 失敗時 wrapper 仍把 simulator container 內已生成的截圖 salvage 回本地。`artifacts.containerPngCount` = container 內實際張數,`copy.salvaged=true` + `errors[].catalog-salvage`(info note)代表「有生成但 run 失敗已救回」;`containerPngCount==0` 才是真的沒生成。別再手動進 container 撈圖。
-- **snapshot 會順手生 review/graph sidecar**:`catalog snapshots` 成功複製 PNG 後，會在同一個 `out_root` 自動生成 `catalog.html`（自由縮放 SVG 心智圖，與 CLI `tree/node/node-url` 共用 `nodePath`）、`review_manifest.json`（含 `tree` 欄位）以及 `ui_graph.json`（`kg.ui.graph.v1`，把 `CatalogSurface.backing` 接到 type→type 依賴圖）。`UIreview.html` 會直接把這份 graph 摘要上浮到每個 surface 卡：`backing`、`depends`、`impacts`、graph status/health。若 out_root 已有有效 `ui_graph.json` sidecar，review 會直接使用它，不重建 IndexStore graph；否則才從 DerivedData store 或 `ui_graph.py --build` 生成。graph sidecar 生成失敗只記 warning / degrade 結構欄位，不會遮蔽 raw PNG 與 gallery 本體。
 
 ### 日常 warm-loop 建議
 
@@ -560,180 +556,31 @@ Apple/Google SSO
 - 改 file 後 simulator 沒反應 → 看 console 是否報 `cannot inject ...`（多半是改到 stored property），需 ⌘R 重 build
 - Release archive 報錯 → 確認 `-interposable` flag **只在 Debug 配置**，Release 維持原狀
 
-### Playbook Catalog（SwiftUI 元件目錄）
+### Catalog agent UI 工作台
 
-> ⛔ **FROZEN 2026-08-05 — catalog 停止擴張**：本段仍描述既有 catalog 的運作方式且照常可用，但**新畫面不進 catalog**，下方「加一筆 surface」的步驟凍結期不要執行。紅線與復業條件的正本：`docs/reference/catalog_scope.md` §FROZEN。
-
-
-DEBUG-only 元件 catalog，讓 simulator 啟動時直接進入「狀態矩陣牆」而非正常 app UI，給 CLI 截圖協作（Claude / simctl）用。Phase 1 hot reload + Phase 3 catalog 組合 = 視覺迭代閉環：你改 `AppTheme.swift` 色票 → InjectionNext 秒級重渲染 catalog → simctl 截圖讓 Claude 看到結果。
-
-**啟用方式**：
-1. Xcode → Product → Scheme → Edit Scheme → Run → Arguments → **Launch Arguments** → 加 `-catalog`
-2. ⌘R 跑 Debug build，app 啟動時 `BooksAndVocabApp` 偵測到 `-catalog` 改用 `CatalogScene()` 為 root view（取代正常 `ContentView`）
-3. simulator 開啟即見 Playbook catalog 列表，左側分類 / 右側渲染
-
-要回正常 app：scheme 移除 `-catalog` 即可（建議**保留兩個 scheme**：`BooksAndVocab` 正常、`BooksAndVocab-Catalog` 含 launch arg）。
-
-**目錄結構**：
-- `ios/BooksAndVocab/Debug/CatalogScene.swift` — 入口 view + `static func buildPlaybook()`(BooksAndVocabTests 也 reuse 同一份 surface registration)
-- `ios/BooksAndVocab/Debug/Scenarios/*Scenarios.swift` — 每個 surface 一檔，通過 `register(in:)` 加 scenarios
-
-**Taxonomy 是 source of truth（2026-06）**：每個 Playbook category 由 `CatalogScene.Manifest` 的 `CatalogSurface` 宣告三個維度 — `kind`（`SurfaceKind`：`featureScreen` / `overlay` / `buildingBlock` / `engineering`，決定 lane）、`feature`、`screen`（`ScreenID`，**僅 `featureScreen` 有**，= app 真實全螢幕身分）。**不要在 doc 手抄 group / scenario 數**（必漂）：權威清單一律讀 source（`CatalogScene.Manifest.surfaces`）與 `CatalogCoverageTests`。
-
-契約由 `CatalogCoverageTests` 強制（漏 register、重複螢幕、缺宣告、缺覆蓋都會紅）：
-- **register 完整性**：`buildPlaybook()` 註冊的 group 必須 = `Manifest.categoryNames`。
-- **一螢幕一 surface**：每個 `featureScreen` 的 `screen` 不可重複（防三胞胎，例如舊 `Today Review` / `Today Review View` / `Today Review Presenter` 渲染同一畫面的歷史病）。
-- **kind 宣告完整**：每個 category 都有 `CatalogSurface`（無漏宣告 lane）。
-- **覆蓋無缺口**：`Set(ScreenID.allCases) − Manifest.pendingCoverage` 必須全被 `featureScreen` 覆蓋（`pendingCoverage` 目前為空 = 全覆蓋；它是顯式遞減的 debt set，不能對已覆蓋螢幕說謊）。
-- **index round-trip**：`Manifest.indexJSONData()` 必須一 category 一筆、各帶 source-declared kind/feature/screen。
-
-**離線 gallery 消費 `catalog_index.json`（不再猜）**：snapshot run（`CatalogSnapshotTests`）在 PNG 旁吐 `catalog_index.json`（`category → {kind, feature, screen}`，來自 `Manifest.indexJSONData()`）；`ops/catalog_review_*.py` 讀它決定 lane/feature/screen，**缺 `catalog_index.json`、壞 JSON、`surfaces` 非 object 或單筆 surface entry 非 object 都直接 fail-fast**，不再對 legacy / unblessed artifact 降級到透明邊緣像素 sniff + `Presenter`/` View` regex。改 lane/feature 分類 = 改 iOS source 的 `CatalogSurface`，不是改 Python heuristic。
-
-**仍排除**：Reader 本體（Readium SDK runtime 太重，catalog 只蓋 `Reader View · Chrome` 層；ReadiumNavigator 為嵌入式不獨立）。
-
-**新增 surface scenarios 範本**：
-
-```swift
-// ios/BooksAndVocab/Debug/Scenarios/FooScenarios.swift
-#if DEBUG
-import Playbook
-import SwiftUI
-
-enum FooScenarios {
-    static func register(in playbook: Playbook) {
-        playbook.addScenarios(of: "Foo") {
-            Scenario("Loading", layout: .fill) {
-                AppThemeContainer { FooView(state: .loading) }
-                    .environmentObject(AppAppearanceStore.preview)
-            }
-            // ...
-        }
-    }
-}
-#endif
-```
-
-寫完在 `CatalogScene.Manifest.entries` 加一筆 `ManifestEntry`，用 factory 宣告 surface 的 kind/feature/screen 再掛 `register`：
-- 全螢幕 → `screen("Foo View", .someFeature, .fooScreen)`（先在 `ScreenID` 加 case；一個 case 對一個 `featureScreen`）
-- 浮層 → `overlay("Foo Sheet", .someFeature)`；元件 → `block("Foo Card", .someFeature)`；dev harness → `eng("Foo Presenter", .someFeature)`
-
-漏宣告 / 漏 register / 螢幕重複 / 覆蓋缺口都會被 `CatalogCoverageTests` 擋紅。**真實全螢幕優先走統一 seam**（seeded in-memory `ModelContainer` + 注入 `CatalogPreviewAuth` + DEBUG `skipCatalogTasks` 跳 `.task` 副作用），別依賴 `AuthManager.shared` 殘留 session（曾致 Settings 顯示已登入卻標 logged-out 的像素說謊）。`CatalogPreviewAuth` 也不可自己補假資料：logged-in scenario 必須明示 `userId` / `token` / `displayName` / `userEmail`，logged-out scenario 必須明示 nil，短式 `CatalogPreviewAuth(isLoggedIn: ...)` 與 preview fallback literal 會被 source contract test 擋紅。Paywall / Pro scenario 同理只能用 UI World `entitlements.*` seed；`KGSubscriptionStatus(...)` / `makeStatus` 這類 Debug-local 訂閱資料工廠會被 source contract test 擋紅。Settings subscription section 也只能取 UI World `settings.*.subscription` seed；`inactiveFreeFixture` 或本地 `SettingsPresenterState.SubscriptionSection(...)` 會被 source contract test 擋紅。Settings account detail / account section 只能取 UI World `settings.*` seed；`loggedOutAuth` / `longInfoAuth` / `loggedOutWithError` / `longIdentityState` 或本地 `SettingsPresenterState.AuthSection/DangerSection` 會被 source contract test 擋紅；Auth Summary 的 Pro/free badge 必須由 `settings.*.subscription.isActive` 推導，不可在 scenario 寫死 `isProActive`。Settings preferences section 只能取 UI World `settings.*.preferences` seed；本地 `SettingsPresenterState.PreferencesSection(...)`、`autoSyncEnabled`、`showAutoSync` 會被 source contract test 擋紅。Settings review section 只能取 UI World `settings.*.reviewSettings` seed；本地 `ReviewSettings(...)`、review mode literal、paused date literal、`isProgressPaused` 會被 source contract test 擋紅。範式見 `VocabularyListViewScenarios` / `NotebookListViewScenarios`。
-
-**simctl 截圖協作**：
+Catalog 是開發、debug 與 UI 討論用的單一 agent 工具，不是 gallery、覆蓋率系統或宣傳圖產線。完整定位與安全契約以 `docs/reference/catalog_scope.md` 為 SoT。
 
 ```bash
-./ops/ios_ops.sh simulator screenshot --out /tmp/kg-catalog-page.png --json
+# 列出指定 UI World 可用的 runtime scenarios；完成後自動釋放 simulator
+./ops/ios_ops.sh catalog list --dataset marketing_demo --json
+
+# 開啟互動工作台；可用 --scenario '<category>/<title>' 直達
+./ops/ios_ops.sh catalog open --dataset marketing_demo --json
+
+# open 回傳 session id；需要靜態圖時擷取真實 simulator window
+./ops/ios_ops.sh catalog capture --session <session-id> --out build/catalog-agent/example.png --json
+
+# 使用完釋放該 session 擁有的 disposable simulator
+./ops/ios_ops.sh catalog close --session <session-id> --json
 ```
 
-把 JSON 的 `artifact.path` 貼給 Claude 即可協作視覺迭代。所有 catalog 程式碼都包在 `#if DEBUG` 內，**production binary 不包含**。
+`list` / `open` 必須明示 `--dataset <name>` 或 `--dataset-file <path>`；host 先跑 `ops/ui_world_manifest.py validate`，再把完整 UI World 結構化注入 app。UI World 描述畫面資料、登入、權益、preferences、SwiftData rows 與檔案資產；Catalog 不維護第二套資料。
 
-### Catalog Snapshot Export（PlaybookSnapshot → PNG batch）
+scenario 是按需加入的 debug 入口，不是新 UI 的完成條件，也沒有 coverage gate。只有預期會反覆檢查、debug 或展示某個狀態時，才在 `Debug/Scenarios/` 新增並於 `CatalogScene.buildPlaybook()` 註冊。
 
-> ⛔ **FROZEN 2026-08-05 — catalog 停止擴張**：本段仍描述既有 catalog 的運作方式且照常可用，但**新畫面不進 catalog**，下方「加一筆 surface」的步驟凍結期不要執行。紅線與復業條件的正本：`docs/reference/catalog_scope.md` §FROZEN。
+`capture` 透過 `simctl io screenshot` 擷取已顯示在真 window 的畫面，因此會經過 iOS 系統 compositor，可正確觀察 iOS 26 Liquid Glass、backdrop sampling、WebKit 與系統陰影。禁止改回 `CALayer.render(in:)` 的 offscreen 快照；它繞過 compositor，正是舊工具看不到 iOS 26 按鈕材質的根因。
 
-
-`BooksAndVocabTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把目前 catalog 註冊的全部 scenarios × 4 device variants（iPhone 15 Pro portrait + iPad Pro 11 landscape，各 light/dark；iPad 為 web 重寫 responsive 寬版規格）渲染成 PNG，validation 以 `resolved.deviceVariantCount`（舊 log fallback 2）乘 scenario 數核對張數，並在 root 旁吐 `catalog_index.json`（taxonomy ground truth），**不用人工逐頁截**。（scenario 數隨 source 變動，不在此手記；以 `CatalogScene.Manifest` 為準。）
-
-**WKWebView-backed scene 走獨立雙 pass（2026-07-09 起）**：`Snapshot.run` 的等待迴圈以 `RunLoop.run(mode:before:)` 自旋 main thread，WebKit WebContent process 在裡面 launch 不完（實測 ~598s），且 `layer.render(in:)` 本就看不到 out-of-process web content——所以知識圖譜這類內嵌 WKWebView 的 scenario 由 `CatalogSnapshotTests` 切出，改走 async 擷取 pass（`renderWebViewScenarioPNGs`：`SnapshotSupport.data` + Swift concurrency 等待 → graph.html `settleGraphForSnapshot()` 同步收斂 d3（seeded、跨 run 可重現）→ `takeSnapshot` 轉原生點陣圖 overlay → 照相），輸出目錄結構與主 pass 相同。**加新的 webview scenario 必須**：包 `CatalogGraphSnapshotScene` **並**在 `CatalogGraphSnapshotFreezer.webViewSnapshotScenarios` 登記 key + arming 期望——`.always`（恆有 webview，如知識圖譜三 scene）per capture 必須恰好 armed 1 / freeze 1，wrapper 被移除也會當場 fail；`.datasetDependent`（webview 有無取決於 seed，如 `Stats View/Populated` 關聯圖只在 dataset 帶 graph links 時 mount，用 `CatalogGraphSnapshotScene(context:isActive:)` 條件上膛）要求 freeze == armed，link-less dataset 合法 0/0 誠實渲染空卡。漏登記由主 pass 的 `armedCount` gate 當場 fail loud（防 legend-only 空圖 false green）。
-
-**全量 catalog × 重資料 world 的兩個 fail-loud-once-masked 修復（2026-07-09）**：
-- **主 pass timeout 隨 workload 推導**：`PlaybookSnapshot.Snapshot(timeout:)` 預設 flat 600s，行銷 spec world（600+ 卡、飽和圖）的 ~1300 張主 pass 實測 ~770s→890s 會超時，`snapshot.run` 在**全部主 pass PNG 已生成後**才 throw `.timeout(600)`，webview pass 完全沒跑，16 張 graph PNG 靜默缺席（salvage 湊到 1328）。改由 `snapshotTimeout(scenarioCount:deviceCount:)` 依 `mainPlaybook` 的 scenario 數 × device 數推導（2.0s/capture，floor 600s），未來 catalog 長大不會再無聲撞天花板；unit test `snapshotTimeoutScalesWithWorkloadAndKeepsFloor` 鎖住。
-- **webview pass 的 SwiftData 種子改 pending-only（不廣播 didSave）**：`Stats View/Populated` 在 async webview pass 才用 live `ModelContainer`＋`@Query` 渲染，其 `insertVocabularySeed` 的 `ModelContext.save()` 會廣播 `NSManagedObjectContextDidSave`；主 pass 上千個 `@Query` scene 的 container 釋放後留下的懸空 observer 會在這個廣播上 trap（`EXC_BREAKPOINT` in `_SwiftData_SwiftUI`，全量 run 才觸發、scoped 不會）。修法：該 scene `autosaveEnabled=false` + `insertVocabularySeed(..., save: false)`，`@Query`/`fetch` 讀 pending inserts 照常渲染，但不發廣播 save。加新的「webview pass 內才 seed SwiftData」scene 一律 `save: false`。
-
-**若目標是行銷 / App Store 素材，優先從 capture profile 進，不要直接手拼 snapshot 與 renderer 命令**：
-
-```bash
-# 先看完整 recipe：造景 -> catalog snapshot -> local framing -> promo render
-./ops/capture_profile.py plan ops/capture_profiles/marketing_demo.json
-
-# 真正執行時，可拆開 materialize / snapshot / render；`run` 會在 dry-run 下略過真寫入，
-# 但仍自動完成 snapshot -> local framing -> final app-store PNG
-./ops/capture_profile.py run ops/capture_profiles/marketing_demo.json --reuse-build
-```
-
-`capture_profile.py` 現在是 orchestrator；`catalog snapshots` 是內容畫面輸出；`frame_catalog_screenshots.py` 會在本地把 raw screenshot 套成 iPhone framed source；`render_screenshots.py` 再吃 framed source + profile 內 `shots[].copy` 產出最終 App Store PNG。ASC 截圖上傳仍是 GUI/manual，不在這條自動化內。
-
-**執行方式**（manual，**不要主動跑** — 遵守 CLAUDE.md 鐵律 7 `ios_test.sh` 規則）：
-
-```bash
-# 先 warm reusable build cache（冷啟成本顯式拆出）
-./ops/ios_ops.sh catalog prepare \
-  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'
-
-# 再跑 scoped/full snapshot；--reuse-build 代表 miss/stale 時直接報錯，不偷偷重建
-./ops/ios_ops.sh catalog snapshots \
-  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  --scenario 'Today Review/Front' \
-  --dataset marketing_demo \
-  --reuse-build \
-  --json
-
-# 或直接指定任意外部檔案（不必改 iOS code）
-./ops/ios_ops.sh catalog snapshots \
-  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  --dataset-file ops/fixtures/ui_worlds/marketing_demo.json \
-  --scenario 'Today Review/Front' \
-  --json
-
-# 如需 full catalog，去掉 --scenario / --group 即可
-./ops/ios_ops.sh catalog snapshots \
-  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  --dataset marketing_demo
-
-# full run 會自動落地成新的 workspace artifact：
-# build/snapshots/catalog-full-<UTC timestamp>/
-# 並由 review entry 自動把最新可用那份視為 blessed
-./ops/catalog_review_entry.py current             # payload 含 canvasHtml
-./ops/catalog_review_entry.py serve --port 8787   # 服務 /catalog.html (url 直指 canvas)
-./ops/catalog_review_entry.py prune-superseded --dry-run
-./ops/catalog_review_entry.py prune-superseded
-
-# Agent 查 surface 層 lane-aware 覆蓋缺口（不開瀏覽器、不 parse 整份 manifest）:
-BLESSED=$(./ops/catalog_review_entry.py current | jq -r '.blessed.root')
-./ops/catalog_review_cli.py "$BLESSED" gaps --min-gap 3                                # 真 backlog: 缺最多 ship-critical state 的可上架 surface
-./ops/catalog_review_cli.py "$BLESSED" gaps --lane feature-surface --missing loading  # 缺特定 state 的出貨畫面
-
-# Agent 要「看」畫面: 把多張合成一張 contact sheet, 一次 Read 取代 N 次 Read(省 image token)。
-# 機器臉看圖的正解 — 不要用 preview/headless 瀏覽器截 UIreview.html(detached server 佔 port、headless lazy-paint 全白)。
-./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --appearance both --cols 2  # 一張看完某 surface 全 state × light/dark
-./ops/catalog_contact_sheet.py "$BLESSED" --lane feature-surface --facet empty                   # 一張看完所有出貨畫面的 empty state
-# multi-device root（2026-06-10 起含 iPad）預設只出 canonical device（manifest devices[0]＝iPhone），不會 iPhone/iPad 交錯；
-# 看 iPad 寬版用 --device "iPad Pro 11 landscape"，全裝置混排用 --device all；--ids 顯式選圖時不吃此預設。
-./ops/catalog_contact_sheet.py "$BLESSED" --surface "Bookshelf View" --device "iPad Pro 11 landscape"
-# UITest 後快速看跳轉旅程：UI scope 的 ios_test.sh 已自動產 quick4_contact_sheet.png（test --json 的 uiVisualReview.quick4Sheet），
-# 手動跑只在需要自訂 take/zoom 時：
-./ops/catalog_contact_sheet.py /tmp/kg_ios_ui_steps.xxxxxx --source uitest --take evenly:4 --cols 4 --manifest-out auto
-# 任意 PNG 目錄也可用同一工具，方便臨時視覺 debug / before-after 對照。
-./ops/catalog_contact_sheet.py /tmp/screens --source images --contains player --take first,last
-# → 印出合成 PNG 路徑, 直接 Read 該檔。caveat: stateFacet 由 title 推導會誤標(見 catalog memory), 看圖驗 facet 別只信 label。
-
-# 清理 0 圖的舊 review 殼，避免 stale artifact 混進 blessed 判斷
-./ops/catalog_review_entry.py current
-./ops/catalog_review_entry.py prune-stale --dry-run
-./ops/catalog_review_entry.py prune-stale
-```
-
-**從 simulator sandbox 撈 PNG**：
-
-```bash
-# 找 BooksAndVocabTests host app 的 data container
-container=$(./ops/ios_ops.sh simulator status --json | jq -r '.app.container.data // empty')
-# PNG 在 NSTemporaryDirectory → tmp/kg-catalog-snapshots/<device>/<category>/<scenario>.png
-find "$container/tmp/kg-catalog-snapshots" -name "*.png" 2>/dev/null
-# 或直接複製到專案下供 Claude 讀
-mkdir -p build/snapshots && cp -R "$container/tmp/kg-catalog-snapshots/." build/snapshots/
-```
-
-**為什麼 PlaybookSnapshot 而非 EmergeTools/SnapshotPreviews**：原本計畫用 EmergeTools 套件直接 snapshot 既有 `#Preview`，但 `playbook-ios` 內建 `PlaybookSnapshot` product 已能對 catalog scenarios 做同樣工作，且 catalog scenarios 明確、命名整齊、能注入 stub envObject — 比 raw `#Preview` 更可靠（後者常因缺 EnvironmentObject crash）。`#Preview` snapshot 留待 Phase 5 評估。
-
-**閉環 demo**：
-1. 你改 `AppTheme.swift` 一個 hue 值 + InjectionNext 秒級重渲染
-2. 確認 catalog 樣式可接受後跑上述 `catalog prepare` + `catalog snapshots`
-3. 撈 PNG → 貼給 Claude → Claude 跨 scenario 比對找出視覺 regression
-4. 不滿意回 step 1
-
-
-
+Catalog 僅在 `DEBUG && targetEnvironment(simulator)` 編譯；每次 `open` 使用 disposable simulator，預設網路指向不可達 localhost。它不產生批次 snapshot、gallery、contact sheet、視覺回歸、App Review 證據或 App Store／網站行銷素材。
 ## 參考文件
 
 - `docs/sop/ui-design.md` — Motion Contract + 設計系統規範

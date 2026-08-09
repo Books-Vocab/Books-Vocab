@@ -76,6 +76,7 @@ DEFAULT_TESTS=(
   streaming-command
   app-review
   demo-data
+  catalog-agent
   uitest-contact-sheet
 )
 
@@ -212,8 +213,8 @@ run_one() {
         ops/tests/test_podcast_cover_publish.py \
         ops/tests/test_podcast_preview_backfill.py
       ;;
-    # ── IMP-20260805-947062 收編的 4 個 group ────────────────────────────────
-    # 全部跑在 backlog case 那個 --no-project sandbox 裡：這 18 支只 import stdlib
+    # ── IMP-20260805-947062 收編的 groups + Catalog agent boundary ──────────
+    # 全部跑在 backlog case 那個 --no-project sandbox 裡：只 import stdlib
     # ＋ pytest，逐支實測過不需要 --project backend。
     streaming-command)
       # 鐵律 5 heartbeat 契約唯一的 [machine] 守衛，先前從不執行。
@@ -236,6 +237,10 @@ run_one() {
         ops/tests/test_ui_world_manifest.py \
         ops/tests/test_uitest_flow_matrix.py \
         ops/tests/test_uitest_review_page.py
+      ;;
+    catalog-agent)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_catalog_agent_boundary.py
       ;;
     uitest-contact-sheet)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \

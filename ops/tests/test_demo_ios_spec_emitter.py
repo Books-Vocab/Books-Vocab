@@ -1,6 +1,6 @@
 """Spec-driven emit-ios (kg.seed_spec.v1 -> UI World v2) contract tests.
 
-Covers the Phase 2/6 marketing-account projector:
+Covers the Phase 2/6 UI World seed projector:
   * spec mode derives vocabulary / notebook / reviewDeck / todayReview from the
     seed spec; every other domain stays byte-equal to the committed baseline
     (ops/fixtures/ui_worlds/marketing_demo.json) + identity auth overlay.
@@ -113,7 +113,7 @@ def _card(
 
 def _small_spec() -> dict:
     """2 notebooks, 4 active + 1 archived cards in the primary, 2 links."""
-    nb, side = "Marketing Core", "Side Notes"
+    nb, side = "Primary Notebook", "Side Notes"
     return {
         "schema": "kg.seed_spec.v1",
         "notebooks": [
@@ -221,7 +221,7 @@ def test_load_seed_spec_rejects_link_to_unknown_card(tmp_path):
     payload = _small_spec()
     payload["links"].append({
         "from": "alpha", "to": "ghost", "kind": "shares_usage",
-        "confidence": 0.5, "reason": "dangling", "notebook": "Marketing Core",
+        "confidence": 0.5, "reason": "dangling", "notebook": "Primary Notebook",
     })
     spec_path = _write_spec(tmp_path, payload)
     with pytest.raises(spec_world.SpecWorldError, match="ghost"):
@@ -251,9 +251,9 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     assert document["schema"] == "kg.fixture.dataset.v2"
     assert document["datasetID"].startswith("spec-")
 
-    # non-spec domains stay byte-equal to the baseline（marketingCapture 為 spec/plan
+    # non-spec domains stay byte-equal to the baseline（scenarioContext 為 spec/plan
     # 驅動 overlay，與 auth/datasetID 同排除）
-    for key in sorted(set(document) - {"datasetID", "auth", "marketingCapture", *SPEC_DOMAINS}):
+    for key in sorted(set(document) - {"datasetID", "auth", "scenarioContext", *SPEC_DOMAINS}):
         assert document[key] == baseline[key], f"domain {key} drifted from baseline"
 
     # identity overlay identical to baseline mode
@@ -265,7 +265,7 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     # vocabulary: populated list mirrors the primary notebook's active cards
     populated = document["vocabulary"]["vocabListPopulated"]
     assert [e["word"] for e in populated["entries"]] == ["alpha", "bravo", "charlie"]
-    assert populated["notebookName"] == "Marketing Core"
+    assert populated["notebookName"] == "Primary Notebook"
     assert all(e["syncStatus"] == 1 and e["actionType"] == "add"
                and e["isArchived"] is False for e in populated["entries"])
     alpha = populated["entries"][0]
@@ -285,7 +285,7 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     # notebook rows mirror the spec notebooks
     rows = document["notebook"]["populated"]["notebooks"]
     assert [(r["name"], r["isDefault"], r["sortOrder"]) for r in rows] == [
-        ("Marketing Core", True, 0), ("Side Notes", False, 1)]
+        ("Primary Notebook", True, 0), ("Side Notes", False, 1)]
     assert rows[0]["coverPattern"] == "waves"
     assert rows[0]["color"] == "#4F7C73"
     assert [e["word"] for e in rows[0]["entries"]] == ["alpha", "bravo", "charlie"]
@@ -294,7 +294,7 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     # reviewDeck: due order = scheduled first (by nextReviewAt), then unscheduled
     deck = document["reviewDeck"]["phaseMulti"]
     assert [e["word"] for e in deck["entries"]] == ["alpha", "bravo", "charlie"]
-    assert deck["notebookName"] == "Marketing Core"
+    assert deck["notebookName"] == "Primary Notebook"
     assert [e["word"] for e in document["reviewDeck"]["phaseSingle"]["entries"]] == ["alpha"]
     # probe / notebookReviewDeck 是 UITest 量測 deck（probeword content-pin）→ 保留 baseline
     assert document["reviewDeck"]["probe"] == baseline["reviewDeck"]["probe"]
@@ -497,7 +497,7 @@ def test_spec_mode_sync_pending_mixed_covers_add_and_delete_with_two_active(tmp_
 
 def test_spec_mode_dedupes_duplicate_card_contents(tmp_path):
     payload = _small_spec()
-    dupe = _card("alpha", "Marketing Core")
+    dupe = _card("alpha", "Primary Notebook")
     dupe["meaning"] = "duplicate meaning (must be dropped)"
     payload["cards"].append(dupe)
     content = _emit_spec_bytes(tmp_path, payload)
@@ -578,7 +578,7 @@ def test_reader_passage_projection_is_real_deterministic_and_highlights_match(tm
     for key in ("bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
                 "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords"):
         assert key in passage, key
-    assert passage["bookTitle"] == "Marketing Core"  # primary notebook 名
+    assert passage["bookTitle"] == "Primary Notebook"  # primary notebook 名
     # small_spec 每卡 example = "The word **X** appears in a real sentence."
     assert passage["activeWords"] == [passage["activeWord"]]
     assert passage["activeWord"] in {"alpha", "bravo", "charlie"}
@@ -606,13 +606,13 @@ def test_reader_passage_fails_loud_without_highlightable_card():
         spec_world.derive_reader_passage(spec)
 
 
-def test_word_detail_marketing_seed_is_spec_derived_and_link_self_contained(tmp_path):
-    """marketingCapture.wordDetail：spec-derived、entries[0]=聚焦字、graph link
+def test_word_detail_scenario_seed_is_spec_derived_and_link_self_contained(tmp_path):
+    """scenarioContext.wordDetail：spec-derived、entries[0]=聚焦字、graph link
     target 在 seed 內自足（關聯詞可解析）。"""
     seed = spec_world.derive_word_detail(_small_spec())
     words = {e["word"] for e in seed["entries"]}
     ids = {e["kgCardId"] for e in seed["entries"]}
-    assert seed["entries"], "wordDetailMarketing 必須有 entries"
+    assert seed["entries"], "scenarioContext.wordDetail 必須有 entries"
     focus = seed["entries"][0]
     # small_spec: alpha 有 2 link（bravo/charlie）→ hero=alpha，關聯卡入 seed
     assert focus["word"] == "alpha"
@@ -802,13 +802,13 @@ def test_spec_mode_end_to_end_from_world_export(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# review-clock freeze overlay（行銷帳號世界確定式凍結在 anchor）
+# review-clock freeze overlay（UI World確定式凍結在 anchor）
 # --------------------------------------------------------------------------- #
-MARKETING_PLAN_PATH = DEMO_DIR / "marketing_account" / "history_plan.json"
+SCENARIO_PLAN_PATH = DEMO_DIR / "ui_world_seed" / "history_plan.json"
 
 
-def _marketing_plan() -> dict:
-    return json.loads(MARKETING_PLAN_PATH.read_text(encoding="utf-8"))
+def _scenario_plan() -> dict:
+    return json.loads(SCENARIO_PLAN_PATH.read_text(encoding="utf-8"))
 
 
 def _freeze_dt_from_plan(plan: dict):
@@ -819,17 +819,17 @@ def _freeze_dt_from_plan(plan: dict):
     return base + timedelta(hours=24 - max_offset) - timedelta(seconds=1)
 
 
-def test_marketing_capture_frozen_carries_review_clock_and_reader_passage(tmp_path):
-    """凍結 emit → marketingCapture.reviewClock = anchor 凍結時刻（= preferences
+def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_path):
+    """凍結 emit → scenarioContext.reviewClock = anchor 凍結時刻（= preferences
     overlay epoch，單一 SoT）+ readerPassage 齊備。"""
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     epoch = int(freeze.timestamp())
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
         review_clock_frozen_at=freeze)
-    mc = json.loads(content)["marketingCapture"]
+    mc = json.loads(content)["scenarioContext"]
     assert set(mc) == {"reviewClock", "readerPassage", "wordDetail"}
     assert mc["wordDetail"]["entries"][0]["word"]  # 聚焦字非空
     clock = mc["reviewClock"]
@@ -842,13 +842,13 @@ def test_marketing_capture_frozen_carries_review_clock_and_reader_passage(tmp_pa
     assert passage["activeWords"] == [passage["activeWord"]]
 
 
-def test_marketing_capture_unfrozen_review_clock_is_null(tmp_path):
+def test_scenario_context_unfrozen_review_clock_is_null(tmp_path):
     """未凍結（無 plan）emit → reviewClock null（無 anchor 素材）、readerPassage 仍在。"""
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
-    mc = json.loads(content)["marketingCapture"]
+    mc = json.loads(content)["scenarioContext"]
     assert mc["reviewClock"] is None
     assert mc["readerPassage"]["activeWord"]
 
@@ -856,40 +856,40 @@ def test_marketing_capture_unfrozen_review_clock_is_null(tmp_path):
 def test_review_clock_field_matches_preferences_overlay_epoch(tmp_path):
     """reviewClock.frozenEpoch 必須 == preferences review-clock overlay 的 epoch
     （防兩處錨日 drift；單一 SoT = plan freeze 時刻）。"""
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "f.json",
         review_clock_frozen_at=freeze)
     doc = json.loads(content)
-    clock_epoch = doc["marketingCapture"]["reviewClock"]["frozenEpoch"]
+    clock_epoch = doc["scenarioContext"]["reviewClock"]["frozenEpoch"]
     for store in ("userDefaults", "ubiquitousKeyValueStore"):
         assert doc["preferences"][store]["review_settings_progress_paused_at"] == clock_epoch
 
 
-def test_word_detail_marketing_emitted_and_word_detail_stays_baseline(tmp_path):
-    """emit 後：marketingCapture.wordDetail 為 spec-derived（entries[0]=hero）、
+def test_word_detail_scenario_emitted_and_word_detail_stays_baseline(tmp_path):
+    """emit 後：scenarioContext.wordDetail 為 spec-derived（entries[0]=hero）、
     baseline-kept 的 vocabulary.wordDetail（ephemeral/terse QA pin）仍 byte-equal
     baseline（未被 spec 投影污染，QA 不受影響）。"""
     content = _emit_spec_bytes(tmp_path, _small_spec())
     document = json.loads(content)
     baseline = _baseline()
     assert document["vocabulary"]["wordDetail"] == baseline["vocabulary"]["wordDetail"]
-    wdm = document["marketingCapture"]["wordDetail"]
-    assert wdm["entries"][0]["word"] == "alpha"  # hero = 共用 _marketing_hero
+    wdm = document["scenarioContext"]["wordDetail"]
+    assert wdm["entries"][0]["word"] == "alpha"  # hero = 共用 _scenario_hero
 
 
-def test_review_clock_freeze_matches_known_marketing_epoch():
-    """marketing plan（anchor 2026-07-09、offsets [9,8]）→ 2026-07-09T14:59:59Z。"""
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+def test_review_clock_freeze_matches_known_scenario_epoch():
+    """scenario plan（anchor 2026-07-09、offsets [9,8]）→ 2026-07-09T14:59:59Z。"""
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     assert int(freeze.timestamp()) == 1783609199
     assert freeze.isoformat() == "2026-07-09T14:59:59+00:00"
 
 
 def test_review_clock_freeze_overlays_both_stores(tmp_path):
     """(a) emit with freeze → preferences 兩 store 都 paused@epoch（含新增 paused_at）。"""
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     epoch = int(freeze.timestamp())
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
@@ -926,7 +926,7 @@ def test_review_clock_validator_blocks_non_clock_preferences_drift(tmp_path):
     """(c) validator 仍擋非時鐘 key 的 preferences 偏離（精準守住只有時鐘可變）。"""
     bundle = sot.load_sot()
     spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec()))
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     doc, _stats = emit_ios._build_spec_fixture_document(
         bundle, spec, review_clock_frozen_at=freeze)
     baseline = emit_ios._load_base_ui_world()
@@ -946,7 +946,7 @@ def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
     """(c') 新增非時鐘 preferences key 也要 raise（不可整域放行）。"""
     bundle = sot.load_sot()
     spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec()))
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     doc, _stats = emit_ios._build_spec_fixture_document(
         bundle, spec, review_clock_frozen_at=freeze)
     baseline = emit_ios._load_base_ui_world()
@@ -963,7 +963,7 @@ def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
 
 def test_review_clock_freeze_deterministic(tmp_path):
     """(d) 同 plan 重跑 → 同 epoch、byte-stable。"""
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     first = emit_ios._spec_artifacts(
@@ -978,7 +978,7 @@ def test_review_clock_freeze_deterministic(tmp_path):
 def test_emit_rejects_freeze_without_spec_mode(tmp_path):
     """freeze 只在 spec 模式支援（baseline 模式傳入應 fail-loud）。"""
     bundle = sot.load_sot()
-    freeze = _freeze_dt_from_plan(_marketing_plan())
+    freeze = _freeze_dt_from_plan(_scenario_plan())
     with pytest.raises(ValueError, match="spec mode"):
         emit_ios.emit(bundle, review_clock_frozen_at=freeze)
 
@@ -988,12 +988,12 @@ def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
     spec_path = _write_spec(tmp_path, _small_spec())
     out_path = tmp_path / "frozen_cli.json"
     rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
-                          "--plan", str(MARKETING_PLAN_PATH),
+                          "--plan", str(SCENARIO_PLAN_PATH),
                           "--out", str(out_path), "--commit", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0, payload
     assert out_path.exists()
-    epoch = int(_freeze_dt_from_plan(_marketing_plan()).timestamp())
+    epoch = int(_freeze_dt_from_plan(_scenario_plan()).timestamp())
     doc = json.loads(out_path.read_text(encoding="utf-8"))
     for store in ("userDefaults", "ubiquitousKeyValueStore"):
         s = doc["preferences"][store]
@@ -1002,7 +1002,7 @@ def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
         assert s["review_settings_progress_updated_at"] == epoch
 
     # --plan without --spec → error, non-zero
-    rc2 = build_demo.main(["emit-ios", "--plan", str(MARKETING_PLAN_PATH), "--json"])
+    rc2 = build_demo.main(["emit-ios", "--plan", str(SCENARIO_PLAN_PATH), "--json"])
     payload2 = json.loads(capsys.readouterr().out)
     assert rc2 == 1
     assert "requires --spec" in payload2["error"]

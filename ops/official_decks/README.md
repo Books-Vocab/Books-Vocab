@@ -147,7 +147,7 @@ HEAD` after committing.
   (notebooks/cards/links with review counters), a **different shape** from
   `kg.official_deck.v1`, so it is not a drop-in producer and would still need a
   seed-spec→official-deck transformer; (c) `ops_world_export` underpins the
-  marketing-account SoT with byte-equal roundtrip contracts (`ops_state_plane`
+  reproducible UI World seed with byte-equal roundtrip contracts (`ops_state_plane`
   §1.1), so touching it for a convenience path carries collateral risk
   disproportionate to the value. To bootstrap a spec today: author the JSON by
   hand (the committed examples are the template).

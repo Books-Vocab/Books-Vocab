@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""行銷帳號複習歷史敘事塑形：seed spec + history plan → 新 seed spec（確定式）。
-
-FROZEN 2026-08-05 — 行銷截圖已停止重做，本工具停止擴張但仍可跑。
-凍結範圍見 `docs/reference/catalog_scope.md` §FROZEN。
+"""UI World 複習歷史塑形：seed spec + history plan → 新 seed spec（確定式）。
 
 **本模組是「複習歷史敘事」的唯一 owner**：spec 的 review 時間欄位
 （`last_reviewed_at` / `next_review_at` / `review_interval_hours`）只由這裡塑形；

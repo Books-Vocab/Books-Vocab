@@ -123,7 +123,7 @@ def build_expectation(dataset: dict[str, Any]) -> dict[str, Any]:
 
     # Group links by notebook, preserving (a) dataset-notebook order for the
     # groups and (b) dataset link order within each group. Only notebooks that
-    # actually carry a link get a graph entry (mirrors marketing expectation).
+    # actually carry a link get a graph entry (mirrors UI World expectation).
     links_by_nb: dict[str, list[dict[str, str]]] = {}
     for lk in dataset.get("links", []):
         nb = lk.get("notebook", "default")

@@ -9,20 +9,20 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-MA_DIR = ROOT / "ops" / "demo" / "marketing_account"
+SEED_DIR = ROOT / "ops" / "demo" / "ui_world_seed"
 
 
 def _load_module(name: str):
-    spec = importlib.util.spec_from_file_location(name, MA_DIR / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, SEED_DIR / f"{name}.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(MA_DIR))
+    sys.path.insert(0, str(SEED_DIR))
     try:
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
     finally:
         try:
-            sys.path.remove(str(MA_DIR))
+            sys.path.remove(str(SEED_DIR))
         except ValueError:
             pass
     return module

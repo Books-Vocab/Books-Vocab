@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""行銷帳號策展轉換：curation plan + seed spec → 新 seed spec（確定式）。
-
-FROZEN 2026-08-05 — 行銷截圖已停止重做，本工具停止擴張但仍可跑。
-凍結範圍見 `docs/reference/catalog_scope.md` §FROZEN。
+"""UI World seed 策展：curation plan + seed spec → 新 seed spec（確定式）。
 
 輸入輸出都是 `kg.seed_spec.v1`（見 docs/reference/ops_state_plane.md §1.1）；
 plan 是 `kg.curation_plan.v1`（remove + assign，由策展編輯產出）。轉換全程無
-時鐘/隨機依賴，同 input 重跑 byte 相等，spec 的 git 歷史即策展版本序列。
+時鐘/隨機依賴，同 input 重跑 byte 相等。
 
 **只做結構策展**（剔字 / 分本 / notebook 重建 / link 收斂）。review 時間欄位
 一律不動——複習歷史敘事的唯一 owner 是同目錄 `shape_history.py`（原

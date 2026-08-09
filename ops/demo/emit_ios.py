@@ -1,73 +1,15 @@
-"""Emitter: demo SoT -> iOS UI World FixtureDatasetDocument.
+"""Deterministically project demo data into an iOS UI World v2 document.
 
-FROZEN 2026-08-05 — 停止擴張，不停止運作。凍結範圍與理由見
-`docs/reference/catalog_scope.md` §FROZEN。本檔邏輯完好、隨時可跑（送審 desired
-bundle 仍經 `ops/app_review_evidence.py` 走這條路），但**不再隨 iOS seed 演進同步**：
-復業時跑 spec 模式會噴 `spec 錨日 ... 距今 N 天（> 48h）` 的 staleness WARN——**那是預期的**，
-解法就是先跑（同樣凍結的）`marketing_account/shape_history.py` 重新錨定再 emit。
-不新增 domain、不加 seed 欄位、不重生 generated world。要復業先讀該節。
-`--check` drift gate 與 `ops/tests/test_demo_ios_emitter.py` **刻意保留**——凍結期
-它們的角色從「逼你同步」變成「守衛」：誰偷改這條凍結的投影鏈，它會紅。
+The generated JSON uses the same structured injection contract as Catalog and
+UITests. ``KG_FIXTURE_DATASET_DEFLATE_B64`` transports the raw-DEFLATE-compressed
+document into the app; this module itself writes plaintext JSON.
 
-Phase B implementation. Mirrors the Phase-A mapping contract below, byte-for-byte
-deterministic so `--check` is a true drift gate.
-
-OUTPUT PATH(S)
-  ops/demo/generated/ios_fixture_dataset.json   (FixtureDatasetDocument JSON)
-
-INJECTION SEAM (no Swift logic change to the loader)
-  The fixture JSON is injected into the running app via the env var
-  KG_FIXTURE_DATASET_DEFLATE_B64 (base64 of the raw-DEFLATE-compressed JSON
-  bytes; plaintext base64 of a multi-MB world overflows the ~1MB spawn env
-  block) — see ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift
-  and ops/lib/fixture_dataset_env.sh. This emitter writes the *plaintext* JSON;
-  the UITest harness compresses+base64s it into the env var via the seam:
-      ./ops/ios_test.sh --ui --dataset-file ops/demo/generated/ios_fixture_dataset.json ...
-  UITestAppLaunch.swift (UITestLaunchConfiguration.launchEnvironment) forwards
-  that var into the app process. emit() also prints the ready-to-export deflate
-  base64 when commit so it can be exported directly without the shell helper.
-
-SCHEMA NOTE
-  The Phase-A skeleton planned schema "kg.fixture_dataset.v1". The Swift SoT
-  (FixtureDatasetStore.decode + RepoFixtureDatasetsContractTests) is authoritative.
-  Repo UI Worlds now use "kg.fixture.dataset.v2", which adds the top-level
-  asset manifest. The generated demo world is emitted from the repo UI World
-  manifest baseline, then only identity-owned auth fields and datasetID are
-  overlaid from demo_identity.json. This keeps Catalog, UITest, visual capture,
-  and generated demo on the same fixture shape instead of maintaining a second
-  partial iOS fixture skeleton.
-
-DOCUMENT SHAPE  (FixtureDatasetDocument top-level keys — exact, see Swift struct)
-  schema       <- "kg.fixture.dataset.v2"
-  datasetID    <- "demo-" + identity.user_id
-  assets/settings/bookshelf/todayReview/notebook/podcast/runtimePodcast/reader/
-                 vocabulary/reviewDeck <- copied from ops/fixtures/ui_worlds/marketing_demo.json
-  auth         <- baseline auth fixture set, with signedIn identity fields
-                 overlaid from demo identity and explicit keychain/UI auth state
-  entitlements <- copied from the baseline UI World so generated demo exposes
-                  the same free/pro/cancelled/admin catalog states
-
-  Keyed decoding silently ignores unknown top-level keys; emit() MUST NOT add keys
-  outside FixtureDatasetDocument.knownTopLevelKeys, and the domain sub-keys must
-  be declared fixture IDs known by the Swift manifest contract.
-
-CHECK MODE
-  Re-emit the UI World file in memory, byte-compare against the committed artifact,
-  return a drift verdict (exit 1 on drift via build_demo.py).
-
-SPEC MODE  (marketing-account projector, Phase 2/6)
-  `build_demo.py emit-ios --spec <kg.seed_spec.v1> --out <path>` derives the
-  vocabulary / notebook / reviewDeck / todayReview domains from a Phase-1
-  `ops_cli world-export` seed spec (projection rules live in
-  ops/demo/spec_world.py; deterministic, byte-stable). Every other domain plus
-  the identity auth overlay follows the exact baseline recipe above. Inside the
-  four spec domains, the account-data-independent UI-chrome fixtures listed in
-  SPEC_BASELINE_KEPT_FIXTURES stay byte-equal to the baseline — notably the
-  notebook.readerPicker* rows are cross-referenced by baseline bookshelf
-  `preferredNotebookId` and MUST NOT be replaced. Spec mode writes ONLY to the
-  caller-provided --out path; the committed generated artifact and its --check
-  drift gate are frozen. --check in spec mode byte-compares --out against a
-  fresh emit of --spec. datasetID = "spec-" + sha256(canonical spec)[:12].
+Default mode copies the checked-in baseline world, overlays the demo identity,
+and writes ``ops/demo/generated/ios_fixture_dataset.json``. Spec mode derives
+the vocabulary, notebook, reviewDeck and todayReview domains from an explicit
+``kg.seed_spec.v1`` and writes only the caller-provided output. Both modes are
+byte-deterministic and ``--check`` reports drift. This is data production only;
+it does not render, capture, frame, review or publish images.
 """
 
 from __future__ import annotations
@@ -120,14 +62,11 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "vocabulary",
     "reviewDeck",
     "syncPresenter",
-    # marketing-capture-only scene inputs（QA scene 一律忽略整個 domain）：
-    # reviewClock（錨日凍結時鐘，plan 驅動）+ readerPassage（reader 行銷段落）+
-    # wordDetail（Word Detail 行銷 seed），皆 spec/plan 驅動。Swift
-    # FixtureDatasetStore.CodingKeys 需 Phase 2 加 `case marketingCapture` 才不會在
-    # decode 撞 unknown-top-level-key（見本檔 module docstring）。
-    "marketingCapture",
+    # Optional cross-domain inputs: a frozen clock, Reader passage and Word
+    # Detail seed. Ordinary UI Worlds may omit this whole domain.
+    "scenarioContext",
 }
-MARKETING_CAPTURE_KEYS = frozenset({"reviewClock", "readerPassage", "wordDetail"})
+SCENARIO_CONTEXT_KEYS = frozenset({"reviewClock", "readerPassage", "wordDetail"})
 REVIEW_CLOCK_FIELD_KEYS = frozenset(
     {"frozenNow", "frozenEpoch", "anchorDay", "source"})
 IDENTITY_OWNED_SIGNED_IN_KEYS = {
@@ -142,7 +81,7 @@ IDENTITY_OWNED_SIGNED_IN_KEYS = {
     "authError",
     "isAuthenticating",
 }
-# Review-clock freeze overlay：行銷帳號的世界要確定式凍結在 anchor，注入後 review
+# Review-clock freeze overlay：需要確定式複習狀態的世界凍結在 anchor，注入後 review
 # 排程的「now」= progressPausedAt（iOS ReviewSettings.swift:131-132），不隨牆鐘漂移。
 # 這 3 個 ReviewSettings.Keys 是唯一允許偏離 baseline preferences 的 key，且對
 # userDefaults / ubiquitousKeyValueStore 兩 store 都套（LWW updated_at 對齊 paused_at）。
@@ -154,7 +93,7 @@ REVIEW_CLOCK_OVERLAY_KEYS = frozenset({
 REVIEW_CLOCK_OVERLAY_STORES = ("userDefaults", "ubiquitousKeyValueStore")
 SPEC_DOMAINS = frozenset({"vocabulary", "notebook", "reviewDeck", "todayReview"})
 # spec 模式下四 domain 內仍沿用 baseline 的 fixture id。兩類：
-# (a) 帳號資料無關的 UI-chrome / gallery 語意；其中 notebook.readerPicker* 的
+# (a) 帳號資料無關的 UI-chrome fixtures；其中 notebook.readerPicker* 的
 #     rows 是 baseline bookshelf `preferredNotebookId` 的跨 domain ref 解析目標，
 #     替換會破壞 cross-ref 驗證。
 # (b) content-pinned：catalog scenario（含 UITest seed seam）釘死特定 word /
@@ -165,7 +104,7 @@ SPEC_DOMAINS = frozenset({"vocabulary", "notebook", "reviewDeck", "todayReview"}
 #     phase* 與 todayReview 各 session、notebook empty/single/populated 無
 #     content pin，維持投影）。
 SPEC_BASELINE_KEPT_FIXTURES = (
-    # (a) UI-chrome / gallery
+    # (a) UI-chrome fixtures
     ("notebook", "coverGallery"),
     ("notebook", "cardGallery"),
     ("notebook", "editGallery"),
@@ -187,7 +126,7 @@ SPEC_BASELINE_KEPT_FIXTURES = (
     # VocabScenarios.swift(VocabManifestEntries): 恰 6 entries、index-addressed
     ("vocabulary", "vocabLinkedCards"),
     # ArchivedVocabScenarios.swift: populated ≥5 / single ==1 / long ≥40 條
-    # archived——spec 可合法 0 archived（行銷帳號實測 0）
+    # archived——spec 可合法 0 archived（UI World seed 可合法 0）
     ("vocabulary", "archivedPopulated"),
     ("vocabulary", "archivedSingle"),
     ("vocabulary", "archivedLong"),
@@ -258,11 +197,11 @@ def _review_clock_field(frozen_at: "object") -> dict[str, Any]:
     }
 
 
-def _build_marketing_capture(
+def _build_scenario_context(
     spec: dict[str, Any], *, review_clock_frozen_at: "object | None"
 ) -> dict[str, Any]:
-    """marketingCapture domain：reviewClock（plan 凍結時鐘，未凍結時 null）
-    + readerPassage（reader 行銷段落）+ wordDetail（Word Detail 行銷 seed），
+    """scenarioContext domain：reviewClock（plan 凍結時鐘，未凍結時 null）
+    + readerPassage（Reader 結構化段落）+ wordDetail（Word Detail seed），
     後二者 spec 驅動、恆存在於 spec 模式。"""
     return {
         "reviewClock": (
@@ -308,7 +247,7 @@ def _build_spec_fixture_document(
         merged.update(seeds)
         document[domain] = merged
     document["auth"] = _overlay_identity_auth(baseline["auth"], sot.identity)
-    document["marketingCapture"] = _build_marketing_capture(
+    document["scenarioContext"] = _build_scenario_context(
         spec, review_clock_frozen_at=review_clock_frozen_at)
     if review_clock_frozen_at is not None:
         document["preferences"] = _overlay_review_clock(baseline["preferences"], review_clock_frozen_at)
@@ -364,39 +303,39 @@ def _validate_review_clock_overlay(
             )
 
 
-def _validate_marketing_capture_field(
+def _validate_scenario_context_field(
     document: dict[str, Any], *, review_clock_frozen: bool
 ) -> None:
-    """marketingCapture 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
+    """scenarioContext 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
 
     keys 恆 == {reviewClock, readerPassage}；readerPassage keys 恆 == READER_PASSAGE_KEYS；
     reviewClock 在凍結 emit 下必為完整 clock dict，否則允許 None（未凍結 spec 模式）
-    或 baseline 沿用的完整 clock dict（baseline 模式攜帶行銷世界的 clock）。
+    或 baseline 沿用的完整 clock dict。
     """
-    mc = document.get("marketingCapture")
-    if not isinstance(mc, dict) or set(mc) != MARKETING_CAPTURE_KEYS:
+    mc = document.get("scenarioContext")
+    if not isinstance(mc, dict) or set(mc) != SCENARIO_CONTEXT_KEYS:
         got = sorted(mc) if isinstance(mc, dict) else type(mc).__name__
         raise ValueError(
-            f"marketingCapture keys must be {sorted(MARKETING_CAPTURE_KEYS)}, got {got}")
+            f"scenarioContext keys must be {sorted(SCENARIO_CONTEXT_KEYS)}, got {got}")
     passage = mc["readerPassage"]
     if not isinstance(passage, dict) or set(passage) != set(spec_world.READER_PASSAGE_KEYS):
         got = sorted(passage) if isinstance(passage, dict) else type(passage).__name__
         raise ValueError(
-            f"marketingCapture.readerPassage keys must be {sorted(spec_world.READER_PASSAGE_KEYS)}, "
+            f"scenarioContext.readerPassage keys must be {sorted(spec_world.READER_PASSAGE_KEYS)}, "
             f"got {got}")
     word_detail = mc["wordDetail"]
     if not isinstance(word_detail, dict) or not word_detail.get("entries"):
-        raise ValueError("marketingCapture.wordDetail must be a vocab seed with non-empty entries")
+        raise ValueError("scenarioContext.wordDetail must be a vocab seed with non-empty entries")
     clock = mc["reviewClock"]
     if review_clock_frozen:
         if not isinstance(clock, dict) or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS):
             raise ValueError(
-                "frozen emit requires marketingCapture.reviewClock with keys "
+                "frozen emit requires scenarioContext.reviewClock with keys "
                 f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
     elif clock is not None and (not isinstance(clock, dict)
                                or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS)):
         raise ValueError(
-            "marketingCapture.reviewClock must be null or a full clock dict with keys "
+            "scenarioContext.reviewClock must be null or a full clock dict with keys "
             f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
 
 
@@ -432,17 +371,17 @@ def _validate_fixture_document(
             f"{BASE_UI_WORLD_PATH} has invalid top-level keys extra={extra} missing={missing}"
         )
 
-    # marketingCapture 恆為 spec/plan 驅動（reviewClock 隨 plan、readerPassage 隨
-    # spec），永不對 baseline byte-equal；改由 _validate_marketing_capture_field 驗形狀。
+    # scenarioContext 恆為 spec/plan 驅動（reviewClock 隨 plan、readerPassage 隨
+    # spec），永不對 baseline byte-equal；改由 _validate_scenario_context_field 驗形狀。
     frozen_exclude = {"preferences"} if review_clock_frozen else set()
-    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth", "marketingCapture"}
+    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth", "scenarioContext"}
                       - spec_domains - frozen_exclude):
         if document[key] != baseline[key]:
             raise ValueError(
                 "generated iOS UI World may only overlay identity-owned auth; "
                 f"domain {key!r} drifted from {BASE_UI_WORLD_PATH}"
             )
-    _validate_marketing_capture_field(document, review_clock_frozen=review_clock_frozen)
+    _validate_scenario_context_field(document, review_clock_frozen=review_clock_frozen)
     if review_clock_frozen:
         _validate_review_clock_overlay(document["preferences"], baseline["preferences"])
 
@@ -557,7 +496,7 @@ def spec_staleness_warning(spec: dict[str, Any], *, now: "object | None" = None)
     複習事件卻是絕對日期 —— 拿陳舊 spec 出圖時 streak 歸零、日曆變空。以
     max(last_reviewed_at) 當 spec 錨日，距 now 超過 _SPEC_STALENESS_HOURS 即回傳
     WARN 訊息（純提示，不影響輸出 bytes；重新錨定走
-    ops/demo/marketing_account/shape_history.py）。"""
+    ops/demo/ui_world_seed/shape_history.py）。"""
     from datetime import datetime, timezone
 
     latest: "datetime | None" = None
@@ -583,8 +522,8 @@ def spec_staleness_warning(spec: dict[str, Any], *, now: "object | None" = None)
         return None
     return (
         f"WARN: spec 錨日 {latest.isoformat()} 距今 {age_hours / 24:.1f} 天（> 48h）；"
-        "以此 spec 出圖時 streak / 學習日曆會因牆鐘漂移而崩。先用 "
-        "ops/demo/marketing_account/shape_history.py 重新錨定再 emit。"
+        "以此 spec 注入 UI 時 streak / 學習日曆會因牆鐘漂移而崩。先用 "
+        "ops/demo/ui_world_seed/shape_history.py 重新錨定再 emit。"
     )
 
 
