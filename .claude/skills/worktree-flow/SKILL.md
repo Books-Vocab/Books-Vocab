@@ -338,7 +338,7 @@ cherry-pick 之後若 review 修補又改了同一批檔，main 上是**更新**
 版本取代」與「根本沒進去」，於是保守拒絕。**那是對的**——寬鬆到能放行這種情況的規則，同樣會
 放行真正沒落地的工作（實測：正是這個拒絕暴露了一顆整合時被漏掉的 commit）。
 
-正確做法**不是**把規則改鬆，而是讓工具跑審計：`resolve --worktree <path> --via-integration main --commit`。它對每顆分支獨有的 commit 由強到弱比對——① patch-id（同一改動不同 sha）② 主旨**且**檔案清單完全相同（整合時改過內容）——任一顆對不上就具名拒絕，過了則在 stderr 說明有幾顆是靠較弱那階過的。**N=10 實測：floor 仍 10/10 拒絕（沒改鬆），審計放行 10/10，剩餘卡住 0，工作樹殘留從 10 變 0**，兩階在同一次跑裡都用到了。
+正確做法**不是**把規則改鬆，而是讓工具跑審計：`resolve --worktree <path> --via-integration main --commit`。它對每顆分支獨有的 commit 由強到弱比對——① patch-id（同一改動不同 sha）② 主旨**且**檔案清單完全相同（整合時改過內容）——任一顆對不上就具名拒絕，過了則在 stderr 說明有幾顆是靠較弱那階過的。`--commit` 的成功 audit 也會在刪來源樹前，把 integration ref 的實際 tip 蓋進該來源分支的 staged closures；否則 branch identity 隨 teardown 消失，worker 證據會永遠留在 unstamped queue。payload 的 `staged_closures`／`pending_anchor` 是這一步的收據。**N=10 實測：floor 仍 10/10 拒絕（沒改鬆），審計放行 10/10，剩餘卡住 0，工作樹殘留從 10 變 0**，兩階在同一次跑裡都用到了。
 
 `--force`（「我看過了」）仍在，但它現在是最後手段而不是常態。下面三步是審計的內容，留著是為了讓你看得懂它在比什麼、以及它拒絕時該去查什麼：
 - 每條分支的每顆 commit，主旨在 `base..main` 找得到對應嗎？（弱證明，但抓得到整批漏掉的 commit）
