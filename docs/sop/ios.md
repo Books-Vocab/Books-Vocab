@@ -296,9 +296,11 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 find .cache/ios-build-derived-data -name BooksAndVocab.app -path "*Debug-iphonesimulator*"
 ```
 
-**2. 驗「裝對版本」只看 `BooksAndVocab.debug.dylib` 的 mtime。** Xcode 16+ 的 debug-dylib 機制下 app code 在這顆 dylib，主執行檔 `BooksAndVocab` 只是 launcher，比對它會誤判。裝完先把 mtime 對 `git log -1 --format=%ad -- <你改的檔>`，再開始判讀畫面——舊 build 會正常啟動、正常渲染、什麼都不喊，唯一破綻是日期。
+**2. 視覺驗收前先過安裝入口。** `ios_build.sh` 會在 app 旁寫入 worktree path + HEAD 的 provenance sidecar；`ios_install.sh` 在安裝前核對 sidecar 與當前工作樹，對不上就非零退出。不要手打 Xcode 的安裝命令，也不要把警告當判準。
 
-**3. 換 build 用 `simctl install` 覆蓋，不要 `uninstall`。** uninstall 會連 data container 一起刪（書庫／登入／語言／閱讀進度），而這些用 fixture 重建的成本遠高於省下的那一步。
+裝完仍可用 `BooksAndVocab.debug.dylib` 的 mtime 做輔助觀察：Xcode 16+ 的 debug-dylib 機制下 app code 在這顆 dylib，主執行檔 `BooksAndVocab` 只是 launcher，比對它會誤判。mtime 不能取代 provenance gate。
+
+**3. 換 build 用安裝入口覆蓋，不要 `uninstall`。** 例如：`./ops/ios_install.sh --simulator <udid> --app <path-to-BooksAndVocab.app>`。入口通過 provenance 後才會覆蓋安裝；`uninstall` 會連 data container 一起刪（書庫／登入／語言／閱讀進度），而這些用 fixture 重建的成本遠高於省下的那一步。
 
 **4. 偏好設定的真相來源是 iCloud KVS，不是 app 的 plist。** `AppLanguageStore` 等偏好讀 `cloud.string(forKey:) ?? defaults.string(forKey:)`（`ios/BooksAndVocab/Services/CloudPreferencesSync.swift` = `NSUbiquitousKeyValueStore`），所以直接改 `<container>/Library/Preferences/<bundleid>.plist` **不會生效**，且該值不在 `<device>/data` 底下（grep 不到）。要改就走 app 自己的 Settings UI（同時寫 defaults + KVS）。懷疑某條 preference path 沒被讀時，設一個明顯不同的第三值重啟做差別測試，比逐一猜 key 快。
 

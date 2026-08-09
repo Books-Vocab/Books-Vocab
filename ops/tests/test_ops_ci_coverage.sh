@@ -79,6 +79,7 @@ LINUX_GROUPS=(
   # 假綠一起移出 CI——而那半段在 linux 上跑得動。真在 runner 上紅了，帶實測訊息移進
   # EXCLUDED_GROUPS 或補一個誠實的新 token，那是一行的距離。
   sim-pool-disposable
+  ios-install-provenance
   # ── 以下 13 筆原本被排除，理由經證偽實測不成立後收進來（IMP-0054）──
   # 共通形狀：測試本身是注入 seam 的離線 stub，散文理由描述的是它所測的那支工具。
   backup-verify
