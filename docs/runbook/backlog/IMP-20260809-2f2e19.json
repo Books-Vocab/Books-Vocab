@@ -1,0 +1,23 @@
+{
+  "acceptance": "共用常數存在且兩個入口使用它；錯誤參數包含子 parser 都回 64；認領拒絕仍保留 75。",
+  "acceptance_cmd": "bash -c 'set -e; test -f ops/lib/exit_codes.py; rc=0; ./ops/worktree_orchestrate.py --brnach >/dev/null 2>&1 || rc=$?; test \"$rc\" -eq 64'",
+  "acceptance_expect_rc": 0,
+  "brief": "錯誤用法和工具故障回傳同一個碼，維護者無法判斷是否只是參數寫錯。",
+  "category": "arch",
+  "cost": "M",
+  "date": "2026-08-09",
+  "detail": "A1：統一 worktree exit code 常數，並讓 argparse usage error 回傳 64；先建立 ops/lib/exit_codes.py，供 orchestrator 與 registry 共用，保留認領拒絕的 75。",
+  "fix_site": "ops/lib/exit_codes.py; ops/worktree_orchestrate.py; ops/worktree_registry.py; ops/tests/",
+  "groomed_against": "785f64052908b6bd5fb0fa406767cbee7db03cba",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "r6-worker:groom@v1",
+  "id": "IMP-20260809-2f2e19",
+  "plan": "先新增共用 exit code 常數模組，讓 orchestrator 與 registry import；再替 argparse 建立含子 parser 的 usage error handler，讓錯誤參數回 64，並保留認領拒絕的 75。",
+  "resolution": "在 ops/lib/exit_codes.py 建立共用常數；orchestrator 與 registry 改用 import；補 usage error 與子 parser 的 rc=64 測試。",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個共用常數模組、兩個入口的回傳碼與一組 usage 測試。",
+  "severity": "med",
+  "source": "IMP-0042/A1",
+  "status": "open",
+  "stream": "IMP"
+}

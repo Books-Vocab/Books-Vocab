@@ -1,0 +1,23 @@
+{
+  "acceptance": "三個模組共用同一個串流 SHA-256 實作，既有 provenance、reviewer evidence、UI world manifest 測試全綠，且摘要值不變。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_provenance.py ops/tests/test_reviewer_evidence.py ops/tests/test_ui_world_manifest.py",
+  "acceptance_expect_rc": 0,
+  "brief": "同一種串流雜湊計算散落多處，維護者修一處仍可能漏掉其他實作。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-09",
+  "detail": "B1：streaming SHA-256 計算在 provenance、reviewer evidence、UI world manifest 各自重複，維護時可能產生不一致實作。",
+  "fix_site": "ops/lib/provenance.py; ops/reviewer_evidence.py; ops/ui_world_manifest.py; ops/tests/test_provenance.py; ops/tests/test_reviewer_evidence.py; ops/tests/test_ui_world_manifest.py",
+  "groomed_against": "785f64052908b6bd5fb0fa406767cbee7db03cba",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "r6-worker:groom@v1",
+  "id": "IMP-20260809-f855b9",
+  "plan": "以 ops/lib/provenance.py 的 sha256_file 作為唯一實作，移除 reviewer evidence 與 UI world manifest 的重複串流讀取，保留既有輸出格式並補足跨模組測試。",
+  "resolution": "以 ops/lib/provenance.py 的 sha256_file 為 SoT，讓 reviewer_evidence 與 ui_world_manifest 共用並保留現有摘要結果與測試契約。",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個共用雜湊函式、兩個呼叫端與三組既有測試。",
+  "severity": "med",
+  "source": "IMP-0042/B1",
+  "status": "open",
+  "stream": "IMP"
+}

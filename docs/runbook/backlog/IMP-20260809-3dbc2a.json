@@ -1,0 +1,23 @@
+{
+  "acceptance": "全 repo 入口遵守 0=pass、1=tool error、2=block、3=warn、64=usage；既有字面斷言與新 contract test 通過，且測試註冊完整。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_exit_code_contract.py",
+  "acceptance_expect_rc": 0,
+  "brief": "不同工具對成功、警告、阻擋與用法錯誤的編號不一致，自動流程無法可靠分類結果。",
+  "category": "arch",
+  "cost": "M",
+  "date": "2026-08-09",
+  "detail": "A2：全 repo 的 pass、tool error、block、warn、usage 對外 exit code 契約不一致，需統一並同步既有腳本與測試的字面斷言。",
+  "fix_site": "ops/lib/exit_codes.py; ops/docs_lint.sh; ops/branch_audit.sh; ops/review_audit.sh; ops/lib/ios_ops_release.sh; ops/app_review_gate.py; ops/app_review_evidence.py; ops/tests/test_exit_code_contract.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+  "groomed_against": "785f64052908b6bd5fb0fa406767cbee7db03cba",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "r6-worker:groom@v1",
+  "id": "IMP-20260809-3dbc2a",
+  "plan": "建立統一 exit code contract，依序修改 docs lint、branch audit、review audit、iOS release、App Review 入口與相關測試的對外回傳碼；新增 contract test 並註冊到 ops 測試與 CI coverage。",
+  "resolution": "依裁決統一為 0=pass、1=tool error、2=block、3=warn、64=usage；同步 docs_lint、branch_audit、review_audit、iOS release、App Review 入口與 coverage 註冊。",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "六個入口腳本、共用常數、契約測試與兩個測試註冊點。",
+  "severity": "med",
+  "source": "IMP-0042/A2",
+  "status": "open",
+  "stream": "IMP"
+}
