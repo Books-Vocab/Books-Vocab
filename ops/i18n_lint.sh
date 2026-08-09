@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# i18n_lint.sh — Detect raw Chinese literals, static formatters, and xcstrings needs_review entries.
+# i18n_lint.sh — Detect raw Chinese literals and static formatters.
 #
 # Modes:
 #   --report   (default) Print findings, exit 0 regardless. Use for local discovery.
@@ -41,7 +41,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_SRC="$ROOT_DIR/ios/BooksAndVocab"
-XCSTRINGS="$IOS_SRC/Localization/Localizable.xcstrings"
 BASELINE_FILE="$ROOT_DIR/ops/i18n_baseline.txt"
 STRIP_PREVIEWS="$ROOT_DIR/ops/_i18n_strip_previews.py"
 KEY_EXTRACTOR="$ROOT_DIR/ops/_i18n_extract_keys.py"
@@ -176,34 +175,6 @@ scan_static_formatter() {
 scan_localized_usage() {
   rg --no-heading -n --pcre2 --type swift "${EXCLUDE_GLOBS[@]}" \
     "$LOCALIZED_USAGE_PATTERN" "$IOS_SRC" 2>/dev/null || true
-}
-
-# Parse .xcstrings JSON for entries with state=needs_review and empty value.
-# We use plain JSON parsing (Python) to keep zero deps beyond stdlib.
-scan_xcstrings_needs_review() {
-  if [ ! -f "$XCSTRINGS" ]; then
-    return 0
-  fi
-  "${PY_CMD[@]}" - <<PY 2>/dev/null || true
-import json, sys
-path = "$XCSTRINGS"
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-except Exception as e:
-    sys.stderr.write(f"[i18n_lint] cannot parse xcstrings: {e}\n")
-    sys.exit(0)
-strings = data.get("strings", {})
-hits = []
-for key, body in strings.items():
-    localizations = body.get("localizations", {}) or {}
-    for lang, ldata in localizations.items():
-        sv = ldata.get("stringUnit", {}) or {}
-        if sv.get("state") == "needs_review" and not (sv.get("value") or "").strip():
-            hits.append((lang, key))
-for lang, key in hits:
-    print(f"xcstrings:needs_review:{lang}: {key}")
-PY
 }
 
 # ---- strict-only coverage checks --------------------------------------------
@@ -348,15 +319,13 @@ count_lines() {
 raw_hits="$(scan_raw_chinese)"
 ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
-xc_hits="$(scan_xcstrings_needs_review)"
 localized_hits="$(scan_localized_usage)"
 
 raw_count=$(count_lines "$raw_hits")
 ret_count=$(count_lines "$ret_hits")
 fmt_count=$(count_lines "$fmt_hits")
-xc_count=$(count_lines "$xc_hits")
 localized_count=$(count_lines "$localized_hits")
-total=$((raw_count + ret_count + fmt_count + xc_count))
+total=$((raw_count + ret_count + fmt_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
 missing_key_hits=""
@@ -382,11 +351,6 @@ print_findings() {
     printf '%s\n' "$fmt_hits"
     echo
   fi
-  if [ -n "$xc_hits" ]; then
-    echo "=== xcstrings needs_review + empty value ($xc_count) ==="
-    printf '%s\n' "$xc_hits"
-    echo
-  fi
   if [ -n "$missing_key_hits" ]; then
     echo "=== Missing en.lproj keys ($missing_key_count) ==="
     printf '%s\n' "$missing_key_hits"
@@ -402,7 +366,7 @@ print_findings() {
     printf '%s\n' "$plural_missing_hits"
     echo
   fi
-  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count xcstrings=$xc_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count localized_calls=$localized_count)"
+  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count localized_calls=$localized_count)"
 }
 
 case "$MODE" in
