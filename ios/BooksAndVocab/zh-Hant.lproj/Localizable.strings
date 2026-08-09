@@ -1154,34 +1154,18 @@
 /* MARK: - Review card layout editor */
 "複習卡片" = "複習卡片";
 "reviewCardLayout.title" = "複習卡片";
-"reviewCardLayout.mode.section" = "卡片模式";
-"reviewCardLayout.face.front" = "正面";
-"reviewCardLayout.face.back" = "背面";
-"reviewCardLayout.preview.title" = "預覽";
-"reviewCardLayout.preview.empty" = "這一面只顯示固定欄位。";
 "reviewCardLayout.locked.prompt" = "題目";
 "reviewCardLayout.locked.answer" = "答案";
-"reviewCardLayout.locked.caption" = "固定顯示";
-"reviewCardLayout.fields.section" = "可選欄位";
 "reviewCardLayout.field.partOfSpeech" = "詞性";
-"reviewCardLayout.field.partOfSpeech.caption" = "例如 n.、v.";
 "reviewCardLayout.field.difficultyTier" = "難度";
-"reviewCardLayout.field.difficultyTier.caption" = "單字的難易度標籤";
 "reviewCardLayout.field.graphLinks" = "知識連結";
-"reviewCardLayout.field.graphLinks.caption" = "相關單字，以及新增連結的入口";
 "reviewCardLayout.field.example" = "例句";
-"reviewCardLayout.field.example.caption" = "收錄這個字時的原文句子";
 "reviewCardLayout.field.explanation" = "解釋";
-"reviewCardLayout.field.explanation.caption" = "釋義與說明";
 "reviewCardLayout.field.collocations" = "搭配詞";
-"reviewCardLayout.field.collocations.caption" = "常見的搭配用法";
 "reviewCardLayout.reset" = "恢復預設";
-"reviewCardLayout.reset.currentMode" = "恢復「%@」預設";
 "reviewCardLayout.reset.all" = "恢復全部預設";
 "reviewCardLayout.footer" = "空間不夠時，卡片會先精簡例句、解釋與搭配詞；題目、答案、詞性與難度不會被隱藏。";
 "todayReview.layoutEditor.open" = "調整複習卡片";
-"settings.reviewCardLayout.default" = "預設";
-"settings.reviewCardLayout.custom" = "自訂";
 
 /* Settings — 逐步同步進度列 */
 "送出複習紀錄" = "送出複習紀錄";
@@ -1207,3 +1191,10 @@
 /* settings-native-converge (APP-20260808-240a94 / f0770b) */
 "字級" = "字級";
 "主題" = "主題";
+
+/* settings-native-converge · APP-20260808-7f0f3a 版面 preset */
+"reviewCardLayout.preset.standard" = "正常";
+"reviewCardLayout.preset.compact" = "精簡";
+"settings.reviewCardLayout.standard" = "正常";
+"settings.reviewCardLayout.compact" = "精簡";
+"settings.reviewCardLayout.mixed" = "混合";

@@ -30,30 +30,53 @@ enum ReviewCardField: String, CaseIterable, Codable, Hashable {
         case .graphLinks: "reviewCardLayout.field.graphLinks"
         }
     }
+}
 
-    var captionKey: String {
+/// 使用者實際能選的東西（APP-20260808-7f0f3a）。取代「六個欄位各自 on/off ×
+/// 正反兩面」的 2^6 × 2^6 自由度：那個自由度絕大多數組合沒有意義，也沒有人
+/// 知道該開哪個。每個方向只在「正常」與「精簡」之間選。
+enum ReviewCardLayoutPreset: String, CaseIterable, Codable, Hashable {
+    /// 今天的預設，也就是重構前的畫面。
+    case standard
+    /// 拿掉例句、詳解、搭配詞 —— 正反面都不留。
+    case compact
+
+    var titleKey: String {
         switch self {
-        case .partOfSpeech: "reviewCardLayout.field.partOfSpeech.caption"
-        case .difficultyTier: "reviewCardLayout.field.difficultyTier.caption"
-        case .example: "reviewCardLayout.field.example.caption"
-        case .explanation: "reviewCardLayout.field.explanation.caption"
-        case .collocations: "reviewCardLayout.field.collocations.caption"
-        case .graphLinks: "reviewCardLayout.field.graphLinks.caption"
+        case .standard: "reviewCardLayout.preset.standard"
+        case .compact: "reviewCardLayout.preset.compact"
         }
     }
 
-    /// Enabling re-sorts into `canonicalOrder` rather than appending: a toggle is a
-    /// visibility decision, never a reordering one, so a face can't drift into an
-    /// order the editor has no way to show.
-    static func toggling(
-        _ field: ReviewCardField,
-        in fields: [ReviewCardField],
-        isOn: Bool
-    ) -> [ReviewCardField] {
-        guard isOn else { return fields.filter { $0 != field } }
-        guard !fields.contains(field) else { return fields }
-        let enabled = Set(fields + [field])
-        return canonicalOrder.filter(enabled.contains)
+    /// 欄位清單是 preset 的**衍生值**，不是被持久化的東西。
+    func layout(for mode: VocabularyCardMode) -> ReviewCardModeLayout {
+        switch self {
+        case .standard:
+            ReviewCardModeLayout(
+                front: mode == .production ? [.partOfSpeech, .example] : [.partOfSpeech],
+                back: [.difficultyTier, .graphLinks, .example, .explanation, .collocations]
+            )
+        case .compact:
+            ReviewCardModeLayout(
+                front: [.partOfSpeech],
+                back: [.difficultyTier, .graphLinks]
+            )
+        }
+    }
+
+    /// 舊資料（自由欄位陣列）搬遷用：取對稱差最小的 preset。平手取 `.standard`
+    /// —— 它同時是預設值與重構前的畫面，所以「看不出使用者想要什麼」時保守回到它。
+    static func closest(
+        toFront front: [ReviewCardField],
+        back: [ReviewCardField],
+        for mode: VocabularyCardMode
+    ) -> ReviewCardLayoutPreset {
+        func distance(_ preset: ReviewCardLayoutPreset) -> Int {
+            let layout = preset.layout(for: mode)
+            return Set(front).symmetricDifference(layout.front).count
+                + Set(back).symmetricDifference(layout.back).count
+        }
+        return distance(.compact) < distance(.standard) ? .compact : .standard
     }
 }
 
@@ -61,10 +84,18 @@ enum ReviewCardField: String, CaseIterable, Codable, Hashable {
 /// and its test read the same rule.
 enum ReviewCardLayoutSummary {
     static func titleKey(for profile: ReviewCardLayoutProfile) -> String {
-        profile == .default ? "settings.reviewCardLayout.default" : "settings.reviewCardLayout.custom"
+        guard profile.recognition == profile.production else {
+            return "settings.reviewCardLayout.mixed"
+        }
+        switch profile.recognition {
+        case .standard: return "settings.reviewCardLayout.standard"
+        case .compact: return "settings.reviewCardLayout.compact"
+        }
     }
 }
 
+/// preset → 欄位清單的載體。已不再被序列化，所以不需要 sanitize：能產生它的
+/// 只有 `ReviewCardLayoutPreset.layout(for:)`，沒有重複值的來源。
 struct ReviewCardModeLayout: Equatable {
     var front: [ReviewCardField]
     var back: [ReviewCardField]
@@ -73,56 +104,37 @@ struct ReviewCardModeLayout: Equatable {
         self.front = front
         self.back = back
     }
-
-    fileprivate var sanitized: Self {
-        Self(
-            front: Self.removingDuplicates(from: front),
-            back: Self.removingDuplicates(from: back)
-        )
-    }
-
-    private static func removingDuplicates(from fields: [ReviewCardField]) -> [ReviewCardField] {
-        var seen = Set<ReviewCardField>()
-        return fields.filter { seen.insert($0).inserted }
-    }
 }
 
 struct ReviewCardLayoutProfile: Equatable, Codable {
-    var recognition: ReviewCardModeLayout
-    var production: ReviewCardModeLayout
+    var recognition: ReviewCardLayoutPreset
+    var production: ReviewCardLayoutPreset
 
-    init(recognition: ReviewCardModeLayout, production: ReviewCardModeLayout) {
+    init(recognition: ReviewCardLayoutPreset, production: ReviewCardLayoutPreset) {
         self.recognition = recognition
         self.production = production
     }
 
-    static let `default` = ReviewCardLayoutProfile(
-        recognition: ReviewCardModeLayout(
-            front: [.partOfSpeech],
-            back: [.difficultyTier, .graphLinks, .example, .explanation, .collocations]
-        ),
-        production: ReviewCardModeLayout(
-            front: [.partOfSpeech, .example],
-            back: [.difficultyTier, .graphLinks, .example, .explanation, .collocations]
-        )
-    )
+    static let `default` = ReviewCardLayoutProfile(recognition: .standard, production: .standard)
 
-    func layout(for mode: VocabularyCardMode) -> ReviewCardModeLayout {
+    func preset(for mode: VocabularyCardMode) -> ReviewCardLayoutPreset {
         switch mode {
         case .recognition: recognition
         case .production: production
         }
     }
 
-    mutating func setLayout(_ layout: ReviewCardModeLayout, for mode: VocabularyCardMode) {
+    mutating func setPreset(_ preset: ReviewCardLayoutPreset, for mode: VocabularyCardMode) {
         switch mode {
-        case .recognition: recognition = layout.sanitized
-        case .production: production = layout.sanitized
+        case .recognition: recognition = preset
+        case .production: production = preset
         }
     }
 
-    fileprivate var sanitized: Self {
-        Self(recognition: recognition.sanitized, production: production.sanitized)
+    /// 渲染端的接縫，刻意不改名：`ReviewCardRenderPlan.make` 與
+    /// `TodayReviewPresenter+CardContent` 因此零改動。
+    func layout(for mode: VocabularyCardMode) -> ReviewCardModeLayout {
+        preset(for: mode).layout(for: mode)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -137,36 +149,35 @@ struct ReviewCardLayoutProfile: Equatable, Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        recognition = Self.decodeLayout(
-            from: container,
-            key: .recognition,
-            fallback: Self.default.recognition
-        )
-        production = Self.decodeLayout(
-            from: container,
-            key: .production,
-            fallback: Self.default.production
-        )
+        recognition = Self.decodePreset(from: container, key: .recognition, mode: .recognition)
+        production = Self.decodePreset(from: container, key: .production, mode: .production)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try Self.encode(recognition.sanitized, to: &container, key: .recognition)
-        try Self.encode(production.sanitized, to: &container, key: .production)
+        try container.encode(recognition, forKey: .recognition)
+        try container.encode(production, forKey: .production)
     }
 
-    private static func decodeLayout(
+    /// 三段式：新形狀（preset 字串）→ 舊形狀（{front:[String],back:[String]}，
+    /// 搬遷到最近的 preset）→ 都讀不到就 `.standard`。envelope（storageKey /
+    /// schemaVersion / 時間戳天花板 / LWW）一層完全沒動，搬遷只發生在這裡。
+    private static func decodePreset(
         from container: KeyedDecodingContainer<CodingKeys>,
         key: CodingKeys,
-        fallback: ReviewCardModeLayout
-    ) -> ReviewCardModeLayout {
-        guard container.contains(key),
-              let nested = try? container.nestedContainer(keyedBy: ModeCodingKeys.self, forKey: key)
-        else { return fallback }
+        mode: VocabularyCardMode
+    ) -> ReviewCardLayoutPreset {
+        guard container.contains(key) else { return .standard }
+        if let preset = try? container.decode(ReviewCardLayoutPreset.self, forKey: key) {
+            return preset
+        }
+        guard let nested = try? container.nestedContainer(keyedBy: ModeCodingKeys.self, forKey: key)
+        else { return .standard }
 
+        let fallback = ReviewCardLayoutPreset.standard.layout(for: mode)
         let front = decodeFields(from: nested, key: .front) ?? fallback.front
         let back = decodeFields(from: nested, key: .back) ?? fallback.back
-        return ReviewCardModeLayout(front: front, back: back)
+        return ReviewCardLayoutPreset.closest(toFront: front, back: back, for: mode)
     }
 
     private static func decodeFields(
@@ -181,16 +192,6 @@ struct ReviewCardLayoutProfile: Equatable, Codable {
         return rawValues.compactMap(ReviewCardField.init(rawValue:)).filter {
             seen.insert($0).inserted
         }
-    }
-
-    private static func encode(
-        _ layout: ReviewCardModeLayout,
-        to container: inout KeyedEncodingContainer<CodingKeys>,
-        key: CodingKeys
-    ) throws {
-        var nested = container.nestedContainer(keyedBy: ModeCodingKeys.self, forKey: key)
-        try nested.encode(layout.front.map(\.rawValue), forKey: .front)
-        try nested.encode(layout.back.map(\.rawValue), forKey: .back)
     }
 }
 
@@ -247,7 +248,7 @@ final class ReviewCardLayoutStore {
         let local = Self.decodeEnvelope(defaults.string(forKey: Self.storageKey))
         let remote = Self.decodeEnvelope(cloud.string(forKey: Self.storageKey))
         let resolved = Self.resolve(local: local, cloud: remote)
-        self.profile = resolved?.profile.sanitized ?? .default
+        self.profile = resolved?.profile ?? .default
         self.resolvedUpdatedAt = resolved?.updatedAt
 
         cloudObserver = notificationCenter.addObserver(
@@ -266,7 +267,7 @@ final class ReviewCardLayoutStore {
         notificationCenter = nil
         cloudObserver = nil
         resolvedUpdatedAt = nil
-        profile = inMemoryProfile.sanitized
+        profile = inMemoryProfile
     }
 
     deinit {
@@ -283,30 +284,25 @@ final class ReviewCardLayoutStore {
     }
 
     func update(_ profile: ReviewCardLayoutProfile) {
-        let sanitized = profile.sanitized
         guard defaults != nil, cloud != nil else {
-            self.profile = sanitized
+            self.profile = profile
             return
         }
 
         let timestamp = nextTimestamp()
-        guard let encoded = Self.encodeEnvelope(profile: sanitized, updatedAt: timestamp) else {
+        guard let encoded = Self.encodeEnvelope(profile: profile, updatedAt: timestamp) else {
             return
         }
         defaults?.set(encoded, forKey: Self.storageKey)
         cloud?.set(encoded, forKey: Self.storageKey)
-        self.profile = sanitized
+        self.profile = profile
         resolvedUpdatedAt = timestamp
     }
 
-    func setLayout(_ layout: ReviewCardModeLayout, for mode: VocabularyCardMode) {
+    func setPreset(_ preset: ReviewCardLayoutPreset, for mode: VocabularyCardMode) {
         var changed = profile
-        changed.setLayout(layout, for: mode)
+        changed.setPreset(preset, for: mode)
         update(changed)
-    }
-
-    func reset(_ mode: VocabularyCardMode) {
-        setLayout(ReviewCardLayoutProfile.default.layout(for: mode), for: mode)
     }
 
     func resetAll() {
@@ -331,7 +327,7 @@ final class ReviewCardLayoutStore {
         else { return }
         if let resolvedUpdatedAt, remote.updatedAt < resolvedUpdatedAt { return }
 
-        profile = remote.profile.sanitized
+        profile = remote.profile
         resolvedUpdatedAt = remote.updatedAt
     }
 

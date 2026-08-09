@@ -14,24 +14,28 @@ struct ReviewCardFieldOrderingTests {
         #expect(Set(ReviewCardField.canonicalOrder) == Set(ReviewCardField.allCases))
     }
 
-    @Test func every_default_face_is_already_in_canonical_order() {
-        for mode in VocabularyCardMode.allCases {
-            let layout = ReviewCardLayoutProfile.default.layout(for: mode)
-            #expect(layout.front == ReviewCardField.canonicalOrder.filter(layout.front.contains))
-            #expect(layout.back == ReviewCardField.canonicalOrder.filter(layout.back.contains))
+    /// preset 產出的每一面都必須落在 canonicalOrder 上 —— 編輯頁的預覽與卡片
+    /// 讀的是同一個順序，順序漂掉就等於預覽在說謊。
+    @Test func every_preset_face_is_already_in_canonical_order() {
+        for preset in ReviewCardLayoutPreset.allCases {
+            for mode in VocabularyCardMode.allCases {
+                let layout = preset.layout(for: mode)
+                #expect(layout.front == ReviewCardField.canonicalOrder.filter(layout.front.contains))
+                #expect(layout.back == ReviewCardField.canonicalOrder.filter(layout.back.contains))
+            }
         }
     }
 
-    @Test func enabling_a_field_inserts_it_at_its_canonical_slot() {
-        let enabled = ReviewCardField.toggling(.graphLinks, in: [.partOfSpeech, .example], isOn: true)
-        #expect(enabled == [.partOfSpeech, .graphLinks, .example])
-    }
-
-    @Test func disabling_a_field_leaves_the_rest_untouched_and_is_idempotent() {
-        let once = ReviewCardField.toggling(.example, in: [.partOfSpeech, .graphLinks, .example], isOn: false)
-        #expect(once == [.partOfSpeech, .graphLinks])
-        #expect(ReviewCardField.toggling(.example, in: once, isOn: false) == once)
-        #expect(ReviewCardField.toggling(.graphLinks, in: once, isOn: true) == once)
+    @Test func compact_is_a_strict_subset_of_standard_on_every_face() {
+        for mode in VocabularyCardMode.allCases {
+            let standard = ReviewCardLayoutPreset.standard.layout(for: mode)
+            let compact = ReviewCardLayoutPreset.compact.layout(for: mode)
+            #expect(Set(compact.front).isSubset(of: Set(standard.front)))
+            #expect(Set(compact.back).isStrictSubset(of: Set(standard.back)))
+            // 精簡的定義就是「拿掉例句、詳解、搭配詞」。
+            #expect(!compact.front.contains(.example))
+            #expect(Set(compact.back).isDisjoint(with: [.example, .explanation, .collocations]))
+        }
     }
 
     /// 「畫在 core 之上」只有背面的難度徽章成立。canonicalOrder 排不了 field 與 core
@@ -77,49 +81,38 @@ struct ReviewCardLayoutEditorStoreTests {
         #expect(EnvironmentValues().reviewCardLayoutStore === ReviewCardLayoutStore.shared)
     }
 
-    @Test func toggling_a_field_persists_only_the_edited_face() {
+    @Test func choosing_a_preset_persists_only_the_edited_direction() {
         let store = store()
-        let before = store.profile.recognition.back
-        store.setLayout(
-            .init(
-                front: ReviewCardField.toggling(.example, in: store.profile.recognition.front, isOn: true),
-                back: store.profile.recognition.back
-            ),
-            for: .recognition
-        )
+        store.setPreset(.compact, for: .recognition)
 
-        #expect(store.profile.recognition.front == [.partOfSpeech, .example])
-        #expect(store.profile.recognition.back == before)
-        #expect(store.profile.production == ReviewCardLayoutProfile.default.production)
+        #expect(store.profile.recognition == .compact)
+        #expect(store.profile.production == .standard)
+        #expect(store.profile.layout(for: .recognition).back == [.difficultyTier, .graphLinks])
+        #expect(store.profile.layout(for: .production) == ReviewCardLayoutPreset.standard.layout(for: .production))
     }
 
-    @Test func reset_current_mode_leaves_the_other_mode_edited() {
+    @Test func reset_all_restores_both_directions() {
         let store = store()
-        store.setLayout(.init(front: [], back: []), for: .recognition)
-        store.setLayout(.init(front: [], back: []), for: .production)
-
-        store.reset(.recognition)
-
-        #expect(store.profile.recognition == ReviewCardLayoutProfile.default.recognition)
-        #expect(store.profile.production == ReviewCardModeLayout(front: [], back: []))
-    }
-
-    @Test func reset_all_restores_both_modes() {
-        let store = store()
-        store.setLayout(.init(front: [], back: []), for: .recognition)
-        store.setLayout(.init(front: [], back: []), for: .production)
+        store.setPreset(.compact, for: .recognition)
+        store.setPreset(.compact, for: .production)
 
         store.resetAll()
 
         #expect(store.profile == .default)
     }
 
-    @Test func summary_reads_default_only_when_every_face_matches() {
-        #expect(ReviewCardLayoutSummary.titleKey(for: .default) == "settings.reviewCardLayout.default")
-
-        var edited = ReviewCardLayoutProfile.default
-        edited.setLayout(.init(front: [], back: []), for: .production)
-        #expect(ReviewCardLayoutSummary.titleKey(for: edited) == "settings.reviewCardLayout.custom")
+    @Test func summary_names_the_shared_preset_and_falls_back_to_mixed() {
+        #expect(ReviewCardLayoutSummary.titleKey(for: .default) == "settings.reviewCardLayout.standard")
+        #expect(
+            ReviewCardLayoutSummary.titleKey(
+                for: .init(recognition: .compact, production: .compact)
+            ) == "settings.reviewCardLayout.compact"
+        )
+        #expect(
+            ReviewCardLayoutSummary.titleKey(
+                for: .init(recognition: .standard, production: .compact)
+            ) == "settings.reviewCardLayout.mixed"
+        )
     }
 }
 

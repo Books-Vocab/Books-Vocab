@@ -1171,34 +1171,18 @@
 /* MARK: - Review card layout editor */
 "複習卡片" = "Review card";
 "reviewCardLayout.title" = "Review card";
-"reviewCardLayout.mode.section" = "Card mode";
-"reviewCardLayout.face.front" = "Front";
-"reviewCardLayout.face.back" = "Back";
-"reviewCardLayout.preview.title" = "Preview";
-"reviewCardLayout.preview.empty" = "This side shows the fixed row only.";
 "reviewCardLayout.locked.prompt" = "Prompt";
 "reviewCardLayout.locked.answer" = "Answer";
-"reviewCardLayout.locked.caption" = "Always shown";
-"reviewCardLayout.fields.section" = "Optional fields";
 "reviewCardLayout.field.partOfSpeech" = "Part of speech";
-"reviewCardLayout.field.partOfSpeech.caption" = "Such as n. or v.";
 "reviewCardLayout.field.difficultyTier" = "Difficulty";
-"reviewCardLayout.field.difficultyTier.caption" = "The word's difficulty label";
 "reviewCardLayout.field.graphLinks" = "Knowledge links";
-"reviewCardLayout.field.graphLinks.caption" = "Related words, plus the add-link button";
 "reviewCardLayout.field.example" = "Example";
-"reviewCardLayout.field.example.caption" = "The sentence you captured the word from";
 "reviewCardLayout.field.explanation" = "Explanation";
-"reviewCardLayout.field.explanation.caption" = "Meaning and notes";
 "reviewCardLayout.field.collocations" = "Collocations";
-"reviewCardLayout.field.collocations.caption" = "Common pairings";
 "reviewCardLayout.reset" = "Reset";
-"reviewCardLayout.reset.currentMode" = "Reset %@ to default";
 "reviewCardLayout.reset.all" = "Reset everything to default";
 "reviewCardLayout.footer" = "When space runs short the card shortens the example, explanation and collocations first. Prompt, answer, part of speech and difficulty are never hidden.";
 "todayReview.layoutEditor.open" = "Adjust review card";
-"settings.reviewCardLayout.default" = "Default";
-"settings.reviewCardLayout.custom" = "Custom";
 
 /* Settings — 逐步同步進度列 */
 "送出複習紀錄" = "Upload review records";
@@ -1224,3 +1208,10 @@
 /* settings-native-converge (APP-20260808-240a94 / f0770b) */
 "字級" = "Text Size";
 "主題" = "Theme";
+
+/* settings-native-converge · APP-20260808-7f0f3a 版面 preset */
+"reviewCardLayout.preset.standard" = "Standard";
+"reviewCardLayout.preset.compact" = "Compact";
+"settings.reviewCardLayout.standard" = "Standard";
+"settings.reviewCardLayout.compact" = "Compact";
+"settings.reviewCardLayout.mixed" = "Mixed";

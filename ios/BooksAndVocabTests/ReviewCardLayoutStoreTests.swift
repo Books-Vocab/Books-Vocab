@@ -19,33 +19,37 @@ struct ReviewCardLayoutProfileTests {
     @Test func defaultsMatchTheExistingRecognitionAndProductionCards() {
         let profile = ReviewCardLayoutProfile.default
 
-        #expect(profile.recognition.front == [.partOfSpeech])
-        #expect(profile.production.front == [.partOfSpeech, .example])
-        #expect(profile.recognition.back == [
+        #expect(profile.recognition == .standard)
+        #expect(profile.production == .standard)
+        #expect(profile.layout(for: .recognition).front == [.partOfSpeech])
+        #expect(profile.layout(for: .production).front == [.partOfSpeech, .example])
+        #expect(profile.layout(for: .recognition).back == [
             .difficultyTier, .graphLinks, .example, .explanation, .collocations,
         ])
-        #expect(profile.production.back == [
+        #expect(profile.layout(for: .production).back == [
             .difficultyTier, .graphLinks, .example, .explanation, .collocations,
         ])
     }
 
-    @Test func sameFieldCanAppearOnBothSides() {
-        var profile = ReviewCardLayoutProfile.default
-        profile.recognition.front.append(.example)
-
-        #expect(profile.recognition.front.contains(.example))
-        #expect(profile.recognition.back.contains(.example))
+    @Test func compactDropsExampleExplanationAndCollocations() {
+        for mode in VocabularyCardMode.allCases {
+            let layout = ReviewCardLayoutPreset.compact.layout(for: mode)
+            #expect(layout.front == [.partOfSpeech])
+            #expect(layout.back == [.difficultyTier, .graphLinks])
+        }
     }
 
-    @Test func decodingSanitizesDuplicatesAndUnknownsAndDefaultsMissingSides() throws {
+    /// 搬遷：舊形狀（自由欄位陣列）必須映到最接近的 preset，而不是靜靜變成預設。
+    @Test func legacyFieldArraysMigrateToTheClosestPreset() throws {
         let json = """
         {
           "recognition": {
-            "front": ["example", "unknown", "example", "partOfSpeech"]
+            "front": ["partOfSpeech"],
+            "back": ["difficultyTier", "graphLinks", "example", "explanation", "collocations"]
           },
           "production": {
-            "front": [],
-            "back": ["graphLinks", "futureField", "graphLinks"]
+            "front": ["unknown", "partOfSpeech"],
+            "back": ["graphLinks", "futureField", "difficultyTier"]
           }
         }
         """
@@ -55,10 +59,41 @@ struct ReviewCardLayoutProfileTests {
             from: Data(json.utf8)
         )
 
-        #expect(decoded.recognition.front == [.example, .partOfSpeech])
-        #expect(decoded.recognition.back == ReviewCardLayoutProfile.default.recognition.back)
-        #expect(decoded.production.front == [])
-        #expect(decoded.production.back == [.graphLinks])
+        // 逐字等於舊 default 的那一面 → 正常。
+        #expect(decoded.recognition == .standard)
+        // 只剩難度 + 知識連結（unknown rawValue 丟掉）→ 精簡。
+        #expect(decoded.production == .compact)
+    }
+
+    /// 缺的那一面沿用 standard 的同一面後再比距離；空陣列離 standard 更近時取
+    /// standard（平手也取 standard）—— 這裡的期望值是照 closest 的規則算出來的，
+    /// 不是憑感覺寫的：production 空正面對 standard 差 2、對 compact 差 1，
+    /// back 缺席補成 standard 的 back 後對 standard 差 0、對 compact 差 3 →
+    /// standard 總距離 2 < compact 總距離 4。
+    @Test func missingSidesFallBackToStandardBeforeMeasuringDistance() throws {
+        let json = """
+        {
+          "recognition": {},
+          "production": { "front": [] }
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(
+            ReviewCardLayoutProfile.self,
+            from: Data(json.utf8)
+        )
+
+        #expect(decoded.recognition == .standard)
+        #expect(decoded.production == .standard)
+    }
+
+    @Test func presetsRoundTripThroughTheNewShape() throws {
+        let profile = ReviewCardLayoutProfile(recognition: .compact, production: .standard)
+        let data = try JSONEncoder().encode(profile)
+        let json = try #require(String(data: data, encoding: .utf8))
+
+        #expect(json.contains("\"recognition\":\"compact\""))
+        #expect(try JSONDecoder().decode(ReviewCardLayoutProfile.self, from: data) == profile)
     }
 }
 
@@ -94,11 +129,19 @@ struct ReviewCardLayoutStoreTests {
         return try #require(String(data: data, encoding: .utf8))
     }
 
+    /// 非預設 profile。舊 helper 以「哪個欄位開著」區分兩份 profile；新模型只有
+    /// 三個非預設值（兩個方向 × 兩個 preset，扣掉 default），所以把六個欄位攤到
+    /// 那三個值上。分配是**刻意排過的**：每一個「local vs remote / before vs after」
+    /// 的配對都落在不同的值上，否則 LWW 測試會變成兩邊相等的空斷言。
     private func customProfile(_ field: ReviewCardField) -> ReviewCardLayoutProfile {
-        ReviewCardLayoutProfile(
-            recognition: ReviewCardModeLayout(front: [field], back: []),
-            production: ReviewCardModeLayout(front: [], back: [field])
-        )
+        switch field {
+        case .example, .collocations:
+            ReviewCardLayoutProfile(recognition: .compact, production: .standard)
+        case .graphLinks, .difficultyTier:
+            ReviewCardLayoutProfile(recognition: .standard, production: .compact)
+        case .explanation, .partOfSpeech:
+            ReviewCardLayoutProfile(recognition: .compact, production: .compact)
+        }
     }
 
     @Test func cloudNewerWinsWithoutColdStartWriteback() throws {
@@ -422,14 +465,15 @@ struct ReviewCardLayoutStoreTests {
         #expect(store.profile == newer)
     }
 
-    @Test func resetCurrentModeLeavesOtherModeUntouchedThenResetAllRestoresEverything() {
-        let store = ReviewCardLayoutStore.inMemory(profile: customProfile(.example))
+    @Test func setPresetTouchesOnlyOneDirectionThenResetAllRestoresEverything() {
+        let store = ReviewCardLayoutStore.inMemory(profile: customProfile(.explanation))
         let originalProduction = store.profile.production
 
-        store.reset(.recognition)
+        store.setPreset(.standard, for: .recognition)
 
-        #expect(store.profile.recognition == ReviewCardLayoutProfile.default.recognition)
+        #expect(store.profile.recognition == .standard)
         #expect(store.profile.production == originalProduction)
+        #expect(store.profile != .default)
 
         store.resetAll()
         #expect(store.profile == .default)
