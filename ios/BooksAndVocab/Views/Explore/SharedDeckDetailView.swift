@@ -389,8 +389,10 @@ struct SharedDeckDetailView: View {
             let detail = try await SharedDeckCatalogService(kgService: kgService)
                 .fetchDeckDetail(deckId: deckId)
             cardsState = detail.sampleCards.isEmpty ? .empty : .loaded(detail.sampleCards)
-            // 預覽成功呈現才算一次 preview——取消（畫面被換掉）與失敗都不計入漏斗，
-            // 否則 browse→preview 轉換率會被使用者根本沒看到的請求灌水。
+            // 預覽成功呈現才算一次 `deckPreviewed`——取消（畫面被換掉）不計入漏斗，
+            // 否則轉換率會被使用者根本沒看到的請求灌水。失敗走下面的
+            // `deckPreviewFailed`：它在聚合層也記一次嘗試（與 copy 同規格），
+            // 讓「沒人點」與「點了但載不出來」在 browse→preview 上分得開。
             AppAnalytics.track(.deckPreviewed(
                 deckId: deckId, sampleCardCount: detail.sampleCards.count
             ))
@@ -398,6 +400,9 @@ struct SharedDeckDetailView: View {
             // torn down / superseded — leave state as-is
         } catch {
             AppLog.kg.warning("[Explore] detail fetch failed for \(deckId): \(error.localizedDescription)")
+            AppAnalytics.track(.deckPreviewFailed(
+                deckId: deckId, reason: SharedDeckCopyController.failureReason(for: error)
+            ))
             cardsState = .error
         }
     }
