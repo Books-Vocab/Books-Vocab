@@ -1315,14 +1315,17 @@ def add_entry(
     overwrite: bool = False,
     historical: bool = False,
     _gate: bool = False,
+    commit: bool = True,
 ) -> dict:
-    """Create one entry file and return the entry.
+    """Compose one entry and, by default, create its file.
 
     Deliberately NOT dry-run-by-default, unlike the mutation subcommands.
     Creating a new file is additive and trivially reversible with git, and
     forcing two calls to file one issue is precisely the kind of friction that
     makes agents route around a tool. The exception is stated in `--help` rather
-    than left for the next caller to discover — IMP-0040 is that lesson.
+    than left for the next caller to discover — IMP-0040 is that lesson.  The CLI
+    can still pass ``commit=False`` for an explicit preview; internal importers
+    keep the historical immediate-write default.
     """
     if _gate and status == "fixed":
         # `import --commit` writes with overwrite=True, so a legacy table row can
@@ -1450,7 +1453,8 @@ def add_entry(
             f"{sorted(k for k in set(existing) | set(payload) if existing.get(k) != payload.get(k))})"
         )
 
-    _write_atomic(path, _dumps(payload))
+    if commit:
+        _write_atomic(path, _dumps(payload))
     return payload
 
 
@@ -2887,7 +2891,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_add = sub.add_parser("add", help="file a new entry (lands immediately)")
+    p_add = sub.add_parser(
+        "add",
+        help="file a new entry (lands immediately by default)",
+        description=(
+            "File a new entry. Unlike overwrite-style mutations, this command "
+            "WRITES IMMEDIATELY by default so an observed problem is not lost. "
+            "Use --dry-run to preview without writing; --commit is accepted as "
+            "an explicit spelling of the fast default."
+        ),
+    )
     _add_store_arg(p_add)
     p_add.add_argument("--stream", choices=STREAMS, required=True)
     p_add.add_argument("--date", required=True, help="YYYY-MM-DD")
@@ -2922,6 +2935,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--repro", help="APP only: how to reproduce")
     p_add.add_argument("--build", help="APP only: build the problem was seen on")
     p_add.add_argument("--id", dest="entry_id", help="explicit id (migration of legacy IMP-#### only)")
+    add_mode = p_add.add_mutually_exclusive_group()
+    add_mode.add_argument(
+        "--dry-run", action="store_true",
+        help="validate and print the would-be entry without creating its JSON file",
+    )
+    add_mode.add_argument(
+        "--commit", action="store_true",
+        help="explicitly select the default immediate-write mode; useful when a "
+             "generic mutation runner always spells its write intent",
+    )
     p_add.add_argument("--json", action="store_true")
     # Parsed here ONLY so that reaching for one gets a named refusal that says where
     # it belongs. Same treatment, and the same reason, as `update --detail`: argparse's
@@ -3407,8 +3430,9 @@ def _cmd_add(args) -> int:
     # `unproven`. It is here anyway, and the grade is reported below, because the
     # alternative is a `fixed` that never passed through the gate at all and is
     # indistinguishable in the store from one that did. Counting it is the point.
+    commit = not args.dry_run
     acceptance = _gate_closure({"id": "(new entry)"}, {"status": args.status},
-                               commit=True)
+                               commit=commit)
     entry = add_entry(
         args.store,
         stream=args.stream,
@@ -3425,14 +3449,18 @@ def _cmd_add(args) -> int:
         repro=args.repro,
         build=args.build,
         entry_id=args.entry_id,
+        commit=commit,
     )
+    mode = "commit" if commit else "dry-run"
     if args.json:
-        print(json.dumps({"schema": "kg.backlog.add.v1", "entry": entry,
+        print(json.dumps({"schema": "kg.backlog.add.v1", "mode": mode, "entry": entry,
                           **({"acceptance": acceptance} if acceptance else {})},
                          ensure_ascii=False))
     else:
         print(f"{entry['id']}  [{entry['stream']}/{entry['category']}/{entry['severity']}]")
-        print(f"  {entry['detail'][:120]}")
+        print(f"  mode={mode}; {entry['detail'][:120]}")
+        if not commit:
+            print("  nothing written; rerun without --dry-run (or pass --commit) to file it")
     return 0
 
 

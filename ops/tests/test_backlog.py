@@ -5616,6 +5616,55 @@ _ADD = ["--stream", "IMP", "--date", "2026-08-08", "--source", "dogfood batch 1"
         "--detail", "a tool writes an entry its own validator rejects"]
 
 
+def test_add_help_names_its_write_mode_and_both_explicit_choices():
+    """The exception must be visible from ``add --help`` itself.
+
+    The parent parser already described the immediate-write exception, but a caller
+    asking the narrower question only saw the options table.  That is how a normal
+    ``--commit`` reflex became an argparse error during dogfood.
+    """
+    text = " ".join(
+        BACKLOG._subcommands(BACKLOG.build_parser())["add"].format_help().lower().split()
+    )
+
+    assert "writes immediately" in text or "lands immediately" in text
+    assert "--dry-run" in text
+    assert "--commit" in text
+
+
+def test_add_dry_run_returns_the_entry_without_writing_it(tmp_path, capsys):
+    store = tmp_path / "s"
+
+    assert BACKLOG.main([
+        "add", "--store", str(store), *_ADD, "--dry-run", "--json",
+    ]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "dry-run"
+    assert payload["entry"]["status"] == "open"
+    assert not (store.exists() and list(store.glob("*.json")))
+
+
+def test_add_accepts_an_explicit_commit_without_changing_the_fast_default(
+        tmp_path, capsys):
+    explicit_store = tmp_path / "explicit"
+    default_store = tmp_path / "default"
+
+    assert BACKLOG.main([
+        "add", "--store", str(explicit_store), *_ADD, "--commit", "--json",
+    ]) == 0
+    explicit = json.loads(capsys.readouterr().out)
+    assert explicit["mode"] == "commit"
+    assert (explicit_store / f"{explicit['entry']['id']}.json").exists()
+
+    assert BACKLOG.main([
+        "add", "--store", str(default_store), *_ADD, "--json",
+    ]) == 0
+    default = json.loads(capsys.readouterr().out)
+    assert default["mode"] == "commit"
+    assert (default_store / f"{default['entry']['id']}.json").exists()
+
+
 def test_add_refuses_a_triaged_entry_with_no_next_action_and_leaves_no_file(tmp_path, capsys):
     """The refusal has to arrive here, not in somebody else's `land`.
 
