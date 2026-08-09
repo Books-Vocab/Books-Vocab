@@ -17,5 +17,9 @@
   "severity": "low",
   "source": "Phase C review card layout editor (feat/review-card-layout-editor)",
   "status": "wont-fix",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "OBSOLETE",
+  "verified_at": "2026-08-09",
+  "verified_by": "R8-coordinator",
+  "verified_evidence": "docs/reference/catalog_scope.md FROZEN red line 2; acceptance command measured rc=1 and the plan explicitly defers this fix until UI World reopens"
 }
