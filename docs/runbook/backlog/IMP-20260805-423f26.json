@@ -8,6 +8,9 @@
   "date": "2026-08-05",
   "detail": "`ops/tests/test_ops_ci_coverage.sh` 的 EXCLUDED_GROUPS 只檢查「token 屬於封閉字彙表」與「每個 token 至少被用一次」（:284-299、:325-334），**沒有任何一條檢查指派是否正確**——把 `bin-xcode` 改成 `data-indexstore` 是一個單字 diff，`:393` 的 `[[ \"$tok\" == bin-* ]] || continue` 直接放行，證偽器立刻不再碰它且沒有任何東西會出聲。缺的是把「產生這條 PR 的那個實驗」制度化：在 linux runner 上以 expected-fail 跑每一條排除，某條竟然通過就代表這條排除是假的。`.github/workflows/ops-suite.yml` 今日只有 `:47` classify 與 `:49` `--print-linux-groups` 兩個執行 step，此機制確認不存在。",
   "fix_site": "ops/tests/test_ci_expected_fail_exclusions.py（新）, ops/ci_expected_fail_exclusions.sh（新）, ops/tests/test_ops_ci_coverage.sh:10-12,119, .github/workflows/ops-suite.yml:49, ops/ci_linux_repro.sh:2,93-97, ops/test_ops.sh:117, docs/reference/tech_index.md:145",
+  "fixed_by": [
+    "c65a295019f8f462f94895dae9df9d8f6ade7153"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-20260805-423f26",
@@ -17,8 +20,10 @@
   "scope": "新增一支檢查腳本與它的測試，另改一支既有測試腳本、雲端流程設定、本機重跑腳本各一處，並同步一段說明。",
   "severity": "med",
   "source": "IMP-0059 split",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:machine-gate",
+  "verified_evidence": "Acceptance: `uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_ci_expected_fail_exclusions.py` → 6 passed, rc=0。\nGate: verdict=warn；所有 BLOCK gates PASS（review receipts、docs lint、ops pytest、shell syntax/scan、ops-ci-coverage）；WARN 為既有 `ops-shell-untested` 與 `data-plane-unowned`，未阻止 cutover。\nGate 的 `ops-shell:test_ops_ci_coverage.sh` 實跑 132.0s，摘要 `ops-ci-coverage: 14 passed, 0 failed, 0 falsification(s) skipped`。\nDeviation: groomed plan 的反方測試例原寫 `docs-lint` 在 EXCLUDED_GROUPS；目前 main 已將 docs-lint 收進 LINUX_GROUPS，因此 negative control 改以現存 `gate-can-fail` 與 `ios-ops` 驗證逐條 survivor 與多筆紅證據。\nLanded commit: c65a295019f8f462f94895dae9df9d8f6ade7153；cutover verdict=warn；未執行 deploy。"
 }
