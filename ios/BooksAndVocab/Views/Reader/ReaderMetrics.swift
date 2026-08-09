@@ -53,9 +53,10 @@ enum ReaderMetrics {
 
     // MARK: - Vocab settings
 
-    static let vocabValueReadoutWidth: CGFloat = 34
-    static let vocabModeToggleMaxWidth: CGFloat = 160
     static let vocabOptionVerticalPadding: CGFloat = 10
+    /// 主題選項列尾端的色票（原本是 selection tile 內的整條色帶，
+    /// 改成原生 inline picker 後縮為一列內的小色塊）。
+    static let vocabThemeSwatchWidth: CGFloat = 28
     static let vocabThemeSwatchHeight: CGFloat = 8
 
     // MARK: - Quota bar

@@ -1,7 +1,10 @@
 #if os(iOS)
 import SwiftUI
 
-struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, SettingsPanelContent: View>: View {
+/// Reader 殼層。**不含**閱讀設定面板：那一頁自 APP-20260808-240a94 起是
+/// `ReaderView` 掛的系統 sheet（原生 detents / drag indicator），不再由本
+/// presenter 當 overlay 疊出來。
+struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) var appSkin
     @Environment(\.horizontalSizeClass) var sizeClass
@@ -15,7 +18,6 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
     let onCollapseHeader: () -> Void
     @ViewBuilder let mainContent: MainContent
     @ViewBuilder let translationPanel: TranslationPanelContent
-    @ViewBuilder let settingsPanel: SettingsPanelContent
 
     init(
         state: ReaderViewPresenterState,
@@ -26,8 +28,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         onExpandHeader: @escaping () -> Void,
         onCollapseHeader: @escaping () -> Void,
         @ViewBuilder mainContent: () -> MainContent,
-        @ViewBuilder translationPanel: () -> TranslationPanelContent,
-        @ViewBuilder settingsPanel: () -> SettingsPanelContent
+        @ViewBuilder translationPanel: () -> TranslationPanelContent
     ) {
         self.state = state
         self.onDismiss = onDismiss
@@ -38,7 +39,6 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         self.onCollapseHeader = onCollapseHeader
         self.mainContent = mainContent()
         self.translationPanel = translationPanel()
-        self.settingsPanel = settingsPanel()
     }
 
     var body: some View {

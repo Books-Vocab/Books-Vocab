@@ -1,287 +1,170 @@
 #if os(iOS)
 import SwiftUI
 
-// MARK: - Vocab Layout & Sections
+// MARK: - Native Settings Form
 
+/// 閱讀設定 — 與「複習節奏」「複習卡版面」共用**同一套原生心智模型**
+/// （APP-20260808-f0770b 收斂 + APP-20260808-240a94 原生化）：
+///
+///   容器  `NavigationStack` + `Form`（呈現層由 `ReaderView` 的 `.sheet` 提供
+///          detents 與 drag indicator，不再自繪 panel 卡片與 handle）
+///   分組  `Section` + `SettingsSectionHeader` / `SettingsSectionFooter`
+///   選擇  `Picker` —— 行內單值用 `.menu`，選項本身值得一列（帶 icon / 色票）用 `.inline`
+///   數值  `Stepper`（上下界＝傳 nil 的 increment/decrement closure）與 `Slider`
+///   開關  `Toggle`
+///
+/// 具名承認的代價：自繪的 selection tile、label chip、control surface、群組
+/// air divider 全部退場，換來系統列樣式；襯線標題與自訂間距節奏隨之消失，
+/// 主題選項的色票縮成一列內的小色塊。這是「一致性優先」的直接後果，
+/// **不要**在 Section 內重新自繪把 editorial 個性救回來。
 extension ReaderSettingsPresenter {
 
     // MARK: Layout
 
     var vocabLayout: some View {
-        let chrome = ReaderPanelChromeStyle(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
-
-        return VocabCard(padding: 0) {
-            VStack(spacing: 0) {
-                if chrome.showsDragHandle {
-                    AppRoundedRect(roundness: AppRoundness.pill)
-                        .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
-                        .frame(
-                            width: ReaderMetrics.settingsHandleWidth,
-                            height: ReaderMetrics.settingsHandleHeight
-                        )
-                        .padding(.top, ReaderMetrics.settingsHandleTopInset)
-                        .padding(.bottom, ReaderMetrics.settingsHandleBottomInset)
-                }
-                vocabHeaderBlock
-                    .padding(.top, chrome.contentTopInset)
-                ScrollView {
-                    // Mochi 北極星 #2：群組分隔靠 AppAirDivider + 留白,
-                    // 不再用 settings card 背景色塊包每個 section。
-                    VStack(alignment: .leading, spacing: 0) {
-                        vocabTypographySection
-                        AppAirDivider()
-                        vocabAppearanceSection
-                        AppAirDivider()
-                        vocabHighlightSection
-                        AppAirDivider()
-                        vocabDebugSection
-                    }
-                    .padding(.horizontal, ReaderMetrics.settingsHorizontalInset)
-                    .padding(.bottom, ReaderMetrics.settingsBottomInset)
+        NavigationStack {
+            Form {
+                vocabTypographySection
+                vocabAppearanceSection
+                vocabHighlightSection
+                vocabDebugSection
+            }
+            .navigationTitle(L10n.string("閱讀設定"))
+            .inlineNavigationBarTitle()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.string("完成"), action: onDismiss)
+                        .accessibilityIdentifier("reader.settings.done")
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("reader.settingsPanel")
         }
-        // Mochi 北極星 #3：shadow 收兩階 — z3 → z2。
-        .appElevation(.z2, direction: .up)
-    }
-
-    // MARK: Header
-
-    var vocabHeaderBlock: some View {
-        HStack(alignment: .top, spacing: ReaderMetrics.settingsHeaderSpacing) {
-            Text("閱讀設定".localized)
-                .font(appSkin.typography.sectionTitle)
-                .foregroundStyle(appSkin.palette.primaryText)
-            Spacer()
-            VocabChromeIconButton(
-                systemImage: "xmark",
-                label: L10n.string("vocab.chromeIcon.readerSettings.dismiss"),
-                action: onDismiss
-            )
-        }
-        .padding(.horizontal, ReaderMetrics.settingsHorizontalInset)
-        .padding(.bottom, ReaderMetrics.settingsHeaderBottomInset)
     }
 
     // MARK: Typography
 
     var vocabTypographySection: some View {
-        vocabSettingsSection(title: "排版".localized) {
-            VStack(alignment: .leading, spacing: AppSpacing.s4) {
-                HStack(alignment: .center, spacing: 0) {
-                    ReaderStepControlButton(
-                        label: "A",
-                        font: appSkin.typography.settingsAdjustSmall,
-                        enabled: state.canDecreaseFontSize,
-                        action: onDecreaseFontSize
-                    )
-                    Text(state.fontSizeText)
-                        .font(appSkin.typography.settingsFontSizeDisplay)
-                        .foregroundStyle(appSkin.palette.primaryText)
-                        .frame(maxWidth: .infinity)
-                    ReaderStepControlButton(
-                        label: "A",
-                        font: appSkin.typography.settingsAdjustLarge,
-                        enabled: state.canIncreaseFontSize,
-                        action: onIncreaseFontSize
-                    )
+        Section {
+            Stepper(
+                onIncrement: state.canIncreaseFontSize ? onIncreaseFontSize : nil,
+                onDecrement: state.canDecreaseFontSize ? onDecreaseFontSize : nil
+            ) {
+                LabeledContent(L10n.string("字級")) {
+                    Text(state.fontSizeText).monospacedDigit()
                 }
-                Divider().overlay(appSkin.palette.divider)
-                HStack(alignment: .center, spacing: AppSpacing.s3) {
-                    vocabLabelChip(title: "行距".localized, systemImage: "text.line.spacing")
-                    Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
-                        .tint(appSkin.palette.primaryText)
-                    Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
-                        .font(appSkin.typography.monoBodyStrong)
-                        .foregroundStyle(appSkin.palette.secondaryText)
-                        .frame(width: ReaderMetrics.vocabValueReadoutWidth, alignment: .trailing)
-                }
-                Divider().overlay(appSkin.palette.divider)
-                vocabReadingModeRow
             }
-        }
-    }
 
-    private var vocabReadingModeRow: some View {
-        HStack(alignment: .center, spacing: AppSpacing.s3) {
-            vocabLabelChip(title: L10n.string("閱讀模式"), systemImage: "book.pages")
-            Spacer(minLength: AppSpacing.s3)
-            HStack(spacing: AppSpacing.s2) {
-                ForEach([false, true], id: \.self) { isScroll in
-                    let isSelected = bindings.scrollMode.wrappedValue == isScroll
-                    Button {
-                        withAnimation(AppMotion.panelState) { bindings.scrollMode.wrappedValue = isScroll }
-                    } label: {
-                        ReaderSelectionTile(isSelected: isSelected) {
-                            Text(isScroll ? L10n.string("捲動") : L10n.string("翻頁"))
-                                .font(appSkin.typography.caption)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, AppSpacing.s2)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: AppSpacing.s1) {
+                LabeledContent(L10n.string("行距")) {
+                    Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
+                        .monospacedDigit()
                 }
+                Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
+                    .accessibilityLabel(L10n.string("行距"))
             }
-            .frame(maxWidth: ReaderMetrics.vocabModeToggleMaxWidth)
+
+            Picker(selection: bindings.scrollMode) {
+                Text(L10n.string("翻頁")).tag(false)
+                Text(L10n.string("捲動")).tag(true)
+            } label: {
+                Text(L10n.string("閱讀模式"))
+            }
+            .pickerStyle(.menu)
+        } header: {
+            SettingsSectionHeader(title: L10n.string("排版"), icon: "textformat.size")
         }
     }
 
     // MARK: Appearance
 
     var vocabAppearanceSection: some View {
-        vocabSettingsSection(title: "外觀".localized) {
-            VStack(alignment: .leading, spacing: AppSpacing.s4) {
-                vocabFontMenu()
-                HStack(spacing: 10) {
-                    ForEach(ReaderTheme.allCases) { theme in vocabThemeTile(theme) }
+        Section {
+            Picker(selection: bindings.font) {
+                ForEach(ReaderFont.allCases) { font in
+                    Text(font.displayName).tag(font)
                 }
+            } label: {
+                Text(L10n.string("字體"))
             }
+            .pickerStyle(.menu)
+
+            Picker(selection: themeSelection) {
+                ForEach(ReaderTheme.allCases) { theme in
+                    themeOptionLabel(theme).tag(theme)
+                }
+            } label: {
+                Text(L10n.string("主題"))
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } header: {
+            SettingsSectionHeader(title: L10n.string("外觀"), icon: "paintpalette")
         }
+    }
+
+    private func themeOptionLabel(_ theme: ReaderTheme) -> some View {
+        HStack(spacing: AppSpacing.s2) {
+            Label(theme.rawValue, systemImage: theme.icon)
+            AppRoundedRect(roundness: AppRoundness.pill)
+                .fill(appSkin.readerThemeSwatchColor(theme))
+                .frame(
+                    width: ReaderMetrics.vocabThemeSwatchWidth,
+                    height: ReaderMetrics.vocabThemeSwatchHeight
+                )
+        }
+    }
+
+    /// 主題與標記濃度都走既有 closure（而不是直接寫 binding）：那兩個 closure
+    /// 各自帶 `withAnimation(AppMotion.panelState)`，繞過它們等於默默拿掉動畫。
+    private var themeSelection: Binding<ReaderTheme> {
+        Binding(
+            get: { bindings.theme.wrappedValue },
+            set: { onSelectTheme($0) }
+        )
+    }
+
+    private var underlineOpacitySelection: Binding<Double> {
+        Binding(
+            get: { bindings.underlineOpacity.wrappedValue },
+            set: { onSelectUnderlineOpacity($0) }
+        )
     }
 
     // MARK: Highlight
 
     var vocabHighlightSection: some View {
-        vocabSettingsSection(title: "生字標記".localized) {
-            VStack(alignment: .leading, spacing: AppSpacing.s4) {
-                VocabHighlightColorPresetPicker(
-                    selection: bindings.vocabHighlightColorPreset,
-                    title: L10n.string("vocab.highlight.color.label")
-                )
+        Section {
+            VocabHighlightColorPresetPicker(
+                selection: bindings.vocabHighlightColorPreset,
+                title: L10n.string("vocab.highlight.color.label")
+            )
 
-                Divider().overlay(appSkin.palette.divider)
-
-                VStack(alignment: .leading, spacing: AppSpacing.s2) {
-                    Text(L10n.string("vocab.highlight.opacity.label"))
-                        .font(appSkin.typography.caption)
-                        .foregroundStyle(appSkin.palette.secondaryText)
-                    HStack(spacing: AppSpacing.s2) {
-                        ForEach(opacityOptions, id: \.label) { option in
-                            let isSelected = bindings.underlineOpacity.wrappedValue == option.value
-                            Button { onSelectUnderlineOpacity(option.value) } label: {
-                                ReaderSelectionTile(isSelected: isSelected) {
-                                    Text(option.label.localized)
-                                        .font(appSkin.typography.caption)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+            Picker(selection: underlineOpacitySelection) {
+                ForEach(opacityOptions, id: \.label) { option in
+                    Text(L10n.string(option.label)).tag(option.value)
                 }
+            } label: {
+                Text(L10n.string("vocab.highlight.opacity.label"))
             }
+            .pickerStyle(.menu)
+        } header: {
+            SettingsSectionHeader(title: L10n.string("生字標記"), icon: "highlighter")
         }
     }
 
     // MARK: Debug
 
     var vocabDebugSection: some View {
-        vocabSettingsSection(title: "開發者與除錯".localized) {
-            HStack(spacing: AppSpacing.s3) {
-                VStack(alignment: .leading, spacing: AppSpacing.s1) {
-                    Text("顯示點擊熱區".localized)
-                        .font(appSkin.typography.body.weight(.medium))
-                        .foregroundStyle(appSkin.palette.primaryText)
-                    Text("用於校正閱讀器點擊熱區。".localized)
-                        .font(appSkin.typography.caption)
-                        .foregroundStyle(appSkin.palette.tertiaryText)
-                }
-                Spacer()
-                Toggle("", isOn: bindings.showHitTestingDebug)
-                    .labelsHidden()
-                    .tint(appSkin.palette.primaryText)
+        Section {
+            Toggle(isOn: bindings.showHitTestingDebug) {
+                Text(L10n.string("顯示點擊熱區"))
             }
+        } header: {
+            SettingsSectionHeader(title: L10n.string("開發者與除錯"), icon: "ladybug")
+        } footer: {
+            SettingsSectionFooter(L10n.string("用於校正閱讀器點擊熱區。"))
         }
-    }
-
-    // MARK: Helpers
-
-    func vocabSettingsSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        // flat=true：移除群組卡片背景,改靠 vocabLayout 內 AppAirDivider 切群組。
-        AppSectionBlock(title: title, flat: true) { content() }
-    }
-
-    func vocabFontMenu() -> some View {
-        Menu {
-            ForEach(ReaderFont.allCases) { font in
-                Button(font.displayName) { bindings.font.wrappedValue = font }
-            }
-        } label: {
-            vocabControlSurface {
-                HStack(spacing: AppSpacing.s3) {
-                    VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
-                        Text("字體".localized)
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.tertiaryText)
-                        Text(bindings.font.wrappedValue.displayName)
-                            .font(appSkin.typography.translationTitle)
-                            .foregroundStyle(appSkin.palette.primaryText)
-                    }
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Text(fontToneLabel)
-                            .font(appSkin.typography.monoLabel)
-                            .foregroundStyle(appSkin.palette.quaternaryText)
-                        Image(systemName: "chevron.down")
-                            .font(appSkin.typography.iconTiny.weight(.bold))
-                            .foregroundStyle(appSkin.palette.tertiaryText)
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    func vocabLabelChip(title: String, systemImage: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage).font(appSkin.typography.iconTiny)
-            Text(title).font(appSkin.typography.caption)
-        }
-        .foregroundStyle(appSkin.palette.secondaryText)
-        .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
-        .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
-        .background(AppRoundedRect(roundness: AppRoundness.pill).fill(appSkin.palette.mutedFill))
-    }
-
-    func vocabControlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        // Mochi 北極星 #2：control surface border 退場,只留 fill。
-        VocabChromeSurface(
-            fill: appSkin.palette.pageBackground,
-            border: .clear
-        ) {
-            content()
-                .padding(.horizontal, ReaderMetrics.settingsControlHorizontalPadding)
-                .padding(.vertical, ReaderMetrics.settingsControlVerticalPadding)
-                .contentShape(Rectangle())
-        }
-    }
-
-    func vocabThemeTile(_ theme: ReaderTheme) -> some View {
-        let isSelected = bindings.theme.wrappedValue == theme
-        return Button { onSelectTheme(theme) } label: {
-            ReaderSelectionTile(isSelected: isSelected) {
-                VStack(alignment: .leading, spacing: AppSpacing.s3) {
-                    Image(systemName: theme.icon).font(appSkin.typography.iconToolbar)
-                    Text(theme.rawValue)
-                        .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))
-                    Rectangle()
-                        .fill(appSkin.readerThemeSwatchColor(theme))
-                        .frame(height: ReaderMetrics.vocabThemeSwatchHeight)
-                        .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, ReaderMetrics.settingsControlHorizontalPadding)
-                .padding(.vertical, ReaderMetrics.settingsControlVerticalPadding)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 #endif

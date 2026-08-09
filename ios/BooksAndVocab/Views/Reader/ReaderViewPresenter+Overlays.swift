@@ -37,6 +37,8 @@ extension ReaderViewPresenter {
         .transition(.overlayFade)
     }
 
+    /// 只剩翻譯面板：閱讀設定已於 APP-20260808-240a94 改由 `ReaderView` 的系統
+    /// sheet 呈現，不再是自繪的底部 overlay 卡片。
     var bottomOverlay: some View {
         let placement = ReaderOverlayPanelPlacement(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
 
@@ -47,10 +49,6 @@ extension ReaderViewPresenter {
                 overlayPanelChrome(translationPanel, placement: placement)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("reader.translationPanel")
-            } else if state.chrome.overlay == .settings {
-                overlayPanelChrome(settingsPanel, placement: placement)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("reader.settingsPanel")
             }
         }
         .animation(AppMotion.panelState, value: state.chrome.overlay)
