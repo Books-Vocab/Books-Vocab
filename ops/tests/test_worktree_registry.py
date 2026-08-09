@@ -1035,6 +1035,79 @@ def test_re_registering_without_a_claim_flag_keeps_the_claim(tmp_path):
     assert _active_records(state)[0]["backlog"] == ["IMP-0001"]
 
 
+def test_exclusive_register_refuses_an_existing_branch_or_path_instead_of_upserting_it(
+        tmp_path):
+    """`open` is a birth, not an idempotent adopt.
+
+    Two concurrent opens with the same slug must not share one ledger record: the
+    loser's failure cleanup would otherwise resolve the winner's claim.
+    """
+    state = tmp_path / "reg.json"
+    assert _register(state, "feat/same", "--backlog", "IMP-0001",
+                     "--exclusive", path="/tmp/same") == MODULE.EXIT_OK
+    before = state.read_text()
+    assert _register(state, "feat/same", "--backlog", "IMP-0002",
+                     "--exclusive", path="/tmp/same") == MODULE.EXIT_CLAIMED
+    assert state.read_text() == before
+
+
+def test_a_handed_back_source_can_be_reserved_by_only_one_integration(tmp_path):
+    state = tmp_path / "reg.json"
+    assert _register(state, "feat/source", path="/tmp/source") == MODULE.EXIT_OK
+    assert _register(state, "feat/round-four", path="/tmp/round-four") == MODULE.EXIT_OK
+    assert _register(state, "feat/round-five", path="/tmp/round-five") == MODULE.EXIT_OK
+    payload = json.loads(state.read_text())
+    next(r for r in payload["records"]
+         if r["branch"] == "feat/source")["handed_back_sha"] = "a" * 40
+    state.write_text(json.dumps(payload))
+
+    first = MODULE.claim_integration_sources(
+        state, source_refs={"feat/source": "a" * 40},
+        integration_branch="feat/round-four", integration_slug="round-four",
+        claimed_at="2026-08-09T00:00:00Z",
+    )
+    second = MODULE.claim_integration_sources(
+        state, source_refs={"feat/source": "a" * 40},
+        integration_branch="feat/round-five", integration_slug="round-five",
+        claimed_at="2026-08-09T00:00:01Z",
+    )
+
+    assert first["ok"] is True
+    assert second["ok"] is False
+    assert second["conflicts"][0]["owner"]["branch"] == "feat/round-four"
+    assert MODULE.integration_sources_owned_by(state, "feat/round-four") == [
+        "feat/source"]
+
+    assert MODULE.release_integration_sources(
+        state, integration_branch="feat/round-four") == ["feat/source"]
+    retry = MODULE.claim_integration_sources(
+        state, source_refs={"feat/source": "a" * 40},
+        integration_branch="feat/round-five", integration_slug="round-five",
+        claimed_at="2026-08-09T00:00:02Z",
+    )
+    assert retry["ok"] is True
+
+
+def test_source_reservation_requires_a_live_integration_owner(tmp_path):
+    state = tmp_path / "reg.json"
+    assert _register(state, "feat/source", path="/tmp/source") == MODULE.EXIT_OK
+    payload = json.loads(state.read_text())
+    payload["records"][0]["handed_back_sha"] = "a" * 40
+    state.write_text(json.dumps(payload))
+
+    claim = MODULE.claim_integration_sources(
+        state, source_refs={"feat/source": "a" * 40},
+        integration_branch="feat/missing-integration",
+        integration_slug="missing-integration",
+        claimed_at="2026-08-09T00:00:00Z",
+    )
+    assert claim["ok"] is False, claim
+    assert claim["conflicts"][0]["reason"] == (
+        "integration branch has no unique active registry record")
+    source = json.loads(state.read_text())["records"][0]
+    assert "integration_owner" not in source
+
+
 def test_re_registering_with_a_different_claim_replaces_it(tmp_path):
     state = tmp_path / "reg.json"
     _register(state, "feat-a", "--backlog", "IMP-0001")

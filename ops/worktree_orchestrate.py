@@ -161,6 +161,7 @@ from typing import Any, Callable
 # Reuse P2 in-process — never re-implement register / resolve / sweep / state paths.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import worktree_registry as wr  # noqa: E402
+import backlog as backlog_tool  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 
@@ -412,6 +413,11 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
     into "fine" is the shape this repo keeps filing entries about.
     """
     problems: list[dict] = []
+    entries = list(backlog_tool._iter_entries(Path(store_dir)))
+    unresolved = {
+        str(entry.get("id")) for entry in entries
+        if entry.get("status") not in RESOLVED_STATUSES
+    }
     for entry_id in ids:
         path = Path(store_dir) / f"{entry_id}.json"
         try:
@@ -462,7 +468,91 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
                           f"already groomed, unresolved, unclaimed and unblocked — "
                           f"i.e. the ones you can take right now without grooming "
                           f"anything"})
+        else:
+            blockers = [ticket for ticket in backlog_tool._blocking_ids(payload)
+                        if ticket in unresolved]
+            if blockers:
+                problems.append({
+                    "id": entry_id, "kind": "blocked-by-unresolved",
+                    "blockers": blockers,
+                    "repair": "finish or explicitly re-plan the unresolved "
+                              f"blocked_by ticket(s) first: {', '.join(blockers)}. "
+                              "`ops/backlog.py dispatch` already excludes this "
+                              "entry; explicit --backlog cannot bypass that edge.",
+                })
     return problems
+
+
+def _held_from_registry_state(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Project active registry claims into the shape backlog.list_entries accepts."""
+    held: dict[str, dict[str, Any]] = {}
+    for record in state.get("records") or []:
+        if not isinstance(record, dict) or record.get("status") != wr.STATUS_ACTIVE:
+            continue
+        for ticket in record.get("backlog") or []:
+            held[str(ticket)] = {
+                "branch": record.get("branch"),
+                "path": record.get("path"),
+                "claimed_at": record.get("claimed_at"),
+            }
+    return held
+
+
+def _claim_next_backlog(
+    *, root: Path, state_arg: str | None, path: Path, branch: str,
+    intent: str, base: str,
+) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
+    """Atomically select dispatch's head and register its worktree claim.
+
+    `backlog.py dispatch` followed by `open --backlog <id>` is safe but not
+    convergent for two coordinators: both can read the same head, then one loses the
+    later registry race and has to start selection over. Holding the registry lock
+    across BOTH the dispatch read and `cmd_register` turns "take the next ticket"
+    into one operation. The registry still owns the claim invariant; backlog.py
+    still owns dispatch ordering and eligibility.
+
+    `cmd_register` is called directly because `wr.main()` would take the same flock
+    a second time through a fresh fd and deadlock. worktree_registry documents this
+    exact outer-lock/direct-call route as valid.
+    """
+    state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
+    store = root / BACKLOG_STORE_DIR
+    with wr._ledger_lock(state_path):
+        state = wr.load_state(state_path)
+        held = _held_from_registry_state(state)
+        # One definition of dispatch, not a local approximation. The unheld view
+        # provides the skipped count that makes contention visible to the caller.
+        ranked = backlog_tool.list_entries(store, dispatch=True, held={})
+        available = backlog_tool.list_entries(store, dispatch=True, held=held)
+        if not available:
+            return (
+                EXIT_BLOCK,
+                {"reason": "dispatch queue has no unclaimed ticket", "conflicts": []},
+                [],
+                {"mode": "dispatch-head", "eligible": len(ranked),
+                 "available": 0, "skipped_claimed": len(ranked)},
+            )
+        chosen = available[0]
+        ticket = str(chosen["id"])
+        rank = next((i for i, item in enumerate(ranked)
+                     if item.get("id") == ticket), 0)
+        register_args = argparse.Namespace(
+            state=str(state_path), at=None, path=str(path), branch=branch,
+            intent=intent, base=base, backlog=[ticket], exclusive=True, json=True,
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = wr.cmd_register(register_args)
+        try:
+            payload = json.loads(buf.getvalue())
+        except json.JSONDecodeError:
+            payload = {"reason": "registry returned unreadable claim output"}
+        return rc, payload, [ticket], {
+            "mode": "dispatch-head",
+            "eligible": len(ranked),
+            "available": len(available),
+            "skipped_claimed": rank,
+        }
 
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
     "ops/ui_quality_plane.yml": (
@@ -2678,6 +2768,15 @@ def cmd_open(args: argparse.Namespace) -> int:
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree path exists",
                "path": str(path)}, args.json, f"✗ worktree path already exists: {path}")
         return EXIT_USAGE
+    next_backlog = bool(getattr(args, "next_backlog", False))
+    if next_backlog and args.allow_ungroomed:
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "--next-backlog only selects groomed dispatch entries; "
+                        "--allow-ungroomed cannot change that queue"},
+              args.json,
+              "✗ --next-backlog and --allow-ungroomed are mutually exclusive")
+        return EXIT_USAGE
+
     wanted = list(args.backlog or [])
     # `--backlog` is forwarded ONLY when it was given. Passing it unconditionally
     # looked harmless and was not: with no ids, the argv is `["--backlog", "--json"]`
@@ -2687,21 +2786,30 @@ def cmd_open(args: argparse.Namespace) -> int:
     # and a second agent could immediately take the ticket. The registry's
     # "omit = leave alone" rule was unreachable through the only two callers that
     # exist, so the invariant this whole change adds was broken by the change itself.
-    if _refuse_unclaimable(root, wanted, args, "open", branch) is not None:
-        return EXIT_BLOCK
-
-    claim_argv = ["--backlog", *wanted] if args.backlog is not None else []
-    reg_rc, reg_payload = _registry(
-        ["register", *_state_arg(args.state), "--path", str(path), "--branch", branch,
-         "--intent", args.intent, "--base", base, *claim_argv, "--json"])
+    selection = None
+    if next_backlog:
+        reg_rc, reg_payload, wanted, selection = _claim_next_backlog(
+            root=root, state_arg=args.state, path=path, branch=branch,
+            intent=args.intent, base=base,
+        )
+    else:
+        if _refuse_unclaimable(root, wanted, args, "open", branch) is not None:
+            return EXIT_BLOCK
+        claim_argv = ["--backlog", *wanted] if args.backlog is not None else []
+        reg_rc, reg_payload = _registry(
+            ["register", *_state_arg(args.state), "--path", str(path),
+             "--branch", branch, "--intent", args.intent, "--base", base,
+             *claim_argv, "--exclusive", "--json"])
     if reg_rc != EXIT_OK:
         conflicts = (reg_payload or {}).get("conflicts", [])
         held = ", ".join(
             f"{','.join(c.get('backlog') or [])} by [{c.get('branch')}] at {c.get('path')}"
             for c in conflicts) or (reg_payload or {}).get("reason", "register refused")
-        _emit({"schema": SCHEMA, "step": "open", "error": "claim refused",
+        error = ((reg_payload or {}).get("reason")
+                 if next_backlog else "claim refused")
+        _emit({"schema": SCHEMA, "step": "open", "error": error,
                "branch": branch, "backlog": wanted, "conflicts": conflicts,
-               "registry_rc": reg_rc}, args.json,
+               "selection": selection, "registry_rc": reg_rc}, args.json,
               f"✗ cannot open [{branch}] — {held}")
         # EXIT_BLOCK, not EXIT_OK-with-a-warning: losing a race is a refusal, and
         # the exit code is the only part of this a caller's `&&` can see.
@@ -2776,6 +2884,7 @@ def cmd_open(args: argparse.Namespace) -> int:
 
     payload = {"schema": SCHEMA, "step": "open", "branch": branch, "path": str(path),
                "base": base, "intent": args.intent, "backlog": wanted,
+               "selection": selection,
                "scratch_dir": str(scratch), "registered": True}
     human = (f"✓ opened worktree [{branch}] (base {base})\n"
              f"  path: {path}\n"
@@ -4045,8 +4154,17 @@ def _integrate_state_path(state: str | None, slug: str) -> Path:
 
 def _integrate_save(path: Path, st: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(st, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8")
+    body = json.dumps(st, indent=2, ensure_ascii=False) + "\n"
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _integrate_completed_path(spath: Path, slug: str, head_sha: str) -> Path:
+    return spath.parent / "completed" / f"{slug}-{head_sha[:12]}.json"
 
 
 def _unmerged_paths(worktree: str) -> list[str]:
@@ -4175,6 +4293,20 @@ def _integrate_handoff_check(
             "warnings": warnings, "problems": problems}
 
 
+def _integrate_claim_sources(args: argparse.Namespace,
+                             st: dict[str, Any]) -> dict[str, Any]:
+    """Idempotently acquire/recover this integration's source reservations."""
+    registry_state = (Path(args.state).resolve() if args.state
+                      else wr.default_state_path())
+    return wr.claim_integration_sources(
+        registry_state,
+        source_refs=(st.get("handoff") or {}).get("source_refs", {}),
+        integration_branch=st["branch"],
+        integration_slug=st["slug"],
+        claimed_at=st["opened_at"],
+    )
+
+
 def cmd_integrate(args) -> int:
     """Converge N branches into ONE gated tree: fork off the local trunk, cherry-pick
     each branch's commits in order, stop by NAME on a conflict, and run the EXISTING
@@ -4217,11 +4349,16 @@ def cmd_integrate(args) -> int:
         return EXIT_USAGE
 
     spath = _integrate_state_path(args.state, args.slug)
-    if args.abort:
-        return _integrate_abort(args, spath)
-    if args.cont:
-        return _integrate_continue(args, spath)
-    return _integrate_start(args, spath)
+    # Same-name retries share one state file. Lock the whole transition so two
+    # coordinators cannot both observe "missing", each open a tree, then overwrite
+    # one another's queue. Different round slugs remain fully parallel; this lock
+    # is intentionally narrower than the registry lock and the landing queue.
+    with wr._ledger_lock(spath):
+        if args.abort:
+            return _integrate_abort(args, spath)
+        if args.cont:
+            return _integrate_continue(args, spath)
+        return _integrate_start(args, spath)
 
 
 def _integrate_start(args, spath: Path) -> int:
@@ -4388,6 +4525,36 @@ def _integrate_start(args, spath: Path) -> int:
         "opened_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     _integrate_save(spath, st)
+    source_claim = _integrate_claim_sources(args, st)
+    if not source_claim["ok"]:
+        # The integration tree has not received a source commit yet. Remove only
+        # that empty tree through the normal landed-floor path, so losing this race
+        # leaves neither a live branch nor a misleading in-flight state behind.
+        cleanup_rc, cleanup = _land_step(
+            cmd_resolve, state=args.state, json=True, base=args.base,
+            worktree=st["worktree"], branch=None, force=False,
+            via_integration=None, commit=True,
+        )
+        if cleanup_rc == EXIT_OK:
+            spath.unlink(missing_ok=True)
+        else:
+            # A failed compensation is still an integration tree with a registry
+            # identity. Keep enough state for `--abort --commit`; deleting it here
+            # would turn a recoverable losing race into an unattributed orphan.
+            st["source_claim"] = source_claim
+            st["cleanup_failed"] = cleanup
+            _integrate_save(spath, st)
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+            "error": "source branches already belong to another integration",
+            "source_claim": source_claim, "cleanup": cleanup,
+            "cleanup_rc": cleanup_rc, "state_cleared": cleanup_rc == EXIT_OK,
+        }, args.json,
+            "✗ integrate refused: one or more source branches already belong to "
+            "another integration")
+        return EXIT_BLOCK
+    st["source_claim"] = source_claim
+    _integrate_save(spath, st)
     return _integrate_drive(args, spath, st)
 
 
@@ -4532,17 +4699,20 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
     _integrate_save(spath, st)
     next_step = (f"{wt}/ops/worktree_orchestrate.py cutover --worktree {wt} --commit"
                  if verdict in ("pass", "warn")
-                 else f"fix the blocking gate(s), then re-run `gate` in {wt}")
+                 else f"fix the blocking gate(s), then run `{wt}/ops/"
+                      f"worktree_orchestrate.py integrate --slug {st['slug']} "
+                      "--continue --commit`")
     payload = {
         "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
         "handoff": st.get("handoff", {"checked": st["branches"],
                                         "warnings": [], "problems": []}),
+        "source_claim": st.get("source_claim"),
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "head_sha": head, "gate": st["gate"], "gate_runs": 1,
         "verdict": verdict, "landed": False, "next_step": next_step,
-        "state_cleared": True,
+        "state_cleared": verdict in ("pass", "warn"),
     }
     # The queue is drained and the gate has spoken, so there is nothing left to
     # `--continue`; keeping the file made a FINISHED integration answer the next
@@ -4551,7 +4721,25 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
     # `resolve` does not know how to strike, against a module docstring that promises
     # none. A crashed run still leaves one — that case is caught by --continue's
     # "the integration worktree is gone" refusal, which names --abort.
-    spath.unlink(missing_ok=True)
+    if verdict in ("pass", "warn"):
+        completed = {
+            **st,
+            "status": "gated",
+            "completed_at": datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            "head_sha": head,
+        }
+        manifest = _integrate_completed_path(spath, st["slug"], head)
+        _integrate_save(manifest, completed)
+        payload["manifest"] = str(manifest)
+        spath.unlink(missing_ok=True)
+    else:
+        # A blocking verdict is not terminal. Keep both the source ownership and
+        # resumable state so the coordinator can fix the integrated tree and run
+        # only the gate again, or abort and release the sources deliberately.
+        st["gate_pending"] = True
+        _integrate_save(spath, st)
+        payload["manifest"] = None
     lines = [f"# integrate {args.slug}: {len(st['picked'])} commit(s) from "
              f"{len(st['branches'])} branch(es) -> {head[:8]}",
              f"  gate verdict: {verdict}  (record {st['gate']['record']})"]
@@ -4620,6 +4808,23 @@ def _integrate_continue(args, spath: Path) -> int:
               f"✗ integrate --continue refused: {wt} is on {here!r}, not "
               f"{st.get('branch')!r}")
         return EXIT_BLOCK
+
+    # The process may have died after atomically saving the integration state but
+    # before reserving its sources. Reacquire idempotently on every continuation;
+    # if another integration claimed one in the gap, stop before touching git.
+    source_claim = _integrate_claim_sources(args, st)
+    if not source_claim["ok"]:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+            "slug": args.slug, "worktree": wt,
+            "error": "source branches already belong to another integration",
+            "source_claim": source_claim,
+        }, args.json,
+            "✗ integrate --continue refused: source ownership could not be "
+            "recovered")
+        return EXIT_BLOCK
+    st["source_claim"] = source_claim
+    _integrate_save(spath, st)
 
     unmerged = _unmerged_paths(wt)
     if unmerged:
@@ -4723,10 +4928,15 @@ def _integrate_abort(args, spath: Path) -> int:
                    "detail": out[-2000:]}, args.json,
                   f"✗ integrate --abort failed:\n{out}")
             return EXIT_BLOCK
+    registry_state = (Path(args.state).resolve() if args.state
+                      else wr.default_state_path())
+    released = wr.release_integration_sources(
+        registry_state, integration_branch=st["branch"])
     spath.unlink(missing_ok=True)
     _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
            "slug": args.slug, "worktree": wt, "aborted": op,
            "picked": st["picked"], "abandoned": st["queue"],
+           "released_sources": released,
            "worktree_removed": False, "next_step": teardown}, args.json,
           f"✓ integrate --abort: {op or 'nothing'} aborted, integration state "
           f"forgotten\n  worktree kept ({len(st['picked'])} picked commit(s)) — "
@@ -5126,6 +5336,8 @@ RESOLVE_REFUSALS = {
     "branch-contradicts-git": EXIT_BLOCK,
     "uncorroborated-branch": EXIT_BLOCK,
     "integration-ref-unresolvable": EXIT_BLOCK,
+    "integration-ref-not-landed": EXIT_BLOCK,
+    "integration-sources-active": EXIT_BLOCK,
     "rm-target-unvetted": EXIT_BLOCK,
     "unsafe-step": EXIT_BLOCK,
 }
@@ -5247,6 +5459,48 @@ def _claimed_tickets(state: str | None, branch: str) -> list[str]:
                 and rec.get("status") == "active":
             return [str(t) for t in (rec.get("backlog") or [])]
     return []
+
+
+def _close_registry_for_teardown(
+    state: str | None, branch: str,
+) -> tuple[list[str], list[str], int, dict[str, Any]]:
+    """Atomically recheck integration dependencies and close the target record.
+
+    The earlier read-only guard makes dry-run useful, but it cannot authorize a
+    destructive commit: a source reservation can appear after that read. This is
+    the linearization point shared with `claim_integration_sources`. Once this
+    returns success, the integration record is terminal, and new source claims
+    reject it as an owner before any git path is removed.
+    """
+    state_path = Path(state).resolve() if state else wr.default_state_path()
+    with wr._ledger_lock(state_path):
+        ledger = wr.load_state(state_path)
+        active = [r for r in ledger.get("records") or []
+                  if r.get("status") == wr.STATUS_ACTIVE]
+        owned = sorted(
+            str(r.get("branch")) for r in active
+            if (r.get("integration_owner") or {}).get("branch") == branch
+        )
+        if owned:
+            return owned, [], EXIT_BLOCK, {"reason": "integration sources active"}
+        targets = [r for r in active if r.get("branch") == branch]
+        claimed = sorted({str(ticket) for r in targets
+                          for ticket in (r.get("backlog") or [])})
+        if not targets:
+            # Idempotent retry after ledger closure but before git teardown finished.
+            return [], claimed, EXIT_OK, {"action": "already-closed"}
+        ns = argparse.Namespace(
+            state=str(state_path), at=None, branch=branch, path=None,
+            status="merged", json=True,
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = wr.cmd_resolve(ns)
+        try:
+            payload = json.loads(buf.getvalue())
+        except json.JSONDecodeError:
+            payload = {"reason": "registry returned unreadable resolve output"}
+        return [], claimed, rc, payload
 
 
 AUDIT_SEARCH_DEPTH = 2000
@@ -5402,6 +5656,19 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                        "--branch and let git's worktree list name the target.",
                        branch=branch)
 
+    registry_state = (Path(args.state).resolve() if args.state
+                      else wr.default_state_path())
+    owned_sources = wr.integration_sources_owned_by(registry_state, branch)
+    if owned_sources:
+        return _refuse(
+            "integration-sources-active",
+            f"integration branch {branch!r} still owns {len(owned_sources)} active "
+            "source branch(es). Resolve those sources after the final integration "
+            "has landed in the trunk, or abort the integration to release them; "
+            "deleting this tree first would erase the only durable ownership edge.",
+            branch=branch, source_branches=owned_sources,
+        )
+
     # nit2 LANDED FLOOR: resolve is a force-discard (worktree remove --force + branch -D).
     # Called out of order (before cutover) it would vaporize unlanded work. Refuse a
     # branch whose net change is NOT already in base — using the registry's tree-diff
@@ -5421,6 +5688,21 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             # the audit the SKILL prescribes, mechanically, and reports what each
             # commit was matched on.
             if args.via_integration:
+                landed_rc, _ = _git(
+                    ["merge-base", "--is-ancestor", args.via_integration, args.base],
+                    cwd=root,
+                )
+                if landed_rc != EXIT_OK:
+                    return _refuse(
+                        "integration-ref-not-landed",
+                        f"integration ref {args.via_integration!r} is not an ancestor "
+                        f"of {args.base!r}. It may contain matching patches without "
+                        "having landed them in the trunk, so it cannot authorize "
+                        "source teardown. Land the final integration first, then use "
+                        f"`--via-integration {args.base}`.",
+                        branch=branch, integration_ref=args.via_integration,
+                        base=args.base,
+                    )
                 audit = _audit_integrated(branch, args.via_integration)
                 if not audit["ok"]:
                     missing = [c for c in audit["commits"] if not c["match"]]
@@ -5572,8 +5854,23 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     # steps, and a closed record is exactly what `held_tickets`-style readers filter
     # out — so reading the claim afterwards would always answer "nothing was
     # claimed", i.e. a check that can only ever pass.
-    claimed_at_teardown = _claimed_tickets(args.state, branch)
-    _registry(["resolve", *_state_arg(args.state), "--branch", branch, "--status", "merged"])
+    newly_owned, claimed_at_teardown, registry_rc, registry_payload = \
+        _close_registry_for_teardown(args.state, branch)
+    if newly_owned:
+        return _refuse(
+            "integration-sources-active",
+            f"integration branch {branch!r} gained {len(newly_owned)} active "
+            "source branch(es) while resolve was preparing. Nothing was deleted; "
+            "resolve those sources after the final integration lands, then retry.",
+            branch=branch, source_branches=newly_owned,
+        )
+    if registry_rc != EXIT_OK:
+        return _refuse(
+            "unsafe-step",
+            f"registry refused to close {branch!r} before git teardown: "
+            f"{registry_payload.get('reason', registry_payload)}",
+            branch=branch, registry=registry_payload,
+        )
     # FAIL-FAST on the steps later ones depend on. Half of the incident lived here:
     # `worktree remove --force` returned 128 and the loop went on to run `branch -D`
     # and `push origin --delete` anyway. Correct targeting makes those two harmless;
@@ -5744,13 +6041,22 @@ def build_parser() -> argparse.ArgumentParser:
     add_base(op)
     op.add_argument("--intent", required=True, help="free-text intent (drives branch type)")
     op.add_argument("--slug", required=True, help="kebab-case slug for branch + path")
-    op.add_argument(
+    claim_mode = op.add_mutually_exclusive_group()
+    claim_mode.add_argument(
         "--backlog", nargs="*", default=None, metavar="ID",
         help="backlog ticket ids to CLAIM for this worktree. The claim is taken "
              "before anything is created, so losing the race costs you nothing: "
              "no branch, no directory, and a non-zero exit. Refused when another "
              "ACTIVE ledger record already holds one of them; the claim is released "
              "by `resolve`/`sweep`, with no separate release step.",
+    )
+    claim_mode.add_argument(
+        "--next-backlog", action="store_true",
+        help="atomically take dispatch's current worst-first head and claim it for "
+             "this worktree. Selection and claim share the registry lock, so two "
+             "coordinators starting together receive different tickets instead of "
+             "both selecting one id and making a loser retry. Only groomed, "
+             "unresolved, unclaimed and unblocked entries are eligible.",
     )
     op.add_argument(
         "--allow-ungroomed", action="store_true",

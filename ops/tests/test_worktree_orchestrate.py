@@ -33,6 +33,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
@@ -5189,6 +5190,64 @@ def test_open_without_a_ticket_still_works_and_claims_nothing(scratch):
 
 
 @gitmark
+def test_open_next_backlog_claims_the_next_available_ticket_instead_of_racing_on_a_stale_list(
+        scratch):
+    """Two coordinators must not both read the same dispatch head and make one lose.
+
+    The selection and the registry claim are one operation: after the first caller
+    takes the worst-first head, the second caller moves to the next still-unclaimed
+    entry without being handed the first id and refused.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+
+    rc1, first = _run_json([
+        "open", "--intent", "round four lane", "--slug", "round-four-01",
+        "--next-backlog", "--state", state, "--json",
+    ])
+    rc2, second = _run_json([
+        "open", "--intent", "round five lane", "--slug", "round-five-01",
+        "--next-backlog", "--state", state, "--json",
+    ])
+
+    assert (rc1, rc2) == (MODULE.EXIT_OK, MODULE.EXIT_OK)
+    assert first["backlog"] == ["IMP-0001"], first
+    assert second["backlog"] == ["IMP-0002"], second
+    assert first["selection"]["mode"] == "dispatch-head"
+    assert second["selection"]["skipped_claimed"] == 1
+
+    active = [r for r in json.loads(Path(state).read_text())["records"]
+              if r["status"] == "active"]
+    assert {r["backlog"][0] for r in active} == {"IMP-0001", "IMP-0002"}
+
+
+@gitmark
+def test_parallel_next_backlog_claims_are_distinct_inside_the_ledger_critical_section(
+        scratch):
+    """Pin the lock boundary, not merely the happy sequential result."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+
+    def take(lane):
+        return MODULE._claim_next_backlog(
+            root=repo, state_arg=state,
+            path=repo / ".claude" / "worktrees" / lane,
+            branch=f"feat/{lane}", intent=lane, base="main",
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(take, ["r4-1", "r4-2", "r5-1", "r5-2"]))
+
+    assert [r[0] for r in results] == [MODULE.EXIT_OK] * 4
+    claimed = [r[2][0] for r in results]
+    assert len(set(claimed)) == 4, claimed
+    records = [r for r in json.loads(Path(state).read_text())["records"]
+               if r["status"] == "active"]
+    assert len(records) == 4
+    assert len({ticket for r in records for ticket in r["backlog"]}) == 4
+
+
+@gitmark
 def test_adopting_a_live_worktree_does_not_quietly_release_its_ticket(scratch):
     """The invariant this whole change adds, broken by the change itself.
 
@@ -6133,6 +6192,18 @@ def test_a_groomed_open_ticket_is_claimable(tmp_path):
     assert MODULE._unclaimable(store, ["IMP-20260808-aaaaaa"]) == []
 
 
+def test_an_explicit_claim_cannot_walk_around_dispatch_blocking_edges(tmp_path):
+    blocker = "IMP-20260808-aaaaaa"
+    blocked = "IMP-20260808-bbbbbb"
+    store = _ticket(tmp_path, blocker, **GROOMED)
+    _ticket(tmp_path, blocked, blocked_by=[blocker], **GROOMED)
+
+    problems = MODULE._unclaimable(store, [blocked])
+
+    assert [p["kind"] for p in problems] == ["blocked-by-unresolved"], problems
+    assert problems[0]["blockers"] == [blocker]
+
+
 def test_claiming_a_ticket_that_is_not_in_the_store_is_refused(tmp_path):
     """A typo used to claim a ticket that does not exist, and the ledger then held
     an id nobody could ever close."""
@@ -6408,6 +6479,35 @@ def test_resolve_refuses_without_the_flag_and_accepts_with_it(scratch):
     assert not Path(wt).exists(), "worktree survived a vouched-for resolve"
 
 
+def test_resolve_refuses_an_integration_ref_that_has_not_landed_in_the_base(scratch):
+    """A branch may vouch for the patch without vouching that it reached main."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "lane", "--slug", "unlanded-source",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "source.txt").write_text("source work\n", encoding="utf-8")
+    _git(["add", "source.txt"], wt)
+    _git(["commit", "-qm", "ops: source work"], wt)
+    source_sha = _git(["rev-parse", "HEAD"], wt).strip()
+
+    # The integration branch contains the source patch, but main does not. Before
+    # this guard, --via-integration accepted the patch-id and deleted the only source
+    # worktree even though nothing had landed in the trunk.
+    _git(["checkout", "-q", "-b", "feat/unlanded-integration", "main"], repo)
+    _git(["cherry-pick", source_sha], repo)
+    _git(["checkout", "-q", "main"], repo)
+
+    rc, refused = _run_json([
+        "resolve", "--worktree", wt, "--state", state,
+        "--via-integration", "feat/unlanded-integration", "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, refused
+    assert refused["reason_code"] == "integration-ref-not-landed", refused
+    assert Path(wt).is_dir(), "an unlanded integration ref was allowed to delete source work"
+
+
 # ---------------------------------------------------------------------------
 # integrate — N branches, ONE gate (IMP-20260807-267d60)
 #
@@ -6454,15 +6554,17 @@ def _run_integrate_json(argv):
 
 
 def _seed_handoff(state, repo, branch, sha):
-    Path(state).write_text(json.dumps({
-        "schema": "kg.worktree.registry.v1",
-        "records": [{
-            "path": str(repo), "branch": branch, "intent": "fixture",
-            "base": "main", "created_at": "2999-01-01T00:00:00Z", "status": "active",
-            "resolved_at": None, "backlog": [], "claimed_at": None,
-            "handed_back_at": "2999-01-01T00:00:00Z", "handed_back_sha": sha,
-        }],
-    }))
+    path = Path(state)
+    ledger = (json.loads(path.read_text()) if path.exists() else {
+        "schema": "kg.worktree.registry.v1", "records": [],
+    })
+    ledger["records"].append({
+        "path": str(repo), "branch": branch, "intent": "fixture",
+        "base": "main", "created_at": "2999-01-01T00:00:00Z", "status": "active",
+        "resolved_at": None, "backlog": [], "claimed_at": None,
+        "handed_back_at": "2999-01-01T00:00:00Z", "handed_back_sha": sha,
+    })
+    path.write_text(json.dumps(ledger))
 
 
 def _conflicting_pair(repo):
@@ -6900,6 +7002,161 @@ def test_integrate_accepts_a_branch_whose_tip_matches_hand_back(scratch):
 
 
 @gitmark
+def test_a_handed_back_branch_can_feed_only_one_live_integration(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    handed_back = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _seed_handoff(state, repo, "feat/a", handed_back)
+
+    rc, first = _run_json([
+        "integrate", "--slug", "round-four", "--branches", "feat/a",
+        "--state", state, "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, first
+    assert first["mode"] == "picked", first
+
+    rc, second = _run_json([
+        "integrate", "--slug", "round-five", "--branches", "feat/a",
+        "--state", state, "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, second
+    assert second["error"] == "source branches already belong to another integration"
+    conflict = second["source_claim"]["conflicts"][0]
+    assert conflict["branch"] == "feat/a", conflict
+    assert conflict["owner"]["branch"] == first["branch"], conflict
+    assert not (Path(repo) / ".claude" / "worktrees" / "round-five").exists()
+
+
+@gitmark
+def test_integrate_continue_recovers_a_crash_between_state_and_source_claim(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    handed_back = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _seed_handoff(state, repo, "feat/a", handed_back)
+    rc, picked = _run_json([
+        "integrate", "--slug", "round-four", "--branches", "feat/a",
+        "--state", state, "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, picked
+
+    assert MODULE.wr.release_integration_sources(
+        Path(state), integration_branch=picked["branch"]) == ["feat/a"]
+    spath = MODULE._integrate_state_path(state, "round-four")
+    saved = json.loads(spath.read_text())
+    saved.pop("source_claim", None)
+    spath.write_text(json.dumps(saved))
+
+    rc, resumed = _run_json([
+        "integrate", "--slug", "round-four", "--state", state,
+        "--continue", "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, resumed
+    records = json.loads(Path(state).read_text())["records"]
+    source = next(r for r in records if r["branch"] == "feat/a")
+    assert source["integration_owner"]["branch"] == picked["branch"], source
+
+
+@gitmark
+def test_an_integration_tree_survives_until_its_sources_are_resolved(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    handed_back = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _seed_handoff(state, repo, "feat/a", handed_back)
+
+    rc, integrated = _run_json([
+        "integrate", "--slug", "round-four", "--branches", "feat/a",
+        "--state", state, "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, integrated
+
+    rc, refused = _run_json([
+        "resolve", "--worktree", integrated["worktree"], "--state", state,
+        "--force", "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, refused
+    assert refused["reason_code"] == "integration-sources-active", refused
+    assert refused["source_branches"] == ["feat/a"], refused
+    assert Path(integrated["worktree"]).is_dir()
+
+
+@gitmark
+def test_two_round_integrations_converge_through_one_parent_gate_and_cutover(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    leaf_specs = {
+        "feat/r4-a": {"r4-a.txt": "r4-a\n"},
+        "feat/r4-b": {"r4-b.txt": "r4-b\n"},
+        "feat/r5-a": {"r5-a.txt": "r5-a\n"},
+        "feat/r5-b": {"r5-b.txt": "r5-b\n"},
+    }
+    for branch, files in leaf_specs.items():
+        sha = _make_branch(repo, branch, files, f"work: {branch}")
+        _seed_handoff(state, repo, branch, sha)
+
+    rc, round4 = _run_json([
+        "integrate", "--slug", "round-four", "--branches",
+        "feat/r4-a", "feat/r4-b", "--state", state, "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, round4
+    rc, round5 = _run_json([
+        "integrate", "--slug", "round-five", "--branches",
+        "feat/r5-a", "feat/r5-b", "--state", state, "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, round5
+
+    for branch in (round4["branch"], round5["branch"]):
+        rc, handoff = MODULE._registry([
+            "hand-back", "--state", state, "--branch", branch, "--json",
+        ])
+        assert rc == MODULE.EXIT_OK, handoff
+
+    rc, parent = _run_json([
+        "integrate", "--slug", "rounds-four-five", "--branches",
+        round4["branch"], round5["branch"], "--state", state,
+        "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, parent
+    assert parent["verdict"] in ("pass", "warn"), parent
+    for rel, body in {k: v for files in leaf_specs.values()
+                      for k, v in files.items()}.items():
+        assert (Path(parent["worktree"]) / rel).read_text() == body
+
+    rc, landed = _run_json([
+        "cutover", "--worktree", parent["worktree"], "--state", state,
+        "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK and landed["landed"] is True, landed
+    assert _git(["rev-parse", "main"], repo) == parent["head_sha"]
+    assert len(MODULE.gate_history_rows(state)) == 3, (
+        "the two round gates and the one parent gate are the three intended "
+        "integrated-tree judgements; leaf gates belong to their workers")
+
+    # The synthetic leaves share the fixture's primary path, so close their ledger
+    # records directly; real workers use orchestrator resolve and remove their own
+    # distinct worktrees. Once those ownership edges are terminal, the two round
+    # trees and finally the parent can be torn down in dependency order.
+    for branch in leaf_specs:
+        rc, closed = MODULE._registry([
+            "resolve", "--state", state, "--branch", branch,
+            "--status", "merged", "--json",
+        ])
+        assert rc == MODULE.EXIT_OK, closed
+    for round_result in (round4, round5):
+        rc, closed = _run_json([
+            "resolve", "--worktree", round_result["worktree"], "--state", state,
+            "--via-integration", "main", "--commit", "--json",
+        ])
+        assert rc == MODULE.EXIT_OK, closed
+    rc, closed = _run_json([
+        "resolve", "--worktree", parent["worktree"], "--state", state,
+        "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, closed
+    ledger = json.loads(Path(state).read_text())
+    assert [r for r in ledger["records"] if r["status"] == "active"] == []
+
+
+@gitmark
 def test_integrate_allow_unhanded_is_explicit_and_names_the_warning(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
@@ -7030,6 +7287,12 @@ def test_integrate_forgets_a_finished_integration(scratch):
     assert rc == MODULE.EXIT_OK, pay
     assert pay["state_cleared"] is True, pay
     assert not MODULE._integrate_state_path(state, "batch").exists()
+    manifest = Path(pay["manifest"])
+    assert manifest.is_file(), pay
+    completed = json.loads(manifest.read_text())
+    assert completed["status"] == "gated", completed
+    assert completed["head_sha"] == pay["head_sha"], completed
+    assert completed["branches"] == ["feat/a"], completed
 
     # …and the follow-on question the residue used to answer wrongly.
     rc, again = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
@@ -7043,6 +7306,32 @@ def test_integrate_forgets_a_finished_integration(scratch):
     assert "already in flight" not in again["error"], again["error"]
     assert "resolving" not in again["error"], again["error"]
     assert "start one with" in again["error"], again["error"]
+
+
+@gitmark
+def test_a_blocking_integrated_gate_keeps_state_for_retry_or_abort(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    (Path(repo) / "ops").mkdir()
+    handed_back = _make_branch(
+        repo, "feat/bad-shell", {"ops/bad-round.sh": "if then\n"},
+        "ops: add invalid shell fixture",
+    )
+    _seed_handoff(state, repo, "feat/bad-shell", handed_back)
+
+    rc, blocked = _run_json([
+        "integrate", "--slug", "blocked-round", "--branches", "feat/bad-shell",
+        "--state", state, "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, blocked
+    assert blocked["verdict"] == "block", blocked
+    assert blocked["state_cleared"] is False, blocked
+    assert blocked["manifest"] is None, blocked
+    saved = json.loads(
+        MODULE._integrate_state_path(state, "blocked-round").read_text())
+    assert saved["gate_pending"] is True, saved
+    assert saved["source_claim"]["claimed"] == ["feat/bad-shell"], saved
+    assert "--continue --commit" in blocked["next_step"], blocked
 
 
 @gitmark
