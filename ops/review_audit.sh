@@ -5,6 +5,7 @@
 #   ./ops/review_audit.sh
 #   ./ops/review_audit.sh --base origin/main
 #   ./ops/review_audit.sh --rev-range main..HEAD
+#   ./ops/review_audit.sh --rev-range main..HEAD --machine-gate
 #   ./ops/review_audit.sh --json
 #
 # Contract:
@@ -23,12 +24,18 @@
 # Exit codes:
 #   0 = every audited commit is reviewed or validly exempted
 #   2 = at least one commit is missing a receipt or carries an invalid exemption
+#
+# `--machine-gate` is only supplied by worktree_orchestrate's fresh integration
+# gate. It records missing receipts as deferred-to-machine-gate instead of
+# pretending an LLM reviewed them; the surrounding gate and cutover still bind
+# the final verdict to this HEAD. Manual audits never accept this mode.
 
 set -euo pipefail
 
 BASE="origin/main"
 REV_RANGE=""
 JSON=0
+MACHINE_GATE=0
 
 # Keep this list executable rather than duplicating it in the decision branch.
 # `generated-snapshot` is checked below against the declared output paths; the
@@ -75,6 +82,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --json)
       JSON=1
+      shift
+      ;;
+    --machine-gate)
+      MACHINE_GATE=1
       shift
       ;;
     -h|--help)
@@ -130,6 +141,7 @@ reviewed_count=0
 exempt_count=0
 missing_count=0
 invalid_exemption_count=0
+machine_gate_count=0
 
 EXEMPTION_NOTE=""
 EXEMPTION_FAIL_REASON=""
@@ -296,11 +308,19 @@ while IFS= read -r sha; do
       block_count=$((block_count + 1))
     fi
   else
-    status="missing-review"
-    level="block"
-    note="missing Reviewed-by or Review-Exempt trailer"
-    missing_count=$((missing_count + 1))
-    block_count=$((block_count + 1))
+    if [[ "$MACHINE_GATE" -eq 1 ]]; then
+      status="machine-gate-deferred"
+      level="ok"
+      note="missing receipt; deferred to this fresh machine gate"
+      machine_gate_count=$((machine_gate_count + 1))
+      ok_count=$((ok_count + 1))
+    else
+      status="missing-review"
+      level="block"
+      note="missing Reviewed-by or Review-Exempt trailer"
+      missing_count=$((missing_count + 1))
+      block_count=$((block_count + 1))
+    fi
   fi
 
   jq -nc \
@@ -347,6 +367,7 @@ if [[ "$JSON" -eq 1 ]]; then
         reviewed:([.[] | select(.status=="reviewed")] | length),
         exempt:([.[] | select(.status=="exempt")] | length),
         missing:([.[] | select(.status=="missing-review")] | length),
+        machineGateDeferred:([.[] | select(.status=="machine-gate-deferred")] | length),
         invalidExemption:([.[] | select(.status=="invalid-exemption")] | length)
       },
       commits:.

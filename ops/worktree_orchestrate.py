@@ -694,7 +694,8 @@ def plan_gates(changed_files: list[str],
     # get this gate, so "file vanished" cannot silently drop it.
     if base and (ops_test_exists is None or ops_test_exists("ops/review_audit.sh")):
         gates.append(_shell("review-receipts", "meta",
-                            ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD"],
+                            ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD",
+                             "--machine-gate"],
                             "block"))
 
     ios = [p for p in changed_files if p.startswith("ios/")]

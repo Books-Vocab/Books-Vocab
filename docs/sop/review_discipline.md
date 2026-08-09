@@ -51,6 +51,13 @@ verified_against: 785f64052
 
 `machine-repair` 與 `backlog-grooming` 都是**路徑受檢的資料例外，不是通用免審通行證**。`backlog-grooming` 的資料語意仍由 backlog gate 負責，review receipt gate 不替它宣稱資料正確。
 
+批次整合另有一條**不寫入 commit message 的機器審核路徑**：整合者從
+`worktree_orchestrate.py integrate --continue --commit` 觸發 fresh gate 時，工具會以
+`--machine-gate` 執行 receipt audit。此模式把缺少 receipt 的 commit 明確記成
+`machine-gate-deferred`，不冒充 LLM 已審；同一批的其餘機器 gate 仍必須通過，且
+`cutover` 只接受綁定這個 HEAD 的 fresh verdict。手動執行 `review_audit.sh` 不會進入此模式，
+明確寫錯的 exemption 仍然 BLOCK。這是批次的成本取捨，不是永久免審。
+
 ## Review cycle 的有界收斂
 
 逐項 review 不等於無限重審。對同一個**完整 40/64 位 commit SHA × scope**，用
