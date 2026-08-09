@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "使用者原話（2026-08-09）：\n「1. 我想在改閱讀設定的時候即時呈現那種預覽，和卡片排版調整一樣的視覺模型\n  2. 確保卡片排版調整和閱讀調整的心智模型相同（都可以在個別頁面調整、操作哲學\n     差不多、外觀差不多，都用最新 IOS26 UI best practice、入口差不多, etc.）」\n\n現況（讀碼確認，兩頁都已在 APP-20260808-240a94 之後改成原生 Form/Section）：\n\n| | 複習卡版面（ReviewCardLayoutEditor） | 閱讀設定（ReaderSettingsPresenter+Vocab） |\n|---|---|---|\n| 容器 | `Form` + `Section` | `Form` + `Section` ✅已一致 |\n| 區段頭尾 | `SettingsSectionHeader/Footer` | 同 ✅已一致 |\n| **即時預覽** | **有** —— `ReviewCardLayoutPreviewCard`，內部是真的 `ReviewCardView` | **沒有**，改完要關掉面板才知道效果 |\n| **重置** | toolbar `.primaryAction` 有 `resetMenu` | **沒有** |\n| **入口** | 兩個（複習工具列 + 設定▸偏好） | 一個（閱讀器 chrome 的「大小」） |\n| **L10n key** | dot-key（`reviewCardLayout.title`） | **16 處把中文字面當 key**（`L10n.string(\"閱讀設定\")`） |\n\n第三列是使用者要的第 1 點；後三列是第 2 點的具體落差。\n\n第四列（L10n key）是本輪 APP-20260808-240a94 改寫時帶進來的：i18n_lint 過得了\n（字串確實包在 `L10n.string` 裡），但 key 本身是中文字面，與全 repo 的 dot-key\n慣例不同。這種 key 在 `Localizable.strings` 裡沒有對應條目時會 fallback 成 key\n本身，剛好在繁中看起來是對的——所以它的錯誤在繁中以外的語言才會顯現。",
   "fix_site": "ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift (new), ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:26, ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:34, ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift:84, ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayoutEditor.swift:108, ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift",
+  "fixed_by": [
+    "a070fd69f6981e8b10310632c30b6d7d8b2033cb"
+  ],
   "groomed_at": "2026-08-09",
   "groomed_by": "main-session",
   "id": "APP-20260809-ca8e30",
@@ -17,7 +20,11 @@
   "scope": "閱讀設定頁加一張即時預覽，並把它與複習卡版面頁的重置、入口、字串慣例對齊。",
   "severity": "med",
   "source": "使用者 2026-08-09 追加需求",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "reader"
+  "surface": "reader",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "APP-20260809-ca8e30 驗證證據  2026-08-09 12:40:04\nbranch feat/reader-settings-preview @ 56c12990a（base feat/integrate-20260809）\n\n== 票面 acceptance_cmd（從 store 取，未抄本機）==\n$ ./ops/backlog.py show APP-20260809-ca8e30 --json | <取 acceptance_cmd> > acc.sh && bash acc.sh\nOK\nrc=0\n\n== ./ops/i18n_lint.sh --baseline-check ==\n[i18n_lint] total: 0 (raw=0 return=0 fmt=0 missing_keys=0 en_cjk=0 plural=0 localized_calls=331)\n[i18n_lint] ok: 0 <= baseline 0\n\n== ./ops/ui_token_lint.py --baseline-check ==\n[ui_token_lint] OK — 0 finding(s), all within baseline of 0.\n\n== Localizable.strings 語法（plutil -lint）==\nios/BooksAndVocab/en.lproj/Localizable.strings: OK\nios/BooksAndVocab/zh-Hant.lproj/Localizable.strings: OK\nios/BooksAndVocab/zh-Hans.lproj/Localizable.strings: OK\nios/BooksAndVocab/ja.lproj/Localizable.strings: OK\nios/BooksAndVocab/ko.lproj/Localizable.strings: OK\n\n== 五份 lproj key 集合 ==\n   reader.settings.* 各 23 筆 + reader.theme.* 各 3 筆，兩兩比對無 missing / 無 extra\n\n== code-reviewer subagent ==\n   verdict: PASS（無 BLOCK）；編譯面逐項核完（construction sites / 新檔依賴 /\n   pbxproj synchronized group / HSL 數學 / PostScript name 實際 parse TTF 驗證）\n   其提出的 1 個實質缺陷（.system 外觀下預覽主題分岔）與 4 項過度宣稱已於 56c12990a 修掉\n\n== 未執行（本回合硬約束：禁用任何 Xcode 工具，由整合者統一跑）==\n   ./ops/ios_ops.sh build   — 未跑，編譯未驗證\n   ./ops/ios_ops.sh test    — 未跑；新增的 ReaderPreviewStyleSourceTests 亦未跑"
 }

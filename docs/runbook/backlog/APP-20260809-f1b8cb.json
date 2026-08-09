@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "在「設定 ▸ 偏好 ▸ 閱讀設定」頁上，把主題從淺色切到深色的當下，該頁**只有 tint\n那一組元素**變成近白（右上重置鍵的字符、閱讀模式與字體 Picker 的值、選中列的勾、\n左側三個主題圖示），背景與一般標籤仍是淺色模式。近白畫在淺灰底上等於消失。\n\n實測（2026-08-09，iPhone 17 Pro Max simulator iOS 26.4，\nbuild=feat/reader-settings-preview @ 8 顆 commit）：\n\n- **單向**：淺色 → 深色 會半殘；深色 → 淺色 正常。所以不是「背景不重繪」那一族\n  （那會兩個方向都壞）。\n- 退出該頁再進去即正確，所以值是對的、是就地重繪沒有涵蓋 tint。\n- 設定 sheet 的**根層**在同一次切換後是正確的深色（背景、標籤、tint 皆對），\n  只有 push 進去的子頁半殘。\n\n相關但**不是**根因的既有行為：閱讀器主題選擇器寫的是整個 app 的外觀\n（`ReaderSettingsPanel.selectTheme` → `appearanceStore.setAppearance`），\n這在本分支之前就是如此（最後動它的是一次 rename commit）。所以「切主題會讓整個\napp 變深色」是設計，不是缺陷；缺陷是那個切換沒有把子頁的 tint 一起帶過去。\n\n時機最糟：使用者正在選主題的那一秒，控制項不見了。",
   "fix_site": "ios/BooksAndVocab/Models/AppAppearanceMode.swift — 新增 appResolvedColorScheme\n環境鍵與 appAppearanceScheme() modifier（根因的修法本體）\nios/BooksAndVocab/Models/AppTheme.swift — AppThemeContainer 把解析後的具體\nlight/dark 寫進環境（唯一讀得到裝置真實 colorScheme 的位置）\nios/BooksAndVocab/UIComponents/View+ToastSheet.swift — 兩個 toastSheet seam\nios/BooksAndVocab/Platform/PlatformCompatibility.swift — 兩個\nplatformFullScreenCover seam\nios/BooksAndVocab/Views/Reader/ReaderView.swift — 閱讀設定的閱讀器入口\nios/BooksAndVocab/UIComponents/AuthGateSheets.swift — loginSheet\nios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift — 兩個 sheet\nios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift — 複製 sheet\nios/BooksAndVocabTests/SheetAppearanceBoundaryTests.swift — 防復發 fence",
+  "fixed_by": [
+    "a070fd69f6981e8b10310632c30b6d7d8b2033cb"
+  ],
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-engineer",
   "id": "APP-20260809-f1b8cb",
@@ -17,7 +20,11 @@
   "scope": "一個共用的外觀重新宣告，掛在全部七個 sheet 開口上，含一支防復發測試。",
   "severity": "med",
   "source": "主 session 實機操作，本輪功能驗收時撞到",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "reader"
+  "surface": "reader",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "./ops/ios_ops.sh build ✓; ./ops/ios_ops.sh test ✓ 2036/2036; ./ops/ios_ops.sh test --file SheetAppearanceBoundaryTests.swift ✓ 3/3（修法前實測為紅）; ./ops/i18n_lint.sh --baseline-check ✓ 0<=0; ./ops/ui_token_lint.py --baseline-check ✓ 0; 模擬器 iPhone 17 Pro Max iOS 26.4 視覺驗收七格全綠且全部就地生效"
 }
