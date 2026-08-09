@@ -130,6 +130,43 @@ else
   sed 's/^/      /' "$scan_log" >&2
 fi
 
+section "tag commands name their repository"
+tag_fixture="$TMPDIR/tag_context"
+mkdir -p "$tag_fixture"
+for fixture_file in bad.sh safe-c.sh safe-dir.sh safe-push-c.sh safe-push-dir.sh \
+  comment.sh text.sh filler-1.sh filler-2.sh filler-3.sh; do
+  printf '%s\n' '#!/usr/bin/env bash' >"$tag_fixture/$fixture_file"
+done
+printf '%s\n' \
+  'git tag bad' \
+  'git push --tags origin' \
+  >"$tag_fixture/bad.sh"
+printf '%s\n' 'git -C "$fixture_repo" tag safe' >"$tag_fixture/safe-c.sh"
+printf '%s\n' 'git --git-dir="$fixture_repo/.git" tag safe' >"$tag_fixture/safe-dir.sh"
+printf '%s\n' 'git -C "$fixture_repo" push --tags origin' >"$tag_fixture/safe-push-c.sh"
+printf '%s\n' 'git --git-dir="$fixture_repo/.git" push --tags origin' >"$tag_fixture/safe-push-dir.sh"
+printf '%s\n' '# git tag is only documentation' '# git push --tags is only documentation' \
+  >"$tag_fixture/comment.sh"
+printf '%s\n' 'echo "git tag is only explanation"' "grep -q 'git push --tags' \"\$file\"" \
+  >"$tag_fixture/text.sh"
+git init -q -b main "$tag_fixture"
+git -C "$tag_fixture" config user.name "shell-scan-test"
+git -C "$tag_fixture" config user.email "shell-scan-test@example.invalid"
+git -C "$tag_fixture" add -- bad.sh safe-c.sh safe-dir.sh safe-push-c.sh safe-push-dir.sh \
+  comment.sh text.sh filler-1.sh filler-2.sh filler-3.sh
+tag_probe_rc=0
+tag_probe="$("$WORKTREE/ops/shell_scan.sh" "$tag_fixture" 2>&1)" || tag_probe_rc=$?
+if [[ $tag_probe_rc -ne 1 ]]; then
+  fail_t "tag scanner must reject a bare tag command (rc=$tag_probe_rc)"
+  sed 's/^/      /' <<<"$tag_probe"
+elif grep -q 'bad.sh:1' <<<"$tag_probe" && grep -q 'bad.sh:2' <<<"$tag_probe" \
+  && ! grep -Eq 'safe-(c|dir|push-c|push-dir)\.sh|comment\.sh|text\.sh' <<<"$tag_probe"; then
+  ok "tag scanner rejects bare tag/push and spares explicit repo targets/text"
+else
+  fail_t "tag scanner output does not prove bare-vs-targeted behavior"
+  sed 's/^/      /' <<<"$tag_probe"
+fi
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"
