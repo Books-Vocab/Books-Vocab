@@ -32,6 +32,85 @@ ROOT = Path(__file__).resolve().parents[2]
 WORLD_PATH = ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
 VOCAB_LIST_SCENE = ROOT / "ios" / "BooksAndVocab" / "Debug" / "Scenarios" / "VocabularyListViewScenarios.swift"
 GRAPH_SCENE = ROOT / "ios" / "BooksAndVocab" / "Debug" / "Scenarios" / "KnowledgeGraphViewScenarios.swift"
+CATALOG_SCENE = ROOT / "ios" / "BooksAndVocab" / "Debug" / "CatalogScene.swift"
+SCENARIOS_DIR = ROOT / "ios" / "BooksAndVocab" / "Debug" / "Scenarios"
+
+FROZEN_SCREEN_ID_COUNT = 20
+FROZEN_DEBUG_SCENARIO_FILES = frozenset(
+    {
+        "AppStartupRecoveryScenarios.swift",
+        "ArchivedVocabScenarios.swift",
+        "BannerScenarios.swift",
+        "BookCardScenarios.swift",
+        "BookshelfViewScenarios.swift",
+        "CollocationExplainScenarios.swift",
+        "DeleteAccountSheetScenarios.swift",
+        "ExploreViewScenarios.swift",
+        "KGVocabEmptyStateScenarios.swift",
+        "KGVocabRowScenarios.swift",
+        "KGVocabSearchScenarios.swift",
+        "KnowledgeGraphViewScenarios.swift",
+        "LinkReasonSheetScenarios.swift",
+        "LoginSheetScenarios.swift",
+        "MarketingReviewClock.swift",
+        "NotebookCardEditorialCoverScenarios.swift",
+        "NotebookCoverScenarios.swift",
+        "NotebookEditSheetScenarios.swift",
+        "NotebookFilterChipScenarios.swift",
+        "NotebookListScenarios.swift",
+        "NotebookListViewScenarios.swift",
+        "NotebookReviewActionBarScenarios.swift",
+        "NotebooksScenarios.swift",
+        "PDFReaderViewScenarios.swift",
+        "PaywallScenarios.swift",
+        "PodcastContinueCardScenarios.swift",
+        "PodcastEpisodeListViewScenarios.swift",
+        "PodcastHomeViewScenarios.swift",
+        "PodcastPlayerScenarios.swift",
+        "PodcastPlayerViewScenarios.swift",
+        "PodcastSentenceCellsScenarios.swift",
+        "PodcastSeriesHeroScenarios.swift",
+        "PodcastSettingsPopoverScenarios.swift",
+        "PodcastShelfCardsScenarios.swift",
+        "PodcastShelfScenarios.swift",
+        "ReaderChromeScenarios.swift",
+        "ReaderNotebookPickerScenarios.swift",
+        "ReaderScenarios.swift",
+        "ReaderSelectionTileScenarios.swift",
+        "ReviewCalendarScenarios.swift",
+        "ReviewFoldScenarios.swift",
+        "SelectionToolbarScenarios.swift",
+        "SettingsAccountDetailScenarios.swift",
+        "SettingsAccountSectionScenarios.swift",
+        "SettingsActionsScenarios.swift",
+        "SettingsScenarios.swift",
+        "SettingsSectionsScenarios.swift",
+        "SettingsSubscriptionSectionScenarios.swift",
+        "SharedDeckCatalogFixtures.swift",
+        "SharedDeckDetailViewScenarios.swift",
+        "StatsViewScenarios.swift",
+        "SubscriptionViewsScenarios.swift",
+        "SyncScenarios.swift",
+        "SyncViewScenarios.swift",
+        "TodayReviewPhaseScenarios.swift",
+        "TodayReviewScenarios.swift",
+        "TodayReviewShortcutScenarios.swift",
+        "TranslationLanguageSettingsScenarios.swift",
+        "VocabActivityHeatmapScenarios.swift",
+        "VocabCalendarGridScenarios.swift",
+        "VocabComponentScenarios.swift",
+        "VocabForecastScenarios.swift",
+        "VocabHighlightPickerScenarios.swift",
+        "VocabScenarios.swift",
+        "VocabSceneShellScenarios.swift",
+        "VocabShellChromeScenarios.swift",
+        "VocabShellComponentsScenarios.swift",
+        "VocabularyListViewScenarios.swift",
+        "WelcomeScenarios.swift",
+        "WordDetailScenarios.swift",
+        "WordEditScenarios.swift",
+    }
+)
 
 
 def _world() -> dict:
@@ -79,6 +158,24 @@ def _declared_int(source: str, pattern: str, label: str) -> int:
     matches = re.findall(pattern, source)
     assert len(matches) == 1, f"{label}: 期望剛好一個匹配，實得 {len(matches)}（pattern={pattern!r}）"
     return int(matches[0])
+
+
+def _screen_id_cases() -> list[str]:
+    source = CATALOG_SCENE.read_text(encoding="utf-8")
+    enum = re.search(
+        r"enum\s+ScreenID\s*:\s*String\s*,\s*CaseIterable\s*\{(?P<body>.*?)\n\s*\}",
+        source,
+        flags=re.S,
+    )
+    assert enum, "找不到 CatalogScene.ScreenID 的 CaseIterable enum 區塊"
+    declarations = re.findall(
+        r"^\s*case\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)",
+        enum.group("body"),
+        flags=re.M,
+    )
+    cases = [name for declaration in declarations for name in re.split(r"\s*,\s*", declaration)]
+    assert cases, "CatalogScene.ScreenID enum 沒有任何 case"
+    return cases
 
 
 def test_vocabulary_list_marketing_scene_expectation_matches_frozen_world() -> None:
@@ -157,3 +254,22 @@ def test_frozen_world_graph_links_are_bidirectional_pairs() -> None:
     assert all(count > 0 for count in degree.values())
     pairs = {frozenset((link["from"], link["to"])) for link in links}
     assert len(pairs) * 2 == len(links), f"link 不再是雙向成對：{len(links)} 條落在 {len(pairs)} 組"
+
+
+def test_freeze_screen_id_count_does_not_grow() -> None:
+    """`docs/reference/catalog_scope.md` §FROZEN 紅線 1、2：凍結期不擴張 catalog。"""
+    cases = _screen_id_cases()
+    assert len(cases) == FROZEN_SCREEN_ID_COUNT, (
+        "凍結期只准降不准升；要升就得同時改這個數字並在 commit 訊息寫明復業理由；"
+        f"ScreenID 目前有 {len(cases)} 個 case，baseline 是 {FROZEN_SCREEN_ID_COUNT}"
+    )
+
+
+def test_freeze_debug_scenario_file_set_does_not_grow() -> None:
+    """`docs/reference/catalog_scope.md` §FROZEN 紅線 1、2：凍結期不餵既有 scenarios。"""
+    current = {path.name for path in SCENARIOS_DIR.glob("*.swift")}
+    added = sorted(current - FROZEN_DEBUG_SCENARIO_FILES)
+    assert not added, (
+        "凍結期只准刪除既有 scenario；要新增檔案就得先復業並更新 baseline："
+        + ", ".join(added)
+    )
