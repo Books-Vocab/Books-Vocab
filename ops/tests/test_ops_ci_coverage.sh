@@ -33,6 +33,16 @@ WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"   # cd 之前先釘死，供源碼自檢用
 cd "$WORKSPACE"
 
+UV_BIN="${UV_BIN:-}"
+if [[ -z "$UV_BIN" ]]; then
+  if [[ -x "$HOME/.local/bin/uv" ]]; then
+    UV_BIN="$HOME/.local/bin/uv"
+  else
+    UV_BIN="uv"
+  fi
+fi
+GROUP_CHAIN_TOOL="$WORKSPACE/ops/tests/ops_group_chain.py"
+
 # 這些 group 在 linux runner 上只需要 workflow 明講會裝的東西：
 # git / curl / uv（python）＋ `.github/workflows/ops-suite.yml` 的 apt 清單
 # （ripgrep、jq、sqlite3、python3、openssh-client）。**清單要跟 workflow 對齊**——
@@ -161,6 +171,15 @@ EXCLUDED_GROUPS=(
   # 「二進位不缺」不等於「跑得起來」：它缺的是資產。
   # （同批打回來的另兩筆是 GNU/BSD 語意差，病灶已由 IMP-0058 修掉並移進 LINUX_GROUPS。）
   "review-probe|data-ui-world|case 14 (test_review_probe.sh:133-145) resolves ops/fixtures/ui_worlds/marketing_demo.json:58, an absolute path to an UNTRACKED 16MB .m4a — the very dependency this table already excludes ui-quality-gate for. Admitting it while excluding ui-quality-gate was self-contradictory"
+)
+
+# group|token|reason —— a bin-* exclusion whose command chain contains an
+# absolute command. PATH masking cannot falsify that claim, so the group is
+# declared rather than silently reported as proven. The scanner below checks
+# this table in both directions: every declaration must have a real call, and
+# every bin-* exclusion with a real call must be declared here.
+PATH_FALSIFY_UNSOUND=(
+  "ios-ops|bin-xcode|its real shell command chain reaches absolute macOS tools (including /usr/bin/log), so PATH masking cannot falsify the exclusion"
 )
 
 # path|reason —— tracked test files that intentionally belong to no group.
@@ -379,8 +398,8 @@ toolchain_usable() {
 }
 
 # 用 exit 127 的 stub 遮蔽 <denied> 裡的命令，再跑 <cmd...>，回傳它的 exit code。
-# 遮蔽靠 PATH 前置，所以只擋得住「靠 PATH 解析」的呼叫；絕對路徑呼叫（/usr/bin/log）
-# 穿得過去——這個缺口**沒有補**，見下面 falsify 段的註解。
+# 遮蔽靠 PATH 前置，只對靠 PATH 解析的呼叫有證偽力；絕對路徑呼叫由
+# PATH_FALSIFY_UNSOUND 的 command-chain inventory 宣告並跳過，不冒充已證明。
 #
 # GH_TOKEN/GITHUB_TOKEN 只在 denial set 含 gh 時才清：先前無條件清空，等於夾帶一道
 # 沒有任何 token 宣告的額外 denial，一個標 bin-xcode 的 group 若其實是死在缺 token，
@@ -424,6 +443,96 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
 done
 ok_if_clean "all ${#EXCLUDED_GROUPS[@]} exclusion(s) carry a known token and a reason"
 
+path_falsify_unsound() {
+  local wanted="$1" entry
+  for entry in "${PATH_FALSIFY_UNSOUND[@]}"; do
+    [[ "${entry%%|*}" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
+section "absolute calls are declared where PATH falsification is unsound"
+chain_args=()
+for entry in "${EXCLUDED_GROUPS[@]}"; do
+  group="${entry%%|*}"
+  rest="${entry#*|}"
+  token="${rest%%|*}"
+  [[ "$token" == bin-* ]] && chain_args+=(--group "$group")
+done
+
+chain_rows=()
+chain_probe_ok=1
+if ! chain_report="$(
+  "$UV_BIN" run --quiet --no-project --python 3.13 python "$GROUP_CHAIN_TOOL" "${chain_args[@]}"
+)"; then
+  fail_t "group-chain probe failed — cannot establish absolute-path coverage"
+  chain_probe_ok=0
+else
+  while IFS=$'\t' read -r chain_group chain_location chain_path chain_command; do
+    [[ -n "$chain_group" ]] || continue
+    chain_rows+=("${chain_group}"$'\t'"${chain_location}"$'\t'"${chain_path}"$'\t'"${chain_command}")
+  done <<<"$chain_report"
+  if (( ${#chain_rows[@]} == 0 )); then
+    fail_t "group-chain probe found no rows for bin-* exclusions — the probe is broken, not the groups"
+    chain_probe_ok=0
+  fi
+fi
+
+if (( chain_probe_ok )); then
+  for entry in "${PATH_FALSIFY_UNSOUND[@]}"; do
+    group="${entry%%|*}"
+    rest="${entry#*|}"
+    token="${rest%%|*}"
+    why="${rest#*|}"
+    found_exclusion=0
+    exclusion_token=""
+    for excluded in "${EXCLUDED_GROUPS[@]}"; do
+      excluded_group="${excluded%%|*}"
+      excluded_rest="${excluded#*|}"
+      excluded_token="${excluded_rest%%|*}"
+      if [[ "$excluded_group" == "$group" ]]; then
+        found_exclusion=1
+        exclusion_token="$excluded_token"
+      fi
+    done
+    row_count=0
+    example=""
+    for row in "${chain_rows[@]}"; do
+      row_group="${row%%$'\t'*}"
+      if [[ "$row_group" == "$group" ]]; then
+        row_count=$((row_count + 1))
+        [[ -n "$example" ]] || example="${row#*$'\t'}"
+      fi
+    done
+    if (( found_exclusion == 0 )); then
+      fail_t "$group is PATH_FALSIFY_UNSOUND but is not an EXCLUDED_GROUPS entry"
+    elif [[ "$token" != "$exclusion_token" || "$token" != bin-* ]]; then
+      fail_t "$group PATH_FALSIFY_UNSOUND token '$token' disagrees with exclusion token '$exclusion_token'"
+    elif (( row_count == 0 )); then
+      fail_t "$group PATH_FALSIFY_UNSOUND has no absolute call in its parsed command chain — stale declaration"
+    elif [[ -z "$why" ]]; then
+      fail_t "$group PATH_FALSIFY_UNSOUND has no reason"
+    else
+      ok "$group declared unsound for PATH falsification ($row_count absolute call(s); example: $example)"
+    fi
+  done
+
+  for entry in "${EXCLUDED_GROUPS[@]}"; do
+    group="${entry%%|*}"
+    rest="${entry#*|}"
+    token="${rest%%|*}"
+    [[ "$token" == bin-* ]] || continue
+    row_count=0
+    for row in "${chain_rows[@]}"; do
+      [[ "${row%%$'\t'*}" == "$group" ]] && row_count=$((row_count + 1))
+    done
+    if (( row_count > 0 )) && ! path_falsify_unsound "$group"; then
+      fail_t "$group has $row_count absolute call(s) but no PATH_FALSIFY_UNSOUND declaration"
+    fi
+  done
+  ok_if_clean "PATH_FALSIFY_UNSOUND matches the parsed bin-* command chains"
+fi
+
 # 這張表是**資料**，不該執行。反引號寫進雙引號陣列元素會被 bash 做命令替換：本檔第一版
 # 的理由裡引用了那條有問題的 grep 當例證，結果它真的被執行、真的吃到 SIGPIPE，
 # 整支腳本以 rc=141 死掉且一個字都沒印——正是那條理由描述的 bug。
@@ -439,9 +548,9 @@ while IFS= read -r srcline; do
     fail_t "table source executes at parse time (backtick or \$( ): ${srcline#"${srcline%%[![:space:]]*}"}"
     danger=1
   fi
-done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
+done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|PATH_FALSIFY_UNSOUND|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
 # 自測：解析不到表就代表 awk 抓錯範圍，上面的迴圈零圈跑完會長得像「沒有危險寫法」。
-tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
+tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|PATH_FALSIFY_UNSOUND|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
 if (( tbl_lines < 10 )); then
   fail_t "only parsed $tbl_lines line(s) of the table literals out of $SELF — the probe is broken, not the table"
 elif (( danger == 0 )); then
@@ -484,6 +593,7 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
   rest="${e#*|}"; tok="${rest%%|*}"
   [[ "$tok" == bin-* ]] || continue
   [[ "${e%%|*}" == "ops-ci-coverage" ]] && continue   # 與下面的自指守衛對齊
+  path_falsify_unsound "${e%%|*}" && continue
   [[ "$(token_denials "$tok")" == "__UNKNOWN__" ]] && continue
   toolchain_usable "$tok" && falsify_will_run=1
 done
@@ -509,14 +619,21 @@ else
 fi
 rm -rf "$fx"
 
-# 已知未補的缺口，明寫出來而不是假裝有守：絕對路徑呼叫（ops/lib/ios_ops_logs.sh 的
-# /usr/bin/log 就是一例）穿得過 PATH 遮蔽。先前這裡有一條 grep 守衛，但它掃的是
-# ops/test_ops.sh——那只是 dispatcher，對任何 binary 都零命中，是一條寫著卻永遠不會響的
-# 檢查，比沒有更危險。要補得掃出 group 的真實命令鏈，屬 IMP-0059。
-section "no bin-* exclusion survives losing the binary it names"
+# 絕對路徑呼叫不再靠一條掃錯檔案的 grep 假裝被覆蓋；上面的 scanner 從 dispatcher
+# case arm 解析每個 group 的真實 shell chain，並以 PATH_FALSIFY_UNSOUND 明示限制。
+section "every PATH-falsifiable bin-* exclusion dies when its binary is denied"
 for e in "${EXCLUDED_GROUPS[@]}"; do
   g="${e%%|*}"; rest="${e#*|}"; tok="${rest%%|*}"
   [[ "$tok" == bin-* ]] || continue
+  if path_falsify_unsound "$g"; then
+    unsound_calls=0
+    for row in "${chain_rows[@]}"; do
+      [[ "${row%%$'\t'*}" == "$g" ]] && unsound_calls=$((unsound_calls + 1))
+    done
+    echo "  · $g: skipped — PATH_FALSIFY_UNSOUND ($unsound_calls absolute call(s)); declaration is not a proof" >&2
+    skipped=$((skipped+1))
+    continue
+  fi
   # 自己不能證偽自己：下面是 `./ops/test_ops.sh "$g"`，$g 是本 group 就無限遞迴。
   # 今天走不到（ops-ci-coverage 在 LINUX_GROUPS 裡），但那是一個單字的距離。
   [[ "$g" == "ops-ci-coverage" ]] && { fail_t "$g cannot falsify itself — the falsifier would re-invoke this script forever"; continue; }
