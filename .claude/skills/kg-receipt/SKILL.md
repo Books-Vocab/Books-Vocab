@@ -53,7 +53,7 @@ category 名單與欄位定義見 `ops/backlog.py --help`,此處不複述(SoT �
 
 ```text
 Lane:
-- team=<票務隊|交付隊> method=<票單閉環|直修道> stop=<hand-back|close-wave|other named stop>
+- team=<Ticket Factory|Delivery Team> role=<factory|Integrator|child-worker> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|primary+sync|other named stop>
 
 Result:
 - <完成的高層結果>
@@ -76,6 +76,12 @@ Risk:
 Next:
 - <只列真正需要下一輪做的事>
 ```
+
+角色邊界：`child-worker` 的 `hand-back` 只代表自己的 slice 已交回；`Integrator` 的 delivery-loop
+receipt 必須另外列 `wave slug`、預期 child／已 hand-back／已 fan-in 數、整合後 Gate verdict、primary
+landed SHA、`origin/main` sync verdict。`Ticket Factory` 的 receipt 只報產出的 ticket 數與 groom／
+verify evidence，不宣稱任何 code 已修復。若發生不穩定狀態，列出 thread message 的對象、原因、證據與
+要求的 pause/continue 動作；正常協作不需要把聊天內容當 SoT。
 
 ## Worktree scratch
 
@@ -119,10 +125,10 @@ bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::
 - 已知風險
 - 下一步第一個 command
 
-Fan-out 受派者在回報「已完成」前，還必須在自己的工作樹執行
+Fan-out 受派 child worker 在回報「已完成」前，還必須在自己的工作樹執行
 `./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
 一併回報。受派者只交回 commit 與戳記，沒有 develop 例外。尚未取得 `worktree-flow` 頂端授權時，
-整合者也只能以 `integrate ... --commit --no-gate` 純組裝、commit + hand-back；只有取得授權且握有整批
-視野的整合 session 才執行最終會觸發 Gate 的 `integrate ... --commit`（fresh 或 `--continue`）／`gate`／`cutover`。`sync`／`deploy`
-另須 backup／release 意圖。整合者若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
+Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝；只有取得 delivery-loop 授權且握有整批
+視野的 Integrator 才執行最終 `close-wave --commit --sync`（fresh／continue Gate、cutover、resolve、anchor、validate、origin/main）。`deploy`
+另須 release 意圖。Integrator 若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
 `--allow-unhanded`；它不能放行 hand-back 後已前進的 branch。
