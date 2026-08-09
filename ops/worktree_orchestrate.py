@@ -5741,17 +5741,24 @@ def _delivery_state_error(
     return EXIT_BLOCK
 
 
-def _delivery_registry_records(args: argparse.Namespace) -> tuple[int, list[dict[str, Any]]]:
+def _delivery_registry_records(
+    args: argparse.Namespace, *, primary: Path | None = None
+) -> tuple[int, list[dict[str, Any]]]:
     # Run the registry implementation that belongs to this coordinator.  During
     # the first delivery-loop round the coordinator can still be in an isolated
     # worktree while primary is on the previous tool version; using primary's
     # copy here would make the new close-wave protocol self-incompatible.
-    registry_script = Path(__file__).resolve().parent / "worktree_registry.py"
+    repo = primary or primary_root()
+    registry_script = (
+        repo / "ops" / "worktree_registry.py"
+        if primary is not None
+        else Path(__file__).resolve().parent / "worktree_registry.py"
+    )
     argv = ["list"]
     if args.state:
         argv += ["--state", args.state]
     rc, payload = _delivery_json_tool(
-        registry_script, primary_root(), argv, label="registry-list",
+        registry_script, repo, argv, label="registry-list",
         expected_schema="kg.worktree.registry.v1", required_keys=("records",),
         receipt_validator=_delivery_require_registry_receipt,
     )
@@ -5977,7 +5984,7 @@ def _delivery_anchor_and_commit(
                 "dirty_files": dirty,
             })
             return EXIT_BLOCK, steps
-        rrc, records = _delivery_registry_records(args)
+        rrc, records = _delivery_registry_records(args, primary=primary)
         if rrc != EXIT_OK:
             steps.append({"name": "anchor-guard", "rc": rrc,
                           "error": "could not read the worktree registry"})
@@ -6070,7 +6077,7 @@ def _delivery_anchor_and_commit(
                 return EXIT_BLOCK, steps
 
         anchor_rc, anchor_payload = _delivery_json_tool(
-            Path(__file__).resolve().parent / "backlog.py",
+            primary / "ops" / "backlog.py",
             primary,
             [
                 "anchor", "--store", str(primary / "docs" / "runbook" / "backlog"),
@@ -6178,10 +6185,11 @@ def _delivery_sync_close_wave(
                       "sync": marker.get("sync")})
         return EXIT_OK, marker.get("sync")
 
-    # Keep the whole delivery-loop on one coordinator version.  This matters
-    # when the first close-wave is launched from an isolated branch whose new
-    # `--sync` contract has not reached primary yet.
-    orchestrator = Path(__file__).resolve()
+    # Sync runs after cutover, so the stable primary copy is now the coordinator
+    # version that produced the fresh Gate.  The caller's source worktree may have
+    # been resolved and removed by this point; resolving `__file__` here would make
+    # a successful local landing crash before its backup receipt is written.
+    orchestrator = primary / "ops" / "worktree_orchestrate.py"
     sync_rc, sync_payload = _delivery_json_tool(
         orchestrator,
         primary,
@@ -6348,7 +6356,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         allowed.add(str(integration_state["branch"]))
     if manifest and manifest.get("branch"):
         allowed.add(str(manifest["branch"]))
-    rrc, records = _delivery_registry_records(args)
+    rrc, records = _delivery_registry_records(args, primary=primary)
     if rrc != EXIT_OK:
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave",
@@ -6383,7 +6391,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     if (args.commit and manifest is not None
             and manifest_delivery_status == "validated"
             and not Path(str(manifest.get("worktree"))).is_dir()):
-        rrc, recovery_records = _delivery_registry_records(args)
+        rrc, recovery_records = _delivery_registry_records(args, primary=primary)
         if rrc != EXIT_OK:
             return EXIT_BLOCK
         active_allowed = [
@@ -6468,9 +6476,11 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
 
     steps: list[dict[str, Any]] = []
     coordinator_orchestrator = Path(__file__).resolve()
-    # Use the coordinator's version for every sub-step, including resolve and
-    # validate, until this round's cutover makes it the primary version.
-    primary_orchestrator = coordinator_orchestrator
+    # Before cutover the source coordinator is required for the new protocol;
+    # after cutover, all remaining steps use this stable primary copy.  A delivery
+    # wave may resolve its own source worktree before anchor/sync, so any later
+    # lookup through `__file__` is unsafe.
+    primary_orchestrator = primary / "ops" / "worktree_orchestrate.py"
     target_base = _local_trunk(args.base)
     integration_worktree: Path | None = None
     integration_branch: str | None = None
@@ -6566,7 +6576,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
 
     # The opening registry snapshot is not enough: a peer may start while the
     # integrated Gate is running.  Recheck before the irreversible develop step.
-    rrc, records = _delivery_registry_records(args)
+    rrc, records = _delivery_registry_records(args, primary=primary)
     if rrc != EXIT_OK:
         return EXIT_BLOCK
     # Other teams may have active worktrees. The shared Delivery Team lock keeps
@@ -6614,7 +6624,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     # Capture source paths after cutover too: a resumed invocation may have already
     # resolved some of them.  Resolved sources are idempotently skipped; active
     # sources are audited before removal.
-    rrc, records = _delivery_registry_records(args)
+    rrc, records = _delivery_registry_records(args, primary=primary)
     if rrc != EXIT_OK:
         return EXIT_BLOCK
     active_by_branch = {
@@ -6705,7 +6715,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     # Keep teardown last.  If anchor or validation stops, the integration worktree
     # and manifest remain available for the same slug to resume; deleting them first
     # would leave a successful landing with no way to finish the lifecycle.
-    rrc, records = _delivery_registry_records(args)
+    rrc, records = _delivery_registry_records(args, primary=primary)
     if rrc != EXIT_OK:
         return EXIT_BLOCK
     integration_record = next(

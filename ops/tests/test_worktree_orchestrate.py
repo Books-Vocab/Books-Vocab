@@ -6509,7 +6509,7 @@ def test_close_wave_does_not_block_on_foreign_active_worktrees(
     monkeypatch.setattr(
         MODULE,
         "_delivery_registry_records",
-        lambda _args: (MODULE.EXIT_OK, [
+        lambda _args, **_kwargs: (MODULE.EXIT_OK, [
             {"status": "active", "branch": "feat/source", "path": "/wt/source"},
             {"status": "active", "branch": "feat/catalog-agent-tool",
              "path": "/wt/catalog", "intent": "Catalog cutover"},
@@ -6593,6 +6593,34 @@ def test_delivery_registry_records_rejects_malformed_record(
     assert records == []
 
 
+def test_delivery_registry_records_uses_explicit_primary_after_coordinator_teardown(
+        tmp_path, monkeypatch):
+    """A close-wave may remove the caller's source worktree mid-command."""
+    primary = tmp_path / "primary"
+    (primary / "ops").mkdir(parents=True)
+    deleted_coordinator = tmp_path / "deleted" / "ops" / "worktree_orchestrate.py"
+    seen = {}
+
+    def fake_tool(script, cwd, argv, **_kwargs):
+        seen.update(script=Path(script), cwd=Path(cwd), argv=argv)
+        return MODULE.EXIT_OK, {"schema": "kg.worktree.registry.v1", "records": []}
+
+    monkeypatch.setattr(MODULE, "__file__", str(deleted_coordinator))
+    monkeypatch.setattr(MODULE, "primary_root", lambda: pytest.fail(
+        "explicit primary must avoid rediscovering a deleted coordinator cwd"
+    ))
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_tool)
+
+    rc, records = MODULE._delivery_registry_records(
+        argparse.Namespace(state=None), primary=primary
+    )
+
+    assert rc == MODULE.EXIT_OK
+    assert records == []
+    assert seen["script"] == primary / "ops" / "worktree_registry.py"
+    assert seen["cwd"] == primary
+
+
 def test_delivery_integration_rejects_foreign_git_checkout(tmp_path, monkeypatch):
     primary = tmp_path / "primary"
     foreign = tmp_path / "foreign"
@@ -6648,7 +6676,9 @@ def test_delivery_anchor_guard_checks_primary_branch_inside_advance_lock(
     )
     monkeypatch.setattr(
         MODULE, "_delivery_registry_records",
-        lambda _args: pytest.fail("registry must not run after branch refusal"),
+        lambda _args, **_kwargs: pytest.fail(
+            "registry must not run after branch refusal"
+        ),
     )
 
     rc, steps = MODULE._delivery_anchor_and_commit(
@@ -6742,7 +6772,9 @@ def test_delivery_anchor_replays_manifest_after_post_commit_marker_failure(
 
     monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
     monkeypatch.setattr(MODULE, "_primary_ff_ready", lambda *_a, **_k: None)
-    monkeypatch.setattr(MODULE, "_delivery_registry_records", lambda _args: (0, []))
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records", lambda _args, **_kwargs: (0, [])
+    )
     monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_child)
     monkeypatch.setattr(MODULE, "_integrate_save", crash_after_commit)
     args = argparse.Namespace(base="main")
