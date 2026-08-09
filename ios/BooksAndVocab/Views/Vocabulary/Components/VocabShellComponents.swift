@@ -91,6 +91,7 @@ struct VocabChromeIconButton: View {
     let systemImage: String
     var tone: Color? = nil
     var label: String? = nil
+    var identifier: String? = nil
     var action: () -> Void
 
     var body: some View {
@@ -112,6 +113,7 @@ struct VocabChromeIconButton: View {
         .buttonStyle(.plain)
         .appPointerHover()
         .accessibilityLabel(label ?? systemImage)
+        .accessibilityIdentifier(identifier ?? "")
         .enableInjection()
     }
 }
@@ -204,4 +206,3 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
         .enableInjection()
     }
 }
-
