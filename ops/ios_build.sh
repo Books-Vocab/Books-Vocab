@@ -7,11 +7,12 @@
 #   ./ops/ios_build.sh --extra-settings KEY=VAL  # pass extra xcodebuild settings (repeatable)
 #   ./ops/ios_build.sh --swift6                  # shorthand: SWIFT_STRICT_CONCURRENCY=complete
 #   ./ops/ios_build.sh --configuration Release   # build configuration (default: Debug)
-#   ./ops/ios_build.sh --catalyst --dry-run      # print the resolved plan, run nothing
+#   ./ops/ios_build.sh --catalyst --dry-run      # print the app + test-target compile plan
 #
 # How it works:
 #   1. Spin-waits to acquire an exclusive lock (shlock, macOS built-in)
-#   2. Runs xcodebuild against ONE shared DerivedData anchored at the main repo
+#   2. Runs xcodebuild build-for-testing against ONE shared DerivedData anchored at
+#      the main repo; this compiles the app and the scheme's test targets
 #      (incremental reuse across worktrees; bounded size; no path-hashed orphans)
 #   3. Releases lock via trap on exit
 #
@@ -150,7 +151,7 @@ xcodebuild_argv() {  # $1 = result bundle path; empty omits the flag
     -derivedDataPath "$DERIVED_DATA_ROOT"
   )
   [[ -n "${1:-}" ]] && argv+=(-resultBundlePath "$1")
-  argv+=("${SETTINGS[@]+"${SETTINGS[@]}"}" build)
+  argv+=("${SETTINGS[@]+"${SETTINGS[@]}"}" build-for-testing)
   printf '%s\n' "${argv[@]}"
 }
 
