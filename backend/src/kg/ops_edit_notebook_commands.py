@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .ops_edit_seed_commands import _dangling_active_notebook
 from .ops_edit_support import (
     Any,
     EditContext,
@@ -115,7 +116,14 @@ def cmd_notebook_delete(args: argparse.Namespace) -> int:
         store = _notebook_store(ctx.user_dir)
         # 本已刪 + (cascade 時)該本無殘留 active 卡 → 無孤兒。
         active_left = _card_store(ctx.user_dir).count(notebook_id=nb_id)
-        return {"ok": not store.exists(nb_id) and (not args.cascade or active_left == 0),
-                "active_cards_left": active_left}
+        live_nb_ids = {nb.id for nb in store.all()} | {"default"}
+        dangling_config = _dangling_active_notebook(ctx.data_dir, ctx.uid, live_nb_ids)
+        return {
+            "ok": (not store.exists(nb_id)
+                   and (not args.cascade or active_left == 0)
+                   and not dangling_config),
+            "active_cards_left": active_left,
+            "dangling_config": dangling_config,
+        }
 
     return ctx.run(action="notebook-delete", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)

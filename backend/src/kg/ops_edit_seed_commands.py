@@ -164,7 +164,7 @@ def _dangling_active_notebook(dd: Path, uid: str, live_nb_ids: set[str]) -> list
         return [f"vocab_ui.active_notebook_id 型別非法:{active_nb!r}"]
     if active_nb in live_nb_ids:
         return []
-    return [f"vocab_ui.active_notebook_id={active_nb} 指向已被 replace 清掉的 notebook"
+    return [f"vocab_ui.active_notebook_id={active_nb} 指向已不存在的 notebook"
             f"(修法:ops-edit user-config-set {uid} --active-notebook <name|id>)"]
 
 

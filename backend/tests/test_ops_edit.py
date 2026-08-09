@@ -10,6 +10,8 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from ops_helpers import run_ops_cli as _cli
 from ops_helpers import run_ops_edit as _edit
 
@@ -490,6 +492,33 @@ class TestNewCommands:
         r = _edit(str(tmp_path), "notebook-delete", uid, nb_id, "--commit", "--json")
         assert r.returncode == 0, r.stderr
         assert "ToDelete" not in [n["name"] for n in _notebook_rows(tmp_path, uid)]
+
+    @pytest.mark.parametrize("cascade", [False, True], ids=["plain", "cascade"])
+    def test_notebook_delete_active_verify_reports_dangling_config(self, tmp_path, cascade):
+        uid = _mk_user(tmp_path)
+        nb_id = _mk_notebook(tmp_path, uid, "ActiveToDelete")
+        if cascade:
+            assert _edit(
+                str(tmp_path), "card-add", uid, "c1", "--meaning", "m",
+                "--notebook", nb_id, "--commit",
+            ).returncode == 0
+        assert _edit(
+            str(tmp_path), "user-config-set", uid, "--active-notebook", nb_id,
+            "--commit",
+        ).returncode == 0
+
+        command = ["notebook-delete", uid, nb_id]
+        if cascade:
+            command.append("--cascade")
+        r = _edit(str(tmp_path), *command, "--commit", "--json")
+
+        assert r.returncode == 1, r.stderr
+        verified = json.loads(r.stdout)["verified"]
+        assert verified["ok"] is False
+        assert any(
+            f"vocab_ui.active_notebook_id={nb_id}" in message
+            for message in verified["dangling_config"]
+        )
 
     def test_notebook_delete_rejects_default(self, tmp_path):
         uid = _mk_user(tmp_path)
