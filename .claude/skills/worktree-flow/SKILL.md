@@ -405,6 +405,7 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
 
 ## 硬邊界
 
+- **呼叫端不得把長指令接進 tail / head / grep 這類會整段緩衝的過濾器**：實測 `./ops/ios_ops.sh test … 2>&1 | tail -20` 啟動背景任務後，output file 在整段執行期間維持 0 bytes，事後又只剩最後 N 行，會同時遮蔽 heartbeat 與前段進度。要截斷時先讓指令裸跑，或以 `> <log> 2>&1` 保留完整輸出，結束後再讀 log；否則會把正常執行誤判為卡死或 runner 缺陷（`IMP-20260805-f71e9b`）。
 - **工作樹內一律 `git -C <工作樹絕對路徑>` 與絕對路徑，Bash 的 cwd 不保證在指令之間持久**：背景指令、heredoc 腳本或任何一次子行程都可能讓 cwd 漂回 primary checkout（**agent harness 更是每次 Bash 呼叫都重設 cwd**——實測前一次呼叫結束在 `/tmp`，下一次的 `pwd` 直接是 `/Users/chenliangyu/project/kg` ＝ primary）。漂回之後那些 repo-relative 指令**不報錯，只是安靜地改答另一個 repo 的問題**——不變式是「它回答的是 **primary** 的狀態」：`git status --porcelain` 回報 primary 的髒檔（primary 恰好乾淨時你就得到一句「乾淨」，而你的改動明明在別處）、`git add <只存在於工作樹的 path>` 報 `pathspec … did not match any files`、`./ops/i18n_lint.sh` 之類 repo-relative 工具驗的是主 checkout。
   - **單獨跑 `gate` 不會替你查 primary**；primary 端訊號現在由 gate 記錄 `primary_dirty` 與人讀警告具名； `IMP-20260808-b85f6a` 已讓空 diff 具名出現在 gate record 與人讀輸出：空 diff 仍是刻意合法的（工作已被 trunk 包含的分支本來就沒東西可 gate），只是現在會明說「no changes … no changed files were verified」並在 receipt 加 `no-changes`。所以編輯若整批漏進 primary，工作樹仍可能被兩道 meta gate 空跑而綠——連 **block 級**的 `review-receipts` 也一樣，因為 `main..HEAD` 根本沒有 commit 可稽核；但這個結果不再與正常 PASS 無聲同形：
 
