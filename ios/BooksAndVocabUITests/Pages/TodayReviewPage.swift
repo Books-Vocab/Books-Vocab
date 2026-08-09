@@ -41,13 +41,14 @@ struct TodayReviewPage {
         element("todayReview.autoplayToggle")
     }
 
-    // NOTE (measured 2026-08-06, not assumed): the front fold applies
-    // `.accessibilityLabel` to its container, so SwiftUI publishes the face as ONE
-    // combined element AND repeats `todayReview.card.front` on 2–3 nested buttons
-    // whose frames are ~36pt. Neither the rendered fields nor the card box height
-    // is therefore readable from a UI test, and `expandZone.frame.minY` did not
-    // move across a confirmed relayout. Do not add geometry assertions on this
-    // card without first re-checking those facts.
+    // NOTE (measured 2026-08-06) said the front face published
+    // `todayReview.card.front` on 2–3 nested ~36pt buttons, so the card box height
+    // was unreadable from a UI test. That was FIXED on 2026-08-08 by `2ac7ba258`
+    // (`.accessibilityElement(children: .contain)` declared before the property
+    // modifiers), so `cardFront.frame` is the card box again. Geometry assertions
+    // on this card are legitimate — but keep a `height >= 100` positive control:
+    // if the container declaration ever regresses, the query resolves a nested
+    // button and every geometry assertion silently measures the wrong element.
 
     // MARK: - Card
 

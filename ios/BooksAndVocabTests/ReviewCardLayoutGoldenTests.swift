@@ -34,7 +34,11 @@ struct ReviewCardLayoutGoldenTests {
             let containerHeight: Double
             let contentHeight: Double
             let revealZoneReserve: Double
+            /// 天花板。
             let frontHeight: Double
+            /// 一張只有核心列的卡實際畫多高（內容 86 + chrome 78）。它遠小於
+            /// `frontHeight` 才是對的 —— 相等就代表正面又在瓜分卡片區。
+            let frontDrawnHeightForShortContent: Double
         }
 
         let modes: [String: Mode]
@@ -102,7 +106,10 @@ struct ReviewCardLayoutGoldenTests {
                 containerHeight: Double(viewport.containerHeight),
                 contentHeight: Double(viewport.contentHeight),
                 revealZoneReserve: Double(viewport.revealZoneReserve),
-                frontHeight: Double(viewport.frontHeight)
+                frontHeight: Double(viewport.frontHeight),
+                frontDrawnHeightForShortContent: Double(
+                    viewport.frontDrawnHeight(solvedContentHeight: 86, chrome: 78)
+                )
             )
         )
     }

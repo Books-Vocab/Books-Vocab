@@ -97,10 +97,20 @@ struct ReviewCardViewport: Equatable {
         return min(desired, contentHeight / 2)
     }
 
-    /// What the front face may occupy. Deliberately constant across reveal stages:
-    /// the zone collapses on reveal, but letting the budget grow there would
-    /// re-solve the front layout in the middle of the flip.
+    /// 正面**最多**能佔多高——天花板，不是繪製高度（見 `frontDrawnHeight`）。
+    /// Deliberately constant across reveal stages: the zone collapses on reveal, but
+    /// letting the budget grow there would re-solve the front layout mid-flip.
     var frontHeight: CGFloat { max(contentHeight - revealZoneReserve, 0) }
+
+    /// 正面**實際畫多高**：貼合已解出的內容，只在超出預算時才被 clamp。
+    ///
+    /// 一個單字的卡不該佔滿 `frontHeight`。有 max 的彈性 frame 是**貪婪**的——它回報
+    /// `min(max, 父提案)` 而不是內容高度，於是正面把 VStack 提案的一半照單全收，
+    /// 底下留一大片沒人用的空白。正反面資訊量天生不對等，不該平分：正面貼合內容
+    /// （保留下限），背面吃掉剩餘全部空間（`backHeight(frontOccupied:)` 自動跟上）。
+    func frontDrawnHeight(solvedContentHeight: CGFloat, chrome: CGFloat) -> CGFloat {
+        min(max(solvedContentHeight + chrome, TodayReviewMetrics.frontMinHeight), frontHeight)
+    }
 
     /// What the back face may occupy once the front fold has taken its measured
     /// share of the same content height.

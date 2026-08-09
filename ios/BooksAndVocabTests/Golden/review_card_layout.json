@@ -59,6 +59,7 @@
     "containerHeight": 600,
     "contentHeight": 584,
     "revealZoneReserve": 180,
-    "frontHeight": 404
+    "frontHeight": 404,
+    "frontDrawnHeightForShortContent": 164
   }
 }
