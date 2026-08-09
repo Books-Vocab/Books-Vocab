@@ -24,6 +24,7 @@ extension ReaderSettingsPresenter {
     var vocabLayout: some View {
         NavigationStack {
             Form {
+                vocabPreviewSection
                 vocabTypographySection
                 vocabAppearanceSection
                 vocabHighlightSection
@@ -39,6 +40,33 @@ extension ReaderSettingsPresenter {
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("reader.settingsPanel")
+        }
+    }
+
+    // MARK: Preview
+
+    /// 即時預覽擺在控制項**之前**，與複習卡版面編輯器同一個順序邏輯
+    /// （預覽 → 控制項 → 說明 footer）：先讓人看到現在長什麼樣，再讓人動旋鈕。
+    ///
+    /// 每一格都直接讀 binding 的當前值，沒有 draft、沒有 snapshot ——
+    /// 所以它必然與正下方那些控制項一致，不需要靠誰記得同步。
+    var vocabPreviewSection: some View {
+        Section {
+            ReaderSettingsPreviewCard(
+                font: bindings.font.wrappedValue,
+                fontScale: state.fontScale,
+                lineHeight: bindings.lineHeight.wrappedValue,
+                theme: bindings.theme.wrappedValue,
+                vocabHighlightPreferences: VocabHighlightPreferences(
+                    colorPreset: bindings.vocabHighlightColorPreset.wrappedValue,
+                    opacity: bindings.underlineOpacity.wrappedValue
+                )
+            )
+        } header: {
+            SettingsSectionHeader(
+                title: L10n.string("reader.settings.section.preview"),
+                icon: "text.alignleft"
+            )
         }
     }
 

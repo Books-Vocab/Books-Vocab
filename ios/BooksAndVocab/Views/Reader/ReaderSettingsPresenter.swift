@@ -11,6 +11,9 @@ struct ReaderSettingsPresenter: View {
 
     struct State {
         let fontSizeText: String
+        /// 字級**倍率**本身（`fontSizeText` 是它的顯示字串）。即時預覽需要的是
+        /// 這個數 —— 它就是送進 `EPUBPreferences.fontSize` 給閱讀器的那一個。
+        let fontScale: Double
         let canDecreaseFontSize: Bool
         let canIncreaseFontSize: Bool
     }
@@ -53,6 +56,7 @@ struct ReaderSettingsPresenter: View {
         ReaderSettingsPresenter(
             state: .init(
                 fontSizeText: "17pt",
+                fontScale: 1.0,
                 canDecreaseFontSize: true,
                 canIncreaseFontSize: true
             ),
@@ -81,6 +85,7 @@ struct ReaderSettingsPresenter: View {
         ReaderSettingsPresenter(
             state: .init(
                 fontSizeText: "0.75x",
+                fontScale: 0.75,
                 canDecreaseFontSize: false,
                 canIncreaseFontSize: true
             ),

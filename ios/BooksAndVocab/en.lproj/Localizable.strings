@@ -1221,3 +1221,7 @@
 "reviewCardLayout.sample.explanation" = "The occurrence of finding something good without having looked for it.";
 "reviewCardLayout.sample.book" = "Sample Book";
 "reviewCardLayout.sample.chapter" = "Sample Chapter";
+
+/* reader-settings-preview · APP-20260809-ca8e30 即時預覽 */
+"reader.settings.section.preview" = "Preview";
+"reader.settings.preview.accessibilityLabel" = "Live preview of the reading settings";
