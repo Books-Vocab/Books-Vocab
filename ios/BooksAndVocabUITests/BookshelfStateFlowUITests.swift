@@ -11,7 +11,7 @@ import XCTest
 final class BookshelfStateFlowUITests: UITestCase {
     @MainActor
     func testBookshelfEmptyAndPopulatedStatesRenderExpectedChrome() throws {
-        let emptyApp = launchApp(profile: .clean, perfLog: "bookshelf-empty")
+        let emptyApp = launchApp(perfLog: "bookshelf-empty")
         captureStep("empty-launch", app: emptyApp)
 
         let emptyShell = AppPage(app: emptyApp)
