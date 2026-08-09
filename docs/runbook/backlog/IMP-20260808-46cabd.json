@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "一張票被梳理時，`plan` / `fix_site` / `acceptance` 裡會寫進大量**當下的快照**——行號、檔案存不存在、某個機制有沒有人引用、某個常數宣告了幾筆。這些快照會被**別張票的修法**推翻，而票上沒有任何機制會察覺。下一個從 `dispatch` 取走它的人，是照著一個已經不成立的世界動工。\n\n2026-08-08 一天內兩次，成因不同、症狀相同：\n\n1. **`IMP-20260808-a14d7c`**（已梳理、當時就在 `dispatch` 佇列裡）的 plan ① 以「`docs/registry.yml:921-925` 只宣告一筆 `kind: generated`」為據建一份白名單。同日 `IMP-20260808-b63206` 落地後那幾行不存在，`grep -c 'kind: generated'` 變成 0。我是在批次收尾人工複查時才發現，靠的是剛好記得兩張票相關。\n2. **`IMP-0066`** 的 plan 步驟 4 斷言「沒有任何 script 或 workflow 引用這個檔」。受派者實測**已不成立**——`IMP-20260805-947062` 早把該檔收編進 `test_ops.sh` 的 `backlog` group，而該 group 在 Linux CI 內跑。它的結論與 plan 相同但**理由完全不同**，而它是重測後才敢改。plan 上的行號（`:726`、`48 passed`）同樣過期（實際 912 行、51 passed）。\n\n第二例特別值得注意：**受派者做對了事**（重測而非照抄），但那是它自己的紀律，不是工具給的保障。一個照著 plan 直接動工的受派者會得到錯誤的前提，而且錯得很有信心——plan 讀起來就是一份已經查證過的東西。\n\n這與 `IMP-20260808-09dd3b`（對未解票實跑判準、今天就綠的列為可疑）是同族但**不同層**：那張查的是「判準」，這張查的是「plan 裡的事實宣稱」。判準可以執行，plan 裡的散文不行。",
   "fix_site": "ops/backlog.py：groomed_against 欄位 + _cmd_list/dispatch/show 的提醒輸出",
+  "fixed_by": [
+    "bb4907f396a68f1d64997f540409effba8e55261"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-46cabd",
@@ -15,6 +18,10 @@
   "scope": "梳理時多記一個當時的版本點，取票與檢視時在落後太多時印一行提醒；不阻擋、不自動判斷內容對錯。",
   "severity": "med",
   "source": "2026-08-08 一天兩次：a14d7c 的 plan 指向已被同日另一張票刪除的 registry 行；IMP-0066 的 plan 斷言「沒人引用這個檔」已被三天前另一張票推翻",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "main-session",
+  "verified_evidence": "acceptance_cmd rc=0 on main a8d5fa2d1"
 }

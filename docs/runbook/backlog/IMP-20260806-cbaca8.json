@@ -7,6 +7,9 @@
   "date": "2026-08-06",
   "detail": "VocabularyEntry.swift:28 的註解「#Index back behind #available when iOS 17 support is dropped」條件現在成立了——地板已抬到 26.0，#Index（需 iOS 18+）可無條件使用。註解本身已過期，且它指向一個現在可以動手的改動。",
   "fix_site": "ios/BooksAndVocab/Models/VocabularyEntry.swift:38-40 (同族 ios/BooksAndVocab/Models/ReviewRecord.swift:13)",
+  "fixed_by": [
+    "1d622eee2efb54bade42aa06b3496f359da9b764"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-cbaca8",
@@ -16,6 +19,10 @@
   "scope": "iOS 兩個模型檔刪過期註解、各加一條索引宣告；動到資料結構，要跑編譯與舊資料開得起來的測試。",
   "severity": "low",
   "source": "deployment target 26.0 bump（feat/reader-liquid-glass Phase 1）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "main-session",
+  "verified_evidence": "acceptance_cmd rc=0 on main a8d5fa2d1"
 }

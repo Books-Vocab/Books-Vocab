@@ -8,6 +8,9 @@
   "date": "2026-08-05",
   "detail": "`.githooks/pre-commit` 存在但沒有安裝：`git config --show-origin --get core.hooksPath` 指向 `.git/hooks`，而該目錄內沒有任何非 sample hook。因此本 checkout 的 design-system 本地 pre-commit 路徑是失效的，DS 覆蓋目前只靠 CI 加 worktree gate。宣稱存在但未接線的守衛比沒有守衛更糟：它會讓人以為那層防護在，於是不去補別的。",
   "fix_site": "ops/install_hooks.sh:1",
+  "fixed_by": [
+    "c4bfc39cbc9e6a522df5c5596dc3a9debdde94fa"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-20260805-20cfc4",
@@ -17,8 +20,10 @@
   "scope": "新增一支安裝小工具和它的測試、接進測試套件，並修掉三處說明文件寫錯的敘述。",
   "severity": "low",
   "source": "backlog CLI 稽核（5-agent deep dive）",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "main-session",
+  "verified_evidence": "acceptance_cmd rc=0 on main a8d5fa2d1"
 }

@@ -8,6 +8,9 @@
   "date": "2026-07-09",
   "detail": "無 `ops-edit user-delete` 原語 → reshape 用的 throwaway scratch 帳號(及一般 demo 帳號)會殘留在 users.json(`_` 前綴者 `is_real_user=False` 自動隱藏於 fleet-overview,但實體條目仍在),只能靠手寫 scoped script 清(本 session 即如此)。候選:`ops-edit user-delete <uid>`(移 user dir + users.json 條目 + email/subscription index scrub,dry-run 預設、寫前自動備份)。**2026-08-05 取證**:`ops_edit.py --help` 列 20 個子指令(user-create/card-add/card-update/card-set-review/card-delete/card-import/notebook-create/user-config-set/link-add/link-delete/seed/clone-demo/world-snapshot/world-restore/list-backups/restore/notebook-update/notebook-delete/card-move/link-list/link-update),**無 `user-delete`**。",
   "fix_site": "backend/src/kg/ops_edit_user_commands.py:100",
+  "fixed_by": [
+    "e9860421f1707fa9902b9ccc9ed083a2055503ef"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0025",
@@ -17,8 +20,10 @@
   "scope": "後台工具新增一個子指令，動四支程式檔加六個測試，連帶更新兩份說明。",
   "severity": "low",
   "source": "行銷帳號 Phase5(scratch 清理)",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "main-session",
+  "verified_evidence": "acceptance_cmd rc=0 on main a8d5fa2d1"
 }
