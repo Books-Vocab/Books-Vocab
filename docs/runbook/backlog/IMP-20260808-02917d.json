@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "`list` 有三個「母體」旗標，對「已結案的票算不算數」給出三種不同答案——**兩個有講理由，第三個完全沉默，而沉默的那個正是看板上有數字的那個。**\n\n實測（2026-08-08，本機 store）：\n\n| 旗標 | total | 已結案 | 未解 | help 有沒有交代結案票的處置 |\n|---|---|---|---|---|\n| `--missing-brief` | 0 | 0 | 0 | **有**：「Closed entries are excluded because they never reach the board」 |\n| `--unverified` | 198 | 69 | 129 | **有**：「NOT filtered by status on purpose: an audit trail rots after closure」 |\n| `--ungroomed` | 98 | **64** | 34 | **沒有一個字** |\n\n後果具體且可複現：手機看板寫「**33 未梳理**」，`./ops/backlog.py list --ungroomed` 給你 **97**（本票立起來之前）。同一個詞、同一份 store、差 64。要重現看板那個數字，讀者必須自己去交集 `status ∉ {fixed, wont-fix}`——而他沒有任何理由知道要這麼做，因為隔壁兩個旗標的 help 都會主動告訴他答案。\n\n`--ungroomed` 的 help 已經很用心處理了另一個誤用（明說它不是 dispatch queue、不知道誰在做、要問 `dispatch`）。缺的正好是這一條：**它的母體含 64 張已經結案、永遠不會有人去梳理的票。**\n\n這不只是文件問題。`--ungroomed` 是 groom 佇列的入口，而「批次梳理」是本 repo 現在正在做的事：一個 agent 照 `--ungroomed` 的輸出去分派，會分出 64 張沒有意義的工作，且**不會有任何東西告訴它分錯了**——那 64 張每一張都是合法的 store entry。\n\n修法方向（擇一，不必兩者）：(a) `--ungroomed` 預設排除已結案，並在 help 說明，另給 `--include-closed` 當逃生口；(b) 維持母體不變，但在 help 明說結案票在內、並在人類可讀輸出的表尾印一行「其中 N 張已結案」。與 `--unverified` 對稱的話 (b) 更一致——但 (b) 要求讀者記得自己過濾，而 `--missing-brief` 已經示範了 (a) 才是「佇列」語意該有的樣子。",
   "fix_site": "ops/backlog.py:1448, ops/backlog.py:2386, ops/backlog.py:1423, ops/backlog.py:3602, ops/backlog.py:4226",
+  "fixed_by": [
+    "2964f2c96cb184e94dd05208defc685cef6eac8a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-02917d",
@@ -16,6 +19,10 @@
   "scope": "backlog.py 的 --ungroomed/--include-closed filter、共用 parser wiring 與 list 測試。",
   "severity": "med",
   "source": "workflow:groom-untriaged-33（批次梳理時對照看板數字實測）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }

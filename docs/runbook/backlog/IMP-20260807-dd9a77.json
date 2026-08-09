@@ -8,6 +8,9 @@
   "date": "2026-08-07",
   "detail": "`backend/src/kg/ops_world_projection.py` 有**兩處**把「讀不出來」投影成「不存在」，而這支模組的用途正是給 ops 斷言提供可斷言欄位（`docs/reference/ops_state_plane.md` 是 SoT）。一個把不可讀投影成空的斷言平面，會讓斷言在最該紅的時候變綠：\n\n① `_load_cards`：`selected = [col for col in wanted if col in cols]`；`if not selected: return []`。card 表存在但欄位全部改名（schema 漂移、migration 半套、讀到別版 DB）→ 回空陣列，與「這個使用者真的沒有卡片」不可區分。實測：造一個含 1 列、欄位全改名的 card 表，`_load_cards` 回 `[]`，零訊號。\n\n② `_load_graphs:129-132`：`except (OSError, json.JSONDecodeError): links = []`。實測餵一個壞掉的 `graph_nb1.json`，投影結果是 `[{\"notebook_id\":\"nb1\",…,\"links\":[]}]`——「這份 graph 讀不出來」變成「這份 graph 沒有連結」，而 `graphs` 就在 `project_user_world` 的輸出裡（:172）。\n\n初稿宣稱「這是唯一一處把不可讀吞成空的位置，不是通例，改動面很窄」，被 review 以上面 ② 的實測推翻。那句話的作用是**縮小它自己的 scope**——一個把自己說得比實際小的 entry，會讓修它的人只修一半就收工。`_sqlite_rows`（:34-42）用 try/finally 而非 try/except、例外會正常上拋，那一處確實沒問題，但它不能代表整個檔。",
   "fix_site": "backend/src/kg/ops_world_projection.py:97, backend/src/kg/ops_world_projection.py:131, backend/src/kg/ops_world_projection.py:134, backend/src/kg/ops_cli_queries.py:169, backend/src/kg/ops_cli_queries.py:203, docs/reference/ops_state_plane.md:105",
+  "fixed_by": [
+    "740034bcfa2970479aeb15a8615c47f2bff33bca"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260807-dd9a77",
@@ -17,8 +20,10 @@
   "scope": "一個 backend 檔、ops CLI、狀態平面文件與七個案例測試。",
   "severity": "med",
   "source": "立單初稿被 review 推翻後重立",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }

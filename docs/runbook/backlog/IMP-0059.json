@@ -8,6 +8,9 @@
   "date": "2026-08-04",
   "detail": "證偽器有兩個**結構性**限制，已在程式碼註解裡明講而非假裝有守，但都該補。① **絕對路徑穿透**：PATH 遮蔽擋不住 `/usr/bin/log` 這類寫法（`ops/lib/ios_ops_logs.sh:67,90` 就是。**2026-08-05 更正例子清單**:原列的 `ops/ios_device_logs.sh:88` 不是呼叫而是 `echo` 給人看的提示字串,與 PATH 遮蔽無關;真正同族且更棘手的是原本**沒列**的 `ops/lib/ios_ops_logs.sh:165,209,285` 的 `/usr/bin/\"${args[@]}\"` 動態組名——缺口比原述更大,純靜態 grep 不可能完備），原本有一條 grep 守衛但它掃的是 `ops/test_ops.sh`——那只是 dispatcher，對任何 binary 都零命中，是一條寫著卻永遠不會響的檢查，已刪。要補得從 `test_ops.sh` 的 case arm 解出 group 的真實命令鏈再掃。② **逃生口管的是 token 集合不是指派**：11 條排除裡 9 條走不可證偽 token，把 `bin-xcode` 改成 `data-indexstore` 是一個單字 diff，證偽器立刻不再碰它且沒有任何檢查會出聲；而指派**確實會錯**——`review-probe` 這輪就被我指派成可進 CI，實際上它相依的正是本表已經用來排除 `ui-quality-gate` 的那份 UI World 資產。制度化的解法是把「產生這條 PR 的那個實驗」變成 CI step：以 **expected-fail** 跑 `EXCLUDED_GROUPS`，某條排除竟然在 ubuntu 上**通過** → gate 紅、訊息「這條排除是假的，收進 LINUX_GROUPS」。對 `data-*` / `net-external` 一樣有效、不需要 PATH 把戲，成本低（linux 上 ios-ops / lldb-forensics 各約 1 秒就死）。**但它自己有 C3 同型的弱點**：group 因別的原因失敗一樣會「確認」排除，所以訊息要寫成假設不是判決。**2026-08-05 複驗**:① 的缺口確實只在註解裡明講未補(`test_ops_ci_coverage.sh:386-389`、`:256-257` 逐字寫著守衛已刪、屬本條目),無替代守衛;② `:285-299` 只檢查「token ∈ DEP_TOKENS」+「`bin-*` 須指名命令」、`:326-334` 只檢查「每個 token 至少被用一次」,**沒有任何一條檢查指派是否正確**,`:391-394` 的 `[[ \"$tok\" == bin-* ]] || continue` 直接放行非 `bin-*` token → 一個單字 diff 即可脫逃,成立。建議的 expected-fail CI step **確認不存在**(`.github/workflows/ops-suite.yml` 只有 `:46` classify 與 `:48` `--print-linux-groups` 兩個執行 step,`grep EXCLUDED` 零命中)。",
   "fix_site": "ops/tests/test_ops_ci_coverage.sh, ops/test_ops.sh, .github/workflows/ops-suite.yml, ops/ci_linux_repro.sh, ops/tests/ops_group_chain.py（新）, ops/ci_expected_fail_exclusions.sh（新）",
+  "fixed_by": [
+    "1e321fa4ed62bff425f64cde0ce3ef5bec318ce4"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0059",
@@ -17,8 +20,10 @@
   "scope": "拆兩段做：各新增一支檢查程式，並在雲端流程加一道步驟，連同各自的測試。",
   "severity": "med",
   "source": "IMP-0054 的 review",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:round4-integrator",
+  "verified_evidence": "acceptance_cmd rc=0 on post-cutover main; fresh integration gate warn rc=0; head 73a32fb3dbe2"
 }
