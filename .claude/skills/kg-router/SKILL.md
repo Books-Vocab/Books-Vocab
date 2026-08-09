@@ -1,6 +1,6 @@
 ---
 name: kg-router
-description: "KG 新對話冷啟動與任務路由。當使用者要求盤點、設計流程、找入口、接手陌生任務、判斷該用哪個 skill/doc/tool，或任務橫跨 docs/ops/iOS/backend/podcast/release 時觸發。"
+description: "KG 新對話冷啟動與任務路由。當使用者要求盤點、設計流程、找入口、接手陌生任務、判斷該用哪個 skill/doc/tool，或任務橫跨 docs/ops/iOS/backend/podcast/release 時觸發；角色視野改由 kg-agent-context progressive disclosure。"
 user-invocable: true
 version: 1.0.0
 ---
@@ -11,9 +11,11 @@ version: 1.0.0
 
 ## Cold Start
 
-1. 先讀使用者意圖，分成 `observer` / `operator` / `editor` / `production-capable`。
+1. 先讀使用者意圖，分成 `observer` / `operator` / `editor` / `production-capable`；若 thread 已有
+   Ticket Factory／Delivery Team／child／review 身分，先觸發 `kg-agent-context`，不要預載其他角色。
 2. 跑 `./ops/capability_matrix.py --json`，確認是否已有 typed surface。
-3. 若任務牽涉功能/endpoint/env/DB/ops/iOS 模組，讀 `docs/reference/product_surface.md` 或 `docs/reference/tech_index.md`。
+3. 若任務牽涉功能/endpoint/env/DB/ops/iOS 模組，依 `docs/reference/agent_context.md` 的 authority
+   index 與 `docs/registry.yml` trigger 讀最小必要 SoT，不用記憶或 broad scan 代替。
 4. 若任務牽涉文件同步，交給 `kg-docs-control-plane`。
 5. 若任務牽涉完成回報或交接，交給 `kg-receipt`。
 
@@ -21,12 +23,13 @@ version: 1.0.0
 
 | 意圖 | 首選入口 |
 |---|---|
+| Ticket Factory／Delivery Team Integrator／Delivery Child／review service 的 context 載入 | `kg-agent-context` → `docs/reference/agent_context.md` 對應 role row |
 | 不知道能不能碰某 surface | `./ops/capability_matrix.py --json` |
 | 生產狀態 / 用戶資料 / 部署 | `devops` skill + `./ops/devops_kg_safe.sh ...` |
 | 成本 / 帳單 / drift | `billing` skill |
 | 用戶資料、圖譜、額度深度分析 | `data-analysis` skill |
 | bug / test failure / 異常行為 | `app-debug` skill |
-| Ticket Factory／多個 Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務（bootstrap 補登記/repo 手術鎖）；deploy 上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze；**本地 main 為主幹，三平面**；child 用 commit＋hand-back，Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 **origin/prod**=部署；異常才用 thread message，正常以 registry/state/receipt 溝通；語意見 `docs/sop/release.md`） |
+| 多個 Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務（bootstrap 補登記/repo 手術鎖）；deploy 上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze；**本地 main 為主幹，三平面**；child 用 commit＋hand-back，Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 **origin/prod**=部署；異常才用 thread message，正常以 registry/state/receipt 溝通；語意見 `docs/sop/release.md`） |
 | iOS build/test/release readiness | `./ops/ios_ops.sh commands --json`，再讀 `docs/sop/ios.md` |
 | docs impact / lint / registry | `kg-docs-control-plane` skill |
 | release version/changelog/tag | `./ops/release.sh status` |
@@ -64,8 +67,10 @@ version: 1.0.0
 路由完成後，至少回報：
 
 - `intent`: 任務類型與 capability tier
+- `context`: role profile、實際載入的 authority、刻意未載入的深層 context
 - `authority`: 讀過的 SoT doc 或 JSON surface
 - `entrypoint`: 下一步 typed command / skill
 - `validation`: 完成後應跑的 gate
 - `risk`: 是否跨 production / external push / local build / data write
+- `escalation`: 未知問題若未自行解決，具名 owner、證據與下一步
 - `tooling debt`: 小摩擦記錄；若已修工具,列 regression command

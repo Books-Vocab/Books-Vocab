@@ -72,8 +72,9 @@ review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receip
 Team delivery-loop 授權後，Integrator 執行 `close-wave --commit --sync`：唯一 fresh Gate、cutover、
 resolve、anchor/validate、origin/main sync；其他 Delivery Team 可並行，最後共享 ref 由 lock 序列化。
 `deploy` / `release` 仍須另外明示 release 意圖。正常溝通讀 registry/state/receipt；只有衝突、state
-不一致、resource collision 或 primary race 才用內建 thread message，訊息帶 team/slug/branch/path/HEAD/
-state/evidence/action。完整正本見 `.claude/skills/worktree-flow/SKILL.md`。
+不一致、resource collision 或 primary race 才用內建 thread message，訊息至少帶 canonical contract 的
+team/slug、branch、worktree path、HEAD、state path、具體 blocker 與證據、要求的動作，以及
+pause|continue 判定。完整正本見 `.claude/skills/worktree-flow/SKILL.md`。
 
 **要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
 且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有
@@ -126,9 +127,10 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 ## 對話啟動流程
 
 1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合；若任務是新對話接手、找入口、跨 docs/ops/iOS/backend/podcast/release,優先觸發 `kg-router`。
-2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
-3. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
-4. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
+2. **判定角色視野** — Ticket Factory／Delivery Team Integrator／Delivery Child／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。
+3. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
+4. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
+5. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
 
 ## Docs Control Plane 快速用法
 
@@ -141,18 +143,19 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 - **coverage debt**:`./ops/docs_registry_coverage.py` 看哪些 linted docs 尚未進 registry,並分成 `active_unregistered`(應補進控制面)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt);`--strict` 只卡 active-doc 覆蓋 debt,不等同日常 gate。
 - **同步流程權威**:背景 doc-sync agent 讀 `docs/sop/doc_sync.md`;人工維護/狗食流程讀 `docs/sop/docs_dogfood.md`。
 
-## Skill 系統(KG 專屬 9 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 10 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
 | `kg-router` | 新對話接手 / 找入口 / 跨 docs、ops、iOS、backend、podcast、release 的任務 | 冷啟動路由：讀 capability matrix / docs registry / product+tech index,再載入最小必要 skill |
+| `kg-agent-context` | Ticket Factory／Delivery Team Integrator／Delivery Child／review service 或未知 context | 依角色 row progressive disclosure；沿 authority index 查 SoT，必要時具名升級，不載入兄弟角色與全 repo |
 | `kg-docs-control-plane` | docs impact / docs lint / registry / verified_against / agent-facing surface 同步 | 文檔控制面判讀與 gate |
 | `kg-receipt` | handoff / receipt / 驗證證據 / 任務收尾格式 | 固定輸出完成證據與下一輪接手資訊 |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | Ticket Factory／多個 Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務；發布上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze）。child 預設 commit＋hand-back；Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 origin/prod=部署；異常才 thread message，正常以 registry/state/receipt 溝通。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
+| `worktree-flow` | Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務；發布上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze）。child 預設 commit＋hand-back；Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 origin/prod=部署；異常才 thread message，正常以 registry/state/receipt 溝通。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
@@ -198,6 +201,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 | 我正在做 | 先讀 |
 |---|---|
+| 角色視野 / progressive disclosure / 未知問題升級 | `docs/reference/agent_context.md` **(SoT)** + `.claude/skills/kg-agent-context/SKILL.md` |
 | 查功能是否已實作(避免重造) | `docs/reference/product_surface.md` **(SoT)** |
 | 查 endpoint / DB table / env var / iOS 模組叫什麼 | `docs/reference/tech_index.md` **(SoT)** |
 | 改 `ops_edit`/`ops_cli`/UI World projection(加可斷言欄位 / 疊 scenario 層 / 防雙面 drift) | `docs/reference/ops_state_plane.md` **(SoT)** |

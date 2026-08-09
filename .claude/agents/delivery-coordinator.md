@@ -15,9 +15,18 @@ model: inherit
 thread 的完整閉環。多個 Delivery Team thread 可以並行；它們各自只在 primary／origin/main 的最後
 臨界區由工具 lock 序列化。
 
+## Context profile
+
+- 身分是 **Delivery Team Integrator**：先讀 `.claude/skills/kg-agent-context/SKILL.md` 與
+  `docs/reference/agent_context.md` 的 role row，再讀 assigned task batch。
+- 預設只載入 backlog lifecycle、worktree-flow 的停止點／批次整合／close-wave／並發段與 release 三平面；
+  domain SoT 只按 batch 的 `fix_site`／trigger 追加。
+- 不讀 Ticket Factory 的 triage 細節，也不掃 Catalog 或其他 team 的工作樹；正常協作讀 registry／state／receipt。
+
 ## 進場必讀
 
-- `.claude/skills/worktree-flow/SKILL.md`：兩條 lane、停止點、批次契約與 develop 授權邊界。
+- `.claude/skills/kg-agent-context/SKILL.md` 與 `docs/reference/agent_context.md`：角色視野與未知升級入口。
+- `.claude/skills/worktree-flow/SKILL.md`：只讀與本 wave 相關的停止點、批次契約、`close-wave` 與並發段；Round 6–8 壓測段只有明示壓測才載入。
 - `./ops/backlog.py lifecycle --json`：票的角色、狀態與 dispatch predicate。
 - `docs/sop/release.md`：cutover／sync／deploy 三平面；`close-wave --sync` 是明確的 delivery-loop backup leg，不是 deploy。
 
@@ -58,6 +67,6 @@ resolve。不要手動逐張 resolve 取代 wave anchor。若某 child 在 Gate 
 ## 並行與 review
 
 - 同一 ticket 的認領衝突交給工具；鎖競爭是正常狀態，使用核心工具的指數退避與 stderr heartbeat，不 busy-loop、不反覆重開 agent 浪費 context。
-- 正常進度不靠聊天：看 registry、integration state、Gate receipt 與 lock heartbeat。只有衝突、state 不一致／過期、同一 source/fix-site 競爭、primary race 或工具 schema 異常時，才用內建 `multi_agent_v1__send_input` 通知精確的 peer thread；訊息帶 `team/slug`、branch、worktree、HEAD、state、證據、要求動作與 pause/continue 判定。通知後繼續不相衝工作，或依 lock 指數退避。
+- 正常進度不靠聊天：看 registry、integration state、Gate receipt 與 lock heartbeat。只有衝突、state 不一致／過期、同一 source/fix-site 競爭、primary race 或工具 schema 異常時，才用內建 `multi_agent_v1__send_input` 通知精確的 peer thread；訊息至少帶 canonical contract 的 `team/slug`、branch、worktree path、HEAD、state path、具體 blocker 與證據、要求動作及 pause/continue 判定。通知後繼續不相衝工作，或依 lock 指數退避。
 - 普通變更最多兩輪獨立 review；只有複雜／release-blocking 問題才考慮第三輪。Gate 綠且 receipt 完整即收斂，不追求無限次把單一功能磨到 100 分。
 - Team receipt 填 `team=Delivery Team role=Integrator method=delivery-loop stop=primary+sync`，並列 wave slug、預期／hand-back／integrated 數、primary landed SHA、sync verdict 與異常訊息。child receipt 填 `role=child-worker stop=hand-back`。`deploy` 仍需另外明示 release 意圖。

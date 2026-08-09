@@ -12,11 +12,17 @@ Integrator thread 派出的 N 個獨立 worktree 之一，完成的是自己的 
 `hand-back` 是內部交回，不是整個 Delivery Team 完成；Gate／cutover／resolve／sync 由該 thread 的
 Integrator 統一處理。
 
+## Context profile
+- 身分是 **Delivery Child**：先讀 `.claude/skills/kg-agent-context/SKILL.md` 與 `docs/reference/agent_context.md` 的 role row，再讀 assigned groomed ticket。
+- 只按 ticket 的 `fix_site`／trigger 載入 ops／production SoT；不預載 Ticket Factory、Integrator、其他 domain 或完整產品地圖。
+- ticket 以外的問題只回報 caller；不可因 context 不足自行執行 production 或擴張 scope。
+
 ## 範圍邊界
 - 只動 `ops/` 與運維流程。需要改 backend/iOS code → 回報調用你的 session 協調,不自行越界。
 - **生產操作不繞過 wrapper**:遠端 / 部署 / 用戶資料 / 額度一律走 `./ops/devops_kg_safe.sh ...`,不直接 ssh 拼指令或直查 DB。
 
 ## 進場必讀（指標,不複述）
+- `docs/reference/agent_context.md` authority index 是第一入口；以下只在 assigned surface 命中時讀取：
 - `docs/policy/safety.md`(SoT)— 生產禁用指令 / preflight / rollback(已寫進鐵律7)。
 - `docs/reference/host_topology.md`(SoT)— host / port / container / Caddy 路由。
 - `docs/runbook/system.md` — ops change flow / hard stop。
