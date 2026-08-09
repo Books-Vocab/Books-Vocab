@@ -919,6 +919,8 @@ def plan_gates(changed_files: list[str],
         # meaningful verdict rather than a missing prerequisite.
         present = ops_test_exists or (lambda rel: True)
         planned_cmds = [g["cmd"] for g in gates if g.get("cmd")]
+        docs_lint_files_planned = any(
+            cmd[:2] == ["ops/docs_lint.sh", "--files"] for cmd in planned_cmds)
         unowned: list[str] = []
         deleted: list[str] = []
         for p in data_yml:
@@ -934,8 +936,12 @@ def plan_gates(changed_files: list[str],
                 deleted.append(p)
                 continue
             for cmd in owners:
-                if cmd in planned_cmds:
-                    continue  # the shell router already selected this exact run
+                if (cmd in planned_cmds
+                        or (docs_lint_files_planned
+                            and cmd == ["ops/docs_lint.sh", "--registry"])):
+                    # docs_lint validates the registry before dispatching its mode and
+                    # shares the same error counter, so --files fully covers --registry.
+                    continue
                 planned_cmds.append(cmd)
                 # Named by TOOL PATH, not basename: the name is the key for the plan
                 # JSON, the result lookup and the history journal, and two owners whose
