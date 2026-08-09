@@ -44,8 +44,8 @@ extension TodayReviewPresenter {
     /// （hit-testing / a11y / 邊框值 diff），無結構 diff。
     // TODO(A/B 量測): 舊 cardStackLayers 對 deck 預覽包 .drawingGroup(opaque:false)。
     // slot 常駐後保守先移除（rasterize 互動卡會改變 gesture/a11y/fold 渲染行為）;
-    // 若 device probe 顯示 preview 合成成本回升，A=per-slot 固定 .drawingGroup、
-    // B=維持移除，以 settle.frames/fling.frames 對比定案。
+    // 若 device probe 顯示 preview 合成成本回升，A=對非 active 的那張卡包一層
+    // .drawingGroup、B=維持移除，以 settle.frames/fling.frames 對比定案。
     @ViewBuilder
     func cardSlotView(slot: Int, viewport: ReviewCardViewport) -> some View {
         if slot < state.slots.count, let content = state.slots[slot].card {
@@ -68,49 +68,38 @@ extension TodayReviewPresenter {
                 )
             } }()
 
-            VStack(spacing: 0) {
-                frontFoldSurface(
-                    content,
-                    showsAnswer: slotShowsAnswer,
-                    interactive: isActive,
-                    borderOpacity: borderOpacity,
-                    viewport: viewport
-                )
-                .overlay(alignment: .topTrailing) {
-                    // chrome 常駐於每個 slot（裝飾），只有 active 可點 —
-                    // promote 時 chrome 不換樹、無「裸卡 pop」。
-                    frontCardChrome(content.card, interactive: isActive)
-                }
+            // 一張完整的卡（正面摺頁 ＋ chrome ＋ 背面摺頁 ＋ 摺疊動畫）＝
+            // `ReviewCardView`；牌堆只負責姿態與互動鎖。互動鎖由這裡算好再傳，
+            // 卡片內部不判 dismiss 相位。
+            ReviewCardView(
+                content: content,
+                profile: reviewCardLayoutStore.profile,
+                viewport: viewport,
+                showsAnswer: slotShowsAnswer,
+                mountsBack: isActive && backContentMounted,
+                interactive: isActive && isCardInteractive,
+                borderOpacity: borderOpacity,
+                collocationExplanations: collocationExplanations,
+                actions: ReviewCardActions(
+                    advanceReveal: onAdvanceReveal,
+                    collapseReveal: onCollapseReveal,
+                    detailTap: onDetailTap,
+                    linkTap: onLinkTap,
+                    addLink: onAddLink,
+                    explainCollocation: onExplainCollocation,
+                    viewCollocationExplanation: onViewCollocationExplanation,
+                    deleteCollocationExplanation: onDeleteCollocationExplanation
+                ),
                 // FIX(review-flip-gap)：逐 slot 記實測 front 高度（active slot
                 // 恆 uncap → 量到自然高度）。`activeCardHeight` 讀 active slot 的值，
-                // 供非 active slot cap（見 VStack 的 .frame）。
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                    guard h > 0, slotFrontHeights.indices.contains(slot),
+                // 供非 active slot cap（見下方的 .frame）。量測只有卡片自己做得到，
+                // 所以由它回吐；deck 這邊不再重覆量一次。
+                onFrontHeightChange: { h in
+                    guard slotFrontHeights.indices.contains(slot),
                           abs(slotFrontHeights[slot] - h) > 0.5 else { return }
                     slotFrontHeights[slot] = h
                 }
-
-                // 永遠存在於 view tree — PaperFoldModifier(Animatable) 直接驅動
-                // 摺疊動畫。frame(height:0) 使摺疊時不佔 layout 空間，但 minHeight
-                // 內部約束使 view 仍以完整尺寸渲染（fold 視覺正確）。preview slot
-                // 恆摺疊（slotShowsAnswer == false）。
-                answerFoldSurface(
-                    content,
-                    viewport: viewport,
-                    mounted: isActive && backContentMounted
-                )
-                .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
-                .modifier(PaperFoldModifier(progress: slotShowsAnswer ? 1 : 0))
-                .frame(height: slotShowsAnswer ? nil : 0, alignment: .top)
-                .allowsHitTesting(slotShowsAnswer)
-                #if DEBUG
-                // gap 調查（answer 分量）：量 answer surface 經 frame(height:) clamp
-                // 後的真實高度。front 階段應恆 0；>0 = answer 未收乾淨（H2 撐高源）。
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                    logSlotGeometry(slot: slot, role: role, kind: "answer", word: content.card.word, height: h)
-                }
-                #endif
-            }
+            )
             // FIX(review-flip-gap)：非 active slot 的 layout 高度 cap 到 active 卡
             // 高度，讓 ZStack(alignment:.top) 只由 active 卡決定高度、不被較高的背景
             // 卡撐大。active slot 傳 nil（自然高度，反而定義 activeCardHeight）。

@@ -1,8 +1,111 @@
 import SwiftUI
 
-// MARK: - Card Content Rendering
+// MARK: - Data in
 
-extension TodayReviewPresenter {
+/// 畫一張複習卡所需要的全部資料。與複習 session 的互動狀態無關 —— 這是把卡片從
+/// 「先造一個 presenter」的型別枷鎖裡解出來的那一刀。
+struct ReviewCardContent {
+    let card: CardPresentation
+    let linkGroups: [ReviewCardLinkGroup]
+    let backDocument: CardDocument
+}
+
+struct ReviewCardLinkGroup: Identifiable {
+    let id: String
+    let label: String
+    let items: [KGCardLinkSummary]
+    let overflowCount: Int
+}
+
+/// 卡片能發出的意圖。欄位全 optional；`.none` ＝ 純展示（設定頁預覽 / catalog），
+/// 一顆 callback 都不接。
+struct ReviewCardActions {
+    var advanceReveal: (() -> Void)? = nil
+    var collapseReveal: (() -> Void)? = nil
+    var detailTap: (() -> Void)? = nil
+    var linkTap: ((KGCardLinkSummary) -> Void)? = nil
+    var addLink: (() -> Void)? = nil
+    var explainCollocation: ((String) -> Void)? = nil
+    var viewCollocationExplanation: ((String) -> Void)? = nil
+    var deleteCollocationExplanation: ((String) -> Void)? = nil
+
+    static let none = ReviewCardActions()
+}
+
+// MARK: - Review Card
+
+/// 一張完整的複習卡：正面摺頁 ＋ 右上角 chrome ＋ 背面摺頁 ＋ 摺疊動畫。
+///
+/// 輸入全是資料。牌堆的事（slot transform、高度 cap、clipShape、geometryGroup、
+/// zIndex、animation、gesture、DEBUG 幾何探針）留在 `TodayReviewSwipeDeck`，
+/// 互動鎖由呼叫端算好後用 `interactive` 傳進來 —— 卡片內部不判 dismiss 相位。
+///
+/// `profile` 走參數而非 `@Environment(\.reviewCardLayoutStore)`：設定頁的即時預覽
+/// 必須能餵一份尚未落地的 draft profile。
+struct ReviewCardView: View {
+    @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.speechService) private var speechService
+
+    let content: ReviewCardContent
+    let profile: ReviewCardLayoutProfile
+    let viewport: ReviewCardViewport
+    let showsAnswer: Bool
+    var mountsBack: Bool = true
+    var interactive: Bool = true
+    var borderOpacity: Double = TodayReviewMetrics.cardBorderActiveOpacity
+    var measuresSections: Bool = true
+    var collocationExplanations: [String: String] = [:]
+    var actions: ReviewCardActions = .none
+    var onFrontHeightChange: ((CGFloat) -> Void)? = nil
+
+    /// 三階量測快取，屬於這張卡自己（原本住在 presenter 的 @State，只有卡片渲染
+    /// 讀寫）。
+    @State private var reviewNaturalSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    @State private var reviewIntermediateSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    @State private var reviewCompactSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    /// 自量的寬度（量測 key 的 bucket）與正面高度（背面預算的被減數）。
+    @State private var containerWidth: CGFloat = 393
+    @State private var measuredFrontHeight: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            frontFoldSurface(
+                content,
+                showsAnswer: showsAnswer,
+                interactive: interactive,
+                borderOpacity: borderOpacity,
+                viewport: viewport
+            )
+            .overlay(alignment: .topTrailing) {
+                // chrome 常駐於每張卡（裝飾），只有互動中的那張可點 —— promote 時
+                // chrome 不換樹、無「裸卡 pop」。
+                frontCardChrome(content.card, interactive: interactive)
+            }
+            // 正面實測高度：背面預算的被減數，同時回吐給牌堆去填 slotFrontHeights。
+            // 兩份量測只留這一份。
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                guard height > 0, abs(measuredFrontHeight - height) > 0.5 else { return }
+                measuredFrontHeight = height
+                onFrontHeightChange?(height)
+            }
+
+            // 永遠存在於 view tree — PaperFoldModifier(Animatable) 直接驅動摺疊動畫。
+            // frame(height: 0) 使摺疊時不佔 layout 空間，但內部 minHeight 使 view 仍以
+            // 完整尺寸渲染（fold 視覺正確）。
+            answerFoldSurface(content, viewport: viewport, mounted: mountsBack)
+                .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
+                .modifier(PaperFoldModifier(progress: showsAnswer ? 1 : 0))
+                .frame(height: showsAnswer ? nil : 0, alignment: .top)
+                .allowsHitTesting(showsAnswer)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
+            guard newWidth > 0, abs(containerWidth - newWidth) > 0.5 else { return }
+            containerWidth = newWidth
+        }
+        .enableInjection()
+    }
 
     // MARK: Dimensions
 
@@ -15,12 +118,12 @@ extension TodayReviewPresenter {
 
     // MARK: Front Surface
 
-    /// 卡正面摺頁面。Phase 3a 起由常駐 slot 呼叫：`showsAnswer` / `interactive`
-    /// 是 per-slot 投影值（preview slot 恆 false），`borderOpacity` 由
-    /// `TodayReviewCardSlotLayout.borderOpacity` 內插（0.45 → 0.72），promote
-    /// 翻面時邊框零 pop。`todayReview.card.front` a11y 識別子只掛在 active slot。
+    /// 卡正面摺頁面。`showsAnswer` / `interactive` 由呼叫端投影（牌堆的 preview slot
+    /// 恆 false），`borderOpacity` 由 `TodayReviewCardSlotLayout.borderOpacity` 內插
+    /// （0.45 → 0.72），promote 翻面時邊框零 pop。`todayReview.card.front` a11y
+    /// 識別子只掛在互動中的那張。
     func frontFoldSurface(
-        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        _ currentCard: ReviewCardContent,
         showsAnswer: Bool,
         interactive: Bool,
         borderOpacity: Double,
@@ -35,6 +138,8 @@ extension TodayReviewPresenter {
             chrome: ReviewCardChrome.verticalInset(for: .front)
         )
         let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
+        // `interactive` 的 guard 必須留著：沒有它，設定頁預覽或 catalog 每次重繪都會
+        // 吃掉複習畫面的 fling 計時器，兩個不相干的畫面互相污染。
         if interactive, let clock = TodayReviewState.flingClock {
             PerfLog.review.mark("front.gap", "w=\(card.word) \(PerfChannel.ms(since: clock))ms (fling->current-front body)")
             TodayReviewState.flingClock = nil
@@ -47,14 +152,14 @@ extension TodayReviewPresenter {
                 currentCard,
                 layout: layout,
                 drawnHeight: drawnHeight,
-                measuresSections: interactive
+                measuresSections: measuresSections && interactive
             )
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: drawnHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .onTapGesture {
-                guard !showsAnswer, interactive, isCardInteractive else { return }
-                onAdvanceReveal()
+                guard !showsAnswer, interactive else { return }
+                actions.advanceReveal?()
             }
             // The face is an accessibility CONTAINER, not one merged element.
             // Without this declaration the `.accessibilityLabel` below has no
@@ -70,15 +175,15 @@ extension TodayReviewPresenter {
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
             .accessibilityHint(showsAnswer || !interactive ? "" : "點一下翻轉卡片".localized)
             .accessibilityAction {
-                guard !showsAnswer, interactive, isCardInteractive else { return }
-                onAdvanceReveal()
+                guard !showsAnswer, interactive else { return }
+                actions.advanceReveal?()
             }
         }
     }
 
     @ViewBuilder
     private func frontFaceContent(
-        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        _ currentCard: ReviewCardContent,
         layout: ReviewCardLayoutSolver.Result,
         drawnHeight: CGFloat,
         measuresSections: Bool
@@ -103,14 +208,11 @@ extension TodayReviewPresenter {
         }
     }
 
-    /// 卡片右上角 chrome（喇叭 / 詳情）。作用中卡片與背後 deck 預覽**共用同一渲染**，
+    /// 卡片右上角 chrome（喇叭 / 詳情）。互動中的卡片與背後預覽**共用同一渲染**，
     /// 確保 fling 飛出期間背後預覽已帶完整 chrome、完成時的 swap 隱形（消除「裸卡 pop」）。
     /// `interactive=false`（預覽）時純裝飾：無動作、不可點。
     @ViewBuilder
     func frontCardChrome(_ card: CardPresentation, interactive: Bool) -> some View {
-        let _ = { if interactive, dismissPhase != .idle || swipeOffset != 0 {
-            PerfLog.review.mark("front.chrome", "w=\(card.word) (active card chrome rendered)")
-        } }()
         HStack(spacing: appSkin.spacing.inlineGap) {
             VocabChromeIconButton(
                 systemImage: "speaker.wave.2.fill",
@@ -120,7 +222,7 @@ extension TodayReviewPresenter {
             VocabChromeIconButton(
                 systemImage: "arrow.up.right",
                 label: "查看詳情".localized,
-                action: { if interactive, isCardInteractive { onDetailTap() } }
+                action: { if interactive { actions.detailTap?() } }
             )
         }
         .padding(reviewCardPadding)
@@ -128,13 +230,13 @@ extension TodayReviewPresenter {
     }
 
     func reviewCardFront(
-        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        _ currentCard: ReviewCardContent,
         layout: ReviewCardLayoutSolver.Result,
         measuresSections: Bool
     ) -> some View {
         let card = currentCard.card
         let plan = reviewCardRenderPlan(for: currentCard)
-        let _ = PerfLog.review.mark("front.body", "w=\(card.word) reveal=\(state.revealStage)")
+        let _ = PerfLog.review.mark("front.body", "w=\(card.word) answer=\(showsAnswer ? 1 : 0)")
         // Spacing comes from the solver's own arithmetic, never re-derived here.
         return VStack(alignment: .leading, spacing: layout.sectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
@@ -154,8 +256,7 @@ extension TodayReviewPresenter {
                 }
 
                 // Inline 欄位（詞性）與核心詞共用這條 firstTextBaseline —— 它是單字的
-                // 附屬標註，不是自成一列的區塊。走同一支 reviewOptionalField，字型／
-                // 顏色天然與重構前那段 `Text(pos)` 對齊。
+                // 附屬標註，不是自成一列的區塊。
                 ForEach(plan.front.inlineFields, id: \.self) { field in
                     reviewOptionalField(
                         field,
@@ -165,7 +266,7 @@ extension TodayReviewPresenter {
                     )
                 }
             }
-            // 右上角 chrome（喇叭 / 詳情）是 overlay（必須在 reveal Button 外才能獨立點），
+            // 右上角 chrome（喇叭 / 詳情）是 overlay（必須在 reveal 手勢外才能獨立點），
             // 故在單字列保留其寬度的 trailing 空間，長詞（如 "be eaten alive"）在碰到
             // 圖示前先縮放 / 換行，不被擋字。
             .padding(.trailing, frontChromeReserveWidth)
@@ -213,11 +314,9 @@ extension TodayReviewPresenter {
 
     // MARK: Combined Answer Surface
 
-    /// 答案摺頁面。`mounted` 是 per-slot 投影（active slot 才掛
-    /// `backContentMounted` 閘；preview slot 恆 stub）— 閘語意不變，見
-    /// TodayReviewPresenter.updateBackContentMount。
+    /// 答案摺頁面。`mounted` 由呼叫端投影（牌堆只讓互動中的那張掛真內容，其餘恆 stub）。
     func answerFoldSurface(
-        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        _ currentCard: ReviewCardContent,
         viewport: ReviewCardViewport,
         mounted: Bool
     ) -> some View {
@@ -227,12 +326,10 @@ extension TodayReviewPresenter {
             // Subtraction probe: while the FRONT card is shown the back tree
             // (CardDocumentView / CardRichTextRenderer / VocabTierLabel /
             // reviewLinkStrip) is NOT built — only a zero-cost stub holds the
-            // folded slot. Mount is gated by `backContentMounted`, NOT `showsAnswer`:
-            // on reveal it mounts under the opening fold's opacity-0 cover; on
-            // collapse it STAYS mounted until the PaperFoldModifier progress 1→0
-            // finishes, so the fold folds the REAL content (not an empty box).
-            // See TodayReviewPresenter.updateBackContentMount for the falling-edge
-            // defer + generation guard.
+            // folded slot. Mount is gated by the caller's mount gate, NOT by
+            // `showsAnswer`: on reveal it mounts under the opening fold's opacity-0
+            // cover; on collapse it STAYS mounted until the PaperFoldModifier
+            // progress 1→0 finishes, so the fold folds the REAL content.
             // stub 用 answerCardHeight 撐 minHeight，與真內容同源，
             // 避免折疊→展開時 intrinsic 高度跳動。
             Group {
@@ -259,12 +356,15 @@ extension TodayReviewPresenter {
             }
         }
         .overlay(alignment: .top) {
-            ReviewFoldChevronPill(action: onCollapseReveal, accessibilityLabel: L10n.string("todayReview.fold.collapse"))
-                .offset(y: -TodayReviewMetrics.chevronButtonSize / 2)
+            ReviewFoldChevronPill(
+                action: { actions.collapseReveal?() },
+                accessibilityLabel: L10n.string("todayReview.fold.collapse")
+            )
+            .offset(y: -TodayReviewMetrics.chevronButtonSize / 2)
         }
     }
 
-    func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, viewport: ReviewCardViewport) -> some View {
+    func combinedAnswerContent(_ currentCard: ReviewCardContent, viewport: ReviewCardViewport) -> some View {
         let card = currentCard.card
         let _ = PerfLog.render.tick(
             "todayReview.answer.surface",
@@ -274,8 +374,11 @@ extension TodayReviewPresenter {
         // The outer insets are already out of `contentHeight`, so the front's
         // measured height is the only thing left to subtract — counting the insets
         // twice was the other half of the disagreeing-budget defect.
+        //
+        // 扣的是**這張卡自己**量到的正面高度。行為與扣牌堆的 activeCardHeight 等價：
+        // 背面只有互動中的那張會 mount，而 activeShellHeight 回傳的就是那一格的高度。
         let backAvailableHeight = viewport.backHeight(
-            frontOccupied: activeCardHeight + TodayReviewMetrics.stackLayerMicroOffset
+            frontOccupied: measuredFrontHeight + TodayReviewMetrics.stackLayerMicroOffset
         )
         let layout = reviewCardLayout(for: currentCard, face: .back, availableHeight: backAvailableHeight)
         let maxHeight = max(backAvailableHeight, 1)
@@ -296,7 +399,7 @@ extension TodayReviewPresenter {
 
     @ViewBuilder
     private func answerContent(
-        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        _ currentCard: ReviewCardContent,
         plan: ReviewCardRenderPlan,
         layout: ReviewCardLayoutSolver.Result
     ) -> some View {
@@ -380,7 +483,7 @@ extension TodayReviewPresenter {
     @ViewBuilder
     private func reviewBackFieldColumn(
         blockFields: [ReviewCardField],
-        currentCard: TodayReviewPresenterState.CurrentCard,
+        currentCard: ReviewCardContent,
         layout: ReviewCardLayoutSolver.Result
     ) -> some View {
         // id: \.element 維持原本 id: \.self 的 view identity（不要換成 \.offset）。
@@ -420,7 +523,7 @@ extension TodayReviewPresenter {
     // MARK: Link Strip
 
     func reviewLinkStrip(
-        _ groups: [TodayReviewPresenterState.LinkGroup],
+        _ groups: [ReviewCardLinkGroup],
         presentation: ReviewCardLayoutSolver.GraphLinkPresentation = .twoPerGroup
     ) -> some View {
         HStack(alignment: .top, spacing: appSkin.spacing.inlineGap) {
@@ -444,7 +547,7 @@ extension TodayReviewPresenter {
                             }
                         }()
                         ForEach(Array(shownItems.enumerated()), id: \.element.id) { index, item in
-                            Button { onLinkTap(item) } label: {
+                            Button { actions.linkTap?(item) } label: {
                                 Text(item.word)
                                     .font(appSkin.typography.monoEmphasis)
                                     .foregroundStyle(appSkin.palette.primaryText)
@@ -470,7 +573,7 @@ extension TodayReviewPresenter {
 
             Spacer()
 
-            Button(action: onAddLink) {
+            Button(action: { actions.addLink?() }) {
                 Image(systemName: "plus")
                     .font(appSkin.typography.iconSmall)
                     .foregroundStyle(appSkin.palette.secondaryText)
@@ -486,7 +589,7 @@ extension TodayReviewPresenter {
     /// only place the review card can create its first link, which is why the
     /// section is always *available* even though its content is empty.
     private var addLinkPrompt: some View {
-        Button(action: onAddLink) {
+        Button(action: { actions.addLink?() }) {
             HStack(spacing: appSkin.spacing.inlineGap) {
                 Image(systemName: "plus")
                     .font(appSkin.typography.iconTiny)
@@ -501,12 +604,10 @@ extension TodayReviewPresenter {
 
     // MARK: - Render Plan / Adaptive Layout
 
-    private func reviewCardRenderPlan(
-        for currentCard: TodayReviewPresenterState.CurrentCard
-    ) -> ReviewCardRenderPlan {
+    private func reviewCardRenderPlan(for currentCard: ReviewCardContent) -> ReviewCardRenderPlan {
         let card = currentCard.card
         return .make(
-            profile: reviewCardLayoutStore.profile,
+            profile: profile,
             mode: card.reviewMode,
             availability: .forReviewCard(
                 partOfSpeech: card.partOfSpeech,
@@ -519,14 +620,13 @@ extension TodayReviewPresenter {
     }
 
     private func reviewCardLayout(
-        for currentCard: TodayReviewPresenterState.CurrentCard,
+        for currentCard: ReviewCardContent,
         face: ReviewCardFace,
         availableHeight: CGFloat
     ) -> ReviewCardLayoutSolver.Result {
         let plan = reviewCardRenderPlan(for: currentCard)
         // 只有 block 欄位向 solver 要一格預算。inline 欄位（詞性）畫在核心列裡，
-        // 高度已經被 `.core` 的 onGeometryChange 量進去了——再配一格就是替同一段
-        // 內容付兩次錢，而且多收一個 foldSectionSpacing。
+        // 高度已經被 `.core` 的 onGeometryChange 量進去了。
         let fields = face == .front ? plan.front.blockFields : plan.back.blockFields
         // 同一組 blockFields 的兩欄分割（core 之上／之下）。hairline 逐欄記帳：
         // 一欄的第一格貼的是 core 不是另一格，接起來算 n-1 會多收一條。
@@ -563,7 +663,7 @@ extension TodayReviewPresenter {
     }
 
     private func reviewMeasurementKey(
-        for currentCard: TodayReviewPresenterState.CurrentCard,
+        for currentCard: ReviewCardContent,
         face: ReviewCardFace,
         section: ReviewCardLayoutSolver.Section
     ) -> ReviewCardMeasurementKey {
@@ -578,7 +678,7 @@ extension TodayReviewPresenter {
 
     private func recordReviewSectionHeight(
         _ height: CGFloat,
-        currentCard: TodayReviewPresenterState.CurrentCard,
+        currentCard: ReviewCardContent,
         face: ReviewCardFace,
         section: ReviewCardLayoutSolver.Section,
         level: ReviewCardLayoutSolver.MeasurementLevel
@@ -601,7 +701,7 @@ extension TodayReviewPresenter {
     @ViewBuilder
     private func reviewMeasurementProbes(
         _ field: ReviewCardField,
-        currentCard: TodayReviewPresenterState.CurrentCard,
+        currentCard: ReviewCardContent,
         face: ReviewCardFace
     ) -> some View {
         let key = reviewMeasurementKey(for: currentCard, face: face, section: .field(field))
@@ -638,7 +738,7 @@ extension TodayReviewPresenter {
     @ViewBuilder
     private func reviewOptionalField(
         _ field: ReviewCardField,
-        currentCard: TodayReviewPresenterState.CurrentCard,
+        currentCard: ReviewCardContent,
         face: ReviewCardFace,
         policy: ReviewCardLayoutSolver.Policy
     ) -> some View {
@@ -718,9 +818,9 @@ extension TodayReviewPresenter {
                     compact: true,
                     maxRows: ReviewCardLayoutSolver.collocationRowLimit(lineLimit: policy.lineLimit),
                     explanations: collocationExplanations,
-                    onExplain: onExplainCollocation,
-                    onView: onViewCollocationExplanation,
-                    onDelete: onDeleteCollocationExplanation
+                    onExplain: actions.explainCollocation,
+                    onView: actions.viewCollocationExplanation,
+                    onDelete: actions.deleteCollocationExplanation
                 )
                 if policy.summarizesOverflow, card.collocations.count > visible.count {
                     Text("+\(card.collocations.count - visible.count)")
@@ -754,7 +854,6 @@ extension TodayReviewPresenter {
         if count > 12 { return AppFonts.systemMono(size: TodayReviewMetrics.counterFontSizeLarge, weight: .semibold) }
         return appSkin.typography.reviewWord
     }
-
 }
 
 // MARK: - Face Chrome
