@@ -52,6 +52,9 @@ category 名單與欄位定義見 `ops/backlog.py --help`,此處不複述(SoT �
 ## Minimal Format
 
 ```text
+Lane:
+- team=<票務隊|交付隊> method=<票單閉環|直修道> stop=<hand-back|close-wave|other named stop>
+
 Result:
 - <完成的高層結果>
 

@@ -33,7 +33,7 @@ def exclusive_lock(
     label: str,
     fail_closed: bool = True,
     initial_delay: float = 0.25,
-    max_delay: float = 30.0,
+    max_delay: float = 20.0,
     heartbeat_interval: float = 20.0,
 ) -> Iterator[bool]:
     """Hold an exclusive advisory lock, waiting with exponential backoff.
@@ -61,7 +61,13 @@ def exclusive_lock(
         return
 
     started = time.monotonic()
-    delay = max(0.01, initial_delay)
+    backoff_cap = max(0.01, max_delay)
+    if heartbeat_interval > 0:
+        # A sleeping process must still emit a heartbeat at the global 20s
+        # ceiling.  Callers may request a larger backoff, but it cannot make
+        # the observable wait contract silent for longer than that.
+        backoff_cap = min(backoff_cap, heartbeat_interval)
+    delay = min(max(0.01, initial_delay), backoff_cap)
     waited = False
     last_heartbeat = started - heartbeat_interval
     acquired = False
@@ -105,7 +111,7 @@ def exclusive_lock(
                 )
                 last_heartbeat = now
             time.sleep(delay)
-            delay = min(max_delay, delay * 2)
+            delay = min(backoff_cap, delay * 2)
 
         yield acquired
     finally:

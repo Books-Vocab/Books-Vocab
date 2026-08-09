@@ -348,3 +348,11 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 receipt：`gate=<verdict> record=… head=<sha8> orch=… gates=N <status 統計>`。
 `--receipt-line` 只切換成靜音模式、只輸出這一行；`--plan-only` 的一般報告不附 receipt，
 但顯式 `--plan-only --receipt-line` 仍輸出 `gate=planned` 哨兵，且不寫入 verdict record。
+
+## Ticket delivery lanes
+
+| 入口 | 機器契約 |
+|---|---|
+| `ops/lib/lock_wait.py` | registry/backlog 的 read-modify-write lock 共用原語；競爭時以指數退避（預設 0.25s 起、20s ceiling）等待，等待／取得進度只寫 stderr，保留 stdout 的 JSON 純度。registry/backlog 對鎖建立／非競爭取得錯誤 fail-closed；唯讀 view 才可對非競爭錯誤 fail-open，競爭本身永遠等待。 |
+| `ops/worktree_orchestrate.py close-wave` | 交付隊收斂協調器的可重入批次入口；以同一 `--slug` 續接 integrate、fresh Gate、cutover、來源 resolve、backlog anchor、validate，最後才 resolve 整合樹。先檢查 primary clean 與 foreign active worktree，命名衝突停下但保留 state；不執行 `sync`／`deploy`。`--commit` 的 develop 授權仍由呼叫者負責。 |
+| `票務隊` / `交付隊` | 兩條平行 capability lane 的溝通名稱；完整有票路徑是 `票單閉環`，明示免票修改路徑是 `直修道`。詳細角色與停止點唯一以 `.claude/skills/worktree-flow/SKILL.md` 為準，backlog 狀態唯一以 `./ops/backlog.py lifecycle --json` 為準。 |

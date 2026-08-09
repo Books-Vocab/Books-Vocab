@@ -32,8 +32,9 @@ def test_contended_lock_uses_exponential_backoff_and_stderr_only(
     monkeypatch.setattr(lock_wait.fcntl, "flock", fake_flock)
     monkeypatch.setattr(lock_wait.time, "sleep", sleeps.append)
     progress = io.StringIO()
+    machine_output = io.StringIO()
 
-    with contextlib.redirect_stderr(progress):
+    with contextlib.redirect_stdout(machine_output), contextlib.redirect_stderr(progress):
         with lock_wait.exclusive_lock(
             tmp_path / "ledger.lock",
             label="test-ledger",
@@ -47,6 +48,7 @@ def test_contended_lock_uses_exponential_backoff_and_stderr_only(
     output = progress.getvalue()
     assert "label=test-ledger phase=waiting" in output
     assert "label=test-ledger phase=acquired" in output
+    assert machine_output.getvalue() == ""
 
 
 def test_fail_closed_turns_non_contention_error_into_named_failure(
@@ -60,6 +62,35 @@ def test_fail_closed_turns_non_contention_error_into_named_failure(
     with pytest.raises(lock_wait.LockUnavailable, match="test-queue"):
         with lock_wait.exclusive_lock(tmp_path / "queue.lock", label="test-queue"):
             pass
+
+
+def test_backoff_cannot_sleep_past_heartbeat_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attempts = 0
+    sleeps: list[float] = []
+
+    def fake_flock(_fd: int, operation: int) -> None:
+        nonlocal attempts
+        if operation & lock_wait.fcntl.LOCK_UN:
+            return
+        attempts += 1
+        if attempts == 1:
+            raise BlockingIOError(errno.EAGAIN, "busy")
+
+    monkeypatch.setattr(lock_wait.fcntl, "flock", fake_flock)
+    monkeypatch.setattr(lock_wait.time, "sleep", sleeps.append)
+
+    with lock_wait.exclusive_lock(
+        tmp_path / "ceiling.lock",
+        label="ceiling",
+        initial_delay=40.0,
+        max_delay=60.0,
+        heartbeat_interval=20.0,
+    ):
+        pass
+
+    assert sleeps == [20.0]
 
 
 def test_fail_open_only_applies_to_non_contention_error(
