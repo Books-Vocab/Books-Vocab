@@ -5,9 +5,9 @@ import SwiftUI
 
 struct ReaderSettingsPresenter: View {
     @ObserveInjection private var inject
-    @Environment(\.appTheme) var appTheme
+    /// 只剩主題色票還需要 skin；版面寬窄由系統 sheet 的 detents 決定，
+    /// 不再自己讀 horizontalSizeClass 換 panel chrome。
     @Environment(\.appSkin) var appSkin
-    @Environment(\.horizontalSizeClass) var sizeClass
 
     struct State {
         let fontSizeText: String
