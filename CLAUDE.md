@@ -180,7 +180,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## Scope 規則(觸發式,非 always-on)
 
-- **改 iOS View / UI** → 動手前讀 `docs/sop/ui-design.md`(規範) + `docs/reference/ui/components.md`(現有元件) + `docs/reference/ui/review_checklist.md`(自查 5 項) + `docs/reference/ui/state_matrix.md`(狀態覆蓋);對應 feature scope 另讀 `docs/reference/feature_boundary/<reader|vocabulary|notebook|bookshelf|podcast|settings>.md`。
+- **改 iOS View / UI** → 動手前讀 `docs/sop/ui-design.md`(規範) + `docs/reference/ui/components.md`(現有元件) + `docs/reference/ui/review_checklist.md`(自查 5 項) + `docs/reference/ui/state_matrix.md`(狀態覆蓋);對應 feature scope 另讀 `docs/reference/feature_boundary/<reader|vocabulary|notebook|bookshelf|podcast|settings|discover>.md`。
 - **iOS 驗證** → 統一入口 `./ops/ios_ops.sh build` / `./ops/ios_ops.sh test`(底層 `ios_build.sh`/`ios_test.sh`/`ios_release.sh` 共享 `shlock` 鎖,多 worktree 安全);細節見 `docs/sop/ios.md`。現在 `ios_test.sh` 已有 unit/UI/all-targets scope、heartbeat、log preserve、false-green 防護與 DB lock retry,所以改 iOS code/test 時**主動跑最小足夠測試**:先用 `--file`/`-g`/method 重現與驗證局部;改 UI/navigation/accessibility 時用 `--ui` 精準測;跨 feature / test infra / release / cleanup 收尾才跑 `--all-targets`。`ios_ops.sh build` 仍作為編譯 gate,不以 build 取代相關測試。
 - **改 user/agent-facing 介面**(`backend/ops_*.py`、`backend/*_cli.py`、admin endpoint、CLI subcommand、env var、設定 schema) → **同 PR 內**跑 `./ops/docs_impact.py --surface-scan '<舊命令|舊旗標|舊欄位>'`；掃描範圍的唯一 SoT 是 `docs/registry.yml` 的 `agent_facing_surface`，不要自己用 `rg`（預設會跳過 `.claude/`）。下個 agent 不知道新功能 = 任務沒閉環。Review agent prompt 必須含此項檢查。
 
@@ -200,6 +200,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | 改 iOS Podcast player / 字幕 / progress | `docs/reference/feature_boundary/podcast.md` |
 | 改 podcast 生成 pipeline(`lab/podcast/` / synthesize / subtitle / TTS / upload) | `docs/sop/podcast_pipeline.md` |
 | 改 iOS Settings | `docs/reference/feature_boundary/settings.md` |
+| 改 iOS Explore / 共享牌組(公開牌組目錄 / 預覽 / 複製) | `docs/reference/feature_boundary/discover.md` |
 | 改 CSV / Card schema | `docs/reference/card_format.md` **(SoT)** |
 | 改 sync 狀態流轉(`syncStatus` × `actionType`) | `docs/reference/sync_lifecycle.md` **(SoT)** |
 | 寫 backend test | `docs/reference/testing/backend_strategy.md` |
