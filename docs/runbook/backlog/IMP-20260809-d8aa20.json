@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "PodcastPlayerScene.swift 共 676 行，直接讀取 10 個 environment dependencies、持有 13 個 state 或 app storage 欄位，並掛接 14 個 task、onChange、onAppear 或 onDisappear modifier。228 至 289 行負責切集、清理、字詞刷新與進度保存；516 至 588 行負責認證、音訊、字幕載入及取消；612 至 673 行直接讀寫播放進度。測試唯一直接引用只檢查 View body 記憶體大小，沒有快速切集、舊 task 完成、背景化或離場保存行為。",
   "fix_site": "ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift:228; ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift:516; ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift:612",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
   "id": "IMP-20260809-d8aa20",

@@ -8,7 +8,7 @@
   "date": "2026-08-09",
   "detail": "ops/ios_test.sh 共 2103 行、58 個函式，ops/lib/ios_ops_catalog.sh 共 1755 行、57 個函式；兩邊各自實作 build cache key、xctestrun discovery、cached product readiness、fixture dataset 寫入 scoped xctestrun、build-for-testing、test-without-building 與 cache eviction。它們政策不同，但底層 lifecycle 相同；修一次 cache 完整性、環境清理或 Xcode 產物定位時必須人工同步兩份，已存在語意漂移風險。",
   "fix_site": "ops/ios_test.sh:ios_test_build_cache_key/ios_test_find_xctestrun/stage_fixture_dataset_xctestrun/rebuild_test_cache；ops/lib/ios_ops_catalog.sh:catalog_build_cache_key/catalog_find_xctestrun/catalog_prepare_scoped_xctestrun/catalog_rebuild_scoped_cache；新增 ops/lib/ios_xctestrun_cache.sh 與 ops/tests/test_ios_xctestrun_cache.sh",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:maintainability-audit",
   "id": "IMP-20260809-8e99a2",

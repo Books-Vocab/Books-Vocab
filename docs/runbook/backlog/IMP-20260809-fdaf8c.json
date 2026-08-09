@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "backend/tests/test_dictionary_v1.py 有 1812 行與 41 個測試函式，test_ops_cli.py 有 1356 行與 90 個測試函式及 28 個類別，test_ops_edit.py 有 1112 行與 65 個測試函式及 21 個類別。三檔收集共 209 個案例，但各自跨多個 router、store 或 command ownership，局部失敗與 fixture 邊界難定位。",
   "fix_site": "backend/tests/test_dictionary_v1.py; backend/tests/test_ops_cli.py; backend/tests/test_ops_edit.py; backend/tests/test_test_topology_contract.py",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
   "id": "IMP-20260809-fdaf8c",

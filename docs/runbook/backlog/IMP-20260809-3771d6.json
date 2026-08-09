@@ -8,7 +8,7 @@
   "date": "2026-08-09",
   "detail": "docs/reference/feature_boundary/vocabulary.md 手寫檔案行數已漂移：ReviewCardView.swift 記 690、現況 869；ReviewCardLayout.swift 記 451、現況 597。這不是兩個數字的偶發漏改：reader、vocabulary、notebook、bookshelf、podcast、settings 六份活 feature-boundary 都使用手寫行數欄。行數不影響模組 ownership 或路由，卻會隨任何正常修改過期。把它改成生成欄位會重造 IMP-20260808-b63206 已移除的問題：任一 iOS 變更都逼所有工作樹更新 repo 級統計並製造合併衝突。因此正確方向是移除易漂移 LOC，保留責任描述，並讓 docs lint 拒絕重新加入。",
   "fix_site": "ops/docs_lint.sh 的 feature-boundary 規則；新增 ops/tests/test_feature_boundary_loc_lint.sh；docs/reference/feature_boundary/{reader,vocabulary,notebook,bookshelf,podcast,settings}.md 的檔案表格",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:maintainability-audit",
   "id": "IMP-20260809-3771d6",

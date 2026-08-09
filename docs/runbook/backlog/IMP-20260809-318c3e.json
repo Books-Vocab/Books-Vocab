@@ -8,7 +8,7 @@
   "date": "2026-08-09",
   "detail": "ops/swift_decl_count.py 已有 uv shebang 並是 python-entrypoints gate 的執行入口，但 git index mode 是 100644、工作樹權限是 644。現有 IMP-20260806-d78bf7 只處理 Swift 宣告計數正確性且已 fixed，沒有涵蓋檔案模式。python-entrypoints group 因此出現 25 pass / 1 fail；這是獨立的新缺陷，會讓任何碰到該 group 的工作被一個與內容無關的入口錯誤擋住。",
   "fix_site": "ops/swift_decl_count.py 的 git executable mode；既有守衛 ops/test_ops.sh python-entrypoints group",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:maintainability-audit",
   "id": "IMP-20260809-318c3e",
