@@ -36,7 +36,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 
 **認領即工作,不必被任命。** 任何 session 從 `dispatch`(`./ops/backlog.py dispatch`,或等價的
 `list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋**,worst-first)取一張,
-`worktree_orchestrate.py open --backlog <id>` 認領,做完 `gate` → `cutover`。**它有兩個看不見的東西
+`worktree_orchestrate.py open --backlog <id>` 認領,做完 commit → `./ops/worktree_registry.py hand-back --json` 後停止；只有使用者明示目前沒有其他 agent/session 工作且授權 gate + cutover,才進本地 main。**它有兩個看不見的東西
 且會自己說出來**:認領由**本機**登記簿推導(跨機時這份清單是樂觀的),看板的**延後不套用**
 (snooze 住在 repo 外的 overlay)——所以「未延後」不是它的 clause,要那個判斷去看板。認領是**互斥的**:
 登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
@@ -62,9 +62,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
 review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receipt 契約」的白名單。
 
-**批次的落地權在整合者,不在各票。** 一批 fan-out 出去的工作,受派者**做到自己工作樹裡
-commit 為止**,`gate` / `cutover` / `sync` / `deploy` 留給握有整批視野的那個 session。
-理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」。
+**預設假設多 session 並行,落地權在取得使用者明示授權的整合者,不在各票。** 所有 session 都**做到自己工作樹裡 commit + hand-back 為止**；只有握有整批視野且使用者已明示「目前沒有其他 agent/session 工作、可直接 gate + cutover」的 session 可執行 develop 平面的 `catchup` / `gate` / `land` / `cutover` / `resolve`。這項授權不包含 `sync` / `deploy` / `release`；三者仍須明示 backup / release 意圖。理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
 
 **要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
 且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有
@@ -143,7 +141,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發到 merge 進**本地** main；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→cutover→deploy 全流程，編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/catchup/land/integrate/cutover/resolve/sync/deploy/sync-main/freeze）。**拓樸=本地 main 為主幹，三平面**：worktree fork 自本地 main、cutover=develop **離線 ff 本地 main**（不 push 不部署），本地 main 超前 origin；`sync`=backup（推 origin/main 備份、reconciler 不看 main=零生產副作用）；要上生產才 `deploy`=release（推 **origin/prod**=觸發 felix reconciler 部署，唯一碰生產），語意見 `docs/sop/release.md`。工作樹健康是**流程內生不變式**：每條完成即 cutover 即 resolve 即自清，preflight sweep 收流程外崩潰殘骸。「需要 main」路由：bootstrap 悖論→`adopt`、repo 手術→`freeze`、剛 clone/felix 部署機追 origin→`sync-main`。（**已退役** `converge`/`promote`。） |
+| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→commit/hand-back 預設流程，以及各自明示意圖下的 develop / backup / release 三平面。編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/catchup/land/integrate/cutover/resolve/sync/deploy/sync-main/freeze）。預設假設多 session 並行；只有使用者明示目前無其他 agent/session 且授權 gate + cutover 才進 develop 平面，此授權不解鎖 sync/deploy/release。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
@@ -174,8 +172,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## Commit / 落地政策
 
-- **Worktree / feature branch 任務**:驗證全綠(測試 / lint / build / drift 等有**當下輸出**)後 **直接 commit + 走 `cutover` 落地本地 main,不先問**,事後簡述決策與理由(使用者長期授權,2026-06-04)。
-  > 授權本身一字未動;改的只是它指向的機制名——原文指向的 PR 合併入口已被拆除。落地語意見 `docs/sop/release.md`,理由見 `IMP-20260805-34f30f`。
+- **Worktree / feature branch 任務**:做完最小充分驗證後直接 commit,執行 `./ops/worktree_registry.py hand-back --json`,保留工作樹並回報 branch/path/HEAD；**預設不跑 gate/cutover**。只有使用者當下明示「目前沒有其他 agent/session 工作」且「可直接 gate + cutover」才完整落地本地 main。這項 2026-08-09 授權邊界取代 2026-06-04 的自動落地 standing authorization；只解鎖 develop 平面，不授權 `sync` / `deploy` / `release`，工具護欄不變。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)
