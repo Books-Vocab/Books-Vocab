@@ -707,10 +707,30 @@ extension KGService {
         guard let token = await kgService.authSession.token,
               !JWTExpiry.isExpired(token) else { return }
         progress?(.started(.podcast))
+        // 儀器必須放在 service 內，不能掛在 `progress` 上：冷啟動路徑傳的是
+        // `progress: nil`，而 `SyncProgress` 是純 UI store（零 AppLog／零
+        // AppAnalytics）。掛在那裡的儀器對這條腿最需要被量的那一次完全沉默。
+        // 兩道 early return（podcastEnabled / JWT 過期）刻意留在這行之前：
+        // Release 零 podcast 足跡是既有不變式，加儀器不得破壞它。
+        AppAnalytics.track(.podcastCatalogSyncStarted)
+        let legStart = Date()
         let outcome = await runPodcastCatalogSyncIfEnabled {
             await PodcastSyncService(kgService: kgService).syncAll(context: container.mainContext)
         }
         progress?(podcastFinishedEvent(outcome))
+        // `SyncOutcome` 沒有 rawValue（`enum SyncOutcome: Equatable`），顯式映射。
+        // `.none` = feature flag 關；上面的 guard 已擋掉，留著只為窮舉。
+        let outcomeLabel: String
+        switch outcome {
+        case .none: outcomeLabel = "disabled"
+        case .completed: outcomeLabel = "completed"
+        case .cancelled: outcomeLabel = "cancelled"
+        case .listFetchFailed: outcomeLabel = "listFetchFailed"
+        }
+        AppAnalytics.track(.podcastCatalogSyncCompleted(
+            durationMs: Int(Date().timeIntervalSince(legStart) * 1000),
+            outcome: outcomeLabel
+        ))
     }
 
     /// Feature-gate seam for the podcast catalog leg of `backgroundSync`.
