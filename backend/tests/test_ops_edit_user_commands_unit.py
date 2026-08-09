@@ -75,6 +75,97 @@ class TestUserCreate:
         assert rc == 0
 
 
+# ── cmd_user_delete ──────────────────────────────────────────────────────
+
+
+class TestUserDelete:
+    def test_dry_run_keeps_user(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(
+            _make_args(uid="doomed", email="doomed@test.com", commit=True)
+        )
+        capsys.readouterr()
+
+        rc = user_cmd.cmd_user_delete(_make_args(uid="doomed"))
+
+        assert rc == 0
+        assert "dry-run" in capsys.readouterr().out
+        assert (tmp_path / "users" / "doomed").exists()
+
+    def test_commit_removes_dir_record_and_email_index(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(
+            _make_args(uid="doomed", email="doomed@test.com", commit=True)
+        )
+
+        rc = user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+
+        assert rc == 0
+        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
+        assert "doomed" not in users
+        assert not (tmp_path / "users" / "doomed").exists()
+        assert "doomed@test.com" not in users.get("_email_index", {})
+
+    def test_commit_scrubs_subscription_index_and_spares_others(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(
+            _make_args(uid="doomed", email="doomed@test.com", commit=True)
+        )
+        user_cmd.cmd_user_create(
+            _make_args(uid="keeper", email="keeper@test.com", commit=True)
+        )
+        users_path = tmp_path / "users.json"
+        payload = json.loads(users_path.read_text())
+        payload["_subscription_index"] = {
+            "txn-doomed": "doomed",
+            "txn-keep": "keeper",
+        }
+        users_path.write_text(json.dumps(payload))
+
+        rc = user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+
+        assert rc == 0
+        users = json.loads(users_path.read_text())
+        assert users["_subscription_index"] == {"txn-keep": "keeper"}
+        assert "keeper" in users
+        assert (tmp_path / "users" / "keeper").exists()
+
+    def test_absent_uid_raises(self, tmp_path, monkeypatch):
+        from kg.ops_edit_support import EditError
+
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        with pytest.raises(EditError):
+            user_cmd.cmd_user_delete(_make_args(uid="ghost", commit=True))
+
+    def test_delete_then_restore_round_trip(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        user_cmd.cmd_user_create(
+            _make_args(uid="doomed", email="doomed@test.com", commit=True)
+        )
+        user_cmd.cmd_user_delete(_make_args(uid="doomed", commit=True))
+
+        rc = user_cmd.cmd_restore(_make_args(uid="doomed", commit=True))
+
+        assert rc == 0
+        assert (tmp_path / "users" / "doomed" / "notebooks.db").exists()
+        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
+        assert "doomed" in users
+
+    def test_parser_registers_user_delete(self):
+        from kg.ops_edit_parser import build_parser
+
+        ns = build_parser().parse_args(["user-delete", "u1", "--commit"])
+
+        assert ns.func is user_cmd.cmd_user_delete
+        assert ns.uid == "u1"
+        assert ns.commit is True
+
+
 # ── cmd_user_config_set ──────────────────────────────────────────────────
 
 

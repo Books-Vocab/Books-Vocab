@@ -99,6 +99,79 @@ def cmd_user_create(args: argparse.Namespace) -> int:
 
     return ctx.run(action="user-create", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
+
+def cmd_user_delete(args: argparse.Namespace) -> int:
+    """刪除用戶:移除 user dir + users.json record + email/subscription index。
+
+    可逆性沿用 EditContext:寫前自動 tar 備份 user_dir 到 data_dir/_ops_backups/
+    (在 users/<uid>/ 之外,rmtree 吃不到),`ops-edit restore <uid>` 可還原。
+    一個非對稱:還原只回復 record + email index,永不回復 _subscription_index,
+    故 delete→restore 會遺失 App Store transaction-id → uid 的對應。
+    """
+    uid = args.uid
+    assert_safe_uid(uid)
+    dd = data_dir()
+    uf = users_file(dd)
+    users = load_users_from(uf, _passthrough_normalize) if uf.exists() else {}
+
+    def _keys_pointing_at(bucket_name: str) -> list[str]:
+        bucket = users.get(bucket_name)
+        if not isinstance(bucket, dict):
+            return []
+        return [k for k, v in bucket.items() if v == uid]
+
+    plan = {
+        "uid": uid,
+        "removes_dir": str(user_dir_for(dd, uid)),
+        "had_record": isinstance(users.get(uid), dict),
+        "email_index_keys": _keys_pointing_at("_email_index"),
+        "subscription_index_keys": _keys_pointing_at("_subscription_index"),
+        "restore_caveat": "restore 只回復 record + email index,不回復 _subscription_index",
+    }
+
+    ctx = EditContext(data_dir=dd, uid=uid, commit=args.commit, json_mode=args.json)
+
+    def apply_fn() -> dict[str, Any]:
+        def mutate(current: dict[str, Any]) -> dict[str, Any]:
+            removed_record = current.pop(uid, None)
+            dropped: dict[str, list[str]] = {}
+            for bucket_name in ("_email_index", "_subscription_index"):
+                bucket = current.get(bucket_name)
+                if not isinstance(bucket, dict):
+                    continue
+                stale = [k for k, v in bucket.items() if v == uid]
+                for key in stale:
+                    bucket.pop(key, None)
+                dropped[bucket_name] = stale
+            return {
+                "removed_record": removed_record is not None,
+                "dropped_index_keys": dropped,
+            }
+
+        result = _mutate_users(dd, mutate)
+        target = user_dir_for(dd, uid)
+        if target.exists():
+            shutil.rmtree(target)
+        return result
+
+    def verify_fn() -> dict[str, Any]:
+        current = load_users_from(uf, _passthrough_normalize) if uf.exists() else {}
+        leftovers = [
+            key
+            for bucket_name in ("_email_index", "_subscription_index")
+            if isinstance(current.get(bucket_name), dict)
+            for key, value in current[bucket_name].items()
+            if value == uid
+        ]
+        return {
+            "ok": uid not in current
+            and not user_dir_for(dd, uid).exists()
+            and not leftovers
+        }
+
+    return ctx.run(action="user-delete", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
+
+
 def cmd_user_config_set(args: argparse.Namespace) -> int:
     """更新 users.json 內的 per-user config，供 marketing / mock surface 造景。"""
     dd = data_dir()
