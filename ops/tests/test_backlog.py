@@ -901,6 +901,36 @@ def test_ungroomed_filter_composes_with_the_others(tmp_path):
     assert [e["id"] for e in hits] == [wanted["id"]]
 
 
+def test_ungroomed_excludes_closed_entries_unless_explicitly_widened(tmp_path):
+    store = tmp_path / "backlog"
+    open_entry = _add(store, detail="still needs grooming")
+    fixed = _add(store, detail="already fixed", status="fixed")
+    wont_fix = _add(store, detail="intentionally declined", status="wont-fix",
+                    resolution="not worth the complexity")
+
+    assert [e["id"] for e in BACKLOG.list_entries(store, ungroomed=True)] == [
+        open_entry["id"]
+    ]
+    assert {e["id"] for e in BACKLOG.list_entries(
+        store, ungroomed=True, include_closed=True
+    )} == {open_entry["id"], fixed["id"], wont_fix["id"]}
+
+
+@pytest.mark.parametrize("status", ["fixed", "wont-fix"])
+def test_ungroomed_refuses_closed_status_without_include_closed(tmp_path, status):
+    store = tmp_path / "backlog"
+    _add(store, detail="closed entry", status=status,
+         resolution="not worth it" if status == "wont-fix" else "")
+
+    with pytest.raises(BACKLOG.BacklogError, match="--include-closed"):
+        BACKLOG.list_entries(store, ungroomed=True, status=status)
+
+
+def test_include_closed_requires_ungroomed(tmp_path):
+    with pytest.raises(BACKLOG.BacklogError, match="--ungroomed"):
+        BACKLOG.list_entries(tmp_path / "backlog", include_closed=True)
+
+
 # --------------------------------------------------------------------------
 # 8b. list --grep — "has this already been filed?"
 #

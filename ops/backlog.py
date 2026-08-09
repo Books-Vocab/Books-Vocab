@@ -1668,6 +1668,7 @@ def list_entries(
     category: str | None = None,
     groomed: bool = False,
     ungroomed: bool = False,
+    include_closed: bool = False,
     acceptance_manual: bool = False,
     acceptance_green_expected: bool = False,
     fixed_elsewhere: bool = False,
@@ -1695,6 +1696,15 @@ def list_entries(
                 f"{flag} and --dispatch are empty by construction: {why}. Drop one "
                 f"— `--dispatch` for what to take next, `{flag}` on its own to look "
                 f"at that set.")
+    if include_closed and not ungroomed:
+        raise BacklogError(
+            "--include-closed only widens --ungroomed; it has no effect on its own. "
+            "Drop it, or add `--ungroomed`.")
+    if ungroomed and not include_closed and status in ("fixed", "wont-fix"):
+        raise BacklogError(
+            f"--ungroomed already excludes closed entries, so --status {status} is "
+            f"empty by construction. Add `--include-closed` to inspect that closed "
+            f"entry, or drop `--status {status}`.")
     open_ids = ({p.get("id") for p in _iter_entries(store)
                  if p.get("status") not in ("fixed", "wont-fix")}
                 if dispatch else set())
@@ -1724,7 +1734,10 @@ def list_entries(
     if groomed:
         hits = [payload for payload in hits if payload.get("groomed_by")]
     if ungroomed:
-        hits = [payload for payload in hits if not payload.get("groomed_by")]
+        hits = [payload for payload in hits
+                if not payload.get("groomed_by")
+                and (include_closed
+                     or payload.get("status") not in ("fixed", "wont-fix"))]
     if acceptance_manual:
         # The declared-unverifiable set. It exists so that "no command can express
         # this" is a COUNT somebody can look at, not an absence nobody notices —
@@ -2694,6 +2707,8 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
         "--ungroomed",
         action="store_true",
         help="only entries nobody has worked out a fix plan for (the groom queue). "
+             "Closed entries are excluded because nobody will ever groom them; "
+             "add --include-closed to widen this population. "
              "NOTE this store knows nothing about who is WORKING on an entry: that "
              "lives in the worktree ledger (`ops/worktree_registry.py list`, columns "
              "`backlog` / `claimed`). This flag alone is NOT a dispatch queue — it "
@@ -2701,6 +2716,11 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
              "subcommand (or `list --dispatch`) instead. Named as the subcommand "
              "and not as `--dispatch`, because this same help is printed by "
              "`dispatch --help`, where that flag does not exist",
+    )
+    parser.add_argument(
+        "--include-closed", dest="include_closed", action="store_true",
+        help="with --ungroomed, include fixed and wont-fix entries too; by default "
+             "closed entries are excluded because nobody will ever groom them",
     )
     parser.add_argument(
         "--groomed", action="store_true", help="only entries carrying a groom stamp"
@@ -4346,6 +4366,7 @@ def _cmd_list(args) -> int:
         "category": args.category,
         "groomed": args.groomed,
         "ungroomed": args.ungroomed,
+        "include_closed": getattr(args, "include_closed", False),
         "acceptance_manual": args.acceptance_manual,
         "acceptance_green_expected": getattr(args, "acceptance_green_expected", False),
         "fixed_elsewhere": getattr(args, "fixed_elsewhere", False),
