@@ -78,7 +78,6 @@ Exit codes: 0 ok | 1 partial failure (sweep --commit) | 64 usage error |
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import re
@@ -92,6 +91,7 @@ from typing import Any
 # Consume the P1 pure judgement layer — never re-implement a verdict here.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import worktree_state as ws  # noqa: E402  (ops/lib shared pure module)
+from lock_wait import exclusive_lock  # noqa: E402
 
 SCHEMA = "kg.worktree.registry.v1"
 EXIT_OK = 0
@@ -675,22 +675,16 @@ def _ledger_lock(state_path: Path):
     take it; load_state stays lock-free for read-only callers, which the atomic
     save_state protects from torn reads."""
     lock_path = state_path.with_name(state_path.name + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+    with exclusive_lock(lock_path, label=f"worktree-ledger:{state_path.name}"):
         yield
-    finally:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        finally:
-            os.close(fd)
 
 
 def _try_acquire_ledger_lock_nb(state_path: Path) -> bool:
     """True if the ledger lock is currently free (non-blocking acquire+release),
     False if another open file description holds it. Inspection/tests only — never a
     substitute for holding `_ledger_lock` across a real read-modify-write."""
+    import fcntl
+
     lock_path = state_path.with_name(state_path.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
