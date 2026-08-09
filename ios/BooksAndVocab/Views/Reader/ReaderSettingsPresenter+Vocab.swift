@@ -30,12 +30,12 @@ extension ReaderSettingsPresenter {
                 vocabHighlightSection
                 vocabDebugSection
             }
-            .navigationTitle(L10n.string("閱讀設定"))
+            .navigationTitle(L10n.string("reader.settings.title"))
             .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { resetMenu }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.string("完成"), action: onDismiss)
+                    Button(L10n.string("reader.settings.done"), action: onDismiss)
                         .accessibilityIdentifier("reader.settings.done")
                 }
             }
@@ -97,29 +97,29 @@ extension ReaderSettingsPresenter {
                 onIncrement: state.canIncreaseFontSize ? onIncreaseFontSize : nil,
                 onDecrement: state.canDecreaseFontSize ? onDecreaseFontSize : nil
             ) {
-                LabeledContent(L10n.string("字級")) {
+                LabeledContent(L10n.string("reader.settings.fontSize")) {
                     Text(state.fontSizeText).monospacedDigit()
                 }
             }
 
             VStack(alignment: .leading, spacing: AppSpacing.s1) {
-                LabeledContent(L10n.string("行距")) {
+                LabeledContent(L10n.string("reader.settings.lineHeight")) {
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
                         .monospacedDigit()
                 }
                 Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
-                    .accessibilityLabel(L10n.string("行距"))
+                    .accessibilityLabel(L10n.string("reader.settings.lineHeight"))
             }
 
             Picker(selection: bindings.scrollMode) {
-                Text(L10n.string("翻頁")).tag(false)
-                Text(L10n.string("捲動")).tag(true)
+                Text(L10n.string("reader.settings.readingMode.paged")).tag(false)
+                Text(L10n.string("reader.settings.readingMode.scroll")).tag(true)
             } label: {
-                Text(L10n.string("閱讀模式"))
+                Text(L10n.string("reader.settings.readingMode"))
             }
             .pickerStyle(.menu)
         } header: {
-            SettingsSectionHeader(title: L10n.string("排版"), icon: "textformat.size")
+            SettingsSectionHeader(title: L10n.string("reader.settings.section.typography"), icon: "textformat.size")
         }
     }
 
@@ -132,7 +132,7 @@ extension ReaderSettingsPresenter {
                     Text(font.displayName).tag(font)
                 }
             } label: {
-                Text(L10n.string("字體"))
+                Text(L10n.string("reader.settings.font"))
             }
             .pickerStyle(.menu)
 
@@ -141,12 +141,12 @@ extension ReaderSettingsPresenter {
                     themeOptionLabel(theme).tag(theme)
                 }
             } label: {
-                Text(L10n.string("主題"))
+                Text(L10n.string("reader.settings.theme"))
             }
             .pickerStyle(.inline)
             .labelsHidden()
         } header: {
-            SettingsSectionHeader(title: L10n.string("外觀"), icon: "paintpalette")
+            SettingsSectionHeader(title: L10n.string("reader.settings.section.appearance"), icon: "paintpalette")
         }
     }
 
@@ -196,7 +196,7 @@ extension ReaderSettingsPresenter {
             }
             .pickerStyle(.menu)
         } header: {
-            SettingsSectionHeader(title: L10n.string("生字標記"), icon: "highlighter")
+            SettingsSectionHeader(title: L10n.string("reader.settings.section.highlight"), icon: "highlighter")
         }
     }
 
@@ -205,12 +205,12 @@ extension ReaderSettingsPresenter {
     var vocabDebugSection: some View {
         Section {
             Toggle(isOn: bindings.showHitTestingDebug) {
-                Text(L10n.string("顯示點擊熱區"))
+                Text(L10n.string("reader.settings.debug.hitTesting"))
             }
         } header: {
-            SettingsSectionHeader(title: L10n.string("開發者與除錯"), icon: "ladybug")
+            SettingsSectionHeader(title: L10n.string("reader.settings.section.debug"), icon: "ladybug")
         } footer: {
-            SettingsSectionFooter(L10n.string("用於校正閱讀器點擊熱區。"))
+            SettingsSectionFooter(L10n.string("reader.settings.debug.footer"))
         }
     }
 }
