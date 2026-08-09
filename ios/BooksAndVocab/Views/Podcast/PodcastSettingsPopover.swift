@@ -86,7 +86,7 @@ struct PodcastSettingsPopover: View {
             )
 
             Toggle(isOn: $wordFollowEnabled) {
-                VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+                VStack(alignment: .leading, spacing: skin.spacing.rowMicroGap) {
                     Text(L10n.string("逐字跟隨"))
                         .font(skin.typography.body)
                     Text(L10n.string("顯示目前播放到的單字底線，關閉後改為純句子跟隨"))
@@ -96,7 +96,7 @@ struct PodcastSettingsPopover: View {
             }
 
             Toggle(isOn: $autoPauseOnLookup) {
-                VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+                VStack(alignment: .leading, spacing: skin.spacing.rowMicroGap) {
                     Text(L10n.string("查詞時自動暫停"))
                         .font(skin.typography.body)
                     Text(L10n.string("點字幕查單字時暫停播放，關閉後恢復"))
@@ -105,7 +105,7 @@ struct PodcastSettingsPopover: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: skin.spacing.rowMicroGap) {
                 Picker(L10n.string("睡眠定時"), selection: $sleepTimerMode) {
                     Text(L10n.string("關閉")).tag(SleepTimerMode.off)
                     Text(L10n.string("5 分鐘")).tag(SleepTimerMode.minutes(5))

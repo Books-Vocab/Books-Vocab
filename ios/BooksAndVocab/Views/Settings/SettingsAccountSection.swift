@@ -135,7 +135,7 @@ struct SettingsAccountSection: View {
                         systemImage: "exclamationmark.triangle.fill",
                         description: error
                     )
-                    .padding(.top, appSkin.spacing.microGap)
+                    .padding(.top, appSkin.spacing.rowMicroGap)
                 }
             }
             .padding(.horizontal, AppSpacing.s4)
@@ -254,7 +254,7 @@ struct SettingsProBadge: View {
     @Environment(\.appSkin) private var appSkin
 
     var body: some View {
-        HStack(spacing: appSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.rowMicroGap) {
             Image(systemName: "sparkles")
                 .font(appSkin.typography.caption)
             Text(SettingsAccountCopy.proBadgeTitle)
@@ -356,8 +356,8 @@ struct SettingsAuthSummary: View {
         HStack(spacing: AppSettingsMetrics.accountRowSpacing) {
             avatar
 
-            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
-                HStack(spacing: appSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
+                HStack(spacing: appSkin.spacing.rowMicroGap) {
                     Text(state.displayName)
                         .font(appSkin.typography.sectionTitle)
                         .foregroundStyle(appSkin.palette.primaryText)

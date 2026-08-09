@@ -211,7 +211,7 @@ struct SettingsSubscriptionInfoBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
             Text(title)
                 .font(titleFont)
                 .foregroundStyle(appSkin.palette.primaryText)
@@ -276,7 +276,7 @@ struct SettingsPlanComparisonTable: View {
                     Rectangle()
                         .fill(appSkin.palette.divider.opacity(0.5))
                         .frame(height: 1)
-                        .padding(.vertical, appSkin.spacing.microGap)
+                        .padding(.vertical, appSkin.spacing.rowMicroGap)
 
                     comparisonRow(row, isLast: index == rows.count - 1)
                 }

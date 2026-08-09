@@ -214,7 +214,7 @@ struct SettingsDeleteAccountSheet: View {
                 icon: "keyboard"
             )
 
-            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
                 Text(SettingsDeleteAccountCopy.confirmationPrompt(phrase: Self.confirmationPhrase))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)

@@ -103,7 +103,7 @@ struct SettingsLabeledInputField<Content: View>: View {
 
     var body: some View {
         AppSectionCard(padding: appSkin.spacing.cardPadding, style: .settingsControl(appSkin)) {
-            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
                 Text(title)
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)

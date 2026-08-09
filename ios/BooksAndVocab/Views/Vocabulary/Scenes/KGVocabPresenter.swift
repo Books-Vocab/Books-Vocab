@@ -96,7 +96,7 @@ struct KGVocabPresenter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Pinned filter bar — stays visible while scrolling
-            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
                 VocabTabSelector(options: state.roleOptions, selection: $selectedRoleFilter)
                 if selectedRoleFilter != .dictionary {
                     VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
@@ -116,7 +116,7 @@ struct KGVocabPresenter: View {
                 }
             }
             .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
-            .padding(.top, appSkin.spacing.microGap)
+            .padding(.top, appSkin.spacing.rowMicroGap)
             .padding(.bottom, appSkin.spacing.inlineGap)
             .background(appSkin.palette.pageBackground)
 
@@ -192,7 +192,7 @@ struct KGVocabPresenter: View {
                 }
             }
             .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
-            .padding(.top, appSkin.spacing.microGap)
+            .padding(.top, appSkin.spacing.rowMicroGap)
             .padding(.bottom, appSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
