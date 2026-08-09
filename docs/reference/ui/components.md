@@ -124,7 +124,8 @@ Scope: `ios/BooksAndVocab`
 - `EditorialCoverComposition`(private in `NotebookCard.swift`) — **live**：D1 editorial cover overlay，由 `coverArea` 以 `.overlay` 套在 cover view 之上（grid + hero 兩 style 皆套），跟外層 `rotationEffect` 一起旋轉。內容:serif name 左上(grid 22pt / hero 32pt)+ hairline rule(cover 寬 ×0.25)+ `N 詞` 右下(cardCount > 0)+ 3pt spine(grid && isActive)。cover view 以 `showsName: false` 把 name 渲染交給此 overlay。
 - `VocabReviewCTAPill` — 用於 detail 頁(KGVocabPresenter)與 **NotebookListView 頂部 section header**(D4 editorial),brandHero 奶黃 capsule + onBrandHero 前景。Both 同視覺族群,page-level 標題不需卡片框包裹。
 - `VocabReviewBanner` — **(已從 NotebookListView 解除引用)** 元件保留於 codebase 作 future use / preview;NotebookListView 現走 page section header `今日複習` + `VocabReviewCTAPill` 取代。
-- `ReviewCardLayoutEditor`（`Views/Vocabulary/Scenes/ReviewCardLayoutEditor.swift`）— **跨 feature 共用的設定頁 View struct**：複習畫面 toolbar 以 `ReviewCardLayoutEditorSheet` 包成 sheet，Settings ▸ 偏好 以 `navigationDestination` 直接 push 同一個 struct，**兩邊只有外殼 chrome 不同、頁面本體零複製**。用的是 Settings 層元件（`SettingsSectionHeader` / `SettingsSectionFooter` / `SettingsDivider` / `.settingsCard()` / `AppKeyValueRow`），所以在 Settings 裡看起來就是原生一頁。**不得 inline 回任何 presenter body**（真機 Debug 1MB main stack，同 `SettingsPresenter` 的 stack 約束）。**新增跨 feature 共用設定頁時照此抄**：頁面本體是獨立 top-level struct，入口各自包 chrome。
+- `ReviewCardLayoutEditor`（`Views/Vocabulary/Scenes/ReviewCardLayoutEditor.swift`）— **跨 feature 共用的設定頁 View struct**：複習畫面 toolbar 以 `ReviewCardLayoutEditorSheet` 包成 sheet，Settings ▸ 偏好 以 `navigationDestination` 直接 push 同一個 struct，**兩邊只有外殼 chrome 不同、頁面本體零複製**。用的是原生 `Form` / `Section` 加 Settings 層的 `SettingsSectionHeader` / `SettingsSectionFooter`（`6c8a99a37` 起不再用 `SettingsDivider` / `.settingsCard()` / `AppKeyValueRow`），所以在 Settings 裡看起來就是原生一頁。**不得 inline 回任何 presenter body**（真機 Debug 1MB main stack，同 `SettingsPresenter` 的 stack 約束）。**新增跨 feature 共用設定頁時照此抄**：頁面本體是獨立 top-level struct，入口各自包 chrome。
+- `ReviewCardLayoutPreviewCard`（`Views/Vocabulary/Scenes/ReviewCardLayoutPreviewCard.swift`）— 版面設定頁的即時預覽（見 Pattern 9）。**它不是「長得像卡片的東西」，它就是卡片**：內部唯一畫東西的是 `ReviewCardView`（出貨複習卡的同一個 view，由 IMP-20260808-ee7ca4 從 `TodayReviewPresenter` 抽成純輸入版本）。像素級不飄移靠的是這個結構事實不是紀律 —— **此處不得出現第二份手刻的卡片版面**，出現了這個型別就沒有存在理由。姿態固定「翻開的樣子」（`showsAnswer: true` + `mountsBack: true`）因為要看的正是兩面各有什麼；`interactive: false` 不吃手勢也不搶 `todayReview.card.front` 的 a11y 契約；`measuresSections: true` 才跑與真卡同一組隱藏量測 probe。**「不飄移」的範圍要講清楚**：它保證的是**程式碼**不飄移（同一個 view、同一組 probe），不是「你等下在複習畫面會看到的就是這一張」—— 預覽的高度預算是寫死的 `viewportHeight = 420`，真卡吃的是 `geo.size.height`（`TodayReviewPresenter.swift:174`），而 `revealZoneReserve` 隨 containerHeight 變（見 `ReviewCardBudgetParityTests`），所以 solver 一般會落在**不同的精簡級**。準確的說法是「同一份 profile ∧ 同一個高度預算下逐像素一致」；預覽示範的是「這個 preset 長什麼樣」
 
 責任：
 - vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層、graph thumbnail
@@ -137,6 +138,7 @@ Scope: `ios/BooksAndVocab`
 - `ios/BooksAndVocab/Views/Reader/TranslationPanelPresenter.swift`
 - `ios/BooksAndVocab/Views/Reader/TranslationVocabPresenter.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderSettingsPanel.swift`
+- `ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift`
 - `ios/BooksAndVocab/Views/Reader/VocabHighlightColorPresetPicker.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderSettingsPanelPresenter.swift`
 - `ios/BooksAndVocab/Views/Reader/ReaderSettingsVocabPresenter.swift`
@@ -152,6 +154,7 @@ Scope: `ios/BooksAndVocab`
 - `ReaderViewPresenter`
 - `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter（vocab 單一模式，glass 分支已移除）
 - `VocabHighlightColorPresetPicker` — Reader / Podcast 共用詞庫 highlight 顏色 swatch picker，採 `ReaderSelectionTile` 與 `VocabHighlightColorPreset` 色票
+- `ReaderSettingsPreviewCard` — 閱讀設定頁的即時預覽（見 Pattern 9）。**與 `ReviewCardLayoutPreviewCard` 不同族**：它做不到「就是那個 view」，因為閱讀器正文是 Readium 跑在 WKWebView 裡排的、樣式以 CSS 注入。所以它承諾的是**同一批值**而非同一個 view —— 字體走 `ReaderFont.previewFontName`（與 `family` 同一個 enum、同一批 TTF）、字級/行距是送進 `EPUBPreferences` 的同兩個值、紙墨色取自 `ReaderTheme`、生字色帶取自產 CSS 的同一個 `ReaderContentStyle`。**釘住的只有一部分，別把它讀成整批**（見 Pattern 9 的值/幾何分野）：`ReaderPreviewStyleSourceTests` 釘住的是**色相 / 濃度倍率 / 字體註冊 / 紙色**；**墨色只是 regression pin 不是跨檢**（Readium 前景 CSS 在 SPM bundle、不在版控，測試搆不到，該測試自己講明了）；**字級 / 行距 / 色帶高度屬幾何，沒有任何測試涵蓋**。**四件事具名承認、不假裝沒有**：① `baseFontSize` 是參考基準而非某本書的實際 pt（Readium fontSize 是相對倍率）；② 換行位置與 WebView 不一致（SwiftUI 排版 ≠ Blink 排版）；③ **行距滑桿前 13% 是死區** —— CSS 的 `line-height` 量整個行盒、SwiftUI 的 `lineSpacing` 是加在字體自然行高之外，扣掉內在行高後 `L ≤ 1.2` 全夾成 0，所以那段行程預覽不動而 WebView 會動（`lineSpacing` 不能為負，要消掉得改用 attributed string 的 `lineHeightMultiple`）；④ **色帶高度只是同名不是等量** —— CSS 量的是背景盒（≈ 行盒，隨 line-height 變）的百分比，這裡量的是字級的百分比，`lineHeight` 1.4 附近相近、2.5 時可差近兩倍。**③④ 使用者會直接看到卻不會理解**（拖滑桿沒反應、色帶粗細對不上），所以它們比 ①② 更需要寫在這裡
 - `PDFReaderView` — PDF 格式閱讀器（iOS only）
 
 責任：
@@ -208,6 +211,7 @@ Scope: `ios/BooksAndVocab`
 - Animation convenience methods — `View.animatePhaseChange()`、`View.animateFeedback()` 等擴充，將常用 `withAnimation` 組合收斂為語意化呼叫
 - `AppFonts.hero(weight:)` / `TypeScale.hero` — 40pt serif hero typography（`TypeScale` 階梯：`caption2/caption/subhead/body/h2/h1/hero`，無 display1/2）
 - `AppColors.brandHero(_:scheme)` + `AppTheme.palette.accentHero/accentSubtle/successBg/warningBg/infoBg/destructiveBg/borderStrong` — 品牌 hero + 狀態 bg 色彩 token
+- `@Environment(\.appResolvedColorScheme)` + `.appAppearanceScheme()`（`Models/AppAppearanceMode.swift`，由 `AppThemeContainer` 餵值）— **presentation 邊界的外觀重播**。sheet / fullScreenCover 是獨立的 presentation host，SwiftUI **只在呈現當下播種一次** interface style 且之後不再重播；所以環境驅動的顏色（`.tint`、`appSkin`）會即時更新，而系統自繪的東西（原生 `Form`、nav bar）凍在原地 —— 症狀就是「整頁只有一半跟著換配色」（APP-20260809-f1b8cb）。`.appAppearanceScheme()` 掛在 presentation 的**內容根**上重新宣告一次，冪等。**環境鍵存的必須是具體 light/dark 而非 `AppAppearanceStore.resolvedColorScheme`**：後者在 `.system` 時是 `nil`，而 `preferredColorScheme(nil)` 的語意是「我不表態」，不表態拉不回一個已經播種成淺色的 sheet。走 `toastSheet` / `platformFullScreenCover` / `loginSheet` 的呼叫端不必自己寫（seam 已寫），**自己開原生 presentation 的地方要自己寫**，由 `SheetAppearanceBoundaryTests` 釘住（**檔級加總，擋「忘記」不擋「寫錯」**——同檔內一個 sheet 掛兩次、另一個沒掛，總數仍然對得起來；像素本身也不在它守備範圍）
 
 責任：
 - 跨層共用的網路策略 model
@@ -413,16 +417,54 @@ Scope: `ios/BooksAndVocab`
 
 ---
 
+### 9. Live Preview Pattern（設定頁當場看得到，不必關掉才知道）
+
+用途：
+- 凡是「改一個值、效果在別的畫面才看得到」的設定頁，都在同頁掛一張即時預覽
+- 現有兩個實作：`ReviewCardLayoutPreviewCard`（複習卡版面）、`ReaderSettingsPreviewCard`（閱讀設定）
+
+**不飄移要靠結構，不能靠紀律**。兩種強度，選能拿到的那個、並在型別的檔頭具名寫出是哪一種：
+- **同一個 view**（強）— 預覽內部直接掛出貨用的那個 view，**不得出現第二份手刻的版面**。`ReviewCardLayoutPreviewCard` 走這條（實測：該檔零個 `Text` / `VStack` / `Rectangle`）。代價是那個 view 必須先被抽成純輸入版本（IMP-20260808-ee7ca4）
+- **同一批值**（弱，但仍可承諾）— 出貨路徑不在 SwiftUI 裡（例如 Readium 在 WKWebView 排版），塞一個等價 WebView 換來的是「更慢且一樣近似」而非「更真」。此時預覽讀**送進出貨路徑的同一批值**（同一個 enum、同一個 style 物件、同一組倍率）。`ReaderSettingsPreviewCard` 走這條
+
+規則：
+- **禁的是第二份「值的來源」，不是第二份 renderer。** 這兩件事只在強分支重合，弱分支必然要自己排版（`ReaderSettingsPreviewCard` 用 `ReaderProseFlowLayout` 自己排、自己算字級行距，這是對的）。真正的禁令是：不得自立 HSL 表、不得自訂 clamp 上下界、不得複寫 CSS 倍率。正面判準看 `ReaderSettingsPreviewCard.highlightBand`——它照抄 CSS 的 `clamp(0, …, 1)`，而不是自己決定夾在哪
+- **弱分支必須附一組釘住那些值的測試，否則「同一批值」只是自述。** 現行憑證是 `ios/BooksAndVocabTests/ReaderPreviewStyleSourceTests.swift`：CSS 色相與原生共讀同一張 HSL 表、`vocabOpacityMultiplier` 與 CSS 字串內嵌的是同一個 Double、每個 `ReaderFont.previewFontName` 都解析得到已註冊字體（**`Font.custom` 找不到字體不報錯，只靜靜退回系統字體——這條測試是唯一擋得住它的東西**）、送進 WebView 的背景就是該主題的 `paperColor`
+- **值與幾何要分開講。** 上面那組測試把**值**（顏色 / 濃度 / 字體 / 紙墨）結構化釘住了；**幾何**（`baseFontSize` / `intrinsicLineHeightRatio` / `wordSpacingRatio` / 色帶高度）沒有任何測試，那部分仍然是紀律，而且已被檔頭具名為近似。混在一起講會讓「結構」這個詞蓋掉一半其實沒有保障的東西
+- **近似之處要逐條具名**，不要假裝沒有（`ReaderSettingsPreviewCard` 檔頭列了四條，見上方 Reader Layer）。特別是使用者**看得到卻不會理解**的那種（滑桿死區、色帶粗細），漏掉它們等於讓文件的規則與示範互相否證
+- 預覽綁 binding 即時更新，**不做 snapshot**
+- 頂層 struct，**不 inline 進 presenter / editor 的 body** —— Debug `-Onone` 下主執行緒 1MB stack 會被 inline 的 section tree 撐爆（同 `SettingsPresenter.swift` 檔頭的約束）
+- Catalog / `#Preview` 的 harness 也走真的加減與真的預覽；harness 另存一份寫死的顯示字串會與預覽互相矛盾（實測：標著 2.0x 卻畫出 1.0x 的字）
+
+**心智模型對齊**（這是本 pattern 的另一半，不是附註）：同一族的設定頁要長得一樣、操作起來一樣。「這一族」目前指的是**帶即時預覽的偏好頁**——複習卡版面與閱讀設定兩頁，共用四項：原生 `Form` / `Section` + `SettingsSectionHeader/Footer`、toolbar `.primaryAction` 上同形的 `resetMenu`（a11y id 後綴慣例 `<scope>.resetMenu`）、**一個頁面 struct 兩個入口**（情境入口包 sheet chrome、設定 ▸ 偏好 `navigationDestination` 直接 push，頁面本體零複製）、以及下面這條擺放規則。再加一頁時照這四項抄。
+
+（`SettingsReviewSection` 也是原生 `Form` + 同一組 header/footer，但無預覽、無 resetMenu、單一入口，所以只符合第一項——別把它當這一族的樣板。）
+
+**Section 順序沒有共用答案，共用的是「預覽緊貼它所控制的東西」。** 兩頁刻意相反，別去「對齊」：閱讀設定的控制項全頁共用同一份 `ReaderSettings`，所以預覽只需一張、擺頁首涵蓋全部；`ReviewCardLayoutEditor` 的預覽是**該複習方向專屬**的（辨識 / 產出各一張，`VocabularyCardMode.allCases`；每一張本身都已經是翻開的樣子、兩面都畫），所以擺在各自 Picker 的**正下方**（`ReviewCardLayoutEditor.directionSection`）。
+
+代表畫面：
+- `ReviewCardLayoutEditor` / `ReviewCardLayoutEditorSheet`（編輯端）＋ `ReviewCardLayoutPreviewCard`（預覽端）
+- `ReaderSettingsPanel` / `ReaderSettingsPanelSheet`（編輯端）＋ `ReaderSettingsPreviewCard`（預覽端）
+
+---
+
 ## Current Gaps
 
 ### Gap 1: Settings 還是偏 feature-local
 
-現況：
-- Settings 有自己的 row / button / card composition
-- 已經接近 pattern 化，但還沒有再往 shared shell 回收
+現況（2026-08-09 量測，`.settingsCard()` **12 個呼叫點**——第 13 個 grep 命中是 `SettingsPresenter+Controls.swift:20` 的宣告本身，不是使用）：
+
+| 在哪 | 幾個 | 檔 |
+|---|---|---|
+| 主頁 section | 5 | Account / Subscription / Other / Preferences / DebugBackend 各 1 |
+| 子頁 | 7 | `SettingsAccountDetailView` 3、`TranslationLanguageSettingsView` 2、`SettingsDeleteAccountSheet` 2 |
+
+另有三頁已改用原生 `Form` / `Section`：`SettingsReviewSection`（`b64a6869c`）、`ReviewCardLayoutEditor`（`6c8a99a37`）、`ReaderSettingsPanel`（`5a87c8189`），票號 APP-20260808-240a94 / f0770b。**三者皆為同一段尚未合併的工作，還沒有在 main 上存活過任何一輪迭代**——讀下面那條方向時要知道它的地基有多薄。
 
 影響：
 - 可用，但長期容易維持兩套語言
+- **這個 gap 原本寫的解法（往 shared shell 回收）已不是現行方向，但新方向的適用範圍比它看起來窄。** 那三頁清一色是**偏好 / 旋鈕頁**（Picker / Stepper / Slider / Toggle），而且是同一段工作裡的三次同一個決定、零獨立確認；剩下 7 個子頁呼叫點在帳號詳情、訂閱、刪除帳號、翻譯語言——editorial、danger 與商業 surface，原生化在那裡**零證據**。所以：**偏好 / 旋鈕類的新頁往原生 `Form` 走，其餘四處與主頁 5 處維持現狀待評估**，別把它讀成全域禁令
+- **原生化不是免費的，代價已被具名接受**：自繪的 selection tile / label chip / control surface / 群組 air divider 全部退場，襯線標題與自訂間距節奏消失，主題色票縮成一列內的小色塊，頁面背景交還系統 grouped background。理由是**一致性優先**（三頁共用同一套心智模型），不是維護成本。兩處檔頭都寫了同一句話：**不要在 `Section` 內重新自繪把 editorial 個性救回來**（`ReaderSettingsPresenter+Vocab.swift` / `SettingsReviewSection.swift` 檔頭）
 
 ### Gap 2: Raw spacing magic numbers 大量存在
 
