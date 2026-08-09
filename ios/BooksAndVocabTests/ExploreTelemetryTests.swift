@@ -80,12 +80,26 @@ struct ExploreTelemetryTests {
         #expect(entry.level == .warning)
     }
 
+    /// preview 段的失敗必須留下紀錄，否則 browse→preview 轉換率分不出「沒人點」
+    /// 與「點了但預覽載不出來」——copy 段已經沒有這個盲點（deckCopyFailed）。
+    @Test func deckPreviewFailedEventIsRecordedAtWarningLevel() async throws {
+        let deckId = uniqueDeckId("preview-failed")
+        AppAnalytics.track(.deckPreviewFailed(deckId: deckId, reason: "offline"))
+
+        let entries = AppObservationStore.shared.preview(limit: 200).entries
+        let entry = try #require(entries.last(where: { $0.message.contains("deck_id=\(deckId)") }))
+        #expect(entry.message.contains("event=deck_preview_failed"))
+        #expect(entry.message.contains("reason=offline"))
+        #expect(entry.level == .warning)
+    }
+
     @Test func sessionMetricsAggregatesTheExploreFunnel() async throws {
         let metrics = SessionMetrics.makeIsolatedForTesting()
 
         metrics.record(.deckBrowsed(deckCount: 3, hasQuery: false, isFiltered: false))
         metrics.record(.deckBrowsed(deckCount: 3, hasQuery: true, isFiltered: true))
         metrics.record(.deckPreviewed(deckId: "official-starter-en-zh-core", sampleCardCount: 8))
+        metrics.record(.deckPreviewFailed(deckId: "official-exam-core-en-zh", reason: "generic"))
         metrics.record(.deckCopyCompleted(
             deckId: "official-starter-en-zh-core", cardCount: 62, alreadyCopied: false, durationMs: 300
         ))
@@ -93,8 +107,9 @@ struct ExploreTelemetryTests {
 
         let snapshot = metrics.snapshot()
         #expect(snapshot.deckBrowseCount == 2)
-        #expect(snapshot.deckPreviewCount == 1)
-        // copy 計數鏡射 translation：count = 嘗試數（成功 + 失敗），failures 另計。
+        // preview 與 copy 同一條規格：count = 嘗試數（成功 + 失敗），failures 另計。
+        #expect(snapshot.deckPreviewCount == 2)
+        #expect(snapshot.deckPreviewFailures == 1)
         #expect(snapshot.deckCopyCount == 2)
         #expect(snapshot.deckCopyFailures == 1)
     }
@@ -104,15 +119,18 @@ struct ExploreTelemetryTests {
 
         metrics.record(.deckBrowsed(deckCount: 1, hasQuery: false, isFiltered: false))
         metrics.record(.deckPreviewed(deckId: "official-exam-core-en-zh", sampleCardCount: 5))
+        metrics.record(.deckPreviewFailed(deckId: "official-exam-core-en-zh", reason: "unauthorized"))
         metrics.record(.deckCopyCompleted(
             deckId: "official-exam-core-en-zh", cardCount: 56, alreadyCopied: false, durationMs: 120
         ))
         #expect(metrics.snapshot().deckBrowseCount == 1)
+        #expect(metrics.snapshot().deckPreviewFailures == 1)
 
         metrics.reset()
         let cleared = metrics.snapshot()
         #expect(cleared.deckBrowseCount == 0)
         #expect(cleared.deckPreviewCount == 0)
+        #expect(cleared.deckPreviewFailures == 0)
         #expect(cleared.deckCopyCount == 0)
         #expect(cleared.deckCopyFailures == 0)
     }

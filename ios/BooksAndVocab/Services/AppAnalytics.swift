@@ -48,6 +48,7 @@ enum AnalyticsEvent {
     case deckPreviewed(deckId: String, sampleCardCount: Int)
     case deckCopyCompleted(deckId: String, cardCount: Int, alreadyCopied: Bool, durationMs: Int)
     case deckCopyFailed(deckId: String, reason: String)
+    case deckPreviewFailed(deckId: String, reason: String)
 
     enum TranslationType: String {
         case quick
@@ -229,6 +230,13 @@ enum AppAnalytics {
                 message: "event=deck_copy_failed deck_id=\(deckId) reason=\(reason)"
             )
             logger.warning("event=deck_copy_failed deck_id=\(deckId, privacy: .public) reason=\(reason, privacy: .public)")
+
+        case .deckPreviewFailed(let deckId, let reason):
+            recordObservation(
+                level: .warning,
+                message: "event=deck_preview_failed deck_id=\(deckId) reason=\(reason)"
+            )
+            logger.warning("event=deck_preview_failed deck_id=\(deckId, privacy: .public) reason=\(reason, privacy: .public)")
         }
 
         SessionMetrics.shared.record(event)
@@ -263,6 +271,7 @@ final class SessionMetrics: @unchecked Sendable {
     private var _reviewSessionsAbandoned = 0
     private var _deckBrowseCount = 0
     private var _deckPreviewCount = 0
+    private var _deckPreviewFailures = 0
     private var _deckCopyCount = 0
     private var _deckCopyFailures = 0
 
@@ -299,6 +308,12 @@ final class SessionMetrics: @unchecked Sendable {
             _deckBrowseCount += 1
         case .deckPreviewed:
             _deckPreviewCount += 1
+        case .deckPreviewFailed:
+            // 與 copy 同一條規格（見下方註解）：`_deckPreviewCount` 是**嘗試**數，
+            // 失敗另計。少了這條，browse→preview 的轉換率分不出「沒人點」與
+            // 「點了但預覽載不出來」。
+            _deckPreviewCount += 1
+            _deckPreviewFailures += 1
         case .deckCopyCompleted:
             // copy 計數語意鏡射 translation：`_deckCopyCount` 是**嘗試**數，失敗另計，
             // 故失敗率 = failures / count 而非 failures / (count + failures)。
@@ -329,6 +344,7 @@ final class SessionMetrics: @unchecked Sendable {
             reviewSessionsAbandoned: _reviewSessionsAbandoned,
             deckBrowseCount: _deckBrowseCount,
             deckPreviewCount: _deckPreviewCount,
+            deckPreviewFailures: _deckPreviewFailures,
             deckCopyCount: _deckCopyCount,
             deckCopyFailures: _deckCopyFailures
         )
@@ -349,6 +365,7 @@ final class SessionMetrics: @unchecked Sendable {
         _reviewSessionsAbandoned = 0
         _deckBrowseCount = 0
         _deckPreviewCount = 0
+        _deckPreviewFailures = 0
         _deckCopyCount = 0
         _deckCopyFailures = 0
     }
@@ -367,6 +384,7 @@ struct SessionSnapshot {
     let reviewSessionsAbandoned: Int
     let deckBrowseCount: Int
     let deckPreviewCount: Int
+    let deckPreviewFailures: Int
     let deckCopyCount: Int
     let deckCopyFailures: Int
 
@@ -389,6 +407,7 @@ struct SessionSnapshot {
             review_sessions_abandoned=\(reviewSessionsAbandoned) \
             deck_browses=\(deckBrowseCount) \
             deck_previews=\(deckPreviewCount) \
+            deck_preview_failures=\(deckPreviewFailures) \
             deck_copies=\(deckCopyCount) \
             deck_copy_failures=\(deckCopyFailures)
             """
@@ -407,6 +426,7 @@ struct SessionSnapshot {
             review_sessions_abandoned=\(reviewSessionsAbandoned) \
             deck_browses=\(deckBrowseCount) \
             deck_previews=\(deckPreviewCount) \
+            deck_preview_failures=\(deckPreviewFailures) \
             deck_copies=\(deckCopyCount) \
             deck_copy_failures=\(deckCopyFailures)
             """)
