@@ -26,6 +26,7 @@ from .ops_edit_commands import (
     cmd_seed,
     cmd_user_config_set,
     cmd_user_create,
+    cmd_user_delete,
     cmd_world_restore,
     cmd_world_snapshot,
 )
@@ -50,6 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--provider", default="google", choices=["google", "apple", "demo"])
     p.add_argument("--allow-existing", action="store_true", help="user 已存在時 merge record")
     p.set_defaults(func=cmd_user_create)
+
+    p = sub.add_parser(
+        "user-delete",
+        parents=[jp, cp],
+        help="刪除用戶(移除 user dir + users.json record + email/subscription index;寫前自動備份,可 restore)",
+    )
+    p.add_argument("uid")
+    p.set_defaults(func=cmd_user_delete)
 
     p = sub.add_parser("card-add", parents=[jp, cp], help="新增單字卡")
     p.add_argument("uid")
