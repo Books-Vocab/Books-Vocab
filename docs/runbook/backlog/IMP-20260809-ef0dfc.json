@@ -1,0 +1,23 @@
+{
+  "acceptance": "三個指定呼叫端共用 canonical JSON helper，既有 byte-stability、manifest 與 hash regression 全綠，且 emit_ios 的 dataset ID 行為未變。",
+  "acceptance_cmd": "bash -c 'set -e; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_reviewer_evidence.py -k \"manifest or byte_stable\"; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_app_review_evidence.py -k \"non_canonical or hash\"; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_app_review_gate.py -k \"hash\"'",
+  "acceptance_expect_rc": 0,
+  "brief": "三個入口重複組出相同的 canonical JSON，維護者難以保證指紋規格持續一致。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-09",
+  "detail": "B2：三個 reviewer 與 App Review 入口各自組 canonical JSON bytes，規格已一致但共用邏輯重複，且不能牽動 emit_ios 的 dataset ID 雜湊。",
+  "fix_site": "ops/reviewer_evidence.py; ops/app_review_evidence.py; ops/app_review_gate.py; ops/tests/test_reviewer_evidence.py; ops/tests/test_app_review_evidence.py; ops/tests/test_app_review_gate.py",
+  "groomed_against": "785f64052908b6bd5fb0fa406767cbee7db03cba",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "r6-worker:groom@v1",
+  "id": "IMP-20260809-ef0dfc",
+  "plan": "抽出共用 canonical JSON bytes helper，讓 reviewer evidence、App Review evidence、App Review gate 三個呼叫端使用同一序列化規格；以 byte-level regression 證明輸出不變，明確不碰 emit_ios。",
+  "resolution": "抽出共用 canonical JSON helper，讓 reviewer_evidence、app_review_evidence、app_review_gate 共用；以現有 byte-level 測試證明指紋不變，排除 ops/demo/emit_ios.py。",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個共用序列化 helper、三個呼叫端與三組 byte-level regression。",
+  "severity": "med",
+  "source": "IMP-0042/B2",
+  "status": "open",
+  "stream": "IMP"
+}
