@@ -79,7 +79,7 @@ ssh chenliangyu@100.118.39.104 'sudo launchctl kickstart -k system/com.cloudflar
 **修復：容器掛**（local:8000 不回）
 ```bash
 ssh chenliangyu@100.118.39.104 'docker logs --tail 100 knowledge-graph-api'   # 通常 .env 缺 key / Python import 錯誤
-ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d'   # restart:always，不應需要手動
+ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d'   # restart:always，不應需要手動
 ```
 
 > TLS 憑證由 CF 邊緣託管，standby 端**無**憑證可查/可清（不再有 Let's Encrypt / Caddy 流程）。
@@ -96,7 +96,7 @@ ssh chenliangyu@100.118.39.104 'curl -s -o /dev/null -w "local:8000=%{http_code}
 - `local:8000` 也掛 → 容器問題：
 ```bash
 ssh chenliangyu@100.118.39.104 'docker logs --tail 100 knowledge-graph-api'
-ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d --build'   # .env 缺 key / import 錯誤需重 build
+ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d --build'   # .env 缺 key / import 錯誤需重 build
 ```
 
 ---
@@ -321,12 +321,14 @@ scp -i ~/.ssh/lightsail_kg_prod -r \
 ### primary（standby，macOS）
 | 檔案 | 路徑 |
 |------|------|
-| API 代碼 / compose | `~/project/kg/backend/`（user `chenliangyu`） |
-| API .env | `~/project/kg/backend/.env` |
-| 資料庫 | `~/kg-data/`（felix；2026-06-16 移出 git worktree，原 `~/project/kg/backend/data/`） |
+| API 代碼 / compose | `~/kg-prod/backend/`（user `chenliangyu`；生產 checkout） |
+| API .env | `~/kg-prod/backend/.env` |
+| 資料庫 | `~/kg-data/`（felix；2026-06-16 移出 git worktree） |
 | cloudflared daemon | `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist` |
 | backup launchd | `~/Library/LaunchAgents/com.kg.backup.plist`（源 `ops/launchd/com.kg.backup.plist`） |
 | TLS 憑證 | 無（CF 邊緣託管） |
+
+> `~/kg-prod` 是生產 checkout；`~/project/kg` 僅供 dev / resume 使用，不要在其 backend 跑 compose。
 
 ### rollback（Lightsail，Ubuntu）
 | 檔案 | 路徑 |
