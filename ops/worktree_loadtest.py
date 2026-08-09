@@ -98,14 +98,17 @@ def build_clone(dest: Path, branch: str | None) -> Path:
         raise SystemExit(f"clone failed: {r['stderr_tail']}")
     for k, v in (("user.name", "loadtest"), ("user.email", "loadtest@example.invalid")):
         run(["git", "config", k, v], cwd=dest, label=f"config {k}")
-    if branch:
-        # The clone's trunk must BE the branch under test: the tool being measured
-        # lives on it, and every lane forks from the clone's main.
-        r = run(["git", "checkout", "-B", "main", f"origin/{branch}"], cwd=dest,
-                label="checkout")
-        if r["rc"] != 0:
-            raise SystemExit(f"checkout {branch} failed: {r['stderr_tail']}")
-        log(f"clone trunk set to {branch}")
+    # A local clone inherits the source checkout's current branch, which may be a
+    # feature worktree. The orchestrator's default base is the clone's `main`, so
+    # leaving that inherited branch checked out makes the seed commit invisible to
+    # every lane. Always make the clone's trunk explicit; `--branch` selects the
+    # branch whose tool implementation is being measured.
+    trunk = branch or "main"
+    r = run(["git", "checkout", "-B", "main", f"origin/{trunk}"], cwd=dest,
+            label="checkout")
+    if r["rc"] != 0:
+        raise SystemExit(f"checkout {trunk} failed: {r['stderr_tail']}")
+    log(f"clone trunk set to {trunk}")
     return dest
 
 
@@ -283,8 +286,14 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
         wt = Path(payload["path"])
         steps = make_lane_commit(wt, i, conflict)
         sha = run(["git", "rev-parse", "HEAD"], cwd=wt, label="sha")["stdout"].strip()
+        handback = run(
+            [str(wt / "ops" / "worktree_registry.py"), "hand-back", "--branch",
+             payload["branch"], "--json"],
+            cwd=wt, label="hand-back")
         rec = {"slug": slug, "branch": payload["branch"], "path": str(wt), "sha": sha,
-               "stopped_at_commit": all(s["rc"] == 0 for s in steps)}
+               "handed_back": handback["rc"] == 0,
+               "stopped_at_commit": all(s["rc"] == 0 for s in steps)
+               and handback["rc"] == 0}
         lanes.append(rec)
         report[slug] = rec
 
@@ -293,36 +302,71 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
     lanes.sort(key=lambda r: r["slug"])
     log(f"{len(lanes)}/{n} delegates stopped at commit; opening integration worktree")
 
-    # --- ONE integrator.
-    st = run([str(orch), "open", "--intent", "integrate the batch", "--slug",
-              "integrate", "--json"], cwd=clone, label="open-integrator")
-    ip = as_json(st)
-    if st["rc"] != 0 or not ip:
-        return {"error": "integration worktree failed", "stderr": st["stderr_tail"]}
-    integ = Path(ip["path"])
+    # --- ONE integrator. The harness must drive the same primitive as production.
+    #     `integrate` owns the pick queue, state file, conflict stop/continue, and
+    #     the single integrated-tree gate; this harness only supplies its deliberately
+    #     lossless fixture resolver when the primitive pauses on SHARED.md.
+    branches = [rec["branch"] for rec in lanes]
+    integration = run(
+        [str(orch), "integrate", "--slug", "integrate", "--branches", *branches,
+         "--commit", "--json"],
+        cwd=clone, label="integrate", timeout=5400)
+    integration_payload = as_json(integration) or {}
+    integ = Path(integration_payload["worktree"]) if integration_payload.get("worktree") else None
+    conflict_events = []
+    integration_error = None
 
+    while integration_payload.get("mode") == "stopped":
+        if integ is None:
+            integration_error = "integrate stopped without naming its worktree"
+            break
+        status = list(integration_payload.get("conflicts") or [])
+        if not status:
+            integration_error = (integration_payload.get("error") or
+                                 "integrate stopped without named conflicts")
+            break
+        resolved = []
+        for rel in status:
+            if not resolve_keep_both(integ / rel):
+                integration_error = f"fixture resolver could not resolve {rel}"
+                break
+            resolved.append(rel)
+            run(["git", "add", "--", rel], cwd=integ, label="add-resolved")
+        if integration_error:
+            break
+        stopped = integration_payload.get("stopped") or {}
+        conflict_events.append({
+            "branch": stopped.get("branch"),
+            "sha": stopped.get("sha"),
+            "conflicted": status,
+            "resolved": resolved,
+        })
+        integration = run(
+            [str(integ / "ops" / "worktree_orchestrate.py"), "integrate",
+             "--slug", "integrate", "--continue", "--commit", "--json"],
+            cwd=integ, label="integrate-continue", timeout=5400)
+        integration_payload = as_json(integration) or {}
+
+    if not integ:
+        integration_error = (integration_payload.get("error") or
+                             "integrate produced no integration worktree")
+    if integration_error:
+        return {"error": integration_error, "integrate": integration_payload,
+                "conflict_events": conflict_events}
+
+    picked_by_branch = {
+        item.get("branch"): item for item in integration_payload.get("picked", [])
+    }
     picks = []
     for rec in lanes:
-        c = run(["git", "cherry-pick", rec["sha"]], cwd=integ, label=f"pick:{rec['slug']}")
-        conflicted, resolved = [], []
-        if c["rc"] != 0:
-            status = run(["git", "diff", "--name-only", "--diff-filter=U"], cwd=integ,
-                         label="conflicts")["stdout"].split()
-            conflicted = status
-            for rel in status:
-                if resolve_keep_both(integ / rel):
-                    resolved.append(rel)
-                    run(["git", "add", rel], cwd=integ, label="add-resolved")
-            cont = run(["git", "-c", "core.editor=true", "cherry-pick", "--continue"],
-                       cwd=integ, label="continue")
-            if cont["rc"] != 0:
-                run(["git", "cherry-pick", "--abort"], cwd=integ, label="abort")
-                picks.append({"slug": rec["slug"], "ok": False,
-                              "conflicted": conflicted, "resolved": resolved,
-                              "why": cont["stderr_tail"][-200:]})
-                continue
-        picks.append({"slug": rec["slug"], "ok": True, "conflicted": conflicted,
-                      "resolved": resolved})
+        events = [e for e in conflict_events if e["branch"] == rec["branch"]]
+        picked = picked_by_branch.get(rec["branch"])
+        picks.append({
+            "slug": rec["slug"],
+            "ok": bool(picked),
+            "conflicted": [p for e in events for p in e["conflicted"]],
+            "resolved": [p for e in events for p in e["resolved"]],
+        })
 
     # --- the assertion this whole mode exists for: nothing silently dropped.
     rows_present, rows_missing = [], []
@@ -335,9 +379,7 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
                      if (integ / "ops" / "loadtest_fixtures"
                          / f"lt_{int(rec['slug'].split('-')[1]):02d}.sh").exists()]
 
-    g = run([str(integ / "ops" / "worktree_orchestrate.py"), "gate", "--worktree",
-             str(integ), "--json"], cwd=integ, label="gate", timeout=5400)
-    gate = as_json(g) or {}
+    gate = integration_payload.get("gate") or {}
     c = run([str(integ / "ops" / "worktree_orchestrate.py"), "cutover", "--worktree",
              str(integ), "--commit", "--json"], cwd=integ, label="cutover", timeout=3600)
     cut = as_json(c) or {}
