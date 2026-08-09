@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from kg.graph_event_log import (
+    GraphEvent,
     GraphEventDraft,
     GraphEventSource,
     GraphEventStore,
@@ -205,3 +206,52 @@ def test_persistence_across_reopen(tmp_path):
         for t in (e.ingested_at for e in reopened.all())
     ]
     assert ts[-1] > ts[-2]
+
+
+def _count_graphevent_selects(store: GraphEventStore, drafts: list[GraphEventDraft]) -> int:
+    """Run insert_many and count SELECTs that touch the graph events table."""
+    from sqlalchemy import event as sa_event
+
+    table = GraphEvent.__tablename__
+    seen: list[str] = []
+
+    def _before(conn, cursor, statement, parameters, context, executemany):
+        normalized = " ".join(statement.split()).lower()
+        if normalized.startswith("select") and table in normalized:
+            seen.append(normalized)
+
+    sa_event.listen(store.engine, "before_cursor_execute", _before)
+    try:
+        store.insert_many(drafts)
+    finally:
+        sa_event.remove(store.engine, "before_cursor_execute", _before)
+    return len(seen)
+
+
+def test_duplicate_insert_existence_check_does_not_scale_with_batch_size(tmp_path):
+    """Existing graph events must be checked in batches, not one query per id."""
+    small = [_draft(f"small-{i}") for i in range(20)]
+    large = [_draft(f"large-{i}") for i in range(200)]
+
+    small_store = GraphEventStore(tmp_path / "small.db")
+    large_store = GraphEventStore(tmp_path / "large.db")
+    small_store.insert_many(small)
+    large_store.insert_many(large)
+
+    small_selects = _count_graphevent_selects(small_store, small)
+    large_selects = _count_graphevent_selects(large_store, large)
+
+    assert small_selects <= 4, f"even a 20-event batch issued {small_selects} SELECTs"
+    assert large_selects - small_selects <= 2, (
+        f"existence check scales with batch size: {small_selects} -> {large_selects}"
+    )
+
+
+def test_duplicate_event_id_within_one_batch_is_skipped(tmp_path):
+    """The batched lookup must preserve the intra-batch duplicate guard."""
+    store = GraphEventStore(tmp_path / "graph_events.db")
+    first = _draft("evt-dup", reason="first")
+    second = _draft("evt-dup", reason="second")
+
+    assert store.insert_many([first, second]) == {"inserted": 1, "skipped": 1}
+    assert [event.reason for event in store.all()] == ["first"]
