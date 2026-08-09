@@ -30,7 +30,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 
 | 平面 | 問題 | SoT |
 |---|---|---|
-| **票** | 有什麼事要做、怎麼做、怎麼算做完 | `docs/runbook/backlog/<id>.json`,入口一律 `ops/backlog.py`(機器讀 `list --json` / `show`) |
+| **票** | 有什麼事要做、怎麼做、怎麼算做完 | `docs/runbook/backlog/<id>.json`,入口一律 `ops/backlog.py`(機器讀 `list --json` / `show`;生命週期 SoT=`lifecycle --json`) |
 | **認領** | 誰在做哪張票、還活著嗎 | worktree 登記簿,入口 `ops/worktree_registry.py` / `ops/worktree_orchestrate.py`;`backlog.py list` 的 `held` 欄由它推導,**不儲存** |
 | **看板** | 現在該先做哪張、哪張延後 | `~/butler/kg-board`(讀 origin/main 的 clone;手機端只做**排序 / 釘選 / 延後**三個動作,不能認領也不能結案) |
 
@@ -51,6 +51,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 122 筆未解時那個寫入面實質是惰性的。`fix_site` 不能兼任——它是程式錨點,讀者不同。
 未梳理的票留在板上但不進 `dispatch`——沒有修法的票不是工作,是待調查;
 既有欠這兩欄的票用 `list --missing-brief` 數,那是**回填佇列不是 dispatch 佇列**。
+日常寫入走 `./ops/backlog.py groom <id>`（dry-run 預設、`--commit` 原子落地）；`verify` 只回答問題是否仍成立，與是否可 dispatch 正交。角色、狀態與 edge cases 不在本檔重抄，直接讀 `./ops/backlog.py lifecycle --json`。
 
 **結案只有一種意義:那條你自己寫下的判準今天真的綠。** 三條路徑通往 `status=fixed`
 (`anchor` 波次 / `update --status fixed` / `verify --status fixed`)共用同一道
