@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "KGServing.swift 的主協定在 53 行內宣告 5 個屬性與 35 個方法，橫跨認證、健康、筆記本、設定、訂閱、圖譜、複習、額度與同步。同檔已有 BackgroundSyncing 與 DeckCopying 兩個窄協定，證明能力切分已有慣例，但 leaf consumer 仍常依賴完整 KGServing。五個測試替身合計有 128 個 fatalError unused，其中 PodcastPlayerLoaderTests 只需 token 卻有 29 個未使用方法。新增任何服務能力都會擴散到無關呼叫端。",
   "fix_site": "ios/BooksAndVocab/Services/KGServing.swift:27; ios/BooksAndVocabTests/PodcastPlayerLoaderTests.swift:77; ios/BooksAndVocabTests/SpyKGService.swift:1",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
   "id": "IMP-20260809-932845",

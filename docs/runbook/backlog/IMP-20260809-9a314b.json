@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "backend/src/kg/cards/dictionary_store.py 的 DictionaryCardStoreMixin 由 84 至 787 行共 704 行與 23 個方法，混合 lifecycle saga、promotion queue、materialize ledger、projection 與 selection。協調狀態另分散於 dictionary_cards.py 的無界 SAGA_LOCKS 與 dictionary_promotion.py 的無界 CLAIM_LOCKS，字卡生命週期變更會同時跨 store、兩個鎖池與多個測試面。",
   "fix_site": "backend/src/kg/cards/dictionary_store.py; backend/src/kg/dictionary_cards.py; backend/src/kg/dictionary_promotion.py; backend/src/kg/keyed_lock_registry.py; backend/tests/test_dictionary_store_boundaries.py",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
   "id": "IMP-20260809-9a314b",

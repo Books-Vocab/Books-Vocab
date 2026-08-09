@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "backend/src/kg/ops_edit_support.py 有 590 行與 30 個頂層函式，同時匯出標準庫名稱、型別、store 與流程 helper；五個 command 模組從它匯入 123 個名稱，其中 ops_edit_seed_commands.py 匯入 46 個。cmd_seed 由 208 至 598 行共 391 行，內含 prevalidate、apply、verify 三階段，任一 seed schema 或 transaction 變更都要改同一函式與共享匯入面。",
   "fix_site": "backend/src/kg/ops_edit_support.py; backend/src/kg/ops_edit_seed_commands.py; backend/src/kg/ops_edit_{card,link,notebook,user}_commands.py; backend/tests/test_ops_edit_architecture.py",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
   "id": "IMP-20260809-3c2f8a",

@@ -8,7 +8,7 @@
   "date": "2026-08-09",
   "detail": "ops/app_review_gate.py 共 1880 行，其中 evaluate_gate 從第 1020 行起跨 729 行，估算分支節點超過 100。單一函式同時載入 desired/live bundle、journey、URL、appearance、attestation 與 claim evidence，並共同修改 blocks、files、evidence_by_claim。ops/tests/test_app_review_gate.py 只有 23 個入口層測試，主要都呼叫 evaluate_gate；任何 evidence 類型改動都會碰同一 reducer，失敗也難定位到責任邊界。",
   "fix_site": "ops/app_review_gate.py:evaluate_gate/load_spec/load bundle helpers；新增 ops/lib/app_review_evaluators.py 與 ops/tests/test_app_review_evaluators.py；保留 ops/tests/test_app_review_gate.py 端到端契約",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:maintainability-audit",
   "id": "IMP-20260809-a1eed5",

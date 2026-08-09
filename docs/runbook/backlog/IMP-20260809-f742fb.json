@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "FixtureDatasetStore.swift 共 2659 行、59 個型別或 extension 宣告；FixtureDatasetDocument 直接列出 15 個功能領域，領域 seed、驗證、載入器與 accessor 全集中一檔。FixtureDatasetStoreTests.swift 共 3442 行、86 個測試；只有開頭少數案例修改 process environment，但整個 suite 都標為 serialized，後續純 decoding 與 TaskLocal 測試也無法平行。任一功能 fixture 變更都集中衝突同一對檔案並擴大失敗診斷範圍。",
   "fix_site": "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift:27; ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift:2198; ios/BooksAndVocabTests/FixtureDatasetStoreTests.swift:7",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
   "id": "IMP-20260809-f742fb",

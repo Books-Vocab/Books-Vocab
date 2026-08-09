@@ -7,7 +7,7 @@
   "date": "2026-08-09",
   "detail": "PodcastSyncService.swift 共 772 行、24 個函式；13 至 113 行是傳輸資料型別，151 至 194 行是認證與 HTTP，196 至 315 行是封面檔案快取，317 至 438 行是同步編排，439 至 638 行是指紋與 upsert，641 至 771 行是進度去重與 destructive reconcile。九個測試檔直接引用此型別。網路、磁碟與 SwiftData 刪除政策無法獨立注入 failure，封面或認證修改會碰到 catalog reconcile 核心。",
   "fix_site": "ios/BooksAndVocab/Services/PodcastSyncService.swift:116; ios/BooksAndVocab/Services/PodcastSyncService.swift:196; ios/BooksAndVocab/Services/PodcastSyncService.swift:341; ios/BooksAndVocab/Services/PodcastSyncService.swift:641",
-  "groomed_against": "57c2f2204c305392c81915993552a76154670767",
+  "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
   "id": "IMP-20260809-96f966",
