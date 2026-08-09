@@ -1,14 +1,26 @@
 {
+  "acceptance": "正控須證明兩個並行 long task 可各自 start→heartbeat→finish 且 ledger 無遺失，具名 owner 對 stale 且 PID/PGID/start identity 全相符的 task 能只清理該 process group並留下 terminal outcome。負控須證明 live heartbeat、不同 session、未知 task、finished task、PID reuse/start mismatch、PGID mismatch 與 dry-run 都不呼叫 TERM/KILL；command identity 不含原始敏感 argv。",
+  "acceptance_cmd": "uv run pytest -q ops/tests/test_task_registry.py",
   "brief": "同機長任務沒有可靠的所有權紀錄，清理重複程序時可能誤殺其他正在修票的工作。",
   "category": "arch",
+  "cost": "L",
   "date": "2026-08-09",
   "detail": "R6 曾重複啟動四個 backlog validate 程序，只能人工用 PID 辨認並終止自己的工作；在同機大量 ticket 修復時，ps 不能可靠證明某個 PID 屬於哪個 session、worktree 或 gate，誤殺其他流程風險高。現有 streaming heartbeat 能顯示 child PID，卻沒有 session-scoped ownership ledger 與安全 cleanup。需要 repo-launched long task registry：記錄 task ID、session/campaign、worktree、PID/process group、phase、started/heartbeat/finished、log path 與非敏感 command identity；完成時原子關閉，cleanup 只能操作具名 owned task，PID reuse、未知 owner 或 live heartbeat 一律拒絕。這張不授權清理目前任何程序，只建立未來的所有權控制面。",
+  "fix_site": "ops/task_registry.py; ops/lib/streaming_command.py; ops/tests/test_task_registry.py",
+  "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:backend-health-audit",
   "id": "IMP-20260809-c7d884",
+  "plan": "1. 新增 task_registry CLI 與 common-anchor state，使用 file lock 加原子 replace，記錄隨機 task ID、session/campaign、worktree、PID/PGID、OS process-start identity、phase、started/heartbeat/finished、log 絕對路徑，以及 basename/arg-count/雜湊形式的非敏感 command identity。2. 將 streaming_command 的集中 spawn seam 接上 start、heartbeat 與 finally finish；子程序出生後才寫 PID identity，未成功 spawn 則寫具名 terminal failure，所有完成路徑原子關閉。3. 提供 list/status 與 dry-run 預設的 cleanup；commit cleanup 必須同時匹配 task ID、owner session、worktree、PID start identity 與 PGID，且只允許 heartbeat 已逾明定期限的 active task。4. unknown owner、live heartbeat、PID reuse/start mismatch、PGID mismatch、已 finished 或無記錄一律拒絕且不得送 signal；允許清理時只終止該具名 process group，TERM timeout 後才 KILL，並記錄結果。5. 以 temporary child/process group 與 signal spy 覆蓋正常生命週期、並行 registry 寫入、stale owned cleanup，以及每個拒絕分支；不得掃 ps 後依 command substring 批次殺程序。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": "長任務所有權登記、生命週期與安全清理介面，屬大型平台能力。",
   "severity": "high",
   "source": "R6-R8 pressure-test architecture review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "triaged",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:backend-health-audit",
+  "verified_evidence": "set -o pipefail; test ! -e ops/task_registry.py; rg -n 'start_new_session=True|proc\\.pid|phase=heartbeat' ops/lib/streaming_command.py >/dev/null"
 }

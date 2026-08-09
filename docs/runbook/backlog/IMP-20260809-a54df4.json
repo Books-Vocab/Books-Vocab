@@ -1,14 +1,26 @@
 {
+  "acceptance": "正控須證明 clean changed branch 加合法 receipt、具 base-ancestor provenance 的 no-op、以及帶證據的 blocked/triage-only 都生成綁 ticket/base/tip 的不可變 seal；integrate 只接受 seal 完整且 tip 相符的可整合 outcome。負控須證明 dirty tree、漏/重/未認領 ticket、changed 無 receipt、no-op 只有綠 acceptance 無 provenance、seal 被改、tip 前進與把非 code outcome 傳給 integrate 都 fail closed，且不改既有 stamp。",
+  "acceptance_cmd": "uv run pytest -q ops/tests/test_worktree_handback_outcomes.py",
   "brief": "工作交回只記版本位置，無法區分已修改、基線已修、驗收受阻或只完成調查，整合者容易漏票。",
   "category": "arch",
+  "cost": "M",
   "date": "2026-08-09",
   "detail": "R7 有 4/15、R8 有 5/25 張票在 pinned base 已修，source branch 沒有 commit；integrate 正確拒絕空 commit range，但 no-op 證據只能留在 prose receipt，parent 無法機器對帳。另有 changed-but-not-closable、blocked acceptance、triage-only 等合理結果，而目前 hand-back 主要只蓋 handed_back_sha；R7 也直到 integration review audit 才發現 intermediate commits 缺 receipt，造成整棵 integration 重建。需要 hand-back seal 與 typed outcome：changed、no-op-existing-fix、changed-but-not-closable、blocked、triage-only；每種 outcome 都綁 ticket ID、base、tip、acceptance 狀態與 evidence。changed 預檢 tracked-clean、tip、claim identity、receipt；no-op 必須有基線祖先或具名 provenance，不能只因 acceptance 綠就自動關票。這張不負責 parent 批次發現與 closure mapping。",
+  "fix_site": "ops/worktree_registry.py; ops/worktree_orchestrate.py; ops/tests/test_worktree_handback_outcomes.py",
+  "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:backend-health-audit",
   "id": "IMP-20260809-a54df4",
+  "plan": "1. 為 hand-back 新增 outcomes JSON 輸入，每個 claimed ticket 必須恰有一筆，型別限定 changed、no-op-existing-fix、changed-but-not-closable、blocked、triage-only，並攜帶 acceptance status 與可重跑 evidence；拒絕漏票、重複票與未認領票。2. 封印 canonical payload：registry record identity、ticket IDs、recorded base SHA、current tip SHA、outcomes、acceptance/evidence 與 timestamp，保存 digest；保留 handed_back_at/sha 相容欄位。3. changed 類型預檢 tracked-clean、tip 相對 base 有變更、claim identity 一致，並對 base..tip 執行既有 review receipt audit；changed-but-not-closable 另要求具名未綠 acceptance。4. no-op-existing-fix 要求 acceptance pass 加上可驗證的 base ancestor commit，或明確 fixed-elsewhere provenance；不得只因 acceptance 綠就推定已修或關票。blocked/triage-only 必須有 evidence 且不得冒充可整合 commit。5. integrate 驗證 seal digest、tip 未前進與 outcome 可整合；缺 seal、seal 漂移、非 code outcome 均具名拒絕，既有 --allow-unhanded 僅保留 legacy/imported bypass。6. 新測試同時覆蓋各合法 outcome 與所有拒絕邊界，不延伸到 parent batch discovery/closure mapping。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": "登記簿交回協定、驗證封印與整合前檢查，約兩支工具及其測試。",
   "severity": "high",
   "source": "R6-R8 pressure-test architecture review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "triaged",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:backend-health-audit",
+  "verified_evidence": "set -o pipefail; rg -n 'rec\\[\"handed_back_(at|sha)\"\\]|handed_back_sha' ops/worktree_registry.py ops/worktree_orchestrate.py >/dev/null; ! ./ops/worktree_registry.py hand-back --help | rg -q -- '--outcome|--acceptance-status|--evidence'"
 }
