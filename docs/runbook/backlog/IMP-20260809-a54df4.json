@@ -1,0 +1,14 @@
+{
+  "brief": "工作交回只記版本位置，無法區分已修改、基線已修、驗收受阻或只完成調查，整合者容易漏票。",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "R7 有 4/15、R8 有 5/25 張票在 pinned base 已修，source branch 沒有 commit；integrate 正確拒絕空 commit range，但 no-op 證據只能留在 prose receipt，parent 無法機器對帳。另有 changed-but-not-closable、blocked acceptance、triage-only 等合理結果，而目前 hand-back 主要只蓋 handed_back_sha；R7 也直到 integration review audit 才發現 intermediate commits 缺 receipt，造成整棵 integration 重建。需要 hand-back seal 與 typed outcome：changed、no-op-existing-fix、changed-but-not-closable、blocked、triage-only；每種 outcome 都綁 ticket ID、base、tip、acceptance 狀態與 evidence。changed 預檢 tracked-clean、tip、claim identity、receipt；no-op 必須有基線祖先或具名 provenance，不能只因 acceptance 綠就自動關票。這張不負責 parent 批次發現與 closure mapping。",
+  "id": "IMP-20260809-a54df4",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "登記簿交回協定、驗證封印與整合前檢查，約兩支工具及其測試。",
+  "severity": "high",
+  "source": "R6-R8 pressure-test architecture review",
+  "status": "open",
+  "stream": "IMP"
+}

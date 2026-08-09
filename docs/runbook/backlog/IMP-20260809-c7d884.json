@@ -1,0 +1,14 @@
+{
+  "brief": "同機長任務沒有可靠的所有權紀錄，清理重複程序時可能誤殺其他正在修票的工作。",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "R6 曾重複啟動四個 backlog validate 程序，只能人工用 PID 辨認並終止自己的工作；在同機大量 ticket 修復時，ps 不能可靠證明某個 PID 屬於哪個 session、worktree 或 gate，誤殺其他流程風險高。現有 streaming heartbeat 能顯示 child PID，卻沒有 session-scoped ownership ledger 與安全 cleanup。需要 repo-launched long task registry：記錄 task ID、session/campaign、worktree、PID/process group、phase、started/heartbeat/finished、log path 與非敏感 command identity；完成時原子關閉，cleanup 只能操作具名 owned task，PID reuse、未知 owner 或 live heartbeat 一律拒絕。這張不授權清理目前任何程序，只建立未來的所有權控制面。",
+  "id": "IMP-20260809-c7d884",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "長任務所有權登記、生命週期與安全清理介面，屬大型平台能力。",
+  "severity": "high",
+  "source": "R6-R8 pressure-test architecture review",
+  "status": "open",
+  "stream": "IMP"
+}

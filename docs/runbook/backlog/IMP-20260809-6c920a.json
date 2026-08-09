@@ -1,0 +1,14 @@
+{
+  "brief": "多個協調者同時取票時只能防止同一張票被重複拿走，無法限制每輪規模或避免不同票改到同一區域。",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "Round 6–8 契約要求三個協調 session 各取 15 張、共同固定 base，並在開工前全局對帳 ticket ID 與 fix_site；實際 R8 擴張到 25 張，三輪合計 55 張，live registry 因 worker 與 child tree 共出現 60 筆 active。R6 另記錄先查詢再認領造成 13 次 claim rejection。ticket-level registry lock 正確防止同一 ID 被重複認領，但 fix_site 是自由文字，不能機械比較 symbol、讀寫模式、依賴或 co-land；實際 child diff 在 ops/backlog.py、ops/tests/test_backlog.py、ops/worktree_orchestrate.py 等共享面重疊。需要 campaign-scoped reservation transaction：綁 base SHA、每 partition 配額、ticket 集合、結構化 write sites、依賴與唯一 coordinator；選票與保留必須同一個鎖內動作，超額、重複、碰撞或 stale base 都具名拒絕。這張只負責 claim/partition plane，不負責 hand-back outcome 或 parent integration discovery。",
+  "id": "IMP-20260809-6c920a",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "三個協調工具的批次認領協定、資料格式與整合測試，屬大型平台改造。",
+  "severity": "high",
+  "source": "R6-R8 pressure-test architecture review",
+  "status": "open",
+  "stream": "IMP"
+}
