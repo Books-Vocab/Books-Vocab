@@ -12,6 +12,9 @@
   "date": "2026-08-08",
   "detail": "使用者定調（2026-08-08）：「iOS glass 化」的實際意思是**盡量用 iOS 26 原生元件、\n不要自己手刻**，讓 Liquid Glass 等系統外觀由平台提供，而不是由 app 這層表達。\n\n目前設定面上的自繪清單（第一刀範圍）：\n- settingsCard() / AppSectionCard（自繪白卡 + border + elevation）\n- SettingsSelectionTile / ReaderSelectionTile（自繪選擇塊）\n- SettingsStepperIconButton（自繪 +/- 步進按鈕）\n- AppSettingsDivider / AppAirDivider（自繪分隔）\n- ReaderSettingsPresenter 的 vocabControlSurface / vocabLabelChip / 自繪 drag handle 與 header\n- ReaderStepControlButton\n\n原生對應候選：List/Form + Section、Toggle、Stepper、Picker(.segmented/.palette)、\nLabeledContent、Menu、sheet + presentationDetents + 系統 toolbar/navigationTitle。\n\n必須一起處理的後果，不可略過：\n1. 這與現行設計憲法直接衝突。docs/sop/ui-design.md 的「Mochi 化北極星」是\n   自繪 editorial 路線，北極星 #1 還明文說材質歸平台、app 不自己表達。\n   改成原生優先要同一次改掉那份文件（見 IMP 票）。\n2. 換成原生 List/Form 會犧牲一部分 editorial 個性（襯線標題、自訂間距節奏）。\n   一致性與認知負擔是使用者選定的優先項，但這個代價要在執行時具名承認，\n   不能假裝沒有。\n3. 逐步進行：本票只涵蓋三個設定頁，其餘 surface 另立票。",
   "fix_site": "ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift:59, ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift:109, ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift:208, ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayoutEditor.swift:111, ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayoutEditor.swift:142, ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:13, ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:72, ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:207, ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:252, ios/BooksAndVocab/Views/Reader/ReaderSettingsPanel.swift:33, ios/BooksAndVocab/Views/Settings/SettingsPresenter+Controls.swift:5, ios/BooksAndVocab/Views/Reader/ReaderStepControlButton.swift:4, ios/BooksAndVocab/Views/Reader/ReaderViewPresenter+Overlays.swift:50, ios/BooksAndVocabUITests/Pages/SettingsSheetPage.swift:76",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "APP-20260808-240a94",
@@ -22,7 +25,11 @@
   "scope": "逐步把自繪控制項換成 iOS 26 原生；三個設定頁是第一刀。",
   "severity": "med",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "settings"
+  "surface": "settings",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "APP-20260808-240a94 — 三個設定頁自繪元件換成 iOS 26 原生\n\n跑過的命令（工作樹 feat/settings-native-converge，HEAD=1d1a9d5b4）：\n\n1) 票面 acceptance_cmd（純靜態 python 掃描，不碰 Xcode），rc=0：\n   OK: the 3 settings screens are native-first\n   （三個 group 各自零自繪 call site、各自有 Form+Section、review-tempo 有\n     Stepper+Picker、reader-settings 有 Picker；六個獨佔名字\n     SettingsStepperIconButton / ReaderStepControlButton / vocabControlSurface /\n     vocabLabelChip / vocabSettingsSection / vocabHeaderBlock 全樹零出現。）\n\n2) ./ops/i18n_lint.sh --baseline-check\n   total: 0 (raw=0 ... localized_calls=331) ; ok: 0 <= baseline 0\n3) ./ops/ui_token_lint.sh --baseline-check\n   OK — 0 finding(s), all within baseline of 0.\n4) ./ops/injection_lint.sh --baseline-check\n   OK — 30 findings (all within baseline of 34).\n5) ./ops/catalyst_lint.sh\n   toolbar-popover findings in files: 0\n\n未跑（受派者被明確禁止動用 iOS/Xcode 資源，整批由整合者一次跑）：\n   ./ops/ios_ops.sh build、./ops/ios_ops.sh test --ui\n   （尤其 SettingsFlowUITests 的 settings.review.modeTile.<raw> 與\n     ReviewCardLayoutEditorPage 的 segmented picker 走訪，見 receipt 風險段）。"
 }
