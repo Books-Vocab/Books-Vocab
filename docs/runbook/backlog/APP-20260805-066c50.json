@@ -7,6 +7,9 @@
   "date": "2026-08-05",
   "detail": "ReaderTranslationHandler.lastLookup 標了 @ObservationIgnored（:57），卻被三個 view body 直接讀作 retry 按鈕的顯示條件（ReaderView+Panels.swift:160,163、PDFReaderView.swift:214,217、PodcastPlayerScene.swift:370,374）。目前不會炸只因為條件另一半 translationErrorMessage 是 tracked，且 lastLookup 只在 lookup 起頭被賦值、從不設回 nil。一旦加入 nil 清理，retry 按鈕會殘留且點下去打錯模式。與 3c6cd0688 同型（狀態被投影給 view 卻不在 observation 圖上）。",
   "fix_site": "ios/BooksAndVocab/Views/Reader/ReaderTranslationHandler.swift:56  (`@ObservationIgnored` 修飾 `var lastLookup`)",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "APP-20260805-066c50",
@@ -17,7 +20,11 @@
   "scope": "iOS 一個檔刪掉一行標記，跑一次相關測試確認能編譯；不動其他畫面。",
   "severity": "low",
   "source": "autoplay observation 修復時的全 app 同型缺陷稽核",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "reader"
+  "surface": "reader",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-integrator",
+  "verified_evidence": "原 queue 靜態判準與 red control 已綠；本次 verify 重跑 stored acceptance。"
 }

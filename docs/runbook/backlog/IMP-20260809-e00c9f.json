@@ -6,6 +6,9 @@
   "date": "2026-08-09",
   "detail": "`./ops/worktree_registry.py hand-back` 的 `--path` help 宣稱預設值是「當前\nworktree」，但在該 worktree 內不帶參數執行會被拒：\n  action=refused\n  reason=hand-back selector matches multiple active registry records\n實測環境：登記簿同時有 12 條 active 記錄（2026-08-09 本輪三樹 + 其他 session 的殘留）。\n要成功必須額外帶 `--branch`。\n\n問題不在「需要更精確的選擇器」——那可能是對的設計。問題在 **help 的宣稱與\n行為不符**：受派者照 help 寫的預設值執行，拿到的是一個看起來像「登記簿壞了」\n的拒絕訊息，而不是「請用 --branch 指名」。交回是每個受派者流程的最後一步，\n所以這個落差會被每一條工作樹各踩一次。",
   "fix_site": "ops/worktree_registry.py:hand-back, ops/tests/test_worktree_registry.sh",
+  "fixed_by": [
+    "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5"
+  ],
   "groomed_at": "2026-08-09",
   "groomed_by": "main-session",
   "id": "IMP-20260809-e00c9f",
@@ -15,6 +18,10 @@
   "scope": "一支 CLI 的參數解析或說明文字，含一支回歸測試。",
   "severity": "low",
   "source": "2026-08-09 ios-small-batch 受派者回報",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Stored acceptance_cmd rerun successfully during R6-R8 closure; integrated batch is reachable at 55baa5099ddd47bf4f5adc474acd6b5ee1c728a5."
 }

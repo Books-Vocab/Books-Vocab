@@ -16,5 +16,9 @@
   "severity": "med",
   "source": "ios-engineer 修 APP-20260809-f1b8cb 時撞到（今日第二次同形）",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "R6-R8 implementation is integrated, but this stored acceptance was deliberately not rerun in bounded cleanup because it is a long iOS or full-suite gate; ticket remains unresolved pending fresh targeted evidence."
 }

@@ -7,6 +7,9 @@
   "date": "2026-08-05",
   "detail": "跑會發 heartbeat 的長指令時，呼叫端不可接 tail/head/grep 這類會緩衝的過濾器。實測：'./ops/ios_ops.sh test ... 2>&1 | tail -20' 起背景任務後，output file 整段執行期間都是 0 bytes，看起來像卡死；事後讀檔又因 tail 只留最後 N 行，讓人誤以為前段本來就沒輸出（該次其實有 14 行 build-for-testing 進度）。heartbeat 契約要防的正是「不知道是否卡死」，卻被呼叫端一根管子廢掉，還會反過來讓人誤判工具壞掉（IMP-20260805-f71e9b 就是這樣誤開的）。建議寫進 docs/sop/ios.md 與 worktree-flow 硬邊界：長指令直接導檔或讓它裸跑，要截斷事後讀 log。",
   "fix_site": "docs/sop/ios.md:94（證據控制面 heartbeat 契約段）+ .claude/skills/worktree-flow/SKILL.md:189 起的「## 硬邊界」段",
+  "fixed_by": [
+    "44d0c76c5c34f05acfcb69a5863e37ff89ba211a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-dd7238",
@@ -16,6 +19,10 @@
   "scope": "兩份說明文件各補一段話，不動程式。",
   "severity": "low",
   "source": "worktree feat/word-detail-actions（heartbeat 誤判更正）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r8-coordinator",
+  "verified_evidence": "backlog audit-criteria filter IMP-20260805-dd7238: ran 1 green 1 red 0"
 }

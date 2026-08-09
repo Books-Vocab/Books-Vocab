@@ -19,6 +19,8 @@
   "source": "harness 可信度改造 Phase 5（未完成）",
   "status": "open",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Earlier criterion audit returned nonzero; interpreter was normalized but the ticket remains open until the criterion is repaired and rerun."
 }

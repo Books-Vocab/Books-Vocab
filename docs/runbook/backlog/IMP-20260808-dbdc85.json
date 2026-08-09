@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "IMP-20260805-4ec901 落地後， 會在 child 前後各取一次  快照，rc≠0 且快照有變就把該 gate 標成 inconclusive。探針**不區分「別人動的 tag」與「這道 gate 自己的 child 動的 tag」**。review 已端到端重現：child 在 shared repo 下 `git tag` 並 `exit 3` → status inconclusive → aggregate warn。cutover 現已對 inconclusive 拒絕落地（同一輪 NIT-2 的處置），所以最壞後果從「靜默落地」降級成「這道 gate 永遠拿不到可歸屬判決、反覆要求重跑」——仍然是一道實質上再也給不出答案的 block gate。今天無現存 gate child 觸得到：全 repo grep，`ops/test_release.sh` 每一處 `git tag` / `tag -d` 都帶 `-C \\\"$fx_*\\\"` 指向 fixture repo。但 test_release.sh 是全 repo 最 tag-heavy 的腳本、本身又是 block gate，**少寫一個 `-C` 就得到那個結果**，而那個 bug 會偽裝成「這道 gate 最近怪怪的」。建議落點：`ops/shell_scan.sh`（repo 級跨檔掃描，任何 `*.sh` 改動都會路由到它，且已有正控慣例）加一條：tracked 腳本內的 `git tag` / `git push --tags` 不得缺 `-C` / `--git-dir`。需自帶正控（一個違規樣本要被抓到），否則就是又一條沒人能觀察它失效的守衛。",
   "fix_site": "ops/shell_scan.sh；ops/tests/test_script_help.sh",
+  "fixed_by": [
+    "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5"
+  ],
   "groomed_against": "d54fce7bc195f0b823081f228bddd6472c3916d4",
   "groomed_at": "2026-08-09",
   "groomed_by": "workflow:groom@v1",
@@ -16,6 +19,10 @@
   "scope": "在既有的全 repo 腳本掃描器加一條規則與一個正控，不動 gate 本身。",
   "severity": "med",
   "source": "code-reviewer NIT-1 on IMP-20260805-4ec901 (911153ec9)",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Stored acceptance_cmd rerun successfully during R6-R8 closure; integrated batch is reachable at 55baa5099ddd47bf4f5adc474acd6b5ee1c728a5."
 }

@@ -7,6 +7,9 @@
   "date": "2026-08-05",
   "detail": "行銷素材 final_review-card.png 下次重生成時會多一列紅色「刪除」。Debug scenario 'Word Detail · Sheet/Marketing'（WordDetailScenarios.swift:143）用預設 wrapInNavigation:true → offersLifecycleActions 為真 → 新增的卡片管理區連同 destructive 色的刪除列一起入鏡，而該 shot 被 ops/capture_profiles/website.json 的 review_card 引用，文案是「釋義、發音、例句、關聯詞——一張卡片全掌握」。不會自動發布（capture 需手動重跑），所以現行線上資產不受影響；但下一次重生成會靜默換掉一張已上線的圖。決定時機：要嘛給 marketing scenario 一個不含生命週期動作的呈現路徑，要嘛接受並更新文案。",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift:init/:206 `offersLifecycleActions` + ios/BooksAndVocab/Debug/Scenarios/WordDetailScenarios.swift:143",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "APP-20260805-48116d",
@@ -17,7 +20,11 @@
   "scope": "iOS 兩個檔各加一個開關參數，既有畫面行為不變；圖要不要重出是另一次人工動作。",
   "severity": "low",
   "source": "worktree feat/word-detail-actions（code review 指出）",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-integrator",
+  "verified_evidence": "原 queue 靜態判準與 red control 已綠；本次 verify 重跑 stored acceptance。"
 }

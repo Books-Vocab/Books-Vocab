@@ -17,5 +17,9 @@
   "severity": "med",
   "source": "IMP-20260808-15a2b7 被判 MISSTATED 時的殘餘（整合者實測）",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "R6-R8 implementation is integrated, but this stored acceptance was deliberately not rerun in bounded cleanup because it is a long iOS or full-suite gate; ticket remains unresolved pending fresh targeted evidence."
 }

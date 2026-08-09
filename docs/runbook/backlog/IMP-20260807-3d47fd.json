@@ -19,6 +19,8 @@
   "source": "立單初稿被 review 推翻後重立",
   "status": "open",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Stored acceptance contains shell-sensitive quoting and was not executed; criterion must be repaired before it can support closure."
 }

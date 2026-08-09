@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "NEUTRAL_RULES 宣告 '.claude/' 選不到 gate 的理由是「由 docs registry 涵蓋」,實測只有一半為真:docs_impact 確實會把 .claude/agents/ios-engineer.md 映到 sop.agent_org(match_type=broad),但那是 warn-only 的 hint;docs_lint.sh 的掃描範圍是 find docs -name '*.md',**完全不含 .claude/**。所以 .claude/ 底下沒有任何內容檢查,而它裝的是全部 agent 檔與 skill 檔——也就是下一個 agent 唯一會照著做的指令來源。2026-08-07 當天實例:ios-engineer.md 與 backend-engineer.md 教的收案指令實測 exit 64,存在多日,任何 gate 都不可能發現,是稽核用人讀出來的。要嘛給 .claude/*.md 一道真的檢查(至少驗其中的 ops/ 命令能解析、旗標存在),要嘛把 neutral 理由改成誠實的『今天沒有機械檢查』——現在的措辭會讓讀者以為有人在看。",
   "fix_site": "ops/worktree_orchestrate.py:331-338 NEUTRAL_RULES 的 `.claude/` 那一列（理由字串）＋ ops/tests/test_worktree_orchestrate.py 新測試",
+  "fixed_by": [
+    "44d0c76c5c34f05acfcb69a5863e37ff89ba211a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-5ef37d",
@@ -16,6 +19,10 @@
   "scope": "改一句工具裡的理由說明，加一支把這件事釘住、以後再犯會叫的測試；不做新的檢查器。",
   "severity": "med",
   "source": "tool-hardening pass before the 10-worktree run",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ops-engineer",
+  "verified_evidence": "bash -c \"test -f ops/worktree_orchestrate.py && ! grep -q \\\"docs registry 涵蓋\\\" ops/worktree_orchestrate.py && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \\\"claude_neutral\\\"\""
 }

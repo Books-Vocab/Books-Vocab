@@ -8,6 +8,9 @@
   "date": "2026-08-08",
   "detail": "ReviewFoldSurface 的底色是 appSkin.palette.cardBackground.opacity(0.985)。\n複習畫面是三個常駐 slot 疊在一起（TodayReviewCardSlot），preview slot 的整層\n透明度約 0.72、縮放 0.975、Y 位移 5pt，於是下一張卡的單字會從那 1.5% 的縫隙漏出來。\n\n淨透出率 = 0.72 * 0.015 ~= 1.1%，與實測吻合：\n  截圖中殘字區的逐欄最小灰階 = 253，卡片白 = 255（1320x2868，3x）。\n\n在白底大字上這個量剛好落在肉眼可辨的門檻，使用者自己先注意到了。\n那 1.5% 透明度沒有換到任何視覺效果（卡片下方就是 pageBackground），\n只換到漏字。",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewFoldSurface.swift:26",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "APP-20260808-33c9ec",
@@ -18,7 +21,11 @@
   "scope": "卡片底色一行的透明度，外加確認深色模式不受影響。",
   "severity": "med",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "acceptance_cmd 原樣跑過（scratch .sh + bash），rc=0：\nstruct ReviewFoldSurface 仍在（1 處）；.background(appSkin.palette.cardBackground) 恰好 1 處；\n.background(appSkin.palette.cardBackground.opacity( 0 處。\n\n修在 commit 53612dc51（ios: 複習卡卡面不再透出下一張的字）—— ReviewFoldSurface.swift 單行，\n刪掉 .opacity(0.985)，並在該行上方留註解記下舊值與 1.1% 淨透出的算式（判準 v2 刻意不掃 0.985 字面）。\n刻意未動：chevron pill 的 0.94、TodayReviewCardSlot 的深度堆疊公式、不用隱藏 preview 或 drawingGroup 遮症狀。\n\n留給整合者：./ops/ios_ops.sh build 編譯 gate；模擬器走「單字本→今日複習→全部複習」正反面各看一次，\n並切深色模式各看一次（人眼收尾，票面已載明不進 acceptance_cmd）。本輪受派者禁跑 Xcode。"
 }

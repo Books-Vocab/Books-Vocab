@@ -8,6 +8,9 @@
   "date": "2026-08-08",
   "detail": "2026-08-06 a5885e228 把例句渲染抽成正反面共用的\nTodayReviewPresenter+CardContent.swift 的 reviewOptionalField(.example)，\n並在其中寫死 mode: .cloze。\n\n重構前只有 production 模式的**正面**用 cloze（那一面還不能露出英文答案）；\n背面走 CardDocumentView -> CardDocumentExampleBlock -> CardRichTextRenderer.text(...)\n的預設 .highlight。\n\n正確規則：cloze 只在「這一面尚未揭曉答案」時成立，也就是 face == .front\n且 card.reviewMode == .production。其餘一律 highlight。\n\n對照證據：舊版截圖的背面例句是\n\"...neighborhood, had a **slate** stone sidewalk running...\"（slate 高亮）；\n現行畫面是 \"...out of the ______, so to speak.\"（挖空）。",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:595, ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift:159, ios/BooksAndVocabTests/ReviewCardRenderPlanTests.swift:5",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "APP-20260808-b6cacc",
@@ -18,7 +21,11 @@
   "scope": "例句渲染那一個 switch case 加一個判斷，外加一條測試。",
   "severity": "high",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "acceptance_cmd 原樣跑過（寫進 scratch .sh 後 bash 執行），rc=0，五段全綠：\n(a) .example 分支仍經 CardRichTextRenderer.text( 渲染\n(b) ios/BooksAndVocab 全樹已無 mode: .cloze 字面（grep -rqE 'mode: *\\.cloze' 不命中）\n(c) .example 分支的 mode: 引數逐字為 ReviewCardExampleRendering.mode(face: face, cardMode: card.reviewMode)\n(d) helper 函式體去空白後含 face==.front&&cardMode==.production?.cloze:.highlight\n(e) ReviewCardRenderPlanTests 對四種 (face, cardMode) 組合各自斷言期望值\n\n修在 commit f8fc4682e（ios: 例句只在尚未揭曉的那一面挖空）。\n判準未涵蓋、留給整合者的部分（判準自己在 acceptance 欄具名申報過）：\n./ops/ios_ops.sh build 與 ./ops/ios_ops.sh test --file ios/BooksAndVocabTests/ReviewCardRenderPlanTests.swift\n—— 本輪受派者被明確禁止跑任何 Xcode 工具，故未跑。\n另跑：./ops/i18n_lint.sh --baseline-check rc=0、./ops/ui_token_lint.sh --baseline-check rc=0。"
 }

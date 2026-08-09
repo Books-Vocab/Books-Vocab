@@ -8,6 +8,9 @@
   "date": "2026-08-07",
   "detail": "`ops/tests/test_gate_can_fail.sh` 用一個寫死的 `probes = [[…路徑…]]` 陣列去呼叫 `plan_gates`，再從結果收集 block gate 名字，然後要求每個名字在 `PROOFS` 裡有紅/綠證明。**這個 meta-test 的覆蓋範圍上限就是那份清單**：新增一條路由到未列出的路徑形狀，它看不見，而測試照樣印綠。\n\n2026-08-05 實測撞到：`backlog-validate` gate 接上 `docs/runbook/backlog/*.json` 之後，這支測試 27 pass / 0 fail——對新 gate 而言那個綠是**空洞的**；要手動把 `docs/runbook/backlog/IMP-0001.json` 加進 probes 它才開始檢查。一個宣稱「每個 block gate 都有紅燈證明」的測試，其真正宣稱是「每個**我記得列出來的** block gate」。",
   "fix_site": "ops/tests/test_gate_can_fail.sh:146,ops/tests/test_gate_can_fail.sh:141,ops/worktree_orchestrate.py:510,ops/worktree_orchestrate.py:455",
+  "fixed_by": [
+    "44d0c76c5c34f05acfcb69a5863e37ff89ba211a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260807-b7b2f8",
@@ -17,8 +20,10 @@
   "scope": "ops/worktree_orchestrate.py 的四個 API/路由、ops/tests/test_gate_can_fail.sh 的推導清單與 mutation probes。",
   "severity": "med",
   "source": "接 backlog-validate gate 時撞見",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ops-engineer",
+  "verified_evidence": "ticket acceptance_cmd -> OK declared=17 reachable=17\nbash -n ops/tests/test_gate_can_fail.sh -> rc=0\n./ops/tests/test_gate_can_fail.sh -> gate-can-fail: 30 passed, 0 failed\nuv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_orchestrate.py -> 335 passed in 725.76s\n./ops/worktree_orchestrate.py --help -> rc=0"
 }

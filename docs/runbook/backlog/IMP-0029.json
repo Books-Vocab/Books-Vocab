@@ -18,6 +18,8 @@
   "source": "行銷帳號 Phase5(時鐘凍結對抗驗證)",
   "status": "open",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Child outcomes progressed, but the umbrella criterion is self-referential and cannot establish its own fixed state; umbrella remains open."
 }

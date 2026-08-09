@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "複習卡的渲染全部住在 TodayReviewPresenter 的 extension 上\n（TodayReviewPresenter+CardContent.swift、TodayReviewSwipeDeck.swift），\n透過 self 讀 swipeOffset / dismissPhase / state.slots / introProgress /\nreviewNaturalSectionHeights 等互動狀態，以及 onAdvanceReveal / onLinkTap 等\n十餘個 callback。\n\n後果一：設定頁要做「像素級不飄移」的即時預覽（見對應 APP 票）沒有辦法直接取用，\n只能手刻第二份，而手刻的第二份必然會飄移 —— 飄移不是紀律問題，是結構問題。\n\n後果二：catalog / snapshot 想涵蓋複習卡也一樣卡在這裡，\n這是「沒有版面守衛」那張票的成因之一。\n\n方向：抽出一個純輸入的卡片 view（卡片資料 + 版面 profile + 可用高度 -> 畫面），\n互動與 slot 動畫留在 presenter 這層包在外面。\n\n依使用者規範，架構級摩擦不自決 —— 本票登記為待決策，抽法與邊界要先對齊再動手。",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:5,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:22,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:249,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:560,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewSwipeDeck.swift:50,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewSwipeDeck.swift:71,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter.swift:13,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter.swift:99,ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPreviewData.swift:33",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-ee7ca4",
@@ -16,6 +19,10 @@
   "scope": "把卡片渲染抽成獨立的 view，輸入是卡片資料與版面，不吃互動狀態。",
   "severity": "med",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "acceptance_cmd 原樣跑過（scratch .sh + bash），rc=0，印出 OK。七句正控 + 四項本體全綠：\n三個原始碼根在、deck 與 layout 路徑沒漂、swipeOffset / dismissPhase 仍以**程式碼**形式留在 deck；\nReviewCardView.swift 存在且第一行級別是 `struct ReviewCardView: View`；剝註解後檔內不出現\nswipeOffset / dismissPhase / introProgress / suppressFoldAnimation / stackRotations / slotFrontHeights，\n也不出現 TodayReviewPresenter；出貨的 TodayReviewSwipeDeck.swift 以程式碼建構 ReviewCardView(；\nfrontFoldSurface / answerFoldSurface / reviewOptionalField 三個名字在三個原始碼根底下各只剩一份定義，\n且都在 ReviewCardView.swift。\n\n採選項 B（已裁決，未再要點頭）。修在 commit 80a0db241 + 文檔同步 f70c2bf6b。\n另跑：./ops/i18n_lint.sh --baseline-check rc=0、./ops/ui_token_lint.sh --baseline-check rc=0、\n./ops/docs_lint.sh ERROR 0 / WARN 1（ui_flow_evidence STALE，既有 debt）。\n\n**判準看不見、且本輪受派者被禁止跑的兩件事，整合者必須跑**：\n(a) 能不能編譯 → ./ops/ios_ops.sh build；\n(b) 畫出來像不像 → ReviewCard* 單元測試 ＋ catalog Today Review scenario 的 light/dark 截圖逐張對照\n    （本 commit 另加了兩個「不經 presenter」的 scenario：Card only · Front / Back）。"
 }

@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "validate_store 用非遞迴 store.glob('*.json'),而『store 是扁平的』這條不變式沒有任何持有者。實測:add --store <store>/archive 產生的 entry 內容完全合法,卻對 validate / ratchet / list / render 全部隱形(母 store grep 命中 0);orchestrator 那側刻意只路由 top-level(理由是避免 vacuous pass),所以巢狀檔只得到 coverage warn,而 coverage 是 warn 不 block。補一條 store.iterdir() 的 stray-path 檢查(與既有 store-missing 同族)就能把假設變成斷言。",
   "fix_site": "ops/backlog.py:validate_store（新增 stray-path 檢查）+ ops/tests/test_backlog.py（新增測試）",
+  "fixed_by": [
+    "44d0c76c5c34f05acfcb69a5863e37ff89ba211a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-5f49ad",
@@ -16,6 +19,10 @@
   "scope": "在待辦工具的檢查裡加一條掃描規則，配一正一反兩條測試。",
   "severity": "low",
   "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "r8-extra-5f49ad",
+  "verified_evidence": "test -f ops/backlog.py && grep -qF stray-path ops/backlog.py && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k stray_path"
 }

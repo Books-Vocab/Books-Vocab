@@ -8,6 +8,9 @@
   "date": "2026-08-08",
   "detail": "三個設定面目前是兩套模型在打架：\n\n  複習卡片（ReviewCardLayoutEditor）/ 複習節奏（SettingsReviewSection）/ 主設定頁\n    分組標題 SettingsSectionHeader（小圖示 + 灰字）\n    分組容器 settingsCard()（白卡）\n    選擇塊   SettingsSelectionTile\n    尺寸     AppShellMetrics\n\n  閱讀設定（ReaderSettingsPresenter+Vocab）\n    分組標題 AppSectionBlock(flat: true)（純灰字、無圖示）\n    分組容器 無，靠 AppAirDivider 切\n    選擇塊   ReaderSelectionTile\n    尺寸     ReaderMetrics\n    外殼     VocabCard + 自繪 drag handle + 自繪 header + appElevation(.z2)\n\n已確認的重複：SettingsSelectionTile 與 ReaderSelectionTile 語意完全相同\n（選中 = mutedFill + cardBorder，未選 = pageBackground + divider 淡邊，control 圓度），\n只是各寫一份、各自帶不同的 padding 責任歸屬。\n\n方向：閱讀設定收斂到另外兩頁那一套（主設定頁與帳號區已在用，反向改波及面過大），\n共用元件合併為單一入口。心智模型也要一致：分組怎麼切、選擇怎麼表達、\n即時生效 vs 需要確認，三頁要說同一種話。\n\n與 A10（原生化）是同一條線的兩刀：本票是收斂，A10 是換成原生元件。\n執行順序上先收斂再換，或直接一次換成原生即完成收斂 —— 由執行者判斷。",
   "fix_site": "ios/BooksAndVocab/Views/Reader/ReaderSelectionTile.swift:4,ios/BooksAndVocab/Views/Settings/SettingsPresenter+Actions.swift:409,ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:202,ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift:30,ios/BooksAndVocab/Views/Reader/VocabHighlightColorPresetPicker.swift:27,ios/BooksAndVocab/UIComponents/AppShellComponents.swift:313,ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift:109,ios/BooksAndVocab/Views/Settings/SettingsDebugBackendSection.swift:77,ios/BooksAndVocab/Debug/CatalogScene.swift:262,ios/BooksAndVocab/Debug/CatalogScene.swift:146,ios/BooksAndVocab/Debug/Scenarios/ReaderSelectionTileScenarios.swift:1,ios/BooksAndVocab/Views/Reader/ReaderMetrics.swift:52",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "APP-20260808-f0770b",
@@ -18,7 +21,11 @@
   "scope": "把閱讀設定收斂到另外兩頁的心智模型，並合併重複的共用元件。",
   "severity": "med",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "settings"
+  "surface": "settings",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "APP-20260808-f0770b — 三個設定頁心智模型收斂 + 合併重複 selection tile\n\n跑過的命令（工作樹 feat/settings-native-converge，HEAD=1d1a9d5b4）：\n\n1) 票面 acceptance_cmd（純靜態 python 掃描，不碰 Xcode），rc=0：\n   G1 reader selection types: ['SettingsSelectionTile']\n   G1 settings selection types: ['SettingsSelectableRow', 'SettingsSelectionTile']\n   G1 OK: reader shares ['SettingsSelectionTile'] with settings\n   G2 hand-rolled selection chrome under Views/Reader: 0\n   G3 selected-fill sites: ['ios/BooksAndVocab/Views/Settings/SettingsPresenter+Actions.swift']\n   G4 converged vocabulary: ['SettingsSectionFooter', 'SettingsSectionHeader', 'inlineNavigationBarTitle']\n   G4 reader settings adopts: ['SettingsSectionFooter', 'SettingsSectionHeader', 'inlineNavigationBarTitle']\n   G5 retired grouping model still in use: []\n   RESULT PASS\n\n2) ./ops/i18n_lint.sh --baseline-check\n   total: 0 (raw=0 ... localized_calls=331) ; ok: 0 <= baseline 0\n3) ./ops/ui_token_lint.sh --baseline-check\n   OK — 0 finding(s), all within baseline of 0.\n4) ./ops/injection_lint.sh --baseline-check\n   OK — 30 findings (all within baseline of 34).\n5) ./ops/catalyst_lint.sh\n   toolbar-popover findings in files: 0\n\n未跑（受派者被明確禁止動用 iOS/Xcode 資源，整批由整合者一次跑）：\n   ./ops/ios_ops.sh build、./ops/ios_ops.sh test --ui。"
 }

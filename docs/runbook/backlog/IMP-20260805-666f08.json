@@ -1,12 +1,15 @@
 {
   "acceptance": "紅→綠的樣子：今天同時改到 docs/registry.yml 與任一 docs/*.md 的 diff，plan_gates 會排出兩條 ops/docs_lint.sh（`--files docs/sop/ios.md` 與 `--registry`），判準命令 exit 1；修好後只剩一條、而且是 --files 那條，判準 exit 0，接著既有的 10 支 data-plane / 去重 / registry 路由契約測試（-k \"data_plane or same_tool or docs_registry\"）必須全綠。expect rc = 0（非反轉）。",
-  "acceptance_cmd": "python3 -c 'import sys; sys.path.insert(0,\"ops\"); import worktree_orchestrate as w; g=w.plan_gates([\"docs/registry.yml\",\"docs/sop/ios.md\"], ops_test_exists=lambda p: True); c=[x[\"cmd\"] for x in g if x.get(\"cmd\") and x[\"cmd\"][0]==\"ops/docs_lint.sh\"]; sys.exit(0 if len(c)==1 and \"--files\" in c[0] else 1)' && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"data_plane or same_tool or docs_registry\"",
+  "acceptance_cmd": "uv run --no-project --python 3.13 python -c 'import sys; sys.path.insert(0,\"ops\"); import worktree_orchestrate as w; g=w.plan_gates([\"docs/registry.yml\",\"docs/sop/ios.md\"], ops_test_exists=lambda p: True); c=[x[\"cmd\"] for x in g if x.get(\"cmd\") and x[\"cmd\"][0]==\"ops/docs_lint.sh\"]; sys.exit(0 if len(c)==1 and \"--files\" in c[0] else 1)' && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"data_plane or same_tool or docs_registry\"",
   "acceptance_expect_rc": 0,
   "brief": "同時改到設定檔和說明文件時，同一項檢查會被排兩次跑，操作者為同一件事拿到兩份結論。",
   "category": "tool",
   "date": "2026-08-05",
   "detail": "`plan_gates` 的 gate 去重是**命令列表完全相等**,看不見語意重疊。`ops/docs_lint.sh:300` 在分派 mode 之前就無條件呼叫 `validate_registry`,所以同時改到 `docs/registry.yml` 與任一 `docs/*.md` 的 diff 會同時排出 `[\"ops/docs_lint.sh\",\"--files\",…]` 與 `[\"ops/docs_lint.sh\",\"--registry\"]`,registry 被驗兩次、操作者為同一個事實讀到兩個 verdict——正是 `test_the_same_tool_is_not_planned_twice_for_one_diff` 想擋的形狀,只是走了那把 key 涵蓋不到的路。",
   "fix_site": "ops/worktree_orchestrate.py:plan_gates（data_yml 區塊的 `if cmd in planned_cmds` 去重）+ ops/tests/test_worktree_orchestrate.py（新增回歸測試）",
+  "fixed_by": [
+    "44d0c76c5c34f05acfcb69a5863e37ff89ba211a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-666f08",
@@ -16,6 +19,10 @@
   "scope": "一支流程工具改幾行去重判斷，加一支回歸測試。",
   "severity": "low",
   "source": "yml 路由 commit 的 review（nit）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r8-coordinator",
+  "verified_evidence": "backlog audit-criteria filter IMP-20260805-666f08: ran 1 green 1 red 0; combined pytest 359 passed"
 }
