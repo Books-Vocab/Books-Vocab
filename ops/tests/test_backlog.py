@@ -5309,6 +5309,76 @@ def test_groom_cannot_reopen_a_ticket_closed_while_it_waits_for_the_entry_lock(
     assert BACKLOG.load_entry(store, entry["id"])["status"] == "wont-fix"
 
 
+def test_anchor_refuses_if_real_groom_changes_the_snapshot_while_acceptance_runs(
+    tmp_path, monkeypatch
+):
+    """Anchor grades and writes the same snapshot or consumes none of the wave."""
+    import threading
+
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    entry = _add(store, detail="anchor versus groom race")
+    _stage_and_stamp(store, queue, entry["id"])
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+    monkeypatch.setattr(BACKLOG, "_main_commit", lambda repo=None: "abc1234")
+    entered, proceed = threading.Event(), threading.Event()
+    real_gate = BACKLOG._acceptance_gate
+
+    def delayed_gate(snapshot, commit):
+        entered.set()
+        assert proceed.wait(timeout=2)
+        return real_gate(snapshot, commit)
+
+    monkeypatch.setattr(BACKLOG, "_acceptance_gate", delayed_gate)
+    result = {}
+
+    def anchor_wave():
+        result["rc"] = BACKLOG.main([
+            "anchor", "--store", str(store), "--queue", str(queue),
+            "--commit", "--json",
+        ])
+
+    thread = threading.Thread(target=anchor_wave)
+    thread.start()
+    assert entered.wait(timeout=2)
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "false", "--commit", "--json"
+    )) == 0
+    proceed.set()
+    thread.join(timeout=2)
+
+    current = BACKLOG.load_entry(store, entry["id"])
+    assert result.get("rc") == 2
+    assert current["status"] == "triaged" and current["acceptance_cmd"] == "false"
+    assert queue.exists() and entry["id"] in queue.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("command", ["update", "verify"])
+def test_normal_mutation_cannot_reopen_a_terminal_ticket(
+    tmp_path, capsys, command
+):
+    store = tmp_path / "s"
+    entry = _add(store)
+    BACKLOG.update_entry(
+        store, entry["id"], status="wont-fix",
+        resolution="the original disposition was intentional",
+    )
+    if command == "update":
+        argv = ["update", entry["id"], "--store", str(store),
+                "--status", "open", "--commit", "--json"]
+    else:
+        argv = [
+            "verify", entry["id"], "--store", str(store),
+            "--verdict", "CONFIRMED-OPEN", "--by", "agent:probe",
+            "--evidence", "reproduced it", "--status", "open",
+            "--commit", "--json",
+        ]
+
+    assert BACKLOG.main(argv) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert "cannot reopen" in payload["error"]
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "wont-fix"
+
+
 def test_groom_against_must_be_reachable_from_local_main(tmp_path, capsys, monkeypatch):
     repo = tmp_path / "repo"
     _against, current = _groomed_against_repo(repo)
