@@ -131,6 +131,36 @@ warnings=0
 ok=0
 IMPACT_HINTS_EMITTED=0
 
+emit_generated_diff() {
+  local id="$1" path="$2" generator="$3"
+  local expected_tmp diff_tmp total_lines max_lines=40
+  expected_tmp="$(mktemp "${TMPDIR:-/tmp}/kg_docs_expected.XXXXXX")"
+  diff_tmp="$(mktemp "${TMPDIR:-/tmp}/kg_docs_diff.XXXXXX")"
+
+  # `check` is arbitrary shell, so do not pretend it can produce a diff. Only
+  # use the registry's generator when it is a zero-argument command that
+  # successfully emits a non-empty expected document; otherwise retain the
+  # existing error as the honest fallback.
+  if ! sh -c "$generator" </dev/null >"$expected_tmp" 2>/dev/null ||
+     [ ! -s "$expected_tmp" ] || [ ! -f "$path" ]; then
+    rm -f "$expected_tmp" "$diff_tmp"
+    return 0
+  fi
+  if diff -u "$path" "$expected_tmp" >"$diff_tmp" 2>/dev/null; then
+    rm -f "$expected_tmp" "$diff_tmp"
+    return 0
+  fi
+
+  total_lines="$(wc -l < "$diff_tmp" | tr -d ' ')"
+  echo "    drift diff ($id):"
+  sed -n "1,${max_lines}p" "$diff_tmp"
+  if [ "$total_lines" -gt "$max_lines" ]; then
+    echo "    ... 還有 $((total_lines - max_lines)) 行差異未顯示"
+  fi
+  rm -f "$expected_tmp" "$diff_tmp"
+  return 0
+}
+
 validate_registry() {
   reg="docs/registry.yml"
   if [ ! -f "$reg" ]; then
@@ -229,6 +259,7 @@ validate_registry() {
       # 神秘消失、entry_count 少掉，而 rc 仍是 0——正是本 gate 存在要擋的那類錯誤。
       elif ! sh -c "$check" </dev/null >/dev/null 2>&1; then
         echo "ERROR registry — $id 產物與 generator 輸出不一致: $path(跑 $check 看差異)"
+        emit_generated_diff "$id" "$path" "$generator"
         reg_bad=$((reg_bad+1))
       fi
     fi
