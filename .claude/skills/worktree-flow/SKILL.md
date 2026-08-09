@@ -335,9 +335,25 @@ git rerere diff
    而不是省事。
 5. **resolve 每一條來源分支**——見下方警告。
 
-### 兩輪同步、一次原子落地
+### 多輪同步、一次原子落地
 
 第四／第五輪可各自在不同 slug 的 integration tree 同步 `integrate`；兩邊完成後，分別對兩條 integration branch 執行 `worktree_registry.py hand-back`，再由第三棵 parent integration tree 把這兩條 branch 當來源 `integrate`。parent 的 Gate 才是跨輪組合證據，最後只對 parent `cutover` 一次，所以 final cutover 前本地 main 完全不動。落地後依序：來源 workers 用 `resolve --via-integration main` → 第四／第五輪 integration trees 用同一方式 resolve → parent tree 一般 resolve。`--via-integration REF` 只接受已是 base 祖先的 REF；未落地的 round branch 即使 patch audit 對得上，也不能授權拆來源。
+
+### Round 6–8 三 session 壓力測試契約（2026-08-09）
+
+本輪是**刻意的壓力測試**：三個獨立協調 session、各取 15 張單、合計 45 張；票變多或工具摩擦變多本身不是失敗訊號。這段是本輪的拓撲與收斂契約，下一輪不應靠 prompt 臨時重推。
+
+**啟動前建立共同基準。** 三個 session 必須記下同一顆本地 `main` SHA `M`，並在各自的批次 receipt 寫明 `session_id`、15 個 ticket id、integration branch。先用 `backlog.py validate --baseline-check` 驗 store，再對三份 ticket 集合做程式化對帳：id 不得重疊，`fix_site` 的檔案／行域不得交疊；有重疊就調整分配或排成具名前置，不靠三個 session 自己避讓。`open --next-backlog` 的 registry lock 只保證單票認領互斥，不替跨 session 的 fix-site 分區背書。
+
+**三層拓撲，不讓子輪競爭 primary。** 每個 session 在自己的 integration tree 收攏 15 張單；受派 worker 只做到 commit，並執行 `worktree_registry.py hand-back`，不各自 gate／cutover。三棵 round integration branch 都完成後，開一棵 parent integration tree（例如 `r6-r8-land`）依序 `integrate` 三棵 branch、只在 parent 上解衝突。parent 的 fresh Gate 才是 45 張放在一起的 release evidence；只有 parent 通過非 BLOCK verdict 後才對本地 `main` 執行**一次** `cutover`。因此三個 session 可並行做事，但 primary 的寫入與最終 cutover 是序列化的。
+
+**Gate 用輸入變更決定，不用 commit 數量決定。** child integration 若已停在 in-flight pick，可用 `integrate --continue --commit --no-gate` 先排空純 pick／衝突整理，再由 parent 提供唯一 final evidence；不可把 `--no-gate` 當成放行。這避免同一批變更先後跑三次等價 Gate；parent 必須跑一次 fresh Gate。Gate BLOCK 後只修 parent integration tree，依 input fingerprint 只重跑失效或未知 scope 的 gate；成功 gate 可重用，未知依賴、輸入集合變動、orchestrator 不同代或 `inconclusive` 一律重跑。parent 之後若只追加 backlog closure metadata，沿用當下 code verdict，改跑 acceptance、`backlog.py validate --baseline-check` 與 `review_audit`，不為純 metadata 重跑 iOS／ops 全量 Gate。
+
+**Review 是有界的機器輔助，不是完美競賽。** 普通單一修補不自動配一對 LLM reviewer；高風險或複雜 scope 才例外派。沿用 `review_cycle.py` 的完整 `commit SHA × scope` 最多兩輪：第二輪仍 BLOCK 就進 driving-agent adjudication，選 `fix`、`accept` 或 `defer` 並具名；NIT 與 tooling debt 不得把 45 張單重新打開成無限迴圈。Gate 本身是獨立 review 層，fresh Gate 非 BLOCK 且 receipt／acceptance 齊全就是可交付的 80 分。
+
+**壓測只量會影響決策的數字。** 三個 session 的共享 receipt／`.cache/coordination/` 應至少記：共同基準 `M`、各批 ticket／fix-site 對帳結果、source commit 數與衝突數、Gate planned／executed／reused／BLOCK／WARN、Gate wall-clock 與各階段 heartbeat、review cycle 次數、hand-back／resolve 殘留、primary cutover 次數，以及實際工具摩擦。工具問題若造成誤判、繞過、資料遺失或浪費一整輪 Gate，當場修並補回歸驗證；較小摩擦先記 receipt，不能因追求工具完美而中止壓測。
+
+**Round 6–8 的完成條件。** 45 張單有且只有一個 owner，三棵 child integration branch 全 hand-back，parent 所有來源 commit 可追溯且衝突已具名解決；parent fresh Gate 無 BLOCK；每張單的 acceptance 或具名 manual evidence 已結案；`backlog.py validate --baseline-check` 為 0 problems；所有來源與 parent worktree 已 `resolve`，primary tracked-clean，沒有未解 active registry 或 zombie process。WARN、延後的 NIT／tooling debt 與其理由要留在 receipt，不能冒充 PASS，也不必阻止進入下一輪。
 
 **收尾（先保留手刻管線的歷史量測，再列真正 `integrate` 的量測）**：
 
