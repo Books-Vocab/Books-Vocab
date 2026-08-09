@@ -11,11 +11,11 @@
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-6b9e69",
   "plan": "現在**不要動**。docs/reference/catalog_scope.md〈凍結期紅線 2〉逐字寫著：`PREFERENCE_DOMAIN_KEYS` 的雙向 `==`（test_preference_domain_keys_match_swift_preferences_seed）**未放寬**，理由正是「新增可 seed 的 preference key 本身就是 UI World 擴張」；同段也寫明 validator 對 world 出現不認識的 key 會 exit 64 擋下，而那支 validator 是 ios_test.sh --ui / catalog snapshots / ui_quality_gate.py / uitest_flow_matrix.py 四個入口的共同護欄、明文「一行不該動」。所以今天照本條做會同時撞紅線與護欄。復業（同檔〈復業條件〉：要送審新版本／重做行銷截圖／大改 UI 風格／需要新 catalog surface）之後才執行，順序：① ops/ui_world_manifest.py:151 的 PREFERENCE_DOMAIN_KEYS[\"userDefaults\"] 加 `review_card_layout_profile_v1`（ReviewCardLayoutStore 同時寫 UserDefaults 與 iCloud KVS，所以 `ubiquitousKeyValueStore` 那組也要一起加，否則兩個 seam 只 seed 一半）；② Swift 端 preferences seed 的鏡像清單同步加（雙向 == 的另一邊，否則 parity 測試會紅）；③ ops/fixtures/ui_worlds/marketing_demo.json 的 preferences.userDefaults / ubiquitousKeyValueStore 明示該 key 的預設 profile JSON 字串；④ 最後才拆掉 ios/BooksAndVocabUITests/ReviewCardLayoutEditorUITests.swift:48-49 與 :99-100 的 in-test reset-all 自保。在此之前，那個 in-test reset 是**正確的權宜**，不要當成缺陷去移除。",
-  "resolution": "",
+  "resolution": "目前 UI World 仍處於 FROZEN，依 catalog_scope.md 凍結期紅線不能新增 preference seed；現行 UI test 的 reset-all 是正確權宜。此票保留為復業保險，待送審新版本、重拍行銷截圖或大改 UI 風格時重新開啟並先校正 acceptance_expect_rc。",
   "schema": "kg.backlog.entry.v1",
   "scope": "三處各補一個設定項、再拆掉測試裡的權宜寫法；但要等介面素材解凍後才能動。",
   "severity": "low",
   "source": "Phase C review card layout editor (feat/review-card-layout-editor)",
-  "status": "open",
+  "status": "wont-fix",
   "stream": "IMP"
 }
