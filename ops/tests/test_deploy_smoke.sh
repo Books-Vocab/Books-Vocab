@@ -74,8 +74,11 @@ fi
 rest="\${match_line#*|}"
 code="\${rest%%|*}"
 body="\${rest#*|}"
-# 若 code=000，模擬網路斷：non-zero exit，stdout 空
+# 若 code=000，模擬真 curl：先印 HTTP code，再以 non-zero exit 表示網路錯誤
 if [[ "\$code" == "000" ]]; then
+  if [[ "\$want_body_plus_http" == "1" || "\$want_http_only" == "1" ]]; then
+    printf '%s' "\$code"
+  fi
   exit 6
 fi
 if [[ "\$want_body_plus_http" == "1" ]]; then
