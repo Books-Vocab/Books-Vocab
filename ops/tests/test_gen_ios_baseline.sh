@@ -21,8 +21,8 @@ set -uo pipefail
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$WORKSPACE"
 GEN="${KG_GEN_IOS_BASELINE_SCRIPT:-ops/gen_ios_baseline.sh}"
-# 產物已於 IMP-20260808-b63206 移出版控（`--write` / `--check` 一併退場），所以這裡不再
-# 有 committed 檔可讀。最後一節改成讀 generator 的 **stdout**——那本來就是被測的東西，
+# 產物已於 IMP-20260808-b63206 移出版控（`--write` 與磁碟比對模式退場），所以這裡不再
+# 有 committed 檔可讀。`--check` 只驗證唯讀 stdout，最後一節改成讀 generator 的 **stdout**——那本來就是被測的東西，
 # 讀磁碟上的副本只是多了一層可能腐爛的間接。
 OUT_PATH="docs/snapshot/ios_baseline.md"
 pass=0; fail=0
@@ -41,7 +41,7 @@ count_with() {  # $1 = variable name, $2 = dir to scan -> stdout: the number the
 }
 
 section "each counter is a single extractable top-level line"
-for var in ASYNC_FUNC MAIN_ACTOR; do
+for var in ASYNC_FUNC MAIN_ACTOR TOTAL_LINES TOP10; do
   n="$(grep -cE "^${var}=" "$GEN")"
   [[ "$n" == "1" ]] && ok "exactly one ^${var}= line in $GEN" \
     || fail_t "expected exactly 1 ^${var}= line in $GEN, found $n (the acceptance evals this line; it must stay single-line and unindented)"
@@ -93,6 +93,36 @@ got="$(count_with MAIN_ACTOR "$TMP/ma")"
 [[ "$got" == "2" ]] && ok "2 @MainActor attributes counted as 2, 3 comment mentions excluded" \
   || fail_t "@MainActor counter is wrong: expected 2, got '$got' (doc comments discussing @MainActor are prose, not concurrency annotations)"
 
+section "file-size counters handle total rows, batching and empty trees"
+mkdir -p "$TMP/tot/total"
+for ((i=1; i<=20; i++)); do printf '%s\n' line; done > "$TMP/tot/total/Big.swift"
+printf '%s\n' line > "$TMP/tot/Small.swift"
+top="$(count_with TOP10 "$TMP/tot")"
+[[ "$top" == *'| 20 | `total/Big.swift` |'* ]] && ok "TOP10 keeps a path containing the word total" \
+  || fail_t "TOP10 dropped a real path containing the word total: '$top'"
+
+split_dir="$TMP/split"
+long_a="$(printf 'a%.0s' {1..200})"
+long_b="$(printf 'b%.0s' {1..200})"
+long_c="$(printf 'c%.0s' {1..200})"
+long_d="$(printf 'd%.0s' {1..200})"
+split_path="$split_dir/$long_a/$long_b/$long_c/$long_d"
+mkdir -p "$split_path"
+for ((i=1; i<=1200; i++)); do printf '%s\n' line > "$split_path/$i.swift"; done
+total_rows="$(find "$split_dir" -name '*.swift' -exec wc -l {} + | awk '$2 == "total" { count++ } END { print count + 0 }')"
+if [[ "$total_rows" -ge 2 ]]; then
+  got="$(count_with TOTAL_LINES "$split_dir")"
+  [[ "$got" == "1200" ]] && ok "TOTAL_LINES sums split wc batches (2+ total rows, 1200 lines)" \
+    || fail_t "TOTAL_LINES lost split wc batches: expected 1200, got '$got'"
+else
+  echo "  - split wc fixture skipped: find/wc produced $total_rows total rows on this host"
+fi
+
+mkdir -p "$TMP/empty"
+got="$(count_with TOTAL_LINES "$TMP/empty")"
+[[ "$got" == "0" ]] && ok "TOTAL_LINES reports 0 for an empty tree" \
+  || fail_t "TOTAL_LINES should report 0 for an empty tree, got '$got'"
+
 section "real tree: the counters are not stuck at an impossible constant"
 got="$(count_with ASYNC_FUNC "ios/BooksAndVocab")"
 [[ "$got" =~ ^[0-9]+$ && "$got" -gt 0 ]] && ok "ios/BooksAndVocab async declarations = $got (> 0)" \
@@ -103,7 +133,7 @@ same_line="$({ grep -rE "func [^{]*\)[[:space:]]*async" ios/BooksAndVocab --incl
 [[ "$got" =~ ^[0-9]+$ && "$got" -gt "$same_line" ]] && ok "multi-line signatures are counted too ($got > same-line-only $same_line)" \
   || fail_t "counter sees only same-line signatures ($got vs same-line-only $same_line); multi-line 'func f(\\n...\\n) async' declarations are being dropped"
 
-section "stdout is the only mode: --write / --check are gone"
+section "stdout is the only output: --write is gone and --check is read-only"
 # 這一節守的是 IMP-20260808-b63206 的實質：產物移出版控後，任何「落檔」或「比對磁碟產物」
 # 的模式都必須消失，否則下一個 agent 照著舊 help 跑 --write，又把一個 repo 級產物夾進
 # 自己的 commit——那正是這張票要拆掉的東西。
@@ -114,7 +144,7 @@ section "stdout is the only mode: --write / --check are gone"
 # 剩下的部分，於是後面任何一支回非零的被測命令都會讓測試**中途靜默死掉**——章節標題印完
 # 就沒了，一個 ✗ 都不印，連 passed/failed summary 都不印。那種「紅」是靠中止換來的，
 # 而下一個人清掉多餘的 set -e 時它會直接變成假綠。
-for flag in --write --check; do
+for flag in --write; do
   rc=0
   "$GEN" "$flag" >"$TMP/mode.out" 2>"$TMP/mode.err" || rc=$?
   if [[ "$rc" == "2" ]] && grep -qF -- "unknown arg: $flag" "$TMP/mode.err"; then
@@ -124,23 +154,30 @@ for flag in --write --check; do
   fi
 done
 
+plain_probe="$("$GEN")"
+check_probe="$("$GEN" --check)"
+[[ "$plain_probe" == "$check_probe" ]] && ok "--check preserves the plain stdout artifact" \
+  || fail_t "--check changed the plain stdout artifact"
+
 help_rc=0
 "$GEN" --help >"$TMP/help.out" 2>&1 || help_rc=$?
 [[ "$help_rc" == "0" ]] && ok "--help exits 0" || fail_t "--help should exit 0, got $help_rc"
-# 正控先於沉默：先證明 help 真的有內容且在講這支腳本，否則下面兩條「不含 --write/--check」
-# 會被一份空 help 滿足。
+# 正控先於沉默：先證明 help 真的有內容且在講這支腳本，否則下面的旗標斷言會被一份空 help 滿足。
 if [[ "$(wc -l <"$TMP/help.out" | tr -d ' ')" -ge 3 ]] && grep -qF "gen_ios_baseline.sh" "$TMP/help.out"; then
   ok "--help is non-empty and names this script (positive control for the two negatives below)"
 else
   fail_t "--help is empty or does not name gen_ios_baseline.sh — the negatives below would be vacuous"
 fi
-for flag in --write --check; do
-  if grep -qF -- "$flag" "$TMP/help.out"; then
-    fail_t "--help still advertises $flag; the flag is gone, the docs must be too"
-  else
-    ok "--help no longer advertises $flag"
-  fi
-done
+if grep -qF -- --write "$TMP/help.out"; then
+  fail_t "--help still advertises --write; the flag is gone, the docs must be too"
+else
+  ok "--help no longer advertises --write"
+fi
+if grep -qF -- --check "$TMP/help.out"; then
+  ok "--help advertises the read-only --check mode"
+else
+  fail_t "--help should advertise the read-only --check mode"
+fi
 
 section "the generator writes nothing into the tree"
 # 用「跑前跑後 git status 逐字相同」表達，而不是 rm 掉再看它有沒有回來——後者要對一個
