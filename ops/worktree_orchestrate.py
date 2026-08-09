@@ -575,7 +575,7 @@ NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
     ("backups/", "本機備份產物，不影響任何 runtime 或 build"),
     ("frozen/", "凍結快照，依定義不再變更行為"),
     ("promotion/", "行銷素材產物，由 catalog/App Review 平面自行驗證"),
-    (".claude/", "agent skill / worktree 工作區文本，由 docs registry 涵蓋"),
+    (".claude/", "agent / skill 文本；今天沒有任何機械內容檢查"),
     ("README.md", "根層 prose，無機械 gate"),
     (".gitignore", "不影響 runtime 或 build 行為"),
 )
@@ -585,9 +585,9 @@ NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
 # 掛上 gate 只會讓 ops-shell-untested advisory 永遠列著 7 個沒人打算補測試的檔，
 # 而 advisory 一旦長期有雜訊就沒人看——比沒有 advisory 更糟。排除必須具名。
 #
-# `.claude/` 刻意不在此列，即使 NEUTRAL_RULES 也有一條同名的樹：那條的理由是
-# 「agent skill 文本，由 docs registry 涵蓋」，對 `.claude/skills/app-debug/
-# find-polluter.sh` 這支可執行腳本不成立（同 IMP-0054 打掉的那批假理由）。
+# `.claude/` 刻意不在此列，即使 NEUTRAL_RULES 也有一條同名的樹：今天沒有任何
+# 機械內容檢查，對 `.claude/skills/app-debug/find-polluter.sh` 這支可執行腳本
+# 也不宣稱已有 shell gate 覆蓋（同 IMP-0054 打掉的那批假理由）。
 SHELL_GATE_EXCLUDED_TREES: tuple[tuple[str, str], ...] = (
     ("frozen/", "凍結快照，依定義不再變更行為"),
 )
