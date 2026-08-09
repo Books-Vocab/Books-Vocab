@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "`dispatch` 的三條 clause 是「已梳理 ∧ 未解 ∧ 未被認領」。**票與票之間的先後關係不在裡面，因為 store 根本沒有那個欄位。**\n\n實測（2026-08-08，255 筆全掃）：entry schema 出現過的欄位只有\n`acceptance / acceptance_cmd / acceptance_expect_rc / acceptance_manual / brief / build / category / cost / date / detail / duplicate_of / fix_site / fixed_by / fixed_elsewhere / groomed_at / groomed_by / id / plan / repro / resolution / schema / scope / severity / source / status / stream / surface / verdict / verified_at / verified_by / verified_evidence`。\n**唯一的票對票關係是 `duplicate_of`**，而它表達的是「同一件事」，不是「這件要先」。`grep` 全檔沒有 `blocked_by` / `depends_on` / `prereq`。\n\n後果不是理論的，今天批次梳理當場踩到兩次：\n\n1. **`APP-20260808-d4a707`（版面編輯即時預覽）有一個硬前置 `IMP-20260808-ee7ca4`（把卡片渲染從 presenter extension 抽成純輸入 view），而 `ee7ca4` 自己登記為「架構級、不自決、待決策」。** 前置未定案時取走 d4a707 的人，唯一交得出來的東西就是**手刻第二份卡片**——正好是票面明令禁止的事。而「ee7ca4 定案前不該進 dispatch」這句話只能寫在 `notes` 或 `plan` 的散文裡，**`dispatch` 讀不到散文**。蓋下 groom 戳記的那一刻它就被發出去了。\n\n2. **`APP-20260808-240a94`（設定面原生化）必須與 `IMP-20260808-0eef83`（`docs/sop/ui-design.md` 北極星 #1 仍寫自繪路線）同一刀落地**，否則原生化的每一步在形式上都違憲、review 會 block。這是「必須同時」而不是「必須先後」，同樣無處可表達。\n\n還有第三種今天也遇到的形狀：**兩張票的修法會互相破壞對方的判準**。`APP-20260808-f0770b` 的判準寫成 `if len(defs) > 1: FAIL / elif len(defs) == 1: <真正的正控>`，型別數為 0 時整條正控不執行；而 `APP-20260808-240a94` 的原生化正好會把那兩個型別改名脫離字尾比對 → 型別數變 0 → f0770b 假綠。**這種耦合連 `duplicate_of` 都表達不了，因為它們不是重複，是會互踩。**\n\n這張票不主張「加一個 `blocked_by` 欄位」就是答案——那可能引進環、引進要維護的第二份真相。要裁決的是：**批次派工模型下，票與票的順序約束該住在哪裡**。候選至少有三個：(a) store 加關係欄位並讓 `dispatch` 讀它；(b) 不加欄位，改讓 `dispatch` 在輸出裡把「plan/notes 提到其它 id」具名成警示（弱，但零 schema 變更）；(c) 承認這是看板的職責（釘選／排序／延後已經是人在排順序），由看板承載並讓 `dispatch` 讀 overlay。\n\n**現況的實質是 (d)：沒有人承載，靠取票的人自己讀完 plan 全文並自願讓步。** 一票一樹的批次模型下，那個假設今天已經失效兩次。",
   "fix_site": "ops/backlog.py:1504, ops/backlog.py:3564, ops/backlog.py:1148, ops/backlog.py:945, ops/backlog.py:2728, ops/tests/test_backlog.py:4873, CLAUDE.md:38, .claude/skills/worktree-flow/SKILL.md:49",
+  "fixed_by": [
+    "ef23dc9eb1d7eba533e05626865d145b50809080"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-d7ca2a",
@@ -16,6 +19,10 @@
   "scope": "要先裁決順序約束住在哪一層（store 欄位／dispatch 輸出警示／看板 overlay），再實作；不是單純加一個欄位。",
   "severity": "high",
   "source": "workflow:groom-untriaged-33 wave 2 反方（d4a707 / 240a94 / f0770b 三張各自撞到一種形狀）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:machine-gate",
+  "verified_evidence": "Acceptance (exact ticket command): PASS, RESULT PASS, rc=0 expect=0.\n./ops/test_ops.sh backlog: 312 passed.\n./ops/test_ops.sh ops-ci-coverage: 14 passed, 0 failed, 0 falsification(s) skipped.\n./ops/shell_scan.sh: passed 2, failed 0.\n./ops/docs_lint.sh: ERROR 0 (impact hints WARN only).\n./ops/backlog.py validate --baseline-check --json: {\"problems\": [], \"ok\": true}.\nTargeted blocking tests: 4 passed; full ops/tests/test_backlog.py: 259 passed.\nBackfill: APP-20260808-d4a707 blocked_by IMP-20260808-ee7ca4; APP-20260808-240a94 blocked_by IMP-20260808-0eef83 and APP-20260808-f0770b."
 }
