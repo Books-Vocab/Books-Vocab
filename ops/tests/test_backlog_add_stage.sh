@@ -41,7 +41,7 @@ entry_id = sys.argv[2]
 rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 assert len(rows) == 1 and rows[0]["id"] == entry_id
 rows[0]["landed_sha"] = "a" * 40
-path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\\n" for row in rows))
+path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
 ' "$queue" "$entry_id"
 
 anchored="$(./ops/backlog.py anchor --store "$store" --queue "$queue" --commit --json)"
