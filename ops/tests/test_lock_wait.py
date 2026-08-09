@@ -93,6 +93,46 @@ def test_backoff_cannot_sleep_past_heartbeat_ceiling(
     assert sleeps == [20.0]
 
 
+@pytest.mark.parametrize("heartbeat_interval", [-1.0, float("nan"), float("inf")])
+def test_heartbeat_interval_rejects_undefined_values(
+    tmp_path: Path, heartbeat_interval: float
+) -> None:
+    with pytest.raises(ValueError, match="heartbeat_interval"):
+        with lock_wait.exclusive_lock(
+            tmp_path / "invalid.lock", label="invalid", heartbeat_interval=heartbeat_interval
+        ):
+            pass
+
+
+def test_heartbeat_interval_above_ceiling_is_capped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attempts = 0
+    sleeps: list[float] = []
+
+    def fake_flock(_fd: int, operation: int) -> None:
+        nonlocal attempts
+        if operation & lock_wait.fcntl.LOCK_UN:
+            return
+        attempts += 1
+        if attempts == 1:
+            raise BlockingIOError(errno.EAGAIN, "busy")
+
+    monkeypatch.setattr(lock_wait.fcntl, "flock", fake_flock)
+    monkeypatch.setattr(lock_wait.time, "sleep", sleeps.append)
+
+    with lock_wait.exclusive_lock(
+        tmp_path / "large-heartbeat.lock",
+        label="large-heartbeat",
+        initial_delay=60.0,
+        max_delay=60.0,
+        heartbeat_interval=60.0,
+    ):
+        pass
+
+    assert sleeps == [20.0]
+
+
 def test_fail_open_only_applies_to_non_contention_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

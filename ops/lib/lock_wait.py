@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import errno
 import fcntl
+import math
 import os
 import sys
 import time
@@ -20,6 +21,9 @@ from typing import Iterator
 
 class LockUnavailable(OSError):
     """The lock could not be created or acquired for a non-contention reason."""
+
+
+HEARTBEAT_CEILING_SECONDS = 20.0
 
 
 def _is_busy(error: OSError) -> bool:
@@ -44,6 +48,16 @@ def exclusive_lock(
     read-modify-write lock is held would lose data.  ``LockUnavailable`` is
     raised for the fail-closed variant.
     """
+    if not math.isfinite(heartbeat_interval) or heartbeat_interval < 0:
+        raise ValueError("heartbeat_interval must be finite and >= 0")
+    # 0 means "use the default observable heartbeat", not "print on every retry";
+    # positive values are bounded so a caller cannot make a contended wait silent
+    # beyond the shared 20-second contract.
+    heartbeat_period = (
+        HEARTBEAT_CEILING_SECONDS
+        if heartbeat_interval == 0
+        else min(HEARTBEAT_CEILING_SECONDS, max(0.01, heartbeat_interval))
+    )
     lock_path = Path(path)
     fd: int | None = None
     try:
@@ -62,14 +76,13 @@ def exclusive_lock(
 
     started = time.monotonic()
     backoff_cap = max(0.01, max_delay)
-    if heartbeat_interval > 0:
-        # A sleeping process must still emit a heartbeat at the global 20s
-        # ceiling.  Callers may request a larger backoff, but it cannot make
-        # the observable wait contract silent for longer than that.
-        backoff_cap = min(backoff_cap, heartbeat_interval)
+    # A sleeping process must still emit a heartbeat at the global ceiling. Callers
+    # may request a larger backoff, but it cannot make the observable wait contract
+    # silent for longer than that.
+    backoff_cap = min(backoff_cap, heartbeat_period)
     delay = min(max(0.01, initial_delay), backoff_cap)
     waited = False
-    last_heartbeat = started - heartbeat_interval
+    last_heartbeat = started - heartbeat_period
     acquired = False
     try:
         while True:
@@ -101,7 +114,7 @@ def exclusive_lock(
 
             waited = True
             now = time.monotonic()
-            if now >= last_heartbeat + heartbeat_interval:
+            if now >= last_heartbeat + heartbeat_period:
                 elapsed = now - started
                 print(
                     f"[lock] label={label} phase=waiting elapsed={elapsed:.1f}s "
