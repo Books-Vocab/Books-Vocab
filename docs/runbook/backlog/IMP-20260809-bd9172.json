@@ -1,14 +1,30 @@
 {
+  "acceptance": "正控須證明三個預期 partition 各有唯一且 tip 相符的 child receipt 時，integrate --campaign ... --parent 不需 --branches 即自動保留唯一 parent、生成固定順序 queue，完整 pick 後 parent manifest 對每張票保留 source/child/parent SHA 與 typed outcome、acceptance、closure，queue 對帳歸零才進 gate；相同 request 重跑不重複吸收。負控須證明缺 child、重複 partition/branch/ticket、foreign campaign、stale tip、票數不符、manifest digest 或 outcome seal 遺失、第二 parent owner 均在建立 worktree或執行 gate 前具名拒絕，且 registry/queue/既有 child receipts 不變；手動 --branches 與 --parent 同給時 rc 64。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_parent_integration.py",
+  "blocked_by": [
+    "IMP-20260809-6c920a",
+    "IMP-20260809-a54df4"
+  ],
   "brief": "父整合者無法自動知道所有子批次是否到齊，只能靠人手輸入分支並重新拼出票與版本的對應。",
   "category": "arch",
+  "cost": "L",
   "date": "2026-08-09",
   "detail": "R6、R7 與三棵 R8 child integration 都已 hand-back，但現行 parent 必須由操作者手打五個 branch 名稱並以 git cherry 人工確認是否吸收。R8 receipts 同時把 feat/r6-land 稱為 parent，而 R6 manifest 把同一 branch 定義為 child，顯示 batch identity 與 parent role 不在機器狀態中。需要 batch-scoped handed-back child queue 與 parent reserve：自動列出唯一 child 集合、拒絕缺 child、重複吸收、stale tip、票數不符或 outcome 遺失；parent manifest 要保存 ticket -> source SHA -> child SHA -> parent SHA -> acceptance -> closure 狀態，queue 未對帳歸零前不得宣稱 ready-for-gate。這張從 child hand-back 後開始，不重做 worker claim 或 hand-back seal。",
+  "fix_site": "ops/worktree_registry.py:cmd_hand_back/claim_integration_sources 與 parent reservation; ops/worktree_orchestrate.py:_integrate_handoff_check/_integrate_start/_integrate_gate/parser; ops/lib/worktree_campaign.py; ops/tests/test_worktree_parent_integration.py（新增）; docs/reference/tech_index.md; .claude/skills/worktree-flow/SKILL.md",
+  "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:ops-lab-maintainability-audit",
   "id": "IMP-20260809-bd9172",
+  "plan": "前置契約：先落地 IMP-20260809-6c920a 的 campaign/partition manifest 與 IMP-20260809-a54df4 的 typed hand-back outcome seal；本票只消費兩者，不另建 batch identity 或 outcome schema。\n1. child integration hand-back 時，以 completed integration manifest、campaign id、partition id 與 role=child 建立不可變 child receipt；驗證 branch tip 等於 manifest head、manifest 來源皆屬該 partition、每個 campaign ticket 恰被一個 typed outcome seal 覆蓋，再把 manifest digest/票數/outcome 摘要存入 registry record。\n2. 在 ops/worktree_registry.py 增加 campaign-scoped parent reservation transaction：從 6c920a manifest 推出唯一 expected partition set，在同一 registry lock 內只接受每 partition 恰一個已 hand-back child；拒絕缺 child、重複 partition/branch/ticket、foreign campaign、stale tip、manifest digest 漂移、票數不符或 a54df4 outcome 遺失。第二個 parent owner 必須具名拒絕，失敗不得留下 claim。\n3. worktree_orchestrate.py 的 integrate 增加 --campaign <id> --parent 模式，與手動 --branches 互斥；它只能消費上一步原子 snapshot 自動生成 source branches/SHAs 與 queue，沿用既有 source reservation、cherry-pick、conflict、gate 與 abort 路徑，不建立第二套整合引擎。既有 --branches 模式保持相容。\n4. queue reconciliation 先於開 worktree與 gate：expected children 全部對帳後才 ready_for_integration；每顆 pick 後更新 ticket→source SHA→child SHA→parent SHA 映射，任何 remaining/missing/duplicate/outcome mismatch 令 ready_for_gate=false 且不得呼叫 cmd_gate。\n5. pass/warn 後的 completed parent manifest 保存 campaign/base、expected/consumed children、每票 outcome/acceptance/closure 狀態、source/child/parent SHA、gate record 與 parent owner；abort 只釋放本 parent reservation，不破壞 child receipts，重跑同一 parent request須冪等。\n6. 先寫 ops/tests/test_worktree_parent_integration.py 的 complete/missing/duplicate/stale/outcome-loss/second-parent cases，再做最小接線；同步 worktree-flow 與 tech_index。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "父子批次佇列、整合清單與結案追溯，橫跨整合器、登記簿及測試。",
+  "scope": "在 campaign 與 typed hand-back 之上增加 child queue、parent reservation、整合清單及一組整合測試，屬大型平台改造。",
   "severity": "high",
   "source": "R6-R8 pressure-test architecture review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "triaged",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ops-lab-maintainability-audit",
+  "verified_evidence": "set -o pipefail; rg -q 'ig\\.add_argument\\(\"--branches\"' ops/worktree_orchestrate.py && rg -q '\"branches\": list\\(args\\.branches\\)' ops/worktree_orchestrate.py && rg -q 'handed_back_sha' ops/worktree_registry.py && ! rg -q 'parent_reserv|parent-reserv|child_queue|campaign_id' ops/worktree_orchestrate.py ops/worktree_registry.py"
 }

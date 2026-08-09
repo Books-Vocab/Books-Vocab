@@ -1,0 +1,29 @@
+{
+  "acceptance": "修前 targeted contract test 因 workflow 不存在而紅；修後真實 workflow 契約通過。正控逐一移除 lab path、frozen 與 pytest step 必須被抓，負控使用完整最小 workflow 必須通過；驗收不執行整個評估測試套件。",
+  "acceptance_cmd": "cd lab/llm_eval && uv run --frozen --extra dev pytest -q tests/test_ci_contract.py",
+  "blocked_by": [
+    "IMP-20260809-123a6f"
+  ],
+  "brief": "模型評估工作台有十份自動測試與鎖定依賴，但任何提交或合併都不會自動執行它們。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-09",
+  "detail": "lab/llm_eval 有 pyproject.toml、uv.lock 與十份 test_*.py，卻沒有任何 .github/workflows 檔或 ops 測試入口引用 lab/llm_eval。結果是 CLI、provider adapter、資料集與 runner 的變更只能靠人工記得進入子目錄執行測試；現有 ops-suite 的 paths 也完全不含此目錄。現況 detector：test \"$(find lab/llm_eval/tests -type f -name \"test_*.py\" | wc -l | tr -d \" \")\" -gt 0 且 rg -l \"lab/llm_eval\" .github/workflows 無輸出。",
+  "fix_site": ".github/workflows/llm-eval.yml; lab/llm_eval/tests/test_ci_contract.py",
+  "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:ops-lab-health-audit",
+  "id": "IMP-20260809-13acaa",
+  "plan": "新增獨立 llm-eval workflow，只在 lab/llm_eval 與 workflow 自身變更時由 push 和 pull_request 觸發；Ubuntu job 以 uv.lock 的 frozen 模式安裝 dev extra，工作目錄固定 lab/llm_eval，再跑該子專案 pytest。所有外部 actions 依 IMP-20260809-123a6f 使用完整 SHA。先新增 tests/test_ci_contract.py，解析 workflow 並固定 path trigger、working directory、frozen sync 與 test step；合成 fixture 分別刪除 trigger、frozen 或 test step 時必須紅，完整 fixture 必須綠。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一份獨立自動化流程與一個小型流程契約測試。",
+  "severity": "med",
+  "source": "ops/lab CI 可攜性盤點",
+  "status": "triaged",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ops-lab-health-audit",
+  "verified_evidence": "find lab/llm_eval/tests -type f -name test_*.py | wc -l; ! rg -l lab/llm_eval .github/workflows"
+}
