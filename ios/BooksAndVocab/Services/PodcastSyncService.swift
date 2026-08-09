@@ -378,9 +378,9 @@ final class PodcastSyncService {
         let stale = summaries.filter {
             Self.needsDetailFetch(summary: $0, local: localIndex[$0.id])
         }
-        if stale.count < summaries.count {
-            AppLog.kg.info("[PodcastSync] detail fetch skipped for \(summaries.count - stale.count)/\(summaries.count) unchanged series")
-        }
+        // 無條件印。舊版包在 `if stale.count < summaries.count` 裡＝「只有健康時才
+        // 說話」：退回「全部都得抓」那一輪反而零輸出，方向正好是反的。
+        AppLog.kg.info("[PodcastSync] detail fetch total=\(summaries.count) stale=\(stale.count) skipped=\(summaries.count - stale.count)")
         let fetched = await Self.fetchDetailsConcurrently(seriesIds: stale.map(\.id)) { [kgService] seriesId in
             do {
                 return try await PodcastSyncService(kgService: kgService).fetchSeriesDetail(seriesId: seriesId)

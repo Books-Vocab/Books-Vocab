@@ -39,6 +39,12 @@ enum AnalyticsEvent {
     case appEnteredBackground
     case backgroundSyncTriggered
     case backgroundSyncCompleted(durationMs: Int, success: Bool)
+    // podcast catalog 是 backgroundSync 唯一沒有儀器的那條腿，冷啟動時它在 app log
+    // 上是一段純空白（實測 8.1s 裡的 6.1s）。它由 `KGFeatureFlags.podcastEnabled`
+    // 控制，Release 為 false 且在建構 service 之前就短路，所以這兩個事件在正式版
+    // 不會發——被污染的是我們自己的效能量測。
+    case podcastCatalogSyncStarted
+    case podcastCatalogSyncCompleted(durationMs: Int, outcome: String)
 
     // — Explore（共享牌組庫）—
     // browse → preview → copy 三段漏斗。`deckId` 是 server 鑄造的**官方公開識別碼**
@@ -201,6 +207,18 @@ enum AppAnalytics {
                 message: "event=background_sync_completed duration_ms=\(durationMs) success=\(success)"
             )
             logger.info("event=background_sync_completed duration_ms=\(durationMs) success=\(success)")
+
+        case .podcastCatalogSyncStarted:
+            recordObservation(level: .info, message: "event=podcast_catalog_sync_started")
+            logger.info("event=podcast_catalog_sync_started")
+
+        case .podcastCatalogSyncCompleted(let durationMs, let outcome):
+            recordObservation(
+                level: .info,
+                message: "event=podcast_catalog_sync_completed duration_ms=\(durationMs) outcome=\(outcome)"
+            )
+            // `outcome` 是固定枚舉字串、非使用者資料 → 與 backgroundSyncCompleted 同一條隱私線。
+            logger.info("event=podcast_catalog_sync_completed duration_ms=\(durationMs) outcome=\(outcome, privacy: .public)")
 
         // — Explore（共享牌組庫）—
         case .deckBrowsed(let deckCount, let hasQuery, let isFiltered):
