@@ -1,6 +1,6 @@
 {
   "acceptance": "紅：今天 `TodayReviewPresenter+CardContent.swift` 裡沒有任何 `accessibilityElement(children: .contain)`，命令回 1。綠：容器宣告了 `.contain`（或等價地把 label 移進內層並補上該 modifier），命令回 0。這只是原始碼層的地板，真正的證據仍是 APP-20260806-761370 記載的 `TodayReviewGapUITests` 在模擬器上重新量得非零卡片高度——那需要 iOS build，不放進本 gate。",
-  "acceptance_cmd": "bash -c 'F=ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift; test -f \"$F\" && grep -q \"accessibilityElement(children: .contain)\" \"$F\"'",
+  "acceptance_cmd": "bash -c 'F=ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift; test -f \"$F\" && grep -q \"accessibilityElement(children: .contain)\" \"$F\"'",
   "acceptance_expect_rc": 0,
   "category": "tool",
   "date": "2026-08-06",

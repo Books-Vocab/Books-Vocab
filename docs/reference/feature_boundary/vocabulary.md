@@ -49,7 +49,7 @@ verified_against: dcb7b705f
 | `Scenes/StatsPresenter.swift` | 520 | 統計畫面佈局；forecast 與 graph thumbnail 使用 review pause reference date |
 | `Scenes/ReviewCalendarPresenter.swift` | 255 | 複習日曆佈局 |
 | `Scenes/TodayReviewPresenter.swift` | 425 | 今日複習主佈局；翻卡路徑含 `PerfLog` render/layout tick，autoplay 答案揭露後朗讀；由 `@Environment(\.reviewCardLayoutStore)` 讀 profile 供卡片動態排版 |
-| `Scenes/TodayReviewPresenter+CardContent.swift` | 673 | 卡片內容 extension；**profile-driven 動態佈局的渲染端**——依 `ReviewCardRenderPlan` 決定各欄位出現在哪一面、把三層量測（natural / intermediate / compact）餵給 `ReviewCardLayoutSolver`、按解出的 policy 畫（例句 radius、解釋行數、搭配詞列數、知識連結 presentation、section spacing）。翻卡 front/back surface 與 radius 計算含 `PerfLog` instrumentation |
+| `Scenes/ReviewCardView.swift` | 690 | `struct ReviewCardView: View` —— **一張完整的複習卡**（正面摺頁 ＋ 右上角 chrome ＋ 背面摺頁 ＋ PaperFoldModifier），輸入全是資料（`ReviewCardContent` / profile / viewport），**不吃互動狀態**（IMP-20260808-ee7ca4 把它從 `TodayReviewPresenter` 的 extension 抽出；`TodayReviewPresenterState.CurrentCard` / `.LinkGroup` 現為 `ReviewCardContent` / `ReviewCardLinkGroup` 的 typealias）。它同時是**profile-driven 動態佈局的渲染端**——依 `ReviewCardRenderPlan` 決定各欄位出現在哪一面、把三層量測（natural / intermediate / compact）餵給 `ReviewCardLayoutSolver`、按解出的 policy 畫（例句 radius、解釋行數、搭配詞列數、知識連結 presentation、section spacing）。翻卡 front/back surface 與 radius 計算含 `PerfLog` instrumentation |
 | `Scenes/TodayReviewPresenter+Toolbar.swift` | 573 | toolbar extension；autoplay controls 含聲音開關。播放鍵的可按性 = `isAutoPlaying || canAutoplay`：**守衛只擋開始、不擋停止**，否則就重造 autoplay 出不去的 bug；其 identifier 固定為 `todayReview.autoplayToggle`（a11y label 會隨播放狀態翻轉，靠 label 選取會在切換瞬間選不到）。版面編輯器入口（`rectangle.split.2x1`）與 autoplay 播放/暫停的 language-independent identifier（`todayReview.autoplay.playing|paused`）皆在此，入口與其他 chrome 共用 `isCardInteractive` 鎖 |
 
 ### State Layer（狀態定義）
@@ -193,7 +193,7 @@ verified_against: dcb7b705f
 - 同一 notebook 內同一正規化單字只能有一張 active card：已有 learning card 直接連結不降級；已有 dictionary card 重用既有卡與既有選定義項，**不靜默換例句**。
 ## 動態佈局契約（複習卡片）
 
-改 `ReviewCardLayout.swift` / `TodayReviewPresenter+CardContent.swift` 前必讀。**版面規則**（前五條）由 `ReviewCardRenderPlanTests` / `ReviewCardBudgetParityTests` / `ReviewCardLayoutStoreTests` / `ReviewCardLayoutEditorTests` 釘住；**效能那條沒有單元測試守得住**，它的量測面是 `./ops/review_flip_probe.sh`，而該 gate **目前是紅的**（見該條）。
+改 `ReviewCardLayout.swift` / `ReviewCardView.swift` 前必讀。**版面規則**（前五條）由 `ReviewCardRenderPlanTests` / `ReviewCardBudgetParityTests` / `ReviewCardLayoutStoreTests` / `ReviewCardLayoutEditorTests` 釘住；**效能那條沒有單元測試守得住**，它的量測面是 `./ops/review_flip_probe.sh`，而該 gate **目前是紅的**（見該條）。
 
 - **固定精簡順序，不可改動**：① 例句縮到目標詞前後各 3 詞 → ② 解釋降 2 行、再降 1 行 → ③ 搭配詞 2 列降 1 列（以 +N 表示）→ ④ 知識連結每組 2 項降 1 項、再降單列摘要 +N → ⑤ **最後才**降 section spacing 與 fold padding（走 `foldSectionSpacingCompact`，不是就地寫死）。
 - **不會被自動隱藏的東西**：題目、答案、詞性、難度。使用者勾選的長內容至少保留 minimal 摘要；只有 Accessibility Dynamic Type 下連 minimal 都放不下，才啟用垂直捲動（`requiresScrollFallback`）。

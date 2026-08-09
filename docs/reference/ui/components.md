@@ -395,7 +395,7 @@ Scope: `ios/BooksAndVocab`
 
 用途：
 - 讓使用者勾選要顯示哪些資訊欄位，而版面在空間不足時**逐級退讓**而非硬截或爆版
-- 目前唯一實作：複習卡片（`ReviewCardLayoutProfile` × `ReviewCardLayoutSolver` × `TodayReviewPresenter+CardContent`）
+- 目前唯一實作：複習卡片（`ReviewCardLayoutProfile` × `ReviewCardLayoutSolver` × `ReviewCardView`）
 
 三個角色，職責不可混：
 - **profile（持久偏好）** — 使用者勾了什麼。與「這張卡有沒有這筆資料」正交：缺資料只是本次不畫（`ReviewCardContentAvailability`），**永遠不從偏好裡刪掉**
