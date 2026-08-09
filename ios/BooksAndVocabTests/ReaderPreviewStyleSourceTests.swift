@@ -100,18 +100,33 @@ struct ReaderPreviewStyleSourceTests {
 
     // MARK: - 主題紙色 / 墨色
 
-    @Test func viewConfigurationPaperMatchesTheThemesOwnPaperColor() {
-        // 兩邊都得從 ReaderTheme 讀，才不會有第二份 theme→顏色的對照表。
+    /// **這是 regression pin，不是 cross-check** —— 名字要講實話。
+    ///
+    /// 它只釘住 `ReaderTheme` 那張 theme→顏色表的當前值；它**不**證明送進
+    /// WebView 的背景與之相同（那要跑 `viewConfiguration(systemColorScheme:)`，
+    /// 而它讀 `AppAppearanceStore.shared`，測試環境無從固定 selection），
+    /// 也**不**證明墨色仍等於 Readium 主題前景（那份 CSS 在 SPM bundle 裡，
+    /// 不在版控內，測試搆不到）。改主題色時本測試會提醒你順手回頭確認來源。
+    @Test func themePaperAndInkTablesStayPinnedToTheirTokens() {
         #expect(ReaderTheme.light.paperColor == AppColors.paperLight)
         #expect(ReaderTheme.sepia.paperColor == AppColors.paperSepia)
         #expect(ReaderTheme.dark.paperColor == AppColors.paperDark)
-    }
 
-    /// 墨色沿用 Readium 主題前景：default / sepia = #121212、night = #FEFEFE。
-    @Test func inkColourFollowsTheReadiumThemeForeground() {
+        // 墨色來源：ReadiumCSS default / sepia = #121212、night = #FEFEFE。
         #expect(ReaderTheme.light.inkColor == AppColors.readerInkLight)
         #expect(ReaderTheme.sepia.inkColor == AppColors.readerInkLight)
         #expect(ReaderTheme.dark.inkColor == AppColors.readerInkDark)
+    }
+
+    /// 這條才真的跨過 `viewConfiguration` —— 釘住「送進 WebView 的背景色就是
+    /// 該主題的 paperColor」，不管中間換了幾手。
+    @Test func viewConfigurationPaperComesFromTheResolvedThemesPaperColor() {
+        let settings = ReaderSettings.shared
+        for scheme in [ColorScheme.light, .dark] {
+            let configuration = settings.viewConfiguration(systemColorScheme: scheme)
+            let resolved = settings.resolvedTheme(systemColorScheme: scheme)
+            #expect(configuration.paperColor == resolved.paperColor)
+        }
     }
 }
 #endif

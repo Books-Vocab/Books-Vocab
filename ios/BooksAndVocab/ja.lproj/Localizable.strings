@@ -1213,3 +1213,6 @@
 "reader.settings.highlight.opacity.strong" = "濃い";
 "reader.settings.debug.hitTesting" = "タップ領域を表示";
 "reader.settings.debug.footer" = "リーダーのタップ領域を調整するために使用します。";
+"reader.theme.light" = "ライト";
+"reader.theme.sepia" = "セピア";
+"reader.theme.dark" = "ダーク";

@@ -91,6 +91,19 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
         }
 }
 
+    /// 主題選單顯示名。與 `ReaderFont.displayName` 同一個做法。
+    ///
+    /// 在此之前主題 Picker 直接畫 `rawValue`，所以不論介面語言都是英文的
+    /// Light / Sepia / Dark —— i18n_lint 抓不到（那是 ASCII），但它確實是
+    /// user-facing 未翻譯字串。
+    var displayName: String {
+        switch self {
+        case .light: return L10n.string("reader.theme.light")
+        case .sepia: return L10n.string("reader.theme.sepia")
+        case .dark:  return L10n.string("reader.theme.dark")
+        }
+    }
+
     /// 紙色 —— App 覆寫掉 Readium 的 `--RS__backgroundColor`，經
     /// `EPUBPreferences.backgroundColor` 送進 WebView。
     var paperColor: SwiftUI.Color {

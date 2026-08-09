@@ -76,6 +76,11 @@ struct ReaderSettingsPreviewCard: View {
     /// `lineSpacing` 則是加在字體自然行高**之外**的量。兩者差的正是字體內在
     /// 行高，所以要扣掉才會是同一種鬆緊 —— 直接把 L 當 lineSpacing 用會鬆到
     /// 不成比例。
+    ///
+    /// **死區**：滑桿範圍是 1.0…2.5，而扣掉內在行高後 L ≤ 1.2 全部夾成 0，
+    /// 所以前 13% 的行程預覽不會動（WebView 那邊仍會更緊，因為 CSS 可以把行盒
+    /// 壓到比字體自然行高更小，SwiftUI 的 lineSpacing 不能為負）。這是近似的
+    /// 代價，不是 bug；要消掉它得改用 attributed string 的 lineHeightMultiple。
     private var resolvedLineSpacing: CGFloat {
         max(0, resolvedFontSize * (CGFloat(lineHeight) - Metrics.intrinsicLineHeightRatio))
     }
@@ -106,10 +111,15 @@ struct ReaderSettingsPreviewCard: View {
         }
     }
 
-    /// 生字色帶。四個值全部來自 `ReaderContentStyle`／`VocabHighlightPreferences`，
-    /// 與 CSS 的 `linear-gradient(...)` 是同一組輸入：
-    /// 色相 `color(for:)` ↔ `cssColor(for:)`、濃度 `opacity × vocabOpacityMultiplier`
-    /// ↔ `calc(var(--vocab-opacity) * M)`、高度 `bandFraction` ↔ 漸層的色階位置。
+    /// 生字色帶。色相與濃度與 CSS 的 `linear-gradient(...)` 是**同一組輸入**：
+    /// 色相 `color(for:)` ↔ `cssColor(for:)`（同一張 HSL 表）、
+    /// 濃度 `opacity × vocabOpacityMultiplier` ↔ `calc(var(--vocab-opacity) * M)`
+    /// （同一個 Double）。
+    ///
+    /// **高度只是同名，不是等量**：CSS 的 `\(band)%` 量的是背景盒（≈ 行盒，
+    /// 會隨 line-height 變動）的百分比，這裡量的是字級的百分比。兩者在
+    /// lineHeight = 1.4 附近相近，在 2.5 時可以差到近兩倍。色帶粗細因此屬於
+    /// 「示意」而非「對位」—— 顏色與濃度才是這張預覽真正保證的東西。
     private func highlightBand(
         selection: ReaderContentStyle.ThemeSelectionStyle
     ) -> some View {

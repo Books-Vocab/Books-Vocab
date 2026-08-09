@@ -1246,3 +1246,6 @@
 "reader.settings.highlight.opacity.strong" = "Strong";
 "reader.settings.debug.hitTesting" = "Show Tap Targets";
 "reader.settings.debug.footer" = "Used to calibrate reader tap zones.";
+"reader.theme.light" = "Light";
+"reader.theme.sepia" = "Sepia";
+"reader.theme.dark" = "Dark";

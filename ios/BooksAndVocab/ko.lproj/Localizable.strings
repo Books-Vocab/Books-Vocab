@@ -1214,3 +1214,6 @@
 "reader.settings.highlight.opacity.strong" = "진하게";
 "reader.settings.debug.hitTesting" = "탭 영역 표시";
 "reader.settings.debug.footer" = "리더 탭 영역을 조정하는 데 사용합니다.";
+"reader.theme.light" = "라이트";
+"reader.theme.sepia" = "세피아";
+"reader.theme.dark" = "다크";
