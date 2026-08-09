@@ -272,6 +272,18 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 so = n["sort_order"]
                 if isinstance(so, bool) or not isinstance(so, int):
                     raise EditError(f"notebooks[{name!r}].sort_order 須為整數:{so!r}")
+            for key in ("color", "cover_pattern"):
+                value = n.get(key)
+                if value is not None and not isinstance(value, str):
+                    raise EditError(f"notebooks[{name!r}].{key} 須為字串或 null:{value!r}")
+            if "source_version" in n:
+                source_version = n["source_version"]
+                if source_version is not None and (
+                    isinstance(source_version, bool) or not isinstance(source_version, int)
+                ):
+                    raise EditError(
+                        f"notebooks[{name!r}].source_version 須為整數或 null:{source_version!r}"
+                    )
             if n.get("is_default"):
                 default_entries += 1
         if default_entries > 1:
@@ -314,6 +326,16 @@ def cmd_seed(args: argparse.Namespace) -> int:
             # meaning 空白與 card-import 一致擋掉:demo 卡需有定義(dogfood A MED-1)。
             if not (c.get("meaning") or "").strip():
                 raise EditError(f"cards[{i}] meaning 空白:{c.get('content')!r}")
+            for key in ("note", "pos"):
+                value = c.get(key)
+                if value is not None and not isinstance(value, str):
+                    raise EditError(f"cards[{i}].{key} 須為字串或 null:{value!r}")
+            if "difficulty" in c:
+                difficulty = c["difficulty"]
+                if difficulty is not None and (
+                    isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))
+                ):
+                    raise EditError(f"cards[{i}].difficulty 須為數值或 null:{difficulty!r}")
             # review.state 非法值 fail-loud,而非靜默當 reviewed(dogfood B5 / A LOW-1)。
             rv = c.get("review")
             if isinstance(rv, dict):
@@ -385,6 +407,8 @@ def cmd_seed(args: argparse.Namespace) -> int:
             removed_files = sorted(
                 p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name)
             )
+            if removed_files:
+                ctx.mark_destructive()
             for name in removed_files:
                 (ctx.user_dir / name).unlink()
         nb_store = _notebook_store(ctx.user_dir)

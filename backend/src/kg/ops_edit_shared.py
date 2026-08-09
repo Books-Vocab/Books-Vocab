@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shlex
 import tarfile
 from datetime import UTC, datetime
 from io import BytesIO
@@ -311,6 +312,10 @@ def _print_human(obj: Any) -> None:
         print(f"    error: {obj['error']}")
     if obj.get("backup"):
         print(f"    backup: {obj['backup']}")
+    if obj.get("data_mutated"):
+        print("    data_mutated: true")
+    if obj.get("recovery_path"):
+        print(f"    recovery: {obj['recovery_path']}")
     verified = obj.get("verified")
     if verified is not None:
         ok = verified.get("ok") if isinstance(verified, dict) else verified
@@ -345,10 +350,21 @@ class EditContext:
         self.commit = commit
         self.json_mode = json_mode
         self.user_dir = user_dir_for(self.data_dir, uid)
+        self._destructive_step_started = False
         if require_user and not self.user_dir.exists():
             raise EditError(
                 f"user not found: {uid}(在 {self.data_dir}/users/ 下無此目錄)"
             )
+
+    def mark_destructive(self) -> None:
+        """Mark that the apply callback is about to enter a destructive step.
+
+        The caller must invoke this immediately before the first destructive
+        mutation.  If the callback then fails, the error payload explicitly
+        directs the operator to the pre-commit backup instead of implying that
+        ``committed=false`` means the data was untouched.
+        """
+        self._destructive_step_started = True
 
     def run(
         self,
@@ -381,6 +397,13 @@ class EditContext:
             backup = backup_user_dir(self.data_dir, self.uid)
             result = apply_fn()
         except Exception as exc:  # noqa: BLE001 — 落地失敗要結構化呈現,非 crash
+            data_mutated = self._destructive_step_started
+            recovery_path = None
+            if data_mutated and backup is not None:
+                recovery_path = (
+                    "cd backend && uv run python ops_edit.py restore "
+                    f"{shlex.quote(self.uid)} --backup {shlex.quote(str(backup))} --commit"
+                )
             # 失敗的 commit 也留 audit 痕跡(status=error):備份已建但寫入失敗的
             # 操作此前無任何紀錄,事後審查無跡可查。記下 error + backup,讓 operator
             # 能定位「哪次操作炸了、可從哪個快照回退」。
@@ -393,20 +416,28 @@ class EditContext:
                     "status": "error",
                     "error": str(exc),
                     "backup": str(backup) if backup else None,
+                    "data_mutated": data_mutated,
+                    "recovery_path": recovery_path,
                 },
             )
-            emit(
-                {
-                    "mode": "error",
-                    "action": action,
-                    "uid": self.uid,
-                    "plan": plan,
-                    "committed": False,
-                    "error": str(exc),
-                    "backup": str(backup) if backup else None,
-                },
-                json_mode=self.json_mode,
-            )
+            error_payload = {
+                "mode": "error",
+                "action": action,
+                "uid": self.uid,
+                "plan": plan,
+                "committed": False,
+                "error": str(exc),
+                "backup": str(backup) if backup else None,
+                "data_mutated": data_mutated,
+                "recovery_path": recovery_path,
+            }
+            if data_mutated:
+                error_payload["hint"] = (
+                    "資料已變更；請依 recovery_path 從 backup 還原"
+                    if recovery_path
+                    else "資料已變更，但沒有可用 backup；請立即人工處理"
+                )
+            emit(error_payload, json_mode=self.json_mode)
             logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return 1
 
