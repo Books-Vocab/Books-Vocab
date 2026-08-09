@@ -53,6 +53,58 @@ struct PodcastSilentFailureTests {
         #expect(invalidator.events.isEmpty)
     }
 
+    @Test func home_audio_preload_expired_token_skips_without_invalidating_session() async {
+        let invalidator = PodcastRecordingSessionInvalidator()
+        let service = KGService(
+            authSession: PodcastFixedTokenSession(expiresIn: -3600),
+            sessionInvalidator: invalidator
+        )
+
+        let headers = await PodcastHomeView.audioPreloadHeaders(kgService: service)
+
+        #expect(headers == nil)
+        #expect(invalidator.events.isEmpty)
+        #expect(service.sessionExpiredReason == nil)
+    }
+
+    @Test func home_audio_preload_valid_token_preserves_bearer() async throws {
+        let invalidator = PodcastRecordingSessionInvalidator()
+        let authSession = PodcastFixedTokenSession(expiresIn: 3600)
+        let service = KGService(authSession: authSession, sessionInvalidator: invalidator)
+
+        let headers = try #require(await PodcastHomeView.audioPreloadHeaders(kgService: service))
+
+        #expect(headers["Authorization"] == "Bearer \(try #require(authSession.token))")
+        #expect(invalidator.events.isEmpty)
+    }
+
+    @Test func episode_list_audio_preload_expired_token_skips_without_invalidating_session() async {
+        let invalidator = PodcastRecordingSessionInvalidator()
+        let service = KGService(
+            authSession: PodcastFixedTokenSession(expiresIn: -3600),
+            sessionInvalidator: invalidator
+        )
+
+        let headers = await PodcastEpisodeListView.audioPreloadHeaders(kgService: service)
+
+        #expect(headers == nil)
+        #expect(invalidator.events.isEmpty)
+        #expect(service.sessionExpiredReason == nil)
+    }
+
+    @Test func episode_list_audio_preload_valid_token_preserves_bearer() async throws {
+        let invalidator = PodcastRecordingSessionInvalidator()
+        let authSession = PodcastFixedTokenSession(expiresIn: 3600)
+        let service = KGService(authSession: authSession, sessionInvalidator: invalidator)
+
+        let headers = try #require(
+            await PodcastEpisodeListView.audioPreloadHeaders(kgService: service)
+        )
+
+        #expect(headers["Authorization"] == "Bearer \(try #require(authSession.token))")
+        #expect(invalidator.events.isEmpty)
+    }
+
     private func browseCapturingRequest(
         marker: String, kgService: any KGServing
     ) async throws -> URLRequest {
