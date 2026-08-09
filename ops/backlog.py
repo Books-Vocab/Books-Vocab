@@ -1628,6 +1628,85 @@ GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
                     "--groomed-against")
 
 
+def _repair_hints(problems: list[dict], entry_id: str) -> list[str]:
+    """Return actionable repair guidance for validation problems."""
+    # Name the repair, not just the defect. An orphaned `fixed_by` blocks
+    # every unrelated edit to that entry — `update <id> --severity high`
+    # fails with a message about a sha the caller never touched — and the
+    # two ways out are not guessable. `reanchor` is listed first because it
+    # is usually right, and second because it is NOT always: when the rebase
+    # resolved a conflict differently the patch-id differs and reanchor will
+    # correctly refuse to guess (IMP-0062), leaving the explicit form.
+    hints = []
+    if any(p["kind"] == "fixed-by-orphaned" for p in problems):
+        hints.append(
+            f"  a rebase orphaned it -> ops/backlog.py reanchor {entry_id} --commit\n"
+            f"  reanchor cannot map it -> pass the right sha: "
+            f"ops/backlog.py update {entry_id} --fixed-by <sha> --commit"
+        )
+    if any(p["kind"] == "fixed-by-unresolvable" for p in problems):
+        hints.append(
+            f"  這顆 sha 在任何 odb 都不存在（不是 rebase 孤兒，reanchor 對它無效）"
+            f"-> 查出正確的落地 sha 後：ops/backlog.py update {entry_id} "
+            "--fixed-by <sha> --commit"
+        )
+    if any(p["kind"] == "fixed-by-ambiguous-prefix" for p in problems):
+        hints.append(
+            "  fixed_by is an ambiguous short prefix -> use a longer or full "
+            "40-character commit sha; do not run reanchor"
+        )
+    if any(p["kind"] == "fixed-by-not-a-commit-object" for p in problems):
+        hints.append(
+            "  fixed_by names an existing non-commit object -> replace it "
+            "with the commit sha, not a tree or blob sha"
+        )
+    if any(p["kind"] == "fixed-by-not-a-sha" for p in problems):
+        hints.append(
+            "  fixed_by resolved as a moving ref name -> pass the full or "
+            "unambiguous commit sha, not a branch or tag name"
+        )
+    if any(p["kind"] == "fixed-without-fixed-by" for p in problems):
+        hints.append(
+            f"  closing it -> ops/backlog.py update {entry_id} --status fixed "
+            f"--fixed-by <sha>... --commit (fill it AFTER the fix lands)\n"
+            f"  the fix is NOT in this repo (e.g. ~/butler, which has no git) -> "
+            f"--fixed-elsewhere '<where it lives + how to re-derive it>' instead; "
+            f"exactly one of the two, and the declared set is countable with "
+            f"`list --fixed-elsewhere`"
+        )
+    if any(p["kind"] == "fixed-with-conflicting-traceability" for p in problems):
+        hints.append(
+            f"  drop one: `--fixed-by` says the fix is a commit in this repo, "
+            f"`--fixed-elsewhere` says it is not. Clear the wrong one with "
+            f"`update {entry_id} --fixed-elsewhere '' --commit` (or re-set "
+            f"--fixed-by alone)"
+        )
+    # These two are the ONLY kinds whose repair is fully determined, so they
+    # are the last ones that should arrive as a bare defect name. Written as
+    # the flags to add rather than "write a brief", because the thing the
+    # caller has to produce is prose and the hint has to say what it is FOR.
+    missing_prose = [p["field"] for p in problems
+                     if p["kind"] in {f"groom-claim-without-{f}" for f in BRIEF_FIELDS}]
+    if missing_prose:
+        # Phrased as flags to ADD to the command you just ran, deliberately NOT
+        # as a standalone runnable line. The neighbouring hints can be pasted
+        # verbatim and will FAIL (`<sha>` cannot pass _SHA_RE), which is what
+        # makes them safe to write that way. These two cannot: the fields take
+        # free prose, so a pasted `--brief '<…>'` SUCCEEDS and stores the
+        # placeholder — the caller walks away believing the entry is groomed.
+        # That is precisely the "it believes it followed the tool" failure this
+        # change was filed against, and it would have been reintroduced by the
+        # hint that fixes it.
+        hints.append(
+            "  add to the command you just ran: "
+            + " ".join(f"--{f} '<一句話>'" for f in missing_prose) + "\n"
+            f"  brief = 白話「壞了什麼、誰有感」(禁檔名/行號/縮寫); "
+            f"scope = 體積感讓人估得出代價。兩句都寫給在看板上排序的人,"
+            f"不是寫給接手的 agent"
+        )
+    return hints
+
+
 def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
                           *, check_traceability: bool = True,
                           clear_fields: tuple[str, ...] = ()) -> dict:
@@ -1686,74 +1765,7 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
                 if not ((key := (p["kind"], p.get("field"), p.get("sha"))) in seen
                         or seen.add(key))]
     if problems:
-        # Name the repair, not just the defect. An orphaned `fixed_by` blocks
-        # every unrelated edit to that entry — `update <id> --severity high`
-        # fails with a message about a sha the caller never touched — and the
-        # two ways out are not guessable. `reanchor` is listed first because it
-        # is usually right, and second because it is NOT always: when the rebase
-        # resolved a conflict differently the patch-id differs and reanchor will
-        # correctly refuse to guess (IMP-0062), leaving the explicit form.
-        hints = []
-        if any(p["kind"] == "fixed-by-orphaned" for p in problems):
-            hints.append(
-                f"  a rebase orphaned it -> ops/backlog.py reanchor {entry_id} --commit\n"
-                f"  reanchor cannot map it -> pass the right sha: "
-                f"ops/backlog.py update {entry_id} --fixed-by <sha> --commit"
-            )
-        if any(p["kind"] == "fixed-by-ambiguous-prefix" for p in problems):
-            hints.append(
-                "  fixed_by is an ambiguous short prefix -> use a longer or full "
-                "40-character commit sha; do not run reanchor"
-            )
-        if any(p["kind"] == "fixed-by-not-a-commit-object" for p in problems):
-            hints.append(
-                "  fixed_by names an existing non-commit object -> replace it "
-                "with the commit sha, not a tree or blob sha"
-            )
-        if any(p["kind"] == "fixed-by-not-a-sha" for p in problems):
-            hints.append(
-                "  fixed_by resolved as a moving ref name -> pass the full or "
-                "unambiguous commit sha, not a branch or tag name"
-            )
-        if any(p["kind"] == "fixed-without-fixed-by" for p in problems):
-            hints.append(
-                f"  closing it -> ops/backlog.py update {entry_id} --status fixed "
-                f"--fixed-by <sha>... --commit (fill it AFTER the fix lands)\n"
-                f"  the fix is NOT in this repo (e.g. ~/butler, which has no git) -> "
-                f"--fixed-elsewhere '<where it lives + how to re-derive it>' instead; "
-                f"exactly one of the two, and the declared set is countable with "
-                f"`list --fixed-elsewhere`"
-            )
-        if any(p["kind"] == "fixed-with-conflicting-traceability" for p in problems):
-            hints.append(
-                f"  drop one: `--fixed-by` says the fix is a commit in this repo, "
-                f"`--fixed-elsewhere` says it is not. Clear the wrong one with "
-                f"`update {entry_id} --fixed-elsewhere '' --commit` (or re-set "
-                f"--fixed-by alone)"
-            )
-        # These two are the ONLY kinds whose repair is fully determined, so they
-        # are the last ones that should arrive as a bare defect name. Written as
-        # the flags to add rather than "write a brief", because the thing the
-        # caller has to produce is prose and the hint has to say what it is FOR.
-        missing_prose = [p["field"] for p in problems
-                         if p["kind"] in {f"groom-claim-without-{f}" for f in BRIEF_FIELDS}]
-        if missing_prose:
-            # Phrased as flags to ADD to the command you just ran, deliberately NOT
-            # as a standalone runnable line. The neighbouring hints can be pasted
-            # verbatim and will FAIL (`<sha>` cannot pass _SHA_RE), which is what
-            # makes them safe to write that way. These two cannot: the fields take
-            # free prose, so a pasted `--brief '<…>'` SUCCEEDS and stores the
-            # placeholder — the caller walks away believing the entry is groomed.
-            # That is precisely the "it believes it followed the tool" failure this
-            # change was filed against, and it would have been reintroduced by the
-            # hint that fixes it.
-            hints.append(
-                "  add to the command you just ran: "
-                + " ".join(f"--{f} '<一句話>'" for f in missing_prose) + "\n"
-                f"  brief = 白話「壞了什麼、誰有感」(禁檔名/行號/縮寫); "
-                f"scope = 體積感讓人估得出代價。兩句都寫給在看板上排序的人,"
-                f"不是寫給接手的 agent"
-            )
+        hints = _repair_hints(problems, entry_id)
         raise ValueError("invalid update: " + repr(problems)
                          + ("\n" + "\n".join(hints) if hints else ""))
     return updated

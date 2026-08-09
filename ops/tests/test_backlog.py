@@ -1984,6 +1984,30 @@ def test_fixed_by_orphaned_and_unresolvable_are_distinct_problems():
     assert "fixed-by-unresolvable" in kinds
 
 
+def test_an_unresolvable_names_the_repair(tmp_path, monkeypatch):
+    store = tmp_path / "s"
+    entry = _add(store, detail="unresolvable fixed_by needs an actionable hint")
+    fake_sha = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setattr(
+        BACKLOG, "make_commit_state", lambda repo=None: lambda sha: "unknown"
+    )
+
+    with pytest.raises(ValueError) as exc:
+        BACKLOG.update_entry(
+            store,
+            entry["id"],
+            status="fixed",
+            fixed_by=[fake_sha],
+        )
+
+    assert "fixed-by-unresolvable" in str(exc.value)
+    assert "--fixed-by" in str(exc.value)
+    hints = BACKLOG._repair_hints(
+        [{"kind": "fixed-by-unresolvable", "sha": fake_sha}], "IMP-x"
+    )
+    assert hints
+
+
 def test_unfinished_entry_must_not_carry_fixed_by():
     # DERIVED from the live vocabulary, not a hand-copied list. The literal version
     # named `in-progress`, which was retired — a hardcoded list of statuses goes
