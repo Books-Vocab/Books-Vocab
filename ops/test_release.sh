@@ -187,6 +187,62 @@ got_build="$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$TMP/ios/BooksAndVocab.xcod
 [[ "$got_test" -eq 2 ]] && ok "differently-valued MARKETING_VERSION untouched (still 1.2.0 ×2)" || fail_t "sed swept a differently-valued line: 1.2.0 count=$got_test"
 [[ "$got_build" -eq 2 ]] && ok "anchored CURRENT_PROJECT_VERSION → 8 (2 處)" || fail_t "app build bump wrong count: $got_build"
 
+# ── 12b. pbxproj 版號必須只存在於 project-level build configs ─────────────
+section "pbxproj version settings are project-level only"
+VERSION_LINT="$WORKSPACE/ops/pbxproj_version_lint.py"
+PBX="$WORKSPACE/ios/BooksAndVocab.xcodeproj/project.pbxproj"
+[[ -x "$VERSION_LINT" ]] \
+  && ok "pbxproj version lint exists and is executable" \
+  || fail_t "pbxproj version lint missing or not executable"
+[[ -f "$PBX" ]] \
+  && ok "real pbxproj exists" \
+  || fail_t "real pbxproj missing"
+if [[ -x "$VERSION_LINT" && -f "$PBX" ]]; then
+  "$VERSION_LINT" "$PBX" >/dev/null 2>&1 \
+    && ok "real pbxproj passes structural version lint" \
+    || fail_t "real pbxproj failed structural version lint"
+
+  VERSION_LINT_TMP="$(mktemp -d)"
+  trap 'rm -rf "$TMP" "$TMP2" "$VERSION_LINT_TMP"' EXIT
+  cp "$PBX" "$VERSION_LINT_TMP/duplicate.pbxproj"
+  awk '
+    !inserted && /MARKETING_VERSION = / {
+      print
+      print "\t\t\t\tMARKETING_VERSION = 2.0.0;"
+      inserted = 1
+      next
+    }
+    { print }
+  ' "$PBX" > "$VERSION_LINT_TMP/duplicate.pbxproj.tmp"
+  mv "$VERSION_LINT_TMP/duplicate.pbxproj.tmp" "$VERSION_LINT_TMP/duplicate.pbxproj"
+  if "$VERSION_LINT" "$VERSION_LINT_TMP/duplicate.pbxproj" >/dev/null 2>&1; then
+    fail_t "duplicate MARKETING_VERSION was accepted"
+  else
+    ok "duplicate MARKETING_VERSION is rejected"
+  fi
+
+  awk '
+    !removed && /MARKETING_VERSION = / {
+      removed = 1
+      next
+    }
+    { print }
+    !inserted && /PRODUCT_BUNDLE_IDENTIFIER = / {
+      print "\t\t\t\tMARKETING_VERSION = 2.0.0;"
+      inserted = 1
+    }
+  ' "$PBX" > "$VERSION_LINT_TMP/target-level.pbxproj"
+  target_marketing_count="$(grep -c 'MARKETING_VERSION = ' "$VERSION_LINT_TMP/target-level.pbxproj" || true)"
+  if [[ "$target_marketing_count" -eq 2 ]] &&
+     "$VERSION_LINT" "$VERSION_LINT_TMP/target-level.pbxproj" >/dev/null 2>&1; then
+    fail_t "same-count target-level MARKETING_VERSION was accepted"
+  elif [[ "$target_marketing_count" -eq 2 ]]; then
+    ok "same-count target-level MARKETING_VERSION is rejected"
+  else
+    fail_t "structural fixture changed MARKETING_VERSION count: $target_marketing_count"
+  fi
+fi
+
 # ── 13. bump 寫入 gate：dry-run 預設、--yes 才寫（對齊 publish / asc.sh set 慣例） ──
 section "Bump gate (dry-run by default)"
 TMP2="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2"' EXIT
