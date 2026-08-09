@@ -18,7 +18,7 @@ verified_against: afda0439c
 | `--report`(預設) | 印出 findings,exit 0。本機 ad-hoc 查看用 |
 | `--baseline` | 把當前命中數寫入 `ops/i18n_baseline.txt`,當 watermark |
 | `--baseline-check` | 對照 baseline,findings 或 `localized_calls` 超過即 fail(CI 用) |
-| `--strict` | 任何 finding 即 fail。除 legacy 三項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」 |
+| `--strict` | 任何 finding 即 fail。除基礎三項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」 |
 
 ## 掃描範圍
 
@@ -33,10 +33,7 @@ verified_against: afda0439c
 3. **Static formatter**(`static let X: DateFormatter | RelativeDateTimeFormatter | NumberFormatter`):
    靜態 formatter 不會跟 `AppLanguage` 變,需走 `LocaleAwareFormatter`。
 
-4. **`.xcstrings` needs_review**:
-   `Localizable.xcstrings` 內 `state=needs_review` 且 value 空的 entry。
-
-5. **`.localized` usage 計數**(`localized_calls`,debt watermark):
+4. **`.localized` usage 計數**(`localized_calls`,debt watermark):
    掃 Swift 檔內 `.localized` 呼叫數,**不計入 `total`**,而是獨立 watermark。用來追蹤 `.localized`-style 在地化欠債在 review-flip 等 surface 不再增長(只能持平或下降)。
 
 ## Baseline 檔格式
@@ -100,7 +97,7 @@ raw-Chinese scan 在比對前會先把以下兩種區塊 blank 掉(行號保留,
 
 ## Strict 覆蓋檢查
 
-`--strict` 模式除了 legacy 三項(raw / fmt / xcstrings)外,再跑三項 — 把「英文模式回退到中文」這個 P0 風險靜態擋掉。
+`--strict` 模式除了基礎三項(raw / return / fmt)外,再跑三項 — 把「英文模式回退到中文」這個 P0 風險靜態擋掉。
 
 | Check | 來源 | 失敗條件 |
 |---|---|---|
@@ -136,5 +133,5 @@ raw-Chinese scan 在比對前會先把以下兩種區塊 blank 掉(行號保留,
 
 ## CI 接線
 
-- Phase 7.1 前:`--baseline-check`(防 legacy 三項回歸)
+- Phase 7.1 前:`--baseline-check`(防基礎三項回歸)
 - Phase 7.1 後:Xcode Run Script Phase `--strict`(零容忍,含上述三項覆蓋檢查)
