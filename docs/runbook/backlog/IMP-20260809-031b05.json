@@ -1,0 +1,20 @@
+{
+  "acceptance": "要證明的斷言（走 B 時）：**安裝入口拒絕安裝一份不是由當前工作樹當前 HEAD\n編出來的產物。**\n\nacceptance_cmd\n\n  ./ops/tests/test_ios_install_provenance.sh\n\n  必須含正控，否則這支測試在修好前後都會綠：\n    1. 正控（會紅才算數）：偽造一份身分不符的產物（改 sidecar 的 sha，或指向\n       另一棵工作樹編出來的 .app），呼叫安裝入口，斷言 **exit != 0**，且訊息\n       同時印出「產物宣稱的來源」與「當前 HEAD」——只說「不符」而不說兩邊是什麼，\n       下一個人還是不知道自己裝到了誰的東西。\n    2. 反控：身分相符時 exit == 0。\n    3. 過期偵測：產物相符但 HEAD 已前進時也要 exit != 0（這是 B 比 A 多擋的那一半，\n       不驗它就沒有證明 B 的選擇是對的）。\n    4. trap 清乾淨，不留半裝狀態。\n\n  不得用「有沒有印出警告字串」當判準 —— 警告可以被無視，而本票的整個重點就是\n  四個綠燈之下沒有人會停下來讀警告。判準必須是退出碼。\n\n若改走 A（per-worktree derived data），判準改成：\n\n  從工作樹 A build、記下產物 mtime 與內容雜湊；從工作樹 B build；再檢查工作樹 A\n  的產物路徑未被觸碰。並且要**量出**新增的磁碟與冷編成本寫進 receipt ——\n  那是這條路真正的代價，不寫下來就沒人能複查這筆交易划不划算。\n\n一併要確認（同一次改動的完成條件，不是另一條命令）\n  · docs/sop/ios.md 的 iOS 驗證段要寫明「視覺驗收前先過安裝入口」，並且**不要**\n    再出現手打 xcrun simctl install 的範例。\n  · ops/review_flip_probe.sh 裡那行 `xcrun n \"$UDID\" \"$APP\"` 是壞的（疑似\n    `install` 被誤刪成 `n`），順手修掉或另立票，別留著當範本被抄。",
+  "acceptance_cmd": "./ops/tests/test_ios_install_provenance.sh",
+  "brief": "在不同分支間切換做畫面驗收時，可能裝到別人剛編好的那份 app，畫面看起來一切正常，於是把「沒改到」誤判成「改好了」。",
+  "category": "tool",
+  "date": "2026-08-09",
+  "detail": "ios_build.sh 的 -derivedDataPath 恆指向**主 checkout** 的\n.cache/ios-build-derived-data，與 cwd／工作樹無關。機制在 ios_build.sh:106-110：\n它用 git-common-dir 推導根目錄，而任何 worktree 的 git-common-dir 都解析到 primary\n的 .git，所以 dirname 就是 primary 的 repo 根。**所有工作樹與 primary 共用同一個\nbuild 產物目錄**（ios_test.sh 相反，它的 derived data 是 per-worktree 的）。\n\n這不是「加個鎖就好」：shlock **已經**序列化了 build，所以沒有資料損壞、沒有交錯寫入。\n失效模式是**所有權**不是競爭 —— 最後完成的那個 build 擁有那個 .app，之後任何\n`xcrun simctl install <那個路徑>` 都會裝到它，**無錯誤、無警告、啟動正常**。\n\n危險之處在於它專門攻擊「我現在看到的畫面，是不是我改的那份碼」這個問題 ——\n而那正是視覺驗收唯一在回答的問題。編譯綠、安裝成功、app 正常啟動，四個訊號\n全部是綠的，而它們沒有一個在回答那個問題。\n\n實例（2026-08-09，修 APP-20260809-f1b8cb 時）：\n  · 13:28 / 13:38 我從該路徑安裝並完成六格視覺驗收 —— 事後確認那兩次是對的\n    （截圖裡有只存在於該分支的 UI）。\n  · 13:49 有別的 build 落地到同一路徑。\n  · 之後我再次 install 並準備跑最後一項驗證，裝到的是那份**不是我的**產物。\n    我察覺的唯一原因，是設定頁少了一列我預期會看到的「閱讀設定」。\n  · 若缺陷比較細微（顏色、間距、動畫、狀態流轉 —— 也就是本票這一類 UI 缺陷的\n    大宗），畫面上不會有任何「少了一列」等級的破綻，我會回報綠。\n  · 協調者也在 12:43 從同一條路徑安裝過，同樣只能事後用「截圖裡有分支限定的 UI」\n    反推確認，當下沒有任何保證。\n\n同一輪還暴露了一個附帶陷阱：想用 `strings <bundle>/BooksAndVocab` 反查產物來源\n是無效的 —— Debug 組態下那支只有 58KB 的啟動 stub，真正的碼在\nBooksAndVocab.debug.dylib。對 stub 做 grep 對「自己的」產物也一樣回 0，\n所以那個檢查會同時給出假陰性與假的安心感。可用的探針是對 .debug.dylib 抓符號，\n或對 bundle 內 *.lproj/Localizable.strings（binary plist，要先 plutil 轉換）\n抓分支限定的 key。",
+  "fix_site": "ops/ios_build.sh:106-110（derivedDataRoot 由 git-common-dir 推導＝primary 根）；建議修法在新的安裝入口 ops/ios_install.sh 或 ios_ops.sh install，加 ops/tests/test_ios_install_provenance.sh（含正控）；另 ops/review_flip_probe.sh 的 xcrun n 是壞的既有範本",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:ios-engineer",
+  "id": "IMP-20260809-031b05",
+  "plan": "兩條路。**建議走 B（安裝端核對）**，理由在最後。\n\nA 讓 derived data 變成 per-worktree\n  ios_build.sh:106-110 改成用 PROJECT_ROOT（工作樹自己的根）而不是\n  git-common-dir 推導的 primary 根。KG_IOS_BUILD_DERIVED_DATA_ROOT 這個既有\n  override 已經證明這條路是通的。\n  代價很實在：每個工作樹各自一份完整 derived data（本機實測單份約數 GB），\n  而且每開一棵新樹就是一次冷編（本輪冷編 118–210s，熱編 70s）。共用那份快取\n  本來就是**刻意**的設計，不是疏忽 —— 這個修法是把那個好處整個丟掉去換安全。\n\nB 安裝端核對產物來源（建議）\n  新增一個安裝入口（例如 ops/ios_install.sh，或 ios_ops.sh install），它在\n  install 之前核對「這份 .app 是不是由當前 worktree 的當前 HEAD 編出來的」，\n  不符就非零退出並印出兩邊的身分。實作上最直接的是 build 完把身分寫進產物旁邊\n  的 sidecar（worktree 路徑 + HEAD sha + 時間），install 時比對；不要試圖從\n  binary 反推 —— 見 detail 裡那個 58KB stub 的陷阱。\n\n  順帶要修的既有假設：目前沒有任何 ops 安裝入口，agent 都是手打\n  `xcrun simctl install <寫死路徑>`（repo 內唯一的既有例子是\n  ops/review_flip_probe.sh，而它那行寫的是 `xcrun n`，本身就壞掉了）。\n  所以 B 不只是加一道檢查，是把一個目前完全沒有把關的動作收攏成一個入口。\n\n為什麼建議 B：\n  · 它直接對準真正的失效模式。A 消除的是「產物被覆寫」，但即使 per-worktree，\n    agent 仍然可以裝到一份**過期**的產物（改了碼沒重編就 install），而那個\n    誤判的後果與本次一模一樣。B 兩種都擋。\n  · 它便宜且難繞過：一次核對 vs 每棵樹一份數 GB 快取與冷編。\n  · 它擋得住「人」的那一半 —— 路徑是手打的，而手打的路徑不會因為 A 而變對。\n\n**只加一句文件警告不算修好**：那是把一個機器問題退回給紀律，而本票的實例正是\n「四個綠燈都在，只有預期中的一列不見才被察覺」—— 紀律在那種情境下不會贏。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支 build 腳本的產物路徑，或在安裝入口加一道來源核對，含證明它會擋下來的測試。",
+  "severity": "med",
+  "source": "ios-engineer 修 APP-20260809-f1b8cb 做視覺驗收時裝到別人的產物；協調者 12:43 亦曾中招",
+  "status": "open",
+  "stream": "IMP"
+}

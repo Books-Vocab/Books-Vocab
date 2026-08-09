@@ -1,0 +1,20 @@
+{
+  "acceptance": "要證明的斷言只有一句：**故意放一個編不過的測試檔進去時，build gate 必須非零退出。**\n\n這條斷言不能用「gate 沒抗議」來滿足 —— 沉默正是它今天的行為。所以驗收必須有\n一個**正控**：先讓它紅，才信它的綠。\n\nacceptance_cmd\n\n  ./ops/tests/test_ios_build_covers_test_targets.sh\n\n  這支測試要做的事（新寫）：\n    1. 正控：在測試 target 內放一個必定編不過的暫存檔（例如把一段\n       \"a\" + \"b\" 餵給 #expect 的 Comment? 參數，或引用一個不存在的型別），\n       跑 build gate，斷言 exit != 0 且錯誤訊息指到那個檔。\n    2. 還原該檔，再跑一次，斷言 exit == 0。\n    3. 無論成敗都要把暫存檔清掉（trap），不能把 repo 留在紅的狀態。\n\n  第 1 步是這張票的全部價值：少了它，這支測試在 gate 修好前後都會綠，\n  等於什麼都沒釘住。\n\n  若最後選了方案 B（新 scope），這支測試要驗的是**契約裡指名的那個命令**，\n  不是 --with-tests 這個旗標本身 —— 洞在契約與 gate 之間，不在旗標裡。\n\n一併要確認（不是另一條命令，是同一次改動的完成條件）\n\n  · 若走 B：批次交回契約（.claude/skills/worktree-flow/SKILL.md 的\n    「批次交回狀態」段，以及 ios-engineer / backend-engineer 的 Gate 段）\n    要同步改成要求新命令。契約沒改＝洞沒補。\n  · docs/sop/ios.md 的 iOS 驗證段要反映新的 gate 語意。\n  · 量一下新 gate 的實際耗時並寫進 receipt —— 這張票是拿速度換可見性，\n    不寫下換了多少就沒人能複查這筆交易划不划算。",
+  "acceptance_cmd": "./ops/tests/test_ios_build_covers_test_targets.sh",
+  "brief": "編譯檢查看不到測試程式，所以測試檔寫壞了不會當場被擋下來，要等下一個真的去跑測試的人踩到才發現。",
+  "category": "tool",
+  "date": "2026-08-09",
+  "detail": "ios_ops.sh build 是受派者唯一被契約要求跑的編譯 gate，但它只編 app target，\n不編測試 target。於是「測試檔編不過」這一整類錯誤對 gate 完全不可見：它只有在\n有人跑 test 時才會現形，而依批次交回契約，受派者做到自己工作樹裡 commit 為止、\ngate/cutover 留給整合者 —— 也就是說壞掉的測試碼可以一路無聲地進到整合。\n\n失效模式不是「測試沒過」，是「測試 target 根本編不起來」，所以連一條紅都不會有，\n只有 exit 65 + 一堆看起來像 fallout 的 warning。第一個真的去跑測試的人，會在\n一個跟他自己的改動完全無關的檔案上撞牆。\n\n今天兩次同形（同一天、同一個 gate 洞、不同型別錯誤）：\n\n1. UITest target：XCTAttachment 的 .named 在跨檔使用時是 fileprivate，UITest\n   target 編不過。\n2. Unit test target：ios/BooksAndVocabTests/ReaderPreviewStyleSourceTests.swift:96\n   把兩段字串用 + 串起來餵給 #expect 的第二參數，而那個參數型別是\n   swift-testing 的 Comment?（ExpressibleByStringInterpolation，但不是\n   ExpressibleByString-concatenation）。單一字面量可以，+ 出來的 String 不行。\n   這一顆讓整個 BooksAndVocabTests target 編不過，是在 feat/reader-settings-preview\n   的 HEAD 上被發現的 —— 也就是說它已經隨著先前的 commit 進了分支，\n   而那些 commit 的 build gate 全是綠的。\n\n兩次都是「型別/可見性在測試碼裡才會踩到」的錯，app target 永遠看不到。\n\n修的方向（不預設實作）：讓 build gate 涵蓋測試 target 的**編譯**（不是執行）。\nxcodebuild build-for-testing 就是為此存在的動詞，成本大約是多編一次測試 target，\n遠低於「整合時才發現分支不能測」。若不想讓預設 build 變慢，也可以是一個明確的\n新 scope（例如 ios_ops.sh build --with-tests）並把它寫進批次交回契約，\n但那樣就要同時改契約，否則洞還在。\n\n判準要能表達的是「build gate 涵蓋 test target 的編譯」：故意放一個編不過的測試檔\n進去時，build gate 必須非零退出。",
+  "fix_site": "ops/ios_build.sh（編譯範圍）、ops/ios_ops.sh（入口與 help）、ops/tests/test_ios_build_covers_test_targets.sh（新，含正控）；若走方案 B 另加 .claude/skills/worktree-flow/SKILL.md 批次交回段與 docs/sop/ios.md iOS 驗證段",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:ios-engineer",
+  "id": "IMP-20260809-3f562c",
+  "plan": "洞的形狀：ios_build.sh 只對 app target 跑 xcodebuild build，所以測試 target\n的編譯錯誤（型別、可見性、跨檔 fileprivate、swift-testing 的參數型別…）\n對 gate 完全不可見。批次交回契約又規定受派者只跑 build、不跑 test，\n兩者相乘就是「壞掉的測試碼可以無聲進到整合」。\n\n兩條路，選一條並把契約一起改：\n\nA（建議）讓預設 build gate 涵蓋測試 target 的**編譯**。\n  xcodebuild 有現成動詞：build-for-testing。ios_test.sh 本來就在用它\n  （見它的 buildForTestingMs 計時），所以編譯路徑已經存在、不必新造。\n  代價是預設 build 變慢（實測 build-for-testing 冷約 210s，app-only build\n  約 70–165s）。好處是契約一個字都不用改，受派者照跑 build 就被保護。\n\nB 新增一個明確 scope（例如 ios_ops.sh build --with-tests）並**同時**把批次\n  交回契約改成要求它。速度不變，但如果契約沒一起改，洞原封不動 ——\n  所以 B 不是「比較小的 A」，是「A 加上一份文檔改動」。\n\n不論選哪條，都要留下一支會紅的證明：現在沒有任何東西能證明 gate 真的看得到\n測試 target，而「看不到」正是它一直以來的行為，所以沉默不能當通過。\n\n參考現場（兩個都已修好，留作 fixture 素材）：\n  · ios/BooksAndVocabTests/ReaderPreviewStyleSourceTests.swift:96 —\n    \"a\" + \"b\" 餵給 #expect 的 Comment? 參數。\n  · UITest target 的 XCTAttachment.named 跨檔 fileprivate。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "改一支 build 腳本的編譯範圍，加一支證明它會擋下來的測試。",
+  "severity": "med",
+  "source": "ios-engineer 修 APP-20260809-f1b8cb 時撞到（今日第二次同形）",
+  "status": "open",
+  "stream": "IMP"
+}
