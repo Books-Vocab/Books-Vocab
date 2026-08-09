@@ -34,7 +34,7 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 # Drive the REAL assignment line out of the generator against an arbitrary tree, so the
 # test can never drift from the shipped pipeline the way a re-typed copy of it would.
 count_with() {  # $1 = variable name, $2 = dir to scan -> stdout: the number the generator would print
-  local var="$1" IOS_DIR="$2" line
+  local var="$1" IOS_DIR="$2" REPO_ROOT="$WORKSPACE" line
   line="$(grep -E "^${var}=" "$GEN")"
   eval "$line"
   eval "printf '%s' \"\$${var}\""
@@ -77,6 +77,23 @@ EOF
 got="$(count_with ASYNC_FUNC "$TMP/neg")"
 [[ "$got" == "0" ]] && ok "no async declarations counted as 0" \
   || fail_t "async counter matches non-declarations: expected 0, got '$got'"
+
+section "async: an @escaping () async -> parameter is not a declaration"
+mkdir -p "$TMP/tricky"
+cat > "$TMP/tricky/Tricky.swift" <<'EOF'
+func platformRefreshable(action: @escaping () async -> Void) -> some View {}
+/*
+   a comment with a fake declaration closer
+) async
+*/
+let prose = "@MainActor and ) async are string contents, not Swift declarations"
+EOF
+got_async="$(count_with ASYNC_FUNC "$TMP/tricky")"
+got_actor="$(count_with MAIN_ACTOR "$TMP/tricky")"
+[[ "$got_async" == "0" ]] && ok "escaping async parameter and comment/string probes count as 0 async funcs" \
+  || fail_t "tricky async fixture counted '$got_async' instead of 0"
+[[ "$got_actor" == "0" ]] && ok "string @MainActor is not counted as an attribute" \
+  || fail_t "tricky @MainActor fixture counted '$got_actor' instead of 0"
 
 section "@MainActor: attributes are counted, doc-comment prose is not"
 mkdir -p "$TMP/ma"
