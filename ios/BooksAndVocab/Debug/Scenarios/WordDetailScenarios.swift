@@ -140,7 +140,16 @@ enum WordDetailScenarios {
             // does not await WordDetailSheet's deferred presentation `.task`, so
             // seed the card presentation up front (otherwise the shot captures the
             // "載入中" loading placeholder).
-            WordDetailSheet(entry: entries[0], allEntries: entries, presentsEagerly: true)
+            // showsLifecycleActions: false — 封存／刪除是卡片管理動作，不屬於
+            // 官網 review_card 那句「釋義、發音、例句、關聯詞——一張卡片全掌握」的
+            // 構圖；預設會連 destructive 色的刪除列一起入鏡。頂列 chrome 保留
+            //（不可改用 wrapInNavigation: false，那會連 chrome 一起關掉）。
+            WordDetailSheet(
+                entry: entries[0],
+                allEntries: entries,
+                showsLifecycleActions: false,
+                presentsEagerly: true
+            )
         }
         // Force light: website.json marks the review_card shot `appearance: light`;
         // keeps the card a clean white surface, consistent with the reader/vocab
