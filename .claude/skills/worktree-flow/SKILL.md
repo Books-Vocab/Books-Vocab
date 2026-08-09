@@ -46,7 +46,7 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 ```
 **先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 由 intent 自動判定）。記下回傳的 `path`。
 
-`--backlog` 的 id 從哪來：`./ops/backlog.py dispatch`（＝`list --dispatch`；已梳理 ∧ 未解 ∧ 未被認領，worst-first）。**不要用 `list` 挑票**——它含已結案與別人認領中的。dispatch 有兩個它會自己說出來的盲點：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
+`--backlog` 的 id 從哪來：`./ops/backlog.py dispatch`（＝`list --dispatch`；已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋，worst-first）。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。dispatch 有三個它會自己說出來的盲點：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**，而跨票前置關係只以 store 內 `blocked_by` 的狀態為準。
 
 **波次結案流程（hunter 全程不碰 store）**：修好後在自己的工作樹跑 `./ops/backlog.py stage <id> --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>'（命令含反引號時用 `--evidence-file <路徑>`）`（無 `--status`，恆為 `fixed`）——寫進 gitignored 的 `<primary>/.cache/backlog_anchor_queue.jsonl`，**不碰 store**（理由是那顆 sha：rebase 前你不知道落地 sha，自己填就是 orphaned `fixed_by`；「不重生 view」那半個舊理由已隨 view 移出版控退場）。`cutover` 在**所有 post-ff refusal 之後**把真正的落地 sha 蓋上去（payload 的 `staged_closures`），波次結束開一條 worktree 跑 `./ops/backlog.py anchor --commit` 一次回填（全有或全無，未蓋 sha 的 row 會被具名保留而不是靜默套用；壞掉的 row 用 `./ops/backlog.py unstage <id> --commit` 取下，這是 all-or-nothing 的逃生口）。`resolve` 拆樹時會把這條分支還沒回填的結案**列出來但不擋**（payload 的 `pending_anchor`）——這是**正常狀態不是警告**（stage→cutover→resolve 本來就在 anchor 之前），列它是因為拆樹後那些 id 只剩 gitignored 檔裡一行；gate、docs lint 與任何讀 store 的入口都看不到它。
 

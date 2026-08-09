@@ -84,7 +84,7 @@ scratch 路徑；`resolve` 後該路徑應不存在。
 - 不把舊輸出當本輪證據。
 - 若背景工作還在跑，receipt 必須標示它不是完成證據。
 - Tooling Debt 不可留空:`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者用 `ops/backlog.py add` 登記。
-- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 追到 resolved;`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)追到 resolved,其取票入口是 `./ops/backlog.py dispatch --stream APP`(已梳理 ∧ 未解 ∧ 未被認領;`list --stream APP` 是**全表**,拿來查重不是拿來取票)。判準見上方 Checklist 的「Stream 分流」。
+- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 追到 resolved;`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)追到 resolved,其取票入口是 `./ops/backlog.py dispatch --stream APP`(已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋;`list --stream APP` 是**全表**,拿來查重不是拿來取票)。判準見上方 Checklist 的「Stream 分流」。
 - 這條判準只有**一半**是機器守的:`add --stream IMP --surface ...` 會 exit 64 被拒(`ops/tests/test_backlog.py` 釘住);反向——該進 APP 的填成 IMP——沒有任何工具擋得住,所以那一半靠上面的判準自律。
 
 ### `pytest -k` acceptance 的選擇數對帳
