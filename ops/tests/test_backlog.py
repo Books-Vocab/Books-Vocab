@@ -4586,38 +4586,77 @@ def test_the_source_file_twin_is_refused_before_reading_or_writing(tmp_path, cap
     assert BACKLOG.load_entry(store, entry["id"])["source"] != "a source correction"
 
 
+_WRITE_COMMANDS = ("add", "update", "verify", "stage")
+_NOT_PROSE = {
+    "stream": "IMP/APP stream token",
+    "date": "ISO 日期，_DATE_RE（ops/backlog.py:306）擋",
+    "category": "CATEGORIES 閉集（ops/backlog.py:77）；因為值域依 stream 分流才沒寫成 argparse choices=",
+    "surface": "feature-area token（reader/vocabulary/...），ops/backlog.py:2505 的 help 即值域",
+    "build": "版本號 token",
+    "entry_id": "檔名安全的 id，_SAFE_ID_RE（ops/backlog.py:307）擋",
+    "verdict": "VERDICTS 閉集，寫入時於 ops/backlog.py:506 驗",
+    "cost": "S/M/L token（_COST_RE，ops/backlog.py:1913）",
+    "duplicate_of": "另一張票的 id",
+    "blocked_by": "另一張票的 id 清單",
+    "at": "timestamp",
+    "verified_at": "timestamp",
+    "by": "署名 handle",
+    "verified_by": "署名 handle",
+    "fixed_by": "sha 清單，_SHA_RE（ops/backlog.py:221）擋",
+    "groomed_at": "ISO 日期，_DATE_RE 於 ops/backlog.py:701 擋",
+    "groomed_by": "署名 handle",
+    "groomed_against": "可達的 main commit SHA",
+}
+
+
 def test_every_free_text_flag_that_can_carry_a_backtick_has_a_file_twin():
     """The bidirectional invariant, so the next free-text flag added is caught.
 
-    A hand-kept list of twins is exactly the shape that drifts — the same reason
-    `update`'s change map is derived from MUTABLE_FIELDS rather than typed twice.
+    The candidate population must come from argparse, not FILE_TWIN_FIELDS: when
+    `fixed_elsewhere` left that constant, the old test's checked count silently
+    fell from 19 to 17. Groom-only decoys use dest prefixes rather than flag
+    strings because `--fix-site` is real on `update` but a decoy on `add`.
     """
-    commands = BACKLOG.build_parser()._subparsers._group_actions[0].choices
-    checked, broken = [], []
+    commands = BACKLOG._subcommands(BACKLOG.build_parser())
+    candidates = []
+    by_dest_by_command = {}
+    for name in _WRITE_COMMANDS:
+        sub = commands[name]
+        by_dest = {a.dest: a for a in sub._actions}
+        by_dest_by_command[name] = by_dest
+        for action in sub._actions:
+            if not action.option_strings:
+                continue
+            if action.nargs == 0 or action.dest.endswith("_file"):
+                continue
+            if action.choices is not None or action.type in (int, Path):
+                continue
+            if action.dest.startswith("groom_only_"):
+                continue
+            candidates.append((name, action))
+
+    missing = {
+        action.dest for name, action in candidates
+        if f"{action.dest}_file" not in by_dest_by_command[name]
+    }
+    assert missing == set(_NOT_PROSE), (
+        "candidate free-text flags must have twins; the only expected omissions "
+        f"are classified non-prose fields: missing={sorted(missing)} "
+        f"expected={sorted(_NOT_PROSE)}")
+
+    # A store_true filter may share a dest with a free-text field
+    # (`list --acceptance-manual`). A twin there can never succeed because its
+    # default is `False`, so every subcommand must keep such flags twin-free.
     for name, sub in commands.items():
         by_dest = {a.dest: a for a in sub._actions}
-        for dest in sorted(set(by_dest) & set(BACKLOG.FILE_TWIN_FIELDS)):
-            if by_dest[dest].nargs == 0:
-                # store_true FILTERS share a dest with a free-text field
-                # (`list --acceptance-manual`). A twin there is a flag that can
-                # never succeed — its default `False` is not None, so the
-                # mutual-exclusion branch fires on every call. See _add_file_twins.
-                assert f"{dest}_file" not in by_dest, (
-                    f"{name} --{dest.replace('_', '-')} takes no value; its twin "
-                    f"could only ever refuse")
-                continue
-            if f"{dest}_file" not in by_dest:
-                broken.append(f"{name} --{dest.replace('_', '-')} (no twin)")
-                continue
-            checked.append(f"{name}.{dest}")
-    assert not broken, (
-        "free-text flags reachable only through argv, where a backtick is "
-        f"command substitution: {broken}")
-    # Presence alone is near-tautological — it mirrors the predicate the generator
-    # uses to create them, so it can only fail if the generator is never called.
-    # Drive one twin through the parser and assert the VALUE lands on the twin dest
-    # while the bare flag stays unset.
-    assert "update.plan" in checked, checked
+        for action in sub._actions:
+            if action.nargs == 0:
+                assert f"{action.dest}_file" not in by_dest, (
+                    f"{name} --{action.dest.replace('_', '-')} takes no value; "
+                    "its twin could only ever refuse")
+
+    # Drive one twin through the parser and assert the VALUE lands on the twin
+    # dest while the bare flag stays unset.
     args = BACKLOG.build_parser().parse_args(
         ["update", "IMP-0001", "--plan-file", "/dev/null"])
     assert args.plan_file == "/dev/null" and args.plan is None

@@ -1579,7 +1579,7 @@ REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELD
 # guess. The only fix is a channel the shell does not touch.
 FILE_TWIN_FIELDS = (
     "source", "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
-    "acceptance_manual", "repro", "evidence", "fix_site",
+    "acceptance_manual", "repro", "evidence", "verified_evidence", "fix_site",
     # The sentence that makes an audit exemption auditable — prose, and prose
     # about a shell command, so it is the likeliest field in the schema to carry
     # a backtick.
