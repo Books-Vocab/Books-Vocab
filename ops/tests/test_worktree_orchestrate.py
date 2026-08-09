@@ -6524,6 +6524,221 @@ def test_delivery_json_tool_rejects_invalid_success_receipt_and_relays_stderr(
     assert "child diagnostic" in capsys.readouterr().err
 
 
+def test_delivery_json_tool_rejects_semantically_invalid_success_receipt(
+        tmp_path, monkeypatch):
+    def fake_runner(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["fake"], returncode=0,
+            stdout=json.dumps({"schema": "expected.v1", "mode": "dry-run",
+                               "landed": False, "sha": "stale"}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(MODULE, "run_streamed_command", fake_runner)
+    rc, payload = MODULE._delivery_json_tool(
+        tmp_path / "fake.py", tmp_path, ["probe"], label="receipt-probe",
+        expected_schema="expected.v1", required_keys=("landed",),
+        receipt_validator=MODULE._delivery_require_cutover_landed,
+    )
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert "mode" in payload["contract_errors"][0]
+    assert payload["receipt"]["landed"] is False
+
+
+def test_delivery_registry_records_rejects_malformed_record(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        MODULE,
+        "_delivery_json_tool",
+        lambda *_args, **_kwargs: (MODULE.EXIT_OK, {
+            "schema": "kg.worktree.registry.v1",
+            "records": [{"path": str(tmp_path), "status": "active"}],
+        }),
+    )
+
+    rc, records = MODULE._delivery_registry_records(argparse.Namespace(state=None))
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert records == []
+
+
+def test_delivery_integration_rejects_foreign_git_checkout(tmp_path, monkeypatch):
+    primary = tmp_path / "primary"
+    foreign = tmp_path / "foreign"
+    for repo in (primary, foreign):
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"],
+                       cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "base", "--allow-empty"],
+                       cwd=repo, check=True)
+    subprocess.run(["git", "switch", "-q", "-c", "feat/integration"],
+                   cwd=foreign, check=True)
+    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
+    payload = {
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "slug": "delivery-wave",
+        "base": "main",
+        "branches": ["feat/source"],
+        "worktree": str(foreign),
+        "branch": "feat/integration",
+        "status": "gated",
+    }
+
+    error = MODULE._delivery_integration_error(
+        payload,
+        label="integration manifest",
+        slug="delivery-wave",
+        base="main",
+        branches=["feat/source"],
+        require_gated=True,
+        require_live_worktree=True,
+    )
+
+    assert error is not None
+    assert "not a linked worktree of this repository" in error
+
+
+def test_delivery_anchor_guard_checks_primary_branch_inside_advance_lock(
+        tmp_path, monkeypatch):
+    @contextmanager
+    def fake_lock(_primary):
+        yield
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
+    monkeypatch.setattr(
+        MODULE, "_primary_ff_ready",
+        lambda *_args, **_kwargs: ("primary is on the wrong branch", {}),
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_primary_dirty",
+        lambda _primary: pytest.fail("dirty check must not run after branch refusal"),
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records",
+        lambda _args: pytest.fail("registry must not run after branch refusal"),
+    )
+
+    rc, steps = MODULE._delivery_anchor_and_commit(
+        argparse.Namespace(base="main"), tmp_path, set(), "delivery-wave", None
+    )
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert steps[0]["name"] == "anchor-guard"
+    assert "wrong branch" in steps[0]["error"]
+
+
+def _git_repo_with_anchor_ticket(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    ticket = repo / "docs" / "runbook" / "backlog" / "IMP-20260809-crash.json"
+    ticket.parent.mkdir(parents=True)
+    ticket.write_text("open\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                              check=True, capture_output=True, text=True).stdout.strip()
+    ticket.write_text("closed\n", encoding="utf-8")
+    return repo, base_sha
+
+
+def test_delivery_anchor_recovers_commit_when_marker_write_crashes(tmp_path):
+    repo, base_sha = _git_repo_with_anchor_ticket(tmp_path)
+    ticket_id = "IMP-20260809-crash"
+
+    rc, first = MODULE._delivery_anchor_commit(
+        repo, applied_ids=[ticket_id], anchor_base_sha=base_sha
+    )
+    assert rc == MODULE.EXIT_OK
+    assert first["committed"] is True
+
+    rc, recovered = MODULE._delivery_anchor_commit(
+        repo, applied_ids=[ticket_id], anchor_base_sha=base_sha
+    )
+
+    assert rc == MODULE.EXIT_OK
+    assert recovered["already_committed"] is True
+    assert recovered["recovered"] is True
+    assert recovered["sha"] == first["sha"]
+
+
+def test_delivery_anchor_replays_manifest_after_post_commit_marker_failure(
+        tmp_path, monkeypatch):
+    repo, _base_sha = _git_repo_with_anchor_ticket(tmp_path)
+    (repo / "docs" / "runbook" / "backlog" / "IMP-20260809-crash.json").write_text(
+        "open\n", encoding="utf-8"
+    )
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({"schema": MODULE.INTEGRATE_SCHEMA,
+                                    "close_wave": {}}), encoding="utf-8")
+    ticket_id = "IMP-20260809-crash"
+    calls = 0
+    child_calls = 0
+
+    @contextmanager
+    def fake_lock(_primary):
+        yield
+
+    def fake_child(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        if child_calls == 1:
+            (repo / "docs" / "runbook" / "backlog" / f"{ticket_id}.json").write_text(
+                "closed-by-anchor\n", encoding="utf-8"
+            )
+            return MODULE.EXIT_OK, {
+                "schema": "kg.backlog.anchor.v1", "mode": "commit",
+                "applied": [ticket_id], "problems": [],
+            }
+        return MODULE.EXIT_OK, {
+            "schema": "kg.backlog.anchor.v1", "mode": "commit",
+            "applied": [], "problems": [],
+        }
+
+    real_save = MODULE._integrate_save
+
+    def crash_after_commit(path, payload):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("simulated crash after anchor commit")
+        return real_save(path, payload)
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
+    monkeypatch.setattr(MODULE, "_primary_ff_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(MODULE, "_delivery_registry_records", lambda _args: (0, []))
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_child)
+    monkeypatch.setattr(MODULE, "_integrate_save", crash_after_commit)
+    args = argparse.Namespace(base="main")
+
+    first_rc, first_steps = MODULE._delivery_anchor_and_commit(
+        args, repo, set(), "delivery-wave", manifest
+    )
+    assert first_rc == MODULE.EXIT_BLOCK
+    assert any(step.get("name") == "anchor-commit" and step.get("rc") == 0
+               for step in first_steps)
+    marker_after_crash = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+    assert marker_after_crash["anchor_committed"] is False
+
+    second_rc, second_steps = MODULE._delivery_anchor_and_commit(
+        args, repo, set(), "delivery-wave", manifest
+    )
+
+    assert second_rc == MODULE.EXIT_OK
+    assert any(step.get("payload", {}).get("recovered") is True
+               for step in second_steps if step.get("name") == "anchor-commit")
+    final_marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+    assert final_marker["anchor_committed"] is True
+    assert final_marker["anchor_commit_sha"]
+
+
 def test_delivery_anchor_commit_refuses_staged_or_unstaged_foreign_paths(
         tmp_path):
     repo = tmp_path / "repo"

@@ -5172,6 +5172,7 @@ def _delivery_json_tool(
     label: str,
     expected_schema: str | None = None,
     required_keys: tuple[str, ...] = (),
+    receipt_validator: Callable[[dict[str, Any]], str | None] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Run one existing orchestrator/registry verb and decode its JSON receipt.
 
@@ -5236,6 +5237,10 @@ def _delivery_json_tool(
         missing = [key for key in required_keys if key not in payload]
         if missing:
             contract_errors.append("missing keys: " + ", ".join(missing))
+        if receipt_validator is not None:
+            semantic_error = receipt_validator(payload)
+            if semantic_error:
+                contract_errors.append(semantic_error)
         if contract_errors:
             return EXIT_BLOCK, {
                 "error": f"{label} returned an invalid success receipt",
@@ -5243,6 +5248,114 @@ def _delivery_json_tool(
                 "receipt": payload,
             }
     return child_rc, payload
+
+
+def _delivery_require_mode(payload: dict[str, Any], expected: str) -> str | None:
+    actual = payload.get("mode")
+    if actual != expected:
+        return f"mode {actual!r} != {expected!r}"
+    return None
+
+
+def _delivery_require_integrate_picked(payload: dict[str, Any]) -> str | None:
+    error = _delivery_require_mode(payload, "picked")
+    if error:
+        return error
+    if payload.get("gate_pending") is not True:
+        return "picked integration receipt does not set gate_pending=true"
+    if payload.get("landed") is not False:
+        return "picked integration receipt must set landed=false"
+    if not isinstance(payload.get("head_sha"), str) or not payload["head_sha"]:
+        return "picked integration receipt has no head_sha"
+    return None
+
+
+def _delivery_require_integrate_gated(payload: dict[str, Any]) -> str | None:
+    error = _delivery_require_mode(payload, "committed")
+    if error:
+        return error
+    if payload.get("landed") is not False:
+        return "gated integration receipt must set landed=false"
+    if payload.get("verdict") not in ("pass", "warn"):
+        return (f"gated integration receipt has non-landable verdict "
+                f"{payload.get('verdict')!r}")
+    if not isinstance(payload.get("manifest"), str) or not payload["manifest"]:
+        return "gated integration receipt has no manifest"
+    return None
+
+
+def _delivery_require_cutover_landed(payload: dict[str, Any]) -> str | None:
+    error = _delivery_require_mode(payload, "committed")
+    if error:
+        return error
+    if payload.get("landed") is not True:
+        return "cutover success receipt must set landed=true"
+    if not isinstance(payload.get("sha"), str) or not payload["sha"]:
+        return "cutover success receipt has no landed sha"
+    return None
+
+
+def _delivery_require_resolved(payload: dict[str, Any]) -> str | None:
+    error = _delivery_require_mode(payload, "committed")
+    if error:
+        return error
+    if payload.get("resolved") != "merged":
+        return (f"resolve success receipt has resolved={payload.get('resolved')!r}, "
+                "expected 'merged'")
+    if payload.get("failures") != 0:
+        return f"resolve success receipt has failures={payload.get('failures')!r}"
+    return None
+
+
+def _delivery_require_anchor_receipt(payload: dict[str, Any]) -> str | None:
+    error = _delivery_require_mode(payload, "commit")
+    if error:
+        return error
+    problems = payload.get("problems")
+    if not isinstance(problems, list):
+        return "anchor receipt has non-list problems"
+    if problems:
+        return f"anchor receipt has {len(problems)} problem(s)"
+    applied = payload.get("applied")
+    if not isinstance(applied, list) or any(
+        not isinstance(ticket_id, str) for ticket_id in applied
+    ):
+        return "anchor receipt has malformed applied ids"
+    return None
+
+
+def _delivery_require_validate_receipt(payload: dict[str, Any]) -> str | None:
+    problems = payload.get("problems")
+    if not isinstance(problems, list):
+        return "validate receipt has non-list problems"
+    if problems:
+        return f"validate receipt has {len(problems)} problem(s)"
+    if payload.get("ok") is not True:
+        return f"validate receipt has ok={payload.get('ok')!r}"
+    return None
+
+
+def _delivery_require_registry_receipt(payload: dict[str, Any]) -> str | None:
+    records = payload.get("records")
+    if not isinstance(records, list):
+        return "registry receipt has non-list records"
+    allowed_statuses = {wr.STATUS_ACTIVE, "merged", "abandoned"}
+    required = ("path", "branch", "base", "status")
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            return f"registry record {index} is not an object"
+        missing = [key for key in required if key not in record]
+        if missing:
+            return f"registry record {index} missing keys: {', '.join(missing)}"
+        if any(not isinstance(record[key], str) or not record[key]
+               for key in ("path", "branch", "base")):
+            return f"registry record {index} has malformed path/branch/base"
+        if not Path(record["path"]).is_absolute():
+            return f"registry record {index} has a non-absolute path"
+        if record["status"] not in allowed_statuses:
+            return (f"registry record {index} has unknown status "
+                    f"{record['status']!r}")
+    return None
 
 
 def _delivery_state_paths(args: argparse.Namespace) -> tuple[Path, list[Path]]:
@@ -5262,6 +5375,14 @@ def _delivery_load_json(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _delivery_common_dir(worktree: Path) -> str | None:
+    rc, common = _git(
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=worktree,
+    )
+    return _norm(common) if rc == EXIT_OK and common else None
 
 
 def _delivery_integration_error(
@@ -5310,10 +5431,32 @@ def _delivery_integration_error(
     if not worktree.is_absolute():
         return f"{label} worktree path is not absolute: {worktree}"
     if worktree.exists():
+        # A path can be a perfectly valid foreign checkout (or merely a directory
+        # inside this repository). `_current_branch` alone is unsafe because git
+        # discovery walks upward after a linked worktree's `.git` file disappears.
+        # Require both the repository's worktree registry identity and the shared
+        # git-common-dir before executing any persisted child command.
+        entry = _worktree_entry(str(worktree))
+        if entry is None:
+            return (f"{label} worktree is not a linked worktree of this repository: "
+                    f"{worktree}")
+        if _norm(str(entry.get("path") or "")) != _norm(str(worktree)):
+            return f"{label} worktree registry path disagrees: {worktree}"
+        if entry.get("branch") != payload["branch"]:
+            return (f"{label} worktree registry branch is {entry.get('branch')!r}, "
+                    f"expected {payload['branch']!r}")
         actual_branch = _current_branch(str(worktree))
         if actual_branch != payload["branch"]:
             return (f"{label} worktree is on {actual_branch!r}, expected "
                     f"{payload['branch']!r}")
+        primary_common = _delivery_common_dir(primary_root())
+        worktree_common = _delivery_common_dir(worktree)
+        if primary_common is None or worktree_common is None:
+            return (f"{label} cannot verify git-common-dir containment for "
+                    f"{worktree}")
+        if worktree_common != primary_common:
+            return (f"{label} worktree belongs to a different repository "
+                    f"(common-dir {worktree_common!r}, expected {primary_common!r})")
     elif require_live_worktree:
         return f"{label} worktree is missing: {worktree}"
     return None
@@ -5348,11 +5491,15 @@ def _delivery_registry_records(args: argparse.Namespace) -> tuple[int, list[dict
     rc, payload = _delivery_json_tool(
         registry_script, primary_root(), argv, label="registry-list",
         expected_schema="kg.worktree.registry.v1", required_keys=("records",),
+        receipt_validator=_delivery_require_registry_receipt,
     )
     records = payload.get("records")
     if rc != EXIT_OK or not isinstance(records, list):
         return rc or EXIT_BLOCK, []
-    return EXIT_OK, [record for record in records if isinstance(record, dict)]
+    semantic_error = _delivery_require_registry_receipt(payload)
+    if semantic_error:
+        return EXIT_BLOCK, []
+    return EXIT_OK, records
 
 
 def _delivery_foreign_active(
@@ -5379,8 +5526,59 @@ def _delivery_primary_dirty(primary: Path) -> list[str]:
     return [line for line in output.splitlines() if line.strip()]
 
 
+_DELIVERY_ANCHOR_SUBJECT = "ops: anchor delivered backlog wave"
+_DELIVERY_ANCHOR_TRAILER = "Review-Exempt: machine-repair"
+
+
+def _delivery_anchor_identity(
+    primary: Path,
+    expected_paths: set[str],
+    *,
+    base_sha: str | None,
+    expected_sha: str | None = None,
+) -> str | None:
+    """Return the exact already-landed anchor commit, or None.
+
+    The close-wave manifest is written before the anchor commit. If the process dies
+    after ``git commit`` and before the manifest flips ``anchor_committed``, a retry
+    must identify that one commit by parent, subject, trailer and changed paths. A
+    bare "primary is clean" check is not enough: it could silently bless an unrelated
+    clean commit made by another actor.
+    """
+    tip_rc, tip = _git(["rev-parse", "HEAD"], cwd=primary)
+    if tip_rc != EXIT_OK or not tip:
+        return None
+    if expected_sha and tip != expected_sha:
+        return None
+    parents_rc, parents = _git(["rev-list", "--parents", "-n", "1", "HEAD"], cwd=primary)
+    parent_tokens = parents.split()
+    if parents_rc != EXIT_OK or len(parent_tokens) != 2:
+        return None
+    if base_sha and parent_tokens[1] != base_sha:
+        return None
+    subject_rc, subject = _git(["show", "-s", "--format=%s", "HEAD"], cwd=primary)
+    body_rc, body = _git(["show", "-s", "--format=%B", "HEAD"], cwd=primary)
+    if (subject_rc != EXIT_OK or body_rc != EXIT_OK
+            or subject != _DELIVERY_ANCHOR_SUBJECT
+            or _DELIVERY_ANCHOR_TRAILER not in body.splitlines()):
+        return None
+    paths_rc, changed = _git(
+        ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"], cwd=primary
+    )
+    if paths_rc != EXIT_OK:
+        return None
+    if {line for line in changed.splitlines() if line} != expected_paths:
+        return None
+    return tip
+
+
 def _delivery_anchor_commit(
-    primary: Path, *, applied_ids: list[str], already_committed: bool = False,
+    primary: Path,
+    *,
+    applied_ids: list[str],
+    already_committed: bool = False,
+    anchor_base_sha: str | None = None,
+    already_committed_sha: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Commit only the closure rows materialized by ``anchor``.
 
@@ -5410,12 +5608,38 @@ def _delivery_anchor_commit(
         line for line in (changed + "\n" + untracked).splitlines() if line
     }
     if not paths and expected_paths and already_committed:
+        recovered_sha = _delivery_anchor_identity(
+            primary, expected_paths, base_sha=anchor_base_sha,
+            expected_sha=already_committed_sha,
+        )
+        if recovered_sha is None:
+            return EXIT_BLOCK, {
+                "error": "anchor manifest claimed a committed anchor, but primary "
+                         "does not contain that exact commit",
+                "expected_sha": already_committed_sha,
+                "anchor_base_sha": anchor_base_sha,
+                "expected_paths": sorted(expected_paths),
+                "paths": [],
+            }
         return EXIT_OK, {
             "committed": False,
             "already_committed": True,
+            "recovered": False,
             "paths": [],
+            "sha": recovered_sha,
         }
     if not paths and expected_paths:
+        recovered_sha = _delivery_anchor_identity(
+            primary, expected_paths, base_sha=anchor_base_sha,
+        )
+        if recovered_sha is not None:
+            return EXIT_OK, {
+                "committed": False,
+                "already_committed": True,
+                "recovered": True,
+                "paths": [],
+                "sha": recovered_sha,
+            }
         return EXIT_BLOCK, {
             "error": "anchor receipt declared applied tickets but primary has no changes",
             "missing_paths": sorted(expected_paths),
@@ -5445,9 +5669,9 @@ def _delivery_anchor_commit(
         [
             "commit",
             "-m",
-            "ops: anchor delivered backlog wave",
+            _DELIVERY_ANCHOR_SUBJECT,
             "-m",
-            "Review-Exempt: machine-repair",
+            _DELIVERY_ANCHOR_TRAILER,
         ],
         cwd=primary,
         label="delivery-anchor-commit",
@@ -5473,6 +5697,16 @@ def _delivery_anchor_and_commit(
     """Linearize the primary-side anchor and its exact-path metadata commit."""
     steps: list[dict[str, Any]] = []
     with _main_advance_lock(primary):
+        ff_refusal = _primary_ff_ready(
+            primary,
+            _local_trunk(getattr(args, "base", "main")),
+            branch=f"close-wave:{slug}",
+            worktree=str(primary),
+        )
+        if ff_refusal is not None:
+            reason, extra = ff_refusal
+            steps.append({"name": "anchor-guard", "error": reason, **extra})
+            return EXIT_BLOCK, steps
         dirty = _delivery_primary_dirty(primary)
         if dirty:
             steps.append({
@@ -5492,6 +5726,89 @@ def _delivery_anchor_and_commit(
                           "foreign_active": foreign})
             return EXIT_BLOCK, steps
 
+        persisted: dict[str, Any] | None = None
+        marker: dict[str, Any] = {}
+        saved_ids: list[str] = []
+        already_committed = False
+        already_committed_sha: str | None = None
+        anchor_base_sha_rc, current_head = _git(["rev-parse", "HEAD"], cwd=primary)
+        if anchor_base_sha_rc != EXIT_OK or not current_head:
+            steps.append({"name": "anchor-guard",
+                          "error": "could not capture primary HEAD before anchor"})
+            return EXIT_BLOCK, steps
+        anchor_base_sha = current_head
+        if manifest_path is not None:
+            persisted = _delivery_load_json(manifest_path)
+            if persisted is None:
+                steps.append({"name": "anchor-guard",
+                              "error": "integration manifest disappeared before anchor receipt was saved"})
+                return EXIT_BLOCK, steps
+            raw_marker = persisted.get("close_wave")
+            if raw_marker is not None and not isinstance(raw_marker, dict):
+                steps.append({"name": "anchor-guard",
+                              "error": "integration manifest has malformed close_wave marker"})
+                return EXIT_BLOCK, steps
+            marker = dict(raw_marker or {})
+            stored_base = marker.get("anchor_base_sha")
+            if stored_base is not None:
+                if not isinstance(stored_base, str) or not stored_base:
+                    steps.append({"name": "anchor-guard",
+                                  "error": "integration manifest has malformed anchor_base_sha"})
+                    return EXIT_BLOCK, steps
+                anchor_base_sha = stored_base
+            raw_ids = marker.get("anchor_ids")
+            if raw_ids is not None:
+                if not isinstance(raw_ids, list) or any(
+                    not isinstance(ticket_id, str) for ticket_id in raw_ids
+                ):
+                    steps.append({"name": "anchor-guard",
+                                  "error": "integration manifest has malformed anchor_ids"})
+                    return EXIT_BLOCK, steps
+                saved_ids = list(raw_ids)
+            already_committed = marker.get("anchor_committed") is True
+            if (stored_base is not None and stored_base != current_head
+                    and not already_committed):
+                recovery_paths = {
+                    f"docs/runbook/backlog/{ticket_id}.json"
+                    for ticket_id in saved_ids
+                    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id)
+                }
+                if (not recovery_paths
+                        or _delivery_anchor_identity(
+                            primary, recovery_paths, base_sha=stored_base
+                        ) is None):
+                    steps.append({
+                        "name": "anchor-guard",
+                        "error": "primary moved after the persisted anchor base and "
+                                 "does not contain the exact recoverable anchor commit",
+                        "anchor_base_sha": stored_base,
+                        "current_head": current_head,
+                    })
+                    return EXIT_BLOCK, steps
+            raw_commit_sha = marker.get("anchor_commit_sha")
+            if raw_commit_sha is not None:
+                if not isinstance(raw_commit_sha, str) or not raw_commit_sha:
+                    steps.append({"name": "anchor-guard",
+                                  "error": "integration manifest has malformed anchor_commit_sha"})
+                    return EXIT_BLOCK, steps
+                already_committed_sha = raw_commit_sha
+            if already_committed and already_committed_sha is None:
+                steps.append({"name": "anchor-guard",
+                              "error": "committed anchor marker has no anchor_commit_sha"})
+                return EXIT_BLOCK, steps
+            persisted["close_wave"] = {
+                **marker,
+                "anchor_base_sha": anchor_base_sha,
+                "anchor_ids": saved_ids,
+                "anchor_committed": already_committed,
+            }
+            try:
+                _integrate_save(manifest_path, persisted)
+            except OSError as exc:
+                steps.append({"name": "anchor-guard",
+                              "error": f"could not persist anchor base before anchor: {exc}"})
+                return EXIT_BLOCK, steps
+
         anchor_rc, anchor_payload = _delivery_json_tool(
             primary / "ops" / "backlog.py",
             primary,
@@ -5499,6 +5816,7 @@ def _delivery_anchor_and_commit(
             label=f"anchor:{slug}",
             expected_schema="kg.backlog.anchor.v1",
             required_keys=("applied", "problems"),
+            receipt_validator=_delivery_require_anchor_receipt,
         )
         steps.append({"name": "anchor", "rc": anchor_rc, "payload": anchor_payload})
         applied = anchor_payload.get("applied")
@@ -5510,23 +5828,18 @@ def _delivery_anchor_and_commit(
             steps.append({"name": "anchor-guard",
                           "error": "anchor receipt has malformed applied ids"})
             return EXIT_BLOCK, steps
-
-        already_committed = False
+        if saved_ids and applied and list(applied) != saved_ids:
+            steps.append({"name": "anchor-guard",
+                          "error": "anchor receipt disagrees with persisted anchor_ids",
+                          "persisted_anchor_ids": saved_ids,
+                          "receipt_anchor_ids": applied})
+            return EXIT_BLOCK, steps
+        if not applied and saved_ids:
+            applied = list(saved_ids)
         if manifest_path is not None:
-            persisted = _delivery_load_json(manifest_path)
-            marker = persisted.get("close_wave") if persisted else None
-            if isinstance(marker, dict):
-                saved_ids = marker.get("anchor_ids")
-                if not applied and isinstance(saved_ids, list) and all(
-                    isinstance(ticket_id, str) for ticket_id in saved_ids
-                ):
-                    applied = list(saved_ids)
-                already_committed = marker.get("anchor_committed") is True
-            if persisted is None:
-                steps.append({"name": "anchor-guard",
-                              "error": "integration manifest disappeared before anchor receipt was saved"})
-                return EXIT_BLOCK, steps
             persisted["close_wave"] = {
+                **(persisted.get("close_wave") or {}),
+                "anchor_base_sha": anchor_base_sha,
                 "anchor_ids": applied,
                 "anchor_committed": already_committed,
             }
@@ -5538,23 +5851,39 @@ def _delivery_anchor_and_commit(
                 return EXIT_BLOCK, steps
 
         anchor_commit_rc, anchor_commit = _delivery_anchor_commit(
-            primary, applied_ids=applied, already_committed=already_committed,
+            primary,
+            applied_ids=applied,
+            already_committed=already_committed,
+            anchor_base_sha=anchor_base_sha,
+            already_committed_sha=already_committed_sha,
         )
         steps.append({"name": "anchor-commit", "rc": anchor_commit_rc,
                       "payload": anchor_commit})
         if anchor_commit_rc == EXIT_OK and manifest_path is not None:
+            committed_sha = anchor_commit.get("sha")
+            if applied and (not isinstance(committed_sha, str) or not committed_sha):
+                steps.append({"name": "anchor-guard",
+                              "error": "anchor commit succeeded without an identifiable commit sha"})
+                return EXIT_BLOCK, steps
             persisted = _delivery_load_json(manifest_path)
-            if persisted is not None:
-                persisted["close_wave"] = {
-                    "anchor_ids": applied,
-                    "anchor_committed": True,
-                }
-                try:
-                    _integrate_save(manifest_path, persisted)
-                except OSError as exc:
-                    steps.append({"name": "anchor-guard",
-                                  "error": f"could not persist committed anchor receipt: {exc}"})
-                    return EXIT_BLOCK, steps
+            if persisted is None:
+                steps.append({"name": "anchor-guard",
+                              "error": "integration manifest disappeared after anchor commit"})
+                return EXIT_BLOCK, steps
+            persisted["close_wave"] = {
+                **(persisted.get("close_wave") or {}),
+                "anchor_base_sha": anchor_base_sha,
+                "anchor_ids": applied,
+                "anchor_committed": True,
+                **({"anchor_commit_sha": committed_sha}
+                   if isinstance(committed_sha, str) and committed_sha else {}),
+            }
+            try:
+                _integrate_save(manifest_path, persisted)
+            except OSError as exc:
+                steps.append({"name": "anchor-guard",
+                              "error": f"could not persist committed anchor receipt: {exc}"})
+                return EXIT_BLOCK, steps
         return anchor_commit_rc, steps
 
 
@@ -5802,6 +6131,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             label=f"integrate:{args.slug}",
             expected_schema=INTEGRATE_SCHEMA,
             required_keys=("worktree", "branch"),
+            receipt_validator=_delivery_require_integrate_picked,
         )
         steps.append({"name": "integrate-pick", "rc": integrate_rc,
                       "payload": integrate_payload})
@@ -5846,6 +6176,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             label=f"integrate-gate:{args.slug}",
             expected_schema=INTEGRATE_SCHEMA,
             required_keys=("worktree", "branch", "manifest"),
+            receipt_validator=_delivery_require_integrate_gated,
         )
         steps.append({"name": "integrate-gate", "rc": continue_rc,
                       "payload": continue_payload})
@@ -5917,9 +6248,10 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                 "cutover", "--worktree", str(integration_worktree), "--commit",
                 "--base", args.base, *_state_arg(args.state),
             ],
-            label=f"cutover:{args.slug}",
-            expected_schema=SCHEMA,
-            required_keys=("landed",),
+                label=f"cutover:{args.slug}",
+                expected_schema=SCHEMA,
+                required_keys=("landed",),
+                receipt_validator=_delivery_require_cutover_landed,
         )
         steps.append({"name": "cutover", "rc": cutover_rc,
                       "payload": cutover_payload})
@@ -5963,6 +6295,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             label=f"resolve-source:{branch}",
             expected_schema=SCHEMA,
             required_keys=("step",),
+            receipt_validator=_delivery_require_resolved,
         )
         steps.append({"name": "resolve-source", "branch": branch, "rc": resolve_rc,
                       "payload": resolve_payload})
@@ -5991,6 +6324,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
         label=f"validate:{args.slug}",
         expected_schema="kg.backlog.validate.v1",
         required_keys=("problems", "ok"),
+        receipt_validator=_delivery_require_validate_receipt,
     )
     steps.append({"name": "validate", "rc": validate_rc,
                   "payload": validate_payload})
@@ -6045,6 +6379,7 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             label=f"resolve-integration:{args.slug}",
             expected_schema=SCHEMA,
             required_keys=("step",),
+            receipt_validator=_delivery_require_resolved,
         )
         steps.append({"name": "resolve-integration", "rc": resolve_rc,
                       "payload": resolve_payload})
