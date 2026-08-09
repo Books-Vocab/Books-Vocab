@@ -55,9 +55,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", help="寫入檔案路徑（預設印 stdout）")
     p.set_defaults(func=cmd_world_export)
 
-    p = sub.add_parser("world-diff", parents=[jp], help="用 expectation spec 比對單用戶 world-state")
+    p = sub.add_parser(
+        "world-diff", parents=[jp],
+        help="用 expectation 或 seed spec 比對單用戶 world-state",
+    )
     p.add_argument("uid", help="User ID")
-    p.add_argument("spec", help="Expectation JSON path (schema=kg.ops_world_expectation.v1)")
+    p.add_argument(
+        "spec",
+        help="Spec JSON path（kg.ops_world_expectation.v1 → 投影 subset 比對；"
+             "kg.seed_spec.v1 → world-export 嚴格比對，含 unexpected-*）",
+    )
     p.set_defaults(func=cmd_world_diff)
 
     p = sub.add_parser("quota-overview", parents=[jp], help="全用戶 24h 額度總覽")
