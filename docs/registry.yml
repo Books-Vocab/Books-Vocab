@@ -566,8 +566,9 @@ documents:
       - .claude/skills/source-command-release/
       - .claude/commands/release.md
       # 交回契約（所有 session 預設停在 commit + hand-back；明示授權的整合者才落地）住在
-      # worktree-flow skill 的「預設停止點」與「批次交回狀態」，每個 worker agent 檔覆述那條邊界。sop.agent_org
-      # 刪除後，`.claude/agents/` 一度沒有任何 registry owner——改 worker 的交回段就不會
+      # worktree-flow skill 的「預設停止點」與「批次交回狀態」；worker agent 只保留角色特有的
+      # 「受派者無 develop 例外」指標並連回正本。sop.agent_org 刪除後，`.claude/agents/` 一度沒有
+      # registry owner——改 worker 的交回段就不會
       # 提名任何文檔。掛在這裡是因為那條邊界講的正是 release 平面誰能動。
       - .claude/agents/
 

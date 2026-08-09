@@ -118,6 +118,8 @@ bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::
 
 Fan-out 受派者在回報「已完成」前，還必須在自己的工作樹執行
 `./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
-一併回報。受派者只交回 commit 與戳記；`gate` / `integrate` / `cutover` / `sync` / `deploy`
-由整合者執行。整合者若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
+一併回報。受派者只交回 commit 與戳記，沒有 develop 例外。尚未取得 `worktree-flow` 頂端授權時，
+整合者也只能以 `integrate ... --commit --no-gate` 純組裝、commit + hand-back；只有取得授權且握有整批
+視野的整合 session 才執行最終會觸發 Gate 的 `integrate ... --commit`（fresh 或 `--continue`）／`gate`／`cutover`。`sync`／`deploy`
+另須 backup／release 意圖。整合者若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
 `--allow-unhanded`；它不能放行 hand-back 後已前進的 branch。
