@@ -20,5 +20,9 @@
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
   "status": "open",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "R6-R8 implementation is integrated, but this stored acceptance was deliberately not rerun in bounded cleanup because it is a long iOS or full-suite gate; ticket remains unresolved pending fresh targeted evidence."
 }

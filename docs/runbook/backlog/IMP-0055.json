@@ -8,6 +8,9 @@
   "date": "2026-08-04",
   "detail": "`OPS_SHELL_TEST_ALIASES` 的契約測試只驗「target 提到該腳本」，那是**必要非充分**條件，且已經漏掉真案例：`ops/release_changelog.sh → ops/test_release.sh` 通過全部三項斷言（存在、提到、非慣例可解），但 `test_release.sh` 對它只有 `[[ -f ]]` 存在檢查與**對 `release.sh` 的 grep**，從未執行它——把 `release_changelog.sh` 整個換成 `exit 0` 會通過一道 **block** gate。更糟的是 `ops_sh` 整組被加進 `covered`，所以假 alias 會把一個檔案同時擠出 `uncovered` **和** `ops-shell-untested`，把路由洞換成打勾。九筆手寫 alias 裡兩筆是假的（另一筆是 `ios_clean_derived_data.sh → test_ios_cache_evict.sh`），**憑名字推斷的錯誤率 2/9**。已移除該筆並在程式碼註記此檢查非充分。下一步：加一支獨立的 alias 覆蓋驗證（把腳本 body 換成 `exit 0` 或注入哨兵，要求 target 測試轉紅；不成立即 fail），不要塞進 `ops-pytest`（部分 target 要 60-80s）。慣例解析出的那一大半目前**完全沒有**這種檢查（`_ops_shell_test_candidates`(`:262-270`) 的慣例分支同樣只查 `exists()`），同一個問題。**2026-08-05 取證**:表已收斂為 **7 筆**(兩筆假 alias 確已移除),`ops/tests/test_worktree_orchestrate.py:430-448` 的 docstring 已寫明 `NECESSARY, NOT SUFFICIENT (IMP-0055)`——**註記補了、機械檢查沒補**;全 repo 無 alias 覆蓋驗證檔。結構複核:`worktree_orchestrate.py:499-509` 找到 hit 就進 `sh_targets`,`:527-528` 把**整個 `ops_sh` bucket 無條件計入 `covered`**,故假 alias 確實同時擠出 `uncovered` 與 advisory。**額外實測(原條目未含)**:現存 7 筆 alias 逐筆查過 target 的實際呼叫,**都至少有一次真執行**(例:`ios_archive.sh` 在 `ops/test_ios_ops.sh:910-912` 有 `bash \"$IOS_ARCHIVE\" list/latest`)→ 當下表是乾淨的,缺的純粹是防回歸的器械。",
   "fix_site": "ops/tests/test_shell_alias_coverage.sh（新建）+ ops/test_ops.sh 的 DEFAULT_TESTS/run_one + ops/tests/test_ops_ci_coverage.sh 的 LINUX_GROUPS + docs/reference/tech_index.md",
+  "fixed_by": [
+    "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-0055",
@@ -17,8 +20,10 @@
   "scope": "新增一支驗證用的小程式和它的測試，接進既有測試套件的分類，再更新一份索引文件。",
   "severity": "med",
   "source": "IMP-0051 的 review",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Stored acceptance_cmd rerun successfully during R6-R8 closure; integrated batch is reachable at 55baa5099ddd47bf4f5adc474acd6b5ee1c728a5."
 }

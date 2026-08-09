@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "Explore / 共享牌組這個 feature 在 agent-facing 路由上查不到,兩層都斷。**第一層,名字對不上**:boundary doc 的檔名是 `docs/reference/feature_boundary/discover.md`,但其餘一切都叫它 Explore——doc H1 是「Explore (Shared Decks) Feature Boundary」、碼在 `ios/BooksAndVocab/Views/Explore/`、`docs/registry.yml` 的 trigger 含 `explore_surface_changed` / `explore_gate_changed` / `shared_deck_browse_changed` / `shared_deck_copy_changed`。`grep -ic explore CLAUDE.md` = 0。**第二層,清單漏了它**:`CLAUDE.md:143`「Scope 規則」的 alternation 寫 `<reader|vocabulary|notebook|bookshelf|podcast|settings>`;CLAUDE.md「Doc 路由」表六列 feature_boundary(:156-162)也沒有它;`.claude/agents/ios-engineer.md:15` 覆述同一組六個名字。合起來的後果:被派去改 Explore 的 ios-engineer 用「Explore」搜不到(第一層擋)、用「discover」也不在清單裡(第二層擋),於是動手前不會讀到那份 97 行、registry 標 authority: SoT 的 boundary doc。修法必須同時處理兩層:alternation 的 token 要用 `discover`(得對上檔名),但表格列與描述文字要出現 Explore / 共享牌組(得對上人實際會搜的詞)。**已知的自我矛盾**:`.claude/agents/ios-engineer.md` 在 IMP-20260805-7ac60d 之後,`:15` 是六個名字而新增的 `--surface` 值域是七個(含 discover),同一個檔自己不一致——修本條時要一起收。與 IMP-20260805-7ac60d 同屬「路由清單漏掉真實存在的 surface」這一族,且 stream / owner 相同(皆 IMP / platform-steward),分開立單的理由是缺陷不同:7ac60d 是 APP stream 整條沒有入口,本條是單一 feature 沒進 doc 路由表。刻意不在該筆 PR 內順手修:CLAUDE.md 在多分支批次裡是衝突熱點,且正確修法要動三處含新增表格列,不是改一個 token。",
   "fix_site": "CLAUDE.md:143（Scope 規則的 alternation）+ CLAUDE.md:156-162（Doc 路由表）+ .claude/agents/ios-engineer.md:15",
+  "fixed_by": [
+    "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-4396ac",
@@ -16,6 +19,10 @@
   "scope": "兩份說明檔共三處，補一列與兩個名字；不動程式、不加測試。",
   "severity": "low",
   "source": "IMP-20260805-7ac60d 施工時撞到（ops-engineer）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Stored acceptance_cmd rerun successfully during R6-R8 closure; integrated batch is reachable at 55baa5099ddd47bf4f5adc474acd6b5ee1c728a5."
 }

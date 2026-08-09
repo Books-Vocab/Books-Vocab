@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "`ops/worktree_orchestrate.py:_run_verified_against`（約 :1550-1568）被自己的文件（:482-483）描述為檢查 `verified_against` 的 **reachability**，實際只跑 `git rev-parse --verify`——那是**物件存在性**，不是可達性。\n\n後果：一顆被 rebase 孤立（orphan）的 anchor 仍然存在於 object database，因此這道檢查會放行它。`ops/tests/test_docs_lint.sh` 案 1 專門造出來的就是這種 orphan anchor，而 cutover gate 這一端看不見。\n\n這是同一條規則的**第三個讀取者**，也是最弱的一個：`ops/backlog.py` 要求 origin 可達，`ops/docs_lint.sh` 現在會對 origin 不可達發 WARN（IMP-20260805-9bb2d2 剛做），而這裡只驗物件在不在。名字比它做的事大。\n\n由受派者在修 IMP-20260805-9bb2d2 時發現並具名交回；先於該 commit 存在，不是它造成的。",
   "fix_site": "ops/worktree_orchestrate.py:1641, ops/worktree_orchestrate.py:1653, ops/worktree_orchestrate.py:1659",
+  "fixed_by": [
+    "44d0c76c5c34f05acfcb69a5863e37ff89ba211a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-40f07b",
@@ -16,6 +19,10 @@
   "scope": "一支 worktree 流程工具的 verified_against 可達性檢查與一支回歸測試。",
   "severity": "med",
   "source": "dogfood batch 1：受派者修 docs_lint 時發現同規則第三個讀取者最弱",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ops-engineer",
+  "verified_evidence": "IMP-20260808-40f07b acceptance_cmd (full heredoc is the command stored by backlog.py show):\nuv run --no-project --python 3.13 python - <<'PY'\n<ticket acceptance_cmd heredoc body>\nPY\nresult: OK\nrc: 0\n\nTargeted regression:\nuv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_orchestrate.py -k verified_against\nresult: 1 passed, 335 deselected\nrc: 0"
 }

@@ -1,0 +1,14 @@
+{
+  "brief": "批次立單失敗時回報成已提交，執行者會誤判資料是否寫入。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "在 feat/r6-r8-land 以 backlog.py add --stage 重現 collision refusal 時，命令正確以 written=false 拒絕且 queue 未被改動，但 JSON envelope 與人類訊息都標 mode=commit。實際動作是 stage，且沒有寫 store；錯誤 mode 會讓機器 receipt 與操作者誤判是哪個寫入平面失敗。應讓 add 的成功與拒絕 envelope 共用由 --stage/--dry-run/立即寫入推導的 mode。",
+  "id": "IMP-20260809-67edd9",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "調整一個錯誤信封欄位並補一條回歸測試。",
+  "severity": "low",
+  "source": "R6-R8 parent repair dogfood",
+  "status": "open",
+  "stream": "IMP"
+}

@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "`ops/capture_profile.py:300` 的 build_ops_edit_commands 仍組 additive `ops-edit seed`,而它正是 repo 內唯一真的在做「把既有 demo 帳號 materialize 成某個 spec」的呼叫端 —— 也就是 IMP-0024 描述的 reshape 場景本身。IMP-0024 已把 `seed --replace` 這個原語做出來(spec = 精確最終狀態,先清整層 vocab 再灌,verify 走精確形狀比對),但唯一的用戶還停在舊路徑:profile 重跑時若 spec 結構變了(卡換本 / 少卡),帳號會累積重複卡與殘留卡,而 additive 路徑的 verify 判準 `total >= len(cards)` 對這種殘留照樣報綠。\n\n要評估的不只是「加個旗標」:capture profile 的 materialize 語意是否應該整體改成 replace(冪等重放),還是保留 additive 而由 profile 顯式宣告。若改 replace,注意 replace 要求 `cards[]`/`links[]` 的 notebook 只能引用該 spec 宣告的本或 \"default\",既有 profile spec 若引用既存本會 fail-fast(這是刻意的),需一併檢查 `ops/capture_profiles/*.json`。另 `--replace` 後 `vocab_ui.active_notebook_id` 會懸空(identity 不動),profile 若靠 active notebook 造景需補 user-config-set 步驟。",
   "fix_site": "ops/capture_profile.py:build_ops_edit_commands；ops/tests/test_capture_profile.py；backend/tests/test_ops_edit.py（既有 replace 語義回歸）",
+  "fixed_by": [
+    "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5"
+  ],
   "groomed_against": "d54fce7bc195f0b823081f228bddd6472c3916d4",
   "groomed_at": "2026-08-09",
   "groomed_by": "workflow:groom@v1",
@@ -16,6 +19,10 @@
   "scope": "評估一支 ops 編排腳本的 materialize 語意,可能改一行旗標也可能要動既有 profile spec。",
   "severity": "med",
   "source": "IMP-0024 的 code review 發現(backend-engineer)",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-anchor",
+  "verified_evidence": "Stored acceptance_cmd rerun successfully during R6-R8 closure; integrated batch is reachable at 55baa5099ddd47bf4f5adc474acd6b5ee1c728a5."
 }
