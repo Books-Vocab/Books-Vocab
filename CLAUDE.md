@@ -226,7 +226,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 每份 doc 的 frontmatter 都有 `tier`;活文檔的長期 ownership / trigger / source hint 另以 `docs/registry.yml` 為機器可讀 SoT(`sources` 內 `!path` / `!glob` 表示排除 broad source 下的已知誤報)。改實作前先確認 registry 與 tier:
 
-- **contract / reference / policy** — 活契約或索引。改相關語意 surface 必**同 PR** 更新對應 doc(routers / DB / env / iOS feature scope / CSV schema / host topology / safety),並把 `verified_against` 指到 main 可達 code commit。標 **(SoT)** 者衝突時權威。
+- **contract / reference / policy** — 活契約或索引。改相關語意 surface 必**同 PR** 更新對應 doc(routers / DB / env / iOS feature scope / CSV schema / host topology / safety),並把 `verified_against` 指到 **`origin/main` 可達**的 code commit（判準見 `docs/sop/doc_sync.md` 步驟 4）。標 **(SoT)** 者衝突時權威。
 - **sop**(`docs/sop/*`) — SOP 流程變了才更新;不是 code-as-doc。
 - **generated** — registry 必須宣告 `generator` **與 `check`**(等值檢查命令,產物 != generator 輸出就 exit 1);產物不手改。缺 `check` 是 `docs_lint.sh --registry` 的 ERROR——`generator` 只宣告「這是產物」,`check` 才讓那個宣告可被機器驗證。
 - **snapshot**(`docs/snapshot/*`) — 機器生成或 dated。讀前看 `verified_against`,**可能已過時**。
@@ -238,7 +238,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## Doc Freshness 自動同步
 
-> **執行方式(預設)**:doc 同步**派 background doc-sync agent**,不佔主線。code task commit 後,`Agent(subagent_type: general-purpose, model: opus, run_in_background: true)` + 極短 prompt:「讀 `docs/sop/doc_sync.md` 與 `docs/registry.yml`,必要時跑 `ops/docs_impact.py --since <base>`。依 registry trigger 同步 git commit `<hash>` 的文檔並 commit。改動摘要:<一兩句>」。agent 自讀 registry、用 impact hints 輔助判斷影響範圍、bump verified_against 到 main 可達 code commit、跑 docs gate、自行 `docs:` commit。主線不阻塞。純樣板(typo/rename)或 doc-only commit 不必派。
+> **執行方式(預設)**:doc 同步**派 background doc-sync agent**,不佔主線。code task commit 後,`Agent(subagent_type: general-purpose, model: opus, run_in_background: true)` + 極短 prompt:「讀 `docs/sop/doc_sync.md` 與 `docs/registry.yml`,必要時跑 `ops/docs_impact.py --since <base>`。依 registry trigger 同步 git commit `<hash>` 的文檔並 commit。改動摘要:<一兩句>」。agent 自讀 registry、用 impact hints 輔助判斷影響範圍、bump `verified_against` 到 **`origin/main` 可達**的 code commit、跑 docs gate、自行 `docs:` commit。主線不阻塞。純樣板(typo/rename)或 doc-only commit 不必派。
 
 - 修改 backend router / DB schema / env var / ops 腳本 → 同 PR 更新 `docs/reference/tech_index.md`
 - 新增 user-facing feature(iOS / backend / admin / chrome) → 同 PR 在 `docs/reference/product_surface.md` 追加 bullet

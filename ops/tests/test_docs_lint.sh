@@ -116,6 +116,9 @@ forbid_in "uv run lab/llm_eval/cli.py" \
 forbid_in "uv run llm-eval" \
   "startup docs still reference unavailable llm-eval console script" \
   CLAUDE.md AGENTS.md .claude/skills/kg-router/SKILL.md ops/capability_matrix.py
+forbid_in "[^/]main 可達.*code commit" \
+  "agent-facing config still states the refuted local-main anchor standard (SoT: docs/sop/doc_sync.md step 4 = origin/main reachable)" \
+  CLAUDE.md .claude/agents/docs-steward.md
 
 ./ops/docs_lint.sh --help > /tmp/kg_docs_lint_help.out
 if grep -q '^!/usr/bin/env bash' /tmp/kg_docs_lint_help.out; then
