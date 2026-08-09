@@ -273,6 +273,24 @@ class TestSeedValidation:
         assert r.returncode != 0
         assert _card_rows(tmp_path, uid) == []
 
+    def test_replace_rejects_malformed_typed_fields_before_wipe(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        assert _edit(str(tmp_path), "card-add", uid, "survivor", "--meaning", "m",
+                     "--commit").returncode == 0
+
+        malformed_specs = [
+            {"notebooks": [{"name": "N", "color": 123}]},
+            {"notebooks": [{"name": "N", "cover_pattern": []}]},
+            {"notebooks": [{"name": "N", "source_version": "one"}]},
+            {"cards": [{"content": "w", "meaning": "m", "difficulty": "hard"}]},
+            {"cards": [{"content": "w", "meaning": "m", "note": []}]},
+            {"cards": [{"content": "w", "meaning": "m", "pos": {}}]},
+        ]
+        for spec in malformed_specs:
+            result = self._seed(tmp_path, uid, spec, "--replace", "--commit", "--json")
+            assert result.returncode != 0, spec
+            assert _card_by_content(tmp_path, uid, "survivor") is not None, spec
+
     def test_rejects_duplicate_notebook_name(self, tmp_path):
         uid = _mk_user(tmp_path)
         r = self._seed(tmp_path, uid,

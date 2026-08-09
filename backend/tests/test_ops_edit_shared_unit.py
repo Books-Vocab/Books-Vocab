@@ -244,6 +244,24 @@ class TestEditContext:
         out = capsys.readouterr().out
         assert "error" in out
 
+    def test_destructive_apply_raises_reports_mutation_and_recovery(self, tmp_path, capsys):
+        dd = self._setup(tmp_path)
+        ctx = shared.EditContext(data_dir=dd, uid="u1", commit=True, json_mode=True)
+
+        def apply_fn():
+            ctx.mark_destructive()
+            (ctx.user_dir / "already-removed").write_text("partial", encoding="utf-8")
+            raise RuntimeError("boom after destructive step")
+
+        rc = ctx.run(action="test", plan={"replace": True}, apply_fn=apply_fn)
+
+        assert rc == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["committed"] is False
+        assert payload["data_mutated"] is True
+        assert Path(payload["backup"]).exists()
+        assert "restore u1 --backup" in payload["recovery_path"]
+
     def test_user_not_found(self, tmp_path):
         dd = tmp_path
         (dd / "users").mkdir()
