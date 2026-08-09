@@ -626,7 +626,8 @@ def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
 
 def plan_gates(changed_files: list[str],
                ops_test_exists: Callable[[str], bool] | None = None,
-               base: str | None = None) -> list[dict[str, Any]]:
+               base: str | None = None,
+               machine_gate: bool = False) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
     judgement the orchestrator owns; it never decides pass/fail itself.
 
@@ -695,10 +696,11 @@ def plan_gates(changed_files: list[str],
     # test_gate_plan_real_repo_plans_review_receipts pins that the real repo does
     # get this gate, so "file vanished" cannot silently drop it.
     if base and (ops_test_exists is None or ops_test_exists("ops/review_audit.sh")):
+        review_cmd = ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD"]
+        if machine_gate:
+            review_cmd.append("--machine-gate")
         gates.append(_shell("review-receipts", "meta",
-                            ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD",
-                             "--machine-gate"],
-                            "block"))
+                            review_cmd, "block"))
 
     ios = [p for p in changed_files if p.startswith("ios/")]
     ds = [p for p in changed_files if DS_RE.search(p)]
@@ -1820,6 +1822,7 @@ _IOS_BUILD_INPUTS = frozenset({
     "ops/ios_build.sh",
     "ops/ios_diagnostics.py",
     "ops/lib/ios_build_progress.sh",
+    "ops/lib/ios_install_provenance.sh",
     "ops/lib/ios_lock_wait.sh",
     "ops/lib/ios_run_metrics.sh",
     "ops/lib/ios_run_verdict.sh",
@@ -3529,7 +3532,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # is seen (the primary checkout may not have it yet)
     plan = plan_gates(changed,
                       ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
-                      base=args.base)
+                      base=args.base,
+                      machine_gate=getattr(args, "machine_gate", False))
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     progress_path = _gate_progress_path(args.state, worktree)
@@ -4875,7 +4879,8 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         return EXIT_BLOCK
 
     grc, gpay = _land_step(cmd_gate, state=args.state, json=True, base=args.base,
-                           worktree=wt, receipt_line=False, plan_only=False)
+                           worktree=wt, receipt_line=False, plan_only=False,
+                           machine_gate=True)
     verdict = gpay.get("verdict")
     if verdict is None:
         # `gate` REFUSED rather than judged (mid-operation tree, orchestrator

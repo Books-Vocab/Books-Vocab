@@ -19,6 +19,7 @@ version: 1.0.0
 4. 若改 git history / branch / worktree，已跑相應 audit。
 5. 若有未跑測試，明確列原因與風險。
 6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → **先查重再立單**:`./ops/backlog.py list --grep '<關鍵字或檔名>'`(不分大小寫 regex,掃 detail/resolution/plan/fix_site,可疊 `--status open` 等)。這一步不是禮貌是機制:170 筆規模下已經發生過「重造一份已梳理的規格」(IMP-20260807-c66d97)。命中就改為在 receipt 裡指名那張既有票,別開第二張。確認沒有才用 `ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 登記(store 一筆一檔;要看全貌用 `list --json` / `show`,別去讀 markdown view——它已不在版控裡)。**能一句話講清楚就順手補 `--brief`(壞了什麼、誰有感)與 `--scope`(多大)**——那是手機看板唯一顯示得出來的東西,梳理階段工具當場就會要求(蓋 groom 戳記時擋,見 `platform-steward`),立單時寫比事後回填便宜。**stream 由「這缺陷誰碰得到」決定,不由誰發現、也不由嚴重度決定**(判準見下「Stream 分流」)。撞到摩擦無聲妥協(硬幹)= 違鐵律9。
+   **批次 wave 例外**：受派 worker 不得讓 filing 混進修復 diff；上述 `add` 加 `--stage`，由整合者落地後 `anchor --commit`。一般單線工作才用裸 `add` 立即寫 store。
 
 票的出生到結案、`verify` / `groom` 分工與情境分支以 `./ops/backlog.py lifecycle --json` 為唯一可執行 SoT；receipt 只負責立單與回報，不複製生命週期。
 
@@ -86,7 +87,7 @@ scratch 路徑；`resolve` 後該路徑應不存在。
 - 不把舊輸出當本輪證據。
 - 若背景工作還在跑，receipt 必須標示它不是完成證據。
 - 若執行者是受派子 agent,依賴的 `Agent()` / 耗時 Bash 仍須背景啟動；但它必須把自己的 turn 留在前景,依 CLAUDE.md 鐵律5於同一個 turn 輪詢到結果或 rc,不得以「review in flight」交回並等待協調者再次喚醒。
-- Tooling Debt 不可留空:`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者用 `ops/backlog.py add` 登記。
+- Tooling Debt 不可留空:`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者用 `ops/backlog.py add` 登記；批次 wave worker 加 `--stage`。
 - **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 追到 resolved;`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)追到 resolved,其取票入口是 `./ops/backlog.py dispatch --stream APP`(已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋;`list --stream APP` 是**全表**,拿來查重不是拿來取票)。判準見上方 Checklist 的「Stream 分流」。
 - 這條判準只有**一半**是機器守的:`add --stream IMP --surface ...` 會 exit 64 被拒(`ops/tests/test_backlog.py` 釘住);反向——該進 APP 的填成 IMP——沒有任何工具擋得住,所以那一半靠上面的判準自律。
 

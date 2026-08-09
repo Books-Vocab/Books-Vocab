@@ -4735,7 +4735,27 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
 
     planned: list[tuple[dict, dict, dict]] = []
     staged_adds: list[tuple[dict, dict]] = []
-    problems: list[dict] = []
+    # Producer-side collision checks are not enough: this shared gitignored JSONL
+    # can contain legacy or hand-written rows. A duplicate ready id used to be
+    # written twice, with queue order deciding the final payload/status, and then
+    # both rows were consumed. Reject it before acceptance or any store write.
+    seen_ready: set[str] = set()
+    duplicate_ready: set[str] = set()
+    for row in ready:
+        entry_id = row.get("id")
+        if not isinstance(entry_id, str):
+            continue
+        if entry_id in seen_ready:
+            duplicate_ready.add(entry_id)
+        seen_ready.add(entry_id)
+    problems: list[dict] = [
+        {
+            "id": entry_id,
+            "error": f"duplicate ready rows for {entry_id}; refusing the whole "
+                     "wave so queue order cannot overwrite evidence or status",
+        }
+        for entry_id in sorted(duplicate_ready)
+    ]
     for row in ready:
         if row.get("kind") == "add":
             try:

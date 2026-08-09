@@ -258,9 +258,46 @@ def test_gate_plan_real_repo_plans_review_receipts():
     g = next(x for x in gates if x["name"] == "review-receipts")
     assert g["level"] == "block"
     assert g["cmd"][:2] == ["ops/review_audit.sh", "--rev-range"]
+    assert "--machine-gate" not in g["cmd"], (
+        "an ordinary gate must not discharge missing commit review receipts")
+    integration = plan_gates(
+        ["README.md"], ops_test_exists=lambda rel: True, base="main",
+        machine_gate=True,
+    )
+    integration_review = next(
+        x for x in integration if x["name"] == "review-receipts")
+    assert integration_review["cmd"][-1] == "--machine-gate"
     # and absent when the tool is not there
     assert "review-receipts" not in _names(
         plan_gates(["README.md"], ops_test_exists=lambda rel: False, base="main"))
+
+
+def test_integrate_gate_explicitly_requests_the_machine_review_exception(
+    tmp_path, monkeypatch, capsys
+):
+    """The exception belongs to parent integration, not to `plan_gates` globally."""
+    call = {}
+
+    def fake_land_step(func, **kwargs):
+        call.update(kwargs)
+        return MODULE.EXIT_BLOCK, {
+            "verdict": "block", "head_sha": "abc1234", "gates": [],
+        }
+
+    monkeypatch.setattr(MODULE, "_land_step", fake_land_step)
+    monkeypatch.setattr(MODULE, "_head_sha", lambda _wt: "abc1234")
+    state_path = tmp_path / "integration.json"
+    args = argparse.Namespace(
+        state=str(tmp_path / "registry.json"), base="main", json=True, slug="batch")
+    integration_state = {
+        "worktree": str(tmp_path), "slug": "batch", "branch": "feat/batch",
+        "trunk": "main", "branches": [], "picked": [], "skipped": [],
+        "queue": [], "planned_total": 0,
+    }
+
+    assert MODULE._integrate_gate(args, state_path, integration_state) == MODULE.EXIT_BLOCK
+    capsys.readouterr()
+    assert call["machine_gate"] is True
 
 
 def test_gate_plan_ios_ui_change_selects_full_ios_set():
