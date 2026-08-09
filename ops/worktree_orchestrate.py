@@ -172,6 +172,7 @@ GATE_SCHEMA = "kg.worktree.gate.v1"
 GATE_INPUT_SCHEMA = "kg.worktree.gate-input.v1"
 GATE_PROGRESS_SCHEMA = "kg.worktree.gate-progress.v1"
 FREEZE_SCHEMA = "kg.worktree.freeze.v1"
+DELIVERY_SCHEMA = "kg.worktree.delivery.v1"
 EXIT_OK = 0
 EXIT_USAGE = 64
 EXIT_BLOCK = 1
@@ -5155,6 +5156,497 @@ def _integrate_abort(args, spath: Path) -> int:
     return EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# close-wave — the Delivery Team's bounded batch-closure coordinator
+# ---------------------------------------------------------------------------
+
+def _delivery_json_tool(
+    script: Path,
+    cwd: Path,
+    argv: list[str],
+    *,
+    label: str,
+) -> tuple[int, dict[str, Any]]:
+    """Run one existing orchestrator/registry verb and decode its JSON receipt.
+
+    ``close-wave`` coordinates existing primitives; it does not reproduce their
+    gate, containment, or registry judgement.  Keeping each child as a separate
+    process also means its stderr heartbeat remains visible while stdout stays a
+    single machine-readable payload for the coordinator.
+    """
+    command = [sys.executable, str(script), *argv]
+    if "--json" not in command:
+        command.append("--json")
+    try:
+        completed = run_streamed_command(
+            command,
+            cwd=cwd,
+            label_key="delivery",
+            label=label,
+            progress_prefix="[delivery]",
+            heartbeat_interval=20.0,
+            capture_limit=256 * 1024,
+        )
+    except OSError as exc:
+        return 127, {"error": f"could not start {label}: {exc}"}
+    raw = (completed.stdout or "").strip()
+    if not raw:
+        return completed.returncode, {
+            "error": f"{label} returned no JSON payload",
+            "stderr": (completed.stderr or "")[-4000:],
+        }
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return completed.returncode, {
+            "error": f"{label} returned invalid JSON: {exc}",
+            "stdout_tail": raw[-4000:],
+            "stderr": (completed.stderr or "")[-4000:],
+        }
+    if not isinstance(payload, dict):
+        return completed.returncode, {
+            "error": f"{label} returned JSON {type(payload).__name__}, expected object",
+            "payload": payload,
+        }
+    return completed.returncode, payload
+
+
+def _delivery_state_paths(args: argparse.Namespace) -> tuple[Path, list[Path]]:
+    state_path = _integrate_state_path(args.state, args.slug)
+    completed_dir = state_path.parent / "completed"
+    manifests = sorted(
+        completed_dir.glob(f"{args.slug}-*.json"),
+        key=lambda path: path.stat().st_mtime_ns if path.exists() else 0,
+        reverse=True,
+    )
+    return state_path, manifests
+
+
+def _delivery_load_json(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _delivery_registry_records(args: argparse.Namespace) -> tuple[int, list[dict[str, Any]]]:
+    registry_script = Path(__file__).with_name("worktree_registry.py")
+    argv = ["list"]
+    if args.state:
+        argv += ["--state", args.state]
+    rc, payload = _delivery_json_tool(
+        registry_script, primary_root(), argv, label="registry-list"
+    )
+    records = payload.get("records")
+    if rc != EXIT_OK or not isinstance(records, list):
+        return rc or EXIT_BLOCK, []
+    return EXIT_OK, [record for record in records if isinstance(record, dict)]
+
+
+def _delivery_primary_dirty(primary: Path) -> list[str]:
+    rc, output = _git(["status", "--porcelain", "--untracked-files=all"], cwd=primary)
+    if rc != 0:
+        return [f"git status failed: {output}"]
+    return [line for line in output.splitlines() if line.strip()]
+
+
+def _delivery_anchor_commit(primary: Path) -> tuple[int, dict[str, Any]]:
+    """Commit only the closure rows materialized by ``anchor``.
+
+    ``backlog.py anchor`` intentionally writes data but does not invent a git
+    commit.  The coordinator is the owner of the wave's one metadata commit.  The
+    path check is the safety boundary: a concurrent edit in primary must never be
+    swept into this automatic commit.
+    """
+    rc, changed = _git(["diff", "--name-only"], cwd=primary)
+    if rc != EXIT_OK:
+        return EXIT_BLOCK, {"error": f"cannot inspect anchor diff: {changed}"}
+    paths = [line for line in changed.splitlines() if line]
+    if not paths:
+        return EXIT_OK, {"committed": False, "paths": []}
+    outside = [path for path in paths if not path.startswith("docs/runbook/backlog/")]
+    if outside:
+        return EXIT_BLOCK, {
+            "error": "primary changed outside backlog closure paths; refusing to commit "
+                     "another session's work",
+            "outside_paths": outside,
+            "paths": paths,
+        }
+    add_rc, add_output = _git_mutation(
+        ["add", "--", "docs/runbook/backlog"],
+        cwd=primary,
+        label="delivery-anchor-stage",
+    )
+    if add_rc != EXIT_OK:
+        return EXIT_BLOCK, {"error": f"could not stage anchor output: {add_output}"}
+    commit_rc, commit_output = _git_mutation(
+        [
+            "commit",
+            "-m",
+            "ops: anchor delivered backlog wave",
+            "-m",
+            "Review-Exempt: machine-repair",
+        ],
+        cwd=primary,
+        label="delivery-anchor-commit",
+    )
+    if commit_rc != EXIT_OK:
+        return EXIT_BLOCK, {
+            "error": f"could not commit anchor output: {commit_output}",
+            "paths": paths,
+        }
+    tip_rc, tip = _git(["rev-parse", "HEAD"], cwd=primary)
+    return (EXIT_OK if tip_rc == EXIT_OK else EXIT_BLOCK), {
+        "committed": True,
+        "paths": paths,
+        "sha": tip if tip_rc == EXIT_OK else None,
+        "output": commit_output[-2000:],
+    }
+
+
+def cmd_close_wave(args: argparse.Namespace) -> int:
+    """Run the Delivery Team's complete, resumable batch closure.
+
+    Workers still stop at commit + hand-back.  This verb belongs to the one
+    coordinator that owns the whole wave and is only safe after the caller has
+    obtained the normal develop-plane authorization.  It refuses when another
+    active worktree is visible, so a Catalog or unrelated session cannot be
+    resolved accidentally.
+    """
+    blocked = _freeze_guard(args.state, "close-wave", args.json)
+    if blocked is not None:
+        return blocked
+    primary = primary_root()
+    dirty = _delivery_primary_dirty(primary)
+    if dirty:
+        _emit({
+            "schema": DELIVERY_SCHEMA,
+            "step": "close-wave",
+            "error": "primary is not clean; refusing before touching the wave",
+            "dirty_files": dirty,
+        }, args.json, "✗ close-wave refused: primary is dirty\n" + "\n".join(
+            f"  {path}" for path in dirty
+        ))
+        return EXIT_BLOCK
+
+    state_path, manifests = _delivery_state_paths(args)
+    integration_state = _delivery_load_json(state_path) if state_path.exists() else None
+    manifest = _delivery_load_json(manifests[0]) if manifests else None
+    branches = list(args.branches or [])
+    if integration_state is not None:
+        state_branches = list(integration_state.get("branches") or [])
+        if branches and branches != state_branches:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "error": "--branches differs from the in-flight integration state",
+                "expected_branches": state_branches, "received_branches": branches,
+                "state_file": str(state_path),
+            }, args.json,
+                "✗ close-wave refused: resume with the original branch list")
+            return EXIT_USAGE
+        branches = state_branches
+    elif manifest is not None:
+        state_branches = list(manifest.get("branches") or [])
+        if branches and branches != state_branches:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "error": "--branches differs from the completed integration manifest",
+                "expected_branches": state_branches, "received_branches": branches,
+                "manifest": str(manifests[0]),
+            }, args.json,
+                "✗ close-wave refused: resume with the original branch list")
+            return EXIT_USAGE
+        branches = state_branches
+    if not branches:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "error": "fresh close-wave needs --branches; an in-flight slug may omit it",
+            "slug": args.slug,
+        }, args.json, "✗ close-wave: --branches <source-branch ...> is required")
+        return EXIT_USAGE
+
+    allowed = set(branches)
+    if integration_state and integration_state.get("branch"):
+        allowed.add(str(integration_state["branch"]))
+    if manifest and manifest.get("branch"):
+        allowed.add(str(manifest["branch"]))
+    rrc, records = _delivery_registry_records(args)
+    if rrc != EXIT_OK:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "error": "could not read the worktree registry; no closure was attempted",
+        }, args.json, "✗ close-wave refused: registry-list failed")
+        return EXIT_BLOCK
+    foreign = [
+        {
+            "branch": record.get("branch"),
+            "path": record.get("path"),
+            "intent": record.get("intent"),
+            "handed_back_sha": record.get("handed_back_sha"),
+        }
+        for record in records
+        if record.get("status") == wr.STATUS_ACTIVE
+        and record.get("branch") not in allowed
+    ]
+    if foreign:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "error": "another active worktree exists; close-wave will not cross its boundary",
+            "allowed_branches": sorted(allowed), "foreign_active": foreign,
+        }, args.json,
+            "✗ close-wave refused: other active worktrees exist\n"
+            + "\n".join(f"  {item['branch']} @ {item['path']}" for item in foreign))
+        return EXIT_BLOCK
+
+    if not args.commit:
+        plan = [
+            "integrate --commit --no-gate (fresh) or --continue --commit (resume)",
+            "integrated-tree fresh Gate",
+            "cutover --commit",
+            "resolve every source with --via-integration main",
+            "resolve the integration tree",
+            "backlog.py anchor --commit",
+            "commit only docs/runbook/backlog closure metadata",
+            "backlog.py validate --baseline-check",
+        ]
+        if integration_state:
+            next_step = "integrate --continue --commit"
+        elif manifest:
+            next_step = "cutover --commit"
+        else:
+            next_step = "integrate --commit --no-gate"
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "dry-run",
+            "slug": args.slug, "branches": branches, "allowed_branches": sorted(allowed),
+            "state_file": str(state_path) if integration_state else None,
+            "manifest": str(manifests[0]) if manifest else None,
+            "plan": plan, "next_step": next_step,
+        }, args.json,
+            f"# close-wave {args.slug} (dry-run)\n  " + "\n  ".join(plan)
+            + f"\n  next: {next_step}\n  (--commit to execute)")
+        return EXIT_OK
+
+    steps: list[dict[str, Any]] = []
+    orchestrator = Path(__file__)
+    integration_worktree: Path | None = None
+    integration_branch: str | None = None
+
+    if integration_state is None and manifest is None:
+        integrate_rc, integrate_payload = _delivery_json_tool(
+            orchestrator,
+            primary,
+            [
+                "integrate", "--slug", args.slug, "--branches", *branches,
+                "--no-gate", "--commit", "--base", args.base,
+                *_state_arg(args.state),
+            ],
+            label=f"integrate:{args.slug}",
+        )
+        steps.append({"name": "integrate-pick", "rc": integrate_rc,
+                      "payload": integrate_payload})
+        if integrate_rc != EXIT_OK:
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "mode": "stopped", "slug": args.slug, "steps": steps,
+                   "state_file": str(state_path) if state_path.exists() else None,
+                   "next": "resolve the named conflict, then rerun close-wave with the same slug"},
+                  args.json,
+                  f"✗ close-wave stopped during integrate; state kept at {state_path}")
+            return integrate_rc
+        integration_state = _delivery_load_json(state_path)
+        if integration_state is None:
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "error": "integrate returned success but left no resumable state",
+                   "steps": steps}, args.json,
+                  "✗ close-wave refused: integrate did not leave state")
+            return EXIT_BLOCK
+
+    if integration_state is not None:
+        integration_worktree = Path(str(integration_state["worktree"]))
+        integration_branch = str(integration_state.get("branch") or "")
+        continue_script = integration_worktree / "ops" / "worktree_orchestrate.py"
+        continue_rc, continue_payload = _delivery_json_tool(
+            continue_script,
+            integration_worktree,
+            [
+                "integrate", "--slug", args.slug, "--continue", "--commit",
+                "--base", args.base, *_state_arg(args.state),
+            ],
+            label=f"integrate-gate:{args.slug}",
+        )
+        steps.append({"name": "integrate-gate", "rc": continue_rc,
+                      "payload": continue_payload})
+        if continue_rc != EXIT_OK or continue_payload.get("verdict") not in ("pass", "warn"):
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "mode": "stopped", "slug": args.slug, "steps": steps,
+                   "next": "fix/resume the named integrated-tree issue, then rerun close-wave"},
+                  args.json, "✗ close-wave stopped: integrated-tree Gate is not non-block")
+            return continue_rc or EXIT_BLOCK
+        manifest_path = continue_payload.get("manifest")
+        manifest = _delivery_load_json(Path(manifest_path)) if manifest_path else None
+
+    if manifest is not None:
+        integration_worktree = integration_worktree or Path(str(manifest["worktree"]))
+        integration_branch = integration_branch or str(manifest.get("branch") or "")
+    if integration_worktree is None or integration_branch is None:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "error": "no integration worktree/branch was available after assembly",
+               "steps": steps}, args.json,
+              "✗ close-wave refused: integration identity is missing")
+        return EXIT_BLOCK
+
+    ancestor_rc, _ = _git(
+        ["merge-base", "--is-ancestor", integration_branch, args.base], cwd=primary
+    )
+    if ancestor_rc == 0:
+        steps.append({"name": "cutover", "mode": "already-landed", "branch": integration_branch})
+    else:
+        cutover_script = integration_worktree / "ops" / "worktree_orchestrate.py"
+        cutover_rc, cutover_payload = _delivery_json_tool(
+            cutover_script,
+            integration_worktree,
+            [
+                "cutover", "--worktree", str(integration_worktree), "--commit",
+                "--base", args.base, *_state_arg(args.state),
+            ],
+            label=f"cutover:{args.slug}",
+        )
+        steps.append({"name": "cutover", "rc": cutover_rc,
+                      "payload": cutover_payload})
+        if cutover_rc != EXIT_OK or not cutover_payload.get("landed"):
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "mode": "stopped", "slug": args.slug, "steps": steps,
+                   "next": "follow cutover refusal, then rerun close-wave"}, args.json,
+                  "✗ close-wave stopped: cutover did not land")
+            return cutover_rc or EXIT_BLOCK
+
+    # Capture source paths after cutover too: a resumed invocation may have already
+    # resolved some of them.  Resolved sources are idempotently skipped; active
+    # sources are audited before removal.
+    rrc, records = _delivery_registry_records(args)
+    if rrc != EXIT_OK:
+        return EXIT_BLOCK
+    active_by_branch = {
+        str(record.get("branch")): record for record in records
+        if record.get("status") == wr.STATUS_ACTIVE
+    }
+    for branch in branches:
+        record = active_by_branch.get(branch)
+        if record is None:
+            steps.append({"name": "resolve-source", "branch": branch, "mode": "already-resolved"})
+            continue
+        source_path = Path(str(record.get("path") or ""))
+        if not source_path.is_dir():
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "error": "active source worktree is missing; refusing to guess its identity",
+                   "branch": branch, "path": str(source_path), "steps": steps}, args.json,
+                  f"✗ close-wave stopped: source worktree missing for {branch}")
+            return EXIT_BLOCK
+        resolve_rc, resolve_payload = _delivery_json_tool(
+            orchestrator,
+            primary,
+            [
+                "resolve", "--worktree", str(source_path),
+                "--via-integration", args.base, "--commit", *_state_arg(args.state),
+            ],
+            label=f"resolve-source:{branch}",
+        )
+        steps.append({"name": "resolve-source", "branch": branch, "rc": resolve_rc,
+                      "payload": resolve_payload})
+        if resolve_rc != EXIT_OK:
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "mode": "stopped", "slug": args.slug, "steps": steps,
+                   "next": "fix the named resolve audit and rerun close-wave"}, args.json,
+                  f"✗ close-wave stopped resolving source {branch}")
+            return resolve_rc
+
+    rrc, records = _delivery_registry_records(args)
+    if rrc != EXIT_OK:
+        return EXIT_BLOCK
+    integration_record = next(
+        (record for record in records
+         if record.get("status") == wr.STATUS_ACTIVE
+         and record.get("branch") == integration_branch),
+        None,
+    )
+    if integration_record is None:
+        steps.append({"name": "resolve-integration", "mode": "already-resolved",
+                      "branch": integration_branch})
+    else:
+        resolve_rc, resolve_payload = _delivery_json_tool(
+            orchestrator,
+            primary,
+            [
+                "resolve", "--worktree", str(integration_worktree), "--commit",
+                *_state_arg(args.state),
+            ],
+            label=f"resolve-integration:{args.slug}",
+        )
+        steps.append({"name": "resolve-integration", "rc": resolve_rc,
+                      "payload": resolve_payload})
+        if resolve_rc != EXIT_OK:
+            _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+                   "mode": "stopped", "slug": args.slug, "steps": steps,
+                   "next": "fix the named integration resolve issue and rerun close-wave"}, args.json,
+                  "✗ close-wave stopped resolving the integration tree")
+            return resolve_rc
+
+    dirty = _delivery_primary_dirty(primary)
+    if dirty:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "error": "primary became dirty before anchor; refusing to absorb unrelated work",
+               "dirty_files": dirty, "steps": steps}, args.json,
+              "✗ close-wave refused before anchor: primary became dirty\n"
+              + "\n".join(f"  {path}" for path in dirty))
+        return EXIT_BLOCK
+
+    anchor_rc, anchor_payload = _delivery_json_tool(
+        primary / "ops" / "backlog.py",
+        primary,
+        ["anchor", "--commit"],
+        label=f"anchor:{args.slug}",
+    )
+    steps.append({"name": "anchor", "rc": anchor_rc, "payload": anchor_payload})
+    if anchor_rc != EXIT_OK or anchor_payload.get("problems"):
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "mode": "stopped", "slug": args.slug, "steps": steps,
+               "next": "fix/unstage the named anchor row, then rerun close-wave"}, args.json,
+              "✗ close-wave stopped: backlog anchor refused")
+        return anchor_rc or EXIT_BLOCK
+
+    anchor_commit_rc, anchor_commit = _delivery_anchor_commit(primary)
+    steps.append({"name": "anchor-commit", "rc": anchor_commit_rc,
+                  "payload": anchor_commit})
+    if anchor_commit_rc != EXIT_OK:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
+              "✗ close-wave stopped: anchor metadata was not committed")
+        return EXIT_BLOCK
+
+    validate_rc, validate_payload = _delivery_json_tool(
+        primary / "ops" / "backlog.py",
+        primary,
+        ["validate", "--baseline-check"],
+        label=f"validate:{args.slug}",
+    )
+    steps.append({"name": "validate", "rc": validate_rc,
+                  "payload": validate_payload})
+    if validate_rc != EXIT_OK:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
+              "✗ close-wave stopped: backlog validation is not green")
+        return validate_rc
+
+    _emit({
+        "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "committed",
+        "slug": args.slug, "branches": branches, "integration_branch": integration_branch,
+        "steps": steps, "primary_dirty": _delivery_primary_dirty(primary),
+    }, args.json,
+        f"✓ close-wave {args.slug}: integrated, gated, cut over, resolved, anchored, validated\n"
+        "  sync/deploy intentionally not run")
+    return EXIT_OK
+
+
 def cmd_catchup(args) -> int:
     """Bring a worktree onto the current local trunk — the step `gate` and `cutover`
     both send you to when the trunk moved under the branch.
@@ -6415,6 +6907,22 @@ def build_parser() -> argparse.ArgumentParser:
                          "lanes in exactly the long-gate batches this verb exists "
                          "for")
     ln.set_defaults(func=cmd_land)
+
+    cw = sub.add_parser(
+        "close-wave",
+        help="Delivery Team closure: integrate -> one fresh Gate -> cutover -> "
+             "resolve sources/integration -> anchor -> validate (dry-run default)",
+    )
+    add_common(cw)
+    add_base(cw)
+    cw.add_argument("--slug", required=True,
+                    help="kebab-case integration slug; rerun the same slug to resume")
+    cw.add_argument("--branches", nargs="+", metavar="BRANCH", default=None,
+                    help="source branches for a fresh wave; omit when resuming its state")
+    cw.add_argument("--commit", action="store_true",
+                    help="execute the complete local closure; requires the normal "
+                         "develop-plane authorization at the caller")
+    cw.set_defaults(func=cmd_close_wave)
 
     ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
                         "the local trunk, cherry-pick N branches into it in order, and "
