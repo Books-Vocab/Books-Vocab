@@ -431,6 +431,41 @@ def test_app_stream_uses_its_own_categories(tmp_path):
         BACKLOG.add_entry(store, **_entry_kwargs(stream="APP", category="cli"))
 
 
+@pytest.mark.parametrize(
+    "stream,bad_category,allowed,owner",
+    [
+        ("IMP", "correctness", "tool, cli, doc, arch", "APP-only"),
+        ("APP", "tool", "ux, correctness, perf, data, content", "IMP-only"),
+    ],
+)
+def test_cli_bad_category_names_stream_specific_choices(
+    tmp_path, capsys, stream, bad_category, allowed, owner
+):
+    """A filing refusal must tell a human which vocabulary applies here.
+
+    The two streams intentionally have disjoint categories. Assert the literal
+    lists so a future implementation cannot accidentally derive the wrong list
+    from the already-invalid value while still making this test green.
+    """
+    argv = [
+        "add",
+        "--store", str(tmp_path / "backlog"),
+        "--stream", stream,
+        "--date", "2026-08-08",
+        "--source", "test",
+        "--category", bad_category,
+        "--severity", "med",
+        "--detail", "a category refusal should explain itself",
+    ]
+
+    assert BACKLOG.main(argv) == 64
+    captured = capsys.readouterr()
+    assert f"invalid category '{bad_category}' for stream {stream}" in captured.err
+    assert f"allowed: {allowed}" in captured.err
+    assert owner in captured.err
+    assert not list((tmp_path / "backlog").glob("*.json"))
+
+
 # --------------------------------------------------------------------------
 # 7b. the APP stream through the CLI — the path the routing docs actually name
 #
