@@ -194,11 +194,11 @@ struct ReviewCardRenderPlan: Equatable {
 
         /// 一欄的列序：第二格起，每格前面帶一條 rule。與 solver 記帳用的
         /// `fieldDividerCount` 共用同一個 predicate，兩邊不可能各算各的。
-        private func columnRows(_ fields: [ReviewCardField]) -> [Row] {
-            fields.enumerated().flatMap { index, field -> [Row] in
-                ReviewCardLayoutSolver.drawsFieldDivider(face: face, atIndex: index)
-                    ? [Row.fieldDivider, .field(field)]
-                    : [Row.field(field)]
+        private func columnRows(_ column: [ReviewCardField]) -> [Row] {
+            column.enumerated().flatMap { pair -> [Row] in
+                ReviewCardLayoutSolver.drawsFieldDivider(face: face, atIndex: pair.offset)
+                    ? [Row.fieldDivider, .field(pair.element)]
+                    : [Row.field(pair.element)]
             }
         }
     }
