@@ -592,7 +592,7 @@ extension TodayReviewPresenter {
                         backgroundOpacity: appSkin.highlight.backgroundOpacity,
                         underlineOpacity: appSkin.highlight.underlineOpacity
                     ),
-                    mode: .cloze,
+                    mode: ReviewCardExampleRendering.mode(face: face, cardMode: card.reviewMode),
                     truncateAroundMarkedWordRadius: policy.exampleRadius
                         ?? ReviewCardLayoutSolver.naturalExampleRadius(
                             for: face,
