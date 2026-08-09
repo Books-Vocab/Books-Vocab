@@ -30,7 +30,7 @@ verified_against: 44d0c76c5
 
 ## 怎麼派
 
-> 派 `code-reviewer` agent 時,下方「Prompt 必含元素」§3–§6 已內建於 `.claude/agents/code-reviewer.md`(指回本 SOP,零重複),prompt 只需給 **commit hash + scope + 本次特別關注點**;用 general-purpose 當 reviewer 才需完整帶齊六項。
+> 派 `code-reviewer` agent 時，先依 `kg-agent-context` 與 `docs/reference/agent_context.md` 的 **Review service** row 載入最小 context，再讀 caller 指定的 commit hash × scope 與本 SOP；下方「Prompt 必含元素」§3–§6 已內建於 `.claude/agents/code-reviewer.md`(指回本 SOP,零重複),prompt 只需給 **commit hash + scope + 本次特別關注點**;用 general-purpose 當 reviewer 才需完整帶齊六項。角色 context 的唯一索引與本 SOP 的 review 契約分工，不在此重複 role matrix。
 
 ## Receipt 契約（機械可驗）
 

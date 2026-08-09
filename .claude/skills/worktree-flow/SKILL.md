@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "KG 的隔離工作樹與多 team delivery-loop。當使用者開新 session 丟 debug / dev / research intent、要求建立 Ticket Factory／Delivery Team，或要求把一輪工作整合進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。child worker 預設 commit＋hand-back；Delivery Team 的 Integrator 在取得當下 develop＋backup 授權後，以 close-wave --commit --sync 完成 primary＋origin/main 閉環。三平面：cutover=develop、sync=backup、deploy=release。"
+description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。child worker 預設 commit＋hand-back；Delivery Team 的 Integrator 在取得當下 develop＋backup 授權後，以 close-wave --commit --sync 完成 primary＋origin/main 閉環。三平面：cutover=develop、sync=backup、deploy=release。"
 user-invocable: true
 version: 2.1.0
 ---
@@ -8,6 +8,13 @@ version: 2.1.0
 # worktree-flow
 
 把「使用者需求 → Ticket Factory 產票 → 多個 Delivery Team thread 各自 fan-out → Integrator 合併 → primary＋origin/main」串成可重入的 delivery-loop；單一 child 仍以 `commit + hand-back` 作為自己的停止點。逐步呼叫原語 `ops/worktree_orchestrate.py`（下稱 `orchestrate`）。它只**編排**：P1 `ops/lib/worktree_state.py`（純健康判定）、P2 `ops/worktree_registry.py`（誕生→解決登記簿 + 孤兒哨兵）、與既有 gate 工具。**絕不重造 gate 判斷**。
+
+## Progressive disclosure boundary
+
+角色視野與未知升級的唯一索引是 `docs/reference/agent_context.md`，不是本 skill 的全文。Ticket Factory
+只需讀 lane／ticket 交接語意；Delivery Child 只需讀「預設停止點」與「批次交回狀態」；Delivery Team
+Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協調」。Round 6–8 壓測與歷史量測只有
+明示壓測或工具調查才載入。遇到未知先回到 authority index，不以讀完整 skill 取代 escalation。
 
 ## 預設停止點（授權邊界）
 

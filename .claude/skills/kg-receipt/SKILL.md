@@ -55,6 +55,11 @@ category 名單與欄位定義見 `ops/backlog.py --help`,此處不複述(SoT �
 Lane:
 - team=<Ticket Factory|Delivery Team> role=<factory|Integrator|child-worker> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|primary+sync|other named stop>
 
+Context:
+- role_profile=<Ticket Factory|Delivery Team Integrator|Delivery Child|Review service>
+- loaded=<actual authority paths or registry ids>
+- intentionally_unloaded=<deep context not needed for this slice, or none>
+
 Result:
 - <完成的高層結果>
 

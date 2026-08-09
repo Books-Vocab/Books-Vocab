@@ -13,6 +13,7 @@ agent_facing_surface:
     - .claude/commands/
     - docs/reference/product_surface.md
     - docs/reference/tech_index.md
+    - docs/reference/agent_context.md
     - docs/sop/
     - docs/policy/
     - docs/runbook/system.md
@@ -206,6 +207,24 @@ documents:
       - ops/tests/test_backlog.py
       - ops/
       - "!ops/tests/test_docs_*.sh"
+
+  - id: reference.agent_context
+    path: docs/reference/agent_context.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - agent_context_changed
+      - agent_role_changed
+      - skill_loading_changed
+      - escalation_route_changed
+    sources:
+      - CLAUDE.md
+      - .claude/agents/
+      - .claude/skills/
+      - .claude/commands/
+      - docs/sop/review_discipline.md
+      - docs/registry.yml
+      - docs/reference/agent_context.md
 
   - id: reference.ops_state_plane
     path: docs/reference/ops_state_plane.md
