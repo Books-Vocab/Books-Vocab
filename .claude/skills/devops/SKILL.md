@@ -135,6 +135,7 @@ ops-cli dictionary-cards [uid]             # 字典卡面(預設 all;讀 users/<
 
 ```bash
 ops-edit user-create <uid> [--email E] [--provider google|apple|demo] [--allow-existing]
+ops-edit user-delete <uid>                                      # 移 user dir + users.json record + email/subscription index;寫前備份,可 restore(但 restore 不回復 subscription index)
 ops-edit card-add <uid> <content> --meaning M [--pos] [--example ...] [--collocation ...]
                                    [--note] [--difficulty] [--mode] [--notebook] [--review new|due|reviewed] [--interval H]
 ops-edit card-update <uid> <id|content> --set field=value ...   # 白名單欄位;value 走 JSON 解析;改 content 驗本內衝突
