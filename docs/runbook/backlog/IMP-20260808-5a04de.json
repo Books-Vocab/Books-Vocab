@@ -11,11 +11,15 @@
   "groomed_by": "main-session",
   "id": "IMP-20260808-5a04de",
   "plan": "在 ops/backlog.py 仿 GROOM_ONLY_FLAGS 的既有機制，新增常數 NOT_ON_ADD_FLAGS = ('--commit',)（獨立常數，不要塞進 GROOM_ONLY_FLAGS——那組的拒絕文案講的是『梳理與填單是兩個動作』，跟 --commit 的理由無關）。以 argparse.SUPPRESS 註冊到 p_add，然後在 _cmd_add 內比照 groom 旗標的分支印出具名拒絕：說明 add 是 additive、立即落地，所以沒有 dry-run 也不需要 --commit，並指向『先 add 拿 id，再 update <id> ... --commit』的兩步流程。exit code 與既有 groom 拒絕一致。",
-  "resolution": "",
+  "resolution": "Superseded by the explicit write-mode contract: add keeps immediate write as the fast default, accepts --dry-run for preview, and accepts --commit as an explicit compatibility alias. The original requested refusal would recreate cross-command muscle-memory friction, so this ticket is intentionally declined after the replacement behavior was regression-tested.",
   "schema": "kg.backlog.entry.v1",
   "scope": "待辦工具加一段具名的拒絕訊息，連同它的測試。",
   "severity": "low",
   "source": "填一張新單時反射性加了 --commit（因為 update/stage/anchor/verify 都要），撞上裸 argparse 錯誤",
-  "status": "open",
-  "stream": "IMP"
+  "status": "wont-fix",
+  "stream": "IMP",
+  "verdict": "OBSOLETE",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-backlog-lifecycle",
+  "verified_evidence": "uv run --no-project --with pytest pytest -q ops/tests/test_backlog.py -k add_accepts_an_explicit_commit_without_changing_the_fast_default"
 }

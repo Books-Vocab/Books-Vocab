@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/
-verified_against: db0e9ed46
+verified_against: 785f64052
 -->
 # System Runbook
 
@@ -60,7 +60,7 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 7. `sync-main` = guarded **lossless** ff of the primary checkout's local `main` to origin (refuses unless tracked-clean + on `main` with no merge/rebase in flight + strictly behind origin; a diverged main is never auto-merged — land unique commits via `cutover`). In the local-centric model the dev machine's main runs AHEAD of origin, so this is a noop there; it earns its keep on the felix deploy clone and after a fresh clone.
 8. `freeze on --reason <surgery>` = stop-the-world lock for repo surgery (history rewrite / aggressive gc / shared hooks-config): while frozen, `open`/`adopt`/`catchup`/`integrate`/`cutover`/`sync`/`sync-main`/`deploy` refuse (`catchup` because a rebase rewrites history, which is exactly what the surgery lock exists to serialize); draining steps (`resolve`/`sweep`/`preflight`/`gate`) stay allowed. Drain to zero active worktrees → back up refs → operate → verify → `freeze off`.
 9. **Wave closure — a hunter never writes the store.** A worktree cannot write a correct `fixed_by`: the landing sha does not exist yet, and cutover's rebase rewrites whatever the branch was carrying, so an entry closed in place anchors on an orphan. (The rationale this item used to give — that closing rewrote the generated ledger view, the one file parallel branches provably collide on, at O(entries) per hunter — retired with that view at IMP-20260807-b9526c: it is gitignored now and only the explicit `render` subcommand writes it.) Instead: `backlog.py stage <id> --verdict <V> --by <who> --evidence '<cmd>'（含反引號時用 --evidence-file）` appends to the gitignored per-repo queue (no `--status`: a wave exists because the landing commit does not exist yet, and `fixed` is the only status that needs one).單線由 `cutover` 蓋真正 landed sha；批次來源樹由成功的 `resolve --via-integration <ref> --commit` 蓋 `<ref>` tip。波次結束 ONE `backlog.py anchor --commit` 全有或全無地回填 store；壞 row 用 `unstage <id> --commit` 取下，禁止手改 queue。`resolve` 以 `pending_anchor` 列出本分支已蓋、尚待 wave anchor 的 closures，不阻塞 teardown。
-10. All mutation subcommands are dry-run by default; `--commit` to land.
+10. Mutation subcommands are dry-run by default and use `--commit` to land, except `backlog.py add`: filing stays immediate by default, with explicit `--dry-run` preview and `--commit` compatibility alias. Backlog role/state semantics live in `backlog.py lifecycle --json`.
 
 `gate` 對 linked worktree 另記錄 `primary`、`primary_dirty` 與 `primary_dirty_error`：tracked dirty primary 只產生明示警告，不改 verdict 或 exit code；讀不到 primary 狀態也必須明示，不能靜默當成乾淨。`--plan-only` 不查也不記錄這個觀測。
 
