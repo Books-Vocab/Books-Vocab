@@ -146,6 +146,17 @@ extension TodayReviewPresenter {
                         .minimumScaleFactor(0.75)
                 }
 
+                // Inline 欄位（詞性）與核心詞共用這條 firstTextBaseline —— 它是單字的
+                // 附屬標註，不是自成一列的區塊。走同一支 reviewOptionalField，字型／
+                // 顏色天然與重構前那段 `Text(pos)` 對齊。
+                ForEach(plan.front.inlineFields, id: \.self) { field in
+                    reviewOptionalField(
+                        field,
+                        currentCard: currentCard,
+                        face: .front,
+                        policy: layout.policy(for: .field(field))
+                    )
+                }
             }
             // 右上角 chrome（喇叭 / 詳情）是 overlay（必須在 reveal Button 外才能獨立點），
             // 故在單字列保留其寬度的 trailing 空間，長詞（如 "be eaten alive"）在碰到
@@ -161,7 +172,7 @@ extension TodayReviewPresenter {
                 )
             }
 
-            ForEach(plan.front.fields, id: \.self) { field in
+            ForEach(plan.front.blockFields, id: \.self) { field in
                 reviewOptionalField(
                     field,
                     currentCard: currentCard,
@@ -290,20 +301,33 @@ extension TodayReviewPresenter {
             // core's own chrome (as on the shipped card), so it is measured with the
             // core rather than competing with the profile's fields for a slot.
             VStack(alignment: .leading, spacing: layout.sectionSpacing) {
-                Group {
-                    if card.reviewMode == .production {
-                        Text(card.word)
-                    } else {
-                        Text(card.translation)
+                // 背面與正面對稱：inline 欄位貼著答案字，不自成一列。排除是
+                // face-agnostic 的，只修正面會讓「背面開了詞性」這個組合直接掉字。
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
+                    Group {
+                        if card.reviewMode == .production {
+                            Text(card.word)
+                        } else {
+                            Text(card.translation)
+                        }
+                    }
+                    .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
+                    .foregroundStyle(appSkin.palette.primaryText)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.65)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    ForEach(plan.back.inlineFields, id: \.self) { field in
+                        reviewOptionalField(
+                            field,
+                            currentCard: currentCard,
+                            face: .back,
+                            policy: layout.policy(for: .field(field))
+                        )
                     }
                 }
-                .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
-                .foregroundStyle(appSkin.palette.primaryText)
-                .lineLimit(3)
-                .minimumScaleFactor(0.65)
-                .fixedSize(horizontal: false, vertical: true)
 
-                if ReviewCardLayoutSolver.drawsAnswerDivider(fields: plan.back.fields) {
+                if ReviewCardLayoutSolver.drawsAnswerDivider(fields: plan.back.blockFields) {
                     CardSectionDivider(horizontalPadding: 0)
                 }
             }
@@ -317,7 +341,7 @@ extension TodayReviewPresenter {
                 )
             }
 
-            ForEach(plan.back.fields, id: \.self) { field in
+            ForEach(plan.back.blockFields, id: \.self) { field in
                 reviewOptionalField(
                     field,
                     currentCard: currentCard,
@@ -454,7 +478,10 @@ extension TodayReviewPresenter {
         availableHeight: CGFloat
     ) -> ReviewCardLayoutSolver.Result {
         let plan = reviewCardRenderPlan(for: currentCard)
-        let fields = face == .front ? plan.front.fields : plan.back.fields
+        // 只有 block 欄位向 solver 要一格預算。inline 欄位（詞性）畫在核心列裡，
+        // 高度已經被 `.core` 的 onGeometryChange 量進去了——再配一格就是替同一段
+        // 內容付兩次錢，而且多收一個 foldSectionSpacing。
+        let fields = face == .front ? plan.front.blockFields : plan.back.blockFields
         let defaults: [ReviewCardLayoutSolver.Section: ReviewCardLayoutSolver.Measurement] = [
             .core: .init(naturalHeight: face == .front ? 112 : 132),
             .field(.partOfSpeech): .init(naturalHeight: 22),
