@@ -350,12 +350,11 @@ BLPY
 write_backlog_entry low with-detail
 rc=0; ./ops/backlog.py validate --store "$BL_STORE" >"$TMP/bl_ok.out" 2>&1 || rc=$?
 assert_green backlog-validate "0 problems" "$TMP/bl_ok.out" "$rc"
-# assert_green matches with `grep -F`, so the marker "0 problems" is also satisfied by
-# "10 problems". Harmless today because rc is checked first, but the marker's whole job
-# is to catch a future "printed problems yet exited 0" regression, at which point both
-# halves would fail together. Pin the whole line.
-grep -qx "0 problems" "$TMP/bl_ok.out" \
-  || fail_t "backlog-validate green marker matched as a substring, not as the whole line"
+# The validator appends staged-queue visibility to the count line, so pin the complete
+# count token rather than an impossible bare whole line. The boundary rejects "10
+# problems" while allowing the legitimate `; N staged add(s) pending anchor ...` suffix.
+grep -Eq '^0 problems($|;)' "$TMP/bl_ok.out" \
+  || fail_t "backlog-validate green marker was not an exact zero-count token"
 
 write_backlog_entry catastrophic no-detail   # outside vocabulary + missing required field
 rc=0; ./ops/backlog.py validate --store "$BL_STORE" >"$TMP/bl_bad.out" 2>&1 || rc=$?
@@ -483,7 +482,7 @@ scan_tree "$TMP/scan_good"
 "$WORKSPACE/ops/shell_scan.sh" "$TMP/scan_bad" >"$TMP/scan_bad.out" 2>&1 && rc=0 || rc=$?
 assert_red ops-shell-scan "ops/offender.sh:2" "$TMP/scan_bad.out" "$rc"
 "$WORKSPACE/ops/shell_scan.sh" "$TMP/scan_good" >"$TMP/scan_good.out" 2>&1 && rc=0 || rc=$?
-assert_green ops-shell-scan "passed: 2  failed: 0" "$TMP/scan_good.out" "$rc"
+assert_green ops-shell-scan "passed: 4  failed: 0" "$TMP/scan_good.out" "$rc"
 
 section "expensive gates: green read from recorded behaviour, never assumed"
 # TWO independent lists, derived from the two independent kinds. Deriving the journal
