@@ -10,7 +10,7 @@ import SwiftData
 
 @Model
 final class ReviewRecord {
-    // Note: #Index requires iOS 18+. Omitted for iOS 17 compatibility.
+    #Index<ReviewRecord>([\.notebookId], [\.dayKey], [\.reviewedAt])
 
     var id: UUID
     var word: String

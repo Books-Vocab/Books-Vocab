@@ -35,9 +35,7 @@ enum VocabularyPromotionState: String, Codable, CaseIterable {
 /// 生詞條目 — 記錄使用者在閱讀中查詢的單字/短語
 @Model
 final class VocabularyEntry {
-    // Note: #Index requires iOS 18+. On iOS 17, queries work without
-    // indexes but may be slower for large datasets. Consider adding
-    // #Index back behind #available when iOS 17 support is dropped.
+    #Index<VocabularyEntry>([\.notebookId], [\.word], [\.dateAdded])
 
     var id: UUID
     var word: String                // 原文單字或短語
