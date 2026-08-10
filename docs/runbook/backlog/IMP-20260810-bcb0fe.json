@@ -20,5 +20,9 @@
   "severity": "high",
   "source": "supervisor:fresh-gate-d4",
   "status": "fixed",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "supervisor:d4-repair",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py::test_the_queue_lock_is_the_same_file_in_both_modules ops/tests/test_backlog.py::test_two_concurrent_stages_cannot_lose_each_others_row"
 }
