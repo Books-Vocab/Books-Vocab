@@ -217,6 +217,7 @@ def _write_subscription_snapshot(
     product_id: str, status: str, is_trial: bool, expires_at: str | None,
     will_renew: bool, environment: str, transaction_id: str | None,
     original_transaction_id: str | None, price_display: str | None, source: str,
+    signed_date: str | None = None, notification_uuid: str | None = None,
 ) -> StoredUserRecord:
     return write_subscription_snapshot(
         users, user_id, product_id=product_id, status=status,
@@ -224,6 +225,7 @@ def _write_subscription_snapshot(
         environment=environment, transaction_id=transaction_id,
         original_transaction_id=original_transaction_id,
         price_display=price_display, source=source,
+        signed_date=signed_date, notification_uuid=notification_uuid,
     )
 
 

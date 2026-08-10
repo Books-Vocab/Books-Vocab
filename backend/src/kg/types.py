@@ -32,6 +32,8 @@ class SubscriptionRecord(TypedDict, total=False):
     transaction_id: str | None
     original_transaction_id: str | None
     environment: str | None
+    last_signed_date: str | None
+    last_notification_uuid: str | None
 
 
 class AdminGrantRecord(TypedDict, total=False):
