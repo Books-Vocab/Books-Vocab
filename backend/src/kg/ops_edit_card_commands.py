@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import argparse
+import csv
+import json
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
+from .ops_edit_shared import EditContext, EditError
 from .ops_edit_support import (
     _CARD_UPDATABLE_FIELDS,
     _VALID_REVIEW_STATES,
-    UTC,
-    Any,
-    EditContext,
-    EditError,
-    Path,
     _as_utc,
     _card_brief,
     _card_store,
@@ -19,12 +21,8 @@ from .ops_edit_support import (
     _resolve_notebook_id,
     _review_fields,
     _split_multi,
-    argparse,
-    csv,
-    data_dir,
-    datetime,
-    json,
 )
+from kg.ops_shared import data_dir
 
 logger = logging.getLogger(__name__)
 

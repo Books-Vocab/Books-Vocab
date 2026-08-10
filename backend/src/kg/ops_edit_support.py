@@ -587,4 +587,43 @@ def _list_world_backups(dd: Path) -> list[dict[str, Any]]:
     return out
 
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+# This module owns semantic helpers only.  Do not derive ``__all__`` from the
+# module namespace: doing so turns imported stdlib names, types, and stores
+# into an accidental compatibility API for command modules.
+__all__ = (
+    "_CARD_UPDATABLE_FIELDS",
+    "_CLONE_TMP_SUFFIX",
+    "_VALID_REVIEW_STATES",
+    "_WORLD_BACKUP_ROOT",
+    "_as_utc",
+    "_assert_clean_notebook_name",
+    "_card_brief",
+    "_card_store",
+    "_clone_source_files",
+    "_clone_source_fingerprint",
+    "_count_active_cards",
+    "_count_graph_links",
+    "_count_review_events",
+    "_extract_user_backup_members",
+    "_graph_store",
+    "_is_vocab_file",
+    "_link_on_disk",
+    "_list_world_backups",
+    "_mutate_users",
+    "_notebook_store",
+    "_parse_db_dt",
+    "_parse_seed_datetime",
+    "_passthrough_normalize",
+    "_read_card_review_states",
+    "_replace_world_from_snapshot",
+    "_resolve_card_id",
+    "_resolve_card_in_notebook",
+    "_resolve_notebook_id",
+    "_review_fields",
+    "_source_to_json",
+    "_sqlite_online_backup",
+    "_split_multi",
+    "_USER_BACKUP_META_DIR",
+    "_USER_BACKUP_RECORD",
+    "_WORLD_BACKUP_ROOT",
+)

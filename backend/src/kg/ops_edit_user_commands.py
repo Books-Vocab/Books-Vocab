@@ -1,18 +1,16 @@
 from __future__ import annotations
 
+import argparse
+import shutil
+import tarfile
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from .ops_edit_shared import EditContext, EditError, emit, user_dir_for
 from .ops_edit_support import (
     _USER_BACKUP_META_DIR,
     _USER_BACKUP_RECORD,
-    UTC,
-    Any,
-    AutoLinkConfig,
-    EditContext,
-    EditError,
-    Path,
-    ReviewClockConfig,
-    ReviewModeConfig,
-    TranslationLanguageConfig,
-    VocabUIConfig,
     _card_store,
     _extract_user_backup_members,
     _graph_store,
@@ -21,19 +19,15 @@ from .ops_edit_support import (
     _passthrough_normalize,
     _resolve_notebook_id,
     _restore_user_record_snapshot,
-    argparse,
-    assert_safe_uid,
-    data_dir,
-    datetime,
-    emit,
     list_user_backups,
-    load_users_from,
-    parse_datetime,
-    shutil,
-    tarfile,
-    user_dir_for,
-    users_file,
 )
+from kg.api_models.graph import AutoLinkConfig
+from kg.api_models.notebook import VocabUIConfig
+from kg.api_models.review import ReviewClockConfig, ReviewModeConfig
+from kg.api_models.translate import TranslationLanguageConfig
+from kg.ops_shared import data_dir
+from kg.user_store import load_users_from, parse_datetime
+from kg.ops_edit_shared import users_file
 
 
 def cmd_user_create(args: argparse.Namespace) -> int:
