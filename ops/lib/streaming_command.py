@@ -13,6 +13,11 @@ import time
 from pathlib import Path
 from typing import BinaryIO
 
+try:
+    from task_registry import TaskRegistry, process_group_id, process_start_identity
+except ModuleNotFoundError:  # pragma: no cover - package import fallback
+    from ops.task_registry import TaskRegistry, process_group_id, process_start_identity
+
 
 # The ctype every child of this runner gets. THIS VALUE IS CHOSEN, NOT INHERITED —
 # that is the whole point of it existing, and the reason it is a named constant
@@ -94,6 +99,11 @@ def run_streamed_command(
     merge_stderr: bool = False,
     timeout_seconds: float | None = None,
     env: dict[str, str] | None = None,
+    task_registry_path: Path | str | None = None,
+    task_session_id: str | None = None,
+    task_campaign: str | None = None,
+    task_worktree: Path | str | None = None,
+    task_log_path: Path | str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a child with bounded capture and periodic progress on parent stderr.
 
@@ -133,6 +143,15 @@ def run_streamed_command(
     if timeout_seconds is not None and timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
 
+    registry = TaskRegistry(
+        task_registry_path,
+        session_id=task_session_id,
+        campaign=task_campaign,
+        worktree=task_worktree or cwd,
+    )
+    task = registry.start(command=command, log_path=task_log_path)
+    task_id = task["task_id"]
+
     print(
         # `lcCtype` is appended last, after the fields downstream greps already
         # match unanchored. It is here because reproducing a gate failure means
@@ -140,19 +159,51 @@ def run_streamed_command(
         # has the log and not the source.
         f"{progress_prefix} {label_key}={label} phase=start elapsed=0.0s "
         f"pid=not-spawned alive=false argCount={len(command)} "
-        f"lcCtype={CHILD_LC_CTYPE}",
+        f"lcCtype={CHILD_LC_CTYPE} task={task_id}",
         file=sys.stderr,
         flush=True,
     )
     started = time.monotonic()
-    proc = subprocess.Popen(
-        command,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
-        start_new_session=True,
-        env=_child_env(env),
-    )
+    try:
+        proc = subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
+            start_new_session=True,
+            env=_child_env(env),
+        )
+    except BaseException as error:
+        registry.finish(
+            task_id,
+            terminal_outcome=f"spawn-failed:{type(error).__name__}",
+        )
+        raise
+    start_identity = process_start_identity(proc.pid)
+    # ``start_new_session=True`` makes the child's PGID equal its PID.  The
+    # leader may exit between Popen and this read (common for `locale` or
+    # `exit 124`), in which case an exact-PID OS query is already impossible.
+    # Keep the terminal task observable; an exited leader can never qualify for
+    # stale cleanup because its sentinel identity is deliberately not reusable.
+    process_group = process_group_id(proc.pid) or proc.pid
+    if start_identity is None and proc.poll() is None:
+        _terminate_process_group(proc)
+        registry.finish(task_id, terminal_outcome="spawn-failed:missing-process-identity")
+        raise RuntimeError(f"task {task_id} spawned without process identity")
+    if start_identity is None:
+        start_identity = "exited-before-identity"
+    try:
+        registry.bind_process(
+            task_id,
+            pid=proc.pid,
+            pgid=process_group,
+            start_identity=start_identity,
+        )
+    except BaseException:
+        _terminate_process_group(proc)
+        registry.finish(task_id, terminal_outcome="spawn-failed:registry-bind")
+        raise
+    task_finished = False
     streams: dict[str, BinaryIO | None] = {}
     readers: list[threading.Thread] = []
     try:
@@ -253,6 +304,7 @@ def run_streamed_command(
                 # greps match an unanchored `... pid=N alive=true` prefix and must
                 # keep matching.
                 stalled = str(idle >= heartbeat_interval).lower()
+                registry.heartbeat(task_id, phase="heartbeat")
                 print(
                     f"{progress_prefix} {label_key}={label} phase=heartbeat "
                     f"elapsed={now - started:.1f}s pid={proc.pid} alive={alive} "
@@ -273,12 +325,17 @@ def run_streamed_command(
         for pipe in streams.values():
             if pipe is not None:
                 pipe.close()
+        registry.finish(task_id, terminal_outcome="interrupted")
+        task_finished = True
         raise
     finally:
         for reader in readers:
             reader.join(timeout=1)
 
     elapsed = time.monotonic() - started
+    if not task_finished:
+        registry.finish(task_id, returncode=returncode, timed_out=timed_out)
+        task_finished = True
     print(
         f"{progress_prefix} {label_key}={label} phase=done elapsed={elapsed:.1f}s "
         f"pid={proc.pid} alive=false rc={returncode}",
