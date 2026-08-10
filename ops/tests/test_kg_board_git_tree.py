@@ -76,6 +76,24 @@ def test_normalize_snapshot_is_fail_closed_for_string_collections_and_invalid_sh
     assert payload["commits"] == []
 
 
+def test_normalize_snapshot_rejects_numeric_sha_and_malformed_parent():
+    payload = normalize_snapshot({
+        "refs": [{"branch": "feat/a", "head": "1234567"}],
+        "commits": [{"sha": "abcdef0", "parents": [1234567]}],
+    })
+
+    assert payload["error"]
+    assert payload["commits"][0]["sha"] == "abcdef0"
+    assert payload["commits"][0]["parents"] == []
+    assert payload["refs"] == [{
+        "id": "ref-0", "branch": "feat/a", "kind": "child", "base": "main",
+        "base_sha": None, "head": "1234567", "path": None, "host": None,
+        "status": "active", "live_state": "unknown", "worktree_present": None,
+        "integration_owner": None, "claimed_at": None, "handed_back_sha": None,
+        "tickets": [],
+    }]
+
+
 def test_project_snapshot_enriches_ticket_leaves_and_reports_missing_parents():
     projected = project_snapshot({
         "refs": [{"branch": "feat/a", "head": "abcdef0123456789", "backlog": ["IMP-1"]}],
@@ -84,10 +102,21 @@ def test_project_snapshot_enriches_ticket_leaves_and_reports_missing_parents():
 
     assert projected["complete"] is False
     assert projected["missing_parents"] == ["1234567890abcdef"]
+    assert projected["dangling_refs"] == []
     assert projected["refs"][0]["tickets"] == [{
         "id": "IMP-1", "brief": "修正看板", "severity": "high",
     }]
     assert projected["commits"][0]["refs"] == ["feat/a"]
+
+
+def test_project_snapshot_marks_dangling_ref_incomplete():
+    projected = project_snapshot({
+        "refs": [{"branch": "feat/a", "head": "abcdef0123456789"}],
+        "commits": [],
+    })
+
+    assert projected["complete"] is False
+    assert projected["dangling_refs"] == ["abcdef0123456789"]
 
 
 def test_server_git_tree_payload_reads_mirror_and_canonical_ticket_briefs(monkeypatch, tmp_path):
