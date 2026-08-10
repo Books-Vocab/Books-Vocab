@@ -35,6 +35,11 @@ def _assert_delete_retry_converges(client, headers, notebook_id):
     assert third.json()["cardsDeleted"] == 0
 
 
+def _assert_no_active_cards(isolated_api, notebook_id):
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    assert CardStore(user_dir / "cards.db").count(notebook_id=notebook_id) == 0
+
+
 def test_delete_retry_resumes_after_cards_cleanup_failure(isolated_api, monkeypatch):
     notebook_id, artifact = _create_card_and_artifact(isolated_api)
     client = isolated_api.client
@@ -56,9 +61,7 @@ def test_delete_retry_resumes_after_cards_cleanup_failure(isolated_api, monkeypa
 
     assert calls == 3
     assert not artifact.exists()
-    assert client.get(
-        "/api/vocab", params={"notebook_id": notebook_id}, headers=headers
-    ).json() == []
+    _assert_no_active_cards(isolated_api, notebook_id)
 
 
 def test_delete_retry_resumes_after_artifact_cleanup_failure(isolated_api, monkeypatch):
@@ -82,6 +85,4 @@ def test_delete_retry_resumes_after_artifact_cleanup_failure(isolated_api, monke
 
     assert calls == 1
     assert not artifact.exists()
-    assert client.get(
-        "/api/vocab", params={"notebook_id": notebook_id}, headers=headers
-    ).json() == []
+    _assert_no_active_cards(isolated_api, notebook_id)
