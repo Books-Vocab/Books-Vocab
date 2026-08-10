@@ -591,73 +591,33 @@ def _claim_next_campaign_backlog(
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
     """Atomically move one reserved ticket in one campaign partition to a child."""
     state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
-    with wr._ledger_lock(state_path):
-        state = wr.load_state(state_path)
-        reservation = next(
-            (item for item in state.get("campaign_reservations") or []
-             if item.get("campaign_id") == campaign_id), None)
-        if reservation is None:
-            return EXIT_BLOCK, {"reason": "campaign reservation not found",
-                                "campaign_id": campaign_id}, [], {
-                                    "mode": "campaign-partition", "partition": partition_id,
-                                }
-        base_rc, current_base = _git(["rev-parse", base], cwd=root)
-        if base_rc != EXIT_OK or current_base.strip() != reservation.get("base"):
-            return EXIT_BLOCK, {
-                "reason": "campaign base is stale",
-                "campaign_id": campaign_id, "expected": reservation.get("base"),
-                "actual": current_base.strip(),
-            }, [], {"mode": "campaign-partition", "partition": partition_id}
-        partition = (reservation.get("partitions") or {}).get(partition_id)
-        if partition is None:
-            return EXIT_BLOCK, {"reason": "campaign partition not found",
-                                "campaign_id": campaign_id, "partition": partition_id}, [], {
-                                    "mode": "campaign-partition", "partition": partition_id,
-                                }
-        claimed = partition.setdefault("claimed", {})
-        ticket = next((item for item in partition.get("ticket_ids") or [] if item not in claimed), None)
-        if ticket is None:
-            return EXIT_BLOCK, {"reason": "campaign partition has no remaining reservation",
-                                "campaign_id": campaign_id, "partition": partition_id}, [], {
-                                    "mode": "campaign-partition", "partition": partition_id,
-                                }
-        register_args = argparse.Namespace(
-            state=str(state_path), at=None, path=str(path), branch=branch,
-            intent=intent, base=base, backlog=[ticket], exclusive=True, json=True,
-        )
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            rc = wr.cmd_register(register_args)
-        try:
-            payload = json.loads(buf.getvalue())
-        except json.JSONDecodeError:
-            payload = {"reason": "registry returned unreadable claim output"}
-        if rc != EXIT_OK:
-            return EXIT_BLOCK, payload, [], {
-                "mode": "campaign-partition", "campaign": campaign_id,
-                "partition": partition_id,
-            }
-        # cmd_register owns its own atomic save.  Reload before adding the
-        # campaign transition so the active worktree record and reservation
-        # claim are composed from the same post-register snapshot.
-        state = wr.load_state(state_path)
-        reservation = next(
-            item for item in state.get("campaign_reservations") or []
-            if item.get("campaign_id") == campaign_id
-        )
-        partition = (reservation.get("partitions") or {})[partition_id]
-        claimed = partition.setdefault("claimed", {})
-        claimed[ticket] = {"branch": branch, "path": str(path),
-                           "claimed_at": datetime.now(timezone.utc).isoformat()}
-        wr.save_state(state_path, state)
-        used = len(claimed)
-        selection = {
-            "mode": "campaign-partition", "campaign": campaign_id,
-            "partition": partition_id, "quota": partition.get("quota"),
-            "used": used, "remaining": len(partition.get("ticket_ids") or []) - used,
-            "base": reservation.get("base"), "ticket": ticket,
-        }
-        return EXIT_OK, payload, [ticket], selection
+
+    def read_locked_base() -> str:
+        rc, output = _git(["rev-parse", base], cwd=root)
+        return output.strip() if rc == EXIT_OK else ""
+
+    result = wr.claim_campaign_ticket(
+        state_path,
+        campaign_id=campaign_id,
+        partition_id=partition_id,
+        branch=branch,
+        path=str(path),
+        intent=intent,
+        base=base,
+        base_reader=read_locked_base,
+    )
+    selection = {"mode": "campaign-partition", "campaign": campaign_id,
+                 "partition": partition_id}
+    if not result.get("ok"):
+        return EXIT_BLOCK, result, [], selection
+    reservation = result["reservation"]
+    selection.update({
+        "quota": (reservation.get("partitions") or {}).get(partition_id, {}).get("quota"),
+        "used": (reservation.get("partitions") or {}).get(partition_id, {}).get("used"),
+        "remaining": (reservation.get("partitions") or {}).get(partition_id, {}).get("remaining"),
+        "base": reservation.get("base"), "ticket": result["ticket"],
+    })
+    return EXIT_OK, result, [result["ticket"]], selection
 
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
     "ops/ui_quality_plane.yml": (
@@ -2986,10 +2946,15 @@ def cmd_campaign_reserve(args: argparse.Namespace) -> int:
         return EXIT_BLOCK
     store = root / BACKLOG_STORE_DIR
     try:
-        entries = list(backlog_tool._iter_entries(store))
+        def read_locked_base() -> str:
+            rc, output = _git(["rev-parse", args.base_ref], cwd=root)
+            return output.strip() if rc == EXIT_OK else ""
+
         result = wr.reserve_campaign(
             wr._state_path(args), request,
-            current_base=current_base.strip(), backlog_entries=entries,
+            current_base=current_base.strip(),
+            backlog_reader=lambda: list(backlog_tool._iter_entries(store)),
+            base_reader=read_locked_base,
             commit=args.commit,
         )
     except (OSError, ValueError, TypeError) as exc:
@@ -3115,7 +3080,8 @@ def cmd_open(args: argparse.Namespace) -> int:
         )
         if reg_rc == EXIT_OK:
             campaign_claim = {"campaign_id": campaign_id, "partition": partition_id,
-                              "ticket": wanted[0], "branch": branch}
+                              "ticket": wanted[0], "branch": branch,
+                              "reservation": (reg_payload or {}).get("reservation")}
     elif next_backlog:
         reg_rc, reg_payload, wanted, selection = _claim_next_backlog(
             root=root, state_arg=args.state, path=path, branch=branch,

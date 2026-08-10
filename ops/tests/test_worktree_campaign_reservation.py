@@ -77,12 +77,14 @@ def manifest(*, campaign_id: str = "campaign-1", coordinator: str = "coord-a",
 
 
 def reserve(state: Path, request: dict, *, entries: list[dict] | None = None,
-            current_base: str = BASE, commit: bool = True) -> dict:
+            current_base: str = BASE, commit: bool = True,
+            backlog_reader=None) -> dict:
     return REGISTRY.reserve_campaign(
         state,
         request,
         current_base=current_base,
         backlog_entries=entries or request["tickets"],
+        backlog_reader=backlog_reader,
         commit=commit,
         now_iso="2026-08-10T00:00:00+00:00",
     )
@@ -151,6 +153,10 @@ def test_reservation_is_atomic_and_hides_reserved_tickets_from_dispatch(tmp_path
         "IMP-20260810-aa0001", "IMP-20260810-bb0002", "IMP-20260810-cc0003"
     }
     assert before is None
+    details = payload["campaign_reservations"][0]["ticket_details"]
+    assert details["IMP-20260810-aa0001"]["write_sites"] == [
+        {"path": "ops/a.py", "mode": "write"}
+    ]
 
 
 @pytest.mark.parametrize("change", [
@@ -172,6 +178,102 @@ def test_failed_reservation_leaves_registry_and_manifest_unchanged(tmp_path, cha
     assert result["ok"] is False, result
     assert state.read_bytes() == before_state
     assert manifest_path.read_bytes() == before_manifest
+
+
+def test_idempotent_retry_rechecks_current_base_and_fresh_backlog(tmp_path):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    assert reserve(state, request)["ok"] is True
+    fresh = [dict(item, status="fixed") for item in request["tickets"]]
+    result = reserve(
+        state, request, current_base=BASE,
+        backlog_reader=lambda: fresh,
+    )
+    assert result["ok"] is False, result
+    assert any(problem["kind"] == "already-resolved"
+               for problem in result["conflicts"])
+
+    stale = reserve(state, request, current_base="b" * 40,
+                    backlog_reader=lambda: request["tickets"])
+    assert stale["ok"] is False, stale
+    assert any(problem["kind"] == "stale-base"
+               for problem in stale["conflicts"])
+
+
+def test_reservation_base_reader_runs_inside_transaction(tmp_path):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    result = REGISTRY.reserve_campaign(
+        state, request, current_base=BASE,
+        backlog_entries=request["tickets"],
+        base_reader=lambda: "b" * 40,
+    )
+    assert result["ok"] is False, result
+    assert any(problem["kind"] == "stale-base"
+               for problem in result["conflicts"])
+    assert not state.exists()
+
+
+def test_existing_campaign_write_site_collision_is_rejected(tmp_path):
+    state = tmp_path / "registry.json"
+    first = manifest(campaign_id="campaign-a", tickets=[
+        ticket("IMP-20260810-aa0001", "p1", "ops/shared.py")
+    ], quotas={"p1": 1})
+    second = manifest(campaign_id="campaign-b", tickets=[
+        ticket("IMP-20260810-bb0002", "p1", "ops/shared.py")
+    ], quotas={"p1": 1})
+    assert reserve(state, first)["ok"] is True
+    result = reserve(state, second)
+    assert result["ok"] is False, result
+    assert any(problem["kind"] == "write-site-collision"
+               for problem in result["conflicts"])
+
+
+def test_campaign_claim_updates_record_and_reservation_in_one_save(tmp_path, monkeypatch):
+    state = tmp_path / "registry.json"
+    actual_base = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=ROOT, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    request = manifest(base=actual_base)
+    assert reserve(state, request, current_base=actual_base)["ok"] is True
+    original_save = REGISTRY.save_state
+    saves = []
+
+    def save_once(path, payload):
+        saves.append(payload)
+        return original_save(path, payload)
+
+    monkeypatch.setattr(REGISTRY, "save_state", save_once)
+    result = REGISTRY.claim_campaign_ticket(
+        state,
+        campaign_id="campaign-1", partition_id="p2",
+        branch="debug/campaign-child", path=str(tmp_path / "child"),
+        intent="campaign child", base="main", base_sha=actual_base,
+    )
+    assert result["ok"] is True, result
+    assert len(saves) == 1
+    payload = json.loads(state.read_text())
+    assert payload["records"][0]["backlog"] == ["IMP-20260810-cc0003"]
+    assert payload["campaign_reservations"][0]["partitions"]["p2"]["claimed"]
+
+
+def test_campaign_claim_base_reader_cannot_be_bypassed_by_cached_sha(tmp_path):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    assert reserve(state, request)["ok"] is True
+    result = REGISTRY.claim_campaign_ticket(
+        state,
+        campaign_id="campaign-1", partition_id="p2",
+        branch="debug/campaign-child", path=str(tmp_path / "child"),
+        intent="campaign child", base="main", base_sha=BASE,
+        base_reader=lambda: "b" * 40,
+    )
+    assert result["ok"] is False, result
+    assert result["reason"] == "campaign base is stale"
+    payload = json.loads(state.read_text())
+    assert payload["records"] == []
+    assert payload["campaign_reservations"][0]["partitions"]["p2"]["claimed"] == {}
 
 
 def test_second_campaign_cannot_reserve_same_ticket_and_race_has_one_winner(tmp_path):

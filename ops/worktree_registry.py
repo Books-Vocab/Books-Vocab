@@ -87,7 +87,7 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # Consume the P1 pure judgement layer — never re-implement a verdict here.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
@@ -684,7 +684,9 @@ def reserve_campaign(
     request: dict[str, Any],
     *,
     current_base: str,
-    backlog_entries: list[dict[str, Any]] | dict[str, dict[str, Any]],
+    backlog_entries: list[dict[str, Any]] | dict[str, dict[str, Any]] | None = None,
+    backlog_reader: Callable[[], list[dict[str, Any]] | dict[str, dict[str, Any]]] | None = None,
+    base_reader: Callable[[], str] | None = None,
     commit: bool = False,
     now_iso: str | None = None,
 ) -> dict[str, Any]:
@@ -700,6 +702,17 @@ def reserve_campaign(
     timestamp = now_iso or datetime.now(timezone.utc).isoformat()
     with _ledger_lock(state_path):
         state = load_state(state_path)
+        locked_base = (base_reader() if base_reader is not None else current_base).strip()
+        if not locked_base:
+            raise ValueError("base ref could not be resolved inside registry lock")
+        # The selector is part of the reservation transaction.  A caller may
+        # provide a loader so a backlog groom/status change that happened while
+        # this process waited for the registry lock is observed before commit.
+        fresh_backlog_entries = (
+            backlog_reader() if backlog_reader is not None else backlog_entries
+        )
+        if fresh_backlog_entries is None:
+            raise ValueError("backlog entries or a backlog reader is required")
         reservations = _campaign_state(state)
         campaign_id = request.get("campaign_id") if isinstance(request, dict) else None
         existing = next((r for r in reservations if r.get("campaign_id") == campaign_id), None)
@@ -720,8 +733,15 @@ def reserve_campaign(
                     problems = [{"kind": "campaign-request-drift", "message": "existing campaign manifest differs",
                                  "campaign": campaign_id}]
                 else:
-                    return {"ok": True, "mode": "idempotent", "existing": True,
-                            **wc.reservation_summary(existing)}
+                    problems = wc.validate_manifest(
+                        request,
+                        current_base=locked_base,
+                        backlog_entries=fresh_backlog_entries,
+                        existing_reservations=reservations,
+                    )
+                    if not problems:
+                        return {"ok": True, "mode": "idempotent", "existing": True,
+                                **wc.reservation_summary(existing)}
         else:
             problems = []
 
@@ -735,8 +755,8 @@ def reserve_campaign(
                     })
             problems = wc.validate_manifest(
                 request,
-                current_base=current_base,
-                backlog_entries=backlog_entries,
+                current_base=locked_base,
+                backlog_entries=fresh_backlog_entries,
                 existing_reservations=active_reservations,
             )
         if problems:
@@ -774,6 +794,84 @@ def reserve_campaign(
                     pass
             raise
         return result
+
+
+def claim_campaign_ticket(
+    state_path: Path,
+    *,
+    campaign_id: str,
+    partition_id: str,
+    branch: str,
+    path: str,
+    intent: str,
+    base: str,
+    base_sha: str | None = None,
+    base_reader: Callable[[], str] | None = None,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Atomically transfer one campaign reservation into an active record."""
+    state_path = Path(state_path).resolve()
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    path = os.path.abspath(path)
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        reservation = next(
+            (item for item in state.get("campaign_reservations") or []
+             if item.get("campaign_id") == campaign_id), None,
+        )
+        if reservation is None:
+            return {"ok": False, "reason": "campaign reservation not found",
+                    "campaign_id": campaign_id}
+        actual_base = (
+            base_reader() if base_reader is not None
+            else base_sha if base_sha is not None
+            else _git_base_for_claim(base, state_path)
+        ).strip()
+        if not actual_base:
+            return {"ok": False, "reason": "campaign base is unreadable",
+                    "campaign_id": campaign_id}
+        if reservation.get("base") != actual_base:
+            return {"ok": False, "reason": "campaign base is stale",
+                    "expected": reservation.get("base"), "actual": actual_base}
+        partition = (reservation.get("partitions") or {}).get(partition_id)
+        if not isinstance(partition, dict):
+            return {"ok": False, "reason": "campaign partition not found",
+                    "campaign_id": campaign_id, "partition": partition_id}
+        ticket_ids = list(partition.get("ticket_ids") or [])
+        claimed = partition.setdefault("claimed", {})
+        ticket = next((item for item in ticket_ids if item not in claimed), None)
+        if ticket is None:
+            return {"ok": False, "reason": "campaign partition has no remaining reservation",
+                    "campaign_id": campaign_id, "partition": partition_id}
+        matches = [
+            record for record in state.get("records") or []
+            if record.get("status") == STATUS_ACTIVE
+            and (record.get("branch") == branch
+                 or _norm(record.get("path") or "") == _norm(path)
+                 or ticket in (record.get("backlog") or []))
+        ]
+        if matches:
+            return {"ok": False, "reason": "worktree identity or ticket already active",
+                    "conflicts": [{"branch": r.get("branch"), "path": r.get("path"),
+                                   "backlog": list(r.get("backlog") or [])}
+                                  for r in matches]}
+        record = {
+            "path": path, "branch": branch, "intent": intent, "base": base,
+            "created_at": timestamp, "status": STATUS_ACTIVE, "resolved_at": None,
+            "backlog": [ticket], "claimed_at": timestamp,
+        }
+        claimed[ticket] = {"branch": branch, "path": path, "claimed_at": timestamp}
+        state.setdefault("records", []).append(record)
+        save_state(state_path, state)
+        return {"ok": True, "record": record, "ticket": ticket,
+                "reservation": wc.reservation_summary(reservation)}
+
+
+def _git_base_for_claim(base: str, state_path: Path) -> str:
+    """Resolve a base ref from the repo that owns the registry ledger."""
+    root = state_path.resolve().parent.parent
+    rc, output = _git_ok(["rev-parse", base], cwd=root)
+    return output if rc == EXIT_OK else ""
 
 
 def release_campaign_claim(
