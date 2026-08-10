@@ -120,6 +120,7 @@ _lock = threading.Lock()
 _clone_lock = threading.RLock()
 _state_lock = threading.RLock()
 _cache: dict = {
+    "valid": False,
     "sha": None,
     "entries": [],
     "dispatch_ids": [],
@@ -165,6 +166,16 @@ def _git(args: list[str]) -> subprocess.CompletedProcess:
 def clone_head() -> str | None:
     proc = _git(["rev-parse", "HEAD"])
     return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def _clone_head_probe() -> tuple[str | None, str | None]:
+    try:
+        sha = clone_head()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"git rev-parse HEAD failed: {type(exc).__name__}: {exc}"
+    if sha is None:
+        return None, "git rev-parse HEAD failed: no revision returned"
+    return sha, None
 
 
 def _run_backlog(tool: Path, subcommand: str) -> tuple[subprocess.CompletedProcess | None, str | None]:
@@ -216,7 +227,7 @@ def _read_entries_locked(force: bool = False) -> dict:
     but dispatch is read every time because its held projection also depends on the
     mutable local worktree registry.
     """
-    sha = clone_head()
+    sha, head_error = _clone_head_probe()
     with _lock:
         cached_entries = None
         if (
@@ -227,7 +238,13 @@ def _read_entries_locked(force: bool = False) -> dict:
         ):
             cached_entries = list(_cache["entries"])
     tool = CLONE / "ops" / "backlog.py"
-    if not tool.exists():
+    if head_error is not None:
+        payload = {"sha": sha, "entries": [],
+                   "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                   "ungroomed_ids": [],
+                   "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                   "error": head_error}
+    elif not tool.exists():
         payload = {"sha": sha, "entries": [], "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                    "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
                    "ungroomed_ids": [],
@@ -299,8 +316,19 @@ def _read_entries_locked(force: bool = False) -> dict:
                                "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                                "error": f"backlog.py emitted non-JSON: {exc}"}
     if payload["error"] is None:
-        final_sha = clone_head()
-        if final_sha != sha:
+        final_sha, final_head_error = _clone_head_probe()
+        if final_head_error is not None:
+            payload = {
+                "sha": sha,
+                "entries": [],
+                "dispatch_ids": [],
+                "dispatch_meta": {},
+                "local_held": {},
+                "ungroomed_ids": [],
+                "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                "error": f"final {final_head_error}",
+            }
+        elif final_sha != sha:
             payload = {
                 "sha": final_sha,
                 "entries": [],
@@ -318,11 +346,18 @@ def _read_entries_locked(force: bool = False) -> dict:
         # Keep the last good entries when a read fails: a board that blanks out on a
         # transient git error is less useful than one that shows stale data and says
         # so. `error` is surfaced on Health either way.
-        if payload["error"] is None or not _cache["entries"]:
+        has_successful_snapshot = _cache.get(
+            "valid",
+            _cache.get("error") is None and _cache.get("read_at") is not None,
+        )
+        if payload["error"] is None:
+            payload["valid"] = True
+            _cache.update(payload)
+        elif not has_successful_snapshot:
+            payload["valid"] = False
             _cache.update(payload)
         else:
             _cache["error"] = payload["error"]
-            _cache["read_at"] = payload["read_at"]
         return dict(_cache)
 
 
