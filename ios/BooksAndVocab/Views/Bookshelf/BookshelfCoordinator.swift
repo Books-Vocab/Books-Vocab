@@ -204,7 +204,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             for (index, url) in urls.enumerated() {
                 // Stop promptly if the import was cancelled (new batch / teardown)
                 // instead of running every remaining file and mutating dead state.
-                guard !Task.isCancelled else { return }
+                guard self.isCurrentImport(generation) else { return }
                 if total > 1 {
                     loadingMessage = L10n.format("正在匯入 %@ / %@...", String(index + 1), String(total))
                 }
@@ -234,6 +234,9 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 do {
                     AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
                     let draft = try await method(url, onProgress)
+                    // An importer may ignore cancellation and complete after a newer
+                    // batch has started. Never let that stale result reach SwiftData.
+                    guard self.isCurrentImport(generation) else { return }
                     AppLog.book.info("Import succeeded: \(draft.fileName)")
                     AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
 
@@ -244,7 +247,12 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                         fileName: draft.fileName,
                         format: draft.format
                     )
+                    guard self.isCurrentImport(generation) else { return }
                     modelContext.insert(book)
+                    guard self.isCurrentImport(generation) else {
+                        modelContext.delete(book)
+                        return
+                    }
                     if modelContext.safeSaveWithToast(toastCoordinator) {
                         BookManifestStore().writeBestEffort(book: book, originalFileName: url.lastPathComponent)
                         AppLog.book.info("Book saved: \(book.title)")
@@ -252,7 +260,16 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     } else {
                         failures.append((url.lastPathComponent, .unknown(underlying: "儲存失敗".localized)))
                     }
+                } catch is CancellationError {
+                    // Cancellation is a control-flow result, not an import failure.
+                    // A superseded/cancelled task leaves final state to its successor.
+                    guard generation == self.importGeneration, !Task.isCancelled else { return }
+                    isLoading = false
+                    loadingMessage = ""
+                    loadingProgress = nil
+                    return
                 } catch {
+                    guard self.isCurrentImport(generation) else { return }
                     AppLog.book.error("BookshelfCoordinator import error: \(error.localizedDescription)")
                     AppLog.book.error("Error type: \(String(describing: type(of: error)))")
                     let diagnosed = BookshelfImportError.classify(error, sourceURL: url)
@@ -262,7 +279,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
             // If cancelled mid-loop, leave the final result reporting to whoever
             // cancelled (e.g. the superseding batch) rather than overwriting it.
-            guard !Task.isCancelled else { return }
+            guard self.isCurrentImport(generation) else { return }
 
             isLoading = false
             loadingMessage = ""
@@ -294,6 +311,10 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 showError = true
             }
         }
+    }
+
+    private func isCurrentImport(_ generation: Int) -> Bool {
+        generation == importGeneration && !Task.isCancelled
     }
 
     private func batchFailureMessage(failures: [(name: String, diagnosed: BookshelfImportError)]) -> String {
