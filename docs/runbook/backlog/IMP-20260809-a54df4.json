@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "R7 有 4/15、R8 有 5/25 張票在 pinned base 已修，source branch 沒有 commit；integrate 正確拒絕空 commit range，但 no-op 證據只能留在 prose receipt，parent 無法機器對帳。另有 changed-but-not-closable、blocked acceptance、triage-only 等合理結果，而目前 hand-back 主要只蓋 handed_back_sha；R7 也直到 integration review audit 才發現 intermediate commits 缺 receipt，造成整棵 integration 重建。需要 hand-back seal 與 typed outcome：changed、no-op-existing-fix、changed-but-not-closable、blocked、triage-only；每種 outcome 都綁 ticket ID、base、tip、acceptance 狀態與 evidence。changed 預檢 tracked-clean、tip、claim identity、receipt；no-op 必須有基線祖先或具名 provenance，不能只因 acceptance 綠就自動關票。這張不負責 parent 批次發現與 closure mapping。",
   "fix_site": "ops/worktree_registry.py; ops/worktree_orchestrate.py; ops/tests/test_worktree_handback_outcomes.py",
+  "fixed_by": [
+    "9ae2d335d8dd9244adaa36387296a47e72c867ce"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-health-audit",
@@ -17,10 +20,10 @@
   "scope": "登記簿交回協定、驗證封印與整合前檢查，約兩支工具及其測試。",
   "severity": "high",
   "source": "R6-R8 pressure-test architecture review",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-health-audit",
-  "verified_evidence": "set -o pipefail; rg -n 'rec\\[\"handed_back_(at|sha)\"\\]|handed_back_sha' ops/worktree_registry.py ops/worktree_orchestrate.py >/dev/null; ! ./ops/worktree_registry.py hand-back --help | rg -q -- '--outcome|--acceptance-status|--evidence'"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:team-b-integrator",
+  "verified_evidence": "ticket=IMP-20260809-a54df4\nphase=integrate-r7-bounded-repair\nbase=7658da081080693d9ad918657b76dbec53efd49c\nhead=9ae2d335d8dd9244adaa36387296a47e72c867ce\ncommand=uv run pytest -q ops/tests/test_worktree_handback_outcomes.py\nresult=16 passed, 1 warning in 4.52s\nregression_command=uv run pytest -q ops/tests/test_worktree_registry.py::test_missing_worktree_without_repo_root_does_not_guess_base ops/tests/test_worktree_registry.py::test_parallel_registers_do_not_lose_writes ops/tests/test_worktree_registry.py::test_exactly_one_of_many_simultaneous_claimants_wins ops/tests/test_worktree_handback_outcomes.py::test_register_without_born_worktree_records_base_sha ops/tests/test_worktree_handback_outcomes.py::test_register_without_born_worktree_uses_explicit_repo_root\nregression_result=5 passed in 3.50s\nacceptance_status=green\nreview=scoped PASS (review_3771d6_ops); review_audit=2 reviewed, 0 block\nprimary_refs_at_check=7658da081080693d9ad918657b76dbec53efd49c\nios_processes_at_check=0"
 }
