@@ -800,6 +800,21 @@ def board_payload() -> dict:
     }
 
 
+def ticket_payload(ticket_id: str) -> dict:
+    snap = read_entries()
+    entry = next((row for row in snap.get("entries") or [] if str(row.get("id")) == ticket_id), None)
+    if entry is None:
+        return {"schema": "kg.board.ticket.v1", "error": "ticket not found", "ticket": None}
+    held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
+    projected = project(
+        [entry], held,
+        canonical_dispatch_ids={ticket_id} if ticket_id in set(snap.get("dispatch_ids") or []) else set(),
+        canonical_ungroomed_ids={ticket_id} if ticket_id in set(snap.get("ungroomed_ids") or []) else set(),
+        dispatch_meta=snap.get("dispatch_meta") or {},
+    )
+    return {"schema": "kg.board.ticket.v1", "error": None, "ticket": projected["board"][0]}
+
+
 def history_payload() -> dict:
     """Return the resolved backlog slice for the explicit history tab."""
     entries = read_entries().get("entries") or []
@@ -991,6 +1006,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/history":
             self._json(200, history_payload())
+            return
+        if path.startswith("/api/ticket/"):
+            self._json(200, ticket_payload(urllib.parse.unquote(path.removeprefix("/api/ticket/"))))
             return
         if path == "/api/git-tree":
             self._json(200, git_tree_payload())

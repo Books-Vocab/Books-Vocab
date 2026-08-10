@@ -29,27 +29,38 @@ function rows(){
   const needle=query.trim().toLowerCase();
   return needle?source.filter(row=>`${row.id} ${row.brief} ${row.detail}`.toLowerCase().includes(needle)):source;
 }
+function detailBody(row){
+  return `<div class="meta"><span>${esc(row.stream)}</span><span>${esc(row.held?.branch||"尚未掛入 worktree")}</span><span>${esc(row.area||"未標定")}</span></div>
+    <p>${esc(row.detail||"沒有更多技術說明")}</p>
+    <dl class="detail-grid">
+      <dt>Scope</dt><dd>${esc(row.scope||"—")}</dd>
+      <dt>Plan</dt><dd>${esc(row.plan||"—")}</dd>
+      <dt>Fix site</dt><dd><code>${esc(row.fix_site||"—")}</code></dd>
+      <dt>Acceptance</dt><dd>${esc(row.acceptance||"—")}</dd>
+    </dl>`;
+}
 function ticket(row){
-  const held=row.held;
-  const branch=held?.branch||"尚未掛入 worktree";
   return `<article class="ticket" id="ticket-${esc(row.id)}" data-id="${esc(row.id)}">
-    <details>
+    <details data-ticket-details="${esc(row.id)}" data-inline="${row.status?"true":"false"}">
       <summary>
         <span class="ticket-title"><code>${esc(row.id)}</code><span>${esc(row.brief||"尚未提供白話摘要")}</span></span>
         <span class="ticket-meta"><span class="chip severity-${esc(row.severity)}">${esc(row.severity)}</span><span>${esc(statusOf(row))}</span></span>
       </summary>
-      <div class="ticket-body">
-        <div class="meta"><span>${esc(row.stream)}</span><span>${esc(branch)}</span><span>${esc(row.area||"未標定")}</span></div>
-        <p>${esc(row.detail||"沒有更多技術說明")}</p>
-        <dl class="detail-grid">
-          <dt>Scope</dt><dd>${esc(row.scope||"—")}</dd>
-          <dt>Plan</dt><dd>${esc(row.plan||"—")}</dd>
-          <dt>Fix site</dt><dd><code>${esc(row.fix_site||"—")}</code></dd>
-          <dt>Acceptance</dt><dd>${esc(row.acceptance||"—")}</dd>
-        </dl>
-      </div>
+      <div class="ticket-body">${row.status?detailBody(row):'<p class="loading-detail">展開後載入詳細資料…</p>'}</div>
     </details>
   </article>`;
+}
+async function hydrateTicket(details){
+  const body=details.querySelector(".ticket-body");
+  if(!details.open||details.dataset.loaded||details.dataset.inline==="true"||!body)return;
+  details.dataset.loaded="loading";
+  try{
+    const response=await fetch(`/api/ticket/${encodeURIComponent(details.dataset.ticketDetails)}`,{cache:"no-store"});
+    if(!response.ok)throw new Error(`ticket HTTP ${response.status}`);
+    const payload=await response.json();
+    if(!payload.ticket)throw new Error(payload.error||"ticket not found");
+    body.innerHTML=detailBody(payload.ticket);details.dataset.loaded="true";
+  }catch(error){body.innerHTML=`<p class="empty">詳細資料載入失敗：${esc(error.message)}</p>`;details.dataset.loaded="error";}
 }
 function renderMetrics(){
   const decision=board.counts.decision;
@@ -134,6 +145,7 @@ function render(){
   const visible=rows();
   document.getElementById("status").textContent=`${visible.length} 張票 · 唯讀`;
   document.getElementById("tickets").innerHTML=tab==="history"&&!history?"<p class=\"empty\">歷史資料載入中</p>":visible.length?visible.map(ticket).join(""):"<p class=\"empty\">這個篩選目前沒有票</p>";
+  document.querySelectorAll("[data-ticket-details]").forEach(details=>details.addEventListener("toggle",()=>hydrateTicket(details)));
 }
 async function loadHistory(){
   if(history)return;

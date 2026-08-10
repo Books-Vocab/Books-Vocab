@@ -163,6 +163,20 @@ def test_project_snapshot_marks_dangling_ref_incomplete():
     assert projected["dangling_refs"] == ["abcdef0123456789"]
 
 
+def test_project_snapshot_marks_parent_cycle_incomplete():
+    projected = project_snapshot({
+        "complete": True,
+        "refs": [{"branch": "main", "head": "abcdef0123456789"}],
+        "commits": [
+            {"sha": "abcdef0123456789", "parents": ["1234567890abcdef"]},
+            {"sha": "1234567890abcdef", "parents": ["abcdef0123456789"]},
+        ],
+    })
+
+    assert projected["complete"] is False
+    assert projected["parent_cycles"]
+
+
 def test_server_git_tree_payload_reads_mirror_and_canonical_ticket_briefs(monkeypatch, tmp_path):
     mirror = tmp_path / "mirror.json"
     mirror.write_text(json.dumps({"git_tree": {

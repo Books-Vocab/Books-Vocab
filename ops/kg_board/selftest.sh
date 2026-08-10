@@ -75,6 +75,7 @@ d = json.load(sys.stdin)
 assert d["schema"] == "kg.board.v3", d.get("schema")
 assert not {"dispatch", "blocked", "deferred", "rank", "pinned", "snoozed"}.intersection(d), "readonly payload 仍有重複或排序欄位"
 required = {"id", "brief", "detail", "severity", "stream", "held", "ready",
+            "scope", "plan", "fix_site", "acceptance",
             }
 assert all(set(row) == required for row in d["board"]), "board row 不是 compact v3"
 c = d["counts"]
