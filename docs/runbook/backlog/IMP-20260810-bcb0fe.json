@@ -1,0 +1,21 @@
+{
+  "acceptance": "The copied-repository concurrent staging test must start both real OS processes and pass its no-lost-row assertion; the adjacent queue-lock test must remain green, and no production source import may be used to satisfy the fixture.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py::test_the_queue_lock_is_the_same_file_in_both_modules ops/tests/test_backlog.py::test_two_concurrent_stages_cannot_lose_each_others_row",
+  "brief": "併發暫存測試副本缺少長任務依賴而測不到真正的資料競爭",
+  "category": "tool",
+  "date": "2026-08-10",
+  "detail": "The real-OS concurrent staging regression copies ops/lib/streaming_command.py into a temporary repository but not its sibling ops/task_registry.py dependency. Every subprocess dies during import before staging, so the test reports a setup failure instead of checking whether two read-modify-write stages lose rows. This surfaced as an ops-pytest Gate baseline failure after task_registry was introduced. The fixture must remain isolated and must not weaken the production concurrency assertion.",
+  "fix_site": "ops/tests/test_backlog.py:concurrent staging fixture",
+  "groomed_against": "b23041d565f8f1a7bc7ac73d622a81a7bd2cfc33",
+  "groomed_at": "2026-08-10",
+  "groomed_by": "agent:supervisor",
+  "id": "IMP-20260810-bcb0fe",
+  "plan": "1. Reproduce the failure from an untouched primary and confirm it is import/setup, not a staging assertion.\n2. Make the fixture copy the minimal sibling module/package files required by streaming_command and its lock dependency, without importing the primary checkout at runtime.\n3. Keep the deliberate widened read-modify-write race and both staged rows assertion unchanged.\n4. Run the exact single-test acceptance plus the adjacent staging/queue-lock tests.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個隔離測試副本的依賴修補與兩個併發測試，不改生產 staging 語意",
+  "severity": "high",
+  "source": "supervisor:fresh-gate-d4",
+  "status": "triaged",
+  "stream": "IMP"
+}
