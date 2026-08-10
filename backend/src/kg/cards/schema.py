@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import logging
-
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import OperationalError
 
+from ..sqlite_utils import ensure_columns
 from ..text_utils import normalize_nfc_lower
 from .dictionary_models import (
     DictionaryArchiveLinkCause,
@@ -16,8 +14,6 @@ from .dictionary_models import (
     LexicalOperation,
 )
 from .model import Card
-
-logger = logging.getLogger(__name__)
 
 
 def init_schema(engine: Engine) -> None:
@@ -96,54 +92,21 @@ def _migrate_review_columns(engine: Engine) -> None:
         "promoted_at": "TIMESTAMP",
     }
     with engine.connect() as conn:
-        result = conn.exec_driver_sql("PRAGMA table_info(card)")
-        existing = {row[1] for row in result}
-        for col_name, col_type in review_columns.items():
-            if col_name not in existing:
-                try:
-                    conn.exec_driver_sql(f"ALTER TABLE card ADD COLUMN {col_name} {col_type}")
-                except OperationalError as exc:
-                    if "duplicate column" in str(exc).lower():
-                        pass  # column already added by concurrent process
-                    else:
-                        logger.error("Migration failed for column %s: %s", col_name, exc, exc_info=True)
-                        raise
+        ensure_columns(conn, "card", review_columns)
         conn.commit()
 
 
 def _migrate_dictionary_promotion_jobs(engine: Engine) -> None:
     """Keep pre-release promotion job tables forward-compatible."""
     with engine.connect() as conn:
-        columns = {
-            row[1]
-            for row in conn.exec_driver_sql(
-                "PRAGMA table_info(dictionary_promotion_jobs)"
-            )
-        }
-        if columns and "worker_id" not in columns:
-            try:
-                conn.exec_driver_sql(
-                    "ALTER TABLE dictionary_promotion_jobs ADD COLUMN worker_id TEXT"
-                )
-            except OperationalError as exc:
-                if "duplicate column" not in str(exc).lower():
-                    raise
+        ensure_columns(conn, "dictionary_promotion_jobs", {"worker_id": "TEXT"})
         conn.commit()
 
 
 def _migrate_content_nfc_lower(engine: Engine) -> None:
     """Add and backfill `content_nfc_lower` for legacy DBs."""
     with engine.connect() as conn:
-        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(card)")}
-        if "content_nfc_lower" not in cols:
-            try:
-                conn.exec_driver_sql(
-                    "ALTER TABLE card ADD COLUMN content_nfc_lower TEXT DEFAULT ''"
-                )
-            except OperationalError as exc:
-                if "duplicate column" not in str(exc).lower():
-                    logger.error("Migration failed for content_nfc_lower: %s", exc, exc_info=True)
-                    raise
+        ensure_columns(conn, "card", {"content_nfc_lower": "TEXT DEFAULT ''"})
         # Backfill any rows where the column is empty/null but content isn't.
         rows = conn.exec_driver_sql(
             "SELECT id, content FROM card "

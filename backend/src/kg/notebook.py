@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
-from .sqlite_utils import make_sqlite_engine
+from .sqlite_utils import ensure_columns, make_sqlite_engine
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +66,10 @@ class NotebookStore:
             "is_staged": "INTEGER NOT NULL DEFAULT 0",
         }
         with self.engine.connect() as conn:
-            existing = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(notebook)").fetchall()}
-            changed = False
-            for col, decl in added_cols.items():
-                if col not in existing:
-                    conn.exec_driver_sql(f"ALTER TABLE notebook ADD COLUMN {col} {decl}")
-                    logger.info("migrated notebook: added %s column", col)
-                    changed = True
-            if changed:
-                conn.commit()
+            added = ensure_columns(conn, "notebook", added_cols)
+            for col in added:
+                logger.info("migrated notebook: added %s column", col)
+            conn.commit()
 
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""
