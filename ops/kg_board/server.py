@@ -122,6 +122,7 @@ _state_lock = threading.RLock()
 _cache: dict = {
     "valid": False,
     "sha": None,
+    "registry_fingerprint": None,
     "entries": [],
     "dispatch_ids": [],
     "dispatch_meta": {},
@@ -178,6 +179,30 @@ def _clone_head_probe() -> tuple[str | None, str | None]:
     return sha, None
 
 
+def _registry_fingerprint() -> tuple[
+    tuple[bool, int | None, int | None, int | None] | None,
+    str | None,
+]:
+    """Fingerprint the atomic worktree ledger used by backlog dispatch."""
+    try:
+        proc = _git(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"registry common-dir failed: {type(exc).__name__}: {exc}"
+    if proc.returncode != 0:
+        return None, f"registry common-dir exited {proc.returncode}: {proc.stderr.strip()[:300]}"
+    common_dir = proc.stdout.strip()
+    if not common_dir:
+        return None, "registry common-dir failed: no path returned"
+    ledger = Path(common_dir).parent / ".cache" / "worktree_registry.json"
+    try:
+        stat = ledger.stat()
+    except FileNotFoundError:
+        return (False, None, None, None), None
+    except OSError as exc:
+        return None, f"registry fingerprint failed: {type(exc).__name__}: {exc}"
+    return (True, stat.st_ino, stat.st_mtime_ns, stat.st_size), None
+
+
 def _run_backlog(tool: Path, subcommand: str) -> tuple[subprocess.CompletedProcess | None, str | None]:
     try:
         return subprocess.run(
@@ -223,18 +248,36 @@ def _read_entries_locked(force: bool = False) -> dict:
     """Shell out to the CLONE's own backlog.py.
 
     Shelling out rather than importing is the whole point: the reader is always the
-    version that ships with the data. Ticket entries are cached on the clone HEAD,
-    but dispatch is read every time because its held projection also depends on the
-    mutable local worktree registry.
+    version that ships with the data. The complete canonical projection is cached
+    on clone HEAD plus the exact atomic worktree-ledger fingerprint. Mirror claims
+    remain a per-request overlay outside this cache.
     """
     sha, head_error = _clone_head_probe()
+    registry_fingerprint = None
+    registry_error = None
+    if head_error is None:
+        registry_fingerprint, registry_error = _registry_fingerprint()
     with _lock:
+        has_successful_snapshot = _cache.get(
+            "valid",
+            _cache.get("error") is None and _cache.get("read_at") is not None,
+        )
+        if (
+            not force
+            and head_error is None
+            and registry_error is None
+            and has_successful_snapshot
+            and _cache["error"] is None
+            and _cache["sha"] == sha
+            and _cache.get("registry_fingerprint") == registry_fingerprint
+        ):
+            return dict(_cache)
         cached_entries = None
         if (
             not force
             and sha is not None
+            and has_successful_snapshot
             and _cache["sha"] == sha
-            and _cache["error"] is None
         ):
             cached_entries = list(_cache["entries"])
     tool = CLONE / "ops" / "backlog.py"
@@ -244,6 +287,12 @@ def _read_entries_locked(force: bool = False) -> dict:
                    "ungroomed_ids": [],
                    "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                    "error": head_error}
+    elif registry_error is not None:
+        payload = {"sha": sha, "entries": [],
+                   "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                   "ungroomed_ids": [],
+                   "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                   "error": registry_error}
     elif not tool.exists():
         payload = {"sha": sha, "entries": [], "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                    "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
@@ -277,6 +326,22 @@ def _read_entries_locked(force: bool = False) -> dict:
                            "error": (f"backlog.py {subcommand} exited {failed.returncode}: "
                                      f"{failed.stderr.strip()[:300]}")}
             else:
+                final_registry_fingerprint, final_registry_error = _registry_fingerprint()
+                if final_registry_error is not None:
+                    payload = {"sha": sha, "entries": [],
+                               "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                               "ungroomed_ids": [],
+                               "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                               "error": f"final {final_registry_error}"}
+                elif final_registry_fingerprint != registry_fingerprint:
+                    payload = {"sha": sha, "entries": [],
+                               "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                               "ungroomed_ids": [],
+                               "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                               "error": "registry changed during canonical read"}
+                else:
+                    payload = None
+            if failed is None and payload is None:
                 try:
                     list_body = json.loads(list_proc.stdout) if list_proc is not None else None
                     dispatch_body = json.loads(dispatch_proc.stdout)
@@ -342,6 +407,7 @@ def _read_entries_locked(force: bool = False) -> dict:
                     f"before={sha or 'unknown'} after={final_sha or 'unknown'}"
                 ),
             }
+    payload.setdefault("registry_fingerprint", registry_fingerprint)
     with _lock:
         # Keep the last good entries when a read fails: a board that blanks out on a
         # transient git error is less useful than one that shows stale data and says
@@ -365,7 +431,7 @@ def refresh_loop() -> None:
     while True:
         try:
             refresh_clone()
-            read_entries(force=True)
+            read_entries()
         except Exception as exc:                      # never let the thread die
             _refresh_state["last_error"] = f"{type(exc).__name__}: {exc}"
             log(f"refresh loop error: {exc}")
