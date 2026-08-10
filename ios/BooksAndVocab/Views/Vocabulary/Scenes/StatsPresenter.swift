@@ -8,6 +8,17 @@
 import SwiftUI
 import SwiftData
 
+enum StatsScenePhase: Equatable {
+    case loading
+    case empty
+    case content
+
+    static func resolve(hasSummary: Bool, isEmpty: Bool) -> Self {
+        guard hasSummary else { return .loading }
+        return isEmpty ? .empty : .content
+    }
+}
+
 struct StatsPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -144,7 +155,7 @@ struct StatsPresenter: View {
             await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
-            ReviewCalendarPresenter()
+            ReviewCalendarPresenter(filter: filter)
         }
         .enableInjection()
     }
@@ -200,11 +211,17 @@ struct StatsPresenter: View {
                 systemImage: "chart.bar"
             )
         }
-        if isSummaryEmpty(summary) {
+        if StatsScenePhase.resolve(hasSummary: true, isEmpty: isSummaryEmpty(summary)) == .empty {
+            let title = filter.isFiltered
+                ? L10n.string("目前沒有符合篩選條件的單字")
+                : StatsCopy.emptyTitle
+            let description = filter.isFiltered
+                ? L10n.string("試試其他關鍵字，或取消部分篩選條件。")
+                : StatsCopy.emptyDescription
             return .empty(
-                title: StatsCopy.emptyTitle,
+                title: title,
                 systemImage: "chart.bar.xaxis",
-                description: StatsCopy.emptyDescription
+                description: description
             )
         }
         return .content
@@ -522,9 +539,9 @@ struct StatsPresenter: View {
                 Spacer()
                 VocabTabSelector(
                     options: [
-                        VocabTabOption(id: 7, title: "7天"),
-                        VocabTabOption(id: 14, title: "14天"),
-                        VocabTabOption(id: 30, title: "30天"),
+                        VocabTabOption(id: 7, title: L10n.string("7天")),
+                        VocabTabOption(id: 14, title: L10n.string("14天")),
+                        VocabTabOption(id: 30, title: L10n.string("30天")),
                     ],
                     selection: $forecastDays
                 )

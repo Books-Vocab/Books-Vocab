@@ -8,16 +8,39 @@
 import SwiftUI
 import SwiftData
 
+enum ReviewCalendarPresentation {
+    enum DayState: Equatable {
+        case empty
+        case populated(total: Int, remembered: Int, forgot: Int)
+    }
+
+    static func filteredRecords(_ records: [ReviewRecord], filter: NotebookFilter) -> [ReviewRecord] {
+        filter.isFiltered ? records.filter { filter.matches($0.notebookId) } : records
+    }
+
+    static func dayState(for records: [ReviewRecord]) -> DayState {
+        guard !records.isEmpty else { return .empty }
+        let remembered = records.filter { $0.feedback == 1 }.count
+        return .populated(
+            total: records.count,
+            remembered: remembered,
+            forgot: records.count - remembered
+        )
+    }
+}
+
 struct ReviewCalendarPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
+    let filter: NotebookFilter
     @Query var allRecords: [ReviewRecord]
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
-    init() {
+    init(filter: NotebookFilter = NotebookFilter()) {
+        self.filter = filter
         let cutoff = Self.sixMonthsAgo
         _allRecords = Query(
             filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
@@ -41,18 +64,25 @@ struct ReviewCalendarPresenter: View {
     }
 
     private var activityMap: [String: Int] {
-        ReviewActivityLog.activity(for: 365, records: allRecords)
+        ReviewActivityLog.activity(for: 365, records: filteredRecords)
+    }
+
+    private var filteredRecords: [ReviewRecord] {
+        ReviewCalendarPresentation.filteredRecords(allRecords, filter: filter)
     }
 
     private var selectedDayRecords: [ReviewRecord] {
         guard let day = selectedDay else { return [] }
-        return ReviewActivityLog.recordsForDay(day, from: allRecords)
+        return ReviewActivityLog.recordsForDay(day, from: filteredRecords)
     }
 
     private var selectedDaySummary: (total: Int, remembered: Int, forgot: Int) {
-        let records = selectedDayRecords
-        let remembered = records.filter { $0.feedback == 1 }.count
-        return (records.count, remembered, records.count - remembered)
+        switch ReviewCalendarPresentation.dayState(for: selectedDayRecords) {
+        case .empty:
+            return (0, 0, 0)
+        case let .populated(total, remembered, forgot):
+            return (total, remembered, forgot)
+        }
     }
 
     var body: some View {
@@ -131,7 +161,7 @@ struct ReviewCalendarPresenter: View {
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
-                if selectedDayRecords.isEmpty {
+                if case .empty = ReviewCalendarPresentation.dayState(for: selectedDayRecords) {
                     Text("這天沒有複習紀錄".localized)
                         .font(appSkin.typography.caption)
                         .foregroundStyle(appSkin.palette.quaternaryText)

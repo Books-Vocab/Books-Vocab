@@ -8,6 +8,26 @@ import SwiftUI
 import SwiftData
 import TipKit
 
+enum NotebookListPhase: Equatable {
+    case loading
+    case error
+    case empty
+    case partial
+    case content
+
+    static func resolve(
+        notebookCount: Int,
+        hasLoadedOnce: Bool,
+        isLoggedIn: Bool,
+        hasError: Bool
+    ) -> Self {
+        if notebookCount == 0 && !hasLoadedOnce && isLoggedIn { return .loading }
+        if notebookCount == 0 && hasError { return .error }
+        if notebookCount == 0 { return .empty }
+        return hasError ? .partial : .content
+    }
+}
+
 /// 薄殼：唯一持有 `DetailRouter` 並呈現 detail/review cover 的層，**刻意不含 `@Query`**。
 ///
 /// 複習翻卡的背景 DB 寫入只會失效 `NotebookListContent` 的 `@Query`、不會觸及本層，
@@ -140,6 +160,12 @@ struct NotebookListContent: View {
         let totalDueCount = model.totalDue
         let totalUnlearnedCount = model.totalUnlearned
         let sortedNotebooks = model.sortedNotebooks
+        let listPhase = NotebookListPhase.resolve(
+            notebookCount: notebooks.count,
+            hasLoadedOnce: coordinator.hasLoadedOnce,
+            isLoggedIn: authManager.isLoggedIn,
+            hasError: coordinator.reconcileError != nil
+        )
 
         // Editorial tight overrides — 全 app token (`pageHorizontalPadding = s5 = 32pt` /
         // `sectionSpacing = s6 = 48pt` / `sectionGap = 14` / `pageTopInset = 16`) 對
@@ -159,35 +185,37 @@ struct NotebookListContent: View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: editorialSectionGap) {
-                    if let message = coordinator.reconcileError {
+                    if listPhase == .partial, let message = coordinator.reconcileError {
                         reconcileErrorBanner(message: message)
                             .padding(.horizontal, editorialHorizontal)
                             .transition(.statusRowReveal)
                     }
 
-                    if !pendingEntries.isEmpty {
-                        TipView(SyncPendingTip())
-                            .padding(.horizontal, editorialHorizontal)
-                    }
+                    if listPhase == .partial || listPhase == .content {
+                        if !pendingEntries.isEmpty {
+                            TipView(SyncPendingTip())
+                                .padding(.horizontal, editorialHorizontal)
+                        }
 
-                    // D4 — Today Review action bar：title + 三 pill 包進 mutedFill capsule 容器,
-                    // 容器 1pt cardBorder 微粗淡 hairline 框、灰填底比框線更淡。
-                    // 三 pill (CTA / filter / plus) 統一規格走 NotebookHeaderPillLabel,
-                    // 差別僅在「長度 + 填色」— user feedback iteration。
-                    NotebookReviewActionBar(
-                        dueCount: filteredDueEntries.count,
-                        unlearnedCount: filteredUnlearnedEntries.count,
-                        hasReviewItems: totalDueCount > 0 || totalUnlearnedCount > 0,
-                        notebookCount: notebooks.count,
-                        isFiltered: reviewFilter.isFiltered,
-                        canCreate: authManager.isLoggedIn,
-                        onReviewAll: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) },
-                        onReviewDue: { startReview(with: filteredDueEntries) },
-                        onReviewUnlearned: { startReview(with: filteredUnlearnedEntries) },
-                        onFilter: { showFilterSheet = true },
-                        onCreate: { showCreateSheet = true }
-                    )
-                    .padding(.horizontal, editorialHorizontal)
+                        // D4 — Today Review action bar：title + 三 pill 包進 mutedFill capsule 容器,
+                        // 容器 1pt cardBorder 微粗淡 hairline 框、灰填底比框線更淡。
+                        // 三 pill (CTA / filter / plus) 統一規格走 NotebookHeaderPillLabel,
+                        // 差別僅在「長度 + 填色」— user feedback iteration。
+                        NotebookReviewActionBar(
+                            dueCount: filteredDueEntries.count,
+                            unlearnedCount: filteredUnlearnedEntries.count,
+                            hasReviewItems: totalDueCount > 0 || totalUnlearnedCount > 0,
+                            notebookCount: notebooks.count,
+                            isFiltered: reviewFilter.isFiltered,
+                            canCreate: authManager.isLoggedIn,
+                            onReviewAll: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) },
+                            onReviewDue: { startReview(with: filteredDueEntries) },
+                            onReviewUnlearned: { startReview(with: filteredUnlearnedEntries) },
+                            onFilter: { showFilterSheet = true },
+                            onCreate: { showCreateSheet = true }
+                        )
+                        .padding(.horizontal, editorialHorizontal)
+                    }
 
                     // 北極星二:pill cluster ↔ notebook list 之間靠 AppAirDivider
                     // 分區。dividerAirMargin 已全域收緊 32 → 16 (user feedback)。
@@ -196,13 +224,16 @@ struct NotebookListContent: View {
                             .padding(.horizontal, editorialHorizontal)
                     }
 
-                    if notebooks.isEmpty && !coordinator.hasLoadedOnce && authManager.isLoggedIn {
+                    switch listPhase {
+                    case .loading:
                         // 首次 reconcile 完成前不顯示 empty state — 否則 logged-in users
-                        // 啟動瞬間會閃過「還沒有單字本」誤導 copy。鏡像 PR #603 Podcast 修法。
+                        // 啟動瞬間會閃過「還沒有單字本」誤導 copy。骨架沿用 VocabSceneShell。
                         loadingPlaceholder
-                    } else if notebooks.isEmpty {
+                    case .error:
+                        syncErrorState
+                    case .empty:
                         emptyState
-                    } else {
+                    case .partial, .content:
                         // Editorial row list — 每本 notebook 一條 full-width row,書背隱喻。
                         // 取代舊 grid + hero 分支(grid 在小卡片下擠破,hero 浪費版面)。
                         LazyVStack(spacing: editorialGridSpacing) {
@@ -465,18 +496,20 @@ struct NotebookListContent: View {
             systemImage: "exclamationmark.triangle",
             description: message
         ) {
-            Button(NotebookListCopy.retryTitle) {
-                Task { @MainActor in
-                    await coordinator.reconcileNotebooks(
-                        authManager: authManager,
-                        currentNotebooks: notebooks,
-                        allEntries: allEntries,
-                        modelContext: modelContext,
-                        kgService: kgService
-                    )
-                }
-            }
+            Button(NotebookListCopy.retryTitle, action: retryReconcile)
             .buttonStyle(.appCompactAction(.primary))
+        }
+    }
+
+    private func retryReconcile() {
+        Task { @MainActor in
+            await coordinator.reconcileNotebooks(
+                authManager: authManager,
+                currentNotebooks: notebooks,
+                allEntries: allEntries,
+                modelContext: modelContext,
+                kgService: kgService
+            )
         }
     }
 
@@ -486,10 +519,21 @@ struct NotebookListContent: View {
     /// 鏡像 PR #603 Podcast `.loading` 處理 — `loadingSkeleton` 比裸 spinner 更貼近最終 list 版面。
     @ViewBuilder
     private var loadingPlaceholder: some View {
-        VocabSceneShell(phase: .loading(
-            title: L10n.string("notebook.list.loading"),
-            systemImage: "books.vertical"
-        )) {
+        VocabSceneShell(phase: .loadingSkeleton(rowCount: 3)) {
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var syncErrorState: some View {
+        VocabSceneShell(
+            phase: .error(
+                title: NotebookListCopy.reconcileErrorTitle,
+                systemImage: "exclamationmark.icloud",
+                description: coordinator.reconcileError,
+                retryAction: retryReconcile
+            )
+        ) {
             EmptyView()
         }
     }

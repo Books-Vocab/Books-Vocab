@@ -21,6 +21,8 @@ enum ExplorePhase: Equatable {
     case empty
     /// 有目錄但當前 search/filter 無結果。
     case noResults
+    /// 目錄有本機快取，但最新同步失敗；保留內容並明示資料可能過期。
+    case partial
     case content
 
     static func resolve(
@@ -28,10 +30,12 @@ enum ExplorePhase: Equatable {
         totalDeckCount: Int, filteredCount: Int,
         isFilteringOrSearching: Bool
     ) -> ExplorePhase {
+        if isSyncing && totalDeckCount == 0 { return .loading }
+        if syncFailed && totalDeckCount == 0 { return .error }
+        if totalDeckCount == 0 { return .empty }
+        if filteredCount == 0 && isFilteringOrSearching { return .noResults }
+        if syncFailed { return .partial }
         if filteredCount > 0 { return .content }
-        if totalDeckCount > 0 && isFilteringOrSearching { return .noResults }
-        if isSyncing { return .loading }
-        if syncFailed { return .error }
         return .empty
     }
 }
@@ -93,6 +97,7 @@ struct ExploreView: View {
                 case .error: errorState
                 case .empty: emptyState
                 case .noResults: noResultsState
+                case .partial: content
                 case .content: content
                 }
             }
@@ -133,6 +138,14 @@ struct ExploreView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.s3) {
+                if syncFailed {
+                    AppBanner(
+                        message: L10n.string("explore.error.description"),
+                        systemImage: "exclamationmark.icloud",
+                        onRetry: { Task { await refreshCatalog() } }
+                    )
+                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                }
                 filterBar
                 deckGrid
             }
