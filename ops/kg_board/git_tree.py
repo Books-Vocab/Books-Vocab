@@ -46,6 +46,9 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
 
     commits: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
+    payload_error = _text(payload.get("error"))
+    if payload_error:
+        errors.append(payload_error)
     if payload.get("commits") is not None and not isinstance(payload.get("commits"), (list, tuple)):
         errors.append("commits is not a list")
     if payload.get("refs") is not None and not isinstance(payload.get("refs"), (list, tuple)):
@@ -71,6 +74,12 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         raw_files = raw.get("files")
         if raw_files is not None and not isinstance(raw_files, (list, tuple)):
             errors.append(f"commit {sha} files is not a list")
+        if any(not isinstance(path, str) for path in _items(raw_files)):
+            errors.append(f"commit {sha} files contains a non-string path")
+        for key in ("insertions", "deletions"):
+            value = raw.get(key)
+            if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
+                errors.append(f"commit {sha} {key} is not an integer")
         row = {
             "sha": sha,
             "parents": parents,
@@ -81,7 +90,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             "committed_at": _text(raw.get("committed_at")),
             "insertions": raw.get("insertions") if isinstance(raw.get("insertions"), int) else None,
             "deletions": raw.get("deletions") if isinstance(raw.get("deletions"), int) else None,
-            "files": [str(path) for path in _items(raw.get("files")) if path],
+            "files": [path for path in _items(raw.get("files")) if isinstance(path, str) and path],
         }
         prior = commits.get(sha)
         if prior:
@@ -100,6 +109,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         commits[sha] = row
 
     refs: list[dict[str, Any]] = []
+    seen_branches: dict[str, str] = {}
     for index, raw in enumerate(_items(payload.get("refs"))):
         if not isinstance(raw, dict):
             errors.append("ref record is not an object")
@@ -109,6 +119,10 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         if not branch or not head:
             errors.append("ref record has invalid branch or head")
             continue
+        prior_head = seen_branches.get(branch)
+        if prior_head is not None and prior_head != head:
+            errors.append(f"ref {branch} has conflicting heads")
+        seen_branches[branch] = head
         tickets = []
         raw_tickets = raw.get("tickets") if raw.get("tickets") is not None else raw.get("backlog")
         if raw_tickets is not None and not isinstance(raw_tickets, (list, tuple)):
@@ -122,8 +136,15 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
                         "brief": _text(ticket.get("brief")),
                         "severity": _text(ticket.get("severity")),
                     })
-            elif _text(ticket):
+                else:
+                    errors.append(f"ref {branch} has ticket without id")
+            elif isinstance(ticket, str) and _text(ticket):
                 tickets.append({"id": _text(ticket), "brief": None, "severity": None})
+            else:
+                errors.append(f"ref {branch} has malformed ticket")
+        worktree_present = raw.get("worktree_present")
+        if worktree_present is not None and not isinstance(worktree_present, bool):
+            errors.append(f"ref {branch} worktree_present is not boolean")
         refs.append({
             "id": _text(raw.get("id")) or f"ref-{index}",
             "branch": branch,
@@ -135,7 +156,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             "host": _text(raw.get("host")) or _text(payload.get("host")),
             "status": _text(raw.get("status")) or "active",
             "live_state": _text(raw.get("live_state")) or "unknown",
-            "worktree_present": raw.get("worktree_present"),
+            "worktree_present": worktree_present if isinstance(worktree_present, bool) else None,
             "integration_owner": _text(raw.get("integration_owner")),
             "claimed_at": _text(raw.get("claimed_at")),
             "handed_back_sha": _sha(raw.get("handed_back_sha")),
@@ -151,7 +172,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         "host": _text(payload.get("host")),
         "complete": ((payload["complete"] if isinstance(payload.get("complete"), bool)
                       else "complete" not in payload) and not errors),
-        "error": _text(payload.get("error")) or "; ".join(errors) or None,
+        "error": "; ".join(errors) or None,
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
     }
