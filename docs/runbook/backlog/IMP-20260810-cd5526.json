@@ -1,0 +1,21 @@
+{
+  "acceptance": "The first direct anchor commit must be recoverable on a second call with the same SHA and recovered=true; after a simulated post-commit marker-save crash, the next _delivery_anchor_and_commit call must return rc=0 and persist anchor_committed=true with anchor_commit_sha; an unrelated non-cache foreign path must still return rc=1 with outside_paths. The fixture must exclude machine-local .cache state without changing production dirty/path guards.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py::test_delivery_anchor_recovers_commit_when_marker_write_crashes ops/tests/test_worktree_orchestrate.py::test_delivery_anchor_replays_manifest_after_post_commit_marker_failure ops/tests/test_worktree_orchestrate.py::test_delivery_anchor_commit_refuses_staged_or_unstaged_foreign_paths",
+  "brief": "交付錨點重試時會把自己的暫存紀錄當成外部改動而拒絕完成",
+  "category": "tool",
+  "date": "2026-08-10",
+  "detail": "Fresh Gate on Team A d4 integration 68cbbe5f blocked on two recovery tests. In a temp repository, the first _delivery_anchor_commit succeeds and creates the exact anchor commit, but its streaming TaskRegistry writes .cache/task_registry.json, .cache/task_registry.json.lock, and .cache/task_logs/*.log. On retry, _delivery_anchor_commit treats those tool-owned ignored-state paths as foreign changes, reports the expected backlog path missing, and never reaches _delivery_anchor_identity. The same false-positive blocks _delivery_anchor_and_commit manifest replay after a simulated marker-save crash. Existing anchor safety must remain: a real non-cache foreign path must still refuse. Reproduced on untouched primary b23041d and d4 integration; no d4 source commit changed anchor code.",
+  "fix_site": "ops/tests/test_worktree_orchestrate.py:_git_repo_with_anchor_ticket; ops/tests/test_worktree_orchestrate.py:delivery-anchor-recovery-tests",
+  "groomed_against": "b23041d565f8f1a7bc7ac73d622a81a7bd2cfc33",
+  "groomed_at": "2026-08-10",
+  "groomed_by": "agent:supervisor",
+  "id": "IMP-20260810-cd5526",
+  "plan": "1. Reproduce both recovery failures and the genuine foreign-path refusal on a clean temp repository.\n2. Make the temp git fixture carry the repository's documented .cache exclusion (for example via .git/info/exclude) before invoking the real TaskRegistry-backed mutation runner.\n3. Do not loosen production _delivery_primary_dirty or anchor path checks; preserve exact parent/subject/trailer/changed-path identity and refusal for a real foreign file.\n4. Run the two recovery regressions and the negative foreign-path control with the exact acceptance command.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個交付回復測試 fixture 與兩個回歸測試，不放寬生產安全檢查",
+  "severity": "high",
+  "source": "supervisor:fresh-gate-d4",
+  "status": "triaged",
+  "stream": "IMP"
+}

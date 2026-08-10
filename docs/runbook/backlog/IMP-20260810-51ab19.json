@@ -1,0 +1,21 @@
+{
+  "acceptance": "With a valid executable command and a nonexistent spec cwd, _run_gate must return status=block, executed=false, and diagnosis \"FileNotFoundError on <missing cwd>\" without naming the command as the diagnosis; the missing cwd must remain absent after the probe; existing missing-tool and unexecutable-tool controls must remain green.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py::test_a_missing_gate_tool_is_a_readable_block_not_a_traceback ops/tests/test_worktree_orchestrate.py::test_a_missing_gate_CWD_is_not_reported_as_a_missing_tool ops/tests/test_worktree_orchestrate.py::test_an_unexecutable_gate_tool_is_reported_the_same_way",
+  "brief": "Gate 工作目錄不存在時會把問題誤報成命令檔遺失",
+  "category": "tool",
+  "date": "2026-08-10",
+  "detail": "The Gate runner receives a valid command with a missing spec cwd. TaskRegistry initializes its default state under that missing cwd before Popen, creating the directory; Popen then fails because the command is absent in the newly created directory, and _run_gate reports FileNotFoundError on the command instead of the missing cwd. The exact regression test fails on untouched primary b23041d and d4 integration. The existing missing-command and non-executable-command diagnostics must remain unchanged.",
+  "fix_site": "ops/worktree_orchestrate.py:_run_gate; ops/lib/streaming_command.py:runner boundary; ops/task_registry.py:state initialization; ops/tests/test_worktree_orchestrate.py",
+  "groomed_against": "b23041d565f8f1a7bc7ac73d622a81a7bd2cfc33",
+  "groomed_at": "2026-08-10",
+  "groomed_by": "agent:supervisor",
+  "id": "IMP-20260810-51ab19",
+  "plan": "1. Reproduce the missing-cwd case and inspect the exception path before and after TaskRegistry initialization.\n2. Add a fail-closed preflight or equivalent runner contract that reports the actual missing cwd and does not create a fake work directory as a side effect.\n3. Keep the existing command-not-found, permission, and machine-resource diagnostics distinct.\n4. Add a regression assertion for the path and no-side-effect behavior, then run the exact acceptance command.",
+  "resolution": "Relation note: this is a regression of fixed IMP-0047, not a duplicate feature request. The TaskRegistry integration changed the pre-spawn side effect by creating the missing cwd before the existing diagnostic guard runs. Keep IMP-0047 as historical closure; this ticket restores its contract with a no-side-effect regression test.",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 Gate cwd/TaskRegistry 邊界修復與三個診斷回歸測試，不改既有錯誤分類",
+  "severity": "high",
+  "source": "supervisor:fresh-gate-d4",
+  "status": "triaged",
+  "stream": "IMP"
+}
