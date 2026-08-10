@@ -46,7 +46,15 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
 
     commits: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
-    payload_error = _text(payload.get("error"))
+    def checked(value: Any, field: str) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            errors.append(f"{field} is not a string")
+            return None
+        return value.strip() or None
+
+    payload_error = checked(payload.get("error"), "payload error")
     if payload_error:
         errors.append(payload_error)
     if payload.get("commits") is not None and not isinstance(payload.get("commits"), (list, tuple)):
@@ -83,13 +91,15 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         row = {
             "sha": sha,
             "parents": parents,
-            "subject": _text(raw.get("subject")) or "(無主旨)",
-            "author": _text(raw.get("author")),
-            "committer": _text(raw.get("committer")),
-            "authored_at": _text(raw.get("authored_at")),
-            "committed_at": _text(raw.get("committed_at")),
-            "insertions": raw.get("insertions") if isinstance(raw.get("insertions"), int) else None,
-            "deletions": raw.get("deletions") if isinstance(raw.get("deletions"), int) else None,
+            "subject": checked(raw.get("subject"), f"commit {sha} subject") or "(無主旨)",
+            "author": checked(raw.get("author"), f"commit {sha} author"),
+            "committer": checked(raw.get("committer"), f"commit {sha} committer"),
+            "authored_at": checked(raw.get("authored_at"), f"commit {sha} authored_at"),
+            "committed_at": checked(raw.get("committed_at"), f"commit {sha} committed_at"),
+            "insertions": (raw.get("insertions") if isinstance(raw.get("insertions"), int)
+                           and not isinstance(raw.get("insertions"), bool) else None),
+            "deletions": (raw.get("deletions") if isinstance(raw.get("deletions"), int)
+                          and not isinstance(raw.get("deletions"), bool) else None),
             "files": [path for path in _items(raw.get("files")) if isinstance(path, str) and path],
         }
         prior = commits.get(sha)
@@ -114,14 +124,14 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         if not isinstance(raw, dict):
             errors.append("ref record is not an object")
             continue
-        branch = _text(raw.get("branch"))
+        branch = checked(raw.get("branch"), "ref branch")
         head = _sha(raw.get("head"))
         if not branch or not head:
             errors.append("ref record has invalid branch or head")
             continue
-        prior_head = seen_branches.get(branch)
-        if prior_head is not None and prior_head != head:
-            errors.append(f"ref {branch} has conflicting heads")
+        if branch in seen_branches:
+            errors.append(f"ref {branch} is duplicated")
+            continue
         seen_branches[branch] = head
         tickets = []
         raw_tickets = raw.get("tickets") if raw.get("tickets") is not None else raw.get("backlog")
@@ -129,36 +139,36 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             errors.append(f"ref {branch} tickets is not a list")
         for ticket in _items(raw_tickets):
             if isinstance(ticket, dict):
-                ticket_id = _text(ticket.get("id"))
+                ticket_id = checked(ticket.get("id"), f"ref {branch} ticket id")
                 if ticket_id:
                     tickets.append({
                         "id": ticket_id,
-                        "brief": _text(ticket.get("brief")),
-                        "severity": _text(ticket.get("severity")),
+                        "brief": checked(ticket.get("brief"), f"ref {branch} ticket brief"),
+                        "severity": checked(ticket.get("severity"), f"ref {branch} ticket severity"),
                     })
                 else:
                     errors.append(f"ref {branch} has ticket without id")
-            elif isinstance(ticket, str) and _text(ticket):
-                tickets.append({"id": _text(ticket), "brief": None, "severity": None})
+            elif isinstance(ticket, str) and checked(ticket, f"ref {branch} ticket"):
+                tickets.append({"id": checked(ticket, f"ref {branch} ticket"), "brief": None, "severity": None})
             else:
                 errors.append(f"ref {branch} has malformed ticket")
         worktree_present = raw.get("worktree_present")
         if worktree_present is not None and not isinstance(worktree_present, bool):
             errors.append(f"ref {branch} worktree_present is not boolean")
         refs.append({
-            "id": _text(raw.get("id")) or f"ref-{index}",
+            "id": checked(raw.get("id"), f"ref {branch} id") or f"ref-{index}",
             "branch": branch,
-            "kind": _text(raw.get("kind")) or "child",
-            "base": _text(raw.get("base")) or "main",
+            "kind": checked(raw.get("kind"), f"ref {branch} kind") or "child",
+            "base": checked(raw.get("base"), f"ref {branch} base") or "main",
             "base_sha": _sha(raw.get("base_sha")),
             "head": head,
-            "path": _text(raw.get("path")),
-            "host": _text(raw.get("host")) or _text(payload.get("host")),
-            "status": _text(raw.get("status")) or "active",
-            "live_state": _text(raw.get("live_state")) or "unknown",
+            "path": checked(raw.get("path"), f"ref {branch} path"),
+            "host": checked(raw.get("host"), f"ref {branch} host") or checked(payload.get("host"), "payload host"),
+            "status": checked(raw.get("status"), f"ref {branch} status") or "active",
+            "live_state": checked(raw.get("live_state"), f"ref {branch} live_state") or "unknown",
             "worktree_present": worktree_present if isinstance(worktree_present, bool) else None,
-            "integration_owner": _text(raw.get("integration_owner")),
-            "claimed_at": _text(raw.get("claimed_at")),
+            "integration_owner": checked(raw.get("integration_owner"), f"ref {branch} integration_owner"),
+            "claimed_at": checked(raw.get("claimed_at"), f"ref {branch} claimed_at"),
             "handed_back_sha": _sha(raw.get("handed_back_sha")),
             "tickets": tickets,
         })
@@ -168,8 +178,8 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
 
     return {
         "schema": SCHEMA,
-        "at": _text(payload.get("at")),
-        "host": _text(payload.get("host")),
+        "at": checked(payload.get("at"), "payload at"),
+        "host": checked(payload.get("host"), "payload host"),
         "complete": ((payload["complete"] if isinstance(payload.get("complete"), bool)
                       else "complete" not in payload) and not errors),
         "error": "; ".join(errors) or None,
