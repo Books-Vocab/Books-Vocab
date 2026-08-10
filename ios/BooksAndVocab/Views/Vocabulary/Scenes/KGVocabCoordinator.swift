@@ -11,7 +11,11 @@ import SwiftUI
     func handleDeleteTap(_ entryID: UUID, syncedEntries: [VocabularyEntry], modelContext: ModelContext, toastCoordinator: AppToastCoordinator)
     func loadInitialData(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
     func forceRefresh(kgService: any KGServing, modelContext: ModelContext) async
-    func retryPendingDeletes(pendingDeletes: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
+    func retryPendingDeletes(
+        pendingDeletes: [VocabularyEntry],
+        kgService: any VocabularyDeleting & DictionaryServing & HealthChecking,
+        modelContext: ModelContext
+    ) async
     func handleBatchDelete(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], modelContext: ModelContext, toastCoordinator: AppToastCoordinator)
     func handleBatchArchive(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext, toastCoordinator: AppToastCoordinator) async
 }
@@ -144,7 +148,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     /// 一個壞掉的 banner。字典卡一律走 `deleteDictionaryCard(cardId:notebookId:)`。
     func retryPendingDeletes(
         pendingDeletes: [VocabularyEntry],
-        kgService: any KGServing,
+        kgService: any VocabularyDeleting & DictionaryServing & HealthChecking,
         modelContext: ModelContext
     ) async {
         var failedCount = 0

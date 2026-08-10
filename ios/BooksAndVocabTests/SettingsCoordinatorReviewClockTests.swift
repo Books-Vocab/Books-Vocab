@@ -46,57 +46,15 @@ struct SettingsCoordinatorReviewClockTests {
         func loginWithApple(modelContainer: ModelContainer?) {}
     }
 
-    /// `loadData` 只用到 `healthCheck` + `fetchUserConfig`；其餘成員維持
-    /// fatalError stub，對齊 `PodcastPlayerLoaderTests.StubKGService` 慣例。
-    private final class StubKGService: KGServing {
-        var lastBackgroundSyncError: String?
-        var serverURL: String = "https://example.com"
-        var isConnected: Bool = true
-        var lastSyncDate: Date?
-        var serverCardCount: Int = 0
-        var sessionExpiredReason: String?
+    /// `loadData` 只用到 `healthCheck` + `fetchUserConfig`。
+    private final class StubKGService: HealthChecking, UserConfigFetching {
 
         var userConfigToReturn = KGUserConfig(
             translation: nil, review_clock: nil, review_mode: nil, vocab_ui: nil, auto_link: nil
         )
 
-        func currentAuthToken() async throws -> String { "token" }
-        func authTokenWithoutInvalidation() async -> String? { "token" }
-        func backgroundSync(container: ModelContainer) async {}
         func healthCheck() async {}
-        func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
-        func triggerPipeline(notebookId: String) async throws { fatalError("unused") }
-        func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse { fatalError("unused") }
-        func pullCopiedDeck(container: ModelContainer, notebookId: String) async {}
-        func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome { fatalError("unused") }
-        func fetchNotebooks() async throws -> [KGNotebook] { fatalError("unused") }
-        func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
-        func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
-        func deleteNotebook(id: String) async throws { fatalError("unused") }
         func fetchUserConfig() async throws -> KGUserConfig { userConfigToReturn }
-        func fetchEntitlements() async throws -> KGEntitlements { fatalError("unused") }
-        func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements { fatalError("unused") }
-        func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func deleteAccount() async throws { fatalError("unused") }
-        func pullGraphLinks() async throws -> [KGGraphLink] { fatalError("unused") }
-        func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink { fatalError("unused") }
-        func deleteLink(linkId: String, notebookId: String) async throws { fatalError("unused") }
-        func hideLink(linkId: String, notebookId: String) async throws { fatalError("unused") }
-        func unhideLink(linkId: String, notebookId: String) async throws { fatalError("unused") }
-        func deleteCard(word: String, notebookId: String) async throws { fatalError("unused") }
-        func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse { fatalError("unused") }
-        func archiveCard(word: String, archived: Bool, notebookId: String) async throws { fatalError("unused") }
-        func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse { fatalError("unused") }
-        func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) { fatalError("unused") }
-        func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int) { fatalError("unused") }
-        func pullReviewEvents(container: ModelContainer) async throws { fatalError("unused") }
-        func pushReviewQuietly(container: ModelContainer) async {}
-        func clearLocalData(container: ModelContainer, reason: String) async {}
-        func fetchQuota() async {}
     }
 
     // MARK: - Helpers

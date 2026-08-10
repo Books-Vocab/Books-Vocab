@@ -694,7 +694,7 @@ private final class Phase2BStalePollService: DictionaryServing {
 /// `batchDeleteCards` 的 content lookup 只認 learning role
 /// （`vocab_crud.py` `_batch_apply`），其餘一律落 `not_found`；per-word fallback
 /// 的 `_resolve_card_or_raise` 同樣拒絕非 learning，永遠 404。
-private final class Phase2BDeleteRoutingService: KGServing, @unchecked Sendable {
+private final class Phase2BDeleteRoutingService: VocabularyDeleting, DictionaryServing, HealthChecking, @unchecked Sendable {
     private let learningWords: Set<String>
     private(set) var batchDeletedWords: [[String]] = []
     private(set) var perWordDeletes: [String] = []
@@ -704,12 +704,7 @@ private final class Phase2BDeleteRoutingService: KGServing, @unchecked Sendable 
         self.learningWords = learningWords
     }
 
-    var lastBackgroundSyncError: String?
-    var serverURL: String = "https://example.com"
-    var isConnected: Bool = true
-    var lastSyncDate: Date?
-    var serverCardCount: Int = 0
-    var sessionExpiredReason: String?
+    func healthCheck() async {}
 
     func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse {
         batchDeletedWords.append(words)
@@ -734,41 +729,6 @@ private final class Phase2BDeleteRoutingService: KGServing, @unchecked Sendable 
         )
     }
 
-    func currentAuthToken() async throws -> String { "token" }
-    func authTokenWithoutInvalidation() async -> String? { "token" }
-    func healthCheck() async {}
-    func backgroundSync(container: ModelContainer) async {}
-    func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
-    func triggerPipeline(notebookId: String) async throws { fatalError("unused") }
-    func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse { fatalError("unused") }
-    func pullCopiedDeck(container: ModelContainer, notebookId: String) async {}
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome { fatalError("unused") }
-    func fetchNotebooks() async throws -> [KGNotebook] { fatalError("unused") }
-    func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
-    func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
-    func deleteNotebook(id: String) async throws { fatalError("unused") }
-    func fetchUserConfig() async throws -> KGUserConfig { fatalError("unused") }
-    func fetchEntitlements() async throws -> KGEntitlements { fatalError("unused") }
-    func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements { fatalError("unused") }
-    func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig { fatalError("unused") }
-    func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig { fatalError("unused") }
-    func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig { fatalError("unused") }
-    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig { fatalError("unused") }
-    func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig { fatalError("unused") }
-    func deleteAccount() async throws { fatalError("unused") }
-    func pullGraphLinks() async throws -> [KGGraphLink] { fatalError("unused") }
-    func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink { fatalError("unused") }
-    func deleteLink(linkId: String, notebookId: String) async throws { fatalError("unused") }
-    func hideLink(linkId: String, notebookId: String) async throws { fatalError("unused") }
-    func unhideLink(linkId: String, notebookId: String) async throws { fatalError("unused") }
-    func archiveCard(word: String, archived: Bool, notebookId: String) async throws { fatalError("unused") }
-    func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse { fatalError("unused") }
-    func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) { fatalError("unused") }
-    func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int) { fatalError("unused") }
-    func pullReviewEvents(container: ModelContainer) async throws { fatalError("unused") }
-    func pushReviewQuietly(container: ModelContainer) async {}
-    func clearLocalData(container: ModelContainer, reason: String) async {}
-    func fetchQuota() async {}
 }
 
 private final class Phase2BSearchService: DictionaryServing, @unchecked Sendable {

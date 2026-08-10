@@ -149,13 +149,13 @@ final class PodcastSyncService {
     }
 
     /// Shared helper so `PodcastPlayerView` 的 subtitle / audio metadata fetch 也能重用。
-    static func authedData(from urlString: String, kgService: any KGServing) async throws -> Data {
+    static func authedData(from urlString: String, kgService: any AuthTokenProviding) async throws -> Data {
         let (data, _) = try await authedResponseData(from: urlString, kgService: kgService)
         return data
     }
 
     static func authedResponseData(
-        from urlString: String, kgService: any KGServing
+        from urlString: String, kgService: any AuthTokenProviding
     ) async throws -> (Data, URLResponse) {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)

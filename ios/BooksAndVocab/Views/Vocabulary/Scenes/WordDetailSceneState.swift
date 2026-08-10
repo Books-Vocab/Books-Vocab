@@ -283,7 +283,7 @@ final class WordDetailSceneState {
     func setArchived(
         _ archived: Bool,
         for entry: VocabularyEntry,
-        kgService: any KGServing,
+        kgService: any CardArchiving,
         modelContext: ModelContext
     ) async {
         let previous = entry.isArchived
