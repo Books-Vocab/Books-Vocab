@@ -800,6 +800,41 @@ def board_payload() -> dict:
     }
 
 
+def history_payload() -> dict:
+    """Return the resolved backlog slice for the explicit history tab."""
+    entries = read_entries().get("entries") or []
+    rows = []
+    for entry in entries:
+        if entry.get("status") not in RESOLVED_STATUSES:
+            continue
+        area, area_evidence = classify_area(entry)
+        rows.append({
+            "id": entry.get("id"),
+            "brief": entry.get("brief") or "",
+            "detail": (entry.get("detail") or "")[:400],
+            "severity": entry.get("severity"),
+            "stream": entry.get("stream"),
+            "status": entry.get("status"),
+            "date": entry.get("date"),
+            "scope": (entry.get("scope") or "")[:400],
+            "plan": (entry.get("plan") or "")[:400],
+            "fix_site": (entry.get("fix_site") or "")[:200],
+            "acceptance": (entry.get("acceptance") or "")[:200],
+            "verdict": entry.get("verdict"),
+            "area": area,
+            "area_evidence": area_evidence,
+            "held": None,
+            "ready": True,
+        })
+    rows.sort(key=lambda row: (row.get("date") or "", row.get("id") or ""), reverse=True)
+    return {
+        "schema": "kg.board.history.v1",
+        "board": rows,
+        "count": len(rows),
+        "freshness": freshness(),
+    }
+
+
 def git_tree_payload() -> dict:
     """Return the mirrored Git/worktree graph with canonical ticket annotations."""
     mirror = _load_json(MIRROR_PATH, {}) or {}
@@ -953,6 +988,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/board":
             self._json(200, board_payload())
+            return
+        if path == "/api/history":
+            self._json(200, history_payload())
             return
         if path == "/api/git-tree":
             self._json(200, git_tree_payload())

@@ -128,7 +128,7 @@ def test_normalize_snapshot_rejects_scalar_and_relationship_type_errors():
     for marker in (
         "feeder reported failure", "insertions is not an integer",
         "files contains a non-string path", "worktree_present is not boolean",
-        "ticket without id", "malformed ticket", "conflicting heads",
+        "ticket without id", "malformed ticket", "duplicated",
     ):
         assert marker in payload["error"]
 

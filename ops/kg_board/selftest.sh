@@ -56,49 +56,36 @@ assert isinstance(value, str) and value, "app_revision missing"
 print(value[:9])' "$health_file" 2>&1)
 [ $? -eq 0 ] && ok "應用版本固定：$revision" || bad "應用版本：$revision"
 
-# 2b. HTML 契約：短期 CSRF 只注入同源頁，不把長期 bearer 暴露給瀏覽器
+# 2b. HTML 契約：瀏覽器只讀，不注入任何寫入 token
 code=$(curl -fsS "${READ_AUTH[@]}" -o "$page_file" -w '%{http_code}' "$BASE/" 2>/dev/null)
-CSRF=$(uv run --no-project --python 3.13 python -c '
-from html.parser import HTMLParser
-import sys
-class Meta(HTMLParser):
-    value = ""
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag == "meta" and attrs.get("name") == "kg-csrf":
-            self.value = attrs.get("content", "")
-p=Meta(); p.feed(open(sys.argv[1], encoding="utf-8").read())
-assert p.value, "kg-csrf meta missing"
-print(p.value)' "$page_file" 2>/dev/null)
-if [ "$code" = 200 ] && [ -n "$CSRF" ] \
+if [ "$code" = 200 ] \
    && grep -q 'data-tab="blocked"' "$page_file" \
    && grep -q '/assets/app.js' "$page_file" \
+   && ! grep -q 'kg-csrf' "$page_file" \
    && ! grep -q 'Bearer ' "$page_file"; then
-  ok "mobile HTML / assets / ephemeral CSRF 契約"
+  ok "readonly HTML / assets / no browser token 契約"
 else
-  bad "mobile HTML / assets / ephemeral CSRF 契約失敗"
+  bad "readonly HTML / assets / no browser token 契約失敗"
 fi
 
 # 3. 資料面：看板真的算得出數字，而且「可派工」只有一個定義
 counts=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/board" 2>/dev/null | uv run --no-project --python 3.13 python -c '
 import json, sys
 d = json.load(sys.stdin)
-assert d["schema"] == "kg.board.v2", d.get("schema")
-assert not {"dispatch", "blocked", "deferred"}.intersection(d), "v1 重複 rows 仍存在"
+assert d["schema"] == "kg.board.v3", d.get("schema")
+assert not {"dispatch", "blocked", "deferred", "rank", "pinned", "snoozed"}.intersection(d), "readonly payload 仍有重複或排序欄位"
 required = {"id", "brief", "detail", "severity", "stream", "held", "ready",
-            "pinned", "snoozed", "rank"}
-assert all(set(row) == required for row in d["board"]), "board row 不是 compact v2"
+            }
+assert all(set(row) == required for row in d["board"]), "board row 不是 compact v3"
 c = d["counts"]
 assert c["ready_definition"].startswith("KG CLI groomed clause"), c["ready_definition"]
 assert c["ready"] == len([r for r in d["board"] if r["ready"]]), "ready 計數與 board 的旗標不一致"
 assert c["dispatch"] == len(d["dispatch_ids"]), "dispatch 計數與 ID 清單長度不一致"
 assert c["decision"]["blocked"] == len(d["blocked_ids"]), "blocked 計數與 ID 清單長度不一致"
-assert c["decision"]["deferred"] == len(d["deferred_ids"]), "deferred 計數與 ID 清單長度不一致"
 assert sum(d["segments"].values()) == c["unresolved"], "segments 不是 unresolved partition"
 board_ids = {row["id"] for row in d["board"]}
 assert set(d["dispatch_ids"]) <= board_ids
 assert set(d["blocked_ids"]) <= board_ids
-assert set(d["deferred_ids"]) <= set(d["dispatch_ids"])
 assert set(d["dispatch_ids"]).isdisjoint(d["blocked_ids"])
 meta = d["dispatch_meta"]
 assert "unblocked" in meta["clauses"], meta["clauses"]
@@ -138,49 +125,27 @@ else
   ok "派工扣認領：$disp"
 fi
 
-# 4. 寫入面的三道門，逐一驗它真的擋
+# 4. 使用者寫入面必須不存在；mirror 仍是 bearer-only 內部同步
 [ -s "$TOKEN_FILE" ] && ok "token 檔存在" || bad "token 檔缺失或空：${TOKEN_FILE}（服務會拒絕啟動）"
 
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
-     -H 'Content-Type: application/x-www-form-urlencoded' -H "Origin: $ORIGIN" \
-     -H "X-KG-CSRF: $CSRF" -d 'id=X')
-[ "$c" = 403 ] && ok "非 JSON content-type 被擋 (403)" || bad "表單型 content-type 拿到 ${c}，CSRF 門沒關"
-
-c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
-     -H 'Content-Type: application/json' -H "Origin: $ORIGIN" \
-     -H "Authorization: Bearer $TOKEN" -d '{"id":"X"}')
-[ "$c" = 403 ] && ok "priority 缺 CSRF 被擋 (403)" || bad "priority 缺 CSRF 拿到 $c"
-
-c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
-     -H 'Content-Type: application/json' -H "X-KG-CSRF: $CSRF" \
-     -H 'Origin: http://evil.example' -d '{"id":"X"}')
-[ "$c" = 403 ] && ok "跨來源被擋 (403)" || bad "跨來源拿到 $c"
-
-c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
-     -H 'Content-Type: application/json' -H "X-KG-CSRF: $CSRF" \
-     -H 'Host: evil.example' -H 'Origin: http://evil.example' -d '{"id":"X"}')
-[ "$c" = 403 ] && ok "Host/Origin 同時偽造仍被 allowlist 擋 (403)" || bad "DNS rebinding 形狀拿到 $c"
+     -H 'Content-Type: application/json' -d '{"id":"X"}')
+[ "$c" = 404 ] && ok "priority write endpoint 已移除 (404)" || bad "priority endpoint 拿到 $c"
 
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/mirror/claims" \
-     -H 'Content-Type: application/json' -H "Origin: $ORIGIN" \
-     -H "X-KG-CSRF: $CSRF" -d '{}')
-[ "$c" = 401 ] && ok "mirror 拒絕 CSRF、仍要求 bearer (401)" || bad "mirror 無 bearer 拿到 $c"
+     -H 'Content-Type: application/json' -d '{}')
+[ "$c" = 401 ] && ok "mirror 無 bearer 被擋 (401)" || bad "mirror 無 bearer 拿到 $c"
 
-# 5. 真的寫得進去，而且寫完讀得到——然後清掉這筆自檢資料
-probe="SELFTEST-$$"
-c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
-     -H 'Content-Type: application/json' -H "Origin: $ORIGIN" -H "X-KG-CSRF: $CSRF" \
-     -d "{\"id\":\"$probe\",\"rank\":1}")
-if [ "$c" = 200 ]; then
-  grep -q "$probe" "$STATE/overlay.json" 2>/dev/null && ok "覆蓋層寫入落地" || bad "回 200 但 overlay.json 沒有那筆"
-  # GC 的正控：這個 id 不在 store 裡，所以下一次讀板就該把它掃掉
-  curl -fsS "${READ_AUTH[@]}" "$BASE/api/board" >/dev/null 2>&1
-  grep -q "$probe" "$STATE/overlay.json" 2>/dev/null \
-    && bad "覆蓋層 GC 沒把不存在的 id 掃掉（檔案會無限長大）" \
-    || ok "覆蓋層 GC 掃掉了不存在的 id"
-else
-  bad "帶齊三道門的寫入拿到 $c"
-fi
+# 5. 歷史切換必須是獨立唯讀資料面，且只含已結案票
+history=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/history" 2>/dev/null | uv run --no-project --python 3.13 python -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["schema"] == "kg.board.history.v1", d.get("schema")
+assert d["count"] == len(d["board"])
+assert all(row.get("status") in {"fixed", "wont-fix"} for row in d["board"])
+print("%d 條歷史票" % d["count"])
+' 2>&1)
+[ $? -eq 0 ] && ok "history 只讀投影：$history" || bad "history 投影：$history"
 
 # 6. log 有在轉檔的設定（只驗檔在、可寫；大小門檻由程式自己守）
 [ -f "$STATE/kg-board.log" ] && ok "應用 log 在 $STATE/kg-board.log" || bad "沒有應用 log——服務可能從未啟動成功"
