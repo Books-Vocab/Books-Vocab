@@ -7592,12 +7592,20 @@ def _seed_handoff(state, repo, branch, sha):
     ledger = (json.loads(path.read_text()) if path.exists() else {
         "schema": "kg.worktree.registry.v1", "records": [],
     })
-    ledger["records"].append({
+    record = {
         "path": str(repo), "branch": branch, "intent": "fixture",
         "base": "main", "created_at": "2999-01-01T00:00:00Z", "status": "active",
         "resolved_at": None, "backlog": [], "claimed_at": None,
+        "base_sha": _git(["rev-parse", "main"], repo),
         "handed_back_at": "2999-01-01T00:00:00Z", "handed_back_sha": sha,
-    })
+    }
+    record["handback_seal"] = MODULE.wr._seal_with_digest(
+        MODULE.wr._seal_body(
+            record, base_sha=record["base_sha"], tip_sha=sha, outcomes=[],
+            handed_back_at=record["handed_back_at"],
+        )
+    )
+    ledger["records"].append(record)
     path.write_text(json.dumps(ledger))
 
 
@@ -8193,7 +8201,7 @@ def test_two_round_integrations_converge_through_one_parent_gate_and_cutover(scr
         ])
         assert rc == MODULE.EXIT_OK, handoff
 
-    rc, parent = _run_json([
+    rc, parent = _run_integrate_json([
         "integrate", "--slug", "rounds-four-five", "--branches",
         round4["branch"], round5["branch"], "--state", state,
         "--commit", "--json",
