@@ -10,6 +10,9 @@
   "date": "2026-08-09",
   "detail": "lab/llm_eval 有 pyproject.toml、uv.lock 與十份 test_*.py，卻沒有任何 .github/workflows 檔或 ops 測試入口引用 lab/llm_eval。結果是 CLI、provider adapter、資料集與 runner 的變更只能靠人工記得進入子目錄執行測試；現有 ops-suite 的 paths 也完全不含此目錄。現況 detector：test \"$(find lab/llm_eval/tests -type f -name \"test_*.py\" | wc -l | tr -d \" \")\" -gt 0 且 rg -l \"lab/llm_eval\" .github/workflows 無輸出。",
   "fix_site": ".github/workflows/llm-eval.yml; lab/llm_eval/tests/test_ci_contract.py",
+  "fixed_by": [
+    "b91dbbaf37143df4b457bc796ce79291e032fae0"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ops-lab-health-audit",
@@ -20,10 +23,10 @@
   "scope": "一份獨立自動化流程與一個小型流程契約測試。",
   "severity": "med",
   "source": "ops/lab CI 可攜性盤點",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ops-lab-health-audit",
-  "verified_evidence": "find lab/llm_eval/tests -type f -name test_*.py | wc -l; ! rg -l lab/llm_eval .github/workflows"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:team-a-integrator",
+  "verified_evidence": "Acceptance command: cd lab/llm_eval && uv run --frozen --extra dev pytest -q tests/test_ci_contract.py\nObserved on source hand-back worktree: 5 passed in 0.02s (exit 0).\nFresh integration Gate at b91dbbaf: docs-lint and review-receipts passed; data-plane-unowned warning recorded."
 }
