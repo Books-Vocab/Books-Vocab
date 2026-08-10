@@ -32,7 +32,7 @@ allowed-tools: Bash, Read, Grep
 ## 指令參考 **(SoT)**
 
 本段為 `./ops/devops_kg_safe.sh`（與 repo-local shortcut `./devops.sh`）的權威指令清單；`docs/sop/deploy.md` / `docs/sop/debug.md` 內任何 `./devops.sh *` 用法以本表為準。
-對 `docker ps`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。standby 無 Caddy：`caddy-status` 已改為唯讀檢查 cloudflared tunnel（`pgrep`），`caddyfile` 回 N/A（CF ingress 為 remotely-managed config）；`backup-s3-test` 改為唯讀驗 standby launchd `com.kg.backup`。
+對 `docker ps`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。standby 無 Caddy：`caddy-status` 已改為唯讀檢查 cloudflared tunnel（`pgrep`），`caddyfile` 回 N/A（CF ingress 為 remotely-managed config）；`backup-s3-test` 呼叫 `ops/backup_status.sh`，fail-closed 驗證 launchd `com.kg.backup`、最後一筆穩定 log、exit=0、bytes、sha256、key 日期與 36 小時 freshness。
 
 ### Safe Wrapper（`./ops/devops_kg_safe.sh`）
 

@@ -160,9 +160,10 @@ main() {
       ;;
     backup-s3-test)
       # standby：排程備份由 launchd `com.kg.backup` → S3 跑（非 Lightsail cron）。
-      # 此命令做唯讀驗證：確認 launchd job 已載入並 tail 最近一行 log。
+      # 此命令做唯讀驗證：backup_status.sh fail-closed 檢查 job、穩定 log 格式與 36h freshness。
+      # helper 與生產 checkout 同步，故從 backend 目錄以 ../ops 路徑呼叫。
       # 手動觸發/排程細節見 ~/butler/docs/kg-backend-deployment.md §4.5 / §7 G5。
-      run_fixed_remote "launchctl list 2>/dev/null | grep -E 'com\\.kg\\.backup' || echo '(launchd com.kg.backup 未載入)'; tail -1 ~/Library/Logs/kg_backup.log 2>/dev/null || echo '(無 kg_backup.log)'"
+      run_fixed_remote "cd ${KG_REMOTE_DIR:-~/kg-prod/backend} && ../ops/backup_status.sh"
       ;;
     logs)
       preflight
