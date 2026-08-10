@@ -120,6 +120,20 @@ def _reserved_ticket_ids(existing_reservations: Iterable[dict[str, Any]]) -> dic
     return owners
 
 
+def _reservation_ticket_details(
+    reservation: dict[str, Any],
+) -> dict[str, dict[str, Any]] | None:
+    """Return structured sites for an existing reservation, or None if unknown."""
+    raw = reservation.get("ticket_details")
+    if not isinstance(raw, dict):
+        return None if reservation.get("ticket_ids") else {}
+    details: dict[str, dict[str, Any]] = {}
+    for ticket_id, detail in raw.items():
+        if isinstance(ticket_id, str) and isinstance(detail, dict):
+            details[ticket_id] = detail
+    return details
+
+
 def validate_manifest(
     request: dict[str, Any],
     *,
@@ -239,6 +253,42 @@ def validate_manifest(
             problems.append(_problem("ticket-already-reserved", "ticket belongs to another campaign",
                                      ticket=ticket_id, owner=owner.get("campaign_id")))
 
+    # A reservation from another campaign is a write-site owner, not just a set
+    # of ticket ids.  Legacy/ordinary active records without structured sites are
+    # deliberately unknown and therefore block a new campaign: free-text
+    # fix_site cannot prove disjointness.
+    requested_tickets = list(tickets.values())
+    for reservation in existing_reservations:
+        if not isinstance(reservation, dict):
+            continue
+        if reservation.get("campaign_id") == request.get("campaign_id"):
+            continue
+        existing_details = _reservation_ticket_details(reservation)
+        if existing_details is None:
+            if reservation.get("ticket_ids"):
+                problems.append(_problem(
+                    "existing-sites-unknown",
+                    "existing reservation has no structured write sites",
+                    owner=reservation.get("campaign_id"),
+                ))
+            continue
+        for existing_id, existing_ticket in existing_details.items():
+            existing_ticket = {"id": existing_id, **existing_ticket}
+            existing_sites = _normalise_sites(existing_ticket, problems)
+            for requested in requested_tickets:
+                if _overlap_is_declared(existing_ticket, requested):
+                    continue
+                for existing_site in existing_sites:
+                    for requested_site in normalised_sites.get(requested["id"], []):
+                        if _site_pair_conflicts(existing_site, requested_site):
+                            problems.append(_problem(
+                                "write-site-collision",
+                                "ticket collides with an existing reservation write site",
+                                tickets=[existing_id, requested["id"]],
+                                owner=reservation.get("campaign_id"),
+                                site=existing_site["path"],
+                            ))
+
     ticket_list = list(tickets.values())
     for index, first in enumerate(ticket_list):
         for second in ticket_list[index + 1:]:
@@ -283,6 +333,16 @@ def reservation_record(request: dict[str, Any], manifest_path: str, claimed_at: 
         for partition in request["partitions"]
     }
     ticket_ids = sorted(ticket_id for ids in tickets_by_partition.values() for ticket_id in ids)
+    ticket_details = {
+        item["id"]: {
+            "id": item["id"],
+            "partition": item["partition"],
+            "write_sites": copy.deepcopy(item.get("write_sites") or []),
+            "blocked_by": sorted(item.get("blocked_by") or []),
+            "co_land_group": item.get("co_land_group"),
+        }
+        for item in request["tickets"]
+    }
     return {
         "schema": RESERVATION_SCHEMA,
         "campaign_id": request["campaign_id"],
@@ -291,6 +351,7 @@ def reservation_record(request: dict[str, Any], manifest_path: str, claimed_at: 
         "manifest_path": manifest_path,
         "claimed_at": claimed_at,
         "ticket_ids": ticket_ids,
+        "ticket_details": ticket_details,
         "partitions": partitions,
     }
 
@@ -313,6 +374,7 @@ def reservation_summary(reservation: dict[str, Any]) -> dict[str, Any]:
         "manifest_path": reservation.get("manifest_path"),
         "partitions": partitions,
         "ticket_ids": list(reservation.get("ticket_ids") or []),
+        "tickets": copy.deepcopy(reservation.get("ticket_details") or {}),
     }
 
 
