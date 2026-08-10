@@ -216,23 +216,26 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
     })
     dangling_refs = sorted({ref["head"] for ref in refs if ref["head"] not in commits})
     parent_cycles: set[str] = set()
-    visiting: set[str] = set()
-    visited: set[str] = set()
-
-    def visit(sha: str) -> None:
-        if sha in visiting:
-            parent_cycles.add(sha)
-            return
-        if sha in visited or sha not in commits:
-            return
-        visiting.add(sha)
-        for parent in commits[sha]["parents"]:
-            visit(parent)
-        visiting.remove(sha)
-        visited.add(sha)
-
-    for sha in commits:
-        visit(sha)
+    state: dict[str, int] = {}
+    for start in commits:
+        if state.get(start):
+            continue
+        stack = [(start, False)]
+        while stack:
+            sha, exiting = stack.pop()
+            if sha not in commits:
+                continue
+            if exiting:
+                state[sha] = 2
+                continue
+            if state.get(sha) == 1:
+                parent_cycles.add(sha)
+                continue
+            if state.get(sha) == 2:
+                continue
+            state[sha] = 1
+            stack.append((sha, True))
+            stack.extend((parent, False) for parent in reversed(commits[sha]["parents"]))
     for sha, branches in referenced.items():
         commits[sha]["refs"] = sorted(set(branches))
     for row in commits.values():
