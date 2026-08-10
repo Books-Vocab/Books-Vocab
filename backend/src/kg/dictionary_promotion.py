@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ from typing import Any
 from .cards.dictionary_store import PromotionClaim, PromotionLeaseLost
 from .cards.model import Card
 from .exceptions import ConflictError, QuotaExceededError
+from .keyed_lock_registry import DICTIONARY_LOCK_REGISTRY
 from .lexical import LexicalEntry
 
 logger = logging.getLogger(__name__)
@@ -46,15 +46,7 @@ class PromotionRunResult:
     stage_b_succeeded: bool | None = None
 
 
-_LOCK_GUARD = threading.Lock()
-_CLAIM_LOCKS: dict[str, threading.RLock] = {}
 _PROCESS_WORKER_ID = uuid.uuid4().hex
-
-
-def _claim_lock(path: Any) -> threading.RLock:
-    key = str(path.resolve())
-    with _LOCK_GUARD:
-        return _CLAIM_LOCKS.setdefault(key, threading.RLock())
 
 
 async def _resolve(value: Any) -> Any:
@@ -78,7 +70,8 @@ class DictionaryPromotionService:
         self.difficulty = difficulty
         self.stage_b = stage_b
         self.worker_id = worker_id
-        self._lock = _claim_lock(cards.path)
+        self._lock_registry = DICTIONARY_LOCK_REGISTRY
+        self._lock_key = str(cards.path.resolve())
 
     def request(self, card_id: str) -> PromotionRequestResult:
         self.cards.recover_orphaned_dictionary_promotion(
@@ -96,7 +89,7 @@ class DictionaryPromotionService:
     async def run(self, card_id: str) -> PromotionRunResult:
         # Production is single-worker, and this path also serializes same-DB
         # in-process contenders so exactly one can cross queued -> running.
-        with self._lock:
+        with self._lock_registry.lock(self._lock_key):
             claim = self.cards.claim_dictionary_promotion(
                 card_id,
                 worker_id=self.worker_id,

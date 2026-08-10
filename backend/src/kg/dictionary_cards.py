@@ -6,10 +6,8 @@ import base64
 import hashlib
 import json
 import logging
-import threading
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,6 +22,7 @@ from .cards.model import Card
 from .exceptions import ConflictError, NotFoundError
 from .graph import GraphCardLifecycleSnapshot, GraphLifecycleRollbackError, LinkKind
 from .judge.models import Judgement
+from .keyed_lock_registry import DICTIONARY_LOCK_REGISTRY
 from .lexical import LexicalEntry
 
 logger = logging.getLogger(__name__)
@@ -159,16 +158,6 @@ def decode_dictionary_cursor(cursor: str) -> tuple[datetime, str]:
         raise BadRequestError("Malformed dictionary cursor") from exc
 
 
-_LOCK_GUARD = threading.Lock()
-_SAGA_LOCKS: dict[str, threading.RLock] = {}
-
-
-def _saga_lock(path: Path) -> threading.RLock:
-    key = str(path.resolve())
-    with _LOCK_GUARD:
-        return _SAGA_LOCKS.setdefault(key, threading.RLock())
-
-
 class DictionaryCardService:
     def __init__(
         self,
@@ -186,7 +175,8 @@ class DictionaryCardService:
         self.judge = judge
         self.crash_hook = crash_hook or (lambda _step: None)
         self.graph_resolver = graph_resolver or (lambda _notebook_id: self.graph)
-        self._lock = _saga_lock(cards.path)
+        self._lock_registry = DICTIONARY_LOCK_REGISTRY
+        self._lock_key = str(cards.path.resolve())
 
     def get_operation(self, idempotency_key: str) -> LexicalOperation:
         operation = self.cards.get_lexical_operation(idempotency_key)
@@ -308,7 +298,7 @@ class DictionaryCardService:
         archived: bool,
     ) -> DictionaryCardNode:
         action = "archive" if archived else "unarchive"
-        with self._lock:
+        with self._lock_registry.lock(self._lock_key):
             graph = self.graph_resolver(notebook_id)
             snapshot = graph.capture_card_lifecycle_snapshot(card_id)
             incident_ids = {link.id for link in snapshot.links}
@@ -367,7 +357,7 @@ class DictionaryCardService:
         notebook_id: str,
     ) -> DictionaryCardNode:
         action = "delete"
-        with self._lock:
+        with self._lock_registry.lock(self._lock_key):
             graph = self.graph_resolver(notebook_id)
             snapshot = graph.capture_card_lifecycle_snapshot(card_id)
             plan = self.cards.begin_dictionary_lifecycle(
@@ -432,7 +422,7 @@ class DictionaryCardService:
             "example_key": example_key,
         }
         request_hash = materialize_request_hash(request_values)
-        with self._lock:
+        with self._lock_registry.lock(self._lock_key):
             operation = self.cards.begin_lexical_operation(idempotency_key, request_hash)
             if operation.status == "completed" and operation.response_json:
                 result = MaterializeLinkResult.model_validate_json(operation.response_json)
