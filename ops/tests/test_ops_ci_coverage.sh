@@ -59,6 +59,7 @@ LINUX_GROUPS=(
   python-entrypoints
   capability-matrix
   worktree-orchestrator
+  kg-board
   script-help
   install-hooks
   lib-sourcing
