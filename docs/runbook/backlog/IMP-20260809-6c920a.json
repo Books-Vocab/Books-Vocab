@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "Round 6–8 契約要求三個協調 session 各取 15 張、共同固定 base，並在開工前全局對帳 ticket ID 與 fix_site；實際 R8 擴張到 25 張，三輪合計 55 張，live registry 因 worker 與 child tree 共出現 60 筆 active。R6 另記錄先查詢再認領造成 13 次 claim rejection。ticket-level registry lock 正確防止同一 ID 被重複認領，但 fix_site 是自由文字，不能機械比較 symbol、讀寫模式、依賴或 co-land；實際 child diff 在 ops/backlog.py、ops/tests/test_backlog.py、ops/worktree_orchestrate.py 等共享面重疊。需要 campaign-scoped reservation transaction：綁 base SHA、每 partition 配額、ticket 集合、結構化 write sites、依賴與唯一 coordinator；選票與保留必須同一個鎖內動作，超額、重複、碰撞或 stale base 都具名拒絕。這張只負責 claim/partition plane，不負責 hand-back outcome 或 parent integration discovery。",
   "fix_site": "ops/lib/worktree_campaign.py（新增）; ops/worktree_registry.py:_ledger_lock/register 與 campaign reservation 原語; ops/worktree_orchestrate.py:_claim_next_backlog/cmd_open/parser; ops/tests/test_worktree_campaign_reservation.py（新增）; docs/reference/tech_index.md; .claude/skills/worktree-flow/SKILL.md",
+  "fixed_by": [
+    "2b28b44f1d4edcf878af12f881eda1ae17759526"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ops-lab-maintainability-audit",
@@ -17,10 +20,10 @@
   "scope": "新增 campaign／partition 原子保留協定、純狀態核心、CLI 接線與一組整合測試，屬大型平台改造。",
   "severity": "high",
   "source": "R6-R8 pressure-test architecture review",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ops-lab-maintainability-audit",
-  "verified_evidence": "set -o pipefail; rg -q 'available\\[0\\]' ops/worktree_orchestrate.py && rg -q 'with wr\\._ledger_lock\\(state_path\\)' ops/worktree_orchestrate.py && ! rg -q 'campaign_id|partition_id|campaign-reserve|write_sites' ops/worktree_orchestrate.py ops/worktree_registry.py"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "agent:delivery-team-b",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_campaign_reservation.py (13 passed)"
 }
