@@ -101,6 +101,7 @@ run_one() {
     backup-verify)      ./ops/tests/test_backup_verify.sh ;;
     devops)
       ./ops/test_devops.sh &&
+      ./ops/tests/test_backup_status.sh &&
       # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
       # 主體與 test_devops.sh 同源（都測 wrapper），先前不屬於任何 group。
       ./ops/tests/test_devops_safe_lightsail_guard.sh &&

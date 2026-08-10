@@ -44,14 +44,13 @@ KG 原以**三層 backup**互相補位。各層獨立,單一層失效不阻擋�
 每週看一次（L3，現役）:
 
 ```bash
-# L3（standby launchd 跑的 S3 backup）
+# L3（standby launchd 跑的 S3 backup）：一次唯讀、fail-closed 檢查 job + 最近紀錄
+./ops/devops_kg_safe.sh backup-s3-test
+# S3 物件數仍可作為容量/保留觀測，但不能取代上面的 freshness 與內容驗證
 aws s3 ls s3://kg-backups-prod-967512079054/data/ | wc -l
-ssh chenliangyu@100.118.39.104 'tail -5 ~/Library/Logs/kg_backup.log'
-# launchd 是否正常排程
-ssh chenliangyu@100.118.39.104 'launchctl print gui/$(id -u)/com.kg.backup 2>/dev/null | grep -E "state|last exit"'
 ```
 
-連 2 天沒新增 S3 物件 = ping。（L1 Lightsail AutoSnapshot 已 OFFLINE，不再監控。）
+`backup-s3-test` 會拒絕缺 job、缺 log、非零 backup exit、格式錯、key 日期不符或最後一筆超過 36 小時；連 2 天沒新增 S3 物件仍需 ping。（L1 Lightsail AutoSnapshot 已 OFFLINE，不再監控。）
 
 ## 相關文件
 
