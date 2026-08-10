@@ -169,6 +169,7 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import worktree_registry as wr  # noqa: E402
 import backlog as backlog_tool  # noqa: E402
+import worktree_campaign as campaign  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 
@@ -505,6 +506,25 @@ def _held_from_registry_state(state: dict[str, Any]) -> dict[str, dict[str, Any]
                 "path": record.get("path"),
                 "claimed_at": record.get("claimed_at"),
             }
+    for reservation in state.get("campaign_reservations") or []:
+        if not isinstance(reservation, dict):
+            continue
+        for ticket in reservation.get("ticket_ids") or []:
+            claimed = False
+            for partition in (reservation.get("partitions") or {}).values():
+                if ticket in (partition.get("claimed") or {}):
+                    claimed = True
+                    break
+            # Reserved tickets remain unavailable to ordinary dispatch even
+            # after a child transition: the active registry record is the
+            # second, independent owner of that ticket.
+            held.setdefault(str(ticket), {
+                "branch": f"campaign/{reservation.get('campaign_id')}",
+                "path": reservation.get("manifest_path"),
+                "claimed_at": reservation.get("claimed_at"),
+                "campaign_id": reservation.get("campaign_id"),
+                "partition_claimed": claimed,
+            })
     return held
 
 
@@ -563,6 +583,81 @@ def _claim_next_backlog(
             "available": len(available),
             "skipped_claimed": rank,
         }
+
+
+def _claim_next_campaign_backlog(
+    *, root: Path, state_arg: str | None, path: Path, branch: str,
+    intent: str, base: str, campaign_id: str, partition_id: str,
+) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
+    """Atomically move one reserved ticket in one campaign partition to a child."""
+    state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
+    with wr._ledger_lock(state_path):
+        state = wr.load_state(state_path)
+        reservation = next(
+            (item for item in state.get("campaign_reservations") or []
+             if item.get("campaign_id") == campaign_id), None)
+        if reservation is None:
+            return EXIT_BLOCK, {"reason": "campaign reservation not found",
+                                "campaign_id": campaign_id}, [], {
+                                    "mode": "campaign-partition", "partition": partition_id,
+                                }
+        base_rc, current_base = _git(["rev-parse", base], cwd=root)
+        if base_rc != EXIT_OK or current_base.strip() != reservation.get("base"):
+            return EXIT_BLOCK, {
+                "reason": "campaign base is stale",
+                "campaign_id": campaign_id, "expected": reservation.get("base"),
+                "actual": current_base.strip(),
+            }, [], {"mode": "campaign-partition", "partition": partition_id}
+        partition = (reservation.get("partitions") or {}).get(partition_id)
+        if partition is None:
+            return EXIT_BLOCK, {"reason": "campaign partition not found",
+                                "campaign_id": campaign_id, "partition": partition_id}, [], {
+                                    "mode": "campaign-partition", "partition": partition_id,
+                                }
+        claimed = partition.setdefault("claimed", {})
+        ticket = next((item for item in partition.get("ticket_ids") or [] if item not in claimed), None)
+        if ticket is None:
+            return EXIT_BLOCK, {"reason": "campaign partition has no remaining reservation",
+                                "campaign_id": campaign_id, "partition": partition_id}, [], {
+                                    "mode": "campaign-partition", "partition": partition_id,
+                                }
+        register_args = argparse.Namespace(
+            state=str(state_path), at=None, path=str(path), branch=branch,
+            intent=intent, base=base, backlog=[ticket], exclusive=True, json=True,
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = wr.cmd_register(register_args)
+        try:
+            payload = json.loads(buf.getvalue())
+        except json.JSONDecodeError:
+            payload = {"reason": "registry returned unreadable claim output"}
+        if rc != EXIT_OK:
+            return EXIT_BLOCK, payload, [], {
+                "mode": "campaign-partition", "campaign": campaign_id,
+                "partition": partition_id,
+            }
+        # cmd_register owns its own atomic save.  Reload before adding the
+        # campaign transition so the active worktree record and reservation
+        # claim are composed from the same post-register snapshot.
+        state = wr.load_state(state_path)
+        reservation = next(
+            item for item in state.get("campaign_reservations") or []
+            if item.get("campaign_id") == campaign_id
+        )
+        partition = (reservation.get("partitions") or {})[partition_id]
+        claimed = partition.setdefault("claimed", {})
+        claimed[ticket] = {"branch": branch, "path": str(path),
+                           "claimed_at": datetime.now(timezone.utc).isoformat()}
+        wr.save_state(state_path, state)
+        used = len(claimed)
+        selection = {
+            "mode": "campaign-partition", "campaign": campaign_id,
+            "partition": partition_id, "quota": partition.get("quota"),
+            "used": used, "remaining": len(partition.get("ticket_ids") or []) - used,
+            "base": reservation.get("base"), "ticket": ticket,
+        }
+        return EXIT_OK, payload, [ticket], selection
 
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
     "ops/ui_quality_plane.yml": (
@@ -2870,6 +2965,51 @@ def _emit(payload: dict[str, Any], as_json: bool, human: str) -> None:
 # ============================================================================
 # subcommands
 # ============================================================================
+def cmd_campaign_reserve(args: argparse.Namespace) -> int:
+    """Validate or atomically persist a complete campaign reservation manifest."""
+    request_path = Path(args.request_file).resolve()
+    try:
+        request = json.loads(request_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _emit({"schema": SCHEMA, "step": "campaign-reserve",
+               "error": "request file unreadable", "path": str(request_path),
+               "detail": str(exc)}, args.json,
+              f"✗ cannot read campaign request {request_path}: {exc}")
+        return EXIT_USAGE
+    root = primary_root()
+    base_rc, current_base = _git(["rev-parse", args.base_ref], cwd=root)
+    if base_rc != EXIT_OK:
+        _emit({"schema": SCHEMA, "step": "campaign-reserve",
+               "error": "base ref unreadable", "base_ref": args.base_ref,
+               "detail": current_base}, args.json,
+              f"✗ cannot resolve base ref {args.base_ref}: {current_base}")
+        return EXIT_BLOCK
+    store = root / BACKLOG_STORE_DIR
+    try:
+        entries = list(backlog_tool._iter_entries(store))
+        result = wr.reserve_campaign(
+            wr._state_path(args), request,
+            current_base=current_base.strip(), backlog_entries=entries,
+            commit=args.commit,
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        _emit({"schema": SCHEMA, "step": "campaign-reserve",
+               "error": "campaign reservation failed", "detail": str(exc)}, args.json,
+              f"✗ campaign reservation failed: {exc}")
+        return EXIT_BLOCK
+    payload = {"schema": SCHEMA, "step": "campaign-reserve", **result,
+               "base_ref": args.base_ref}
+    human = ("✓ campaign reservation " if result.get("ok") else "✗ campaign reservation ")
+    human += (f"{result.get('campaign_id') or request.get('campaign_id')} "
+              f"({result.get('mode')})")
+    if not result.get("ok"):
+        human += ": " + "; ".join(
+            str(problem.get("message") or problem.get("kind"))
+            for problem in result.get("conflicts") or [])
+    _emit(payload, args.json, human)
+    return EXIT_OK if result.get("ok") else EXIT_BLOCK
+
+
 def cmd_preflight(args: argparse.Namespace) -> int:
     """fetch origin + registry sweep --exclude-current (clear crash residue)."""
     frc, fout = _fetch()
@@ -2942,6 +3082,19 @@ def cmd_open(args: argparse.Namespace) -> int:
               args.json,
               "✗ --next-backlog and --allow-ungroomed are mutually exclusive")
         return EXIT_USAGE
+    campaign_id = getattr(args, "campaign", None)
+    partition_id = getattr(args, "partition", None)
+    if bool(campaign_id) != bool(partition_id):
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "--campaign and --partition must be supplied together"},
+              args.json,
+              "✗ --campaign and --partition must be supplied together")
+        return EXIT_USAGE
+    if campaign_id and not next_backlog:
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "campaign claims require --next-backlog"}, args.json,
+              "✗ campaign claims require --next-backlog")
+        return EXIT_USAGE
 
     wanted = list(args.backlog or [])
     # `--backlog` is forwarded ONLY when it was given. Passing it unconditionally
@@ -2953,7 +3106,17 @@ def cmd_open(args: argparse.Namespace) -> int:
     # "omit = leave alone" rule was unreachable through the only two callers that
     # exist, so the invariant this whole change adds was broken by the change itself.
     selection = None
-    if next_backlog:
+    campaign_claim = None
+    if campaign_id:
+        reg_rc, reg_payload, wanted, selection = _claim_next_campaign_backlog(
+            root=root, state_arg=args.state, path=path, branch=branch,
+            intent=args.intent, base=base, campaign_id=campaign_id,
+            partition_id=partition_id,
+        )
+        if reg_rc == EXIT_OK:
+            campaign_claim = {"campaign_id": campaign_id, "partition": partition_id,
+                              "ticket": wanted[0], "branch": branch}
+    elif next_backlog:
         reg_rc, reg_payload, wanted, selection = _claim_next_backlog(
             root=root, state_arg=args.state, path=path, branch=branch,
             intent=args.intent, base=base,
@@ -2993,8 +3156,17 @@ def cmd_open(args: argparse.Namespace) -> int:
         # is not the only recovery. It is the immediate one: without it the ticket
         # stays held by a record whose path does not exist until somebody happens to
         # run preflight WITH --commit, which is not the default.
-        rel_rc, _ = _registry(["resolve", *_state_arg(args.state), "--branch", branch,
-                               "--status", "abandoned"])
+        if campaign_claim:
+            released = wr.release_campaign_claim(
+                Path(args.state).resolve() if args.state else wr.default_state_path(),
+                campaign_id=campaign_claim["campaign_id"],
+                partition_id=campaign_claim["partition"],
+                ticket_id=campaign_claim["ticket"], branch=branch,
+            )
+            rel_rc = EXIT_OK if released.get("ok") else EXIT_BLOCK
+        else:
+            rel_rc, _ = _registry(["resolve", *_state_arg(args.state), "--branch", branch,
+                                   "--status", "abandoned"])
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree add failed",
                "detail": out, "backlog": wanted, "claim_released": rel_rc == EXIT_OK},
               args.json,
@@ -3014,8 +3186,17 @@ def cmd_open(args: argparse.Namespace) -> int:
         )
         rel_rc = EXIT_BLOCK
         if cleanup_rc == EXIT_OK:
-            rel_rc, _ = _registry(["resolve", *_state_arg(args.state),
-                                   "--branch", branch, "--status", "abandoned"])
+            if campaign_claim:
+                released = wr.release_campaign_claim(
+                    Path(args.state).resolve() if args.state else wr.default_state_path(),
+                    campaign_id=campaign_claim["campaign_id"],
+                    partition_id=campaign_claim["partition"],
+                    ticket_id=campaign_claim["ticket"], branch=branch,
+                )
+                rel_rc = EXIT_OK if released.get("ok") else EXIT_BLOCK
+            else:
+                rel_rc, _ = _registry(["resolve", *_state_arg(args.state),
+                                       "--branch", branch, "--status", "abandoned"])
         _emit({"schema": SCHEMA, "step": "open", "error": "scratch setup failed",
                "detail": str(exc), "scratch_dir": str(scratch),
                "worktree_cleanup_rc": cleanup_rc, "claim_released": rel_rc == EXIT_OK,
@@ -3037,8 +3218,17 @@ def cmd_open(args: argparse.Namespace) -> int:
         )
         rel_rc = EXIT_BLOCK
         if cleanup_rc == EXIT_OK:
-            rel_rc, _ = _registry(["resolve", *_state_arg(args.state),
-                                   "--branch", branch, "--status", "abandoned"])
+            if campaign_claim:
+                released = wr.release_campaign_claim(
+                    Path(args.state).resolve() if args.state else wr.default_state_path(),
+                    campaign_id=campaign_claim["campaign_id"],
+                    partition_id=campaign_claim["partition"],
+                    ticket_id=campaign_claim["ticket"], branch=branch,
+                )
+                rel_rc = EXIT_OK if released.get("ok") else EXIT_BLOCK
+            else:
+                rel_rc, _ = _registry(["resolve", *_state_arg(args.state),
+                                       "--branch", branch, "--status", "abandoned"])
         _emit({"schema": SCHEMA, "step": "open", "error": "scratch is not ignored",
                "scratch_dir": str(scratch), "check_ignore_rc": ignore_rc,
                "check_ignore_detail": ignore_out, "worktree_cleanup_rc": cleanup_rc,
@@ -3050,7 +3240,7 @@ def cmd_open(args: argparse.Namespace) -> int:
 
     payload = {"schema": SCHEMA, "step": "open", "branch": branch, "path": str(path),
                "base": base, "intent": args.intent, "backlog": wanted,
-               "selection": selection,
+               "selection": selection, "campaign": campaign_claim,
                "scratch_dir": str(scratch), "registered": True}
     human = (f"✓ opened worktree [{branch}] (base {base})\n"
              f"  path: {path}\n"
@@ -8145,6 +8335,19 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--base", default=BASE_DEFAULT,
                         help=f"baseline ref (default: {BASE_DEFAULT})")
 
+    cr = sub.add_parser(
+        "campaign-reserve",
+        help="validate or atomically reserve a complete campaign manifest (dry-run default)",
+    )
+    add_common(cr)
+    cr.add_argument("--request-file", required=True,
+                     help="JSON file with schema kg.worktree.campaign.v1")
+    cr.add_argument("--base-ref", default=BASE_DEFAULT,
+                     help=f"local ref whose exact SHA must match request base (default: {BASE_DEFAULT})")
+    cr.add_argument("--commit", action="store_true",
+                     help="persist the manifest and registry reservation")
+    cr.set_defaults(func=cmd_campaign_reserve)
+
     pf = sub.add_parser("preflight", help="fetch + registry sweep --exclude-current "
                         "(clear crash residue; dry-run default)")
     add_common(pf)
@@ -8175,6 +8378,10 @@ def build_parser() -> argparse.ArgumentParser:
              "both selecting one id and making a loser retry. Only groomed, "
              "unresolved, unclaimed and unblocked entries are eligible.",
     )
+    op.add_argument("--campaign", default=None,
+                    help="campaign id whose reserved ticket set supplies --next-backlog")
+    op.add_argument("--partition", default=None,
+                    help="campaign partition to consume with --campaign --next-backlog")
     op.add_argument(
         "--allow-ungroomed", action="store_true",
         help="take a ticket that has no plan/acceptance/fix-site — i.e. claim it as "
