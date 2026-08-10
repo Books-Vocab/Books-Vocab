@@ -250,6 +250,75 @@ for g in "${LINUX_GROUPS[@]}" "${EXCLUDED_GROUPS[@]%%|*}"; do
 done
 ok_if_clean "classification contains no stale entries"
 
+# ── workflow action provenance ──────────────────────────────────────────────
+# Workflow refs are executable dependencies. Keep this contract next to the
+# ops-ci coverage gate so a mutable tag cannot silently re-enter CI.
+section "workflow action refs are immutable and non-empty"
+POLICY="$WORKSPACE/ops/workflow_dependency_policy.py"
+policy_fixture="$(mktemp -d "${TMPDIR:-/tmp}/kg-workflow-policy.XXXXXX")"
+trap 'rm -rf "$policy_fixture"' EXIT
+
+make_policy_fixture() {
+  local dir="$1" ref="$2"
+  mkdir -p "$dir"
+  printf '%s\n' \
+    'name: fixture' \
+    'on: push' \
+    'jobs:' \
+    '  check:' \
+    '    runs-on: ubuntu-latest' \
+    '    steps:' \
+    '      - uses: ./local-action' \
+    "      - uses: $ref" \
+    >"$dir/workflow.yml"
+}
+
+policy_run() {
+  uv run --no-project --python 3.13 python "$POLICY" \
+    --workflows-dir "$1" --json >"$1/result.json" 2>"$1/result.err"
+}
+
+make_policy_fixture "$policy_fixture/mutable" "actions/checkout@v4"
+if policy_run "$policy_fixture/mutable"; then
+  fail_t "mutable action ref was accepted"
+else
+  ok "mutable action ref is rejected"
+fi
+
+make_policy_fixture "$policy_fixture/pinned" "actions/checkout@0123456789abcdef0123456789abcdef01234567"
+if policy_run "$policy_fixture/pinned"; then
+  ok "40-hex action ref plus local action is accepted"
+else
+  fail_t "40-hex action ref plus local action was rejected"
+fi
+
+mkdir -p "$policy_fixture/local-only"
+printf '%s\n' \
+  'name: fixture' 'on: push' 'jobs:' '  check:' \
+  '    runs-on: ubuntu-latest' '    steps:' \
+  '      - uses: ./local-action' \
+  >"$policy_fixture/local-only/workflow.yml"
+if policy_run "$policy_fixture/local-only"; then
+  fail_t "local-only workflow passed with zero external action refs"
+else
+  ok "local-only workflow is rejected as zero external scan volume"
+fi
+
+mkdir -p "$policy_fixture/empty"
+if policy_run "$policy_fixture/empty"; then
+  fail_t "empty workflow directory passed with zero scan volume"
+else
+  ok "empty workflow directory is rejected as zero scan volume"
+fi
+
+section "repository workflow action refs are immutable"
+if uv run --no-project --python 3.13 python "$POLICY" \
+  --workflows-dir "$WORKSPACE/.github/workflows" --json; then
+  ok "repository workflow action refs pass immutable-ref policy"
+else
+  fail_t "repository workflow action refs violate immutable-ref policy"
+fi
+
 # ── file→group 反向覆蓋 ──────────────────────────────────────────────────────
 # 上面三段驗的全是 group→分類：每個 group 都被分類、沒有分類指向死 group。**沒有一段
 # 列舉過檔案**，所以「測試檔存在但沒有任何 group 跑得到」在結構上偵測不到，這正是
