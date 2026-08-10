@@ -64,58 +64,115 @@ protocol DeckCopying: AnyObject {
     func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse
 }
 
-/// KGService 的行為契約
-protocol KGServing: BackgroundSyncing, DeckCopying, DictionaryServing {
+/// 認證 token 讀取能力。需要 token 的 leaf consumer 不應依賴整張 KG service。
+protocol AuthTokenProviding: AnyObject {
+    func currentAuthToken() async throws -> String
+    func authTokenWithoutInvalidation() async -> String?
+}
+
+/// 後端健康狀態檢查能力。
+protocol HealthChecking: AnyObject {
+    func healthCheck() async
+}
+
+/// Notebook CRUD 能力。
+protocol NotebookServing: AnyObject {
+    func fetchNotebooks() async throws -> [KGNotebook]
+    func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook
+    func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook
+    func deleteNotebook(id: String) async throws
+}
+
+/// 使用者設定讀取能力。
+protocol UserConfigFetching: AnyObject {
+    func fetchUserConfig() async throws -> KGUserConfig
+}
+
+/// 使用者設定讀寫能力。
+protocol UserConfigServing: UserConfigFetching {
+    func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig
+    func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig
+    func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig
+    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig
+    func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig
+}
+
+/// 學習卡刪除能力。
+protocol VocabularyDeleting: AnyObject {
+    func deleteCard(word: String, notebookId: String) async throws
+    func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse
+}
+
+/// 單張學習卡封存能力。
+protocol CardArchiving: AnyObject {
+    func archiveCard(word: String, archived: Bool, notebookId: String) async throws
+}
+
+/// 學習詞彙同步與 CRUD 能力。
+protocol VocabularySyncServing: VocabularyDeleting, CardArchiving {
+    func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
+    func triggerPipeline(notebookId: String) async throws
+    @discardableResult
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome
+    func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse
+}
+
+/// 知識圖譜連結能力。
+protocol GraphServing: AnyObject {
+    func pullGraphLinks() async throws -> [KGGraphLink]
+    func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink
+    func deleteLink(linkId: String, notebookId: String) async throws
+    func hideLink(linkId: String, notebookId: String) async throws
+    func unhideLink(linkId: String, notebookId: String) async throws
+}
+
+/// 複習同步能力。
+protocol ReviewSyncServing: AnyObject {
+    func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
+    func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int)
+    func pullReviewEvents(container: ModelContainer) async throws
+    func pushReviewQuietly(container: ModelContainer) async
+}
+
+/// 額度讀取能力。
+protocol QuotaServing: AnyObject {
+    func fetchQuota() async
+}
+
+/// 帳號刪除能力。
+protocol AccountErasing: AnyObject {
+    func deleteAccount() async throws
+}
+
+/// 訂閱與 entitlement 能力。
+protocol SubscriptionServing: AnyObject {
+    func fetchEntitlements() async throws -> KGEntitlements
+    func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements
+}
+
+/// KGService 的完整組合契約；leaf consumer 應依賴上面的最小能力協定。
+protocol KGServing:
+    BackgroundSyncing,
+    DeckCopying,
+    DictionaryServing,
+    AuthTokenProviding,
+    HealthChecking,
+    NotebookServing,
+    UserConfigServing,
+    VocabularySyncServing,
+    GraphServing,
+    ReviewSyncServing,
+    QuotaServing,
+    AccountErasing,
+    SubscriptionServing
+{
     var serverURL: String { get set }
     var isConnected: Bool { get }
     var lastSyncDate: Date? { get }
     var serverCardCount: Int { get }
     var sessionExpiredReason: String? { get set }
 
-    func currentAuthToken() async throws -> String
-    /// 零副作用地取 token。**政策：過期 == 不存在**——兩者都回 nil，呼叫端一律當 guest。
-    /// 名字描述的是機制（不觸發 invalidation），政策則是這一行：**別把它當成「拿得到 token
-    /// 就代表已認證」**。（名稱由 APP-20260805-0049ac 的 acceptance_cmd 釘住，改名需先重梳票。）
-    ///
-    /// 給 auth-optional 的公開端點用（guest 亦可讀）。`currentAuthToken()` 在判定過期時
-    /// 會先 `sessionInvalidator.logout(...)` 才 throw，`try?` 吞得掉錯誤卻吞不掉那個副作用——
-    /// 於是「可選的認證」被當成「必要的認證」，逛公開牌組把人踢出登入狀態。
-    /// 需要真的認證的端點仍走 `currentAuthToken()`：那裡過期就該登出。
-    func authTokenWithoutInvalidation() async -> String?
-    func healthCheck() async
-    func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
-    func triggerPipeline(notebookId: String) async throws
-    @discardableResult
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome
-    func fetchNotebooks() async throws -> [KGNotebook]
-    func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook
-    func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook
-    func deleteNotebook(id: String) async throws
-    func fetchUserConfig() async throws -> KGUserConfig
-    func fetchEntitlements() async throws -> KGEntitlements
-    func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements
-    func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig
-    func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig
-    func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig
-    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig
-    func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig
-    func deleteAccount() async throws
-    func pullGraphLinks() async throws -> [KGGraphLink]
-    func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink
-    func deleteLink(linkId: String, notebookId: String) async throws
-    func hideLink(linkId: String, notebookId: String) async throws
-    func unhideLink(linkId: String, notebookId: String) async throws
-    func deleteCard(word: String, notebookId: String) async throws
-    func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse
-    func archiveCard(word: String, archived: Bool, notebookId: String) async throws
-    func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse
-    func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
-    func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int)
-    func pullReviewEvents(container: ModelContainer) async throws
-    func pushReviewQuietly(container: ModelContainer) async
-    func clearLocalData(container: ModelContainer, reason: String) async
-    func fetchQuota() async
-    /// 複製成功後把新 notebook + 其卡片針對性拉回本地（複用既有 sync 基建）。自我
-    /// 防禦、不 throw：pull 失敗僅記 log，卡片仍會在下次 backgroundSync 補齊。
+    /// 複製成功後把新 notebook + 其卡片針對性拉回本地。
     func pullCopiedDeck(container: ModelContainer, notebookId: String) async
+    func clearLocalData(container: ModelContainer, reason: String) async
 }

@@ -69,13 +69,8 @@ struct SettingsResyncConcurrencyTests {
         func leave() { inFlight -= 1 }
     }
 
-    private final class ProbeKGService: KGServing {
+    private final class ProbeKGService: BackgroundSyncing, HealthChecking, QuotaServing {
         var lastBackgroundSyncError: String?
-        var serverURL: String = "https://example.com"
-        var isConnected: Bool = true
-        var lastSyncDate: Date?
-        var serverCardCount: Int = 0
-        var sessionExpiredReason: String?
 
         let probe = OverlapProbe()
         /// backgroundSync 要送出的事件；測試用它模擬多條腿發出的回報。
@@ -115,43 +110,6 @@ struct SettingsResyncConcurrencyTests {
             await probe.leave()
         }
 
-        // MARK: 其餘成員維持 fatalError stub（對齊 StubKGService 慣例）
-        func currentAuthToken() async throws -> String { "t" }
-        func authTokenWithoutInvalidation() async -> String? { "t" }
-        func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
-        func triggerPipeline(notebookId: String) async throws {}
-        func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome { .unchanged }
-        func fetchNotebooks() async throws -> [KGNotebook] { [] }
-        func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
-        func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
-        func deleteNotebook(id: String) async throws {}
-        func fetchUserConfig() async throws -> KGUserConfig { fatalError("unused") }
-        func fetchEntitlements() async throws -> KGEntitlements { fatalError("unused") }
-        func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements { fatalError("unused") }
-        func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig { fatalError("unused") }
-        func deleteAccount() async throws {}
-        func pullGraphLinks() async throws -> [KGGraphLink] { [] }
-        func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink { fatalError("unused") }
-        func deleteLink(linkId: String, notebookId: String) async throws {}
-        func hideLink(linkId: String, notebookId: String) async throws {}
-        func unhideLink(linkId: String, notebookId: String) async throws {}
-        func deleteCard(word: String, notebookId: String) async throws {}
-        func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse { fatalError("unused") }
-        func archiveCard(word: String, archived: Bool, notebookId: String) async throws {}
-        func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse { fatalError("unused") }
-        func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) { (0, 0) }
-        func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int) { (0, 0) }
-        func pullReviewEvents(container: ModelContainer) async throws {}
-        func pushReviewQuietly(container: ModelContainer) async {}
-        func clearLocalData(container: ModelContainer, reason: String) async {}
-        func pullCopiedDeck(container: ModelContainer, notebookId: String) async {}
-        func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse { fatalError("unused") }
-        // `DictionaryServing` 整組走 protocol extension 的預設實作（全部 throw
-        // "unavailable"），這裡不覆寫。
     }
 
     private static func makeContainer() -> ModelContainer {
