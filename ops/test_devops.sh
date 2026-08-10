@@ -52,16 +52,11 @@ grep -q -- "--exclude='_ops_backups/'" "$KG" \
 # 那行），所以舊斷言不會轉紅——它會靜靜變成空話，不再證明備份呼叫點會顯示進度。失敗
 # 模式同 :37-43 的註解。改成「注入 version 字串 → 純函式輸出」的行為斷言 + 對
 # cmd_backup 函式範圍的呼叫點斷言。
-# 不可 `source devops.sh`——它有頂層 case dispatch 且 set -euo pipefail，source 會直接
-# 執行（理由同 ops/kg_reconcile.sh:24-25 的註解），故用 awk 抽函式再丟給子 bash。
+# devops.sh 以 DEVOPS_SOURCE_ONLY=1 提供受支援的 source-only 邊界；測試直接載入
+# 生產函式，不再以 awk 擷取文字片段（那會把函式依賴與行為拆斷）。
 rsync_flags() {
-  local tmpf; tmpf=$(mktemp)
-  {
-    awk '/^rsync_progress_flags\(\)/,/^}$/' "$KG"
-    echo 'rsync_progress_flags "$1"'
-  } > "$tmpf"
-  bash "$tmpf" "$1"
-  rm -f "$tmpf"
+  DEVOPS_SOURCE_ONLY=1 KG_SSH_CMD=/usr/bin/true bash -c \
+    'source "$1"; rsync_progress_flags "$2"' _ "$KG" "$1"
 }
 [[ "$(rsync_flags 'openrsync: protocol version 29')" == '--progress' ]] \
   && ok "KG backup picks --progress on openrsync" \
@@ -121,13 +116,7 @@ STUB
 chmod +x "$_bk_sandbox/bin/rsync"
 {
   echo 'set -euo pipefail'
-  grep -E '^(info|ok|err|section)\(\)' "$KG"
-  # cleanup_old_backups 必須一起抽：cmd_backup 收尾會呼叫它，少了它連**成功**路徑都會
-  # 以 127（command not found）收場 —— 那會讓下面 rc != 0 的斷言變成恆真、只剩 tar.gz
-  # 那半在真的量測。實測：不抽 rc=127，抽了 rc=0（失敗路徑仍為 1）。
-  awk '/^cleanup_old_backups\(\)/,/^}$/' "$KG"
-  awk '/^rsync_progress_flags\(\)/,/^}$/' "$KG"
-  awk '/^cmd_backup\(\)/,/^}$/' "$KG"
+  printf 'DEVOPS_SOURCE_ONLY=1 KG_SSH_CMD=/usr/bin/true source %q\n' "$KG"
   echo "BACKUP_DIR='$_bk_sandbox/backups'; SERVER=stub-host; REMOTE_DATA_DIR=/stub"
   echo 'cmd_backup'
 } > "$_bk_sandbox/run.sh"
@@ -341,19 +330,10 @@ rm -f "$SSH_STUB" "$SCP_STUB" "$PLAN"
 # 帳號。修法:放行 '.'，但以「禁 '..' / 禁前導 '.'」對齊後端 _safe_user_dir
 # (admin_wiring.py) 的 resolve()+commonpath path-traversal 防護語意。
 section "validate_uid (Apple uid with dots; traversal still blocked)"
-# devops.sh 底部的 dispatch 會在 source 時直接執行（跑 help 後結束），
-# 導致 source 後的 validate_uid 永遠不會執行。改為提取函式到 tmp 腳本獨立跑。
+# 透過 devops.sh 的 source-only 邊界直接載入 validate_uid，避免用 sed 擷取函式文字。
 vuid() {
-  local tmpf=$(mktemp)
-  {
-    sed -n '/^err()/,/^}$/p' "$KG"
-    sed -n '/^validate_uid()/,/^}$/p' "$KG"
-    echo 'validate_uid "$1"'
-  } > "$tmpf"
-  bash "$tmpf" "$1"
-  local rc=$?
-  rm -f "$tmpf"
-  return $rc
+  DEVOPS_SOURCE_ONLY=1 KG_SSH_CMD=/usr/bin/true bash -c \
+    'source "$1"; validate_uid "$2"' _ "$KG" "$1"
 }
 
 vuid '000287.04e254024c2f4341849278a933743257.0228' >/dev/null 2>&1 \
