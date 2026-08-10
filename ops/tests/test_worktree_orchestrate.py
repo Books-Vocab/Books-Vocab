@@ -1142,6 +1142,58 @@ def test_verdict_refuses_a_result_with_no_status_at_all():
     assert aggregate_verdict([{"status": None}]) == "block"
 
 
+def test_infrastructure_unavailable_rc_is_not_a_block(tmp_path, monkeypatch):
+    """A typed iOS lock timeout is machine state, not a product verdict."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        lambda *args, **kwargs: (75, "[ios_test] infrastructure unavailable", 0.001),
+    )
+
+    result = MODULE._run_gate(
+        {
+            "name": "ios-test-unit",
+            "category": "ios",
+            "level": "block",
+            "kind": "shell",
+            "cmd": ["ops/ios_ops.sh", "test", "--unit"],
+        },
+        str(tmp_path),
+    )
+
+    assert result["rc"] == 75
+    assert result["status"] == "inconclusive"
+    assert result["summary"] == (
+        "infrastructure unavailable (rc=75), not a verdict on this branch"
+    )
+    assert MODULE.aggregate_verdict([result]) == "warn"
+
+
+def test_non_infrastructure_failure_still_blocks(tmp_path, monkeypatch):
+    """Only the typed infrastructure sentinel is downgraded."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        lambda *args, **kwargs: (1, "assertion failed", 0.001),
+    )
+
+    result = MODULE._run_gate(
+        {
+            "name": "ios-test-unit",
+            "category": "ios",
+            "level": "block",
+            "kind": "shell",
+            "cmd": ["ops/ios_ops.sh", "test", "--unit"],
+        },
+        str(tmp_path),
+    )
+
+    assert result["rc"] == 1
+    assert result["status"] == "block"
+
+
 def test_verdict_names_the_offender_rather_than_just_refusing(capsys):
     """Blocking without saying which gate leaves the reader to diff the payload by
     hand. The name and the offending value both have to travel.
