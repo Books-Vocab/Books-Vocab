@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
+import shutil
+import sqlite3
+import tarfile
+import tempfile
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from .ops_edit_shared import EditContext, EditError, assert_safe_uid, backup_world, emit, user_dir_for
 from .ops_edit_support import (
     _CLONE_TMP_SUFFIX,
     _VALID_REVIEW_STATES,
     _WORLD_BACKUP_ROOT,
-    UTC,
-    Any,
-    CardReviewState,
-    EditContext,
-    EditError,
-    LinkKind,
-    Path,
-    ReviewEventStore,
     _assert_clean_notebook_name,
     _card_store,
     _passthrough_normalize,
@@ -32,22 +37,13 @@ from .ops_edit_support import (
     _source_to_json,
     _sqlite_online_backup,
     _world_members,
-    argparse,
-    assert_safe_uid,
-    backup_world,
-    data_dir,
-    datetime,
-    emit,
-    json,
-    load_users_from,
-    shutil,
-    synthesize_many,
-    tarfile,
-    tempfile,
-    user_dir_for,
-    users_file,
-    world_backup_root,
 )
+from kg.demo_review_synth import CardReviewState, synthesize_many
+from kg.graph.models import LinkKind
+from kg.review_events import ReviewEventStore
+from kg.ops_shared import data_dir
+from kg.user_store import load_users_from
+from .ops_edit_shared import users_file, world_backup_root
 from .text_utils import normalize_nfc_lower
 
 

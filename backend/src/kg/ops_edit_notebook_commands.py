@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+import argparse
+import sys
+from typing import Any
+
+from .ops_edit_shared import EditContext, EditError
 from .ops_edit_seed_commands import _dangling_active_notebook
 from .ops_edit_support import (
-    Any,
-    EditContext,
-    EditError,
     _assert_clean_notebook_name,
     _card_store,
     _notebook_store,
     _resolve_notebook_id,
-    argparse,
-    data_dir,
-    sys,
 )
+from kg.ops_shared import data_dir
 
 
 def cmd_notebook_create(args: argparse.Namespace) -> int:
