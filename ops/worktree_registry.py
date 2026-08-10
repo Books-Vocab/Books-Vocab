@@ -92,6 +92,7 @@ from typing import Any
 # Consume the P1 pure judgement layer — never re-implement a verdict here.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import worktree_state as ws  # noqa: E402  (ops/lib shared pure module)
+import worktree_campaign as wc  # noqa: E402  (campaign reservation pure layer)
 from lock_wait import exclusive_lock  # noqa: E402
 
 SCHEMA = "kg.worktree.registry.v1"
@@ -662,6 +663,153 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def _campaign_state(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the mutable campaign reservation list without inventing a second store."""
+    reservations = state.setdefault("campaign_reservations", [])
+    if not isinstance(reservations, list):
+        raise ValueError("malformed campaign_reservations in registry state")
+    return reservations
+
+
+def _restore_bytes(path: Path, original: bytes | None) -> None:
+    if original is None:
+        path.unlink(missing_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(original)
+
+
+def reserve_campaign(
+    state_path: Path,
+    request: dict[str, Any],
+    *,
+    current_base: str,
+    backlog_entries: list[dict[str, Any]] | dict[str, dict[str, Any]],
+    commit: bool = False,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Validate and optionally atomically persist one campaign reservation.
+
+    The registry lock covers the second read of active claims/reservations, the
+    validator, the manifest write, and the ledger write.  A failed transaction
+    restores both files byte-for-byte, which is stronger than merely returning
+    ``ok=false`` after a partial reservation.
+    """
+    state_path = Path(state_path).resolve()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        reservations = _campaign_state(state)
+        campaign_id = request.get("campaign_id") if isinstance(request, dict) else None
+        existing = next((r for r in reservations if r.get("campaign_id") == campaign_id), None)
+        manifest_path = wc.campaign_manifest_path(state_path, campaign_id) if isinstance(campaign_id, str) else None
+        canonical = wc.canonical_manifest(request) if isinstance(request, dict) else request
+
+        if existing is not None:
+            if existing.get("coordinator") != request.get("coordinator"):
+                problems = [{"kind": "campaign-already-owned", "message": "campaign has another coordinator",
+                             "campaign": campaign_id, "owner": existing.get("coordinator")}]
+            else:
+                existing_manifest = None
+                try:
+                    existing_manifest = json.loads(manifest_path.read_text()) if manifest_path else None
+                except (OSError, ValueError):
+                    pass
+                if existing_manifest != canonical:
+                    problems = [{"kind": "campaign-request-drift", "message": "existing campaign manifest differs",
+                                 "campaign": campaign_id}]
+                else:
+                    return {"ok": True, "mode": "idempotent", "existing": True,
+                            **wc.reservation_summary(existing)}
+        else:
+            problems = []
+
+        if not existing:
+            active_reservations = list(reservations)
+            for record in state.get("records") or []:
+                if record.get("status") == STATUS_ACTIVE and record.get("backlog"):
+                    active_reservations.append({
+                        "campaign_id": f"active:{record.get('branch')}",
+                        "ticket_ids": list(record.get("backlog") or []),
+                    })
+            problems = wc.validate_manifest(
+                request,
+                current_base=current_base,
+                backlog_entries=backlog_entries,
+                existing_reservations=active_reservations,
+            )
+        if problems:
+            return {"ok": False, "mode": "committed" if commit else "dry-run",
+                    "campaign_id": campaign_id, "coordinator": request.get("coordinator") if isinstance(request, dict) else None,
+                    "conflicts": problems}
+        if manifest_path is None:
+            return {"ok": False, "mode": "dry-run", "conflicts":[{
+                "kind": "invalid-campaign-id", "message": "campaign_id is required"}]}
+
+        reservation = wc.reservation_record(canonical, str(manifest_path), timestamp)
+        summary = wc.reservation_summary(reservation)
+        result = {"ok": True, "mode": "committed" if commit else "dry-run",
+                  **summary, "reservation": reservation}
+        if not commit:
+            return result
+
+        state_before = state_path.read_bytes() if state_path.exists() else None
+        manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
+        manifest_dir = manifest_path.parent
+        dir_existed = manifest_dir.exists()
+        try:
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_bytes(wc.json_bytes(canonical))
+            reservations.append(reservation)
+            save_state(state_path, state)
+        except Exception:
+            reservations[:] = [r for r in reservations if r is not reservation]
+            _restore_bytes(state_path, state_before)
+            _restore_bytes(manifest_path, manifest_before)
+            if not dir_existed:
+                try:
+                    manifest_dir.rmdir()
+                except OSError:
+                    pass
+            raise
+        return result
+
+
+def release_campaign_claim(
+    state_path: Path,
+    *,
+    campaign_id: str,
+    partition_id: str,
+    ticket_id: str,
+    branch: str,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Undo an opening child claim and its active record in one locked RMW."""
+    state_path = Path(state_path).resolve()
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        for reservation in state.get("campaign_reservations") or []:
+            if reservation.get("campaign_id") != campaign_id:
+                continue
+            partition = (reservation.get("partitions") or {}).get(partition_id)
+            claimed = (partition or {}).get("claimed") or {}
+            claim = claimed.get(ticket_id)
+            if claim is None or claim.get("branch") != branch:
+                return {"ok": False, "reason": "campaign claim not owned by branch"}
+            claimed.pop(ticket_id, None)
+            for record in state.get("records") or []:
+                if record.get("status") == STATUS_ACTIVE and record.get("branch") == branch:
+                    record["status"] = "abandoned"
+                    record["resolved_at"] = timestamp
+                    break
+            save_state(state_path, state)
+            return {"ok": True, "campaign_id": campaign_id, "partition": partition_id,
+                    "ticket": ticket_id, "released": True}
+        return {"ok": False, "reason": "campaign not found"}
+
+
 @contextmanager
 def _ledger_lock(state_path: Path):
     """Exclusive lock over one ledger's whole read-modify-write, so concurrent
@@ -1061,7 +1209,9 @@ def cmd_list(args: argparse.Namespace) -> int:
         enriched.append(view)
 
     if args.json:
-        print(json.dumps({"schema": SCHEMA, "ledger": str(state_path), "records": enriched},
+        print(json.dumps({"schema": SCHEMA, "ledger": str(state_path), "records": enriched,
+                          "campaign_reservations": [wc.reservation_summary(r)
+                                                     for r in state.get("campaign_reservations") or []]},
                          indent=2, ensure_ascii=False))
         return EXIT_OK
 

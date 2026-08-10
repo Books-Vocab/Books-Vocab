@@ -2,7 +2,7 @@
 name: worktree-flow
 description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。child worker 預設 commit＋hand-back；Delivery Team 的 Integrator 在取得當下 develop＋backup 授權後，以 close-wave --commit --sync 完成 primary＋origin/main 閉環。三平面：cutover=develop、sync=backup、deploy=release。"
 user-invocable: true
-version: 2.1.0
+version: 2.1.1
 ---
 
 # worktree-flow
@@ -75,6 +75,8 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 **先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 由 intent 自動判定）。記下回傳的 `path`。
 
 單一協調者可先用 `./ops/backlog.py dispatch` 再明示 `--backlog`。**兩個以上協調者同步取票時改用 `--next-backlog`**：工具在同一把本機 registry lock 內，以 backlog 的既有 dispatch predicate/worst-first 排序選第一張尚未認領的票並立即登記；兩邊會拿到不同票，不會都讀到同一份 top-N snapshot 再讓敗方整批重試。明示 `--backlog` 也不能繞過未解的 `blocked_by`；同 slug/path 的第二次 `open` 由 exclusive birth 拒絕，不會把第一個成功者當成 idempotent update。
+
+需要先把多票分區、quota、structured write sites 與 blocked/co-land 關係一次凍結時，使用 `campaign-reserve --request-file <manifest.json> --commit --json`；它在 canonical registry lock 內重讀 primary base、backlog 與 active claims，驗證通過後才原子保存 campaign manifest 與 registry reservation。之後以 `open --next-backlog --campaign <campaign-id> --partition <partition-id>` 從該分區逐票轉移 reservation→active claim；普通 `open --next-backlog` 會排除尚未轉移的 reserved tickets。path/symbol/mode 不明或跨票 collision 預設 fail-closed，除非 request 具名 `blocked_by` 或相同 `co_land_group` 的序列化證據。
 
 `dispatch`（＝`list --dispatch`）的集合是已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋，worst-first。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。它仍有兩個範圍邊界：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
 
