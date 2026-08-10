@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "gate 沒有任何使用者可見的進度面。鐵律 5 之所以要求 driving agent 最長每 20 秒輪詢，唯一原因是工具無法把進度推給使用者，只能透過 agent 的回話。實測代價：一次 12 分鐘的 gate 約等於 36 個 turn，內容幾乎都是 alive=yes 加一行 heartbeat 尾巴。wall-clock 可以平行掉（主線實測約 6 成時間在做真工作），turn 不行——它吃的是 context 與 API round-trip。使用者 2026-08-08 明確定調：背景執行的目的就是不阻塞 agent，讓它在長任務跑的時候做別的事。因此修法方向不是放寬鐵律 5（放寬只會讓使用者靠猜），而是讓 gate 自己擁有進度面，agent 只在完成時被通知一次。最小可行：cmd_gate 在 plan 建好後印一行 phase=plan gates=N progress=<path>，並在每道 gate 結束後以既有的 _write_atomic 覆寫一個獨立的 progress.json（run_id/head/plan_total/done/current/elapsed/已完成的 name+status）。關鍵設計約束：這個檔必須與判決記錄分離、且 cutover 絕不讀它——workflow 的 rank 8 把兩者合併，因而背上 30 個截斷視窗與偽綠風險；分離之後這些風險一個都不存在，因為它不是任何判斷的輸入。",
   "fix_site": "ops/worktree_orchestrate.py::{cmd_gate,_gate_record_path,_write_atomic}; ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "85d34253bc1b9338c9580dac63713310d3731baa"
+  ],
   "groomed_against": "d54fce7bc195f0b823081f228bddd6472c3916d4",
   "groomed_at": "2026-08-09",
   "groomed_by": "workflow:groom@v1",
@@ -16,10 +19,10 @@
   "scope": "一個新的進度檔加一行開場輸出，外加一條紀律的改寫；不動判決路徑。",
   "severity": "high",
   "source": "fork session 9c0f8e4a：gate agent-ergonomics 交叉論辯（13 agents）+ 兩個並行 session 的第一手回報",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "PARTIAL",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:r6-r8-anchor",
-  "verified_evidence": "R6-R8 implementation is integrated, but this stored acceptance was deliberately not rerun in bounded cleanup because it is a long iOS or full-suite gate; ticket remains unresolved pending fresh targeted evidence."
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-wave1-integrator",
+  "verified_evidence": "Rebuild acceptance (fresh after primary=64020b7445cea2cbb3c86c5160ef3a1bbcaea31b):\nuv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_orchestrate.py\nResult: exit 0; 359 passed in 466.74s (0:07:46).\nOwnership: this ticket owns the shared ops/worktree_orchestrate.py fix_site; Team B IMP-20260809-6c920a remains excluded/FROZEN.\nThe source tree was rebuilt from 64020b744; no prior Gate verdict was reused."
 }

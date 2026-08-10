@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "backend/src/kg/ops_edit_support.py 有 590 行與 30 個頂層函式，同時匯出標準庫名稱、型別、store 與流程 helper；五個 command 模組從它匯入 123 個名稱，其中 ops_edit_seed_commands.py 匯入 46 個。cmd_seed 由 208 至 598 行共 391 行，內含 prevalidate、apply、verify 三階段，任一 seed schema 或 transaction 變更都要改同一函式與共享匯入面。",
   "fix_site": "backend/src/kg/ops_edit_support.py; backend/src/kg/ops_edit_seed_commands.py; backend/src/kg/ops_edit_{card,link,notebook,user}_commands.py; backend/tests/test_ops_edit_architecture.py",
+  "fixed_by": [
+    "85d34253bc1b9338c9580dac63713310d3731baa"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
@@ -17,10 +20,10 @@
   "scope": "拆一個共用支援模組與一條大型灌入流程，調整五個命令模組並補一組架構契約測試。",
   "severity": "high",
   "source": "backend maintainability audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-maintainability-audit",
-  "verified_evidence": "sed -n '208,598p' backend/src/kg/ops_edit_seed_commands.py | rg -n '^def cmd_seed|^    def (_prevalidate|apply_fn|verify_fn)'"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-wave1-integrator",
+  "verified_evidence": "Rebuild acceptance (fresh after primary=64020b7445cea2cbb3c86c5160ef3a1bbcaea31b):\ncd backend && uv run python -m pytest -q tests/test_ops_edit_architecture.py tests/test_ops_edit.py tests/test_ops_edit_shared_unit.py\nResult: exit 0; 110 passed in 135.26s (0:02:15).\nThe source tree was rebuilt from 64020b744; no prior Gate verdict was reused."
 }

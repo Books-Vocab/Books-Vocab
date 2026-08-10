@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "三份 GitHub Actions workflow 共七個 uses 入口全部使用可變 major tag：actions/checkout@v4 三處、astral-sh/setup-uv@v6 三處、actions/setup-node@v4 一處；repo 也沒有 .github/dependabot.yml。上游 tag 可移動，因此同一顆 KG commit 可在不同時間執行不同第三方程式，現有 ops-ci-coverage 只驗 group 與路徑分類，不驗 action ref。現況 detector：rg -n \"uses: .*@v[0-9]+\" .github/workflows 命中七處。",
   "fix_site": ".github/workflows/ops-suite.yml:36; .github/workflows/ui-quality-gate.yml:39; .github/workflows/design-system.yml:30; ops/workflow_dependency_policy.py; ops/tests/test_ops_ci_coverage.sh",
+  "fixed_by": [
+    "85d34253bc1b9338c9580dac63713310d3731baa"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ops-lab-health-audit",
@@ -17,10 +20,10 @@
   "scope": "三份自動化流程、一份依賴更新設定與一個離線契約檢查。",
   "severity": "high",
   "source": "ops/lab CI 與依賴安全盤點",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:root-fanout-quality-review",
-  "verified_evidence": "rg -n 'uses:.*@v[0-9]+' .github/workflows"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-wave1-integrator",
+  "verified_evidence": "Rebuild acceptance (fresh after primary=64020b7445cea2cbb3c86c5160ef3a1bbcaea31b):\nStored isolated workflow-policy acceptance command executed from\n.cache/agent-scratch/imp-20260809-123a6f-acceptance-cmd.txt; exit 0.\nReal workflow report: status=pass, workflow_files=3, uses=7,\nexternal_uses=7, local_uses=0, violations=[].\nThe command also rejected mutable actions/checkout@v4, accepted a complete\n40-hex SHA with a local action, rejected local-only and empty workflow dirs.\nBaseline guard: the original broad ops-ci-coverage command had the same three\nunrelated unclassified baseline failures; this acceptance preserves the full\nworkflow-ref contract and was not relaxed for green.\nThe source tree was rebuilt from 64020b744; no prior Gate verdict was reused."
 }

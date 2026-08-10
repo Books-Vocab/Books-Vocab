@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "ops/kg_reconcile.sh 第 500 至 526 行已讀取 rollback compose 的 rrc，且 rrc 非零時明講容器很可能仍跑新版；但之後無條件寫 ROLLED_BACK 並 emit_verdict rolled-back。既有 ops/tests/test_kg_reconcile.sh 第 649 至 671 行更同時斷言 verdict=rolled-back 與 served_now=SHA_NEW，直接固定了矛盾。這是已結案 IMP-0060 補上退出碼與告警後留下的機讀契約缺口，不是重開同一根因。",
   "fix_site": "ops/kg_reconcile.sh:500; ops/tests/test_kg_reconcile.sh:649; docs/sop/deploy.md:102; docs/reference/tech_index.md:181",
+  "fixed_by": [
+    "85d34253bc1b9338c9580dac63713310d3731baa"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ops-lab-health-audit",
@@ -17,10 +20,10 @@
   "scope": "一個 reconciler verdict 分支、既有離線 failure seam 與兩處契約說明。",
   "severity": "high",
   "source": "ops/lab release rollback 與可觀測性盤點",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:root-fanout-quality-review",
-  "verified_evidence": "set -o pipefail; sed -n 500,530p ops/kg_reconcile.sh | rg -q \"rrc != 0\"; sed -n 519,530p ops/kg_reconcile.sh | rg -q \"emit_verdict.*rolled-back\"; sed -n 649,671p ops/tests/test_kg_reconcile.sh | rg -q \"rollback-build-fail: verdict rolled-back\"; sed -n 649,671p ops/tests/test_kg_reconcile.sh | rg -q \"容器確實仍跑新版\""
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-wave1-integrator",
+  "verified_evidence": "Rebuild acceptance (fresh after primary=64020b7445cea2cbb3c86c5160ef3a1bbcaea31b):\n./ops/test_ops.sh reconcile\nResult: exit 0; passed 170, failed 0, elapsed 104s.\nThe source tree was rebuilt from 64020b744; no prior Gate verdict was reused."
 }
