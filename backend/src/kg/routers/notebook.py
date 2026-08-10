@@ -84,7 +84,9 @@ def delete_notebook(nb_id: str, user: CurrentUser):
     if result is False:
         raise BadRequestError("Cannot delete: notebook not found or is default")
     cards_deleted = 0
-    if result is True:
+    # A tombstone is a cleanup barrier, not proof that cascading cleanup
+    # completed. Retry the full idempotent cascade after any prior failure.
+    if result is True or result is None:
         cards_deleted = cards.soft_delete_by_notebook(nb_id)
         # Remove every per-notebook artifact. Filenames come from the
         # ops_shared.NOTEBOOK_FILE_SPECS SoT (the same source service_factories
