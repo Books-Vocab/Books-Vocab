@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "doc frontmatter 的 verified_against 被 cutover 的 rebase 孤立，和 fixed_by 是同一個缺陷，但只有後者有 reanchor。流程：agent 在分支上把 verified_against 指到分支本地 sha（gate 的 docs-verified-against 檢查 reachable-from-HEAD，當下綠）→ cutover rebase 改寫該 sha → 落地後那個 anchor 在 main 上不可達 → 之後任何 docs_lint --audit 會判 invalid anchor。今天的迴避方式是手動把 anchor 指到 fork point（已在 main 上、必然可達），但那是靠自律，且會低報實際驗證的版本。post-landing repair 已經在做 fixed_by 的重錨，同一顆 commit 內對 changed docs 的 frontmatter 做同樣的事是自然延伸——難處在於要知道「這次落地改了哪些 doc 的 anchor、原值是什麼」，rebase 之後只能從 diff 反推。",
   "fix_site": "ops/backlog.py:reanchor_store / _cmd_reanchor（新增 --docs）+ ops/worktree_orchestrate.py:_post_landing_repair（:2706）",
+  "fixed_by": [
+    "32c54d56638f17bb0c282d6fd2cd2658098a9039"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-88c878",
@@ -16,6 +19,10 @@
   "scope": "幫既有的重錨工具加一個掃說明文件的模式，接進落地後的自動修補（含三處配套），加兩條測試。",
   "severity": "med",
   "source": "feat/tool-hardening 收尾時自查，2026-08-07",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-b-integrator",
+  "verified_evidence": "source hand-back 9169887e3f54d5f812b3168b1fb64ab9f8894fcc; exact acceptance green with backlog 329 and orchestrator 374; integration pick 32c54d56638f17bb0c282d6fd2cd2658098a9039"
 }
