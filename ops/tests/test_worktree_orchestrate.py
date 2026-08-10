@@ -6533,6 +6533,119 @@ def test_close_wave_does_not_block_on_foreign_active_worktrees(
     assert "foreign active" not in output
 
 
+def test_close_wave_expected_ticket_set_is_derived_only_from_named_sources():
+    records = [
+        {"status": "active", "branch": "feat/source-a",
+         "backlog": ["IMP-0002", "IMP-0001"]},
+        {"status": "active", "branch": "feat/source-b",
+         "backlog": ["IMP-0003"]},
+        {"status": "active", "branch": "feat/foreign",
+         "backlog": ["IMP-9999"]},
+        {"status": "merged", "branch": "feat/source-a",
+         "backlog": ["IMP-8888"]},
+    ]
+
+    assert MODULE._delivery_expected_ticket_ids(
+        records, ["feat/source-b", "feat/source-a"]
+    ) == ["IMP-0001", "IMP-0002", "IMP-0003"]
+    records.append({
+        "status": "active", "branch": "feat/source-c", "backlog": "IMP-0004",
+    })
+    assert MODULE._delivery_expected_ticket_reservation_errors(
+        records, ["feat/source-c"]
+    ) == [{
+        "branch": "feat/source-c",
+        "reason": "backlog must be a list of non-empty ticket ids",
+    }]
+
+
+def test_close_wave_expected_ticket_closure_requires_fixed_by_and_confirmed_verdict(
+        tmp_path):
+    store = tmp_path / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True)
+    (store / "IMP-0001.json").write_text(json.dumps({
+        "id": "IMP-0001", "status": "fixed", "verdict": "CONFIRMED-FIXED",
+        "fixed_by": ["abc123"],
+    }), encoding="utf-8")
+    (store / "IMP-0002.json").write_text(json.dumps({
+        "id": "IMP-0002", "status": "fixed", "verdict": "CONFIRMED-FIXED",
+        "fixed_by": [],
+    }), encoding="utf-8")
+    (store / "IMP-0003.json").write_text(json.dumps({
+        "id": "IMP-0003", "status": "fixed", "verdict": "CONFIRMED-FIXED",
+        "fixed_by": [""],
+    }), encoding="utf-8")
+
+    result = MODULE._delivery_expected_ticket_closure(
+        tmp_path, ["IMP-0001", "IMP-0002", "IMP-0003", "IMP-0004"]
+    )
+
+    assert result["ok"] is False
+    assert result["expected_ticket_ids"] == [
+        "IMP-0001", "IMP-0002", "IMP-0003", "IMP-0004"
+    ]
+    assert result["failures"] == [
+        {"id": "IMP-0002", "reason": "fixed_by is empty"},
+        {"id": "IMP-0003", "reason": "fixed_by contains an empty sha"},
+        {"id": "IMP-0004", "reason": "entry is missing or unreadable"},
+    ]
+
+
+@pytest.mark.parametrize("marker_status", ["completed", "validated"])
+def test_close_wave_recovery_guard_refuses_open_expected_ticket(
+        tmp_path, monkeypatch, capsys, marker_status):
+    primary = tmp_path / "primary"
+    store = primary / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True)
+    ticket_id = "IMP-0001"
+    (store / f"{ticket_id}.json").write_text(json.dumps({
+        "id": ticket_id, "status": "triaged", "verdict": "CONFIRMED-OPEN",
+        "fixed_by": [],
+    }), encoding="utf-8")
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "slug": "delivery-wave",
+        "base": "main",
+        "branches": ["feat/source"],
+        "worktree": str(tmp_path / "already-removed"),
+        "branch": "feat/integration",
+        "status": "gated",
+        "close_wave": {
+            "status": marker_status,
+            "expected_ticket_ids": [ticket_id],
+        },
+    }), encoding="utf-8")
+    state = tmp_path / "state.json"
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
+    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
+    monkeypatch.setattr(MODULE, "_delivery_primary_dirty", lambda _primary: [])
+    monkeypatch.setattr(
+        MODULE, "_delivery_state_paths", lambda _args: (state, [manifest])
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records",
+        lambda _args, **_kwargs: (MODULE.EXIT_OK, [{
+            "status": "merged", "branch": "feat/source", "backlog": [ticket_id],
+        }]),
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_sync_close_wave",
+        lambda *_args, **_kwargs: pytest.fail("recovery must stop before sync"),
+    )
+    args = argparse.Namespace(
+        state=str(state), json=True, base="main", slug="delivery-wave",
+        branches=["feat/source"], commit=True, sync=True,
+    )
+
+    rc = MODULE._cmd_close_wave_impl(args)
+
+    assert rc == MODULE.EXIT_BLOCK
+    payload = json.loads(capsys.readouterr().out)
+    assert "not fixed" in payload["error"]
+    assert payload["steps"][0]["name"] == "expected-ticket-closure"
+
+
 def test_delivery_json_tool_rejects_invalid_success_receipt_and_relays_stderr(
         tmp_path, monkeypatch, capsys):
     def fake_runner(*_args, **_kwargs):

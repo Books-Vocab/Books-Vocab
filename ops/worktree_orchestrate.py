@@ -5771,6 +5771,126 @@ def _delivery_registry_records(
     return EXIT_OK, records
 
 
+def _delivery_expected_ticket_ids(
+    records: list[dict[str, Any]], branches: list[str],
+    *, statuses: set[str] | None = None,
+) -> list[str]:
+    """Derive the ticket set a named wave owes from its source reservations.
+
+    The registry is the ownership SoT.  Reading only the explicitly named source
+    branches prevents a foreign Team's active work from entering this closure, while
+    the optional ``statuses`` argument lets a completed-wave recovery read the same
+    reservations after ``resolve`` has marked them merged.
+    """
+    allowed_branches = set(branches)
+    allowed_statuses = statuses or {wr.STATUS_ACTIVE}
+    ticket_ids: set[str] = set()
+    for record in records:
+        if (record.get("status") not in allowed_statuses
+                or record.get("branch") not in allowed_branches):
+            continue
+        backlog = record.get("backlog")
+        if not isinstance(backlog, list):
+            continue
+        ticket_ids.update(
+            ticket_id for ticket_id in backlog
+            if isinstance(ticket_id, str) and ticket_id
+        )
+    return sorted(ticket_ids)
+
+
+def _delivery_expected_ticket_reservation_errors(
+    records: list[dict[str, Any]], branches: list[str],
+    *, statuses: set[str] | None = None,
+) -> list[dict[str, str]]:
+    """Fail closed when a named source reservation cannot expose its tickets."""
+    allowed_branches = set(branches)
+    allowed_statuses = statuses or {wr.STATUS_ACTIVE}
+    errors: list[dict[str, str]] = []
+    for record in records:
+        if (record.get("status") not in allowed_statuses
+                or record.get("branch") not in allowed_branches):
+            continue
+        backlog = record.get("backlog")
+        if (not isinstance(backlog, list)
+                or any(not isinstance(ticket_id, str) or not ticket_id
+                       for ticket_id in backlog)):
+            errors.append({
+                "branch": str(record.get("branch")),
+                "reason": "backlog must be a list of non-empty ticket ids",
+            })
+    return errors
+
+
+def _delivery_expected_ticket_closure(
+    primary: Path, expected_ticket_ids: list[str],
+) -> dict[str, Any]:
+    """Machine-check the exact ticket set before close-wave can report success."""
+    expected = sorted(set(expected_ticket_ids))
+    if not expected:
+        return {
+            "ok": False,
+            "expected_ticket_ids": [],
+            "failures": [{"reason": "expected ticket set is empty"}],
+        }
+
+    failures: list[dict[str, str]] = []
+    for ticket_id in expected:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id):
+            failures.append({"id": ticket_id, "reason": "ticket id is malformed"})
+            continue
+        path = primary / "docs" / "runbook" / "backlog" / f"{ticket_id}.json"
+        payload = _delivery_load_json(path)
+        if payload is None:
+            failures.append({"id": ticket_id, "reason": "entry is missing or unreadable"})
+            continue
+        if payload.get("status") != "fixed":
+            failures.append({
+                "id": ticket_id,
+                "reason": f"status is {payload.get('status')!r}",
+            })
+            continue
+        if payload.get("verdict") != "CONFIRMED-FIXED":
+            failures.append({
+                "id": ticket_id,
+                "reason": f"verdict is {payload.get('verdict')!r}",
+            })
+            continue
+        fixed_by = payload.get("fixed_by")
+        if not isinstance(fixed_by, list) or not fixed_by:
+            failures.append({"id": ticket_id, "reason": "fixed_by is empty"})
+        elif any(
+            not isinstance(sha, str) or not sha.strip() for sha in fixed_by
+        ):
+            failures.append({
+                "id": ticket_id,
+                "reason": "fixed_by contains an empty sha",
+            })
+
+    return {
+        "ok": not failures,
+        "expected_ticket_ids": expected,
+        "failures": failures,
+    }
+
+
+def _delivery_saved_expected_ticket_ids(
+    manifest: dict[str, Any] | None,
+) -> list[str] | None:
+    """Read a persisted expected set, distinguishing absent from malformed."""
+    if not isinstance(manifest, dict):
+        return None
+    marker = manifest.get("close_wave")
+    if not isinstance(marker, dict) or "expected_ticket_ids" not in marker:
+        return None
+    raw = marker.get("expected_ticket_ids")
+    if not isinstance(raw, list) or any(
+        not isinstance(ticket_id, str) or not ticket_id for ticket_id in raw
+    ):
+        return []
+    return sorted(set(raw))
+
+
 def _delivery_foreign_active(
     records: list[dict[str, Any]], allowed_branches: set[str]
 ) -> list[dict[str, Any]]:
@@ -6365,6 +6485,36 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         return EXIT_BLOCK
     if args.commit and manifest is not None and manifest_delivery_status == "completed":
         steps: list[dict[str, Any]] = []
+        saved_expected = _delivery_saved_expected_ticket_ids(manifest)
+        expected_ticket_ids = (
+            saved_expected if saved_expected is not None else
+            _delivery_expected_ticket_ids(
+                records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
+            )
+        )
+        reservation_errors = _delivery_expected_ticket_reservation_errors(
+            records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
+        )
+        closure = (
+            {
+                "ok": False,
+                "expected_ticket_ids": expected_ticket_ids,
+                "failures": reservation_errors,
+            }
+            if reservation_errors else
+            _delivery_expected_ticket_closure(primary, expected_ticket_ids)
+        )
+        steps.append({"name": "expected-ticket-closure", **closure})
+        if not closure["ok"]:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "steps": steps, "manifest": str(manifest_path) if manifest_path else None,
+                "error": "completed close-wave has tickets that are not fixed",
+            }, args.json,
+                "✗ close-wave stopped: completed manifest does not prove every "
+                "expected ticket is fixed")
+            return EXIT_BLOCK
         sync_rc, sync_payload = _delivery_sync_close_wave(
             args, primary, manifest_path, steps,
         )
@@ -6381,7 +6531,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             "mode": "already-closed", "slug": args.slug, "branches": branches,
             "integration_branch": manifest.get("branch"),
             "manifest": str(manifest_path) if manifest_path else None,
-            "steps": steps, "sync_status": marker.get("sync_status", "not-requested"),
+            "steps": steps, "expected_ticket_ids": expected_ticket_ids,
+            "sync_status": marker.get("sync_status", "not-requested"),
         }, args.json,
             f"close-wave {args.slug}: already closed"
             + (" and synced" if marker.get("sync_status") == "completed"
@@ -6410,9 +6561,41 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 args=args, state_path=state_path, manifest_path=manifest_path,
                 error="validated close-wave manifest disappeared during recovery",
             )
+        saved_expected = _delivery_saved_expected_ticket_ids(recovered)
+        expected_ticket_ids = (
+            saved_expected if saved_expected is not None else
+            _delivery_expected_ticket_ids(
+                recovery_records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
+            )
+        )
+        reservation_errors = _delivery_expected_ticket_reservation_errors(
+            recovery_records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
+        )
+        closure = (
+            {
+                "ok": False,
+                "expected_ticket_ids": expected_ticket_ids,
+                "failures": reservation_errors,
+            }
+            if reservation_errors else
+            _delivery_expected_ticket_closure(primary, expected_ticket_ids)
+        )
+        recovery_steps: list[dict[str, Any]] = [
+            {"name": "expected-ticket-closure", **closure}
+        ]
+        if not closure["ok"]:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "steps": recovery_steps, "manifest": str(manifest_path),
+                "error": "validated close-wave recovery has tickets that are not fixed",
+            }, args.json,
+                "✗ close-wave recovery stopped: expected ticket set is not fully fixed")
+            return EXIT_BLOCK
         recovered["close_wave"] = {
             **(recovered.get("close_wave") or {}),
             "status": "completed",
+            "expected_ticket_ids": expected_ticket_ids,
         }
         try:
             _integrate_save(manifest_path, recovered)
@@ -6421,7 +6604,6 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 args=args, state_path=state_path, manifest_path=manifest_path,
                 error=f"could not persist recovered close-wave completion: {exc}",
             )
-        recovery_steps: list[dict[str, Any]] = []
         sync_rc, _sync_payload = _delivery_sync_close_wave(
             args, primary, manifest_path, recovery_steps,
         )
@@ -6437,7 +6619,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             "mode": "recovered", "slug": args.slug, "branches": branches,
             "integration_branch": manifest.get("branch"),
             "manifest": str(manifest_path) if manifest_path else None,
-            "steps": recovery_steps,
+            "steps": recovery_steps, "expected_ticket_ids": expected_ticket_ids,
         }, args.json,
             f"close-wave {args.slug}: recovered after teardown"
             + (" and synced" if getattr(args, "sync", False)
@@ -6582,6 +6764,59 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     # Other teams may have active worktrees. The shared Delivery Team lock keeps
     # their close-wave primary/sync sequence out of this critical section; their
     # source branches are not targets of this wave's resolve calls.
+    saved_expected = _delivery_saved_expected_ticket_ids(manifest)
+    expected_ticket_ids = (
+        saved_expected if saved_expected is not None else
+        _delivery_expected_ticket_ids(
+            records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
+        )
+    )
+    reservation_errors = _delivery_expected_ticket_reservation_errors(
+        records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
+    )
+    if reservation_errors or not expected_ticket_ids:
+        steps.append({
+            "name": "expected-ticket-set",
+            "ok": False, "expected_ticket_ids": expected_ticket_ids,
+            "errors": reservation_errors,
+            "error": (
+                "named source reservation has malformed backlog"
+                if reservation_errors else
+                "named source branches have no claimed backlog tickets"
+            ),
+        })
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "stopped", "slug": args.slug, "branches": branches,
+            "steps": steps,
+            "error": (
+                "close-wave requires valid source ticket reservations"
+                if reservation_errors else
+                "close-wave requires a non-empty expected ticket set"
+            ),
+        }, args.json,
+            "✗ close-wave stopped: source ticket reservation is invalid"
+            if reservation_errors else
+            "✗ close-wave stopped: expected ticket set is empty")
+        return EXIT_BLOCK
+    if manifest_path is not None and saved_expected is None:
+        persisted = _delivery_load_json(manifest_path)
+        if persisted is None:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="integration manifest disappeared before expected ticket set was saved",
+            )
+        persisted["close_wave"] = {
+            **(persisted.get("close_wave") or {}),
+            "expected_ticket_ids": expected_ticket_ids,
+        }
+        try:
+            _integrate_save(manifest_path, persisted)
+        except OSError as exc:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=f"could not persist expected ticket set: {exc}",
+            )
 
     if manifest is not None:
         integration_worktree = integration_worktree or Path(str(manifest["worktree"]))
@@ -6674,6 +6909,17 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
               "✗ close-wave stopped: anchor metadata was not committed")
+        return EXIT_BLOCK
+    closure = _delivery_expected_ticket_closure(primary, expected_ticket_ids)
+    steps.append({"name": "expected-ticket-closure", **closure})
+    if not closure["ok"]:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "stopped", "slug": args.slug, "branches": branches,
+            "steps": steps,
+            "error": "anchor succeeded but expected ticket set is not fully fixed",
+        }, args.json,
+            "✗ close-wave stopped: anchor did not close every expected ticket")
         return EXIT_BLOCK
 
     validate_rc, validate_payload = _delivery_json_tool(
@@ -6789,6 +7035,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "committed",
         "slug": args.slug, "branches": branches, "integration_branch": integration_branch,
         "steps": steps, "primary_dirty": _delivery_primary_dirty(primary),
+        "expected_ticket_ids": expected_ticket_ids,
         "sync_status": final_marker.get("sync_status", "not-requested"),
     }, args.json,
         f"✓ close-wave {args.slug}: integrated, gated, cut over, sources resolved, "
