@@ -124,6 +124,7 @@ archive_validate_member() {
   local member="$raw_member"
   local remainder component root
 
+  [[ "$member" != *//* ]] || archive_policy_die "拒絕空 path component：$raw_member"
   [[ "$member" == */ ]] && member="${member%/}"
   [[ -n "$member" ]] || archive_policy_die "空 member"
   [[ "$member" != /* ]] || archive_policy_die "拒絕絕對路徑：$raw_member"
