@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -96,16 +97,79 @@ def open_singleton(
     return conn
 
 
-def ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
-    """Idempotently ``ALTER TABLE ... ADD COLUMN`` any column in ``columns`` not
-    already present on ``table``. ``columns`` maps name → SQL declaration
-    (e.g. ``{"provider": "TEXT"}``).
+def _driver_execute(conn: Any, sql: str) -> Any:
+    """Execute raw SQLite SQL on either sqlite3 or SQLAlchemy connections."""
+    execute_driver_sql = getattr(conn, "exec_driver_sql", None)
+    if execute_driver_sql is not None:
+        return execute_driver_sql(sql)
+    return conn.execute(sql)
 
-    Replaces the hand-rolled ``{r[1] for r in PRAGMA table_info(...)}`` diff each
-    singleton repeats for schema migration. ``table`` / column identifiers are
-    module-internal literals (never user input), as before.
+
+def _in_transaction(conn: Any) -> bool:
+    marker = getattr(conn, "in_transaction", False)
+    return bool(marker() if callable(marker) else marker)
+
+
+def _is_duplicate_column(exc: BaseException) -> bool:
+    return "duplicate column" in str(exc).lower()
+
+
+def ensure_columns(conn: Any, table: str, columns: dict[str, str]) -> set[str]:
+    """Idempotently add missing columns on sqlite3 or SQLAlchemy connections.
+
+    Schema introspection and every ``ALTER TABLE`` run under one writer
+    transaction.  Without ``BEGIN IMMEDIATE``, two legacy connections can both
+    observe the same missing column and one fails with ``duplicate column`` (or
+    a lock-upgrade error).  Callers own the surrounding commit; a fresh
+    connection is required so this helper can acquire the writer lock before
+    reading ``PRAGMA table_info``.
+
+    ``table`` / column identifiers are module-internal literals, never user
+    input.  The returned set is the columns this call actually added; existing
+    callers may ignore it.
     """
-    existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
-    for col, decl in columns.items():
-        if col not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    if not columns:
+        return set()
+
+    owns_transaction = not _in_transaction(conn)
+    # Set the busy handler before taking the writer lock so direct sqlite3
+    # callers with a short connection timeout still receive the helper's
+    # bounded wait contract.
+    _driver_execute(conn, f"PRAGMA busy_timeout={DEFAULT_BUSY_TIMEOUT_MS}")
+    if owns_transaction:
+        try:
+            _driver_execute(conn, "BEGIN IMMEDIATE")
+        except Exception as exc:  # noqa: BLE001 - normalize driver wrappers
+            # sqlite_ledger installs a SQLAlchemy ``begin`` listener that emits
+            # BEGIN IMMEDIATE itself.  SQLAlchemy invokes that listener before
+            # forwarding our explicit statement, so the second BEGIN reports
+            # "within a transaction" even though the required lock is held.
+            if "within a transaction" not in str(exc).lower() or not _in_transaction(conn):
+                raise
+
+    added: set[str] = set()
+    try:
+        existing = {row[1] for row in _driver_execute(conn, f"PRAGMA table_info({table})")}
+        for col, decl in columns.items():
+            if col in existing:
+                continue
+            added_here = False
+            try:
+                _driver_execute(conn, f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+                added_here = True
+            except Exception as exc:  # noqa: BLE001 - normalize SQLite driver wrappers
+                if not _is_duplicate_column(exc):
+                    raise
+                # A legacy caller may have altered outside this helper. Re-read
+                # before deciding that a duplicate is a real schema conflict.
+                current = {row[1] for row in _driver_execute(conn, f"PRAGMA table_info({table})")}
+                if col not in current:
+                    raise
+            existing.add(col)
+            if added_here:
+                added.add(col)
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        raise
+    return added

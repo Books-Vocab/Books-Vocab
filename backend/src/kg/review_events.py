@@ -23,6 +23,7 @@ from .sqlite_ledger import (
 from .sqlite_ledger import (
     now_utc as _now,
 )
+from .sqlite_utils import ensure_columns
 
 # Ids per ``IN`` clause when checking which events the store already has. Kept
 # below SQLite's pre-3.32 default limit of 999 bound variables per statement.
@@ -91,30 +92,26 @@ class ReviewEventStore:
         已存在則跳過);既有列的 SRS 快照落 NULL、is_synthetic 落 0。is_synthetic 補 index
         對齊全新表(create_all 已含),使研究 WHERE is_synthetic 篩選兩條建表路徑一致。"""
         table = ReviewEvent.__tablename__
-        with self.engine.begin() as conn:
-            columns = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").all()}
-            for name, ddl in _WIDEN_COLUMNS:
-                if name not in columns:
-                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+        with self.engine.connect() as conn:
+            ensure_columns(conn, table, dict(_WIDEN_COLUMNS))
             conn.exec_driver_sql(
                 f"CREATE INDEX IF NOT EXISTS ix_{table}_is_synthetic ON {table} (is_synthetic)"
             )
+            conn.commit()
 
     def _migrate_ingested_at(self) -> None:
         """Add the ingested_at column to pre-existing stores and backfill it from
         reviewed_at so legacy events sort correctly under the ingestion cursor."""
         table = ReviewEvent.__tablename__
-        with self.engine.begin() as conn:
-            columns = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").all()}
-            if "ingested_at" in columns:
-                return
-            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN ingested_at DATETIME")
+        with self.engine.connect() as conn:
+            ensure_columns(conn, table, {"ingested_at": "DATETIME"})
             conn.exec_driver_sql(
                 f"UPDATE {table} SET ingested_at = reviewed_at WHERE ingested_at IS NULL"
             )
             conn.exec_driver_sql(
                 f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)"
             )
+            conn.commit()
 
     def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
         """Return which of ``event_ids`` this store already holds.
