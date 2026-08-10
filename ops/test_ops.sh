@@ -116,7 +116,11 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_worktree_registry.py \
-        ops/tests/test_worktree_state.py &&
+        ops/tests/test_worktree_state.py \
+        ops/tests/test_task_registry.py \
+        ops/tests/test_worktree_campaign_reservation.py \
+        ops/tests/test_worktree_handback_outcomes.py \
+        ops/tests/test_worktree_parent_integration.py &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_lock_wait.py &&
       ./ops/tests/test_worktree_registry.sh
