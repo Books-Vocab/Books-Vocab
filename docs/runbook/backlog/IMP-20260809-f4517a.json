@@ -9,6 +9,9 @@
   "date": "2026-08-09",
   "detail": "ops/devops_kg_safe.sh的memory-usage固定送出Linux-only free -m，但正式standby Felix是macOS，live run回command not found；同檔caddy-status使用pgrep -lf，-l會輸出完整process argv。2026-08-09實測因此把remotely-managed tunnel token帶進agent tool log，屬IMP-0053修復後的新surface recurrence而非同一張已關閉票。本票blocked_by IMP-20260809-af05b3，等該票先完成同一command registry/main parser重構後再接typed flags，避免平行改同一行域。修法必復用infra_health.sh既有vm_stat/sysctl記憶體解析的單一來源，但ownership縮到macOS memory probe block，不碰IMP-20260807-3d47fd擁有的http_probe/reconciler行域；caddy-status改讀launchctl service state或不回顯argv的存在性probe。兩個typed command新增--json，stdout只允許固定schema，stderr只放不含raw command/path的phase與error code。測試不能只grep固定新字串：fake process/transport要分別在stdout/stderr注入secret marker並斷言兩者皆無；live驗收捕捉stdout與stderr：stderr成功路徑必空，stdout用jq驗exact keys/type與跨欄位不變式；Felix正式健康時cloudflared必active且pid_count≥1，不能丟/dev/null。底層probe失敗、JSON不完整與remote失敗均非零。此票不旋轉已暴露token；rotation是帳號持有人另行執行的外部安全動作。",
   "fix_site": "ops/devops_kg_safe.sh::{typed argv parser,memory-usage,caddy-status}；ops/infra_health.sh:macOS vm_stat/sysctl memory probe block only；ops/test_devops.sh:{memory-usage,caddy-status fixtures}；ops/test_infra_health.sh:memory fixture only；docs/reference/tech_index.md",
+  "fixed_by": [
+    "32c54d56638f17bb0c282d6fd2cd2658098a9039"
+  ],
   "groomed_against": "44d0c76c5c34",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:platform-steward",
@@ -19,6 +22,10 @@
   "scope": "修正兩個既有唯讀主機檢查與其契約測試，屬同一支小型維運命令列工具改動。",
   "severity": "high",
   "source": "2026-08-09 Felix live audit：typed memory-usage在macOS執行Linux的free -m而失敗；caddy-status的pgrep -lf將cloudflared完整argv與tunnel token印進工具輸出。Secret-safe probe屬IMP-0053關閉後在新typed surface上的recurrence，不標duplicate。",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-b-integrator",
+  "verified_evidence": "source hand-back 98aff69a250f9a0ab10327e48d7d133d42e8af4a; exact acceptance green in handback seal; integration pick 32c54d56638f17bb0c282d6fd2cd2658098a9039"
 }
