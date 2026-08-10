@@ -1,6 +1,6 @@
 {
-  "acceptance": "RED is the current ops/tests/test_ops_ci_coverage.sh report naming the four paths as unreachable. GREEN is the same coverage command with zero unreachable-file failures after the runner prerequisite is landed; the worktree-orchestrator group itself must also pass.",
-  "acceptance_cmd": "./ops/tests/test_ops_ci_coverage.sh && ./ops/test_ops.sh worktree-orchestrator",
+  "acceptance": "RED is the current ops/tests/test_ops_ci_coverage.sh report naming the four worktree regression paths as unreachable. GREEN is ./ops/test_ops.sh worktree-orchestrator returning zero with all four paths executed; the integration Gate's coverage reachability evidence must also confirm each path is reachable from DEFAULT_TESTS and is not listed in UNGROUPED_TESTS or OPTIONAL_ONLY_TESTS. Full ops/tests/test_ops_ci_coverage.sh remains an integration-level check and is currently blocked by the pre-existing ios-ops baseline owned by IMP-20260811-5fc296; this ticket does not absorb or modify that dependency.",
+  "acceptance_cmd": "./ops/test_ops.sh worktree-orchestrator",
   "blocked_by": [],
   "brief": "The ops coverage gate cannot certify four worktree regression files because the default dispatcher never runs them.",
   "category": "tool",
