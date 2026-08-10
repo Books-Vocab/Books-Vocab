@@ -21,7 +21,8 @@ Usage: ops/shell_scan.sh [<repo-root>]
        ops/shell_scan.sh --help
 
 Repo-wide shell scanner: the cross-file checks that belong to no single script,
-so nothing routes them per-file. Run once per diff that touches any *.sh.
+so nothing routes them per-file. Run once per diff that touches executable shell
+text (*.sh, shebang scripts, or GitHub Actions workflow run blocks).
 
 Checks:
   1. A $VAR abutting ANY non-ASCII character inside a double-quoted string.
@@ -60,6 +61,39 @@ trap 'rm -rf "${TMP}"' EXIT
 pass=0; fail=0
 ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
+
+# The executable shell surface is not equivalent to the `*.sh` suffix. Keep the
+# inventory in one place so the byte scan and the git-tag scan cannot silently
+# disagree about which scripts are real. Tracked *.sh files remain included even
+# without a shebang for backwards compatibility; extensionless and untracked files
+# need an explicit bash/sh/zsh shebang. Workflow YAML is kept in a second inventory
+# because only its `run:` values are shell text.
+is_shell_shebang() {
+  case "$(LC_ALL=C sed -n '1p' "$1" 2>/dev/null || true)" in
+    '#!'*bash*|'#!'*'/sh'|'#!'*' sh'*|'#!'*zsh*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+file_inventory() {
+  local f
+  {
+    git -C "${ROOT}" ls-files
+    git -C "${ROOT}" ls-files --others --exclude-standard
+  } | while IFS= read -r f; do
+    [[ -z "${f}" || "${f}" == frozen/* ]] && continue
+    if [[ "${f}" == *.sh ]] || is_shell_shebang "${ROOT}/${f}"; then
+      printf '%s\n' "${f}"
+    fi
+  done | LC_ALL=C sort -u
+}
+
+workflow_inventory() {
+  {
+    git -C "${ROOT}" ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml'
+    git -C "${ROOT}" ls-files --others --exclude-standard -- '.github/workflows/*.yml' '.github/workflows/*.yaml'
+  } | awk 'NF && $0 !~ /^frozen\// { print }' | LC_ALL=C sort -u
+}
 
 # ── $VAR 緊接任何非 ASCII 字元 = 定時炸彈 ──────────────────────────────────
 # bash 在 **UTF-8 LC_CTYPE** 下會把下一個字元的首個 byte 吃進變數名（下一個 byte
@@ -117,23 +151,167 @@ else
   ok "non-ASCII scanner flags both bad forms and spares \${VAR} (positive control)"
 fi
 
+# Scan one shell file for both the historical double-quoted `$VAR` hazard and
+# expanded-heredoc data. The latter deliberately accepts an unquoted `$VAR`: here-doc
+# expansion happens before the resulting text is fed to the command, so a leading `#`
+# is data, not a shell comment. Quoted heredocs (single or double) remain inert. This small lexical
+# state machine is intentionally conservative about heredoc syntax; it recognizes the
+# forms Bash accepts for an ordinary identifier delimiter and never guesses through a
+# quoted terminator.
+scan_fw_file() {
+  local path="$1" label="$2"
+  LC_ALL=C awk -v label="${label}" '
+    function begin_heredoc(line,    p,rest,q,close_pos,token,i,c,single,double,escaped,visible) {
+      # Find heredoc operators only in the shell command portion. A literal `<<`
+      # inside quotes or after a comment is data, not a heredoc opener.
+      visible = ""
+      single = 0; double = 0; escaped = 0
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (escaped) {
+          visible = visible " "
+          escaped = 0
+        } else if (single) {
+          if (c == "\047") single = 0
+          visible = visible " "
+        } else if (double) {
+          if (c == "\\") escaped = 1
+          else if (c == "\"") double = 0
+          visible = visible " "
+        } else if (c == "\047") {
+          single = 1; visible = visible " "
+        } else if (c == "\"") {
+          double = 1; visible = visible " "
+        } else if (c == "\\") {
+          escaped = 1; visible = visible " "
+        } else if (c == "#") {
+          break
+        } else {
+          visible = visible c
+        }
+      }
+      p = index(visible, "<<")
+      if (!p) return
+      # `visible` only locates the operator; parse the delimiter from the original
+      # text so quote characters still tell us whether expansion is enabled.
+      rest = substr(line, p + 2)
+      if (substr(rest, 1, 1) == "-") rest = substr(rest, 2)
+      sub(/^[[:space:]]+/, "", rest)
+      q = substr(rest, 1, 1)
+      if (q == "\047" || q == "\"") {
+        close_pos = index(substr(rest, 2), q)
+        if (!close_pos) return
+        token = substr(rest, 2, close_pos - 1)
+        heredoc_delim = token
+        heredoc_expand = 0
+      } else if (match(rest, /^[A-Za-z_][A-Za-z0-9_-]*/)) {
+        heredoc_delim = substr(rest, RSTART, RLENGTH)
+        heredoc_expand = 1
+      }
+    }
+    function scan(line, line_no, any_position) {
+      if (line ~ /fw-allow:[[:space:]]*[^[:space:]]/) return
+      if (!any_position && line ~ /^[[:space:]]*#/) return
+      if ((any_position && line ~ /[$][A-Za-z_][A-Za-z0-9_]*[\200-\377]/) \
+          || (!any_position && line ~ /"[^"]*[$][A-Za-z_][A-Za-z0-9_]*[\200-\377]/))
+        print label ":" line_no
+    }
+    {
+      if (heredoc_delim != "") {
+        if ($0 ~ ("^[[:space:]]*" heredoc_delim "[[:space:]]*$")) {
+          heredoc_delim = ""
+          heredoc_expand = 0
+        } else if (heredoc_expand) {
+          scan($0, FNR, 1)
+        }
+        next
+      }
+      scan($0, FNR, 0)
+      begin_heredoc($0)
+    }
+  ' "${path}"
+}
+
+scan_workflow_fw() {
+  local path="$1" label="$2"
+  LC_ALL=C awk -v label="${label}" '
+    function scan(line, line_no,    i,c,single,double,escaped,visible) {
+      if (line ~ /fw-allow:[[:space:]]*[^[:space:]]/) return
+      visible = ""
+      single = 0; double = 0; escaped = 0
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (escaped) {
+          visible = visible " "
+          escaped = 0
+        } else if (single) {
+          if (c == "\047") single = 0
+          visible = visible " "
+        } else if (double) {
+          if (c == "\\") escaped = 1
+          else if (c == "\"") double = 0
+          visible = visible c
+        } else if (c == "\047") {
+          single = 1; visible = visible " "
+        } else if (c == "\"") {
+          double = 1; visible = visible c
+        } else if (c == "#") {
+          break
+        } else {
+          visible = visible c
+        }
+      }
+      if (visible ~ /[$][A-Za-z_][A-Za-z0-9_]*[\200-\377]/)
+        print label ":" line_no
+    }
+    {
+      indent = match($0, /[^[:space:]]/) ? RSTART - 1 : 0
+      body = substr($0, indent + 1)
+      if (body ~ /^-[[:space:]]*run:/ || body ~ /^run:/) {
+        value = body
+        if (body ~ /^-[[:space:]]*run:/)
+          sub(/^-[[:space:]]*run:[[:space:]]*/, "", value)
+        else
+          sub(/^run:[[:space:]]*/, "", value)
+        run_indent = indent
+        run_block = (value == "" || value == "|" || value == ">" || value == "|-" || value == ">-")
+        if (!run_block && value != "") scan(value, FNR)
+        next
+      }
+      if (run_block) {
+        if ($0 !~ /^[[:space:]]*$/ && indent <= run_indent) {
+          run_block = 0
+        } else if (indent > run_indent) {
+          scan($0, FNR)
+          next
+        }
+      }
+    }
+  ' "${path}"
+}
+
+shell_files="$(file_inventory)"
+workflow_files="$(workflow_inventory)"
 fw_hits="$(
-  git -C "${ROOT}" ls-files '*.sh' \
-    | grep -v '^frozen/' \
-    | while read -r f; do
-        # 註解行 shell 不展開 → 真的無害；`# fw-allow: <理由>` 是具名豁免（需寫理由）。
-        LC_ALL=C grep -nE "$FW_RE" "${ROOT}/${f}" 2>/dev/null \
-          | grep -v '^[0-9][0-9]*: *#' | grep -v 'fw-allow' | sed "s|^|${f}:|"
-      done
+  while IFS= read -r f; do
+    [[ -z "${f}" ]] && continue
+    scan_fw_file "${ROOT}/${f}" "${f}"
+  done <<< "${shell_files}"
+  while IFS= read -r f; do
+    [[ -z "${f}" ]] && continue
+    scan_workflow_fw "${ROOT}/${f}" "${f}"
+  done <<< "${workflow_files}"
 )"
-scanned="$(git -C "${ROOT}" ls-files '*.sh' | grep -cv '^frozen/')"
+scanned_shell="$(printf '%s\n' "${shell_files}" | awk 'NF{n++} END{print n+0}')"
+scanned_workflow="$(printf '%s\n' "${workflow_files}" | awk 'NF{n++} END{print n+0}')"
+scanned=$((scanned_shell + scanned_workflow))
 if (( scanned < 10 )); then
-  fail_t "only scanned ${scanned} shell script(s) — the probe is broken, not the tree"
+  fail_t "only scanned ${scanned} executable shell/workflow file(s) — the probe is broken, not the tree"
 elif [[ -n "${fw_hits}" ]]; then
   fail_t "\$VAR abuts a non-ASCII character (use \${VAR}); dies under UTF-8 LC_CTYPE:"
   printf '%s\n' "${fw_hits}" | sed 's/^/      /'
 else
-  ok "no \$VAR abuts a non-ASCII character across ${scanned} tracked shell script(s)"
+  ok "no \$VAR abuts a non-ASCII character across ${scanned} executable shell/workflow file(s)"
 fi
 
 # ── bare git tag / push --tags must name the repository ──────────────────────
@@ -281,6 +459,37 @@ tag_scan_file() {
   ' "$1"
 }
 
+scan_workflow_tags() {
+  local path="$1" label="$2" extracted="${TMP}/workflow_tags_${RANDOM}.sh"
+  # Keep blank lines so tag_scan_file's FNR remains the workflow's source line.
+  awk '
+    {
+      indent = match($0, /[^[:space:]]/) ? RSTART - 1 : 0
+      body = substr($0, indent + 1)
+      out = ""
+      if (run_block) {
+        if ($0 !~ /^[[:space:]]*$/ && indent <= run_indent) {
+          run_block = 0
+        } else if (indent > run_indent) {
+          out = $0
+        }
+      }
+      if (!run_block && (body ~ /^-[[:space:]]*run:/ || body ~ /^run:/)) {
+        value = body
+        if (body ~ /^-[[:space:]]*run:/)
+          sub(/^-[[:space:]]*run:[[:space:]]*/, "", value)
+        else
+          sub(/^run:[[:space:]]*/, "", value)
+        run_indent = indent
+        run_block = (value == "" || value == "|" || value == ">" || value == "|-" || value == ">-")
+        if (!run_block && value != "") out = value
+      }
+      print out
+    }
+  ' "${path}" > "${extracted}"
+  tag_scan_file "${extracted}" | sed "s|^|${label}:|"
+}
+
 tag_fixture="${TMP}/tag_fixture.sh"
 printf '%s\n' \
   '# git tag is documentation' \
@@ -305,17 +514,20 @@ else
 fi
 
 tag_hits="$(
-  git -C "${ROOT}" ls-files '*.sh' \
-    | grep -v '^frozen/' \
-    | while IFS= read -r f; do
-        tag_scan_file "${ROOT}/${f}" | sed "s|^|${f}:|"
-      done
+  while IFS= read -r f; do
+    [[ -z "${f}" ]] && continue
+    tag_scan_file "${ROOT}/${f}" | sed "s|^|${f}:|"
+  done <<< "${shell_files}"
+  while IFS= read -r f; do
+    [[ -z "${f}" ]] && continue
+    scan_workflow_tags "${ROOT}/${f}" "${f}"
+  done <<< "${workflow_files}"
 )"
 if [[ -n "${tag_hits}" ]]; then
   fail_t "bare git tag/tag push must name a repository (-C or --git-dir):"
   printf '%s\n' "${tag_hits}" | sed 's/^/      /'
 else
-  ok "all tracked tag/tag-push invocations name a repository"
+  ok "all executable tag/tag-push invocations name a repository"
 fi
 
 echo ""
