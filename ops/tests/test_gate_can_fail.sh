@@ -484,6 +484,49 @@ assert_red ops-shell-scan "ops/offender.sh:2" "$TMP/scan_bad.out" "$rc"
 "$WORKSPACE/ops/shell_scan.sh" "$TMP/scan_good" >"$TMP/scan_good.out" 2>&1 && rc=0 || rc=$?
 assert_green ops-shell-scan "passed: 4  failed: 0" "$TMP/scan_good.out" "$rc"
 
+# The scanner's input must follow what the shell actually executes, not only the
+# *.sh suffix.  Extensionless shebang scripts, non-ignored untracked scripts,
+# workflow `run:` blocks, and expanded-heredoc data are all executable shell text;
+# comments outside an expanded heredoc and safe braced/single-quoted forms are not.
+scope_tree() {
+  local root="$1" dollar='$' i
+  mkdir -p "$root/.githooks" "$root/.github/workflows" "$root/ops"
+  git -C "$root" init -q -b main
+  for i in $(seq 1 12); do
+    printf '#!/usr/bin/env bash\necho "filler %s"\n' "$i" > "$root/ops/filler$i.sh"
+  done
+  printf '#!/usr/bin/env bash\nsha=abc\necho "extensionless %ssha中"\ngit tag extensionless-bad\n' "$dollar" \
+    > "$root/.githooks/pre-commit"
+  printf '#!/usr/bin/env bash\nsha=abc\necho "untracked %ssha中"\ngit tag untracked-bad\n' "$dollar" \
+    > "$root/loose-script"
+  printf 'name: scope\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "workflow %ssha中"; git tag workflow-bad\n      - name: Named workflow step\n        run: echo "named workflow %ssha中"; git tag workflow-named-bad\n' "$dollar" "$dollar" \
+    > "$root/.github/workflows/ci.yml"
+  printf '#!/usr/bin/env bash\ncat <<EOF\n# expanded %ssha中\nEOF\n' "$dollar" \
+    > "$root/ops/expanded-heredoc.sh"
+  printf '#!/usr/bin/env bash\ncat <<'"'"'EOF'"'"'\n# comment %ssha中\nEOF\nsha=abc\necho "safe %s{sha}中"\n' "$dollar" "$dollar" \
+    > "$root/ops/safe-heredoc.sh"
+  printf '#!/usr/bin/env bash\ncat <<"EOF"\n# double-quoted %ssha中\nEOF\n' "$dollar" \
+    > "$root/ops/double-quoted-heredoc.sh"
+  git -C "$root" add -A
+}
+scope_tree "$TMP/scope"
+scope_probe="$TMP/scope.out"
+"$WORKSPACE/ops/shell_scan.sh" "$TMP/scope" >"$scope_probe" 2>&1 && rc=0 || rc=$?
+if [[ "$rc" -eq 1 ]] \
+  && grep -qF '.githooks/pre-commit:3' "$scope_probe" \
+  && grep -qF '.githooks/pre-commit:4' "$scope_probe" \
+  && grep -qF 'loose-script:3' "$scope_probe" \
+  && grep -qF 'loose-script:4' "$scope_probe" \
+  && grep -qF '.github/workflows/ci.yml:6' "$scope_probe" \
+  && grep -qF '.github/workflows/ci.yml:8' "$scope_probe" \
+  && grep -qF 'ops/expanded-heredoc.sh:3' "$scope_probe" \
+  && ! grep -qE 'safe-heredoc.sh|double-quoted-heredoc.sh' "$scope_probe"; then
+  ok "shell scanner covers executable shebang/untracked/workflow/heredoc inputs and spares safe forms"
+else
+  fail_t "shell scanner scope/heredoc probe did not prove the executable input set"
+  sed 's/^/      /' "$scope_probe"
+fi
+
 section "expensive gates: green read from recorded behaviour, never assumed"
 # TWO independent lists, derived from the two independent kinds. Deriving the journal
 # query from the RED kind (as this first shipped) leaves `red=cheap|green=journal`
