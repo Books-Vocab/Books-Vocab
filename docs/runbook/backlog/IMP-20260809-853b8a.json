@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "backend/src/kg/billing/notifications.py 驗證通知 envelope 後沒有保留 signedDate 或 notificationUUID；backend/src/kg/billing_handlers.py 第 195 行先 append event，第 208 至 224 行對所有 determinate status 無條件寫 snapshot；backend/src/kg/billing/snapshots.py 第 37 至 61 行以本機 now 產生 last_synced_at 並覆蓋舊值。既有測試只證明同一 transaction 的同狀態 replay 冪等，沒有 newer REFUND 或 EXPIRED 之後再收到 older DID_RENEW 的逆序案例。",
   "fix_site": "backend/src/kg/billing/notifications.py; backend/src/kg/billing/snapshots.py; backend/src/kg/billing_handlers.py; backend/tests/test_billing_notification_ordering.py",
+  "fixed_by": [
+    "0681fe5e12aba60ac07ca6d733415f3924f66b36"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-health-audit",
@@ -17,10 +20,10 @@
   "scope": "為訂閱通知加入持久順序與去重水位，調整三個帳單模組並補四個亂序案例。",
   "severity": "high",
   "source": "backend fanout health audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-health-audit",
-  "verified_evidence": "rg -n 'append_app_store_event|write_subscription_snapshot|signedDate|notificationUUID|last_synced_at' backend/src/kg/billing_handlers.py backend/src/kg/billing/notifications.py backend/src/kg/billing/snapshots.py"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "Delivery Team B child 02",
+  "verified_evidence": "cd backend && uv run python -m pytest -q tests/test_billing_notification_ordering.py tests/test_billing_handlers.py"
 }

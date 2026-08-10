@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "BookshelfCoordinator.swift:179-186 只取消舊 Task 並用 generation 擋進度 callback；服務 await 在 :236 回傳後，:240-254 會直接 insert 與 save，直到 :263 才再檢查取消，故忽略 cancellation 的服務可讓過期批次落盤。:255-260 又把 CancellationError 當一般匯入失敗。BookshelfSyncTests.swift:123 是唯一建立此 coordinator 的測試，只覆蓋 sync；整個測試 target 零引用 handleFileImport、performBatchImport 或 importGeneration。",
   "fix_site": "ios/BooksAndVocab/Views/Bookshelf/BookshelfCoordinator.swift:173-297; ios/BooksAndVocabTests/BookshelfImportCancellationTests.swift（新增）",
+  "fixed_by": [
+    "0681fe5e12aba60ac07ca6d733415f3924f66b36"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-fanout-health-audit",
@@ -17,10 +20,10 @@
   "scope": "一個匯入協調器的取消邊界與一支可控制完成順序的單元測試。",
   "severity": "high",
   "source": "agent:iOS fanout health audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ios-fanout-health-audit",
-  "verified_evidence": "set -e; rg -q \"importTask\\?\\.cancel\\(\\)\" ios/BooksAndVocab/Views/Bookshelf/BookshelfCoordinator.swift; sed -n \"234,265p\" ios/BooksAndVocab/Views/Bookshelf/BookshelfCoordinator.swift | rg -q \"modelContext.insert\"; ! rg -q \"handleFileImport|performBatchImport|importGeneration\" ios/BooksAndVocabTests"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "agent:delivery-team-b-child-local-01",
+  "verified_evidence": "WORKTREE_BRANCH=team-b-wave-1-child-local-01 ./ops/ios_ops.sh test --unit --file BookshelfImportCancellationTests --lease --json (exit=0; tests=2; passed=2; diagnostics errors=0)"
 }
