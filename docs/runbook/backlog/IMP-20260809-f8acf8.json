@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "ops/backup_verify.sh 第 99 至 116 行先把整份 tarball 解壓，再任取第一個 data_ 目錄或第一個目錄當 DATA_ROOT；此前沒有列舉 member、限制唯一頂層根、拒絕絕對路徑、父層跳脫、額外 sibling 或連結。後續 SQLite 與必要表檢查只看 DATA_ROOT，因此健康資料根之外夾帶的 payload 不參與 verdict；backup_restore SOP 卻會在服務工作目錄直接 tar xzf。現況 detector：rg -n \"tar -(t|x)zf|DATA_ROOT=\" ops/backup_verify.sh 只見先 extract、後選根，沒有 list 或 member policy。",
   "fix_site": "ops/backup_verify.sh:99; ops/tests/test_backup_verify.sh",
+  "fixed_by": [
+    "a0f0802911c5ea20203ec28b0510b62cf7772f28"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ops-lab-health-audit",
@@ -17,10 +20,10 @@
   "scope": "一支備份驗證器與其離線歸檔 fixture 測試。",
   "severity": "high",
   "source": "ops/lab 備份還原與依賴安全盤點",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ops-lab-health-audit",
-  "verified_evidence": "rg -n tar.*xzf ops/backup_verify.sh; rg -n DATA_ROOT= ops/backup_verify.sh"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-wave3-integrator",
+  "verified_evidence": "ticket=IMP-20260809-f8acf8\nteam=team-a\nbase=326b2503c35574fedf1f5d439b08474edb4b13b1\nsource_sha=2bcb819eef2ee75385697916049a21d9c6206f19\nintegrated_head=a0f0802911c5ea20203ec28b0510b62cf7772f28\nred_reviewer_block=ops/backup_verify.sh:127-146 accepted data_YYYYMMDD_HHMM// after one trailing slash normalization; new fixture first ran 43 passed, 3 failed\ngreen=./ops/test_ops.sh backup-verify -> 46 passed, 0 failed, 3s; fresh integration gate same group rc=0\nacceptance=absolute, parent, sibling, external symlink/hardlink, and exact root// members reject before extraction; legal data_YYYYMMDD_HHMM and kg-data roots pass; marker unchanged\nreview=static fallback explicitly references reviewer BLOCK fix; no external PASS claimed\nintegration_recovery=old 9809aadb patch was empty on base 326b2503 and skipped by official cherry-pick recovery; only 2bcb819e was newly applied"
 }
