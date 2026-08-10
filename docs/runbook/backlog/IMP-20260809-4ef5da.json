@@ -20,7 +20,7 @@
   "status": "triaged",
   "stream": "IMP",
   "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-health-audit",
-  "verified_evidence": "rg -n 'BEGIN IMMEDIATE|strictly_monotonic|concurr|ThreadPoolExecutor' backend/src/kg/sqlite_ledger.py backend/tests/test_sqlite_ledger.py backend/tests/test_review_events.py backend/tests/test_graph_event_log.py"
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-contract-groom",
+  "verified_evidence": "Direct recovery RED: cd backend && uv run python -m pytest -q tests/test_sqlite_ledger_concurrency.py rc=4; referenced test file does not exist."
 }

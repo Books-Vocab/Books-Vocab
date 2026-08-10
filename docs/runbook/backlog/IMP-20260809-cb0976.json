@@ -21,7 +21,7 @@
   "status": "triaged",
   "stream": "IMP",
   "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:maintainability-audit",
-  "verified_evidence": "bash -c 'set -e; uv run --no-project --python 3.13 python -c '\\''import ast,pathlib; t=ast.parse(pathlib.Path(\"lab/podcast/pipeline.py\").read_text()); f=next(n for n in ast.walk(t) if isinstance(n,ast.FunctionDef) and n.name==\"main\"); span=f.end_lineno-f.lineno+1; print(f\"main_span={span}\"); assert span>=450'\\''; rg -q \"inspect.getsource\\(pipeline.main\\)\" lab/podcast/test_only_episode_marker.py lab/podcast/test_only_episode_skip_series.py; rg -q \"prompt/input 改動而失效\" docs/sop/podcast_pipeline.md'"
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-contract-groom",
+  "verified_evidence": "Preflight found required fix_site files lab/podcast/pipeline_plan.py and lab/podcast/test_pipeline_plan.py absent at current main; no setup performed."
 }

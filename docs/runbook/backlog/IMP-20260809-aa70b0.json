@@ -17,5 +17,9 @@
   "severity": "med",
   "source": "2026-08-09 使用者澄清：agent 留在 Oscar session，應只呼叫型別化工具，由工具決定是否使用 Felix 算力；不是遠端 agent scheduling。",
   "status": "triaged",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-contract-groom",
+  "verified_evidence": "Preflight found required fix_site files ops/compute_profiles.yml, ops/lib/compute_contract.py, and ops/tests/test_compute_contract.py absent at current main; no setup performed."
 }
