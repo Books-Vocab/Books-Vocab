@@ -236,4 +236,16 @@ struct SyncProgressStoreTests {
         #expect(store.phase == .ready)
         #expect(store.fraction == 0)
     }
+
+    @Test("同步面板 visibility 同時反映同步旗標與 steps identity")
+    func progressPanelVisibilityTracksSyncAndDeclaredSteps() {
+        let store = SyncProgressStore()
+
+        #expect(!SettingsSyncProgressPanel.isVisible(isSyncing: true, steps: store.steps))
+
+        store.begin(stepIDs: [.push])
+
+        #expect(SettingsSyncProgressPanel.isVisible(isSyncing: true, steps: store.steps))
+        #expect(!SettingsSyncProgressPanel.isVisible(isSyncing: false, steps: store.steps))
+    }
 }
