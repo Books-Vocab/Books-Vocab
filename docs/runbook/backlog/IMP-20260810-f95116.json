@@ -7,6 +7,9 @@
   "date": "2026-08-10",
   "detail": "Quiet fresh Gate evidence (2026-08-10): the first rebuild Gate had 11 pass and 1 block; ops-ci-coverage reported three tracked test files as unreachable and observed concurrent xcodebuild pid=17976. After the Supervisor-confirmed quiet window, the same command exited 1 with 19 passed and 3 failed, with no concurrent iOS process. The three failures were ops/tests/test_kg_board_model.py, ops/tests/test_kg_board_web.py, and ops/tests/test_lock_wait.py. Read-only inspection showed no DEFAULT_TESTS run_one path for those files. They are real offline tests: the first two belong to the KG board owner; the lock test belongs to the worktree/coordination owner. The fix must register each in exactly one semantic group; it must not use UNGROUPED_TESTS or delete tests.",
   "fix_site": "ops/test_ops.sh: DEFAULT_TESTS/run_one（kg-board 與 worktree-orchestrator 的真實測試歸屬）\nops/tests/test_ops_ci_coverage.sh: LINUX_GROUPS（新 group 的 CI 分類契約）\nops/tests/test_ops_group_chain.py: case_arms inventory（新增 kg-board group 的 dispatcher contract）",
+  "fixed_by": [
+    "85d34253bc1b9338c9580dac63713310d3731baa"
+  ],
   "groomed_against": "64020b7445cea2cbb3c86c5160ef3a1bbcaea31b",
   "groomed_at": "2026-08-10",
   "groomed_by": "agent:team-a-wave1-integrator",
@@ -17,10 +20,10 @@
   "scope": "小型：一個維運測試 dispatcher 與它的 coverage contract，新增兩個分類路徑並補一個既有 group 的測試歸屬。",
   "severity": "high",
   "source": "quiet fresh Gate deterministic coverage classification evidence",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
+  "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-10",
-  "verified_by": "agent:team-a-wave1-integrator",
-  "verified_evidence": "ops/tests/test_ops_ci_coverage.sh (quiet window, before the tool fix): exit 1;\nops-ci-coverage: 19 passed, 3 failed, 0 falsification(s) skipped.\nNamed failures: test_kg_board_model.py, test_kg_board_web.py, test_lock_wait.py\nwere each reachable from no group. No concurrent iOS process was present.\n\nFollow-up Gate RED: ops/tests/test_ops_group_chain.py::test_case_arms_covers_every_group_in_test_ops\nfailed after adding kg-board because parser found 55 arms while the stale inventory expected 54.\nThe parser authority confirms DEFAULT_TESTS=53 and OPTIONAL_TESTS=2; the fix pins 55 and asserts kg-board membership."
+  "verified_by": "team-a-wave1-integrator",
+  "verified_evidence": "ticket=IMP-20260810-f95116\nteam=team-a\nbase=64020b7445cea2cbb3c86c5160ef3a1bbcaea31b\nacceptance_cmd=./ops/tests/test_ops_ci_coverage.sh\nacceptance_rc=0\nacceptance_output=ops-ci-coverage: 20 passed, 0 failed, 0 falsification(s) skipped\ncoverage_output=all 93 tracked test file(s) are reachable or named-exempt\nsemantic_groups=kg-board:test_kg_board_model.py,test_kg_board_web.py; worktree-orchestrator:test_lock_wait.py\naffected_group_kg_board=55 passed in 0.21s\naffected_group_worktree_orchestrator=435 passed in 216.19s; registry shell 8 passed in 0.04s\ndiff_check=git diff --check rc=0\npolicy_check=UNGROUPED_TESTS unchanged; no test deleted; no allowlist added\nred_evidence=.cache/agent-scratch/team-a-wave1-gate-quiet-rerun.txt (quiet baseline: 19 passed, 3 failed)\nexternal_review_verdict=none; two bounded reviewer attempts had no verdict; fallback review authorized and recorded\ngate_followup_red=ops/tests/test_ops_group_chain.py::test_case_arms_covers_every_group_in_test_ops failed with len 55 vs pinned 54 after kg-board addition\ngate_followup_green=the same test passed, 1 passed in 0.03s, after updating the inventory to 55 and naming kg-board\nreview_note=initial db29 review had no external verdict; Supervisor fallback evidence is recorded separately"
 }
