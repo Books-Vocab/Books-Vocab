@@ -9,6 +9,7 @@ Run:
 from __future__ import annotations
 
 import io
+import re
 import sys
 from pathlib import Path
 
@@ -437,11 +438,154 @@ def test_tts_allowlist_parity_frontend_backend():
 
 def test_agent_profile_allowlist_parity_frontend_backend():
     static = Path(__file__).parent / "static"
-    app_js = (static / "app.js").read_text()
-    index_html = (static / "index.html").read_text()
-    for profile in server.ALLOWED_AGENT_PROFILES:
-        assert f'"{profile}"' in app_js, f"{profile} missing from app.js ALLOWED_AGENT_PROFILES"
-        assert f'value="{profile}"' in index_html, f"{profile} missing from index.html <option>"
+    _assert_agent_profile_contract(
+        _source_profiles=server.ALLOWED_AGENT_PROFILES,
+        _server_profiles=server.ALLOWED_AGENT_PROFILES,
+        app_js=(static / "app.js").read_text(),
+        index_html=(static / "index.html").read_text(),
+    )
+
+
+def _strip_js_comments(source: str) -> str:
+    """Remove JS comments without treating comment markers inside strings as syntax."""
+    out: list[str] = []
+    quote: str | None = None
+    escaped = False
+    i = 0
+    while i < len(source):
+        char = source[i]
+        if quote is not None:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            i += 1
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+            out.append(char)
+            i += 1
+        elif source.startswith("//", i):
+            newline = source.find("\n", i + 2)
+            if newline == -1:
+                break
+            out.append("\n")
+            i = newline + 1
+        elif source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            if end == -1:
+                break
+            i = end + 2
+        else:
+            out.append(char)
+            i += 1
+    return "".join(out)
+
+
+def _parse_agent_profile_app_js(source: str) -> set[str]:
+    source = _strip_js_comments(source)
+    match = re.search(r"const\s+ALLOWED_AGENT_PROFILES\s*=\s*\[(.*?)\]\s*;", source, re.DOTALL)
+    assert match, "app.js must declare ALLOWED_AGENT_PROFILES as an array"
+    return set(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', match.group(1)))
+
+
+def _parse_agent_profile_select(index_html: str) -> set[str]:
+    index_html = re.sub(r"<!--.*?-->", "", index_html, flags=re.DOTALL)
+    match = re.search(
+        r'<select\b[^>]*\bid="set-agent-profile"[^>]*>(.*?)</select>',
+        index_html,
+        re.DOTALL,
+    )
+    assert match, "index.html must contain the agent-profile select"
+    return set(re.findall(r'<option\b[^>]*\bvalue="([^"]+)"', match.group(1)))
+
+
+def _assert_agent_profile_contract(
+    *,
+    _source_profiles: tuple[str, ...],
+    _server_profiles: tuple[str, ...],
+    app_js: str,
+    index_html: str,
+) -> None:
+    assert tuple(_server_profiles) == tuple(_source_profiles), (
+        "server allowlist must exactly mirror the shared source"
+    )
+    expected = set(_source_profiles)
+    assert _parse_agent_profile_app_js(app_js) == expected
+    assert _parse_agent_profile_select(index_html) == expected
+
+
+def _profile_fixture(profiles: tuple[str, ...]) -> tuple[str, str]:
+    app_js = f'const ALLOWED_AGENT_PROFILES = [{", ".join(f"{p!r}" for p in profiles)}];'
+    # The parser deliberately requires the real HTML surface and ignores other selects.
+    index_html = (
+        '<select id="unrelated"><option value="retired">retired</option></select>'
+        '<select id="set-agent-profile">'
+        + "".join(f'<option value="{p}">{p}</option>' for p in profiles)
+        + "</select>"
+    )
+    return app_js.replace("'", '"'), index_html
+
+
+def test_agent_profile_allowlist_contract_matches_all_surfaces():
+    from agent_profiles import AGENT_PROFILES
+
+    static = Path(__file__).parent / "static"
+    _assert_agent_profile_contract(
+        _source_profiles=AGENT_PROFILES,
+        _server_profiles=server.ALLOWED_AGENT_PROFILES,
+        app_js=(static / "app.js").read_text(),
+        index_html=(static / "index.html").read_text(),
+    )
+
+
+def test_agent_profile_allowlist_contract_rejects_source_added_frontend_missing():
+    app_js, index_html = _profile_fixture(("claude",))
+    with pytest.raises(AssertionError):
+        _assert_agent_profile_contract(
+            _source_profiles=("claude", "gemini"),
+            _server_profiles=("claude", "gemini"),
+            app_js=app_js,
+            index_html=index_html,
+        )
+
+
+def test_agent_profile_allowlist_contract_rejects_retired_frontend_profile():
+    app_js, index_html = _profile_fixture(("claude", "retired"))
+    with pytest.raises(AssertionError):
+        _assert_agent_profile_contract(
+            _source_profiles=("claude",),
+            _server_profiles=("claude",),
+            app_js=app_js,
+            index_html=index_html,
+        )
+
+
+def test_agent_profile_allowlist_contract_accepts_consistent_fixture():
+    app_js, index_html = _profile_fixture(("claude", "gemini"))
+    _assert_agent_profile_contract(
+        _source_profiles=("claude", "gemini"),
+        _server_profiles=("claude", "gemini"),
+        app_js=app_js,
+        index_html=index_html,
+    )
+
+
+def test_agent_profile_allowlist_contract_ignores_comments():
+    app_js = 'const ALLOWED_AGENT_PROFILES = ["claude", // "retired"\n];'
+    index_html = (
+        '<!-- <select id="set-agent-profile"><option value="retired">retired</option></select> -->'
+        '<select id="set-agent-profile"><option value="claude">claude</option></select>'
+    )
+    _assert_agent_profile_contract(
+        _source_profiles=("claude",),
+        _server_profiles=("claude",),
+        app_js=app_js,
+        index_html=index_html,
+    )
 
 
 # ── _workspace_summary saga fields ─────────────────────────────────────────
