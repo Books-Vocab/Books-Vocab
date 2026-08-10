@@ -7002,6 +7002,94 @@ def test_delivery_registry_records_uses_explicit_primary_after_coordinator_teard
     assert records == []
     assert seen["script"] == primary / "ops" / "worktree_registry.py"
     assert seen["cwd"] == primary
+    assert "--json" in seen["argv"], (
+        "registry-list must request the machine-readable receipt explicitly"
+    )
+
+
+def test_delivery_json_tool_large_ledger_is_not_truncated(tmp_path, monkeypatch):
+    """A real registry ledger can exceed the old 256 KiB capture ceiling."""
+    payload = {
+        "schema": "kg.worktree.registry.v1",
+        "records": [{"path": f"/tmp/worktree-{index}",
+                     "branch": f"feat/source-{index}",
+                     "base": "main", "status": "merged",
+                     "intent": "x" * 1800} for index in range(150)],
+    }
+    raw = json.dumps(payload)
+    assert len(raw) > 256 * 1024
+    seen = {}
+
+    def fake_runner(_command, **kwargs):
+        seen.update(kwargs)
+        limit = kwargs["capture_limit"]
+        return subprocess.CompletedProcess(
+            args=["fake"], returncode=0,
+            stdout=raw[:limit], stderr="",
+        )
+
+    monkeypatch.setattr(MODULE, "run_streamed_command", fake_runner)
+    rc, decoded = MODULE._delivery_json_tool(
+        tmp_path / "fake.py", tmp_path, ["probe"], label="large-ledger",
+        expected_schema="kg.worktree.registry.v1", required_keys=("records",),
+    )
+
+    assert seen["capture_limit"] > len(raw)
+    assert rc == MODULE.EXIT_OK
+    assert decoded == payload
+
+
+def test_delivery_operation_target_uses_local_main_for_manifest_identity(tmp_path):
+    """Manifest SHA is provenance; operational children run against local main."""
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "base": "deadbeef" * 8,
+        "close_wave": {"anchor_base_sha": "deadbeef" * 8},
+    }), encoding="utf-8")
+
+    assert MODULE._delivery_operation_base(
+        "deadbeef" * 8, manifest=MODULE._delivery_load_json(manifest)
+    ) == "main"
+    state = {
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "slug": "delivery-wave",
+        "base": "main",
+        "branches": ["feat/source"],
+        "worktree": str(tmp_path / "removed-worktree"),
+        "branch": "feat/integration",
+        "status": "gated",
+    }
+    assert MODULE._delivery_integration_error(
+        state,
+        label="integration state",
+        slug="delivery-wave",
+        base=MODULE._delivery_operation_base("deadbeef" * 8,
+                                             manifest=MODULE._delivery_load_json(manifest)),
+        branches=["feat/source"],
+        require_gated=True,
+        require_live_worktree=False,
+    ) is None
+
+
+def test_close_wave_expected_ticket_set_includes_staged_queue(tmp_path):
+    """Stacked source rows survive source teardown through the anchor queue."""
+    queue = tmp_path / ".cache" / "backlog_anchor_queue.jsonl"
+    queue.parent.mkdir(parents=True)
+    queue.write_text("\n".join(json.dumps(row) for row in [
+        {"id": "IMP-20260811-5a3b26", "branch": "feat/team-a-de285f",
+         "landed_sha": "abc123"},
+        {"id": "IMP-20260811-de285f", "branch": "feat/team-a-de285f",
+         "landed_sha": None},
+        {"id": "IMP-foreign", "branch": "feat/other", "landed_sha": "def456"},
+    ]) + "\n", encoding="utf-8")
+    records = [{"status": "merged", "branch": "feat/team-a-de285f",
+                "backlog": ["IMP-20260811-de285f"]}]
+
+    staged = MODULE._delivery_staged_ticket_ids(tmp_path, ["feat/team-a-de285f"])
+    assert staged == ["IMP-20260811-5a3b26", "IMP-20260811-de285f"]
+    assert MODULE._delivery_expected_ticket_ids(
+        records, ["feat/team-a-de285f"], staged_ids=staged
+    ) == ["IMP-20260811-5a3b26", "IMP-20260811-de285f"]
 
 
 def test_delivery_integration_rejects_foreign_git_checkout(tmp_path, monkeypatch):
