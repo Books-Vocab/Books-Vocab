@@ -1,0 +1,21 @@
+{
+  "acceptance": "RED 必須在未修補時同時捕捉四個缺口；GREEN 必須以真實 temporary registry/ledger 與 temporary manifest/anchor queue fixture 通過四個 regression：registry child argv 明確含 --json；約 276 KiB machine JSON 完整解析；manifest exact SHA 僅作 identity 且 cutover/anchor/resolve target 為 local main；stacked source 的所有 staged queue ids 都進 expected_ticket_ids 並維持 foreign branch 隔離。既有 close-wave expected-ticket、anchor recovery 與 malformed receipt negative controls 亦須保持綠燈。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k 'delivery_registry_records or delivery_json_tool_large_ledger or delivery_operation_target or close_wave_expected_ticket_set_includes_staged_queue'",
+  "brief": "批次收尾在不同輸入下可能讀錯登記、遺失大型資料或漏掉應結案的票，交付者無法信任結果。",
+  "category": "tool",
+  "date": "2026-08-11",
+  "detail": "本票收斂本輪 close-wave recovery 暴露的同一協議缺口，限定修補編排器與既有 focused orchestrator tests，不改 registry、backlog store 或其他 team 的 fix-site。\n\n四個可重現的契約如下：\n1. _delivery_registry_records 呼叫 worktree_registry 的 list 時必須明確要求 --json；預設表格輸出不能被當成 machine receipt，否則 registry ledger 可能經過 pipe 後變成「could not read registry」而把正常收尾擋住。\n2. _delivery_json_tool 必須完整讀取受控的 machine JSON；目前固定 256 KiB 上限會截斷約 276 KiB 的 registry ledger，造成有效 JSON 被誤報為 invalid/truncated。上限需大於真實 ledger 且仍保有可觀測、可界定的輸出限制。\n3. manifest 內的 exact SHA 是 identity/provenance，只用來確認 state、anchor commit 與 recovery 身分；cutover、anchor、resolve 的操作目標必須解析成目前 checkout 的 local main，不能把 manifest SHA 當成可操作的 branch/ref。一次 primary 前進後重跑同 slug 也必須維持這個分離。\n4. stacked source（例如 de285f 帶著 5a 的來源）在 stage queue 內的每個 closure id 都屬於本輪 expected closure set；不得只從目前仍 active 的單一 source backlog 推導，因為 source resolve 或 stacked hand-back 後會漏掉 queue 中的 ticket，最後可能在 anchor 後錯誤宣稱波次完成。\n\n根因是 close-wave 把輸入格式、輸出容量、identity 與 operation target、以及 source registry 與 staged closure 的兩個 SoT 混在同一條 happy path；恢復流程再遇到 source 被 resolve、manifest 只剩 SHA 或 ledger 變大時就會分叉。修復不得手改 marker/queue，必須讓 typed helper 從真實 fixture 得出同一組資料。",
+  "fix_site": "ops/worktree_orchestrate.py;ops/tests/test_worktree_orchestrate.py",
+  "groomed_against": "0bf5c32975f3716873ebe3e414b17e70e22fd766",
+  "groomed_at": "2026-08-11",
+  "groomed_by": "supervisor:close-wave-recovery",
+  "id": "IMP-20260811-f08049",
+  "plan": "1. 先在 ops/tests/test_worktree_orchestrate.py 加四個 RED regression：攔截 registry child argv 確認含 --json；以 temporary registry/ledger fixture 產生約 276 KiB JSON 並確認 _delivery_json_tool 可完整 decode；以 exact SHA 與不同 local main 的 temporary manifest 驗證 operation target 固定為 local main 而 SHA 僅作 identity；以 stacked source registry 加 staged anchor queue 驗證 expected closure set 包含所有 queue ids 且排除 foreign branch。\n2. 在 ops/worktree_orchestrate.py 做最小修補：明確傳遞 JSON mode；把 child JSON capture 改為大於現行 ledger 的 bounded capacity 並在超限時具名拒絕；抽出 identity/ref target 分離 helper，讓 cutover、anchor、resolve 只取 local main；集中合併 named source reservations 與 staged queue ids 並保留 malformed/foreign fail-closed。\n3. 逐項跑四個 fixture regression、既有 close-wave expected-ticket/anchor recovery tests、bash/py_compile/diff-check；保留 exact RED/GREEN 輸出與非相關 baseline evidence。\n4. 由 reviewer 逐項核對四個 contract 與 fix-site，再以一顆 ops commit + official hand-back 交 Integrator；不在本票執行 Gate、cutover、anchor、validate 或 sync。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個編排器與既有整合測試群組，新增四個臨時登記簿與 manifest 回歸案例。",
+  "severity": "high",
+  "source": "supervisor:close-wave recovery audit 2026-08-11",
+  "status": "triaged",
+  "stream": "IMP"
+}
