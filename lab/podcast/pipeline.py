@@ -74,6 +74,7 @@ sys.stdout.reconfigure(line_buffering=True)
 import archetypes
 import saga
 import tts_tags
+from agent_profiles import AGENT_PROFILES, PROFILE_DEFAULT_MODEL
 from tts_config import (
     ALLOWED_TTS_MODELS,
     DEFAULT_TTS_MODEL,
@@ -89,11 +90,8 @@ WORKSPACES_DIR = ROOT / "workspaces"
 DEFAULT_WORKFLOW_VERSION = "v1"
 WORKFLOW_MANIFEST = "workflow_manifest.json"
 STAGE_PROVENANCE_DIR = "stage_provenance"
-# Stage 1-10 agent runner profile → its default model. Single source of truth
-# for the CLI choices and the monitor allowlist; add a key here to plug in
-# another billing backend (it must speak the Anthropic-compatible CLI contract).
-_PROFILE_DEFAULT_MODEL = {"claude": "opus[1m]"}
-AGENT_PROFILES = tuple(_PROFILE_DEFAULT_MODEL)
+# Backwards-compatible alias for callers that imported the old private name.
+_PROFILE_DEFAULT_MODEL = PROFILE_DEFAULT_MODEL
 
 
 def _normalize_agent_profile(profile: str | None) -> str:
@@ -115,7 +113,7 @@ def _resolve_agent_model(profile: str, explicit: str | None = None) -> str:
         return legacy
     # Default opus[1m] is intentional: pipeline agents (scriptwriter / enricher /
     # series-polish) reason over multi-chapter context and benefit from 1M window.
-    return _PROFILE_DEFAULT_MODEL[profile]
+    return PROFILE_DEFAULT_MODEL[profile]
 
 
 AGENT_PROFILE = _normalize_agent_profile(None)

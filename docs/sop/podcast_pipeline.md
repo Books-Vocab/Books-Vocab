@@ -159,7 +159,7 @@ TTS_MODEL=gemini-2.5-flash-tts   # 部署預設(.env,2026-06-02 起);synthesize.
 - **全域預設**：沒給 `--tts-model` / sidecar 不存在 → 落 `synthesize.py` 的 `TTS_MODEL` env 預設(`.env`)。
 
 **Stage 1-10 agent 選法**:
-- `--agent-profile claude`(或 env `PODCAST_AGENT_PROFILE`)選 billing/profile。**目前只有 `claude`**(走正常 Claude Code 帳號);kimi profile 已於 2026-08-09 隨 Kimi Code plan 一併移除,傳入 `kimi` 會 fail-fast。單一真相 = `pipeline._PROFILE_DEFAULT_MODEL`(profile→預設 model),要新增第三方 billing 後端在該 dict 加 key,並同步 `monitor/server.py:ALLOWED_AGENT_PROFILES`、`static/app.js:ALLOWED_AGENT_PROFILES`、`index.html` 下拉。
+- `--agent-profile claude`(或 env `PODCAST_AGENT_PROFILE`)選 billing/profile。**目前只有 `claude`**(走正常 Claude Code 帳號);kimi profile 已於 2026-08-09 隨 Kimi Code plan 一併移除,傳入 `kimi` 會 fail-fast。單一真相 = `agent_profiles.py:PROFILE_DEFAULT_MODEL`(profile→預設 model),要新增第三方 billing 後端在該 registry 加 key,並同步 `monitor/server.py:ALLOWED_AGENT_PROFILES`、`static/app.js:ALLOWED_AGENT_PROFILES`、`index.html` 下拉；`monitor/test_server.py` 的雙向集合契約會拒絕漏加或殘留。
 - `--agent-model M`(或 env `PODCAST_AGENT_MODEL`)覆寫 agent model。預設:`claude=opus[1m]`;legacy `PODCAST_CLAUDE_MODEL` 仍支援但只建議當 Claude profile 的相容入口。
 - pipeline 會寫 `.agent_profile` / `.agent_model` sidecar;dashboard `/approve`、`/resume`、`/rerun` 無參數續跑時讀回,避免人工 gate 後掉回預設 Claude。要切回 Claude,下一次 CLI 明確帶 `--agent-profile claude` 或 dashboard SETTINGS 改回 `claude` 再開新 run。
 

@@ -49,6 +49,7 @@ from jobs import tracker as jobs, JobLimitReached, WorkspaceBusyError, MAX_HISTO
 import remote as remote_ops  # noqa: E402
 import saga  # noqa: E402  — parse series.md for the workspace summary
 import archetypes  # noqa: E402  — validate spoiler_mode for a saga upload
+from agent_profiles import AGENT_PROFILES  # noqa: E402  — shared pipeline/monitor profile registry
 from tts_config import ALLOWED_TTS_MODELS  # noqa: E402  — server-side TTS model allowlist
 # Disk-derived status primitives live in workspace_status.py (FastAPI-free) so
 # headless tooling (ops/podcast_ops.py) can reuse the exact same logic — single
@@ -63,8 +64,9 @@ from workspace_status import (  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 
-# Must mirror pipeline.AGENT_PROFILES.
-ALLOWED_AGENT_PROFILES = ("claude",)
+# Keep the public server name for existing callers while sourcing values from
+# the side-effect-free registry shared with pipeline.py.
+ALLOWED_AGENT_PROFILES = AGENT_PROFILES
 
 # Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
 # almost certainly someone uploading the wrong file by accident. Protects
