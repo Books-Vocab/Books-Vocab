@@ -2580,6 +2580,186 @@ def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monke
     assert BACKLOG.validate_store(store) == []
 
 
+def test_reanchor_without_docs_preserves_the_legacy_result_shape(
+    tmp_path, monkeypatch, capsys
+):
+    """The opt-in docs surface must not change the default machine contract."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    _git_repo(repo)
+    result = BACKLOG.reanchor_store(repo / "store", repo=repo)
+    assert set(result) == {
+        "plan", "searched", "scanned", "search_depth", "frame_depth",
+        "window_exhausted",
+    }
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    assert BACKLOG.main([
+        "reanchor", "--store", str(repo / "store"), "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "doc_plan" not in payload
+    assert "doc_unmatched" not in payload
+    assert "doc_landed" not in payload
+
+
+def test_doc_reanchor_read_failure_returns_machine_context(tmp_path, monkeypatch, capsys):
+    """A preflight read failure is a refusal with paths, never a traceback."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+    store = repo / "store"
+    doc = repo / "docs" / "reference" / "missing.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text(f"verified_against: {orphan[:9]}\n", encoding="utf-8")
+    planned = BACKLOG.reanchor_store(store, docs=True, repo=repo)
+    assert planned["doc_plan"] == [{
+        "path": "docs/reference/missing.md",
+        "old": orphan[:9],
+        "new": landed[:9],
+    }]
+
+    # Bypass the second scan so the injected failure exercises the commit
+    # preflight, not document discovery.  The real command has already proven
+    # this exact plan, then loses read access before its first write.
+    monkeypatch.setattr(BACKLOG, "reanchor_store", lambda *args, **kwargs: planned)
+    real_read = Path.read_text
+
+    def fail_doc_read(path, *args, **kwargs):
+        if Path(path) == doc:
+            raise OSError("synthetic document read failure")
+        return real_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_doc_read)
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    rc = BACKLOG.main([
+        "reanchor", "--docs", "--store", str(store), "--commit", "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 64
+    assert payload["ok"] is False
+    assert payload["doc_paths"] == ["docs/reference/missing.md"]
+    assert real_read(doc, encoding="utf-8") == f"verified_against: {orphan[:9]}\n"
+
+
+def test_doc_verified_against_reanchor_repoints_an_orphaned_anchor(
+    tmp_path, monkeypatch, capsys
+):
+    """The docs mode follows the same measured patch-id proof as fixed_by."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+    store = repo / "store"
+    doc = repo / "docs" / "reference" / "example.md"
+    doc.parent.mkdir(parents=True)
+    old = orphan[:9]
+    doc.write_text(f"<!-- doc-meta\nverified_against: {old}\n-->\n", encoding="utf-8")
+
+    dry = BACKLOG.reanchor_store(store, docs=True, repo=repo)
+    assert dry["doc_plan"] == [{
+        "path": "docs/reference/example.md",
+        "old": old,
+        "new": landed[:9],
+    }]
+    assert dry["doc_unmatched"] == []
+    assert f"verified_against: {old}" in doc.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    assert BACKLOG.main([
+        "reanchor", "--docs", "--store", str(store), "--commit", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["doc_plan"] == dry["doc_plan"]
+    assert payload["doc_landed"] == ["docs/reference/example.md"]
+    rewritten = doc.read_text(encoding="utf-8")
+    assert f"verified_against: {landed[:9]}" in rewritten
+    assert f"verified_against: {old}" not in rewritten
+
+
+def test_doc_verified_against_reanchor_refuses_ambiguous_patch_id(tmp_path, monkeypatch):
+    """Two equivalent landed patches are evidence to stop, never to guess."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+             "-c", "commit.gpgsign=false", *args],
+            cwd=repo, capture_output=True, text=True, check=True,
+        )
+
+    git("revert", "--no-edit", landed)
+    git("cherry-pick", orphan)
+    store = repo / "store"
+    doc = repo / "docs" / "reference" / "ambiguous.md"
+    doc.parent.mkdir(parents=True)
+    old = orphan[:9]
+    doc.write_text(f"verified_against: {old}\n", encoding="utf-8")
+
+    result = BACKLOG.reanchor_store(store, docs=True, repo=repo)
+    assert result["doc_plan"] == []
+    assert result["doc_unmatched"] == [{
+        "path": "docs/reference/ambiguous.md",
+        "old": old,
+        "candidates": 2,
+        "reason": "ambiguous-patch-id",
+        "next_step": "choose the correct landed commit and reanchor the document manually",
+    }]
+    assert doc.read_text(encoding="utf-8") == f"verified_against: {old}\n"
+
+
+def test_doc_reanchor_rolls_back_every_document_when_a_later_write_fails(
+    tmp_path, monkeypatch, capsys
+):
+    """A multi-document repair is one transaction, not a prefix of writes.
+
+    The first document used to remain rewritten when the second atomic write
+    failed.  That left the primary dirty while the caller only received an
+    opaque traceback, so the next cutover could not tell repair residue from a
+    co-tenant edit.  The failure is injected once; rollback itself must still
+    be able to write the original bytes back.
+    """
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+    store = repo / "store"
+    docs = repo / "docs" / "reference"
+    docs.mkdir(parents=True)
+    old = orphan[:9]
+    first = docs / "A.md"
+    second = docs / "E.md"
+    original = f"verified_against: {old}\n"
+    first.write_text(original, encoding="utf-8")
+    second.write_text(original, encoding="utf-8")
+
+    real_write = BACKLOG._write_atomic
+    calls = []
+
+    def fail_once(path, text):
+        calls.append(Path(path))
+        if len(calls) == 2:
+            raise OSError("synthetic second-document write failure")
+        return real_write(path, text)
+
+    monkeypatch.setattr(BACKLOG, "_write_atomic", fail_once)
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    rc = BACKLOG.main([
+        "reanchor", "--docs", "--store", str(store), "--commit", "--json",
+    ])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 64
+    assert payload["ok"] is False
+    assert payload.get("doc_paths") == [
+        "docs/reference/A.md", "docs/reference/E.md",
+    ], payload
+    assert first.read_text(encoding="utf-8") == original
+    assert second.read_text(encoding="utf-8") == original
+    assert f"verified_against: {landed[:9]}" not in first.read_text(encoding="utf-8")
+    assert f"verified_against: {landed[:9]}" not in second.read_text(encoding="utf-8")
+
+
 def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatch):
     """One real case (IMP-0062) had a patch-id that differed because the rebase
     resolved a conflict differently. A matcher that fell back to "closest" would

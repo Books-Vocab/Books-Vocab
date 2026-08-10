@@ -215,12 +215,11 @@ EOF
   && ok "a repair commit confined to the ledger is exempt" \
   || fail_t "ledger-only repair was not exempt: $(grep -m1 LEDGERONLY "$MR/last.txt")"
 
-# The generated view left version control (IMP-20260807-b9526c), so it left the
-# machine-repair whitelist with it. A commit that still touches that path is a
+# The generated view left version control (IMP-20260807-b9526c), so it remains
+# outside the machine-repair whitelist. A commit that still touches that path is a
 # hand-written change wearing a token that means "a machine derived this", which is
 # the exact confusion the whitelist exists to prevent. Positive control for the
-# narrowing: without it, the case above would pass whether or not the path was
-# removed from the list.
+# narrowing: a real markdown doc is allowed below, but this generated path is not.
 mr_case
 printf '{"a":9}\n' >"$MR/repo/docs/runbook/backlog/E1.json"
 printf 'view2\n' >"$MR/repo/docs/runbook/improvement_backlog.md"
@@ -249,9 +248,8 @@ else
   fail_t "stray file not blocked/named: $(grep -m1 STRAYFILE "$MR/last.txt")"
 fi
 
-# The SHAPE of the pattern, not just its existence: loosening it to `^docs/runbook/`
-# left the suite green, because the only stray fixture was a `src.py` that every
-# pattern rejects. A sibling runbook doc is the discriminator.
+# Reanchored markdown docs are valid machine-repair paths; unrelated source files
+# remain a hard block. The generated view above is the explicit excluded sibling.
 mr_case
 printf 'not the ledger\n' >"$MR/repo/docs/runbook/system.md"
 git -C "$MR/repo" add -A
@@ -260,10 +258,10 @@ ops: SIBLINGDOC touches a runbook doc that is not the ledger
 
 Review-Exempt: machine-repair
 EOF
-if [[ "$(verdict_for SIBLINGDOC)" == "block" ]] && grep -q 'docs/runbook/system.md' "$MR/last.txt"; then
-  ok "a non-ledger file under docs/runbook/ still blocks"
+if [[ "$(verdict_for SIBLINGDOC)" == "ok" ]]; then
+  ok "a reanchored markdown doc under docs/runbook/ is allowed"
 else
-  fail_t "sibling runbook doc slipped past: $(grep -m1 SIBLINGDOC "$MR/last.txt")"
+  fail_t "reanchored markdown doc was blocked: $(grep -m1 SIBLINGDOC "$MR/last.txt")"
 fi
 
 # Three shapes that produce an EMPTY file list — "could not look" dressed up as

@@ -7572,12 +7572,12 @@ _REPAIR_MESSAGE = (
     "ops: cutover 落地後重新推導 ledger 錨點\n\n"
     "rebase 在 gate 之後改寫了分支的 sha,所以 entry 的 fixed_by 在落地那一刻\n"
     "才指得到正確的 commit。這顆 commit 由 cutover 自己產生,內容全部是\n"
-    "`backlog.py reanchor --commit` + `render --commit` 從既有資料重新推導的。\n\n"
+    "`backlog.py reanchor --docs --commit` 從既有資料重新推導的。\n\n"
     "Review-Exempt: machine-repair"
 )
 
 
-def _ledger_dirty(primary: Path) -> tuple[int, str]:
+def _ledger_dirty(primary: Path, paths: tuple[str, ...] = LEDGER_PATHS) -> tuple[int, str]:
     """Tracked-only dirtiness of the ledger paths.
 
     `--untracked-files=no` on purpose, matching `_primary_ff_ready`: an untracked
@@ -7586,12 +7586,14 @@ def _ledger_dirty(primary: Path) -> tuple[int, str]:
     dirt is what led the repair to sweep other people's unfinished work into a
     commit carrying a review exemption.
     """
-    return _git(["status", "--porcelain", "--untracked-files=no", "--", *LEDGER_PATHS],
+    return _git(["status", "--porcelain", "--untracked-files=no", "--", *paths],
                 cwd=primary)
 
 
-def _repair_restore(primary: Path, out: dict[str, Any]) -> None:
-    """Put the ledger paths back to HEAD after a failed repair, and VERIFY it.
+def _repair_restore(
+    primary: Path, out: dict[str, Any], paths: tuple[str, ...] = LEDGER_PATHS,
+) -> None:
+    """Put the repair's tracked paths back to HEAD after failure, and VERIFY it.
 
     The one thing a failed repair must not do is leave the primary dirty: that is
     the exact condition `_primary_ff_ready` refuses on, so an abandoned repair does
@@ -7615,11 +7617,13 @@ def _repair_restore(primary: Path, out: dict[str, Any]) -> None:
     re-read below is what actually decides the verdict either way.
 
     Untracked files under these paths are deliberately NOT touched: they are someone
-    else's unfinished work, and this function's job is to undo its own edits.
+    else's unfinished work, and this function's job is to undo its own edits.  The
+    default set is the ledger; a successful/failed docs reanchor extends it with the
+    exact markdown paths reported by the child command.
     """
-    _git(["reset", "-q", "--", *LEDGER_PATHS], cwd=primary)
-    _git(["checkout", "HEAD", "--", *LEDGER_PATHS], cwd=primary)
-    rc, dirty = _ledger_dirty(primary)
+    _git(["reset", "-q", "--", *paths], cwd=primary)
+    _git(["checkout", "HEAD", "--", *paths], cwd=primary)
+    rc, dirty = _ledger_dirty(primary, paths)
     out["restored"] = rc == 0 and not dirty.strip()
     if not out["restored"]:
         out["error"] = (f"{out.get('error', '?')} | AND the primary could not be "
@@ -7723,9 +7727,10 @@ def _post_landing_repair(primary: Path) -> dict[str, Any]:
     cannot. That is not repairable from the branch: the correct sha does not exist
     until the landing has happened.
 
-    `render` follows because the store just changed. (It used to also be the fix for
-    stale aggregate counters in the view; those are gone — `backlog.py:render_view`
-    says why — so this is now the ordinary "re-derive the derived artifact" step.)
+    The repair now also covers document `verified_against` anchors. The generated
+    markdown view is no longer tracked, so there is no second render step; only
+    the ledger files and the exact documents reported by `reanchor --docs` enter
+    the repair commit.
 
     Committed, not left in the tree: an uncommitted repair merely relocates the
     failure to the next `cutover`, which refuses on a dirty primary. And if any step
@@ -7740,20 +7745,44 @@ def _post_landing_repair(primary: Path) -> dict[str, Any]:
         out["reason"] = "no ledger tool in this checkout"
         return out
     out["ran"] = True
-    # `reanchor` only. The rebase inside cutover rewrites the branch's commit shas,
-    # which orphans any `fixed_by` recorded against them — that is a fact about the
-    # STORE and survives the view's removal. The second step used to be `render`,
-    # which now has no tracked file to keep in step.
+    # `reanchor` is the single repair primitive. The rebase inside cutover rewrites
+    # the branch's commit shas, which can orphan both `fixed_by` and
+    # `verified_against` anchors. Ask for JSON so the exact document paths it
+    # rewrote can join the same tracked path set as the backlog ledger.
+    repair_paths = list(LEDGER_PATHS)
     for sub, label in (("reanchor", "ledger-reanchor"),):
-        rc, text = _tool_mutation([sys.executable, str(tool), sub, "--commit"],
+        argv = [sys.executable, str(tool), sub, "--docs", "--commit", "--json"]
+        rc, text = _tool_mutation(argv,
                                   cwd=primary, label=label)
+        payload = {}
+        for line in reversed((text or "").splitlines()):
+            try:
+                candidate = json.loads(line)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(candidate, dict):
+                payload = candidate
+                break
+        # A successful reanchor reports `doc_landed`; a failed transactional
+        # reanchor reports the complete planned set as `doc_paths` after it has
+        # rolled back.  Keep both paths in the restore set: the latter is the
+        # only machine-readable way to recover an arbitrary document when the
+        # child command exits before its success payload.
+        doc_paths = payload.get("doc_landed") or payload.get("doc_paths") or []
+        if not doc_paths:
+            doc_paths = [item.get("path") for item in payload.get("doc_plan", [])
+                         if isinstance(item, dict) and item.get("path")]
+        for path in doc_paths:
+            if isinstance(path, str) and path not in repair_paths:
+                repair_paths.append(path)
+        out["repair_paths"] = repair_paths
         out["steps"].append({"step": sub, "rc": rc})
         if rc != 0:
             out["ok"] = False
             out["error"] = f"{sub} exited {rc}: {text.strip()[:300]}"
-            _repair_restore(primary, out)
+            _repair_restore(primary, out, tuple(repair_paths))
             return out
-    rc, dirty = _ledger_dirty(primary)
+    rc, dirty = _ledger_dirty(primary, tuple(repair_paths))
     if rc != 0:
         out["ok"] = False
         out["error"] = "could not read the primary's status after the repair"
@@ -7768,12 +7797,12 @@ def _post_landing_repair(primary: Path) -> dict[str, Any]:
     # was re-derived by a tool" and whose trailer buys it past the review gate.
     # Measured: the repair commit contained COTENANT.json; without the add, it
     # contains only the file `reanchor` actually rewrote.
-    crc, ctext = _git_mutation(["commit", "-m", _REPAIR_MESSAGE, "--", *LEDGER_PATHS],
+    crc, ctext = _git_mutation(["commit", "-m", _REPAIR_MESSAGE, "--", *repair_paths],
                                cwd=primary, label="ledger-repair-commit")
     if crc != 0:
         out["ok"] = False
         out["error"] = f"repair commit failed: {ctext.strip()[:300]}"
-        _repair_restore(primary, out)
+        _repair_restore(primary, out, tuple(repair_paths))
         return out
     out["committed"] = True
     # The repair rewrote ledger data on the trunk and no gate has looked at the
