@@ -583,7 +583,8 @@ def _claim_next_backlog(
                      if item.get("id") == ticket), 0)
         register_args = argparse.Namespace(
             state=str(state_path), at=None, path=str(path), branch=branch,
-            intent=intent, base=base, backlog=[ticket], exclusive=True, json=True,
+            intent=intent, base=base, repo_root=str(root), backlog=[ticket],
+            exclusive=True, json=True,
         )
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -3126,7 +3127,8 @@ def cmd_open(args: argparse.Namespace) -> int:
         claim_argv = ["--backlog", *wanted] if args.backlog is not None else []
         reg_rc, reg_payload = _registry(
             ["register", *_state_arg(args.state), "--path", str(path),
-             "--branch", branch, "--intent", args.intent, "--base", base,
+             "--repo-root", str(root), "--branch", branch,
+             "--intent", args.intent, "--base", base,
              *claim_argv, "--exclusive", "--json"])
     if reg_rc != EXIT_OK:
         conflicts = (reg_payload or {}).get("conflicts", [])
@@ -4721,6 +4723,18 @@ def _integrate_handoff_check(
                 "handed_back_sha": handed_back_sha,
                 "current_tip_sha": current_tip,
             })
+            continue
+
+        seal_problems = wr.validate_handback_seal(
+            record, repo=repo, require_seal=True,
+        )
+        if seal_problems:
+            for problem in seal_problems:
+                item = {"branch": branch, **problem}
+                if allow_unhanded and problem.get("kind") == "handback-seal-missing":
+                    warnings.append(item)
+                else:
+                    problems.append(item)
 
     return {"checked": list(branches), "source_refs": source_refs,
             "warnings": warnings, "problems": problems}
@@ -8559,8 +8573,9 @@ def build_parser() -> argparse.ArgumentParser:
                          "integration state survives, so the next `--continue --commit` "
                          "runs ONLY the gate on the already-integrated tree")
     ig.add_argument("--allow-unhanded", action="store_true",
-                    help="allow a source branch with no active hand-back stamp (legacy "
-                         "or imported work only); NEVER bypasses a branch-tip mismatch")
+                    help="allow a source branch with no active hand-back stamp/seal "
+                         "(legacy or imported work only); NEVER bypasses a branch-tip "
+                         "mismatch or invalid seal")
     ig.add_argument("--abort", action="store_true",
                     help="abort the in-flight cherry-pick and forget the integration "
                          "state. The WORKTREE survives — teardown is `resolve`, the "

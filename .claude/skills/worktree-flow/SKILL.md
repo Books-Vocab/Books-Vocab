@@ -272,7 +272,7 @@ Gate 與 commit 不會把它當成程式碼。受派者的暫存檔一律寫進�
 ./ops/worktree_registry.py hand-back --json
 ```
 
-它只讀目前 checkout 的 branch 與 `HEAD`，把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；child 不跑 gate、cutover、sync 或 deploy。Integrator 的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過「沒有戳記」，不能繞過 tip mismatch；正常批次不應使用。
+它會把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；child 不跑 gate、cutover、sync 或 deploy。具名批次可另以 `--outcomes <json>` 交回每張 claimed ticket 的結果（`changed`、`no-op-existing-fix`、`changed-but-not-closable`、`blocked`、`triage-only`），工具會要求 acceptance status/evidence、驗證 ticket set，並對可整合結果產生含 identity/base/tip/digest 的 hand-back seal；changed 結果還須通過 review audit。Integrator 的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記或 seal 就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過缺 seal，不能繞過 tip mismatch 或不合法 seal；正常批次不應使用。
 
 `integrate --commit` 另會把每條有 hand-back 的來源在 registry 內**原子保留給該 integration branch**；另一輪若重複納入同一來源，會具名列出 owner 並拒絕，敗方剛開的空整合樹會自清。`--abort --commit` 釋放保留；正常完成後保留持續到來源分支被 resolve。只要來源仍 active，連 `--force` 都不能先刪 integration tree，避免先抹掉唯一的來源→整合 owner 邊。
 

@@ -79,6 +79,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -115,6 +116,18 @@ EXIT_CLAIMED = 75
 
 STATUS_ACTIVE = "active"
 RESOLVE_STATUS = ("merged", "abandoned")  # terminal states a resolve can set
+HAND_BACK_SEAL_SCHEMA = "kg.worktree.handback.v1"
+HAND_BACK_OUTCOMES = (
+    "changed",
+    "no-op-existing-fix",
+    "changed-but-not-closable",
+    "blocked",
+    "triage-only",
+)
+INTEGRABLE_HAND_BACK_OUTCOMES = {"changed", "no-op-existing-fix"}
+GREEN_ACCEPTANCE_STATUSES = {
+    "green", "pass", "passed", "ok", "confirmed-fixed", "confirmed_fixed",
+}
 
 
 # ============================================================================
@@ -143,6 +156,261 @@ def _git_ok(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
     if proc.returncode != 0 and proc.stderr.strip():
         out = (out + "\n" + proc.stderr.strip()).strip()
     return proc.returncode, out
+
+
+def _canonical_json(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False).encode("utf-8")
+
+
+def _normalised_acceptance_status(value: Any) -> str:
+    return str(value or "").strip().lower().replace(" ", "-")
+
+
+def _acceptance_is_green(value: Any) -> bool:
+    return _normalised_acceptance_status(value) in GREEN_ACCEPTANCE_STATUSES
+
+
+def _load_hand_back_outcomes(path: Path) -> list[dict[str, Any]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        payload = payload.get("outcomes")
+    if not isinstance(payload, list):
+        raise ValueError("outcomes JSON must be a list or an object with an outcomes list")
+    if not all(isinstance(item, dict) for item in payload):
+        raise ValueError("every hand-back outcome must be an object")
+    return payload
+
+
+def _review_receipt_problems(worktree: Path, base_sha: str, tip_sha: str) -> list[dict[str, Any]]:
+    script = worktree / "ops" / "review_audit.sh"
+    if not script.is_file():
+        return [{"kind": "review-audit-missing", "path": str(script)}]
+    if not os.access(script, os.X_OK):
+        return [{"kind": "review-audit-unreadable", "path": str(script),
+                 "detail": "review audit script is not executable"}]
+    try:
+        proc = subprocess.run(
+            [str(script), "--rev-range", f"{base_sha}..{tip_sha}"],
+            cwd=str(worktree), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        return [{"kind": "review-audit-unreadable", "path": str(script),
+                 "detail": str(exc)}]
+    if proc.returncode == 0:
+        return []
+    output = (proc.stdout + "\n" + proc.stderr).strip()
+    return [{"kind": "review-audit-failed", "rc": proc.returncode,
+             "output_tail": output[-1200:]}]
+
+
+def _outcome_problems(
+    outcomes: list[dict[str, Any]],
+    *,
+    claimed: list[str],
+    base_sha: str,
+    worktree: Path,
+    tip_sha: str,
+    run_review: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    problems: list[dict[str, Any]] = []
+    normalised: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in outcomes:
+        ticket_id = str(item.get("ticket_id") or "").strip()
+        outcome = str(item.get("outcome") or "").strip()
+        status = str(item.get("acceptance_status") or "").strip()
+        evidence = str(item.get("evidence") or "").strip()
+        if not ticket_id:
+            problems.append({"kind": "ticket-id-missing"})
+            continue
+        if ticket_id in seen:
+            problems.append({"kind": "duplicate-ticket", "ticket_id": ticket_id})
+            continue
+        seen.add(ticket_id)
+        if ticket_id not in claimed:
+            problems.append({"kind": "ticket-not-claimed", "ticket_id": ticket_id})
+        if outcome not in HAND_BACK_OUTCOMES:
+            problems.append({"kind": "outcome-invalid", "ticket_id": ticket_id,
+                             "outcome": outcome, "allowed": list(HAND_BACK_OUTCOMES)})
+        if not status:
+            problems.append({"kind": "acceptance-status-missing", "ticket_id": ticket_id})
+        if not evidence:
+            problems.append({"kind": "evidence-missing", "ticket_id": ticket_id})
+        if outcome in {"changed", "no-op-existing-fix"} and not _acceptance_is_green(status):
+            problems.append({"kind": "acceptance-not-green", "ticket_id": ticket_id,
+                             "outcome": outcome, "acceptance_status": status})
+        if outcome in {"changed-but-not-closable", "blocked", "triage-only"} \
+                and _acceptance_is_green(status):
+            problems.append({"kind": "nonintegrable-outcome-is-green",
+                             "ticket_id": ticket_id, "outcome": outcome})
+
+        provenance = item.get("provenance")
+        canonical: dict[str, Any] = {
+            "ticket_id": ticket_id,
+            "outcome": outcome,
+            "acceptance_status": status,
+            "evidence": evidence,
+        }
+        if provenance is not None:
+            if not isinstance(provenance, dict):
+                problems.append({"kind": "provenance-invalid", "ticket_id": ticket_id})
+            else:
+                kind = str(provenance.get("kind") or "").strip()
+                sha = str(provenance.get("sha") or "").strip()
+                source = str(provenance.get("source") or "").strip()
+                canonical["provenance"] = {"kind": kind, "sha": sha}
+                if source:
+                    canonical["provenance"]["source"] = source
+                if outcome == "no-op-existing-fix":
+                    if kind not in {"base-ancestor", "fixed-elsewhere"} or not sha:
+                        problems.append({"kind": "no-op-provenance-missing",
+                                         "ticket_id": ticket_id})
+                    elif kind == "base-ancestor":
+                        rc, _ = _git_ok(["merge-base", "--is-ancestor", sha, base_sha],
+                                        cwd=worktree)
+                        if rc != 0:
+                            problems.append({"kind": "provenance-not-base-ancestor",
+                                             "ticket_id": ticket_id, "sha": sha,
+                                             "base_sha": base_sha})
+                    elif not source:
+                        problems.append({"kind": "fixed-elsewhere-source-missing",
+                                         "ticket_id": ticket_id})
+        elif outcome == "no-op-existing-fix":
+            problems.append({"kind": "no-op-provenance-missing", "ticket_id": ticket_id})
+        normalised.append(canonical)
+
+    expected = set(claimed)
+    if seen != expected:
+        problems.append({"kind": "ticket-set-mismatch", "claimed": sorted(expected),
+                         "outcomes": sorted(seen)})
+    if run_review and any(item.get("outcome") == "changed" for item in normalised):
+        problems.extend(_review_receipt_problems(worktree, base_sha, tip_sha))
+    return problems, sorted(normalised, key=lambda item: item["ticket_id"])
+
+
+def _seal_body(record: dict[str, Any], *, base_sha: str, tip_sha: str,
+               outcomes: list[dict[str, Any]], handed_back_at: str) -> dict[str, Any]:
+    return {
+        "schema": HAND_BACK_SEAL_SCHEMA,
+        "record": {
+            "branch": record.get("branch"),
+            "path": _norm(record.get("path") or ""),
+            "base": record.get("base"),
+            "backlog": sorted(record.get("backlog") or []),
+            "claimed_at": record.get("claimed_at"),
+        },
+        "base_sha": base_sha,
+        "tip_sha": tip_sha,
+        "outcomes": outcomes,
+        "handed_back_at": handed_back_at,
+    }
+
+
+def _seal_with_digest(body: dict[str, Any]) -> dict[str, Any]:
+    seal = dict(body)
+    seal["digest"] = hashlib.sha256(_canonical_json(body)).hexdigest()
+    return seal
+
+
+def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
+                           require_seal: bool = True) -> list[dict[str, Any]]:
+    seal = record.get("handback_seal")
+    if not isinstance(seal, dict):
+        return ([{"kind": "handback-seal-missing", "branch": record.get("branch")}]
+                if require_seal else [])
+    digest = seal.get("digest")
+    body = {key: value for key, value in seal.items() if key != "digest"}
+    problems: list[dict[str, Any]] = []
+    if not isinstance(digest, str) or digest != hashlib.sha256(_canonical_json(body)).hexdigest():
+        problems.append({"kind": "handback-seal-digest-mismatch",
+                         "branch": record.get("branch")})
+    if body.get("schema") != HAND_BACK_SEAL_SCHEMA:
+        problems.append({"kind": "handback-seal-schema-invalid"})
+    expected_tip = record.get("handed_back_sha")
+    if body.get("tip_sha") != expected_tip:
+        problems.append({"kind": "handback-seal-tip-mismatch",
+                         "sealed": body.get("tip_sha"), "recorded": expected_tip})
+    if body.get("handed_back_at") != record.get("handed_back_at"):
+        problems.append({"kind": "handback-seal-time-mismatch",
+                         "sealed": body.get("handed_back_at"),
+                         "recorded": record.get("handed_back_at")})
+    expected_base = record.get("base_sha")
+    if not expected_base or body.get("base_sha") != expected_base:
+        problems.append({"kind": "handback-seal-base-mismatch",
+                         "sealed": body.get("base_sha"), "recorded": expected_base})
+    identity = body.get("record")
+    if not isinstance(identity, dict) or identity.get("branch") != record.get("branch") \
+            or identity.get("path") != _norm(record.get("path") or "") \
+            or identity.get("base") != record.get("base") \
+            or identity.get("claimed_at") != record.get("claimed_at") \
+            or identity.get("backlog") != sorted(record.get("backlog") or []):
+        problems.append({"kind": "handback-seal-identity-mismatch",
+                         "branch": record.get("branch")})
+    outcomes = body.get("outcomes")
+    if not isinstance(outcomes, list):
+        problems.append({"kind": "handback-seal-outcomes-invalid"})
+    else:
+        outcome_ids = [str(item.get("ticket_id") or "") for item in outcomes
+                       if isinstance(item, dict)]
+        if len(outcome_ids) != len(set(outcome_ids)) \
+                or set(outcome_ids) != set(record.get("backlog") or []):
+            problems.append({"kind": "handback-seal-ticket-set-mismatch",
+                             "sealed": sorted(outcome_ids),
+                             "claimed": sorted(record.get("backlog") or [])})
+        metadata_invalid: list[dict[str, Any]] = []
+        ticket_id_invalid = False
+        for index, item in enumerate(outcomes):
+            if not isinstance(item, dict):
+                problems.append({"kind": "handback-outcome-not-integrable",
+                                 "ticket_id": None, "outcome": None})
+                continue
+            ticket_id = item.get("ticket_id")
+            raw_outcome = item.get("outcome")
+            if not isinstance(ticket_id, str):
+                ticket_id_invalid = True
+                metadata_invalid.append({"kind": "handback-outcome-metadata-invalid",
+                                         "field": "ticket_id", "index": index,
+                                         "type": type(ticket_id).__name__})
+            if not isinstance(raw_outcome, str):
+                metadata_invalid.append({"kind": "handback-outcome-metadata-invalid",
+                                         "field": "outcome", "index": index,
+                                         "type": type(raw_outcome).__name__})
+            outcome_integrable = (
+                isinstance(raw_outcome, str)
+                and raw_outcome in INTEGRABLE_HAND_BACK_OUTCOMES
+            )
+            if not outcome_integrable:
+                problems.append({"kind": "handback-outcome-not-integrable",
+                                 "ticket_id": ticket_id,
+                                 "outcome": raw_outcome})
+        invalid_items = [
+            {"kind": "handback-outcome-item-invalid", "index": index,
+             "type": type(item).__name__}
+            for index, item in enumerate(outcomes)
+            if not isinstance(item, dict)
+        ]
+        problems.extend(invalid_items)
+        problems.extend(metadata_invalid)
+        if (not invalid_items and not ticket_id_invalid and repo is not None
+                and expected_base and body.get("tip_sha")):
+            semantic_problems, checked = _outcome_problems(
+                outcomes, claimed=list(record.get("backlog") or []),
+                base_sha=expected_base, worktree=repo, tip_sha=body["tip_sha"],
+                run_review=False,
+            )
+            seal_ticket_set_problem = any(
+                item.get("kind") == "handback-seal-ticket-set-mismatch"
+                for item in problems
+            )
+            problems.extend(
+                item for item in semantic_problems
+                if not (seal_ticket_set_problem and item.get("kind") == "ticket-set-mismatch")
+            )
+            if checked != sorted(outcomes, key=lambda item: item.get("ticket_id", "")):
+                problems.append({"kind": "handback-seal-outcome-normalisation-mismatch"})
+    return problems
 
 
 def repo_root() -> Path:
@@ -807,6 +1075,7 @@ def claim_campaign_ticket(
     base: str,
     base_sha: str | None = None,
     base_reader: Callable[[], str] | None = None,
+    repo_root_path: Path | str | None = None,
     now_iso: str | None = None,
 ) -> dict[str, Any]:
     """Atomically transfer one campaign reservation into an active record."""
@@ -825,7 +1094,7 @@ def claim_campaign_ticket(
         actual_base = (
             base_reader() if base_reader is not None
             else base_sha if base_sha is not None
-            else _git_base_for_claim(base, state_path)
+            else _git_base_for_claim(base, repo_root_path=repo_root_path)
         ).strip()
         if not actual_base:
             return {"ok": False, "reason": "campaign base is unreadable",
@@ -857,7 +1126,8 @@ def claim_campaign_ticket(
                                   for r in matches]}
         record = {
             "path": path, "branch": branch, "intent": intent, "base": base,
-            "created_at": timestamp, "status": STATUS_ACTIVE, "resolved_at": None,
+            "created_at": timestamp, "base_sha": actual_base,
+            "status": STATUS_ACTIVE, "resolved_at": None,
             "backlog": [ticket], "claimed_at": timestamp,
         }
         claimed[ticket] = {"branch": branch, "path": path, "claimed_at": timestamp}
@@ -867,9 +1137,11 @@ def claim_campaign_ticket(
                 "reservation": wc.reservation_summary(reservation)}
 
 
-def _git_base_for_claim(base: str, state_path: Path) -> str:
-    """Resolve a base ref from the repo that owns the registry ledger."""
-    root = state_path.resolve().parent.parent
+def _git_base_for_claim(
+    base: str, *, repo_root_path: Path | str | None = None,
+) -> str:
+    """Resolve a base ref from an explicit repo root, never a ledger path guess."""
+    root = Path(repo_root_path).resolve() if repo_root_path else repo_root()
     rc, output = _git_ok(["rev-parse", base], cwd=root)
     return output if rc == EXIT_OK else ""
 
@@ -1139,6 +1411,20 @@ def cmd_register(args: argparse.Namespace) -> int:
     state_path = _state_path(args)
     state = load_state(state_path)
     records: list[dict[str, Any]] = state["records"]
+    base_path = Path(path)
+    if base_path.is_dir():
+        base_rc, recorded_base_sha = _git_ok(
+            ["rev-parse", "--verify", f"{args.base}^{{commit}}"], cwd=base_path,
+        )
+        recorded_base_sha = recorded_base_sha if base_rc == 0 else None
+    else:
+        # `open` registers before `git worktree add`, so the target path is not
+        # born yet. Resolve the immutable base from the registry's owning repo
+        # while the claim is made; a later typed hand-back must never discover
+        # that the claim forgot which base it came from.
+        recorded_base_sha = _git_base_for_claim(
+            args.base, repo_root_path=getattr(args, "repo_root", None),
+        )
 
     # upsert-by-branch/path among ACTIVE records (idempotent for the orchestrator):
     # a re-register of a live worktree refreshes its intent/base/path in place.
@@ -1251,6 +1537,24 @@ def cmd_register(args: argparse.Namespace) -> int:
             "path": path, "branch": args.branch,
             "intent": args.intent, "base": args.base,
         })
+        if base_path.is_dir():
+            branch_rc, branch_tip = _git_ok(
+                ["rev-parse", "--verify", f"{args.branch}^{{commit}}"], cwd=base_path,
+            )
+            if branch_rc == 0 and branch_tip and recorded_base_sha:
+                merge_rc, inferred_base_sha = _git_ok(
+                    ["merge-base", branch_tip, recorded_base_sha], cwd=base_path,
+                )
+                if merge_rc == 0 and inferred_base_sha:
+                    stored_base_sha = rec.get("base_sha")
+                    stored_rc, _ = _git_ok(
+                        ["merge-base", "--is-ancestor", stored_base_sha or "", branch_tip],
+                        cwd=base_path,
+                    ) if stored_base_sha else (1, "")
+                    if not stored_base_sha or stored_rc != 0:
+                        rec["base_sha"] = inferred_base_sha
+        if not rec.get("base_sha") and recorded_base_sha:
+            rec["base_sha"] = recorded_base_sha
         # Only when the flag was given. `rec.update` above preserves keys it does
         # not name, so an omitted --backlog leaves the claim standing — which is
         # the behaviour register's idempotence needs (the orchestrator re-registers
@@ -1268,6 +1572,7 @@ def cmd_register(args: argparse.Namespace) -> int:
         rec = {
             "path": path, "branch": args.branch, "intent": args.intent,
             "base": args.base, "created_at": now_iso,
+            "base_sha": recorded_base_sha,
             "status": STATUS_ACTIVE, "resolved_at": None,
             "backlog": wanted, "claimed_at": now_iso if wanted else None,
         }
@@ -1427,11 +1732,61 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
             print(f"✗ hand-back refused: {msg}", file=sys.stderr)
         return EXIT_PARTIAL
 
+    seal = None
+    if args.outcomes:
+        base_sha = rec.get("base_sha")
+        refusal: list[dict[str, Any]] = []
+        if not base_sha:
+            refusal.append({"kind": "recorded-base-sha-missing"})
+        dirty_rc, dirty = _git_ok(["status", "--porcelain=v1"], cwd=worktree)
+        if dirty_rc != 0 or dirty:
+            refusal.append({"kind": "worktree-dirty", "files": dirty.splitlines()})
+        try:
+            raw_outcomes = _load_hand_back_outcomes(Path(args.outcomes))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raw_outcomes = []
+            refusal.append({"kind": "outcomes-unreadable", "detail": str(exc)})
+        if base_sha:
+            outcome_problems, normalised = _outcome_problems(
+                raw_outcomes, claimed=list(rec.get("backlog") or []),
+                base_sha=base_sha, worktree=worktree, tip_sha=tip_sha,
+                run_review=True,
+            )
+            refusal.extend(outcome_problems)
+            if any(item.get("outcome") == "changed" for item in normalised):
+                diff_rc, diff_output = _git_ok(
+                    ["diff", "--quiet", f"{base_sha}..{tip_sha}"], cwd=worktree,
+                )
+                if diff_rc == 0:
+                    refusal.append({"kind": "changed-outcome-has-no-diff",
+                                    "base_sha": base_sha, "tip_sha": tip_sha})
+                elif diff_rc > 1:
+                    refusal.append({"kind": "changed-diff-unreadable",
+                                    "detail": diff_output})
+            if not refusal:
+                body = _seal_body(rec, base_sha=base_sha, tip_sha=tip_sha,
+                                  outcomes=normalised, handed_back_at=now_iso)
+                seal = _seal_with_digest(body)
+        if refusal:
+            payload = {"schema": SCHEMA, "action": "refused",
+                       "reason": "hand-back outcome validation failed",
+                       "problems": refusal, "record": rec}
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print("✗ hand-back refused: outcome validation failed", file=sys.stderr)
+            return EXIT_PARTIAL
+
     rec["handed_back_at"] = now_iso
     rec["handed_back_sha"] = tip_sha
+    if seal is not None:
+        rec["handback_seal"] = seal
+        rec["handback_outcomes"] = seal["outcomes"]
     save_state(state_path, state)
     payload = {"schema": SCHEMA, "action": "hand-back", "record": rec,
                "handed_back_at": now_iso, "handed_back_sha": tip_sha}
+    if seal is not None:
+        payload["handback_seal"] = seal
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -1690,6 +2045,10 @@ def build_parser() -> argparse.ArgumentParser:
     reg.add_argument("--intent", required=True, help="why this worktree exists (short)")
     reg.add_argument("--base", default="main", help="baseline ref it forks from (default: main)")
     reg.add_argument(
+        "--repo-root", default=None,
+        help="actual repository root used to resolve --base before a not-yet-born path exists",
+    )
+    reg.add_argument(
         "--backlog", nargs="*", default=None, metavar="ID",
         help="backlog ticket ids this worktree CLAIMS. Refused with exit "
              f"{EXIT_CLAIMED} if any of them is already held by another active "
@@ -1722,6 +2081,8 @@ def build_parser() -> argparse.ArgumentParser:
     hb.add_argument("--branch", default=None, help="branch of the active record")
     hb.add_argument("--path", default=None,
                     help="worktree path (default: current worktree)")
+    hb.add_argument("--outcomes", default=None, metavar="JSON",
+                    help="typed hand-back outcomes JSON; required for closed-loop integration")
     hb.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     hb.set_defaults(func=cmd_hand_back)
 
