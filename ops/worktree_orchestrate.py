@@ -2818,6 +2818,24 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     # a batch gate, 371 green and exit 0 when rerun alone.
     tags_before = _tag_snapshot(worktree)
     started = time.monotonic()
+    # TaskRegistry records the runner before spawning the child. Its default state/log
+    # paths are rooted in `cwd`, so letting it see a missing directory first would create
+    # that directory and make Popen accuse the command instead. Diagnose the requested
+    # working directory at the gate boundary, before any runner bookkeeping can mutate it.
+    try:
+        cwd.stat()
+    except FileNotFoundError:
+        result.update({
+            "status": "block" if level == "block" else "warn",
+            "rc": 127,
+            "dur_s": round(time.monotonic() - started, 6),
+            "executed": False,
+            "summary": (f"gate tool not runnable: cmd={spec['cmd'][0]} cwd={cwd} — "
+                        f"FileNotFoundError on {cwd}"),
+            "machine_state": _machine_state_record(
+                machine_before, _machine_state(state)),
+        })
+        return result
     try:
         returncode, output, dur_s = _run_streamed_command(
             spec["cmd"], cwd=cwd, gate_name=name, capture_limit=GATE_CAPTURE_LIMIT,

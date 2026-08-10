@@ -4626,6 +4626,9 @@ def test_a_missing_gate_CWD_is_not_reported_as_a_missing_tool(tmp_path):
     tool.chmod(0o755)
     spec = MODULE._shell("ghost", "ops", ["ops/docs_lint.sh"], "block", cwd="backend")
     summary = MODULE._run_gate(spec, str(tmp_path))["summary"]
+    assert not (tmp_path / "backend").exists(), (
+        "a missing gate cwd must not be created by task-registry bookkeeping"
+    )
     assert summary.startswith("gate tool not runnable: cmd=ops/docs_lint.sh")
     # `"backend" in summary` would pass against a mutant that reports the COMMAND here,
     # because the code echoes `cwd=` from the spec and "backend" appears twice. Only the
