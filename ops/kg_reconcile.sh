@@ -98,7 +98,8 @@ kg_reconcile.sh — push=deploy 自動 reconciler（一輪冪等 tick）
   --help      本說明
 
 語意：讓 felix 生產容器 serving 的版本收斂到 origin/prod。變更含 backend 觸發路徑才
-rebuild（否則只 ff-only 追 repo）。部署失敗自動 rollback 到部署前 sha 並 poison 該 sha。
+rebuild（否則只 ff-only 追 repo）。部署失敗嘗試 rollback 到部署前 sha 並 poison 該 sha；
+rollback compose 失敗時輸出 rollback-failed，不能宣稱 rolled-back。
 stdout 印單行 JSON verdict（schema kg.deploy.reconcile.v1）；診斷走 stderr。
 USAGE
 }
@@ -522,6 +523,11 @@ deploy_and_gate() {
     alert "回滾後舊版 $rollback_sha localhost 健康未確認 — 生產可能雙壞，需立即人工檢查。"
   fi
   write_poison "$ORIGIN_SHA"
+  if (( rrc != 0 )); then
+    append_deploy_log "ROLLBACK_FAILED from=$new_sha to=$rollback_sha reason=$reason compose_rc=$rrc"
+    emit_verdict "rollback-failed"
+    exit 1
+  fi
   append_deploy_log "ROLLED_BACK from=$new_sha to=$rollback_sha reason=$reason"
   emit_verdict "rolled-back"
   exit 1

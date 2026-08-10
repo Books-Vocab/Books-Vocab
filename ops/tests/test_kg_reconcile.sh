@@ -640,13 +640,13 @@ EOF
 out="$(MOCK_COMPOSE_FAIL_NTH=1 run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
 [[ "$v" == "rolled-back" ]] && ok "build-fail: verdict rolled-back" || bad "build-fail: expected rolled-back, got '$v'"
-grep -q "reason=build" "$DEPLOYLOG" && ok "build-fail: 理由記成 build" || bad "build-fail: deploy.log 沒記 reason=build"
+grep -q "ROLLED_BACK from=$SHA_NEW to=$SHA_OLD reason=build" "$DEPLOYLOG" && ok "build-fail: 成功回滾並記錄 ROLLED_BACK" || bad "build-fail: deploy.log 沒記成功 ROLLED_BACK reason=build"
 recreates="$(wc -l < "$RECREATELOG" 2>/dev/null | tr -d ' ' || echo 0)"
 [[ "$recreates" == "1" ]] && ok "build-fail: 僅回滾那次 recreate（部署那次 build 就死了）" || bad "build-fail: recreate x${recreates}（預期 1）"
 served_now="$(cat "$SERVEDFILE")"
 [[ "$served_now" == "$SHA_OLD" ]] && ok "build-fail: 容器停在舊版" || bad "build-fail: serving=$served_now != $SHA_OLD"
 
-section "回滾自己的 compose 失敗 → 必須說「回滾未生效」，不得說「雙壞」"
+section "回滾自己的 compose 失敗 → rollback-failed，必須說「回滾未生效」，不得說「雙壞」"
 # IMP-0060 的 C2，**生產實際發生過**：健康 gate 因主機 DNS 掛掉而假失敗 → 進回滾 →
 # 回滾的 `--build` 也因為同一個 DNS 取不到 registry metadata 而失敗 → 退出碼被整個丟棄
 # → git tree 與 VERSION 退回舊 sha，容器卻仍跑新版。接著舊版健康檢查當然不符，於是發出
@@ -664,9 +664,15 @@ EOF
 ERRLOG="$SC/recon.err"
 out="$(MOCK_COMPOSE_FAIL_NTH=2 run_recon --once 2>"$ERRLOG")"; rc=$?
 v="$(get_verdict "$out")"
-[[ "$v" == "rolled-back" ]] && ok "rollback-build-fail: verdict rolled-back" || bad "rollback-build-fail: expected rolled-back, got '$v'"
+[[ "$v" == "rollback-failed" ]] && ok "rollback-build-fail: verdict rollback-failed" || bad "rollback-build-fail: expected rollback-failed, got '$v'"
+[[ "$rc" -ne 0 ]] && ok "rollback-build-fail: exit non-zero ($rc)" || bad "rollback-build-fail: 回滾未生效卻 exit 0"
+grep -q "ROLLBACK_FAILED from=$SHA_NEW to=$SHA_OLD reason=smoke compose_rc=1" "$DEPLOYLOG" \
+  && ok "rollback-build-fail: deploy.log 記錄完整 ROLLBACK_FAILED 證據" \
+  || bad "rollback-build-fail: deploy.log 缺少完整 ROLLBACK_FAILED 證據"
 grep -q "回滾的 compose 失敗" "$ERRLOG" && ok "rollback-build-fail: 明確告知回滾未生效" || bad "rollback-build-fail: 回滾 compose 的退出碼被吞掉了 — 這正是生產當天發生的事"
 grep -q "生產可能雙壞" "$ERRLOG" && bad "rollback-build-fail: 仍發語意相反的『雙壞』告警" || ok "rollback-build-fail: 未發誤導的雙壞告警"
+grep -q "^poison $SHA_NEW " "$STATE" && ok "rollback-build-fail: poison 保留以避免立即重試" || bad "rollback-build-fail: 未保留 poison"
+grep -q "ROLLED_BACK" "$DEPLOYLOG" && bad "rollback-build-fail: 回滾未生效卻寫入 ROLLED_BACK" || ok "rollback-build-fail: 未誤寫成功回滾"
 served_now="$(cat "$SERVEDFILE")"
 [[ "$served_now" == "$SHA_NEW" ]] && ok "rollback-build-fail: 容器確實仍跑新版（與告警一致）" || bad "rollback-build-fail: serving=${served_now}，告警與事實不符"
 

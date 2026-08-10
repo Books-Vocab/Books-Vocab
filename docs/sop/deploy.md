@@ -99,7 +99,9 @@ DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/sys
 DEPLOY 路徑用 `mkdir /tmp/kg-deploy.lock`（**與 `devops.sh` 的 `acquire_deploy_lock` 同一把**）。取不到鎖 = 有人工 deploy 進行中 → 本輪 `verdict=locked` exit 0 讓路，下一 tick 再收斂。反之 reconciler 持鎖時，人工 `devops.sh deploy` 會被同一把鎖擋住。
 
 ### verdict（stdout 單行 JSON，schema `kg.deploy.reconcile.v1`）
-`verdict ∈ {noop, ff-only, deployed, rolled-back, poisoned-skip, locked, dry-run}`；欄位 `deployed_sha/origin_sha/backend_changed/smoke/ts`。人類進度/告警走 stderr。
+`verdict ∈ {noop, ff-only, deployed, rolled-back, rollback-failed, poisoned-skip, locked, dry-run}`；欄位 `deployed_sha/origin_sha/backend_changed/smoke/ts`。人類進度/告警走 stderr。
+
+`rollback-failed` 表示部署健康 gate 失敗後，rollback compose 也以非零退出；此時仍寫 poison 以避免立即重試，`backups/deploy.log` 寫 `ROLLBACK_FAILED from=<new> to=<old> reason=<reason> compose_rc=<rc>`，git tree/VERSION 已回到舊版但容器可能仍跑新版，不能寫 `ROLLED_BACK`。只有 rollback compose 成功的分支才輸出 `rolled-back` 並寫 `ROLLED_BACK`。
 
 `smoke ∈ {n/a, ok, unverified, bad}`（IMP-0061 新增）——外部 smoke 這一關的結果，語意刻意與 `verdict` 正交：
 
