@@ -1,9 +1,11 @@
 import sys
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ops.kg_board.git_tree import SCHEMA, normalize_snapshot
+from ops.kg_board.git_tree import SCHEMA, normalize_snapshot, project_snapshot
+from ops.kg_board import server
 
 
 def test_normalize_snapshot_merges_duplicate_commit_metadata_and_keeps_refs():
@@ -56,3 +58,53 @@ def test_normalize_snapshot_rejects_malformed_records_without_crashing():
     assert payload["error"] == "ledger unavailable"
     assert payload["refs"] == []
     assert payload["commits"] == []
+
+
+def test_normalize_snapshot_is_fail_closed_for_string_collections_and_invalid_shas():
+    payload = normalize_snapshot({
+        "complete": "false",
+        "refs": "not-a-list",
+        "commits": [{
+            "sha": "not-a-sha",
+            "parents": "1234567",
+            "files": "ios/App.swift",
+        }],
+    })
+
+    assert payload["complete"] is False
+    assert payload["refs"] == []
+    assert payload["commits"] == []
+
+
+def test_project_snapshot_enriches_ticket_leaves_and_reports_missing_parents():
+    projected = project_snapshot({
+        "refs": [{"branch": "feat/a", "head": "abcdef0123456789", "backlog": ["IMP-1"]}],
+        "commits": [{"sha": "abcdef0123456789", "parents": ["1234567890abcdef"], "subject": "tip"}],
+    }, {"IMP-1": {"brief": "修正看板", "severity": "high"}})
+
+    assert projected["complete"] is False
+    assert projected["missing_parents"] == ["1234567890abcdef"]
+    assert projected["refs"][0]["tickets"] == [{
+        "id": "IMP-1", "brief": "修正看板", "severity": "high",
+    }]
+    assert projected["commits"][0]["refs"] == ["feat/a"]
+
+
+def test_server_git_tree_payload_reads_mirror_and_canonical_ticket_briefs(monkeypatch, tmp_path):
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text(json.dumps({"git_tree": {
+        "at": "now",
+        "refs": [{"branch": "feat/a", "head": "abcdef0123456789", "backlog": ["IMP-1"]}],
+        "commits": [{"sha": "abcdef0123456789", "parents": [], "subject": "tip"}],
+    }}), encoding="utf-8")
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "read_entries", lambda: {
+        "entries": [{"id": "IMP-1", "brief": "修正看板", "severity": "high"}],
+    })
+    monkeypatch.setattr(server, "freshness", lambda: {"freshness_state": "current"})
+
+    payload = server.git_tree_payload()
+
+    assert payload["schema"] == SCHEMA
+    assert payload["complete"] is True
+    assert payload["refs"][0]["tickets"][0]["brief"] == "修正看板"

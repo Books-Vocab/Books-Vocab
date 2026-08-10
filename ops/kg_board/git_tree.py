@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+import re
 
 
 SCHEMA = "kg.board.git-tree.v1"
@@ -16,7 +17,11 @@ def _text(value: Any) -> str | None:
 
 def _sha(value: Any) -> str | None:
     value = _text(value)
-    return value if value and len(value) >= 7 else None
+    return value if value and re.fullmatch(r"[0-9a-fA-F]{7,40}", value) else None
+
+
+def _items(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, (list, tuple)) else []
 
 
 def normalize_snapshot(payload: Any) -> dict[str, Any]:
@@ -38,13 +43,13 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         }
 
     commits: dict[str, dict[str, Any]] = {}
-    for raw in payload.get("commits") or []:
+    for raw in _items(payload.get("commits")):
         if not isinstance(raw, dict):
             continue
         sha = _sha(raw.get("sha"))
         if not sha:
             continue
-        parents = [_sha(parent) for parent in raw.get("parents") or []]
+        parents = [_sha(parent) for parent in _items(raw.get("parents"))]
         parents = [parent for parent in parents if parent]
         row = {
             "sha": sha,
@@ -56,7 +61,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             "committed_at": _text(raw.get("committed_at")),
             "insertions": raw.get("insertions") if isinstance(raw.get("insertions"), int) else None,
             "deletions": raw.get("deletions") if isinstance(raw.get("deletions"), int) else None,
-            "files": [str(path) for path in raw.get("files") or [] if path],
+            "files": [str(path) for path in _items(raw.get("files")) if path],
         }
         prior = commits.get(sha)
         if prior:
@@ -69,7 +74,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         commits[sha] = row
 
     refs: list[dict[str, Any]] = []
-    for index, raw in enumerate(payload.get("refs") or []):
+    for index, raw in enumerate(_items(payload.get("refs"))):
         if not isinstance(raw, dict):
             continue
         branch = _text(raw.get("branch"))
@@ -77,7 +82,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         if not branch or not head:
             continue
         tickets = []
-        for ticket in raw.get("tickets") or raw.get("backlog") or []:
+        for ticket in _items(raw.get("tickets") if raw.get("tickets") is not None else raw.get("backlog")):
             if isinstance(ticket, dict):
                 ticket_id = _text(ticket.get("id"))
                 if ticket_id:
@@ -110,8 +115,53 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         "schema": SCHEMA,
         "at": _text(payload.get("at")),
         "host": _text(payload.get("host")),
-        "complete": bool(payload.get("complete", True)),
+        "complete": (payload["complete"] if isinstance(payload.get("complete"), bool)
+                     else "complete" not in payload),
         "error": _text(payload.get("error")),
+        "refs": refs,
+        "commits": sorted(commits.values(), key=lambda row: row["sha"]),
+    }
+
+
+def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Project normalized refs and commits for a read-only graph renderer."""
+    snapshot = normalize_snapshot(payload)
+    tickets = tickets or {}
+    commits = {row["sha"]: dict(row) for row in snapshot["commits"]}
+    refs = []
+    referenced: dict[str, list[str]] = {}
+    for ref in snapshot["refs"]:
+        row = dict(ref)
+        ref_tickets = []
+        for ticket in row["tickets"]:
+            enriched = dict(ticket)
+            source = tickets.get(ticket["id"]) or {}
+            enriched["brief"] = enriched.get("brief") or source.get("brief")
+            enriched["severity"] = enriched.get("severity") or source.get("severity")
+            ref_tickets.append(enriched)
+        row["tickets"] = ref_tickets
+        refs.append(row)
+        if row["head"] in commits:
+            referenced.setdefault(row["head"], []).append(row["branch"])
+
+    missing_parents = sorted({
+        parent
+        for row in commits.values()
+        for parent in row["parents"]
+        if parent not in commits
+    })
+    for sha, branches in referenced.items():
+        commits[sha]["refs"] = sorted(set(branches))
+    for row in commits.values():
+        row.setdefault("refs", [])
+
+    return {
+        "schema": SCHEMA,
+        "at": snapshot["at"],
+        "host": snapshot["host"],
+        "complete": snapshot["complete"] and not missing_parents and not snapshot["error"],
+        "error": snapshot["error"],
+        "missing_parents": missing_parents,
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
     }
