@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "PodcastPlayerViewModel.swift 共 531 行，在 127 至 130 行直接建構 PodcastAudioEngine 與 PodcastSubtitleEngine，初始化器再綁定八組 callback。PodcastAudioEngine.swift 共 630 行並同時持有播放器、音訊工作階段、遠端控制、目前播放資訊與停滯監看。PodcastAudioEngineTests 明示真實轉移無法 deterministic 驅動，190 至 198 行甚至複製 production seek clamp 公式；production 公式改壞後 mirrored test 仍可能全綠。",
   "fix_site": "ios/BooksAndVocab/Views/Podcast/PodcastPlayerViewModel.swift:127; ios/BooksAndVocab/Services/PodcastAudioEngine.swift:10; ios/BooksAndVocabTests/PodcastAudioEngineTests.swift:7",
+  "fixed_by": [
+    "0681fe5e12aba60ac07ca6d733415f3924f66b36"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
@@ -17,10 +20,10 @@
   "scope": "兩個播放器能力協定、預設媒體轉接器、純播放策略與相關單元測試。",
   "severity": "high",
   "source": "iOS maintainability audit 2026-08-09",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ios-maintainability-audit",
-  "verified_evidence": "set -x; awk 'END { exit !(NR >= 500) }' ios/BooksAndVocab/Views/Podcast/PodcastPlayerViewModel.swift; rg -q 'private let audioEngine = PodcastAudioEngine[(][)]' ios/BooksAndVocab/Views/Podcast/PodcastPlayerViewModel.swift; rg -q 'private func clampSeek' ios/BooksAndVocabTests/PodcastAudioEngineTests.swift"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "Delivery Team B child 03",
+  "verified_evidence": "set -eu; rg -qF \"protocol PodcastAudioPlaying\" ios/BooksAndVocab; rg -qF \"protocol PodcastSubtitling\" ios/BooksAndVocab; rg -qF \"audioEngine:\" ios/BooksAndVocab/Views/Podcast/PodcastPlayerViewModel.swift; test -f ios/BooksAndVocabTests/PodcastPlayerViewModelTests.swift; if rg -qF \"private func clampSeek\" ios/BooksAndVocabTests/PodcastAudioEngineTests.swift; then exit 1; fi; ./ops/ios_ops.sh test --unit --file PodcastPlayerViewModelTests; ./ops/ios_ops.sh test --unit --file PodcastAudioEngineTests"
 }
