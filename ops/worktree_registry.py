@@ -314,6 +314,57 @@ def _seal_with_digest(body: dict[str, Any]) -> dict[str, Any]:
     return seal
 
 
+def _child_receipt_from_manifest(
+    record: dict[str, Any], *, campaign_id: str, partition_id: str,
+    role: str, manifest_path: Path, tip_sha: str,
+    seal: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Project a completed child integration manifest into an immutable receipt."""
+    if role != "child" or not campaign_id or not partition_id:
+        raise ValueError("child receipt requires role=child, campaign id, and partition id")
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("child integration manifest must be a JSON object")
+    manifest_head = payload.get("head_sha") or payload.get("integration_head")
+    if manifest_head != tip_sha:
+        raise ValueError(
+            f"child manifest head {manifest_head!r} does not equal hand-back tip {tip_sha!r}"
+        )
+    branches = payload.get("branches") or payload.get("consumed_children")
+    if (not isinstance(branches, list) or not branches
+            or any(not isinstance(item, str) or not item for item in branches)
+            or len(set(branches)) != len(branches)):
+        raise ValueError("child integration manifest must list source branches")
+    campaign_manifest_digest = (
+        payload.get("campaign_manifest_digest")
+        or payload.get("manifest_digest")
+        or (payload.get("campaign") or {}).get("manifest_digest")
+    )
+    if not isinstance(campaign_manifest_digest, str) or not campaign_manifest_digest:
+        raise ValueError("child integration manifest has no campaign_manifest_digest")
+    completed_manifest_digest = hashlib.sha256(_canonical_json(payload)).hexdigest()
+    outcomes = list((seal or {}).get("outcomes") or record.get("handback_outcomes") or [])
+    ticket_ids = sorted(str(item) for item in (record.get("backlog") or []))
+    if not outcomes or sorted(str(item.get("ticket_id")) for item in outcomes
+                              if isinstance(item, dict)) != ticket_ids:
+        raise ValueError("child manifest/outcome seal does not cover the claimed tickets")
+    return {
+        "schema": wc.CHILD_RECEIPT_SCHEMA,
+        "role": role,
+        "campaign_id": campaign_id,
+        "partition_id": partition_id,
+        "branch": record.get("branch"),
+        "manifest_digest": completed_manifest_digest,
+        "campaign_manifest_digest": campaign_manifest_digest,
+        "manifest_head_sha": manifest_head,
+        "source_branches": sorted(branches),
+        "ticket_ids": ticket_ids,
+        "outcomes": outcomes,
+        "outcome_seal_digest": (seal or {}).get("digest"),
+        "completed_manifest": str(manifest_path.resolve()),
+    }
+
+
 def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
                            require_seal: bool = True) -> list[dict[str, Any]]:
     seal = record.get("handback_seal")
@@ -1129,6 +1180,12 @@ def claim_campaign_ticket(
             "created_at": timestamp, "base_sha": actual_base,
             "status": STATUS_ACTIVE, "resolved_at": None,
             "backlog": [ticket], "claimed_at": timestamp,
+            # Campaign metadata is the bridge from a child worktree to the
+            # parent integration contract.  Ordinary opens leave these absent;
+            # campaign opens stamp them atomically with the ticket claim.
+            "campaign_id": campaign_id,
+            "partition_id": partition_id,
+            "role": "child",
         }
         claimed[ticket] = {"branch": branch, "path": path, "claimed_at": timestamp}
         state.setdefault("records", []).append(record)
@@ -1300,6 +1357,125 @@ def claim_integration_sources(
         save_state(state_path, state)
         return {"ok": True, "integration_branch": integration_branch,
                 "claimed": sorted(source_refs), "conflicts": []}
+
+
+def claim_parent_integration(
+    state_path: Path,
+    *,
+    campaign_id: str,
+    parent_branch: str,
+    parent_slug: str,
+    base_sha: str,
+    request_id: str,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Atomically reserve one complete campaign child set for a parent.
+
+    The snapshot is deliberately computed while holding the canonical registry
+    lock.  A refusal never appends a parent record or mutates any child receipt;
+    a same-request retry returns the existing immutable snapshot.
+    """
+    state_path = Path(state_path).resolve()
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        reservations = state.get("campaign_reservations") or []
+        reservation = next(
+            (item for item in reservations if item.get("campaign_id") == campaign_id),
+            None,
+        )
+        if not isinstance(reservation, dict):
+            return {"ok": False, "mode": "refused", "campaign_id": campaign_id,
+                    "problems": [{"kind": "campaign-reservation-missing",
+                                  "message": "campaign reservation does not exist"}]}
+
+        parent_reservations = state.setdefault("parent_reservations", [])
+        if not isinstance(parent_reservations, list):
+            return {"ok": False, "mode": "refused", "campaign_id": campaign_id,
+                    "problems": [{"kind": "parent-reservations-malformed",
+                                  "message": "registry parent_reservations is not a list"}]}
+        active = [item for item in parent_reservations
+                  if isinstance(item, dict)
+                  and item.get("campaign_id") == campaign_id
+                  and item.get("status") == STATUS_ACTIVE]
+        owner = {"branch": parent_branch, "slug": parent_slug,
+                 "request_id": request_id}
+        for existing in active:
+            existing_owner = existing.get("owner") or {}
+            if existing.get("base_sha") != base_sha:
+                return {"ok": False, "mode": "refused", "campaign_id": campaign_id,
+                        "problems": [{"kind": "stale-base",
+                                      "message": "existing parent reservation is based on another primary",
+                                      "expected": existing.get("base_sha"), "actual": base_sha}]}
+            same_request = existing_owner.get("request_id") == request_id
+            same_owner = (existing_owner.get("branch") == parent_branch
+                          and existing_owner.get("slug") == parent_slug)
+            if same_request or same_owner:
+                snapshot = existing.get("snapshot")
+                if isinstance(snapshot, dict):
+                    return {"ok": True, "mode": "idempotent", "campaign_id": campaign_id,
+                            "parent": existing, **snapshot}
+            return {"ok": False, "mode": "refused", "campaign_id": campaign_id,
+                    "problems": [{"kind": "parent-already-owned",
+                                  "message": "campaign already has another parent owner",
+                                  "owner": existing_owner}]}
+
+        snapshot = wc.parent_child_snapshot(
+            reservation, state.get("records") or [],
+            campaign_id=campaign_id, base_sha=base_sha,
+        )
+        if not snapshot.get("ok"):
+            return {"ok": False, "mode": "refused", "campaign_id": campaign_id,
+                    "snapshot": snapshot, "problems": snapshot.get("problems") or []}
+        parent = {
+            "schema": wc.PARENT_RESERVATION_SCHEMA,
+            "campaign_id": campaign_id,
+            "base_sha": base_sha,
+            "owner": owner,
+            "status": STATUS_ACTIVE,
+            "created_at": timestamp,
+            "snapshot": snapshot,
+        }
+        parent_reservations.append(parent)
+        # Keep a single owner projection on the campaign reservation.  The full
+        # child snapshot remains immutable under parent_reservations.
+        reservation["parent_owner"] = owner
+        save_state(state_path, state)
+        return {"ok": True, "mode": "committed", "campaign_id": campaign_id,
+                "parent": parent, **snapshot}
+
+
+def release_parent_integration(
+    state_path: Path,
+    *,
+    campaign_id: str,
+    parent_branch: str,
+    parent_slug: str | None = None,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Release only this parent owner; child records and receipts remain intact."""
+    state_path = Path(state_path).resolve()
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    with _ledger_lock(state_path):
+        state = load_state(state_path)
+        released = []
+        for parent in state.get("parent_reservations") or []:
+            if not isinstance(parent, dict) or parent.get("status") != STATUS_ACTIVE:
+                continue
+            owner = parent.get("owner") or {}
+            if parent.get("campaign_id") != campaign_id or owner.get("branch") != parent_branch:
+                continue
+            if parent_slug is not None and owner.get("slug") != parent_slug:
+                continue
+            parent["status"] = "aborted"
+            parent["aborted_at"] = timestamp
+            released.append(parent)
+        if released:
+            for reservation in state.get("campaign_reservations") or []:
+                if reservation.get("campaign_id") == campaign_id:
+                    reservation.pop("parent_owner", None)
+            save_state(state_path, state)
+        return {"ok": True, "released": released, "campaign_id": campaign_id}
 
 
 def release_integration_sources(state_path: Path, *, integration_branch: str) -> list[str]:
@@ -1776,6 +1952,38 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
                 print("✗ hand-back refused: outcome validation failed", file=sys.stderr)
             return EXIT_PARTIAL
 
+    child_metadata = any(getattr(args, key, None) is not None
+                         for key in ("campaign", "partition", "role", "manifest"))
+    if child_metadata:
+        campaign_id = getattr(args, "campaign", None)
+        partition_id = getattr(args, "partition", None)
+        role = getattr(args, "role", None)
+        manifest_arg = getattr(args, "manifest", None)
+        if not (campaign_id and partition_id and role == "child" and manifest_arg):
+            msg = "child receipt needs --campaign, --partition, --role child, and --manifest"
+            payload = {"schema": SCHEMA, "action": "refused", "reason": msg,
+                       "record": rec}
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+            return EXIT_USAGE
+        try:
+            rec["child_receipt"] = _child_receipt_from_manifest(
+                rec, campaign_id=str(campaign_id), partition_id=str(partition_id),
+                role=str(role), manifest_path=Path(manifest_arg), tip_sha=tip_sha,
+                seal=seal,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            msg = f"child integration manifest is not a valid receipt source: {exc}"
+            payload = {"schema": SCHEMA, "action": "refused", "reason": msg,
+                       "record": rec}
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+            return EXIT_PARTIAL
+
     rec["handed_back_at"] = now_iso
     rec["handed_back_sha"] = tip_sha
     if seal is not None:
@@ -2082,6 +2290,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="worktree path (default: current worktree)")
     hb.add_argument("--outcomes", default=None, metavar="JSON",
                     help="typed hand-back outcomes JSON; required for closed-loop integration")
+    hb.add_argument("--campaign", default=None, metavar="ID",
+                    help="campaign id when handing back a child integration receipt")
+    hb.add_argument("--partition", default=None, metavar="ID",
+                    help="campaign partition id for a child integration receipt")
+    hb.add_argument("--role", default=None, choices=("child",),
+                    help="receipt role (currently only child is integrable by a parent)")
+    hb.add_argument("--manifest", default=None, metavar="JSON",
+                    help="completed child integration manifest used to build the receipt")
     hb.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     hb.set_defaults(func=cmd_hand_back)
 

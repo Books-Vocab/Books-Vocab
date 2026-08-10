@@ -4795,6 +4795,24 @@ def cmd_integrate(args) -> int:
               args.json, "✗ integrate: --append, --continue, and --abort are mutually exclusive")
         return EXIT_USAGE
 
+    parent_mode = bool(getattr(args, "parent", False))
+    campaign_id = getattr(args, "campaign", None)
+    if parent_mode and (args.cont or args.abort or args.append):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
+               "error": "--parent is only valid for a fresh integration"}, args.json,
+              "✗ integrate: --parent cannot be combined with --append, --continue, or --abort")
+        return EXIT_USAGE
+    if parent_mode and not campaign_id:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
+               "error": "--parent requires --campaign <id>"}, args.json,
+              "✗ integrate: --parent requires --campaign <id>")
+        return EXIT_USAGE
+    if campaign_id and not parent_mode and not args.cont and not args.abort and not args.append:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
+               "error": "--campaign requires --parent for a fresh integration"}, args.json,
+              "✗ integrate: --campaign requires --parent for a fresh integration")
+        return EXIT_USAGE
+
     spath = _integrate_state_path(args.state, args.slug)
     # Same-name retries share one state file. Lock the whole transition so two
     # coordinators cannot both observe "missing", each open a tree, then overwrite
@@ -4807,7 +4825,87 @@ def cmd_integrate(args) -> int:
             return _integrate_append(args, spath)
         if args.cont:
             return _integrate_continue(args, spath)
+        if parent_mode:
+            prepared = _integrate_prepare_parent(args)
+            if isinstance(prepared, int):
+                return prepared
+            args.branches = prepared["branches"]
+            args._parent_snapshot = prepared["snapshot"]
+            args._parent_claimed = prepared.get("claimed", False)
         return _integrate_start(args, spath)
+
+
+def _integrate_prepare_parent(args: argparse.Namespace) -> dict[str, Any] | int:
+    """Resolve and (on commit) reserve the campaign child set before opening git."""
+    registry_state = Path(args.state).resolve() if args.state else wr.default_state_path()
+    root = primary_root()
+    trunk = _local_trunk(args.base)
+    rc, base_sha = _git(["rev-parse", "--verify", f"{trunk}^{{commit}}"], cwd=root)
+    if rc != EXIT_OK or not base_sha:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "campaign_id": args.campaign, "error": "parent base is unreadable",
+               "base": trunk, "detail": base_sha}, args.json,
+              f"✗ integrate --parent refused: cannot resolve current {trunk}")
+        return EXIT_BLOCK
+    state = wr.load_state(registry_state)
+    reservation = next(
+        (item for item in state.get("campaign_reservations") or []
+         if item.get("campaign_id") == args.campaign), None,
+    )
+    if not isinstance(reservation, dict):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "campaign_id": args.campaign,
+               "problems": [{"kind": "campaign-reservation-missing",
+                             "message": "campaign reservation does not exist"}]}, args.json,
+              f"✗ integrate --parent refused: no campaign reservation for {args.campaign}")
+        return EXIT_BLOCK
+
+    # Dry-run still performs the complete reconciliation, but does not claim an
+    # owner or create a worktree.  Commit mode upgrades the same snapshot to the
+    # atomic registry reservation under its canonical lock.
+    snapshot = campaign.parent_child_snapshot(
+        reservation, state.get("records") or [],
+        campaign_id=args.campaign, base_sha=base_sha,
+    )
+    if not snapshot.get("ok"):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "campaign_id": args.campaign, "snapshot": snapshot,
+               "error": "parent child reconciliation failed"}, args.json,
+              "✗ integrate --parent refused before opening worktree:\n"
+              + "\n".join(f"  {item.get('kind')}: {item.get('message')}"
+                           for item in snapshot.get("problems") or []))
+        return EXIT_BLOCK
+    claim: dict[str, Any] | None = None
+    if args.commit:
+        expected_branch = f"feat/{args.slug}"
+        claim = wr.claim_parent_integration(
+            registry_state, campaign_id=args.campaign,
+            parent_branch=expected_branch, parent_slug=args.slug,
+            base_sha=base_sha, request_id=args.slug,
+        )
+        if not claim.get("ok"):
+            _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+                   "campaign_id": args.campaign, "parent": claim,
+                   "error": "parent reservation could not be acquired"}, args.json,
+                  "✗ integrate --parent refused: parent reservation not acquired")
+            return EXIT_BLOCK
+        snapshot = claim
+    return {"branches": sorted(snapshot.get("source_refs") or {}),
+            "snapshot": snapshot,
+            # An idempotent retry already owns the same reservation; only a fresh
+            # commit needs compensation if start fails before its state is durable.
+            "claimed": bool(claim and claim.get("mode") == "committed")}
+
+
+def _integrate_release_parent_claim(args: argparse.Namespace, *, branch: str | None = None) -> None:
+    """Compensate a parent reservation when start fails before state is durable."""
+    if not (getattr(args, "parent", False) and getattr(args, "_parent_claimed", False)):
+        return
+    registry_state = Path(args.state).resolve() if args.state else wr.default_state_path()
+    wr.release_parent_integration(
+        registry_state, campaign_id=str(args.campaign),
+        parent_branch=branch or f"feat/{args.slug}", parent_slug=args.slug,
+    )
 
 
 def _integrate_start(args, spath: Path) -> int:
@@ -4840,6 +4938,7 @@ def _integrate_start(args, spath: Path) -> int:
                "slug": args.slug, "state_file": str(spath),
                "worktree": live.get("worktree")}, args.json,
               f"✗ integrate refused: {msg}")
+        _integrate_release_parent_claim(args)
         return EXIT_USAGE
 
     handoff = _integrate_handoff_check(
@@ -4858,6 +4957,7 @@ def _integrate_start(args, spath: Path) -> int:
                      if p.get("handed_back_sha") and p.get("current_tip_sha") else "")
                   for p in handoff["problems"]
               ))
+        _integrate_release_parent_claim(args)
         return EXIT_BLOCK
 
     plan: list[dict[str, Any]] = []
@@ -4918,6 +5018,7 @@ def _integrate_start(args, spath: Path) -> int:
                "handoff": {"initial": handoff, "recheck": handoff_recheck},
                "trunk": trunk}, args.json,
               "✗ integrate refused: source branch hand-back changed during planning")
+        _integrate_release_parent_claim(args)
         return EXIT_BLOCK
     handoff["recheck"] = handoff_recheck
     if problems:
@@ -4925,6 +5026,7 @@ def _integrate_start(args, spath: Path) -> int:
                "error": "one or more branches cannot be integrated as given",
                "problems": problems, "trunk": trunk}, args.json,
               "✗ integrate refused:\n" + "\n".join(f"  {p}" for p in problems))
+        _integrate_release_parent_claim(args)
         return EXIT_USAGE
 
     total = sum(len(p["commits"]) for p in plan)
@@ -4961,6 +5063,7 @@ def _integrate_start(args, spath: Path) -> int:
               args.json,
               f"✗ integrate: could not open the integration worktree — "
               f"{opay.get('error', opay)}")
+        _integrate_release_parent_claim(args)
         return EXIT_BLOCK
 
     st = {
@@ -4973,6 +5076,18 @@ def _integrate_start(args, spath: Path) -> int:
         "picked": [], "skipped": [],
         "opened_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if getattr(args, "parent", False):
+        # The snapshot was reconciled before open.  Keep it beside the normal
+        # handoff so completed manifests can explain every ticket without asking
+        # the registry to reconstruct a moving child state later.
+        st["parent"] = {
+            "campaign_id": args.campaign,
+            "owner": {"branch": opay["branch"], "slug": args.slug},
+            "snapshot": getattr(args, "_parent_snapshot", {}),
+            "ready_for_gate": True,
+            "consumed_children": [],
+            "ticket_map": {},
+        }
     _integrate_save(spath, st)
     source_claim = _integrate_claim_sources(args, st)
     if not source_claim["ok"]:
@@ -4986,6 +5101,12 @@ def _integrate_start(args, spath: Path) -> int:
         )
         if cleanup_rc == EXIT_OK:
             spath.unlink(missing_ok=True)
+            if getattr(args, "parent", False) and getattr(args, "_parent_claimed", False):
+                wr.release_parent_integration(
+                    Path(args.state).resolve() if args.state else wr.default_state_path(),
+                    campaign_id=args.campaign, parent_branch=opay.get("branch", f"feat/{args.slug}"),
+                    parent_slug=args.slug,
+                )
         else:
             # A failed compensation is still an integration tree with a registry
             # identity. Keep enough state for `--abort --commit`; deleting it here
@@ -5272,6 +5393,21 @@ def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
             return EXIT_BLOCK
         st["picked"].append({**item, "new_sha": _head_sha(wt)})
         st["queue"] = st["queue"][1:]
+        parent = st.get("parent")
+        if isinstance(parent, dict):
+            parent["consumed_children"] = sorted({
+                *(parent.get("consumed_children") or []), item.get("branch"),
+            })
+            snapshot_map = (parent.get("snapshot") or {}).get("ticket_map") or {}
+            parent_map = parent.setdefault("ticket_map", {})
+            for ticket_id, detail in snapshot_map.items():
+                if detail.get("source_branch") == item.get("branch"):
+                    parent_map[ticket_id] = {
+                        **detail,
+                        "parent_sha": _head_sha(wt),
+                    }
+            expected_tickets = set(snapshot_map)
+            parent["ready_for_gate"] = set(parent_map) == expected_tickets
         st.pop("stopped", None)
         _integrate_save(spath, st)
     if getattr(args, "no_gate", False):
@@ -5325,6 +5461,14 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
     # "no gate verdict on record" rather than landing a short batch.
     planned = st.get("planned_total")
     accounted = len(st["picked"]) + len(st.get("skipped", []))
+    parent = st.get("parent")
+    if isinstance(parent, dict) and not parent.get("ready_for_gate"):
+        msg = ("parent child queue reconciliation is incomplete — refusing to run a "
+               "Gate until every campaign ticket has a source/child/parent mapping")
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "slug": st["slug"], "worktree": wt, "error": msg,
+               "parent": parent}, args.json, f"✗ integrate refused: {msg}")
+        return EXIT_BLOCK
     if planned is not None and accounted != planned:
         msg = (f"integration bookkeeping does not add up: {planned} commit(s) were "
                f"planned but {accounted} are accounted for "
@@ -5603,11 +5747,20 @@ def _integrate_abort(args, spath: Path) -> int:
                       else wr.default_state_path())
     released = wr.release_integration_sources(
         registry_state, integration_branch=st["branch"])
+    parent = st.get("parent")
+    parent_released = None
+    if isinstance(parent, dict):
+        parent_released = wr.release_parent_integration(
+            registry_state,
+            campaign_id=str(parent.get("campaign_id") or ""),
+            parent_branch=st["branch"], parent_slug=st.get("slug"),
+        )
     spath.unlink(missing_ok=True)
     _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
            "slug": args.slug, "worktree": wt, "aborted": op,
            "picked": st["picked"], "abandoned": st["queue"],
            "released_sources": released,
+           "released_parent": parent_released,
            "worktree_removed": False, "next_step": teardown}, args.json,
           f"✓ integrate --abort: {op or 'nothing'} aborted, integration state "
           f"forgotten\n  worktree kept ({len(st['picked'])} picked commit(s)) — "
@@ -8557,10 +8710,17 @@ def build_parser() -> argparse.ArgumentParser:
     ig.add_argument("--slug", required=True,
                     help="kebab-case slug: names the integration worktree and branch, "
                          "AND identifies the integration for --continue / --abort")
-    ig.add_argument("--branches", nargs="+", metavar="BRANCH", default=None,
+    source_mode = ig.add_mutually_exclusive_group()
+    source_mode.add_argument("--branches", nargs="+", metavar="BRANCH", default=None,
                     help="source branches, cherry-picked IN THIS ORDER. Refused (by "
                          "name) if one does not resolve, carries a merge commit, or "
                          "has nothing to contribute")
+    source_mode.add_argument("--parent", action="store_true",
+                    help="consume the complete campaign child snapshot; branches are "
+                         "derived atomically and cannot be supplied manually")
+    ig.add_argument("--campaign", default=None, metavar="ID",
+                    help="campaign id for --parent; the parent reservation is claimed "
+                         "before the integration worktree is opened")
     ig.add_argument("--continue", dest="cont", action="store_true",
                     help="resume a stopped integration: conclude the suspended pick "
                          "(stage the resolved files first), apply what is left, then "
