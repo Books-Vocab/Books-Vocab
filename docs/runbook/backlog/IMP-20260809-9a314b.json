@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "backend/src/kg/cards/dictionary_store.py 的 DictionaryCardStoreMixin 由 84 至 787 行共 704 行與 23 個方法，混合 lifecycle saga、promotion queue、materialize ledger、projection 與 selection。協調狀態另分散於 dictionary_cards.py 的無界 SAGA_LOCKS 與 dictionary_promotion.py 的無界 CLAIM_LOCKS，字卡生命週期變更會同時跨 store、兩個鎖池與多個測試面。",
   "fix_site": "backend/src/kg/cards/dictionary_store.py; backend/src/kg/dictionary_cards.py; backend/src/kg/dictionary_promotion.py; backend/src/kg/keyed_lock_registry.py; backend/tests/test_dictionary_store_boundaries.py",
+  "fixed_by": [
+    "ff1fa6adcd2cb6f6acbc079dd19025156ec28981"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
@@ -17,10 +20,10 @@
   "scope": "拆四個儲存責任並統一兩套鎖池，保留既有外觀介面且補跨流程並行測試。",
   "severity": "high",
   "source": "backend maintainability audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-maintainability-audit",
-  "verified_evidence": "rg -n '^(_SAGA_LOCKS|_CLAIM_LOCKS)' backend/src/kg/{dictionary_cards,dictionary_promotion}.py"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "agent:delivery-team-b",
+  "verified_evidence": "cd backend && uv run python -m pytest -q tests/test_dictionary*.py (83 passed)"
 }
