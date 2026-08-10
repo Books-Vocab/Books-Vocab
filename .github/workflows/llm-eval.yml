@@ -1,0 +1,34 @@
+name: llm-eval
+
+# The workbench is an independent Python project.  Keep its CI boundary
+# narrow: changing the eval lab or this workflow must run the contract suite,
+# while unrelated backend and iOS changes should not spend a runner minute.
+
+on:
+  push:
+    paths: &llm_eval_paths
+      - 'lab/llm_eval/**'
+      - '.github/workflows/llm-eval.yml'
+  pull_request:
+    paths: *llm_eval_paths
+
+permissions:
+  contents: read
+
+jobs:
+  llm-eval:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lab/llm_eval
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca
+      - name: Install frozen development environment
+        run: uv sync --frozen --extra dev
+      - name: Run LLM-eval CI contract
+        run: uv run --frozen --extra dev pytest -q tests/test_ci_contract.py
