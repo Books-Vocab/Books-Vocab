@@ -9,16 +9,18 @@
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
-  <header id="trust-strip" class="trust-strip" aria-live="polite">
-    <strong id="trust-state">正在確認資料…</strong>
-    <span id="trust-detail"></span>
-  </header>
-  <nav id="tabs" aria-label="看板篩選">
-    <button type="button" data-tab="now" aria-pressed="true">現在</button>
-    <button type="button" data-tab="blocked" aria-pressed="false">阻塞</button>
-    <button type="button" data-tab="inflight" aria-pressed="false">進行中</button>
-    <button type="button" data-tab="all" aria-pressed="false">全部</button>
-  </nav>
+  <div id="sticky-shell" class="sticky-shell">
+    <header id="trust-strip" class="trust-strip" aria-live="polite">
+      <strong id="trust-state">正在確認資料…</strong>
+      <span id="trust-detail"></span>
+    </header>
+    <nav id="tabs" aria-label="看板篩選">
+      <button type="button" data-tab="now" aria-pressed="true">現在</button>
+      <button type="button" data-tab="blocked" aria-pressed="false">阻塞</button>
+      <button type="button" data-tab="inflight" aria-pressed="false">進行中</button>
+      <button type="button" data-tab="all" aria-pressed="false">全部</button>
+    </nav>
+  </div>
   <main>
     <section id="metrics" class="metrics" aria-label="當前決策指標"></section>
     <details class="history">
