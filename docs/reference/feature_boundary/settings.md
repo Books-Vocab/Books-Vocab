@@ -14,66 +14,66 @@ verified_against: dcb7b705f
 
 ### Container Layer（組裝 + 路由）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SettingsView.swift` | 143 | 主容器 `struct SettingsView: View`：環境注入、coordinator 初始化、body 組裝、task、sheet、alert wiring；body 頂部掛 `RenderStormProbe.shared.tick` |
-| `SettingsView+State.swift` | 192 | `presenterState` / `presenterActions` 組裝（融合 authManager / subscriptionManager / kgService / 各設定 store）；含 `bookSync` 投影與複習節奏摘要（progress freeze 狀態）|
-| `SettingsView+Bindings.swift` | 44 | 翻譯語言雙向綁定 + DEBUG 手動登入 / 本地伺服器 URL 綁定 |
+| 檔案 | 說明 |
+|------|------|
+| `SettingsView.swift` | 主容器 `struct SettingsView: View`：環境注入、coordinator 初始化、body 組裝、task、sheet、alert wiring；body 頂部掛 `RenderStormProbe.shared.tick` |
+| `SettingsView+State.swift` | `presenterState` / `presenterActions` 組裝（融合 authManager / subscriptionManager / kgService / 各設定 store）；含 `bookSync` 投影與複習節奏摘要（progress freeze 狀態） |
+| `SettingsView+Bindings.swift` | 翻譯語言雙向綁定 + DEBUG 手動登入 / 本地伺服器 URL 綁定 |
 
 ### Coordinator Layer（導航協調）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SettingsCoordinator.swift` | 458 | `@Observable @MainActor final class SettingsCoordinator: SettingsCoordinating`。導航 / sheet 狀態（paywall、刪帳確認、翻譯語言）+ 非同步協調（loadData、resync、deleteAccount、後端切換、樂觀寫＋後端推送＋失敗回滾）+ connectionPulse / iconBreathing 動畫脈搏 + 觀測事件預覽緩衝 + 持有 `syncProgress: SyncProgressStore`（見下 §同步進度）|
+| 檔案 | 說明 |
+|------|------|
+| `SettingsCoordinator.swift` | `@Observable @MainActor final class SettingsCoordinator: SettingsCoordinating`。導航 / sheet 狀態（paywall、刪帳確認、翻譯語言）+ 非同步協調（loadData、resync、deleteAccount、後端切換、樂觀寫＋後端推送＋失敗回滾）+ connectionPulse / iconBreathing 動畫脈搏 + 觀測事件預覽緩衝 + 持有 `syncProgress: SyncProgressStore`（見下 §同步進度） |
 
 ### Presenter Layer（純 UI 呈現）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SettingsPresenter.swift` | 151 | `struct SettingsPresenter: View`，主佈局；`otherSection` 委派 `SettingsOtherSection`、debug 區委派 `SettingsDebugBackendSection`。**Stack 約束**：section 一律 child View struct，不得寫成 computed property 內聯回 body（真機 Debug 1MB main stack overflow，2026-06-11 定讞；見 `SettingsOtherSection.swift` 檔頭）。持有「複習卡片」的 `navigationDestination`，目的地是 Vocabulary feature 的 `ReviewCardLayoutEditor`（同一個 View struct 也被複習畫面的 sheet 用，Settings 不自建一份）|
-| `SettingsPresenter+Actions.swift` | 438 | 複合互動元件庫（最大檔案）：`SettingsNavigationRow` / `SettingsCardNavigationRow` / `SettingsActionRowLabel` / `SettingsFeaturePanel` / `SettingsPlanComparisonTable` / `SettingsSubscriptionFeatureList` / `SettingsSelectableRow` / `SettingsSelectionTile` / `SettingsCompactActionButton` |
-| `SettingsPresenter+Components.swift` | 192 | 微元件庫：`SettingsSectionHeader` / SectionFooter / 分隔線 / MenuValue / TitleSubtitleStack / StatusBadge / StatusValue / StatusSummaryValue（純展示，零互動邏輯）|
-| `SettingsPresenter+Controls.swift` | 116 | 控件樣式層：StepperIconButton、card / button chrome / text input 修飾符、LabeledInputField |
-| `SettingsPresenter+Preview.swift` | 84 | preview 資料與場景（登出 / 訂閱啟用 / 載入中 / 刪除中 / 價格不可用 / DEBUG 後端）|
+| 檔案 | 說明 |
+|------|------|
+| `SettingsPresenter.swift` | `struct SettingsPresenter: View`，主佈局；`otherSection` 委派 `SettingsOtherSection`、debug 區委派 `SettingsDebugBackendSection`。**Stack 約束**：section 一律 child View struct，不得寫成 computed property 內聯回 body（真機 Debug 1MB main stack overflow，2026-06-11 定讞；見 `SettingsOtherSection.swift` 檔頭）。持有「複習卡片」的 `navigationDestination`，目的地是 Vocabulary feature 的 `ReviewCardLayoutEditor`（同一個 View struct 也被複習畫面的 sheet 用，Settings 不自建一份） |
+| `SettingsPresenter+Actions.swift` | 複合互動元件庫（最大檔案）：`SettingsNavigationRow` / `SettingsCardNavigationRow` / `SettingsActionRowLabel` / `SettingsFeaturePanel` / `SettingsPlanComparisonTable` / `SettingsSubscriptionFeatureList` / `SettingsSelectableRow` / `SettingsSelectionTile` / `SettingsCompactActionButton` |
+| `SettingsPresenter+Components.swift` | 微元件庫：`SettingsSectionHeader` / SectionFooter / 分隔線 / MenuValue / TitleSubtitleStack / StatusBadge / StatusValue / StatusSummaryValue（純展示，零互動邏輯） |
+| `SettingsPresenter+Controls.swift` | 控件樣式層：StepperIconButton、card / button chrome / text input 修飾符、LabeledInputField |
+| `SettingsPresenter+Preview.swift` | preview 資料與場景（登出 / 訂閱啟用 / 載入中 / 刪除中 / 價格不可用 / DEBUG 後端） |
 
 ### Presentation Models（UI 資料轉換）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SettingsPresentation.swift` | 188 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`AccountIdentityFingerprint` 將 reviewer email 正規化（trim + NFC + POSIX lowercase）後做單向 SHA-256，供 exact-account UI evidence 使用；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
-| `SubscriptionPresentation.swift` | 149 | `enum SubscriptionPresentation`：KGSubscriptionStatus → badge / tone / 摘要 / 詳情 / CTA / permissions UI 模型；`summary(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled` 切換 active 摘要文案（Release 用不含 Podcast 的版本）|
-| `SubscriptionPaywallFeatureCatalog.swift` | 123 | Free vs Pro 功能對照目錄（EPUB/PDF、AI 翻譯、同步、知識圖譜、複習、Podcast）；`descriptors(podcastEnabled:)` 於 gate off（Release，`KGFeatureFlags.podcastEnabled`）時移除 Podcast row（quota row 恆末位）；計算屬性支援語言即時切換 |
-| `SettingsMetrics.swift` | 14 | `enum AppSettingsMetrics`，Settings 專用版面常數（帳號 / 複習區塊間距與大小）|
+| 檔案 | 說明 |
+|------|------|
+| `SettingsPresentation.swift` | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`AccountIdentityFingerprint` 將 reviewer email 正規化（trim + NFC + POSIX lowercase）後做單向 SHA-256，供 exact-account UI evidence 使用；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述） |
+| `SubscriptionPresentation.swift` | `enum SubscriptionPresentation`：KGSubscriptionStatus → badge / tone / 摘要 / 詳情 / CTA / permissions UI 模型；`summary(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled` 切換 active 摘要文案（Release 用不含 Podcast 的版本） |
+| `SubscriptionPaywallFeatureCatalog.swift` | Free vs Pro 功能對照目錄（EPUB/PDF、AI 翻譯、同步、知識圖譜、複習、Podcast）；`descriptors(podcastEnabled:)` 於 gate off（Release，`KGFeatureFlags.podcastEnabled`）時移除 Podcast row（quota row 恆末位）；計算屬性支援語言即時切換 |
+| `SettingsMetrics.swift` | `enum AppSettingsMetrics`，Settings 專用版面常數（帳號 / 複習區塊間距與大小） |
 
 ### Section Views（各設定區塊）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SettingsAccountSection.swift` | 424 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）；summary row 的 accessibility identifier 只用 `settings.account.identity.<sha256>`（缺 identity 時為 `.unavailable`）。畫面仍可顯示可存取的 email；live evidence 不註冊完整 app tree，也不把 raw account 寫入 attachment/log |
-| `SettingsSubscriptionSection.swift` | 139 | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
-| `SettingsReviewSection.swift` | 334 | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
-| `SettingsPreferencesSection.swift` | 197 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）、UI「聲音回饋」「觸覺回饋」本機開關，以及 **「複習卡片」列**（`rectangle.split.2x1` → `ReviewCardLayoutEditor`，列尾摘要由 `ReviewCardLayoutSummary.titleKey(for:)` 給 預設／自訂）。**刻意與「複習節奏」分成兩列**：複習節奏那頁擁有 SRS 排程規則，卡片長什麼樣不屬於它 |
-| `SettingsOtherSection.swift` | 269 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）。同步中時 sync row 底下展開 `SettingsSyncProgressPanel`（見下 §同步進度）；panel 放在 Button **外面**——整段同步期間 Button 是 disabled 的，包進去等於把活的進度顯示塞進死的控制項 |
-| `SettingsSyncProgressPanel.swift` | 105 | `struct SettingsSyncProgressPanel: View`（+ private `SettingsSyncProgressBar` / `SettingsSyncStepRow`）：同步中展開的總進度條 + 逐步清單。進度條形狀**刻意照抄同 section 的 `quotaRow`**（兩層 pill `AppRoundedRect`、高 3）——設定頁只該有一種進度條長相。狀態符號走共用 `SyncStepStatusIcon`（`UIComponents/`，與詞庫頁同步畫面同一組視覺語言，見 `docs/reference/ui/components.md`）。**三個 struct 各自獨立、不得內聯回 `SettingsOtherSection`**（同下方 stack 約束）|
-| `SettingsDebugBackendSection.swift` | 128 | `struct SettingsDebugBackendSection: View`（DEBUG only），debug backend 切換區塊（前身 `SettingsPresenter+Debug.swift`，改 inline extension → 獨立 struct）|
+| 檔案 | 說明 |
+|------|------|
+| `SettingsAccountSection.swift` | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）；summary row 的 accessibility identifier 只用 `settings.account.identity.<sha256>`（缺 identity 時為 `.unavailable`）。畫面仍可顯示可存取的 email；live evidence 不註冊完整 app tree，也不把 raw account 寫入 attachment/log |
+| `SettingsSubscriptionSection.swift` | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
+| `SettingsReviewSection.swift` | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
+| `SettingsPreferencesSection.swift` | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）、UI「聲音回饋」「觸覺回饋」本機開關，以及 **「複習卡片」列**（`rectangle.split.2x1` → `ReviewCardLayoutEditor`，列尾摘要由 `ReviewCardLayoutSummary.titleKey(for:)` 給 預設／自訂）。**刻意與「複習節奏」分成兩列**：複習節奏那頁擁有 SRS 排程規則，卡片長什麼樣不屬於它 |
+| `SettingsOtherSection.swift` | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）。同步中時 sync row 底下展開 `SettingsSyncProgressPanel`（見下 §同步進度）；panel 放在 Button **外面**——整段同步期間 Button 是 disabled 的，包進去等於把活的進度顯示塞進死的控制項 |
+| `SettingsSyncProgressPanel.swift` | `struct SettingsSyncProgressPanel: View`（+ private `SettingsSyncProgressBar` / `SettingsSyncStepRow`）：同步中展開的總進度條 + 逐步清單。進度條形狀**刻意照抄同 section 的 `quotaRow`**（兩層 pill `AppRoundedRect`、高 3）——設定頁只該有一種進度條長相。狀態符號走共用 `SyncStepStatusIcon`（`UIComponents/`，與詞庫頁同步畫面同一組視覺語言，見 `docs/reference/ui/components.md`）。**三個 struct 各自獨立、不得內聯回 `SettingsOtherSection`**（同下方 stack 約束） |
+| `SettingsDebugBackendSection.swift` | `struct SettingsDebugBackendSection: View`（DEBUG only），debug backend 切換區塊（前身 `SettingsPresenter+Debug.swift`，改 inline extension → 獨立 struct） |
 
 ### Sheet / Detail Views
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SubscriptionPaywallSheet.swift` | 296 | `struct SubscriptionPaywallSheet: View`，paywall sheet：已啟用（確認式）/ 未啟用（升級式）雙佈局、產品載入、恢復購買、StoreKit 整合 |
-| `SettingsAccountDetailView.swift` | 151 | `struct SettingsAccountDetailView: View`，帳號詳情（CSV 匯出、刪除帳號入口）|
-| `SettingsDeleteAccountSheet.swift` | 316 | `struct SettingsDeleteAccountSheet: View`，多步驟刪帳確認 sheet：三項勾選 + 輸入確認字串 + 5 秒倒數冷卻 |
-| `TranslationLanguageSettingsView.swift` | 168 | `struct TranslationLanguageSettingsView: View`，翻譯語言設定（閱讀語言 → 翻譯語言）；樂觀寫＋後端推送＋失敗回滾 |
+| 檔案 | 說明 |
+|------|------|
+| `SubscriptionPaywallSheet.swift` | `struct SubscriptionPaywallSheet: View`，paywall sheet：已啟用（確認式）/ 未啟用（升級式）雙佈局、產品載入、恢復購買、StoreKit 整合 |
+| `SettingsAccountDetailView.swift` | `struct SettingsAccountDetailView: View`，帳號詳情（CSV 匯出、刪除帳號入口） |
+| `SettingsDeleteAccountSheet.swift` | `struct SettingsDeleteAccountSheet: View`，多步驟刪帳確認 sheet：三項勾選 + 輸入確認字串 + 5 秒倒數冷卻 |
+| `TranslationLanguageSettingsView.swift` | `struct TranslationLanguageSettingsView: View`，翻譯語言設定（閱讀語言 → 翻譯語言）；樂觀寫＋後端推送＋失敗回滾 |
 
 ### Copy（純文案常數）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `SubscriptionPaywallCopy.swift` | 115 | paywall 文案解析（帳單金額 / 試用 / CTA / footer）；對齊 App Store 3.1.2(c) 合規敏感字串 |
-| `SettingsDeleteAccountCopy.swift` | 53 | 刪帳工作流文案（後果列表 / 確認勾選 / 倒數 / 確認字串）|
-| `SettingsAccountCopy.swift` | 25 | 帳號區塊文案常數（登入 / 驗證 / 訂閱狀態 / Pro 標籤）|
-| `FeedbackSettingsCopy.swift` | 9 | UI 聲音／觸覺回饋設定列文案 |
+| 檔案 | 說明 |
+|------|------|
+| `SubscriptionPaywallCopy.swift` | paywall 文案解析（帳單金額 / 試用 / CTA / footer）；對齊 App Store 3.1.2(c) 合規敏感字串 |
+| `SettingsDeleteAccountCopy.swift` | 刪帳工作流文案（後果列表 / 確認勾選 / 倒數 / 確認字串） |
+| `SettingsAccountCopy.swift` | 帳號區塊文案常數（登入 / 驗證 / 訂閱狀態 / Pro 標籤） |
+| `FeedbackSettingsCopy.swift` | UI 聲音／觸覺回饋設定列文案 |
 
 ### Feedback Dependencies
 
@@ -85,9 +85,9 @@ verified_against: dcb7b705f
 
 ### Debug 工具
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `RenderStormProbe.swift` | 53 | `#if DEBUG` body 重評估風暴偵測：計數每秒 body evals，>5/sec 記 STORM 警告；`SETTINGS_RENDER_DEBUG=1` 加開 `_printChanges()`；log category `RenderStorm` |
+| 檔案 | 說明 |
+|------|------|
+| `RenderStormProbe.swift` | `#if DEBUG` body 重評估風暴偵測：計數每秒 body evals，>5/sec 記 STORM 警告；`SETTINGS_RENDER_DEBUG=1` 加開 `_printChanges()`；log category `RenderStorm` |
 
 ---
 
