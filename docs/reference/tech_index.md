@@ -340,6 +340,8 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 | 月度盤點 / 異常追 SOP | `docs/sop/cost_review.md` |
 | 觸發 skill | `billing`(read-only 分析+建議,執行交給 `devops`) |
 
+`backlog.py list --zombie-suspects [--zombie-search-depth N]` 是唯讀候選查詢：掃描 bounded `main` commit subject，列出被 commit 點名但仍未結案的票，並標記 `likely-filing`（`docs:` 立案／補回／登記／file）或一般 `suspect`。commit 提及不是 acceptance 證據，工具不改 ticket 狀態；`--json` schema=`kg.backlog.zombie-suspects.v1`。
+
 ## Backlog acceptance contract pointer
 
 `backlog.py` 的 acceptance proof 契約唯一入口是 `./ops/backlog.py update --help` 的 epilog；本索引只保留指標，不重複契約內容。

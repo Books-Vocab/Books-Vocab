@@ -2108,6 +2108,79 @@ def list_entries(
     return sorted(hits, key=_sort_key)
 
 
+_ID_IN_SUBJECT_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:IMP|APP)-(?:\d{4}|\d{8}-[0-9a-f]{6})(?![A-Za-z0-9])"
+)
+_LIKELY_FILING_COMMIT_RE = re.compile(
+    r"^docs:\s*.*(?:立案|補回|登記|\bfile\b)", re.IGNORECASE
+)
+
+
+def _zombie_commit_lines(
+    *, repo: Path | None = None, search_depth: int = DEFAULT_SEARCH_DEPTH,
+) -> list[str]:
+    """Read a bounded synthetic-friendly commit stream for zombie inspection."""
+    if search_depth < 1:
+        raise BacklogError("--zombie-search-depth must be at least 1")
+    result = _git(
+        "log", "main", f"--max-count={search_depth}",
+        "--format=%H%x01%s", repo=repo,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "main history unavailable"
+        raise BacklogError(f"cannot inspect main commit history: {detail}")
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def zombie_suspects(
+    store: Path,
+    *,
+    commit_lines: list[str | tuple[str, str]] | None = None,
+    repo: Path | None = None,
+    search_depth: int = DEFAULT_SEARCH_DEPTH,
+) -> list[dict]:
+    """List unresolved entries named by recent commits as review candidates.
+
+    A commit mention is deliberately weaker than an acceptance result: this
+    function never changes a ticket's status. ``commit_lines`` is an explicit
+    seam for synthetic tests and offline callers; the CLI reads the bounded
+    ``main`` history when it is omitted.
+    """
+    unresolved = {
+        str(entry.get("id")): entry
+        for entry in _iter_entries(store)
+        if entry.get("status") not in ("fixed", "wont-fix")
+    }
+    lines = (commit_lines if commit_lines is not None else
+             _zombie_commit_lines(repo=repo, search_depth=search_depth))
+    rows: list[dict] = []
+    for line in lines:
+        if isinstance(line, (tuple, list)) and len(line) == 2:
+            sha, subject = (str(line[0]), str(line[1]))
+        else:
+            sha, separator, subject = str(line).partition("\x01")
+            if not separator:
+                continue
+        if not subject.strip():
+            continue
+        for entry_id in dict.fromkeys(_ID_IN_SUBJECT_RE.findall(subject)):
+            entry = unresolved.get(entry_id)
+            if entry is None:
+                continue
+            classification = (
+                "likely-filing" if _LIKELY_FILING_COMMIT_RE.search(subject)
+                else "suspect"
+            )
+            rows.append({
+                "id": entry_id,
+                "status": entry.get("status"),
+                "brief": str(entry.get("brief") or ""),
+                "commit": {"sha": sha, "subject": subject},
+                "classification": classification,
+            })
+    return rows
+
+
 def _worst_first_key(payload: dict) -> tuple:
     """The order a queue is taken from the TOP of: severity descending, then oldest.
 
@@ -3086,6 +3159,16 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
              "this tool, and the cost was a groomed spec rebuilt from scratch. "
              "ANDs with every filter above, so `--grep X --status open` is the "
              "narrow question worth asking",
+    )
+    parser.add_argument(
+        "--zombie-suspects", action="store_true",
+        help="read recent main commits and list unresolved tickets they mention "
+             "as review candidates; this never changes ticket status",
+    )
+    parser.add_argument(
+        "--zombie-search-depth", type=int, default=None, metavar="N",
+        help=f"number of main commits to inspect for --zombie-suspects "
+             f"(default {DEFAULT_SEARCH_DEPTH})",
     )
     parser.add_argument("--json", action="store_true")
 
@@ -5186,6 +5269,51 @@ def _groomed_against_warning_line(warning: dict) -> str:
 
 
 def _cmd_list(args) -> int:
+    if getattr(args, "zombie_suspects", False):
+        filters = (
+            "status", "stream", "severity", "category", "ungroomed",
+            "include_closed", "groomed", "held", "dispatch", "acceptance_manual",
+            "acceptance_green_expected", "fixed_elsewhere", "missing_brief",
+            "unverified", "stale", "grep",
+        )
+        if any(getattr(args, name, None) for name in filters):
+            raise BacklogError(
+                "--zombie-suspects is a standalone query; drop the other list "
+                "filters and keep only --store/--json/--zombie-search-depth"
+            )
+        effective_depth = (args.zombie_search_depth
+                           if args.zombie_search_depth is not None
+                           else DEFAULT_SEARCH_DEPTH)
+        rows = zombie_suspects(
+            args.store,
+            repo=owning_repo_for_store(args.store),
+            search_depth=effective_depth,
+        )
+        if args.json:
+            print(json.dumps({
+                "schema": "kg.backlog.zombie-suspects.v1",
+                "entries": rows,
+                "search_depth": effective_depth,
+                "candidate_only": True,
+            }, ensure_ascii=False))
+            return 0
+        for row in rows:
+            print(
+                f"{row['id']:<24} {row['status']:<10} "
+                f"[{row['classification']}] {row['brief']}"
+            )
+            print(f"  commit {row['commit']['sha']} {row['commit']['subject']}")
+        print(
+            f"\n{len(rows)} zombie-suspect candidate(s); mentions are not "
+            "acceptance evidence and no status was changed."
+        )
+        return 0
+
+    if getattr(args, "zombie_search_depth", None) is not None:
+        raise BacklogError(
+            "--zombie-search-depth only applies with --zombie-suspects"
+        )
+
     dispatch = getattr(args, "dispatch", False) or args.command == "dispatch"
     # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
     # replaces had no writer on the release path, so it could only ever accumulate.
