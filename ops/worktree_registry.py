@@ -1419,12 +1419,11 @@ def cmd_register(args: argparse.Namespace) -> int:
         recorded_base_sha = recorded_base_sha if base_rc == 0 else None
     else:
         # `open` registers before `git worktree add`, so the target path is not
-        # born yet. Resolve the immutable base from the registry's owning repo
-        # while the claim is made; a later typed hand-back must never discover
-        # that the claim forgot which base it came from.
-        recorded_base_sha = _git_base_for_claim(
-            args.base, repo_root_path=getattr(args, "repo_root", None),
-        )
+        # born yet. `main` resolves this before taking the ledger lock; keeping
+        # the result on the parsed args preserves immutable base provenance while
+        # preventing every contended claim from spawning git in the critical
+        # section. A direct caller that bypasses `main` gets no guessed base.
+        recorded_base_sha = getattr(args, "_recorded_base_sha", None)
 
     # upsert-by-branch/path among ACTIVE records (idempotent for the orchestrator):
     # a re-register of a live worktree refreshes its intent/base/path in place.
@@ -2122,6 +2121,20 @@ def build_parser() -> argparse.ArgumentParser:
 LEDGER_WRITERS = (cmd_register, cmd_hand_back, cmd_resolve, cmd_sweep)
 
 
+def _prepare_register_base(args: argparse.Namespace) -> None:
+    """Resolve a missing worktree's base before the ledger lock is acquired."""
+    if args.func is not cmd_register or Path(os.path.abspath(args.path)).is_dir():
+        return
+    repo_root_arg = getattr(args, "repo_root", None)
+    # A not-yet-born path has no repository context of its own. Only the
+    # orchestrator's explicit --repo-root is authoritative; falling back to the
+    # module process cwd would silently stamp an unrelated repository (or none).
+    args._recorded_base_sha = (
+        _git_base_for_claim(args.base, repo_root_path=repo_root_arg)
+        if repo_root_arg else None
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     tokens = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
@@ -2129,6 +2142,7 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "func", None):
         parser.print_help()
         return EXIT_USAGE
+    _prepare_register_base(args)
     # Serialize the WRITERS over the shared ledger so parallel hands-off sessions
     # cannot lose each other's updates (each mutator is a load→mutate→save RMW on one
     # JSON file). Read-only commands (list) run lock-free — the atomic save_state

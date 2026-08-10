@@ -765,6 +765,18 @@ def test_parallel_registers_do_not_lose_writes(tmp_path):
     assert {r["branch"] for r in active} == {f"feat-{i}" for i in range(K)}
 
 
+def test_missing_worktree_without_repo_root_does_not_guess_base(tmp_path):
+    state = tmp_path / "reg.json"
+    missing_worktree = tmp_path / "not-born"
+    rc = MODULE.main([
+        "register", "--state", str(state), "--path", str(missing_worktree),
+        "--branch", "feat-no-root", "--intent", "test", "--base", "main",
+    ])
+    assert rc == MODULE.EXIT_OK
+    record = json.loads(state.read_text())["records"][0]
+    assert record["base_sha"] is None
+
+
 def test_resolve_missing_record_is_usage_error(tmp_path):
     state = tmp_path / "reg.json"
     rc = MODULE.main(["resolve", "--state", str(state), "--branch", "nope", "--status", "abandoned"])
