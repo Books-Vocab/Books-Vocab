@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from fastapi import HTTPException
 from filelock import FileLock
 
+from .account_erasure import ObjectStorageClient, delete_account_assets
 from .api_models import (
     AutoLinkConfig,
     DeleteAccountResponse,
@@ -237,6 +238,8 @@ def delete_user_account_response(
     collect_account_ids_for_deletion: Callable[[UsersPayload, str], tuple[str, list[str]]],
     data_dir: Path,
     logger: Logger,
+    library_bucket: str | None = None,
+    library_s3_client: ObjectStorageClient | None = None,
 ) -> DeleteAccountResponse:
     now_iso = datetime.now(tz=UTC).isoformat()
     user_id = user["id"]
@@ -244,6 +247,12 @@ def delete_user_account_response(
     with FileLock(str(users_lock_file)):
         users = load_users()
         canonical_id, ids_to_delete = collect_account_ids_for_deletion(users, user_id)
+        delete_account_assets(
+            data_dir,
+            ids_to_delete,
+            library_bucket=library_bucket,
+            library_s3_client=library_s3_client,
+        )
 
         revoked_before = users.get("_revoked_before")
         if not isinstance(revoked_before, dict):

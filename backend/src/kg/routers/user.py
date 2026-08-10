@@ -28,6 +28,7 @@ from ..user_handlers import (
     health_response,
     update_user_config_response,
 )
+from .library import _library_s3_client
 
 router = APIRouter(tags=["user"])
 
@@ -75,6 +76,10 @@ def delete_user_account(request: Request, user: CurrentUser):
         collect_account_ids_for_deletion=_collect_account_ids_for_deletion,
         data_dir=settings.data_dir,
         logger=logger,
+        library_bucket=settings.library_bucket,
+        library_s3_client=(
+            _library_s3_client(settings) if settings.library_bucket else None
+        ),
     )
 
 
