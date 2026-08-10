@@ -102,7 +102,7 @@ SEVERITIES = ("low", "med", "high")
 # claim was on a completely different ticket. Nothing reconciled them, and nothing
 # ever would have: `cmd_resolve` changes the ledger record and never looks at the
 # entry, so an abandoned worktree leaves its ticket `in-progress` forever.
-STATUSES = ("open", "triaged", "fixed", "wont-fix")
+STATUSES = ("open", "triaged", "contract-blocked", "fixed", "wont-fix")
 
 # Accepted on READ so old entries and old branches still load, refused on WRITE.
 # A hard removal would make every pre-existing `in-progress` entry unloadable, which
@@ -333,8 +333,24 @@ VERDICTS = (
     # entry turning out to need no work. Three independent coinages of the same
     # missing word is a gap in the vocabulary, not three careless authors.
     "CONFIRMED-FIXED",
+    "CONTRACT-BLOCKED",
 )
 _DUPLICATE_VERDICT_PREFIX = "DUPLICATE-OF-"
+
+# A groom stamp says HOW a ticket might be fixed.  A contract stamp answers the
+# cheaper question that must come first: is this ticket safe to hand to a worker?
+# These are scalar fields so the CLI, JSON store and show/update reachability
+# invariants remain the same as the rest of the lifecycle.
+CONTRACT_STATUSES = ("ready", "blocked")
+CONTRACT_BASELINES = ("red", "no-op", "unknown")
+CONTRACT_FIELDS = (
+    "contract_status", "contract_baseline", "contract_checked_at",
+    "contract_checked_by", "contract_evidence",
+)
+# Existing queue data is grandfathered; every new grooming act must carry the
+# contract stamp so stale rows do not turn this guard into a repository-wide
+# outage on the day it lands.
+CONTRACT_REQUIRED_SINCE = "2026-08-10"
 
 # An entry id must be usable as a bare filename. Unvalidated, `--date 2026/08/05`
 # writes <store>/IMP-2026/08/05-<hash>.json — a real subdirectory that
@@ -542,6 +558,19 @@ def _check_vocabulary(payload: dict) -> list[dict]:
     elif status not in STATUSES:
         problems.append({"kind": "bad-status", "value": status})
 
+    contract_status = payload.get("contract_status")
+    if contract_status is not None and contract_status not in CONTRACT_STATUSES:
+        problems.append({"kind": "bad-contract-status", "value": contract_status})
+    contract_baseline = payload.get("contract_baseline")
+    if contract_baseline is not None and contract_baseline not in CONTRACT_BASELINES:
+        problems.append({"kind": "bad-contract-baseline", "value": contract_baseline})
+    contract_present = [field for field in CONTRACT_FIELDS
+                        if payload.get(field) is not None]
+    if contract_present and len(contract_present) != len(CONTRACT_FIELDS):
+        problems.append({"kind": "incomplete-contract-evidence",
+                         "present": contract_present,
+                         "missing": [f for f in CONTRACT_FIELDS if f not in contract_present]})
+
     # VERDICTS was declared a closed vocabulary but only ever enforced inside
     # extract_verdict_fields(), i.e. on the way IN from a resolution stamp.
     # Anything that set the field directly bypassed it: measured before this
@@ -598,6 +627,12 @@ def _check_status_obligations(payload: dict) -> list[dict]:
 
     if status == "triaged" and not _next_action(payload):
         problems.append({"kind": "no-next-action", "status": status})
+
+    if status == "contract-blocked":
+        if payload.get("contract_status") != "blocked":
+            problems.append({"kind": "contract-blocked-without-contract-status"})
+        if not str(payload.get("contract_evidence") or "").strip():
+            problems.append({"kind": "contract-blocked-without-evidence"})
 
     if status == "wont-fix":
         reason = str(payload.get("resolution") or "").strip()
@@ -699,7 +734,7 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
                 # Telling that reader to run `reanchor` sends them hunting a
                 # rebase that never happened.
                 problems.append({"kind": "fixed-by-unresolvable", "sha": sha})
-    elif status in ("open", "triaged"):
+    elif status in ("open", "triaged", "contract-blocked"):
         if fixed_by:
             # An unfinished entry pointing at a landing commit is the status
             # lying about itself, and it is the shape that lets closed work look
@@ -916,6 +951,84 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
         # which is exactly `audit-criteria`'s population, so the rule binds
         # wherever the field can do anything at all.
         problems.append({"kind": "acceptance-green-expected-without-cmd"})
+    return problems
+
+
+def _contract_site_paths(fix_site: str) -> list[str]:
+    """Extract conservative repository-relative anchors from ``fix_site``.
+
+    The field is human-facing prose with a code anchor, not a mini shell
+    language.  We therefore accept the documented ``path:line`` form and reject
+    unresolved braces/globs instead of guessing which file an executor meant.
+    """
+    paths: list[str] = []
+    for raw in re.split(r"[;；]+", fix_site):
+        token = raw.strip().split()[0] if raw.strip() else ""
+        if not token:
+            continue
+        token = token.split("::", 1)[0]
+        token = re.split(r"(?::\d|：\d)", token, maxsplit=1)[0]
+        paths.append(token.strip("`'\""))
+    return paths
+
+
+def _contract_command_paths(command: str) -> list[str]:
+    """Find explicit repo paths used by an acceptance command.
+
+    This is intentionally a dependency probe, not a shell interpreter. Dynamic
+    paths and brace/glob expressions are unprovable and are reported as missing
+    evidence rather than treated as present.
+    """
+    paths: list[str] = []
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9_./-])((?:ops|backend|ios|lab|docs|\.github)/[A-Za-z0-9_./-]+)"
+    )
+    for match in pattern.finditer(command):
+        value = match.group(1).rstrip(".,;:'\")")
+        if value not in paths:
+            paths.append(value)
+    return paths
+
+
+def contract_preflight(payload: dict, *, repo: Path | None = None) -> list[dict]:
+    """Return typed reasons a groomed ticket cannot enter dispatch.
+
+    Dispatch is fail-closed: a ticket must carry a recorded contract check with
+    a RED baseline.  ``no-op`` and ``unknown`` are intentionally different from
+    RED; neither proves there is work for a worker to do.
+    """
+    root = (repo or ROOT).resolve()
+    groomed_at = str(payload.get("groomed_at") or "")
+    if groomed_at and groomed_at < CONTRACT_REQUIRED_SINCE \
+            and not any(payload.get(field) is not None for field in CONTRACT_FIELDS):
+        return []
+    problems: list[dict] = []
+    if payload.get("contract_status") != "ready":
+        problems.append({"kind": "contract-evidence-missing",
+                         "reason": "contract_status is not ready"})
+    if payload.get("contract_baseline") != "red":
+        problems.append({"kind": "contract-baseline-not-red",
+                         "value": payload.get("contract_baseline") or "missing"})
+    if not str(payload.get("contract_evidence") or "").strip():
+        problems.append({"kind": "contract-evidence-missing",
+                         "reason": "contract_evidence is empty"})
+
+    fix_site = str(payload.get("fix_site") or "").strip()
+    if not fix_site:
+        problems.append({"kind": "fix-site-missing"})
+    else:
+        for rel in _contract_site_paths(fix_site):
+            if any(ch in rel for ch in "{}[]*$") or not (root / rel).exists():
+                problems.append({"kind": "fix-site-missing", "path": rel})
+
+    command = str(payload.get("acceptance_cmd") or "").strip()
+    if not command:
+        problems.append({"kind": "acceptance-dependency-missing",
+                         "reason": "acceptance_cmd is empty"})
+    else:
+        for rel in _contract_command_paths(command):
+            if any(ch in rel for ch in "{}[]*$") or not (root / rel).exists():
+                problems.append({"kind": "acceptance-dependency-missing", "path": rel})
     return problems
 
 
@@ -1519,6 +1632,7 @@ MUTABLE_FIELDS = (
     + AUDIT_FIELDS
     + TRACE_FIELDS
     + RELATION_FIELDS
+    + CONTRACT_FIELDS
 )
 
 
@@ -1548,7 +1662,7 @@ def _splice_before(fields: tuple[str, ...], anchor: str,
 SHOW_FIELD_ORDER = (
     _splice_before(REQUIRED_FIELDS, "detail", BRIEF_FIELDS)
     + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + AUDIT_FIELDS + TRACE_FIELDS
-    + RELATION_FIELDS
+    + RELATION_FIELDS + CONTRACT_FIELDS
 )
 
 # Digest fields the `update` parser still accepts — solely so that reaching for
@@ -1595,6 +1709,9 @@ FILE_TWIN_FIELDS = (
     # Written by a human in prose, in Chinese, and quoting the thing that is
     # broken — which is exactly the text most likely to carry a backtick.
     *BRIEF_FIELDS,
+    # Contract evidence is a re-runnable command/result receipt, not a fixed
+    # vocabulary token; preserve the shell-safe file channel for it as well.
+    "contract_checked_at", "contract_checked_by", "contract_evidence",
 )
 
 # Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
@@ -1826,6 +1943,7 @@ def list_entries(
     grep: str | None = None,
     dispatch: bool = False,
     held: dict | None = None,
+    repo: Path | None = None,
 ) -> list[dict]:
     if groomed and ungroomed:
         raise BacklogError("--groomed and --ungroomed are mutually exclusive")
@@ -1972,6 +2090,11 @@ def list_entries(
         # disappear exactly when a caller narrows the question.
         hits = [p for p in hits
                 if not any(blocker in open_ids for blocker in _blocking_ids(p))]
+        # Contract readiness is a fifth mechanical guard layered onto the four
+        # historical queue clauses. It is deliberately not folded into
+        # ``blocked_by``: a missing file/evidence is a property of this ticket's
+        # executable contract, not a dependency edge to another ticket.
+        hits = [p for p in hits if not contract_preflight(p, repo=repo)]
         # A queue somebody takes the TOP of, so worst-first, then oldest-first.
         # `_sort_key` is (date, id), which is right for an inventory and wrong
         # here: it puts last week's `low` ahead of today's `high`.
@@ -3171,6 +3294,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--fixed-elsewhere", dest="fixed_elsewhere",
                           help="alternative to --fixed-by alongside --status fixed, for "
                                "a fix that landed outside this repo; exactly one of the two")
+    p_verify.add_argument("--contract-status", choices=CONTRACT_STATUSES)
+    p_verify.add_argument("--contract-baseline", choices=CONTRACT_BASELINES)
+    p_verify.add_argument("--contract-checked-at")
+    p_verify.add_argument("--contract-checked-by")
+    p_verify.add_argument("--contract-evidence")
     p_verify.add_argument("--commit", action="store_true")
     p_verify.add_argument("--json", action="store_true")
 
@@ -3443,6 +3571,11 @@ def build_parser() -> argparse.ArgumentParser:
                           help="what did the checking; prefer `verify` which sets the whole stamp")
     p_update.add_argument("--verified-evidence", dest="verified_evidence",
                           help="the command behind the verdict")
+    p_update.add_argument("--contract-status", choices=CONTRACT_STATUSES)
+    p_update.add_argument("--contract-baseline", choices=CONTRACT_BASELINES)
+    p_update.add_argument("--contract-checked-at")
+    p_update.add_argument("--contract-checked-by")
+    p_update.add_argument("--contract-evidence")
     p_update.add_argument(
         "--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
         help="commit(s) that made the defect stop being true; required by status=fixed. "
@@ -3798,7 +3931,12 @@ def _cmd_add(args) -> int:
 
 def _closure_changes(*, verdict: str, by: str, evidence: str, at: str | None,
                      status: str | None, fixed_by: list[str] | None,
-                     fixed_elsewhere: str | None = None) -> dict:
+                     fixed_elsewhere: str | None = None,
+                     contract_status: str | None = None,
+                     contract_baseline: str | None = None,
+                     contract_checked_at: str | None = None,
+                     contract_checked_by: str | None = None,
+                     contract_evidence: str | None = None) -> dict:
     """The field set that records a re-verification. ONE construction, three doors.
 
     `verify` writes it now; `stage` validates it on a hunter's branch and parks it;
@@ -3830,6 +3968,15 @@ def _closure_changes(*, verdict: str, by: str, evidence: str, at: str | None,
         # COMMIT is coming, and this field says there will never be one. It reaches
         # the store through `verify` and `update` only.
         changes["fixed_elsewhere"] = fixed_elsewhere
+    contract_values = {
+        "contract_status": contract_status,
+        "contract_baseline": contract_baseline,
+        "contract_checked_at": contract_checked_at,
+        "contract_checked_by": contract_checked_by,
+        "contract_evidence": contract_evidence,
+    }
+    changes.update({field: value for field, value in contract_values.items()
+                    if value is not None})
     return changes
 
 
@@ -4914,7 +5061,12 @@ def _cmd_verify(args, *, _lock_held: bool = False) -> int:
 
     changes = _closure_changes(verdict=args.verdict, by=args.by, evidence=args.evidence,
                                at=args.at, status=args.status, fixed_by=args.fixed_by,
-                               fixed_elsewhere=args.fixed_elsewhere)
+                               fixed_elsewhere=args.fixed_elsewhere,
+                               contract_status=args.contract_status,
+                               contract_baseline=args.contract_baseline,
+                               contract_checked_at=args.contract_checked_at,
+                               contract_checked_by=args.contract_checked_by,
+                               contract_evidence=args.contract_evidence)
 
     current = load_entry(args.store, args.id)
     merged = _merged_and_validated(current, changes, args.id)  # raises on refusal

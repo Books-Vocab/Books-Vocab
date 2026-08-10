@@ -6999,6 +6999,18 @@ def test_a_groomed_open_ticket_is_claimable(tmp_path):
     assert MODULE._unclaimable(store, ["IMP-20260808-aaaaaa"]) == []
 
 
+def test_pre_dispatch_refuses_missing_contract_evidence(tmp_path):
+    """The claim boundary and backlog dispatch use the same contract guard."""
+    store = _ticket(tmp_path, "IMP-20260810-contract", **{
+        **GROOMED,
+        "groomed_at": "2026-08-10",
+    })
+    problems = MODULE._unclaimable(store, ["IMP-20260810-contract"])
+    assert [p["kind"] for p in problems] == ["contract-blocked"], problems
+    assert any(p["kind"] == "contract-evidence-missing"
+               for p in problems[0]["contract_problems"])
+
+
 def test_an_explicit_claim_cannot_walk_around_dispatch_blocking_edges(tmp_path):
     blocker = "IMP-20260808-aaaaaa"
     blocked = "IMP-20260808-bbbbbb"
