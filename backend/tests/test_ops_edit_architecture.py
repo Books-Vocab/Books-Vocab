@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import kg.ops_edit_seed_commands as seed_commands
 import kg.ops_edit_support as support
 
 
@@ -60,3 +61,28 @@ def test_support_does_not_publish_stdlib_types_or_store_compat_exports():
     exported = set(getattr(support, "__all__", ()))
     assert not exported & FORBIDDEN_SUPPORT_FORWARD_NAMES
 
+
+def test_seed_has_explicit_spec_lifecycle_boundaries():
+    for name in (
+        "SeedSpec",
+        "load_seed_spec",
+        "prevalidate_seed",
+        "build_seed_plan",
+        "apply_seed",
+        "verify_seed",
+    ):
+        assert hasattr(seed_commands, name), name
+        assert callable(getattr(seed_commands, name)), name
+
+    tree = ast.parse(
+        (ROOT / "ops_edit_seed_commands.py").read_text(encoding="utf-8"),
+        filename="ops_edit_seed_commands.py",
+    )
+    cmd_seed = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "cmd_seed"
+    )
+    nested = {
+        node.name for node in ast.walk(cmd_seed) if isinstance(node, ast.FunctionDef)
+    }
+    assert nested == {"cmd_seed"}

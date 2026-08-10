@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .ops_edit_shared import EditContext, EditError, emit, user_dir_for
+from .ops_edit_shared import EditContext, EditError, assert_safe_uid, emit, user_dir_for
 from .ops_edit_support import (
     _USER_BACKUP_META_DIR,
     _USER_BACKUP_RECORD,
