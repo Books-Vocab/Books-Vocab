@@ -20,5 +20,9 @@
   "severity": "high",
   "source": "supervisor:fresh-gate-d4",
   "status": "fixed",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "supervisor:d4-repair",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py::test_a_missing_gate_tool_is_a_readable_block_not_a_traceback ops/tests/test_worktree_orchestrate.py::test_a_missing_gate_CWD_is_not_reported_as_a_missing_tool ops/tests/test_worktree_orchestrate.py::test_an_unexecutable_gate_tool_is_reported_the_same_way"
 }

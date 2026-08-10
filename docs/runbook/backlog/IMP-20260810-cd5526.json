@@ -20,5 +20,9 @@
   "severity": "high",
   "source": "supervisor:fresh-gate-d4",
   "status": "fixed",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "supervisor:d4-repair",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py::test_delivery_anchor_recovers_commit_when_marker_write_crashes ops/tests/test_worktree_orchestrate.py::test_delivery_anchor_replays_manifest_after_post_commit_marker_failure ops/tests/test_worktree_orchestrate.py::test_delivery_anchor_commit_refuses_staged_or_unstaged_foreign_paths"
 }
