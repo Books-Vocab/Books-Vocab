@@ -94,6 +94,25 @@ def test_normalize_snapshot_rejects_numeric_sha_and_malformed_parent():
     }]
 
 
+def test_normalize_snapshot_marks_optional_sha_files_and_metadata_conflicts_incomplete():
+    payload = normalize_snapshot({
+        "refs": [{
+            "branch": "feat/a", "head": "abcdef0", "base_sha": "bad",
+            "handed_back_sha": 1234567, "tickets": ["IMP-1"],
+        }],
+        "commits": [
+            {"sha": "abcdef0", "subject": "first", "files": "bad"},
+            {"sha": "abcdef0", "subject": "second"},
+        ],
+    })
+
+    assert payload["complete"] is False
+    assert "files is not a list" in payload["error"]
+    assert "conflicting subject" in payload["error"]
+    assert "invalid base_sha" in payload["error"]
+    assert "invalid handed_back_sha" in payload["error"]
+
+
 def test_project_snapshot_enriches_ticket_leaves_and_reports_missing_parents():
     projected = project_snapshot({
         "refs": [{"branch": "feat/a", "head": "abcdef0123456789", "backlog": ["IMP-1"]}],
@@ -137,3 +156,25 @@ def test_server_git_tree_payload_reads_mirror_and_canonical_ticket_briefs(monkey
     assert payload["schema"] == SCHEMA
     assert payload["complete"] is True
     assert payload["refs"][0]["tickets"][0]["brief"] == "修正看板"
+
+
+def test_freshness_does_not_claim_current_when_git_tree_is_missing_or_stale(monkeypatch, tmp_path):
+    mirror = tmp_path / "mirror.json"
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "clone_head", lambda: "same")
+    monkeypatch.setattr(server, "_git", lambda _args: type("P", (), {
+        "returncode": 0, "stdout": "0", "stderr": "",
+    })())
+    monkeypatch.setattr(server, "_cache", {
+        "valid": True, "error": None, "read_at": "now", "sha": "same",
+        "registry_fingerprint": None, "entries": [], "dispatch_ids": [],
+        "dispatch_meta": {}, "local_held": {}, "ungroomed_ids": [],
+    })
+
+    mirror.write_text("{}\n", encoding="utf-8")
+    assert server.freshness()["freshness_state"] == "unknown"
+
+    mirror.write_text(json.dumps({"sync_state": {"ahead_count": 0}, "git_tree": {
+        "complete": True, "at": "2020-01-01T00:00:00+00:00",
+    }}), encoding="utf-8")
+    assert server.freshness()["freshness_state"] == "stale"

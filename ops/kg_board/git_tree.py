@@ -68,6 +68,9 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
                 errors.append(f"commit {sha} has invalid parent")
             else:
                 parents.append(normalized_parent)
+        raw_files = raw.get("files")
+        if raw_files is not None and not isinstance(raw_files, (list, tuple)):
+            errors.append(f"commit {sha} files is not a list")
         row = {
             "sha": sha,
             "parents": parents,
@@ -84,8 +87,12 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         if prior:
             # A commit can arrive through multiple refs. Keep the richer record
             # without allowing one partial record to erase metadata.
-            if prior.get("parents") and row.get("parents") and prior["parents"] != row["parents"]:
-                errors.append(f"commit {sha} has conflicting parents")
+            for key in ("parents", "subject", "author", "committer", "authored_at",
+                        "committed_at", "insertions", "deletions"):
+                if (prior.get(key) not in (None, [], "(無主旨)")
+                        and row.get(key) not in (None, [], "(無主旨)")
+                        and prior.get(key) != row.get(key)):
+                    errors.append(f"commit {sha} has conflicting {key}")
             row = {key: value if value not in (None, [], "(無主旨)") else prior.get(key)
                    for key, value in row.items()}
             row["parents"] = row.get("parents") or prior.get("parents") or []
@@ -134,13 +141,16 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             "handed_back_sha": _sha(raw.get("handed_back_sha")),
             "tickets": tickets,
         })
+        for key in ("base_sha", "handed_back_sha"):
+            if raw.get(key) is not None and _sha(raw.get(key)) is None:
+                errors.append(f"ref {branch} has invalid {key}")
 
     return {
         "schema": SCHEMA,
         "at": _text(payload.get("at")),
         "host": _text(payload.get("host")),
-        "complete": (payload["complete"] if isinstance(payload.get("complete"), bool)
-                     else "complete" not in payload),
+        "complete": ((payload["complete"] if isinstance(payload.get("complete"), bool)
+                      else "complete" not in payload) and not errors),
         "error": _text(payload.get("error")) or "; ".join(errors) or None,
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
