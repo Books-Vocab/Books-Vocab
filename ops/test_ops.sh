@@ -169,6 +169,7 @@ run_one() {
     docs-lint)
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh
+      ./ops/tests/test_feature_boundary_loc_lint.sh
       ./ops/tests/test_docs_lint.sh
       ./ops/tests/test_docs_lint_generated_check.sh
       ./ops/tests/test_docs_lint_generated_diff.sh

@@ -10,8 +10,6 @@ verified_against: 18f37badc
 
 ## 檔案清冊
 
-> 行數為 `wc -l` 快照，僅供定位；以 2026-06-11 全 28 檔逐檔讀檔重建。
-
 ### Container Layer（組裝 + 路由）
 
 | 檔案 | 說明 |
