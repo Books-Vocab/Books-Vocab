@@ -55,7 +55,7 @@ def test_normalize_snapshot_rejects_malformed_records_without_crashing():
 
     assert payload["schema"] == SCHEMA
     assert payload["complete"] is False
-    assert payload["error"] == "ledger unavailable"
+    assert payload["error"].startswith("ledger unavailable")
     assert payload["refs"] == []
     assert payload["commits"] == []
 
@@ -111,6 +111,26 @@ def test_normalize_snapshot_marks_optional_sha_files_and_metadata_conflicts_inco
     assert "conflicting subject" in payload["error"]
     assert "invalid base_sha" in payload["error"]
     assert "invalid handed_back_sha" in payload["error"]
+
+
+def test_normalize_snapshot_rejects_scalar_and_relationship_type_errors():
+    payload = normalize_snapshot({
+        "error": "feeder reported failure",
+        "refs": [
+            {"branch": "feat/a", "head": "abcdef0", "worktree_present": "yes",
+             "tickets": [None, {"brief": "missing id"}]},
+            {"branch": "feat/a", "head": "1234567", "tickets": []},
+        ],
+        "commits": [{"sha": "abcdef0", "insertions": True, "files": [123]}],
+    })
+
+    assert payload["complete"] is False
+    for marker in (
+        "feeder reported failure", "insertions is not an integer",
+        "files contains a non-string path", "worktree_present is not boolean",
+        "ticket without id", "malformed ticket", "conflicting heads",
+    ):
+        assert marker in payload["error"]
 
 
 def test_project_snapshot_enriches_ticket_leaves_and_reports_missing_parents():
