@@ -1443,11 +1443,50 @@ def test_potentially_long_git_operations_never_use_silent_probe_runner():
 gitmark = pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
 
 
+def _assert_fixture_git_safe(args):
+    if args[:1] != ["push"]:
+        return
+    production_ref = any(
+        token in {"prod", "origin/prod"}
+        or token.endswith(":prod")
+        or token.endswith(":refs/heads/prod")
+        for token in args[1:]
+    )
+    if production_ref:
+        raise AssertionError("fixture git helper refuses production ref push")
+
+
 def _git(args, cwd):
+    _assert_fixture_git_safe(args)
     return subprocess.run(
         ["git", *args], cwd=str(cwd), check=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     ).stdout.strip()
+
+
+def test_safety_fixture_no_production_push():
+    source = Path(__file__).read_text(encoding="utf-8")
+    scratch_start = source.index("\n@pytest.fixture\ndef scratch(")
+    scratch_end = source.index("\ndef _run_json", scratch_start)
+    resolve_start = source.index(
+        "\n@gitmark\ndef test_resolve_protects_the_trunk_even_under_a_different_base"
+    )
+    resolve_end = source.index("\ndef test_resolve_refuses_when_git_contradicts", resolve_start)
+    assert "main:prod" not in source[scratch_start:scratch_end]
+    assert "main:prod" not in source[resolve_start:resolve_end]
+
+
+def test_production_ref_push_denied(monkeypatch, tmp_path):
+    calls = []
+
+    def unexpected_subprocess(*args, **kwargs):
+        calls.append(args[0])
+        raise AssertionError("production ref reached subprocess")
+
+    monkeypatch.setattr(subprocess, "run", unexpected_subprocess)
+    with pytest.raises(AssertionError, match="fixture git helper refuses production ref"):
+        _git(["push", "-q", "origin", "main:prod"], tmp_path)
+    assert calls == []
 
 
 @gitmark
@@ -1646,7 +1685,7 @@ def scratch(tmp_path):
     # seed origin/prod = origin/main (the release-plane ref deploy advances); the
     # switchover seeds it once, then only `deploy` moves it. Without it, deploy's noop
     # baseline is absent.
-    _git(["push", "-q", "origin", "main:prod"], repo)
+    _git(["update-ref", "refs/heads/prod", "main"], remote)
 
     prev = Path.cwd()
     os.chdir(repo)
@@ -2838,7 +2877,7 @@ def test_resolve_protects_the_trunk_even_under_a_different_base(scratch):
     # entry exists to stop relying on.
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
-    _git(["push", "-q", "origin", "main:prod"], repo)
+    _git(["update-ref", "refs/heads/prod", "refs/heads/main"], remote)
     # a primary parked elsewhere (repo surgery / hotfix / bisect), and a worktree that
     # has the trunk itself checked out. Order matters: main must be free first.
     _git(["checkout", "-q", "-b", "staging"], repo)
