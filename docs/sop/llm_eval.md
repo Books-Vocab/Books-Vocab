@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/llm_eval/
   - docs/reference/llm_eval.md
-verified_against: 2c661f326
+verified_against: 49dd4cdc4
 -->
 # LLM Eval Runbook
 
@@ -38,6 +38,18 @@ results = asyncio.run(run_eval(
 
 for model, summary in results.items():
     print(model, summary.format_score_avg, summary.quality_score_avg, summary.error_count)
+```
+
+## CI 契約
+
+`.github/workflows/llm-eval.yml` 只在 `lab/llm_eval/` 或 workflow 本身變更時觸發
+push / pull request。它固定在 `lab/llm_eval` 工作目錄，以 `uv sync --frozen --extra dev`
+安裝鎖定依賴，再執行 `tests/test_ci_contract.py`；本地可用同一條命令重現：
+
+```bash
+cd lab/llm_eval
+uv sync --frozen --extra dev
+uv run --frozen --extra dev pytest -q tests/test_ci_contract.py
 ```
 
 ## Prompt 變更 Workflow
