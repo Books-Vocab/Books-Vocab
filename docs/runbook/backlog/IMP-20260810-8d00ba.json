@@ -8,6 +8,9 @@
   "date": "2026-08-10",
   "detail": "2026-08-10 safety-stop 實測：a54 integration 的 fresh Gate 在 ops-pytest 期間觀察到 PID 97051 執行 /Applications/Xcode.app/Contents/Developer/usr/bin/git push -q origin main:prod，parent pytest 88712，remote URL 指向 https://github.com/MaxChen228/Books-Vocab.git。唯讀定位到 ops/tests/test_worktree_orchestrate.py 的 scratch fixture 第 1649 行直接以 _git 執行該 push，test_resolve_protects_the_trunk_even_under_a_different_base 第 2841 行也重複一次。測試意圖是建立 isolated bare remote 的 prod ref，但 Gate 沒有機械禁止真實 production-shaped refspec，導致 fixture/環境 escape 時可能觸及真正 origin。此票只處理測試與 Gate harness 安全邊界，不改生產程式、不重跑事故 Gate。",
   "fix_site": "ops/tests/test_worktree_orchestrate.py:1649,2841; Gate harness subprocess/network deny fixture",
+  "fixed_by": [
+    "bfe607db027fb1326d1bd1e5cd0297b33c657a2c"
+  ],
   "groomed_against": "bbffbfd3e025d7a696049740456e91864e8ffd40",
   "groomed_at": "2026-08-10",
   "groomed_by": "agent:platform-steward",
@@ -18,10 +21,10 @@
   "scope": "一個 ops fixture、Gate harness deny guard 與兩條 targeted regression；不改 production code。",
   "severity": "high",
   "source": "Delivery Team B safety-stop 2026-08-10",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
+  "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-10",
-  "verified_by": "agent:platform-steward",
-  "verified_evidence": "rg -nF main:prod ops/tests/test_worktree_orchestrate.py"
+  "verified_by": "agent:team-b-integrator",
+  "verified_evidence": "bash -c 'set -eu\ntest -f ops/tests/test_worktree_orchestrate.py\nuv run --no-project --python 3.13 python -m py_compile ops/tests/test_worktree_orchestrate.py\nN=$(uv run --no-project --python 3.13 --with pytest pytest --collect-only -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"safety_fixture_no_production_push or production_ref_push_denied\" | grep -c \"::\")\n[ \"${N}\" -ge 2 ]\nuv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"safety_fixture_no_production_push or production_ref_push_denied\"'"
 }
