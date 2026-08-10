@@ -112,6 +112,18 @@ struct ReviewCardViewport: Equatable {
         min(max(solvedContentHeight + chrome, TodayReviewMetrics.frontMinHeight), frontHeight)
     }
 
+    /// A resident card slot can keep the same `ReviewCardView` identity while its
+    /// content advances to another card. A measured front height is therefore
+    /// valid only for the card that produced it.
+    static func frontOccupiedHeight(
+        measuredCardKey: String?,
+        currentCardKey: String,
+        measuredHeight: CGFloat
+    ) -> CGFloat {
+        guard measuredCardKey == currentCardKey else { return 0 }
+        return max(measuredHeight, 0)
+    }
+
     /// What the back face may occupy once the front fold has taken its measured
     /// share of the same content height.
     func backHeight(frontOccupied: CGFloat) -> CGFloat {
