@@ -9,6 +9,9 @@
   "date": "2026-08-10",
   "detail": "目前 lifecycle 有 blocked_by 欄位但沒有一個形式化的 contract-blocked 判決與 pre-dispatch fail-closed 檢查，無法機械拒絕 fix_site 缺失、acceptance dependency 不存在、baseline RED 未成立或 no-op work。這會讓一張看似 groomed 的票被取走後才發現沒有可執行修法。此票只處理 repo 內 ticket lifecycle 與派工前契約，不處理 external multi_agent_v1。",
   "fix_site": "ops/backlog.py lifecycle/dispatch; ops/worktree_orchestrate.py pre-dispatch boundary; ops/tests/test_backlog.py; ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "17d3431a7c649bd8a7c5122d38e27f5cafc80611"
+  ],
   "groomed_against": "ba60390f33f6b582ad0a993204af47afe526766c",
   "groomed_at": "2026-08-10",
   "groomed_by": "agent:platform-steward",
@@ -19,10 +22,10 @@
   "scope": "一個 backlog lifecycle/pre-dispatch guard 與既有 backlog/orchestrator 測試回歸。",
   "severity": "high",
   "source": "Supervisor P0 contract pass",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
+  "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-10",
-  "verified_by": "agent:platform-steward",
-  "verified_evidence": "test -f ops/backlog.py && test -f ops/tests/test_backlog.py && test -f ops/tests/test_worktree_orchestrate.py && rg -n 'blocked_by|dispatch' ops/backlog.py ops/tests/test_backlog.py"
+  "verified_by": "agent:team-a-integrator",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py ops/tests/test_worktree_orchestrate.py -k 'contract_blocked_lifecycle or pre_dispatch_refuses_missing_contract_evidence'"
 }
