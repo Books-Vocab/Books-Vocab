@@ -83,15 +83,28 @@ fi
 counts=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/board" 2>/dev/null | uv run --no-project --python 3.13 python -c '
 import json, sys
 d = json.load(sys.stdin)
+assert d["schema"] == "kg.board.v2", d.get("schema")
+assert not {"dispatch", "blocked", "deferred"}.intersection(d), "v1 重複 rows 仍存在"
+required = {"id", "brief", "detail", "severity", "stream", "held", "ready",
+            "pinned", "snoozed", "rank"}
+assert all(set(row) == required for row in d["board"]), "board row 不是 compact v2"
 c = d["counts"]
 assert c["ready_definition"].startswith("KG CLI groomed clause"), c["ready_definition"]
 assert c["ready"] == len([r for r in d["board"] if r["ready"]]), "ready 計數與 board 的旗標不一致"
-assert c["dispatch"] == len(d["dispatch"]), "dispatch 計數與清單長度不一致"
-assert c["decision"]["deferred"] == len(d["deferred"]), "deferred 計數與清單長度不一致"
+assert c["dispatch"] == len(d["dispatch_ids"]), "dispatch 計數與 ID 清單長度不一致"
+assert c["decision"]["blocked"] == len(d["blocked_ids"]), "blocked 計數與 ID 清單長度不一致"
+assert c["decision"]["deferred"] == len(d["deferred_ids"]), "deferred 計數與 ID 清單長度不一致"
+assert sum(d["segments"].values()) == c["unresolved"], "segments 不是 unresolved partition"
+board_ids = {row["id"] for row in d["board"]}
+assert set(d["dispatch_ids"]) <= board_ids
+assert set(d["blocked_ids"]) <= board_ids
+assert set(d["deferred_ids"]) <= set(d["dispatch_ids"])
+assert set(d["dispatch_ids"]).isdisjoint(d["blocked_ids"])
 meta = d["dispatch_meta"]
 assert "unblocked" in meta["clauses"], meta["clauses"]
 withheld = {row["id"] for row in meta.get("withheld_blocked", [])}
-offered = {row["id"] for row in d["dispatch"]}
+assert set(d["blocked_ids"]) == withheld.intersection(board_ids), "blocked IDs 與 canonical metadata 不一致"
+offered = set(d["dispatch_ids"])
 assert not withheld.intersection(offered), "blocked_by 票流進 dispatch"
 print("%s 未解 / %s 總數 / canonical %s / mirror 後 %s / blocked %s" %
       (c["unresolved"], c["total"], c["canonical_dispatch"], c["dispatch"], len(withheld)))' 2>&1)
@@ -105,13 +118,13 @@ c = d["counts"]
 # 認領集合必須是 canonical list 的本機 ledger 與 mirror 的聯集；來源分類留在 row.held.sources。
 held_rows = [r for r in d["board"] if r.get("held")]
 held = {r["id"] for r in held_rows}
-offered = {r["id"] for r in d["dispatch"]}
+offered = set(d["dispatch_ids"])
 leak = sorted(offered.intersection(held))
 assert not leak, "派工清單含已認領：%s" % leak
 bad_sources = sorted(r["id"] for r in held_rows
                      if not set(r["held"].get("sources") or []).intersection({"local", "mirror"}))
 assert not bad_sources, "held 缺 local/mirror 來源分類：%s" % bad_sources
-assert c["dispatch"] == len(d["dispatch"]), "dispatch 計數與清單長度不一致"
+assert c["dispatch"] == len(d["dispatch_ids"]), "dispatch 計數與 ID 清單長度不一致"
 assert c["held"] == len([r for r in d["board"] if r.get("held")]), "held 計數與旗標不一致"
 # 沒有任何認領時這條斷言是空的——說出來，別讓沉默看起來像通過
 print("VACUOUS" if not held else

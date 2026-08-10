@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import inspect
 import json
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -56,6 +57,83 @@ def _capturing_handler(path: str, headers: dict[str, str] | None = None):
 
 def _response_headers(handler) -> dict[str, str]:
     return dict(handler.response_headers)
+
+
+def _near_real_board_payload(monkeypatch) -> dict:
+    entries = []
+    for index in range(99):
+        row = _ticket(f"IMP-{index:04d}", groomed=index < 80)
+        row.update(
+            brief=f"Ticket {index} " + "brief " * 12,
+            detail=f"Decision context {index} " + "detail " * 90,
+            scope="scope " * 60,
+            plan="plan " * 120,
+            acceptance="acceptance " * 40,
+            fix_site=f"ops/component_{index % 8}.py",
+            surface="kg-board",
+            source="deterministic-fixture",
+        )
+        entries.append(row)
+    dispatch_ids = [row["id"] for row in entries[:60]]
+    held = {
+        row["id"]: {"branch": f"feat/held-{index}", "claimed_at": "now"}
+        for index, row in enumerate(entries[:5])
+    }
+    blocked = [
+        {"id": row["id"], "waiting_on": ["DEPENDENCY"]}
+        for row in entries[60:80]
+    ]
+    overlay = {
+        entries[10]["id"]: {"snooze_until": "2099-01-01"},
+        entries[11]["id"]: {"snooze_until": "2099-01-01", "pinned": True, "rank": 1},
+    }
+    monkeypatch.setattr(
+        server,
+        "read_entries",
+        lambda: {
+            "entries": entries,
+            "dispatch_ids": dispatch_ids,
+            "dispatch_meta": {
+                "clauses": ["groomed", "unresolved", "unclaimed", "unblocked"],
+                "withheld_blocked": blocked,
+            },
+            "local_held": held,
+            "ungroomed_ids": [row["id"] for row in entries[80:]],
+        },
+    )
+    monkeypatch.setattr(server, "load_overlay", lambda _known: overlay)
+    monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
+    monkeypatch.setattr(server, "freshness", lambda: {"freshness_state": "current"})
+    return server.board_payload()
+
+
+def test_board_payload_v2_is_single_compact_row_set_with_id_partitions(monkeypatch):
+    payload = _near_real_board_payload(monkeypatch)
+
+    assert payload["schema"] == "kg.board.v2"
+    assert all(name not in payload for name in ("dispatch", "blocked", "deferred"))
+    assert len(payload["board"]) == 99
+    assert all(
+        set(row) == {
+            "id", "brief", "detail", "severity", "stream", "held", "ready",
+            "pinned", "snoozed", "rank",
+        }
+        for row in payload["board"]
+    )
+    assert set(payload["dispatch_ids"]) == {f"IMP-{index:04d}" for index in range(5, 60)}
+    assert set(payload["blocked_ids"]) == {f"IMP-{index:04d}" for index in range(60, 80)}
+    assert set(payload["deferred_ids"]) == {"IMP-0010", "IMP-0011"}
+    assert set(payload["dispatch_ids"]).isdisjoint(payload["blocked_ids"])
+    assert sum(payload["segments"].values()) == payload["counts"]["unresolved"] == 99
+
+
+def test_board_payload_v2_stays_within_raw_and_gzip_budgets(monkeypatch):
+    payload = _near_real_board_payload(monkeypatch)
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    compressed = gzip.compress(raw, compresslevel=6, mtime=0)
+
+    assert len(raw) < 120 * 1024
+    assert len(compressed) < 60 * 1024
 
 
 def test_board_json_gzip_negotiation_round_trips_and_significantly_shrinks(monkeypatch):
@@ -190,7 +268,8 @@ def test_active_page_is_external_assets_with_mobile_decision_ia():
     assert all(f'data-action="{action}"' in js for action in ("pin", "rank", "snooze"))
     assert 'data-action="claim"' not in js
     assert 'data-action="resolve"' not in js
-    assert 'data.dispatch.filter(row=>!row.snoozed)' in js
+    assert all(name in js for name in ("data.dispatch_ids", "data.blocked_ids"))
+    assert re.search(r"data\.(?:dispatch|blocked|deferred)(?!_)", js) is None
     assert "decision.deferred" in js
     assert "可在全部取消" in js
 
