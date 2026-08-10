@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: b3bc9b1fa
+verified_against: 18f37badc
 -->
 # Vocabulary Feature Boundary
 
