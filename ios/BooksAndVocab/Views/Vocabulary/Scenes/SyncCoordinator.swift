@@ -106,286 +106,39 @@ final class SyncCoordinator: SyncCoordinating {
         failureKind = nil
         wasCancelledByUser = false
         AppAnalytics.track(.syncStarted)
-        let syncStartTime = Date()
 
+        let adapter = KGServingVocabularySyncAdapter(base: kgService)
+        let executor: any VocabularySyncExecuting = VocabularySyncEngine()
         pipelineTask = Task { [weak self] in
             defer { self?.pipelineTask = nil }
             guard let self else { return }
-            // 部分失敗旗標宣告於 do/catch 之外:success path(do 內)與
-            // cancel/error path(catch 內)的 syncTerminalOutcome 都要讀它,
-            // 宣告在 do block 內會讓 catch 的 call site out of scope。
-            var encounteredFailure = false
-            do {
-                // Defense-in-depth Layer 2: sanitize outbox before grouping by notebook.
-                // 把指向已刪 notebook 的孤兒 entry 自動 reassign 到 default。
-                // 同時是歷史 orphan 的 in-place migration — idempotent，重複跑無副作用。
-                let sanitizedDeletedEntryIds = Self.sanitizeOutbox(
-                    pendingEntries: pendingEntries,
-                    modelContext: modelContext
-                )
 
-                // Tombstone defense: sanitize 對 orphan-delete 走 modelContext.delete()，
-                // 但舊物件引用上的 PersistentModel.isDeleted 不可作為 save 後契約。
-                // downstream filters 用 sanitize 本輪回傳的 stable entry ids 排除幽靈 entry。
-                let queuedDeletes = pendingEntries.filter {
-                    !sanitizedDeletedEntryIds.contains($0.id)
-                        && $0.syncAction == .delete
-                        && $0.shouldUploadOnNextSync
+            let result = await executor.execute(
+                pendingEntries: pendingEntries,
+                modelContext: modelContext,
+                service: adapter,
+                emit: { [weak self] event in
+                    self?.project(event)
                 }
-                // 字典卡不能走 legacy word-based delete — 見 partitionDeletesByRole。
-                let (deletes, dictionaryDeletes) = Self.partitionDeletesByRole(queuedDeletes)
-                let adds = pendingEntries.filter {
-                    !sanitizedDeletedEntryIds.contains($0.id)
-                        && $0.syncAction == .add
-                        && $0.shouldUploadOnNextSync
-                }
+            )
 
-                if !queuedDeletes.isEmpty {
-                    self.updateStep("upload_delete", status: .running, total: queuedDeletes.count)
-                    queuedDeletes.forEach { $0.prepareForRetryAttempt() }
-
-                    // Group by notebook and batch-delete
-                    let groupedDeletes = Dictionary(grouping: deletes, by: \.notebookId)
-                    var deleted = 0
-                    var failedWords: [String] = []
-
-                    for (nbId, entries) in groupedDeletes {
-                        if Task.isCancelled { break }
-                        let words = entries.map(\.word)
-                        do {
-                            let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
-                            let outcome = Self.applyBatchDeleteResponse(
-                                response: response, entries: entries, modelContext: modelContext
-                            )
-                            deleted += outcome.deleted
-                            failedWords.append(contentsOf: outcome.failedWords)
-                            self.updateStep("upload_delete", status: .running, current: deleted, total: queuedDeletes.count)
-                        } catch {
-                            // Batch failed — fallback to per-word delete
-                            if Task.isCancelled { break }
-                            for entry in entries {
-                                if Task.isCancelled { break }
-                                do {
-                                    try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
-                                    modelContext.delete(entry)
-                                    deleted += 1
-                                    self.updateStep("upload_delete", status: .running, current: deleted, total: queuedDeletes.count)
-                                } catch {
-                                    if Task.isCancelled { break }
-                                    entry.markSyncFailed()
-                                    encounteredFailure = true
-                                    failedWords.append(entry.word)
-                                }
-                            }
-                        }
-                    }
-
-                    if !dictionaryDeletes.isEmpty && !Task.isCancelled {
-                        // Peers = every local row, not just the outbox: a card holding a
-                        // link to the deleted dictionary node is usually itself synced,
-                        // so `pendingEntries` would miss it and leave a dangling edge
-                        // until some later pull happened to refresh that row.
-                        let peers = (try? modelContext.fetch(FetchDescriptor<VocabularyEntry>()))
-                            ?? pendingEntries
-                        let outcome = await Self.drainDictionaryDeletes(
-                            dictionaryDeletes,
-                            peers: peers,
-                            modelContext: modelContext
-                        ) { cardID, notebookID in
-                            try await kgService.deleteDictionaryCard(cardId: cardID, notebookId: notebookID)
-                        }
-                        deleted += outcome.deleted
-                        failedWords.append(contentsOf: outcome.failedWords)
-                        self.updateStep("upload_delete", status: .running, current: deleted, total: queuedDeletes.count)
-                    }
-
-                    if !failedWords.isEmpty { encounteredFailure = true }
-                    modelContext.safeSave()
-
-                    if failedWords.isEmpty {
-                        self.updateStep(
-                            "upload_delete",
-                            status: .done,
-                            current: deleted,
-                            total: deleted,
-                            detail: L10n.format("已刪除 %@ 個單字", "\(deleted)")
-                        )
-                    } else {
-                        self.updateStep(
-                            "upload_delete",
-                            status: .error,
-                            current: deleted,
-                            total: queuedDeletes.count,
-                            detail: L10n.format("部分失敗: %@", failedWords.joined(separator: ", "))
-                        )
-                    }
-                }
-
-                if !adds.isEmpty {
-                    self.updateStep("upload_add", status: .running, total: adds.count)
-
-                    let grouped = Dictionary(grouping: adds, by: \.notebookId)
-                    var totalCreated = 0
-                    var totalSkipped = 0
-                    var batchFailed = false
-
-                    for (nbId, entries) in grouped {
-                        do {
-                            entries.forEach { $0.prepareForRetryAttempt() }
-                            let response = try await kgService.batchAdd(entries: entries, notebookId: nbId)
-
-                            Self.convergeAddedEntries(response: response, entries: entries)
-                            totalCreated += response.created
-                            totalSkipped += response.skipped
-                        } catch {
-                            entries.forEach { $0.markSyncFailed() }
-                            encounteredFailure = true
-                            batchFailed = true
-                        }
-                    }
-                    modelContext.safeSave()
-
-                    if batchFailed {
-                        let failedCount = adds.filter(\.isFailed).count
-                        self.updateStep(
-                            "upload_add",
-                            status: .error,
-                            current: adds.count - failedCount,
-                            total: adds.count,
-                            detail: L10n.format("部分上傳失敗（%@ 筆）", "\(failedCount)")
-                        )
-                    } else {
-                        self.updateStep(
-                            "upload_add",
-                            status: .done,
-                            current: adds.count,
-                            total: adds.count,
-                            detail: L10n.format("%@ 新增, %@ 已存在", "\(totalCreated)", "\(totalSkipped)")
-                        )
-                    }
-                }
-
-                // Defense-in-depth Layer 3: per-notebook trigger isolation.
-                // 一個 notebook 的 trigger 失敗（例：notebook 已被刪 → 403）絕不能
-                // 拖累其他 notebook 的 pipeline 觸發。今日事故的直接原因就是
-                // `for nbId in notebookIds { try await ... }` 是 fail-fast，
-                // 4205d6bed3ed 先 throw 後 default 的 trigger 永遠跑不到。
-                // 委派 `triggerPipelinesIsolated` 讓測試與 production 共享同一份邏輯。
-                self.updateStep("trigger", status: .running)
-                let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
-                let notebookIds = affectedNotebookIds.isEmpty
-                    ? ["default"]
-                    : affectedNotebookIds.sorted()  // deterministic order for log triage
-                let triggerFailures = await Self.triggerPipelinesIsolated(
-                    notebookIds: notebookIds
-                ) { nbId in
-                    try await kgService.triggerPipeline(notebookId: nbId)
-                }
-                if triggerFailures.isEmpty {
-                    self.updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
-                } else {
-                    encounteredFailure = true
-                    self.updateStep(
-                        "trigger",
-                        status: .error,
-                        detail: L10n.format("部分通知失敗: %@", triggerFailures.joined(separator: ", "))
-                    )
-                }
-
-                // Push review state + review events before pull
-                self.updateStep("push_review", status: .running)
-                do {
-                    let result = try await kgService.pushReviewStates(container: modelContext.container)
-                    _ = try await kgService.pushReviewEvents(container: modelContext.container)
-                    self.updateStep("push_review", status: .done, detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)"))
-                } catch {
-                    encounteredFailure = true
-                    self.updateStep("push_review", status: .error, detail: error.localizedDescription)
-                }
-
-                self.updateStep("pull", status: .running, detail: L10n.string("正在下載單字..."))
-                var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
-                    Task { @MainActor in
-                        guard let self else { return }
-                        // The progress closure fires off ordering-free unstructured
-                        // Tasks; a stale lower `current` can land after a newer higher
-                        // one and rewind the count (SyncPresenter animates `step.current`,
-                        // making the regression a visible bounce-back). Drop any callback
-                        // that would move this pull's count backward. The guard lives
-                        // here — NOT in updateStep — because updateStep is shared by every
-                        // step's start/reset/retry paths that legitimately set current=0.
-                        if let idx = self.steps.firstIndex(where: { $0.id == "pull" }),
-                           current < self.steps[idx].current {
-                            return
-                        }
-                        self.updateStep("pull", status: .running, current: current, total: total, detail: detail)
-                    }
-                }, notebookId: nil).pipelinePending
-
-                let backoff = syncPipelinePendingBackoffSeconds
-                var retryCount = 0
-                while pipelinePending && retryCount < backoff.count {
-                    let waitSeconds = backoff[retryCount]
-                    retryCount += 1
-                    self.updateStep(
-                        "pull",
-                        status: .running,
-                        detail: L10n.format("等待 AI 處理完成（%@/%@）...", "\(retryCount)", "\(backoff.count)")
-                    )
-                    try await Task.sleep(for: .seconds(waitSeconds))
-                    if Task.isCancelled { break }
-                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil).pipelinePending
-                }
-
-                // Also pull review events from server
-                try await kgService.pullReviewEvents(container: modelContext.container)
-
-                self.updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地單字已建立完成"))
-                let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
-                // cancel 可能讓 pipeline 走 break 正常結束(未拋)而落到這裡;
-                // 若不守旗標,success path 會把 cancelSync() 設好的 .cancelled
-                // 覆寫成 .partial/.completed。
-                switch syncTerminalOutcome(
-                    wasCancelled: self.wasCancelledByUser,
-                    thrownError: false,
-                    encounteredFailure: encounteredFailure
-                ) {
-                case .keepCancelled:
-                    break  // cancelSync() 已設 .cancelled,不動
-                case .partial:
-                    self.summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
-                    self.failureKind = .partial
-                    self.phase = .failed
-                    AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .partial))
-                case .completed:
-                    self.phase = .completed
-                    await SyncPendingTip.syncCompleted.donate()
-                    SyncPendingTip().invalidate(reason: .actionPerformed)
-                    AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .success))
-                case .fullFailure:
-                    break  // success path 不會回 .fullFailure(thrownError=false)
-                }
-            } catch {
-                let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
-                // cancel 後下一個 try await 拋 CancellationError 會落到這裡。
-                // 不守旗標就會把 .cancelled 覆寫成泛型 .full(CancellationError
-                // 的 localizedDescription ≈「操作無法完成」,誤導使用者以為崩潰)。
-                // 非 cancel 的真實錯誤 wasCancelledByUser==false → 正常進 .full。
-                switch syncTerminalOutcome(
-                    wasCancelled: self.wasCancelledByUser,
-                    thrownError: true,
-                    encounteredFailure: encounteredFailure
-                ) {
-                case .keepCancelled:
-                    break  // cancelSync() 已設 .cancelled,不覆寫
-                case .fullFailure:
-                    self.summaryText = error.localizedDescription
-                    self.failureKind = .full
-                    self.phase = .failed
-                    AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .failed))
-                case .partial, .completed:
-                    break  // catch path 一律回 .keepCancelled 或 .fullFailure
-                }
+            switch result.terminalOutcome {
+            case .keepCancelled:
+                break
+            case .partial:
+                self.summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
+                self.failureKind = .partial
+                self.phase = .failed
+                AppAnalytics.track(.syncCompleted(durationMs: result.durationMs, outcome: .partial))
+            case .completed:
+                self.phase = .completed
+                await SyncPendingTip.syncCompleted.donate()
+                SyncPendingTip().invalidate(reason: .actionPerformed)
+                AppAnalytics.track(.syncCompleted(durationMs: result.durationMs, outcome: .success))
+            case .fullFailure:
+                self.failureKind = .full
+                self.phase = .failed
+                AppAnalytics.track(.syncCompleted(durationMs: result.durationMs, outcome: .failed))
             }
         }
     }
@@ -622,6 +375,17 @@ final class SyncCoordinator: SyncCoordinating {
             }
         }
         return failures
+    }
+
+    private func project(_ event: VocabularySyncEvent) {
+        switch event {
+        case .stepStarted(let id):
+            updateStep(id, status: .running)
+        case .stepProgress(let id, let current, let total, let detail):
+            updateStep(id, status: .running, current: current, total: total, detail: detail)
+        case .stepFinished(let id, let status, let detail):
+            updateStep(id, status: status, detail: detail)
+        }
     }
 
     private func updateStep(
