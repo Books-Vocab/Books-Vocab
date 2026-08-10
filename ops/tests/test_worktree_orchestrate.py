@@ -5561,6 +5561,40 @@ def test_open_next_backlog_claims_the_next_available_ticket_instead_of_racing_on
     assert {r["backlog"][0] for r in active} == {"IMP-0001", "IMP-0002"}
 
 
+def test_next_backlog_uses_its_owning_repo_for_contract_preflight(tmp_path):
+    repo = tmp_path / "external-repo"
+    store = repo / "docs" / "runbook" / "backlog"
+    (repo / "ops").mkdir(parents=True)
+    (repo / "ops" / "d4d05e_next_fix.py").write_text("# fix\n", encoding="utf-8")
+    (repo / "ops" / "d4d05e_next_test.py").write_text("# test\n", encoding="utf-8")
+    store.mkdir(parents=True)
+    ticket = "IMP-20260810-abc123"
+    (store / f"{ticket}.json").write_text(json.dumps({
+        "schema": "kg.backlog.entry.v1", "id": ticket, "status": "triaged",
+        "stream": "IMP", "severity": "med", "category": "tool",
+        "date": "2026-08-10", "source": "test", "detail": "external next",
+        "brief": "external dispatch contract", "scope": "small test-only guard",
+        "plan": "run the guard", "acceptance": "red then green",
+        "acceptance_cmd": "test -f ops/d4d05e_next_test.py",
+        "acceptance_expect_rc": 0, "fix_site": "ops/d4d05e_next_fix.py:1",
+        "groomed_at": "2026-08-10", "groomed_by": "test",
+        "contract_status": "ready", "contract_baseline": "red",
+        "contract_checked_at": "2026-08-10", "contract_checked_by": "test",
+        "contract_evidence": "fix_site=pass; dependency=pass; baseline=RED",
+    }), encoding="utf-8")
+    state = str(tmp_path / "registry.json")
+    worktree = repo / ".claude" / "worktrees" / "external-next"
+    worktree.parent.mkdir(parents=True)
+
+    rc, _claim, claimed, _selection = MODULE._claim_next_backlog(
+        root=repo, state_arg=state, path=worktree,
+        branch="feat/external-next", intent="external next", base="main",
+    )
+
+    assert rc == MODULE.EXIT_OK
+    assert claimed == [ticket]
+
+
 @gitmark
 def test_parallel_next_backlog_claims_are_distinct_inside_the_ledger_critical_section(
         scratch):

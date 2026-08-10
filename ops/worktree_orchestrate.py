@@ -494,7 +494,7 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
             # `store_dir` is <repo>/docs/runbook/backlog on real claims and the
             # same relative shape in scratch claim tests; derive the checkout
             # instead of reaching for the caller's cwd.
-            repo = store_dir.resolve().parents[2]
+            repo = backlog_tool.owning_repo_for_store(store_dir)
             contract_problems = backlog_tool.contract_preflight(payload, repo=repo)
             if contract_problems:
                 problems.append({
@@ -566,8 +566,9 @@ def _claim_next_backlog(
         held = _held_from_registry_state(state)
         # One definition of dispatch, not a local approximation. The unheld view
         # provides the skipped count that makes contention visible to the caller.
-        ranked = backlog_tool.list_entries(store, dispatch=True, held={})
-        available = backlog_tool.list_entries(store, dispatch=True, held=held)
+        repo = backlog_tool.owning_repo_for_store(store)
+        ranked = backlog_tool.list_entries(store, dispatch=True, held={}, repo=repo)
+        available = backlog_tool.list_entries(store, dispatch=True, held=held, repo=repo)
         if not available:
             return (
                 EXIT_BLOCK,

@@ -5802,6 +5802,14 @@ def test_lifecycle_is_a_machine_readable_contract_not_tribal_knowledge(capsys):
     assert acts["dispatch"]["writes_store"] is False
     assert "optimistic" in acts["dispatch"]["held_scope"].lower()
     assert "snooze" in acts["dispatch"]["snooze_scope"].lower()
+    assert "contract-ready" in payload["dispatch_requirements"]
+    assert payload["contract_blocked"]["status"] == "contract-blocked"
+    assert payload["contract_blocked"]["verdict"] == "CONTRACT-BLOCKED"
+    assert payload["contract_preflight"]["guard"] == "contract_preflight"
+    assert set(payload["contract_preflight"]["required_fields"]) >= {
+        "contract_status", "contract_baseline", "contract_checked_at",
+        "contract_checked_by", "contract_evidence",
+    }
     assert set(acts["close"]["branches"]) == {"single", "wave", "decline"}
     assert payload["terminal_statuses"] == ["fixed", "wont-fix"]
 
@@ -6041,6 +6049,23 @@ def test_contract_blocked_lifecycle(tmp_path):
     assert BACKLOG.contract_preflight(loaded, repo=tmp_path)
 
 
+@pytest.mark.parametrize("missing_field", ["contract_checked_at", "contract_checked_by"])
+def test_contract_preflight_requires_attributed_contract_check(tmp_path, missing_field):
+    repo = tmp_path
+    store = repo / "s"
+    entry_id = _contract_ticket(store, repo)
+    payload = BACKLOG.load_entry(store, entry_id)
+    payload.pop(missing_field)
+
+    problems = BACKLOG.contract_preflight(payload, repo=repo)
+
+    assert {
+        (problem["kind"], problem.get("field"))
+        for problem in problems
+        if problem["kind"] == "contract-check-metadata-missing"
+    } == {("contract-check-metadata-missing", missing_field)}
+
+
 def test_pre_dispatch_refuses_missing_contract_evidence(tmp_path):
     repo = tmp_path
     store = repo / "s"
@@ -6079,6 +6104,29 @@ def test_complete_contract_ticket_is_dispatchable(tmp_path):
     assert BACKLOG.contract_preflight(loaded, repo=repo) == []
     assert entry_id in [p["id"] for p in BACKLOG.list_entries(
         store, dispatch=True, held={}, repo=repo)]
+
+
+def test_dispatch_store_uses_its_owning_repo_for_contract_preflight(
+        tmp_path, capsys, monkeypatch):
+    repo = tmp_path / "external-repo"
+    store = repo / "docs" / "runbook" / "backlog"
+    (repo / "ops").mkdir(parents=True)
+    (repo / "ops" / "d4d05e_external_fix.py").write_text("# fix\n", encoding="utf-8")
+    (repo / "ops" / "d4d05e_external_test.py").write_text("# test\n", encoding="utf-8")
+    entry_id = _contract_ticket(
+        store, repo,
+        fix_site="ops/d4d05e_external_fix.py:1",
+        acceptance_cmd="test -f ops/d4d05e_external_test.py",
+    )
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+
+    direct_ids = [p["id"] for p in BACKLOG.list_entries(
+        store, dispatch=True, held={}, repo=repo)]
+    assert direct_ids == [entry_id]
+
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
+    cli_ids = [p["id"] for p in json.loads(capsys.readouterr().out)["entries"]]
+    assert cli_ids == direct_ids
 
 
 def test_blocking_graph_validation_distinguishes_legal_edges_cycles_and_unknowns(tmp_path):
