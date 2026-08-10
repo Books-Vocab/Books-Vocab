@@ -1,0 +1,306 @@
+import Foundation
+import SwiftData
+
+/// The narrow transport/persistence surface used by the explicit vocabulary sync.
+/// Keeping it separate from `KGServing` makes the whole pipeline independently testable.
+@MainActor
+protocol VocabularySyncEngineServing: AnyObject {
+    func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
+    func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse
+    func deleteCard(word: String, notebookId: String) async throws
+    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard
+    func triggerPipeline(notebookId: String) async throws
+    func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
+    func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int)
+    func pullCardsToLocal(
+        container: ModelContainer,
+        progress: ((String, Int, Int) -> Void)?,
+        notebookId: String?
+    ) async throws -> KGPullOutcome
+    func pullReviewEvents(container: ModelContainer) async throws
+}
+
+/// Typed output from the sync engine. The coordinator owns presentation only.
+enum VocabularySyncEvent {
+    case stepStarted(String)
+    case stepProgress(String, current: Int, total: Int, detail: String)
+    case stepFinished(String, status: PipelineStep.StepStatus, detail: String)
+}
+
+struct VocabularySyncResult {
+    let terminalOutcome: SyncTerminalOutcome
+    let durationMs: Int
+}
+
+@MainActor
+protocol VocabularySyncExecuting: AnyObject {
+    func execute(
+        pendingEntries: [VocabularyEntry],
+        modelContext: ModelContext,
+        service: any VocabularySyncEngineServing,
+        emit: @escaping (VocabularySyncEvent) -> Void
+    ) async -> VocabularySyncResult
+}
+
+/// Owns the transport, outbox mutation and persistence ordering for an explicit vocab sync.
+@MainActor
+final class VocabularySyncEngine: VocabularySyncExecuting {
+    func execute(
+        pendingEntries: [VocabularyEntry],
+        modelContext: ModelContext,
+        service: any VocabularySyncEngineServing,
+        emit: @escaping (VocabularySyncEvent) -> Void
+    ) async -> VocabularySyncResult {
+        let start = Date()
+        var encounteredFailure = false
+
+        do {
+            let sanitizedDeletedEntryIds = SyncCoordinator.sanitizeOutbox(
+                pendingEntries: pendingEntries,
+                modelContext: modelContext
+            )
+            let queuedDeletes = pendingEntries.filter {
+                !sanitizedDeletedEntryIds.contains($0.id)
+                    && $0.syncAction == .delete
+                    && $0.shouldUploadOnNextSync
+            }
+            let (deletes, dictionaryDeletes) = SyncCoordinator.partitionDeletesByRole(queuedDeletes)
+            let adds = pendingEntries.filter {
+                !sanitizedDeletedEntryIds.contains($0.id)
+                    && $0.syncAction == .add
+                    && $0.shouldUploadOnNextSync
+            }
+
+            if !queuedDeletes.isEmpty {
+                emit(.stepStarted("upload_delete"))
+                queuedDeletes.forEach { $0.prepareForRetryAttempt() }
+                let groupedDeletes = Dictionary(grouping: deletes, by: \.notebookId)
+                var deleted = 0
+                var failedWords: [String] = []
+
+                for (notebookId, entries) in groupedDeletes {
+                    if Task.isCancelled { return cancelledResult(since: start) }
+                    do {
+                        let response = try await service.batchDeleteCards(
+                            words: entries.map(\.word), notebookId: notebookId
+                        )
+                        let outcome = SyncCoordinator.applyBatchDeleteResponse(
+                            response: response, entries: entries, modelContext: modelContext
+                        )
+                        deleted += outcome.deleted
+                        failedWords.append(contentsOf: outcome.failedWords)
+                        emit(.stepProgress("upload_delete", current: deleted, total: queuedDeletes.count, detail: ""))
+                    } catch {
+                        // Batch failure is recoverable: retry each learning card individually.
+                        for entry in entries {
+                            if Task.isCancelled { return cancelledResult(since: start) }
+                            do {
+                                try await service.deleteCard(word: entry.word, notebookId: entry.notebookId)
+                                modelContext.delete(entry)
+                                deleted += 1
+                                emit(.stepProgress("upload_delete", current: deleted, total: queuedDeletes.count, detail: ""))
+                            } catch {
+                                if Task.isCancelled { return cancelledResult(since: start) }
+                                entry.markSyncFailed()
+                                encounteredFailure = true
+                                failedWords.append(entry.word)
+                            }
+                        }
+                    }
+                }
+
+                if !dictionaryDeletes.isEmpty && !Task.isCancelled {
+                    let peers = (try? modelContext.fetch(FetchDescriptor<VocabularyEntry>())) ?? pendingEntries
+                    let outcome = await SyncCoordinator.drainDictionaryDeletes(
+                        dictionaryDeletes,
+                        peers: peers,
+                        modelContext: modelContext
+                    ) { cardID, notebookId in
+                        try await service.deleteDictionaryCard(cardId: cardID, notebookId: notebookId)
+                    }
+                    deleted += outcome.deleted
+                    failedWords.append(contentsOf: outcome.failedWords)
+                }
+
+                if !failedWords.isEmpty { encounteredFailure = true }
+                modelContext.safeSave()
+                if failedWords.isEmpty {
+                    emit(.stepFinished(
+                        "upload_delete", status: .done,
+                        detail: L10n.format("已刪除 %@ 個單字", "\(deleted)")
+                    ))
+                } else {
+                    emit(.stepFinished(
+                        "upload_delete", status: .error,
+                        detail: L10n.format("部分失敗: %@", failedWords.joined(separator: ", "))
+                    ))
+                }
+            }
+
+            if !adds.isEmpty {
+                emit(.stepStarted("upload_add"))
+                let groupedAdds = Dictionary(grouping: adds, by: \.notebookId)
+                var totalCreated = 0
+                var totalSkipped = 0
+                var batchFailed = false
+                for (notebookId, entries) in groupedAdds {
+                    if Task.isCancelled { return cancelledResult(since: start) }
+                    do {
+                        entries.forEach { $0.prepareForRetryAttempt() }
+                        let response = try await service.batchAdd(entries: entries, notebookId: notebookId)
+                        SyncCoordinator.convergeAddedEntries(response: response, entries: entries)
+                        totalCreated += response.created
+                        totalSkipped += response.skipped
+                    } catch is CancellationError {
+                        return cancelledResult(since: start)
+                    } catch {
+                        entries.forEach { $0.markSyncFailed() }
+                        encounteredFailure = true
+                        batchFailed = true
+                    }
+                }
+                modelContext.safeSave()
+                if batchFailed {
+                    let failedCount = adds.filter(\.isFailed).count
+                    emit(.stepFinished(
+                        "upload_add", status: .error,
+                        detail: L10n.format("部分上傳失敗（%@ 筆）", "\(failedCount)")
+                    ))
+                } else {
+                    emit(.stepFinished(
+                        "upload_add", status: .done,
+                        detail: L10n.format("%@ 新增, %@ 已存在", "\(totalCreated)", "\(totalSkipped)")
+                    ))
+                }
+            }
+
+            emit(.stepStarted("trigger"))
+            let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
+            let notebookIds = affectedNotebookIds.isEmpty ? ["default"] : affectedNotebookIds.sorted()
+            let triggerFailures = await SyncCoordinator.triggerPipelinesIsolated(notebookIds: notebookIds) {
+                try await service.triggerPipeline(notebookId: $0)
+            }
+            if triggerFailures.isEmpty {
+                emit(.stepFinished("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理")))
+            } else {
+                encounteredFailure = true
+                emit(.stepFinished(
+                    "trigger", status: .error,
+                    detail: L10n.format("部分通知失敗: %@", triggerFailures.joined(separator: ", "))
+                ))
+            }
+
+            emit(.stepStarted("push_review"))
+            do {
+                let result = try await service.pushReviewStates(container: modelContext.container)
+                _ = try await service.pushReviewEvents(container: modelContext.container)
+                emit(.stepFinished(
+                    "push_review", status: .done,
+                    detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)")
+                ))
+            } catch is CancellationError {
+                return cancelledResult(since: start)
+            } catch {
+                encounteredFailure = true
+                emit(.stepFinished("push_review", status: .error, detail: error.localizedDescription))
+            }
+
+            emit(.stepProgress("pull", current: 0, total: 0, detail: L10n.string("正在下載單字...")))
+            var pipelinePending = try await service.pullCardsToLocal(
+                container: modelContext.container,
+                progress: { detail, current, total in
+                    emit(.stepProgress("pull", current: current, total: total, detail: detail))
+                },
+                notebookId: nil
+            ).pipelinePending
+
+            var retryCount = 0
+            while pipelinePending && retryCount < syncPipelinePendingBackoffSeconds.count {
+                retryCount += 1
+                emit(.stepProgress(
+                    "pull", current: 0, total: 0,
+                    detail: L10n.format(
+                        "等待 AI 處理完成（%@/%@）...",
+                        "\(retryCount)", "\(syncPipelinePendingBackoffSeconds.count)"
+                    )
+                ))
+                try await Task.sleep(for: .seconds(syncPipelinePendingBackoffSeconds[retryCount - 1]))
+                if Task.isCancelled { return cancelledResult(since: start) }
+                pipelinePending = try await service.pullCardsToLocal(
+                    container: modelContext.container, progress: nil, notebookId: nil
+                ).pipelinePending
+            }
+
+            try await service.pullReviewEvents(container: modelContext.container)
+            emit(.stepFinished("pull", status: .done, detail: L10n.string("本地單字已建立完成")))
+            let outcome = syncTerminalOutcome(
+                wasCancelled: Task.isCancelled,
+                thrownError: false,
+                encounteredFailure: encounteredFailure
+            )
+            return VocabularySyncResult(terminalOutcome: outcome, durationMs: elapsedMilliseconds(since: start))
+        } catch is CancellationError {
+            return cancelledResult(since: start)
+        } catch {
+            return VocabularySyncResult(terminalOutcome: .fullFailure, durationMs: elapsedMilliseconds(since: start))
+        }
+    }
+
+    private func cancelledResult(since start: Date) -> VocabularySyncResult {
+        VocabularySyncResult(terminalOutcome: .keepCancelled, durationMs: elapsedMilliseconds(since: start))
+    }
+
+    private func elapsedMilliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
+    }
+}
+
+/// Adapter keeps the engine independent from the large `KGServing` surface.
+@MainActor
+final class KGServingVocabularySyncAdapter: VocabularySyncEngineServing {
+    let base: any KGServing
+
+    init(base: any KGServing) {
+        self.base = base
+    }
+
+    func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse {
+        try await base.batchAdd(entries: entries, notebookId: notebookId)
+    }
+
+    func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse {
+        try await base.batchDeleteCards(words: words, notebookId: notebookId)
+    }
+
+    func deleteCard(word: String, notebookId: String) async throws {
+        try await base.deleteCard(word: word, notebookId: notebookId)
+    }
+
+    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard {
+        try await base.deleteDictionaryCard(cardId: cardId, notebookId: notebookId)
+    }
+
+    func triggerPipeline(notebookId: String) async throws {
+        try await base.triggerPipeline(notebookId: notebookId)
+    }
+
+    func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) {
+        try await base.pushReviewStates(container: container)
+    }
+
+    func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int) {
+        try await base.pushReviewEvents(container: container)
+    }
+
+    func pullCardsToLocal(
+        container: ModelContainer,
+        progress: ((String, Int, Int) -> Void)?,
+        notebookId: String?
+    ) async throws -> KGPullOutcome {
+        try await base.pullCardsToLocal(container: container, progress: progress, notebookId: notebookId)
+    }
+
+    func pullReviewEvents(container: ModelContainer) async throws {
+        try await base.pullReviewEvents(container: container)
+    }
+}
