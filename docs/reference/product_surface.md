@@ -54,7 +54,7 @@ verified_against: 5b45fd186
 
 ## KG 懸賞板（`ops/kg_board`）
 
-- **手機優先的當前決策看板**：單一動態高度 sticky shell 固定 trust strip +「現在／阻塞／進行中／全部」；canonical `backlog.py list/dispatch` 提供梳理／阻塞／本機認領分類，再與跨機 mirror claims 合併。核心指標為可開始／進行中／被阻擋／待梳理；個人延後不改 canonical 可開始數，「現在」隱藏延後票並具名延後量，「全部」仍可取消延後。每張票只允許釘選、排序、延後，不提供認領或結案。瀏覽器寫 `POST /api/priority` 使用程序短期同源 CSRF + configured Host allowlist；主機 mirror 寫入仍使用長期 Bearer，長期 token 不進頁面。
+- **Admin 唯讀工作流觀測面**：桌面版以 Admin 導航、指標、Git/worktree DAG 與雙欄票卡呈現；手機版收斂為單欄、可橫向瀏覽的 tree 與折疊票卡。上方 Git tree 顯示所有 mirror 提供的 refs/worktrees 與所有可達 commit，節點 hover/focus/click 顯示 author、時間、parents、diff stats、檔案與 branch；下方票卡預設折疊，只顯示白話摘要，展開後查看 scope/plan/fix site/acceptance。`/api/board`、`/api/history`、`/api/git-tree` 全為唯讀；排序、釘選、延後與 `/api/priority` browser write surface 已移除。主機 mirror 仍以 Bearer 寫入 claims、sync-state、git-tree，長期 token 不進頁面；tree incomplete/stale 時 UI 必須明示資料不完整或不新鮮。
 
 ## Backend (`backend/src/kg`)
 
