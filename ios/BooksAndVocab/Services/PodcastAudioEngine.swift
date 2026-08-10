@@ -4,6 +4,12 @@ import AVFoundation
 import MediaPlayer
 #endif
 
+enum PodcastSeekPolicy {
+    static func clamp(_ time: TimeInterval, duration: TimeInterval) -> TimeInterval {
+        max(0, duration > 0 ? min(time, duration) : time)
+    }
+}
+
 /// Streams podcast audio via AVPlayer (HTTP Range requests under the hood).
 /// Replaces the previous AVAudioEngine implementation which required the full file
 /// to be downloaded before playback could begin.
@@ -294,7 +300,7 @@ final class PodcastAudioEngine: NSObject {
 
     func seek(to time: TimeInterval, autoResume: Bool) {
         guard let p = player else { return }
-        let clamped = max(0, duration > 0 ? min(time, duration) : time)
+        let clamped = PodcastSeekPolicy.clamp(time, duration: duration)
         AppCrashReporting.addBreadcrumb(
             category: "audio",
             message: "audio.seek",

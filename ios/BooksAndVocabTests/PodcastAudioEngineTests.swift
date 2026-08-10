@@ -189,33 +189,24 @@ struct PodcastAudioEngineTests {
 
     // MARK: - seek clamp boundary arithmetic
 
-    /// Mirror of the production clamp in `PodcastAudioEngine.seek(to:autoResume:)`:
-    /// `max(0, duration > 0 ? min(time, duration) : time)`.
-    /// Re-implemented here because the real method is unreachable without a live
-    /// `AVPlayer`; the boundary behaviour is load-bearing (end-of-episode scrubber
-    /// alignment, negative-seek defence) so it is pinned explicitly.
-    private func clampSeek(_ time: TimeInterval, duration: TimeInterval) -> TimeInterval {
-        max(0, duration > 0 ? min(time, duration) : time)
-    }
-
     @Test func seekClamp_negativeTimeClampsToZero() {
-        #expect(clampSeek(-10, duration: 120) == 0, "seeking before the start pins to 0")
+        #expect(PodcastSeekPolicy.clamp(-10, duration: 120) == 0, "seeking before the start pins to 0")
     }
 
     @Test func seekClamp_beyondDurationClampsToDuration() {
-        #expect(clampSeek(999, duration: 120) == 120, "seeking past the end pins to file end")
+        #expect(PodcastSeekPolicy.clamp(999, duration: 120) == 120, "seeking past the end pins to file end")
     }
 
     @Test func seekClamp_withinRangeIsUnchanged() {
-        #expect(clampSeek(45, duration: 120) == 45)
-        #expect(clampSeek(0, duration: 120) == 0)
-        #expect(clampSeek(120, duration: 120) == 120)
+        #expect(PodcastSeekPolicy.clamp(45, duration: 120) == 45)
+        #expect(PodcastSeekPolicy.clamp(0, duration: 120) == 0)
+        #expect(PodcastSeekPolicy.clamp(120, duration: 120) == 120)
     }
 
     @Test func seekClamp_unknownDurationKeepsNonNegativeTime() {
         // duration == 0 means metadata hasn't loaded yet: a forward seek is kept
         // as-is (no ceiling), but a negative seek is still floored at 0.
-        #expect(clampSeek(75, duration: 0) == 75)
-        #expect(clampSeek(-5, duration: 0) == 0)
+        #expect(PodcastSeekPolicy.clamp(75, duration: 0) == 75)
+        #expect(PodcastSeekPolicy.clamp(-5, duration: 0) == 0)
     }
 }

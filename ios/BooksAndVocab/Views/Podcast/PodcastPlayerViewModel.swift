@@ -47,6 +47,47 @@ enum PodcastSubtitleLoadState: Equatable {
     case unavailable
 }
 
+@MainActor
+protocol PodcastAudioPlaying: AnyObject {
+    var playbackRate: Float { get }
+    var duration: TimeInterval { get }
+    var currentTime: TimeInterval { get }
+    var isPlaying: Bool { get }
+
+    var onTimeUpdate: ((TimeInterval) -> Void)? { get set }
+    var onPlaybackFinished: (() -> Void)? { get set }
+    var onDurationLoaded: ((TimeInterval) -> Void)? { get set }
+    var onReadyToPlay: (() -> Void)? { get set }
+    var onLoadFailed: ((String) -> Void)? { get set }
+    var onBufferedEndChanged: ((TimeInterval) -> Void)? { get set }
+    var onSystemPause: (() -> Void)? { get set }
+    var onSystemResume: (() -> Void)? { get set }
+
+    func loadAudio(
+        url: URL,
+        httpHeaders: [String: String],
+        prefetchedDuration: TimeInterval?
+    )
+    func configureNowPlaying(title: String, artist: String)
+    func play()
+    func pause()
+    func stop()
+    func shutdown()
+    func seek(to time: TimeInterval, autoResume: Bool)
+    func setRate(_ rate: Float)
+}
+
+@MainActor
+protocol PodcastSubtitling: AnyObject {
+    var sentences: [PodcastSentence] { get }
+
+    func load(srtContent: String)
+    func currentSentence(at time: TimeInterval) -> PodcastSentence?
+}
+
+extension PodcastAudioEngine: PodcastAudioPlaying {}
+extension PodcastSubtitleEngine: PodcastSubtitling {}
+
 enum SleepTimerMode: Hashable {
     case off
     case minutes(Int)
@@ -125,9 +166,9 @@ final class PodcastPlayerViewModel {
     private(set) var explainTapTick: Int = 0
 
     @ObservationIgnored
-    private let audioEngine = PodcastAudioEngine()
+    private let audioEngine: any PodcastAudioPlaying
     @ObservationIgnored
-    private let subtitleEngine = PodcastSubtitleEngine()
+    private let subtitleEngine: any PodcastSubtitling
     @ObservationIgnored
     private var sleepTimerSource: DispatchSourceTimer?
 
@@ -135,8 +176,14 @@ final class PodcastPlayerViewModel {
         sleepTimerSource?.cancel()
     }
 
-    init(hostNames: [String]) {
+    init(
+        hostNames: [String],
+        audioEngine: any PodcastAudioPlaying = PodcastAudioEngine(),
+        subtitleEngine: any PodcastSubtitling = PodcastSubtitleEngine()
+    ) {
         self.hostNames = hostNames
+        self.audioEngine = audioEngine
+        self.subtitleEngine = subtitleEngine
         audioEngine.onTimeUpdate = { [weak self] time in
             MainActor.assumeIsolated {
                 self?.handleTimeUpdate(time)
