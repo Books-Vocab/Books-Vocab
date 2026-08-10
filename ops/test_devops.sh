@@ -435,21 +435,10 @@ typed_all() {
 }
 
 # caddy-status / caddyfile 保留舊名（agent 肌肉記憶 + docs/sop/debug.md 仍這樣寫），
-# 但 standby 遷 felix + Cloudflare Tunnel 後底下已無 Caddy：前者改探 cloudflared，
-# 後者根本沒有本地檔可讀（ingress 是 CF remotely-managed）。這兩條斷言在 2026-06-15
-# 之後就描述著一個不存在的世界，紅到 2026-08-04 才被看見（IMP-0053）。
-# 這是六條裡唯一用**前綴**比對的（fallback 訊息會變動，不宜整串釘死）。`!= *$'\n'*`
-# 不可省：`tail -1` 還在的時候，結尾那個 `*` 只吃得掉同一行的其餘部分；改成比對完整
-# stdout 之後，它吃掉的是**整個剩餘輸出含換行**——於是往這條 arm 後面追加任意遠端命令
-# 完全隱形，而那正是拿掉 tail -1 要修的東西（實測：改版前紅、改版後綠）。契約要講完整：
-# 這條 typed surface 只發**一條**遠端命令，且它以 pgrep cloudflared 開頭。
-typed_out=$(typed_all caddy-status)
-if [[ "$typed_out" == "run pgrep -lf 'cloudflared.*tunnel'"* \
-   && "$typed_out" != *caddy* && "$typed_out" != *$'\n'* ]]; then
-  ok "caddy-status probes the cloudflared tunnel (no Caddy on standby)"
-else
-  fail_t "caddy-status mapping drifted: $typed_out"
-fi
+# 但 payload 已改由 infra_health 的 secret-safe caddy probe 統一產生。
+grep -q -- '--caddy-status --json' "$SAFE_KG" \
+  && ok "caddy-status delegates to the typed infra probe" \
+  || fail_t "caddy-status missing typed infra probe delegation"
 
 # caddyfile 是唯一「不打遠端」的 typed 指令：CF ingress 存在 Cloudflare 端，沒有本地
 # 檔案可 cat。契約因此是**不得發出任何 remote 命令**，並在 stderr 指向 ingress 正本。
@@ -502,10 +491,95 @@ typed_out=$(typed_all disk-usage)
   && ok "disk-usage maps to df -h" \
   || fail_t "disk-usage mapping drifted: $typed_out"
 
-typed_out=$(typed_all memory-usage)
-[[ "$typed_out" == 'run free -m' ]] \
-  && ok "memory-usage maps to free -m" \
-  || fail_t "memory-usage mapping drifted: $typed_out"
+grep -q -- '--memory-usage --json' "$SAFE_KG" \
+  && ok "memory-usage delegates to the macOS typed infra probe" \
+  || fail_t "memory-usage missing typed infra probe delegation"
+
+# ── 12b. macOS typed probes：固定 JSON、秘密隔離、fixture 必須真的影響值 ───────
+# 這不是靜態 grep：fake transport 會依接收到的 remote bundle 回傳不同 fixture，
+# 並刻意把 secret marker 分別塞進 stdout/stderr。成功路徑 stderr 必須空，probe 只
+# 選取 allowlisted 欄位；因此把 producer 改成固定常數、回顯 raw payload 或污染 stderr
+# 都會轉紅。
+section "Typed macOS probes (secret-safe JSON contracts)"
+PROBE_BASE="$(mktemp)"
+cat > "$PROBE_BASE" <<'STUBEOF'
+#!/usr/bin/env bash
+set -eu
+[[ "${1:-}" == run ]] || exit 64
+bundle="${2:-}"
+[[ -z "${KG_PROBE_SECRET_STDERR:-}" ]] || printf '%s\n' "$KG_PROBE_SECRET_STDERR" >&2
+[[ -z "${KG_PROBE_SECRET_STDOUT:-}" ]] || printf '%s\n' "$KG_PROBE_SECRET_STDOUT"
+case "${KG_PROBE_MODE:-}" in
+  memory)
+    [[ "$bundle" == *vm_stat* ]] || exit 65
+    printf 'mem_total_mb\t%s\n' "${KG_PROBE_MEM_TOTAL:-16384}"
+    printf 'mem_avail_mb\t%s\n' "${KG_PROBE_MEM_AVAILABLE:-8192}"
+    printf 'swap_total_mb\t%s\n' "${KG_PROBE_SWAP_TOTAL:-4096}"
+    printf 'swap_used_mb\t%s\n' "${KG_PROBE_SWAP_USED:-512}"
+    ;;
+  caddy)
+    [[ "$bundle" == *launchctl* ]] || exit 66
+    case "${KG_PROBE_STATE:-active}" in
+      active) printf 'status\tactive\nlabel\tcom.cloudflare.cloudflared\npid_count\t2\n' ;;
+      inactive) printf 'status\tinactive\nlabel\tcom.cloudflare.cloudflared\npid_count\t0\n' ;;
+      unknown) printf 'status\tunknown\nlabel\tcom.cloudflare.cloudflared\npid_count\t0\n' ;;
+      *) exit 67 ;;
+    esac
+    ;;
+  fail) exit 68 ;;
+  *) exit 69 ;;
+esac
+STUBEOF
+chmod +x "$PROBE_BASE"
+PROBE_ERR="$(mktemp)"
+probe_call() {
+  local mode="$1" command="$2" state="${3:-}" out rc=0
+  out=$(KG_DEVOPS_BASE="$PROBE_BASE" KG_PROBE_MODE="$mode" KG_PROBE_STATE="$state" \
+    KG_PROBE_SECRET_STDOUT='stdout-secret-marker' KG_PROBE_SECRET_STDERR='stderr-secret-marker' \
+    bash "$SAFE_KG" "$command" --json 2>"$PROBE_ERR") || rc=$?
+  PROBE_RC="$rc" PROBE_OUT="$out"
+}
+probe_call memory memory-usage
+if (( PROBE_RC == 0 )) \
+   && [[ ! -s "$PROBE_ERR" ]] \
+   && ! grep -qE 'stdout-secret-marker|stderr-secret-marker' <<<"$PROBE_OUT" \
+   && ! grep -qE 'stdout-secret-marker|stderr-secret-marker' "$PROBE_ERR" \
+   && jq -e 'keys == ["available_mb","swap_total_mb","swap_used_mb","total_mb"] and (.total_mb > 0) and (.available_mb <= .total_mb) and (.swap_used_mb <= .swap_total_mb)' <<<"$PROBE_OUT" >/dev/null; then
+  ok "memory-usage emits exact secret-safe JSON with invariants"
+else
+  fail_t "memory-usage JSON/secret contract failed (rc=$PROBE_RC out=$PROBE_OUT err=$(cat "$PROBE_ERR"))"
+fi
+first_memory="$PROBE_OUT"
+changed_memory="$(KG_DEVOPS_BASE="$PROBE_BASE" KG_PROBE_MODE=memory KG_PROBE_MEM_TOTAL=32768 KG_PROBE_MEM_AVAILABLE=12345 KG_PROBE_SWAP_TOTAL=8192 KG_PROBE_SWAP_USED=7 \
+  bash "$SAFE_KG" memory-usage --json 2>"$PROBE_ERR" || true)"
+if [[ "$first_memory" != "$changed_memory" ]] \
+   && jq -e '.total_mb == 32768 and .available_mb == 12345 and .swap_total_mb == 8192 and .swap_used_mb == 7' <<<"$changed_memory" >/dev/null; then
+  ok "memory fixture changes flow into JSON values"
+else
+  fail_t "memory fixture change was ignored or malformed (out=$changed_memory)"
+fi
+for state in active inactive unknown; do
+  probe_call caddy caddy-status "$state"
+  expected_status="$state"
+  if (( PROBE_RC == 0 )) \
+     && [[ ! -s "$PROBE_ERR" ]] \
+     && ! grep -qE 'stdout-secret-marker|stderr-secret-marker' <<<"$PROBE_OUT" \
+     && ! grep -qE 'stdout-secret-marker|stderr-secret-marker' "$PROBE_ERR" \
+     && jq -e --arg s "$expected_status" 'keys == ["label","pid_count","status"] and .label == "com.cloudflare.cloudflared" and .status == $s and (.pid_count | type == "number") and (($s != "active") or .pid_count >= 1)' <<<"$PROBE_OUT" >/dev/null; then
+    ok "caddy-status fixture $state -> exact JSON"
+  else
+    fail_t "caddy-status fixture $state contract failed (rc=$PROBE_RC out=$PROBE_OUT err=$(cat "$PROBE_ERR"))"
+  fi
+done
+probe_call fail memory
+if (( PROBE_RC != 0 )) \
+   && ! grep -qE 'stdout-secret-marker|stderr-secret-marker' <<<"$PROBE_OUT" \
+   && ! grep -qE 'stdout-secret-marker|stderr-secret-marker' "$PROBE_ERR"; then
+  ok "probe transport failure is non-zero and secret-safe"
+else
+  fail_t "probe transport failure was swallowed or leaked a secret (rc=$PROBE_RC)"
+fi
+rm -f "$PROBE_BASE" "$PROBE_ERR"
 
 typed_out=$(typed_all docker-stats)
 [[ "$typed_out" == 'run docker stats --no-stream' ]] \
@@ -518,7 +592,7 @@ echo "$typed_out" | grep -q 'use typed command: docker-ps' \
   || fail_t "raw docker ps was not redirected"
 
 typed_out=$(bash "$SAFE_KG" run "sudo systemctl status caddy" 2>&1 || true)
-echo "$typed_out" | grep -q 'use typed command: caddy-status' \
+echo "$typed_out" | grep -q 'use typed command: caddy-status --json' \
   && ok "raw caddy status redirected to typed command" \
   || fail_t "raw caddy status was not redirected"
 rm -f "$STUB_BASE"

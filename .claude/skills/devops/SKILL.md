@@ -32,7 +32,7 @@ allowed-tools: Bash, Read, Grep
 ## 指令參考 **(SoT)**
 
 本段為 `./ops/devops_kg_safe.sh`（與 repo-local shortcut `./devops.sh`）的權威指令清單；`docs/sop/deploy.md` / `docs/sop/debug.md` 內任何 `./devops.sh *` 用法以本表為準。
-對 `docker ps`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。standby 無 Caddy：`caddy-status` 已改為唯讀檢查 cloudflared tunnel（`pgrep`），`caddyfile` 回 N/A（CF ingress 為 remotely-managed config）；`backup-s3-test` 呼叫 `ops/backup_status.sh`，fail-closed 驗證 launchd `com.kg.backup`、最後一筆穩定 log、exit=0、bytes、sha256、key 日期與 36 小時 freshness。
+對 `docker ps`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。standby 無 Caddy：`caddy-status --json` 回傳固定 `label`/`pid_count`/`status` schema，底層不回顯 process argv 或 plist；`memory-usage --json` 回傳固定四欄 macOS `vm_stat`/`sysctl` 數值，成功路徑 stdout 只有 JSON、stderr 為空。`caddyfile` 回 N/A（CF ingress 為 remotely-managed config）；`backup-s3-test` 呼叫 `ops/backup_status.sh`，fail-closed 驗證 launchd `com.kg.backup`、最後一筆穩定 log、exit=0、bytes、sha256、key 日期與 36 小時 freshness。
 
 ### Safe Wrapper（`./ops/devops_kg_safe.sh`）
 
@@ -44,12 +44,12 @@ allowed-tools: Bash, Read, Grep
 ./ops/devops_kg_safe.sh status
 ./ops/devops_kg_safe.sh health [--json]
 ./ops/devops_kg_safe.sh logs [n]
-./ops/devops_kg_safe.sh caddy-status
+./ops/devops_kg_safe.sh caddy-status --json
 ./ops/devops_kg_safe.sh caddyfile
 ./ops/devops_kg_safe.sh docker-ps
 ./ops/devops_kg_safe.sh docker-logs [n]
 ./ops/devops_kg_safe.sh disk-usage
-./ops/devops_kg_safe.sh memory-usage
+./ops/devops_kg_safe.sh memory-usage --json
 ./ops/devops_kg_safe.sh docker-stats
 ./ops/devops_kg_safe.sh env-check
 ./ops/devops_kg_safe.sh env-drift
@@ -308,13 +308,13 @@ HTTP 000 → DNS / CF 邊緣不可達
 DNS fail → DNS issue（注意 NS 遷移期 resolver 快取，見 ~/butler/docs/kg-backend-deployment.md §8）
 ```
 
-> ⚠ 現役 prod 是 **standby + CF Tunnel**（無 Caddy）。502 分層：先 `--resolve wordnexus.lol:443:104.21.85.113` 直打 CF 邊緣驗服務本身（回 200=只是本機 DNS 快取）；再 `ssh chenliangyu@100.118.39.104` 查容器(`docker ps`)與隧道(`pgrep -lf cloudflared`)。完整除錯走 `docs/sop/debug.md`。下方 `caddy-status`/`caddyfile` 等 typed 指令僅對 Lightsail rollback 有意義。
+> ⚠ 現役 prod 是 **standby + CF Tunnel**（無 Caddy）。502 分層：先 `--resolve wordnexus.lol:443:104.21.85.113` 直打 CF 邊緣驗服務本身（回 200=只是本機 DNS 快取）；再用 `./ops/devops_kg_safe.sh docker-ps` 與 `./ops/devops_kg_safe.sh caddy-status --json` 讀容器／隧道狀態；兩者不回顯秘密啟動參數。完整除錯走 `docs/sop/debug.md`。`caddyfile` 等不適用 standby 的 typed 指令才僅對 Lightsail rollback 有意義。
 
 ### 常用 Debug 指令
 
 ```bash
 # Caddy
-./ops/devops_kg_safe.sh caddy-status
+./ops/devops_kg_safe.sh caddy-status --json
 ./ops/devops_kg_safe.sh caddyfile
 
 # Docker
@@ -323,7 +323,7 @@ DNS fail → DNS issue（注意 NS 遷移期 resolver 快取，見 ~/butler/docs
 
 # Resources
 ./ops/devops_kg_safe.sh disk-usage
-./ops/devops_kg_safe.sh memory-usage
+./ops/devops_kg_safe.sh memory-usage --json
 ./ops/devops_kg_safe.sh docker-stats
 
 # Database

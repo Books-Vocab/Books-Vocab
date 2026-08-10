@@ -88,6 +88,111 @@ run_health() {  # 預設健康全綠的環境
     bash "$SCRIPT" "$@"
 }
 
+# typed probe mode 的端到端 fixture：只模擬 transport，讓受測的
+# infra_health.sh producer/parser 自己處理 allowlist、數值不變式與狀態。
+PROBE_STUB="$(mktemp)"
+cat >"$PROBE_STUB" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+[ "${1:-}" = run ] || exit 64
+bundle="${2:-}"
+[ -z "${KG_PROBE_SECRET_STDOUT:-}" ] || printf '%s\n' "$KG_PROBE_SECRET_STDOUT"
+[ -z "${KG_PROBE_SECRET_STDERR:-}" ] || printf '%s\n' "$KG_PROBE_SECRET_STDERR" >&2
+case "${KG_PROBE_MODE:-}" in
+  memory)
+    [[ "$bundle" == *vm_stat* ]] || exit 65
+    printf 'mem_total_mb\t%s\n' "${KG_PROBE_MEM_TOTAL:-16384}"
+    printf 'mem_avail_mb\t%s\n' "${KG_PROBE_MEM_AVAILABLE:-8192}"
+    printf 'swap_total_mb\t%s\n' "${KG_PROBE_SWAP_TOTAL:-4096}"
+    printf 'swap_used_mb\t%s\n' "${KG_PROBE_SWAP_USED:-512}"
+    ;;
+  caddy)
+    [[ "$bundle" == *launchctl* ]] || exit 66
+    case "${KG_PROBE_STATE:-active}" in
+      active) printf 'status\tactive\nlabel\tcom.cloudflare.cloudflared\npid_count\t2\n' ;;
+      inactive) printf 'status\tinactive\nlabel\tcom.cloudflare.cloudflared\npid_count\t0\n' ;;
+      unknown) printf 'status\tunknown\nlabel\tcom.cloudflare.cloudflared\npid_count\t0\n' ;;
+      *) exit 67 ;;
+    esac
+    ;;
+  fail) exit 68 ;;
+  *) exit 69 ;;
+esac
+EOF
+chmod +x "$PROBE_STUB"
+trap 'rm -f "$STUB" "$PROBE_STUB"; rm -rf "$FAKEBIN" "${FIXPROD:-}"' EXIT
+
+section "Typed macOS memory probe JSON"
+probe_err="$(mktemp)"
+probe_mem="$(KG_BASE="$PROBE_STUB" KG_PROBE_MODE=memory KG_PROBE_SECRET_STDOUT=secret-out KG_PROBE_SECRET_STDERR=secret-err bash "$SCRIPT" --memory-usage --json 2>"$probe_err" || true)"
+if [[ ! -s "$probe_err" ]] \
+   && ! grep -qE 'secret-out|secret-err' <<<"$probe_mem" \
+   && ! grep -qE 'secret-out|secret-err' "$probe_err" \
+   && jq -e 'keys == ["available_mb","swap_total_mb","swap_used_mb","total_mb"] and .total_mb == 16384 and .available_mb == 8192 and .swap_total_mb == 4096 and .swap_used_mb == 512' <<<"$probe_mem" >/dev/null; then
+  ok "memory probe exact JSON + secret-safe channels"
+else
+  fail_t "memory probe contract failed (out=$probe_mem err=$(cat "$probe_err"))"
+fi
+probe_mem_changed="$(KG_BASE="$PROBE_STUB" KG_PROBE_MODE=memory KG_PROBE_MEM_TOTAL=32768 KG_PROBE_MEM_AVAILABLE=12345 KG_PROBE_SWAP_TOTAL=8192 KG_PROBE_SWAP_USED=7 bash "$SCRIPT" --memory-usage --json 2>"$probe_err" || true)"
+echo "$probe_mem_changed" | jq -e '.total_mb == 32768 and .available_mb == 12345 and .swap_total_mb == 8192 and .swap_used_mb == 7' >/dev/null \
+  && ok "memory fixture changes alter output" \
+  || fail_t "memory fixture change did not alter output"
+rm -f "$probe_err"
+
+section "Typed caddy-status probe JSON"
+for probe_state in active inactive unknown; do
+  probe_err="$(mktemp)"
+  probe_caddy="$(KG_BASE="$PROBE_STUB" KG_PROBE_MODE=caddy KG_PROBE_STATE="$probe_state" KG_PROBE_SECRET_STDOUT=secret-out KG_PROBE_SECRET_STDERR=secret-err bash "$SCRIPT" --caddy-status --json 2>"$probe_err" || true)"
+  if [[ ! -s "$probe_err" ]] \
+     && ! grep -qE 'secret-out|secret-err' <<<"$probe_caddy" \
+     && ! grep -qE 'secret-out|secret-err' "$probe_err" \
+     && jq -e --arg s "$probe_state" 'keys == ["label","pid_count","status"] and .label == "com.cloudflare.cloudflared" and .status == $s and (($s != "active") or .pid_count >= 1)' <<<"$probe_caddy" >/dev/null; then
+    ok "caddy-status $probe_state exact JSON + secret-safe channels"
+  else
+    fail_t "caddy-status $probe_state contract failed (out=$probe_caddy err=$(cat "$probe_err"))"
+  fi
+  rm -f "$probe_err"
+done
+
+section "Typed caddy launchctl PID fallback"
+CADDY_LAUNCH_STUB="$(mktemp)"
+CADDY_FAKEBIN="$(mktemp -d)"
+cat >"$CADDY_LAUNCH_STUB" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+[[ "${1:-}" == run ]] || exit 64
+PATH="${KG_CADDY_FAKEBIN}:$PATH" zsh -c "${2:-}"
+EOF
+cat >"$CADDY_FAKEBIN/launchctl" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == print ]] || exit 64
+printf 'state = running\npid = 41046\n'
+EOF
+cat >"$CADDY_FAKEBIN/pgrep" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$CADDY_LAUNCH_STUB" "$CADDY_FAKEBIN/launchctl" "$CADDY_FAKEBIN/pgrep"
+probe_err="$(mktemp)"
+probe_caddy_launch="$(KG_BASE="$CADDY_LAUNCH_STUB" KG_CADDY_FAKEBIN="$CADDY_FAKEBIN" bash "$SCRIPT" --caddy-status --json 2>"$probe_err" || true)"
+if [[ ! -s "$probe_err" ]] \
+   && jq -e '.status == "active" and .pid_count == 1 and .label == "com.cloudflare.cloudflared"' <<<"$probe_caddy_launch" >/dev/null; then
+  ok "caddy-status derives active PID from launchctl without argv scan"
+else
+  fail_t "caddy-status launchctl PID fallback failed (out=$probe_caddy_launch err=$(cat "$probe_err"))"
+fi
+rm -f "$probe_err" "$CADDY_LAUNCH_STUB"
+rm -rf "$CADDY_FAKEBIN"
+
+probe_err="$(mktemp)"
+probe_fail="$(KG_BASE="$PROBE_STUB" KG_PROBE_MODE=fail KG_PROBE_SECRET_STDOUT=secret-out KG_PROBE_SECRET_STDERR=secret-err bash "$SCRIPT" --memory-usage --json 2>"$probe_err" || true)"
+if [[ -z "$probe_fail" ]] && ! grep -qE 'secret-out|secret-err' "$probe_err"; then
+  ok "probe transport failure stays non-zero and secret-safe"
+else
+  fail_t "probe transport failure was swallowed or leaked (out=$probe_fail err=$(cat "$probe_err"))"
+fi
+rm -f "$probe_err"
+
 section "Syntax"
 bash -n "$SCRIPT" && ok "infra_health syntax" || fail_t "infra_health syntax"
 
