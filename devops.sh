@@ -10,6 +10,14 @@
 
 set -euo pipefail
 
+DEVOPS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DEVOPS_SCRIPT_DIR/ops/lib/devops_command_registry.sh"
+source "$DEVOPS_SCRIPT_DIR/ops/lib/devops_commands.sh"
+devops_command_registry_validate || {
+  echo "✗ devops command registry is inconsistent" >&2
+  exit 70
+}
+
 # ── 設定 ──────────────────────────────────────────────────────────────────────
 # 正式站 2026-06-15 起 = 家用常駐機 felix（standby），經 Cloudflare Tunnel 對外。
 # transport 走 Tailscale + 原生 sshd 公鑰（免密碼，default key，不再用 lightsail .pem）。
@@ -23,11 +31,11 @@ CONTAINER="knowledge-graph-api"
 # standby: 用戶資料在 ~/kg-data（搬出 git worktree），container 內 mount 為 /app/data。
 REMOTE_DATA_DIR="${KG_REMOTE_DATA_DIR:-~/kg-data}"
 PUBLIC_WEB_BASE_URL="https://wordnexus.lol"
-LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
-BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
+LOCAL_DIR="$(cd "$DEVOPS_SCRIPT_DIR/backend" && pwd)"
+BACKUP_DIR="$DEVOPS_SCRIPT_DIR/backups"
 # Source-only signal semantics shared with the reconciler and backup verifier.
 # shellcheck source=ops/lib/signal_traps.sh
-source "$(cd "$(dirname "$0")" && pwd)/ops/lib/signal_traps.sh"
+source "$DEVOPS_SCRIPT_DIR/ops/lib/signal_traps.sh"
 
 # default key + 已知 host（standby 用內建 ssh config / known_hosts，免帶 -i）
 SSH_OPTS=( -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
@@ -292,99 +300,8 @@ cmd_env_drift() {
 
   local remote_real_dir
   remote_real_dir=$(run_remote "cd $REMOTE_DIR >/dev/null 2>&1 && pwd")
-
-  local container_app_root="/app"
-
-  python3 - "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$container_app_root" "$SERVER" <<'PY'
-import os
-import subprocess
-import sys
-from pathlib import Path
-
-local_env_path = Path(sys.argv[1])
-remote_env_path = sys.argv[2]
-local_dir = Path(sys.argv[3]).resolve()
-container_root = sys.argv[4].strip()
-server = sys.argv[5].strip()
-
-host_specific = {
-    "APP_STORE_ROOT_CA_PATH": (local_dir / "certs", f"{container_root}/certs"),
-    "APP_STORE_CONNECT_PRIVATE_KEY_PATH": (local_dir / "certs", f"{container_root}/certs"),
-}
-
-def parse_env_text(text: str):
-    result = {}
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        result[key] = value
-    return result
-
-def parse_local_env(path: Path):
-    if not path.exists():
-        raise SystemExit(f"✗ 本地 .env 不存在：{path}")
-    return parse_env_text(path.read_text())
-
-def parse_remote_env(path: str):
-    proc = subprocess.run(
-        ["ssh", "-T", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", server, f"cat {path}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise SystemExit(f"✗ 無法讀取遠端 .env：{proc.stderr.strip()}")
-    return parse_env_text(proc.stdout)
-
-local_env = parse_local_env(local_env_path)
-remote_env = parse_remote_env(remote_env_path)
-
-missing_remote = sorted(set(local_env) - set(remote_env))
-missing_local = sorted(set(remote_env) - set(local_env))
-value_mismatches = []
-
-for key in sorted(set(local_env) & set(remote_env)):
-    lv = local_env[key]
-    rv = remote_env[key]
-    if key in host_specific:
-        local_base_dir, remote_base_dir = host_specific[key]
-        local_name = Path(lv).name
-        remote_name = Path(rv).name
-        expected_local_prefix = str(local_base_dir)
-        expected_remote_prefix = remote_base_dir
-        if not lv.startswith(expected_local_prefix + "/"):
-            value_mismatches.append((key, lv, rv, f"本地值應位於 {expected_local_prefix}/ 下"))
-            continue
-        if not rv.startswith(expected_remote_prefix + "/"):
-            value_mismatches.append((key, lv, rv, f"遠端值應位於 {expected_remote_prefix}/ 下"))
-            continue
-        if local_name != remote_name:
-            value_mismatches.append((key, lv, rv, "本地與遠端指向的檔名不同"))
-        continue
-    if lv != rv:
-        value_mismatches.append((key, lv, rv, "值不同"))
-
-if missing_remote or missing_local or value_mismatches:
-    if missing_remote:
-        print("✗ 遠端缺少以下 key:")
-        for key in missing_remote:
-            print(f"  - {key}")
-    if missing_local:
-        print("✗ 本地缺少以下 key:")
-        for key in missing_local:
-            print(f"  - {key}")
-    if value_mismatches:
-        print("✗ 本地/遠端 .env 存在不一致:")
-        for key, lv, rv, reason in value_mismatches:
-            print(f"  - {key}: {reason}")
-            print(f"      local : {lv}")
-            print(f"      remote: {rv}")
-    raise SystemExit(1)
-
-print("✓ 本地/遠端 .env 已一致（host-specific path key 已正規化檢查）")
-PY
+  "$DEVOPS_SCRIPT_DIR/ops/env_drift.py" \
+    "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "/app" "$SERVER"
 }
 
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
@@ -884,6 +801,23 @@ cmd_container_script() {
   cleanup_remote_tmp "$remote_tmp"
 }
 
+cmd_help() {
+  cat <<'HELP'
+
+devops.sh — BooksAndVocab KG API DevOps
+
+用法: ./devops.sh <command> [args]
+
+指令:
+HELP
+  devops_command_help_lines
+  cat <<'HELP'
+
+Agent 環境變數:
+  DEVOPS_YES=1            自動確認所有危險操作
+HELP
+}
+
 # ── 指令：ssh ─────────────────────────────────────────────────────────────────
 # 注意：此指令為互動式，agent 應使用 ./devops.sh run "<cmd>" 代替
 cmd_ssh() {
@@ -892,59 +826,6 @@ cmd_ssh() {
 }
 
 # ── 主程式 ────────────────────────────────────────────────────────────────────
-case "${1:-help}" in
-  deploy)       cmd_deploy ;;
-  setup)        cmd_setup "${2:-}" ;;
-  push-env)     cmd_push_env "${2:-}" ;;
-  env-check)    cmd_env_check ;;
-  env-drift)    cmd_env_drift ;;
-  migrate)      cmd_migrate ;;
-  restart)      cmd_restart ;;
-  status)       cmd_status ;;
-  logs)         cmd_logs "${2:-50}" ;;
-  backup)       cmd_backup ;;
-  users)        cmd_users ;;
-  user-info)    cmd_user_info "${2:-}" ;;
-  delete-user)  cmd_delete_user "${2:-}" "${3:-}" ;;
-  run)          cmd_run "${@:2}" ;;
-  container-run) cmd_container_run "${@:2}" ;;
-  migrate-run)  cmd_migrate_run "${@:2}" ;;
-  ops-cli)          cmd_ops_cli "${@:2}" ;;
-  ops-edit)         cmd_ops_edit "${@:2}" ;;
-  ops-edit-batch)   cmd_ops_edit_batch "${@:2}" ;;
-  container-script) cmd_container_script "${@:2}" ;;
-  ssh)          cmd_ssh ;;
-  help|--help|-h|*)
-    echo ""
-    echo "devops.sh — BooksAndVocab KG API DevOps"
-    echo ""
-    echo "用法: ./devops.sh <command> [args]"
-    echo ""
-    echo "指令:"
-    echo "  setup [env_file]        push-env + deploy 一條龍（初始化或 secret 變動時）
-  push-env [file]         推送本地 .env 到遠端（預設: backend/.env）
-  deploy                  standby git pull + build + health + smoke（需先 git push）
-  restart                 重啟容器（不重新 build）
-  migrate                 手動 fallback：對用戶 DB 補欄位（standby 正常由 app 啟動自動跑）"
-    echo "  env-check               檢查遠端 .env 是否包含所有必要環境變數"
-    echo "  env-drift               檢查本地/遠端 .env 是否一致（path key 正規化）"
-    echo "  status                  Docker / CF Tunnel / 磁碟 / 用戶數概覽"
-    echo "  logs [n]                最新 n 行日誌（預設 50）"
-    echo "  backup                  備份 data/ 到本地 backups/"
-    echo "  users                   列出所有遠端用戶 + users.json"
-    echo "  user-info <id>          查看特定用戶單字統計"
-    echo "  delete-user <id> [--yes]  刪除用戶資料（--yes 跳過確認，或設 DEVOPS_YES=1）"
-    echo "  run \"<cmd>\"             在遠端 host 執行任意指令"
-    echo "  container-run \"<cmd>\"   在 Docker 容器內執行指令"
-    echo "  migrate-run \"<cmd>\"     container-run + 自動重啟（清 cache）"
-    echo "  ops-cli <sub> [args]    在容器內執行 ops_cli.py <sub> [args]（唯讀查詢）"
-    echo "  ops-edit <sub> [args]   在容器內執行 ops_edit.py <sub> [args]（寫入,dry-run 預設）"
-    echo "  ops-edit-batch <plan>   上傳本地 batch plan 到容器並一次執行（高頻 shaping 用）"
-    echo "  container-script <file> [args]  上傳本地腳本到容器內執行（.py/.sh）"
-    echo "  ssh                     開啟互動式 SSH（人工用，agent 改用 run）"
-    echo ""
-    echo "Agent 環境變數:"
-    echo "  DEVOPS_YES=1            自動確認所有危險操作"
-    echo ""
-    ;;
-esac
+if [[ "${DEVOPS_SOURCE_ONLY:-0}" != "1" ]]; then
+  devops_dispatch_command "${1:-help}" "${@:2}"
+fi

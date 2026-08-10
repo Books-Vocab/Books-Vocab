@@ -2,6 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Keep the safe surface and the base entrypoint on one command registry.  The
+# registry is source-only; loading it does not contact the remote host.
+source "$ROOT_DIR/ops/lib/devops_command_registry.sh"
+devops_command_registry_validate || {
+  echo "✗ devops command registry is inconsistent" >&2
+  exit 70
+}
 # KG_DEVOPS_BASE is a test seam (point it at a stub like /usr/bin/true to assert
 # the blocklist without invoking the real remote wrapper). Defaults to devops.sh.
 BASE="${KG_DEVOPS_BASE:-$ROOT_DIR/devops.sh}"
@@ -10,41 +17,14 @@ KG_PUBLIC_DOMAIN="${KG_PUBLIC_DOMAIN:-wordnexus.lol}"
 [[ -x "$BASE" ]] || { echo "✗ base devops.sh not found or not executable: $BASE" >&2; exit 1; }
 
 safe_usage() {
-  cat <<USAGE
-kg safe wrapper
-
-usage:
-  $0 preflight
-  $0 deploy
-  $0 restart
-  $0 status
-  $0 health [--json]
-  $0 logs [n]
-  $0 caddy-status
-  $0 caddyfile
-  $0 docker-ps
-  $0 docker-logs [n]
-  $0 disk-usage
-  $0 memory-usage
-  $0 docker-stats
-  $0 backup
-  $0 backup-s3-test
-  $0 env-check
-  $0 env-drift
-  $0 migrate
-  $0 users
-  $0 user-info <id>
-  $0 run "<remote command>"
-  $0 container-run "<cmd>"
-  $0 migrate-run "<cmd>"
-  $0 ops-cli <subcommand> [args...]
-  $0 ops-edit <subcommand> [args...]
-  $0 ops-edit-batch <plan.json> [runner args...]
-  $0 container-script <script> [args...]
-
-blocked by default:
-  setup / push-env / delete-user / ssh / any destructive run command
-USAGE
+  local blocked="" command
+  printf 'kg safe wrapper\n\nusage:\n'
+  devops_safe_command_help_lines "$0"
+  for command in "${DEVOPS_BLOCKED_COMMANDS[@]}"; do
+    [[ -n "$blocked" ]] && blocked+=" / "
+    blocked+="$command"
+  done
+  printf '\nblocked by default:\n  %s / any destructive run command\n' "$blocked"
 }
 
 preflight() {
@@ -142,6 +122,11 @@ is_blocked_run() {
 main() {
   local sub="${1:-}"
 
+  if ! devops_safe_command_registered "$sub" && ! devops_command_blocked "$sub"; then
+    safe_usage
+    exit 1
+  fi
+
   # ── transport retarget（2026-06-19）────────────────────────────────────────
   # devops.sh transport 已從停用的 Lightsail retarget 到家用 standby（felix，
   # 經 Cloudflare Tunnel）。deploy/restart/migrate 現對 standby 生效 = 正式站。
@@ -150,6 +135,10 @@ main() {
   # backup-s3-test 的舊 Lightsail cron（/usr/local/bin/kg_backup.sh）在 standby
   # 不適用 → 改成指向 standby launchd com.kg.backup（見下方 handler）。
 
+  # Registry owns membership/help/blocked policy.  The explicit arms below are
+  # intentionally kept as the safety boundary: each arm validates its own
+  # argument shape before delegating to the base entrypoint or a fixed probe.
+  # This is execution policy, not a second command inventory.
   case "$sub" in
     preflight)
       preflight
@@ -261,12 +250,12 @@ main() {
       [[ -n "${1:-}" ]] || { echo "✗ usage: $0 container-script <script> [args...]" >&2; exit 1; }
       "$BASE" container-script "$@"
       ;;
-    setup|push-env|delete-user|ssh)
-      echo "✗ blocked in safe wrapper: $sub" >&2
-      echo "  if you really need it, run base devops.sh manually with explicit review" >&2
-      exit 1
-      ;;
     *)
+      if devops_command_blocked "$sub"; then
+        echo "✗ blocked in safe wrapper: $sub" >&2
+        echo "  if you really need it, run base devops.sh manually with explicit review" >&2
+        exit 1
+      fi
       safe_usage
       exit 1
       ;;
