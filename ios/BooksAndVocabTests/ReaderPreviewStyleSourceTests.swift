@@ -81,6 +81,17 @@ struct ReaderPreviewStyleSourceTests {
         #expect(style.selection(for: .dark) == style.dark)
     }
 
+    @Test func previewLineSpacingTracksTheFullSliderRange() {
+        let fontSize: CGFloat = 20
+        let minimum = ReaderSettingsPreviewCard.lineSpacing(fontSize: fontSize, lineHeight: 1.0)
+        let next = ReaderSettingsPreviewCard.lineSpacing(fontSize: fontSize, lineHeight: 1.1)
+        let maximum = ReaderSettingsPreviewCard.lineSpacing(fontSize: fontSize, lineHeight: 2.5)
+
+        #expect(minimum < 0)
+        #expect(next > minimum)
+        #expect(maximum > next)
+    }
+
     // MARK: - 字體
 
     /// `Font.custom` 拿到不存在的名字時**不會報錯**，只會靜靜退回系統字體 ——

@@ -463,7 +463,7 @@ struct DictionaryPhase2BTests {
 
     /// 取代已移除的 Add Link 字典 catalog scenario：同一組非 happy-path 狀態
     /// 改由 coordinator 層的 unit test 釘住。
-    @Test("dictionary search publishes loading, empty and rate-limited phases") @MainActor
+    @Test("dictionary search publishes loading, empty, unavailable and rate-limited phases") @MainActor
     func searchPhaseTransitions() async throws {
         let empty = AddLinkCoordinator()
         empty.submitSearch(query: "lucid", using: Phase2BSearchService(outcome: .empty))
@@ -475,6 +475,11 @@ struct DictionaryPhase2BTests {
         limited.submitSearch(query: "lucid", using: Phase2BSearchService(outcome: .rateLimited))
         try await Self.settle { limited.searchPhase == .failed(.rateLimited) }
         #expect(limited.searchPhase == .failed(.rateLimited))
+
+        let unavailable = AddLinkCoordinator()
+        unavailable.submitSearch(query: "lucid", using: Phase2BSearchService(outcome: .unavailable))
+        try await Self.settle { unavailable.searchPhase == .failed(.unavailable) }
+        #expect(unavailable.searchPhase == .failed(.unavailable))
 
         let blank = AddLinkCoordinator()
         blank.submitSearch(query: "   ", using: Phase2BSearchService(outcome: .empty))
@@ -735,6 +740,7 @@ private final class Phase2BSearchService: DictionaryServing, @unchecked Sendable
     enum Outcome {
         case empty
         case rateLimited
+        case unavailable
     }
 
     private let outcome: Outcome
@@ -749,6 +755,8 @@ private final class Phase2BSearchService: DictionaryServing, @unchecked Sendable
             return DictionarySearchResponse(hits: [], cacheStatus: "fresh")
         case .rateLimited:
             throw KGError.httpError(statusCode: 429, detail: "rate limited")
+        case .unavailable:
+            throw KGError.httpError(statusCode: 503, detail: "dictionary unavailable")
         }
     }
 }
