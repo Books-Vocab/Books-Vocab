@@ -30,11 +30,10 @@ refresh tick。oscar 睡著時看板會凍在最後一次推送——那是對�
 * 若之後放到 Cloudflare Tunnel 對外，設 `KG_BOARD_REQUIRE_TOKEN=1`，連讀取也要
   token——因為那時可達性不再等於身分。
 
-「已梳理」只有一個定義
-----------------------
-`plan ∧ acceptance ∧ groomed_by`（`READY_FIELDS`）。這個 repo 今天有三種互相矛盾
-的算法，而 `_check_groom` 沒有 `groomed_by` 就直接短路返回，所以少了它的「已梳理」
-是沒被任何規則檢查過的自稱。**本服務任何一頁都不得出現第二個數字。**
+「已梳理」只有一個 owner
+------------------------
+本服務只消費 clone 同版 `backlog.py list/dispatch --json` 的 canonical partition，
+不複製 groom 欄位規則。**本服務任何一頁都不得出現第二套判準。**
 """
 from __future__ import annotations
 
@@ -45,6 +44,7 @@ import os
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -62,11 +62,35 @@ TOKEN_FILE = Path(os.environ.get("KG_BOARD_TOKEN_FILE", HOME / ".secrets" / "kg-
 BIND = os.environ.get("KG_BOARD_BIND", "127.0.0.1:8007")
 REFRESH_SECONDS = int(os.environ.get("KG_BOARD_REFRESH_SECONDS", "60"))
 REQUIRE_TOKEN_FOR_READS = os.environ.get("KG_BOARD_REQUIRE_TOKEN") == "1"
-WEB_DIR = Path(__file__).with_name("web")
+RELEASE_DIR = Path(__file__).resolve().parent
+RELEASE_ROOT = RELEASE_DIR.parents[1]
+WEB_DIR = RELEASE_DIR / "web"
 CSRF_TOKEN = secrets.token_urlsafe(32)
-# Frozen for the lifetime of the process. ``main`` fills the clone revision once
-# startup has validated the clone, while tests/importers may explicitly supply it.
-APP_REVISION = os.environ.get("KG_BOARD_APP_REVISION")
+
+
+def _release_revision() -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(RELEASE_DIR), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+# Immutable for this process and derived from the app release checkout, never from
+# the separately refreshed data clone.
+APP_REVISION = os.environ.get("KG_BOARD_APP_REVISION") or _release_revision() or "unknown"
+
+
+def _configured_hosts() -> frozenset[str]:
+    raw = os.environ.get("KG_BOARD_ALLOWED_HOSTS")
+    values = raw.split(",") if raw else [BIND]
+    return frozenset(value.strip().lower() for value in values if value.strip())
+
+
+ALLOWED_HOSTS = _configured_hosts()
 
 LOG_PATH = STATE_DIR / "kg-board.log"
 LOG_MAX_BYTES = 5 * 1024 * 1024
@@ -75,8 +99,6 @@ LOG_KEEP = 3
 OVERLAY_PATH = STATE_DIR / "overlay.json"
 MIRROR_PATH = STATE_DIR / "mirror.json"
 
-# The one definition. See the module docstring.
-READY_FIELDS = ("plan", "acceptance", "groomed_by")
 RESOLVED_STATUSES = ("fixed", "wont-fix")
 
 # Read-only observability classification.  This is deliberately based on the
@@ -95,11 +117,15 @@ AREA_RULES = (
 AREA_ORDER = tuple(label for label, _ in AREA_RULES) + ("跨域", "未標定")
 
 _lock = threading.Lock()
+_clone_lock = threading.RLock()
+_state_lock = threading.RLock()
 _cache: dict = {
     "sha": None,
     "entries": [],
     "dispatch_ids": [],
     "dispatch_meta": {},
+    "local_held": {},
+    "ungroomed_ids": [],
     "read_at": None,
     "error": None,
 }
@@ -142,6 +168,11 @@ def clone_head() -> str | None:
 
 
 def refresh_clone() -> None:
+    with _clone_lock:
+        _refresh_clone_locked()
+
+
+def _refresh_clone_locked() -> None:
     """fetch + hard reset onto origin/main.
 
     `reset --hard` rather than `pull`: this clone is never written to by anyone, so
@@ -163,6 +194,11 @@ def refresh_clone() -> None:
 
 
 def read_entries(force: bool = False) -> dict:
+    with _clone_lock:
+        return _read_entries_locked(force)
+
+
+def _read_entries_locked(force: bool = False) -> dict:
     """Shell out to the CLONE's own backlog.py. Cached on the clone's HEAD sha.
 
     Shelling out rather than importing is the whole point: the reader is always the
@@ -177,6 +213,8 @@ def read_entries(force: bool = False) -> dict:
     tool = CLONE / "ops" / "backlog.py"
     if not tool.exists():
         payload = {"sha": sha, "entries": [], "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                   "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                   "ungroomed_ids": [],
                    "error": f"no backlog CLI at {tool} — is {CLONE} a kg clone?"}
     else:
         list_proc = subprocess.run([sys.executable, str(tool), "list", "--json"],
@@ -187,7 +225,8 @@ def read_entries(force: bool = False) -> dict:
         if failed is not None:
             subcommand = "list" if failed is list_proc else "dispatch"
             payload = {"sha": sha, "entries": [],
-                       "dispatch_ids": [], "dispatch_meta": {},
+                       "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                       "ungroomed_ids": [],
                        "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                        "error": (f"backlog.py {subcommand} exited {failed.returncode}: "
                                  f"{failed.stderr.strip()[:300]}")}
@@ -195,17 +234,53 @@ def read_entries(force: bool = False) -> dict:
             try:
                 list_body = json.loads(list_proc.stdout)
                 dispatch_body = json.loads(dispatch_proc.stdout)
+                entries = list_body.get("entries", [])
                 dispatch_entries = dispatch_body.get("entries", [])
-                payload = {"sha": sha, "entries": list_body.get("entries", []),
-                           "dispatch_ids": [str(row["id"]) for row in dispatch_entries],
-                           "dispatch_meta": dispatch_body.get("dispatch") or {},
+                dispatch_ids = {str(row["id"]) for row in dispatch_entries}
+                dispatch_meta = dispatch_body.get("dispatch") or {}
+                local_held = list_body.get("held") or {}
+                blocked_ids = {
+                    str(row["id"]) for row in dispatch_meta.get("withheld_blocked", [])
+                    if isinstance(row, dict) and row.get("id")
+                }
+                unresolved_ids = {
+                    str(row["id"]) for row in entries
+                    if row.get("status") not in RESOLVED_STATUSES
+                }
+                # backlog.py is the sole groom predicate owner. Its list/dispatch
+                # metadata partitions unresolved into dispatch, held, blocked and
+                # the remainder (ungroomed), so this service never reimplements
+                # plan/acceptance/groomed_by rules.
+                ungroomed_ids = unresolved_ids - dispatch_ids - set(local_held) - blocked_ids
+                payload = {"sha": sha, "entries": entries,
+                           "dispatch_ids": sorted(dispatch_ids),
+                           "dispatch_meta": dispatch_meta,
+                           "local_held": local_held,
+                           "ungroomed_ids": sorted(ungroomed_ids),
                            "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                            "error": None}
             except json.JSONDecodeError as exc:
                 payload = {"sha": sha, "entries": [],
-                           "dispatch_ids": [], "dispatch_meta": {},
+                           "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                           "ungroomed_ids": [],
                            "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
                            "error": f"backlog.py emitted non-JSON: {exc}"}
+    if payload["error"] is None:
+        final_sha = clone_head()
+        if final_sha != sha:
+            payload = {
+                "sha": final_sha,
+                "entries": [],
+                "dispatch_ids": [],
+                "dispatch_meta": {},
+                "local_held": {},
+                "ungroomed_ids": [],
+                "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                "error": (
+                    "clone changed during canonical read: "
+                    f"before={sha or 'unknown'} after={final_sha or 'unknown'}"
+                ),
+            }
     with _lock:
         # Keep the last good entries when a read fails: a board that blanks out on a
         # transient git error is less useful than one that shows stale data and says
@@ -232,20 +307,37 @@ def refresh_loop() -> None:
 # ---------------------------------------------------------------- overlay
 
 def _load_json(path: Path, default):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
+    with _state_lock:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return default
 
 
 def _save_json(path: Path, payload) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    try:
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
+    with _state_lock:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+        )
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+
+def _update_json(path: Path, default, update):
+    """Serialize one complete read-modify-write transaction."""
+    with _state_lock:
+        current = _load_json(path, default)
+        payload = update(current)
+        _save_json(path, payload)
+        return payload
 
 
 def load_overlay(known_ids: set[str] | None = None) -> dict:
@@ -261,29 +353,30 @@ def load_overlay(known_ids: set[str] | None = None) -> dict:
     that no longer exists is invisible in the UI but keeps the file growing, and a
     snooze whose date has passed must stop hiding its entry.
     """
-    data = _load_json(OVERLAY_PATH, {})
-    if not isinstance(data, dict):
-        return {}
-    today = datetime.now(TZ).date().isoformat()
-    cleaned, dropped = {}, 0
-    for entry_id, row in data.items():
-        if known_ids is not None and entry_id not in known_ids:
-            dropped += 1
-            continue
-        row = dict(row) if isinstance(row, dict) else {}
-        if row.get("snooze_until") and row["snooze_until"] <= today:
-            row.pop("snooze_until", None)
-        if row.get("rank") is None and not row.get("pinned") and not row.get("snooze_until"):
-            dropped += 1
-            continue
-        cleaned[entry_id] = row
-    if dropped:
-        _save_json(OVERLAY_PATH, cleaned)
-        log(f"overlay gc: dropped {dropped} stale row(s), {len(cleaned)} remain")
-    return cleaned
+    with _state_lock:
+        data = _load_json(OVERLAY_PATH, {})
+        if not isinstance(data, dict):
+            return {}
+        today = datetime.now(TZ).date().isoformat()
+        cleaned, dropped = {}, 0
+        for entry_id, row in data.items():
+            if known_ids is not None and entry_id not in known_ids:
+                dropped += 1
+                continue
+            row = dict(row) if isinstance(row, dict) else {}
+            if row.get("snooze_until") and row["snooze_until"] <= today:
+                row.pop("snooze_until", None)
+            if row.get("rank") is None and not row.get("pinned") and not row.get("snooze_until"):
+                dropped += 1
+                continue
+            cleaned[entry_id] = row
+        if dropped:
+            _save_json(OVERLAY_PATH, cleaned)
+            log(f"overlay gc: dropped {dropped} stale row(s), {len(cleaned)} remain")
+        return cleaned
 
 
-def held_claims() -> dict:
+def mirror_held_claims() -> dict:
     """Ticket id -> the worktree record holding it, from the mirror oscar pushes.
 
     Deliberately NO expiry. A claim is released by `resolve`/`sweep`, not by the
@@ -309,11 +402,21 @@ def held_claims() -> dict:
     return held
 
 
+def merge_held_claims(local: dict, mirror: dict) -> dict:
+    merged: dict[str, dict] = {}
+    for source, records in (("mirror", mirror), ("local", local)):
+        for ticket, raw in (records or {}).items():
+            row = dict(raw) if isinstance(raw, dict) else {}
+            prior = merged.get(str(ticket), {})
+            sources = set(prior.get("sources") or [])
+            sources.add(source)
+            # Local registry data is authoritative for this machine and is applied
+            # second; mirror remains evidence that another machine may also hold it.
+            merged[str(ticket)] = {**prior, **row, "sources": sorted(sources)}
+    return merged
+
+
 # ---------------------------------------------------------------- projection
-
-def is_ready(entry: dict) -> bool:
-    return all(str(entry.get(f) or "").strip() for f in READY_FIELDS)
-
 
 def classify_area(entry: dict) -> tuple[str, str]:
     """Return a stable area label and the field used as its evidence.
@@ -344,14 +447,16 @@ def project(
     held: dict | None = None,
     *,
     canonical_dispatch_ids: set[str] | None = None,
+    canonical_ungroomed_ids: set[str] | None = None,
     dispatch_meta: dict | None = None,
 ) -> dict:
     today = datetime.now(TZ).date().isoformat()
     held = held or {}
     canonical_dispatch_ids = canonical_dispatch_ids or set()
+    canonical_ungroomed_ids = canonical_ungroomed_ids or set()
     dispatch_meta = dispatch_meta or {}
     unresolved = [e for e in entries if e.get("status") not in RESOLVED_STATUSES]
-    ready = [e for e in unresolved if is_ready(e)]
+    ready = [e for e in unresolved if e["id"] not in canonical_ungroomed_ids]
     sev_order = {"high": 0, "med": 1, "low": 2}
 
     def decorate(e: dict) -> dict:
@@ -369,7 +474,7 @@ def project(
             "groomed_by": e.get("groomed_by"), "groomed_at": e.get("groomed_at"),
             "verdict": e.get("verdict"), "surface": e.get("surface"),
             "area": area, "area_evidence": area_evidence,
-            "ready": is_ready(e),
+            "ready": e["id"] not in canonical_ungroomed_ids,
             "canonical_dispatch": e["id"] in canonical_dispatch_ids,
             "rank": ov.get("rank"), "pinned": bool(ov.get("pinned")),
             "snooze_until": ov.get("snooze_until"),
@@ -389,6 +494,9 @@ def project(
     # registry, so mirrored claims are the one additional suppression applied here.
     canonical = [r for r in board if r["canonical_dispatch"]]
     dispatch = [r for r in canonical if not r["held"]]
+    # Exactly the rows hidden from the Now presentation. Canonical dispatch and
+    # its metric remain unchanged; All still contains these rows for undo.
+    deferred = [r for r in dispatch if r["snoozed"]]
     blocked_ids = {
         str(row.get("id")) for row in dispatch_meta.get("withheld_blocked", [])
         if isinstance(row, dict) and row.get("id")
@@ -399,14 +507,14 @@ def project(
     # without a precedence the segments would overlap and the widths would exceed
     # the whole.
     def bucket(r: dict) -> str:
-        if not r["ready"]:
-            return "ungroomed"
         if r["held"]:
             return "held"
-        if r["canonical_dispatch"]:
-            return "dispatch"
+        if not r["ready"]:
+            return "ungroomed"
         if r["snoozed"]:
             return "snoozed"
+        if r["canonical_dispatch"]:
+            return "dispatch"
         return "blocked"
     segments = {k: 0 for k in ("dispatch", "held", "snoozed", "blocked", "ungroomed")}
     for r in board:
@@ -430,21 +538,27 @@ def project(
     return {
         "board": board,
         "dispatch": dispatch,
+        "deferred": deferred,
         "blocked": blocked,
         "dispatch_meta": dispatch_meta,
         "segments": segments,
         "counts": {
-            # ONE definition of ready. Do not add a second number to any page.
-            # `dispatch` below is NOT a second reading of ready: it is ready minus
-            # the two suppressions, and the page must show both or a row that
-            # vanishes has no visible reason.
+            # Readiness comes from canonical backlog list/dispatch metadata.
             "total": len(entries),
             "unresolved": len(unresolved),
             "ready": len(ready),
-            "ready_definition": " ∧ ".join(READY_FIELDS),
+            "ready_definition": "KG CLI groomed clause (list/dispatch metadata)",
             "dispatch": len(dispatch),
             "canonical_dispatch": len(canonical),
-            "mirror_claims_subtracted": sum(1 for r in canonical if r["held"]),
+            "claims_subtracted": sum(1 for r in canonical if r["held"]),
+            "mirror_claims_subtracted": sum(
+                1 for r in canonical
+                if r["held"] and "mirror" in set(r["held"].get("sources") or ["mirror"])
+            ),
+            "local_claims_subtracted": sum(
+                1 for r in canonical
+                if r["held"] and "local" in set(r["held"].get("sources") or [])
+            ),
             "held": sum(1 for r in board if r["held"]),
             "dispatch_definition": "KG CLI dispatch ∧ ¬mirror-claimed; personal snooze not applied",
             "by_severity": {s: sum(1 for e in unresolved if e.get("severity") == s)
@@ -453,11 +567,22 @@ def project(
                           for s in ("IMP", "APP")},
             "by_area": by_area,
             "area_definition": "依 fix_site 分類；多個領域為跨域，沒有 fix_site 時回退 surface，仍無法判定則未標定",
+            "held_sources": {
+                kind: sum(
+                    1 for r in board
+                    if r["held"] and (
+                        (kind == "both" and set(r["held"].get("sources") or ["mirror"]) == {"local", "mirror"})
+                        or (kind != "both" and set(r["held"].get("sources") or ["mirror"]) == {kind})
+                    )
+                )
+                for kind in ("local", "mirror", "both")
+            },
             "decision": {
                 "now": len(dispatch),
                 "inflight": sum(1 for r in board if r["held"]),
                 "blocked": len(blocked),
                 "ungroomed": segments["ungroomed"],
+                "deferred": len(deferred),
             },
             "history": {
                 "total": len(entries),
@@ -535,12 +660,14 @@ def board_payload() -> dict:
     snap = read_entries()
     entries = snap["entries"]
     overlay = load_overlay({e["id"] for e in entries})
+    held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
     return {
         **project(
             entries,
             overlay,
-            held_claims(),
+            held,
             canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
+            canonical_ungroomed_ids=set(snap.get("ungroomed_ids") or []),
             dispatch_meta=snap.get("dispatch_meta") or {},
         ),
         "freshness": freshness(),
@@ -611,9 +738,11 @@ class Handler(BaseHTTPRequestHandler):
         if problem:
             return problem
         origin = self.headers.get("Origin")
-        host = self.headers.get("Host", "")
+        host = self.headers.get("Host", "").strip().lower()
+        if host not in ALLOWED_HOSTS:
+            return f"configured host required (Host {host!r} not in allowlist)"
         parsed = urllib.parse.urlparse(origin or "")
-        if parsed.scheme not in ("http", "https") or parsed.netloc != host:
+        if parsed.scheme not in ("http", "https") or parsed.netloc.lower() != host:
             return f"same-origin write required (Origin {origin!r} != Host {host!r})"
         supplied = self.headers.get("X-KG-CSRF", "")
         if not supplied or not hmac.compare_digest(supplied, CSRF_TOKEN):
@@ -685,19 +814,23 @@ class Handler(BaseHTTPRequestHandler):
             if not entry_id:
                 self._json(400, {"error": "id is required"})
                 return
-            overlay = _load_json(OVERLAY_PATH, {})
-            row = dict(overlay.get(entry_id) or {})
-            if "rank" in body:
-                row["rank"] = None if body["rank"] is None else int(body["rank"])
-            if "pinned" in body:
-                row["pinned"] = bool(body["pinned"])
-            if "snooze_days" in body:
-                days = int(body["snooze_days"])
-                row["snooze_until"] = (
-                    None if days <= 0
-                    else (datetime.now(TZ).date() + timedelta(days=days)).isoformat())
-            overlay[entry_id] = row
-            _save_json(OVERLAY_PATH, overlay)
+            def update_priority(current):
+                overlay = dict(current) if isinstance(current, dict) else {}
+                row = dict(overlay.get(entry_id) or {})
+                if "rank" in body:
+                    row["rank"] = None if body["rank"] is None else int(body["rank"])
+                if "pinned" in body:
+                    row["pinned"] = bool(body["pinned"])
+                if "snooze_days" in body:
+                    days = int(body["snooze_days"])
+                    row["snooze_until"] = (
+                        None if days <= 0
+                        else (datetime.now(TZ).date() + timedelta(days=days)).isoformat())
+                overlay[entry_id] = row
+                return overlay
+
+            overlay = _update_json(OVERLAY_PATH, {}, update_priority)
+            row = overlay[entry_id]
             log(f"priority {entry_id}: {row}")
             self._json(200, {"ok": True, "id": entry_id, "overlay": row})
             return
@@ -707,10 +840,13 @@ class Handler(BaseHTTPRequestHandler):
             # or its local main — both live on a laptop that sleeps — so oscar
             # reports and this stores verbatim.
             key = "claims" if path.endswith("claims") else "sync_state"
-            mirror = _load_json(MIRROR_PATH, {})
-            mirror[key] = body
-            mirror[f"{key}_received_at"] = datetime.now(TZ).isoformat(timespec="seconds")
-            _save_json(MIRROR_PATH, mirror)
+            def update_mirror(current):
+                mirror = dict(current) if isinstance(current, dict) else {}
+                mirror[key] = body
+                mirror[f"{key}_received_at"] = datetime.now(TZ).isoformat(timespec="seconds")
+                return mirror
+
+            _update_json(MIRROR_PATH, {}, update_mirror)
             self._json(200, {"ok": True, "stored": key})
             return
 
@@ -719,7 +855,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    global APP_REVISION, TOKEN
+    global TOKEN
     TOKEN = read_token()
     if not TOKEN:
         # Fail-closed, and loudly. A board that starts without auth and only refuses
@@ -733,7 +869,12 @@ def main() -> int:
             f"kg-board: refusing to start — no clone at {CLONE}.\n"
             f"  create it with:  git clone <kg remote> {CLONE}\n")
         return 78
-    APP_REVISION = APP_REVISION or clone_head() or "unknown"
+    if CLONE.resolve() == RELEASE_ROOT.resolve():
+        sys.stderr.write(
+            "kg-board: refusing to start — mutable data clone and immutable app "
+            "release checkout must be different paths.\n"
+        )
+        return 78
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
     host, _, port = BIND.rpartition(":")

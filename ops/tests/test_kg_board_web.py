@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import MethodType
 
@@ -42,6 +44,8 @@ def test_active_page_is_external_assets_with_mobile_decision_ia():
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
     assert index.index('id="trust-strip"') < index.index("<nav")
+    sticky = index[index.index('id="sticky-shell"'):index.index("</div>") + len("</div>")]
+    assert 'id="trust-strip"' in sticky and "<nav" in sticky
     assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "all")] == [True] * 4
     assert all(label in js for label in ("可開始", "進行中", "被阻擋", "待梳理"))
     assert all(label in js for label in ("total", "fixed", "wont-fix"))
@@ -52,11 +56,17 @@ def test_active_page_is_external_assets_with_mobile_decision_ia():
     assert "overflow-x:hidden" in compact_css
     assert "min-height:44px" in compact_css
     assert "@media(max-width:390px)" in compact_css
+    assert ".sticky-shell{position:sticky;top:0" in compact_css
+    assert "nav{position:sticky" not in compact_css
+    assert "nav{top:" not in compact_css
     assert ".focus(" not in js
 
     assert all(f'data-action="{action}"' in js for action in ("pin", "rank", "snooze"))
     assert 'data-action="claim"' not in js
     assert 'data-action="resolve"' not in js
+    assert 'data.dispatch.filter(row=>!row.snoozed)' in js
+    assert "decision.deferred" in js
+    assert "可在全部取消" in js
 
 
 def test_index_injects_process_csrf_and_app_revision_without_bearer(monkeypatch):
@@ -109,6 +119,7 @@ def test_require_token_mode_is_explicitly_api_only_without_browser_session(monke
 def test_priority_uses_same_origin_csrf_while_mirror_keeps_bearer(monkeypatch):
     monkeypatch.setattr(server, "CSRF_TOKEN", "csrf-secret")
     monkeypatch.setattr(server, "TOKEN", "bearer-secret")
+    monkeypatch.setattr(server, "ALLOWED_HOSTS", {"board.local"})
     same_origin = {
         "Content-Type": "application/json",
         "Host": "board.local",
@@ -124,6 +135,8 @@ def test_priority_uses_same_origin_csrf_while_mirror_keeps_bearer(monkeypatch):
     assert "same-origin" in _handler(
         "/api/priority", {**same_origin, "Origin": "http://evil.example"}
     )._priority_precondition()
+    hostile = {**same_origin, "Host": "evil.example", "Origin": "http://evil.example"}
+    assert "configured host" in _handler("/api/priority", hostile)._priority_precondition()
 
     assert "bearer" in _handler("/api/mirror/claims", same_origin)._mirror_precondition()
     assert _handler(
@@ -147,6 +160,7 @@ def test_projection_exposes_decision_counts_and_blocked_rows():
         {"HELD": {"branch": "feat/held"}},
         canonical_dispatch_ids={"NOW", "HELD"},
         dispatch_meta={"withheld_blocked": [{"id": "BLOCKED", "waiting_on": ["WAIT"]}]},
+        canonical_ungroomed_ids={"UNGROOMED"},
     )
 
     assert [row["id"] for row in payload["dispatch"]] == ["NOW"]
@@ -156,6 +170,7 @@ def test_projection_exposes_decision_counts_and_blocked_rows():
         "inflight": 1,
         "blocked": 1,
         "ungroomed": 1,
+        "deferred": 0,
     }
     assert payload["counts"]["history"] == {"total": 6, "fixed": 1, "wont_fix": 1}
 
@@ -171,3 +186,36 @@ def test_app_revision_is_part_of_shared_freshness_payload(monkeypatch, tmp_path)
 def test_server_source_has_no_embedded_html_application():
     source = inspect.getsource(server)
     assert "<!doctype html>" not in source.lower()
+
+
+def test_state_updates_are_serialized_without_lost_rows_or_temp_collisions(tmp_path):
+    path = tmp_path / "overlay.json"
+
+    def write(index: int):
+        def add_row(current):
+            updated = dict(current)
+            updated[f"T-{index}"] = {"rank": index}
+            return updated
+        server._update_json(path, {}, add_row)
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = [pool.submit(write, index) for index in range(80)]
+        for future in futures:
+            future.result()
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert len(payload) == 80
+    assert set(payload) == {f"T-{index}" for index in range(80)}
+    assert not list(tmp_path.glob(".*.tmp"))
+    assert "_update_json(OVERLAY_PATH" in inspect.getsource(server.Handler.do_POST)
+
+
+def test_web_assets_and_revision_are_bound_to_immutable_release_checkout(monkeypatch):
+    release_dir = Path(server.__file__).resolve().parent
+    assert server.WEB_DIR == release_dir / "web"
+    assert server.RELEASE_DIR == release_dir
+    assert "clone_head" not in inspect.getsource(server.main)
+
+    monkeypatch.setattr(server, "read_token", lambda: "token")
+    monkeypatch.setattr(server, "CLONE", server.RELEASE_ROOT)
+    assert server.main() == 78

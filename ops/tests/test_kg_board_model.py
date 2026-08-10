@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import inspect
 import json
 import subprocess
 import sys
+import threading
 from types import MethodType
 from datetime import datetime
 from pathlib import Path
@@ -12,19 +14,21 @@ sys.path.insert(0, str(ROOT))
 from ops.kg_board import server
 
 
-def _ticket(ticket_id: str, *, blocked_by: list[str] | None = None) -> dict:
-    return {
+def _ticket(
+    ticket_id: str, *, blocked_by: list[str] | None = None, groomed: bool = True
+) -> dict:
+    row = {
         "id": ticket_id,
         "status": "open",
         "severity": "med",
         "stream": "IMP",
         "category": "tool",
         "date": "2026-08-10",
-        "plan": "plan",
-        "acceptance": "acceptance",
-        "groomed_by": "test",
         "blocked_by": blocked_by or [],
     }
+    if groomed:
+        row.update(plan="plan", acceptance="acceptance", groomed_by="test")
+    return row
 
 
 def test_dispatch_uses_canonical_ids_ignores_snooze_and_subtracts_mirror_claims():
@@ -37,6 +41,7 @@ def test_dispatch_uses_canonical_ids_ignores_snooze_and_subtracts_mirror_claims(
         {"CANONICAL": {"snooze_until": "2099-01-01"}},
         {"CLAIMED": {"branch": "feat/already-held"}},
         canonical_dispatch_ids=canonical_ids,
+        canonical_ungroomed_ids=set(),
         dispatch_meta={
             "clauses": ["groomed", "unresolved", "unclaimed", "unblocked"],
             "withheld_blocked": [
@@ -46,6 +51,8 @@ def test_dispatch_uses_canonical_ids_ignores_snooze_and_subtracts_mirror_claims(
     )
 
     assert [row["id"] for row in payload["dispatch"]] == ["CANONICAL"]
+    assert [row["id"] for row in payload["deferred"]] == ["CANONICAL"]
+    assert payload["counts"]["decision"]["deferred"] == 1
     assert payload["counts"]["canonical_dispatch"] == 2
     assert payload["counts"]["mirror_claims_subtracted"] == 1
     assert len(payload["dispatch_meta"]["withheld_blocked"]) == 6
@@ -62,7 +69,11 @@ def test_read_entries_reads_list_and_canonical_dispatch_from_clone(monkeypatch, 
         calls.append(tuple(command))
         subcommand = command[-2]
         if subcommand == "list":
-            body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A"), _ticket("B")]}
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [_ticket("A"), _ticket("B"), _ticket("C"), _ticket("D")],
+                "held": {"C": {"branch": "feat/local", "claimed_at": "now"}},
+            }
         elif subcommand == "dispatch":
             body = {
                 "schema": "kg.backlog.list.v1",
@@ -89,6 +100,8 @@ def test_read_entries_reads_list_and_canonical_dispatch_from_clone(monkeypatch, 
 
     assert [call[-2:] for call in calls] == [("list", "--json"), ("dispatch", "--json")]
     assert snapshot["dispatch_ids"] == ["A"]
+    assert snapshot["local_held"] == {"C": {"branch": "feat/local", "claimed_at": "now"}}
+    assert snapshot["ungroomed_ids"] == ["D"]
     assert snapshot["dispatch_meta"]["withheld_blocked"] == [{"id": "B", "waiting_on": ["A"]}]
 
 
@@ -127,6 +140,124 @@ def test_successful_empty_store_replaces_cached_rows(monkeypatch, tmp_path):
     assert snapshot["entries"] == []
     assert snapshot["dispatch_ids"] == []
     assert snapshot["error"] is None
+
+
+def test_read_entries_rejects_a_cross_revision_canonical_snapshot(monkeypatch, tmp_path):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    heads = iter(("before", "after"))
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: next(heads))
+    monkeypatch.setattr(
+        server.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps({
+                "schema": "kg.backlog.list.v1",
+                "entries": [_ticket("MIXED")],
+                "dispatch": {"withheld_blocked": []},
+            }),
+            "",
+        ),
+    )
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "sha": None, "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    snapshot = server.read_entries(force=True)
+
+    assert snapshot["entries"] == []
+    assert "clone changed during canonical read" in snapshot["error"]
+    assert "with _clone_lock" in inspect.getsource(server.refresh_clone)
+    assert "with _clone_lock" in inspect.getsource(server.read_entries)
+
+
+def test_clone_lock_blocks_refresh_between_list_and_dispatch(monkeypatch, tmp_path):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    list_started = threading.Event()
+    release_list = threading.Event()
+    refresh_attempted = threading.Event()
+    refresh_git_entered = threading.Event()
+    errors: list[BaseException] = []
+
+    class ObservedRLock:
+        def __init__(self):
+            self.lock = threading.RLock()
+
+        def __enter__(self):
+            if threading.current_thread().name == "refresh-probe":
+                refresh_attempted.set()
+            self.lock.acquire()
+            return self
+
+        def __exit__(self, *_args):
+            self.lock.release()
+
+    def fake_run(command, **_kwargs):
+        subcommand = command[-2]
+        if subcommand == "list":
+            list_started.set()
+            assert release_list.wait(2), "test failed to release list command"
+            body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")], "held": {}}
+        else:
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [_ticket("A")],
+                "dispatch": {"withheld_blocked": []},
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    def fake_git(args):
+        refresh_git_entered.set()
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    def capture(call):
+        try:
+            call()
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            errors.append(exc)
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(server, "_git", fake_git)
+    monkeypatch.setattr(server, "_clone_lock", ObservedRLock())
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "sha": None, "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    reader = threading.Thread(target=lambda: capture(lambda: server.read_entries(force=True)))
+    reader.start()
+    assert list_started.wait(1)
+    refresher = threading.Thread(
+        name="refresh-probe", target=lambda: capture(server.refresh_clone)
+    )
+    refresher.start()
+    assert refresh_attempted.wait(1)
+    assert not refresh_git_entered.is_set()
+
+    release_list.set()
+    reader.join(2)
+    refresher.join(2)
+    assert not reader.is_alive() and not refresher.is_alive()
+    assert refresh_git_entered.is_set()
+    assert errors == []
 
 
 def test_freshness_reports_measured_lag_and_preserves_unknown(monkeypatch, tmp_path):
@@ -197,16 +328,64 @@ def test_board_api_and_health_payload_share_freshness_state(monkeypatch):
             "entries": [_ticket("A")],
             "dispatch_ids": ["A"],
             "dispatch_meta": {"withheld_blocked": []},
+            "local_held": {},
+            "ungroomed_ids": [],
         },
     )
     monkeypatch.setattr(server, "load_overlay", lambda _known: {})
-    monkeypatch.setattr(server, "held_claims", lambda: {})
+    monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
 
     board = server.board_payload()
     health = server.health_payload()
 
     assert board["freshness"]["clone_behind_origin"] == health["clone_behind_origin"] == 2
     assert board["freshness"]["local_ahead"] == health["local_ahead"] == 5
+
+
+def test_local_and_mirror_claims_are_merged_and_classified():
+    held = server.merge_held_claims(
+        {
+            "LOCAL": {"branch": "feat/local"},
+            "BOTH": {"branch": "feat/local-both"},
+        },
+        {
+            "MIRROR": {"branch": "feat/mirror"},
+            "BOTH": {"branch": "feat/mirror-both"},
+        },
+    )
+
+    assert held["LOCAL"]["sources"] == ["local"]
+    assert held["MIRROR"]["sources"] == ["mirror"]
+    assert held["BOTH"]["sources"] == ["local", "mirror"]
+    assert held["BOTH"]["branch"] == "feat/local-both"
+
+    payload = server.project(
+        [_ticket(ticket_id) for ticket_id in ("LOCAL", "MIRROR", "BOTH")],
+        {},
+        held,
+        canonical_dispatch_ids={"MIRROR"},
+        canonical_ungroomed_ids=set(),
+    )
+    assert payload["counts"]["decision"]["inflight"] == 3
+    assert payload["counts"]["held_sources"] == {"local": 1, "mirror": 1, "both": 1}
+    assert payload["dispatch"] == []
+
+
+def test_projection_consumes_canonical_ungroomed_ids_instead_of_reimplementing_groom():
+    assert not hasattr(server, "READY_FIELDS")
+    assert not hasattr(server, "is_ready")
+    entries = [_ticket("CANONICAL-GROOMED", groomed=False), _ticket("CANONICAL-UNGROOMED")]
+    payload = server.project(
+        entries,
+        {},
+        canonical_dispatch_ids={"CANONICAL-GROOMED"},
+        canonical_ungroomed_ids={"CANONICAL-UNGROOMED"},
+    )
+    by_id = {row["id"]: row for row in payload["board"]}
+
+    assert by_id["CANONICAL-GROOMED"]["ready"] is True
+    assert by_id["CANONICAL-UNGROOMED"]["ready"] is False
+    assert payload["counts"]["decision"]["ungroomed"] == 1
 
 
 def test_healthz_requires_token_when_all_reads_require_token(monkeypatch):

@@ -84,9 +84,10 @@ counts=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/board" 2>/dev/null | uv run --no
 import json, sys
 d = json.load(sys.stdin)
 c = d["counts"]
-assert c["ready_definition"] == "plan ∧ acceptance ∧ groomed_by", c["ready_definition"]
+assert c["ready_definition"].startswith("KG CLI groomed clause"), c["ready_definition"]
 assert c["ready"] == len([r for r in d["board"] if r["ready"]]), "ready 計數與 board 的旗標不一致"
 assert c["dispatch"] == len(d["dispatch"]), "dispatch 計數與清單長度不一致"
+assert c["decision"]["deferred"] == len(d["deferred"]), "deferred 計數與清單長度不一致"
 meta = d["dispatch_meta"]
 assert "unblocked" in meta["clauses"], meta["clauses"]
 withheld = {row["id"] for row in meta.get("withheld_blocked", [])}
@@ -101,17 +102,15 @@ disp=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/board" 2>/dev/null | uv run --no-p
 import json, sys
 d = json.load(sys.stdin)
 c = d["counts"]
-# 認領集合取自 MIRROR，不取自看板自己的 held 旗標：忘了扣認領的投影同樣會忘了發出
-# 那個旗標，於是一條讀自己輸出的斷言，會剛好在壞掉的時候安靜下來。
-claims = ((d.get("freshness") or {}).get("mirror") or {}).get("claims") or {}
-board_ids = {r["id"] for r in d["board"]}
-held = set(claims.get("tickets_held") or []).intersection(board_ids)
+# 認領集合必須是 canonical list 的本機 ledger 與 mirror 的聯集；來源分類留在 row.held.sources。
+held_rows = [r for r in d["board"] if r.get("held")]
+held = {r["id"] for r in held_rows}
 offered = {r["id"] for r in d["dispatch"]}
 leak = sorted(offered.intersection(held))
 assert not leak, "派工清單含已認領：%s" % leak
-undecorated = sorted(i for i in held
-                     if not next((r for r in d["board"] if r["id"] == i), {}).get("held"))
-assert not undecorated, "board 沒有替這些已認領的票標記 held：%s" % undecorated
+bad_sources = sorted(r["id"] for r in held_rows
+                     if not set(r["held"].get("sources") or []).intersection({"local", "mirror"}))
+assert not bad_sources, "held 缺 local/mirror 來源分類：%s" % bad_sources
 assert c["dispatch"] == len(d["dispatch"]), "dispatch 計數與清單長度不一致"
 assert c["held"] == len([r for r in d["board"] if r.get("held")]), "held 計數與旗標不一致"
 # 沒有任何認領時這條斷言是空的——說出來，別讓沉默看起來像通過
@@ -143,6 +142,11 @@ c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
      -H 'Content-Type: application/json' -H "X-KG-CSRF: $CSRF" \
      -H 'Origin: http://evil.example' -d '{"id":"X"}')
 [ "$c" = 403 ] && ok "跨來源被擋 (403)" || bad "跨來源拿到 $c"
+
+c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
+     -H 'Content-Type: application/json' -H "X-KG-CSRF: $CSRF" \
+     -H 'Host: evil.example' -H 'Origin: http://evil.example' -d '{"id":"X"}')
+[ "$c" = 403 ] && ok "Host/Origin 同時偽造仍被 allowlist 擋 (403)" || bad "DNS rebinding 形狀拿到 $c"
 
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/mirror/claims" \
      -H 'Content-Type: application/json' -H "Origin: $ORIGIN" \

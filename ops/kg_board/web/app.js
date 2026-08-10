@@ -13,7 +13,7 @@ function setTrust(freshness){
     `clone 落後 ${freshness.clone_behind_origin??"未知"} · 本機領先 ${freshness.local_ahead??"未知"} · app ${revision.slice(0,9)}`;
 }
 function rows(){
-  const source=tab==="now"?data.dispatch:
+  const source=tab==="now"?data.dispatch.filter(row=>!row.snoozed):
     tab==="blocked"?data.blocked:
     tab==="inflight"?data.board.filter(row=>row.held):data.board;
   const needle=query.trim().toLowerCase();
@@ -41,7 +41,9 @@ function render(){
   document.getElementById("history").textContent=`total ${history.total} · fixed ${history.fixed} · wont-fix ${history.wont_fix}`;
   tabs.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.tab===tab)));
   const visible=rows();
-  document.getElementById("status").textContent=`${visible.length} 張票`;
+  const deferred=decision.deferred;
+  document.getElementById("status").textContent=tab==="now"&&deferred?
+    `${visible.length} 張現在可見 · ${deferred} 張已延後（可在全部取消）`:`${visible.length} 張票`;
   document.getElementById("tickets").innerHTML=visible.length?visible.map(ticket).join(""):'<p class="empty">這裡目前沒有票</p>';
 }
 async function load(){
