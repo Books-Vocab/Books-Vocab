@@ -168,8 +168,7 @@ cleanup() {
 echo "[ios_build] caller=$CALLER waiting for lock..."
 LOCK_WAIT_START_MS="$(ios_build_now_ms)"
 if ! kg_ios_wait_for_shlock "[ios_build]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"; then
-  echo "[ios_build] error: timed out after ${TIMEOUT}s waiting for lock (holder=$KG_IOS_LOCK_HOLDER_PID)" >&2
-  exit 1
+  kg_ios_lock_timeout_die "[ios_build]" build "$DESTINATION" "$TIMEOUT"
 fi
 trap cleanup EXIT
 LOCK_WAIT_MS=$(( $(ios_build_now_ms) - LOCK_WAIT_START_MS ))

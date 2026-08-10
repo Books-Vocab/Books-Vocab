@@ -94,6 +94,7 @@ LINUX_GROUPS=(
   log-assert
   ios-release
   ios-run-verdict
+  ios-device-lock
   ios-device-files
   ios-device-logs
   review-flip-probe

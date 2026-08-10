@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Shared visible-progress contract for the iOS shlock spin-waits.
 
+# Typed exit used when a caller could not acquire a shared machine resource.
+# This is deliberately distinct from a test/build failure: callers can report
+# infrastructure-unavailable without charging the branch with a code verdict.
+KG_IOS_EXIT_INFRA_UNAVAILABLE=75
+
 # The spin loops poll every 3s. A 15s cadence stays safely inside the 20s
 # visibility ceiling even if one poll is delayed slightly.
 KG_IOS_LOCK_HEARTBEAT_SECONDS=15
@@ -27,6 +32,30 @@ kg_ios_lock_wait_heartbeat() {
 
   printf '%s phase=lock-wait kind=%s elapsed=%ss pid=%s alive=true holderPid=%s holderAlive=%s\n' \
     "$prefix" "$kind" "$elapsed" "$$" "$holder_display" "$holder_alive"
+}
+
+# kg_ios_lock_timeout_die <prefix> <kind> <selector> <timeout-seconds>
+# Emit a machine-readable, human-debuggable lock timeout and terminate the
+# caller with the typed infrastructure-unavailable status. The holder command
+# is best-effort: a stale/dead PID is evidence worth naming, not a reason to
+# make the timeout path itself fail while collecting diagnostics.
+kg_ios_lock_timeout_die() {
+  local prefix="${1:-[ios]}" kind="${2:-lock}" selector="${3:-unknown}"
+  local timeout="${4:-unknown}" holder_pid="${KG_IOS_LOCK_HOLDER_PID:-unknown}"
+  local waited="${KG_IOS_LOCK_WAIT_SECONDS:-0}" holder_cmd="unknown"
+
+  case "$holder_pid" in
+    ''|unknown|*[!0-9]*) holder_pid="unknown" ;;
+    *)
+      holder_cmd="$(ps -o command= -p "$holder_pid" 2>/dev/null \
+        | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)"
+      [[ -n "$holder_cmd" ]] || holder_cmd="unknown"
+      ;;
+  esac
+
+  printf '%s error: timed out after %ss waiting for %s lock selector="%s" holderPid=%s holderCmd=%s waitedSeconds=%s infrastructure=unavailable rc=%s\n' \
+    "$prefix" "$timeout" "$kind" "$selector" "$holder_pid" "$holder_cmd" "$waited" "$KG_IOS_EXIT_INFRA_UNAVAILABLE" >&2
+  exit "$KG_IOS_EXIT_INFRA_UNAVAILABLE"
 }
 
 # kg_ios_wait_for_shlock <prefix> <kind> <lock-file> <owner-pid> <timeout-seconds> <poll-seconds> [timeout-mode]

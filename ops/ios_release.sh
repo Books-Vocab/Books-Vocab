@@ -240,8 +240,7 @@ cleanup() { rm -f "$LOCK_FILE"; }
 START_TOTAL_MS="$(now_ms)"
 echo "[release] caller=$CALLER waiting for lock..."
 if ! kg_ios_wait_for_shlock "[release]" archive "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"; then
-  echo "[release] error: timed out after ${TIMEOUT}s waiting for lock (holder=$KG_IOS_LOCK_HOLDER_PID)" >&2
-  exit 1
+  kg_ios_lock_timeout_die "[release]" archive "$ROOT" "$TIMEOUT"
 fi
 trap cleanup EXIT
 LOCK_WAIT_MS="$(( $(now_ms) - START_TOTAL_MS ))"
