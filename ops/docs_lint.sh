@@ -439,6 +439,52 @@ doc_meta_value() {
   ' "$file"
 }
 
+validate_feature_boundary_loc() {
+  local file="$1"
+  local header_hits=""
+  local row_hits=""
+  local grep_rc=0
+  case "$file" in
+    docs/reference/feature_boundary/*.md) ;;
+    *) return 0 ;;
+  esac
+
+  if header_hits=$(grep -nE '^\|[[:space:]]*檔案[[:space:]]*\|[[:space:]]*行數[[:space:]]*\|' "$file"); then
+    :
+  else
+    grep_rc=$?
+    if [ "$grep_rc" -ne 1 ]; then
+      echo "ERROR $file — feature-boundary 行數規則無法讀取文件(rc=$grep_rc)"
+      errors=$((errors+1))
+      return 1
+    fi
+  fi
+  if row_hits=$(grep -nE '^\|[[:space:]]*`[^`]+\.swift`[[:space:]]*\|[[:space:]]*~?[0-9]+[[:space:]]*\|' "$file"); then
+    :
+  else
+    grep_rc=$?
+    if [ "$grep_rc" -ne 1 ]; then
+      echo "ERROR $file — feature-boundary 行數規則無法讀取文件(rc=$grep_rc)"
+      errors=$((errors+1))
+      return 1
+    fi
+  fi
+
+  if [ -z "$header_hits" ] && [ -z "$row_hits" ]; then
+    return 0
+  fi
+
+  echo "ERROR $file — feature-boundary 文件禁止手寫行數欄；保留檔案路徑與責任描述即可"
+  if [ -n "$header_hits" ]; then
+    echo "$header_hits" | sed 's/^/    /'
+  fi
+  if [ -n "$row_hits" ]; then
+    echo "$row_hits" | sed 's/^/    /'
+  fi
+  errors=$((errors+1))
+  return 1
+}
+
 reanchor_patch_id() {
   # Match the existing backlog.py reanchor contract: whole-commit patch-id,
   # so a conflict-resolved or otherwise partial rewrite is never guessed.
@@ -640,6 +686,10 @@ fi
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
+
+  if ! validate_feature_boundary_loc "$f"; then
+    continue
+  fi
 
   # git 衝突標記殘留檢查(IMP-0015 / 事故 92da32e64):rebase 未解衝突的標記進 main,
   # docs_lint 全綠沒擋到。只掃 <<<<<<< / ||||||| / >>>>>>>(行首 7 字元 + 空白),

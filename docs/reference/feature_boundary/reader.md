@@ -14,72 +14,72 @@ verified_against: f25fd2ed6
 
 ### Container Layer（組裝 + 路由）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `ReaderView.swift` | 211 | 主容器，持有 @State/@Environment，組裝 body。**單字本綁定 seed**：`seedNotebookBindingIfNeeded`（`.task` + `liveNotebooks` settle 的 `onChange` 觸發）在書未綁定時以全域 active 為 seed 經 `Book.canSeedBinding` gate（須 live 清單內已 settle 的真實本）固化 `book.preferredNotebookId` 並 `safeSave` + `BookManifestStore.writeBestEffort`；`sanitizeStaleBoundNotebook` 清除已刪綁定本。固化後 scope 認綁定本、不隨全域漂移 |
-| `ReaderView+Panels.swift` | 115 | panel content builders |
-| `ReaderView+Handlers.swift` | 94 | callback handlers |
+| 檔案 | 說明 |
+|------|------|
+| `ReaderView.swift` | 主容器，持有 @State/@Environment，組裝 body。**單字本綁定 seed**：`seedNotebookBindingIfNeeded`（`.task` + `liveNotebooks` settle 的 `onChange` 觸發）在書未綁定時以全域 active 為 seed 經 `Book.canSeedBinding` gate（須 live 清單內已 settle 的真實本）固化 `book.preferredNotebookId` 並 `safeSave` + `BookManifestStore.writeBestEffort`；`sanitizeStaleBoundNotebook` 清除已刪綁定本。固化後 scope 認綁定本、不隨全域漂移 |
+| `ReaderView+Panels.swift` | panel content builders |
+| `ReaderView+Handlers.swift` | callback handlers |
 
 ### Presenter Layer（純 UI 呈現）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `ReaderViewPresenter.swift` | 57 | 主佈局 `struct ReaderViewPresenter<...>: View` |
-| `ReaderViewPresenter+Headers.swift` | 207 | header 區域 extension |
-| `ReaderViewPresenter+Overlays.swift` | 126 | overlay 區域 extension；translation / settings panel 依 `ReaderOverlayPanelPlacement` 分流：compact 底部居中，regular / Catalyst 右下 inspector |
-| `ReaderViewPresenter+Preview.swift` | 207 | preview 資料 |
-| `QuotaBar.swift` | 51 | `struct QuotaBar: View`，quota 顯示列 |
+| 檔案 | 說明 |
+|------|------|
+| `ReaderViewPresenter.swift` | 主佈局 `struct ReaderViewPresenter<...>: View` |
+| `ReaderViewPresenter+Headers.swift` | header 區域 extension |
+| `ReaderViewPresenter+Overlays.swift` | overlay 區域 extension；translation / settings panel 依 `ReaderOverlayPanelPlacement` 分流：compact 底部居中，regular / Catalyst 右下 inspector |
+| `ReaderViewPresenter+Preview.swift` | preview 資料 |
+| `QuotaBar.swift` | `struct QuotaBar: View`，quota 顯示列 |
 
 ### State Layer（狀態定義）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `ReaderViewState.swift` | 19 | `@Observable final class ReaderViewState`，UI 狀態容器 |
-| `ReaderChromeState.swift` | 36 | `HeaderState` + `ReaderChromeOverlay` + `ReaderChromeState` + `ReaderViewPresenterState` |
+| 檔案 | 說明 |
+|------|------|
+| `ReaderViewState.swift` | `@Observable final class ReaderViewState`，UI 狀態容器 |
+| `ReaderChromeState.swift` | `HeaderState` + `ReaderChromeOverlay` + `ReaderChromeState` + `ReaderViewPresenterState` |
 
 ### Domain Layer（業務邏輯）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `ReaderTranslationHandler.swift` | 66 | `@Observable final class ReaderTranslationHandler`，翻譯狀態管理 |
-| `ReaderTranslationHandler+Flows.swift` | 289 | 翻譯/查詞/解釋流程 |
-| `ReaderTranslationHandler+Persistence.swift` | 88 | 詞彙存儲 |
-| `ReaderVocabularyContext.swift` | 70 | `struct ReaderVocabularyContext`，詞彙查找上下文 |
-| `ReaderDOMExecutor.swift` | 57 | `struct ReaderDOMExecutor`，DOM 操作執行器 |
+| 檔案 | 說明 |
+|------|------|
+| `ReaderTranslationHandler.swift` | `@Observable final class ReaderTranslationHandler`，翻譯狀態管理 |
+| `ReaderTranslationHandler+Flows.swift` | 翻譯/查詞/解釋流程 |
+| `ReaderTranslationHandler+Persistence.swift` | 詞彙存儲 |
+| `ReaderVocabularyContext.swift` | `struct ReaderVocabularyContext`，詞彙查找上下文 |
+| `ReaderDOMExecutor.swift` | `struct ReaderDOMExecutor`，DOM 操作執行器 |
 
 ### Integration Layer（Readium 整合）
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `ReadiumNavigatorView.swift` | 225 | Readium WebView 封裝 |
-| `ReadiumNavigatorJS.swift` | 25 | JavaScript 橋接腳本 entry（`buildInjectionScript` 組合入口）|
-| `ReadiumNavigatorJS+BaseStyle.swift` | 80 | `buildBaseStyleScript`（@font-face + base CSS + debug overlay styles）|
-| `ReadiumNavigatorJS+ContentStyle.swift` | 32 | `buildContentStyleScript`（內容樣式注入 / 動態更新）|
-| `ReadiumNavigatorJS+Highlight.swift` | 173 | `buildHighlightScript`（`__markVocabWord` / `__markVocabWords` / `__removeVocabWord`）|
-| `ReadiumNavigatorJS+Debug.swift` | 76 | `buildDebugScript`（`__toggleDebugBoxes` Token Calculator 黑盒）|
-| `ReadiumNavigatorJS+Selection.swift` | 266 | `buildSelectionScript`（`selectionchange` 監聽 + 單字 caret 點擊偵測）|
-| `ReadiumNavigatorCoordinator+Commands.swift` | 98 | `BridgeCommand` / `HostCommand` / `NavigatorCommand` / `DOMCommand` |
-| `ReadiumNavigatorCoordinator+Planner.swift` | 166 | `struct BridgePlanner`，指令排程。換綁定單字本時以 **set-diff 權威重畫** highlight（比對舊/新命中集合 add/remove 底線指令），取代舊的 count-gating |
-| `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
-| `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
-| `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
-| `ReaderJSEval.swift` | 50 | `enum ReaderJSEval`，fire-and-forget `evaluateJavaScript` 結果可觀測性：`classify` 純分流（`.ok` / `.spreadNotLoaded` benign / `.failed`）+ `log` 落 `AppLog.reader`，預期 race 降 debug、真異常升 error |
-| `ReaderContentStyle.swift` | 278 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` + `ReaderTOCPresentation` + `ReaderNotebookPickerPresentation` |
-| `VocabHighlightPreferences.swift` | ~70 | `VocabHighlightColorPreset` + `VocabHighlightPreferences`；Reader / Podcast 共用詞庫 highlight 顏色 preset、opacity、band fraction。`ReaderSettings` 持久化 `vocab_highlight_colorPreset` / `vocab_highlight_opacity`，並保留舊 `reader_settings_underlineOpacity` fallback。 |
+| 檔案 | 說明 |
+|------|------|
+| `ReadiumNavigatorView.swift` | Readium WebView 封裝 |
+| `ReadiumNavigatorJS.swift` | JavaScript 橋接腳本 entry（`buildInjectionScript` 組合入口） |
+| `ReadiumNavigatorJS+BaseStyle.swift` | `buildBaseStyleScript`（@font-face + base CSS + debug overlay styles） |
+| `ReadiumNavigatorJS+ContentStyle.swift` | `buildContentStyleScript`（內容樣式注入 / 動態更新） |
+| `ReadiumNavigatorJS+Highlight.swift` | `buildHighlightScript`（`__markVocabWord` / `__markVocabWords` / `__removeVocabWord`） |
+| `ReadiumNavigatorJS+Debug.swift` | `buildDebugScript`（`__toggleDebugBoxes` Token Calculator 黑盒） |
+| `ReadiumNavigatorJS+Selection.swift` | `buildSelectionScript`（`selectionchange` 監聽 + 單字 caret 點擊偵測） |
+| `ReadiumNavigatorCoordinator+Commands.swift` | `BridgeCommand` / `HostCommand` / `NavigatorCommand` / `DOMCommand` |
+| `ReadiumNavigatorCoordinator+Planner.swift` | `struct BridgePlanner`，指令排程。換綁定單字本時以 **set-diff 權威重畫** highlight（比對舊/新命中集合 add/remove 底線指令），取代舊的 count-gating |
+| `ReadiumNavigatorCoordinator+Messages.swift` | 訊息解析 extension |
+| `ReadiumNavigatorCoordinator+Highlighting.swift` | 高亮 extension |
+| `ReadiumNavigatorSupport.swift` | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
+| `ReaderJSEval.swift` | `enum ReaderJSEval`，fire-and-forget `evaluateJavaScript` 結果可觀測性：`classify` 純分流（`.ok` / `.spreadNotLoaded` benign / `.failed`）+ `log` 落 `AppLog.reader`，預期 race 降 debug、真異常升 error |
+| `ReaderContentStyle.swift` | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` + `ReaderTOCPresentation` + `ReaderNotebookPickerPresentation` |
+| `VocabHighlightPreferences.swift` | `VocabHighlightColorPreset` + `VocabHighlightPreferences`；Reader / Podcast 共用詞庫 highlight 顏色 preset、opacity、band fraction。`ReaderSettings` 持久化 `vocab_highlight_colorPreset` / `vocab_highlight_opacity`，並保留舊 `reader_settings_underlineOpacity` fallback。 |
 
 ### Feature Panels
 
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `TranslationPanel.swift` | 255 | `struct TranslationPanel: View`，翻譯面板 UI；compact 支援拖曳關閉，regular / Catalyst 關閉 bottom-sheet 拖曳語意 |
-| `TranslationPanelPresenter.swift` | 581 | 翻譯面板佈局（最大檔案）|
-| `TranslationVocabPresenter.swift` | 337 | 翻譯詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
-| `ReaderSettingsPanel.swift` | 184 | `struct ReaderSettingsPanel: View`，閱讀設定面板 |
-| `ReaderSettingsPresenter.swift` | 111 | 設定面板 presenter facade，持有設定狀態與 layout environment |
-| `ReaderSettingsPresenter+Vocab.swift` | ~260 | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距；「生字標記」區控制 highlight 顏色與濃度 |
-| `VocabHighlightColorPresetPicker.swift` | ~55 | Reader / Podcast 共用 highlight 顏色 swatch picker；寫回 `ReaderSettings.vocabHighlightColorPreset` |
-| `TOCView.swift` | 222 | `struct TOCView: View`，目錄；regular / Catalyst 收斂內容寬度，compact 維持 full-width sheet |
-| `ReaderNotebookPicker.swift` | 133 | Reader 內為**本書綁定**單字本（`book.preferredNotebookId`，`Book: NotebookBindable`）；每本書綁定恰好一本真實單字本，**已移除「跟隨全域設定」**列、改用共用 presentational `NotebookBindingList`（Vocabulary/，不標示「預設」）；選詞 / highlight / cache scope 認 `book.resolvedNotebookId` 綁定本、**不隨全域 active 漂移**；綁定本被刪 → `sanitizeStaleBoundNotebook` 清 nil（下次開啟由 `ReaderView` re-seed）。regular / Catalyst 收斂短選單寬度，compact 維持 full-width sheet |
+| 檔案 | 說明 |
+|------|------|
+| `TranslationPanel.swift` | `struct TranslationPanel: View`，翻譯面板 UI；compact 支援拖曳關閉，regular / Catalyst 關閉 bottom-sheet 拖曳語意 |
+| `TranslationPanelPresenter.swift` | 翻譯面板佈局（最大檔案） |
+| `TranslationVocabPresenter.swift` | 翻譯詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距 |
+| `ReaderSettingsPanel.swift` | `struct ReaderSettingsPanel: View`，閱讀設定面板 |
+| `ReaderSettingsPresenter.swift` | 設定面板 presenter facade，持有設定狀態與 layout environment |
+| `ReaderSettingsPresenter+Vocab.swift` | 設定詞彙呈現；依 `ReaderPanelChromeStyle` 切換手機 handle 與桌面 inspector 上緣內距；「生字標記」區控制 highlight 顏色與濃度 |
+| `VocabHighlightColorPresetPicker.swift` | Reader / Podcast 共用 highlight 顏色 swatch picker；寫回 `ReaderSettings.vocabHighlightColorPreset` |
+| `TOCView.swift` | `struct TOCView: View`，目錄；regular / Catalyst 收斂內容寬度，compact 維持 full-width sheet |
+| `ReaderNotebookPicker.swift` | Reader 內為**本書綁定**單字本（`book.preferredNotebookId`，`Book: NotebookBindable`）；每本書綁定恰好一本真實單字本，**已移除「跟隨全域設定」**列、改用共用 presentational `NotebookBindingList`（Vocabulary/，不標示「預設」）；選詞 / highlight / cache scope 認 `book.resolvedNotebookId` 綁定本、**不隨全域 active 漂移**；綁定本被刪 → `sanitizeStaleBoundNotebook` 清 nil（下次開啟由 `ReaderView` re-seed）。regular / Catalyst 收斂短選單寬度，compact 維持 full-width sheet |
 
 ### PDF Reader（原生 PDFKit 路徑）
 
