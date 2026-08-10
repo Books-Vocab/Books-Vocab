@@ -261,6 +261,45 @@ for policy in sibling parent absolute external-symlink external-hardlink; do
   fi
 done
 
+# ── 3double-slash: exact root// member must reject before extraction ─────────
+section "case 3double-slash: empty component in root member is rejected"
+DD="$TMPDIR/double_slash"
+mkdir -p "$DD" "$TMPDIR/tar_double_slash"
+DOUBLE_BACKUP="$DD/data_20260102_0200.tar.gz"
+printf 'fixture\n' > "$DOUBLE_BACKUP"
+DOUBLE_MARKER="$TMPDIR/double_slash_extracted"
+cat > "$TMPDIR/tar_double_slash/tar" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *-tzf*)
+    printf '%s\n' 'data_20260102_0200//'
+    ;;
+  *-tvzf*)
+    printf '%s\n' 'drwxr-xr-x  0 user staff 0 Jan 01 00:00 data_20260102_0200//'
+    ;;
+  *-xzf*)
+    : > "$DOUBLE_MARKER"
+    ;;
+  *)
+    echo "unexpected tar invocation: \$*" >&2
+    exit 99
+    ;;
+esac
+EOF
+chmod +x "$TMPDIR/tar_double_slash/tar"
+old_path="$PATH"
+PATH="$TMPDIR/tar_double_slash:$PATH"
+out=$(run_verify "$DD" "$DOUBLE_BACKUP"); rc="${out%%|*}"; log="${out##*|}"
+PATH="$old_path"
+assert_rc "double-slash member rejected" 1 "$rc" "$log"
+assert_log_contains "double-slash policy refusal" "archive member policy 拒絕" "$log"
+assert_log_not_contains "double-slash refused before extraction" "解壓到" "$log"
+if [[ ! -e "$DOUBLE_MARKER" ]]; then
+  ok "double-slash extraction not attempted"
+else
+  fail_t "double-slash extraction was attempted"
+fi
+
 # ── 4. 解壓失敗 ─────────────────────────────────────────────────────────
 section "case 4: tar corrupt → fatal"
 D4="$TMPDIR/c4"
