@@ -5546,7 +5546,9 @@ def test_groom_commit_makes_an_unresolved_entry_dispatchable(
 
     assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
     dispatched = json.loads(capsys.readouterr().out)
-    assert [row["id"] for row in dispatched["entries"]] == [entry["id"]]
+    # A new grooming stamp is not dispatchable until its contract evidence
+    # records existing anchors, dependencies and a RED baseline.
+    assert [row["id"] for row in dispatched["entries"]] == []
 
 
 @pytest.mark.parametrize("first_proof", ["cmd", "manual"])
@@ -5997,6 +5999,86 @@ def test_dispatch_respects_blocking_edges_across_narrow_filters(tmp_path):
     BACKLOG.update_entry(store, blocker["id"], status="fixed", fixed_by=["abc1234"])
     released = [p["id"] for p in BACKLOG.list_entries(store, dispatch=True, held={})]
     assert blocked["id"] in released
+
+
+def _contract_ticket(store, repo, **overrides):
+    (repo / "ops").mkdir(exist_ok=True)
+    (repo / "ops" / "fix.py").write_text("# fix\n", encoding="utf-8")
+    (repo / "ops" / "test.py").write_text("# test\n", encoding="utf-8")
+    detail = overrides.pop("detail", "contract guard fixture")
+    entry = _add(store, detail=detail)
+    changes = _groom_kwargs(
+        fix_site="ops/fix.py:1",
+        acceptance_cmd="test -f ops/test.py",
+        groomed_at="2026-08-10",
+        contract_status="ready",
+        contract_baseline="red",
+        contract_checked_at="2026-08-10",
+        contract_checked_by="test:contract",
+        contract_evidence="fix_site=pass; acceptance_dependency=pass; baseline=RED; no-op=false",
+    )
+    changes.update(overrides)
+    BACKLOG.update_entry(store, entry["id"], **changes)
+    return entry["id"]
+
+
+def test_contract_blocked_lifecycle(tmp_path):
+    """A typed contract block is unresolved work, but never claimable work."""
+    store = tmp_path / "s"
+    entry = _add(store, detail="contract is not executable")
+    BACKLOG.update_entry(
+        store, entry["id"], **_groom_kwargs(
+            status="contract-blocked",
+            contract_status="blocked",
+            contract_baseline="unknown",
+            contract_checked_at="2026-08-10",
+            contract_checked_by="test:contract",
+            contract_evidence="fix_site missing; acceptance dependency missing",
+        ))
+    loaded = BACKLOG.load_entry(store, entry["id"])
+    assert loaded["status"] == "contract-blocked"
+    assert BACKLOG.validate_entry(loaded) == []
+    assert BACKLOG.contract_preflight(loaded, repo=tmp_path)
+
+
+def test_pre_dispatch_refuses_missing_contract_evidence(tmp_path):
+    repo = tmp_path
+    store = repo / "s"
+    entry = _add(store, detail="missing contract evidence")
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(
+        fix_site="ops/fix.py:1", groomed_at="2026-08-10"))
+    loaded = BACKLOG.load_entry(store, entry["id"])
+    problems = BACKLOG.contract_preflight(loaded, repo=repo)
+    kinds = {problem["kind"] for problem in problems}
+    assert "contract-evidence-missing" in kinds
+    assert entry["id"] not in [p["id"] for p in BACKLOG.list_entries(
+        store, dispatch=True, held={}, repo=repo)]
+
+
+def test_pre_dispatch_refuses_missing_dependency_and_noop_baseline(tmp_path):
+    repo = tmp_path
+    store = repo / "s"
+    missing = _contract_ticket(store, repo, contract_baseline="no-op")
+    loaded = BACKLOG.load_entry(store, missing)
+    problems = BACKLOG.contract_preflight(loaded, repo=repo)
+    assert {problem["kind"] for problem in problems} == {"contract-baseline-not-red"}
+
+    missing_dep = _contract_ticket(store, repo, detail="contract dependency missing",
+                                   contract_evidence="baseline=RED; no-op=false",
+                                   acceptance_cmd="test -f ops/missing.py")
+    loaded = BACKLOG.load_entry(store, missing_dep)
+    assert any(problem["kind"] == "acceptance-dependency-missing"
+               for problem in BACKLOG.contract_preflight(loaded, repo=repo))
+
+
+def test_complete_contract_ticket_is_dispatchable(tmp_path):
+    repo = tmp_path
+    store = repo / "s"
+    entry_id = _contract_ticket(store, repo)
+    loaded = BACKLOG.load_entry(store, entry_id)
+    assert BACKLOG.contract_preflight(loaded, repo=repo) == []
+    assert entry_id in [p["id"] for p in BACKLOG.list_entries(
+        store, dispatch=True, held={}, repo=repo)]
 
 
 def test_blocking_graph_validation_distinguishes_legal_edges_cycles_and_unknowns(tmp_path):

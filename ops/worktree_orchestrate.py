@@ -488,8 +488,22 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
                     "blockers": blockers,
                     "repair": "finish or explicitly re-plan the unresolved "
                               f"blocked_by ticket(s) first: {', '.join(blockers)}. "
-                              "`ops/backlog.py dispatch` already excludes this "
-                              "entry; explicit --backlog cannot bypass that edge.",
+                    "`ops/backlog.py dispatch` already excludes this "
+                    "entry; explicit --backlog cannot bypass that edge.",
+                })
+            # `store_dir` is <repo>/docs/runbook/backlog on real claims and the
+            # same relative shape in scratch claim tests; derive the checkout
+            # instead of reaching for the caller's cwd.
+            repo = store_dir.resolve().parents[2]
+            contract_problems = backlog_tool.contract_preflight(payload, repo=repo)
+            if contract_problems:
+                problems.append({
+                    "id": entry_id, "kind": "contract-blocked",
+                    "contract_problems": contract_problems,
+                    "repair": "record a contract check with `contract_status=ready`, "
+                    "`contract_baseline=red`, existing fix_site and acceptance "
+                    "dependencies; use `status=contract-blocked` with typed "
+                    "evidence when the contract cannot be made executable.",
                 })
     return problems
 
