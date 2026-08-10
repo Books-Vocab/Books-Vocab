@@ -37,10 +37,12 @@ refresh tick。oscar 睡著時看板會凍在最後一次推送——那是對�
 """
 from __future__ import annotations
 
+import gzip
 import hmac
 import html
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -66,6 +68,8 @@ RELEASE_DIR = Path(__file__).resolve().parent
 RELEASE_ROOT = RELEASE_DIR.parents[1]
 WEB_DIR = RELEASE_DIR / "web"
 CSRF_TOKEN = secrets.token_urlsafe(32)
+GZIP_MIN_BYTES = 1024
+QVALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 
 
 def _release_revision() -> str | None:
@@ -827,6 +831,37 @@ def read_token() -> str:
 TOKEN = ""
 
 
+def _accepts_gzip(value: str) -> bool:
+    for item in value.split(","):
+        token, *parameters = item.split(";")
+        if token.strip().lower() != "gzip":
+            continue
+        if not parameters:
+            return True
+        if len(parameters) != 1:
+            continue
+        name, separator, raw = parameters[0].partition("=")
+        quality = raw.strip()
+        if (
+            separator
+            and name.strip().lower() == "q"
+            and QVALUE_PATTERN.fullmatch(quality)
+            and float(quality) > 0.0
+        ):
+            return True
+    return False
+
+
+def _gzip_eligible(code: int, body: bytes, ctype: str) -> bool:
+    if code < 200 or code in (204, 205, 304) or len(body) < GZIP_MIN_BYTES:
+        return False
+    media_type = ctype.split(";", 1)[0].strip().lower()
+    return media_type.startswith("text/") or media_type in {
+        "application/json",
+        "application/javascript",
+    }
+
+
 def render_index() -> bytes:
     template = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     rendered = template.replace("{{CSRF_TOKEN}}", html.escape(CSRF_TOKEN, quote=True))
@@ -845,8 +880,19 @@ class Handler(BaseHTTPRequestHandler):
     # -- helpers ---------------------------------------------------------
 
     def _send(self, code: int, body: bytes, ctype: str) -> None:
+        gzip_eligible = _gzip_eligible(code, body, ctype)
+        content_encoding = None
+        if gzip_eligible and _accepts_gzip(self.headers.get("Accept-Encoding", "")):
+            compressed = gzip.compress(body, compresslevel=6, mtime=0)
+            if len(compressed) < len(body):
+                body = compressed
+                content_encoding = "gzip"
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if content_encoding is not None:
+            self.send_header("Content-Encoding", content_encoding)
+        if gzip_eligible:
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")

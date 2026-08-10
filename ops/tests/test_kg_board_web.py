@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import gzip
 import inspect
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 from pathlib import Path
 from types import MethodType
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -33,6 +37,110 @@ def _handler(path: str, headers: dict[str, str] | None = None):
     handler.path = path
     handler.headers = headers or {}
     return handler
+
+
+def _capturing_handler(path: str, headers: dict[str, str] | None = None):
+    handler = _handler(path, headers)
+    handler.wfile = BytesIO()
+    handler.response_code = None
+    handler.response_headers = []
+    handler.send_response = MethodType(
+        lambda self, code: setattr(self, "response_code", code), handler
+    )
+    handler.send_header = MethodType(
+        lambda self, name, value: self.response_headers.append((name, value)), handler
+    )
+    handler.end_headers = MethodType(lambda _self: None, handler)
+    return handler
+
+
+def _response_headers(handler) -> dict[str, str]:
+    return dict(handler.response_headers)
+
+
+def test_board_json_gzip_negotiation_round_trips_and_significantly_shrinks(monkeypatch):
+    payload = {
+        "entries": [
+            {"id": f"IMP-{index:04d}", "detail": "canonical board decision " * 40}
+            for index in range(500)
+        ]
+    }
+    original = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    monkeypatch.setattr(server, "board_payload", lambda: payload)
+    handler = _capturing_handler("/api/board", {"Accept-Encoding": "br, gzip; q=0.8"})
+
+    handler.do_GET()
+
+    encoded = handler.wfile.getvalue()
+    headers = _response_headers(handler)
+    assert handler.response_code == 200
+    assert headers["Content-Encoding"] == "gzip"
+    assert headers["Vary"] == "Accept-Encoding"
+    assert int(headers["Content-Length"]) == len(encoded)
+    assert headers["Cache-Control"] == "no-store"
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert gzip.decompress(encoded) == original
+    assert len(encoded) < len(original) * 0.2
+
+
+@pytest.mark.parametrize(
+    "accept_encoding",
+    (
+        None,
+        "br",
+        "brgzip",
+        "x-gzip",
+        "*",
+        "gzip;q=0",
+        "br, gzip; q=0.000",
+        "gzip;q=.5",
+        "gzip;q=1e-1",
+        "gzip;q=0.0001",
+        "gzip;q=1.001",
+        "gzip;level=1",
+        "gzip;q=0.5;level=1",
+    ),
+)
+def test_gzip_requires_an_explicit_positive_quality_token(accept_encoding):
+    body = b"canonical-board-payload" * 200
+    headers = {} if accept_encoding is None else {"Accept-Encoding": accept_encoding}
+    handler = _capturing_handler("/api/board", headers)
+
+    handler._send(200, body, "application/json; charset=utf-8")
+
+    response_headers = _response_headers(handler)
+    assert handler.wfile.getvalue() == body
+    assert "Content-Encoding" not in response_headers
+    assert int(response_headers["Content-Length"]) == len(body)
+
+
+@pytest.mark.parametrize("accept_encoding", ("gzip", "GZip; Q=0.5", "br, gzip;q=1"))
+def test_gzip_accepts_case_insensitive_positive_quality_token(accept_encoding):
+    body = b"canonical-board-payload" * 200
+    handler = _capturing_handler("/api/board", {"Accept-Encoding": accept_encoding})
+
+    handler._send(200, body, "application/json; charset=utf-8")
+
+    assert gzip.decompress(handler.wfile.getvalue()) == body
+    assert _response_headers(handler)["Content-Encoding"] == "gzip"
+
+
+def test_gzip_keeps_small_or_inapplicable_bodies_unencoded():
+    cases = (
+        (200, b"small", "application/json; charset=utf-8"),
+        (204, b"x" * 5000, "application/json; charset=utf-8"),
+        (200, b"x" * 5000, "image/png"),
+    )
+    for code, body, content_type in cases:
+        handler = _capturing_handler("/", {"Accept-Encoding": "gzip"})
+
+        handler._send(code, body, content_type)
+
+        headers = _response_headers(handler)
+        assert handler.wfile.getvalue() == body
+        assert "Content-Encoding" not in headers
+        assert int(headers["Content-Length"]) == len(body)
 
 
 def test_active_page_is_external_assets_with_mobile_decision_ia():
