@@ -2916,6 +2916,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # was never there.
         summary += f"\n  ! output log not written ({log_error})"
     refs_changed = _tag_delta(tags_before, tags_after)
+    infrastructure_unavailable = returncode == 75
     if tags_before is None or tags_after is None:
         # Fail-safe, but never silent. The red stands — an unreadable probe is no reason
         # to downgrade anything — yet "could not measure" must not look identical to
@@ -2926,7 +2927,20 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         result["refs_probe"] = "unmeasured"
         summary += ("\n  ! refs probe unmeasured — cannot tell whether concurrent tag "
                     "surgery contaminated this result")
-    if refs_changed:
+    if infrastructure_unavailable:
+        # rc=75 is a typed machine-state result (for example an iOS shlock
+        # timeout), not evidence that this branch is broken. Keep the summary
+        # stable for machine consumers; the captured output/log still carries
+        # holder and selector diagnostics when the producer emitted them.
+        status = "inconclusive"
+        result["infrastructure_unavailable"] = True
+        if log_path is not None:
+            if log_error:
+                result["output_log_error"] = log_error
+            else:
+                result["output_log"] = str(log_path)
+        summary = "infrastructure unavailable (rc=75), not a verdict on this branch"
+    elif refs_changed:
         # Not `block`: the measurement was taken while someone else moved refs under
         # it, so charging this red to the branch kills work over a machine-state
         # artefact. Not `pass` either — nothing here established the gate would have

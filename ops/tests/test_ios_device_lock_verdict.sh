@@ -42,4 +42,18 @@ for function_name in acquire_build_lock acquire_test_device_lock; do
     fail "$function_name still has a bare exit 1 timeout path"
 done
 
+for script_name in ios_build.sh ios_release.sh; do
+  timeout_body="$(sed -n '/^if ! kg_ios_wait_for_shlock/,/^fi/p' "$ROOT/ops/$script_name")"
+  [[ -n "$timeout_body" ]] || fail "could not extract $script_name timeout path"
+  grep -qF 'kg_ios_lock_timeout_die' <<<"$timeout_body" || \
+    fail "$script_name timeout path does not use the infrastructure helper"
+  ! grep -qF 'exit 1' <<<"$timeout_body" || \
+    fail "$script_name still has a bare exit 1 timeout path"
+done
+
+grep -qF 'is_keychain_unavailable' "$ROOT/ops/ios_test.sh" || \
+  fail "ios_test.sh does not classify keychain OSStatus failures"
+grep -qF 'keychain-unavailable-osstatus-25291' "$ROOT/ops/ios_test.sh" || \
+  fail "ios_test.sh keychain verdict reason is missing"
+
 printf 'PASS: iOS lock timeout is typed infrastructure-unavailable\n'

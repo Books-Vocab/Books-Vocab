@@ -789,8 +789,7 @@ acquire_build_lock() {
   local lock_wait_start_ms
   lock_wait_start_ms="$(ios_test_now_ms)"
   if ! kg_ios_wait_for_shlock "[ios_test]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep; then
-    echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for build lock" >&2
-    exit 1
+    kg_ios_lock_timeout_die "[ios_test]" build "${LOCK_FILE}" "$TIMEOUT"
   fi
   LOCK_HELD=1
   LOCK_WAIT_MS=$(( LOCK_WAIT_MS + ($(ios_test_now_ms) - lock_wait_start_ms) ))
@@ -853,14 +852,14 @@ device_lock_key() {
 acquire_test_device_lock() {
   [[ "$TEST_DEVICE_LOCK_HELD" -eq 1 ]] && return 0
   destination_requires_device_lock || return 0
-  local lock_wait_start_ms lock_key
+  local lock_wait_start_ms lock_key selector
   lock_key="$(device_lock_key)"
   TEST_DEVICE_LOCK_FILE="/tmp/kg-ios-test-device-${lock_key}.lock"
-  echo "[ios_test] caller=$CALLER waiting for device lock selector=\"${SIMULATOR_BOOT_SELECTOR:-$DESTINATION}\"..."
+  selector="${SIMULATOR_BOOT_SELECTOR:-$DESTINATION}"
+  echo "[ios_test] caller=$CALLER waiting for device lock selector=\"$selector\"..."
   lock_wait_start_ms="$(ios_test_now_ms)"
   if ! kg_ios_wait_for_shlock "[ios_test]" device "$TEST_DEVICE_LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep; then
-    echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for device lock" >&2
-    exit 1
+    kg_ios_lock_timeout_die "[ios_test]" device "$selector" "$TIMEOUT"
   fi
   TEST_DEVICE_LOCK_HELD=1
   DEVICE_RUN_LOCK_WAIT_MS=$(( DEVICE_RUN_LOCK_WAIT_MS + ($(ios_test_now_ms) - lock_wait_start_ms) ))
@@ -1045,6 +1044,13 @@ handle_cache_action() {
 
 is_build_db_lock_failure() {
   grep -qE 'build\.db.*database is locked|unable to attach DB' "$TMPOUT" 2>/dev/null
+}
+
+# macOS keychain denial is a machine/account prerequisite, not a test failure.
+# Keep the matcher deliberately tied to Apple's stable OSStatus so ordinary
+# test output containing the word "keychain" cannot be reclassified.
+is_keychain_unavailable() {
+  grep -qF -- '-25291' "$TMPOUT" 2>/dev/null
 }
 
 emit_new_test_output() {
@@ -1703,6 +1709,14 @@ while :; do
   break
 done
 
+# A keychain OSStatus can surface after xcodebuild has finished and may carry a
+# TEST FAILED marker. Classify it before parsing the marker so the orchestrator
+# receives the same typed infrastructure result as a lock timeout.
+if [[ "$EXIT_CODE" -ne 0 ]] && is_keychain_unavailable; then
+  EXIT_CODE="$KG_IOS_EXIT_INFRA_UNAVAILABLE"
+  INCONCLUSIVE_REASON="keychain-unavailable-osstatus-25291"
+fi
+
 ELAPSED=$(( $(date +%s) - START ))
 END_MS="$(ios_test_now_ms)"
 TOTAL_MS=$(( END_MS - START_MS ))
@@ -2053,7 +2067,19 @@ build_ui_test_review_page
 populate_coverage_summary || true
 
 # Extract summary from xcresult if available
-if grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
+if [[ "$EXIT_CODE" -eq "$KG_IOS_EXIT_INFRA_UNAVAILABLE" ]]; then
+  echo ""
+  tail -10 "$TMPOUT" || true
+  PRESERVE_TMPOUT=1
+  [[ -n "$INCONCLUSIVE_REASON" ]] || INCONCLUSIVE_REASON="infrastructure-unavailable"
+  echo "RESULT=inconclusive EXIT=$EXIT_CODE reason=$INCONCLUSIVE_REASON caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
+  write_json_verdict "inconclusive" "$EXIT_CODE" "$INCONCLUSIVE_REASON" ""
+  print_timing_summary
+  emit_ui_runner_lifecycle
+  echo "[ios_test] ? infrastructure unavailable (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
+  echo "[ios_test] full log preserved: $TMPOUT" >&2
+  echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
+elif grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   EXECUTED="$(count_executed_tests_xcresult || count_executed_tests)"
   if [[ "$EXECUTED" -eq 0 ]]; then
     echo ""
