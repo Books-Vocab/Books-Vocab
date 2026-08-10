@@ -196,6 +196,16 @@ def decode_notification_payload(
         renewal_payload=renewal_payload,
     )
 
+    notification_uuid = notification_payload.get("notificationUUID")
+    if not isinstance(notification_uuid, str) or not notification_uuid.strip():
+        notification_uuid = None
+    signed_date = normalize_ms_timestamp(notification_payload.get("signedDate"), parse_datetime_fn)
+    snapshot = {
+        **snapshot,
+        "signed_date": signed_date,
+        "notification_uuid": notification_uuid,
+    }
+
     # Fail-safe symmetry with the unsigned path: status_from_transaction_payload
     # returns a concrete status ("active"/"trial"/...) for any un-expired
     # transaction, so a signed notification with an unknown/future type (or one

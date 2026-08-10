@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -48,6 +49,8 @@ class SubscriptionSnapshotWriter(Protocol):
         original_transaction_id: str | None,
         source: str,
         price_display: str | None = None,
+        signed_date: str | None = None,
+        notification_uuid: str | None = None,
     ) -> StoredUserRecord:
         ...
 
@@ -68,6 +71,7 @@ _SNAPSHOT_FIELDS = (
     "product_id", "status", "is_trial", "expires_at", "will_renew",
     "environment", "transaction_id", "original_transaction_id",
 )
+_ORDERING_FIELDS = ("signed_date", "notification_uuid")
 
 
 @contextmanager
@@ -96,12 +100,14 @@ def _write_snapshot(
 ) -> StoredUserRecord:
     """Persist a decoded App Store snapshot via the injected writer, splatting
     the shared snapshot fields so each ingest path needn't restate all eight."""
+    fields = {k: snapshot[k] for k in _SNAPSHOT_FIELDS}
+    fields.update({k: snapshot[k] for k in _ORDERING_FIELDS if k in snapshot})
     return write_subscription_snapshot(
         users,
         user_id,
         source=source,
         price_display=price_display,
-        **{k: snapshot[k] for k in _SNAPSHOT_FIELDS},
+        **fields,
     )
 
 
@@ -191,23 +197,29 @@ def app_store_notifications_response(
         "will_renew": snapshot["will_renew"],
         "signed_payload": req.signed_payload,
         "raw_payload": decoded_payload or req.raw_payload,
+        "signed_date": snapshot.get("signed_date"),
+        "notification_uuid": snapshot.get("notification_uuid"),
     }
-    append_app_store_event(event)
-
-    # An unknown / future notification type (or one like REFUND_DECLINED that
-    # leaves state unchanged) yields a snapshot with status=None. Fail-safe:
-    # acknowledge the delivery but do NOT mutate the subscription — never
-    # fail-open to "active".
-    if not snapshot.get("status"):
-        logger.warning(
-            "App Store notification type %r produced no determinate status; "
-            "skipping snapshot update (fail-safe)",
-            req.notification_type,
-        )
-        return {"status": "accepted", "updated": False, "reason": "indeterminate_status"}
 
     with FileLock(str(users_lock_file)):
         users = load_users()
+        # The append-only audit event is recorded under the same user lock and
+        # before any ordering decision, so stale/duplicate deliveries remain
+        # observable without being allowed to mutate entitlement state.
+        append_app_store_event(event)
+
+        # An unknown / future notification type (or one like REFUND_DECLINED
+        # that leaves state unchanged) yields status=None. Fail-safe:
+        # acknowledge the delivery but do NOT mutate the subscription — never
+        # fail-open to "active".
+        if not snapshot.get("status"):
+            logger.warning(
+                "App Store notification type %r produced no determinate status; "
+                "skipping snapshot update (fail-safe)",
+                req.notification_type,
+            )
+            return {"status": "accepted", "updated": False, "reason": "indeterminate_status"}
+
         user_id = resolve_user_id_from_subscription_index(
             users,
             snapshot["original_transaction_id"],
@@ -215,18 +227,24 @@ def app_store_notifications_response(
         )
         if not user_id:
             return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
+        previous_subscription = deepcopy(users.get(user_id, {}).get("subscription"))
         record = _write_snapshot(
             write_subscription_snapshot, users, user_id, snapshot,
             source="app_store_notification",
         )
-        save_users(users)
+        updated = record.get("subscription") != previous_subscription
+        if updated:
+            save_users(users)
 
-    return {
+    response = {
         "status": "accepted",
-        "updated": True,
+        "updated": updated,
         "user_id": user_id,
         "entitlements": build_entitlements_response(record).model_dump(),
     }
+    if not updated:
+        response["reason"] = "stale_notification"
+    return response
 
 
 async def reconcile_app_store_subscription_response(

@@ -11,6 +11,56 @@ from ..types import StoredUserRecord, UsersPayload
 from .index import upsert_subscription_index
 from .payloads import ACTIVE_BEARING_STATUSES, default_subscription_payload
 
+_TERMINAL_STATUSES = frozenset({"expired", "revoked", "refunded"})
+
+
+def _parse_signed_date(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def should_apply_subscription_snapshot(
+    existing: object,
+    incoming: dict[str, Any],
+) -> bool:
+    """Reject stale or duplicate signed notifications without losing audit data."""
+    existing_subscription = existing if isinstance(existing, dict) else {}
+    existing_date = _parse_signed_date(existing_subscription.get("last_signed_date"))
+    incoming_date = _parse_signed_date(incoming.get("signed_date"))
+
+    # Unsigned/dev snapshots remain supported, but may not erase an ordering
+    # watermark established by a verified App Store notification.
+    if existing_date is not None and incoming_date is None:
+        return False
+    if incoming_date is None or existing_date is None:
+        return True
+    if incoming_date != existing_date:
+        return incoming_date > existing_date
+
+    existing_terminal = existing_subscription.get("status") in _TERMINAL_STATUSES
+    incoming_terminal = incoming.get("status") in _TERMINAL_STATUSES
+    incoming_uuid = incoming.get("notification_uuid")
+    existing_uuid = existing_subscription.get("last_notification_uuid")
+    if isinstance(incoming_uuid, str) and incoming_uuid and incoming_uuid == existing_uuid:
+        return False
+    if existing_terminal != incoming_terminal:
+        # At one signedDate, terminal state wins over an active state even if
+        # UUID ordering would otherwise select the active notification.
+        return incoming_terminal
+
+    if not isinstance(incoming_uuid, str) or not incoming_uuid:
+        return False
+    if not isinstance(existing_uuid, str) or not existing_uuid:
+        return True
+    return incoming_uuid > existing_uuid
+
 
 def append_app_store_event(notifications_file: Path, payload: dict[str, Any]) -> None:
     notifications_file.parent.mkdir(parents=True, exist_ok=True)
@@ -32,11 +82,19 @@ def write_subscription_snapshot(
     original_transaction_id: str | None,
     price_display: str | None,
     source: str,
+    signed_date: str | None = None,
+    notification_uuid: str | None = None,
 ) -> StoredUserRecord:
-    now_iso = datetime.now(tz=UTC).isoformat()
     record = users.setdefault(user_id, {})
-    subscription = default_subscription_payload()
     existing = record.get("subscription")
+    if not should_apply_subscription_snapshot(
+        existing,
+        {"status": status, "signed_date": signed_date, "notification_uuid": notification_uuid},
+    ):
+        return record
+
+    now_iso = datetime.now(tz=UTC).isoformat()
+    subscription = default_subscription_payload()
     if isinstance(existing, dict):
         subscription.update(existing)
 
@@ -59,6 +117,9 @@ def write_subscription_snapshot(
             "environment": environment,
         }
     )
+    if signed_date is not None:
+        subscription["last_signed_date"] = signed_date
+        subscription["last_notification_uuid"] = notification_uuid
     record["subscription"] = subscription
     upsert_subscription_index(users, user_id, original_transaction_id, transaction_id)
     return record
