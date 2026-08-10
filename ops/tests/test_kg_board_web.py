@@ -53,7 +53,8 @@ def test_active_page_is_external_assets_with_mobile_decision_ia():
     assert "areaCard" not in js
 
     compact_css = "".join(css.split())
-    assert "overflow-x:hidden" in compact_css
+    assert "html,body{margin:0;max-width:100%;overflow-x:clip" in compact_css
+    assert "overflow-x:hidden" not in compact_css
     assert "min-height:44px" in compact_css
     assert "@media(max-width:390px)" in compact_css
     assert ".sticky-shell{position:sticky;top:0" in compact_css
