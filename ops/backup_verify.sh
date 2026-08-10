@@ -96,6 +96,229 @@ cleanup() {
 }
 kg_install_signal_traps cleanup backup_verify
 
+# ── 3. archive member policy（必須先於任何解壓） ─────────────────────────────
+ARCHIVE_ROOT=""
+ARCHIVE_MEMBERS=()
+ARCHIVE_LINK_MEMBERS=()
+ARCHIVE_LINK_TARGETS=()
+ARCHIVE_LINK_TYPES=()
+ARCHIVE_RESOLVED=""
+ARCHIVE_LINK_INDEX=-1
+
+archive_policy_die() {
+  die "archive member policy 拒絕：$*"
+}
+
+archive_member_exists() {
+  local wanted="$1"
+  local member
+  ((${#ARCHIVE_MEMBERS[@]} > 0)) || return 1
+  for member in "${ARCHIVE_MEMBERS[@]}"; do
+    [[ "$member" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
+archive_validate_member() {
+  local raw_member="$1"
+  local member="$raw_member"
+  local remainder component root
+
+  [[ "$member" == */ ]] && member="${member%/}"
+  [[ -n "$member" ]] || archive_policy_die "空 member"
+  [[ "$member" != /* ]] || archive_policy_die "拒絕絕對路徑：$raw_member"
+  case "$member" in
+    *[[:space:]]*) archive_policy_die "拒絕含空白的 member（無法安全解析 type）：$raw_member" ;;
+  esac
+
+  remainder="$member"
+  while :; do
+    if [[ "$remainder" == */* ]]; then
+      component="${remainder%%/*}"
+      remainder="${remainder#*/}"
+    else
+      component="$remainder"
+      remainder=""
+    fi
+    [[ -n "$component" ]] || archive_policy_die "拒絕空 path component：$raw_member"
+    [[ "$component" != "." && "$component" != ".." ]] || \
+      archive_policy_die "拒絕 . / .. path component：$raw_member"
+    [[ -n "$remainder" ]] || break
+  done
+
+  root="${member%%/*}"
+  if [[ -z "$ARCHIVE_ROOT" ]]; then
+    ARCHIVE_ROOT="$root"
+  elif [[ "$root" != "$ARCHIVE_ROOT" ]]; then
+    archive_policy_die "拒絕額外 top-level sibling：${root}（資料根應唯一為 ${ARCHIVE_ROOT}）"
+  fi
+
+  archive_member_exists "$member" && \
+    archive_policy_die "拒絕重複 member：$member"
+  ARCHIVE_MEMBERS+=("$member")
+  printf '%s\n' "$member" >> "$ARCHIVE_CANONICAL_FILE"
+}
+
+archive_find_link() {
+  local wanted="$1"
+  local i
+  ARCHIVE_LINK_INDEX=-1
+  for ((i=0; i<${#ARCHIVE_LINK_MEMBERS[@]}; i++)); do
+    if [[ "${ARCHIVE_LINK_MEMBERS[$i]}" == "$wanted" ]]; then
+      ARCHIVE_LINK_INDEX=$i
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 將 archive path 以 lexical path resolution + 已知 symlink graph 展開。
+# 只要有一段穿出唯一資料根，或 symlink cycle / 絕對 target，就 fail closed。
+archive_resolve_path() {
+  local path="$1"
+  local component candidate target
+  local i hops=0
+  local -a pending=()
+  # path 本身會帶著唯一 root；從空 stack 開始才能正確識別 root/link。
+  local -a stack=()
+  local -a target_parts=()
+
+  [[ "$path" != /* && -n "$path" ]] || return 1
+  [[ "$path" != *"//"* ]] || return 1
+  IFS='/' read -r -a pending <<< "$path"
+
+  while ((${#pending[@]} > 0)); do
+    component="${pending[0]}"
+    pending=("${pending[@]:1}")
+    [[ -n "$component" ]] || return 1
+    if [[ "$component" == "." ]]; then
+      continue
+    elif [[ "$component" == ".." ]]; then
+      ((${#stack[@]} > 1)) || return 1
+      local stack_last=$(( ${#stack[@]} - 1 ))
+      unset "stack[$stack_last]"
+      continue
+    fi
+
+    if ((${#stack[@]} == 0)); then
+      candidate="$component"
+    else
+      candidate="${stack[0]}"
+      for ((i=1; i<${#stack[@]}; i++)); do
+        candidate="$candidate/${stack[$i]}"
+      done
+      candidate="$candidate/$component"
+    fi
+
+    if archive_find_link "$candidate"; then
+      hops=$((hops+1))
+      ((hops <= 40)) || return 1
+      target="${ARCHIVE_LINK_TARGETS[$ARCHIVE_LINK_INDEX]}"
+      [[ -n "$target" && "$target" != /* && "$target" != *"//"* ]] || return 1
+      IFS='/' read -r -a target_parts <<< "$target"
+      if ((${#pending[@]} > 0)); then
+        pending=("${target_parts[@]}" "${pending[@]}")
+      else
+        pending=("${target_parts[@]}")
+      fi
+      continue
+    fi
+
+    stack+=("$component")
+  done
+
+  local IFS=/
+  ARCHIVE_RESOLVED="${stack[*]}"
+}
+
+archive_validate_links_and_members() {
+  local i member target hard_path
+
+  for ((i=0; i<${#ARCHIVE_LINK_MEMBERS[@]}; i++)); do
+    member="${ARCHIVE_LINK_MEMBERS[$i]}"
+    target="${ARCHIVE_LINK_TARGETS[$i]}"
+    if [[ "${ARCHIVE_LINK_TYPES[$i]}" == "h" ]]; then
+      [[ "$target" != /* && -n "$target" ]] || \
+        archive_policy_die "拒絕外指 hardlink：$member -> $target"
+      if [[ "$target" == "$ARCHIVE_ROOT" || "$target" == "$ARCHIVE_ROOT/"* ]]; then
+        hard_path="$target"
+      else
+        hard_path="$ARCHIVE_ROOT/$target"
+      fi
+      archive_resolve_path "$hard_path" || \
+        archive_policy_die "拒絕外指 hardlink：$member -> $target"
+      archive_member_exists "$hard_path" || \
+        archive_policy_die "拒絕指向不存在 member 的 hardlink：$member -> $target"
+    fi
+  done
+
+  # 不只檢查 link target；每一個後續 member 也必須在展開 symlink graph 後仍留在根內。
+  for member in "${ARCHIVE_MEMBERS[@]}"; do
+    archive_resolve_path "$member" || \
+      archive_policy_die "拒絕可穿出資料根的 symlink/path：$member"
+  done
+}
+
+section "archive member policy"
+ARCHIVE_LIST_FILE="$TMPDIR_BV/.archive_members"
+ARCHIVE_DETAIL_FILE="$TMPDIR_BV/.archive_details"
+ARCHIVE_CANONICAL_FILE="$TMPDIR_BV/.archive_canonical"
+ARCHIVE_TAR_ERR="$TMPDIR_BV/.archive_tar_err"
+: > "$ARCHIVE_CANONICAL_FILE"
+
+if ! tar -P -tzf "$BACKUP_FILE" >"$ARCHIVE_LIST_FILE" 2>"$ARCHIVE_TAR_ERR"; then
+  archive_policy_die "無法列舉 archive members（解壓失敗前置檢查）"
+fi
+if ! tar -P -tvzf "$BACKUP_FILE" >"$ARCHIVE_DETAIL_FILE" 2>>"$ARCHIVE_TAR_ERR"; then
+  archive_policy_die "無法讀取 archive member type（解壓失敗前置檢查）"
+fi
+
+while IFS= read -r archive_member || [[ -n "$archive_member" ]]; do
+  archive_validate_member "$archive_member"
+done < "$ARCHIVE_LIST_FILE"
+
+[[ -n "$ARCHIVE_ROOT" ]] || archive_policy_die "archive 沒有任何 member"
+if [[ ! "$ARCHIVE_ROOT" =~ ^data_[0-9]{8}_[0-9]{4}$ && "$ARCHIVE_ROOT" != "kg-data" ]]; then
+  archive_policy_die "拒絕不合法資料根名稱：${ARCHIVE_ROOT}（只接受 data_YYYYMMDD_HHMM 或 kg-data）"
+fi
+
+duplicate_member="$(LC_ALL=C sort "$ARCHIVE_CANONICAL_FILE" | LC_ALL=C uniq -d | head -n 1)"
+[[ -z "$duplicate_member" ]] || archive_policy_die "拒絕重複 member：$duplicate_member"
+
+while IFS= read -r archive_detail || [[ -n "$archive_detail" ]]; do
+  archive_type="${archive_detail:0:1}"
+  case "$archive_type" in
+    d|-)
+      ;;
+    l|h)
+      if [[ "$archive_type" == "l" ]]; then
+        archive_marker=" -> "
+      else
+        archive_marker=" link to "
+      fi
+      [[ "$archive_detail" == *"$archive_marker"* ]] || \
+        archive_policy_die "無法解析 link member：$archive_detail"
+      archive_prefix="${archive_detail%%$archive_marker*}"
+      archive_link_member="${archive_prefix##* }"
+      archive_link_target="${archive_detail##*$archive_marker}"
+      archive_member_exists "$archive_link_member" || \
+        archive_policy_die "type listing 找不到 member：$archive_link_member"
+      [[ -n "$archive_link_target" && "$archive_link_target" != *[[:space:]]* ]] || \
+        archive_policy_die "拒絕不合法 link target：$archive_link_member -> $archive_link_target"
+      ARCHIVE_LINK_MEMBERS+=("$archive_link_member")
+      ARCHIVE_LINK_TARGETS+=("$archive_link_target")
+      ARCHIVE_LINK_TYPES+=("$archive_type")
+      ;;
+    b|c|p|s|*)
+      archive_policy_die "拒絕特殊 archive member type '$archive_type'：$archive_detail"
+      ;;
+  esac
+done < "$ARCHIVE_DETAIL_FILE"
+
+archive_validate_links_and_members
+ok "archive members 合法（root=${ARCHIVE_ROOT}，members=${#ARCHIVE_MEMBERS[@]}）"
+
+# ── 4. 解壓 backup ──────────────────────────────────────────────────────────
 section "解壓 backup"
 info "解壓到 $TMPDIR_BV"
 tar_err="$TMPDIR_BV/.tar_err"
@@ -106,13 +329,8 @@ if ! tar -xzf "$BACKUP_FILE" -C "$TMPDIR_BV" 2>"$tar_err"; then
 fi
 ok "解壓成功"
 
-# 取頂層 data_* 目錄
-DATA_ROOT="$(find "$TMPDIR_BV" -mindepth 1 -maxdepth 1 -type d -name 'data_*' | head -n1)"
-if [[ -z "$DATA_ROOT" ]]; then
-  # 容錯：可能沒包 data_ prefix，直接用 tmpdir 第一層唯一目錄
-  DATA_ROOT="$(find "$TMPDIR_BV" -mindepth 1 -maxdepth 1 -type d | head -n1)"
-fi
-[[ -n "$DATA_ROOT" && -d "$DATA_ROOT" ]] || die "backup 結構異常：找不到頂層 data_ 目錄"
+DATA_ROOT="$TMPDIR_BV/$ARCHIVE_ROOT"
+[[ -d "$DATA_ROOT" ]] || die "backup 結構異常：找不到合法資料根目錄 $ARCHIVE_ROOT"
 ok "data root: $(basename "$DATA_ROOT")"
 
 # ── 3. SQLite integrity_check ──────────────────────────────────────────────
