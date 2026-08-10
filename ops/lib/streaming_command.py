@@ -13,6 +13,15 @@ import time
 from pathlib import Path
 from typing import BinaryIO
 
+# ``ios_ops_core.sh`` executes this file by absolute path.  Python then seeds
+# ``sys.path`` with ``ops/lib`` (the script directory), not the repository's
+# ``ops`` package directory, so neither import below is available from the
+# repository root.  Anchor the direct-script seam to this file's location rather
+# than trusting the caller's cwd; package imports retain their existing fallback.
+_OPS_ROOT = Path(__file__).resolve().parents[1]
+if str(_OPS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_OPS_ROOT))
+
 try:
     from task_registry import TaskRegistry, process_group_id, process_start_identity
 except ModuleNotFoundError:  # pragma: no cover - package import fallback
