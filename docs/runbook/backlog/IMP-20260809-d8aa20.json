@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "PodcastPlayerScene.swift 共 676 行，直接讀取 10 個 environment dependencies、持有 13 個 state 或 app storage 欄位，並掛接 14 個 task、onChange、onAppear 或 onDisappear modifier。228 至 289 行負責切集、清理、字詞刷新與進度保存；516 至 588 行負責認證、音訊、字幕載入及取消；612 至 673 行直接讀寫播放進度。測試唯一直接引用只檢查 View body 記憶體大小，沒有快速切集、舊 task 完成、背景化或離場保存行為。",
   "fix_site": "ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift:228; ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift:516; ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift:612",
+  "fixed_by": [
+    "5d63e2943f90636831ebed099fad6c9bd9906244"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
@@ -17,10 +20,10 @@
   "scope": "一個單集工作階段控制器、一個精簡播放畫面與生命週期單元測試。",
   "severity": "high",
   "source": "iOS maintainability audit 2026-08-09",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ios-maintainability-audit",
-  "verified_evidence": "set -x; awk 'END { exit !(NR >= 600) }' ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift; rg '@Environment' ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift | awk 'END { exit !(NR >= 10) }'; rg -e '[.](task|onChange|onAppear|onDisappear)' ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift | awk 'END { exit !(NR >= 10) }'"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-wave2-integrator",
+  "verified_evidence": "ticket=IMP-20260809-d8aa20\nteam=team-a\nbase=9f240e7be3f93904e290cd7eb301c93c175cc2ac\nsource_sha=f14031723db942fc06682bb8f1bc8705237427a2\nintegrated_head=5d63e2943f90636831ebed099fad6c9bd9906244\ncommands=rg PodcastEpisodeSessionController; test -f PodcastEpisodeSessionControllerTests.swift; reject inline loadTask; ./ops/ios_ops.sh test --unit --file PodcastEpisodeSessionControllerTests; ./ops/ios_ops.sh build\nexit_code=0\ntest_result=4 tests passed, 0 failed, 0 skipped; test invocation 132s; device lock wait 10ms\nbuild_result=succeeded; xcodebuild 48.560s; lock wait 13ms; 806 compile events\nwarnings=52 pre-existing compiler/Swift6 warnings; build errors=0; no new failure"
 }
