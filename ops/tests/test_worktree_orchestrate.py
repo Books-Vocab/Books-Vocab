@@ -6813,6 +6813,7 @@ def _git_repo_with_anchor_ticket(tmp_path):
     subprocess.run(["git", "config", "user.email", "test@example.com"],
                    cwd=repo, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / ".git" / "info" / "exclude").write_text(".cache/\n", encoding="utf-8")
     ticket = repo / "docs" / "runbook" / "backlog" / "IMP-20260809-crash.json"
     ticket.parent.mkdir(parents=True)
     ticket.write_text("open\n", encoding="utf-8")
