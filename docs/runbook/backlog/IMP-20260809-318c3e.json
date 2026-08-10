@@ -21,7 +21,7 @@
   "status": "triaged",
   "stream": "IMP",
   "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:maintainability-audit",
-  "verified_evidence": "bash -c 'set -e; mode=$(git ls-files -s ops/swift_decl_count.py | cut -d\" \" -f1); test \"$mode\" = 100644; test ! -x ops/swift_decl_count.py; head -1 ops/swift_decl_count.py | grep -q \"^#!\"'"
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-contract-groom",
+  "verified_evidence": "Direct recovery RED: ./ops/test_ops.sh python-entrypoints rc=1; acceptance also covers out-of-scope task_registry.py and workflow_dependency_policy.py."
 }

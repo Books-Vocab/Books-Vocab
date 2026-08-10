@@ -19,8 +19,8 @@
   "source": "backend maintainability audit",
   "status": "triaged",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-maintainability-audit",
-  "verified_evidence": "rg -n '^(def create_admin_handlers_from_dependencies|    def admin_|class AdminHandlers|class AdminApiHandlers|def build_admin_router)' backend/src/kg/{admin_wiring,routers/admin}.py"
+  "verdict": "ALREADY-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "team-a-contract-groom",
+  "verified_evidence": "Direct recovery acceptance before edit: cd backend && uv run python -m pytest -q tests/test_admin*.py rc=0, 213 passed; no RED/change."
 }
