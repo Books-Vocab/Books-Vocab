@@ -44,14 +44,13 @@ def stable_registry_fingerprint(monkeypatch):
     return original
 
 
-def test_dispatch_uses_canonical_ids_ignores_snooze_and_subtracts_mirror_claims():
+def test_dispatch_uses_canonical_ids_and_subtracts_mirror_claims():
     blocked = [_ticket(f"BLOCKED-{index}", blocked_by=["WAITING-ON"]) for index in range(6)]
     entries = [*blocked, _ticket("CANONICAL"), _ticket("CLAIMED")]
     canonical_ids = {"CANONICAL", "CLAIMED"}
 
     payload = server.project(
         entries,
-        {"CANONICAL": {"snooze_until": "2099-01-01"}},
         {"CLAIMED": {"branch": "feat/already-held"}},
         canonical_dispatch_ids=canonical_ids,
         canonical_ungroomed_ids=set(),
@@ -64,8 +63,6 @@ def test_dispatch_uses_canonical_ids_ignores_snooze_and_subtracts_mirror_claims(
     )
 
     assert [row["id"] for row in payload["dispatch"]] == ["CANONICAL"]
-    assert [row["id"] for row in payload["deferred"]] == ["CANONICAL"]
-    assert payload["counts"]["decision"]["deferred"] == 1
     assert payload["counts"]["canonical_dispatch"] == 2
     assert payload["counts"]["mirror_claims_subtracted"] == 1
     assert len(payload["dispatch_meta"]["withheld_blocked"]) == 6
@@ -786,7 +783,6 @@ def test_board_api_and_health_payload_share_freshness_state(monkeypatch):
             "ungroomed_ids": [],
         },
     )
-    monkeypatch.setattr(server, "load_overlay", lambda _known: {})
     monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
 
     board = server.board_payload()
@@ -815,7 +811,6 @@ def test_local_and_mirror_claims_are_merged_and_classified():
 
     payload = server.project(
         [_ticket(ticket_id) for ticket_id in ("LOCAL", "MIRROR", "BOTH")],
-        {},
         held,
         canonical_dispatch_ids={"MIRROR"},
         canonical_ungroomed_ids=set(),
@@ -831,7 +826,6 @@ def test_projection_consumes_canonical_ungroomed_ids_instead_of_reimplementing_g
     entries = [_ticket("CANONICAL-GROOMED", groomed=False), _ticket("CANONICAL-UNGROOMED")]
     payload = server.project(
         entries,
-        {},
         canonical_dispatch_ids={"CANONICAL-GROOMED"},
         canonical_ungroomed_ids={"CANONICAL-UNGROOMED"},
     )

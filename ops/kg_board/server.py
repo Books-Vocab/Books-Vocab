@@ -38,19 +38,17 @@ refresh tick。oscar 睡著時看板會凍在最後一次推送——那是對�
 from __future__ import annotations
 
 import gzip
-import hmac
 import html
 import json
 import os
 import re
-import secrets
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -72,7 +70,6 @@ REQUIRE_TOKEN_FOR_READS = os.environ.get("KG_BOARD_REQUIRE_TOKEN") == "1"
 RELEASE_DIR = Path(__file__).resolve().parent
 RELEASE_ROOT = RELEASE_DIR.parents[1]
 WEB_DIR = RELEASE_DIR / "web"
-CSRF_TOKEN = secrets.token_urlsafe(32)
 GZIP_MIN_BYTES = 1024
 QVALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 
@@ -105,7 +102,6 @@ LOG_PATH = STATE_DIR / "kg-board.log"
 LOG_MAX_BYTES = 5 * 1024 * 1024
 LOG_KEEP = 3
 
-OVERLAY_PATH = STATE_DIR / "overlay.json"
 MIRROR_PATH = STATE_DIR / "mirror.json"
 
 RESOLVED_STATUSES = ("fixed", "wont-fix")
@@ -483,42 +479,6 @@ def _update_json(path: Path, default, update):
         return payload
 
 
-def load_overlay(known_ids: set[str] | None = None) -> dict:
-    """The phone's whole surface: rank / pin / snooze. Nothing else.
-
-    Deliberately NOT stored in the repo. It is a per-person view preference, it
-    changes far more often than the ledger, and putting it in git would recreate
-    the write-amplification the store's one-file-per-entry layout exists to avoid.
-    Deliberately NOT under `~/butler` either: Syncthing plus a file this service
-    rewrites live is a conflict generator.
-
-    Garbage-collected against the store on every read — an overlay row for an id
-    that no longer exists is invisible in the UI but keeps the file growing, and a
-    snooze whose date has passed must stop hiding its entry.
-    """
-    with _state_lock:
-        data = _load_json(OVERLAY_PATH, {})
-        if not isinstance(data, dict):
-            return {}
-        today = datetime.now(TZ).date().isoformat()
-        cleaned, dropped = {}, 0
-        for entry_id, row in data.items():
-            if known_ids is not None and entry_id not in known_ids:
-                dropped += 1
-                continue
-            row = dict(row) if isinstance(row, dict) else {}
-            if row.get("snooze_until") and row["snooze_until"] <= today:
-                row.pop("snooze_until", None)
-            if row.get("rank") is None and not row.get("pinned") and not row.get("snooze_until"):
-                dropped += 1
-                continue
-            cleaned[entry_id] = row
-        if dropped:
-            _save_json(OVERLAY_PATH, cleaned)
-            log(f"overlay gc: dropped {dropped} stale row(s), {len(cleaned)} remain")
-        return cleaned
-
-
 def mirror_held_claims() -> dict:
     """Ticket id -> the worktree record holding it, from the mirror oscar pushes.
 
@@ -586,24 +546,20 @@ def classify_area(entry: dict) -> tuple[str, str]:
 
 def project(
     entries: list[dict],
-    overlay: dict,
     held: dict | None = None,
     *,
     canonical_dispatch_ids: set[str] | None = None,
     canonical_ungroomed_ids: set[str] | None = None,
     dispatch_meta: dict | None = None,
 ) -> dict:
-    today = datetime.now(TZ).date().isoformat()
     held = held or {}
     canonical_dispatch_ids = canonical_dispatch_ids or set()
     canonical_ungroomed_ids = canonical_ungroomed_ids or set()
     dispatch_meta = dispatch_meta or {}
     unresolved = [e for e in entries if e.get("status") not in RESOLVED_STATUSES]
     ready = [e for e in unresolved if e["id"] not in canonical_ungroomed_ids]
-    sev_order = {"high": 0, "med": 1, "low": 2}
 
     def decorate(e: dict) -> dict:
-        ov = overlay.get(e["id"], {})
         area, area_evidence = classify_area(e)
         return {
             "id": e["id"], "stream": e.get("stream"), "status": e.get("status"),
@@ -619,47 +575,31 @@ def project(
             "area": area, "area_evidence": area_evidence,
             "ready": e["id"] not in canonical_ungroomed_ids,
             "canonical_dispatch": e["id"] in canonical_dispatch_ids,
-            "rank": ov.get("rank"), "pinned": bool(ov.get("pinned")),
-            "snooze_until": ov.get("snooze_until"),
-            "snoozed": bool(ov.get("snooze_until") and ov["snooze_until"] > today),
             "held": held.get(e["id"]),
         }
 
-    def sort_key(row: dict):
-        return (0 if row["pinned"] else 1,
-                row["rank"] if row["rank"] is not None else 10**6,
-                sev_order.get(row["severity"], 9),
-                row["date"] or "")
-
-    board = sorted((decorate(e) for e in unresolved), key=sort_key)
-    # Canonical eligibility belongs to backlog.py dispatch. The phone's personal
-    # snooze is deliberately not a clause; the clone cannot see oscar's per-machine
-    # registry, so mirrored claims are the one additional suppression applied here.
+    board = sorted((decorate(e) for e in unresolved), key=lambda row: (
+        row["date"] or "", row["id"]
+    ))
+    # Canonical eligibility belongs to backlog.py dispatch. This is a read-only
+    # projection; mirrored claims are the one additional suppression applied here.
     canonical = [r for r in board if r["canonical_dispatch"]]
     dispatch = [r for r in canonical if not r["held"]]
-    # Exactly the rows hidden from the Now presentation. Canonical dispatch and
-    # its metric remain unchanged; All still contains these rows for undo.
-    deferred = [r for r in dispatch if r["snoozed"]]
     blocked_ids = {
         str(row.get("id")) for row in dispatch_meta.get("withheld_blocked", [])
         if isinstance(row, dict) and row.get("id")
     }
     blocked = [r for r in board if r["id"] in blocked_ids]
-    # A PARTITION of `unresolved`, in this precedence, so the four segments sum to
-    # it exactly and the bar cannot show a lie. A row can be both held and snoozed;
-    # without a precedence the segments would overlap and the widths would exceed
-    # the whole.
+    # A partition of unresolved rows, so the segment counts remain auditable.
     def bucket(r: dict) -> str:
         if r["held"]:
             return "held"
         if not r["ready"]:
             return "ungroomed"
-        if r["snoozed"]:
-            return "snoozed"
         if r["canonical_dispatch"]:
             return "dispatch"
         return "blocked"
-    segments = {k: 0 for k in ("dispatch", "held", "snoozed", "blocked", "ungroomed")}
+    segments = {k: 0 for k in ("dispatch", "held", "blocked", "ungroomed")}
     for r in board:
         segments[bucket(r)] += 1
     dispatch_ids = {r["id"] for r in dispatch}
@@ -681,7 +621,6 @@ def project(
     return {
         "board": board,
         "dispatch": dispatch,
-        "deferred": deferred,
         "blocked": blocked,
         "dispatch_meta": dispatch_meta,
         "segments": segments,
@@ -725,7 +664,6 @@ def project(
                 "inflight": sum(1 for r in board if r["held"]),
                 "blocked": len(blocked),
                 "ungroomed": segments["ungroomed"],
-                "deferred": len(deferred),
             },
             "history": {
                 "total": len(entries),
@@ -746,8 +684,31 @@ def _nonnegative_int(value) -> int | None:
     return parsed if parsed >= 0 else None
 
 
+def git_tree_freshness(mirror: dict | None = None) -> dict:
+    mirror = mirror if isinstance(mirror, dict) else _load_json(MIRROR_PATH, {})
+    tree = mirror.get("git_tree") if isinstance(mirror, dict) else None
+    if not isinstance(tree, dict):
+        return {"state": "unknown", "error": "git tree mirror is missing", "age": None}
+    if tree.get("error") or tree.get("complete") is not True:
+        return {"state": "error", "error": tree.get("error") or "git tree is incomplete", "age": None}
+    source = tree.get("at")
+    if not source:
+        return {"state": "unknown", "error": "git tree timestamp is missing", "age": None}
+    try:
+        age = max(0, int((datetime.now(TZ) - datetime.fromisoformat(source)).total_seconds()))
+    except (TypeError, ValueError):
+        return {"state": "unknown", "error": "git tree timestamp is invalid", "age": None}
+    threshold = max(REFRESH_SECONDS * 3, 180)
+    return {
+        "state": "stale" if age > threshold else "current",
+        "error": None,
+        "age": age,
+    }
+
+
 def freshness() -> dict:
     mirror = _load_json(MIRROR_PATH, {})
+    tree_freshness = git_tree_freshness(mirror)
     with _lock:
         snap = dict(_cache)
     lag = None
@@ -771,11 +732,13 @@ def freshness() -> dict:
     sync_state = mirror.get("sync_state") or {}
     local_ahead = _nonnegative_int(sync_state.get("ahead_count"))
     if (snap.get("error") is not None or _refresh_state.get("last_error") is not None
-            or clone_lag_error is not None):
+            or clone_lag_error is not None or tree_freshness["state"] == "error"):
         freshness_state = "error"
-    elif clone_behind_origin is None or local_ahead is None:
+    elif (clone_behind_origin is None or local_ahead is None
+          or tree_freshness["state"] == "unknown"):
         freshness_state = "unknown"
-    elif clone_behind_origin > 0 or local_ahead > 0:
+    elif (clone_behind_origin > 0 or local_ahead > 0
+          or tree_freshness["state"] == "stale"):
         freshness_state = "stale"
     else:
         freshness_state = "current"
@@ -795,6 +758,9 @@ def freshness() -> dict:
         "refresh_seconds": REFRESH_SECONDS,
         "mirror": mirror,
         "seconds_since_origin_push": lag,
+        "git_tree_state": tree_freshness["state"],
+        "git_tree_error": tree_freshness["error"],
+        "git_tree_age": tree_freshness["age"],
         "now": datetime.now(TZ).isoformat(timespec="seconds"),
     }
 
@@ -802,11 +768,9 @@ def freshness() -> dict:
 def board_payload() -> dict:
     snap = read_entries()
     entries = snap["entries"]
-    overlay = load_overlay({e["id"] for e in entries})
     held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
     projected = project(
         entries,
-        overlay,
         held,
         canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
         canonical_ungroomed_ids=set(snap.get("ungroomed_ids") or []),
@@ -822,17 +786,13 @@ def board_payload() -> dict:
             "stream": row["stream"],
             "held": row["held"],
             "ready": row["ready"],
-            "pinned": row["pinned"],
-            "snoozed": row["snoozed"],
-            "rank": row["rank"],
         }
 
     return {
-        "schema": "kg.board.v2",
+        "schema": "kg.board.v3",
         "board": [compact(row) for row in projected["board"]],
         "dispatch_ids": [row["id"] for row in projected["dispatch"]],
         "blocked_ids": [row["id"] for row in projected["blocked"]],
-        "deferred_ids": [row["id"] for row in projected["deferred"]],
         "dispatch_meta": projected["dispatch_meta"],
         "segments": projected["segments"],
         "counts": projected["counts"],
@@ -908,7 +868,7 @@ def _gzip_eligible(code: int, body: bytes, ctype: str) -> bool:
 
 def render_index() -> bytes:
     template = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-    rendered = template.replace("{{CSRF_TOKEN}}", html.escape(CSRF_TOKEN, quote=True))
+    rendered = template
     rendered = rendered.replace(
         "{{APP_REVISION}}", html.escape(APP_REVISION or "unknown", quote=True)
     )
@@ -957,22 +917,6 @@ class Handler(BaseHTTPRequestHandler):
             return "writes require Content-Type: application/json"
         return None
 
-    def _priority_precondition(self) -> str | None:
-        problem = self._json_precondition()
-        if problem:
-            return problem
-        origin = self.headers.get("Origin")
-        host = self.headers.get("Host", "").strip().lower()
-        if host not in ALLOWED_HOSTS:
-            return f"configured host required (Host {host!r} not in allowlist)"
-        parsed = urllib.parse.urlparse(origin or "")
-        if parsed.scheme not in ("http", "https") or parsed.netloc.lower() != host:
-            return f"same-origin write required (Origin {origin!r} != Host {host!r})"
-        supplied = self.headers.get("X-KG-CSRF", "")
-        if not supplied or not hmac.compare_digest(supplied, CSRF_TOKEN):
-            return "missing or bad csrf token"
-        return None
-
     def _mirror_precondition(self) -> str | None:
         problem = self._json_precondition()
         if problem:
@@ -1017,9 +961,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path == "/api/priority":
-            problem = self._priority_precondition()
-        elif path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
+        if path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
             problem = self._mirror_precondition()
         else:
             self._json(404, {"error": f"no such path: {path}"})
@@ -1031,35 +973,6 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"error": f"bad body: {exc}"})
-            return
-
-        if path == "/api/priority":
-            # The phone's ENTIRE write surface: rank, pin, snooze. Claiming is not
-            # here on purpose — a claim must be atomic against the worktree ledger
-            # on the machine that owns the worktrees, and a phone cannot be that.
-            entry_id = str(body.get("id") or "").strip()
-            if not entry_id:
-                self._json(400, {"error": "id is required"})
-                return
-            def update_priority(current):
-                overlay = dict(current) if isinstance(current, dict) else {}
-                row = dict(overlay.get(entry_id) or {})
-                if "rank" in body:
-                    row["rank"] = None if body["rank"] is None else int(body["rank"])
-                if "pinned" in body:
-                    row["pinned"] = bool(body["pinned"])
-                if "snooze_days" in body:
-                    days = int(body["snooze_days"])
-                    row["snooze_until"] = (
-                        None if days <= 0
-                        else (datetime.now(TZ).date() + timedelta(days=days)).isoformat())
-                overlay[entry_id] = row
-                return overlay
-
-            overlay = _update_json(OVERLAY_PATH, {}, update_priority)
-            row = overlay[entry_id]
-            log(f"priority {entry_id}: {row}")
-            self._json(200, {"ok": True, "id": entry_id, "overlay": row})
             return
 
         if path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
