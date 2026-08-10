@@ -32,14 +32,19 @@ require_cmd sqlite3
 require_cmd tar
 
 # ── 建一份「健康」mock backup tarball 到指定目錄 ────────────────────────────
-# 用法：build_backup <out_dir> <stamp> [opt:skip_users_json|corrupt_cards|skip_pipeline_table|skip_judge_table|empty_logs|skip_cards]
+# 用法：build_backup <out_dir> <stamp> [opt:root=<name>|skip_users_json|corrupt_cards|skip_pipeline_table|skip_judge_table|empty_logs|skip_cards]
 build_backup() {
   local out_dir="$1" stamp="$2"
   shift 2
   local opts=("$@")
   mkdir -p "$out_dir"
   local stage="$TMPDIR/stage_$RANDOM"
-  local root="$stage/data_$stamp"
+  local root_name="data_$stamp"
+  local opt
+  for opt in "${opts[@]}"; do
+    [[ "$opt" == root=* ]] && root_name="${opt#root=}"
+  done
+  local root="$stage/$root_name"
   mkdir -p "$root/users/u1"
 
   # users.json
@@ -78,15 +83,70 @@ build_backup() {
   fi
 
   local tarball="$out_dir/data_${stamp}.tar.gz"
-  tar -czf "$tarball" -C "$stage" "data_$stamp"
+  tar -czf "$tarball" -C "$stage" "$root_name"
 
   # corrupt_cards：解壓後將 cards.db 改成亂碼 → 重新打包
   if printf '%s\n' "${opts[@]}" | grep -qx corrupt_cards; then
     # 直接寫一份亂掉的 .db 重打
     printf 'CORRUPTED\x00BADDATA' > "$root/users/u1/cards.db"
-    tar -czf "$tarball" -C "$stage" "data_$stamp"
+    tar -czf "$tarball" -C "$stage" "$root_name"
   fi
 
+  echo "$tarball"
+}
+
+# 建立只應在 member policy 階段被拒絕的 archive。-P 保留絕對/父層路徑，-s
+# 讓 bsdtar 能在不經過檔案系統解析的情況下加入逃逸 member。
+build_policy_archive() {
+  local out_dir="$1" stamp="$2" policy="$3"
+  local stage="$TMPDIR/policy_stage_$RANDOM"
+  local root_name="data_$stamp"
+  local root="$stage/$root_name"
+  local plain="$TMPDIR/policy_$RANDOM.tar"
+  local outside="$TMPDIR/policy_outside_$RANDOM"
+  mkdir -p "$out_dir" "$root"
+  POLICY_SENTINEL=""
+
+  case "$policy" in
+    sibling)
+      mkdir -p "$stage/sibling"
+      printf 'SIBLING\n' > "$stage/sibling/payload"
+      tar -P -cf "$plain" -C "$stage" "$root_name" sibling
+      ;;
+    parent)
+      printf 'ESCAPE\n' > "$stage/payload"
+      tar -P -cf "$plain" -C "$stage" "$root_name"
+      tar -P -rf "$plain" -C "$stage" -s "#^payload\$#${root_name}/../outside#" payload
+      ;;
+    absolute)
+      printf 'ESCAPE\n' > "$stage/payload"
+      tar -P -cf "$plain" -C "$stage" "$root_name"
+      tar -P -rf "$plain" -C "$stage" -s "#^payload\$#/tmp/kg_backup_verify_escape_$RANDOM#" payload
+      ;;
+    external-symlink)
+      mkdir -p "$outside"
+      POLICY_SENTINEL="$outside/sentinel"
+      printf 'KEEP\n' > "$POLICY_SENTINEL"
+      ln -s "$outside" "$root/escape"
+      printf 'PAYLOAD\n' > "$stage/payload"
+      tar -P -cf "$plain" -C "$stage" "$root_name"
+      tar -P -rf "$plain" -C "$stage" -s "#^payload\$#${root_name}/escape/payload#" payload
+      ;;
+    external-hardlink)
+      mkdir -p "$stage/sibling"
+      POLICY_SENTINEL="$stage/sibling/sentinel"
+      printf 'KEEP\n' > "$POLICY_SENTINEL"
+      ln "$POLICY_SENTINEL" "$root/external_hard"
+      tar -P -cf "$plain" -C "$stage" "$root_name" sibling
+      ;;
+    *)
+      echo "unknown policy fixture: $policy" >&2
+      return 1
+      ;;
+  esac
+
+  local tarball="$out_dir/data_${stamp}_${policy}.tar.gz"
+  gzip -c "$plain" > "$tarball"
   echo "$tarball"
 }
 
@@ -131,6 +191,16 @@ assert_log_contains() {
   fi
 }
 
+assert_log_not_contains() {
+  local name="$1" needle="$2" logfile="$3"
+  if grep -q -- "$needle" "$logfile"; then
+    fail_t "$name unexpectedly contains \"$needle\""
+    sed 's/^/      /' "$logfile" >&2
+  else
+    ok "$name excludes \"$needle\""
+  fi
+}
+
 # ── Syntax 先過 ────────────────────────────────────────────────────────────
 section "Syntax"
 bash -n "$SCRIPT" && ok "backup_verify.sh syntax" || fail_t "backup_verify.sh syntax"
@@ -148,6 +218,14 @@ out=$(run_verify "$D1"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "auto-find healthy" 0 "$rc" "$log"
 assert_log_contains "auto-find healthy" "backup verify PASSED" "$log"
 
+# ── 1b. 現役 production root 名稱 → pass ────────────────────────────────────
+section "case 1b: kg-data root is accepted"
+D1B="$TMPDIR/c1b"
+build_backup "$D1B" 20260101_0130 root=kg-data >/dev/null
+out=$(run_verify "$D1B"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "kg-data root" 0 "$rc" "$log"
+assert_log_contains "kg-data root" "kg-data" "$log"
+
 # ── 2. 顯式路徑參數 → pass ────────────────────────────────────────────────
 section "case 2: explicit path arg"
 D2="$TMPDIR/c2"
@@ -164,6 +242,24 @@ TB3_NEW=$(build_backup "$D3" 20260102_0100)
 out=$(run_verify "$D3"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "pick latest" 0 "$rc" "$log"
 assert_log_contains "pick latest" "data_20260102_0100" "$log"
+
+# ── 3b. archive member policy：所有案例都應在解壓前拒絕 ─────────────────────
+for policy in sibling parent absolute external-symlink external-hardlink; do
+  section "case 3${policy}: archive member policy rejects before extraction"
+  DP="$TMPDIR/policy_$policy"
+  TBP=$(build_policy_archive "$DP" "20260102_${RANDOM}" "$policy")
+  out=$(run_verify "$DP" "$TBP"); rc="${out%%|*}"; log="${out##*|}"
+  assert_rc "$policy rejected" 1 "$rc" "$log"
+  assert_log_contains "$policy policy refusal" "archive member policy" "$log"
+  assert_log_not_contains "$policy pre-extraction refusal" "解壓到" "$log"
+  if [[ -n "$POLICY_SENTINEL" ]]; then
+    if grep -qx 'KEEP' "$POLICY_SENTINEL"; then
+      ok "$policy sentinel unchanged"
+    else
+      fail_t "$policy sentinel changed"
+    fi
+  fi
+done
 
 # ── 4. 解壓失敗 ─────────────────────────────────────────────────────────
 section "case 4: tar corrupt → fatal"
