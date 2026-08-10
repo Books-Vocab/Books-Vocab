@@ -590,7 +590,8 @@ def _check_vocabulary(payload: dict) -> list[dict]:
     # `--stale` skipped it (unparseable date). One flag removed an entry from the
     # whole mechanism. That is the shape this rule exists to close, arriving from
     # the other direction: not forgetting to fill it, filling half of it.
-    if (verdict or payload.get("verified_at") or payload.get("verified_by")) \
+    if (verdict or payload.get("verified_at") or payload.get("verified_by")
+            or payload.get("verified_evidence")) \
             and not _real_date(payload.get("verified_at")):
         problems.append({"kind": "verdict-without-date",
                          "value": payload.get("verified_at")})
@@ -790,7 +791,7 @@ def _check_groom(payload: dict) -> list[dict]:
         # Anonymous grooming cannot be audited or re-run; naming the mechanism
         # is what lets a later reader judge how much the badge is worth.
         problems.append({"kind": "groom-claim-without-groomer"})
-    if not _DATE_RE.match(str(payload.get("groomed_at", ""))):
+    if not _real_date(payload.get("groomed_at")):
         # Without a date the badge cannot go stale, and a badge that never
         # expires is a claim about code that has since moved.
         problems.append({"kind": "groom-claim-bad-date", "value": payload.get("groomed_at")})

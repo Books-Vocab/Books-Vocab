@@ -994,6 +994,14 @@ def test_groom_stamp_needs_a_named_groomer_and_a_real_date(tmp_path):
         BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(groomed_at="5 Aug"))
 
 
+@pytest.mark.parametrize("bad_date", ["9999-99-99", "2026-13-45", "2099-01-01"])
+def test_groom_stamp_rejects_calendar_invalid_and_future_dates(tmp_path, bad_date):
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(groomed_at=bad_date))
+
+
 def test_validate_catches_a_groom_claim_written_straight_into_the_file(tmp_path):
     """The store is a directory of JSON; a hand-edit can bypass update()."""
     store = tmp_path / "backlog"
@@ -2772,6 +2780,13 @@ def test_a_verdict_must_carry_a_date_it_can_go_stale_from():
     bad_date = _payload(verdict="CONFIRMED-OPEN", verified_at="last tuesday",
                         verified_by="agent:x")
     assert "verdict-without-date" in {p["kind"] for p in BACKLOG.validate_entry(bad_date)}
+
+
+def test_verified_evidence_alone_must_carry_a_date():
+    evidence_only = _payload(verified_evidence="ran it")
+    assert "verdict-without-date" in {
+        p["kind"] for p in BACKLOG.validate_entry(evidence_only)
+    }
 
 
 def test_verify_can_close_an_entry_in_the_same_act(tmp_path, monkeypatch):
