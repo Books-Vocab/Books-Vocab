@@ -6049,6 +6049,27 @@ def test_contract_blocked_lifecycle(tmp_path):
     assert BACKLOG.contract_preflight(loaded, repo=tmp_path)
 
 
+def test_contract_blocked_status_is_consistent_across_validate_preflight_dispatch(tmp_path):
+    repo = tmp_path
+    store = repo / "s"
+    entry_id = _contract_ticket(store, repo)
+    payload = BACKLOG.load_entry(store, entry_id)
+    payload["status"] = "contract-blocked"
+    BACKLOG.entry_path(store, entry_id).write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    validation_kinds = {problem["kind"] for problem in BACKLOG.validate_entry(payload)}
+    preflight_kinds = {
+        problem["kind"] for problem in BACKLOG.contract_preflight(payload, repo=repo)
+    }
+    dispatched = [p["id"] for p in BACKLOG.list_entries(
+        store, dispatch=True, held={}, repo=repo)]
+
+    assert "contract-blocked-without-contract-status" in validation_kinds
+    assert "contract-blocked" in preflight_kinds
+    assert entry_id not in dispatched
+
+
 @pytest.mark.parametrize("missing_field", ["contract_checked_at", "contract_checked_by"])
 def test_contract_preflight_requires_attributed_contract_check(tmp_path, missing_field):
     repo = tmp_path

@@ -998,6 +998,9 @@ def contract_preflight(payload: dict, *, repo: Path | None = None) -> list[dict]
     RED; neither proves there is work for a worker to do.
     """
     root = (repo or ROOT).resolve()
+    if payload.get("status") == "contract-blocked":
+        return [{"kind": "contract-blocked",
+                 "reason": "status=contract-blocked is never dispatchable"}]
     groomed_at = str(payload.get("groomed_at") or "")
     if groomed_at and groomed_at < CONTRACT_REQUIRED_SINCE \
             and not any(payload.get(field) is not None for field in CONTRACT_FIELDS):
