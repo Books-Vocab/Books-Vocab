@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "_check_groom 的日期用 _DATE_RE 形狀檢查而非 _real_date 曆法檢查,所以 9999-99-99 與任何未來日期都能拿到梳理徽章——這正是 verified_at 那條已經修過的同一個洞,在隔壁欄位上原封不動。另兩個同族小洞:(1) verified_evidence 是唯一沒被納入雙邊 verdict-without-date 觸發條件的驗證欄位;(2) verify <不存在的 id> 會拋出未捕捉的 KeyError traceback,而 show / update 對同樣輸入印的是乾淨訊息。",
   "fix_site": "ops/backlog.py:_check_groom（:565，改用 _real_date）+ ops/backlog.py:_check_vocabulary（:470-473，把 verified_evidence 納入觸發條件）",
+  "fixed_by": [
+    "b18378c48b18ebe2220d10a11557ca42b52a7e97"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-8f5b97",
@@ -16,6 +19,10 @@
   "scope": "同一支工具改兩行判斷，補三條測試。",
   "severity": "low",
   "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-b-supervisor",
+  "verified_evidence": "source hand-back verified; integration_slug=team-b-delivery-20260811-655d; integrated_head=b18378c48b18ebe2220d10a11557ca42b52a7e97"
 }

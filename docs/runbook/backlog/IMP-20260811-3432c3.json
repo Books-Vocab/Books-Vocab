@@ -12,6 +12,9 @@
   "date": "2026-08-11",
   "detail": "2026-08-11 fresh Gate evidence: ops/tests/test_ops_ci_coverage.sh reports four tracked test files unreachable from every DEFAULT_TESTS run_one path: ops/tests/test_task_registry.py, ops/tests/test_worktree_campaign_reservation.py, ops/tests/test_worktree_handback_outcomes.py, and ops/tests/test_worktree_parent_integration.py. Each belongs to the existing worktree-orchestrator surface but is absent from its pytest argv. The same run also reports an ios-ops baseline failure; that is a separate prerequisite ticket for the runner import defect and must not be absorbed here. Canonical lookup found no open ticket that owns these four registration paths, and IMP-20260806-79f81c is limited to optional-only reachability.",
   "fix_site": "ops/test_ops.sh;ops/tests/test_ops_ci_coverage.sh;ops/tests/test_worktree_registry.py",
+  "fixed_by": [
+    "b18378c48b18ebe2220d10a11557ca42b52a7e97"
+  ],
   "groomed_against": "a9fe72ef1aa705f56f2a32b71dbccd2edcb5e88c",
   "groomed_at": "2026-08-11",
   "groomed_by": "supervisor:baseline-groom",
@@ -22,6 +25,10 @@
   "scope": "One existing dispatcher group, four pytest paths, and one coverage regression assertion.",
   "severity": "high",
   "source": "2026-08-11 fresh Gate evidence: ops/tests/test_ops_ci_coverage.sh reports four tracked test files unreachable from every DEFAULT_TESTS run_one path: ops/tests/test_task_registry.py, ops/tests/test_worktree_campaign_reservation.py, ops/tests/test_worktree_handback_outcomes.py, and ops/tests/test_worktree_parent_integration.py. Each belongs to the existing worktree-orchestrator surface but is absent from its pytest argv. The same run also reports an ios-ops baseline failure; that is a separate prerequisite ticket for the runner import defect and must not be absorbed here. Canonical lookup found no open ticket that owns these four registration paths, and IMP-20260806-79f81c is limited to optional-only reachability.",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-b-supervisor",
+  "verified_evidence": "source hand-back verified; integration_slug=team-b-delivery-20260811-655d; integrated_head=b18378c48b18ebe2220d10a11557ca42b52a7e97"
 }

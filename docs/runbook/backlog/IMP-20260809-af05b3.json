@@ -8,6 +8,9 @@
   "date": "2026-08-09",
   "detail": "根目錄 devops.sh 共 950 行、21 個 cmd_*，同時承擔遠端 transport、環境比對、部署、備份、使用者資料與容器命令；ops/devops_kg_safe.sh 又用第二份 case 維護允許、拒絕與 help。兩邊的命令集合及安全分類沒有共同資料來源。cmd_env_drift 在 shell 內嵌約 90 行 Python 並直接呼叫 python3，違反本 repo 的 uv Python 契約。更直接的測試邊界證據在 ops/test_devops.sh：因 devops.sh 有頂層 dispatch，測試無法 source，只能用 awk/sed 抽函式到暫存腳本，既脆弱又容易把文字形狀當行為。",
   "fix_site": "devops.sh:cmd_env_drift/main dispatch；ops/devops_kg_safe.sh:safe_usage/main；ops/test_devops.sh:source workaround；新增 ops/lib/devops_commands.sh、ops/lib/devops_command_registry.sh、ops/env_drift.py、ops/tests/test_devops_command_contract.sh",
+  "fixed_by": [
+    "b18378c48b18ebe2220d10a11557ca42b52a7e97"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:maintainability-audit",
@@ -18,10 +21,10 @@
   "scope": "一個根入口、兩個共用函式模組、一支小型環境檢查程式與其離線測試。",
   "severity": "med",
   "source": "agent:maintainability-audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:maintainability-audit",
-  "verified_evidence": "bash -c 'set -e; rg -q \"^cmd_env_drift\\(\\)\" devops.sh; rg -q \"^  python3 - \" devops.sh; rg -q \"source devops.sh\" ops/test_devops.sh; rg -q \"^case .*1:-help.* in\" devops.sh; rg -q \"^[[:space:]]*case .*sub.* in\" ops/devops_kg_safe.sh'"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-b-supervisor",
+  "verified_evidence": "source hand-back verified; integration_slug=team-b-delivery-20260811-655d; integrated_head=b18378c48b18ebe2220d10a11557ca42b52a7e97"
 }

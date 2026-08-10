@@ -11,6 +11,9 @@
   "date": "2026-08-11",
   "detail": "Fresh Gate 的 ios-device-lock registration source `12e5e1364e5b491303a13a0818fc9efa56c33f55` 已把 `ios-device-lock` 加入 `ops/test_ops.sh` 的 DEFAULT_TESTS；`ops/tests/ops_group_chain.py::case_arms` 因而解析出 56 個 arms。`ops/tests/test_ops_group_chain.py::test_case_arms_covers_every_group_in_test_ops` 仍硬編 `assert len(arms) == 55`，註解也仍寫 53 DEFAULT + 2 optional，造成 Gate 唯一的 inventory mismatch。以該 source worktree 實跑 `uv run pytest -q ops/tests/test_ops_group_chain.py`：1 failed、7 passed，失敗正是 56 != 55。修復只更新 `ops/tests/test_ops_group_chain.py` 的 inventory baseline（以及必要的 focused invariant），不修改 `ops/test_ops.sh`、不把其他 Gate debt 混進來；若新 primary 尚未包含 ios-device-lock，preflight 必須停止而非自行補入該群組。",
   "fix_site": "ops/tests/test_ops_group_chain.py",
+  "fixed_by": [
+    "b18378c48b18ebe2220d10a11557ca42b52a7e97"
+  ],
   "groomed_against": "ae68c180e6bd5604635b6bd1c0b69b7e17dfd3a0",
   "groomed_at": "2026-08-11",
   "groomed_by": "supervisor:gate-inventory",
@@ -21,6 +24,10 @@
   "scope": "一個群組 inventory assertion 與一支精準 pytest regression，限定在測試盤點檔。",
   "severity": "med",
   "source": "fresh Gate inventory audit on ios-device-lock source hand-back 12e5e1364",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-b-supervisor",
+  "verified_evidence": "source hand-back verified; integration_slug=team-b-delivery-20260811-655d; integrated_head=b18378c48b18ebe2220d10a11557ca42b52a7e97"
 }
