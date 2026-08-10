@@ -55,6 +55,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+try:
+    from ops.kg_board.git_tree import project_snapshot
+except ModuleNotFoundError:  # direct launch via the release checkout
+    from git_tree import project_snapshot
+
 TZ = ZoneInfo("Asia/Taipei")
 
 HOME = Path.home()
@@ -835,6 +840,22 @@ def board_payload() -> dict:
     }
 
 
+def git_tree_payload() -> dict:
+    """Return the mirrored Git/worktree graph with canonical ticket annotations."""
+    mirror = _load_json(MIRROR_PATH, {}) or {}
+    entries = read_entries().get("entries") or []
+    tickets = {
+        str(entry.get("id")): {
+            "brief": entry.get("brief") or "",
+            "severity": entry.get("severity"),
+        }
+        for entry in entries if entry.get("id")
+    }
+    payload = project_snapshot(mirror.get("git_tree"), tickets)
+    payload["freshness"] = freshness()
+    return payload
+
+
 def health_payload() -> dict:
     snap = freshness()
     ok = (snap["read_error"] is None and snap["refresh"]["last_error"] is None
@@ -989,13 +1010,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/board":
             self._json(200, board_payload())
             return
+        if path == "/api/git-tree":
+            self._json(200, git_tree_payload())
+            return
         self._json(404, {"error": f"no such path: {path}"})
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/priority":
             problem = self._priority_precondition()
-        elif path in ("/api/mirror/claims", "/api/mirror/sync-state"):
+        elif path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
             problem = self._mirror_precondition()
         else:
             self._json(404, {"error": f"no such path: {path}"})
@@ -1038,11 +1062,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "id": entry_id, "overlay": row})
             return
 
-        if path in ("/api/mirror/claims", "/api/mirror/sync-state"):
+        if path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
             # Pushed by oscar (`com.kg.sync`). The board cannot read oscar's ledger
             # or its local main — both live on a laptop that sleeps — so oscar
             # reports and this stores verbatim.
-            key = "claims" if path.endswith("claims") else "sync_state"
+            key = ("claims" if path.endswith("claims") else
+                   "sync_state" if path.endswith("sync-state") else "git_tree")
             def update_mirror(current):
                 mirror = dict(current) if isinstance(current, dict) else {}
                 mirror[key] = body

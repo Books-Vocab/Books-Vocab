@@ -306,6 +306,19 @@ def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
         assert marker in responses[0][1]
 
 
+def test_git_tree_read_route_returns_versioned_projection(monkeypatch):
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    monkeypatch.setattr(server, "git_tree_payload", lambda: {
+        "schema": "kg.board.git-tree.v1", "refs": [], "commits": [],
+    })
+    handler = _capturing_handler("/api/git-tree")
+
+    handler.do_GET()
+
+    assert handler.response_code == 200
+    assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.git-tree.v1"
+
+
 def test_require_token_mode_is_explicitly_api_only_without_browser_session(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", True)
     monkeypatch.setattr(server, "TOKEN", "read-secret")
