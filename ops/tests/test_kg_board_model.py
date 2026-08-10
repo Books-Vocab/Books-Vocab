@@ -210,6 +210,135 @@ def test_read_entries_preserves_warm_snapshot_when_dispatch_invocation_fails(
     assert failure_type.__name__ in stale["error"]
 
 
+@pytest.mark.parametrize("failure_type", (subprocess.TimeoutExpired, OSError))
+def test_read_entries_preserves_warm_snapshot_when_initial_head_probe_fails(
+    monkeypatch, tmp_path, failure_type
+):
+    warm = {
+        "sha": "warm-head",
+        "entries": [_ticket("WARM")],
+        "dispatch_ids": ["WARM"],
+        "dispatch_meta": {"withheld_blocked": []},
+        "local_held": {"HELD": {"branch": "feat/warm"}},
+        "ungroomed_ids": [],
+        "read_at": "warm-read",
+        "error": None,
+    }
+
+    def failing_git(args):
+        if failure_type is subprocess.TimeoutExpired:
+            raise failure_type(["git", *args], 120)
+        raise failure_type("git unavailable")
+
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text(json.dumps({"sync_state": {"ahead_count": 0}}), encoding="utf-8")
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "_git", failing_git)
+    monkeypatch.setattr(server, "_cache", dict(warm))
+
+    stale = server.read_entries()
+    state = server.freshness()
+
+    assert stale["entries"] == warm["entries"]
+    assert stale["dispatch_ids"] == warm["dispatch_ids"]
+    assert stale["local_held"] == warm["local_held"]
+    assert failure_type.__name__ in stale["error"]
+    assert state["freshness_state"] == "error"
+    assert state["read_error"] == stale["error"]
+
+
+def test_read_entries_preserves_successful_empty_warm_snapshot_on_head_failure(
+    monkeypatch, tmp_path
+):
+    warm = {
+        "sha": "empty-warm-head",
+        "entries": [],
+        "dispatch_ids": [],
+        "dispatch_meta": {"clauses": ["warm-empty"]},
+        "local_held": {},
+        "ungroomed_ids": [],
+        "read_at": "empty-warm-read",
+        "error": None,
+    }
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text(json.dumps({"sync_state": {"ahead_count": 0}}), encoding="utf-8")
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(
+        server, "_git", lambda _args: (_ for _ in ()).throw(OSError("git unavailable"))
+    )
+    monkeypatch.setattr(server, "_cache", dict(warm))
+
+    stale = server.read_entries()
+    state = server.freshness()
+
+    assert stale["sha"] == warm["sha"]
+    assert stale["read_at"] == warm["read_at"]
+    assert stale["dispatch_meta"] == warm["dispatch_meta"]
+    assert "OSError" in stale["error"]
+    assert state["freshness_state"] == "error"
+    assert state["read_error"] == stale["error"]
+
+
+@pytest.mark.parametrize("failure_type", (subprocess.TimeoutExpired, OSError))
+def test_read_entries_preserves_warm_snapshot_when_final_head_probe_fails(
+    monkeypatch, tmp_path, failure_type
+):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    head_calls = 0
+    warm = {
+        "sha": "warm-head",
+        "entries": [_ticket("WARM")],
+        "dispatch_ids": ["WARM"],
+        "dispatch_meta": {"withheld_blocked": []},
+        "local_held": {"HELD": {"branch": "feat/warm"}},
+        "ungroomed_ids": [],
+        "read_at": "warm-read",
+        "error": None,
+    }
+
+    def fake_git(args):
+        nonlocal head_calls
+        if args == ["rev-parse", "HEAD"]:
+            head_calls += 1
+            if head_calls == 2:
+                if failure_type is subprocess.TimeoutExpired:
+                    raise failure_type(["git", *args], 120)
+                raise failure_type("git unavailable")
+            return subprocess.CompletedProcess(args, 0, "new-head\n", "")
+        return subprocess.CompletedProcess(args, 0, "0\n", "")
+
+    def fake_run(command, **_kwargs):
+        body = {
+            "schema": "kg.backlog.list.v1",
+            "entries": [_ticket("NEW")],
+            "held": {},
+            "dispatch": {"withheld_blocked": []},
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text(json.dumps({"sync_state": {"ahead_count": 0}}), encoding="utf-8")
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "_git", fake_git)
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(server, "_cache", dict(warm))
+
+    stale = server.read_entries(force=True)
+    state = server.freshness()
+
+    assert stale["entries"] == warm["entries"]
+    assert stale["dispatch_ids"] == warm["dispatch_ids"]
+    assert stale["local_held"] == warm["local_held"]
+    assert failure_type.__name__ in stale["error"]
+    assert state["freshness_state"] == "error"
+    assert state["read_error"] == stale["error"]
+
+
 def test_successful_empty_store_replaces_cached_rows(monkeypatch, tmp_path):
     tool = tmp_path / "ops" / "backlog.py"
     tool.parent.mkdir()
