@@ -163,7 +163,7 @@ import uuid
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 # Reuse P2 in-process — never re-implement register / resolve / sweep / state paths.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1652,6 +1652,36 @@ def _local_trunk(base: str) -> str:
     and cutover must measure containment against the SAME ref, or the check drifts
     away from the thing it protects."""
     return base.split("/", 1)[1] if "/" in base else base
+
+
+def _delivery_operation_base(
+    base: str | None,
+    *,
+    manifest: dict[str, Any] | None = None,
+) -> str:
+    """Resolve a close-wave operation target without confusing identity for a ref.
+
+    Completed manifests retain exact commit identities so recovery can prove which
+    tree was gated or anchored.  An exact SHA is not an operational branch, though:
+    cutover, anchor, and resolve must continue to act on this checkout's local
+    ``main``.  Symbolic ``origin/main`` remains normalized by ``_local_trunk``.
+    """
+    requested = str(base or "main")
+    identities = [requested]
+    if isinstance(manifest, dict):
+        identities.extend([
+            manifest.get("base"),
+            manifest.get("base_sha"),
+            (manifest.get("close_wave") or {}).get("anchor_base_sha")
+            if isinstance(manifest.get("close_wave"), dict) else None,
+        ])
+    if any(
+        isinstance(value, str)
+        and re.fullmatch(r"[0-9a-fA-F]{7,64}", value)
+        for value in identities
+    ):
+        return "main"
+    return _local_trunk(requested)
 
 
 def _base_containment(worktree: str, base: str) -> dict[str, Any] | None:
@@ -5814,7 +5844,11 @@ def _delivery_json_tool(
             label=label,
             progress_prefix="[delivery]",
             heartbeat_interval=20.0,
-            capture_limit=256 * 1024,
+            # Registry ledgers are machine JSON, not human log tails.  The old
+            # 256 KiB ceiling truncated a measured ~276 KiB receipt and made a
+            # valid close-wave look like a malformed child.  Keep a finite bound
+            # for runaway tools while leaving enough room for the complete ledger.
+            capture_limit=8 * 1024 * 1024,
         )
     except OSError as exc:
         return 127, {"error": f"could not start {label}: {exc}"}
@@ -6037,7 +6071,14 @@ def _delivery_integration_error(
                 f"{INTEGRATE_SCHEMA!r}")
     if payload.get("slug") != slug:
         return f"{label} belongs to slug {payload.get('slug')!r}, not {slug!r}"
-    if payload.get("base") != base:
+    stored_base = payload.get("base")
+    stored_base_is_identity = (
+        isinstance(stored_base, str)
+        and re.fullmatch(r"[0-9a-fA-F]{7,64}", stored_base) is not None
+    )
+    if (stored_base != base
+            and _local_trunk(str(stored_base or "")) != _local_trunk(base)
+            and not stored_base_is_identity):
         return (f"{label} was created with base {payload.get('base')!r}, not "
                 f"{base!r}")
     stored_branches = payload.get("branches")
@@ -6124,7 +6165,10 @@ def _delivery_registry_records(
         if primary is not None
         else Path(__file__).resolve().parent / "worktree_registry.py"
     )
-    argv = ["list"]
+    # `list` defaults to a human table.  The coordinator consumes the typed JSON
+    # receipt; make that contract explicit instead of relying on a downstream
+    # helper to append a flag after an already-built argv snapshot.
+    argv = ["list", "--json"]
     if args.state:
         argv += ["--state", args.state]
     rc, payload = _delivery_json_tool(
@@ -6144,6 +6188,7 @@ def _delivery_registry_records(
 def _delivery_expected_ticket_ids(
     records: list[dict[str, Any]], branches: list[str],
     *, statuses: set[str] | None = None,
+    staged_ids: Iterable[str] | None = None,
 ) -> list[str]:
     """Derive the ticket set a named wave owes from its source reservations.
 
@@ -6166,7 +6211,52 @@ def _delivery_expected_ticket_ids(
             ticket_id for ticket_id in backlog
             if isinstance(ticket_id, str) and ticket_id
         )
+    ticket_ids.update(
+        ticket_id for ticket_id in (staged_ids or ())
+        if isinstance(ticket_id, str) and ticket_id
+    )
     return sorted(ticket_ids)
+
+
+def _delivery_staged_ticket_ids(
+    primary: Path, branches: Iterable[str],
+) -> list[str]:
+    """Return staged closure ids owned by the explicitly named source branches.
+
+    A stacked hand-back can be resolved before the wave resumes, so registry
+    ``backlog`` lists are no longer a complete closure ledger.  The gitignored
+    anchor queue is the durable per-machine evidence for those staged rows; it is
+    merged only for named branches, preserving the foreign-team boundary.
+    """
+    allowed = {branch for branch in branches if isinstance(branch, str)}
+    return sorted({
+        row.get("id") for row in _read_anchor_queue(primary)
+        if isinstance(row, dict)
+        and row.get("branch") in allowed
+        and isinstance(row.get("id"), str)
+        and row.get("id")
+    })
+
+
+def _delivery_expected_ticket_set(
+    primary: Path,
+    records: list[dict[str, Any]],
+    branches: list[str],
+    *,
+    saved_expected: Iterable[str] | None = None,
+) -> list[str]:
+    """Union persisted, registry, and staged ids without widening the wave."""
+    ids = _delivery_expected_ticket_ids(
+        records,
+        branches,
+        statuses={wr.STATUS_ACTIVE, "merged"},
+        staged_ids=_delivery_staged_ticket_ids(primary, branches),
+    )
+    ids.extend(
+        ticket_id for ticket_id in (saved_expected or ())
+        if isinstance(ticket_id, str) and ticket_id
+    )
+    return sorted(set(ids))
 
 
 def _delivery_expected_ticket_reservation_errors(
@@ -6458,7 +6548,7 @@ def _delivery_anchor_and_commit(
     with _main_advance_lock(primary):
         ff_refusal = _primary_ff_ready(
             primary,
-            _local_trunk(getattr(args, "base", "main")),
+            _delivery_operation_base(getattr(args, "base", "main")),
             branch=f"close-wave:{slug}",
             worktree=str(primary),
         )
@@ -6805,9 +6895,10 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         }, args.json, "✗ close-wave: --branches <source-branch ...> is required")
         return EXIT_USAGE
 
+    operation_base = _delivery_operation_base(args.base, manifest=manifest)
     state_identity_error = (_delivery_integration_error(
         integration_state, label="integration state", slug=args.slug,
-        base=args.base, branches=branches, require_gated=False,
+        base=operation_base, branches=branches, require_gated=False,
         require_live_worktree=True,
     ) if integration_state is not None else None)
     if state_identity_error:
@@ -6821,7 +6912,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     )
     manifest_identity_error = (_delivery_integration_error(
         manifest, label="completed integration manifest", slug=args.slug,
-        base=args.base, branches=branches, require_gated=True,
+        base=operation_base, branches=branches, require_gated=True,
         require_live_worktree=manifest_delivery_status not in ("validated", "completed"),
     ) if manifest is not None else None)
     if manifest_identity_error:
@@ -6856,11 +6947,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     if args.commit and manifest is not None and manifest_delivery_status == "completed":
         steps: list[dict[str, Any]] = []
         saved_expected = _delivery_saved_expected_ticket_ids(manifest)
-        expected_ticket_ids = (
-            saved_expected if saved_expected is not None else
-            _delivery_expected_ticket_ids(
-                records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
-            )
+        expected_ticket_ids = _delivery_expected_ticket_set(
+            primary, records, branches, saved_expected=saved_expected,
         )
         reservation_errors = _delivery_expected_ticket_reservation_errors(
             records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
@@ -6932,11 +7020,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 error="validated close-wave manifest disappeared during recovery",
             )
         saved_expected = _delivery_saved_expected_ticket_ids(recovered)
-        expected_ticket_ids = (
-            saved_expected if saved_expected is not None else
-            _delivery_expected_ticket_ids(
-                recovery_records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
-            )
+        expected_ticket_ids = _delivery_expected_ticket_set(
+            primary, recovery_records, branches, saved_expected=saved_expected,
         )
         reservation_errors = _delivery_expected_ticket_reservation_errors(
             recovery_records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
@@ -7033,7 +7118,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     # wave may resolve its own source worktree before anchor/sync, so any later
     # lookup through `__file__` is unsafe.
     primary_orchestrator = primary / "ops" / "worktree_orchestrate.py"
-    target_base = _local_trunk(args.base)
+    target_base = operation_base
     integration_worktree: Path | None = None
     integration_branch: str | None = None
 
@@ -7043,7 +7128,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             primary,
             [
                 "integrate", "--slug", args.slug, "--branches", *branches,
-                "--no-gate", "--commit", "--base", args.base,
+                "--no-gate", "--commit", "--base", operation_base,
                 *_state_arg(args.state),
             ],
             label=f"integrate:{args.slug}",
@@ -7070,7 +7155,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             return EXIT_BLOCK
         integration_error = _delivery_integration_error(
             integration_state, label="integration state", slug=args.slug,
-            base=args.base, branches=branches, require_gated=False,
+            base=operation_base, branches=branches, require_gated=False,
             require_live_worktree=True,
         )
         if integration_error:
@@ -7089,7 +7174,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             integration_worktree,
             [
                 "integrate", "--slug", args.slug, "--continue", "--commit",
-                "--base", args.base, *_state_arg(args.state),
+                "--base", operation_base, *_state_arg(args.state),
             ],
             label=f"integrate-gate:{args.slug}",
             expected_schema=INTEGRATE_SCHEMA,
@@ -7115,7 +7200,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             )
         manifest_error = _delivery_integration_error(
             manifest, label="completed integration manifest", slug=args.slug,
-            base=args.base, branches=branches, require_gated=True,
+            base=operation_base, branches=branches, require_gated=True,
             require_live_worktree=True,
         )
         if manifest_error:
@@ -7135,11 +7220,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     # their close-wave primary/sync sequence out of this critical section; their
     # source branches are not targets of this wave's resolve calls.
     saved_expected = _delivery_saved_expected_ticket_ids(manifest)
-    expected_ticket_ids = (
-        saved_expected if saved_expected is not None else
-        _delivery_expected_ticket_ids(
-            records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
-        )
+    expected_ticket_ids = _delivery_expected_ticket_set(
+        primary, records, branches, saved_expected=saved_expected,
     )
     reservation_errors = _delivery_expected_ticket_reservation_errors(
         records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
@@ -7210,7 +7292,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             integration_worktree,
             [
                 "cutover", "--worktree", str(integration_worktree), "--commit",
-                "--base", args.base, *_state_arg(args.state),
+                "--base", operation_base, *_state_arg(args.state),
             ],
                 label=f"cutover:{args.slug}",
                 expected_schema=SCHEMA,
