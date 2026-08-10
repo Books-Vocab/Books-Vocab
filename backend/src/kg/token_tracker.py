@@ -3,24 +3,32 @@
 from __future__ import annotations
 
 import sqlite3
-import threading
 from datetime import UTC, datetime
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
 DATA_DIR = data_dir()
 DB_PATH = DATA_DIR / "token_usage.db"
 
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
+_INITIAL_DB_PATH = DB_PATH
 
 
 def _get_conn() -> sqlite3.Connection:
     global _conn
-    if _conn is None:
-        from .sqlite_utils import ensure_columns, open_singleton
-        _conn = open_singleton(DB_PATH)
-        _conn.execute("""
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "token_usage.db"
+    _conn = _lifecycle.get_connection(db_path, _initialize_schema)
+    return _conn
+
+
+def _initialize_schema(conn: sqlite3.Connection) -> None:
+        from .sqlite_utils import ensure_columns
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -35,15 +43,19 @@ def _get_conn() -> sqlite3.Connection:
         # Migrate pre-existing DBs: provider/model were added so each row
         # carries the truth used to price it. Older rows stay NULL and fall
         # back to the currently-routed provider in token_cost_usd().
-        ensure_columns(_conn, "token_usage", {"provider": "TEXT", "model": "TEXT"})
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
+        ensure_columns(conn, "token_usage", {"provider": "TEXT", "model": "TEXT"})
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
         # Bare created_at index for the retention pruner's
         # `DELETE ... WHERE created_at < ?`; the two composite indexes lead
         # with user_id so SQLite can't use them for a bare-created_at predicate.
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tu_created ON token_usage(created_at)")
-        _conn.commit()
-    return _conn
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tu_created ON token_usage(created_at)")
+
+
+def reset() -> None:
+    global _conn
+    _lifecycle.reset()
+    _conn = None
 
 
 def record(

@@ -11,16 +11,18 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import threading
 from datetime import UTC, datetime, timedelta
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
 DATA_DIR = data_dir()
 DB_PATH = DATA_DIR / "llm_errors.db"
 
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
+_INITIAL_DB_PATH = DB_PATH
 
 _BEARER_RE = re.compile(
     r"([\"']?Authorization[\"']?\s*[:=]\s*[\"']?Bearer\s+)([^\s,;\"'}]+)",
@@ -45,10 +47,16 @@ _OPENAI_STYLE_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9._-]+")
 
 def _get_conn() -> sqlite3.Connection:
     global _conn
-    if _conn is None:
-        from .sqlite_utils import ensure_columns, open_singleton
-        _conn = open_singleton(DB_PATH)
-        _conn.execute("""
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "llm_errors.db"
+    _conn = _lifecycle.get_connection(db_path, _initialize_schema)
+    return _conn
+
+
+def _initialize_schema(conn: sqlite3.Connection) -> None:
+        from .sqlite_utils import ensure_columns
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS llm_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -62,27 +70,27 @@ def _get_conn() -> sqlite3.Connection:
             )
         """)
         # Ensure columns for future migrations (mirrors token_tracker pattern).
-        ensure_columns(_conn, "llm_errors", {
+        ensure_columns(conn, "llm_errors", {
             "provider": "TEXT",
             "model": "TEXT",
             "status_code": "INTEGER",
             "message": "TEXT",
         })
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user ON llm_errors(user_id)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user_created ON llm_errors(user_id, created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user ON llm_errors(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user_created ON llm_errors(user_id, created_at)")
         # Bare created_at index for the retention pruner.
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created ON llm_errors(created_at)")
-        _conn.commit()
-    return _conn
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created ON llm_errors(created_at)")
 
 
 def _reset() -> None:
     """Close & nullify connection (for tests)."""
+    reset()
+
+
+def reset() -> None:
     global _conn
-    with _lock:
-        if _conn is not None:
-            _conn.close()
-            _conn = None
+    _lifecycle.reset()
+    _conn = None
 
 
 def redact_message(message: str | None) -> str:

@@ -21,22 +21,16 @@ auto-creates the table; no manual migration needed.
 
 from __future__ import annotations
 
-import contextlib
 import sqlite3
-import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
-
-def _close_quietly(conn: sqlite3.Connection) -> None:
-    with contextlib.suppress(sqlite3.Error):
-        conn.close()
-
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
-_init_data_dir: Path | None = None
 _override_data_dir: Path | None = None
 
 
@@ -48,13 +42,11 @@ def set_data_dir(path: Path | None) -> None:
     ``app.state.kg_settings``. Passing ``None`` reverts to the
     env-var/default resolution path (used by tests after swap-back).
     """
-    global _override_data_dir, _conn, _init_data_dir
+    global _override_data_dir, _conn
     with _lock:
         _override_data_dir = path
-        if _conn is not None:
-            _close_quietly(_conn)
+        _lifecycle.reset()
         _conn = None
-        _init_data_dir = None
 
 
 def _resolve_data_dir() -> Path:
@@ -69,16 +61,16 @@ def _get_conn() -> sqlite3.Connection:
     Re-opens automatically when the resolved data_dir changes between calls
     so the test fixture (which swaps ``data_dir`` per test) sees an isolated DB.
     """
-    global _conn, _init_data_dir
-    current_dir = _resolve_data_dir()
-    if _conn is not None and _init_data_dir == current_dir:
-        return _conn
-    if _conn is not None:
-        _close_quietly(_conn)
-        _conn = None
-    db_path = current_dir / "podcast_progress.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    global _conn
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    _conn = _lifecycle.get_connection(
+        _resolve_data_dir() / "podcast_progress.db", _initialize_schema
+    )
+    return _conn
+
+
+def _initialize_schema(conn: sqlite3.Connection) -> None:
     from .sqlite_utils import init_sqlite_pragmas
     init_sqlite_pragmas(conn)
     conn.execute(
@@ -97,10 +89,6 @@ def _get_conn() -> sqlite3.Connection:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_pp_user ON podcast_progress(user_id)"
     )
-    conn.commit()
-    _conn = conn
-    _init_data_dir = current_dir
-    return _conn
 
 
 def parse_instant(value: str) -> datetime | None:
@@ -129,15 +117,17 @@ def parse_instant(value: str) -> datetime | None:
     return dt.astimezone(UTC)
 
 
-def _reset() -> None:
+def reset() -> None:
     """Close + nullify connection + clear override (for tests)."""
-    global _conn, _init_data_dir, _override_data_dir
+    global _conn, _override_data_dir
     with _lock:
-        if _conn is not None:
-            _close_quietly(_conn)
-            _conn = None
-            _init_data_dir = None
+        _lifecycle.reset()
+        _conn = None
         _override_data_dir = None
+
+
+def _reset() -> None:
+    reset()
 
 
 def _row_dict(series_id: str, ep_num: int, position_sec, duration_sec, updated_at) -> dict:

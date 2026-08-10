@@ -145,12 +145,10 @@ def admin_app_factory(tmp_path, monkeypatch):
             tt.DB_PATH = data_dir / "token_usage.db"
 
             def _reset_log_dbs():
-                pl._reset()
-                jl._reset()
-                tl._reset()
-                if tt._conn is not None:
-                    tt._conn.close()
-                    tt._conn = None
+                pl.reset()
+                jl.reset()
+                tl.reset()
+                tt.reset()
 
             _reset_log_dbs()
             cleanups.append(_reset_log_dbs)

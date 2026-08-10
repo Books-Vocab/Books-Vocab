@@ -3,15 +3,16 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
 CACHE_TTL_DAYS_DEFAULT = 30
 
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
 
 
@@ -42,12 +43,9 @@ def _cache_ttl_days() -> int:
 def _db_path() -> Path:
     return data_dir() / "translate_log.db"
 
-def _get_conn() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        from .sqlite_utils import ensure_columns, open_singleton
-        _conn = open_singleton(_db_path())
-        _conn.execute("""
+def _initialize_schema(conn: sqlite3.Connection) -> None:
+        from .sqlite_utils import ensure_columns
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS translate_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id     TEXT NOT NULL,
@@ -65,7 +63,7 @@ def _get_conn() -> sqlite3.Connection:
         # Precise cache-hit counter: every short-circuited cache hit gets one row.
         # Separate table so the existing translate_log (= misses / LLM calls) stays
         # canonical and we can compute hit rate = hits / (hits + misses).
-        _conn.execute("""
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS translate_cache_hits (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id     TEXT,
@@ -84,27 +82,34 @@ def _get_conn() -> sqlite3.Connection:
         # also pass model='' (none in current code paths), so legacy entries
         # expire naturally via TTL without being served to mismatched callers.
         for table in ("translate_log", "translate_cache_hits"):
-            ensure_columns(_conn, table, {"model": "TEXT NOT NULL DEFAULT ''"})
+            ensure_columns(conn, table, {"model": "TEXT NOT NULL DEFAULT ''"})
         # Rebuild cache lookup index to include model. Old name retained for
         # any external observers; content now covers the new key shape.
-        _conn.execute("DROP INDEX IF EXISTS idx_tl_cache")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation, model)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
+        conn.execute("DROP INDEX IF EXISTS idx_tl_cache")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation, model)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
         # Bare created_at index for the retention pruner's
         # `DELETE ... WHERE created_at < ?`; idx_tl_user leads with user_id so
         # SQLite can't use it for a bare-created_at predicate (idx_tch_created
         # already covers translate_cache_hits the same way).
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_created ON translate_log(created_at)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
-        _conn.commit()
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_created ON translate_log(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
+
+
+def _get_conn() -> sqlite3.Connection:
+    global _conn
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    _conn = _lifecycle.get_connection(_db_path(), _initialize_schema)
     return _conn
 
-def _reset() -> None:
+def reset() -> None:
     global _conn
-    with _lock:
-        if _conn is not None:
-            _conn.close()
-            _conn = None
+    _lifecycle.reset()
+    _conn = None
+
+def _reset() -> None:
+    reset()
 
 def lookup(
     word: str,
