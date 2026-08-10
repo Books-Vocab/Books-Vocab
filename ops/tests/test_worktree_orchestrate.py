@@ -5215,7 +5215,9 @@ LEDGER_VIEW_REL = "docs/runbook/improvement_backlog.md"
 
 
 def _install_ledger_stub(repo: Path, marker: Path, *, fail: str = "",
-                         probe_lock: bool = False, render_noop: bool = False) -> None:
+                         probe_lock: bool = False, render_noop: bool = False,
+                         doc_reanchor: bool = False,
+                         fail_with_doc_plan: bool = False) -> None:
     """A stand-in for ops/backlog.py that records HOW it was called and behaves like
     the real generator: `render` rebuilds the view from the entry files, `--check`
     compares, `reanchor` rewrites an anchor field.
@@ -5234,11 +5236,15 @@ def _install_ledger_stub(repo: Path, marker: Path, *, fail: str = "",
     (repo / "docs" / "runbook" / "backlog").mkdir(parents=True, exist_ok=True)
     (repo / "docs" / "runbook" / "backlog" / "E1.json").write_text(
         "anchor=old\n", encoding="utf-8")
+    if doc_reanchor or fail_with_doc_plan:
+        (repo / "docs" / "reference").mkdir(parents=True, exist_ok=True)
+        (repo / "docs" / "reference" / "E.md").write_text(
+            "verified_against: old\n", encoding="utf-8")
     (repo / LEDGER_VIEW_REL).write_text("stale\n", encoding="utf-8")
     stub = repo / "ops" / "backlog.py"
     stub.write_text(textwrap.dedent(f"""\
         #!/usr/bin/env python3
-        import sys, pathlib, importlib.util
+        import sys, pathlib, importlib.util, json
         # Anchored on THIS FILE, exactly like the real tool's ROOT. Hard-coding the
         # primary's path here made the worktree's copy read and write the primary's
         # store, so the branch never diverged and the conflict fixture quietly
@@ -5267,12 +5273,23 @@ def _install_ledger_stub(repo: Path, marker: Path, *, fail: str = "",
         m.write_text((m.read_text() if m.exists() else "") + line)
         sub = sys.argv[1]
         if sub == {fail!r}:
+            if {fail_with_doc_plan!r} and "--json" in sys.argv:
+                doc = repo / "docs" / "reference" / "E.md"
+                doc.write_text("verified_against: new\\n")
+                print(json.dumps({{"ok": False, "doc_paths": [
+                    "docs/reference/E.md"
+                ]}}))
             print("REFUSED: stub was told to refuse", file=sys.stderr)
             sys.exit(2)
         expected = "".join(sorted(p.read_text() for p in store.glob("*.json")))
         if sub == "reanchor" and "--commit" in sys.argv:
             for p in sorted(store.glob("*.json")):
                 p.write_text(p.read_text().replace("anchor=old", "anchor=new"))
+            if {doc_reanchor!r}:
+                doc = repo / "docs" / "reference" / "E.md"
+                doc.write_text("verified_against: new\\n")
+            if "--json" in sys.argv:
+                print(json.dumps({{"doc_plan": ([{{"path": "docs/reference/E.md", "old": "old", "new": "new"}}] if {doc_reanchor!r} else []), "doc_unmatched": [], "doc_landed": (["docs/reference/E.md"] if {doc_reanchor!r} else [])}}))
         elif sub == "render" and "--check" in sys.argv:
             sys.exit(0 if view.read_text() == expected else 1)
         elif sub == "render" and "--commit" in sys.argv:
@@ -5287,6 +5304,24 @@ def _install_ledger_stub(repo: Path, marker: Path, *, fail: str = "",
     lint.chmod(0o755)
     _git(["add", "-A"], repo)
     _git(["commit", "-qm", "install ledger stub"], repo)
+
+
+@gitmark
+def test_post_landing_repair_commits_only_reanchored_doc_paths(scratch):
+    """Docs rewritten by reanchor share the repair commit's path contract."""
+    _tmp, repo, _remote = scratch
+    marker = repo / "invocations.txt"
+    _install_ledger_stub(repo, marker, doc_reanchor=True)
+
+    repair = MODULE._post_landing_repair(repo)
+
+    assert repair["ok"] is True
+    assert repair["committed"] is True
+    assert "docs/reference/E.md" in repair["repair_paths"]
+    changed = _git(["show", "--format=", "--name-only", "HEAD"], repo)
+    assert "docs/runbook/backlog/E1.json" in changed
+    assert "docs/reference/E.md" in changed
+    assert (repo / "docs/reference/E.md").read_text() == "verified_against: new\n"
 
 
 @gitmark
@@ -5321,7 +5356,7 @@ def test_cutover_repairs_the_ledger_it_just_rewrote(scratch, tmp_path):
              marker.read_text(encoding="utf-8").splitlines()]
     argvs = [c[1] for c in calls]
     # the flags, not just the subcommand names
-    assert "reanchor --commit" in argvs, argvs
+    assert "reanchor --docs --commit --json" in argvs, argvs
     assert "validate --baseline-check" in argvs, argvs
     # `render` is NOT here any more: the generated view left version control
     # (IMP-20260807-b9526c), so there is no tracked derived file for the trunk to
@@ -5329,7 +5364,9 @@ def test_cutover_repairs_the_ledger_it_just_rewrote(scratch, tmp_path):
     # STORE, which the rebase really does invalidate.
     assert not any(a.startswith("render") for a in argvs), argvs
     # the ORDER: validating before the write would grade the old data
-    assert argvs.index("reanchor --commit") < argvs.index("validate --baseline-check"), argvs
+    assert argvs.index("reanchor --docs --commit --json") < argvs.index(
+        "validate --baseline-check"
+    ), argvs
     # the DIRECTORY: the repair is about the trunk, which lives in the primary
     assert {c[0] for c in calls} == {str(repo.resolve())}, calls
     # and the LOCK: the repair rewrites the same trunk files the ff just moved, so
@@ -5391,6 +5428,30 @@ def test_a_failed_repair_puts_the_primary_back_rather_than_blocking_every_later_
     # the whole point: the next cutover is not blocked by this one's debris
     assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
     assert (repo / "docs" / "runbook" / "backlog" / "E1.json").read_text() == before
+
+
+@gitmark
+def test_a_failed_reanchor_reports_and_restores_an_arbitrary_document_path(
+        scratch, tmp_path):
+    """A failed child command must still identify every document it touched.
+
+    The real reanchor transaction rolls its own writes back.  This companion
+    fixture covers the orchestrator boundary: even when the child exits before
+    a success payload, its failure JSON carries the document path so the
+    primary restore is not narrowed to the ledger directory.
+    """
+    _tmp, repo, _remote = scratch
+    marker = tmp_path / "invocations.txt"
+    _install_ledger_stub(repo, marker, fail="reanchor", fail_with_doc_plan=True)
+    before = (repo / "docs" / "reference" / "E.md").read_text(encoding="utf-8")
+
+    repair = MODULE._post_landing_repair(repo)
+
+    assert repair["ok"] is False
+    assert repair["restored"] is True
+    assert "docs/reference/E.md" in repair["repair_paths"]
+    assert (repo / "docs" / "reference" / "E.md").read_text(encoding="utf-8") == before
+    assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
 
 
 def _stub_repo_commit(repo: Path, msg: str) -> None:

@@ -233,6 +233,13 @@ DEFAULT_SEARCH_DEPTH = 2000
 # dumb and let the discriminator be the thing that actually knows.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
+# Frontmatter anchors are intentionally narrower than arbitrary YAML.  A
+# single-line sha is the only value the repair can prove; values such as
+# ``frozen`` or a human label are left untouched rather than guessed.
+_DOC_VERIFIED_AGAINST_RE = re.compile(
+    r"^\s*verified_against:\s*([0-9a-fA-F]{7,40})\s*$", re.MULTILINE
+)
+
 # The groom stamp. `verdict` answers "is this problem still real?"; these answer
 # a different question the ledger could not express — "has anyone worked out HOW
 # to fix it?" Both were being written by the same sweep into the same two
@@ -3701,6 +3708,10 @@ def build_parser() -> argparse.ArgumentParser:
              "The bound is REPORTED, never silent: a miss inside the window and a miss "
              "because the window ended are different answers",
     )
+    p_reanchor.add_argument(
+        "--docs", action="store_true",
+        help="also reanchor orphaned verified_against values in docs/**/*.md",
+    )
     p_reanchor.add_argument("--commit", action="store_true")
     p_reanchor.add_argument("--json", action="store_true")
 
@@ -5453,7 +5464,7 @@ def _patch_id(rev: str, repo: Path | None = None) -> str | None:
 
 def reanchor_store(store: Path, ids: list[str] | None = None, *,
                    search_depth: int = DEFAULT_SEARCH_DEPTH,
-                   repo: Path | None = None) -> dict:
+                   repo: Path | None = None, docs: bool = False) -> dict:
     """Map orphaned `fixed_by` shas onto their post-rebase equivalents on main.
 
     The mechanism is measured, not assumed: every orphan in this repo's audit
@@ -5481,6 +5492,7 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
     # `git patch-id` to print "nothing to do", which is the overwhelmingly
     # common case — and a repair tool nobody runs because it is slow repairs
     # nothing.
+    repo_root = Path(repo or GIT_REPO)
     targets: list[tuple[dict, list[str]]] = []
     for payload in _iter_entries(store):
         if ids and payload.get("id") not in ids:
@@ -5489,9 +5501,33 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
         orphans = [s for s in shas if _SHA_RE.match(s) and state(s) == "orphan"]
         if orphans:
             targets.append((payload, orphans))
-    if not targets:
-        return {"plan": [], "searched": 0, "scanned": 0, "search_depth": search_depth,
-                "window_exhausted": None, "frame_depth": None}
+
+    # Documents are a second, opt-in audit surface.  Keep it out of the default
+    # path so the historical `reanchor` result and cost remain unchanged.  Only
+    # a reachable file with a sha-shaped anchor can be a target; `frozen` and
+    # other human-authored values are deliberately not repair candidates.
+    doc_targets: list[tuple[str, str]] = []
+    if docs:
+        docs_root = repo_root / "docs"
+        if docs_root.is_dir():
+            for path in sorted(docs_root.rglob("*.md")):
+                try:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                match = _DOC_VERIFIED_AGAINST_RE.search(text)
+                if not match:
+                    continue
+                old = match.group(1)
+                if state(old) == "orphan":
+                    doc_targets.append((str(path.relative_to(repo_root)), old))
+
+    if not targets and not doc_targets:
+        result = {"plan": [], "searched": 0, "scanned": 0, "search_depth": search_depth,
+                  "window_exhausted": None, "frame_depth": None}
+        if docs:
+            result.update({"doc_plan": [], "doc_unmatched": []})
+        return result
 
     # HEAD, not `main` — the SAME reference frame `commit_state` calls `ok`.
     # The first cut searched `main` alone and, on its first real run, returned
@@ -5566,26 +5602,139 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
                 "unmatched": unmatched,
                 "new_fixed_by": [moves.get(s, s) for s in shas],
             })
+
+    doc_plan: list[dict] = []
+    doc_unmatched: list[dict] = []
+    for path, old in doc_targets:
+        pid = _patch_id(old, repo)
+        hits = by_patch.get(pid, []) if pid else []
+        if len(hits) == 1:
+            doc_plan.append({"path": path, "old": old, "new": hits[0][:9]})
+            continue
+        if len(hits) > 1:
+            reason = "ambiguous-patch-id"
+            next_step = "choose the correct landed commit and reanchor the document manually"
+        elif frame_depth is None or len(candidates) < frame_depth:
+            reason = "search-window-not-covered"
+            next_step = f"rerun reanchor with --search-depth > {len(candidates)} to cover the full frame"
+        else:
+            reason = "patch-id-mismatch"
+            next_step = "choose the correct landed commit and reanchor the document manually"
+        doc_unmatched.append({
+            "path": path,
+            "old": old,
+            "candidates": len(hits),
+            "reason": reason,
+            "next_step": next_step,
+        })
     # `searched` used to be len(candidates), which OVERSTATES the window twice
     # over: merge commits have no patch-id and contribute nothing (272 of the
     # first 800 here), and main is 3688 deep so the default leaves most of it
     # unscanned. A bound that is not reported reads as "searched everything" —
     # this tool's own argument, applied to its own number.
-    return {"plan": plan, "searched": indexed, "scanned": len(candidates),
-            "search_depth": search_depth, "frame_depth": frame_depth,
-            "window_exhausted": frame_depth is not None and len(candidates) >= frame_depth}
+    result = {"plan": plan, "searched": indexed, "scanned": len(candidates),
+              "search_depth": search_depth, "frame_depth": frame_depth,
+              "window_exhausted": frame_depth is not None and len(candidates) >= frame_depth}
+    if docs:
+        result.update({"doc_plan": doc_plan, "doc_unmatched": doc_unmatched})
+    return result
 
 
 def _cmd_reanchor(args) -> int:
-    result = reanchor_store(args.store, args.ids or None, search_depth=args.search_depth)
+    result = reanchor_store(
+        args.store, args.ids or None, search_depth=args.search_depth,
+        docs=getattr(args, "docs", False),
+    )
     landed = []
+    doc_landed = []
     if args.commit:
-        for item in result["plan"]:
-            if item["moves"]:
+        # Build every replacement before the first write.  A reanchor is a
+        # single repair transaction: if a document disappears or changes while
+        # the patch-id proof is being applied, there must be no prefix of the
+        # plan left in the checkout for the next cutover to mistake for another
+        # agent's edit.
+        doc_operations = []
+        # Keep the exact bytes of every path before mutation.  This covers both
+        # ledger entries and documents: a document write can fail after one or
+        # more fixed_by entries have already landed, and leaving those two planes
+        # at different phases is just as unsafe as leaving one dirty document.
+        entry_snapshots = []
+        doc_snapshots = []
+        try:
+            if getattr(args, "docs", False):
+                for item in result["doc_plan"]:
+                    path = Path(GIT_REPO) / item["path"]
+                    text = path.read_text(encoding="utf-8")
+                    old = item["old"]
+                    new = item["new"]
+                    replaced = False
+
+                    def replace_anchor(match):
+                        nonlocal replaced
+                        if match.group(1) == old:
+                            replaced = True
+                            return match.group(0).replace(match.group(1), new)
+                        return match.group(0)
+
+                    rewritten, count = _DOC_VERIFIED_AGAINST_RE.subn(
+                        replace_anchor,
+                        text,
+                    )
+                    if count < 1 or not replaced:
+                        raise BacklogError(
+                            f"document anchor changed while reanchoring: {item['path']}"
+                        )
+                    doc_operations.append((path, text, rewritten, item["path"]))
+
+            for item in result["plan"]:
+                if not item["moves"]:
+                    continue
+                entry_file = entry_path(args.store, item["id"])
+                entry_snapshots.append((entry_file, entry_file.read_text(encoding="utf-8")))
                 update_entry(args.store, item["id"], fixed_by=item["new_fixed_by"])
                 landed.append(item["id"])
+            for path, original, rewritten, rel_path in doc_operations:
+                doc_snapshots.append((path, original))
+                _write_atomic(path, rewritten)
+                doc_landed.append(rel_path)
+        except (OSError, BacklogError, ValueError) as exc:
+            rollback_errors = []
+            for path, original in reversed(doc_snapshots):
+                try:
+                    _write_atomic(path, original)
+                except (OSError, BacklogError, ValueError) as rollback_exc:
+                    rollback_errors.append(f"{path}: {rollback_exc}")
+            for path, original in reversed(entry_snapshots):
+                try:
+                    _write_atomic(path, original)
+                except (OSError, BacklogError, ValueError) as rollback_exc:
+                    rollback_errors.append(f"{path}: {rollback_exc}")
+
+            result["mode"] = "commit"
+            result["landed"] = []
+            if getattr(args, "docs", False):
+                result["doc_landed"] = []
+            # A failed command can still tell its caller which paths were in
+            # the transaction.  The orchestrator uses this machine channel to
+            # restore arbitrary docs even when no success JSON was emitted.
+            if getattr(args, "docs", False):
+                result["doc_paths"] = [
+                    item["path"] for item in result.get("doc_plan", [])
+                    if isinstance(item, dict) and item.get("path")
+                ]
+            result["ok"] = False
+            result["error"] = f"reanchor transaction rolled back: {exc}"
+            if rollback_errors:
+                result["rollback_errors"] = rollback_errors
+            if args.json:
+                print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result},
+                                 ensure_ascii=False))
+                return 64
+            raise BacklogError(result["error"])
     result["mode"] = "commit" if args.commit else "dry-run"
     result["landed"] = landed
+    if getattr(args, "docs", False):
+        result["doc_landed"] = doc_landed
     if args.json:
         print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result}, ensure_ascii=False))
         return 0
