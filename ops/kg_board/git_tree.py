@@ -16,7 +16,9 @@ def _text(value: Any) -> str | None:
 
 
 def _sha(value: Any) -> str | None:
-    value = _text(value)
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
     return value if value and re.fullmatch(r"[0-9a-fA-F]{7,40}", value) else None
 
 
@@ -43,14 +45,29 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         }
 
     commits: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    if payload.get("commits") is not None and not isinstance(payload.get("commits"), (list, tuple)):
+        errors.append("commits is not a list")
+    if payload.get("refs") is not None and not isinstance(payload.get("refs"), (list, tuple)):
+        errors.append("refs is not a list")
     for raw in _items(payload.get("commits")):
         if not isinstance(raw, dict):
+            errors.append("commit record is not an object")
             continue
         sha = _sha(raw.get("sha"))
         if not sha:
+            errors.append("commit record has invalid sha")
             continue
-        parents = [_sha(parent) for parent in _items(raw.get("parents"))]
-        parents = [parent for parent in parents if parent]
+        raw_parents = raw.get("parents")
+        if raw_parents is not None and not isinstance(raw_parents, (list, tuple)):
+            errors.append(f"commit {sha} parents is not a list")
+        parents = []
+        for parent in _items(raw_parents):
+            normalized_parent = _sha(parent)
+            if normalized_parent is None:
+                errors.append(f"commit {sha} has invalid parent")
+            else:
+                parents.append(normalized_parent)
         row = {
             "sha": sha,
             "parents": parents,
@@ -67,6 +84,8 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         if prior:
             # A commit can arrive through multiple refs. Keep the richer record
             # without allowing one partial record to erase metadata.
+            if prior.get("parents") and row.get("parents") and prior["parents"] != row["parents"]:
+                errors.append(f"commit {sha} has conflicting parents")
             row = {key: value if value not in (None, [], "(無主旨)") else prior.get(key)
                    for key, value in row.items()}
             row["parents"] = row.get("parents") or prior.get("parents") or []
@@ -76,13 +95,18 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
     refs: list[dict[str, Any]] = []
     for index, raw in enumerate(_items(payload.get("refs"))):
         if not isinstance(raw, dict):
+            errors.append("ref record is not an object")
             continue
         branch = _text(raw.get("branch"))
         head = _sha(raw.get("head"))
         if not branch or not head:
+            errors.append("ref record has invalid branch or head")
             continue
         tickets = []
-        for ticket in _items(raw.get("tickets") if raw.get("tickets") is not None else raw.get("backlog")):
+        raw_tickets = raw.get("tickets") if raw.get("tickets") is not None else raw.get("backlog")
+        if raw_tickets is not None and not isinstance(raw_tickets, (list, tuple)):
+            errors.append(f"ref {branch} tickets is not a list")
+        for ticket in _items(raw_tickets):
             if isinstance(ticket, dict):
                 ticket_id = _text(ticket.get("id"))
                 if ticket_id:
@@ -117,7 +141,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         "host": _text(payload.get("host")),
         "complete": (payload["complete"] if isinstance(payload.get("complete"), bool)
                      else "complete" not in payload),
-        "error": _text(payload.get("error")),
+        "error": _text(payload.get("error")) or "; ".join(errors) or None,
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
     }
@@ -150,6 +174,7 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
         for parent in row["parents"]
         if parent not in commits
     })
+    dangling_refs = sorted({ref["head"] for ref in refs if ref["head"] not in commits})
     for sha, branches in referenced.items():
         commits[sha]["refs"] = sorted(set(branches))
     for row in commits.values():
@@ -159,9 +184,11 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
         "schema": SCHEMA,
         "at": snapshot["at"],
         "host": snapshot["host"],
-        "complete": snapshot["complete"] and not missing_parents and not snapshot["error"],
+        "complete": (snapshot["complete"] and not missing_parents and not dangling_refs
+                     and not snapshot["error"]),
         "error": snapshot["error"],
         "missing_parents": missing_parents,
+        "dangling_refs": dangling_refs,
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
     }
