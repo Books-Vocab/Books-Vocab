@@ -32,6 +32,13 @@ struct ReviewCardActions {
     static let none = ReviewCardActions()
 }
 
+/// Geometry observation must include card identity: a resident slot can replace
+/// its content without changing the measured front height.
+struct ReviewCardFrontMeasurement: Equatable {
+    let height: CGFloat
+    let cardKey: String
+}
+
 // MARK: - Review Card
 
 /// 一張完整的複習卡：正面摺頁 ＋ 右上角 chrome ＋ 背面摺頁 ＋ 摺疊動畫。
@@ -68,6 +75,7 @@ struct ReviewCardView: View {
     /// 自量的寬度（量測 key 的 bucket）與正面高度（背面預算的被減數）。
     @State private var containerWidth: CGFloat = 393
     @State private var measuredFrontHeight: CGFloat = 0
+    @State private var measuredFrontCardKey: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,8 +93,16 @@ struct ReviewCardView: View {
             }
             // 正面實測高度：背面預算的被減數，同時回吐給牌堆去填 slotFrontHeights。
             // 兩份量測只留這一份。
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                guard height > 0, abs(measuredFrontHeight - height) > 0.5 else { return }
+            .onGeometryChange(for: ReviewCardFrontMeasurement.self) {
+                ReviewCardFrontMeasurement(height: $0.size.height, cardKey: currentCardKey)
+            } action: { measurement in
+                let height = measurement.height
+                guard height > 0 else { return }
+                // Update the identity even when two adjacent cards happen to have
+                // the same height; otherwise the old key would keep this valid
+                // measurement quarantined forever.
+                measuredFrontCardKey = measurement.cardKey
+                guard abs(measuredFrontHeight - height) > 0.5 else { return }
                 measuredFrontHeight = height
                 onFrontHeightChange?(height)
             }
@@ -378,7 +394,11 @@ struct ReviewCardView: View {
         // 扣的是**這張卡自己**量到的正面高度。行為與扣牌堆的 activeCardHeight 等價：
         // 背面只有互動中的那張會 mount，而 activeShellHeight 回傳的就是那一格的高度。
         let backAvailableHeight = viewport.backHeight(
-            frontOccupied: measuredFrontHeight + TodayReviewMetrics.stackLayerMicroOffset
+            frontOccupied: ReviewCardViewport.frontOccupiedHeight(
+                measuredCardKey: measuredFrontCardKey,
+                currentCardKey: currentCardKey,
+                measuredHeight: measuredFrontHeight
+            ) + TodayReviewMetrics.stackLayerMicroOffset
         )
         let layout = reviewCardLayout(for: currentCard, face: .back, availableHeight: backAvailableHeight)
         let maxHeight = max(backAvailableHeight, 1)
@@ -668,12 +688,16 @@ struct ReviewCardView: View {
         section: ReviewCardLayoutSolver.Section
     ) -> ReviewCardMeasurementKey {
         ReviewCardMeasurementKey(
-            cardKey: "\(currentCard.card.dateAdded.timeIntervalSinceReferenceDate)-\(currentCard.card.word)",
+            cardKey: currentCardKey,
             face: face,
             section: section,
             widthBucket: Int(containerWidth.rounded()),
             dynamicType: String(describing: dynamicTypeSize)
         )
+    }
+
+    private var currentCardKey: String {
+        "\(content.card.dateAdded.timeIntervalSinceReferenceDate)-\(content.card.word)"
     }
 
     private func recordReviewSectionHeight(

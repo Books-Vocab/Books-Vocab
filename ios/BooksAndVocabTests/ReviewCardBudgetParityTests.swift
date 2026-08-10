@@ -106,6 +106,39 @@ struct ReviewCardViewportTests {
     }
 }
 
+struct ReviewCardFrontMeasurementTests {
+
+    @Test func same_height_card_identity_invalidates_geometry_measurement() {
+        let first = ReviewCardFrontMeasurement(height: 240, cardKey: "first-card")
+        let next = ReviewCardFrontMeasurement(height: 240, cardKey: "next-card")
+
+        #expect(first.height == next.height)
+        #expect(first != next)
+    }
+
+    @Test func a_previous_card_height_cannot_shrink_the_next_card_back_budget() {
+        let viewport = ReviewCardViewport(containerHeight: 600)
+        let occupied = ReviewCardViewport.frontOccupiedHeight(
+            measuredCardKey: "long-production-card",
+            currentCardKey: "short-recognition-card",
+            measuredHeight: 420
+        )
+
+        #expect(occupied == 0)
+        #expect(viewport.backHeight(frontOccupied: occupied) == viewport.contentHeight)
+    }
+
+    @Test func the_current_card_keeps_its_measured_front_height() {
+        #expect(
+            ReviewCardViewport.frontOccupiedHeight(
+                measuredCardKey: "current-card",
+                currentCardKey: "current-card",
+                measuredHeight: 196
+            ) == 196
+        )
+    }
+}
+
 // MARK: - Default parity
 
 struct ReviewCardDefaultParityTests {
@@ -236,4 +269,3 @@ struct ReviewCardDefaultParityTests {
             == 40 * 4 + AppMetrics.dividerThin * 2 + TodayReviewMetrics.foldSectionSpacing * 5)
     }
 }
-
