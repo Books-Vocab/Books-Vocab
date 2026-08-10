@@ -799,15 +799,38 @@ def board_payload() -> dict:
     entries = snap["entries"]
     overlay = load_overlay({e["id"] for e in entries})
     held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
+    projected = project(
+        entries,
+        overlay,
+        held,
+        canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
+        canonical_ungroomed_ids=set(snap.get("ungroomed_ids") or []),
+        dispatch_meta=snap.get("dispatch_meta") or {},
+    )
+
+    def compact(row: dict) -> dict:
+        return {
+            "id": row["id"],
+            "brief": row["brief"],
+            "detail": row.get("detail") or row.get("scope") or "",
+            "severity": row["severity"],
+            "stream": row["stream"],
+            "held": row["held"],
+            "ready": row["ready"],
+            "pinned": row["pinned"],
+            "snoozed": row["snoozed"],
+            "rank": row["rank"],
+        }
+
     return {
-        **project(
-            entries,
-            overlay,
-            held,
-            canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
-            canonical_ungroomed_ids=set(snap.get("ungroomed_ids") or []),
-            dispatch_meta=snap.get("dispatch_meta") or {},
-        ),
+        "schema": "kg.board.v2",
+        "board": [compact(row) for row in projected["board"]],
+        "dispatch_ids": [row["id"] for row in projected["dispatch"]],
+        "blocked_ids": [row["id"] for row in projected["blocked"]],
+        "deferred_ids": [row["id"] for row in projected["deferred"]],
+        "dispatch_meta": projected["dispatch_meta"],
+        "segments": projected["segments"],
+        "counts": projected["counts"],
         "freshness": freshness(),
     }
 

@@ -13,8 +13,9 @@ function setTrust(freshness){
     `clone 落後 ${freshness.clone_behind_origin??"未知"} · 本機領先 ${freshness.local_ahead??"未知"} · app ${revision.slice(0,9)}`;
 }
 function rows(){
-  const source=tab==="now"?data.dispatch.filter(row=>!row.snoozed):
-    tab==="blocked"?data.blocked:
+  const dispatchIds=new Set(data.dispatch_ids),blockedIds=new Set(data.blocked_ids),deferredIds=new Set(data.deferred_ids);
+  const source=tab==="now"?data.board.filter(row=>dispatchIds.has(row.id)&&!deferredIds.has(row.id)):
+    tab==="blocked"?data.board.filter(row=>blockedIds.has(row.id)):
     tab==="inflight"?data.board.filter(row=>row.held):data.board;
   const needle=query.trim().toLowerCase();
   return needle?source.filter(row=>`${row.id} ${row.brief} ${row.detail}`.toLowerCase().includes(needle)):source;
@@ -23,7 +24,7 @@ function ticket(row){
   return `<article class="ticket" data-id="${esc(row.id)}">
     <h2>${esc(row.id)} · ${esc(row.brief||"尚無摘要")}</h2>
     <div class="meta"><span>${esc(row.severity)}</span><span>${esc(row.stream)}</span><span>${row.held?"進行中":row.ready?"已梳理":"待梳理"}</span></div>
-    <p>${esc(row.detail||row.scope||"沒有更多說明")}</p>
+    <p>${esc(row.detail||"沒有更多說明")}</p>
     <div class="actions" aria-label="${esc(row.id)} 個人排序操作">
       <button type="button" data-action="pin">${row.pinned?"取消釘選":"釘選"}</button>
       <button type="button" data-action="rank">排序</button>
