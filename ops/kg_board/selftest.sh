@@ -126,12 +126,12 @@ else
 fi
 
 # 4. 寫入面的三道門，逐一驗它真的擋
-[ -s "$TOKEN_FILE" ] && ok "token 檔存在" || bad "token 檔缺失或空：$TOKEN_FILE（服務會拒絕啟動）"
+[ -s "$TOKEN_FILE" ] && ok "token 檔存在" || bad "token 檔缺失或空：${TOKEN_FILE}（服務會拒絕啟動）"
 
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
      -H 'Content-Type: application/x-www-form-urlencoded' -H "Origin: $ORIGIN" \
      -H "X-KG-CSRF: $CSRF" -d 'id=X')
-[ "$c" = 403 ] && ok "非 JSON content-type 被擋 (403)" || bad "表單型 content-type 拿到 $c，CSRF 門沒關"
+[ "$c" = 403 ] && ok "非 JSON content-type 被擋 (403)" || bad "表單型 content-type 拿到 ${c}，CSRF 門沒關"
 
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/priority" \
      -H 'Content-Type: application/json' -H "Origin: $ORIGIN" \
