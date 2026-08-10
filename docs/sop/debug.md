@@ -35,7 +35,7 @@ curl -s https://wordnexus.lol/api/system/info | uv run --python 3.13 python -m j
 curl -sD - --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info -o /dev/null
 
 # 直連 standby（繞過 CF，分層定位）
-ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --format "{{.Status}}"; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info; pgrep -lf "cloudflared.*tunnel"'
+./ops/devops_kg_safe.sh docker-ps; ./ops/devops_kg_safe.sh caddy-status --json
 ```
 
 ```
@@ -64,7 +64,7 @@ curl -sD - --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/s
 #   回 502/530 → 隧道斷或容器掛，往下查
 
 # 3. cloudflared 連接器（standby 上）
-ssh chenliangyu@100.118.39.104 'pgrep -lf "cloudflared.*tunnel"; sudo launchctl print system/com.cloudflare.cloudflared 2>/dev/null | grep -E "state|pid"'
+./ops/devops_kg_safe.sh caddy-status --json
 
 # 4. 容器（standby 上）
 ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info'
@@ -90,7 +90,7 @@ ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d'   
 
 ```bash
 # 先分層：是隧道斷還是容器掛？
-ssh chenliangyu@100.118.39.104 'curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info; pgrep -lf "cloudflared.*tunnel"'
+./ops/devops_kg_safe.sh health --json; ./ops/devops_kg_safe.sh caddy-status --json
 ```
 - `local:8000` 健康但公網 502/530 → cloudflared 隧道問題 → `sudo launchctl kickstart -k system/com.cloudflare.cloudflared`
 - `local:8000` 也掛 → 容器問題：
@@ -259,7 +259,7 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 
 ```bash
 ./devops.sh run "df -h"                           # 磁碟
-./devops.sh run "free -m"                         # 記憶體
+./ops/devops_kg_safe.sh memory-usage --json       # Felix macOS 記憶體 / swap
 ./devops.sh run "docker stats --no-stream"        # 容器資源
 ./devops.sh run "docker ps -a"                    # 所有容器
 

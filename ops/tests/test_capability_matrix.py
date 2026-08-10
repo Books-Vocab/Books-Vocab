@@ -41,6 +41,18 @@ def test_json_schema_exposes_tiers_and_surfaces(capsys):
         for surface in payload["surfaces"]
     )
     assert any(
+        surface["key"] == "devops.safe.caddy-status"
+        and surface["command"].endswith("caddy-status --json")
+        and "Cloudflare Tunnel" in surface["purpose"]
+        for surface in payload["surfaces"]
+    )
+    assert any(
+        surface["key"] == "devops.safe.memory-usage"
+        and surface["command"].endswith("memory-usage --json")
+        and "macOS" in surface["purpose"]
+        for surface in payload["surfaces"]
+    )
+    assert any(
         surface["key"] == "ios.ops.archive-upload"
         and surface["minimumTier"] == "production-capable"
         and "external-upload" in surface["sideEffect"]

@@ -55,12 +55,12 @@ DEVOPS_COMMAND_HELP=(
 DEVOPS_SAFE_ALIAS_HELP=(
   'preflight|顯示安全執行前檢查（不執行遠端命令）'
   'health [--json]|host / container / tunnel 健康聚合'
-  'caddy-status|探測 cloudflared tunnel 狀態（standby 無 Caddy）'
+  'caddy-status --json|探測 cloudflared tunnel 狀態（固定 label/pid_count/status，secret-safe）'
   'caddyfile|說明 Cloudflare Tunnel ingress 正本（不發遠端命令）'
   'docker-ps|固定唯讀 docker ps'
   'docker-logs [n]|固定唯讀容器日誌（預設 100 行）'
   'disk-usage|固定唯讀 df -h'
-  'memory-usage|固定唯讀記憶體用量'
+  'memory-usage --json|固定唯讀 macOS 記憶體與 swap 數值（secret-safe）'
   'docker-stats|固定唯讀 docker stats'
   'backup-s3-test|驗證 standby launchd→S3 備份工作'
 )

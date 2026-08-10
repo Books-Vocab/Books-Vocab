@@ -53,7 +53,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://wordnexus.lol/api/health   # �
 curl -s --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info
 
 # 直連 standby（繞過 CF，分層驗容器/隧道）
-ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --format "{{.Status}}"; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info; pgrep -lf "cloudflared.*tunnel"'
+./ops/devops_kg_safe.sh docker-ps; ./ops/devops_kg_safe.sh caddy-status --json
 ```
 
 `version` 不等於 deploy sha = git pull 沒生效 / VERSION 沒寫 / 容器沒 `--build`。

@@ -51,11 +51,11 @@ run_fixed_remote() {
 
 typed_alias_for_run() {
   case "$1" in
-    "sudo systemctl status caddy") echo "caddy-status" ;;
+    "sudo systemctl status caddy") echo "caddy-status --json" ;;
     "cat /etc/caddy/Caddyfile") echo "caddyfile" ;;
     "docker ps") echo "docker-ps" ;;
     "df -h") echo "disk-usage" ;;
-    "free -m") echo "memory-usage" ;;
+    "free -m") echo "memory-usage --json" ;;
     "docker stats --no-stream") echo "docker-stats" ;;
     docker\ logs\ knowledge-graph-api\ -n\ *) echo "docker-logs" ;;
     *) return 1 ;;
@@ -160,9 +160,14 @@ main() {
       "$BASE" logs "${1:-80}"
       ;;
     caddy-status)
-      # standby（macOS）無 Caddy；對外走 Cloudflare Tunnel。回報 tunnel 狀態。
-      echo "ℹ caddy 不適用（standby 走 Cloudflare Tunnel，無 Caddy）" >&2
-      run_fixed_remote "pgrep -lf 'cloudflared.*tunnel' || echo '(cloudflared tunnel 未偵測到；檢查 launchd com.cloudflare.cloudflared)'"
+      # 相容保留 caddy-status 名稱，但 payload 是固定 Cloudflare Tunnel schema。
+      # 不走 preflight：成功時 stderr 必須為空，避免 JSON consumer 被診斷污染。
+      shift
+      [[ "${1:-}" == "--json" && -z "${2:-}" ]] || {
+        echo "✗ usage: $0 caddy-status --json" >&2
+        exit 64
+      }
+      KG_BASE="$BASE" "$ROOT_DIR/ops/infra_health.sh" --caddy-status --json
       ;;
     caddyfile)
       # 無本地 Caddyfile；CF Tunnel ingress 是 remotely-managed（存 CF 端）。
@@ -180,7 +185,14 @@ main() {
       run_fixed_remote "df -h"
       ;;
     memory-usage)
-      run_fixed_remote "free -m"
+      # Felix 是 macOS；Linux free -m 在 standby 上不存在。沿用 infra_health
+      # 的 vm_stat/sysctl 單一解析來源，輸出固定四欄 JSON。
+      shift
+      [[ "${1:-}" == "--json" && -z "${2:-}" ]] || {
+        echo "✗ usage: $0 memory-usage --json" >&2
+        exit 64
+      }
+      KG_BASE="$BASE" "$ROOT_DIR/ops/infra_health.sh" --memory-usage --json
       ;;
     docker-stats)
       run_fixed_remote "docker stats --no-stream"

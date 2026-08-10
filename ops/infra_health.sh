@@ -7,7 +7,7 @@
 #
 # 全唯讀（macOS-native 探針，prod = standby/felix = macOS+OrbStack+CF Tunnel）：
 #   df / vm_stat+sysctl(記憶體/swap) / docker inspect / docker stats /
-#   pgrep cloudflared(對外入口) / docker logs grep / du。
+#   launchctl service state/pid（pgrep fallback）/ docker logs grep / du。
 # 不改機器狀態（但仍經 safe wrapper 的 preflight）。
 # 設計定案：macOS-native，不做 dual-OS 偵測（Lightsail 已 terminate）。若日後
 #   再遷 Linux host 須補回 free/systemctl 分支或加 OS 偵測。
@@ -51,7 +51,16 @@ PROD_REPO="${KG_PROD_REPO:-/Users/chenliangyu/kg-prod}"
 PROBE_URL="${KG_HEALTH_PROBE_URL:-${PUBLIC_WEB_BASE_URL}/api/system/info}"
 
 JSON=0
+PROBE_MODE=health
+case "${1:-}" in
+  --memory-usage) PROBE_MODE=memory; shift ;;
+  --caddy-status) PROBE_MODE=caddy; shift ;;
+esac
 [[ "${1:-}" == "--json" ]] && JSON=1
+if [[ "$PROBE_MODE" != health && "$JSON" -ne 1 ]]; then
+  echo "✗ $PROBE_MODE requires --json" >&2
+  exit 64
+fi
 
 # ── 閾值（env 可覆寫；單一真相）──────────────────────────────────────────────
 DISK_WARN="${KG_HEALTH_DISK_WARN:-80}";   DISK_CRIT="${KG_HEALTH_DISK_CRIT:-90}"
@@ -75,6 +84,117 @@ POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN:-3600}"
 DEPLOY_DRIFT="${KG_HEALTH_DEPLOY_DRIFT:-1}"
 
 log() { echo "$@" >&2; }
+
+# ── typed macOS probes ──────────────────────────────────────────────────────
+# These bundles deliberately emit only tab-separated allowlisted fields.  The
+# caller parses and validates them before producing the tiny public JSON shape;
+# raw argv/plist/process output never crosses the transport boundary.
+MEMORY_BUNDLE='
+set -eu
+TB=$(sysctl -n hw.memsize)
+vm_stat | awk -v tb="$TB" "NR==1{for(i=1;i<=NF;i++)if(\$i==\"size\"){ps=\$(i+2);sub(/[^0-9].*/,\"\",ps)}} /Pages free/{gsub(/\./,\"\",\$3);f=\$3} /Pages inactive/{gsub(/\./,\"\",\$3);ia=\$3} /Pages speculative/{gsub(/\./,\"\",\$3);sp=\$3} END{if(ps==\"\" || f==\"\" || ia==\"\" || sp==\"\") exit 1;printf \"mem_total_mb\t%d\n\",tb/1048576;printf \"mem_avail_mb\t%d\n\",(f+ia+sp)*ps/1048576}"
+sysctl -n vm.swapusage | awk "{for(i=1;i<=NF;i++){if(\$i==\"total\"){v=\$(i+2);gsub(/M/,\"\",v);t=v}if(\$i==\"used\"){v=\$(i+2);gsub(/M/,\"\",v);u=v}}if(t==\"\" || u==\"\") exit 1;printf \"swap_total_mb\t%d\n\",t;printf \"swap_used_mb\t%d\n\",u}"
+'
+
+CADDY_BUNDLE='
+set -eu
+label="com.cloudflare.cloudflared"
+probe_status="unknown"
+pid_count=0
+if command -v launchctl >/dev/null 2>&1; then
+  # launchctl is the authoritative service boundary on macOS.  Keep only
+  # state/pid fields; never forward the plist/argv payload (it may contain a
+  # tunnel token).  pgrep is only a fallback for older hosts without a useful
+  # launchctl record.
+  launch_info="$(
+    launchctl print "system/$label" 2>/dev/null \
+      | awk -F= "
+          /^[[:space:]]*state[[:space:]]*=/ && state == \"\" {
+            v=\$2; gsub(/^[[:space:]]+|[[:space:]]+\$/, \"\", v); state=v
+          }
+          /^[[:space:]]*pid[[:space:]]*=/ && pid == \"\" {
+            v=\$2; gsub(/^[[:space:]]+|[[:space:]]+\$/, \"\", v); pid=v
+          }
+          END {
+            if (state != \"\") printf \"state=%s\\n\", state
+            if (pid != \"\") printf \"pid=%s\\n\", pid
+          }"
+  )" || launch_info=""
+  launch_state="$(printf "%s\\n" "$launch_info" | sed -n "s/^state=//p" | head -1)"
+  launch_pid="$(printf "%s\\n" "$launch_info" | sed -n "s/^pid=//p" | head -1)"
+  if [[ "$launch_state" == running || "$launch_state" == active ]] \
+     && [[ "$launch_pid" =~ ^[1-9][0-9]*$ ]]; then
+    pid_count=1
+    probe_status="active"
+  elif [[ "$launch_state" == exited || "$launch_state" == inactive || "$launch_state" == terminated ]]; then
+    pid_count=0
+    probe_status="inactive"
+  elif command -v pgrep >/dev/null 2>&1; then
+    pid_count="$(pgrep -fc "[c]loudflared" 2>/dev/null || printf "0")"
+    [[ "$pid_count" =~ ^[0-9]+$ ]] || { probe_status="unknown"; pid_count=0; }
+    (( pid_count >= 1 )) && probe_status="active" || probe_status="inactive"
+  fi
+elif command -v pgrep >/dev/null 2>&1; then
+  pid_count="$(pgrep -fc "[c]loudflared" 2>/dev/null || printf "0")"
+  [[ "$pid_count" =~ ^[0-9]+$ ]] || { probe_status="unknown"; pid_count=0; }
+  (( pid_count >= 1 )) && probe_status="active" || probe_status="inactive"
+fi
+printf "status\t%s\nlabel\t%s\npid_count\t%s\n" "$probe_status" "$label" "$pid_count"
+'
+
+probe_field() {
+  local raw="$1" key="$2"
+  printf '%s\n' "$raw" | awk -F '\t' -v k="$key" '$1 == k { print $2; exit }'
+}
+
+probe_failure() {
+  echo "✗ $1" >&2
+  return 1
+}
+
+run_typed_probe() {
+  local raw total available swap_total swap_used status label pid_count
+  if [[ "$PROBE_MODE" == memory ]]; then
+    raw="$("$BASE" run "$MEMORY_BUNDLE" 2>/dev/null)" \
+      || probe_failure "memory probe unavailable"
+    total="$(probe_field "$raw" mem_total_mb)"
+    available="$(probe_field "$raw" mem_avail_mb)"
+    swap_total="$(probe_field "$raw" swap_total_mb)"
+    swap_used="$(probe_field "$raw" swap_used_mb)"
+    [[ "$total" =~ ^(0|[1-9][0-9]*)$ ]] || probe_failure "memory probe returned invalid total"
+    [[ "$available" =~ ^(0|[1-9][0-9]*)$ ]] || probe_failure "memory probe returned invalid available"
+    [[ "$swap_total" =~ ^(0|[1-9][0-9]*)$ ]] || probe_failure "memory probe returned invalid swap total"
+    [[ "$swap_used" =~ ^(0|[1-9][0-9]*)$ ]] || probe_failure "memory probe returned invalid swap used"
+    (( total > 0 )) || probe_failure "memory probe total is zero"
+    (( available <= total )) || probe_failure "memory probe available exceeds total"
+    (( swap_used <= swap_total )) || probe_failure "memory probe swap used exceeds total"
+    printf '{"available_mb":%s,"swap_total_mb":%s,"swap_used_mb":%s,"total_mb":%s}\n' \
+      "$available" "$swap_total" "$swap_used" "$total"
+    return 0
+  fi
+
+  raw="$("$BASE" run "$CADDY_BUNDLE" 2>/dev/null)" \
+    || probe_failure "caddy status probe unavailable"
+  status="$(probe_field "$raw" status)"
+  label="$(probe_field "$raw" label)"
+  pid_count="$(probe_field "$raw" pid_count)"
+  [[ "$status" == active || "$status" == inactive || "$status" == unknown ]] \
+    || probe_failure "caddy status probe returned invalid status"
+  [[ "$label" == "com.cloudflare.cloudflared" ]] \
+    || probe_failure "caddy status probe returned invalid label"
+  [[ "$pid_count" =~ ^(0|[1-9][0-9]*)$ ]] \
+    || probe_failure "caddy status probe returned invalid pid count"
+  if [[ "$status" == active ]] && (( pid_count < 1 )); then
+    probe_failure "caddy status active without a process"
+  fi
+  printf '{"label":"%s","pid_count":%s,"status":"%s"}\n' \
+    "$label" "$pid_count" "$status"
+}
+
+if [[ "$PROBE_MODE" != health ]]; then
+  run_typed_probe
+  exit $?
+fi
 
 # ── 1. host 層指標：單發 SSH 收集，吐 tab-separated key<TAB>value ───────────
 # 全段為單引號字串（內含的 " 與 $(...) 皆原封送遠端執行，不在本地展開）。
