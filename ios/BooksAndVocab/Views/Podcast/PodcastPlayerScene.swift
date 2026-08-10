@@ -23,19 +23,16 @@ struct PodcastPlayerScene: View {
     @Query(filter: #Predicate<Notebook> { !$0.isSoftDeleted })
     private var liveNotebooks: [Notebook]
 
-    @State private var viewModel: PodcastPlayerViewModel?
+    @State private var sessionController = PodcastEpisodeSessionController()
     @State private var translationHandler = ReaderTranslationHandler()
     @State private var autoPausedByTranslation: Bool = false
     @State private var showSettingsPopover: Bool = false
     @State private var showNotebookPicker: Bool = false
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
     @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
-    @State private var progressPersistence = PodcastProgressPersistenceController()
     @State private var monetizationGate = MonetizationGateState()
-    @State private var loadTask: Task<Void, Never>?
-    @State private var loadedEpisodeId: String?
-    @State private var progressBootstrapCompleted = false
-    @State private var overrideEpisodeId: String?
+
+    private var viewModel: PodcastPlayerViewModel? { sessionController.viewModel }
 
     private var accessState: PodcastPlayerAccessState {
         PodcastPlayerAccessState.resolve(
@@ -57,7 +54,9 @@ struct PodcastPlayerScene: View {
         )
     }
 
-    private var activeEpisodeId: String { overrideEpisodeId ?? episodeId }
+    private var activeEpisodeId: String { sessionController.activeEpisodeId ?? episodeId }
+
+    private var loadedEpisodeId: String? { sessionController.loadedEpisodeId }
 
     private var loadedEpisode: PodcastEpisode? {
         PodcastPlayerSupport.fetchEpisode(remoteId: activeEpisodeId, in: modelContext)
@@ -69,8 +68,8 @@ struct PodcastPlayerScene: View {
 
     private var bootstrapPhase: PodcastPlayerBootstrapPhase {
         PodcastPlayerBootstrapPhase.phase(
-            hasViewModel: viewModel != nil,
-            loadAttempted: loadedEpisodeId == activeEpisodeId,
+            hasViewModel: sessionController.viewModel != nil,
+            loadAttempted: sessionController.loadAttemptedEpisodeId == activeEpisodeId,
             hasEpisode: loadedEpisode != nil,
             hasSeries: loadedSeries != nil
         )
@@ -136,17 +135,19 @@ struct PodcastPlayerScene: View {
                 playerContent(vm)
                     .background(
                         PodcastProgressTicker(viewModel: vm) { newTime in
-                            saveProgressIfNeeded(time: newTime)
+                            sessionController.handleProgressTick(
+                                newTime,
+                                modelContext: modelContext,
+                                kgService: kgService
+                            )
                         }
                     )
                     .onChange(of: vm.state) { _, newState in
-                        if newState == .ready, !progressBootstrapCompleted {
-                            progressBootstrapCompleted = true
-                            return
-                        }
-                        if newState == .paused || newState == .ready {
-                            saveProgress()
-                        }
+                        sessionController.handlePlayerState(
+                            newState,
+                            modelContext: modelContext,
+                            kgService: kgService
+                        )
                     }
                     .appFeedback(.success, trigger: vm.sleepTimerFiredTick)
                     .onChange(of: vm.sleepTimerFiredTick) { oldTick, newTick in
@@ -227,23 +228,31 @@ struct PodcastPlayerScene: View {
         }
         .task(id: activeEpisodeId) {
             guard loadedEpisodeId != activeEpisodeId else { return }
-            if let oldVm = viewModel, let oldId = loadedEpisodeId {
-                saveProgress(vm: oldVm, episodeRemoteId: oldId, reason: .episodeSwitch)
-            }
-            loadTask?.cancel()
-            loadTask = nil
-            viewModel?.stop()
-            viewModel = nil
-            loadedEpisodeId = activeEpisodeId
-            progressBootstrapCompleted = false
-            progressPersistence.reset()
 #if DEBUG
             if let preview = catalogPreview {
-                loadCatalogPreview(preview)
+                guard let episode = loadedEpisode else {
+                    sessionController.markLoadAttempted(for: activeEpisodeId)
+                    return
+                }
+                sessionController.load(
+                    episode: episode,
+                    modelContext: modelContext,
+                    kgService: kgService,
+                    catalogPreview: preview
+                )
                 return
             }
 #endif
-            loadEpisode()
+            guard let episode = loadedEpisode else {
+                sessionController.markLoadAttempted(for: activeEpisodeId)
+                return
+            }
+            guard accessState.playableForTier else { return }
+            sessionController.load(
+                episode: episode,
+                modelContext: modelContext,
+                kgService: kgService
+            )
         }
         .onChange(of: VocabularyHighlightSignature.make(
             entries: allVocabulary,
@@ -262,30 +271,15 @@ struct PodcastPlayerScene: View {
             seedSeriesBindingIfNeeded()
         }
         .onDisappear {
-            let pending = pendingProgressOnDisappear()
-            loadTask?.cancel()
-            loadTask = nil
             translationHandler.cancelCurrentTranslationTask()
-            viewModel?.shutdown()
-            viewModel = nil
-            loadedEpisodeId = nil
-            progressBootstrapCompleted = false
-            if let pending {
-                Task { @MainActor in
-                    progressPersistence.saveSnapshot(
-                        currentTime: pending.currentTime,
-                        duration: pending.duration,
-                        isCompleted: pending.isCompleted,
-                        episodeRemoteId: pending.episodeRemoteId,
-                        modelContext: modelContext,
-                        kgService: kgService,
-                        reason: .pause
-                    )
-                }
-            }
+            sessionController.handleDisappear(modelContext: modelContext, kgService: kgService)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { saveProgress() }
+            sessionController.handleScenePhase(
+                phase,
+                modelContext: modelContext,
+                kgService: kgService
+            )
         }
     }
 
@@ -482,194 +476,30 @@ struct PodcastPlayerScene: View {
     }
 
     private func reloadEpisode() {
-        loadTask?.cancel()
-        loadTask = nil
-        viewModel?.stop()
-        viewModel = nil
-        progressBootstrapCompleted = false
-        progressPersistence.reset()
-        loadEpisode()
-    }
-
-    @MainActor
-    private func advanceToNextEpisode() {
-        guard let current = loadedEpisode, let series = loadedSeries else { return }
-        guard let next = PodcastQueue.nextPlayable(
-            in: series.episodes, after: current, tier: accessState.tier
-        ) else { return }
-        overrideEpisodeId = next.remoteId
-    }
-
-#if DEBUG
-    private func loadCatalogPreview(_ preview: PodcastPlayerCatalogPreview) {
-        guard let series = loadedSeries else { return }
-        let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
-        vm.catalogReadyPreview(
-            duration: preview.durationSec,
-            currentTime: preview.currentSec,
-            subtitleSRT: preview.subtitleSRT
-        )
-        viewModel = vm
-    }
-#endif
-
-    private func loadEpisode() {
-        guard let episode = loadedEpisode,
-              let series = loadedSeries else { return }
-        guard accessState.playableForTier else { return }
-
-        loadTask?.cancel()
-        loadTask = nil
-
-        let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
-        viewModel = vm
-        let initialProgressTime = initialProgressTime(for: activeEpisodeId)
-
-        loadTask = Task { [weak vm] in
-            guard let vm else { return }
-            guard let plan = PodcastPlayerLoadPlan.make(episode: episode) else {
-                await MainActor.run { vm.reportError(L10n.string("無音訊 URL")) }
-                return
-            }
-
-            await MainActor.run { vm.setLoading() }
-            if Task.isCancelled { return }
-
-            if case .remote = plan.subtitleSource {
-                await MainActor.run { vm.setSubtitleLoading() }
-            }
-            let resolvedSubtitle = await PodcastPlayerLoader.resolveSubtitle(
-                from: plan.subtitleSource,
-                kgService: kgService
-            )
-            if Task.isCancelled { return }
-
-            let audioHeaders: [String: String]
-            do {
-                audioHeaders = try await PodcastPlayerLoader.resolveAudioHeaders(
-                    for: plan,
-                    kgService: kgService
-                )
-            } catch is CancellationError {
-                return
-            } catch {
-                await MainActor.run {
-                    vm.reportError(L10n.format("無法取得認證 token：%@", error.localizedDescription))
-                }
-                return
-            }
-            if Task.isCancelled { return }
-
-            await MainActor.run {
-                guard !Task.isCancelled else { return }
-                switch resolvedSubtitle {
-                case .content:
-                    break
-                case .unavailable:
-                    vm.markSubtitleUnavailable()
-                case .failed:
-                    vm.markSubtitleFailed()
-                }
-                vm.loadEpisode(
-                    audioURL: plan.audioURL,
-                    subtitleContent: {
-                        if case .content(let subtitleContent) = resolvedSubtitle {
-                            return subtitleContent
-                        }
-                        return nil
-                    }(),
-                    title: plan.title,
-                    audioHTTPHeaders: audioHeaders,
-                    prefetchedDurationSec: plan.durationSec,
-                    initialProgressTime: initialProgressTime
-                )
-            }
-        }
-    }
-
-    @MainActor
-    private func retrySubtitle() {
-        guard let vm = viewModel,
-              let episode = loadedEpisode,
-              let subtitleURLStr = episode.subtitleURL else { return }
-        vm.setSubtitleLoading()
-        Task { [weak vm] in
-            guard let vm else { return }
-            let content = await PodcastPlayerLoader.fetchSubtitle(
-                urlString: subtitleURLStr, kgService: kgService
-            )
-            await MainActor.run {
-                if let content {
-                    vm.applySubtitle(content: content)
-                } else {
-                    vm.markSubtitleFailed()
-                }
-            }
-        }
-    }
-
-    @MainActor
-    private func initialProgressTime(for episodeRemoteId: String) -> TimeInterval? {
-        let targetId = episodeRemoteId
-        let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        if let progress = try? modelContext.fetch(descriptor).first,
-           progress.lastPlayedTime > 0,
-           !progress.completed {
-            return progress.lastPlayedTime
-        }
-        return nil
-    }
-
-    private func saveProgressIfNeeded(time: TimeInterval) {
-        guard let vm = viewModel else { return }
-        guard loadedEpisodeId == activeEpisodeId else { return }
-        progressPersistence.saveIfNeeded(
-            time: time,
-            viewModel: vm,
-            episodeRemoteId: activeEpisodeId,
+        guard let episode = loadedEpisode else { return }
+        sessionController.reloadEpisode(
+            episode: episode,
             modelContext: modelContext,
             kgService: kgService
         )
     }
 
-    private func saveProgress(reason: PodcastProgressPushState.Reason = .pause) {
-        guard let vm = viewModel else { return }
-        guard loadedEpisodeId == activeEpisodeId else { return }
-        if !progressBootstrapCompleted && vm.currentTime == 0 { return }
-        saveProgress(vm: vm, episodeRemoteId: activeEpisodeId, reason: reason)
-    }
-
-    private func pendingProgressOnDisappear()
-        -> (currentTime: TimeInterval, duration: TimeInterval, isCompleted: Bool, episodeRemoteId: String)? {
-#if DEBUG
-        if catalogPreview != nil { return nil }
-#endif
-        guard let vm = viewModel, loadedEpisodeId == activeEpisodeId else { return nil }
-        if !progressBootstrapCompleted && vm.currentTime == 0 { return nil }
-        return (
-            currentTime: vm.currentTime,
-            duration: vm.duration,
-            isCompleted: PodcastPlayerSupport.isCompleted(
-                currentTime: vm.currentTime, duration: vm.duration, isReady: vm.state == .ready
-            ),
-            episodeRemoteId: activeEpisodeId
+    @MainActor
+    private func advanceToNextEpisode() {
+        guard let current = loadedEpisode, let series = loadedSeries else { return }
+        sessionController.nextEpisode(
+            in: series,
+            after: current,
+            tier: accessState.tier
         )
     }
 
-    private func saveProgress(
-        vm: PodcastPlayerViewModel,
-        episodeRemoteId: String,
-        reason: PodcastProgressPushState.Reason = .pause
-    ) {
-        progressPersistence.save(
-            viewModel: vm,
-            episodeRemoteId: episodeRemoteId,
-            modelContext: modelContext,
-            kgService: kgService,
-            reason: reason
+    @MainActor
+    private func retrySubtitle() {
+        guard let episode = loadedEpisode else { return }
+        sessionController.retrySubtitle(
+            episode: episode,
+            kgService: kgService
         )
     }
 }
