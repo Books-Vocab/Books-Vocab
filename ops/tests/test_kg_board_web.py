@@ -143,6 +143,23 @@ def test_gzip_keeps_small_or_inapplicable_bodies_unencoded():
         assert int(headers["Content-Length"]) == len(body)
 
 
+def test_index_with_ephemeral_csrf_is_never_compressed(monkeypatch):
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    monkeypatch.setattr(server, "CSRF_TOKEN", "ephemeral-secret-csrf")
+    original = server.render_index()
+    assert len(original) >= server.GZIP_MIN_BYTES
+    handler = _capturing_handler("/", {"Accept-Encoding": "gzip"})
+
+    handler.do_GET()
+
+    headers = _response_headers(handler)
+    assert handler.response_code == 200
+    assert handler.wfile.getvalue() == original
+    assert "Content-Encoding" not in headers
+    assert "Vary" not in headers
+    assert int(headers["Content-Length"]) == len(original)
+
+
 def test_active_page_is_external_assets_with_mobile_decision_ia():
     assert not hasattr(server, "PAGE")
     assert not hasattr(server, "LEGACY_PAGE")

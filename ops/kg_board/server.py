@@ -856,10 +856,10 @@ def _gzip_eligible(code: int, body: bytes, ctype: str) -> bool:
     if code < 200 or code in (204, 205, 304) or len(body) < GZIP_MIN_BYTES:
         return False
     media_type = ctype.split(";", 1)[0].strip().lower()
-    return media_type.startswith("text/") or media_type in {
-        "application/json",
-        "application/javascript",
-    }
+    # Deliberately opt in only the board/data plane. The HTML index embeds the
+    # ephemeral CSRF token, so compressing it would create a BREACH-style length
+    # oracle; static assets are not large enough to justify widening this boundary.
+    return media_type == "application/json"
 
 
 def render_index() -> bytes:
