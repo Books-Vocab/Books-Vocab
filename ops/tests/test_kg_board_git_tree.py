@@ -60,6 +60,11 @@ def test_normalize_snapshot_rejects_malformed_records_without_crashing():
     assert payload["commits"] == []
 
 
+def test_normalize_snapshot_requires_explicit_complete_true():
+    assert normalize_snapshot({})["complete"] is False
+    assert normalize_snapshot({"complete": "true", "refs": [], "commits": []})["complete"] is False
+
+
 def test_normalize_snapshot_is_fail_closed_for_string_collections_and_invalid_shas():
     payload = normalize_snapshot({
         "complete": "false",
@@ -162,6 +167,7 @@ def test_server_git_tree_payload_reads_mirror_and_canonical_ticket_briefs(monkey
     mirror = tmp_path / "mirror.json"
     mirror.write_text(json.dumps({"git_tree": {
         "at": "now",
+        "complete": True,
         "refs": [{"branch": "feat/a", "head": "abcdef0123456789", "backlog": ["IMP-1"]}],
         "commits": [{"sha": "abcdef0123456789", "parents": [], "subject": "tip"}],
     }}), encoding="utf-8")
