@@ -38,7 +38,7 @@ struct VocabCalendarGrid: View {
 
         // Leading blanks
         for i in 0..<mondayOffset {
-            cells.append(DayCell(id: "blank-\(i)", dayNumber: 0, dayKey: nil, isToday: false))
+            cells.append(DayCell(id: "blank-\(i)", dayNumber: 0, dayKey: nil, isToday: false, isFuture: false))
         }
 
         for day in range {
@@ -50,7 +50,8 @@ struct VocabCalendarGrid: View {
                 id: key,
                 dayNumber: day,
                 dayKey: key,
-                isToday: key == todayKey
+                isToday: key == todayKey,
+                isFuture: cal.startOfDay(for: date) > cal.startOfDay(for: Date())
             ))
         }
         return cells
@@ -113,11 +114,7 @@ struct VocabCalendarGrid: View {
             // control 給 r≈7（改制前 6），是四階裡唯一貼合的；pill 會把日格變成圓形。
             .background(
                 AppRoundedRect(roundness: appSkin.roundness.control)
-                    .fill(isSelected ? appSkin.palette.mutedFill : Color.clear)
-            )
-            .overlay(
-                AppRoundedRect(roundness: appSkin.roundness.control)
-                    .fill(count > 0 ? cellFill(count) : Color.clear)
+                    .fill(isSelected ? appSkin.palette.mutedFill : (count > 0 ? cellFill(count) : Color.clear))
             )
             .overlay(
                 AppRoundedRect(roundness: appSkin.roundness.control)
@@ -128,6 +125,8 @@ struct VocabCalendarGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(cell.isFuture)
+        .opacity(cell.isFuture ? 0.45 : 1)
     }
 
     private func dotColor(_ count: Int) -> Color {
@@ -155,6 +154,7 @@ private struct DayCell: Identifiable {
     let dayNumber: Int
     let dayKey: String?
     let isToday: Bool
+    let isFuture: Bool
 }
 
 #Preview("VocabCalendarGrid") {

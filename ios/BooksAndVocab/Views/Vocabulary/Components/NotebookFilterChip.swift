@@ -33,6 +33,12 @@ struct NotebookFilterChip: View {
                 in: AppRoundedRect(roundness: AppRoundness.pill)
             )
         }
+        .accessibilityValue(
+            filter.isFiltered
+                ? L10n.format("已選 %@ 本", "\(filter.selectedIds.count)")
+                : L10n.string("全部單字本")
+        )
+        .accessibilityIdentifier("vocab.notebookFilter")
         .toastSheet(isPresented: $showPicker) {
             NotebookFilterPickerSheet(
                 filter: $filter,

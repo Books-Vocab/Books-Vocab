@@ -11,6 +11,30 @@ import Testing
 
 struct SharedDeckPresentationTests {
 
+    @Test func explorePhase_keepsCachedDecksVisibleAsPartialWhenSyncFails() {
+        #expect(
+            ExplorePhase.resolve(
+                isSyncing: false,
+                syncFailed: true,
+                totalDeckCount: 3,
+                filteredCount: 3,
+                isFilteringOrSearching: false
+            ) == .partial
+        )
+    }
+
+    @Test func explorePhase_prefersNoResultsWhenPartialCatalogIsFilteredOut() {
+        #expect(
+            ExplorePhase.resolve(
+                isSyncing: false,
+                syncFailed: true,
+                totalDeckCount: 3,
+                filteredCount: 0,
+                isFilteringOrSearching: true
+            ) == .noResults
+        )
+    }
+
     private func proj(
         _ id: String, title: String, author: String? = nil, official: Bool = true,
         category: String? = nil, languagePair: String? = nil, tags: [String] = [],
