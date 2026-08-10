@@ -410,6 +410,79 @@ def test_load_entry_raises_for_unknown_id(tmp_path):
         BACKLOG.load_entry(store, "IMP-0404")
 
 
+def test_zombie_suspects_reports_only_unresolved_entries_named_by_commits(tmp_path):
+    """Commit mentions are candidates, not proof that a ticket is fixed.
+
+    The commit input is synthetic on purpose: this query must be testable without
+    making the suite depend on the host repository's history. A closed entry and
+    an unmentioned live entry are both negative controls.
+    """
+    store = tmp_path / "backlog"
+    live = _add(
+        store,
+        detail="a live issue called out by an ops commit",
+        brief="維護者會重複處理已被 commit 點名的待辦",
+    )
+    closed = _add(store, status="wont-fix", detail="already dismissed",
+                  resolution="decided against it")
+    untouched = _add(store, detail="a different live issue")
+    commits = [
+        "a" * 40 + "\x01ops: fix " + live["id"],
+        "b" * 40 + "\x01docs: 立案 " + live["id"],
+        "c" * 40 + "\x01ops: fix " + closed["id"],
+    ]
+
+    rows = BACKLOG.zombie_suspects(store, commit_lines=commits)
+
+    assert [row["id"] for row in rows] == [live["id"], live["id"]]
+    assert rows[0]["status"] == "open"
+    assert rows[0]["brief"] == "維護者會重複處理已被 commit 點名的待辦"
+    assert rows[0]["commit"] == {
+        "sha": "a" * 40,
+        "subject": "ops: fix " + live["id"],
+    }
+    assert rows[0]["classification"] == "suspect"
+    assert rows[1]["classification"] == "likely-filing"
+    assert untouched["id"] not in {row["id"] for row in rows}
+    assert closed["id"] not in {row["id"] for row in rows}
+
+
+def test_zombie_suspects_cli_json_is_read_only_and_uses_commit_metadata(
+        tmp_path, capsys, monkeypatch):
+    """The CLI exposes the query without mutating the store or claiming tickets."""
+    store = tmp_path / "backlog"
+    live = _add(store, detail="a live issue called out by a docs commit")
+    before = (store / f"{live['id']}.json").read_bytes()
+    monkeypatch.setattr(
+        BACKLOG,
+        "_zombie_commit_lines",
+        lambda **kwargs: ["d" * 40 + "\x01docs: file " + live["id"]],
+    )
+
+    assert BACKLOG.main([
+        "list", "--store", str(store), "--zombie-suspects", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema"] == "kg.backlog.zombie-suspects.v1"
+    assert payload["search_depth"] == BACKLOG.DEFAULT_SEARCH_DEPTH
+    assert payload["entries"][0]["commit"]["sha"] == "d" * 40
+    assert payload["entries"][0]["classification"] == "likely-filing"
+    assert (store / f"{live['id']}.json").read_bytes() == before
+
+
+def test_zombie_search_depth_requires_the_zombie_query(tmp_path, capsys):
+    """A query-only option must not silently disappear on an ordinary list."""
+    store = tmp_path / "backlog"
+    _add(store)
+
+    assert BACKLOG.main([
+        "list", "--store", str(store), "--zombie-search-depth", "1", "--json",
+    ]) == 64
+    captured = capsys.readouterr()
+    assert "--zombie-search-depth" in captured.err
+
+
 # --------------------------------------------------------------------------
 # 7. APP stream carries the fields an app-usage report actually needs
 # --------------------------------------------------------------------------
