@@ -64,6 +64,26 @@ def _process_is_live(pid: int) -> bool:
     return completed.returncode == 0 and bool(state) and not state.startswith("Z")
 
 
+def test_direct_script_path_imports_sibling_ops_modules_from_repo_root() -> None:
+    """The shell release fixture invokes this module by absolute path.
+
+    In that mode Python puts ``ops/lib`` on ``sys.path`` rather than the repository
+    root, so the compatibility import must establish its own deterministic seam.
+    This deliberately exercises the real entrypoint from the same cwd as the shell
+    control plane, instead of importing the module through pytest's package path.
+    """
+    script = OPS_ROOT / "lib" / "streaming_command.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=OPS_ROOT.parent,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "capture a command with visible progress" in completed.stdout
+
+
 def test_progress_contract_and_separate_streams(tmp_path: Path) -> None:
     parent_stdout = io.StringIO()
     parent_stderr = io.StringIO()
