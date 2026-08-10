@@ -33,6 +33,17 @@ def _ticket(
     return row
 
 
+@pytest.fixture(autouse=True)
+def stable_registry_fingerprint(monkeypatch):
+    original = server._registry_fingerprint
+    monkeypatch.setattr(
+        server,
+        "_registry_fingerprint",
+        lambda: ((False, None, None, None), None),
+    )
+    return original
+
+
 def test_dispatch_uses_canonical_ids_ignores_snooze_and_subtracts_mirror_claims():
     blocked = [_ticket(f"BLOCKED-{index}", blocked_by=["WAITING-ON"]) for index in range(6)]
     entries = [*blocked, _ticket("CANONICAL"), _ticket("CLAIMED")]
@@ -137,6 +148,13 @@ def test_read_entries_refreshes_claim_projection_when_head_is_unchanged(monkeypa
 
     monkeypatch.setattr(server, "CLONE", tmp_path)
     monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    fingerprints = iter([
+        ((True, 1, 10, 100), None),
+        ((True, 1, 10, 100), None),
+        ((True, 1, 20, 120), None),
+        ((True, 1, 20, 120), None),
+    ])
+    monkeypatch.setattr(server, "_registry_fingerprint", lambda: next(fingerprints))
     monkeypatch.setattr(server.subprocess, "run", fake_run)
     monkeypatch.setattr(
         server,
@@ -157,6 +175,202 @@ def test_read_entries_refreshes_claim_projection_when_head_is_unchanged(monkeypa
     }
     assert after["ungroomed_ids"] == []
     assert calls == {"list": 1, "dispatch": 2}
+
+
+def test_read_entries_warm_same_head_and_registry_skips_all_backlog_subprocesses(
+    monkeypatch, tmp_path
+):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command[-2])
+        body = {
+            "schema": "kg.backlog.list.v1",
+            "entries": [_ticket("A")],
+            "held": {"HELD": {"branch": "feat/held"}},
+            "dispatch": {"withheld_blocked": []},
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "valid": False, "sha": None, "registry_fingerprint": None,
+            "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    warm = server.read_entries(force=True)
+    hit = server.read_entries()
+
+    assert hit == warm
+    assert calls == ["list", "dispatch"]
+
+
+def test_registry_mutation_during_dispatch_is_not_cached_as_new_fingerprint(
+    monkeypatch, tmp_path
+):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    fingerprints = iter([
+        ((True, 1, 10, 100), None),
+        ((True, 1, 10, 100), None),
+        ((True, 1, 20, 120), None),
+        ((True, 2, 30, 140), None),
+        ((True, 2, 30, 140), None),
+        ((True, 2, 30, 140), None),
+    ])
+    dispatch_calls = 0
+    list_calls = 0
+
+    def fake_run(command, **_kwargs):
+        nonlocal dispatch_calls, list_calls
+        subcommand = command[-2]
+        if subcommand == "list":
+            list_calls += 1
+            body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")]}
+        else:
+            dispatch_calls += 1
+            held = {} if dispatch_calls == 1 else {
+                "A": {"branch": f"feat/claim-{dispatch_calls}"}
+            }
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [] if held else [_ticket("A")],
+                "held": held,
+                "dispatch": {"withheld_blocked": []},
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    monkeypatch.setattr(server, "_registry_fingerprint", lambda: next(fingerprints))
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "valid": False, "sha": None, "registry_fingerprint": None,
+            "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    warm = server.read_entries(force=True)
+    raced = server.read_entries()
+    recovered = server.read_entries()
+
+    assert raced["local_held"] == warm["local_held"] == {}
+    assert "registry changed during canonical read" in raced["error"]
+    assert recovered["local_held"] == {"A": {"branch": "feat/claim-3"}}
+    assert recovered["error"] is None
+    assert list_calls == 1
+    assert dispatch_calls == 3
+
+
+def test_registry_fingerprint_uses_git_common_dir_and_tracks_missing_ledger(
+    monkeypatch, tmp_path, stable_registry_fingerprint
+):
+    common_dir = tmp_path / ".git"
+    common_dir.mkdir()
+    git_calls = []
+
+    def fake_git(args):
+        git_calls.append(args)
+        return subprocess.CompletedProcess(args, 0, f"{common_dir}\n", "")
+
+    monkeypatch.setattr(server, "_registry_fingerprint", stable_registry_fingerprint)
+    monkeypatch.setattr(server, "_git", fake_git)
+
+    missing, missing_error = server._registry_fingerprint()
+    ledger = tmp_path / ".cache" / "worktree_registry.json"
+    ledger.parent.mkdir()
+    ledger.write_text("{}\n", encoding="utf-8")
+    present, present_error = server._registry_fingerprint()
+    stat = ledger.stat()
+
+    assert missing == (False, None, None, None)
+    assert missing_error is None
+    assert present == (True, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+    assert present_error is None
+    assert git_calls == [
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    ]
+
+
+def test_registry_fingerprint_error_preserves_warm_snapshot_then_recovers(
+    monkeypatch, tmp_path
+):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    fingerprints = iter([
+        ((False, None, None, None), None),
+        ((False, None, None, None), None),
+        (None, "registry fingerprint failed: OSError: unavailable"),
+        ((True, 2, 30, 140), None),
+        ((True, 2, 30, 140), None),
+    ])
+    calls = 0
+
+    def fake_run(command, **_kwargs):
+        nonlocal calls
+        calls += 1
+        body = {
+            "schema": "kg.backlog.list.v1", "entries": [_ticket("A")],
+            "held": {}, "dispatch": {"withheld_blocked": []},
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    monkeypatch.setattr(server, "_registry_fingerprint", lambda: next(fingerprints))
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "valid": False, "sha": None, "registry_fingerprint": None,
+            "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    warm = server.read_entries(force=True)
+    stale = server.read_entries()
+    recovered = server.read_entries()
+
+    assert stale["entries"] == warm["entries"]
+    assert "registry fingerprint failed" in stale["error"]
+    assert recovered["error"] is None
+    assert recovered["registry_fingerprint"] == (True, 2, 30, 140)
+    assert calls == 3
+
+
+def test_refresh_loop_does_not_force_unchanged_canonical_projection(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "refresh_clone", lambda: None)
+    monkeypatch.setattr(server, "read_entries", lambda force=False: calls.append(force))
+    monkeypatch.setattr(
+        server.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(RuntimeError("stop loop")),
+    )
+
+    with pytest.raises(RuntimeError, match="stop loop"):
+        server.refresh_loop()
+
+    assert calls == [False]
 
 
 @pytest.mark.parametrize("failure_type", (subprocess.TimeoutExpired, OSError))
@@ -189,6 +403,12 @@ def test_read_entries_preserves_warm_snapshot_when_dispatch_invocation_fails(
 
     monkeypatch.setattr(server, "CLONE", tmp_path)
     monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    fingerprints = iter([
+        ((True, 1, 10, 100), None),
+        ((True, 1, 10, 100), None),
+        ((True, 1, 20, 120), None),
+    ])
+    monkeypatch.setattr(server, "_registry_fingerprint", lambda: next(fingerprints))
     monkeypatch.setattr(server.subprocess, "run", fake_run)
     monkeypatch.setattr(
         server,
