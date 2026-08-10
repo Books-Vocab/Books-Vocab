@@ -6,6 +6,9 @@
   "date": "2026-08-10",
   "detail": "The real-OS concurrent staging regression copies ops/lib/streaming_command.py into a temporary repository but not its sibling ops/task_registry.py dependency. Every subprocess dies during import before staging, so the test reports a setup failure instead of checking whether two read-modify-write stages lose rows. This surfaced as an ops-pytest Gate baseline failure after task_registry was introduced. The fixture must remain isolated and must not weaken the production concurrency assertion.",
   "fix_site": "ops/tests/test_backlog.py:concurrent staging fixture",
+  "fixed_by": [
+    "15f6d2d1c609749c852c9df9e8064e9e1ecfb1cc"
+  ],
   "groomed_against": "b23041d565f8f1a7bc7ac73d622a81a7bd2cfc33",
   "groomed_at": "2026-08-10",
   "groomed_by": "agent:supervisor",
@@ -16,6 +19,6 @@
   "scope": "一個隔離測試副本的依賴修補與兩個併發測試，不改生產 staging 語意",
   "severity": "high",
   "source": "supervisor:fresh-gate-d4",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP"
 }
