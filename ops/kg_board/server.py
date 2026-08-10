@@ -167,6 +167,16 @@ def clone_head() -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+def _run_backlog(tool: Path, subcommand: str) -> tuple[subprocess.CompletedProcess | None, str | None]:
+    try:
+        return subprocess.run(
+            [sys.executable, str(tool), subcommand, "--json"],
+            cwd=str(CLONE), capture_output=True, text=True, timeout=180,
+        ), None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"backlog.py {subcommand} failed: {type(exc).__name__}: {exc}"
+
+
 def refresh_clone() -> None:
     with _clone_lock:
         _refresh_clone_locked()
@@ -199,17 +209,23 @@ def read_entries(force: bool = False) -> dict:
 
 
 def _read_entries_locked(force: bool = False) -> dict:
-    """Shell out to the CLONE's own backlog.py. Cached on the clone's HEAD sha.
+    """Shell out to the CLONE's own backlog.py.
 
     Shelling out rather than importing is the whole point: the reader is always the
-    version that ships with the data. Caching on the sha rather than on a clock
-    means a refresh that changed nothing costs nothing, and one that changed
-    something is picked up on the very next request.
+    version that ships with the data. Ticket entries are cached on the clone HEAD,
+    but dispatch is read every time because its held projection also depends on the
+    mutable local worktree registry.
     """
     sha = clone_head()
     with _lock:
-        if not force and sha is not None and _cache["sha"] == sha and _cache["entries"]:
-            return dict(_cache)
+        cached_entries = None
+        if (
+            not force
+            and sha is not None
+            and _cache["sha"] == sha
+            and _cache["error"] is None
+        ):
+            cached_entries = list(_cache["entries"])
     tool = CLONE / "ops" / "backlog.py"
     if not tool.exists():
         payload = {"sha": sha, "entries": [], "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
@@ -217,54 +233,71 @@ def _read_entries_locked(force: bool = False) -> dict:
                    "ungroomed_ids": [],
                    "error": f"no backlog CLI at {tool} — is {CLONE} a kg clone?"}
     else:
-        list_proc = subprocess.run([sys.executable, str(tool), "list", "--json"],
-                                   cwd=str(CLONE), capture_output=True, text=True, timeout=180)
-        dispatch_proc = subprocess.run([sys.executable, str(tool), "dispatch", "--json"],
-                                       cwd=str(CLONE), capture_output=True, text=True, timeout=180)
-        failed = next((p for p in (list_proc, dispatch_proc) if p.returncode != 0), None)
-        if failed is not None:
-            subcommand = "list" if failed is list_proc else "dispatch"
+        list_proc = None
+        invocation_error = None
+        if cached_entries is None:
+            list_proc, invocation_error = _run_backlog(tool, "list")
+        dispatch_proc = None
+        if invocation_error is None:
+            dispatch_proc, invocation_error = _run_backlog(tool, "dispatch")
+        if invocation_error is not None:
             payload = {"sha": sha, "entries": [],
                        "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
                        "ungroomed_ids": [],
                        "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
-                       "error": (f"backlog.py {subcommand} exited {failed.returncode}: "
-                                 f"{failed.stderr.strip()[:300]}")}
+                       "error": invocation_error}
         else:
-            try:
-                list_body = json.loads(list_proc.stdout)
-                dispatch_body = json.loads(dispatch_proc.stdout)
-                entries = list_body.get("entries", [])
-                dispatch_entries = dispatch_body.get("entries", [])
-                dispatch_ids = {str(row["id"]) for row in dispatch_entries}
-                dispatch_meta = dispatch_body.get("dispatch") or {}
-                local_held = list_body.get("held") or {}
-                blocked_ids = {
-                    str(row["id"]) for row in dispatch_meta.get("withheld_blocked", [])
-                    if isinstance(row, dict) and row.get("id")
-                }
-                unresolved_ids = {
-                    str(row["id"]) for row in entries
-                    if row.get("status") not in RESOLVED_STATUSES
-                }
-                # backlog.py is the sole groom predicate owner. Its list/dispatch
-                # metadata partitions unresolved into dispatch, held, blocked and
-                # the remainder (ungroomed), so this service never reimplements
-                # plan/acceptance/groomed_by rules.
-                ungroomed_ids = unresolved_ids - dispatch_ids - set(local_held) - blocked_ids
-                payload = {"sha": sha, "entries": entries,
-                           "dispatch_ids": sorted(dispatch_ids),
-                           "dispatch_meta": dispatch_meta,
-                           "local_held": local_held,
-                           "ungroomed_ids": sorted(ungroomed_ids),
-                           "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
-                           "error": None}
-            except json.JSONDecodeError as exc:
+            failed = next(
+                (p for p in (list_proc, dispatch_proc) if p is not None and p.returncode != 0),
+                None,
+            )
+            if failed is not None:
+                subcommand = "list" if failed is list_proc else "dispatch"
                 payload = {"sha": sha, "entries": [],
                            "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
                            "ungroomed_ids": [],
                            "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
-                           "error": f"backlog.py emitted non-JSON: {exc}"}
+                           "error": (f"backlog.py {subcommand} exited {failed.returncode}: "
+                                     f"{failed.stderr.strip()[:300]}")}
+            else:
+                try:
+                    list_body = json.loads(list_proc.stdout) if list_proc is not None else None
+                    dispatch_body = json.loads(dispatch_proc.stdout)
+                    entries = (
+                        cached_entries
+                        if cached_entries is not None
+                        else list_body.get("entries", [])
+                    )
+                    dispatch_entries = dispatch_body.get("entries", [])
+                    dispatch_ids = {str(row["id"]) for row in dispatch_entries}
+                    dispatch_meta = dispatch_body.get("dispatch") or {}
+                    local_held = dispatch_body.get("held") or {}
+                    blocked_ids = {
+                        str(row["id"]) for row in dispatch_meta.get("withheld_blocked", [])
+                        if isinstance(row, dict) and row.get("id")
+                    }
+                    unresolved_ids = {
+                        str(row["id"]) for row in entries
+                        if row.get("status") not in RESOLVED_STATUSES
+                    }
+                    # backlog.py is the sole groom predicate owner. Its list/dispatch
+                    # metadata partitions unresolved into dispatch, held, blocked and
+                    # the remainder (ungroomed), so this service never reimplements
+                    # plan/acceptance/groomed_by rules.
+                    ungroomed_ids = unresolved_ids - dispatch_ids - set(local_held) - blocked_ids
+                    payload = {"sha": sha, "entries": entries,
+                               "dispatch_ids": sorted(dispatch_ids),
+                               "dispatch_meta": dispatch_meta,
+                               "local_held": local_held,
+                               "ungroomed_ids": sorted(ungroomed_ids),
+                               "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                               "error": None}
+                except json.JSONDecodeError as exc:
+                    payload = {"sha": sha, "entries": [],
+                               "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
+                               "ungroomed_ids": [],
+                               "read_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                               "error": f"backlog.py emitted non-JSON: {exc}"}
     if payload["error"] is None:
         final_sha = clone_head()
         if final_sha != sha:

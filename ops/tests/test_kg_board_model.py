@@ -5,9 +5,11 @@ import json
 import subprocess
 import sys
 import threading
-from types import MethodType
 from datetime import datetime
 from pathlib import Path
+from types import MethodType
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -72,12 +74,13 @@ def test_read_entries_reads_list_and_canonical_dispatch_from_clone(monkeypatch, 
             body = {
                 "schema": "kg.backlog.list.v1",
                 "entries": [_ticket("A"), _ticket("B"), _ticket("C"), _ticket("D")],
-                "held": {"C": {"branch": "feat/local", "claimed_at": "now"}},
+                "held": {},
             }
         elif subcommand == "dispatch":
             body = {
                 "schema": "kg.backlog.list.v1",
                 "entries": [_ticket("A")],
+                "held": {"C": {"branch": "feat/local", "claimed_at": "now"}},
                 "dispatch": {
                     "clauses": ["groomed", "unresolved", "unclaimed", "unblocked"],
                     "withheld_blocked": [{"id": "B", "waiting_on": ["A"]}],
@@ -103,6 +106,108 @@ def test_read_entries_reads_list_and_canonical_dispatch_from_clone(monkeypatch, 
     assert snapshot["local_held"] == {"C": {"branch": "feat/local", "claimed_at": "now"}}
     assert snapshot["ungroomed_ids"] == ["D"]
     assert snapshot["dispatch_meta"]["withheld_blocked"] == [{"id": "B", "waiting_on": ["A"]}]
+
+
+def test_read_entries_refreshes_claim_projection_when_head_is_unchanged(monkeypatch, tmp_path):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    calls = {"list": 0, "dispatch": 0}
+
+    def fake_run(command, **_kwargs):
+        subcommand = command[-2]
+        calls[subcommand] += 1
+        if subcommand == "list":
+            body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")], "held": {}}
+        elif calls["dispatch"] == 1:
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [_ticket("A")],
+                "held": {},
+                "dispatch": {"withheld_blocked": []},
+            }
+        else:
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [],
+                "held": {"A": {"branch": "feat/new-claim", "claimed_at": "now"}},
+                "dispatch": {"withheld_blocked": []},
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "sha": None, "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    before = server.read_entries(force=True)
+    after = server.read_entries()
+
+    assert before["dispatch_ids"] == ["A"]
+    assert after["dispatch_ids"] == []
+    assert after["local_held"] == {
+        "A": {"branch": "feat/new-claim", "claimed_at": "now"}
+    }
+    assert after["ungroomed_ids"] == []
+    assert calls == {"list": 1, "dispatch": 2}
+
+
+@pytest.mark.parametrize("failure_type", (subprocess.TimeoutExpired, OSError))
+def test_read_entries_preserves_warm_snapshot_when_dispatch_invocation_fails(
+    monkeypatch, tmp_path, failure_type
+):
+    tool = tmp_path / "ops" / "backlog.py"
+    tool.parent.mkdir()
+    tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    dispatch_calls = 0
+
+    def fake_run(command, **_kwargs):
+        nonlocal dispatch_calls
+        subcommand = command[-2]
+        if subcommand == "list":
+            body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")]}
+        else:
+            dispatch_calls += 1
+            if dispatch_calls == 2:
+                if failure_type is subprocess.TimeoutExpired:
+                    raise failure_type(command, 180)
+                raise failure_type("registry unavailable")
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [_ticket("A")],
+                "held": {"HELD": {"branch": "feat/held"}},
+                "dispatch": {"withheld_blocked": []},
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
+
+    monkeypatch.setattr(server, "CLONE", tmp_path)
+    monkeypatch.setattr(server, "clone_head", lambda: "same-head")
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        server,
+        "_cache",
+        {
+            "sha": None, "entries": [], "dispatch_ids": [], "dispatch_meta": {},
+            "local_held": {}, "ungroomed_ids": [], "read_at": None, "error": None,
+        },
+    )
+
+    warm = server.read_entries(force=True)
+    stale = server.read_entries()
+
+    assert stale["entries"] == warm["entries"]
+    assert stale["dispatch_ids"] == warm["dispatch_ids"] == ["A"]
+    assert stale["local_held"] == warm["local_held"] == {
+        "HELD": {"branch": "feat/held"}
+    }
+    assert failure_type.__name__ in stale["error"]
 
 
 def test_successful_empty_store_replaces_cached_rows(monkeypatch, tmp_path):
