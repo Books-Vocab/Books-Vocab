@@ -52,36 +52,11 @@ struct SettingsOtherSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "其他".localized, icon: "ellipsis.circle")
-
-            VStack(spacing: 0) {
-                // 同步狀態 (only when logged in)
-                if let syncSummary {
-                    syncSummaryRow(syncSummary)
-                    SettingsDivider()
-                }
-
-                // iCloud 書庫同步（綁 Apple ID，與登入無關；localOnly 時為 nil）
-                if let bookSync {
-                    bookSyncRow(bookSync)
-                    SettingsDivider()
-                }
-
-                // 今日額度 (always when logged in)
-                if isLoggedIn {
-                    quotaRow
-                    SettingsDivider()
-                }
-
-                ForEach(Array(externalActionItems.enumerated()), id: \.element.id) { index, item in
-                    externalActionRow(item)
-
-                    if index < externalActionItems.count - 1 {
-                        SettingsDivider()
-                    }
-                }
+            if hasSyncGroup {
+                syncGroup
             }
-            .settingsCard()
+
+            externalActionsGroup
 
             // Version footer
             Text("\("版本".localized) \(version)")
@@ -92,16 +67,74 @@ struct SettingsOtherSection: View {
         }
     }
 
+    private var hasSyncGroup: Bool {
+        syncSummary != nil || bookSync != nil || isLoggedIn
+    }
+
+    private var syncGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(
+                title: L10n.string("雲端同步與跨裝置狀態"),
+                icon: "arrow.triangle.2.circlepath"
+            )
+
+            VStack(spacing: 0) {
+                if let syncSummary {
+                    syncSummaryRow(syncSummary)
+                    if bookSync != nil || isLoggedIn {
+                        SettingsDivider()
+                    }
+                }
+
+                if let bookSync {
+                    bookSyncRow(bookSync)
+                    if isLoggedIn {
+                        SettingsDivider()
+                    }
+                }
+
+                if isLoggedIn {
+                    quotaRow
+                }
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.other.syncGroup")
+    }
+
+    private var externalActionsGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: L10n.string("其他"), icon: "ellipsis.circle")
+
+            VStack(spacing: 0) {
+                ForEach(Array(externalActionItems.enumerated()), id: \.element.id) { index, item in
+                    externalActionRow(item)
+
+                    if index < externalActionItems.count - 1 {
+                        SettingsDivider()
+                    }
+                }
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.other.externalActionsGroup")
+    }
+
     // MARK: - Sync Summary Row
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
-        VStack(spacing: 0) {
+        let progressPanelIsVisible = SettingsSyncProgressPanel.isVisible(
+            isSyncing: summary.isSyncing,
+            steps: syncProgress.steps
+        )
+
+        return VStack(spacing: 0) {
             syncSummaryButton(summary)
 
             // 逐步清單 + 進度條。放在 Button **外面**：它有自己的無障礙語意，
             // 而且整段同步期間 Button 是 disabled 的，包進去等於把一個活的進度
             // 顯示塞進一個死的控制項裡。
-            if summary.isSyncing && !syncProgress.steps.isEmpty {
+            if progressPanelIsVisible {
                 SettingsSyncProgressPanel(
                     steps: syncProgress.steps,
                     fraction: syncProgress.fraction
@@ -111,7 +144,10 @@ struct SettingsOtherSection: View {
         }
         // 展開與收合共用這一條。收合時 `lastSyncedText` 那一行同時淡回來
         // （它本來就以 `isSyncing` 為條件），所以整段是一次過渡而不是兩段接力。
-        .animation(AppMotion.phaseChange, value: summary.isSyncing)
+        // The phase key must include the declared-step identity. On start,
+        // `isSyncing` becomes true before `begin` publishes `steps`; observing
+        // only the former makes insertion happen without a transition.
+        .animation(AppMotion.phaseChange, value: progressPanelIsVisible)
     }
 
     private func syncSummaryButton(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {

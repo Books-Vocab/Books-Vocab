@@ -19,189 +19,243 @@ struct SettingsPreferencesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "偏好".localized, icon: "slider.horizontal.3")
-
-            VStack(spacing: 0) {
-                // 外觀
-                AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(appSkin)) {
-                    Menu {
-                        ForEach(AppAppearanceMode.allCases) { mode in
-                            Button {
-                                actions.selectAppearance(mode)
-                            } label: {
-                                if state.selectedAppearance == mode.titleKey {
-                                    Label(mode.titleKey.localized, systemImage: "checkmark")
-                                } else {
-                                    Text(mode.titleKey.localized)
-                                }
-                            }
-                        }
-                    } label: {
-                        SettingsMenuValue(text: state.selectedAppearance.localized)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\("選擇外觀".localized)：\(state.selectedAppearance.localized)")
-                }
-
-                SettingsDivider()
-
-                // 翻譯語言
-                SettingsNavigationRow(
-                    icon: "textformat.abc",
-                    label: "翻譯語言",
-                    action: onShowTranslationLanguage
-                ) {
-                    SettingsStatusValue(
-                        text: "\(state.translationSource) → \(state.translationTarget)",
-                        color: appSkin.palette.secondaryText
-                    )
-                    .accessibilityIdentifier("settings.preferences.translationLanguageValue")
-                }
-                .accessibilityIdentifier("settings.preferences.translationLanguageRow")
-
-                SettingsDivider()
-
-                // 語言
-                AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(appSkin)) {
-                    Menu {
-                        ForEach(AppLanguage.allCases) { language in
-                            Button {
-                                actions.selectLanguage(language)
-                            } label: {
-                                if state.selectedLanguage == L10n.string(language.titleKey) {
-                                    Label(L10n.string(language.titleKey), systemImage: "checkmark")
-                                } else {
-                                    Text(L10n.string(language.titleKey))
-                                }
-                            }
-                        }
-                    } label: {
-                        SettingsMenuValue(text: state.selectedLanguage)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
-                }
-
-                SettingsDivider()
-
-                // 複習節奏
-                SettingsNavigationRow(
-                    icon: "timer",
-                    label: "複習節奏",
-                    action: onShowReviewSettings
-                ) {
-                    SettingsStatusValue(
-                        text: state.selectedReviewMode,
-                        color: appSkin.palette.secondaryText
-                    )
-                    .accessibilityIdentifier("settings.preferences.reviewRhythmValue")
-                }
-                .accessibilityIdentifier("settings.preferences.reviewRhythmRow")
-
-                SettingsDivider()
-
-                AppKeyValueRow(
-                    icon: "speaker.wave.2",
-                    label: FeedbackSettingsCopy.soundTitle,
-                    style: .settings(appSkin)
-                ) {
-                    Toggle(FeedbackSettingsCopy.soundTitle, isOn: Binding(
-                        get: { state.soundFeedbackEnabled },
-                        set: { actions.toggleSoundFeedback($0) }
-                    ))
-                    .labelsHidden()
-                    .tint(appSkin.palette.accent)
-                    .accessibilityIdentifier("settings.preferences.soundFeedbackToggle")
-                }
-
-                SettingsDivider()
-
-                AppKeyValueRow(
-                    icon: "hand.tap",
-                    label: FeedbackSettingsCopy.hapticTitle,
-                    style: .settings(appSkin)
-                ) {
-                    Toggle(FeedbackSettingsCopy.hapticTitle, isOn: Binding(
-                        get: { state.hapticFeedbackEnabled },
-                        set: { actions.toggleHapticFeedback($0) }
-                    ))
-                    .labelsHidden()
-                    .tint(appSkin.palette.accent)
-                    .accessibilityIdentifier("settings.preferences.hapticFeedbackToggle")
-                }
-
-                SettingsDivider()
-
-                // 複習卡片
-                SettingsNavigationRow(
-                    icon: "rectangle.split.2x1",
-                    label: "複習卡片",
-                    action: onShowReviewCardLayout
-                ) {
-                    SettingsStatusValue(
-                        text: L10n.string(ReviewCardLayoutSummary.titleKey(for: reviewCardLayoutStore.profile)),
-                        color: appSkin.palette.secondaryText
-                    )
-                    .accessibilityIdentifier("settings.preferences.reviewCardLayoutValue")
-                }
-                .accessibilityIdentifier("settings.preferences.reviewCardLayoutRow")
-
-                SettingsDivider()
-
-                // 閱讀設定
-                SettingsNavigationRow(
-                    icon: "textformat.size",
-                    label: "reader.settings.title",
-                    action: onShowReaderSettings
-                ) {
-                    SettingsStatusValue(
-                        text: "\(readerSettings.font.displayName) · \(readerSettings.fontSizeText)",
-                        color: appSkin.palette.secondaryText
-                    )
-                    .accessibilityIdentifier("settings.preferences.readerSettingsValue")
-                }
-                .accessibilityIdentifier("settings.preferences.readerSettingsRow")
-
-                if state.showAutoSync {
-                    SettingsDivider()
-
-                    AppKeyValueRow(
-                        icon: "arrow.triangle.2.circlepath",
-                        label: "自動同步".localized,
-                        style: .settings(appSkin)
-                    ) {
-                        Toggle("", isOn: Binding(
-                            get: { state.autoSyncEnabled },
-                            set: { actions.toggleAutoSync($0) }
-                        ))
-                        .labelsHidden()
-                        .tint(appSkin.palette.accent)
-                    }
-                }
-
-                if state.showAutoLink {
-                    SettingsDivider()
-
-                    AppKeyValueRow(
-                        icon: "point.3.connected.trianglepath.dotted",
-                        label: "自動連結".localized,
-                        style: .settings(appSkin)
-                    ) {
-                        Toggle("", isOn: Binding(
-                            get: { state.autoLinkEnabled },
-                            set: { actions.toggleAutoLink($0) }
-                        ))
-                        .labelsHidden()
-                        .tint(appSkin.palette.accent)
-                        .accessibilityIdentifier("settings.preferences.autoLinkToggle")
-                    }
-                }
+            generalPreferencesGroup
+            readerPreferencesGroup
+            if state.showAutoSync || state.showAutoLink {
+                syncPreferencesGroup
             }
-            .settingsCard()
 
             SettingsSectionFooter(footerText)
         }
         .enableInjection()
+    }
+
+    private var generalPreferencesGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: L10n.string("偏好設定"), icon: "slider.horizontal.3")
+
+            VStack(spacing: 0) {
+                appearanceRow
+                SettingsDivider()
+                languageRow
+                SettingsDivider()
+                reviewRhythmRow
+                SettingsDivider()
+                soundFeedbackRow
+                SettingsDivider()
+                hapticFeedbackRow
+                SettingsDivider()
+                reviewCardLayoutRow
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.preferences.generalGroup")
+    }
+
+    private var readerPreferencesGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: L10n.string("閱讀介面"), icon: "book")
+
+            VStack(spacing: 0) {
+                translationLanguageRow
+                SettingsDivider()
+                readerSettingsRow
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.preferences.readerGroup")
+    }
+
+    private var syncPreferencesGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(
+                title: L10n.string("雲端同步與跨裝置狀態"),
+                icon: "arrow.triangle.2.circlepath"
+            )
+
+            VStack(spacing: 0) {
+                if state.showAutoSync {
+                    autoSyncRow
+                }
+
+                if state.showAutoSync && state.showAutoLink {
+                    SettingsDivider()
+                }
+
+                if state.showAutoLink {
+                    autoLinkRow
+                }
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.preferences.syncGroup")
+    }
+
+    private var appearanceRow: some View {
+        AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(appSkin)) {
+            Menu {
+                ForEach(AppAppearanceMode.allCases) { mode in
+                    Button {
+                        actions.selectAppearance(mode)
+                    } label: {
+                        if state.selectedAppearance == mode.titleKey {
+                            Label(mode.titleKey.localized, systemImage: "checkmark")
+                        } else {
+                            Text(mode.titleKey.localized)
+                        }
+                    }
+                }
+            } label: {
+                SettingsMenuValue(text: state.selectedAppearance.localized)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\("選擇外觀".localized)：\(state.selectedAppearance.localized)")
+        }
+    }
+
+    private var languageRow: some View {
+        AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(appSkin)) {
+            Menu {
+                ForEach(AppLanguage.allCases) { language in
+                    Button {
+                        actions.selectLanguage(language)
+                    } label: {
+                        if state.selectedLanguage == L10n.string(language.titleKey) {
+                            Label(L10n.string(language.titleKey), systemImage: "checkmark")
+                        } else {
+                            Text(L10n.string(language.titleKey))
+                        }
+                    }
+                }
+            } label: {
+                SettingsMenuValue(text: state.selectedLanguage)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
+        }
+    }
+
+    private var translationLanguageRow: some View {
+        SettingsNavigationRow(
+            icon: "textformat.abc",
+            label: "翻譯語言",
+            action: onShowTranslationLanguage
+        ) {
+            SettingsStatusValue(
+                text: "\(state.translationSource) → \(state.translationTarget)",
+                color: appSkin.palette.secondaryText
+            )
+            .accessibilityIdentifier("settings.preferences.translationLanguageValue")
+        }
+        .accessibilityIdentifier("settings.preferences.translationLanguageRow")
+    }
+
+    private var reviewRhythmRow: some View {
+        SettingsNavigationRow(
+            icon: "timer",
+            label: "複習節奏",
+            action: onShowReviewSettings
+        ) {
+            SettingsStatusValue(
+                text: state.selectedReviewMode,
+                color: appSkin.palette.secondaryText
+            )
+            .accessibilityIdentifier("settings.preferences.reviewRhythmValue")
+        }
+        .accessibilityIdentifier("settings.preferences.reviewRhythmRow")
+    }
+
+    private var soundFeedbackRow: some View {
+        AppKeyValueRow(
+            icon: "speaker.wave.2",
+            label: FeedbackSettingsCopy.soundTitle,
+            style: .settings(appSkin)
+        ) {
+            Toggle(FeedbackSettingsCopy.soundTitle, isOn: Binding(
+                get: { state.soundFeedbackEnabled },
+                set: { actions.toggleSoundFeedback($0) }
+            ))
+            .labelsHidden()
+            .tint(appSkin.palette.accent)
+            .accessibilityIdentifier("settings.preferences.soundFeedbackToggle")
+        }
+    }
+
+    private var hapticFeedbackRow: some View {
+        AppKeyValueRow(
+            icon: "hand.tap",
+            label: FeedbackSettingsCopy.hapticTitle,
+            style: .settings(appSkin)
+        ) {
+            Toggle(FeedbackSettingsCopy.hapticTitle, isOn: Binding(
+                get: { state.hapticFeedbackEnabled },
+                set: { actions.toggleHapticFeedback($0) }
+            ))
+            .labelsHidden()
+            .tint(appSkin.palette.accent)
+            .accessibilityIdentifier("settings.preferences.hapticFeedbackToggle")
+        }
+    }
+
+    private var reviewCardLayoutRow: some View {
+        SettingsNavigationRow(
+            icon: "rectangle.split.2x1",
+            label: "複習卡片",
+            action: onShowReviewCardLayout
+        ) {
+            SettingsStatusValue(
+                text: L10n.string(ReviewCardLayoutSummary.titleKey(for: reviewCardLayoutStore.profile)),
+                color: appSkin.palette.secondaryText
+            )
+            .accessibilityIdentifier("settings.preferences.reviewCardLayoutValue")
+        }
+        .accessibilityIdentifier("settings.preferences.reviewCardLayoutRow")
+    }
+
+    private var readerSettingsRow: some View {
+        SettingsNavigationRow(
+            icon: "textformat.size",
+            label: "reader.settings.title",
+            action: onShowReaderSettings
+        ) {
+            SettingsStatusValue(
+                text: "\(readerSettings.font.displayName) · \(readerSettings.fontSizeText)",
+                color: appSkin.palette.secondaryText
+            )
+            .accessibilityIdentifier("settings.preferences.readerSettingsValue")
+        }
+        .accessibilityIdentifier("settings.preferences.readerSettingsRow")
+    }
+
+    private var autoSyncRow: some View {
+        AppKeyValueRow(
+            icon: "arrow.triangle.2.circlepath",
+            label: "自動同步".localized,
+            style: .settings(appSkin)
+        ) {
+            Toggle("", isOn: Binding(
+                get: { state.autoSyncEnabled },
+                set: { actions.toggleAutoSync($0) }
+            ))
+            .labelsHidden()
+            .tint(appSkin.palette.accent)
+        }
+    }
+
+    private var autoLinkRow: some View {
+        AppKeyValueRow(
+            icon: "point.3.connected.trianglepath.dotted",
+            label: "自動連結".localized,
+            style: .settings(appSkin)
+        ) {
+            Toggle("", isOn: Binding(
+                get: { state.autoLinkEnabled },
+                set: { actions.toggleAutoLink($0) }
+            ))
+            .labelsHidden()
+            .tint(appSkin.palette.accent)
+            .accessibilityIdentifier("settings.preferences.autoLinkToggle")
+        }
     }
 
     /// 沿用既有兩段 footer 文案（含自動同步說明的組合 key 不拆，保留既有翻譯），

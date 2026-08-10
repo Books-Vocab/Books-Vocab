@@ -21,6 +21,15 @@ struct SettingsSyncProgressPanel: View {
     let steps: [PipelineStep]
     let fraction: Double
 
+    /// The panel is mounted only after the coordinator has announced that a
+    /// round is syncing *and* the store has declared its step identity. Both
+    /// inputs belong to the visibility phase; observing only `isSyncing` lets
+    /// the first render miss the insertion transition when `begin` arrives on
+    /// the next observation pass.
+    static func isVisible(isSyncing: Bool, steps: [PipelineStep]) -> Bool {
+        isSyncing && !steps.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.tinyGap) {
             SettingsSyncProgressBar(fraction: fraction)
