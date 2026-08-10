@@ -52,6 +52,11 @@ assert_rejected
 
 write_fixture '| 檔案 | 說明 |
 | --- | --- |
+| `ReviewCardView.swift` | ~869 |'
+assert_rejected
+
+write_fixture '| 檔案 | 說明 |
+| --- | --- |
 | `ReviewCardView.swift` | card renderer；效能 budget 60ms（2026-08-10） |'
 if ! ./ops/docs_lint.sh --files "$fixture" >"$output" 2>&1; then
   echo "feature-boundary file/responsibility fixture unexpectedly failed docs_lint" >&2
