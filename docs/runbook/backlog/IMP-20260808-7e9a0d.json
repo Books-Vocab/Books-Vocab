@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "板子的 freshness 區塊誠實回報它讀了哪顆 commit，但**沒有任何人計算那顆 commit 落後多少**，所以一個健康的板子會安靜地顯示過期的數字。實測：primary local main 在 ca4a9a48（已梳理 109 / 可機器驗 99），同一時刻板子回報 clone_head=1f8ed0b8、counts.unresolved=106、counts.ready=21——而它的 refresh.last_ok 只比讀取時間早 2 秒、read_error 為 null。也就是說**每一個健康訊號都是綠的，數字卻是舊的**。根因是拓樸而非 bug：板子讀的 clone（felix 上的 ~/kg-board）追的是 **origin/main**，而本地 main 依三平面模型本來就會超前 origin，直到 com.kg.sync 的週期 tick 推上去為止。等 tick 跑完後實測端到端 < 2 分鐘（clone 在 2 秒內追上），所以「近即時」這條線本身是成立的——壞的是**落後期間沒有訊號**。危害具體：ready 從 21 變成 99 這種級距的差，看板子決定「今天派哪幾張單」的人會用一份少了 78 張可執行單的清單做決策，而畫面上沒有任何東西說它是舊的。修法：① 板子已經看得到 origin/main（同一個 clone 的 remote），把  的比較做出來，不等就在畫面上顯示『clone 落後 origin N 顆』；② 本地那半（local main 超前 origin）板子看不到，但 /api/mirror/sync-state 已經是 com.kg.sync 回報的端點，讓它帶上 local_main_sha 與 pushed_at，板子就能顯示『主力機還有 N 顆沒同步上來』；③ 兩者任一非零時，counts 區塊要帶可見的 stale 標記，而不是只把資訊藏在 freshness 的 sha 裡——沒人會用眼睛 diff sha。",
   "fix_site": "ops/kg_board/server.py; ops/kg_board/selftest.sh; ops/tests/test_kg_board_model.py",
+  "fixed_by": [
+    "28f3030b1e91bcce593ae4350dc765d6d05bdf2a"
+  ],
   "groomed_against": "5b45fd18632accb382e0b8e39bcec0086e7a8421",
   "groomed_at": "2026-08-10",
   "groomed_by": "agent:board-phase1-worker",
@@ -16,6 +19,10 @@
   "scope": "搬入一個既有單檔服務與自檢，修正 canonical 投影與 freshness API，不改主機常駐 glue 或重構 UI。",
   "severity": "med",
   "source": "量測板子的近即時性時，抓到它在 refresh 全綠的情況下顯示落後的數字",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-10",
+  "verified_by": "agent:root-delivery",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_kg_board_model.py ops/tests/test_kg_board_web.py => 29 passed; felix isolated 18007 selftest => all green; Chrome 390x844 snooze reversible and sticky top=0"
 }
