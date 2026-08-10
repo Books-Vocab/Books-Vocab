@@ -180,8 +180,7 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         "schema": SCHEMA,
         "at": checked(payload.get("at"), "payload at"),
         "host": checked(payload.get("host"), "payload host"),
-        "complete": ((payload["complete"] if isinstance(payload.get("complete"), bool)
-                      else "complete" not in payload) and not errors),
+        "complete": (payload.get("complete") is True and not errors),
         "error": "; ".join(errors) or None,
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
@@ -216,6 +215,24 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
         if parent not in commits
     })
     dangling_refs = sorted({ref["head"] for ref in refs if ref["head"] not in commits})
+    parent_cycles: set[str] = set()
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(sha: str) -> None:
+        if sha in visiting:
+            parent_cycles.add(sha)
+            return
+        if sha in visited or sha not in commits:
+            return
+        visiting.add(sha)
+        for parent in commits[sha]["parents"]:
+            visit(parent)
+        visiting.remove(sha)
+        visited.add(sha)
+
+    for sha in commits:
+        visit(sha)
     for sha, branches in referenced.items():
         commits[sha]["refs"] = sorted(set(branches))
     for row in commits.values():
@@ -226,10 +243,12 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
         "at": snapshot["at"],
         "host": snapshot["host"],
         "complete": (snapshot["complete"] and not missing_parents and not dangling_refs
+                     and not parent_cycles
                      and not snapshot["error"]),
         "error": snapshot["error"],
         "missing_parents": missing_parents,
         "dangling_refs": dangling_refs,
+        "parent_cycles": sorted(parent_cycles),
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
     }

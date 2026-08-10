@@ -244,7 +244,7 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "ungroomed", "all", "history")] == [True] * 6
     assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理"))
     assert "歷史完成" in index
-    assert "<details>" in js and "loadHistory" in js
+    assert "<details data-ticket-details" in js and "loadHistory" in js
     assert "commitInspector" in js
 
     compact_css = "".join(css.split())
@@ -260,6 +260,7 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert all(name in js for name in ("board.dispatch_ids", "board.blocked_ids"))
     assert re.search(r"data\.(?:dispatch|blocked|deferred)(?!_)", js) is None
     assert "/api/git-tree" in js
+    assert "/api/ticket/" in js
 
 
 def test_index_injects_app_revision_without_browser_write_token(monkeypatch):
@@ -303,6 +304,25 @@ def test_git_tree_read_route_returns_versioned_projection(monkeypatch):
 
     assert handler.response_code == 200
     assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.git-tree.v1"
+
+
+def test_ticket_read_route_returns_full_detail_projection(monkeypatch):
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    row = _ticket("IMP-1")
+    row.update(scope="small", plan="do it", fix_site="ops/x.py", acceptance="green")
+    monkeypatch.setattr(server, "read_entries", lambda: {
+        "entries": [row], "dispatch_ids": ["IMP-1"], "ungroomed_ids": [],
+        "local_held": {}, "dispatch_meta": {},
+    })
+    monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
+    handler = _capturing_handler("/api/ticket/IMP-1")
+
+    handler.do_GET()
+
+    payload = json.loads(handler.wfile.getvalue())
+    assert payload["schema"] == "kg.board.ticket.v1"
+    assert payload["ticket"]["scope"] == "small"
+    assert payload["ticket"]["acceptance"] == "green"
 
 
 def test_history_read_route_returns_only_resolved_rows(monkeypatch):
