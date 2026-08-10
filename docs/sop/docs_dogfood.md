@@ -6,7 +6,7 @@ scope:
   - docs/
   - ops/docs_impact.py
   - ops/docs_lint.sh
-verified_against: 98af86336
+verified_against: b3bc9b1fa
 -->
 # Docs Dogfood SOP
 
