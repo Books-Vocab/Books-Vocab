@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import sqlite3
-import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
 DATA_DIR = data_dir()
 DB_PATH = DATA_DIR / "judge_log.db"
 
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
+_INITIAL_DB_PATH = DB_PATH
 
 # Business rule (shared by admin_trends + admin_observability auto-reject
 # metrics): a degree_cap rejection is structural (graph topology hit a degree
@@ -24,14 +27,10 @@ _LOG_COLS = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
 _COLS_SQL = ", ".join(_LOG_COLS)
 
 
-def _get_conn() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+def _initialize_schema(conn: sqlite3.Connection) -> None:
         from .sqlite_utils import init_sqlite_pragmas
-        init_sqlite_pragmas(_conn)
-        _conn.execute("""
+        init_sqlite_pragmas(conn)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS judge_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -48,20 +47,32 @@ def _get_conn() -> sqlite3.Connection:
                 created_at TEXT NOT NULL
             )
         """)
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_nb ON judge_log(user_id, notebook_id)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_created ON judge_log(created_at)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_source ON judge_log(user_id, source)")
-        _conn.commit()
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_nb ON judge_log(user_id, notebook_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_created ON judge_log(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_source ON judge_log(user_id, source)")
+
+
+def _db_path() -> Path:
+    return DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "judge_log.db"
+
+
+def _get_conn() -> sqlite3.Connection:
+    global _conn
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    _conn = _lifecycle.get_connection(_db_path(), _initialize_schema)
     return _conn
+
+
+def reset() -> None:
+    global _conn
+    _lifecycle.reset()
+    _conn = None
 
 
 def _reset() -> None:
     """Close & nullify connection (for tests)."""
-    global _conn
-    with _lock:
-        if _conn is not None:
-            _conn.close()
-            _conn = None
+    reset()
 
 
 def record(

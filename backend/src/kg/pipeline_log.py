@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import threading
 from datetime import UTC, datetime
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
 DATA_DIR = data_dir()
 DB_PATH = DATA_DIR / "pipeline_runs.db"
 
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
+_INITIAL_DB_PATH = DB_PATH
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -41,12 +43,17 @@ def _get_conn() -> sqlite3.Connection:
     explicit step (:func:`reap_orphaned_runs`) wired into API startup — so a
     pure read (admin dashboard, telemetry query) can never trigger a write."""
     global _conn
-    if _conn is None:
-        from .sqlite_utils import open_singleton
-        _conn = open_singleton(DB_PATH)
-        _ensure_schema(_conn)
-        _conn.commit()
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "pipeline_runs.db"
+    _conn = _lifecycle.get_connection(db_path, _ensure_schema)
     return _conn
+
+
+def reset() -> None:
+    global _conn
+    _lifecycle.reset()
+    _conn = None
 
 
 def reap_orphaned_runs() -> int:
@@ -72,11 +79,7 @@ def reap_orphaned_runs() -> int:
 
 def _reset() -> None:
     """Close & nullify connection (for tests)."""
-    global _conn
-    with _lock:
-        if _conn is not None:
-            _conn.close()
-            _conn = None
+    reset()
 
 
 def start_run(run_id: str, user_id: str, notebook_id: str, trigger: str) -> None:

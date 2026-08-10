@@ -9,14 +9,15 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .ops_shared import data_dir
+from .sqlite_lifecycle import SQLiteLifecycle
 
-_lock = threading.Lock()
+_lifecycle = SQLiteLifecycle()
+_lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,14 @@ def _db_path() -> Path:
 
 def _get_conn() -> sqlite3.Connection:
     global _conn
-    if _conn is None:
-        from .sqlite_utils import open_singleton
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    _conn = _lifecycle.get_connection(_db_path(), _initialize_schema)
+    return _conn
 
-        _conn = open_singleton(_db_path())
-        _conn.execute(
+
+def _initialize_schema(conn: sqlite3.Connection) -> None:
+        conn.execute(
             """
             CREATE TABLE IF NOT EXISTS admin_audit_log (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,23 +47,24 @@ def _get_conn() -> sqlite3.Connection:
             )
             """
         )
-        _conn.execute(
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_log(created_at)"
         )
-        _conn.execute(
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_audit_target ON admin_audit_log(target_uid, created_at)"
         )
-        _conn.commit()
-    return _conn
+
 
 
 def _reset() -> None:
     """Test helper: close + drop the singleton so a new ``KG_DATA_DIR`` is honored."""
+    reset()
+
+
+def reset() -> None:
     global _conn
-    with _lock:
-        if _conn is not None:
-            _conn.close()
-            _conn = None
+    _lifecycle.reset()
+    _conn = None
 
 
 def record_audit(
