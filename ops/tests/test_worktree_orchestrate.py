@@ -1443,21 +1443,99 @@ def test_potentially_long_git_operations_never_use_silent_probe_runner():
 gitmark = pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
 
 
-def _assert_fixture_git_safe(args):
-    if args[:1] != ["push"]:
-        return
-    production_ref = any(
-        token in {"prod", "origin/prod"}
-        or token.endswith(":prod")
-        or token.endswith(":refs/heads/prod")
-        for token in args[1:]
+def _normalise_fixture_ref(token):
+    """Return a comparable branch name for a push refspec destination."""
+    token = token.strip().lstrip("+")
+    if ":" in token:
+        token = token.rsplit(":", 1)[1]
+    while True:
+        for prefix in ("refs/remotes/", "refs/heads/", "origin/"):
+            if token.startswith(prefix):
+                token = token[len(prefix):]
+                break
+        else:
+            return token.rsplit("/", 1)[-1]
+
+
+def _is_production_ref(token):
+    return _normalise_fixture_ref(token) == "prod"
+
+
+def _is_network_target(token):
+    lowered = token.lower()
+    return (
+        lowered.startswith("//")
+        or lowered.startswith("ext::")
+        or bool(re.match(r"^[a-z][a-z0-9+.-]*://", lowered))
+        or (":" in token and not token.startswith(("/", "./", "../"))
+            and not re.match(r"^[A-Za-z]:[\\/].*$", token))
     )
-    if production_ref:
+
+
+def _fixture_remote_urls(cwd):
+    """Read configured remote URLs without invoking a process or network."""
+    root = Path(cwd)
+    marker = root / ".git"
+    candidates = [root / "config"]
+    if marker.is_dir():
+        candidates.append(marker / "config")
+    elif marker.is_file():
+        try:
+            gitdir_line = next(
+                line for line in marker.read_text(encoding="utf-8").splitlines()
+                if line.startswith("gitdir:")
+            )
+            gitdir = Path(gitdir_line.partition(":")[2].strip()).expanduser()
+            if not gitdir.is_absolute():
+                gitdir = (root / gitdir).resolve()
+            candidates.extend((gitdir / "config", gitdir.parent.parent / "config"))
+        except (OSError, StopIteration, UnicodeError):
+            pass
+    urls = []
+    for config in candidates:
+        try:
+            lines = config.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            continue
+        for line in lines:
+            if line.lstrip().startswith("[include"):
+                urls.append("unresolved-config-include://fixture")
+                break
+            key, separator, value = line.partition("=")
+            if separator and key.strip() in {"url", "pushurl"}:
+                urls.append(value.strip())
+    return urls
+
+
+def _assert_fixture_git_safe(args, cwd):
+    """Keep scratch fixtures off production refs and network-capable remotes."""
+    command = args[:1]
+    network_commands = {"clone", "fetch", "ls-remote", "pull", "push", "remote", "submodule"}
+    if command and command[0] not in network_commands:
+        network_tokens = []
+    else:
+        tokens = list(enumerate(args[1:], start=1))
+        if command == ["push"]:
+            repository = next((index for index, token in tokens if not token.startswith("-")), None)
+            network_tokens = [
+                token for index, token in tokens
+                if not (repository is not None and index > repository and ":" in token)
+            ]
+        else:
+            network_tokens = [token for _, token in tokens]
+    if command and command[0] in network_commands and (
+        any(_is_network_target(token) for token in network_tokens)
+        or any(_is_network_target(url) for url in _fixture_remote_urls(cwd))
+    ):
+        raise AssertionError("fixture git helper refuses network-capable remote")
+    if command == ["push"] and any(token in {"--all", "--mirror"} for token in args[1:]):
+        raise AssertionError("fixture git helper refuses implicit production ref push")
+    if command == ["push"] and any(_is_production_ref(token) for token in args[1:]):
         raise AssertionError("fixture git helper refuses production ref push")
 
 
 def _git(args, cwd):
-    _assert_fixture_git_safe(args)
+    _assert_fixture_git_safe(args, cwd)
     return subprocess.run(
         ["git", *args], cwd=str(cwd), check=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -1466,14 +1544,32 @@ def _git(args, cwd):
 
 def test_safety_fixture_no_production_push():
     source = Path(__file__).read_text(encoding="utf-8")
-    scratch_start = source.index("\n@pytest.fixture\ndef scratch(")
-    scratch_end = source.index("\ndef _run_json", scratch_start)
-    resolve_start = source.index(
-        "\n@gitmark\ndef test_resolve_protects_the_trunk_even_under_a_different_base"
-    )
-    resolve_end = source.index("\ndef test_resolve_refuses_when_git_contradicts", resolve_start)
-    assert "main:prod" not in source[scratch_start:scratch_end]
-    assert "main:prod" not in source[resolve_start:resolve_end]
+    tree = ast.parse(source)
+    for function in (
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name != "test_production_ref_push_denied"
+    ):
+        for call in ast.walk(function):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Name)
+                and call.func.id == "_git"
+                and call.args
+                and isinstance(call.args[0], ast.List)
+                and call.args[0].elts
+                and isinstance(call.args[0].elts[0], ast.Constant)
+                and call.args[0].elts[0].value == "push"
+            ):
+                continue
+            for argument in call.args[0].elts[1:]:
+                if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                    assert not _is_production_ref(argument.value)
+                elif isinstance(argument, ast.JoinedStr):
+                    literal = "".join(
+                        part.value for part in argument.values if isinstance(part, ast.Constant)
+                    )
+                    assert not _is_production_ref(literal)
 
 
 def test_production_ref_push_denied(monkeypatch, tmp_path):
@@ -1484,8 +1580,52 @@ def test_production_ref_push_denied(monkeypatch, tmp_path):
         raise AssertionError("production ref reached subprocess")
 
     monkeypatch.setattr(subprocess, "run", unexpected_subprocess)
-    with pytest.raises(AssertionError, match="fixture git helper refuses production ref"):
-        _git(["push", "-q", "origin", "main:prod"], tmp_path)
+    for ref in (
+        "main:prod", "prod", "origin/prod", "HEAD:refs/heads/prod",
+        "refs/heads/prod", "refs/remotes/origin/prod",
+        "refs/heads/main:refs/heads/prod",
+    ):
+        with pytest.raises(AssertionError, match="fixture git helper refuses production ref"):
+            _git(["push", "-q", "origin", ref], tmp_path)
+    for option in ("--all", "--mirror"):
+        with pytest.raises(AssertionError, match="fixture git helper refuses implicit production ref push"):
+            _git(["push", "-q", "origin", option], tmp_path)
+    with pytest.raises(AssertionError, match="fixture git helper refuses network-capable remote"):
+        _git(["push", "https://example.invalid/repository.git", "HEAD:fixture"], tmp_path)
+    for remote in (
+        "github.com:/repo.git", "git@github.com:/repo.git", "192.168.1.5:repo.git",
+        "build-server:repo.git", "git@[::1]:repo.git", "//host/repo.git",
+    ):
+        with pytest.raises(AssertionError, match="fixture git helper refuses network-capable remote"):
+            _git(["push", remote, "HEAD:fixture"], tmp_path)
+    configured = tmp_path / "configured-network"
+    (configured / ".git").mkdir(parents=True)
+    (configured / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = git+ssh://git@example.invalid/repository.git\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(AssertionError, match="fixture git helper refuses network-capable remote"):
+        _git(["fetch", "origin"], configured)
+    included = tmp_path / "included-config"
+    (included / ".git").mkdir(parents=True)
+    (included / ".git" / "config").write_text(
+        "[include]\n\tpath = ~/.gitconfig-network\n", encoding="utf-8"
+    )
+    with pytest.raises(AssertionError, match="fixture git helper refuses network-capable remote"):
+        _git(["push", "origin", "HEAD:fixture"], included)
+    linked = tmp_path / "linked-worktree"
+    common_git = linked / "common.git"
+    (common_git / "worktrees" / "fixture").mkdir(parents=True)
+    linked.mkdir(exist_ok=True)
+    (linked / ".git").write_text(
+        f"gitdir: {common_git / 'worktrees' / 'fixture'}\n", encoding="utf-8"
+    )
+    (common_git / "config").write_text(
+        '[remote "origin"]\n\turl = ssh://git@example.invalid/repository.git\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(AssertionError, match="fixture git helper refuses network-capable remote"):
+        _git(["push", "origin", "HEAD:fixture"], linked)
     assert calls == []
 
 
@@ -3509,7 +3649,9 @@ def test_deploy_refused_when_origin_diverged(scratch):
     _git(["config", "user.email", "o@o"], other); _git(["config", "user.name", "o"], other)
     (other / "remote-only.txt").write_text("from elsewhere\n")
     _git(["add", "-A"], other); _git(["commit", "-qm", "remote-only"], other)
-    _git(["push", "-q", "origin", "prod"], other)
+    remote_only = _git(["rev-parse", "HEAD"], other)
+    _git(["push", "-q", "origin", "HEAD:refs/heads/fixture-remote-only"], other)
+    _git(["update-ref", "refs/heads/prod", remote_only], remote)
     # our local main also advances (diverging from origin/prod)
     (repo / "local-only.txt").write_text("mine\n")
     _git(["add", "-A"], repo); _git(["commit", "-qm", "local-only"], repo)
