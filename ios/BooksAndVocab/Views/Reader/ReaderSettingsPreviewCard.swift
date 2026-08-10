@@ -77,12 +77,15 @@ struct ReaderSettingsPreviewCard: View {
     /// 行高，所以要扣掉才會是同一種鬆緊 —— 直接把 L 當 lineSpacing 用會鬆到
     /// 不成比例。
     ///
-    /// **死區**：滑桿範圍是 1.0…2.5，而扣掉內在行高後 L ≤ 1.2 全部夾成 0，
-    /// 所以前 13% 的行程預覽不會動（WebView 那邊仍會更緊，因為 CSS 可以把行盒
-    /// 壓到比字體自然行高更小，SwiftUI 的 lineSpacing 不能為負）。這是近似的
-    /// 代價，不是 bug；要消掉它得改用 attributed string 的 lineHeightMultiple。
+    /// SwiftUI 的 `lineSpacing` 可以是負值；保留負值才能讓預覽在 CSS 行盒
+    /// 小於字體自然行高時仍隨滑桿變緊，而不是把滑桿前段夾成死區。
     private var resolvedLineSpacing: CGFloat {
-        max(0, resolvedFontSize * (CGFloat(lineHeight) - Metrics.intrinsicLineHeightRatio))
+        Self.lineSpacing(fontSize: resolvedFontSize, lineHeight: lineHeight)
+    }
+
+    static func lineSpacing(fontSize: CGFloat, lineHeight: Double) -> CGFloat {
+        guard fontSize.isFinite, lineHeight.isFinite else { return 0 }
+        return fontSize * (CGFloat(lineHeight) - Metrics.intrinsicLineHeightRatio)
     }
 
     /// 詞距跟著字級縮放，否則放大字級時字會擠在一起。

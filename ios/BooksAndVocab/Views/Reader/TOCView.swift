@@ -20,6 +20,15 @@ struct TOCView: View {
     @State private var tocLinks: [ReadiumShared.Link] = []
     @State private var loadState: LoadState = .loading
 
+    private var phaseAnimationKey: String {
+        switch loadState {
+        case .loading: return "loading"
+        case .loaded: return "loaded"
+        case .empty: return "empty"
+        case .failed: return "failed"
+        }
+    }
+
     var body: some View {
         let presentation = ReaderTOCPresentation(layoutMode: LayoutMode(horizontalSizeClass: sizeClass))
 
@@ -42,12 +51,12 @@ struct TOCView: View {
                 .frame(maxWidth: presentation.contentMaxWidth)
                 .padding(.horizontal, presentation.horizontalPadding)
             }
-            .animatePhaseChange(tocLinks.isEmpty)
-            .navigationTitle("目錄".localized)
+            .animatePhaseChange(phaseAnimationKey)
+            .navigationTitle(L10n.string("目錄"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成".localized) { dismiss() }
+                    Button(L10n.string("完成")) { dismiss() }
                 }
             }
             .task { await loadTableOfContents() }
@@ -78,15 +87,15 @@ struct TOCView: View {
         VStack {
             Spacer()
             AppStateMessageCard(
-                title: "載入目錄中".localized,
+                title: L10n.string("載入目錄中"),
                 systemImage: "text.book.closed",
-                description: "正在整理這本書的章節結構。".localized
+                description: L10n.string("正在整理這本書的章節結構。")
             ) {
                 ProgressView()
                     .controlSize(.small)
             }
             .frame(maxWidth: presentation.stateCardMaxWidth)
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.horizontal, presentation == .compact ? AppShellMetrics.pageHorizontalPadding : 0)
             Spacer()
         }
     }
@@ -100,7 +109,7 @@ struct TOCView: View {
                     onSelect(link)
                     dismiss()
                 } label: {
-                    Text(link.title ?? "Untitled")
+                    Text(link.title ?? L10n.string("目錄"))
                         .font(AppFonts.body())
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -115,12 +124,12 @@ struct TOCView: View {
         VStack {
             Spacer()
             AppEmptyStateCard(
-                title: "這本書沒有目錄".localized,
+                title: L10n.string("這本書沒有目錄"),
                 systemImage: "list.bullet.rectangle",
-                description: "出版內容沒有提供可導覽的章節列表。".localized
+                description: L10n.string("出版內容沒有提供可導覽的章節列表。")
             )
             .frame(maxWidth: presentation.stateCardMaxWidth)
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.horizontal, presentation == .compact ? AppShellMetrics.pageHorizontalPadding : 0)
             Spacer()
         }
     }
@@ -130,12 +139,12 @@ struct TOCView: View {
         VStack {
             Spacer()
             AppStateMessageCard(
-                title: "目錄載入失敗".localized,
+                title: L10n.string("目錄載入失敗"),
                 systemImage: "exclamationmark.triangle.fill",
                 description: message
             )
             .frame(maxWidth: presentation.stateCardMaxWidth)
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.horizontal, presentation == .compact ? AppShellMetrics.pageHorizontalPadding : 0)
             Spacer()
         }
     }
@@ -154,9 +163,9 @@ struct TOCViewPreviewScene: View {
                     VStack {
                         Spacer()
                         AppStateMessageCard(
-                            title: "載入目錄中",
+                            title: L10n.string("載入目錄中"),
                             systemImage: "text.book.closed",
-                            description: "正在整理這本書的章節結構。"
+                            description: L10n.string("正在整理這本書的章節結構。")
                         ) {
                             ProgressView()
                                 .controlSize(.small)
@@ -175,9 +184,9 @@ struct TOCViewPreviewScene: View {
                     VStack {
                         Spacer()
                         AppEmptyStateCard(
-                            title: "這本書沒有目錄",
+                            title: L10n.string("這本書沒有目錄"),
                             systemImage: "list.bullet.rectangle",
-                            description: "出版內容沒有提供可導覽的章節列表。"
+                            description: L10n.string("出版內容沒有提供可導覽的章節列表。")
                         )
                         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                         Spacer()
@@ -186,7 +195,7 @@ struct TOCViewPreviewScene: View {
                     VStack {
                         Spacer()
                         AppStateMessageCard(
-                            title: "目錄載入失敗",
+                            title: L10n.string("目錄載入失敗"),
                             systemImage: "exclamationmark.triangle.fill",
                             description: message
                         )
@@ -214,9 +223,9 @@ struct TOCViewPreviewScene: View {
         TOCViewPreviewScene(
             loadState: .loaded,
             tocTitles: [
-                "第一章",
-                "第二章",
-                "第三章"
+                "Chapter One",
+                "Chapter Two",
+                "Chapter Three"
             ]
         )
     }
@@ -233,7 +242,7 @@ struct TOCViewPreviewScene: View {
 #Preview("TOC / Failed") {
     AppThemeContainer {
         TOCViewPreviewScene(
-            loadState: .failed("Publication manifest 解析失敗。"),
+            loadState: .failed(L10n.string("目錄讀取失敗")),
             tocTitles: []
         )
     }

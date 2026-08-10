@@ -67,10 +67,12 @@ struct AddLinkSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.string("取消")) { dismiss() }
+                        .accessibilityIdentifier("addLink.cancel")
                 }
             }
         }
         .onChange(of: searchText) {
+            searchError = nil
             coordinator.queryDidChange()
         }
         .onChange(of: coordinator.materializePhase) {
@@ -133,25 +135,38 @@ struct AddLinkSheet: View {
                     }
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .accessibilityIdentifier("addLink.dictionary.search")
 
                 case .loading:
-                    HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
+                    VocabStateMessageCard(
+                        title: L10n.string("addLink.dictionaryLoading"),
+                        systemImage: "magnifyingglass"
+                    ) {
                         ProgressView()
-                        Text(L10n.string("addLink.dictionaryLoading"))
+                            .controlSize(.small)
                     }
+                    .listRowBackground(Color.clear)
 
                 case .empty:
-                    Text(L10n.string("addLink.dictionaryEmpty"))
-                        .foregroundStyle(appSkin.palette.tertiaryText)
+                    VocabStateMessageCard(
+                        title: L10n.string("addLink.dictionaryEmpty"),
+                        systemImage: "text.book.closed"
+                    )
+                    .listRowBackground(Color.clear)
 
                 case .failed(let failure):
-                    VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-                        Text(failureMessage(failure))
-                            .foregroundStyle(appSkin.palette.tertiaryText)
+                    VocabStateMessageCard(
+                        title: L10n.string("addLink.dictionarySection"),
+                        systemImage: "exclamationmark.triangle",
+                        description: failureMessage(failure)
+                    ) {
                         Button(L10n.string("重試")) {
                             coordinator.submitSearch(query: trimmed, using: kgService)
                         }
+                        .buttonStyle(.vocabAction(.neutral))
+                        .accessibilityIdentifier("addLink.dictionary.retry")
                     }
+                    .listRowBackground(Color.clear)
 
                 case .result(let entry, let cacheStatus):
                     dictionaryResult(entry, cacheStatus: cacheStatus)
@@ -205,16 +220,20 @@ struct AddLinkSheet: View {
                         Button {
                             coordinator.select(senseKey: sense.id, exampleKey: example.id)
                         } label: {
-                            HStack(alignment: .top) {
+                            let isSelected = coordinator.selectedExampleKey == example.id
+                            HStack(alignment: .top, spacing: AppSpacing.s2) {
                                 Image(systemName: coordinator.selectedExampleKey == example.id
                                       ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(isSelected ? appSkin.palette.accent : appSkin.palette.tertiaryText)
                                 Text(example.text)
                                     .multilineTextAlignment(.leading)
                                     .lineLimit(3)
                                     .truncationMode(.tail)
                             }
+                            .foregroundStyle(isSelected ? appSkin.palette.accent : appSkin.palette.primaryText)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("addLink.example.\(example.id)")
                         .accessibilityValue(
                             coordinator.selectedExampleKey == example.id
                                 ? L10n.string("a11y.toggle.on")
@@ -244,7 +263,10 @@ struct AddLinkSheet: View {
                              : L10n.string("addLink.addSelectedExample"))
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .buttonStyle(.vocabAction(.primary))
                 .disabled(coordinator.materializePhase == .running)
+                .accessibilityIdentifier("addLink.addSelectedExample")
             }
         }
 
