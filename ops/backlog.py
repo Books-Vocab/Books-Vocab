@@ -1012,6 +1012,9 @@ def contract_preflight(payload: dict, *, repo: Path | None = None) -> list[dict]
     if not str(payload.get("contract_evidence") or "").strip():
         problems.append({"kind": "contract-evidence-missing",
                          "reason": "contract_evidence is empty"})
+    for field in ("contract_checked_at", "contract_checked_by"):
+        if not str(payload.get(field) or "").strip():
+            problems.append({"kind": "contract-check-metadata-missing", "field": field})
 
     fix_site = str(payload.get("fix_site") or "").strip()
     if not fix_site:
@@ -3751,10 +3754,29 @@ def _lifecycle_contract() -> dict:
     return {
         "schema": "kg.backlog.lifecycle.v1",
         "terminal_statuses": ["fixed", "wont-fix"],
+        "dispatch_requirements": [*DISPATCH_CLAUSES, "contract-ready"],
+        "contract_statuses": list(CONTRACT_STATUSES),
+        "contract_baselines": list(CONTRACT_BASELINES),
+        "contract_blocked": {
+            "status": "contract-blocked",
+            "verdict": "CONTRACT-BLOCKED",
+            "required_fields": ["contract_status", "contract_evidence"],
+            "meaning": "the ticket contract is not executable and must not be dispatched",
+        },
+        "contract_preflight": {
+            "guard": "contract_preflight",
+            "required_fields": list(CONTRACT_FIELDS),
+            "dispatch_values": {"contract_status": "ready", "contract_baseline": "red"},
+            "rejects": [
+                "fix-site-missing", "acceptance-dependency-missing",
+                "contract-baseline-not-red", "contract-evidence-missing",
+                "contract-check-metadata-missing",
+            ],
+        },
         "invariants": [
             "verify checks whether a claim is true; groom makes a ticket executable",
             "verification is orthogonal and never a dispatch prerequisite",
-            "dispatch means groomed AND unresolved AND unclaimed AND unblocked",
+            "dispatch means groomed AND unresolved AND unclaimed AND unblocked AND contract-ready",
             "ownership lives in the worktree registry, never in a stored in-progress status",
             "closed tickets stay closed; recurrence is a new filed occurrence",
         ],
@@ -5125,6 +5147,17 @@ DISPATCH_SNOOZE_SCOPE = (
 )
 
 
+def owning_repo_for_store(store: Path) -> Path:
+    """Resolve the checkout that owns a canonical ``docs/runbook/backlog`` store."""
+    path = Path(store).resolve()
+    if path.parts[-3:] == ("docs", "runbook", "backlog"):
+        return path.parents[2]
+    # Legacy/tests may use a scratch store with no repository-shaped parent. Keep
+    # the historical root for those rows; canonical external stores use the branch
+    # above and therefore receive their own dependency context.
+    return ROOT
+
+
 def _withheld_blocked(store: Path, candidates: list[dict], held: dict) -> list[dict]:
     """Describe entries removed only by the derived `unblocked` clause."""
     open_ids = {p.get("id") for p in _iter_entries(store)
@@ -5182,6 +5215,7 @@ def _cmd_list(args) -> int:
         "grep": getattr(args, "grep", None),
         "dispatch": dispatch,
         "held": held,
+        "repo": owning_repo_for_store(args.store),
     }
     entries = select_entries(args.store, **selection)
     withheld_blocked = []
