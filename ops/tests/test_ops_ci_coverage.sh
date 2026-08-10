@@ -425,6 +425,33 @@ else
   ok_if_clean "all ${#TRACKED[@]} tracked test file(s) are reachable or named-exempt"
 fi
 
+# IMP-20260811-3432c3: these worktree regression files are part of the
+# default worktree-orchestrator group, not an exemption or optional-only path.
+# Keep this focused assertion beside the generic reachability scan so a future
+# dispatcher edit cannot silently drop this safety-critical cluster.
+section "worktree-orchestrator regression paths stay in the default dispatcher"
+WORKTREE_ORCHESTRATOR_REGRESSION_TESTS=(
+  ops/tests/test_task_registry.py
+  ops/tests/test_worktree_campaign_reservation.py
+  ops/tests/test_worktree_handback_outcomes.py
+  ops/tests/test_worktree_parent_integration.py
+)
+if (( ${#REACHABLE[@]} == 0 )); then
+  fail_t "worktree-orchestrator regression probe parsed no reachable paths"
+else
+  for f in "${WORKTREE_ORCHESTRATOR_REGRESSION_TESTS[@]}"; do
+    reach=0; exempt=0; optional=0
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
+    for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
+    if (( reach == 1 && exempt == 0 && optional == 0 )); then
+      ok "$f is reached by a DEFAULT_TESTS group"
+    else
+      fail_t "$f must be reached by worktree-orchestrator and not named as an exemption"
+    fi
+  done
+fi
+
 # ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
 # 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是「`.sh` 且不在
 # SHELL_GATE_EXCLUDED_TREES 之下」（worktree_orchestrate.py:plan_gates）；workflow 的
