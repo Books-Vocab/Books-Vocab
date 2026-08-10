@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: b3bc9b1fa
+verified_against: 18f37badc
 -->
 # Technical Reference Index
 
