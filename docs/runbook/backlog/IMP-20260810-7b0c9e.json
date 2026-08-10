@@ -8,6 +8,9 @@
   "date": "2026-08-10",
   "detail": "close-wave can return rc=0 after Gate, cutover, anchor and validate while its named source reservations have no staged closure rows, leaving the expected tickets triaged and CONFIRMED-OPEN. Wave-2 exposed this when three landed source branches were resolved and anchor applied an empty set.",
   "fix_site": "ops/worktree_orchestrate.py; ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "be53a80dc64ad7d2e768db5436020b9da88c790c"
+  ],
   "groomed_against": "dac51112757b7b0fef50f44d5b9581a378833915",
   "groomed_at": "2026-08-10",
   "groomed_by": "agent:delivery-team-b",
@@ -18,10 +21,10 @@
   "scope": "one orchestrator guard, its regression tests, and a verified closure receipt.",
   "severity": "high",
   "source": "delivery-loop false-success audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
+  "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-10",
   "verified_by": "agent:delivery-team-b",
-  "verified_evidence": "git show ff1fa6adcd2cb6f6acbc079dd19025156ec28981:ops/worktree_orchestrate.py | rg -q anchor_rc && ! git show ff1fa6adcd2cb6f6acbc079dd19025156ec28981:ops/worktree_orchestrate.py | rg -q _delivery_expected_ticket_closure"
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_orchestrate.py -k expected_ticket (4 passed)"
 }
