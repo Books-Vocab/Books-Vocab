@@ -1,5 +1,5 @@
 {
-  "acceptance": "RED: the complete orchestrator test file fails in the synthetic scratch cases with ops-pytest rc4 and two false-red assertions. GREEN: the complete file passes, the scratch result names unavailable test infrastructure without blocking, and a real worktree with an existing targeted ops test still runs it as a block gate.",
+  "acceptance": "RED: the complete orchestrator test file exposes the synthetic scratch false-red and a deletion-shaped change never downgrades its block gate. GREEN: a synthetic worktree with no ops/tests emits named ops-pytest-unavailable warn without invoking pytest; real worktrees with an existing targeted test and deletion-shaped ops/tests changes retain block pytest semantics; the worktree-flow instructions describe both cases.",
   "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py",
   "acceptance_expect_rc": 0,
   "brief": "Synthetic repository checks fail before they test anything, so valid change verification is reported as broken.",
@@ -11,7 +11,7 @@
   "contract_status": "ready",
   "date": "2026-08-11",
   "detail": "The two orchestrator regression tests for a synthetic git repository pass in isolation but fail inside the full ops suite because the scratch worktree has no ops/tests tree. Gate routing falls back to pytest ops/tests, which exits rc=4 for missing paths; the caller then turns that infrastructure miss into a blocking rc=2. This is a false red in the same scratch shape used by gate identity tests. Real KG worktrees with the targeted test path must retain blocking pytest semantics.",
-  "fix_site": "ops/worktree_orchestrate.py; ops/tests/test_worktree_orchestrate.py",
+  "fix_site": "ops/worktree_orchestrate.py;ops/tests/test_worktree_orchestrate.py;.claude/skills/worktree-flow/SKILL.md",
   "groomed_against": "e6aa9f71f3e6e0199b109b6f75fc4e6bf90f49e7",
   "groomed_at": "2026-08-11",
   "groomed_by": "agent:root",

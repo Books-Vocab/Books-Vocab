@@ -4365,6 +4365,58 @@ def test_gate_does_not_refuse_a_byte_identical_worktree_orchestrator(scratch):
 
 
 @gitmark
+def test_gate_names_unavailable_ops_tests_in_a_synthetic_worktree(scratch, monkeypatch):
+    """A scratch tree with only an orchestrator copy cannot run the ops suite.
+
+    The gate still needs to see the untracked orchestrator for omission/provenance
+    checks, but invoking ``pytest ops/tests`` there exits rc=4 because that tree has
+    no test directory.  This is unavailable infrastructure, not a failed change.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    _plant_orchestrator(wt)
+    monkeypatch.setattr(
+        MODULE, "_changed_vs_base",
+        lambda _worktree, _base: ["ops/worktree_orchestrate.py"],
+    )
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+    assert gate["verdict"] == "warn"
+    assert not any(row["name"] == "ops-pytest" for row in gate["gates"])
+    unavailable = next(row for row in gate["gates"]
+                       if row["name"] == "ops-pytest-unavailable")
+    assert unavailable["status"] == "warn"
+    assert "ops/tests" in unavailable["summary"]
+
+
+@gitmark
+def test_gate_keeps_ops_pytest_block_when_an_ops_test_path_changed(scratch, monkeypatch):
+    """A missing test tree is not advisory when the diff itself names an ops test."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    _plant_orchestrator(wt)
+    monkeypatch.setattr(
+        MODULE, "_changed_vs_base",
+        lambda _worktree, _base: [
+            "ops/worktree_orchestrate.py", "ops/tests/test_missing.py",
+        ],
+    )
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK, gate
+    assert gate["verdict"] == "block"
+    ops_gate = next(row for row in gate["gates"] if row["name"] == "ops-pytest")
+    assert ops_gate["status"] == "block"
+    assert "ops/tests" in next(
+        plan["cmd"] for plan in gate["plan"] if plan["name"] == "ops-pytest"
+    )
+    assert not any(row["name"] == "ops-pytest-unavailable" for row in gate["gates"])
+
+
+@gitmark
 def test_cutover_refuses_a_verdict_produced_by_a_different_orchestrator(scratch):
     """Defence in depth for a record that predates the gate-side refusal, or one that
     was edited. Same family as the stale-HEAD refusal: a verdict is only usable if it
