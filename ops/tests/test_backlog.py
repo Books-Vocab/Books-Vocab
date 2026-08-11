@@ -4554,6 +4554,61 @@ def test_new_grooming_must_carry_a_proof_and_old_grooming_is_grandfathered(tmp_p
                              acceptance_cmd="", acceptance_manual="")
 
 
+def test_conflicting_acceptance_proof_names_the_repair(tmp_path, capsys):
+    """A conflicting proof must expose a machine contract and a next step.
+
+    ``acceptance_cmd`` says a command can decide the criterion; ``acceptance_manual``
+    says no command can.  The refusal therefore needs to name both the expected
+    proof set and the actionable flags, rather than leaking only an internal repr.
+    The adjacent missing-proof rule keeps its date cutoff, while this contradiction
+    is invalid for every groom stamp.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    both = {**_groom_kwargs(acceptance_manual="needs a live device")}
+
+    problems = BACKLOG._check_groom({**entry, **both})
+    conflict = [p for p in problems
+                if p["kind"] == "groom-claim-with-conflicting-acceptance-proof"]
+    assert len(conflict) == 1, problems
+    assert conflict[0]["expected"] == list(BACKLOG.ACCEPTANCE_PROOF)
+    assert conflict[0]["since"] is None
+
+    no_proof = {**entry, **_groom_kwargs(
+        groomed_at=BACKLOG.ACCEPTANCE_PROOF_SINCE,
+        acceptance_cmd="", acceptance_expect_rc=None, acceptance_manual="",
+    )}
+    missing = [p for p in BACKLOG._check_groom(no_proof)
+               if p["kind"] == "groom-claim-without-acceptance-proof"]
+    assert len(missing) == 1, missing
+    assert missing[0]["since"] == BACKLOG.ACCEPTANCE_PROOF_SINCE
+
+    with pytest.raises(ValueError) as exc_info:
+        BACKLOG.update_entry(store, entry["id"], **both)
+    hint_lines = str(exc_info.value).split("\n")[1:]
+    assert any("--acceptance-cmd" in line and "--acceptance-manual" in line
+               for line in hint_lines), str(exc_info.value)
+
+    help_text = BACKLOG._subcommands(BACKLOG.build_parser())["update"].format_help()
+    assert "mutually exclusive" in help_text.lower()
+    assert "--acceptance-cmd" in help_text and "--acceptance-manual" in help_text
+
+    # The exact keep-manual repair emitted above must be executable even when the
+    # malformed entry still carries the command-only expectation adjunct.
+    malformed = {**entry, **both}
+    (store / f"{entry['id']}.json").write_text(
+        json.dumps(malformed, ensure_ascii=False), encoding="utf-8")
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--acceptance-cmd", "", "--commit", "--json",
+    ]) == 0
+    capsys.readouterr()
+    repaired = BACKLOG.load_entry(store, entry["id"])
+    assert not repaired.get("acceptance_cmd")
+    assert repaired["acceptance_manual"] == "needs a live device"
+    assert "acceptance_expect_rc" not in repaired
+
+
 def test_the_acceptance_expectation_is_shape_checked(tmp_path):
     """`anchor` compares `rc == expect_rc` with `==`, so a string `"0"` from a
     hand-edited entry would never match the int a subprocess returns — refusing

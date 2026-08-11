@@ -821,8 +821,13 @@ def _check_groom(payload: dict) -> list[dict]:
     elif len(proofs) > 1:
         # Both is not "extra safe", it is two different claims about the same
         # question: one says a machine settles this, the other says nothing can.
+        # Unlike the missing-proof branch above, this is an internal contradiction,
+        # not a new obligation, so it has no date cutoff. Existing data contains no
+        # such pair; retaining the unconditional rule preserves that distinction.
         problems.append({"kind": "groom-claim-with-conflicting-acceptance-proof",
-                         "present": proofs})
+                         "present": proofs,
+                         "expected": list(ACCEPTANCE_PROOF),
+                         "since": None})
 
     # Grooming now means "worked out AND explained". The badge already required
     # the work (GROOM_REQUIRES); these require it to be sayable to the person who
@@ -1788,6 +1793,17 @@ def _repair_hints(problems: list[dict], entry_id: str) -> list[str]:
             f"`--fixed-elsewhere` says it is not. Clear the wrong one with "
             f"`update {entry_id} --fixed-elsewhere '' --commit` (or re-set "
             f"--fixed-by alone)"
+        )
+    if any(p["kind"] == "groom-claim-with-conflicting-acceptance-proof"
+           for p in problems):
+        hints.append(
+            "  choose exactly one acceptance proof: `--acceptance-cmd` means a "
+            "command can decide the criterion; `--acceptance-manual` means no "
+            "command can. Keep `--acceptance-cmd` when the criterion is expressible "
+            "as a command; otherwise keep `--acceptance-manual`. This conflict has "
+            f"no date cutoff; clear the other proof with `update {entry_id} "
+            "--acceptance-manual '' --commit` (keep the command) or "
+            f"`update {entry_id} --acceptance-cmd '' --commit` (keep the manual proof)"
         )
     # These two are the ONLY kinds whose repair is fully determined, so they
     # are the last ones that should arrive as a bare defect name. Written as
@@ -3662,8 +3678,9 @@ def build_parser() -> argparse.ArgumentParser:
              "some entries carry an INVERTED detector where non-zero is the pass")
     p_update.add_argument(
         "--acceptance-manual", dest="acceptance_manual",
-        help="why no command can express this entry's acceptance. Countable, not a "
-             "loophole: `list --acceptance-manual` and `anchor` both report the set")
+        help="why no command can express this entry's acceptance. Mutually exclusive "
+             "with --acceptance-cmd; provide exactly one. Countable, not a loophole: "
+             "`list --acceptance-manual` and `anchor` both report the set")
     p_update.add_argument(
         "--acceptance-green-expected", dest="acceptance_green_expected",
         help="why THIS criterion is green even though the entry is unresolved — a "
@@ -6046,6 +6063,19 @@ def _cmd_update(args, *, _lock_held: bool = False) -> int:
         if getattr(args, field, None) is not None
     }
     clear_fields = tuple(getattr(args, "_clear_fields", ()))
+    # Clearing a command also clears the adjuncts that only make sense for a
+    # command.  Otherwise the repair emitted for a conflicting proof leaves
+    # `acceptance_expect_rc` behind and immediately trips
+    # `acceptance-expect-rc-without-cmd` on its next validation.  Respect an
+    # explicitly supplied adjunct so an intentional invalid edit is still
+    # refused rather than silently rewritten.
+    if ("acceptance_cmd" in changes
+            and not str(changes["acceptance_cmd"] or "").strip()):
+        clear = list(clear_fields)
+        for field in ("acceptance_expect_rc", "acceptance_green_expected"):
+            if field not in changes and field not in clear:
+                clear.append(field)
+        clear_fields = tuple(clear)
     if (
         "groomed_against" not in changes
         and any(changes.get(field) is not None for field in ("groomed_at", "groomed_by"))
