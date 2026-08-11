@@ -4784,38 +4784,71 @@ def test_an_acceptance_command_that_cannot_parse_is_refused(tmp_path):
             if p["kind"].startswith("acceptance-cmd")] == []
 
 
-def test_add_refuses_groom_flags_by_name_and_says_where_they_belong(tmp_path, capsys):
-    """argparse says the flag is wrong; it never says where the correction goes.
+def _add_groomed_flags():
+    return [
+        "--brief", "一張已知修法的票可以一次進入派工佇列。",
+        "--scope", "一支 CLI 與其既有測試，沒有資料遷移。",
+        "--plan", "在 add 落檔前套用既有 groom 驗證並輸出 claimability。",
+        "--acceptance", "完整旗標產出的票可被 dispatch 取到。",
+        "--acceptance-cmd", "true",
+        "--fix-site", "ops/backlog.py:1",
+        "--groomed-by", "test:add-groomed",
+        "--groomed-at", "2026-08-11",
+        "--contract-status", "ready",
+        "--contract-baseline", "red",
+        "--contract-checked-at", "2026-08-11",
+        "--contract-checked-by", "test:add-groomed",
+        "--contract-evidence", "RED fixture: add flags were not accepted before this change",
+    ]
 
-    Measured: the same mistake three times in ONE session, by someone who had
-    already filed an entry about it. That is not carelessness — the flags read as
-    if they should work, because filing and grooming feel like one act right up
-    until the tool disagrees.
 
-    The separation itself stays: merging grooming into `add` would make "pretend
-    you worked it out at filing time" free, and being non-free is the entire value
-    of the badge. What changes is that the refusal names the flag and the route.
-
-    Every groom-only flag is covered by iterating the module's own list, so a flag
-    added to `update` and forgotten here is caught by the same test rather than by
-    a fourth incident.
-    """
+def test_add_complete_grooming_flags_produces_dispatchable_ticket(tmp_path, capsys):
     store = tmp_path / "s"
-    base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-08",
+    base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
             "--source", "t", "--category", "tool", "--severity", "low",
-            "--detail", "probe"]
-    for flag in BACKLOG.GROOM_ONLY_FLAGS:
-        value = "0" if flag.endswith("-rc") else "x"
-        assert BACKLOG.main([*base, flag, value]) == 64, flag
-        err = capsys.readouterr().err
-        assert flag in err, f"{flag} was refused without being named: {err}"
-        assert "groom" in err, f"{flag}'s refusal does not say where it belongs: {err}"
-    # nothing was written on any of those refusals
-    assert not list(store.glob("*.json")) if store.exists() else True
-    # ...and the ordinary path still works
+            "--detail", "complete add grooming"]
+
+    assert BACKLOG.main([*base, *_add_groomed_flags(), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["claimable"] is True
+    assert payload["missing"] == []
+    entry = payload["entry"]
+    assert entry["status"] == "triaged"
+    assert entry["groomed_by"] == "test:add-groomed"
+
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
+    dispatched = json.loads(capsys.readouterr().out)["entries"]
+    assert [row["id"] for row in dispatched] == [entry["id"]]
+
+
+def test_add_partial_grooming_flags_refuses_without_writing(tmp_path, capsys):
+    store = tmp_path / "s"
+    base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
+            "--source", "t", "--category", "tool", "--severity", "low",
+            "--detail", "partial add grooming", "--plan", "missing the rest", "--json"]
+
+    assert BACKLOG.main(base) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["written"] is False
+    assert "--acceptance" in payload["error"]
+    assert not (store.exists() and list(store.glob("*.json")))
+
+
+def test_add_plain_detail_reports_non_claimable_and_missing_fields(tmp_path, capsys):
+    store = tmp_path / "s"
+    base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
+            "--source", "t", "--category", "tool", "--severity", "low",
+            "--detail", "ordinary add"]
+
+    assert BACKLOG.main(base) == 0
+    human = capsys.readouterr().out
+    assert "not in the dispatch queue" in human
+    assert "plan" in human and "acceptance" in human and "fix_site" in human
+
     assert BACKLOG.main([*base, "--json"]) == 0
-    capsys.readouterr()
-    assert len(list(store.glob("*.json"))) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["claimable"] is False
+    assert {"plan", "acceptance", "fix_site"}.issubset(payload["missing"])
 
 
 # --------------------------------------------------------------------------

@@ -1597,10 +1597,8 @@ def add_entry(
         problems = [p for p in problems if p["kind"] not in forgiven]
     if problems:
         # Name the repair. `no-next-action` is the one kind a caller meets by
-        # reaching for a flag that looked legal, so it gets the route out — and
-        # the route deliberately does NOT mention `--plan`, which `add` refuses by
-        # name (GROOM_ONLY_FLAGS). A hint pointing at a second dead end is worse
-        # than none.
+        # reaching for a flag that looked legal, so it gets the route out. A hint
+        # pointing at a second dead end is worse than none.
         hint = ""
         bad_category = next(
             (p for p in problems if p["kind"] == "bad-category"), None
@@ -1758,14 +1756,6 @@ FILE_TWIN_FIELDS = (
     # vocabulary token; preserve the shell-safe file channel for it as well.
     "contract_checked_at", "contract_checked_by", "contract_evidence",
 )
-
-# Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
-GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
-                    "--acceptance-expect-rc", "--acceptance-manual",
-                    "--acceptance-cmd-static",
-                    "--fix-site", "--groomed-at", "--groomed-by",
-                    "--groomed-against")
-
 
 def _repair_hints(problems: list[dict], entry_id: str) -> list[str]:
     """Return actionable repair guidance for validation problems."""
@@ -3286,6 +3276,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--repro", help="APP only: how to reproduce")
     p_add.add_argument("--build", help="APP only: build the problem was seen on")
     p_add.add_argument("--id", dest="entry_id", help="explicit id (migration of legacy IMP-#### only)")
+    # Mirror the executable grooming fields so a caller who already knows the
+    # repair can file and groom in one validated write. File twins are derived
+    # below from the same parser actions, avoiding a second hand-written list.
+    p_add.add_argument("--plan", help="how to fix it, concrete enough to execute")
+    p_add.add_argument("--acceptance", help="red-then-green acceptance prose")
+    p_add.add_argument("--acceptance-cmd", dest="acceptance_cmd",
+                       help="machine-checkable acceptance command")
+    p_add.add_argument("--acceptance-cmd-static", dest="acceptance_cmd_static",
+                       help="optional bounded worker feedback command")
+    p_add.add_argument("--acceptance-expect-rc", dest="acceptance_expect_rc", type=int,
+                       help="expected exit code for --acceptance-cmd")
+    p_add.add_argument("--acceptance-manual", dest="acceptance_manual",
+                       help="why no command can express acceptance")
+    p_add.add_argument("--acceptance-green-expected", dest="acceptance_green_expected",
+                       help="why this command is expected green before implementation")
+    p_add.add_argument("--fix-site", dest="fix_site", help="primary code/document anchor")
+    p_add.add_argument("--groomed-by", dest="groomed_by", help="grooming actor")
+    p_add.add_argument("--groomed-at", dest="groomed_at", help="YYYY-MM-DD")
+    p_add.add_argument("--groomed-against", dest="groomed_against",
+                       help="main commit checked by the grooming plan")
+    p_add.add_argument("--contract-status", choices=CONTRACT_STATUSES)
+    p_add.add_argument("--contract-baseline", choices=CONTRACT_BASELINES)
+    p_add.add_argument("--contract-checked-at")
+    p_add.add_argument("--contract-checked-by")
+    p_add.add_argument("--contract-evidence")
     add_mode = p_add.add_mutually_exclusive_group()
     add_mode.add_argument(
         "--dry-run", action="store_true",
@@ -3302,19 +3317,6 @@ def build_parser() -> argparse.ArgumentParser:
              "`anchor --commit` materializes it after the branch lands",
     )
     p_add.add_argument("--json", action="store_true")
-    # Parsed here ONLY so that reaching for one gets a named refusal that says where
-    # it belongs. Same treatment, and the same reason, as `update --detail`: argparse's
-    # "unrecognized arguments" tells you the flag is wrong and never where the
-    # correction goes. Measured: the same mistake three times in one session, by
-    # someone who had already filed an entry about it.
-    #
-    # Grooming stays a SEPARATE act on purpose — merging it into `add` would make
-    # "pretend you worked it out at filing time" free, and being non-free is the
-    # entire value of the badge.
-    for flag in GROOM_ONLY_FLAGS:
-        p_add.add_argument(flag, dest=f"groom_only_{flag.lstrip('-').replace('-', '_')}",
-                           help=argparse.SUPPRESS)
-
     p_lifecycle = sub.add_parser(
         "lifecycle",
         help="explain the ticket state machine, actor boundaries and common paths",
@@ -4057,22 +4059,50 @@ def _cmd_lifecycle(args) -> int:
 
 
 def _cmd_add(args) -> int:
-    reached = [f for f in GROOM_ONLY_FLAGS
-               if getattr(args, f"groom_only_{f.lstrip('-').replace('-', '_')}", None) is not None]
-    if reached:
-        raise BacklogError(
-            f"{', '.join(reached)} belong to `groom`, not `add` — grooming is a "
-            f"separate act from filing, and it has to be: a badge you can apply while "
-            f"filing is a badge that costs nothing.\n"
-            f"  file it first:  ./ops/backlog.py add ... --json   (prints the new id)\n"
-            f"  then groom it:  ./ops/backlog.py groom <id> --help")
-    if args.status != "open":
+    groom_fields = (
+        "brief", "scope", "plan", "acceptance", "acceptance_cmd",
+        "acceptance_cmd_static", "acceptance_expect_rc", "acceptance_manual",
+        "acceptance_green_expected", "fix_site", "groomed_by", "groomed_at",
+        "groomed_against", "contract_status", "contract_baseline",
+        "contract_checked_at", "contract_checked_by", "contract_evidence",
+    )
+    groom_requested = any(getattr(args, field, None) is not None
+                          for field in groom_fields)
+    if args.status != "open" and not (groom_requested and args.status == "triaged"):
         raise BacklogError(
             f"`add` starts a ticket at status=open, not {args.status!r}. "
             "Work out an unresolved ticket with `groom`; close an existing ticket "
             "through `verify --status fixed` / `update --status wont-fix`; ingest "
             "historical terminal rows with `import`"
         )
+
+    groom_extra = {}
+    if groom_requested:
+        missing = [field for field in
+                   ("brief", "scope", "plan", "acceptance", "fix_site", "groomed_by")
+                   if not str(getattr(args, field, None) or "").strip()]
+        proofs = [field for field in ("acceptance_cmd", "acceptance_manual")
+                  if str(getattr(args, field, None) or "").strip()]
+        if len(proofs) != 1:
+            missing.append("exactly one of --acceptance-cmd/--acceptance-manual")
+        args.groomed_at = args.groomed_at or _today()
+        if args.groomed_at >= CONTRACT_REQUIRED_SINCE:
+            for field in ("contract_status", "contract_baseline",
+                          "contract_checked_at", "contract_checked_by",
+                          "contract_evidence"):
+                if not str(getattr(args, field, None) or "").strip():
+                    missing.append(field)
+        if missing:
+            raise BacklogError(
+                "complete add grooming requires: " + ", ".join(missing)
+            )
+        args.status = "triaged"
+        args.groomed_against = args.groomed_against or _main_commit()
+        groom_extra = {
+            field: getattr(args, field, None)
+            for field in groom_fields
+            if getattr(args, field, None) not in (None, "")
+        }
 
     if args.queue is not None and not args.stage:
         raise BacklogError("--queue is only valid with `add --stage`")
@@ -4095,14 +4125,17 @@ def _cmd_add(args) -> int:
         repro=args.repro,
         build=args.build,
         entry_id=args.entry_id,
+        extra=groom_extra,
         _outcome=outcome,
         commit=commit,
     )
+    claimability = _add_claimability(entry, args.store)
     if args.stage:
         row, queue = _stage_add(args, entry)
         if args.json:
             print(json.dumps({"schema": "kg.backlog.add.v1", "mode": "staged",
                               "written": False, "entry": entry,
+                              **claimability,
                               "staged": row, "queue": str(queue)},
                              ensure_ascii=False))
         else:
@@ -4116,7 +4149,7 @@ def _cmd_add(args) -> int:
     written = bool(outcome["written"])
     if args.json:
         print(json.dumps({"schema": "kg.backlog.add.v1", "mode": mode,
-                          "written": written, "entry": entry},
+                          "written": written, "entry": entry, **claimability},
                          ensure_ascii=False))
     else:
         print(f"{entry['id']}  [{entry['stream']}/{entry['category']}/{entry['severity']}]")
@@ -4125,7 +4158,36 @@ def _cmd_add(args) -> int:
             print("  nothing written; an identical entry already exists")
         elif not commit:
             print("  nothing written; rerun without --dry-run (or pass --commit) to file it")
+        if claimability["claimable"]:
+            print("  claimable=true; this ticket is in the dispatch queue")
+        else:
+            missing = ", ".join(claimability["missing"]) or "contract/blocked-by checks"
+            print(f"  not in the dispatch queue; missing {missing}")
     return 0
+
+
+def _add_claimability(entry: dict, store: Path) -> dict:
+    """Report the same prerequisites dispatch applies, without claiming anything."""
+    missing: list[str] = []
+    for field in ("plan", "acceptance", "fix_site", "groomed_by"):
+        if not str(entry.get(field) or "").strip():
+            missing.append(field)
+    if not any(str(entry.get(field) or "").strip()
+               for field in ("acceptance_cmd", "acceptance_manual")):
+        missing.append("acceptance_cmd_or_manual")
+    for problem in contract_preflight(entry, repo=owning_repo_for_store(store)):
+        field = problem.get("field")
+        if field:
+            missing.append(str(field))
+        elif problem.get("kind") == "contract-baseline-not-red":
+            missing.append("contract_baseline")
+        elif problem.get("kind") == "contract-evidence-missing":
+            missing.append("contract_evidence")
+        elif problem.get("kind") == "acceptance-dependency-missing":
+            missing.append("acceptance_cmd_dependency")
+        elif problem.get("kind") == "fix-site-missing":
+            missing.append("fix_site_dependency")
+    return {"claimable": not missing, "missing": list(dict.fromkeys(missing))}
 
 
 def _closure_changes(*, verdict: str, by: str, evidence: str, at: str | None,
