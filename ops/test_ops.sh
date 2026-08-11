@@ -135,7 +135,8 @@ run_one() {
     kg-board)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_kg_board_model.py \
-        ops/tests/test_kg_board_web.py
+        ops/tests/test_kg_board_web.py \
+        ops/tests/test_kg_board_git_tree.py
       ;;
     backlog)
       # Both files are stdlib-only on purpose, so they run under the same
