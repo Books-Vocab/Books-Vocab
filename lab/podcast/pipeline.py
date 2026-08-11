@@ -81,6 +81,15 @@ from tts_config import (
     sanitize_slug as _sanitize_slug,
     tts_family,
 )
+from pipeline_plan import (
+    PipelineConfig,
+    STAGE_SPECS,
+    render_stage_help,
+    resolve_run_plan,
+    stage_names,
+    stage_spec,
+    stage_specs_from_workflow,
+)
 
 ROOT = Path(__file__).parent
 _LOGGER = logging.getLogger("podcast.pipeline")
@@ -209,18 +218,9 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
         print(f"[pipeline] failed to open dashboard URL automatically: {exc}", file=sys.stderr)
     return url
 
-# Authoritative stage order. When changing this list, also update the module
-# docstring stage list above and `.claude/skills/podcast/SKILL.md` §管線總覽.
-STAGES = [
-    "prep", "analyst", "architect", "plan-review",
-    "enricher-gap", "enricher", "scriptwrite",
-    "series-polish",
-    "script-review",
-    "tts-prep",
-    "synthesize", "audio-qa", "subtitle",
-    "cover",
-    "publish",
-]
+# Compatibility export: stage names and metadata now come from the typed
+# registry.  Existing integrations import ``STAGES`` and expect a list.
+STAGES = list(stage_names(STAGE_SPECS))
 
 # Stage completion markers — written to workspace after each stage succeeds
 _STAGE_MARKER = ".stage_{name}_done"
@@ -230,7 +230,7 @@ _STAGE_MARKER = ".stage_{name}_done"
 # `pipeline.py <ws> --only-episode N` (producer patching one episode) must NOT
 # trigger either — wrong semantics + wasted cost. They still run when the
 # producer EXPLICITLY drives them via --only-stage (a deliberate full-series op).
-_SERIES_WIDE_STAGES = {"series-polish", "cover", "publish"}
+_SERIES_WIDE_STAGES = frozenset(spec.name for spec in STAGE_SPECS if spec.series_wide)
 
 
 def _should_skip_for_only_episode(stage_name: str, args) -> bool:
@@ -243,7 +243,7 @@ def _should_skip_for_only_episode(stage_name: str, args) -> bool:
     """
     return (
         bool(args.only_episode)
-        and stage_name in _SERIES_WIDE_STAGES
+        and stage_spec(stage_name).series_wide
         and args.only_stage != stage_name
     )
 
@@ -284,10 +284,7 @@ def load_workflow_definition(workflow_version: str) -> dict:
 
 
 def workflow_stage_order(workflow_version: str) -> list[str]:
-    stages = load_workflow_definition(workflow_version).get("stage_order")
-    if not isinstance(stages, list) or not stages or not all(isinstance(s, str) for s in stages):
-        raise ValueError(f"workflow {workflow_version!r} has invalid stage_order")
-    return stages
+    return list(stage_names(stage_specs_from_workflow(load_workflow_definition(workflow_version))))
 
 
 def all_workflow_stage_names() -> list[str]:
@@ -590,8 +587,9 @@ def check_saga_marker_coverage(workspace: Path) -> list[str]:
 #                         ┃.script_approved┃ AUDIO(tts-prep→subtitle)
 # Each gate keys on the FIRST stage of the phase it guards.
 _APPROVAL_GATES = {
-    "scriptwrite": ".plan_approved",   # gate 1 — PLAN done → produce SCRIPTs
-    "tts-prep": ".script_approved",    # gate 2 — SCRIPT done → produce AUDIO
+    spec.name: spec.approval_marker
+    for spec in STAGE_SPECS
+    if spec.approval_marker
 }
 
 
@@ -1459,20 +1457,7 @@ def _capture_stage_outputs(
 
 
 def _stage_prompt_metadata(workspace: Path, stage: str) -> dict[str, object] | None:
-    prompt_names = {
-        "prep": "prep",
-        "analyst": "analyst",
-        "architect": "architect",
-        "plan-review": "plan_review",
-        "enricher-gap": "enricher_gap",
-        "enricher": "enricher",
-        "scriptwrite": "scriptwriter",
-        "series-polish": "series_polish",
-        "script-review": "script_review",
-        "tts-prep": "tts_prep",
-        "cover": "cover",
-    }
-    prompt_name = prompt_names.get(stage)
+    prompt_name = stage_spec(stage).prompt_name
     if not prompt_name:
         return None
     workflow_version = resolve_workspace_workflow(workspace, None)
@@ -2357,27 +2342,19 @@ def resolve_target(target_str: str) -> tuple[Path | None, Path | None]:
 
 
 def main():
+    stage_help = render_stage_help(STAGE_SPECS)
+    approval_help = "\n".join(
+        f"  ┃ {spec.approval_marker}  ── approval before {spec.name} ──"
+        for spec in STAGE_SPECS
+        if spec.approval_marker
+    )
     parser = argparse.ArgumentParser(
         description="Book-to-Podcast Pipeline: EPUB → analysis → plan → scripts → audio → subtitles",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""stages (in order; ┃ = human approval gate, run pauses until approved):
-   1. prep          extract + classify chapters from EPUB
-   2. analyst       deep book analysis (structure, arguments, quotes)
-   3. architect     production plan (episodes, hosts, pacing)
-   4. plan-review   QA gate — verify plan completeness
-   5. enricher-gap  identify where external research is needed
-   6. enricher      web search to fill research gaps
-  ┃ .plan_approved  ── approve the plan before scripts are written ──
-   7. scriptwrite   parallel dialogue script generation
-   8. series-polish cross-episode continuity polish
-   9. script-review QA gate — verify script quality
-  ┃ .script_approved ── approve scripts before audio is synthesized (TTS $$) ──
-  10. tts-prep       prepare scripts for TTS
-  11. synthesize     TTS audio generation (Vertex AI Gemini)
-  12. audio-qa       audio quality check
-  13. subtitle       word-level subtitle alignment
-  14. cover          series cover art
-  15. publish        upload workspace to S3 + verify catalog
+        epilog=f"""stages (in order; metadata comes from the stage registry):
+{stage_help}
+
+{approval_help}
 
 examples:
   uv run pipeline.py book.epub                          # run until plan gate, then pause
@@ -2477,8 +2454,6 @@ examples:
     if args.only_stage:
         if args.skip_to or args.stop_after:
             parser.error("--only-stage cannot be combined with --skip-to or --stop-after")
-        args.skip_to = args.only_stage
-        args.stop_after = args.only_stage
 
     # Saga vs single-book input resolution. A saga is the ONLY case that takes
     # multiple targets; everything else takes exactly one (EPUB or workspace dir).
@@ -2594,29 +2569,28 @@ examples:
     except ValueError as e:
         parser.error(str(e))
     print(f"Workflow: {workflow_version}")
-    stages = workflow_stage_order(workflow_version)
-    for selected in (args.skip_to, args.stop_after):
-        if selected and selected not in stages:
-            parser.error(f"stage {selected!r} is not in workflow {workflow_version} stage_order")
-
-    # Determine stage range from the selected workflow, not the v1 global list.
-    start_idx = stages.index(args.skip_to) if args.skip_to else 0
-    stop_idx = stages.index(args.stop_after) if args.stop_after else len(stages) - 1
-
-    # Explicit start index for approval-gate bypass — set ONLY when the user
-    # passed --skip-to / --only-stage (a deliberate drive past the gate). Stays
-    # None for auto-resume runs so the gate still holds (see approval_gate_block).
-    explicit_skip_idx = stages.index(args.skip_to) if args.skip_to else None
-
-    if start_idx > stop_idx:
-        parser.error(f"--skip-to {args.skip_to} is after --stop-after {args.stop_after}")
-
-    if not args.skip_to:
-        resume = detect_resume_point(workspace, stages)
-        if resume > 0:
-            start_idx = max(start_idx, resume)
-            if start_idx < len(stages):
-                print(f"Auto-resume: {stages[start_idx]} (stages 0-{resume-1} have completion markers)")
+    stage_specs = stage_specs_from_workflow(load_workflow_definition(workflow_version))
+    stages = list(stage_names(stage_specs))
+    resume = detect_resume_point(workspace, stages) if not args.skip_to and not args.only_stage else 0
+    try:
+        run_plan = resolve_run_plan(
+            PipelineConfig(
+                stages=stage_specs,
+                skip_to=args.skip_to,
+                stop_after=args.stop_after,
+                only_stage=args.only_stage,
+                only_episode=args.only_episode,
+                ignore_gates=args.ignore_gates,
+            ),
+            resume_index=resume,
+        )
+    except ValueError as e:
+        parser.error(str(e))
+    start_idx = run_plan.start_index
+    stop_idx = run_plan.stop_index
+    explicit_skip_idx = run_plan.explicit_skip_index
+    if resume > 0 and start_idx < len(stages):
+        print(f"Auto-resume: {stages[start_idx]} (stages 0-{resume-1} have completion markers)")
 
     # Freeze the TTS model the same way as .mode: fresh setup takes it from argv,
     # resume reads the saved sidecar and a conflicting --tts-model is an error.
@@ -2672,16 +2646,18 @@ examples:
     # Idempotent: no-op if already running. Skip with PODCAST_NO_DASHBOARD=1.
     _ensure_dashboard_running(workspace)
 
-    # Prereq marker check: --skip-to X (incl. --only-stage X which rewrites
-    # to skip_to=stop_after=X) requires earlier workflow stages all to have completion
-    # markers. Catches the footgun where user jumps to e.g. scriptwrite on a
+    # Prereq marker check: --skip-to X and --only-stage X both require earlier
+    # workflow stages to have completion markers. Catches the footgun where a
+    # user jumps to e.g. scriptwrite on a
     # workspace where architect/plan-review never ran — downstream stage will
     # crash trying to read missing plan/overview.md. --force opts out for
     # advanced cases (e.g. cherry-picked workspace, manual artifact stitching).
-    if args.skip_to and start_idx > 0 and not args.force:
+    requested_stage = args.only_stage or args.skip_to
+    if requested_stage and start_idx > 0 and not args.force:
         missing = [s for s in stages[:start_idx] if not stage_done(workspace, s)]
         if missing:
-            print(f"ERROR: --skip-to {args.skip_to} requires earlier stages completed.")
+            selector = "--only-stage" if args.only_stage else "--skip-to"
+            print(f"ERROR: {selector} {requested_stage} requires earlier stages completed.")
             print(f"  Missing markers: {', '.join(missing)}")
             print(f"  Either resume from the earliest missing stage:")
             print(f"    uv run pipeline.py {workspace} --skip-to {missing[0]}")
@@ -2717,20 +2693,13 @@ examples:
             f"{', '.join(unimplemented)}"
         )
 
-    stages_to_run = stages[start_idx:stop_idx + 1]
+    stages_to_run = list(run_plan.stage_names)
 
-    # Drop series-wide stages (series-polish / publish) from a bare single-episode
-    # full loop: they re-process the WHOLE series, never honoring --only-episode.
-    # Filtering here (vs loop `continue`) keeps step x/y counts honest and never
-    # writes their completion markers, so a later bare full-series run still runs
-    # them. Explicit --only-stage series-polish/publish is unaffected (the stage
-    # IS the selection → _should_skip returns False).
-    skipped_series_wide = [
-        s for s in stages_to_run if _should_skip_for_only_episode(s, args)
-    ]
-    if skipped_series_wide:
-        stages_to_run = [s for s in stages_to_run if s not in skipped_series_wide]
-        for s in skipped_series_wide:
+    # The pure planner already removed series-wide stages for a bare
+    # --only-episode run. Keep the user-facing explanation here, close to the
+    # stage plan, but do not duplicate the selection logic in the runner.
+    if run_plan.skipped_series_wide:
+        for s in run_plan.skipped_series_wide:
             print(
                 f"  ↷ skip {s}: series-wide stage incompatible with --only-episode "
                 f"{args.only_episode}; run without --only-episode to {s} the whole series"
