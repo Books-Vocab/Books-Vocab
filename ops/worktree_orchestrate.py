@@ -173,6 +173,7 @@ import worktree_campaign as campaign  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 from lib import dispatch_preflight  # noqa: E402
+from lib.exit_codes import EXIT_BLOCK, EXIT_OK, EXIT_USAGE  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
@@ -180,10 +181,6 @@ GATE_INPUT_SCHEMA = "kg.worktree.gate-input.v1"
 GATE_PROGRESS_SCHEMA = "kg.worktree.gate-progress.v1"
 FREEZE_SCHEMA = "kg.worktree.freeze.v1"
 DELIVERY_SCHEMA = "kg.worktree.delivery.v1"
-EXIT_OK = 0
-EXIT_USAGE = 64
-EXIT_BLOCK = 1
-
 # Local-main-centric topology: local `main` is the trunk. Worktrees fork from it and
 # cutover fast-forwards it OFFLINE — origin is only a deploy target (`deploy` pushes
 # local main to origin, which the felix reconciler turns into a production rollout).
@@ -9044,7 +9041,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     tokens = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
-    args = parser.parse_args(tokens)
+    try:
+        args = parser.parse_args(tokens)
+    except SystemExit as exc:
+        # argparse prints the useful usage diagnostic, but its conventional 2
+        # collides with workflow results. Preserve --help's successful 0 while
+        # normalizing every malformed root/subparser invocation to the shared
+        # usage contract.
+        return EXIT_OK if exc.code == 0 else EXIT_USAGE
     if not getattr(args, "func", None):
         parser.print_help()
         return EXIT_USAGE

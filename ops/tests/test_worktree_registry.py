@@ -48,6 +48,13 @@ landed_in_base = MODULE.landed_in_base
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
 
+
+def test_usage_errors_return_contract_code_for_root_and_subparser_typos():
+    """Argparse's generic 2 must not collide with the registry usage code 64."""
+    for argv in (["--brnach"], ["register", "--brnach"]):
+        assert MODULE.main(argv) == MODULE.EXIT_USAGE
+
+
 # far-future 'now' so nothing is ever flagged LIVE by accident; belt-and-suspenders
 # with --live-window 0 in sweep invocations.
 FUTURE_AT = "2999-01-01T00:00:00Z"
@@ -787,9 +794,10 @@ def test_resolve_rejects_bad_status(tmp_path):
     state = tmp_path / "reg.json"
     MODULE.main(["register", "--state", str(state), "--at", "2026-07-09T12:00:00Z",
                  "--path", str(tmp_path / "w"), "--branch", "b", "--intent", "i", "--base", "main"])
-    # argparse choices reject "active" as a resolve status (SystemExit(2)).
-    with pytest.raises(SystemExit):
-        MODULE.main(["resolve", "--state", str(state), "--branch", "b", "--status", "active"])
+    # The shared usage contract normalizes argparse's choices failure to 64.
+    assert MODULE.main([
+        "resolve", "--state", str(state), "--branch", "b", "--status", "active"
+    ]) == MODULE.EXIT_USAGE
 
 
 def test_list_json_reports_live_state_for_active(sweep_repo):
