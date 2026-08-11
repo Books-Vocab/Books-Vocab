@@ -511,8 +511,8 @@ if KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_FIXTURE_TF_LATEST=unknown bash "$IOS_OPS" gat
   fail_t "gate release warns on unknown TestFlight build"
 else
   rc=$?
-  jq -e '.schema=="kg.ios.gate.v1" and .verdict=="warn" and .exitCode==1 and .summary.warnings >= 1 and any(.warnings[]; .key=="testflight")' "$gate_warn_tmp/out" >/dev/null \
-    && [[ "$rc" -eq 1 ]] \
+  jq -e '.schema=="kg.ios.gate.v1" and .verdict=="warn" and .exitCode==3 and .summary.warnings >= 1 and any(.warnings[]; .key=="testflight")' "$gate_warn_tmp/out" >/dev/null \
+    && [[ "$rc" -eq 3 ]] \
     && ok "gate release warns on unknown TestFlight build" || fail_t "gate release warn invalid: $(cat "$gate_warn_tmp/out") stderr=$(cat "$gate_warn_tmp/err") rc=$rc"
 fi
 rm -rf "$gate_warn_tmp"
