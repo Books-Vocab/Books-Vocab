@@ -1769,10 +1769,183 @@ def cmd_register(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+LIST_QUERY_FIELDS = frozenset({
+    "branch", "slug", "path", "intent", "base", "status", "backlog",
+    "claimed_at", "handed_back_at", "handed_back_sha", "delegated",
+    "created_at", "resolved_at", "live_state", "landed", "worktree_present",
+})
+
+
+def _list_query_requested(args: argparse.Namespace) -> bool:
+    return bool(
+        getattr(args, "active_only", False)
+        or getattr(args, "branch", None) is not None
+        or getattr(args, "slug", None) is not None
+        or getattr(args, "path", None) is not None
+        or getattr(args, "fields", None) is not None
+        or getattr(args, "summary", False)
+        or getattr(args, "conflicts", False)
+        or getattr(args, "no_liveness", False)
+    )
+
+
+def _record_slug(record: dict[str, Any]) -> str | None:
+    explicit = record.get("slug")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    branch = record.get("branch")
+    if not isinstance(branch, str) or not branch:
+        return None
+    return branch.rsplit("/", 1)[-1]
+
+
+def _validate_list_query(args: argparse.Namespace) -> tuple[bool, str | None, list[str]]:
+    fields_arg = getattr(args, "fields", None)
+    fields = [item.strip() for item in fields_arg.split(",")] if fields_arg is not None else []
+    if fields_arg is not None and (not fields or any(not item for item in fields)):
+        return False, "--fields requires one or more comma-separated field names", []
+    unknown = sorted(set(fields) - LIST_QUERY_FIELDS)
+    if unknown:
+        return False, f"unknown list field(s): {', '.join(unknown)}", []
+    selectors = {
+        "branch": getattr(args, "branch", None),
+        "slug": getattr(args, "slug", None),
+        "path": getattr(args, "path", None),
+    }
+    for name, value in selectors.items():
+        if value is not None and not str(value).strip():
+            return False, f"--{name} requires a non-empty exact selector", []
+    if getattr(args, "summary", False) and getattr(args, "conflicts", False):
+        return False, "--summary and --conflicts are mutually exclusive", []
+    if (getattr(args, "summary", False) or getattr(args, "conflicts", False)) and fields_arg is not None:
+        return False, "--fields cannot be combined with summary/conflicts output", []
+    return True, None, fields
+
+
+def _query_records(records: list[dict[str, Any]], args: argparse.Namespace) -> list[dict[str, Any]]:
+    branch = getattr(args, "branch", None)
+    slug = getattr(args, "slug", None)
+    path = _norm(args.path) if getattr(args, "path", None) is not None else None
+    result: list[dict[str, Any]] = []
+    for record in records:
+        if getattr(args, "active_only", False) and record.get("status") != STATUS_ACTIVE:
+            continue
+        if branch is not None and record.get("branch") != branch:
+            continue
+        if slug is not None and _record_slug(record) != slug:
+            continue
+        if path is not None and _norm(str(record.get("path") or "")) != path:
+            continue
+        result.append(record)
+    return result
+
+
+def _query_projection(record: dict[str, Any], fields: list[str], *, slug: str | None = None) -> dict[str, Any]:
+    view = dict(record)
+    view["path"] = _norm(str(record["path"])) if record.get("path") else None
+    view["slug"] = slug if slug is not None else _record_slug(record)
+    return {field: view.get(field) for field in fields}
+
+
+def _query_conflicts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    owners: dict[str, list[dict[str, str | None]]] = {}
+    for record in records:
+        if record.get("status") != STATUS_ACTIVE:
+            continue
+        for ticket in record.get("backlog") or []:
+            owners.setdefault(str(ticket), []).append({
+                "branch": record.get("branch"),
+                "path": _norm(str(record["path"])) if record.get("path") else None,
+            })
+    return [
+        {"ticket": ticket, "owners": entries}
+        for ticket, entries in sorted(owners.items())
+        if len(entries) > 1
+    ]
+
+
+def _cmd_list_query(
+    args: argparse.Namespace,
+    state_path: Path,
+    state: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> int:
+    valid, reason, fields = _validate_list_query(args)
+    if not valid:
+        print(json.dumps({"schema": SCHEMA, "action": "refused", "reason": reason},
+                         ensure_ascii=False))
+        return EXIT_USAGE
+    selected = _query_records(records, args)
+    conflicts = _query_conflicts(selected)
+    if getattr(args, "summary", False):
+        print(json.dumps({
+            "schema": SCHEMA,
+            "ledger": str(state_path),
+            "summary": {
+                "active": sum(r.get("status") == STATUS_ACTIVE for r in selected),
+                "held": sum(bool(r.get("backlog")) for r in selected if r.get("status") == STATUS_ACTIVE),
+                "handed_back": sum(bool(r.get("handed_back_sha")) for r in selected),
+                "conflicts": conflicts,
+            },
+            "query": {"summary": True},
+        }, indent=2, ensure_ascii=False))
+        return EXIT_OK
+    if getattr(args, "conflicts", False):
+        print(json.dumps({
+            "schema": SCHEMA,
+            "ledger": str(state_path),
+            "conflicts": conflicts,
+            "query": {"conflicts": True},
+        }, indent=2, ensure_ascii=False))
+        return EXIT_OK
+
+    enriched: list[dict[str, Any]] = []
+    for record in selected:
+        view = dict(record)
+        if (not getattr(args, "no_liveness", False)
+                and record.get("status") == STATUS_ACTIVE and record.get("branch")):
+            now_epoch, _ = resolve_now(args.at)
+            facts = build_facts(
+                record.get("base") or "main", name=record["branch"], detached=False,
+                worktree_path=(record["path"] if record.get("path") and Path(record["path"]).exists() else None),
+                head_sha=None, now_epoch=now_epoch, live_window=args.live_window,
+                registered_active=True,
+            )
+            view["live_state"] = ws.classify(facts).value
+            view["landed"] = bool(facts["landed_in_base"])
+            view["worktree_present"] = bool(record.get("path") and Path(record["path"]).exists())
+        enriched.append(view)
+
+    if fields:
+        projected = [_query_projection(item, fields) for item in enriched]
+    else:
+        projected = []
+        for item in enriched:
+            projected.append(_query_projection(item, sorted(LIST_QUERY_FIELDS)))
+    print(json.dumps({
+        "schema": SCHEMA,
+        "ledger": str(state_path),
+        "records": projected,
+        "campaign_reservations": [wc.reservation_summary(r)
+                                   for r in state.get("campaign_reservations") or []],
+        "query": {
+            "active_only": bool(getattr(args, "active_only", False)),
+            "branch": getattr(args, "branch", None),
+            "slug": getattr(args, "slug", None),
+            "path": _norm(args.path) if getattr(args, "path", None) is not None else None,
+            "no_liveness": bool(getattr(args, "no_liveness", False)),
+        },
+    }, indent=2, ensure_ascii=False))
+    return EXIT_OK
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     state_path = _state_path(args)
     state = load_state(state_path)
     records: list[dict[str, Any]] = state["records"]
+
+    if _list_query_requested(args):
+        return _cmd_list_query(args, state_path, state, records)
 
     enriched: list[dict[str, Any]] = []
     for r in records:
@@ -2291,6 +2464,23 @@ def build_parser() -> argparse.ArgumentParser:
     add_state(ls)
     ls.add_argument("--live-window", type=int, default=ws.LIVE_WINDOW_DEFAULT_S,
                     help="seconds; live-agent window for the live classify column")
+    ls.add_argument("--active-only", action="store_true",
+                    help="query only active ledger records")
+    ls.add_argument("--branch", default=None,
+                    help="exact branch selector (composable with other selectors)")
+    ls.add_argument("--slug", default=None,
+                    help="exact worktree slug selector (branch basename when unstored)")
+    ls.add_argument("--path", default=None,
+                    help="exact worktree path selector")
+    ls.add_argument("--fields", default=None,
+                    help="comma-separated projection fields; unknown names fail closed")
+    output_mode = ls.add_mutually_exclusive_group()
+    output_mode.add_argument("--summary", action="store_true",
+                             help="emit compact active/held/handed-back/conflict counts")
+    output_mode.add_argument("--conflicts", action="store_true",
+                             help="emit only named active backlog claim conflicts")
+    ls.add_argument("--no-liveness", action="store_true",
+                    help="skip all git facts/classifier calls after ledger filtering")
     ls.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     ls.set_defaults(func=cmd_list)
 
