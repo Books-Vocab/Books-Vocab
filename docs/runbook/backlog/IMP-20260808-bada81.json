@@ -8,7 +8,7 @@
   "detail": "`worktree_orchestrate.py` 的 gate journal 寫入路徑:當一道 gate 的 `checked == 0`(沒有任何目標可檢,例如 ops-shell-syntax 的腳本全被跳過)現在回 warn 而非 pass——那是 a0469d5c7 剛修好的方向。但**那筆紀錄仍以 `level: block` 寫進 journal**。\n\n後果:never-green 偵測(「這道 gate 在本機從未綠過」)把這筆當成一次 attempt。於是一道其實根本沒東西可檢的 gate,會被統計成「試過而沒綠」,進而在未來的 block summary 裡產生假提示。\n\n這與同一個函式對 `inconclusive` 的處置**不一致**——inconclusive 已被明確排除在 attempt 統計之外,checked==0 沒有。兩者都是「這次沒有得到關於程式碼的資訊」,應該同樣不算 attempt。\n\n來源:feat/orchestrator-trio 收尾補審的第二輪 review(agent a4c32078acce823ed)交回的 5 nit 之一,reviewer 自己判為 ticket-sized。",
   "fix_site": "ops/worktree_orchestrate.py::_run_shell_syntax (main:1615 / feat-orchestrator-trio:1816), ops/worktree_orchestrate.py::_append_gate_history 欄位表 (main:1412 / trio:1567), ops/worktree_orchestrate.py::gate_history_verdicts 的 mine filter (main:1475 / trio:1637), ops/tests/test_worktree_orchestrate.py::test_a_gate_that_never_started_is_not_evidence_about_whether_it_can_pass (main:3584；trio 該檔行號不同,用函式名找)",
   "fixed_by": [
-    "8fb7513a9a23a02a6fddd9c676288e464cbdd541"
+    "dd75d8dbb35f2218f1738a3f52312e52d5e17068"
   ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
@@ -23,6 +23,6 @@
   "stream": "IMP",
   "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-11",
-  "verified_by": "agent:team-a-anchor-recovery",
-  "verified_evidence": "prior child handback acceptance and review receipts; recovery verify at landed 8fb7513a"
+  "verified_by": "agent:team-a-p1-integrator",
+  "verified_evidence": "prior hand-back acceptance and recovery verify; restaged on integration HEAD dd75d8db"
 }
