@@ -651,7 +651,7 @@ class _CampaignPreflightRefusal(RuntimeError):
 
 def _claim_next_backlog(
     *, root: Path, state_arg: str | None, path: Path, branch: str,
-    intent: str, base: str,
+    intent: str, base: str, delegated: bool | None = None,
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
     """Atomically select dispatch's head and register its worktree claim.
 
@@ -700,7 +700,7 @@ def _claim_next_backlog(
         register_args = argparse.Namespace(
             state=str(state_path), at=None, path=str(path), branch=branch,
             intent=intent, base=base, repo_root=str(root), backlog=[ticket],
-            exclusive=True, json=True,
+            exclusive=True, json=True, delegated=delegated,
         )
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -720,6 +720,7 @@ def _claim_next_backlog(
 def _claim_next_campaign_backlog(
     *, root: Path, state_arg: str | None, path: Path, branch: str,
     intent: str, base: str, campaign_id: str, partition_id: str,
+    delegated: bool | None = None,
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
     """Atomically move one reserved ticket in one campaign partition to a child."""
     state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
@@ -754,6 +755,7 @@ def _claim_next_campaign_backlog(
             intent=intent,
             base=base,
             base_reader=read_locked_base,
+            delegated=delegated,
         )
     except _CampaignPreflightRefusal as exc:
         return EXIT_BLOCK, {
@@ -1979,6 +1981,15 @@ def _registry_mutation(
 
 def _state_arg(state: str | None) -> list[str]:
     return ["--state", state] if state else []
+
+
+def _delegated_arg(value: bool | None) -> list[str]:
+    """Forward an explicit delegated tri-state without clearing omitted metadata."""
+    if value is True:
+        return ["--delegated"]
+    if value is False:
+        return ["--not-delegated"]
+    return []
 
 
 def _freeze_path(state: str | None) -> Path:
@@ -3319,6 +3330,7 @@ def cmd_open(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     campaign_id = getattr(args, "campaign", None)
     partition_id = getattr(args, "partition", None)
+    delegated = getattr(args, "delegated", None)
     if bool(campaign_id) != bool(partition_id):
         _emit({"schema": SCHEMA, "step": "open",
                "error": "--campaign and --partition must be supplied together"},
@@ -3347,6 +3359,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             root=root, state_arg=args.state, path=path, branch=branch,
             intent=args.intent, base=base, campaign_id=campaign_id,
             partition_id=partition_id,
+            delegated=delegated,
         )
         if reg_rc == EXIT_OK:
             campaign_claim = {"campaign_id": campaign_id, "partition": partition_id,
@@ -3355,7 +3368,7 @@ def cmd_open(args: argparse.Namespace) -> int:
     elif next_backlog:
         reg_rc, reg_payload, wanted, selection = _claim_next_backlog(
             root=root, state_arg=args.state, path=path, branch=branch,
-            intent=args.intent, base=base,
+            intent=args.intent, base=base, delegated=delegated,
         )
     else:
         if _refuse_unclaimable(root, wanted, args, "open", branch) is not None:
@@ -3365,6 +3378,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             ["register", *_state_arg(args.state), "--path", str(path),
              "--repo-root", str(root), "--branch", branch,
              "--intent", args.intent, "--base", base,
+             *_delegated_arg(delegated),
              *claim_argv, "--exclusive", "--json"])
     if reg_rc != EXIT_OK:
         conflicts = (reg_payload or {}).get("conflicts", [])
@@ -3555,13 +3569,15 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     wanted = list(args.backlog or [])
+    delegated = getattr(args, "delegated", None)
     if _refuse_unclaimable(Path(primary_root()), wanted, args, "adopt",
                            branch) is not None:
         return EXIT_BLOCK
     claim_argv = ["--backlog", *wanted] if args.backlog is not None else []  # see cmd_open
     reg_rc, reg_payload = _registry(
         ["register", "--state", state, "--path", worktree, "--branch", branch,
-         "--intent", args.intent, "--base", args.base, *claim_argv, "--json"])
+         "--intent", args.intent, "--base", args.base,
+         *_delegated_arg(delegated), *claim_argv, "--json"])
     ok = reg_rc == EXIT_OK
     conflicts = (reg_payload or {}).get("conflicts", [])
     # Same sentence `open` builds. The registry's own human line never reaches the
@@ -4245,6 +4261,20 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                "landed": False}, args.json, f"✗ worktree not found: {worktree}")
         return EXIT_USAGE
 
+    delegated_records = _delegated_records_for_path(args.state, worktree)
+    if delegated_records:
+        record = delegated_records[0]
+        payload = {
+            "schema": SCHEMA, "step": "cutover", "error": (
+                "delegated worktree cannot cut over; the integrator must run gate/cutover"
+            ), "refusal": "delegated", "delegated": True, "landed": False,
+            "worktree": worktree, "branch": record.get("branch"),
+        }
+        _emit(payload, args.json,
+              f"✗ cutover refused: delegated worktree {record.get('branch')} at {worktree}; "
+              "the integrator owns landing")
+        return EXIT_BLOCK
+
     orch = _orchestrator_identity(worktree)
     mismatch = _orchestrator_guard(orch, worktree, "cutover", SCHEMA, args.json)
     if mismatch is not None:
@@ -4653,6 +4683,18 @@ def cmd_land(args) -> int:
         _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
                "error": f"no such worktree: {worktree}"},
               args.json, f"✗ no such worktree: {worktree}")
+        return EXIT_BLOCK
+    delegated_records = _delegated_records_for_path(args.state, worktree)
+    if delegated_records:
+        record = delegated_records[0]
+        _emit({
+            "schema": SCHEMA, "step": "land", "mode": "refused",
+            "error": "delegated worktree cannot land; the integrator owns landing",
+            "refusal": "delegated", "delegated": True, "landed": False,
+            "worktree": worktree, "branch": record.get("branch"),
+        }, args.json,
+        f"✗ land refused: delegated worktree {record.get('branch')} at {worktree}; "
+        "the integrator owns landing")
         return EXIT_BLOCK
     primary = primary_root()
 
@@ -8896,6 +8938,28 @@ def _ledger_branches_for_path(state: str | None, worktree: str) -> list[str]:
     return seen
 
 
+def _delegated_records_for_path(state: str | None, worktree: str) -> list[dict[str, Any]]:
+    """Return active delegated records for a normalized worktree path.
+
+    Ledger read failures are treated as no delegation marker: this helper is an
+    authority lookup, not a second registry parser, and cutover's other guards still
+    fail closed on stale or untrusted worktree state.
+    """
+    path = Path(state).resolve() if state else wr.default_state_path()
+    try:
+        data = wr.load_state(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    target = _norm(worktree)
+    return [
+        r for r in data.get("records", [])
+        if r.get("status") == wr.STATUS_ACTIVE
+        and r.get("delegated") is True
+        and r.get("path")
+        and _norm(r["path"]) == target
+    ]
+
+
 def _protected_branches(base: str, target: str | None) -> tuple[str | None, set[str]]:
     """The registry's protected set, widened by terms that do NOT depend on `--base`.
 
@@ -9740,6 +9804,15 @@ def build_parser() -> argparse.ArgumentParser:
              "exception is countable. Does NOT waive the other two refusals (an id "
              "that is not in the store, or one that is already fixed/wont-fix).",
     )
+    delegated_mode = op.add_mutually_exclusive_group()
+    delegated_mode.add_argument(
+        "--delegated", dest="delegated", action="store_true", default=None,
+        help="mark this worktree as delegated; landing belongs to the integrator",
+    )
+    delegated_mode.add_argument(
+        "--not-delegated", dest="delegated", action="store_false",
+        help="explicitly clear the delegated mark",
+    )
     op.set_defaults(func=cmd_open)
 
     ad = sub.add_parser("adopt", help="register an ALREADY-existing worktree in the "
@@ -9765,6 +9838,15 @@ def build_parser() -> argparse.ArgumentParser:
              "an INVESTIGATION rather than a fix. Named in a stderr warning so the "
              "exception is countable. Does NOT waive the other two refusals (an id "
              "that is not in the store, or one that is already fixed/wont-fix).",
+    )
+    delegated_mode = ad.add_mutually_exclusive_group()
+    delegated_mode.add_argument(
+        "--delegated", dest="delegated", action="store_true", default=None,
+        help="mark this worktree as delegated; landing belongs to the integrator",
+    )
+    delegated_mode.add_argument(
+        "--not-delegated", dest="delegated", action="store_false",
+        help="explicitly clear the delegated mark",
     )
     ad.set_defaults(func=cmd_adopt)
 

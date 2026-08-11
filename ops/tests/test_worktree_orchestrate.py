@@ -2121,6 +2121,35 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
 
 
 @gitmark
+def test_delegated_worktree_is_marked_and_cutover_refuses_before_gate(scratch):
+    """A delegated child must be refused before a gate verdict is required."""
+    tmp_path, _repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = None
+    try:
+        rc, opened = _run_json([
+            "open", "--intent", "delegated child", "--slug", "delegated-child",
+            "--delegated", "--state", state, "--json",
+        ])
+        assert rc == MODULE.EXIT_OK, opened
+        wt = opened["path"]
+        records = json.loads(Path(state).read_text())["records"]
+        assert next(r for r in records if r["path"] == wt)["delegated"] is True
+
+        rc, refusal = _run_json([
+            "cutover", "--worktree", wt, "--state", state, "--json",
+        ])
+        assert rc == MODULE.EXIT_BLOCK, refusal
+        assert refusal["refusal"] == "delegated"
+    finally:
+        if wt and Path(wt).exists():
+            MODULE.main([
+                "resolve", "--worktree", wt, "--state", state,
+                "--force", "--commit", "--json",
+            ])
+
+
+@gitmark
 def test_two_open_worktrees_get_distinct_scratch_dirs_and_resolve_removes_them(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")

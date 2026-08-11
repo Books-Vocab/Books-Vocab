@@ -49,5 +49,5 @@ groomed ticket 的單一 slice 做到可驗證。
 ## 收尾與交回
 
 依 `kg-receipt` 回報結果、build/test、i18n、docs impact、tooling debt、風險；在自己的 worktree
-完成 commit 後執行 `./ops/worktree_registry.py hand-back --json`，回報 branch／path／HEAD 後停止。child
+完成 commit 後執行 `./ops/worktree_registry.py hand-back --json`，回報 branch／path／HEAD 後停止。受派 child 開樹應帶 `open --delegated`；`cutover`／`land` 會在 gate 前以 `refusal=delegated` 拒絕，不能自行解除。child
 不跑 gate、land、cutover、resolve、sync、deploy。
