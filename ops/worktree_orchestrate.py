@@ -6912,6 +6912,75 @@ def _delivery_anchor_recovery_is_safe(
     return set(expected).issubset(queued)
 
 
+def _delivery_anchor_noop_recovery_is_safe(
+    primary: Path,
+    marker: dict[str, Any],
+    *,
+    stored_base: str,
+    current_head: str,
+) -> bool:
+    """Prove that a completed noop can survive a metadata-only primary advance.
+
+    A noop has no anchor commit to rediscover.  Recovery is therefore allowed
+    only when its durable receipt proves that the queue was consumed without
+    applying tickets, the current tip descends from the recorded base, and the
+    intervening commits touched backlog metadata documents only.  This keeps
+    the exact-commit and foreign-path refusals for real anchors intact while
+    avoiding a fabricated ``anchor_commit_sha`` for a legitimate noop.
+    """
+    if marker.get("anchor_noop") is not True:
+        return False
+    if marker.get("anchor_committed") is not False:
+        return False
+    if marker.get("anchor_commit_sha") is not None:
+        return False
+    phases = marker.get("phases")
+    anchor_phase = phases.get("anchor") if isinstance(phases, dict) else None
+    if not isinstance(anchor_phase, dict) or anchor_phase.get("status") != "completed":
+        return False
+    applied = anchor_phase.get("applied_ticket_ids", marker.get("anchor_ids", []))
+    if not isinstance(applied, list) or applied:
+        return False
+    if anchor_phase.get("queue_state") != "consumed":
+        return False
+    receipt = anchor_phase.get("acceptance_receipt")
+    if not isinstance(receipt, dict) or receipt.get("schema") != "kg.backlog.anchor.v1":
+        return False
+    if receipt.get("applied") != [] or receipt.get("problems") != []:
+        return False
+    expected = marker.get("expected_ticket_ids", [])
+    if not isinstance(expected, list) or any(
+        not isinstance(ticket_id, str)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id)
+        for ticket_id in expected
+    ):
+        return False
+    if _read_anchor_queue(primary):
+        return False
+    ancestor_rc, _ = _git(
+        ["merge-base", "--is-ancestor", stored_base, current_head], cwd=primary,
+    )
+    if ancestor_rc != EXIT_OK:
+        return False
+    changed_rc, changed = _git(
+        ["diff", "--name-only", stored_base, current_head], cwd=primary,
+    )
+    if changed_rc != EXIT_OK:
+        return False
+    changed_paths = {path for path in changed.splitlines() if path}
+    if not changed_paths:
+        return False
+    expected_paths = {
+        f"docs/runbook/backlog/{ticket_id}.json" for ticket_id in expected
+    }
+    return all(
+        path.startswith("docs/runbook/backlog/")
+        and path.endswith(".json")
+        and (not expected_paths or path in expected_paths)
+        for path in changed_paths
+    )
+
+
 def _delivery_anchor_recovery_dirty_allowed(
     primary: Path, manifest_path: Path | None,
 ) -> bool:
@@ -7208,11 +7277,19 @@ def _delivery_anchor_and_commit(
                 if recovered_sha is not None:
                     saved_ids = recovery_ids
                     already_committed_sha = recovered_sha
-                elif (_delivery_anchor_recovery_is_safe(primary, marker)
-                      or dirty_recovery_allowed):
+                elif (
+                    _delivery_anchor_noop_recovery_is_safe(
+                        primary, marker, stored_base=stored_base,
+                        current_head=current_head,
+                    )
+                    or _delivery_anchor_recovery_is_safe(primary, marker)
+                    or dirty_recovery_allowed
+                ):
                     # The old anchor phase is durable, but its queue rows prove
-                    # that no metadata was consumed.  Rebase the operation onto
-                    # the current primary tip and continue idempotently.
+                    # that no metadata was consumed.  For a completed noop,
+                    # the metadata-only descendant proof above is the durable
+                    # identity; for an interrupted real anchor the queue proof
+                    # remains the identity. Rebase idempotently either way.
                     anchor_base_sha = current_head
                 else:
                     steps.append({

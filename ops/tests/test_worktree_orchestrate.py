@@ -7732,6 +7732,113 @@ def test_delivery_anchor_noop_marker_empty_queue_is_explicit_noop_and_replayable
     ).stdout
 
 
+def test_anchor_noop_recovery_after_metadata_commit(tmp_path, monkeypatch):
+    """A durable noop may resume after a legal backlog metadata-only advance."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"],
+                   cwd=repo, check=True)
+    (repo / ".git" / "info" / "exclude").write_text(".cache/\n", encoding="utf-8")
+    ticket_id = "IMP-20260812-noop-recovery"
+    ticket = repo / "docs" / "runbook" / "backlog" / f"{ticket_id}.json"
+    ticket.parent.mkdir(parents=True)
+    ticket.write_text('{"status":"triaged"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    queue = repo / MODULE.ANCHOR_QUEUE
+    queue.parent.mkdir(parents=True)
+    queue.write_text("", encoding="utf-8")
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "close_wave": {
+            "expected_ticket_ids": [ticket_id],
+            "anchor_base_sha": base_sha,
+            "anchor_ids": [],
+            "anchor_committed": False,
+            "anchor_noop": True,
+            "phases": {"anchor": {
+                "status": "completed",
+                "operation_base": base_sha,
+                "landed_sha": base_sha,
+                "expected_ticket_ids": [ticket_id],
+                "applied_ticket_ids": [],
+                "acceptance_receipt": {
+                    "schema": "kg.backlog.anchor.v1",
+                    "mode": "commit",
+                    "applied": [],
+                    "problems": [],
+                },
+                "queue_state": "consumed",
+            }},
+            "last_successful_phase": "anchor",
+        },
+    }), encoding="utf-8"),
+
+    # This is the legal primary-side verify/groom advance that happened after
+    # the noop marker was persisted: only the expected backlog document moves.
+    ticket.write_text('{"status":"fixed","fixed_by":"metadata"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", str(ticket)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "ops: verify metadata"], cwd=repo,
+                   check=True)
+    current_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    assert current_sha != base_sha
+    assert subprocess.run(
+        ["git", "diff", "--name-only", base_sha, current_sha], cwd=repo,
+        check=True, capture_output=True, text=True,
+    ).stdout.splitlines() == [f"docs/runbook/backlog/{ticket_id}.json"]
+
+    @contextmanager
+    def fake_lock(_primary):
+        yield
+
+    def fake_anchor(*_args, **_kwargs):
+        return MODULE.EXIT_OK, {
+            "schema": "kg.backlog.anchor.v1",
+            "mode": "commit",
+            "applied": [],
+            "problems": [],
+            "unstamped": [],
+        }
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
+    monkeypatch.setattr(MODULE, "_primary_ff_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records", lambda *_a, **_k: (0, [])
+    )
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_anchor)
+
+    rc, steps = MODULE._delivery_anchor_and_commit(
+        argparse.Namespace(base="main", state=None), repo, set(),
+        "delivery-wave", manifest,
+    )
+    assert rc == MODULE.EXIT_OK
+    anchor_commit = next(
+        step["payload"] for step in steps if step.get("name") == "anchor-commit"
+    )
+    assert anchor_commit["committed"] is False
+    assert anchor_commit["noop"] is True
+    marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+    assert marker["anchor_noop"] is True
+    assert marker["anchor_committed"] is False
+    assert "anchor_commit_sha" not in marker
+    assert marker["anchor_base_sha"] == current_sha
+    assert not subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo,
+        check=True, capture_output=True, text=True,
+    ).stdout
+
+
 def _git_repo_with_anchor_ticket(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
