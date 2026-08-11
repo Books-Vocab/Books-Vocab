@@ -842,7 +842,8 @@ def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
 def plan_gates(changed_files: list[str],
                ops_test_exists: Callable[[str], bool] | None = None,
                base: str | None = None,
-               machine_gate: bool = False) -> list[dict[str, Any]]:
+               machine_gate: bool = False,
+               ops_tests_dir_exists: Callable[[], bool] | None = None) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
     judgement the orchestrator owns; it never decides pass/fail itself.
 
@@ -1049,11 +1050,26 @@ def plan_gates(changed_files: list[str],
                 targets.add(candidate)
             else:
                 fallback = True
-        # the whole-suite fallback subsumes every targeted file
-        selected = ["ops/tests"] if fallback else sorted(targets)
-        gates.append(_shell("ops-pytest", "ops",
-                            ["uv", "run", "--no-project", "--python", "3.13",
-                             "--with", "pytest", "pytest", "-q", *selected], "block"))
+        # The whole-suite fallback subsumes every targeted file, but only when the
+        # worktree actually carries an ops test tree. Synthetic git fixtures used by
+        # provenance/identity checks intentionally contain just the copied
+        # orchestrator; invoking pytest on their absent directory exits rc=4 and turns
+        # unavailable infrastructure into a false BLOCK. The callback is injected by
+        # cmd_gate so pure routing tests retain their conservative fallback semantics.
+        ops_tests_changed = any(p.startswith("ops/tests/") for p in changed_files)
+        if (fallback and not ops_tests_changed and ops_tests_dir_exists is not None
+                and not ops_tests_dir_exists()):
+            gates.append(_internal(
+                "ops-pytest-unavailable", "ops", "warn",
+                files=ops_py,
+                note=("ops-pytest was not run: the worktree has no ops/tests directory; "
+                      "this is unavailable test infrastructure, not a change verdict"),
+            ))
+        else:
+            selected = ["ops/tests"] if fallback else sorted(targets)
+            gates.append(_shell("ops-pytest", "ops",
+                                ["uv", "run", "--no-project", "--python", "3.13",
+                                 "--with", "pytest", "pytest", "-q", *selected], "block"))
 
     # Before 2026-08-04 a changed shell script selected NOTHING: `ops/devops_kg_safe.sh`
     # is iron law 7's enforcement point and `ops/release.sh` is the only path to
@@ -3988,7 +4004,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     plan = plan_gates(changed,
                       ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
                       base=args.base,
-                      machine_gate=getattr(args, "machine_gate", False))
+                      machine_gate=getattr(args, "machine_gate", False),
+                      ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir())
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     progress_path = _gate_progress_path(args.state, worktree)
