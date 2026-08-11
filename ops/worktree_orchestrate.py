@@ -172,6 +172,7 @@ import backlog as backlog_tool  # noqa: E402
 import worktree_campaign as campaign  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
+from lib import dispatch_preflight  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
@@ -380,7 +381,8 @@ def _refuse_unclaimable(root: Path, wanted: list[str], args, step: str,
     has to hand it back, and the hand-back is exactly the step that fails when
     something else has gone wrong.
     """
-    blockers = _unclaimable(root / BACKLOG_STORE_DIR, wanted)
+    state_path = Path(args.state).resolve() if getattr(args, "state", None) else None
+    blockers = _unclaimable(root / BACKLOG_STORE_DIR, wanted, state_path=state_path)
     if getattr(args, "allow_ungroomed", False):
         # Downgrades ONLY `ungroomed`. A typo and an already-closed ticket stay
         # refusals: neither has an honest reading in which the agent should proceed.
@@ -402,7 +404,48 @@ def _refuse_unclaimable(root: Path, wanted: list[str], args, step: str,
     return EXIT_BLOCK
 
 
-def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
+def _active_worktree_files(
+    repo: Path, *, exclude_tickets: Iterable[str] = (), state_path: Path | None = None,
+) -> set[str]:
+    """Read active worktree diffs for claim-time overlap detection."""
+    if repo.resolve() != backlog_tool.ROOT.resolve():
+        return set()
+    try:
+        state = wr.load_state(state_path or wr.default_state_path())
+    except (OSError, ValueError, KeyError) as exc:
+        raise RuntimeError(f"active registry unreadable: {exc}") from exc
+    changed: set[str] = set()
+    excluded = set(str(ticket) for ticket in exclude_tickets)
+    for record in state.get("records") or []:
+        if not isinstance(record, dict) or record.get("status") != wr.STATUS_ACTIVE:
+            continue
+        if excluded.intersection(str(ticket) for ticket in (record.get("backlog") or [])):
+            continue
+        worktree = Path(str(record.get("path") or ""))
+        if not worktree.is_dir():
+            raise RuntimeError(f"active worktree missing: {worktree}")
+        for args in (
+            ["diff", "--name-only"],
+            ["diff", "--name-only", "--cached"],
+            ["ls-files", "--others", "--exclude-standard"],
+        ):
+            rc, output = _git(args, cwd=worktree)
+            if rc != 0:
+                raise RuntimeError(f"active worktree probe failed: {worktree} ({args!r})")
+            changed.update(line.strip() for line in output.splitlines() if line.strip())
+        branch = str(record.get("branch") or "")
+        base = str(record.get("base") or "main")
+        if branch:
+            rc, output = _git(["diff", "--name-only", f"{base}...{branch}"], cwd=repo)
+            if rc != 0:
+                raise RuntimeError(f"active branch probe failed: {branch}")
+            changed.update(line.strip() for line in output.splitlines() if line.strip())
+    return changed
+
+
+def _unclaimable(
+    store_dir: Path, ids: list[str], *, state_path: Path | None = None,
+) -> list[dict]:
     """Which of these tickets must not be handed to an agent, and why.
 
     `worktree_registry` checks only the SHAPE of a `--backlog` id, and that is the
@@ -505,6 +548,63 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
                     "dependencies; use `status=contract-blocked` with typed "
                     "evidence when the contract cannot be made executable.",
                 })
+            try:
+                active_files = _active_worktree_files(
+                    repo, exclude_tickets=ids, state_path=state_path,
+                )
+            except RuntimeError as exc:
+                problems.append({
+                    "id": entry_id,
+                    "kind": "preflight-read-failed",
+                    "repair": f"repair the active registry/worktree probe, then retry: {exc}",
+                })
+                active_files = set()
+            compiled = dispatch_preflight.compile_static(
+                payload,
+                repo=repo,
+                contract_problems=contract_problems,
+                unresolved_blockers=blockers,
+                active_files=active_files,
+            )
+            if compiled.classification != "executable":
+                for issue in compiled.problems:
+                    issue_kind = issue.get("kind")
+                    if issue_kind in {
+                            "baseline-green", "environment-blocked", "active-overlap",
+                    } and not any(
+                            problem.get("id") == entry_id
+                            and problem.get("kind") == issue_kind
+                            for problem in problems
+                    ):
+                        problems.append({
+                            "id": entry_id,
+                            "kind": issue_kind,
+                            "preflight": compiled.to_dict(),
+                            "repair": "; ".join(compiled.repair_hints),
+                        })
+                existing = next(
+                    (problem for problem in problems
+                     if problem.get("id") == entry_id
+                     and problem.get("kind") in {
+                         "contract-blocked", "dependency-blocked", "blocked-by-unresolved",
+                     }),
+                    None,
+                )
+                has_classification = any(
+                    problem.get("id") == entry_id
+                    and problem.get("kind") == compiled.classification
+                    for problem in problems
+                )
+                if existing is not None:
+                    existing["preflight"] = compiled.to_dict()
+                    existing["repair"] += " " + "; ".join(compiled.repair_hints)
+                elif not has_classification:
+                    problems.append({
+                        "id": entry_id,
+                        "kind": compiled.classification,
+                        "preflight": compiled.to_dict(),
+                        "repair": "; ".join(compiled.repair_hints),
+                    })
     return problems
 
 
@@ -540,6 +640,12 @@ def _held_from_registry_state(state: dict[str, Any]) -> dict[str, dict[str, Any]
                 "partition_claimed": claimed,
             })
     return held
+
+
+class _CampaignPreflightRefusal(RuntimeError):
+    def __init__(self, problems: list[dict]):
+        super().__init__("dispatch preflight refused campaign ticket")
+        self.problems = problems
 
 
 def _claim_next_backlog(
@@ -579,6 +685,15 @@ def _claim_next_backlog(
             )
         chosen = available[0]
         ticket = str(chosen["id"])
+        blockers = _unclaimable(store, [ticket], state_path=state_path)
+        if blockers:
+            return (
+                EXIT_BLOCK,
+                {"reason": "dispatch preflight refused", "problems": blockers},
+                [],
+                {"mode": "dispatch-head", "eligible": len(ranked),
+                 "available": len(available), "skipped_claimed": 0},
+            )
         rank = next((i for i, item in enumerate(ranked)
                      if item.get("id") == ticket), 0)
         register_args = argparse.Namespace(
@@ -609,19 +724,41 @@ def _claim_next_campaign_backlog(
     state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
 
     def read_locked_base() -> str:
+        state = wr.load_state(state_path)
+        reservation = next(
+            (item for item in state.get("campaign_reservations") or []
+             if item.get("campaign_id") == campaign_id),
+            None,
+        )
+        partition = ((reservation or {}).get("partitions") or {}).get(partition_id)
+        ticket_ids = list((partition or {}).get("ticket_ids") or [])
+        claimed = (partition or {}).get("claimed") or {}
+        ticket = next((item for item in ticket_ids if item not in claimed), None)
+        if ticket is not None:
+            blockers = _unclaimable(
+                root / BACKLOG_STORE_DIR, [str(ticket)], state_path=state_path,
+            )
+            if blockers:
+                raise _CampaignPreflightRefusal(blockers)
         rc, output = _git(["rev-parse", base], cwd=root)
         return output.strip() if rc == EXIT_OK else ""
 
-    result = wr.claim_campaign_ticket(
-        state_path,
-        campaign_id=campaign_id,
-        partition_id=partition_id,
-        branch=branch,
-        path=str(path),
-        intent=intent,
-        base=base,
-        base_reader=read_locked_base,
-    )
+    try:
+        result = wr.claim_campaign_ticket(
+            state_path,
+            campaign_id=campaign_id,
+            partition_id=partition_id,
+            branch=branch,
+            path=str(path),
+            intent=intent,
+            base=base,
+            base_reader=read_locked_base,
+        )
+    except _CampaignPreflightRefusal as exc:
+        return EXIT_BLOCK, {
+            "ok": False, "reason": "dispatch preflight refused", "problems": exc.problems,
+        }, [], {"mode": "campaign-partition", "campaign": campaign_id,
+                "partition": partition_id}
     selection = {"mode": "campaign-partition", "campaign": campaign_id,
                  "partition": partition_id}
     if not result.get("ok"):
@@ -3181,10 +3318,19 @@ def cmd_open(args: argparse.Namespace) -> int:
             for c in conflicts) or (reg_payload or {}).get("reason", "register refused")
         error = ((reg_payload or {}).get("reason")
                  if next_backlog else "claim refused")
+        preflight_problems = (reg_payload or {}).get("problems", [])
+        details = ""
+        if preflight_problems:
+            details = "\n" + "\n".join(
+                f"  {problem.get('kind', 'preflight')}: "
+                f"{problem.get('repair', problem)}"
+                for problem in preflight_problems
+            )
         _emit({"schema": SCHEMA, "step": "open", "error": error,
                "branch": branch, "backlog": wanted, "conflicts": conflicts,
-               "selection": selection, "registry_rc": reg_rc}, args.json,
-              f"✗ cannot open [{branch}] — {held}")
+               "selection": selection, "registry_rc": reg_rc,
+               "problems": preflight_problems}, args.json,
+              f"✗ cannot open [{branch}] — {held}{details}")
         # EXIT_BLOCK, not EXIT_OK-with-a-warning: losing a race is a refusal, and
         # the exit code is the only part of this a caller's `&&` can see.
         return EXIT_BLOCK
