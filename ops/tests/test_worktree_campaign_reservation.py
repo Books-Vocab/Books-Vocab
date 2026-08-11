@@ -304,18 +304,45 @@ def test_open_campaign_claim_is_scoped_to_its_partition(tmp_path):
     ).stdout.strip()
     request = manifest(base=actual_base)
     assert reserve(state, request, current_base=actual_base)["ok"] is True
-    rc, payload, wanted, selection = ORCHESTRATE._claim_next_campaign_backlog(
-        root=ROOT,
-        state_arg=str(state),
-        path=tmp_path / "child",
-        branch="debug/campaign-child",
-        intent="campaign child",
-        base="main",
-        campaign_id="campaign-1",
-        partition_id="p2",
-    )
+    # Claim-time dispatch preflight now requires every reserved ticket to have a
+    # real backlog contract.  Campaign reservation tests historically supplied
+    # only registry metadata, so install the p2 fixture in the repository store
+    # for this one scoped claim and remove it even when an assertion fails.
+    ticket_id = "IMP-20260810-cc0003"
+    store_entry = ROOT / "docs" / "runbook" / "backlog" / f"{ticket_id}.json"
+    store_entry.write_text(json.dumps({
+        "schema": "kg.backlog.entry.v1", "id": ticket_id,
+        "stream": "IMP", "date": "2026-08-10", "source": "test",
+        "category": "tool", "severity": "med", "status": "triaged",
+        "detail": "campaign claim fixture", "resolution": "",
+        "brief": "A campaign child needs a claimable fixture.",
+        "scope": "One campaign reservation test fixture.",
+        "plan": "Run the claim preflight.",
+        "acceptance": "The fixture contract is readable.",
+        "acceptance_cmd": "test -f ops/tests/test_worktree_campaign_reservation.py",
+        "acceptance_expect_rc": 0,
+        "fix_site": "ops/tests/test_worktree_campaign_reservation.py",
+        "groomed_at": "2026-08-10", "groomed_by": "test",
+        "contract_status": "ready", "contract_baseline": "red",
+        "contract_checked_at": "2026-08-10",
+        "contract_checked_by": "test",
+        "contract_evidence": "fixture contract",
+    }), encoding="utf-8")
+    try:
+        rc, payload, wanted, selection = ORCHESTRATE._claim_next_campaign_backlog(
+            root=ROOT,
+            state_arg=str(state),
+            path=tmp_path / "child",
+            branch="debug/campaign-child",
+            intent="campaign child",
+            base="main",
+            campaign_id="campaign-1",
+            partition_id="p2",
+        )
+    finally:
+        store_entry.unlink(missing_ok=True)
     assert rc == REGISTRY.EXIT_OK, payload
-    assert wanted == ["IMP-20260810-cc0003"]
+    assert wanted == [ticket_id]
     assert selection["partition"] == "p2"
     assert selection["remaining"] == 0
     records = json.loads(state.read_text())["records"]
