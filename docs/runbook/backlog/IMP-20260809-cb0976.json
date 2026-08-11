@@ -1,6 +1,6 @@
 {
   "acceptance": "紅：目前 planner/state 模組不存在，兩個測試依賴 main 原始碼形狀，input/prompt 變更後 resume 仍信任舊 marker。綠：stage metadata 只有一份，CLI 與 runner 都由它產生；planner/state 可純單測，fingerprint drift 會從正確 stage 失效下游 marker，既有離線 pipeline 測試維持綠。",
-  "acceptance_cmd": "set -eu\ntest -f lab/podcast/pipeline_plan.py\ntest -f lab/podcast/test_pipeline_plan.py\n! rg -n 'inspect\\.getsource\\(pipeline\\.main\\)' lab/podcast/test_only_episode_marker.py lab/podcast/test_only_episode_skip_series.py\ncd lab/podcast\nuv run pytest -q test_pipeline_plan.py test_approval_gate.py test_only_episode_marker.py test_only_episode_skip_series.py test_workflow_versioning.py test_publish_stage.py",
+  "acceptance_cmd": "set -eu; test -f lab/podcast/pipeline_plan.py; test -f lab/podcast/test_pipeline_plan.py; ! rg -n 'inspect\\.getsource\\(pipeline\\.main\\)' lab/podcast/test_only_episode_marker.py lab/podcast/test_only_episode_skip_series.py; cd lab/podcast; uv run --no-project --python 3.13 --with pytest --with ebooklib --with beautifulsoup4 --with boto3 pytest -q test_pipeline_plan.py test_approval_gate.py test_only_episode_marker.py test_only_episode_skip_series.py test_workflow_versioning.py test_publish_stage.py",
   "acceptance_expect_rc": 0,
   "brief": "播客製作的規劃、續跑狀態與實際執行綁在一個入口，階段清單已經互相矛盾，輸入改變也可能沿用舊結果。",
   "category": "arch",
