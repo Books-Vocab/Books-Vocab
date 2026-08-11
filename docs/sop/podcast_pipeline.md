@@ -49,7 +49,7 @@ EPUB
  └15. publish         ops/podcast_upload.sh → S3(含 cover.png) + verify 現身 catalog index
 ```
 
-> `STAGES` list 為 15 個(`pipeline.py` 內,搜 `STAGES = [`)。`cover` 在 `subtitle` 後、`publish` 前(series-wide:一 series 一張封面,`--only-episode` 跳過;冪等:`plan/cover.png` 存在即 skip;無 approval gate)。`publish` 為終端 stage,合成完成即自動上傳 S3(關閉「合成了但沒上傳」的 drift 缺口)——**不設 approval gate**(全自動),失敗 loud-fail（PODCAST_BUCKET/creds 未設或 verify 耗盡即回 False,寫 error log,非 silent）。monitor dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。若見 `pipeline.py` 頂部 docstring 仍寫舊階數即為殘留,以 `STAGES` 為準。
+> `STAGES` compatibility list 由 `lab/podcast/pipeline_plan.py:STAGE_SPECS` 唯一生成(`pipeline.py` 僅保留匯出別名)。`cover` 在 `subtitle` 後、`publish` 前(series-wide:一 series 一張封面,`--only-episode` 跳過;冪等:`plan/cover.png` 存在即 skip;無 approval gate)。`publish` 為終端 stage,合成完成即自動上傳 S3(關閉「合成了但沒上傳」的 drift 缺口)——**不設 approval gate**(全自動),失敗 loud-fail（PODCAST_BUCKET/creds 未設或 verify 耗盡即回 False,寫 error log,非 silent）。monitor dashboard `POST /api/workspace/{ws}/upload` 手動上傳保留為冪等修復路徑。若見 `pipeline.py` 頂部 docstring 仍寫舊階數即為殘留,以 `STAGE_SPECS` 為準。
 
 ### 兩道人工核准 gate(`approval_gate_block`)
 
@@ -66,9 +66,9 @@ PLAN(prep→enricher) ┃.plan_approved┃ SCRIPT(scriptwrite→script-review) �
 
 ### Stage marker / resume
 
-每 stage 成功 `stage_end()` 寫 `.stage_<name>_done`（內容 ISO timestamp）。`detect_resume_point()` 找第一個沒 marker 的 stage。傳 workspace 目錄無 `--skip-to` 時自動 resume。
+每 stage 成功 `stage_end()` 原子寫入 `.stage_<name>_done`（內容 ISO timestamp）。`detect_resume_point()` 找第一個沒 marker 的 stage；若該 stage 有 `stage_provenance/<stage>.json`，還會比較目前 input artifact 的內容 fingerprint 與 prompt fingerprint，第一個 drift stage 及其下游會重新執行。傳 workspace 目錄無 `--skip-to` 時自動 resume。
 
-**脆弱點**:marker 僅代表「stage 函式回傳 True」，不會自動讓下游 marker 因 prompt/input 改動而失效。`stage_provenance/<stage>.json` 會記 input/output artifact hash 與 prompt hash，能事後追溯 drift；但 resume 判斷仍看 marker。手動刪中間檔但留 marker → resume 會跳過。大改 prompt 後請手動 `rm -f .stage_*_done` 從適當階段重跑。
+`stage_provenance/<stage>.json` 會記 input/output artifact hash 與 prompt hash；比較忽略 mtime（checkout/rsync 還原不會被誤判），但內容、大小或 prompt 改動會失效。沒有 provenance 的舊 workspace 保留 marker 相容行為，下一次成功執行才補寫狀態；provenance JSON 損壞則 fail-fast。人工 `.plan_approved` / `.script_approved` gate marker 不受 fingerprint drift 取代，仍依 approval gate 語意檢查。
 
 ### Workflow versioning / provenance
 

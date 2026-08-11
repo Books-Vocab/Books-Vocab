@@ -84,6 +84,7 @@ from tts_config import (
 from pipeline_plan import (
     PipelineConfig,
     STAGE_SPECS,
+    WorkspaceState,
     render_stage_help,
     resolve_run_plan,
     stage_names,
@@ -332,13 +333,7 @@ def _prompt(name: str, archetype: str) -> str:
 
 
 def read_workflow_manifest(workspace: Path) -> dict | None:
-    manifest = workspace / WORKFLOW_MANIFEST
-    if not manifest.exists():
-        return None
-    try:
-        return json.loads(manifest.read_text())
-    except json.JSONDecodeError as e:
-        raise ValueError(f"{manifest} is not valid JSON: {e}") from e
+    return WorkspaceState(workspace).read_manifest()
 
 
 def resolve_workspace_workflow(workspace: Path, requested: str | None) -> str:
@@ -423,10 +418,7 @@ def write_workflow_manifest(
         "created_at": created_at,
         "updated_at": datetime.now().isoformat(timespec="seconds"),
     }
-    (workspace / WORKFLOW_MANIFEST).write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
-    )
-    return manifest
+    return WorkspaceState(workspace).write_manifest(manifest)
 
 
 def write_mode_sidecar(workspace: Path, archetype: str, spoiler_mode: str | None) -> None:
@@ -626,7 +618,7 @@ def approval_gate_block(
     gate_idx = stage_order.index(stage_name)
     if explicit_skip_idx is not None and explicit_skip_idx >= gate_idx:
         return None
-    if (workspace / marker).exists():
+    if WorkspaceState(workspace).approval_marker_path(marker).exists():
         return None
     return marker
 
@@ -640,6 +632,7 @@ class PipelineLog:
     def __init__(self, workspace: Path):
         self.path = workspace / "pipeline_log.jsonl"
         self.workspace = workspace
+        self.state = WorkspaceState(workspace)
 
     def _write(self, entry: dict) -> None:
         entry["ts"] = datetime.now().isoformat(timespec="seconds")
@@ -666,8 +659,7 @@ class PipelineLog:
         # silently leave every other episode unprocessed. Single-episode runs
         # must therefore force the producer to drive subsequent work explicitly.
         if success and not only_episode:
-            marker = self.workspace / _STAGE_MARKER.format(name=stage)
-            marker.write_text(datetime.now().isoformat())
+            self.state.mark_stage_done(stage)
 
     def gate_wait(self, stage: str, marker: str, phase: str) -> None:
         """Pipeline paused at an approval gate — NOT a failure (exit 0). The
@@ -1326,15 +1318,31 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
 
 def stage_done(workspace: Path, stage: str) -> bool:
     """Check if a stage has a completion marker."""
-    return (workspace / _STAGE_MARKER.format(name=stage)).exists()
+    return WorkspaceState(workspace).stage_done(stage)
 
 
-def detect_resume_point(workspace: Path, stages: list[str] | None = None) -> int:
-    """Find the first incomplete stage index."""
+def detect_resume_point(
+    workspace: Path,
+    stages: list[str] | None = None,
+    *,
+    only_episode: int | None = None,
+) -> int:
+    """Find the first incomplete or input-drifted stage index."""
     stage_order = stages or STAGES
+    state = WorkspaceState(workspace)
     for i, stage in enumerate(stage_order):
-        if not stage_done(workspace, stage):
+        if not state.stage_done(stage):
             return i
+        # Legacy workspaces have markers but no provenance.  Preserve their
+        # historical resume behavior until a stage is rerun and emits state.
+        if state.has_provenance(stage, only_episode):
+            if state.provenance_is_stale(
+                stage,
+                current_inputs=capture_stage_inputs(workspace, stage, only_episode),
+                current_prompt=_stage_prompt_metadata(workspace, stage),
+                only_episode=only_episode,
+            ):
+                return i
     return len(stage_order)  # all done
 
 
@@ -1558,7 +1566,7 @@ def _approval_marker_for_stage(workspace: Path, stage: str) -> dict[str, object]
     marker = _APPROVAL_GATES.get(stage)
     if not marker:
         return None
-    path = workspace / marker
+    path = WorkspaceState(workspace).approval_marker_path(marker)
     return {"marker": marker, "approved": path.exists()}
 
 
@@ -1706,12 +1714,7 @@ def write_stage_provenance(
         "manual_approval_marker": _approval_marker_for_stage(workspace, stage),
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
-    out_dir = workspace / STAGE_PROVENANCE_DIR
-    out_dir.mkdir(exist_ok=True)
-    suffix = f"_ep_{only_episode}" if only_episode is not None else ""
-    (out_dir / f"{stage}{suffix}.json").write_text(
-        json.dumps(provenance, ensure_ascii=False, indent=2) + "\n"
-    )
+    WorkspaceState(workspace).write_provenance(stage, provenance, only_episode)
     _update_episode_lineage(
         workspace,
         stage,
@@ -2214,7 +2217,7 @@ def show_status(workspace: Path) -> None:
     # Stage markers
     print(f"\n  Stage Progress:")
     for stage in stages:
-        marker = workspace / _STAGE_MARKER.format(name=stage)
+        marker = WorkspaceState(workspace).marker_path(stage)
         if marker.exists():
             ts = marker.read_text().strip()
             print(f"    ✓ {stage:<15} ({ts})")
@@ -2571,7 +2574,11 @@ examples:
     print(f"Workflow: {workflow_version}")
     stage_specs = stage_specs_from_workflow(load_workflow_definition(workflow_version))
     stages = list(stage_names(stage_specs))
-    resume = detect_resume_point(workspace, stages) if not args.skip_to and not args.only_stage else 0
+    resume = (
+        detect_resume_point(workspace, stages, only_episode=args.only_episode)
+        if not args.skip_to and not args.only_stage
+        else 0
+    )
     try:
         run_plan = resolve_run_plan(
             PipelineConfig(

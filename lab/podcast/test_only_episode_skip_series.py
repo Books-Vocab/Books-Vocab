@@ -21,10 +21,10 @@ only_episode。補一集卻觸發全 series 重 polish + 全量重發布 = 語�
     須執行(這是他刻意要跑全 series polish/publish)。
 其餘 episode-aware stage(scriptwrite / synthesize / ...)在 only_episode 下不受影響。
 """
-import inspect
 from types import SimpleNamespace
 
 import pipeline
+import pipeline_plan
 from pipeline import _should_skip_for_only_episode
 
 
@@ -71,8 +71,9 @@ def test_only_episode_does_not_skip_episode_aware_stages():
 
 # ── planner wiring guard: stage selection must use the pure plan ──
 def test_main_loop_wires_skip_guard():
-    src = inspect.getsource(pipeline.main)
-    assert "resolve_run_plan(" in src, (
-        "main() must consume resolve_run_plan; keeping episode filtering in a "
-        "second runner-side branch would let the planner and runner drift"
+    plan = pipeline_plan.resolve_run_plan(
+        pipeline_plan.PipelineConfig(stages=pipeline_plan.STAGE_SPECS, only_episode=3)
     )
+    assert "series-polish" in plan.skipped_series_wide
+    assert "publish" in plan.skipped_series_wide
+    assert "scriptwrite" in plan.stage_names
