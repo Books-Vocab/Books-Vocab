@@ -1,6 +1,14 @@
 IOS_EXPORT_PROFILE_NAME="${IOS_EXPORT_PROFILE_NAME:-KG App Store}"
 IOS_EXPORT_CERTIFICATE_NAME="${IOS_EXPORT_CERTIFICATE_NAME:-Apple Distribution}"
 
+# Keep sourceable iOS command libraries on the same public contract as the
+# Python and standalone shell entrypoints.
+EXIT_OK=0
+EXIT_TOOL_ERROR=1
+EXIT_BLOCK=2
+EXIT_WARN=3
+EXIT_USAGE=64
+
 emit_readiness() {
   local key="$1" status="$2" detail="$3"
   echo "[ios][readiness] $key status=$status $detail"
@@ -319,7 +327,7 @@ cmd_sentry() {
         ;;
       *)
         echo "✗ unknown sentry option: $1" >&2
-        return 1
+        return "$EXIT_USAGE"
         ;;
     esac
   done
@@ -347,7 +355,7 @@ cmd_doctor() {
         ;;
       *)
         echo "✗ unknown doctor option: $1" >&2
-        return 1
+        return "$EXIT_USAGE"
         ;;
     esac
   done
@@ -509,7 +517,7 @@ cmd_workflow() {
         ;;
       *)
         echo "✗ unknown workflow option: $1" >&2
-        return 1
+        return "$EXIT_USAGE"
         ;;
     esac
   done
@@ -524,7 +532,7 @@ cmd_workflow() {
       ;;
     *)
       echo "✗ unknown workflow: $name" >&2
-      return 1
+      return "$EXIT_USAGE"
       ;;
   esac
 }
@@ -567,7 +575,7 @@ cmd_gate_release_json_from_state() {
         manual:(.manual|length)
       }
     | .verdict = (if (.summary.blocks > 0) then "block" elif (.summary.warnings > 0) then "warn" else "pass" end)
-    | .exitCode = (if .verdict=="block" then 2 elif .verdict=="warn" then 1 else 0 end)'
+    | .exitCode = (if .verdict=="block" then 2 elif .verdict=="warn" then 3 else 0 end)'
 }
 
 cmd_gate_release_json_payload() {
@@ -615,7 +623,7 @@ cmd_gate() {
         ;;
       *)
         echo "✗ unknown gate option: $1" >&2
-        return 1
+        return "$EXIT_USAGE"
         ;;
     esac
   done
@@ -624,7 +632,7 @@ cmd_gate() {
     release) cmd_gate_release "$json" ;;
     *)
       echo "✗ unknown gate: $name" >&2
-      return 1
+      return "$EXIT_USAGE"
       ;;
   esac
 }

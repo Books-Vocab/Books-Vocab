@@ -1318,6 +1318,31 @@ def test_non_infrastructure_failure_still_blocks(tmp_path, monkeypatch):
     assert result["status"] == "block"
 
 
+def test_typed_warn_exit_is_advisory_even_for_block_level_shell_gate(tmp_path, monkeypatch):
+    """A producer's rc=3 WARN must survive the orchestrator consumer boundary."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        lambda *args, **kwargs: (3, "WARN: origin-unreachable", 0.001),
+    )
+
+    result = MODULE._run_gate(
+        {
+            "name": "docs-verified-against",
+            "category": "docs",
+            "level": "block",
+            "kind": "shell",
+            "cmd": ["ops/docs_lint.sh", "--files", "docs/sop/ios.md"],
+        },
+        str(tmp_path),
+    )
+
+    assert result["rc"] == 3
+    assert result["status"] == "warn"
+    assert MODULE.aggregate_verdict([result]) == "warn"
+
+
 def test_verdict_names_the_offender_rather_than_just_refusing(capsys):
     """Blocking without saying which gate leaves the reader to diff the payload by
     hand. The name and the offending value both have to travel.

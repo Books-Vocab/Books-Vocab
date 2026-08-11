@@ -58,7 +58,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ./ops/ios_ops.sh sentry [--json]        # iOS Sentry wiring 摘要 / schema=kg.ios.sentry.v1
 ./ops/ios_ops.sh workflow release       # read-only 發版工作流：下一步命令 + todo/ready/block/warn/manual
 ./ops/ios_ops.sh workflow release --json # 同上，輸出 kg.ios.workflow.v1 結構化 JSON
-./ops/ios_ops.sh gate release --json    # release hard-stop verdict:0 pass / 1 warn / 2 block
+./ops/ios_ops.sh gate release --json    # release hard-stop verdict:0 pass / 3 warn / 2 block
 ./ops/ios_ops.sh xcode --json           # Xcode/project/destination/simulator inventory:kg.ios.xcode.v1
 ./ops/ios_ops.sh simulator status --json # booted simulator + app data container/process:kg.ios.simulator.v1
 ./ops/ios_ops.sh simulator ensure-booted --json # 若 simulator 已 booted 就重用，否則 boot 預設裝置並等待 bootstatus
@@ -87,7 +87,7 @@ build/test/archive 共用 `/tmp/kg-ios-build.lock`；test 的 simulator executio
 
 `ios_ops.sh workflow release` 是 read-only 發版操作編排:輸出 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`。它不跑測試/編譯/archive/upload；除了 project settings、Organizer、TestFlight、ASC state，也會自動讀 `ops/app_review/` 最新 semver spec 並執行本地 App Review gate。這五個潛在慢來源都使用共用 visible runner，輸出與 timeout 契約以 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落為 SoT。只有 gate PASS 時 submit step 才標 `manual`；gate BLOCK、spec 缺失或 gate 無法執行時，submit step 必為 `block`，唯一 next command 是 `./ops/app_review_evidence.py status --spec <latest>`。`--json` schema 另含 `appReviewGate`、`summary.verdict` 與 `summary.counts.ready|todo|block|warn|manual|total`。
 
-`ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`1=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步。`block` 來自 readiness 或 workflow，其中包含 App Review evidence gate，所以缺 producer、缺/漂移/過期證據不能再以 GUI manual step 繞過。
+`ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`3=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步。`block` 來自 readiness 或 workflow，其中包含 App Review evidence gate，所以缺 producer、缺/漂移/過期證據不能再以 GUI manual step 繞過。
 
 `./ops/app_review_evidence.py plan|status --spec ops/app_review/<version>.json` 是送審證據控制面：`plan` 列 artifact、typed producer、authority 與 next command，`status` 執行完整 gate 並回報 block reason。最終 ASC desired bundle 是 release owner 提供的人工輸入；本工具不生成或改寫截圖 bundle，也沒有 Catalog appearance producer。其餘 `urls|journey|journey-run|demo-run|attest` 依 checked spec 產生封閉證據；`journey-run` / `demo-run` 的 dirty tree verdict 仍 fail closed。
 

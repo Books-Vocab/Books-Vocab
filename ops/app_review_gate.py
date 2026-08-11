@@ -36,6 +36,7 @@ from lib.app_review_evaluators import (
     merge_result,
     thaw,
 )
+from lib.exit_codes import EXIT_TOOL_ERROR, EXIT_USAGE
 
 SPEC_SCHEMA = "kg.app_review.gate.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
@@ -84,6 +85,16 @@ _TARGET_KEYS = {
     "screenshotDisplayType",
     "demoAccountIdentitySHA256",
 }
+
+
+class ContractArgumentParser(argparse.ArgumentParser):
+    """Map argparse's generic usage status (2) to KG's usage status (64)."""
+
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, f"{self.prog}: error: {message}\n")
+
+
 _REVIEW_FIELDS = {
     "contactFirstName",
     "contactLastName",
@@ -1274,8 +1285,8 @@ def verify_bundle(path: Path) -> dict[str, Any]:
 
 
 def parser() -> argparse.ArgumentParser:
-    top = argparse.ArgumentParser(description=__doc__)
-    sub = top.add_subparsers(dest="command", required=True)
+    top = ContractArgumentParser(description=__doc__)
+    sub = top.add_subparsers(dest="command", required=True, parser_class=ContractArgumentParser)
     for name in ("dry-run", "verify"):
         command = sub.add_parser(name, help=f"{name} the closed-world reviewer evidence gate")
         if name == "verify":
@@ -1332,7 +1343,10 @@ def main(argv: list[str] | None = None) -> int:
             "blocks": [{"code": "gate.error", "expected": "valid closed-world evidence", "actual": str(exc)}],
         }
         print(_canonical(output).decode(), end="")
-        return 1
+        # A malformed/unreadable evidence input is a tool error.  CLI-level
+        # combinations remain usage errors; a valid evidence bundle that fails
+        # evaluation returns 2 from the normal verdict path above.
+        return EXIT_USAGE if str(exc).startswith(("--", "dry-run never writes")) else EXIT_TOOL_ERROR
 
 
 if __name__ == "__main__":

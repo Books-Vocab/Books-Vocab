@@ -23,7 +23,9 @@ run_capture() {
   "$@" >"$out" 2>&1
   rc=$?
   set -e
-  if [ "$rc" -ne 0 ]; then
+  # rc=3 is the normalized warn result; callers that need a hard block use
+  # their explicit `if command; then` probes below and assert non-zero there.
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
     echo "command failed rc=$rc: $*" >&2
     dump_file "$out"
     exit "$rc"
@@ -315,7 +317,7 @@ require_grep "不可達" /tmp/kg_docs_lint_audit_orphan.out
 # 這條知識原本只活在 backlog.py 的 _doc_anchor() docstring 裡,docs_lint 一個字都不說。
 
 # 5) 正控:ORIGIN_REF 落後 HEAD 一格 → anchor(=HEAD)origin 不可達 → WARN + 可照抄的建議 sha,
-#    且 exit 0(rc 由 run_capture 把關)。
+#    且 exit 3(WARN；rc 由 run_capture 把關)。
 origin_behind="$(git rev-parse HEAD~1)"
 write_anchor_fixture "$(git rev-parse HEAD)"
 export KG_DOCS_LINT_ORIGIN_REF="$origin_behind"
@@ -327,8 +329,8 @@ require_grep "建議改錨" /tmp/kg_docs_lint_origin_warn.out
 require_grep "$(git rev-parse --short=9 "$origin_behind")" /tmp/kg_docs_lint_origin_warn.out
 require_grep "ERROR: 0" /tmp/kg_docs_lint_origin_warn.out
 # summary 也要真的計進去。少了這行,把 `warnings=$((warnings+1))` 整行刪掉四個案子照樣綠:
-# 訊息照印、ERROR: 0 照過,只有 --strict 從此抓不到這條。(OK: 1 是 registry 檢查貢獻的,
-# 不是同一份 doc 被雙記。)
+# 訊息照印、ERROR: 0 照過,若沒有 WARN exit contract 便會從此抓不到這條。(OK: 1 是 registry
+# 檢查貢獻的,不是同一份 doc 被雙記。)
 require_grep "WARN:  1" /tmp/kg_docs_lint_origin_warn.out
 
 # 6) 正控(acceptance 形狀):ORIGIN_REF 是與 HEAD 無血緣的 root commit → 任何 anchor 都必然
@@ -427,8 +429,17 @@ require_grep "ERROR: 0" /tmp/kg_docs_lint_reanchor_files.out
 # 11) patch-id 無匹配時具名報錯並非零，絕不猜測鄰近 commit。
 reanchor_unmatched_sha="$(git -c user.email=docs-lint@example.test -c user.name="docs-lint fixture" commit-tree "HEAD^{tree}" -p HEAD -m "docs_lint reanchor unmatched fixture")"
 write_reanchor_anchor "$reanchor_unmatched_sha"
-if ./ops/docs_lint.sh --reanchor --search-depth 1 >/tmp/kg_docs_lint_reanchor_unmatched.out 2>&1; then
+set +e
+./ops/docs_lint.sh --reanchor --search-depth 1 >/tmp/kg_docs_lint_reanchor_unmatched.out 2>&1
+reanchor_unmatched_rc=$?
+set -e
+if [ "$reanchor_unmatched_rc" -eq 0 ]; then
   echo "reanchor unmatched fixture 不應被猜測成成功" >&2
+  dump_file /tmp/kg_docs_lint_reanchor_unmatched.out
+  exit 1
+fi
+if [ "$reanchor_unmatched_rc" -ne 2 ]; then
+  echo "reanchor unmatched fixture 應回 semantic block rc=2,實際 rc=$reanchor_unmatched_rc" >&2
   dump_file /tmp/kg_docs_lint_reanchor_unmatched.out
   exit 1
 fi

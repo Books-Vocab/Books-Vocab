@@ -52,6 +52,9 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              Both forward the flag ONLY when it was given: `--backlog` with no ids
              parses to [] (not None), which is the registry's "give up the claim"
              branch, so forwarding it unconditionally released live claims.
+Exit codes use the shared contract: 0=pass, 1=tool error, 2=block, 3=warn,
+64=usage, and 75=infrastructure unavailable/claimed.
+
   gate       IMPACT-BASED verification. Diffs the worktree against its base (local
              `main`), routes each touched surface to its existing gate tool, runs them,
              aggregates a pass/warn/block verdict, and RECORDS it (keyed by worktree +
@@ -173,7 +176,7 @@ import worktree_campaign as campaign  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 from lib import dispatch_preflight  # noqa: E402
-from lib.exit_codes import EXIT_BLOCK, EXIT_OK, EXIT_USAGE  # noqa: E402
+from lib.exit_codes import EXIT_BLOCK, EXIT_OK, EXIT_TOOL_ERROR, EXIT_USAGE, EXIT_WARN  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
@@ -3093,7 +3096,20 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         return result
     tags_after = _tag_snapshot(worktree)
 
-    status = "block" if level == "block" else "warn"
+    # Preserve the public producer contract at the consumer boundary.  A WARN
+    # (rc=3) is advisory even when the routed gate is normally block-level;
+    # otherwise docs_lint's warning-only origin-anchor check becomes a false
+    # product BLOCK.  A typed BLOCK (rc=2) remains a block regardless of the
+    # route's default level.  Untyped/tool failures keep the historical level
+    # fallback so advisory tools do not become hard gates accidentally.
+    if returncode == EXIT_WARN:
+        status = "warn"
+    elif returncode == EXIT_BLOCK:
+        status = "block"
+    elif returncode in (EXIT_TOOL_ERROR, EXIT_USAGE):
+        status = "block" if level == "block" else "warn"
+    else:
+        status = "block" if level == "block" else "warn"
     log_error = None
     if log_path is not None:
         log_error = _write_gate_log(log_path, spec, cwd, returncode, output)

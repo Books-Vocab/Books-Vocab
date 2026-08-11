@@ -16,13 +16,14 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.streaming_command import run_streamed_command  # noqa: E402
-
+from lib.exit_codes import EXIT_BLOCK, EXIT_TOOL_ERROR, EXIT_USAGE
+from lib.streaming_command import run_streamed_command
 
 URL_SCHEMA = "kg.app_review.url_checks.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
@@ -43,6 +44,31 @@ _PRODUCER_TYPES = {
 
 class EvidenceError(RuntimeError):
     pass
+
+
+class ContractArgumentParser(argparse.ArgumentParser):
+    """Map argparse's generic usage status (2) to KG's usage status (64)."""
+
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, f"{self.prog}: error: {message}\n")
+
+
+def _evidence_error_exit_code(error: EvidenceError) -> int:
+    """Separate invalid evidence (block) from producer/tool failures."""
+    message = str(error)
+    if message.startswith("--"):
+        return EXIT_USAGE
+    if message.startswith((
+        "invalid JSON",
+        "expected JSON object",
+        "journey.runner.",
+        "demo.runner.",
+        "gate.execution:",
+        "gate.report.invalid",
+    )):
+        return EXIT_TOOL_ERROR
+    return EXIT_BLOCK
 
 
 def _sha(data: bytes) -> str:
@@ -78,7 +104,7 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
 
@@ -496,8 +522,8 @@ def _write_or_print(document: dict[str, Any], out: Path | None, commit: bool) ->
 
 
 def parser() -> argparse.ArgumentParser:
-    top = argparse.ArgumentParser(description=__doc__)
-    sub = top.add_subparsers(dest="command", required=True)
+    top = ContractArgumentParser(description=__doc__)
+    sub = top.add_subparsers(dest="command", required=True, parser_class=ContractArgumentParser)
     for name in ("plan", "status"):
         command = sub.add_parser(name)
         command.add_argument("--spec", type=Path, required=True)
@@ -608,7 +634,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if document["status"] == "pass" else 2
     except EvidenceError as exc:
         print(json.dumps({"schema": PLAN_SCHEMA, "status": "block", "error": str(exc)}, sort_keys=True))
-        return 2
+        return _evidence_error_exit_code(exc)
 
 
 if __name__ == "__main__":
