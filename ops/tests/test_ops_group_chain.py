@@ -82,9 +82,9 @@ def test_current_ios_group_exposes_absolute_log_calls() -> None:
 def test_case_arms_covers_every_group_in_test_ops() -> None:
     arms = MODULE.case_arms()
 
-    # The shared baseline has 54 DEFAULT_TESTS arms plus the two optional arms.
+    # The shared baseline has 55 DEFAULT_TESTS arms plus the two optional arms.
     # Keep the count pinned so adding an arm requires this inventory test to move.
-    assert len(arms) == 56
+    assert len(arms) == 57
     assert {"ios-ops", "lldb-forensics", "ops-ci-coverage", "kg-board", "asc", "release-surfaces"} <= set(arms)
     assert "*" not in arms
 
