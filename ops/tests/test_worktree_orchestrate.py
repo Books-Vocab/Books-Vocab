@@ -7144,6 +7144,224 @@ def test_close_wave_expected_ticket_closure_requires_fixed_by_and_confirmed_verd
     ]
 
 
+def test_independent_no_ticket_default_closure_still_refuses_empty_set(tmp_path):
+    """No-ticket closure is opt-in; the ordinary closure predicate stays fail-closed."""
+    result = MODULE._delivery_expected_ticket_closure(tmp_path, [])
+
+    assert result == {
+        "ok": False,
+        "expected_ticket_ids": [],
+        "failures": [{"reason": "expected ticket set is empty"}],
+    }
+
+
+def test_independent_no_ticket_parser_and_provenance_are_explicit():
+    parser = MODULE.build_parser()
+    args = parser.parse_args([
+        "close-wave", "--slug", "wave", "--branches", "feat/source",
+        "--independent",
+    ])
+    assert args.independent is True
+
+    provenance = MODULE._delivery_independent_no_ticket_provenance(
+        state={
+            "independent": True,
+            "branch": "feat/integration",
+            "gate": {"head_sha": "abc123", "verdict": "warn"},
+        },
+        manifest={
+            "independent": True,
+            "branch": "feat/integration",
+            "head_sha": "abc123",
+        },
+        integration_record={
+            "branch": "feat/integration",
+            "independent": True,
+            "intent": "independent-no-ticket: explicit fixture",
+        },
+        current_head="abc123",
+        primary_dirty=[],
+        queue=[],
+    )
+    assert provenance["ok"] is True, provenance
+    assert provenance["mode"] == "independent-no-ticket"
+
+
+@gitmark
+def test_independent_no_ticket_integrate_resume_opt_in_is_consistent(scratch, monkeypatch):
+    """Every append/continuation hint must preserve the wave's explicit opt-in."""
+    tmp_path, repo, _remote = scratch
+
+    ordinary_state = str(tmp_path / "ordinary.json")
+    ordinary_sha = _make_branch(repo, "feat/src-ordinary", {"ordinary.txt": "x\n"},
+                                "work: ordinary")
+    rc, ordinary = _run_integrate_json([
+        "integrate", "--slug", "ordinary", "--branches", "feat/src-ordinary",
+        "--state", ordinary_state, "--commit", "--no-gate", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, ordinary
+    assert "--independent" not in ordinary["next_step"], ordinary
+
+    late_ordinary = _make_branch(repo, "feat/late-ordinary", {"late.txt": "x\n"},
+                                 "work: late ordinary")
+    rc, refused = _run_integrate_json([
+        "integrate", "--slug", "ordinary", "--append", "--branches",
+        "feat/late-ordinary", "--state", ordinary_state, "--independent", "--json",
+    ])
+    assert rc == MODULE.EXIT_USAGE, refused
+    assert refused["persisted_independent"] is False, refused
+    assert refused["requested_independent"] is True, refused
+    assert ordinary_sha and late_ordinary
+
+    independent_state = str(tmp_path / "independent.json")
+    independent_sha = _make_branch(repo, "feat/src-independent", {"independent.txt": "x\n"},
+                                    "work: independent")
+    rc, independent = _run_integrate_json([
+        "integrate", "--slug", "independent", "--branches", "feat/src-independent",
+        "--state", independent_state, "--commit", "--no-gate", "--independent", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, independent
+    assert independent["independent"] is True, independent
+    assert independent["next_step"].endswith("--continue --commit --independent"), independent
+
+    rc, existing = _run_integrate_json([
+        "integrate", "--slug", "independent", "--branches", "feat/src-independent",
+        "--state", independent_state, "--commit", "--independent", "--json",
+    ])
+    assert rc == MODULE.EXIT_USAGE, existing
+    assert "--continue --commit --independent" in existing["error"], existing
+
+    conflict_independent = _make_branch(
+        repo, "feat/conflict-independent", {"conflict.txt": "x\n"},
+        "work: conflict independent",
+    )
+    monkeypatch.setattr(MODULE, "_unmerged_paths", lambda _wt: ["conflict.txt"])
+    monkeypatch.setattr(MODULE, "_interrupted_operation", lambda _wt: None)
+    rc, conflict = _run_integrate_json([
+        "integrate", "--slug", "independent", "--append", "--branches",
+        "feat/conflict-independent", "--state", independent_state,
+        "--independent", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, conflict
+    assert conflict["next_step"].endswith("integrate --continue --independent"), conflict
+    assert conflict_independent
+
+    drive_independent = _make_branch(
+        repo, "feat/drive-independent", {"drive.txt": "x\n"},
+        "work: drive independent",
+    )
+    monkeypatch.setattr(MODULE, "_unmerged_paths", lambda _wt: [])
+    state_path = MODULE._integrate_state_path(independent_state, "independent")
+    saved = json.loads(state_path.read_text())
+    saved["queue"] = [{
+        "branch": "feat/drive-independent", "sha": drive_independent,
+        "subject": "work: drive independent",
+    }]
+    saved["planned_total"] = int(saved.get("planned_total") or 0) + 1
+    state_path.write_text(json.dumps(saved), encoding="utf-8")
+    real_mutation = MODULE._git_mutation
+
+    def fail_pick(argv, *, cwd, label):
+        if label.startswith("integrate-cherry-pick:"):
+            return 1, "empty-pick fixture"
+        return real_mutation(argv, cwd=cwd, label=label)
+
+    monkeypatch.setattr(MODULE, "_git_mutation", fail_pick)
+    rc, drive = _run_integrate_json([
+        "integrate", "--slug", "independent", "--state", independent_state,
+        "--continue", "--commit", "--independent", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, drive
+    assert "--continue --commit --independent" in drive["error"], drive
+    assert drive_independent
+    monkeypatch.setattr(MODULE, "_git_mutation", real_mutation)
+
+    late_independent = _make_branch(repo, "feat/late-independent", {"late-independent.txt": "x\n"},
+                                     "work: late independent")
+    rc, refused = _run_integrate_json([
+        "integrate", "--slug", "independent", "--append", "--branches",
+        "feat/late-independent", "--state", independent_state, "--json",
+    ])
+    assert rc == MODULE.EXIT_USAGE, refused
+    assert refused["persisted_independent"] is True, refused
+    assert refused["requested_independent"] is False, refused
+    assert independent_sha and late_independent
+
+    (Path(repo) / "ops").mkdir()
+    bad_sha = _make_branch(repo, "feat/src-independent-bad", {"ops/bad-round.sh": "if then\n"},
+                           "work: independent bad")
+    blocked_state = str(tmp_path / "blocked-independent.json")
+    rc, blocked = _run_integrate_json([
+        "integrate", "--slug", "blocked-independent", "--branches",
+        "feat/src-independent-bad", "--state", blocked_state, "--commit", "--independent", "--json",
+    ])
+    assert rc == MODULE.EXIT_BLOCK, blocked
+    assert "--continue --commit --independent" in blocked["next_step"], blocked
+    assert bad_sha
+
+
+@pytest.mark.parametrize("independent, expected_rc", [(False, MODULE.EXIT_BLOCK),
+                                                       (True, MODULE.EXIT_OK)])
+def test_independent_no_ticket_close_wave_completed_manifest_route(
+        tmp_path, monkeypatch, capsys, independent, expected_rc):
+    """A resumed completed manifest keeps the ordinary refusal and explicit route."""
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "slug": "delivery-wave",
+        "base": "main",
+        "branches": ["feat/source"],
+        "worktree": str(tmp_path / "removed-integration"),
+        "branch": "feat/integration",
+        "status": "gated",
+        "independent": independent,
+        "close_wave": {
+            "status": "completed",
+            "expected_ticket_ids": [],
+            "independent_provenance": (
+                {"ok": True, "mode": "independent-no-ticket"}
+                if independent else None
+            ),
+        },
+    }), encoding="utf-8")
+    state = tmp_path / "state.json"
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
+    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
+    monkeypatch.setattr(MODULE, "_delivery_primary_dirty", lambda _primary: [])
+    monkeypatch.setattr(
+        MODULE, "_delivery_state_paths", lambda _args: (state, [manifest])
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records",
+        lambda _args, **_kwargs: (MODULE.EXIT_OK, [{
+            "status": "merged", "branch": "feat/source", "backlog": [],
+        }]),
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_sync_close_wave",
+        lambda *_args, **_kwargs: (MODULE.EXIT_OK, None),
+    )
+    args = argparse.Namespace(
+        state=str(state), json=True, base="main", slug="delivery-wave",
+        branches=["feat/source"], commit=True, sync=False,
+        independent=independent,
+    )
+
+    rc = MODULE.cmd_close_wave(args)
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == expected_rc, payload
+    if independent:
+        assert payload["mode"] == "already-closed"
+        assert payload["steps"][0]["ok"] is True
+    else:
+        assert payload["steps"][0]["ok"] is False
+        assert payload["steps"][0]["failures"] == [
+            {"reason": "expected ticket set is empty"}
+        ]
+
+
 @pytest.mark.parametrize("marker_status", ["completed", "validated"])
 def test_close_wave_recovery_guard_refuses_open_expected_ticket(
         tmp_path, monkeypatch, capsys, marker_status):

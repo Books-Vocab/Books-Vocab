@@ -391,6 +391,8 @@ git rerere diff
 
 它先以 `integrate --commit --no-gate` 建立／續接整合 state（晚回 child 可先用同 slug `integrate --append`），再由整合樹自己的 orchestrator 跑唯一 fresh Gate；通過後依序 cutover、以 `--via-integration main` resolve 來源、`backlog.py anchor --commit`、`backlog.py validate --baseline-check`、resolve 整合樹，最後 `--sync` 把 exact primary tip 推到 `origin/main`。任何衝突或 Gate／resolve／anchor／sync 阻斷都保留 state，修正後**用同一 slug 重跑**；其他 team active worktree 不構成拒絕，本輪只處理明示 source branches，絕不誤殺 Catalog 或其他 session。這是可重入的 team-level delivery-loop，不是新的 develop plane，也不執行 `deploy`。
 
+若該波次是沒有 backlog ticket 的獨立工具路徑，必須在 `close-wave` 與其底層 `integrate` 明示 `--independent`；未帶旗標時空 expected-ticket set 仍以具名拒絕收尾。獨立模式會把 `independent=true` 寫入 integration state／completed manifest，並在 registry 的 integration `intent` 留下 `independent-no-ticket:` marker；只有 Gate verdict 為 pass/warn 且 HEAD 精確相等、primary tracked-clean、integration queue 已清空，才允許空集合通過 cutover／validate／resolve／sync。恢復同一 slug 也必須重複原 opt-in，所有 provenance 會留在 phase receipt。
+
 未取得授權時仍只能 `integrate --commit --no-gate`／`--append` 純組裝；不要把 `close-wave` 當成 child worker 的收尾命令。若正常 lock 競爭，等待工具 heartbeat／指數退避；若 state、primary 或 peer 不穩定，才用 thread message 做具名異常協調。
 
 ### 多輪同步、一次原子落地
