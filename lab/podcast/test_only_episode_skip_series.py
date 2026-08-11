@@ -69,10 +69,10 @@ def test_only_episode_does_not_skip_episode_aware_stages():
         assert not _should_skip_for_only_episode(stage, _args(only_episode=3)), stage
 
 
-# ── 白盒守:main loop 真的接線了 guard(skip 路徑用 continue,不寫 marker) ──
+# ── planner wiring guard: stage selection must use the pure plan ──
 def test_main_loop_wires_skip_guard():
     src = inspect.getsource(pipeline.main)
-    assert "_should_skip_for_only_episode(" in src, (
-        "main() must call _should_skip_for_only_episode in the stage loop, "
-        "else the guard is dead code and bare --only-episode still re-polishes"
+    assert "resolve_run_plan(" in src, (
+        "main() must consume resolve_run_plan; keeping episode filtering in a "
+        "second runner-side branch would let the planner and runner drift"
     )
