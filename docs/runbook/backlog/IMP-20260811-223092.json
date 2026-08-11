@@ -13,6 +13,9 @@
   "date": "2026-08-11",
   "detail": "Fresh Gate 的 baseline 仍有三個可重現機械紅：DEFAULT_TESTS 新增 exit-code-contract 後，test_ops_group_chain 的 arms inventory 仍固定舊數字；app-review group 未執行 test_app_review_evaluators.py；ios-ops gate warn fixture 仍期待舊 exit code 1，但 exit-code contract 已定義 WARN=3 且 JSON exitCode 應為 3。",
   "fix_site": "ops/tests/test_ops_group_chain.py;ops/test_ops.sh;ops/tests/test_app_review_evaluators.py;ops/test_ios_ops.sh",
+  "fixed_by": [
+    "3b98c83b7a005e6467b6d66dfbca65dce5755660"
+  ],
   "groomed_against": "1c7bd8d9eeef8d70975155827b4ca5751c323544",
   "groomed_at": "2026-08-11",
   "groomed_by": "agent:team-a-repair-groom-v1",
@@ -23,6 +26,10 @@
   "scope": "四個既有 ops 測試檔與一個 group dispatcher，僅同步 inventory、coverage registration 與 warn fixture。",
   "severity": "high",
   "source": "fresh Gate baseline audit 2026-08-11",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:team-a-integrator",
+  "verified_evidence": "IMP-20260811-223092 repair acceptance evidence:\nRED: uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_ops_group_chain.py -> 1 failed, 7 passed (57 observed vs pinned 56).\nGREEN: uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_ops_group_chain.py -> 8 passed.\nGREEN: ./ops/test_ops.sh app-review -> 90 passed, rc=0.\nGREEN: ./ops/tests/test_ops_ci_coverage.sh -> 24 passed, 0 failed, 0 falsification(s) skipped, rc=0.\nGREEN: ./ops/test_ios_ops.sh -> 353 passed, 0 failed, rc=0; release gate focused -> 4 passed.\nSTATIC: bash -n ops/test_ops.sh ops/test_ios_ops.sh; git diff --check; docs_lint --registry ERROR=0."
 }
