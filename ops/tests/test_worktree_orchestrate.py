@@ -8400,6 +8400,89 @@ def test_resolve_refuses_an_integration_ref_that_has_not_landed_in_the_base(scra
     assert Path(wt).is_dir(), "an unlanded integration ref was allowed to delete source work"
 
 
+@gitmark
+def test_resolve_source_stamps_integration_rows_and_anchor_consumes_resolved_rows(scratch):
+    """A resolved source must preserve the integration branch's queue identity.
+
+    In the batch path the hunter stages its closure while checked out on the
+    integration branch.  Resolving the source after that branch is already an
+    ancestor of ``main`` used to tear the source down without a tree-diff audit,
+    so the resolver stamped the source branch (which had no queue row) and left
+    the integration row's ``landed_sha`` null.  This is the real supported path:
+    stage through ``backlog.py``, resolve through the CLI, then consume through
+    ``backlog.py anchor``; the test never edits the queue or marker files.
+    """
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json([
+        "open", "--intent", "source lane", "--slug", "source-lane",
+        "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, opened
+    source_wt = opened["path"]
+    source_sha = _commit(source_wt, "source.txt", "source work\n", "ops: source work")
+
+    integration_branch = "feat/integration-lane"
+    _git(["checkout", "-q", "-b", integration_branch, "main"], repo)
+    _git(["cherry-pick", source_sha], repo)
+    integration_sha = _git(["rev-parse", "HEAD"], repo)
+
+    store = repo / "docs" / "runbook" / "backlog"
+    queue = repo / ".cache" / "backlog_anchor_queue.jsonl"
+    entry_path = store / "IMP-0001.json"
+    entry = json.loads(entry_path.read_text(encoding="utf-8"))
+    entry["resolution"] = "fixture closure"
+    entry_path.write_text(json.dumps(entry), encoding="utf-8")
+    backlog_spec = importlib.util.spec_from_file_location(
+        "backlog_resolve_stamp_fixture", ROOT / "ops" / "backlog.py"
+    )
+    assert backlog_spec and backlog_spec.loader
+    backlog = importlib.util.module_from_spec(backlog_spec)
+    backlog_spec.loader.exec_module(backlog)
+    backlog.GIT_REPO = repo
+
+    def run_backlog(argv):
+        output = io.StringIO()
+        errors = io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            rc = backlog.main(argv)
+        payload = json.loads(output.getvalue()) if output.getvalue().strip() else {}
+        return rc, payload, errors.getvalue()
+
+    rc, stage, stage_err = run_backlog([
+        "stage", "IMP-0001", "--store", str(store), "--queue", str(queue),
+        "--verdict", "CONFIRMED-FIXED", "--by", "fixture",
+        "--evidence", "pytest resolve-via-integration fixture", "--json",
+    ])
+    assert rc == 0, stage_err or stage
+    staged = {row["id"]: row for row in _queue_rows(repo)}
+    assert staged["IMP-0001"]["branch"] == integration_branch
+    assert staged["IMP-0001"]["landed_sha"] is None
+
+    _git(["checkout", "-q", "main"], repo)
+    _git(["merge", "--ff-only", integration_branch], repo)
+    rc, resolved = _run_json([
+        "resolve", "--worktree", source_wt, "--state", state,
+        "--base", "main", "--via-integration", integration_branch,
+        "--commit", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, resolved
+    assert not Path(source_wt).exists()
+    rows = {row["id"]: row for row in _queue_rows(repo)}
+    assert rows["IMP-0001"]["landed_sha"] == integration_sha, resolved
+
+    rc, anchored, anchor_err = run_backlog([
+        "anchor", "--store", str(store), "--queue", str(queue),
+        "--branches", integration_branch, "--commit", "--json",
+    ])
+    assert rc == 0, anchor_err or anchored
+    assert anchored["applied"] == ["IMP-0001"], anchored
+    assert _queue_rows(repo) == [], "anchor left a null or duplicate row"
+    entry = json.loads((store / "IMP-0001.json").read_text(encoding="utf-8"))
+    assert entry["status"] == "fixed"
+    assert entry["fixed_by"] == [integration_sha]
+
+
 # ---------------------------------------------------------------------------
 # integrate — N branches, ONE gate (IMP-20260807-267d60)
 #

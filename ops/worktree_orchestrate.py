@@ -7962,7 +7962,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             primary,
             [
                 "resolve", "--worktree", str(source_path),
-                "--base", target_base, "--via-integration", target_base,
+                "--base", target_base, "--via-integration", integration_branch,
                 "--commit", *_state_arg(args.state),
             ],
             label=f"resolve-source:{branch}",
@@ -8108,7 +8108,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             primary,
             [
                 "resolve", "--worktree", str(integration_worktree),
-                "--base", target_base, "--commit", *_state_arg(args.state),
+                "--base", target_base, "--via-integration", integration_branch,
+                "--commit", *_state_arg(args.state),
             ],
             label=f"resolve-integration:{args.slug}",
             expected_schema=SCHEMA,
@@ -9015,14 +9016,28 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                       f"✗ resolve refused: {reason}")
                 return EXIT_BLOCK
 
-    # A successful integration audit is the batch model's equivalent of cutover:
-    # it proves this source branch reached the named trunk ref after cherry-pick or
-    # conflict resolution. Preserve the hunter's staged evidence before teardown,
-    # using the integration ref's actual tip just as ordinary cutover stamps its
-    # landed trunk tip. Without this, resolve deletes the only branch identity that
-    # can connect the queue row to the landed work and anchor leaves it unstamped
-    # forever (IMP-20260808-b6f69d).
-    if args.commit and audit is not None and args.via_integration:
+    # An explicit integration REF is the batch model's equivalent of cutover: it
+    # proves this source branch reached the named integration/trunk ref after
+    # cherry-pick or conflict resolution. Preserve the hunter's staged evidence
+    # before teardown, using that ref's actual tip just as ordinary cutover stamps
+    # its landed trunk tip. This must also run when the source is already an
+    # ancestor of the base (the normal no-diff path), because resolve otherwise
+    # deletes the only branch identity that can connect the queue row to the
+    # landed work and anchor leaves it unstamped forever (IMP-20260808-b6f69d).
+    if args.commit and args.via_integration:
+        landed_ref_rc, _ = _git(
+            ["merge-base", "--is-ancestor", args.via_integration, args.base],
+            cwd=root,
+        )
+        if landed_ref_rc != EXIT_OK:
+            return _refuse(
+                "integration-ref-not-landed",
+                f"integration ref {args.via_integration!r} is not an ancestor "
+                f"of {args.base!r}; refusing to stamp staged closures before "
+                "the batch identity is on the target trunk",
+                branch=branch, integration_ref=args.via_integration,
+                base=args.base,
+            )
         rc, integrated_sha = _git(["rev-parse", f"{args.via_integration}^{{commit}}"],
                                   cwd=root)
         if rc != 0 or not integrated_sha.strip():
@@ -9033,8 +9048,19 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                 "closure's branch identity",
                 branch=branch,
             )
-        integrated_closures = _stamp_anchor_queue(
-            root, branch, integrated_sha.strip())
+        # A source resolver is invoked with the integration branch as its
+        # corroborating REF by close-wave.  The staged row belongs to that
+        # integration branch, not to the source branch being torn down.  Keep
+        # stamping the source identity for the direct/legacy path, and stamp
+        # the explicit integration identity as well; dedupe so a resolver of
+        # the integration branch itself remains idempotent.
+        stamp_branches = [branch]
+        if args.via_integration != args.base:
+            stamp_branches.append(args.via_integration)
+        for stamp_branch in dict.fromkeys(stamp_branches):
+            integrated_closures.extend(
+                _stamp_anchor_queue(root, stamp_branch, integrated_sha.strip())
+            )
 
     # teardown MUST run from the primary root: step 1 removes the target worktree,
     # which may be the very directory this process was invoked from. For the same
