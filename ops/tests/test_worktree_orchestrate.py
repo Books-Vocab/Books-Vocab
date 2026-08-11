@@ -7438,6 +7438,482 @@ def test_delivery_anchor_replays_manifest_after_post_commit_marker_failure(
     assert final_marker["anchor_commit_sha"]
 
 
+def test_close_wave_recovery_phase_ledger_is_durable_and_monotonic(tmp_path):
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "slug": "delivery-wave",
+        "close_wave": {"expected_ticket_ids": ["IMP-0001"]},
+    }), encoding="utf-8")
+
+    started = MODULE._delivery_record_phase(
+        manifest, "anchor", status="started", operation_base="base-sha",
+        landed_sha="landed-sha", expected_ticket_ids=["IMP-0001"],
+        applied_ticket_ids=[], acceptance_receipt={"rc": None},
+    )
+    assert started["phases"]["anchor"]["status"] == "started"
+    assert started["last_successful_phase"] is None
+
+    completed = MODULE._delivery_record_phase(
+        manifest, "anchor", status="completed", operation_base="base-sha",
+        landed_sha="landed-sha", expected_ticket_ids=["IMP-0001"],
+        applied_ticket_ids=["IMP-0001"], acceptance_receipt={"rc": 0},
+        anchor_commit="anchor-sha",
+    )
+    replay = MODULE._delivery_record_phase(
+        manifest, "anchor", status="started", operation_base="other-base",
+        landed_sha="other-sha", expected_ticket_ids=["IMP-0001"],
+        applied_ticket_ids=[], acceptance_receipt={"rc": None},
+    )
+
+    assert completed["phases"]["anchor"]["status"] == "completed"
+    assert completed["phases"]["anchor"]["anchor_commit"] == "anchor-sha"
+    assert replay == completed
+    assert json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]["last_successful_phase"] == "anchor"
+
+
+def test_close_wave_phase_completion_never_regresses_or_reorders(tmp_path):
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({"close_wave": {}}), encoding="utf-8")
+
+    MODULE._delivery_record_phase(
+        manifest, "cutover", status="completed", operation_base="base",
+        landed_sha="cutover-sha",
+    )
+    completed = MODULE._delivery_record_phase(
+        manifest, "anchor", status="completed", operation_base="base",
+        landed_sha="anchor-sha",
+    )
+    replay = MODULE._delivery_record_phase(
+        manifest, "cutover", status="started", operation_base="other",
+        landed_sha="other",
+    )
+
+    assert replay["phases"]["cutover"]["status"] == "completed"
+    assert replay["phases"]["cutover"]["operation_base"] == "base"
+    assert replay["last_successful_phase"] == "anchor"
+    assert completed["last_successful_phase"] == "anchor"
+
+
+def test_close_wave_anchor_recovery_allows_primary_advance_only_with_pending_queue(
+        tmp_path):
+    queue = tmp_path / ".cache" / "backlog_anchor_queue.jsonl"
+    queue.parent.mkdir(parents=True)
+    queue.write_text(json.dumps({
+        "id": "IMP-0001", "branch": "feat/source", "landed_sha": "landed",
+    }) + "\n", encoding="utf-8")
+    marker = {
+        "expected_ticket_ids": ["IMP-0001"], "anchor_ids": [],
+        "phases": {"anchor": {
+            "status": "started", "expected_ticket_ids": ["IMP-0001"],
+            "applied_ticket_ids": [],
+        }},
+    }
+    assert MODULE._delivery_anchor_recovery_is_safe(tmp_path, marker)
+
+    queue.write_text("", encoding="utf-8")
+    assert not MODULE._delivery_anchor_recovery_is_safe(tmp_path, marker)
+
+
+@pytest.mark.parametrize("malformed_field", ["expected", "phase"])
+def test_close_wave_recovery_rejects_malformed_persisted_ticket_ids(
+        tmp_path, monkeypatch, malformed_field):
+    repo, base_sha = _git_repo_with_anchor_ticket(tmp_path)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "primary advance"], cwd=repo,
+                   check=True)
+    ticket_id = "IMP-20260809-crash"
+    expected_ids = [123] if malformed_field == "expected" else [ticket_id]
+    phase_ids = [123] if malformed_field == "phase" else []
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "close_wave": {
+            "anchor_base_sha": base_sha,
+            "anchor_ids": [],
+            "expected_ticket_ids": expected_ids,
+            "phases": {"anchor": {
+                "status": "started",
+                "expected_ticket_ids": [ticket_id],
+                "applied_ticket_ids": phase_ids,
+            }},
+        },
+    }), encoding="utf-8")
+
+    @contextmanager
+    def fake_lock(_primary):
+        yield
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
+    monkeypatch.setattr(MODULE, "_primary_ff_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records", lambda _args, **_kwargs: (0, [])
+    )
+
+    rc, steps = MODULE._delivery_anchor_and_commit(
+        argparse.Namespace(base="main", state=None), repo, set(),
+        "delivery-wave", manifest,
+    )
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert any(
+        step.get("name") == "anchor-guard"
+        and "malformed recovery ticket ids" in step.get("error", "")
+        for step in steps
+    )
+
+
+@pytest.mark.parametrize(
+    "failure_phase",
+    ["cutover", "resolve-source", "anchor", "validate",
+     "resolve-integration", "sync"],
+)
+def test_close_wave_recovery_resumes_each_phase_and_is_idempotent(
+        tmp_path, monkeypatch, capsys, failure_phase):
+    """One injected boundary failure must be recoverable without duplicate work."""
+    repo = tmp_path / "primary"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    ops = repo / "ops"
+    ops.mkdir()
+    (ops / "worktree_orchestrate.py").write_text("# fixture\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(".cache/\n", encoding="utf-8")
+    store = repo / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True)
+    ticket_id = "IMP-20260811-recovery"
+    ticket_path = store / f"{ticket_id}.json"
+    ticket_path.write_text(json.dumps({
+        "id": ticket_id, "status": "staged", "verdict": "CONFIRMED-FIXED",
+        "fixed_by": [],
+    }) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    base_sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True,
+    ).strip()
+    subprocess.run(["git", "checkout", "-qb", "feat/integration"], cwd=repo, check=True)
+    (repo / "integration.txt").write_text("integration\n", encoding="utf-8")
+    subprocess.run(["git", "add", "integration.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "integration"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "branch", "feat/source", base_sha], cwd=repo, check=True)
+
+    source_path = tmp_path / "source"
+    source_path.mkdir()
+    integration_path = tmp_path / "integration"
+    integration_path.mkdir()
+    queue = repo / ".cache" / "backlog_anchor_queue.jsonl"
+    queue.parent.mkdir(parents=True)
+    queue.write_text(json.dumps({
+        "id": ticket_id, "branch": "feat/source", "landed_sha": base_sha,
+        "status": "staged", "verdict": "CONFIRMED-FIXED", "by": "fixture",
+        "evidence": "fixture", "kind": "closure",
+    }) + "\n", encoding="utf-8")
+
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+    manifest = manifest_dir / "delivery-wave.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA, "slug": "delivery-wave",
+        "base": "main", "branches": ["feat/source"],
+        "worktree": str(integration_path), "branch": "feat/integration",
+        "status": "gated", "gate": {"verdict": "pass"},
+        "close_wave": {"status": "gated", "expected_ticket_ids": [ticket_id]},
+    }), encoding="utf-8")
+    state = tmp_path / "state.json"
+    records = [
+        {"status": "active", "branch": "feat/source", "path": str(source_path),
+         "base": "main", "backlog": [ticket_id]},
+        {"status": "active", "branch": "feat/integration", "path": str(integration_path),
+         "base": "main", "backlog": []},
+    ]
+    calls = {phase: 0 for phase in (
+        "cutover", "resolve-source", "anchor", "validate",
+        "resolve-integration", "sync",
+    )}
+
+    monkeypatch.setattr(MODULE, "primary_root", lambda: repo)
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *_args: None)
+    monkeypatch.setattr(MODULE, "_delivery_state_paths", lambda _args: (state, [manifest]))
+    monkeypatch.setattr(MODULE, "_delivery_integration_error", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records",
+        lambda _args, **_kwargs: (MODULE.EXIT_OK, records),
+    )
+
+    def fake_tool(_script, _cwd, argv, *, label, **_kwargs):
+        phase = next((name for name in calls if label.startswith(f"{name}:")), None)
+        if phase is not None:
+            calls[phase] += 1
+            if phase == failure_phase and calls[phase] == 1:
+                if phase == "anchor":
+                    ticket_path.write_text(json.dumps({
+                        "id": ticket_id, "status": "fixed",
+                        "verdict": "CONFIRMED-FIXED",
+                        "fixed_by": ["partial-anchor"],
+                    }) + "\n", encoding="utf-8")
+                    queue.write_text("", encoding="utf-8")
+                return MODULE.EXIT_BLOCK, {"error": f"injected {phase} failure"}
+        if phase == "cutover":
+            subprocess.run(["git", "branch", "-f", "feat/integration", "HEAD"],
+                           cwd=repo, check=True)
+            head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repo, text=True,
+            ).strip()
+            return MODULE.EXIT_OK, {
+                "schema": MODULE.SCHEMA, "mode": "committed", "landed": True,
+                "sha": head,
+            }
+        if phase == "resolve-source":
+            records[0]["status"] = "merged"
+            return MODULE.EXIT_OK, {
+                "schema": MODULE.SCHEMA, "mode": "committed",
+                "resolved": "merged", "failures": 0,
+            }
+        if phase == "anchor":
+            ticket_path.write_text(json.dumps({
+                "id": ticket_id, "status": "fixed", "verdict": "CONFIRMED-FIXED",
+                "fixed_by": ["fixture-anchor"],
+            }) + "\n", encoding="utf-8")
+            queue.write_text("", encoding="utf-8")
+            return MODULE.EXIT_OK, {
+                "schema": "kg.backlog.anchor.v1", "mode": "commit",
+                "applied": [ticket_id], "problems": [], "unstamped": [],
+            }
+        if phase == "validate":
+            return MODULE.EXIT_OK, {
+                "schema": "kg.backlog.validate.v1", "ok": True, "problems": [],
+            }
+        if phase == "resolve-integration":
+            records[1]["status"] = "merged"
+            return MODULE.EXIT_OK, {
+                "schema": MODULE.SCHEMA, "mode": "committed",
+                "resolved": "merged", "failures": 0,
+            }
+        if phase == "sync":
+            head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=repo, text=True,
+            ).strip()
+            return MODULE.EXIT_OK, {
+                "schema": MODULE.SCHEMA, "step": "sync", "verdict": "noop",
+                "to": head,
+            }
+        pytest.fail(f"unexpected tool label={label!r} argv={argv!r}")
+
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_tool)
+    args = argparse.Namespace(
+        state=str(state), json=True, base="main", slug="delivery-wave",
+        branches=["feat/source"], commit=True, sync=True,
+    )
+
+    first_rc = MODULE.cmd_close_wave(args)
+    first_payload = json.loads(capsys.readouterr().out)
+    assert first_rc == MODULE.EXIT_BLOCK
+    assert first_payload.get("steps"), first_payload
+    assert calls[failure_phase] == 1
+
+    second_rc = MODULE.cmd_close_wave(args)
+    second_payload = json.loads(capsys.readouterr().out)
+    assert second_rc == MODULE.EXIT_OK, second_payload
+    assert calls[failure_phase] == 2
+    final_marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+    assert final_marker["last_successful_phase"] == "sync"
+    assert all(final_marker["phases"][phase]["status"] == "completed"
+               for phase in calls)
+    assert MODULE._read_anchor_queue(repo) == []
+    assert records[1]["status"] == "merged"
+    anchor_commits = subprocess.check_output(
+        ["git", "log", "--format=%s", "--all"], cwd=repo, text=True,
+    ).splitlines().count(MODULE._DELIVERY_ANCHOR_SUBJECT)
+    assert anchor_commits == 1
+
+    before_queue = queue.read_bytes() if queue.exists() else b""
+    before_log = subprocess.check_output(
+        ["git", "rev-list", "--all"], cwd=repo, text=True,
+    )
+    third_rc = MODULE.cmd_close_wave(args)
+    third_payload = json.loads(capsys.readouterr().out)
+    assert third_rc == MODULE.EXIT_OK, third_payload
+    assert calls[failure_phase] == 2
+    assert (queue.read_bytes() if queue.exists() else b"") == before_queue
+    assert subprocess.check_output(
+        ["git", "rev-list", "--all"], cwd=repo, text=True,
+    ) == before_log
+
+
+@pytest.mark.parametrize(
+    "failure_phase",
+    ["cutover", "resolve-source", "anchor", "validate",
+     "resolve-integration", "sync"],
+)
+@gitmark
+def test_close_wave_recovery_real_subprocess_wiring(
+        tmp_path, monkeypatch, capsys, failure_phase):
+    """Exercise close-wave against real git, registry, backlog and sync commands."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init", "-q", "-b", "main"], repo)
+    _git(["config", "user.email", "fixture@example.test"], repo)
+    _git(["config", "user.name", "recovery fixture"], repo)
+    shutil.copytree(
+        ROOT / "ops", repo / "ops",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    (repo / ".gitignore").write_text(".cache/\n__pycache__/\n", encoding="utf-8")
+    store = repo / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True)
+    ticket_id = "IMP-20260811-real-recovery"
+    (store / f"{ticket_id}.json").write_text(json.dumps({
+        "schema": "kg.backlog.entry.v1", "id": ticket_id, "status": "open",
+        "stream": "IMP", "severity": "med", "category": "tool",
+        "date": "2026-08-11", "source": "fixture",
+        "detail": "real close-wave recovery fixture",
+        "brief": "recover a close-wave without duplicate side effects",
+        "scope": "ops orchestration only", "plan": "exercise every phase",
+        "acceptance": "the real fixture command exits zero",
+        "fix_site": "ops/worktree_orchestrate.py",
+        "acceptance_cmd": "true", "acceptance_expect_rc": 0,
+        "resolution": "", "fixed_by": [],
+        "groomed_at": "2026-08-11", "groomed_by": "fixture",
+    }, indent=2) + "\n", encoding="utf-8")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "fixture base"], repo)
+    base_sha = _git(["rev-parse", "main"], repo)
+
+    source = tmp_path / "source"
+    _git(["worktree", "add", "-q", "-b", "feat/source", str(source), "main"], repo)
+    (source / "source.txt").write_text("source\n", encoding="utf-8")
+    _git(["add", "source.txt"], source)
+    _git(["commit", "-qm", "fixture source"], source)
+    source_tip = _git(["rev-parse", "HEAD"], source)
+    integration = tmp_path / "integration"
+    _git(["worktree", "add", "-q", "-b", "feat/integration", str(integration),
+          "feat/source"], repo)
+    (integration / "integration.txt").write_text("integration\n", encoding="utf-8")
+    _git(["add", "integration.txt"], integration)
+    _git(["commit", "-qm", "fixture integration"], integration)
+    integration_tip = _git(["rev-parse", "HEAD"], integration)
+
+    remote = tmp_path / "origin.git"
+    _git(["init", "-q", "--bare", str(remote)], repo)
+    _git(["remote", "add", "origin", str(remote)], repo)
+    _git(["push", "-q", "origin", "main"], repo)
+
+    state = repo / ".cache" / "worktree_registry.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+
+    def registry(*argv):
+        proc = subprocess.run(
+            [sys.executable, str(repo / "ops" / "worktree_registry.py"), *argv,
+             "--state", str(state), "--json"],
+            cwd=repo, capture_output=True, text=True,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        return json.loads(proc.stdout)
+
+    registry("register", "--path", str(source), "--branch", "feat/source",
+             "--intent", "real recovery source", "--base", "main",
+             "--backlog", ticket_id)
+    registry("register", "--path", str(integration), "--branch", "feat/integration",
+             "--intent", "real recovery integration", "--base", "main")
+    ledger = json.loads(state.read_text(encoding="utf-8"))
+    for record in ledger["records"]:
+        record["base_sha"] = base_sha
+        record["handed_back_sha"] = (
+            source_tip if record["branch"] == "feat/source" else integration_tip
+        )
+        record["handed_back_at"] = "2026-08-11T00:00:00Z"
+    state.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+
+    queue = repo / ".cache" / "backlog_anchor_queue.jsonl"
+    queue.write_text(json.dumps({
+        "id": ticket_id, "branch": "feat/integration", "landed_sha": None,
+        "status": "fixed", "verdict": "CONFIRMED-FIXED", "by": "fixture",
+        "evidence": "real recovery fixture", "kind": "closure",
+    }) + "\n", encoding="utf-8")
+
+    slug = "real-recovery"
+    manifest_dir = repo / ".cache" / "worktree_integrations" / "completed"
+    manifest_dir.mkdir(parents=True)
+    manifest = manifest_dir / f"{slug}-{integration_tip}.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA, "slug": slug, "base": "main",
+        "branches": ["feat/source"], "worktree": str(integration),
+        "branch": "feat/integration", "status": "gated",
+        "gate": {"verdict": "pass", "head_sha": integration_tip},
+        "close_wave": {"status": "gated", "expected_ticket_ids": [ticket_id]},
+    }, indent=2) + "\n", encoding="utf-8")
+    gate_path = MODULE._gate_record_path(str(state), str(integration))
+    gate_path.parent.mkdir(parents=True, exist_ok=True)
+    gate_path.write_text(json.dumps({
+        "schema": MODULE.GATE_SCHEMA, "step": "gate", "worktree": str(integration),
+        "base": "main", "head_sha": integration_tip, "verdict": "pass",
+        "gates": [], "orchestrator": MODULE._orchestrator_identity(str(integration)),
+    }, indent=2) + "\n", encoding="utf-8")
+
+    calls = {phase: 0 for phase in (
+        "cutover", "resolve-source", "anchor", "validate",
+        "resolve-integration", "sync",
+    )}
+    real_tool = MODULE._delivery_json_tool
+
+    def injected_tool(script, cwd, argv, *, label, **kwargs):
+        phase = next((name for name in calls if label.startswith(f"{name}:")), None)
+        if phase is None:
+            return real_tool(script, cwd, argv, label=label, **kwargs)
+        calls[phase] += 1
+        if phase == failure_phase and calls[phase] == 1 and phase != "anchor":
+            return MODULE.EXIT_BLOCK, {"error": f"injected {phase} boundary failure"}
+        rc, payload = real_tool(script, cwd, argv, label=label, **kwargs)
+        if phase == failure_phase and calls[phase] == 1 and phase == "anchor":
+            # The real anchor has already written every ticket and drained the queue;
+            # returning BLOCK models a process death before the coordinator persisted
+            # its receipt, which is the dangerous partial-anchor window.
+            return MODULE.EXIT_BLOCK, {**payload, "error": "injected post-anchor crash"}
+        return rc, payload
+
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", injected_tool)
+    args = argparse.Namespace(
+        state=str(state), json=True, base="main", slug=slug,
+        branches=["feat/source"], commit=True, sync=True,
+    )
+    previous_cwd = Path.cwd()
+    os.chdir(repo)
+    try:
+        first_rc = MODULE.cmd_close_wave(args)
+        first_payload = json.loads(capsys.readouterr().out)
+        assert first_rc == MODULE.EXIT_BLOCK, first_payload
+        second_rc = MODULE.cmd_close_wave(args)
+        second_payload = json.loads(capsys.readouterr().out)
+        assert second_rc == MODULE.EXIT_OK, second_payload
+        assert calls[failure_phase] == 2
+        final_marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+        assert final_marker["last_successful_phase"] == "sync"
+        assert all(final_marker["phases"][phase]["status"] == "completed"
+                   for phase in calls)
+        assert MODULE._read_anchor_queue(repo) == []
+        assert not source.exists() and not integration.exists()
+        ledger_after = json.loads(state.read_text(encoding="utf-8"))
+        assert all(r["status"] == "merged" for r in ledger_after["records"])
+        anchor_commits = subprocess.check_output(
+            ["git", "log", "--format=%s", "--all"], cwd=repo, text=True,
+        ).splitlines().count(MODULE._DELIVERY_ANCHOR_SUBJECT)
+        assert anchor_commits == 1
+        before_refs = _git(["rev-list", "--all"], repo)
+        before_queue = queue.read_bytes() if queue.exists() else b""
+        third_rc = MODULE.cmd_close_wave(args)
+        third_payload = json.loads(capsys.readouterr().out)
+        assert third_rc == MODULE.EXIT_OK, third_payload
+        assert calls[failure_phase] == 2
+        assert _git(["rev-list", "--all"], repo) == before_refs
+        assert (queue.read_bytes() if queue.exists() else b"") == before_queue
+    finally:
+        os.chdir(previous_cwd)
+
+
 def test_delivery_anchor_commit_refuses_staged_or_unstaged_foreign_paths(
         tmp_path):
     repo = tmp_path / "repo"

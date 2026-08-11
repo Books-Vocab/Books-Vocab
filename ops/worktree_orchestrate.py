@@ -1714,7 +1714,8 @@ def _broadcast_cutover_block(primary: Path, branch: str | None,
 
 
 def _primary_ff_ready(primary: Path, local: str, branch: str | None = None,
-                      worktree: str | None = None) -> tuple[str, dict[str, Any]] | None:
+                      worktree: str | None = None,
+                      allow_dirty: bool = False) -> tuple[str, dict[str, Any]] | None:
     """Refusal `(reason, extra-json-fields)` (or None) for advancing the primary
     checkout's local `main` by a fast-forward. `main` is checked out in the primary,
     so a ff updates its working tree — it must be on `local`, tracked-clean, with no
@@ -1745,6 +1746,8 @@ def _primary_ff_ready(primary: Path, local: str, branch: str | None = None,
                 f"checkout by hand, then re-run cutover", {})
     if out.strip():
         files = _porcelain_paths(out)
+        if allow_dirty:
+            return None
         shown = ", ".join(files[:10])
         if len(files) > 10:
             shown += f" … and {len(files) - 10} more"
@@ -4785,6 +4788,93 @@ def _integrate_save(path: Path, st: dict[str, Any]) -> None:
         tmp.unlink(missing_ok=True)
 
 
+_DELIVERY_PHASES = (
+    "cutover", "resolve-source", "anchor", "validate", "resolve-integration", "sync",
+)
+_DELIVERY_PHASE_STATUSES = {"started", "completed", "blocked"}
+
+
+def _delivery_record_phase(
+    manifest_path: Path | None,
+    phase: str,
+    *,
+    status: str,
+    **fields: Any,
+) -> dict[str, Any] | None:
+    """Persist one monotonic close-wave phase receipt.
+
+    The manifest is the recovery ledger, not merely a final report.  A phase may
+    be replayed after a process crash, but a completed phase must never regress to
+    ``started`` or be overwritten with a different operation identity.  The
+    atomic ``_integrate_save`` write means the phase receipt is durable before the
+    next phase mutates primary/registry state.
+    """
+    if manifest_path is None:
+        return None
+    if phase not in _DELIVERY_PHASES:
+        raise ValueError(f"unknown close-wave phase: {phase}")
+    if status not in _DELIVERY_PHASE_STATUSES:
+        raise ValueError(f"unknown close-wave phase status: {status}")
+    payload = _delivery_load_json(manifest_path)
+    if payload is None:
+        raise OSError(f"integration manifest is unreadable: {manifest_path}")
+    marker = _delivery_update_phase_marker(
+        payload.get("close_wave"), phase, status=status, **fields,
+    )
+    payload["close_wave"] = marker
+    _integrate_save(manifest_path, payload)
+    return marker
+
+
+def _delivery_update_phase_marker(
+    raw_marker: Any,
+    phase: str,
+    *,
+    status: str,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Pure marker update used to batch a phase receipt with another save."""
+    if phase not in _DELIVERY_PHASES:
+        raise ValueError(f"unknown close-wave phase: {phase}")
+    if status not in _DELIVERY_PHASE_STATUSES:
+        raise ValueError(f"unknown close-wave phase status: {status}")
+    if raw_marker is not None and not isinstance(raw_marker, dict):
+        raise ValueError("integration manifest has malformed close_wave marker")
+    marker = dict(raw_marker or {})
+    phases = marker.get("phases")
+    if phases is not None and not isinstance(phases, dict):
+        raise ValueError("integration manifest has malformed phase ledger")
+    phases = dict(phases or {})
+    previous = phases.get(phase)
+    if previous is not None and not isinstance(previous, dict):
+        raise ValueError(f"integration manifest has malformed {phase} phase")
+    previous = dict(previous or {})
+    if previous.get("status") == "completed":
+        # A completed receipt is immutable.  In particular, a retry after a
+        # crash must not replace its operation identity with the retry's base.
+        marker["phases"] = phases
+        if marker.get("last_successful_phase") is None:
+            marker["last_successful_phase"] = phase
+        return marker
+    entry = {**previous, "status": status}
+    for key, value in fields.items():
+        if value is not None:
+            entry[key] = value
+    phases[phase] = entry
+    marker["phases"] = phases
+    marker.setdefault("last_successful_phase", None)
+    if status == "completed":
+        previous_success = marker.get("last_successful_phase")
+        if (previous_success not in _DELIVERY_PHASES
+                or _DELIVERY_PHASES.index(phase)
+                >= _DELIVERY_PHASES.index(previous_success)):
+            marker["last_successful_phase"] = phase
+    for key in ("operation_base", "landed_sha"):
+        if key in fields and fields[key] is not None:
+            marker[key] = fields[key]
+    return marker
+
+
 def _integrate_completed_path(spath: Path, slug: str, head_sha: str) -> Path:
     return spath.parent / "completed" / f"{slug}-{head_sha[:12]}.json"
 
@@ -6564,6 +6654,134 @@ def _delivery_anchor_identity(
     return tip
 
 
+def _delivery_anchor_history_identity(
+    primary: Path,
+    expected_paths: set[str],
+    *,
+    base_sha: str | None,
+    expected_sha: str | None = None,
+) -> str | None:
+    """Find a machine-repair anchor commit already contained in ``HEAD``.
+
+    ``_delivery_anchor_identity`` intentionally requires the anchor to be the
+    current tip.  Recovery is slightly wider: an unrelated primary advance may
+    follow a committed anchor before the manifest receipt is flushed.  The
+    commit is still accepted only when its parent, subject, trailer, and exact
+    changed paths prove it is this wave's anchor.
+    """
+    if expected_sha:
+        candidates = [expected_sha]
+    else:
+        rc, output = _git(["rev-list", "HEAD"], cwd=primary)
+        if rc != EXIT_OK:
+            return None
+        candidates = [sha for sha in output.splitlines() if sha]
+    for candidate in candidates:
+        ancestor_rc, _ = _git(
+            ["merge-base", "--is-ancestor", candidate, "HEAD"], cwd=primary
+        )
+        if ancestor_rc != 0:
+            continue
+        parents_rc, parents = _git(
+            ["rev-list", "--parents", "-n", "1", candidate], cwd=primary
+        )
+        parent_tokens = parents.split()
+        if parents_rc != EXIT_OK or len(parent_tokens) != 2:
+            continue
+        if base_sha and parent_tokens[1] != base_sha:
+            continue
+        subject_rc, subject = _git(
+            ["show", "-s", "--format=%s", candidate], cwd=primary
+        )
+        body_rc, body = _git(
+            ["show", "-s", "--format=%B", candidate], cwd=primary
+        )
+        if (subject_rc != EXIT_OK or body_rc != EXIT_OK
+                or subject != _DELIVERY_ANCHOR_SUBJECT
+                or _DELIVERY_ANCHOR_TRAILER not in body.splitlines()):
+            continue
+        paths_rc, changed = _git(
+            ["diff-tree", "--no-commit-id", "--name-only", "-r", candidate],
+            cwd=primary,
+        )
+        if paths_rc == EXIT_OK and {
+            line for line in changed.splitlines() if line
+        } == expected_paths:
+            return candidate
+    return None
+
+
+def _delivery_anchor_recovery_is_safe(
+    primary: Path, marker: dict[str, Any],
+) -> bool:
+    """Whether an interrupted anchor can be rebased onto the current primary.
+
+    This path is deliberately narrow: the persisted phase must say that anchor
+    started, no ticket may have been applied, and every expected ticket must
+    still be present in the staged queue.  Anything less remains a typed guard
+    refusal rather than an optimistic retry that could overwrite another wave.
+    """
+    phases = marker.get("phases")
+    anchor_phase = phases.get("anchor") if isinstance(phases, dict) else None
+    if not isinstance(anchor_phase, dict):
+        return False
+    if anchor_phase.get("status") not in {"started", "blocked"}:
+        return False
+    applied = anchor_phase.get("applied_ticket_ids", marker.get("anchor_ids", []))
+    if not isinstance(applied, list) or applied:
+        return False
+    expected = anchor_phase.get(
+        "expected_ticket_ids", marker.get("expected_ticket_ids", [])
+    )
+    if (not isinstance(expected, list) or not expected
+            or any(not isinstance(ticket_id, str) or not ticket_id
+                   for ticket_id in expected)):
+        return False
+    queued = {
+        row.get("id") for row in _read_anchor_queue(primary)
+        if isinstance(row, dict) and isinstance(row.get("id"), str)
+    }
+    return set(expected).issubset(queued)
+
+
+def _delivery_anchor_recovery_dirty_allowed(
+    primary: Path, manifest_path: Path | None,
+) -> bool:
+    """Allow only expected backlog documents to survive a partial anchor crash."""
+    if manifest_path is None:
+        return False
+    marker_payload = _delivery_load_json(manifest_path)
+    marker = (marker_payload or {}).get("close_wave") if marker_payload else None
+    if not isinstance(marker, dict) or not _delivery_anchor_recovery_is_safe(
+            primary, marker
+    ):
+        # A partial anchor may have written the documents before consuming the
+        # queue, so the queue proof is intentionally not required here.  The
+        # phase/applied proof still must say that nothing was durably consumed.
+        phases = marker.get("phases") if isinstance(marker, dict) else None
+        anchor_phase = phases.get("anchor") if isinstance(phases, dict) else None
+        if not isinstance(anchor_phase, dict) or anchor_phase.get("status") not in {
+                "started", "blocked"}:
+            return False
+        applied = anchor_phase.get("applied_ticket_ids", marker.get("anchor_ids", []))
+        if not isinstance(applied, list) or applied:
+            return False
+    expected = marker.get("expected_ticket_ids", [])
+    if not isinstance(expected, list) or any(
+        not isinstance(ticket_id, str) or not ticket_id for ticket_id in expected
+    ):
+        return False
+    expected_paths = {
+        f"docs/runbook/backlog/{ticket_id}.json" for ticket_id in expected
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id)
+    }
+    if len(expected_paths) != len(expected):
+        return False
+    dirty = _delivery_primary_dirty(primary)
+    paths = set(_porcelain_paths("\n".join(dirty)))
+    return bool(paths) and paths.issubset(expected_paths)
+
+
 def _delivery_anchor_commit(
     primary: Path,
     *,
@@ -6605,6 +6823,11 @@ def _delivery_anchor_commit(
             expected_sha=already_committed_sha,
         )
         if recovered_sha is None:
+            recovered_sha = _delivery_anchor_history_identity(
+                primary, expected_paths, base_sha=anchor_base_sha,
+                expected_sha=already_committed_sha,
+            )
+        if recovered_sha is None:
             return EXIT_BLOCK, {
                 "error": "anchor manifest claimed a committed anchor, but primary "
                          "does not contain that exact commit",
@@ -6624,6 +6847,11 @@ def _delivery_anchor_commit(
         recovered_sha = _delivery_anchor_identity(
             primary, expected_paths, base_sha=anchor_base_sha,
         )
+        if recovered_sha is None and already_committed_sha:
+            recovered_sha = _delivery_anchor_history_identity(
+                primary, expected_paths, base_sha=anchor_base_sha,
+                expected_sha=already_committed_sha,
+            )
         if recovered_sha is not None:
             return EXIT_OK, {
                 "committed": False,
@@ -6689,18 +6917,22 @@ def _delivery_anchor_and_commit(
     """Linearize the primary-side anchor and its exact-path metadata commit."""
     steps: list[dict[str, Any]] = []
     with _main_advance_lock(primary):
+        dirty_recovery_allowed = _delivery_anchor_recovery_dirty_allowed(
+            primary, manifest_path,
+        )
         ff_refusal = _primary_ff_ready(
             primary,
             _delivery_operation_base(getattr(args, "base", "main")),
             branch=f"close-wave:{slug}",
             worktree=str(primary),
+            allow_dirty=dirty_recovery_allowed,
         )
         if ff_refusal is not None:
             reason, extra = ff_refusal
             steps.append({"name": "anchor-guard", "error": reason, **extra})
             return EXIT_BLOCK, steps
         dirty = _delivery_primary_dirty(primary)
-        if dirty:
+        if dirty and not dirty_recovery_allowed:
             steps.append({
                 "name": "anchor-guard",
                 "error": "primary became dirty before anchor",
@@ -6758,15 +6990,63 @@ def _delivery_anchor_and_commit(
             already_committed = marker.get("anchor_committed") is True
             if (stored_base is not None and stored_base != current_head
                     and not already_committed):
+                phase_marker = marker.get("phases")
+                anchor_phase = (phase_marker.get("anchor")
+                                if isinstance(phase_marker, dict) else None)
+                recovery_ids = list(saved_ids)
+                if (not recovery_ids and isinstance(anchor_phase, dict)):
+                    phase_ids = anchor_phase.get("applied_ticket_ids")
+                    if ("applied_ticket_ids" in anchor_phase
+                            and (not isinstance(phase_ids, list)
+                                 or any(not isinstance(ticket_id, str)
+                                        for ticket_id in phase_ids))):
+                        steps.append({
+                            "name": "anchor-guard",
+                            "error": "integration manifest has malformed recovery ticket ids",
+                            "field": "phases.anchor.applied_ticket_ids",
+                        })
+                        return EXIT_BLOCK, steps
+                    if isinstance(phase_ids, list) and phase_ids:
+                        recovery_ids = list(phase_ids)
+                    elif anchor_phase.get("status") in {"started", "blocked"}:
+                        expected_ids = marker.get("expected_ticket_ids", [])
+                        if (not isinstance(expected_ids, list)
+                                or any(not isinstance(ticket_id, str)
+                                       for ticket_id in expected_ids)):
+                            steps.append({
+                                "name": "anchor-guard",
+                                "error": "integration manifest has malformed recovery ticket ids",
+                                "field": "close_wave.expected_ticket_ids",
+                            })
+                            return EXIT_BLOCK, steps
+                        recovery_ids = list(expected_ids)
+                if any(not isinstance(ticket_id, str) for ticket_id in recovery_ids):
+                    steps.append({
+                        "name": "anchor-guard",
+                        "error": "integration manifest has malformed recovery ticket ids",
+                        "field": "close_wave.recovery_ids",
+                    })
+                    return EXIT_BLOCK, steps
                 recovery_paths = {
                     f"docs/runbook/backlog/{ticket_id}.json"
-                    for ticket_id in saved_ids
+                    for ticket_id in recovery_ids
                     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id)
                 }
-                if (not recovery_paths
-                        or _delivery_anchor_identity(
-                            primary, recovery_paths, base_sha=stored_base
-                        ) is None):
+                recovered_sha = (
+                    _delivery_anchor_history_identity(
+                        primary, recovery_paths, base_sha=stored_base,
+                    ) if recovery_paths else None
+                )
+                if recovered_sha is not None:
+                    saved_ids = recovery_ids
+                    already_committed_sha = recovered_sha
+                elif (_delivery_anchor_recovery_is_safe(primary, marker)
+                      or dirty_recovery_allowed):
+                    # The old anchor phase is durable, but its queue rows prove
+                    # that no metadata was consumed.  Rebase the operation onto
+                    # the current primary tip and continue idempotently.
+                    anchor_base_sha = current_head
+                else:
                     steps.append({
                         "name": "anchor-guard",
                         "error": "primary moved after the persisted anchor base and "
@@ -6786,6 +7066,12 @@ def _delivery_anchor_and_commit(
                 steps.append({"name": "anchor-guard",
                               "error": "committed anchor marker has no anchor_commit_sha"})
                 return EXIT_BLOCK, steps
+            marker = _delivery_update_phase_marker(
+                marker, "anchor", status="started",
+                operation_base=anchor_base_sha, landed_sha=current_head,
+                expected_ticket_ids=marker.get("expected_ticket_ids", []),
+                applied_ticket_ids=saved_ids, queue_state="pending",
+            )
             persisted["close_wave"] = {
                 **marker,
                 "anchor_base_sha": anchor_base_sha,
@@ -6830,9 +7116,54 @@ def _delivery_anchor_and_commit(
             return EXIT_BLOCK, steps
         if not applied and saved_ids:
             applied = list(saved_ids)
+        if not applied and manifest_path is not None:
+            # A child may have written every expected ticket and drained the queue
+            # before its process died, so the retry's anchor receipt legitimately
+            # has no applied list.  Only recover that narrow state when the phase
+            # is durable, the queue is empty, and the tracked dirty set is exactly
+            # the persisted expected ticket documents.
+            recovery_marker = persisted.get("close_wave") if persisted else None
+            recovery_phase = (
+                recovery_marker.get("phases", {}).get("anchor")
+                if isinstance(recovery_marker, dict)
+                and isinstance(recovery_marker.get("phases"), dict)
+                else None
+            )
+            expected_recovery = (
+                recovery_marker.get("expected_ticket_ids", [])
+                if isinstance(recovery_marker, dict) else []
+            )
+            expected_recovery_paths = {
+                f"docs/runbook/backlog/{ticket_id}.json"
+                for ticket_id in expected_recovery
+                if isinstance(ticket_id, str)
+                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", ticket_id)
+            }
+            dirty_recovery_paths = set(_porcelain_paths(
+                "\n".join(_delivery_primary_dirty(primary))
+            ))
+            if (
+                isinstance(recovery_phase, dict)
+                and recovery_phase.get("status") in {"started", "blocked"}
+                and not recovery_phase.get("applied_ticket_ids")
+                and expected_recovery
+                and len(expected_recovery_paths) == len(expected_recovery)
+                and not _read_anchor_queue(primary)
+                and dirty_recovery_paths == expected_recovery_paths
+            ):
+                applied = list(expected_recovery)
         if manifest_path is not None:
+            marker = _delivery_update_phase_marker(
+                persisted.get("close_wave"), "anchor", status="started",
+                operation_base=anchor_base_sha, landed_sha=anchor_base_sha,
+                expected_ticket_ids=(persisted.get("close_wave") or {}).get(
+                    "expected_ticket_ids", []),
+                applied_ticket_ids=applied,
+                acceptance_receipt=anchor_payload,
+                queue_state="consumed" if applied else "pending",
+            )
             persisted["close_wave"] = {
-                **(persisted.get("close_wave") or {}),
+                **marker,
                 "anchor_base_sha": anchor_base_sha,
                 "anchor_ids": applied,
                 "anchor_committed": already_committed,
@@ -6864,8 +7195,17 @@ def _delivery_anchor_and_commit(
                 steps.append({"name": "anchor-guard",
                               "error": "integration manifest disappeared after anchor commit"})
                 return EXIT_BLOCK, steps
+            marker = _delivery_update_phase_marker(
+                persisted.get("close_wave"), "anchor", status="completed",
+                operation_base=anchor_base_sha, landed_sha=committed_sha,
+                expected_ticket_ids=(persisted.get("close_wave") or {}).get(
+                    "expected_ticket_ids", []),
+                applied_ticket_ids=applied,
+                acceptance_receipt=anchor_payload,
+                queue_state="consumed", anchor_commit=committed_sha,
+            )
             persisted["close_wave"] = {
-                **(persisted.get("close_wave") or {}),
+                **marker,
                 "anchor_base_sha": anchor_base_sha,
                 "anchor_ids": applied,
                 "anchor_committed": True,
@@ -6908,6 +7248,25 @@ def _delivery_sync_close_wave(
                       "sync": marker.get("sync")})
         return EXIT_OK, marker.get("sync")
 
+    head_rc, sync_head = _git(["rev-parse", "HEAD"], cwd=primary)
+    if head_rc != EXIT_OK or not sync_head:
+        steps.append({"name": "sync", "error": "could not capture primary HEAD before sync"})
+        return EXIT_BLOCK, None
+    marker = _delivery_update_phase_marker(
+        marker, "sync", status="started",
+        operation_base=marker.get("operation_base") or marker.get("anchor_base_sha"),
+        landed_sha=sync_head,
+        expected_ticket_ids=marker.get("expected_ticket_ids", []),
+        applied_ticket_ids=marker.get("anchor_ids", []),
+        queue_state="consumed",
+    )
+    current["close_wave"] = marker
+    try:
+        _integrate_save(manifest_path, current)
+    except OSError as exc:
+        steps.append({"name": "sync", "error": f"could not persist sync start: {exc}"})
+        return EXIT_BLOCK, None
+
     # Sync runs after cutover, so the stable primary copy is now the coordinator
     # version that produced the fresh Gate.  The caller's source worktree may have
     # been resolved and removed by this point; resolving `__file__` here would make
@@ -6930,7 +7289,16 @@ def _delivery_sync_close_wave(
         steps.append({"name": "sync", "error": "integration manifest disappeared after sync"})
         return EXIT_BLOCK, sync_payload
     current["close_wave"] = {
-        **(current.get("close_wave") or {}),
+        **_delivery_update_phase_marker(
+            current.get("close_wave"), "sync", status="completed",
+            operation_base=(current.get("close_wave") or {}).get("operation_base")
+            or (current.get("close_wave") or {}).get("anchor_base_sha"),
+            landed_sha=sync_payload.get("to"),
+            expected_ticket_ids=(current.get("close_wave") or {}).get(
+                "expected_ticket_ids", []),
+            applied_ticket_ids=(current.get("close_wave") or {}).get("anchor_ids", []),
+            acceptance_receipt=sync_payload, queue_state="consumed",
+        ),
         "sync_status": "completed",
         "sync": sync_payload,
     }
@@ -6978,7 +7346,9 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         return blocked
     primary = primary_root()
     dirty = _delivery_primary_dirty(primary)
-    if dirty:
+    _, early_manifests = _delivery_state_paths(args)
+    early_manifest = early_manifests[0] if early_manifests else None
+    if dirty and not _delivery_anchor_recovery_dirty_allowed(primary, early_manifest):
         _emit({
             "schema": DELIVERY_SCHEMA,
             "step": "close-wave",
@@ -7255,6 +7625,24 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     steps: list[dict[str, Any]] = []
+
+    def record_phase(phase: str, status: str, **fields: Any) -> bool:
+        """Write a durable phase receipt, turning ledger failures into a stop."""
+        if manifest_path is None:
+            return True
+        try:
+            _delivery_record_phase(
+                manifest_path, phase, status=status, **fields,
+            )
+        except (OSError, ValueError) as exc:
+            steps.append({
+                "name": f"{phase}-phase",
+                "status": status,
+                "error": f"could not persist {phase} phase receipt: {exc}",
+            })
+            return False
+        return True
+
     coordinator_orchestrator = Path(__file__).resolve()
     # Before cutover the source coordinator is required for the new protocol;
     # after cutover, all remaining steps use this stable primary copy.  A delivery
@@ -7423,11 +7811,36 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
               "✗ close-wave refused: integration identity is missing")
         return EXIT_BLOCK
 
+    head_rc, phase_head = _git(["rev-parse", "HEAD"], cwd=primary)
+    if head_rc != EXIT_OK or not phase_head:
+        return _delivery_state_error(
+            args=args, state_path=state_path, manifest_path=manifest_path,
+            error="could not capture primary HEAD before close-wave phases",
+        )
+    phase_expected = list(expected_ticket_ids)
+    if not record_phase(
+        "cutover", "started", operation_base=operation_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=[], queue_state="pending",
+    ):
+        return EXIT_BLOCK
     ancestor_rc, _ = _git(
         ["merge-base", "--is-ancestor", integration_branch, target_base], cwd=primary
     )
     if ancestor_rc == 0:
-        steps.append({"name": "cutover", "mode": "already-landed", "branch": integration_branch})
+        landed_rc, landed_sha = _git(["rev-parse", "HEAD"], cwd=primary)
+        cutover_receipt = {
+            "mode": "already-landed", "branch": integration_branch,
+            "landed": landed_rc == EXIT_OK, "sha": landed_sha,
+        }
+        steps.append({"name": "cutover", **cutover_receipt})
+        if not record_phase(
+            "cutover", "completed", operation_base=operation_base,
+            landed_sha=landed_sha if landed_rc == EXIT_OK else phase_head,
+            expected_ticket_ids=phase_expected, applied_ticket_ids=[],
+            acceptance_receipt=cutover_receipt, queue_state="pending",
+        ):
+            return EXIT_BLOCK
     else:
         cutover_script = integration_worktree / "ops" / "worktree_orchestrate.py"
         cutover_rc, cutover_payload = _delivery_json_tool(
@@ -7445,11 +7858,28 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         steps.append({"name": "cutover", "rc": cutover_rc,
                       "payload": cutover_payload})
         if cutover_rc != EXIT_OK or not cutover_payload.get("landed"):
+            record_phase(
+                "cutover", "blocked", operation_base=operation_base,
+                landed_sha=phase_head, expected_ticket_ids=phase_expected,
+                applied_ticket_ids=[], acceptance_receipt=cutover_payload,
+                queue_state="pending",
+            )
             _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                    "mode": "stopped", "slug": args.slug, "steps": steps,
                    "next": "follow cutover refusal, then rerun close-wave"}, args.json,
                   "✗ close-wave stopped: cutover did not land")
             return cutover_rc or EXIT_BLOCK
+        if not record_phase(
+            "cutover", "completed", operation_base=operation_base,
+            landed_sha=cutover_payload.get("sha") or cutover_payload.get("landed_sha"),
+            expected_ticket_ids=phase_expected, applied_ticket_ids=[],
+            acceptance_receipt=cutover_payload, queue_state="pending",
+        ):
+            return EXIT_BLOCK
+
+    phase_head_rc, landed_phase_head = _git(["rev-parse", "HEAD"], cwd=primary)
+    if phase_head_rc == EXIT_OK and landed_phase_head:
+        phase_head = landed_phase_head
 
     # Capture source paths after cutover too: a resumed invocation may have already
     # resolved some of them.  Resolved sources are idempotently skipped; active
@@ -7461,13 +7891,29 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         str(record.get("branch")): record for record in records
         if record.get("status") == wr.STATUS_ACTIVE
     }
+    if not record_phase(
+        "resolve-source", "started", operation_base=target_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=[], queue_state="pending",
+        source_branches=list(branches),
+    ):
+        return EXIT_BLOCK
+    resolved_branches: list[str] = []
     for branch in branches:
         record = active_by_branch.get(branch)
         if record is None:
             steps.append({"name": "resolve-source", "branch": branch, "mode": "already-resolved"})
+            resolved_branches.append(branch)
             continue
         source_path = Path(str(record.get("path") or ""))
         if not source_path.is_dir():
+            record_phase(
+                "resolve-source", "blocked", operation_base=target_base,
+                landed_sha=phase_head, expected_ticket_ids=phase_expected,
+                applied_ticket_ids=[], queue_state="pending",
+                resolved_branches=resolved_branches,
+                error="active source worktree is missing",
+            )
             _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                    "error": "active source worktree is missing; refusing to guess its identity",
                    "branch": branch, "path": str(source_path), "steps": steps}, args.json,
@@ -7489,11 +7935,25 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         steps.append({"name": "resolve-source", "branch": branch, "rc": resolve_rc,
                       "payload": resolve_payload})
         if resolve_rc != EXIT_OK:
+            record_phase(
+                "resolve-source", "blocked", operation_base=target_base,
+                landed_sha=phase_head, expected_ticket_ids=phase_expected,
+                applied_ticket_ids=[], acceptance_receipt=resolve_payload,
+                queue_state="pending", resolved_branches=resolved_branches,
+            )
             _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                    "mode": "stopped", "slug": args.slug, "steps": steps,
                    "next": "fix the named resolve audit and rerun close-wave"}, args.json,
                   f"✗ close-wave stopped resolving source {branch}")
             return resolve_rc
+        resolved_branches.append(branch)
+    if not record_phase(
+        "resolve-source", "completed", operation_base=target_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=[], queue_state="pending",
+        resolved_branches=resolved_branches,
+    ):
+        return EXIT_BLOCK
 
     anchor_rc, anchor_steps = _delivery_anchor_and_commit(
         args, primary, allowed, args.slug, manifest_path
@@ -7501,6 +7961,12 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     steps.extend(anchor_steps)
     anchor_commit_rc = anchor_rc
     if anchor_commit_rc != EXIT_OK:
+        record_phase(
+            "anchor", "blocked", operation_base=phase_head,
+            landed_sha=phase_head, expected_ticket_ids=phase_expected,
+            applied_ticket_ids=[], queue_state="pending",
+            acceptance_receipt=(anchor_steps[-1] if anchor_steps else None),
+        )
         _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
               "✗ close-wave stopped: anchor metadata was not committed")
@@ -7517,6 +7983,12 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             "✗ close-wave stopped: anchor did not close every expected ticket")
         return EXIT_BLOCK
 
+    if not record_phase(
+        "validate", "started", operation_base=target_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=expected_ticket_ids, queue_state="consumed",
+    ):
+        return EXIT_BLOCK
     validate_rc, validate_payload = _delivery_json_tool(
         primary / "ops" / "backlog.py",
         primary,
@@ -7529,10 +8001,23 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     steps.append({"name": "validate", "rc": validate_rc,
                   "payload": validate_payload})
     if validate_rc != EXIT_OK:
+        record_phase(
+            "validate", "blocked", operation_base=target_base,
+            landed_sha=phase_head, expected_ticket_ids=phase_expected,
+            applied_ticket_ids=expected_ticket_ids,
+            acceptance_receipt=validate_payload, queue_state="consumed",
+        )
         _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
               "✗ close-wave stopped: backlog validation is not green")
         return validate_rc
+    if not record_phase(
+        "validate", "completed", operation_base=target_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=expected_ticket_ids,
+        acceptance_receipt=validate_payload, queue_state="consumed",
+    ):
+        return EXIT_BLOCK
 
     if manifest_path is not None:
         validated_manifest = _delivery_load_json(manifest_path)
@@ -7565,9 +8050,20 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
          and record.get("branch") == integration_branch),
         None,
     )
+    if not record_phase(
+        "resolve-integration", "started", operation_base=target_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=expected_ticket_ids, queue_state="consumed",
+        integration_branch=integration_branch,
+    ):
+        return EXIT_BLOCK
     if integration_record is None:
         steps.append({"name": "resolve-integration", "mode": "already-resolved",
                       "branch": integration_branch})
+        resolve_integration_receipt = {
+            "mode": "already-resolved", "branch": integration_branch,
+            "resolved": "merged", "failures": 0,
+        }
     else:
         resolve_rc, resolve_payload = _delivery_json_tool(
             primary_orchestrator,
@@ -7584,11 +8080,27 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         steps.append({"name": "resolve-integration", "rc": resolve_rc,
                       "payload": resolve_payload})
         if resolve_rc != EXIT_OK:
+            record_phase(
+                "resolve-integration", "blocked", operation_base=target_base,
+                landed_sha=phase_head, expected_ticket_ids=phase_expected,
+                applied_ticket_ids=expected_ticket_ids,
+                acceptance_receipt=resolve_payload, queue_state="consumed",
+                integration_branch=integration_branch,
+            )
             _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
                    "mode": "stopped", "slug": args.slug, "steps": steps,
                    "next": "fix the named integration resolve issue and rerun close-wave"}, args.json,
                   "✗ close-wave stopped resolving the integration tree")
             return resolve_rc
+        resolve_integration_receipt = resolve_payload
+    if not record_phase(
+        "resolve-integration", "completed", operation_base=target_base,
+        landed_sha=phase_head, expected_ticket_ids=phase_expected,
+        applied_ticket_ids=expected_ticket_ids,
+        acceptance_receipt=resolve_integration_receipt, queue_state="consumed",
+        integration_branch=integration_branch,
+    ):
+        return EXIT_BLOCK
 
     if manifest_path is not None:
         completed_manifest = _delivery_load_json(manifest_path)
