@@ -152,3 +152,23 @@ def test_kg_board_group_covers_git_tree_regression() -> None:
     arm = dispatcher.split("kg-board)", 1)[1].split(";;", 1)[0]
 
     assert "ops/tests/test_kg_board_git_tree.py" in arm
+
+
+def test_lldb_coverage_uses_runtime_capability_token_and_probe() -> None:
+    """LLDB denial must be a declared capability skip, not a false baseline red."""
+
+    coverage = (ROOT / "ops/tests/test_ops_ci_coverage.sh").read_text()
+    assert '"bin-lldb-runtime|xcrun|ops/tests/lldb_capability_probe.sh"' in coverage
+    assert '"lldb-forensics|bin-lldb-runtime|' in coverage
+    assert "lldb_capability_probe.sh" in coverage
+    assert "declared skip" in coverage
+
+
+def test_lldb_capability_probe_is_bounded_and_machine_named() -> None:
+    probe = ROOT / "ops/tests/lldb_capability_probe.sh"
+    assert probe.exists()
+    source = probe.read_text()
+    assert "kg_probe_wait_pid" in source
+    assert "KG_LLDB_CAPABILITY_TIMEOUT" in source
+    assert "attach-policy" in source or "attach denied" in source
+    assert "timeout" in source.lower()

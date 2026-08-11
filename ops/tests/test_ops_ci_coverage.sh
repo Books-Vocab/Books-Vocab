@@ -134,10 +134,13 @@ LINUX_GROUPS=(
 # felix 正是這種機器：只看 command -v 的話，這裡會判定工具鏈齊全、跑一次注定失敗的
 # baseline，然後指控兩個其實健康的 group「已經紅了，先去修」。探針空 = 只驗存在。
 #
-# 曾經有過 bin-lldb（給 lldb-forensics 用）。證偽器當場否決：那支測試從不直接呼叫 lldb，
-# 它靠的是 xcrun。這段故事留成註解，不留成沒人用的活 token。
+# lldb-forensics 雖然透過 xcrun 呼叫，但 xcrun/lldb 的 attach 權限不是
+# `command -v` 或 `xcodebuild -version` 能證明的。bin-lldb-runtime 以 bounded
+# capability probe 判定；macOS policy denial/timeout 是 declared skip，不是假裝 baseline
+# 綠，也不把工具能力不足誤報成測試壞掉。
 DEP_TOKENS=(
   "bin-xcode|xcodebuild xcrun swift swiftc|xcodebuild -version"
+  "bin-lldb-runtime|xcrun|ops/tests/lldb_capability_probe.sh"
   "bin-ssh|ssh scp rsync|ssh -V"
   "data-indexstore||"
   "data-ui-world||"
@@ -155,7 +158,7 @@ EXCLUDED_GROUPS=(
   "ui-quality-gate|data-ui-world|its --dataset assertions load a UI World whose assets are absolute local paths (lab/podcast workspaces)"
   "release|data-git-history|drives ops/release.sh against local tags and the iOS pbxproj"
   "ios-ops|bin-xcode|shells out to the Xcode toolchain for real (swift 2x) — dies with it denied"
-  "lldb-forensics|bin-xcode|shells out to xcrun 4x for real — dies with it denied. Tokened bin-lldb first; the falsifier rejected that on the spot (it never invokes lldb directly)"
+  "lldb-forensics|bin-lldb-runtime|shells out to xcrun/lldb 4x for real; attach-policy denial is a runtime capability skip, not a functional baseline"
   "ui-deadcode|data-indexstore|reads an IndexStore that only an Xcode build produces; the xcodebuild binary itself is never invoked"
   "ui-graph|data-indexstore|reads an IndexStore that only an Xcode build produces; the xcodebuild binary itself is never invoked"
   "podcast-ops|net-external|lab/podcast toolchain + network TTS"
@@ -539,9 +542,17 @@ toolchain_usable() {
   for b in $denials; do command -v "$b" >/dev/null 2>&1 || missing="${missing:+$missing }$b"; done
   if [[ -n "$missing" ]]; then TOOLCHAIN_WHY="[$missing] absent"; return 1; fi
   probe="$(token_probe "$tok")"
-  if [[ -n "$probe" ]] && ! $probe >/dev/null 2>&1; then
-    TOOLCHAIN_WHY="[$denials] all resolve but \`$probe\` fails — present in name only"
-    return 1
+  if [[ -n "$probe" ]]; then
+    if [[ "$tok" == "bin-lldb-runtime" ]]; then
+      local probe_output=""
+      if ! probe_output="$("$WORKSPACE/$probe" 2>&1)"; then
+        TOOLCHAIN_WHY="[$denials] capability probe: ${probe_output//$'\n'/; }"
+        return 1
+      fi
+    elif ! $probe >/dev/null 2>&1; then
+      TOOLCHAIN_WHY="[$denials] all resolve but \`$probe\` fails — present in name only"
+      return 1
+    fi
   fi
   TOOLCHAIN_WHY=""
   return 0
@@ -739,8 +750,7 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
   #     報 CLT-instance 錯。只看 command -v 的版本在那台會犯一模一樣的錯。
   # 半套工具鏈比完全沒有更會騙人：全都沒有時它至少誠實宣告跳過。
   if ! toolchain_usable "$tok"; then
-    echo "  · $g: skipped — $TOOLCHAIN_WHY, so the undenied baseline cannot be a fair test here" >&2
-    ok "$g: falsification skipped on this host (declared, not silently passed)"
+    echo "  · $g: declared skip — $TOOLCHAIN_WHY; the undenied baseline is not a fair test here" >&2
     skipped=$((skipped+1))
     continue
   fi
