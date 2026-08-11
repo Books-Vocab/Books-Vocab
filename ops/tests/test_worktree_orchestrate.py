@@ -54,6 +54,14 @@ branch_for = MODULE.branch_for
 plan_gates = MODULE.plan_gates
 aggregate_verdict = MODULE.aggregate_verdict
 
+DISPATCH_SPEC = importlib.util.spec_from_file_location(
+    "dispatch_preflight", ROOT / "ops" / "lib" / "dispatch_preflight.py"
+)
+assert DISPATCH_SPEC and DISPATCH_SPEC.loader
+DISPATCH = importlib.util.module_from_spec(DISPATCH_SPEC)
+sys.modules[DISPATCH_SPEC.name] = DISPATCH
+DISPATCH_SPEC.loader.exec_module(DISPATCH)
+
 
 def _names(gates):
     return {g["name"] for g in gates}
@@ -61,6 +69,97 @@ def _names(gates):
 
 def _by_name(gates):
     return {g["name"]: g for g in gates}
+
+
+# ============================================================================
+# P0: dispatch preflight compiler
+# ============================================================================
+def _dispatch_payload(**overrides):
+    payload = {
+        "id": "IMP-20260811-fixture",
+        "status": "triaged",
+        "fix_site": "ops/backlog.py; ops/tests/test_backlog.py",
+        "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_backlog.py",
+        "blocked_by": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_dispatch_preflight_static_red_is_executable(tmp_path):
+    result = DISPATCH.compile_static(
+        _dispatch_payload(), repo=tmp_path,
+        contract_problems=[],
+    )
+    assert result.classification == "executable"
+    assert result.ok is True
+    assert result.problems == ()
+    assert result.schema == "kg.dispatch.preflight.v1"
+
+
+def test_dispatch_preflight_has_stable_contract_blocked_shape(tmp_path):
+    result = DISPATCH.compile_static(
+        _dispatch_payload(fix_site="ops/missing.py"), repo=tmp_path,
+        contract_problems=[{"kind": "fix-site-missing", "path": "ops/missing.py"}],
+    )
+    payload = result.to_dict()
+    assert payload["classification"] == "contract-blocked"
+    assert payload["ok"] is False
+    assert payload["problems"] == [{"kind": "fix-site-missing", "path": "ops/missing.py"}]
+    assert payload["repair_hints"]
+    assert set(payload) == {
+        "schema", "ticket_id", "classification", "ok", "problems",
+        "repair_hints", "probe",
+    }
+
+
+def test_dispatch_preflight_dependency_and_overlap_are_named(tmp_path):
+    result = DISPATCH.compile_static(
+        _dispatch_payload(blocked_by=["IMP-20260811-blocker"]),
+        repo=tmp_path,
+        contract_problems=[],
+        unresolved_blockers=["IMP-20260811-blocker"],
+        active_files={"ops/backlog.py"},
+    )
+    assert result.classification == "dependency-blocked"
+    assert {problem["kind"] for problem in result.problems} == {
+        "dependency-blocked", "active-overlap",
+    }
+
+
+def test_dispatch_preflight_probe_classifies_baseline_and_environment():
+    baseline = DISPATCH.with_probe(
+        DISPATCH.compile_static(_dispatch_payload(), repo=Path("."), contract_problems=[]),
+        returncode=0, expected_returncode=0, stderr="",
+    )
+    environment = DISPATCH.with_probe(
+        DISPATCH.compile_static(_dispatch_payload(), repo=Path("."), contract_problems=[]),
+        returncode=1, expected_returncode=0, stderr="ModuleNotFoundError: No module named 'ebooklib'",
+    )
+    assert baseline.classification == "baseline-green"
+    assert environment.classification == "environment-blocked"
+
+
+def test_dispatch_preflight_declared_baseline_never_enters_a_worktree(tmp_path):
+    result = DISPATCH.compile_static(
+        _dispatch_payload(contract_baseline="green"), repo=tmp_path,
+        contract_problems=[],
+    )
+    assert result.classification == "baseline-green"
+    assert result.ok is False
+    with_contract = DISPATCH.compile_static(
+        _dispatch_payload(contract_baseline="green"), repo=tmp_path,
+        contract_problems=[{"kind": "contract-baseline-not-red", "value": "green"}],
+    )
+    assert with_contract.classification == "baseline-green"
+
+    for declared, kind in (("green", "baseline-green"), ("environment", "environment-blocked")):
+        result = DISPATCH.compile_static(
+            _dispatch_payload(contract_baseline=declared), repo=tmp_path,
+            contract_problems=[],
+        )
+        assert result.classification == kind
+        assert [problem["kind"] for problem in result.problems] == [kind]
 
 
 # ============================================================================
@@ -7413,6 +7512,17 @@ GROOMED = {"plan": "do the thing", "acceptance": "red then green",
 def test_a_groomed_open_ticket_is_claimable(tmp_path):
     store = _ticket(tmp_path, "IMP-20260808-aaaaaa", **GROOMED)
     assert MODULE._unclaimable(store, ["IMP-20260808-aaaaaa"]) == []
+
+
+def test_claim_preflight_registry_probe_failure_is_fail_closed(tmp_path, monkeypatch):
+    store = _ticket(tmp_path, "IMP-20260811-probe-fail", **GROOMED)
+
+    def unreadable(_repo, **_kwargs):
+        raise RuntimeError("registry unavailable")
+
+    monkeypatch.setattr(MODULE, "_active_worktree_files", unreadable)
+    problems = MODULE._unclaimable(store, ["IMP-20260811-probe-fail"])
+    assert [problem["kind"] for problem in problems] == ["preflight-read-failed"]
 
 
 def test_pre_dispatch_refuses_missing_contract_evidence(tmp_path):

@@ -49,8 +49,8 @@ import datetime
 import hashlib
 import inspect
 import json
-import re
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -67,6 +67,7 @@ DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
 DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib import dispatch_preflight  # noqa: E402
 from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 
@@ -3467,6 +3468,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_show.add_argument("--json", action="store_true")
 
+    p_preflight = sub.add_parser(
+        "preflight",
+        help="compile one ticket's claim readiness without writing state",
+        description=(
+            "Read-only dispatch compiler. It classifies a ticket before a worktree "
+            "claim; acceptance execution requires the explicit --probe-acceptance."
+        ),
+    )
+    _add_store_arg(p_preflight)
+    p_preflight.add_argument("id")
+    p_preflight.add_argument(
+        "--state", type=Path, default=None,
+        help="explicit registry ledger for overlap checks (default: repository ledger)",
+    )
+    p_preflight.add_argument(
+        "--probe-acceptance", action="store_true",
+        help="explicitly run the ticket acceptance command (bounded; never writes state)",
+    )
+    p_preflight.add_argument("--json", action="store_true")
+
     p_validate = sub.add_parser(
         "validate",
         help="schema-check every entry and report staged queue work pending anchor",
@@ -5449,6 +5470,94 @@ def _cmd_show(args) -> int:
     return 0
 
 
+def _preflight_active_files(
+    repo: Path, *, exclude_ticket: str | None = None, state_path: Path | None = None,
+) -> set[str]:
+    """Read active worktree diffs for the read-only preflight command."""
+    try:
+        import worktree_registry as registry
+        state = registry.load_state(state_path or registry.default_state_path())
+    except (ImportError, OSError, ValueError, KeyError) as exc:
+        raise RuntimeError(f"active registry unreadable: {exc}") from exc
+    changed: set[str] = set()
+    for record in state.get("records") or []:
+        if not isinstance(record, dict) or record.get("status") != registry.STATUS_ACTIVE:
+            continue
+        if exclude_ticket and exclude_ticket in (record.get("backlog") or []):
+            continue
+        worktree = Path(str(record.get("path") or ""))
+        if not worktree.is_dir():
+            raise RuntimeError(f"active worktree missing: {worktree}")
+        for command in (
+            ("diff", "--name-only"),
+            ("diff", "--name-only", "--cached"),
+            ("ls-files", "--others", "--exclude-standard"),
+        ):
+            probe = _git(*command, repo=worktree)
+            if probe.returncode != 0:
+                raise RuntimeError(f"active worktree probe failed: {worktree} ({command!r})")
+            changed.update(line.strip() for line in probe.stdout.splitlines() if line.strip())
+        branch = str(record.get("branch") or "")
+        base = str(record.get("base") or "main")
+        if branch:
+            probe = _git("diff", "--name-only", f"{base}...{branch}", repo=repo)
+            if probe.returncode != 0:
+                raise RuntimeError(f"active branch probe failed: {branch}")
+            changed.update(line.strip() for line in probe.stdout.splitlines() if line.strip())
+    return changed
+
+
+def _cmd_preflight(args) -> int:
+    """Compile a ticket's claim readiness without writing any control-plane state."""
+    entry = load_entry(args.store, args.id)
+    repo = owning_repo_for_store(args.store)
+    unresolved = {
+        str(candidate.get("id")) for candidate in _iter_entries(args.store)
+        if candidate.get("status") not in ("fixed", "wont-fix")
+    }
+    contract = contract_preflight(entry, repo=repo)
+    try:
+        active_files = _preflight_active_files(
+            repo, exclude_ticket=args.id, state_path=args.state,
+        )
+    except RuntimeError as exc:
+        contract.append({"kind": "preflight-read-failed", "reason": str(exc)})
+        active_files = set()
+    result = dispatch_preflight.compile_static(
+        entry,
+        repo=repo,
+        contract_problems=contract,
+        unresolved_blockers=[
+            blocker for blocker in _blocking_ids(entry) if blocker in unresolved
+        ],
+        active_files=active_files,
+    )
+    if args.probe_acceptance:
+        command = str(entry.get("acceptance_cmd") or "").strip()
+        if not command:
+            raise BacklogError("--probe-acceptance requires acceptance_cmd")
+        outcome = _run_acceptance(
+            entry.get("id", args.id), command,
+            int(entry.get("acceptance_expect_rc") or 0),
+        )
+        result = dispatch_preflight.with_probe(
+            result,
+            returncode=outcome["rc"] if outcome["rc"] is not None else 124,
+            expected_returncode=outcome["expect_rc"],
+            stderr=outcome.get("output_tail", ""),
+        )
+    payload = result.to_dict()
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(f"{payload['ticket_id']}: {payload['classification']}")
+        for problem in payload["problems"]:
+            print(f"  {problem}")
+        for hint in payload["repair_hints"]:
+            print(f"  repair: {hint}")
+    return 0 if result.ok else 1
+
+
 def _patch_id(rev: str, repo: Path | None = None) -> str | None:
     """`git patch-id --stable` of one commit, or None if it has no diff to hash."""
     show = _git("show", rev, repo=repo)
@@ -6308,6 +6417,7 @@ def main(argv: list[str] | None = None) -> int:
         "dispatch": _cmd_list,
         "audit-criteria": _cmd_audit_criteria,
         "show": _cmd_show,
+        "preflight": _cmd_preflight,
         "validate": _cmd_validate,
         "groom": _cmd_groom,
         "update": _cmd_update,

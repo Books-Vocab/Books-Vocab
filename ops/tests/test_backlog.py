@@ -661,6 +661,34 @@ def test_cli_show_hands_back_the_app_only_fields(tmp_path, capsys):
         assert field in human, f"`show` omits {field!r} from its human output"
 
 
+def test_preflight_is_read_only_and_emits_stable_json(tmp_path, capsys):
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    entry.update({
+        "status": "triaged",
+        "groomed_at": "2026-08-11",
+        "groomed_by": "probe",
+        "plan": "repair the dispatch contract",
+        "acceptance": "red then green",
+        "acceptance_cmd": "true",
+        "fix_site": "ops/missing-preflight.py",
+    })
+    (store / f"{entry['id']}.json").write_text(
+        json.dumps(entry, ensure_ascii=False), encoding="utf-8"
+    )
+    before = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert BACKLOG.main(["preflight", entry["id"], "--store", str(store), "--json"]) == 1
+    result = json.loads(capsys.readouterr().out)
+    after = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert result["schema"] == "kg.dispatch.preflight.v1"
+    assert result["classification"] == "contract-blocked"
+    assert set(result) == {
+        "schema", "ticket_id", "classification", "ok", "problems",
+        "repair_hints", "probe",
+    }
+    assert before == after
+
+
 def test_cli_list_stream_app_is_the_inbox_the_agent_files_name(tmp_path, capsys):
     """`list --stream APP` is printed verbatim in both Line agent files.
 
