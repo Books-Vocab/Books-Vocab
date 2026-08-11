@@ -12,6 +12,9 @@
   "date": "2026-08-10",
   "detail": "close-wave 在 selected anchor rows 為空、primary 沒有 metadata diff 時，backlog anchor 正確回傳 applied=[] 且 anchor-commit 不產生 commit，但 manifest 仍寫 anchor_committed=true、沒有 anchor_commit_sha。下一次同 slug resume 會被 guard 以 committed anchor marker has no anchor_commit_sha 擋下。真正的 post-commit crash recovery 仍必須要求 exact parent/subject/trailer/path 與 anchor_commit_sha；本票只補明確的 noop outcome，不放寬安全檢查。",
   "fix_site": "ops/worktree_orchestrate.py;ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "e4d9dd71066a020cab40e08235d541d9d5ecfa73"
+  ],
   "groomed_against": "703c98a91",
   "groomed_at": "2026-08-12",
   "groomed_by": "agent:team-a-supervisor",
@@ -22,6 +25,10 @@
   "scope": "一個 close-wave anchor outcome 欄位與兩個回歸測試，不改 foreign-path 安全拒絕。",
   "severity": "high",
   "source": "supervisor:friction-F67",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-anchor-recovery",
+  "verified_evidence": "RED noop anchor marker regression; GREEN exact noop 1/409, crash identity/replay/foreign controls 3/407, full orchestrator 410 passed; review PASS; close-wave noop anchor receipt committed=false anchor_noop=true; recovery verify at landed e4d9dd71"
 }
