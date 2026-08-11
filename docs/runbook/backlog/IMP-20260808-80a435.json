@@ -7,7 +7,7 @@
   "detail": "`add` **只能立一張未梳理的票**：它收 `detail` / `brief` / `scope` / `severity` / `category`，但**沒有** `--plan` / `--fix-site` / `--acceptance` / `--acceptance-cmd`，也不能蓋 groom 戳記。所以一個**已經知道修法**的立單者必須做兩次呼叫：`add` 拿到 id，再 `update` 把修法補上。\n\n「立單 ≠ 梳理」這個區分本身是對的——多數立單者當下不知道修法。但當他**知道**的時候，工具強迫他分兩步，而那一步很容易不做。\n\n實測（2026-08-08）：\n- 一個 session 一口氣立了 13 張（`b72c6de70`，複習卡退化那批）。**13 張全部 `open` 未梳理**，因此全部進不了 `dispatch`。\n- 同日全板未梳理數從 18 漲到 **31**，其中 **24 張是當天立的**，佔 117 張未解的 26%。\n- 那批的立單者自己知道這件事並主動提醒使用者「還進不了 dispatch」——**那是它的自覺，不是工具給的**。`add` 的輸出一個字都沒提。\n\n第二個症狀更細但更傷：那 13 張的 commit message 宣稱「每張票的 acceptance 都內嵌了那張截圖的文字描述，下一個 session 沒有圖也能驗」，而實際上六張的 `acceptance` **全部是空字串**——文字落在 `detail` 裡。`detail` 是問題陳述不是判準，結案閘讀的是 `acceptance_cmd`/`acceptance_manual`。立單者以為自己寫進了判準，因為那次呼叫裡根本沒有判準這個欄位可填。\n\n**代價**：立單成本 O(1)、梳理成本 O(n)，而只有梳理過的票能被取走。板子因此以「看得見但取不到」的方式膨脹。",
   "fix_site": "ops/backlog.py:p_add / add_entry（新增梳理旗標 + claimable 提示輸出）",
   "fixed_by": [
-    "8fb7513a9a23a02a6fddd9c676288e464cbdd541"
+    "dd75d8dbb35f2218f1738a3f52312e52d5e17068"
   ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
@@ -22,6 +22,6 @@
   "stream": "IMP",
   "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-11",
-  "verified_by": "agent:team-a-anchor-recovery",
-  "verified_evidence": "prior child handback acceptance and review receipts; recovery verify at landed 8fb7513a"
+  "verified_by": "agent:team-a-p1-integrator",
+  "verified_evidence": "prior hand-back acceptance and recovery verify; restaged on integration HEAD dd75d8db"
 }
