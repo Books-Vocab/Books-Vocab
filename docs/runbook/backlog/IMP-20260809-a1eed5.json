@@ -8,6 +8,9 @@
   "date": "2026-08-09",
   "detail": "ops/app_review_gate.py 共 1880 行，其中 evaluate_gate 從第 1020 行起跨 729 行，估算分支節點超過 100。單一函式同時載入 desired/live bundle、journey、URL、appearance、attestation 與 claim evidence，並共同修改 blocks、files、evidence_by_claim。ops/tests/test_app_review_gate.py 只有 23 個入口層測試，主要都呼叫 evaluate_gate；任何 evidence 類型改動都會碰同一 reducer，失敗也難定位到責任邊界。",
   "fix_site": "ops/app_review_gate.py:evaluate_gate/load_spec/load bundle helpers；新增 ops/lib/app_review_evaluators.py 與 ops/tests/test_app_review_evaluators.py；保留 ops/tests/test_app_review_gate.py 端到端契約",
+  "fixed_by": [
+    "beaafcd18f60bcbefb1b17043800e5265582bdbf"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:maintainability-audit",
@@ -18,10 +21,10 @@
   "scope": "拆出一個純評估模組與一組逐證據測試，保留既有命令與輸出。",
   "severity": "med",
   "source": "agent:maintainability-audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:maintainability-audit",
-  "verified_evidence": "uv run --no-project --python 3.13 python -c 'import ast,pathlib; p=pathlib.Path(\"ops/app_review_gate.py\"); t=ast.parse(p.read_text()); f=next(n for n in ast.walk(t) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name==\"evaluate_gate\"); span=f.end_lineno-f.lineno+1; tests=sum(1 for n in ast.walk(ast.parse(pathlib.Path(\"ops/tests/test_app_review_gate.py\").read_text())) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name.startswith(\"test_\")); print(f\"evaluate_gate_span={span} tests={tests}\"); assert span>=700 and tests==23'"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "supervisor:team-b-anchor-recovery",
+  "verified_evidence": "Official recovery acceptance evidence for IMP-20260809-a1eed5.\nCommand stored on primary and executed by backlog.py verify --commit:\nset -eu; test -f ops/lib/app_review_evaluators.py; test -f ops/tests/test_app_review_evaluators.py; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_app_review_evaluators.py ops/tests/test_app_review_gate.py\nExpected result: rc=0, 34 passed.\nRecovery context: integration landed at beaafcd18f60bcbefb1b17043800e5265582bdbf; source hand-back seal=8c10768c2cf887a9c73c7490e4394bae63694f19f3b93240e00811cbad6b7302."
 }
