@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "唯讀調查在 60 筆 active 狀態下兩次呼叫 worktree_registry.py list --json；CLI 沒有 active、branch、slug、fields、summary 或 no-liveness 投影，因此每個小問題都必須分類並輸出整份歷史 ledger，再靠 jq 丟棄。兩次 live classification 各約 27 秒；R6 報告觀測約 4,014 行，R8 觀測約 153 KB、44 秒。需要 fail-closed 的 compact query surface，至少支援 active-only、branch/slug/path 精確查詢、欄位投影、summary/conflicts，以及可選的 no-liveness 快路徑；預設 agent-facing output 應只含決策欄位與完整 artifact 路徑。不得改變既有完整 list --json schema。",
   "fix_site": "ops/worktree_registry.py; ops/tests/test_worktree_registry_queries.py; docs/reference/tech_index.md",
+  "fixed_by": [
+    "f1747174b3e1cd738b8d1d7ea810dc5033fe95fc"
+  ],
   "groomed_against": "44d0c76c5c34f05acfcb69a5863e37ff89ba211a",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-health-audit",
@@ -17,10 +20,10 @@
   "scope": "登記簿查詢介面與效能測試，一支工具的中型改善。",
   "severity": "med",
   "source": "R6-R8 pressure-test architecture review",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-health-audit",
-  "verified_evidence": "set -o pipefail; ./ops/worktree_registry.py list --help | rg -q -- '--json'; ! ./ops/worktree_registry.py list --help | rg -q -- '--active-only|--branch|--slug|--fields|--summary|--no-liveness'"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-64dd33",
+  "verified_evidence": "ticket=IMP-20260809-64dd33\nphase=post-cutover-recovery\nprimary_tip=f1747174b3e1cd738b8d1d7ea810dc5033fe95fc\nacceptance=uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_registry_queries.py\nacceptance_result=6 passed\nrelated=ops/tests/test_worktree_registry.py 48 passed; test_worktree_orchestrate.py -k 'registry or list' 14 passed\nreview=current-path PASS review_3771d6_ops\nreview_audit=97410e28..697eeca60 rc0\nhandback=697eeca60 digest=d217a0f329c02de6602f265ab9db9f36d4d9c116f96c5a175337320e17036f60\ngate=f1747174b3e1-3356-35419094391791 verdict=warn rc0\nclose_wave=cutover rc0; anchor noop queue0; expected closure previously triaged"
 }
