@@ -4066,8 +4066,12 @@ def _cmd_add(args) -> int:
         "groomed_against", "contract_status", "contract_baseline",
         "contract_checked_at", "contract_checked_by", "contract_evidence",
     )
+    # `brief`/`scope` are useful on a plain open filing too; only the executable
+    # plan/acceptance/fix or groom/contract stamps opt into the atomic triaged path.
+    grooming_trigger_fields = tuple(field for field in groom_fields
+                                     if field not in {"brief", "scope"})
     groom_requested = any(getattr(args, field, None) is not None
-                          for field in groom_fields)
+                          for field in grooming_trigger_fields)
     if args.status != "open" and not (groom_requested and args.status == "triaged"):
         raise BacklogError(
             f"`add` starts a ticket at status=open, not {args.status!r}. "
@@ -4175,18 +4179,26 @@ def _add_claimability(entry: dict, store: Path) -> dict:
     if not any(str(entry.get(field) or "").strip()
                for field in ("acceptance_cmd", "acceptance_manual")):
         missing.append("acceptance_cmd_or_manual")
-    for problem in contract_preflight(entry, repo=owning_repo_for_store(store)):
-        field = problem.get("field")
-        if field:
-            missing.append(str(field))
-        elif problem.get("kind") == "contract-baseline-not-red":
-            missing.append("contract_baseline")
-        elif problem.get("kind") == "contract-evidence-missing":
-            missing.append("contract_evidence")
-        elif problem.get("kind") == "acceptance-dependency-missing":
-            missing.append("acceptance_cmd_dependency")
-        elif problem.get("kind") == "fix-site-missing":
-            missing.append("fix_site_dependency")
+    # Plain open filings are intentionally not contract-checked: they are
+    # discoverable board entries, not claims that someone has groomed them.
+    contract_claimed = (entry.get("status") == "triaged"
+                        or bool(entry.get("groomed_at"))
+                        or any(entry.get(field) is not None for field in CONTRACT_FIELDS))
+    if contract_claimed:
+        for problem in contract_preflight(entry, repo=owning_repo_for_store(store)):
+            field = problem.get("field")
+            if field:
+                missing.append(str(field))
+            elif problem.get("kind") == "contract-baseline-not-red":
+                missing.append("contract_baseline")
+            elif problem.get("kind") == "contract-evidence-missing":
+                reason = str(problem.get("reason") or "")
+                missing.append("contract_status" if "contract_status" in reason
+                               else "contract_evidence")
+            elif problem.get("kind") == "acceptance-dependency-missing":
+                missing.append("acceptance_cmd_dependency")
+            elif problem.get("kind") == "fix-site-missing":
+                missing.append("fix_site_dependency")
     return {"claimable": not missing, "missing": list(dict.fromkeys(missing))}
 
 

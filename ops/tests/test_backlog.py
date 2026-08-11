@@ -4802,7 +4802,7 @@ def _add_groomed_flags():
     ]
 
 
-def test_add_complete_grooming_flags_produces_dispatchable_ticket(tmp_path, capsys):
+def test_add_groomed_complete_flags_produces_dispatchable_ticket(tmp_path, capsys):
     store = tmp_path / "s"
     base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
             "--source", "t", "--category", "tool", "--severity", "low",
@@ -4821,7 +4821,83 @@ def test_add_complete_grooming_flags_produces_dispatchable_ticket(tmp_path, caps
     assert [row["id"] for row in dispatched] == [entry["id"]]
 
 
-def test_add_partial_grooming_flags_refuses_without_writing(tmp_path, capsys):
+def test_add_groomed_file_twins_preserve_prose_and_contract(tmp_path, capsys):
+    store = tmp_path / "s"
+    files = {
+        "brief": "一次加入完整欄位，仍應保留 shell-safe prose。",
+        "scope": "只改 backlog CLI 與測試。",
+        "plan": "先驗證欄位，再原子寫入。",
+        "acceptance": "完整欄位可派工。",
+        "acceptance_cmd": "true\n",
+        "fix_site": "ops/backlog.py:1\nops/tests/test_backlog.py:1\n",
+        "contract_evidence": "RED receipt\n",
+    }
+    paths = {}
+    for name, content in files.items():
+        path = tmp_path / f"{name}.txt"
+        path.write_text(content, encoding="utf-8")
+        paths[name] = path
+    args = [
+        "add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
+        "--source", "file-twin-test", "--category", "tool", "--severity", "low",
+        "--detail", "file twins", "--brief-file", str(paths["brief"]),
+        "--scope-file", str(paths["scope"]), "--plan-file", str(paths["plan"]),
+        "--acceptance-file", str(paths["acceptance"]),
+        "--acceptance-cmd-file", str(paths["acceptance_cmd"]),
+        "--fix-site-file", str(paths["fix_site"]), "--groomed-by", "test:file-twin",
+        "--groomed-at", "2026-08-11", "--contract-status", "ready",
+        "--contract-baseline", "red", "--contract-checked-at", "2026-08-11",
+        "--contract-checked-by", "test:file-twin",
+        "--contract-evidence-file", str(paths["contract_evidence"]), "--json",
+    ]
+    assert BACKLOG.main(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["claimable"] is True
+    entry = payload["entry"]
+    for name, content in files.items():
+        assert entry[name] == content.rstrip("\n")
+    assert entry["status"] == "triaged"
+
+
+def test_add_groomed_current_contract_requires_all_contract_fields(tmp_path, capsys):
+    store = tmp_path / "s"
+    args = [
+        "add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
+        "--source", "contract-required-test", "--category", "tool", "--severity", "low",
+        "--detail", "missing contract stamp",
+        "--brief", "完整欄位但缺 contract stamp。", "--scope", "只改 CLI 與測試。",
+        "--plan", "先驗證欄位，再原子寫入。", "--acceptance", "欄位可派工。",
+        "--acceptance-cmd", "true", "--fix-site", "ops/backlog.py:1",
+        "--groomed-by", "test:contract-required", "--groomed-at", "2026-08-11",
+    ]
+    assert BACKLOG.main([*args, "--json"]) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["written"] is False
+    error = payload["error"]
+    assert all(field in error for field in (
+        "contract_status", "contract_baseline", "contract_checked_at",
+        "contract_checked_by", "contract_evidence"))
+    assert not (store.exists() and list(store.glob("*.json")))
+
+
+def test_add_groomed_claimability_reports_bad_dependencies(tmp_path, capsys):
+    store = tmp_path / "s"
+    flags = _add_groomed_flags()
+    flags[flags.index("--acceptance-cmd") + 1] = "test -f ops/nope.py"
+    flags[flags.index("--fix-site") + 1] = "ops/nope.py:1"
+    args = [
+        "add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
+        "--source", "bad-dependency-test", "--category", "tool", "--severity", "low",
+        "--detail", "bad dependencies", *flags, "--json",
+    ]
+    assert BACKLOG.main(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["claimable"] is False
+    assert "acceptance_cmd_dependency" in payload["missing"]
+    assert "fix_site_dependency" in payload["missing"]
+
+
+def test_add_groomed_partial_flags_refuses_without_writing(tmp_path, capsys):
     store = tmp_path / "s"
     base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
             "--source", "t", "--category", "tool", "--severity", "low",
@@ -5720,6 +5796,17 @@ def test_brief_and_scope_are_reachable_on_add_as_well_as_update(tmp_path, capsys
                          "--json"]) == 0
     entry = json.loads(capsys.readouterr().out)["entry"]
     assert entry["brief"] == BRIEF_TEXT and entry["scope"] == SCOPE_TEXT
+    assert entry["status"] == "open"
+
+    # Plain filings should report grooming debt, not internal contract fields.
+    assert BACKLOG.main(["add", "--store", str(tmp_path / "s2"), "--stream", "IMP",
+                         "--date", "2026-08-08", "--source", "probe",
+                         "--category", "tool", "--severity", "med",
+                         "--detail", "plain claimability", "--json"]) == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert plain["claimable"] is False
+    assert "contract_status" not in plain["missing"]
+    assert "contract_evidence" not in plain["missing"]
 
 
 def test_list_missing_brief_is_the_backfill_queue_not_the_dispatch_queue(tmp_path):
