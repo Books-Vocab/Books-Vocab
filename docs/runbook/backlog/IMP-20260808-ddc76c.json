@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "今天蓋 groom 戳記時同時給 `--acceptance-cmd` 與 `--acceptance-manual`，`update` 的拒絕全文是（實測，2026-08-08）：\n\n```\nERROR invalid update: [{'kind': 'groom-claim-with-conflicting-acceptance-proof', 'present': ['acceptance_cmd', 'acceptance_manual']}]\n```\n\n它做對了一件事——具名說出違反哪條規則、列出衝突的兩個欄位。三件事沒做：\n\n1. **沒有一句人話。** 那是 Python list-of-dict 的 `repr` 直接印出來，讀者要自己把 `kind` 的 kebab-case 翻回中文語意。\n2. **沒說補救。** 拿掉哪一個？依據什麼判斷？（正確答案是「能用命令表達就留 cmd，真的表達不出來才留 manual」，這句話寫在 `ops/backlog.py:721-722` 的註解裡，而註解不會被印出來。）\n3. **沒說這條規則今天才開始生效。** `ACCEPTANCE_PROOF_SINCE = \"2026-08-08\"`（`ops/backlog.py:279`）。一條今天才生效的規則，擋住的正好是今天要做的動作，而訊息裡沒有 `since` 這個字。\n\n**最尖銳的證據是：同一個 `if/elif` 的上一個分支就做對了。** `ops/backlog.py:715-724`：\n\n- `groom-claim-without-acceptance-proof`（一個都沒給）→ payload 帶 **`expected`**（合法欄位清單）**與 `since`**（規則生效日）。\n- `groom-claim-with-conflicting-acceptance-proof`（給了兩個）→ payload 只帶 `present`。**`expected` 與 `since` 都沒有。**\n\n也就是說，工具**已經知道**一則好的拒絕長什麼樣，並且在四行之前示範過一次；相鄰的那則把兩個 affordance 都掉了。這不是「還沒做」，是**同一個函式內對同一件事的兩種處置不一致**——與 IMP-20260808-bada81（`inconclusive` 與 `checked==0` 走不同路）同形。\n\n**附帶一個未定性的觀察，請修的人一併裁決**：`without` 分支被 `binds`（`groomed_at >= ACCEPTANCE_PROOF_SINCE`）閘住，`conflicting` 分支是裸的 `elif len(proofs) > 1`，**不看日期**。所以「只能一個」實質對所有既有資料回溯生效，而「必須有一個」只對今天以後的戳記生效。這可能是刻意的（「兩個都給」在任何年代都是矛盾），但**訊息與 `--help` 都沒有交代**，而 `:708-712` 那段花了五行論證為什麼要用日期而不是 id baseline 來 grandfather——論證只涵蓋了其中一個分支。\n\n與 IMP-20260808-356221 的分界：那張是**沉默**（拒絕時不說合法值）；本張是**說了，但用資料結構說，且不說下一步**。兩張都在 `ops/backlog.py` 的拒絕面，但修法不同，別合併。",
   "fix_site": "ops/backlog.py:723,ops/backlog.py:1285,ops/backlog.py:279,ops/backlog.py:2712,ops/tests/test_backlog.py:3598",
+  "fixed_by": [
+    "fe903e7060ac3200d035c6d725b2045a29ac453b"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-ddc76c",
@@ -16,6 +19,10 @@
   "scope": "一個分支的錯誤 payload 補兩個欄位＋一層人話渲染；不動判定邏輯。",
   "severity": "med",
   "source": "workflow:groom-untriaged-33 實測；fork session 9c0f8e4a（gate ergonomics 調查）裁決由我立",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-11",
+  "verified_by": "agent:delivery-team-integrator",
+  "verified_evidence": "ddc76c child hand-back 175460c4f; acceptance and full backlog green; review PASS"
 }
