@@ -142,6 +142,19 @@ assert_green() {  # <gate> <expected marker> <output file> <rc>
   fi
 }
 
+# WARN is a valid known-good outcome after the exit-code contract: preserve the typed
+# rc=3 instead of forcing callers to mislabel it as either a clean pass or a block.
+assert_warn() {  # <gate> <expected marker> <output file> <rc>
+  local g="$1" marker="$2" out="$3" rc="$4"
+  if [[ "$rc" -ne 3 ]]; then
+    fail_t "$g did not preserve its warning exit code (exit $rc; expected 3)"
+  elif ! grep -qF -- "$marker" "$out"; then
+    fail_t "$g returned warning rc=3 without '$marker'"
+  else
+    ok "$g preserves WARN rc=3, citing '$marker'"
+  fi
+}
+
 section "every block-level gate declares BOTH directions"
 PROBE_COVERAGE="$(
   "$UV_BIN" run --no-project --python 3.13 python - <<'PY'
@@ -306,9 +319,35 @@ verified_against: HEAD
 $1
 DOCEOF
 }
+# A merged integration tree can be ahead of origin/main.  The clean leg is therefore
+# an explicit combined-tree fixture whose origin reachability anchor is HEAD; this is
+# scoped to the clean probe only and never weakens the default-origin warning contract.
 write_docs_probe "plain prose, nothing wrong with it"
-rc=0; ./ops/docs_lint.sh --files "$DOCS_PROBE" >"$TMP/docs_ok.out" 2>&1 || rc=$?
+rc=0
+(
+  export KG_DOCS_LINT_ORIGIN_REF=HEAD
+  ./ops/docs_lint.sh --files "$DOCS_PROBE"
+) >"$TMP/docs_ok.out" 2>&1 || rc=$?
 assert_green docs-lint "ERROR: 0" "$TMP/docs_ok.out" "$rc"
+
+# The ordinary origin anchor must still expose a typed freshness WARN, not be silently
+# treated as green.  STALE_THRESHOLD=0 makes the otherwise valid fixture deterministic.
+WARN_ANCHOR="$(git rev-parse --verify HEAD~40)"
+cat >"$DOCS_PROBE" <<DOCEOF
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: manual
+scope:
+  - ops/worktree_orchestrate.py
+verified_against: $WARN_ANCHOR
+-->
+# gate-can-fail warning probe
+
+plain prose, deliberately stale only under STALE_THRESHOLD=0
+DOCEOF
+rc=0; STALE_THRESHOLD=0 ./ops/docs_lint.sh --files "$DOCS_PROBE" >"$TMP/docs_warn.out" 2>&1 || rc=$?
+assert_warn docs-lint "STALE" "$TMP/docs_warn.out" "$rc"
 
 write_docs_probe "$(printf '<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n')"
 rc=0; ./ops/docs_lint.sh --files "$DOCS_PROBE" >"$TMP/docs_bad.out" 2>&1 || rc=$?
@@ -400,8 +439,14 @@ gbad = m._run_gate(m._shell("ops-shell:routed_red.sh", "ops",
                             ["ops/routed_red.sh"], "block"), str(root))
 ggood = m._run_gate(m._shell("ops-shell:routed_green.sh", "ops",
                              ["ops/routed_green.sh"], "block"), str(root))
+f = ops / "routed_block.sh"
+f.write_text("#!/bin/sh\necho probe-block-ran\nexit 2\n")
+f.chmod(0o755)
+gblock = m._run_gate(m._shell("ops-shell:routed_block.sh", "ops",
+                              ["ops/routed_block.sh"], "block"), str(root))
 print(f"shell-red status={gbad['status']} rc={gbad['rc']}")
 print(f"shell-green status={ggood['status']} rc={ggood['rc']}")
+print(f"shell-block status={gblock['status']} rc={gblock['rc']}")
 
 # data-plane has no fixed tool either — the yml's declared owner IS the command — so the
 # provable contract is the same shape, and it is asserted separately because the family
@@ -438,14 +483,17 @@ grep -q "syntax-green status=pass" "$TMP/internal.out" \
   || fail_t "ops-shell-syntax did not pass a well-formed script"
 
 # --- ops-shell ------------------------------------------------------------------
-# rc=3 is the marker: it can only come from the routed script's own exit status, so a
-# gate that blocked for any other reason cannot satisfy this.
-grep -q "shell-red status=block rc=3" "$TMP/internal.out" \
-  && { ok "ops-shell propagates the routed script's failure (rc=3, not a generic red)"; record_proof ops-shell red fixture; } \
-  || fail_t "ops-shell did not block with the routed script's own exit code"
+# rc=3 is the warning marker after the fixed exit-code contract: it must survive the
+# routed consumer as status=warn, while a real rc=2 remains a typed block.
+grep -q "shell-red status=warn rc=3" "$TMP/internal.out" \
+  && { ok "ops-shell preserves routed WARN (rc=3, not a generic red)"; record_proof ops-shell red fixture; } \
+  || fail_t "ops-shell did not preserve the routed script's WARN exit code"
 grep -q "shell-green status=pass rc=0" "$TMP/internal.out" \
   && { ok "ops-shell passes when the routed script succeeds"; record_proof ops-shell green fixture; } \
   || fail_t "ops-shell did not pass a routed script that exits 0"
+grep -q "shell-block status=block rc=2" "$TMP/internal.out" \
+  && { ok "ops-shell blocks a routed script with typed rc=2"; } \
+  || fail_t "ops-shell did not preserve a routed script's typed block"
 
 # --- data-plane -----------------------------------------------------------------
 grep -q "data-plane-red status=block rc=4" "$TMP/internal.out" \
