@@ -1,0 +1,23 @@
+{
+  "acceptance": "所有三項機械 baseline 必須綠：ops/tests/test_ops_group_chain.py 的 inventory assertion 與 comment 對齊 57；ops/test_ops.sh app-review group 實際執行 ops/tests/test_app_review_evaluators.py 且 ops/tests/test_ops_ci_coverage.sh 不再回報該檔 unregistered；ops/test_ios_ops.sh 的 warn fixture 實際回 EXIT_WARN=3 且 payload.exitCode=3。完整命令需在隔離 child 實跑並回 rc=0。",
+  "acceptance_cmd": "bash -c 'set -e; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_ops_group_chain.py; ./ops/test_ops.sh app-review; ./ops/tests/test_ops_ci_coverage.sh; ./ops/test_ios_ops.sh'",
+  "acceptance_expect_rc": 0,
+  "brief": "三個預設測試基線沒有跟著新契約同步，讓無關變更也被 Gate 擋住。",
+  "category": "tool",
+  "cost": "M",
+  "date": "2026-08-11",
+  "detail": "Fresh Gate 的 baseline 仍有三個可重現機械紅：DEFAULT_TESTS 新增 exit-code-contract 後，test_ops_group_chain 的 arms inventory 仍固定舊數字；app-review group 未執行 test_app_review_evaluators.py；ios-ops gate warn fixture 仍期待舊 exit code 1，但 exit-code contract 已定義 WARN=3 且 JSON exitCode 應為 3。",
+  "fix_site": "ops/tests/test_ops_group_chain.py;ops/test_ops.sh;ops/tests/test_app_review_evaluators.py;ops/test_ios_ops.sh",
+  "groomed_against": "1c7bd8d9eeef8d70975155827b4ca5751c323544",
+  "groomed_at": "2026-08-11",
+  "groomed_by": "agent:team-a-repair-groom-v1",
+  "id": "IMP-20260811-223092",
+  "plan": "先以現行 primary 建立隔離 child。TDD 順序：1) 在既有 group-chain、app-review coverage、ios-ops fixture 測試中保留/補 RED，逐項確認三個 baseline failure；2) 將 ops/tests/test_ops_group_chain.py 的 arms count/comment 更新為實際 DEFAULT_TESTS inventory=57；3) 將 ops/tests/test_app_review_evaluators.py 納入 ops/test_ops.sh 的 app-review group，讓 ops-ci coverage 從 DEFAULT_TESTS 可達；4) 將 ops/test_ios_ops.sh 的 warn fixture 改為 EXIT_WARN=3 與 JSON exitCode=3；5) 只跑本票 owned suites、ops-ci coverage、ios-ops，再做 bounded review 與 official hand-back。不得修改 exit-code contract、其它 baseline、primary 或執行 Gate。",
+  "resolution": "修正三項 baseline registration/fixture drift，保留既有 exit-code contract 與其它 baseline debt。",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "四個既有 ops 測試檔與一個 group dispatcher，僅同步 inventory、coverage registration 與 warn fixture。",
+  "severity": "high",
+  "source": "fresh Gate baseline audit 2026-08-11",
+  "status": "open",
+  "stream": "IMP"
+}
