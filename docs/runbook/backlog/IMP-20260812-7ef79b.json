@@ -12,6 +12,9 @@
   "date": "2026-08-12",
   "detail": "aba3f4 first close-wave 正確留下 anchor_noop=true、anchor_committed=false、無 anchor_commit_sha，queue consumed；官方 verify 後只提交 ticket metadata，primary 從 e4d9dd71 前進到 012317d63，same-slug recovery 卻被 guard 以 primary moved after persisted anchor base and does not contain exact recoverable anchor commit 拒絕。此為 noop marker + metadata-only primary advance 的 recovery gap，不得放寬真正 anchor commit 的 exact identity/crash recovery，也不得手改 marker/queue。",
   "fix_site": "ops/worktree_orchestrate.py;ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "4f2d8f59dfa795f9d5a2f073d829093663996ceb"
+  ],
   "groomed_against": "012317d63",
   "groomed_at": "2026-08-12",
   "groomed_by": "agent:team-a-supervisor",
@@ -22,6 +25,10 @@
   "scope": "一個 orchestrator 與對應回歸測試。",
   "severity": "high",
   "source": "aba3f4 noop recovery after metadata verify",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "Official recovery verification for IMP-20260812-7ef79b at primary 4f2d8f59dfa795f9d5a2f073d829093663996ceb.\n\nAcceptance command (from ticket) passed before hand-back:\n- anchor_noop_recovery_after_metadata_commit: 1 passed/410 deselected\n- anchor_noop_marker: 1 passed/410 deselected\n- delivery_anchor_replays_manifest_after_post_commit_marker_failure or delivery_anchor_commit_refuses_staged_or_unstaged_foreign_paths: 2 passed/409 deselected\n- full ops/tests/test_worktree_orchestrate.py: 411 passed/290.40s\n- fresh integration Gate run_id 4f2d8f59dfa7-29789-15707000167458: review-receipts rc0, ops-pytest rc0, coverage pass\n\nRecovery evidence: completed close-wave anchor marker has anchor_noop=true, anchor_committed=false, anchor_ids=[], queue_state=consumed, and no anchor_commit_sha; cutover landed 4f2d8f59; source resolve succeeded; expected-ticket closure was the only guard failure because this ticket remained triaged."
 }
