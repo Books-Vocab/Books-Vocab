@@ -356,6 +356,10 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 `kg.dispatch.preflight.v1` 分類、問題與修復提示。只有明示 `--probe-acceptance`
 才會執行 bounded acceptance，且不寫入票、queue 或 registry。
 
+## Backlog add grooming note
+
+`backlog.py add` 可用完整 grooming/contract 旗標一次原子建立 `status=triaged`、可派工 entry；部分旗標會在寫入前拒絕，plain detail 則輸出不在 dispatch queue。完整 acceptance proof 契約仍以 `backlog.py update --help` 為準。
+
 ## Backlog acceptance contract pointer
 
 `backlog.py` 的 acceptance proof 契約唯一入口是 `./ops/backlog.py update --help` 的 epilog；本索引只保留指標，不重複契約內容。
