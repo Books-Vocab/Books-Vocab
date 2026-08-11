@@ -4844,6 +4844,76 @@ def _groomed(store, cmd="true", expect_rc=0, **overrides):
     return entry
 
 
+def test_static_acceptance_is_worker_feedback_and_full_gate_stays_authoritative(
+        tmp_path, capsys):
+    """The fast command can run, but closing still executes the full command."""
+    store = tmp_path / "s"
+    static_marker = tmp_path / "static-ran"
+    full_marker = tmp_path / "full-ran"
+    entry = _add(store)
+    BACKLOG.update_entry(
+        store, entry["id"],
+        **_groom_kwargs(
+            acceptance_cmd=f"touch {full_marker}",
+            acceptance_cmd_static=f"touch {static_marker}",
+        ))
+
+    assert BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--static-only", "--json",
+    ]) == 0
+    static_payload = json.loads(capsys.readouterr().out)
+    assert static_payload["schema"] == "kg.backlog.verify-static.v1"
+    assert static_payload["acceptance"]["ok"] is True
+    assert static_marker.exists()
+    assert not full_marker.exists()
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "open"
+
+    static_marker.unlink()
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store), "--status", "fixed",
+        "--fixed-by", "aaaaaaa11", "--commit", "--json",
+    ]) == 0
+    closure_payload = json.loads(capsys.readouterr().out)
+    assert closure_payload["acceptance"]["cmd"] == f"touch {full_marker}"
+    assert full_marker.exists()
+    assert not static_marker.exists(), "closing must not substitute the static command"
+
+
+def test_static_acceptance_requires_the_full_criterion(tmp_path):
+    store = tmp_path / "s"
+    entry = _add(store)
+    with pytest.raises(ValueError) as excinfo:
+        BACKLOG.update_entry(
+            store, entry["id"],
+            **_groom_kwargs(
+                acceptance_cmd="",
+                acceptance_manual="a human must inspect it",
+                acceptance_cmd_static="true",
+            ))
+    assert "acceptance-static-without-cmd" in str(excinfo.value)
+
+
+def test_static_only_is_read_only_and_rejects_commit(tmp_path, capsys):
+    store = tmp_path / "s"
+    entry = _groomed(store, cmd="true")
+    BACKLOG.update_entry(store, entry["id"], acceptance_cmd_static="true")
+
+    assert BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--static-only", "--commit",
+        "--json",
+    ]) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert "read-only" in payload["error"]
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "open"
+
+    assert BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--static-only",
+        "--contract-status", "ready", "--json",
+    ]) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert "--contract-status" in payload["error"]
+
+
 def test_update_acceptance_cmd_selector_count_is_printed(tmp_path, capsys):
     """Writing a pytest ``-k`` criterion exposes how many tests it selects."""
     store = tmp_path / "s"

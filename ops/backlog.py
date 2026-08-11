@@ -255,7 +255,10 @@ _DOC_VERIFIED_AGAINST_RE = re.compile(
 GROOM_FIELDS = ("plan", "acceptance", "groomed_at", "groomed_by",
                 "groomed_against",
                 # The executable half of `acceptance`. See ACCEPTANCE_PROOF below.
-                "acceptance_cmd", "acceptance_expect_rc", "acceptance_manual")
+                "acceptance_cmd", "acceptance_expect_rc", "acceptance_manual",
+                # Optional fast feedback for a worker. This is deliberately not
+                # an acceptance proof: closure still runs `acceptance_cmd`.
+                "acceptance_cmd_static")
 
 # A warning threshold, not a closure gate. The current main has moved 256 commits
 # since the oldest active grooming wave, so a smaller default would turn the
@@ -297,6 +300,11 @@ GROOM_REQUIRES = ("plan", "acceptance", "fix_site")
 # acceptance is an INVERTED detector — "exit 1 = the phenomenon this entry describes
 # still holds". Demanding rc 0 would grade it backwards.
 ACCEPTANCE_PROOF = ("acceptance_cmd", "acceptance_manual")
+
+# A static subset is a worker feedback loop, not a second closure criterion.
+# It is intentionally bounded more tightly than the full acceptance command so
+# a child cannot accidentally turn this path back into a toolchain queue.
+STATIC_ACCEPTANCE_TIMEOUT_SECONDS = 60
 
 # The declared exception for `audit-criteria`, and the third field in this module
 # shaped like `acceptance_manual` / `fixed_elsewhere` for the same reason.
@@ -913,6 +921,7 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
     """
     problems: list[dict] = []
     cmd = payload.get("acceptance_cmd")
+    static_cmd = payload.get("acceptance_cmd_static")
     rc = payload.get("acceptance_expect_rc")
 
     if str(cmd or "").strip():
@@ -953,6 +962,21 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
     if rc is not None and not str(cmd or "").strip():
         # An expectation with nothing to expect it of. Nothing would ever read it.
         problems.append({"kind": "acceptance-expect-rc-without-cmd", "value": rc})
+    if str(static_cmd or "").strip():
+        # A static subset without a full criterion would be a second proof with
+        # no closure counterpart. Keep the field useful for workers while making
+        # it impossible to accidentally turn it into a weaker fixed gate.
+        if not str(cmd or "").strip():
+            problems.append({"kind": "acceptance-static-without-cmd"})
+        try:
+            probe = subprocess.run(["bash", "-n", "-c", str(static_cmd)],
+                                   capture_output=True, text=True, timeout=15)
+            if probe.returncode != 0:
+                problems.append({"kind": "acceptance-static-cmd-does-not-parse",
+                                 "detail": probe.stderr.strip()[:300]})
+        except (OSError, subprocess.SubprocessError):
+            problems.append({"kind": "acceptance-static-cmd-unparsed",
+                             "detail": "bash unavailable; syntax not checked"})
     if str(payload.get(ACCEPTANCE_GREEN_EXPECTED) or "").strip() \
             and not str(cmd or "").strip():
         # Same defect as the rule above, one field over: an exemption from running
@@ -1718,6 +1742,7 @@ REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELD
 # guess. The only fix is a channel the shell does not touch.
 FILE_TWIN_FIELDS = (
     "source", "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
+    "acceptance_cmd_static",
     "acceptance_manual", "repro", "evidence", "verified_evidence", "fix_site",
     # The sentence that makes an audit exemption auditable — prose, and prose
     # about a shell command, so it is the likeliest field in the schema to carry
@@ -1737,6 +1762,7 @@ FILE_TWIN_FIELDS = (
 # Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
 GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
                     "--acceptance-expect-rc", "--acceptance-manual",
+                    "--acceptance-cmd-static",
                     "--fix-site", "--groomed-at", "--groomed-by",
                     "--groomed-against")
 
@@ -3382,15 +3408,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_verify.add_argument("id")
     _add_store_arg(p_verify)
-    p_verify.add_argument("--verdict", required=True,
+    p_verify.add_argument("--verdict",
                           help=f"one of {', '.join(VERDICTS)} or DUPLICATE-OF-<id>")
-    p_verify.add_argument("--by", required=True,
+    p_verify.add_argument("--by",
                           help="what did the checking, e.g. agent:platform-steward")
-    p_verify.add_argument("--evidence", required=True,
+    p_verify.add_argument("--evidence",
                           help="the command you ran; a verdict nobody can re-run is a claim. "
                                "REQUIRED: optional evidence in an 'atomic' act means evidence "
                                "is not in the atom, and omitting it left the PREVIOUS "
                                "verifier's command attached to the new verdict")
+    p_verify.add_argument(
+        "--static-only", action="store_true",
+        help="run the stored acceptance_cmd_static feedback command only; read-only, "
+             f"bounded to {STATIC_ACCEPTANCE_TIMEOUT_SECONDS:g}s, and never a closure proof",
+    )
     p_verify.add_argument("--at", help="YYYY-MM-DD (default: today)")
     p_verify.add_argument("--status", choices=STATUSES,
                           help="change status in the same act, when the check changed the answer")
@@ -3565,6 +3596,11 @@ def build_parser() -> argparse.ArgumentParser:
              "this and --acceptance-manual is required",
     )
     p_groom.add_argument(
+        "--acceptance-cmd-static", dest="acceptance_cmd_static",
+        help="optional bounded, toolchain-free command for worker feedback; "
+             "never substitutes for the full closure command",
+    )
+    p_groom.add_argument(
         "--acceptance-expect-rc", dest="acceptance_expect_rc", type=int,
         help="exit code --acceptance-cmd must return (default 0)",
     )
@@ -3672,6 +3708,11 @@ def build_parser() -> argparse.ArgumentParser:
              "This is the field that makes `fixed` mean something a machine checked; "
             "`--acceptance` alone is prose nothing reads. See `update --help` epilog "
             "for the complete acceptance contract")
+    p_update.add_argument(
+        "--acceptance-cmd-static", dest="acceptance_cmd_static",
+        help="optional bounded, toolchain-free command for worker feedback; "
+             "never substitutes for the full closure command",
+    )
     p_update.add_argument(
         "--acceptance-expect-rc", dest="acceptance_expect_rc", type=int,
         help="exit code --acceptance-cmd must produce (default 0). Not decoration: "
@@ -4623,6 +4664,27 @@ def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
             "failing_clause": failing_clause}
 
 
+def _run_static_acceptance(entry_id: str, cmd: str) -> dict:
+    """Run the optional worker feedback command without changing the store.
+
+    The static path is deliberately separate from `_acceptance_gate`: a worker
+    needs cheap feedback, while a closure still owes the complete criterion. A
+    fixed expected rc of zero keeps this adjunct unambiguous; inverted detectors
+    belong in the full `acceptance_cmd` and are never silently copied here.
+    """
+    print(f"[backlog][acceptance-static] {entry_id} start: {cmd[:120]}",
+          file=sys.stderr, flush=True)
+    rc, tail, elapsed = _execute_criterion(
+        entry_id, cmd, STATIC_ACCEPTANCE_TIMEOUT_SECONDS,
+        "[backlog][acceptance-static]")
+    ok = rc == 0
+    print(f"[backlog][acceptance-static] {entry_id} done: rc={rc} expected=0 "
+          f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s",
+          file=sys.stderr, flush=True)
+    return {"id": entry_id, "cmd": cmd, "rc": rc, "expect_rc": 0,
+            "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail}
+
+
 def _acceptance_gate(entry: dict, commit: bool) -> dict:
     """THE precondition for writing `status: fixed`, shared by all three doors.
 
@@ -5204,6 +5266,56 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     return 0
 
 
+def _cmd_verify_static(args) -> int:
+    """Execute a ticket's optional fast feedback criterion, read-only."""
+    if args.commit:
+        raise BacklogError("--static-only is read-only; drop --commit")
+    forbidden = [
+        flag for flag, value in (
+            ("--verdict", args.verdict), ("--by", args.by),
+            ("--evidence", args.evidence), ("--at", args.at),
+            ("--status", args.status), ("--fixed-by", args.fixed_by),
+            ("--fixed-elsewhere", args.fixed_elsewhere),
+            ("--contract-status", args.contract_status),
+            ("--contract-baseline", args.contract_baseline),
+            ("--contract-checked-at", args.contract_checked_at),
+            ("--contract-checked-by", args.contract_checked_by),
+            ("--contract-evidence", args.contract_evidence),
+        ) if value not in (None, "", [])
+    ]
+    if forbidden:
+        raise BacklogError(
+            "--static-only cannot be combined with mutation/verdict flags: "
+            + ", ".join(forbidden))
+    entry = load_entry(args.store, args.id)
+    cmd = str(entry.get("acceptance_cmd_static") or "").strip()
+    if not cmd:
+        raise BacklogError(
+            f"{args.id} has no acceptance_cmd_static; this is optional worker "
+            "feedback and does not replace the full acceptance_cmd")
+    problems = _check_acceptance_cmd(entry)
+    static_problems = [p for p in problems
+                       if str(p.get("kind", "")).startswith("acceptance-static-")
+                       or p.get("kind") == "acceptance-static-without-cmd"]
+    if static_problems:
+        raise BacklogError(
+            f"{args.id} acceptance_cmd_static is invalid: {static_problems}")
+    outcome = _run_static_acceptance(args.id, cmd)
+    payload = {
+        "schema": "kg.backlog.verify-static.v1",
+        "mode": "read-only",
+        "id": args.id,
+        "acceptance": outcome,
+        "closure_uses": "acceptance_cmd",
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(f"[static-only] {args.id}: rc={outcome['rc']} "
+              f"expected=0 {'OK' if outcome['ok'] else 'MISMATCH'}")
+    return 0 if outcome["ok"] else (124 if outcome["rc"] is None else 1)
+
+
 def _cmd_verify(args, *, _lock_held: bool = False) -> int:
     """Record a re-verification as one act, so it cannot land half-written.
 
@@ -5213,6 +5325,23 @@ def _cmd_verify(args, *, _lock_held: bool = False) -> int:
     like. Here the verdict, the date, the verifier and the evidence go in
     together or not at all.
     """
+    if args.static_only:
+        return _cmd_verify_static(args)
+    missing = [flag for flag, value in (
+        ("--verdict", args.verdict), ("--by", args.by),
+        ("--evidence", args.evidence),
+    ) if value is None]
+    if missing:
+        # Keep ordinary verify's argparse-level contract: callers already rely on
+        # malformed invocations exiting with 2/SystemExit. The optional static
+        # mode is the only form that may omit the three mutation fields.
+        print(
+            "verify: the following arguments are required unless --static-only "
+            f"is selected: {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
     if args.commit and not _lock_held:
         with _entry_lock(entry_path(args.store, args.id)):
             return _cmd_verify(args, _lock_held=True)
@@ -5999,13 +6128,16 @@ def _cmd_groom(args, *, _lock_held: bool = False) -> int:
     # inherited the old manual exception. Reset every omitted proof adjunct too.
     if proofs == ["acceptance_cmd"]:
         clear_fields = ["acceptance_manual"]
+        if args.acceptance_cmd_static is None:
+            clear_fields.append("acceptance_cmd_static")
         if args.acceptance_expect_rc is None:
             clear_fields.append("acceptance_expect_rc")
         if args.acceptance_green_expected is None:
             clear_fields.append("acceptance_green_expected")
     else:
         clear_fields = [
-            "acceptance_cmd", "acceptance_expect_rc", "acceptance_green_expected"
+            "acceptance_cmd", "acceptance_cmd_static", "acceptance_expect_rc",
+            "acceptance_green_expected"
         ]
     args._clear_fields = tuple(clear_fields)
 
@@ -6072,7 +6204,8 @@ def _cmd_update(args, *, _lock_held: bool = False) -> int:
     if ("acceptance_cmd" in changes
             and not str(changes["acceptance_cmd"] or "").strip()):
         clear = list(clear_fields)
-        for field in ("acceptance_expect_rc", "acceptance_green_expected"):
+        for field in ("acceptance_cmd_static", "acceptance_expect_rc",
+                      "acceptance_green_expected"):
             if field not in changes and field not in clear:
                 clear.append(field)
         clear_fields = tuple(clear)
