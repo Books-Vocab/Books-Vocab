@@ -1162,6 +1162,25 @@ def test_shell_syntax_that_checked_nothing_does_not_report_pass(tmp_path):
     assert gone["status"] == "pass"
 
 
+def test_shell_syntax_marks_runs_that_checked_nothing_unestablished(tmp_path):
+    """A green colour from an all-deleted diff is not evidence that syntax was checked.
+
+    The result must carry an explicit provenance bit so the gate-history reader can
+    exclude both this case and the all-skipped interpreter case from capability proof.
+    """
+    d = tmp_path / "ops"
+    d.mkdir()
+    (d / "python.sh").write_text("#!/usr/bin/env python3\nprint('not bash')\n")
+
+    skipped = MODULE._run_shell_syntax(str(tmp_path), ["ops/python.sh"])
+    assert skipped["status"] == "warn"
+    assert skipped["established"] is False
+
+    deleted = MODULE._run_shell_syntax(str(tmp_path), ["ops/missing.sh"])
+    assert deleted["status"] == "pass"
+    assert deleted["established"] is False
+
+
 def test_shell_syntax_gate_names_the_file_that_will_not_parse(tmp_path):
     good = tmp_path / "ops" / "fine.sh"
     good.parent.mkdir(parents=True)
@@ -5276,6 +5295,27 @@ def test_a_gate_that_never_started_is_not_evidence_about_whether_it_can_pass(tmp
         MODULE._append_gate_history(state, str(tmp_path), head, orch, ran)
     assert MODULE._never_green(state, "docs-lint") == {
         "attempts": 3, "heads": 3, "worktrees": 1}
+
+
+def test_gate_history_ignores_unestablished_rows_for_attempts_and_greens(tmp_path):
+    """A producer that checked nothing must not prove a gate or inflate its streak."""
+    state = str(tmp_path / "reg.json")
+    orch = {"sha256": "a" * 64}
+    for head in ("aaaaaaaa", "bbbbbbbb", "cccccccc"):
+        MODULE._append_gate_history(
+            state, str(tmp_path), head, orch,
+            [{"name": "ops-shell-syntax", "level": "block",
+              "status": "block", "rc": 1, "established": False}],
+        )
+    MODULE._append_gate_history(
+        state, str(tmp_path), "dddddddd", orch,
+        [{"name": "ops-shell-syntax", "level": "block",
+          "status": "pass", "rc": 0, "established": False}],
+    )
+    assert MODULE.gate_history_verdicts(state, ["ops-shell-syntax"])["ops-shell-syntax"] == {
+        "verdict": "unproven", "attempts": 0, "heads": 0,
+        "worktrees": 0, "last_green": None,
+    }
 
 
 def test_both_journal_consumers_read_it_through_the_same_function(tmp_path):
