@@ -7662,6 +7662,76 @@ def test_delivery_anchor_guard_checks_primary_branch_inside_advance_lock(
     assert "wrong branch" in steps[0]["error"]
 
 
+def test_delivery_anchor_noop_marker_empty_queue_is_explicit_noop_and_replayable(
+        tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"],
+                   cwd=repo, check=True)
+    backlog = repo / "docs" / "runbook" / "backlog"
+    backlog.mkdir(parents=True)
+    (backlog / "README").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "close_wave": {"expected_ticket_ids": []},
+    }), encoding="utf-8")
+
+    @contextmanager
+    def fake_lock(_primary):
+        yield
+
+    calls = 0
+
+    def fake_anchor(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return MODULE.EXIT_OK, {
+            "schema": "kg.backlog.anchor.v1",
+            "mode": "commit",
+            "applied": [],
+            "problems": [],
+            "unstamped": [],
+        }
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
+    monkeypatch.setattr(MODULE, "_primary_ff_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records", lambda *_a, **_k: (0, [])
+    )
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_anchor)
+    args = argparse.Namespace(base="main", state=None)
+
+    for _ in range(2):
+        rc, steps = MODULE._delivery_anchor_and_commit(
+            args, repo, set(), "delivery-wave", manifest
+        )
+        assert rc == MODULE.EXIT_OK
+        anchor_commit = next(
+            step["payload"] for step in steps if step.get("name") == "anchor-commit"
+        )
+        assert anchor_commit["committed"] is False
+        assert anchor_commit["noop"] is True
+        marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+        assert marker["anchor_noop"] is True
+        assert marker["anchor_committed"] is False
+        assert "anchor_commit_sha" not in marker
+        assert marker["phases"]["anchor"]["status"] == "completed"
+        assert marker["phases"]["anchor"]["queue_state"] == "consumed"
+
+    assert calls == 2
+    assert not subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo,
+        check=True, capture_output=True, text=True,
+    ).stdout
+
+
 def _git_repo_with_anchor_ticket(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

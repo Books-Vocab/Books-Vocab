@@ -7034,7 +7034,7 @@ def _delivery_anchor_commit(
             "paths": [],
         }
     if not paths:
-        return EXIT_OK, {"committed": False, "paths": []}
+        return EXIT_OK, {"committed": False, "noop": True, "paths": []}
     outside = sorted(paths - expected_paths)
     missing = sorted(expected_paths - paths)
     if outside or missing:
@@ -7372,14 +7372,20 @@ def _delivery_anchor_and_commit(
                 acceptance_receipt=anchor_payload,
                 queue_state="consumed", anchor_commit=committed_sha,
             )
-            persisted["close_wave"] = {
+            close_wave = {
                 **marker,
                 "anchor_base_sha": anchor_base_sha,
                 "anchor_ids": applied,
-                "anchor_committed": True,
+                "anchor_committed": bool(applied),
                 **({"anchor_commit_sha": committed_sha}
                    if isinstance(committed_sha, str) and committed_sha else {}),
             }
+            if not applied and anchor_commit.get("noop") is True:
+                close_wave["anchor_noop"] = True
+                close_wave.pop("anchor_commit_sha", None)
+            elif applied:
+                close_wave.pop("anchor_noop", None)
+            persisted["close_wave"] = close_wave
             try:
                 _integrate_save(manifest_path, persisted)
             except OSError as exc:
