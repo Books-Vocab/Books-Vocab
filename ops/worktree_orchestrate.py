@@ -184,6 +184,7 @@ GATE_INPUT_SCHEMA = "kg.worktree.gate-input.v1"
 GATE_PROGRESS_SCHEMA = "kg.worktree.gate-progress.v1"
 FREEZE_SCHEMA = "kg.worktree.freeze.v1"
 DELIVERY_SCHEMA = "kg.worktree.delivery.v1"
+_INDEPENDENT_NO_TICKET_INTENT = "independent-no-ticket:"
 # Local-main-centric topology: local `main` is the trunk. Worktrees fork from it and
 # cutover fast-forwards it OFFLINE — origin is only a deploy target (`deploy` pushes
 # local main to origin, which the felix reconciler turns into a production rollout).
@@ -5254,16 +5255,17 @@ def _integrate_start(args, spath: Path) -> int:
             live = json.loads(spath.read_text())
         except (OSError, json.JSONDecodeError):
             live = {}
+        independent_suffix = " --independent" if live.get("independent") is True else ""
         if live.get("gate_pending") and not (live.get("queue") or []):
             msg = (f"an integration named {args.slug!r} has picked all "
                    f"{len(live.get('picked') or [])} commit(s), but its gate has not "
                    f"run yet (worktree {live.get('worktree')}) — resume with "
-                   f"`--continue --commit` to run ONLY the gate, or discard it with "
+                   f"`--continue --commit{independent_suffix}` to run ONLY the gate, or discard it with "
                    f"`--abort --commit`")
         else:
             msg = (f"an integration named {args.slug!r} is already in flight "
                    f"(worktree {live.get('worktree')}, {len(live.get('queue') or [])} "
-                   f"commit(s) still queued) — resume it with `--continue --commit` after "
+                   f"commit(s) still queued) — resume it with `--continue --commit{independent_suffix}` after "
                    f"resolving, or discard it with `--abort --commit`. Starting over on "
                    f"top of it would strand a half-picked tree nothing points at")
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "error": msg,
@@ -5382,6 +5384,8 @@ def _integrate_start(args, spath: Path) -> int:
         return EXIT_OK
 
     intent = f"integrate a batch of {len(plan)} branch(es) into {trunk}"
+    if getattr(args, "independent", False):
+        intent = _INDEPENDENT_NO_TICKET_INTENT + intent
     # The intent text deliberately omits the branch NAMES: `classify_intent` reads it
     # to pick the branch type, and a source branch called `debug/fix-crash` would flip
     # this worktree's own type to `debug`. The full list lives in the payload and in
@@ -5402,6 +5406,7 @@ def _integrate_start(args, spath: Path) -> int:
         "schema": INTEGRATE_SCHEMA, "slug": args.slug, "base": args.base,
         "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
         "branches": list(args.branches),
+        "independent": bool(getattr(args, "independent", False)),
         "handoff": handoff,
         "queue": [c for p in plan for c in p["commits"]],
         "planned_total": total,
@@ -5485,6 +5490,19 @@ def _integrate_append(args, spath: Path) -> int:
     st = _integrate_load(args, spath, "append")
     if isinstance(st, int):
         return st
+    persisted_independent = st.get("independent") is True
+    requested_independent = bool(getattr(args, "independent", False))
+    if persisted_independent != requested_independent:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+            "mode": "refused", "slug": args.slug,
+            "error": "independent opt-in must match the persisted integration state",
+            "persisted_independent": persisted_independent,
+            "requested_independent": requested_independent,
+        }, args.json,
+        "integrate --append refused: repeat the original --independent opt-in exactly")
+        return EXIT_USAGE
+    independent_suffix = " --independent" if persisted_independent else ""
     wt = st.get("worktree")
     if not wt or not Path(wt).is_dir():
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
@@ -5512,7 +5530,8 @@ def _integrate_append(args, spath: Path) -> int:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
                "slug": args.slug, "worktree": wt, "error": f"{op} is in progress",
                "conflicts": unmerged,
-               "next_step": f"resolve it in {wt}, then re-run integrate --continue"},
+               "next_step": f"resolve it in {wt}, then re-run integrate --continue"
+                            f"{independent_suffix}"},
               args.json,
               f"integrate --append refused: {op} is in progress in {wt}; "
               "continue the current pick first")
@@ -5522,7 +5541,7 @@ def _integrate_append(args, spath: Path) -> int:
                "slug": args.slug, "worktree": wt, "remaining": st["queue"],
                "error": "the current integration queue is not empty",
                "next_step": f"integrate --slug {args.slug} --continue --commit "
-                            "--no-gate"}, args.json,
+                            f"--no-gate{independent_suffix}"}, args.json,
               f"integrate --append refused: {len(st['queue'])} existing pick(s) "
               "remain; drain them before appending")
         return EXIT_BLOCK
@@ -5531,7 +5550,7 @@ def _integrate_append(args, spath: Path) -> int:
                "slug": args.slug, "worktree": wt,
                "error": "integration is not at the appendable pick-only hand-back point",
                "next_step": f"integrate --slug {args.slug} --continue --commit "
-                            "--no-gate"}, args.json,
+                            f"--no-gate{independent_suffix}"}, args.json,
               "integrate --append refused: state is not marked gate_pending")
         return EXIT_BLOCK
     if st.get("gate"):
@@ -5689,6 +5708,7 @@ def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
     integration state alive so a later ``--continue --commit`` gates the final tree.
     """
     wt = st["worktree"]
+    independent_suffix = " --independent" if st.get("independent") is True else ""
     while st["queue"]:
         item = st["queue"][0]
         head_before = _head_sha(wt)
@@ -5707,7 +5727,7 @@ def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
             if conflicts:
                 why = (f"{head} on {len(conflicts)} conflicting file(s). Resolve them "
                        f"in {wt}, `git -C {wt} add <paths>`, then re-run with "
-                       f"`--continue --commit`")
+                       f"`--continue --commit{independent_suffix}`")
             else:
                 # No unmerged paths and still a failure: an empty pick, a hook, a
                 # broken index. Saying "conflicts: []" here would be the tool
@@ -5715,7 +5735,8 @@ def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
                 why = (f"{head} with no unmerged paths — git said:\n{out[-800:]}\n"
                        f"  resolve it in {wt} by hand (`git -C {wt} cherry-pick "
                        f"--skip` is the usual answer to an empty pick), then "
-                       f"`--continue --commit`; or discard with `--abort --commit`")
+                       f"`--continue --commit{independent_suffix}`; or discard with "
+                       f"`--abort --commit`")
             _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "stopped",
                    "slug": st["slug"], "worktree": wt, "branch": st["branch"],
                    "error": why, "conflicts": conflicts, "stopped": st["stopped"],
@@ -5757,12 +5778,14 @@ def _integrate_picked_only(args, spath: Path, st: dict[str, Any]) -> int:
     st["gate_pending"] = True
     _integrate_save(spath, st)
     wt = st["worktree"]
+    independent_suffix = " --independent" if st.get("independent") is True else ""
     next_step = (f"{wt}/ops/worktree_orchestrate.py integrate --slug "
-                 f"{st['slug']} --continue --commit")
+                 f"{st['slug']} --continue --commit{independent_suffix}")
     payload = {
         "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "picked",
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
+        "independent": st.get("independent") is True,
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "remaining": st.get("queue", []), "head_sha": _head_sha(wt),
         "gated": False, "verdict": None, "landed": False,
@@ -5848,11 +5871,13 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
                  if verdict in ("pass", "warn")
                  else f"fix the blocking gate(s), then run `{wt}/ops/"
                       f"worktree_orchestrate.py integrate --slug {st['slug']} "
-                      "--continue --commit`")
+                      f"--continue --commit"
+                      f"{' --independent' if st.get('independent') is True else ''}`")
     payload = {
         "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
+        "independent": st.get("independent") is True,
         "handoff": st.get("handoff", {"checked": st["branches"],
                                         "warnings": [], "problems": []}),
         "source_claim": st.get("source_claim"),
@@ -5931,6 +5956,20 @@ def _integrate_continue(args, spath: Path) -> int:
     st = _integrate_load(args, spath, "continue")
     if isinstance(st, int):
         return st
+    persisted_independent = st.get("independent") is True
+    requested_independent = bool(getattr(args, "independent", False))
+    if persisted_independent != requested_independent:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+            "slug": args.slug, "state_file": str(spath),
+            "error": "independent opt-in must match the persisted integration state",
+            "persisted_independent": persisted_independent,
+            "requested_independent": requested_independent,
+        }, args.json,
+            "✗ integrate --continue refused: repeat the original "
+            "--independent opt-in exactly")
+        return EXIT_USAGE
+    independent_suffix = " --independent" if persisted_independent else ""
     wt = st["worktree"]
     if not Path(wt).is_dir():
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
@@ -6009,7 +6048,8 @@ def _integrate_continue(args, spath: Path) -> int:
                    "slug": args.slug, "worktree": wt,
                    "error": f"`git cherry-pick --continue` failed:\n{out[-800:]}\n"
                             f"  fix it in {wt} (an empty pick wants `git -C {wt} "
-                            f"cherry-pick --skip`), then re-run --continue; or "
+                            f"cherry-pick --skip`), then re-run "
+                            f"--continue{independent_suffix}; or "
                             f"`--abort --commit`",
                    "detail": out[-2000:]}, args.json,
                   f"✗ integrate --continue: cherry-pick --continue failed:\n{out}")
@@ -6619,6 +6659,79 @@ def _delivery_expected_ticket_closure(
         "ok": not failures,
         "expected_ticket_ids": expected,
         "failures": failures,
+    }
+
+
+def _delivery_independent_no_ticket_provenance(
+    *,
+    state: dict[str, Any] | None,
+    manifest: dict[str, Any] | None,
+    integration_record: dict[str, Any] | None,
+    current_head: str,
+    primary_dirty: list[str],
+    queue: list[Any],
+) -> dict[str, Any]:
+    """Prove an explicit no-ticket close-wave opt-in without weakening defaults.
+
+    The opt-in is deliberately recorded in three planes: integration state and
+    completed manifest carry ``independent=true`` while the registry's existing
+    intent field carries the typed ``independent-no-ticket:`` marker.  The Gate
+    receipt must name the exact integrated HEAD and be non-blocking; primary and
+    the integration queue must be clean.  This keeps an empty expected-ticket set
+    auditable without adding a second registry schema or allowing a stale manifest
+    to masquerade as an independent wave.
+    """
+    failures: list[dict[str, Any]] = []
+    state_independent = (
+        state.get("independent") is True if isinstance(state, dict) else
+        manifest.get("independent") is True if isinstance(manifest, dict) else False
+    )
+    if not state_independent:
+        failures.append({"reason": "integration state is not explicitly independent"})
+    if not isinstance(manifest, dict) or manifest.get("independent") is not True:
+        failures.append({"reason": "completed manifest is not explicitly independent"})
+    if not isinstance(integration_record, dict):
+        failures.append({"reason": "integration registry record is missing"})
+    else:
+        intent = integration_record.get("intent")
+        if not isinstance(intent, str) or not intent.startswith(
+                _INDEPENDENT_NO_TICKET_INTENT
+        ):
+            failures.append({
+                "reason": "integration registry intent lacks independent-no-ticket marker",
+            })
+    gate = ((manifest or {}).get("gate") if isinstance(manifest, dict) else None)
+    if not isinstance(gate, dict) and isinstance(state, dict):
+        gate = state.get("gate")
+    if not isinstance(gate, dict):
+        failures.append({"reason": "independent wave has no Gate receipt"})
+    else:
+        if gate.get("verdict") not in {"pass", "warn"}:
+            failures.append({
+                "reason": "independent wave Gate is not non-block",
+                "verdict": gate.get("verdict"),
+            })
+        if gate.get("head_sha") != current_head:
+            failures.append({
+                "reason": "independent wave Gate HEAD differs from current integration HEAD",
+                "gate_head": gate.get("head_sha"), "current_head": current_head,
+            })
+    if isinstance(manifest, dict) and manifest.get("head_sha") != current_head:
+        failures.append({
+            "reason": "independent manifest HEAD differs from current integration HEAD",
+            "manifest_head": manifest.get("head_sha"), "current_head": current_head,
+        })
+    if primary_dirty:
+        failures.append({"reason": "primary is dirty", "dirty_files": primary_dirty})
+    if queue:
+        failures.append({"reason": "integration queue is not empty", "queue": queue})
+    return {
+        "ok": not failures,
+        "mode": "independent-no-ticket",
+        "failures": failures,
+        "registry_marker": _INDEPENDENT_NO_TICKET_INTENT,
+        "gate_head": gate.get("head_sha") if isinstance(gate, dict) else None,
+        "current_head": current_head,
     }
 
 
@@ -7434,6 +7547,21 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
 
     branches = list(args.branches or [])
     persisted = integration_state or manifest
+    requested_independent = bool(getattr(args, "independent", False))
+    persisted_independent = (
+        isinstance(persisted, dict) and persisted.get("independent") is True
+    )
+    if persisted is not None and persisted_independent != requested_independent:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "stopped", "slug": args.slug,
+            "error": "independent opt-in must match the persisted integration state",
+            "persisted_independent": persisted_independent,
+            "requested_independent": requested_independent,
+        }, args.json,
+            "✗ close-wave refused: repeat the original "
+            "--independent opt-in exactly")
+        return EXIT_USAGE
     if persisted is not None:
         state_branches = persisted.get("branches")
         if not isinstance(state_branches, list) or any(
@@ -7521,6 +7649,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         reservation_errors = _delivery_expected_ticket_reservation_errors(
             records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
         )
+        independent_completed = (
+            manifest.get("independent") is True
+            and saved_expected == []
+            and isinstance((manifest.get("close_wave") or {}).get(
+                "independent_provenance"
+            ), dict)
+            and (manifest.get("close_wave") or {}).get(
+                "independent_provenance", {}
+            ).get("ok") is True
+        )
         closure = (
             {
                 "ok": False,
@@ -7528,6 +7666,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 "failures": reservation_errors,
             }
             if reservation_errors else
+            {
+                "ok": True,
+                "expected_ticket_ids": [],
+                "failures": [],
+                "mode": "independent-no-ticket",
+                "provenance": (manifest.get("close_wave") or {}).get(
+                    "independent_provenance"
+                ),
+            }
+            if independent_completed else
             _delivery_expected_ticket_closure(primary, expected_ticket_ids)
         )
         steps.append({"name": "expected-ticket-closure", **closure})
@@ -7594,6 +7742,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         reservation_errors = _delivery_expected_ticket_reservation_errors(
             recovery_records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
         )
+        independent_recovered = (
+            recovered.get("independent") is True
+            and saved_expected == []
+            and isinstance((recovered.get("close_wave") or {}).get(
+                "independent_provenance"
+            ), dict)
+            and (recovered.get("close_wave") or {}).get(
+                "independent_provenance", {}
+            ).get("ok") is True
+        )
         closure = (
             {
                 "ok": False,
@@ -7601,6 +7759,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 "failures": reservation_errors,
             }
             if reservation_errors else
+            {
+                "ok": True,
+                "expected_ticket_ids": [],
+                "failures": [],
+                "mode": "independent-no-ticket",
+                "provenance": (recovered.get("close_wave") or {}).get(
+                    "independent_provenance"
+                ),
+            }
+            if independent_recovered else
             _delivery_expected_ticket_closure(primary, expected_ticket_ids)
         )
         recovery_steps: list[dict[str, Any]] = [
@@ -7650,8 +7818,11 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     if not args.commit:
+        independent_suffix = " --independent" if requested_independent else ""
         plan = [
-            "integrate --commit --no-gate (fresh) or --continue --commit (resume)",
+            "integrate --commit --no-gate"
+            f"{independent_suffix} (fresh) or --continue --commit"
+            f"{independent_suffix} (resume)",
             "integrated-tree fresh Gate",
             "cutover --commit",
             "resolve every source with --via-integration main",
@@ -7663,11 +7834,11 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         if getattr(args, "sync", False):
             plan.append("sync --commit -> origin/main (backup leg)")
         if integration_state:
-            next_step = "integrate --continue --commit"
+            next_step = f"integrate --continue --commit{independent_suffix}"
         elif manifest:
             next_step = "cutover --commit"
         else:
-            next_step = "integrate --commit --no-gate"
+            next_step = f"integrate --commit --no-gate{independent_suffix}"
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "dry-run",
             "slug": args.slug, "branches": branches, "allowed_branches": sorted(allowed),
@@ -7715,6 +7886,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             [
                 "integrate", "--slug", args.slug, "--branches", *branches,
                 "--no-gate", "--commit", "--base", operation_base,
+                *(["--independent"] if requested_independent else []),
                 *_state_arg(args.state),
             ],
             label=f"integrate:{args.slug}",
@@ -7761,6 +7933,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             [
                 "integrate", "--slug", args.slug, "--continue", "--commit",
                 "--base", operation_base, *_state_arg(args.state),
+                *(["--independent"] if requested_independent else []),
             ],
             label=f"integrate-gate:{args.slug}",
             expected_schema=INTEGRATE_SCHEMA,
@@ -7812,31 +7985,84 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     reservation_errors = _delivery_expected_ticket_reservation_errors(
         records, branches, statuses={wr.STATUS_ACTIVE, "merged"}
     )
-    if reservation_errors or not expected_ticket_ids:
+    if manifest is not None:
+        integration_worktree = integration_worktree or Path(str(manifest.get("worktree") or ""))
+        integration_branch = integration_branch or str(manifest.get("branch") or "")
+    elif integration_state is not None:
+        integration_worktree = integration_worktree or Path(str(
+            integration_state.get("worktree") or ""
+        ))
+        integration_branch = integration_branch or str(integration_state.get("branch") or "")
+    integration_record = next(
+        (record for record in records
+         if record.get("status") == wr.STATUS_ACTIVE
+         and record.get("branch") == integration_branch),
+        None,
+    )
+    independent_provenance: dict[str, Any] | None = None
+    if requested_independent:
+        integration_head = ""
+        if integration_worktree is not None and integration_worktree.is_dir():
+            head_rc, integration_head = _git(
+                ["rev-parse", "HEAD"], cwd=integration_worktree,
+            )
+            if head_rc != EXIT_OK:
+                integration_head = ""
+        independent_provenance = _delivery_independent_no_ticket_provenance(
+            state=integration_state,
+            manifest=manifest,
+            integration_record=integration_record,
+            current_head=integration_head,
+            primary_dirty=_delivery_primary_dirty(primary),
+            queue=list((integration_state or manifest or {}).get("queue") or []),
+        )
+    if reservation_errors or not expected_ticket_ids or (
+            requested_independent
+            and independent_provenance is not None
+            and not independent_provenance["ok"]
+    ):
+        no_ticket_ok = (
+            requested_independent
+            and not reservation_errors
+            and not expected_ticket_ids
+            and independent_provenance is not None
+            and independent_provenance["ok"]
+        )
+        expected_set_error = (
+            "named source reservation has malformed backlog"
+            if reservation_errors else
+            "named source branches have no claimed backlog tickets"
+            if not expected_ticket_ids and not no_ticket_ok else
+            "independent no-ticket provenance is incomplete"
+            if requested_independent else None
+        )
         steps.append({
             "name": "expected-ticket-set",
-            "ok": False, "expected_ticket_ids": expected_ticket_ids,
+            "ok": no_ticket_ok,
+            "expected_ticket_ids": expected_ticket_ids,
             "errors": reservation_errors,
-            "error": (
-                "named source reservation has malformed backlog"
-                if reservation_errors else
-                "named source branches have no claimed backlog tickets"
-            ),
+            "provenance": independent_provenance,
+            **({"error": expected_set_error} if expected_set_error else {}),
         })
-        _emit({
-            "schema": DELIVERY_SCHEMA, "step": "close-wave",
-            "mode": "stopped", "slug": args.slug, "branches": branches,
-            "steps": steps,
-            "error": (
-                "close-wave requires valid source ticket reservations"
+        if not no_ticket_ok:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "steps": steps,
+                "error": (
+                    "close-wave requires valid source ticket reservations"
+                    if reservation_errors else
+                    "close-wave requires complete independent no-ticket provenance"
+                    if requested_independent else
+                    "close-wave requires a non-empty expected ticket set"
+                ),
+            }, args.json,
+                "✗ close-wave stopped: source ticket reservation is invalid"
                 if reservation_errors else
-                "close-wave requires a non-empty expected ticket set"
-            ),
-        }, args.json,
-            "✗ close-wave stopped: source ticket reservation is invalid"
-            if reservation_errors else
-            "✗ close-wave stopped: expected ticket set is empty")
-        return EXIT_BLOCK
+                "✗ close-wave stopped: independent no-ticket provenance is incomplete"
+                if requested_independent else
+                "✗ close-wave stopped: expected ticket set is empty")
+            return EXIT_BLOCK
     if manifest_path is not None and saved_expected is None:
         persisted = _delivery_load_json(manifest_path)
         if persisted is None:
@@ -7847,6 +8073,11 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         persisted["close_wave"] = {
             **(persisted.get("close_wave") or {}),
             "expected_ticket_ids": expected_ticket_ids,
+            **(
+                {"independent_provenance": independent_provenance}
+                if independent_provenance is not None
+                else {}
+            ),
         }
         try:
             _integrate_save(manifest_path, persisted)
@@ -8026,7 +8257,17 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                "mode": "stopped", "slug": args.slug, "steps": steps}, args.json,
               "✗ close-wave stopped: anchor metadata was not committed")
         return EXIT_BLOCK
-    closure = _delivery_expected_ticket_closure(primary, expected_ticket_ids)
+    closure = (
+        {
+            "ok": True,
+            "expected_ticket_ids": [],
+            "failures": [],
+            "mode": "independent-no-ticket",
+            "provenance": independent_provenance,
+        }
+        if requested_independent and not expected_ticket_ids
+        else _delivery_expected_ticket_closure(primary, expected_ticket_ids)
+    )
     steps.append({"name": "expected-ticket-closure", **closure})
     if not closure["ok"]:
         _emit({
@@ -9558,6 +9799,11 @@ def build_parser() -> argparse.ArgumentParser:
     cw.add_argument("--sync", action="store_true",
                     help="after local cutover and closure, push the resulting primary "
                          "main to origin/main; explicit backup leg, never deploys")
+    cw.add_argument("--independent", action="store_true",
+                    help="explicitly declare an independent no-ticket wave; the "
+                         "manifest, registry intent marker, Gate HEAD and clean "
+                         "primary must all prove this opt-in before an empty "
+                         "expected-ticket set can proceed")
     cw.set_defaults(func=cmd_close_wave)
 
     ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
@@ -9593,6 +9839,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="pick only: drain the queue and STOP before the gate; the "
                          "integration state survives, so the next `--continue --commit` "
                          "runs ONLY the gate on the already-integrated tree")
+    ig.add_argument("--independent", action="store_true",
+                    help="persist the explicit independent no-ticket provenance "
+                         "marker; --continue must repeat this opt-in")
     ig.add_argument("--allow-unhanded", action="store_true",
                     help="allow a source branch with no active hand-back stamp/seal "
                          "(legacy or imported work only); NEVER bypasses a branch-tip "
