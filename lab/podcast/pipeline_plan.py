@@ -179,4 +179,3 @@ def render_stage_help(specs: Sequence[StageSpec]) -> str:
     """Render the numbered stage list used by CLI help/status output."""
 
     return "\n".join(f"    {idx}. {spec.name}" for idx, spec in enumerate(specs, 1))
-

@@ -64,4 +64,3 @@ def test_invalid_ranges_are_rejected_before_runner_side_effects() -> None:
         assert "after" in str(exc)
     else:
         raise AssertionError("reversed stage range must be rejected")
-
