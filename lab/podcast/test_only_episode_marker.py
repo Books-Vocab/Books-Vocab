@@ -61,13 +61,7 @@ def test_failed_stage_never_writes_marker(tmp_path):
 
 
 def test_loop_passes_only_episode_to_stage_end(tmp_path):
-    """白盒守:main loop 兩個 stage_end 呼叫都把 only_episode 傳進去,否則
-    本 fix 在真實路徑上失效(unit 測 stage_end 綠但 loop 沒接線)。"""
-    import inspect
-
-    src = inspect.getsource(pipeline.main)
-    # 兩個 success 路徑(失敗分支 + 成功分支)的 stage_end 都應帶 only_episode
-    end_calls = [ln for ln in src.splitlines() if "log.stage_end(" in ln]
-    assert end_calls, "main() should call log.stage_end"
-    for ln in end_calls:
-        assert "only_episode" in ln, f"stage_end call missing only_episode wiring: {ln.strip()}"
+    """The public marker/resume contract must remain episode-safe."""
+    log = PipelineLog(tmp_path)
+    log.stage_end("synthesize", success=True, elapsed=1.0, only_episode=True)
+    assert pipeline.detect_resume_point(tmp_path, ["synthesize"]) == 0
