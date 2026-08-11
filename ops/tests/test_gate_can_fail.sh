@@ -75,6 +75,7 @@ PROOFS=(
   "ops-shell|fixture|fixture|no fixed tool: the routed script IS the command, so what is provable here is the gate's contract — run it, propagate its exit code — driven through _run_gate against a script that exits 3"
   "backlog-validate|cheap|cheap|an isolated store copy with a bad severity + a missing required field, vs the same copy untouched"
   "ops-shell-scan|cheap|cheap|two throwaway tracked trees driven through the real ops/shell_scan.sh: one with a \$VAR abutting full-width punctuation, one without"
+  "ops-python-scan|cheap|cheap|a duplicate function fixture versus a clean Python fixture driven through ops/python_scan.py"
   "data-plane|fixture|fixture|no fixed tool either: the yml's declared owner IS the command (DATA_PLANE_OWNERS), so what is provable here is that this family propagates its owner's exit code — driven through _run_gate against an owner that exits 4"
   "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
   "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
@@ -99,7 +100,7 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
 # past a failing proof is to reclassify the gate as `expensive|journal` and delete the
 # proof body, and nothing would object. Downgrading one of these is then a deliberate,
 # visible edit.
-CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate ops-shell-scan"
+CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate ops-shell-scan ops-python-scan"
 
 # Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
 # journal-sourced green is real evidence but it is not an executed proof, and without
@@ -483,6 +484,34 @@ scan_tree "$TMP/scan_good"
 assert_red ops-shell-scan "ops/offender.sh:2" "$TMP/scan_bad.out" "$rc"
 "$WORKSPACE/ops/shell_scan.sh" "$TMP/scan_good" >"$TMP/scan_good.out" 2>&1 && rc=0 || rc=$?
 assert_green ops-shell-scan "passed: 4  failed: 0" "$TMP/scan_good.out" "$rc"
+
+# --- ops-python-scan ------------------------------------------------------------
+# Duplicate definitions are the failure mode this gate owns; the clean marker is
+# emitted by the real scanner, so both directions prove the command rather than a
+# wrapper's exit-code plumbing.
+cat >"$TMP/python-duplicate.py" <<'PY'
+def helper():
+    return 1
+
+
+def helper():
+    return 2
+PY
+rc=0; "$WORKSPACE/ops/python_scan.py" "$TMP/python-duplicate.py" \
+  >"$TMP/python_scan_bad.out" 2>&1 || rc=$?
+assert_red ops-python-scan "python-duplicate.py:5:" "$TMP/python_scan_bad.out" "$rc"
+
+cat >"$TMP/python-clean.py" <<'PY'
+def helper():
+    return 1
+
+
+def other():
+    return 2
+PY
+rc=0; "$WORKSPACE/ops/python_scan.py" "$TMP/python-clean.py" \
+  >"$TMP/python_scan_good.out" 2>&1 || rc=$?
+assert_green ops-python-scan "duplicate definitions: 0" "$TMP/python_scan_good.out" "$rc"
 
 # The scanner's input must follow what the shell actually executes, not only the
 # *.sh suffix.  Extensionless shebang scripts, non-ignored untracked scripts,

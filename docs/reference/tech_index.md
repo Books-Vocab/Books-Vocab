@@ -268,6 +268,10 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 
 每道 gate 的結果與 append-only `history.jsonl` 另帶 `machine_state`：判決前後的 load average、active worktree 數、以及偵測到的 `xcodebuild` / `ios_test.sh`（只保留 PID＋類型，不保存 raw argv）。`ios-test-unit`、`ops-shell:test_ios_test_discovery.sh` 與 `ops-ci-coverage` 判紅且觀測到同機 iOS 工具鏈行程時，summary 會列出「可能不可重現」的污染警告與安靜狀態重跑命令；verdict 仍是 red，沒有自動 retry，因為這是歸因證據而非放寬 gate。
 
+## Ops Python source scanner
+
+`ops/python_scan.py` 是 repo 級 stdlib AST 掃描器：預設掃 tracked `*.py` 並以 50 檔地板與內嵌正控防止假綠；明確路徑模式掃指定檔案/目錄。只檢查 module body 的直接 `def`/`async def`/`class` 同名定義，輸出每個定義點行號；`@overload` 與具名 `# dup-allow: <reason>` 可免報。`worktree_orchestrate.py` 對任何 Python diff 只排一次 `ops-python-scan` block，回歸由 `ops/tests/test_python_scan.py`、`ops/tests/test_worktree_orchestrate.py`、`ops/tests/test_gate_can_fail.sh` 與 `ops/test_ops.sh python-entrypoints` 把關。
+
 ## Web 設計系統(`design-system/`)
 
 跨平台 design token 橋接層。Token SoT = `tokens.json`(W3C DTCG),經兩條生成鏈出貨:**Style Dictionary → iOS `DesignTokens.swift`**(scalar bridge)與 **`gen_web_tokens.py` → web CSS**。
