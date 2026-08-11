@@ -18,7 +18,7 @@
 #      這條在 gate/files/audit 三種模式一律 **WARN 不 ERROR**(worktree pre-cutover 錨在
 #      自身 commit 是合法情境,升 ERROR 會把整條 worktree 流程擋死),並印一個可照抄的
 #      替代 sha。$ORIGIN_REF 不存在(未 fetch 的 clone)→ 整段跳過。
-#      注意 --strict 會把它連同其他 WARN 一起升為 fail,那是呼叫者的明示選擇。
+#      WARN 會以 EXIT_WARN(3) 回報；--strict 僅保留為相容旗標，不改變分類。
 #
 # 用法:
 #   ops/docs_lint.sh                 # gate: registry + changed docs
@@ -30,17 +30,26 @@
 #   ops/docs_lint.sh --audit|--all   # 全 repo audit(可暴露既有 debt)
 #   ops/docs_lint.sh --reanchor [--commit]  # dry-run/落地 orphan verified_against 映射
 #   ops/docs_lint.sh --reanchor --search-depth <n>  # 限制 patch-id 搜尋視窗
-#   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
+#   ops/docs_lint.sh --strict        # 保留相容旗標；WARN 一律 exit 3
 #   STALE_THRESHOLD=10 ops/docs_lint.sh
 #   KG_DOCS_LINT_ORIGIN_REF=origin/prod ops/docs_lint.sh   # 換 anchor 可達性的參考 ref
 #
 # Exit code:
-#   0 — 全部 OK 或僅 WARN
-#   1 — 有 ERROR(欄位缺失 / verified_against 無效)或 --strict 模式下有 WARN
+#   0 — 全部 OK
+#   1 — lint/tool execution failure
+#   2 — 有 ERROR(欄位缺失 / verified_against 無效)
+#   3 — 有 WARN(無 ERROR)
+#   64 — command-line usage error
 #
 # 相容 bash 3.2(macOS 預設),不使用 mapfile / readarray。
 
 set -euo pipefail
+
+EXIT_OK=0
+EXIT_TOOL_ERROR=1
+EXIT_BLOCK=2
+EXIT_WARN=3
+EXIT_USAGE=64
 
 # 檢查呼叫者所在 checkout。linked worktree 與 main 共用 object store,但工作樹檔案各自獨立；
 # 強制 cd 回 main 會漏掉 PR worktree 內尚未 commit 的 docs/registry 變更。
@@ -79,7 +88,7 @@ while [ "$#" -gt 0 ]; do
     --since)
       if [ "$#" -lt 2 ]; then
         echo "Missing value for --since" >&2
-        exit 2
+        exit "$EXIT_USAGE"
       fi
       MODE="gate"
       SINCE_REV="$2"
@@ -114,7 +123,7 @@ while [ "$#" -gt 0 ]; do
     --search-depth)
       if [ "$#" -lt 2 ]; then
         echo "Missing value for --search-depth" >&2
-        exit 2
+        exit "$EXIT_USAGE"
       fi
       REANCHOR_SEARCH_DEPTH="$2"
       REANCHOR_SEARCH_DEPTH_SET=1
@@ -129,7 +138,7 @@ while [ "$#" -gt 0 ]; do
         echo "Unknown arg: $1" >&2
         echo "提示: 若要指定 doc 路徑,請改用 --files: ops/docs_lint.sh --files docs/<path>.md ..." >&2
         echo "      或直接傳 doc 路徑: ops/docs_lint.sh docs/<path>.md ..." >&2
-        exit 2
+        exit "$EXIT_USAGE"
       fi
       MODE="files"
       FILE_ARGS+=("$1")
@@ -146,23 +155,23 @@ done
 
 if [ "$REANCHOR_COMMIT" -eq 1 ] && [ "$MODE" != "reanchor" ]; then
   echo "ERROR --commit 只適用於 --reanchor" >&2
-  exit 2
+  exit "$EXIT_USAGE"
 fi
 
 if [ "$MODE" != "reanchor" ] && [ "$REANCHOR_SEARCH_DEPTH_SET" -eq 1 ]; then
   echo "ERROR --search-depth 只適用於 --reanchor" >&2
-  exit 2
+  exit "$EXIT_USAGE"
 fi
 
 if [ "$MODE" = "reanchor" ]; then
   case "$REANCHOR_SEARCH_DEPTH" in
     ''|*[!0-9]*)
       echo "ERROR --search-depth 必須是正整數: $REANCHOR_SEARCH_DEPTH" >&2
-      exit 2
+      exit "$EXIT_USAGE"
       ;;
     0)
       echo "ERROR --search-depth 必須大於 0" >&2
-      exit 2
+      exit "$EXIT_USAGE"
       ;;
   esac
 fi
@@ -356,7 +365,7 @@ changed_docs() {
   base="${GATE_BASE:-${SINCE_REV:-$(default_changed_base)}}"
   if ! git rev-parse --verify "$base^{commit}" >/dev/null 2>&1; then
     echo "ERROR --since/changed base 不是有效 commit: $base" >&2
-    exit 2
+    exit "$EXIT_USAGE"
   fi
   {
     git diff --name-only --diff-filter=ACMR "$base..HEAD" -- docs
@@ -394,25 +403,25 @@ emit_impact_hints() {
 files_docs() {
   if [ "${#FILE_ARGS[@]}" -eq 0 ]; then
     echo "ERROR --files 需要至少一個 docs/*.md 路徑" >&2
-    exit 2
+    exit "$EXIT_USAGE"
   fi
   for f in "${FILE_ARGS[@]}"; do
     case "$f" in
       docs/*.md) ;;
       *)
         echo "ERROR --files 只接受 docs/*.md 路徑: $f" >&2
-        exit 2
+        exit "$EXIT_USAGE"
         ;;
     esac
     case "$f" in
       docs/assets/*|docs/legal/*)
         echo "ERROR --files 不掃描 assets/legal doc: $f" >&2
-        exit 2
+        exit "$EXIT_USAGE"
         ;;
     esac
     if [ ! -f "$f" ]; then
       echo "ERROR --files 路徑不存在: $f" >&2
-      exit 2
+      exit "$EXIT_USAGE"
     fi
   done
   printf '%s\n' "${FILE_ARGS[@]}" | sort -u
@@ -623,7 +632,10 @@ run_reanchor() {
   fi
 
   echo "reanchor: orphaned=$orphan_count indexed=$indexed_count mapped=$mapped_count unmatched=$unmatched_count search-depth=$REANCHOR_SEARCH_DEPTH"
-  [ "$unmatched_count" -eq 0 ]
+  if [ "$unmatched_count" -gt 0 ]; then
+    return "$EXIT_BLOCK"
+  fi
+  return "$EXIT_OK"
 }
 
 echo "docs_lint: mode=$MODE"
@@ -635,7 +647,7 @@ if [ "$MODE" = "reanchor" ]; then
   else
     reanchor_rc=$?
   fi
-  [ "$errors" -gt 0 ] && exit 1
+  [ "$errors" -gt 0 ] && exit "$EXIT_BLOCK"
   exit "$reanchor_rc"
 fi
 
@@ -646,15 +658,15 @@ if [ "$MODE" = "registry" ]; then
   echo "WARN:  $warnings"
   echo "ERROR: $errors"
   echo "─────────────────────────────────────"
-  [ "$errors" -gt 0 ] && exit 1
-  exit 0
+  [ "$errors" -gt 0 ] && exit "$EXIT_BLOCK"
+  exit "$EXIT_OK"
 fi
 
 if [ "$MODE" = "gate" ]; then
   GATE_BASE="${SINCE_REV:-$(default_changed_base)}"
   if ! git rev-parse --verify "$GATE_BASE^{commit}" >/dev/null 2>&1; then
     echo "ERROR --since/changed base 不是有效 commit: $GATE_BASE" >&2
-    exit 2
+    exit "$EXIT_USAGE"
   fi
   emit_impact_hints
 fi
@@ -663,7 +675,7 @@ case "$MODE" in
   audit) DOCS=$(all_docs) ;;
   gate) DOCS=$(changed_docs) ;;
   files) DOCS=$(files_docs) ;;
-  *) echo "internal error: unknown MODE=$MODE" >&2; exit 2 ;;
+    *) echo "internal error: unknown MODE=$MODE" >&2; exit "$EXIT_TOOL_ERROR" ;;
 esac
 
 if [ -z "$DOCS" ]; then
@@ -677,9 +689,9 @@ if [ -z "$DOCS" ]; then
   echo "WARN:  $warnings"
   echo "ERROR: $errors"
   echo "─────────────────────────────────────"
-  [ "$errors" -gt 0 ] && exit 1
-  [ "$STRICT" -eq 1 ] && [ "$warnings" -gt 0 ] && exit 1
-  exit 0
+  [ "$errors" -gt 0 ] && exit "$EXIT_BLOCK"
+  [ "$warnings" -gt 0 ] && exit "$EXIT_WARN"
+  exit "$EXIT_OK"
 fi
 
 [ "$MODE" = "gate" ] && echo "docs_lint: changed-doc frontmatter checks"
@@ -835,6 +847,6 @@ echo "WARN:  $warnings"
 echo "ERROR: $errors"
 echo "─────────────────────────────────────"
 
-[ "$errors" -gt 0 ] && exit 1
-[ "$STRICT" -eq 1 ] && [ "$warnings" -gt 0 ] && exit 1
-exit 0
+[ "$errors" -gt 0 ] && exit "$EXIT_BLOCK"
+[ "$warnings" -gt 0 ] && exit "$EXIT_WARN"
+exit "$EXIT_OK"

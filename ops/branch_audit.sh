@@ -9,10 +9,16 @@
 #
 # Exit codes:
 #   0 = only safe-delete / open-pr branches
-#   1 = at least one merged-pr-but-ahead warning
 #   2 = at least one orphan-ahead / stale-ahead block
+#   3 = at least one merged-pr-but-ahead warning (and no block)
 
 set -euo pipefail
+
+EXIT_OK=0
+EXIT_TOOL_ERROR=1
+EXIT_BLOCK=2
+EXIT_WARN=3
+EXIT_USAGE=64
 
 ROOT="${KG_BRANCH_AUDIT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT"
@@ -31,11 +37,14 @@ usage() {
 
 die() {
   echo "branch_audit: $*" >&2
-  exit 2
+  exit "$EXIT_USAGE"
 }
 
 need_jq() {
-  command -v jq >/dev/null 2>&1 || die "需要 jq 解析 gh JSON"
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "branch_audit: 需要 jq 解析 gh JSON" >&2
+    exit "$EXIT_TOOL_ERROR"
+  fi
 }
 
 json_bool() {
@@ -225,9 +234,9 @@ if [[ "$JSON" -eq 1 ]]; then
 fi
 
 if [[ "$block_count" -gt 0 ]]; then
-  exit 2
+  exit "$EXIT_BLOCK"
 fi
 if [[ "$warn_count" -gt 0 ]]; then
-  exit 1
+  exit "$EXIT_WARN"
 fi
-exit 0
+exit "$EXIT_OK"

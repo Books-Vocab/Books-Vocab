@@ -88,6 +88,7 @@ LINUX_GROUPS=(
   deploy-smoke
   infra-health
   reconcile
+  exit-code-contract
   branch-audit
   review-audit
   review-cycle

@@ -24,6 +24,7 @@
 # Exit codes:
 #   0 = every audited commit is reviewed or validly exempted
 #   2 = at least one commit is missing a receipt or carries an invalid exemption
+#   64 = invalid command-line usage
 #
 # `--machine-gate` is only supplied by worktree_orchestrate's fresh integration
 # gate. It records missing receipts as deferred-to-machine-gate instead of
@@ -31,6 +32,12 @@
 # the final verdict to this HEAD. Manual audits never accept this mode.
 
 set -euo pipefail
+
+EXIT_OK=0
+EXIT_TOOL_ERROR=1
+EXIT_BLOCK=2
+EXIT_WARN=3
+EXIT_USAGE=64
 
 BASE="origin/main"
 REV_RANGE=""
@@ -61,11 +68,14 @@ usage() {
 
 die() {
   echo "review_audit: $*" >&2
-  exit 2
+  exit "$EXIT_USAGE"
 }
 
 need_jq() {
-  command -v jq >/dev/null 2>&1 || die "需要 jq 產生 JSON"
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "review_audit: 需要 jq 產生 JSON" >&2
+    exit "$EXIT_TOOL_ERROR"
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -378,6 +388,6 @@ if [[ "$JSON" -eq 1 ]]; then
 fi
 
 if [[ "$block_count" -gt 0 ]]; then
-  exit 2
+  exit "$EXIT_BLOCK"
 fi
 exit 0

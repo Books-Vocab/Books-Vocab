@@ -30,6 +30,7 @@ DEFAULT_TESTS=(
   infra-health
   reconcile
   branch-audit
+  exit-code-contract
   worktree-orchestrator
   kg-board
   backlog
@@ -114,6 +115,10 @@ run_one() {
     infra-health)       ./ops/test_infra_health.sh ;;
     reconcile)          ./ops/tests/test_kg_reconcile.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
+    exit-code-contract)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_exit_code_contract.py
+      ;;
     worktree-orchestrator)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_orchestrate.py \
