@@ -143,3 +143,12 @@ def test_coverage_gate_declares_and_wires_the_scanner() -> None:
     dispatcher = (ROOT / "ops/test_ops.sh").read_text()
     arm = dispatcher.split("ops-ci-coverage)", 1)[1].split(";;", 1)[0]
     assert "ops/tests/test_ops_group_chain.py" in arm
+
+
+def test_kg_board_group_covers_git_tree_regression() -> None:
+    """Every KG board test module must be in the default kg-board arm."""
+
+    dispatcher = (ROOT / "ops/test_ops.sh").read_text()
+    arm = dispatcher.split("kg-board)", 1)[1].split(";;", 1)[0]
+
+    assert "ops/tests/test_kg_board_git_tree.py" in arm
