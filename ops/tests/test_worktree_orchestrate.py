@@ -567,6 +567,23 @@ def test_gate_plan_ops_src_with_matching_test_runs_it():
     assert "ops/tests" not in spec["cmd"]
 
 
+@pytest.mark.parametrize("changed", [
+    ["ops/worktree_orchestrate.py", "ops/tests/test_worktree_orchestrate.py"],
+    ["backend/src/kg/app.py"],
+    ["lab/monitor.py"],
+])
+def test_gate_plan_any_python_source_runs_python_scan_once(changed):
+    gates = _by_name(plan_gates(changed, ops_test_exists=lambda rel: True))
+    spec = gates["ops-python-scan"]
+    assert spec["level"] == "block"
+    assert spec["cmd"] == ["ops/python_scan.py"]
+    assert list(gates).count("ops-python-scan") == 1
+
+
+def test_gate_plan_python_scan_excludes_non_python_diffs():
+    assert "ops-python-scan" not in _names(plan_gates(["ios/App/View.swift", "README.md"]))
+
+
 def test_gate_plan_ops_lib_src_maps_by_basename():
     exists = {"ops/tests/test_worktree_registry.py"}.__contains__
     gates = plan_gates(["ops/lib/worktree_registry.py"], ops_test_exists=exists)
@@ -2659,6 +2676,7 @@ def test_cutover_lands_with_warn_verdict(scratch):
     # warning ("landed with warnings: <gate>").
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
+    _seed_python_scan(repo)
     rc, opened = _run_json(
         ["open", "--intent", "add backend endpoint", "--slug", "backend-ep",
          "--state", state, "--json"]
@@ -2730,6 +2748,7 @@ def test_cutover_refuses_while_a_gate_was_left_inconclusive(scratch):
     Found by review of IMP-20260805-4ec901."""
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
+    _seed_python_scan(repo)
     rc, opened = _run_json(
         ["open", "--intent", "add backend endpoint", "--slug", "inconc-refuse",
          "--state", state, "--json"])
@@ -4095,6 +4114,7 @@ def test_gate_publishes_independent_progress_without_polluting_json(
         scratch, monkeypatch, capsys):
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "progress-reg.json")
+    _seed_python_scan(repo)
     wt = _open_wt(state, slug="progress-gate")
     # Make the impact plan contain two gates while keeping this regression offline.
     source = Path(wt) / "ops" / "tests" / "test_worktree_orchestrate.py"
@@ -4132,7 +4152,7 @@ def test_gate_publishes_independent_progress_without_polluting_json(
     assert progress["run_id"]
     assert progress["generation"] >= 1
     assert progress["head_sha"] == gate["head_sha"]
-    assert progress["plan_total"] == len(gate["plan"]) == 2
+    assert progress["plan_total"] == len(gate["plan"]) == 3
     assert progress["done"] == progress["plan_total"]
     assert progress["current"] is None
     assert progress["completed"] == [
@@ -4355,6 +4375,23 @@ def _plant_orchestrator(wt, body: str | None = None):
     return dst
 
 
+def _seed_python_scan(repo):
+    """Seed the scanner in a scratch base so a Python diff can exercise its gate."""
+    src = Path(MODULE.__file__).resolve().with_name("python_scan.py")
+    dst = Path(repo) / "ops" / "python_scan.py"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+    dst.chmod(dst.stat().st_mode | 0o111)
+    for index in range(50):
+        (dst.parent / f"scan_fixture_{index:02d}.py").write_text(
+            f"value_{index} = {index}\n", encoding="utf-8"
+        )
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "seed python scanner"], repo)
+    _git(["push", "-q", "origin", "main"], repo)
+    _git(["fetch", "-q", "origin", "main"], repo)
+
+
 @gitmark
 def test_gate_refuses_when_the_worktree_carries_a_different_orchestrator(scratch):
     """The incident this exists for: `gate` run from the primary checkout against a
@@ -4403,6 +4440,7 @@ def test_gate_names_unavailable_ops_tests_in_a_synthetic_worktree(scratch, monke
     """
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
+    _seed_python_scan(repo)
     wt = _open_wt(state)
     _plant_orchestrator(wt)
     monkeypatch.setattr(
@@ -9910,6 +9948,7 @@ def test_integrate_names_a_commit_that_produced_nothing_instead_of_losing_it(scr
 def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
+    _seed_python_scan(repo)
     rc, opened = _run_json(["open", "--intent", "gate reuse", "--slug", "reuse",
                             "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK
@@ -9934,8 +9973,11 @@ def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch)
     assert rc == MODULE.EXIT_OK
     first_head = first["head_sha"]
     ops_first = next(g for g in first["gates"] if g["name"] == "ops-pytest")
-    assert calls == ["ops-pytest", "coverage"]
-    assert ops_first["input"]["files"] == ["ops/lib/foo.py", "ops/tests/test_foo.py"]
+    assert calls == ["ops-python-scan", "ops-pytest", "coverage"]
+    assert {"ops/lib/foo.py", "ops/tests/test_foo.py"}.issubset(
+        ops_first["input"]["files"]
+    )
+    assert "ops/python_scan.py" in ops_first["input"]["files"]
     assert ops_first["input"]["fingerprint"]
     assert ops_first["reuse"]["decision"] == "rerun"
     progress_path = MODULE._gate_progress_path(state, wt)
@@ -9956,7 +9998,8 @@ def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch)
     assert ops_second["reuse"] == {"decision": "reused", "source_head": first_head,
                                     "reason": "input_unchanged"}
     assert second["gate_reuse"]["reused"] == [
-        {"name": "ops-pytest", "source_head": first_head, "reason": "input_unchanged"}
+        {"name": "ops-python-scan", "source_head": first_head, "reason": "input_unchanged"},
+        {"name": "ops-pytest", "source_head": first_head, "reason": "input_unchanged"},
     ]
 
     progress = json.loads(progress_path.read_text(encoding="utf-8"))

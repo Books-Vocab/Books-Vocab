@@ -83,6 +83,7 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 | `shipped ios` | `ops/release.sh shipped ios` | ASC（現查）+ build tag | `ios/x.y.z`（上架標記）+ push origin | 無—唯讀查 ASC，只寫 tag |
 
 - **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
+- gate routing 會對任何變更的 `*.py` 額外排入 repo 級 `ops-python-scan` block（每個 plan 恰一次）；它是 stdlib AST 重複定義檢查，與 targeted `ops-pytest` 分開。重複/乾淨雙向 proof 在 `ops/tests/test_gate_can_fail.sh`，測試檔由 `ops/test_ops.sh` 的 `python-entrypoints` arm 可達。
 - **`cutover` 的新鮮度是兩軸**：HEAD（判決**讀**的碼）與 base（判決落地時**身旁**的碼）。base 落後即拒——cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被判過也不是落地的那棵，而 HEAD 檢查看不到（HEAD 沒動，動的是 base）。`gate` 也會提前拒，省下白跑的 gate。修法：`catchup --commit` → **重跑 gate** → cutover（IMP-20260806-945e01）。
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。

@@ -162,7 +162,11 @@ run_one() {
     log-assert)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ios_log_assert.py
       ;;
-    python-entrypoints) ./ops/tests/test_python_entrypoints.sh ;;
+    python-entrypoints)
+      ./ops/tests/test_python_entrypoints.sh &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_python_scan.py
+      ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     lint-baselines)     ./ops/tests/test_lint_baselines.sh ;;

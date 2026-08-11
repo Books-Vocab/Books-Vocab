@@ -1040,6 +1040,14 @@ def plan_gates(changed_files: list[str],
                                         "run the relevant tests manually (the full suite carries "
                                         "known pre-existing false failures)", files=backend))
 
+    # Duplicate module-level definitions are a language-level invariant, not an
+    # ops-only concern: backend/ and lab/ Python diffs must receive the same cheap
+    # repository scan.  Keep this gate outside the coverage buckets below; one
+    # repo-wide lint cannot claim that every non-ops path has a domain test.
+    py_any = [p for p in changed_files if p.endswith(".py")]
+    if py_any:
+        gates.append(_shell("ops-python-scan", "ops", ["ops/python_scan.py"], "block"))
+
     ops_py = [p for p in changed_files if p.startswith("ops/") and p.endswith(".py")]
     if ops_py:
         exists = ops_test_exists or (lambda rel: False)
@@ -1286,6 +1294,7 @@ def gate_probe_corpus() -> list[list[str]]:
             ["backend/src/kg/app.py"],
             ["backend/tests/test_x.py"],
             ["ops/worktree_orchestrate.py"],
+            ["ops/python_scan.py"],
             ["ops/docs_lint.sh"],
             ["design-system/tokens.json"],
             ["ops/i18n_baseline.txt"],
@@ -2201,6 +2210,11 @@ def _gate_input_scope(spec: dict[str, Any], worktree: str,
             kind = "tracked-subsystem"
             files = [p for p in tracked if p.startswith("ops/") or
                      p.startswith(".github/workflows/")]
+        elif name == "ops-python-scan":
+            # The scanner reads every tracked Python source, so make that exact
+            # repository-wide surface reusable when unrelated files change.
+            kind = "tracked-python-source"
+            files = [p for p in tracked if p.endswith(".py")]
         elif name.startswith("ops-shell"):
             kind = "tracked-shell-tree"
             files = [p for p in tracked if p.endswith(".sh") and
