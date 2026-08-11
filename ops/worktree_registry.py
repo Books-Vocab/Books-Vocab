@@ -91,15 +91,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 # Consume the P1 pure judgement layer — never re-implement a verdict here.
-sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+OPS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(OPS_DIR))
+sys.path.insert(0, str(OPS_DIR / "lib"))
 import worktree_state as ws  # noqa: E402  (ops/lib shared pure module)
 import worktree_campaign as wc  # noqa: E402  (campaign reservation pure layer)
 from lock_wait import exclusive_lock  # noqa: E402
+from lib.exit_codes import EXIT_CLAIMED, EXIT_OK, EXIT_PARTIAL, EXIT_USAGE  # noqa: E402
 
 SCHEMA = "kg.worktree.registry.v1"
-EXIT_OK = 0
-EXIT_USAGE = 64
-EXIT_PARTIAL = 1
 # A well-formed register that loses a race for a backlog ticket. It needs a code of
 # its own: not EXIT_USAGE, because the caller did nothing wrong; not EXIT_PARTIAL,
 # which means a sweep got part-way; not EXIT_OK.
@@ -112,8 +112,6 @@ EXIT_PARTIAL = 1
 # nobody holds. 2 is also spoken for by the open ruling in IMP-0042, which assigns
 # it to "block". The orchestrator maps this to its own EXIT_BLOCK (which is 1, so do
 # NOT assume the numbers match anywhere).
-EXIT_CLAIMED = 75
-
 STATUS_ACTIVE = "active"
 RESOLVE_STATUS = ("merged", "abandoned")  # terminal states a resolve can set
 HAND_BACK_SEAL_SCHEMA = "kg.worktree.handback.v1"
@@ -2354,7 +2352,13 @@ def _prepare_register_base(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     tokens = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
-    args = parser.parse_args(tokens)
+    try:
+        args = parser.parse_args(tokens)
+    except SystemExit as exc:
+        # Keep argparse's diagnostics, but expose the shared CLI contract to
+        # callers: only --help is a successful exit; malformed invocations are
+        # usage errors, not the generic argparse code 2.
+        return EXIT_OK if exc.code == 0 else EXIT_USAGE
     if not getattr(args, "func", None):
         parser.print_help()
         return EXIT_USAGE

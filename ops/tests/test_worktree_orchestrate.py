@@ -63,6 +63,12 @@ sys.modules[DISPATCH_SPEC.name] = DISPATCH
 DISPATCH_SPEC.loader.exec_module(DISPATCH)
 
 
+def test_usage_errors_return_contract_code_for_root_and_subparser_typos():
+    """Argparse's generic 2 must not collide with the workflow usage code 64."""
+    for argv in (["--brnach"], ["open", "--brnach"]):
+        assert MODULE.main(argv) == MODULE.EXIT_USAGE
+
+
 def _names(gates):
     return {g["name"] for g in gates}
 
