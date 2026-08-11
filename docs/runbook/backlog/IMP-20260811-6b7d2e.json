@@ -1,0 +1,21 @@
+{
+  "acceptance": "The exact recovery fixture must fail once during each injected phase boundary, resume without duplicate commits or queue consumption, and finish with all expected tickets anchored, queue empty, integration resolved, and sync a no-op or successful push. A second identical recovery invocation on the completed manifest must be an idempotent no-op with no registry or queue mutation.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k 'close_wave and recovery'",
+  "brief": "A failed delivery wave can strand otherwise verified work and force manual recovery, delaying every team that closes changes.",
+  "category": "arch",
+  "date": "2026-08-11",
+  "detail": "The close-wave controller can persist a completed manifest before anchor or metadata recovery is durable, then reject recovery when the primary advances or the manifest has no anchor_ids. Recovery also mixes operation identity with the local branch name and does not expose a complete idempotent phase ledger, so a failed anchor can leave stamped queue rows and an active integration owner that require manual typed verification. The repair must make cutover, source resolution, anchor, validation, integration resolution, and sync resumable from the last durable phase without hand-editing queue, manifest, or registry state.",
+  "fix_site": "ops/worktree_orchestrate.py;ops/tests/test_worktree_orchestrate.py",
+  "groomed_against": "f07f8e3eda33718ab95b8283980bb0d0845b6427",
+  "groomed_at": "2026-08-11",
+  "groomed_by": "agent:platform-steward",
+  "id": "IMP-20260811-6b7d2e",
+  "plan": "1. Model each close-wave phase as an idempotent durable transition with operation base, current landed SHA, phase status, expected and applied ticket IDs, acceptance receipts, anchor commit, and queue consumption state. 2. Resume from the last successful phase using the current local main identity while retaining exact source and manifest provenance. 3. Make repeated recovery safe after cutover, metadata commits, primary drift, and partial anchor failure, with explicit typed refusal only when provenance is unrecoverable. 4. Add focused crash/retry/base-drift/partial-anchor regressions and run the owned orchestrator suite.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "One orchestrator recovery state machine, its manifest/queue receipts, and focused integration tests; no production deployment changes.",
+  "severity": "high",
+  "source": "close-wave-delivery-loop",
+  "status": "triaged",
+  "stream": "IMP"
+}
