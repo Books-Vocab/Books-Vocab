@@ -34,7 +34,7 @@ Registry state file (per-machine, NEVER committed):
     {"schema": ..., "records": [{path, branch, intent, base, created_at,
                                  status(active|merged|abandoned), resolved_at,
                                  backlog[ticket ids claimed], claimed_at,
-                                 handed_back_at, handed_back_sha}]}
+                                 handed_back_at, handed_back_sha, delegated}]}
   Timestamps are taken in the CLI adapter (--at overrides for tests); the IO/pure
   layers read no clock.
 
@@ -1126,6 +1126,7 @@ def claim_campaign_ticket(
     base_reader: Callable[[], str] | None = None,
     repo_root_path: Path | str | None = None,
     now_iso: str | None = None,
+    delegated: bool | None = None,
 ) -> dict[str, Any]:
     """Atomically transfer one campaign reservation into an active record."""
     state_path = Path(state_path).resolve()
@@ -1178,6 +1179,7 @@ def claim_campaign_ticket(
             "created_at": timestamp, "base_sha": actual_base,
             "status": STATUS_ACTIVE, "resolved_at": None,
             "backlog": [ticket], "claimed_at": timestamp,
+            "delegated": bool(delegated),
             # Campaign metadata is the bridge from a child worktree to the
             # parent integration contract.  Ordinary opens leave these absent;
             # campaign opens stamp them atomically with the ticket claim.
@@ -1736,6 +1738,9 @@ def cmd_register(args: argparse.Namespace) -> int:
         if args.backlog is not None:
             rec["backlog"] = wanted
             rec["claimed_at"] = now_iso if wanted else None
+        delegated = getattr(args, "delegated", None)
+        if delegated is not None:
+            rec["delegated"] = bool(delegated)
         for d in displaced:
             d["status"] = "abandoned"
             d["resolved_at"] = now_iso
@@ -1748,6 +1753,7 @@ def cmd_register(args: argparse.Namespace) -> int:
             "base_sha": recorded_base_sha,
             "status": STATUS_ACTIVE, "resolved_at": None,
             "backlog": wanted, "claimed_at": now_iso if wanted else None,
+            "delegated": bool(getattr(args, "delegated", None)),
         }
         records.append(rec)
         verb = "registered"
@@ -1794,7 +1800,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     if not records:
         print(f"(empty ledger: {state_path})")
         return EXIT_OK
-    headers = ["branch", "backlog", "claimed", "intent", "base", "status", "live",
+    headers = ["branch", "backlog", "claimed", "deleg", "intent", "base", "status", "live",
                "wt", "created", "resolved"]
     rows = []
     for v in enriched:
@@ -1811,6 +1817,7 @@ def cmd_list(args: argparse.Namespace) -> int:
             # separates a live worktree from one whose agent died — and a field with
             # no reader is a field that drifts.
             str(v.get("claimed_at") or "-")[:19],
+            "yes" if v.get("delegated") else "-",
             str(v.get("intent") or "-"),
             str(v.get("base") or "-"),
             str(v.get("status") or "-"),
@@ -2267,6 +2274,15 @@ def build_parser() -> argparse.ArgumentParser:
              "record instead of idempotently upserting it. `open` uses this so two "
              "concurrent callers with the same slug cannot share one record and "
              "let the loser's cleanup resolve the winner's claim; `adopt` omits it.",
+    )
+    delegated_mode = reg.add_mutually_exclusive_group()
+    delegated_mode.add_argument(
+        "--delegated", dest="delegated", action="store_true", default=None,
+        help="mark this worktree as delegated; landing belongs to the integrator",
+    )
+    delegated_mode.add_argument(
+        "--not-delegated", dest="delegated", action="store_false",
+        help="explicitly clear the delegated mark",
     )
     reg.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     reg.set_defaults(func=cmd_register)

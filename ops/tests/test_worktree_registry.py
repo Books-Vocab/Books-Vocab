@@ -1055,6 +1055,24 @@ def test_re_registering_without_a_claim_flag_keeps_the_claim(tmp_path):
     assert _active_records(state)[0]["backlog"] == ["IMP-0001"]
 
 
+def test_delegated_register_flag_is_explicit_three_state(tmp_path):
+    state = tmp_path / "reg.json"
+    common = [
+        "register", "--state", str(state), "--at", "2026-08-07T12:00:00Z",
+        "--path", str(tmp_path / "wt-a"), "--branch", "feat-a",
+        "--intent", "delegated", "--base", "main",
+    ]
+    assert MODULE.main([*common, "--delegated"]) == MODULE.EXIT_OK
+    assert _active_records(state)[0]["delegated"] is True
+
+    # Omitting the switch preserves the existing mark on an idempotent upsert.
+    assert MODULE.main(common) == MODULE.EXIT_OK
+    assert _active_records(state)[0]["delegated"] is True
+
+    assert MODULE.main([*common, "--not-delegated"]) == MODULE.EXIT_OK
+    assert _active_records(state)[0]["delegated"] is False
+
+
 def test_exclusive_register_refuses_an_existing_branch_or_path_instead_of_upserting_it(
         tmp_path):
     """`open` is a birth, not an idempotent adopt.

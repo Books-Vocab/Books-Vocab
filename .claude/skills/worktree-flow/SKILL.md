@@ -259,6 +259,7 @@ thread；`sync` 屬於取得 backup 授權的同一個 delivery-loop 收尾。ta
 child 只交回 commit＋hand-back，並要求回報分支名與工作樹路徑。單一受派者、單一工作樹、非批次任務
 仍停在 commit + hand-back；只有 Team Integrator 才能把整輪送進 primary＋origin/main。
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
+受派 child 建樹時帶 `open --delegated`（或對既有樹用 `adopt --delegated`）把這個邊界寫進 ledger；`cutover`／`land` 對仍標記為 delegated 的工作樹會在 gate/verdict 之前以 `refusal=delegated` fail closed。只有整合者明確解除標記後才可落地；省略旗標在 register/adopt 時保留既有標記。
 
 **每棵工作樹都有自己的暫存面。** `open` 會建立並回傳
 `<worktree>/.cache/agent-scratch/`（JSON 欄位 `scratch_dir`）；`.cache/` 已被 Git 忽略，

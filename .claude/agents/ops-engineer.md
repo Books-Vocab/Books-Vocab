@@ -42,4 +42,4 @@ Integrator 統一處理。
 
 ## 交回狀態
 
-在自己的工作樹裡 commit 完後執行 `./ops/worktree_registry.py hand-back --json` 就停,回報分支名、工作樹路徑與 HEAD。你是受派 worker,**沒有 gate / land / cutover / resolve / close-wave 例外**；使用者的 develop 授權只由握有整批視野的調用端整合 session 消費。`sync` / `deploy` / `release` 另須 backup / release 意圖。正本見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
+在自己的工作樹裡 commit 完後執行 `./ops/worktree_registry.py hand-back --json` 就停,回報分支名、工作樹路徑與 HEAD。受派 worker 開樹應帶 `open --delegated`；這會讓 `cutover`／`land` 在 gate 前以 named refusal 擋下，不能自行解除後落地。你是受派 worker,**沒有 gate / land / cutover / resolve / close-wave 例外**；使用者的 develop 授權只由握有整批視野的調用端整合 session 消費。`sync` / `deploy` / `release` 另須 backup / release 意圖。正本見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。

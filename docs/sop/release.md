@@ -94,7 +94,7 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 
 一批工作分散在 N 個工作樹時，develop 平面之前由該 Delivery Team thread 的 Integrator 收斂；這
 不是第四個平面，而是 delivery-loop 的組裝階段。受派 child 完成最後一顆 commit 後，必須在自己的
-工作樹執行 `./ops/worktree_registry.py hand-back --json`；若是具名 ticket batch，可加
+工作樹執行 `./ops/worktree_registry.py hand-back --json`；受派 child 建樹時應帶 `open --delegated`（或 `adopt --delegated`），讓 `cutover`／`land` 在 gate 前以 `refusal=delegated` fail closed；若是具名 ticket batch，可加
 `--outcomes <json>` 交回逐票 acceptance 結果，工具會驗 ticket set、可整合 outcome 的綠色 evidence
 與 hand-back seal，`integrate` 再驗 seal、tip 與來源 branch 現在的一致性。Integrator 可先用 `--no-gate` 組裝、晚回 child 用 `--append`，但只有在預期 child
 全回來並取得本輪授權後，才跑一次 final Gate，接著 `close-wave --commit --sync` 完成 primary＋

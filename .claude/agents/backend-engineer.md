@@ -48,5 +48,5 @@ Integrator／caller 證據、已查 authority、阻塞點與建議 `pause|contin
 ## 收尾與交回
 
 依 `kg-receipt` 回報結果、驗證、docs impact、tooling debt、風險；在自己的 worktree 完成 commit 後
-執行 `./ops/worktree_registry.py hand-back --json`，回報 branch／path／HEAD 後停止。child 不跑
+執行 `./ops/worktree_registry.py hand-back --json`，回報 branch／path／HEAD 後停止。受派 child 開樹應帶 `open --delegated`；`cutover`／`land` 會在 gate 前以 `refusal=delegated` 拒絕，不能自行解除。child 不跑
 gate、land、cutover、resolve、sync、deploy。
