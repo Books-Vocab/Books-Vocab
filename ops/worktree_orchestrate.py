@@ -2508,7 +2508,7 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
         with path.open("a", encoding="utf-8") as fh:
             for idx, r in enumerate(results):
                 ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-                fh.write(json.dumps({
+                row = {
                     "ts": ts,
                     "run_id": run_id,
                     "idx": idx,
@@ -2533,7 +2533,13 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     "reuse_reason": r.get("reuse", {}).get("reason"),
                     "input_fingerprint": (r.get("input") or {}).get("fingerprint"),
                     "machine_state": r.get("machine_state"),
-                }, ensure_ascii=False) + "\n")
+                }
+                # Preserve the explicit producer provenance bit only when a producer
+                # supplied it; old rows and ordinary checks retain their legacy shape,
+                # while an all-skipped/deleted run remains visibly unestablished.
+                if "established" in r:
+                    row["established"] = r["established"]
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     except Exception as exc:  # noqa: BLE001 — bookkeeping is never load-bearing
         return f"{type(exc).__name__}: {exc}"
     return None
@@ -2593,6 +2599,10 @@ def gate_history_verdicts(state: str | None, base_names: list[str],
                 # evidence in either direction. An ABSENT key is a row written before
                 # the field existed, i.e. a real run.
                 and r.get("executed") is not False
+                # `established is False` = the producer ran but checked nothing
+                # (all files skipped or deleted). A colour without a check is not
+                # evidence that this gate can pass or fail.
+                and r.get("established") is not False
                 # Same reasoning one step further out: an `inconclusive` row DID run,
                 # but its colour was contaminated by refs moving under it, so it says
                 # nothing about whether the gate can pass. Without this it would count
@@ -2813,18 +2823,30 @@ def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
             first = next((ln for ln in proc.stderr.splitlines() if ln.strip()), "")
             bad.append(f"{rel}: {first.strip()}")
     if bad:
-        return {"status": "block", "rc": 1,
-                "summary": f"{len(bad)} shell script(s) do not parse: " + "; ".join(bad[:3])}
+        result = {"status": "block", "rc": 1,
+                  "summary": f"{len(bad)} shell script(s) do not parse: " + "; ".join(bad[:3])}
+        if checked == 0:
+            result["established"] = False
+        return result
     if skipped:
         # warn, not pass, when NOTHING was actually checked: this is a block gate, so
         # its colour is a claim, and a run that invoked bash zero times established
         # nothing. Not block either — a machine missing an interpreter is not the
         # branch's fault, the same judgement `inconclusive` encodes for gates.
-        return {"status": "pass" if checked else "warn", "rc": 0,
-                "summary": (f"{checked} shell script(s) parse; "
-                            f"{len(skipped)} skipped (interpreter not available or not "
-                            f"recognised): " + ", ".join(skipped))}
-    return {"status": "pass", "rc": 0, "summary": f"{checked} shell script(s) parse"}
+        result = {"status": "pass" if checked else "warn", "rc": 0,
+                  "summary": (f"{checked} shell script(s) parse; "
+                              f"{len(skipped)} skipped (interpreter not available or not "
+                              f"recognised): " + ", ".join(skipped))}
+        if checked == 0:
+            result["established"] = False
+        return result
+    result = {"status": "pass", "rc": 0, "summary": f"{checked} shell script(s) parse"}
+    if checked == 0:
+        # A diff containing only deleted files produced a green result without
+        # invoking a parser; keep the colour for compatibility but mark its proof
+        # provenance explicitly so history readers cannot count it as evidence.
+        result["established"] = False
+    return result
 
 _VA_RE = re.compile(r"^\s*verified_against:\s*([0-9a-fA-F]{7,40})\s*$", re.MULTILINE)
 
