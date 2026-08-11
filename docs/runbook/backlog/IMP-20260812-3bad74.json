@@ -13,6 +13,9 @@
   "date": "2026-08-12",
   "detail": "The fixed exit-code contract from IMP-20260809-3dbc2a changed docs_lint warnings to rc3 and routed gate consumers to status=warn, but ops/tests/test_gate_can_fail.sh still asserts the pre-contract shape: docs-lint known-good must return rc0 and a routed script exiting rc3 must report status=block. The stale assertions make the gate self-check block an otherwise healthy tree and suppress the ops-shell:red proof record. A real rc2 routed fixture must remain a typed block so the self-check still proves both warning and blocking paths.",
   "fix_site": "ops/tests/test_gate_can_fail.sh;ops/tests/test_exit_code_contract.py;ops/tests/test_docs_lint.sh;ops/docs_lint.sh",
+  "fixed_by": [
+    "ae23db6b118516f94033dbee5fb84ca09c6dab26"
+  ],
   "groomed_against": "3470d6098e93f7d435f8285a6f0fe043760eafc3",
   "groomed_at": "2026-08-12",
   "groomed_by": "agent:team-a-supervisor",
@@ -23,6 +26,10 @@
   "scope": "One gate self-check script plus its existing exit-code and docs-lint contract test seams; no production gate semantics or unrelated shell scanners.",
   "severity": "med",
   "source": "Gate can-fail proof drift after IMP-20260809-3dbc2a",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "official acceptance on landed ae23db6b; gate proof 33 passed, review and docs receipts passed"
 }
