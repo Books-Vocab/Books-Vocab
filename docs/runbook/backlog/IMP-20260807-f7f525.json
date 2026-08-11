@@ -8,6 +8,9 @@
   "date": "2026-08-07",
   "detail": "`docs/sop/agent_org.md`「交回狀態」定了一條約束——被派者停在自己的工作樹 commit，`gate` / `cutover` 屬於整合者——但它的執行力是 `[prompt]`，因為今天沒有任何可鍵入的訊號：`ops/worktree_registry.py` 的 upsert 只寫 path/branch/intent/base/status，沒有 actor 欄；無 hooks；agent frontmatter 也沒有工具限縮。\n\n這條原本被寫成「原理上不可能，因為 agent 與人共用同一個 git identity」——**那是錯的**，review 指出可行的擋點是鍵在**客體**而非主體：worktree 是誰開的、為誰開的，那個 provenance 本來就屬於 ledger。記錯這一點的代價是把一個 S 級的改動判成不可能。",
   "fix_site": "ops/worktree_orchestrate.py:2552 (cutover 插入點), ops/worktree_orchestrate.py:1916, ops/worktree_orchestrate.py:3298, ops/worktree_orchestrate.py:4604 (open parser), ops/worktree_orchestrate.py:4626 (adopt parser), ops/worktree_registry.py:36, ops/worktree_registry.py:884, ops/worktree_registry.py:1223, ops/tests/test_worktree_orchestrate.py:1189, ops/tests/test_worktree_registry.py, .claude/skills/worktree-flow/SKILL.md, .claude/agents/{ops-engineer,backend-engineer,ios-engineer,docs-steward,platform-steward}.md, docs/reference/tech_index.md, docs/runbook/system.md, docs/sop/release.md",
+  "fixed_by": [
+    "e1f1239fc9f0298c794c543420138776f1d014bf"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260807-f7f525",
@@ -17,8 +20,10 @@
   "scope": "工作區登記簿多一個標記欄位、開工指令多一個旗標、合併指令多一道拒絕，連同測試；照現成的同型機制複製，不是從零設計。",
   "severity": "med",
   "source": "agent_org 交回狀態契約的 review",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "IMP-20260807-f7f525 recovery verification evidence.\nAcceptance command executed by backlog verify: rc=0 expected=0; child acceptance covered delegated open/adopt/cutover behavior and self-contained scratch .gitignore.\nFresh Gate run e1f1239fc9f0-20216-24668926675125 bound HEAD e1f1239fc9f0298c794c543420138776f1d014bf, rc=0, verdict=warn (docs freshness WARN only; no BLOCK).\nClose-wave cutover landed e1f1239fc9f0298c794c543420138776f1d014bf; prior expected-ticket guard rc=2 was solely ticket status open. Child hand-back seal 6ee692dda7f2ad9b91297b3a8ec9ade0a52bd9e1d3ab7f17ec3e21103986e7d3.\nRecovery verify is metadata-only ticket transition to fixed; no code or source branch mutation."
 }
