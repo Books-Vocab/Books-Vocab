@@ -56,8 +56,8 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(coordinator.selectedExampleKey == "example-1")
     }
 
-    @Test("ready canonical materialization completes without a synthetic response")
-    func readyCanonicalMaterializationCompletes() async throws {
+    @Test("fixture materialization calls the service and persists the graph projection")
+    func fixtureMaterializationCallsServiceAndPersistsGraphProjection() async throws {
         let service = try canonicalService()
         let coordinator = AddLinkCoordinator()
         let source = VocabularyEntry(
@@ -82,6 +82,32 @@ struct DictionaryLookupCanonicalFixtureTests {
         )
 
         #expect(coordinator.materializePhase == .succeeded)
+        #expect(await service.materializationRequests.count == 1)
+        let context = ModelContext(container)
+        let saved = try context.fetch(FetchDescriptor<VocabularyEntry>())
+        let sourceAfterMaterialization = try #require(saved.first(where: { $0.kgCardId == "source-card" }))
+        #expect(sourceAfterMaterialization.graphLinksByKind["shares_usage"]?.count == 1)
+        #expect(sourceAfterMaterialization.graphLinksByKind["shares_usage"]?.first?.cardId == "fixture-dictionary-card")
+        #expect(sourceAfterMaterialization.dictionarySelectedSenseKey == nil)
+        let dictionaryCard = try #require(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }))
+        #expect(dictionaryCard.cardRole == .dictionary)
+        #expect(dictionaryCard.dictionarySelectedSenseKey == "sense-1")
+        #expect(dictionaryCard.dictionarySelectedExampleKey == "example-1")
+    }
+
+    @Test("invalid fixture-driven dictionary lookup fails closed instead of using network")
+    func invalidFixtureDrivenLookupFailsClosed() async throws {
+        let service = KGService()
+        try await FixtureDatasetStore.withTestingData(Data("not-json".utf8)) {
+            do {
+                _ = try await service.searchDictionary(query: "engraved")
+                Issue.record("invalid UI World must not fall through to network dictionary lookup")
+            } catch is FixtureDictionaryServing.FixtureError {
+                // Expected: fixture-driven runs are fail-closed.
+            } catch {
+                Issue.record("unexpected error for invalid fixture: \(error)")
+            }
+        }
     }
 
     private func canonicalService() throws -> FixtureDictionaryServing {

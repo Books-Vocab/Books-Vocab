@@ -573,6 +573,7 @@ struct ReviewCardView: View {
                                     .foregroundStyle(appSkin.palette.primaryText)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
 
                             if index < shownItems.count - 1 {
                                 Text("|")

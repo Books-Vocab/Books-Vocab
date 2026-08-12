@@ -64,6 +64,7 @@ enum PerfCategory: String, CaseIterable, Sendable {
     case settings    // low-frequency settings semantic events (review clock pause / mode / translation changes)
     case shell       // root tab-bar navigation (tab selected / section entered)
     case search      // vocabulary search (query committed / results shown — low-frequency domain marks)
+    case dictionary  // dictionary lookup and materialization lifecycle marks
     case general     // uncategorized ad-hoc measurements
 }
 
@@ -81,6 +82,7 @@ enum PerfLog {
     static let settings  = PerfChannel(.settings)
     static let shell     = PerfChannel(.shell)
     static let search    = PerfChannel(.search)
+    static let dictionary = PerfChannel(.dictionary)
     static let general   = PerfChannel(.general)
 
     /// Perf signals get their own subsystem suffix so they isolate cleanly from

@@ -204,6 +204,10 @@ final class AddLinkCoordinator {
         lookupState = state
         searchPhase = .loading
         clearSelection()
+        PerfLog.dictionary.mark(
+            "dictionary.lookup.started",
+            "query=\(query) state=\(String(describing: state))"
+        )
 
         searchTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -240,6 +244,10 @@ final class AddLinkCoordinator {
                     query: query, entry: detail.entry, cacheStatus: detail.cacheStatus
                 )
                 searchPhase = .result(detail.entry, cacheStatus: detail.cacheStatus)
+                PerfLog.dictionary.mark(
+                    "dictionary.lookup.succeeded",
+                    Self.provenanceDetail(detail.materialization)
+                )
                 if let materialization = detail.materialization,
                    materialization.status == "ready",
                    let senseID = materialization.selectedSenseID,
@@ -261,6 +269,10 @@ final class AddLinkCoordinator {
                     self.lookupState = .error(query: query, failure: failure)
                 }
                 searchPhase = .failed(failure)
+                PerfLog.dictionary.mark(
+                    "dictionary.lookup.failed",
+                    "query=\(query) failure=\(String(describing: failure))"
+                )
             }
         }
     }
@@ -310,6 +322,21 @@ final class AddLinkCoordinator {
         materializeRequest = nil
     }
 
+    func selectSense(senseKey: String) {
+        guard let entry = lastEntry,
+              entry.senses.contains(where: { $0.id == senseKey }) else {
+            selectionState = .invalid(senseKey: senseKey, exampleKey: "")
+            return
+        }
+        selectedSenseKey = senseKey
+        selectedExampleKey = nil
+        selectionState = .unavailable
+        materializePhase = .idle
+        materializeFailure = nil
+        materializeKey = nil
+        materializeRequest = nil
+    }
+
     func materializeSelectedExample(
         sourceEntry: VocabularyEntry,
         entry: LexicalEntry,
@@ -319,21 +346,6 @@ final class AddLinkCoordinator {
         guard let sourceCardID = sourceEntry.kgCardId,
               let senseKey = selectedSenseKey,
               let exampleKey = selectedExampleKey else { return }
-
-        // The canonical UI World materialization is already a ready projection.
-        // Treating it as such keeps UI runs hermetic and exercises the same
-        // selected sense/example contract without inventing a graph response.
-        if lastCacheStatus == "fixture",
-           let materialization = dictionaryMaterialization,
-           materialization.status == "ready",
-           materialization.selectedSenseID == senseKey,
-           materialization.selectedExampleID == exampleKey {
-            materializePhase = .succeeded
-            materializeFailure = nil
-            materializeKey = nil
-            materializeRequest = nil
-            return
-        }
 
         let request = DictionaryMaterializeLinkRequest(
             sourceCardId: sourceCardID,
@@ -351,6 +363,10 @@ final class AddLinkCoordinator {
 
         materializePhase = .running
         materializeFailure = nil
+        PerfLog.dictionary.mark(
+            "dictionary.materialization.started",
+            Self.provenanceDetail(dictionaryMaterialization)
+        )
         do {
             let response = try await service.materializeDictionaryLink(
                 request: request,
@@ -363,7 +379,12 @@ final class AddLinkCoordinator {
                 _ = try? await actor.upsertDictionaryProjection(saved)
             }
             Self.applyMaterializedLink(response, to: sourceEntry)
+            try sourceEntry.modelContext?.save()
             materializePhase = .succeeded
+            PerfLog.dictionary.mark(
+                "dictionary.materialization.succeeded",
+                Self.provenanceDetail(dictionaryMaterialization)
+            )
             self.materializeKey = nil
             materializeRequest = nil
         } catch is CancellationError {
@@ -372,6 +393,10 @@ final class AddLinkCoordinator {
             // Keep the idempotency key so explicit Retry converges the saga.
             materializePhase = .failed
             materializeFailure = Self.classifyMaterialize(error)
+            PerfLog.dictionary.mark(
+                "dictionary.materialization.failed",
+                "failure=\(String(describing: materializeFailure)) \(Self.provenanceDetail(dictionaryMaterialization))"
+            )
         }
     }
 
@@ -443,6 +468,19 @@ final class AddLinkCoordinator {
         }
         links[graph.kind] = group
         sourceEntry.graphLinksByKind = links
+    }
+
+    private static func provenanceDetail(
+        _ materialization: DictionaryMaterializationSnapshot?
+    ) -> String {
+        guard let materialization else { return "provenance=none" }
+        return [
+            "fixtureID=\(materialization.sourceFixtureID)",
+            "datasetID=\(materialization.datasetID ?? "none")",
+            "datasetSHA256=\(materialization.datasetSHA256 ?? "none")",
+            "sourceAssetID=\(materialization.sourceAssetID ?? "none")",
+            "sourceAssetSHA256=\(materialization.sourceAssetSHA256 ?? "none")",
+        ].joined(separator: " ")
     }
 
     nonisolated private static func normalize(_ value: String) -> String {

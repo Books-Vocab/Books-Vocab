@@ -286,10 +286,17 @@ struct AddLinkSheet: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
-                    Text(sense.definition)
-                        .font(appSkin.typography.body)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
+                    Button {
+                        coordinator.selectSense(senseKey: sense.id)
+                    } label: {
+                        Text(sense.definition)
+                            .font(appSkin.typography.body)
+                            .lineLimit(3)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                         .accessibilityIdentifier("addLink.sense.\(sense.id)")
                         .accessibilityValue(
                             coordinator.selectedSenseKey == sense.id
@@ -398,6 +405,10 @@ struct AddLinkSheet: View {
                         materialization.selectedSenseID,
                         materialization.selectedExampleID,
                         materialization.sourceFixtureID,
+                        materialization.datasetID,
+                        materialization.datasetSHA256,
+                        materialization.sourceAssetID,
+                        materialization.sourceAssetSHA256,
                     ]
                     .compactMap { $0 }
                     .joined(separator: "|")

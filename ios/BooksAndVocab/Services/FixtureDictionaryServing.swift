@@ -10,6 +10,7 @@ actor FixtureDictionaryServing: DictionaryServing {
     enum FixtureError: Error, Equatable {
         case unavailable(fixtureID: String)
         case missingCanonicalDictionary
+        case invalidDataset(String)
     }
 
     private let dictionary: UIWorldDictionarySeed
@@ -18,6 +19,7 @@ actor FixtureDictionaryServing: DictionaryServing {
     private let materialization: DictionaryMaterializationSnapshot
     private var attempts: [String: Int] = [:]
     private var lastState: UIWorldDictionaryLookupState = .idle
+    private(set) var materializationRequests: [DictionaryMaterializeLinkRequest] = []
 
     init(dictionary: UIWorldDictionarySeed) {
         self.dictionary = dictionary
@@ -68,7 +70,9 @@ actor FixtureDictionaryServing: DictionaryServing {
             hasExamples: !dictionary.examples.isEmpty,
             attribution: attribution
         )
-        self.materialization = DictionaryMaterializationSnapshot(
+        self.materialization = FixtureDatasetStore.dictionaryRuntimeMaterialization(
+            for: .p1DictionaryRich
+        ) ?? DictionaryMaterializationSnapshot(
             status: dictionary.materialization.status,
             selectedSenseID: dictionary.materialization.selectedSenseID,
             selectedExampleID: dictionary.materialization.selectedExampleID,
@@ -138,6 +142,91 @@ actor FixtureDictionaryServing: DictionaryServing {
             cacheStatus: "fixture",
             materialization: materialization
         )
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest,
+        idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        materializationRequests.append(request)
+        guard request.provider == entry.provider,
+              request.entryKey == entry.entryKey,
+              let sense = entry.senses.first(where: { $0.id == request.senseKey }),
+              sense.examples.contains(where: { $0.id == request.exampleKey }) else {
+            throw FixtureError.missingCanonicalDictionary
+        }
+
+        let example = sense.examples.first(where: { $0.id == request.exampleKey })!
+        let targetCardID = "fixture-dictionary-card"
+        let link = KGGraphLink(
+            id: "fixture-dictionary-link",
+            fromId: request.sourceCardId,
+            toId: targetCardID,
+            kind: "shares_usage",
+            confidence: 0.91,
+            reason: "canonical dictionary fixture materialization"
+        )
+        let targetCard: KGCard = try decodeJSON([
+            "id": targetCardID,
+            "content": entry.word,
+            "meaning": sense.definition,
+            "pos": sense.partOfSpeech ?? "",
+            "note": entry.attributionText,
+            "examples": [example.text],
+            "mode": "recognition",
+            "isDeleted": false,
+            "isArchived": false,
+            "notebookId": request.notebookId,
+            "cardRole": "dictionary",
+            "reviewEligible": false,
+            "promotionState": "idle",
+            "linksByKind": [String: Any]()
+        ])
+        let projection: KGDictionaryCardProjection = try decodeJSON([
+            "card": [
+                "id": targetCardID,
+                "content": entry.word,
+                "meaning": sense.definition,
+                "pos": sense.partOfSpeech ?? "",
+                "note": entry.attributionText,
+                "examples": [example.text],
+                "mode": "recognition",
+                "isDeleted": false,
+                "isArchived": false,
+                "notebookId": request.notebookId,
+                "cardRole": "dictionary",
+                "reviewEligible": false,
+                "promotionState": "idle",
+                "linksByKind": [String: Any](),
+            ],
+            "dictionaryEntry": try encodedDictionaryEntry(),
+            "selectedSenseKey": request.senseKey,
+            "selectedExampleKey": request.exampleKey,
+            "materializationStatus": "succeeded",
+            "promotionErrorCode": NSNull(),
+            "promotionRetryable": false,
+            "links": [try encodedGraphLink(link)]
+        ])
+        return DictionaryMaterializeLinkResponse(
+            targetCard: targetCard,
+            dictionaryCard: projection,
+            link: link,
+            createdCard: true,
+            createdLink: true,
+            replayed: !idempotencyKey.isEmpty && materializationRequests.count > 1
+        )
+    }
+
+    private func encodedDictionaryEntry() throws -> Any {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(entry))
+    }
+
+    private func encodedGraphLink(_ link: KGGraphLink) throws -> Any {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(link))
+    }
+
+    private func decodeJSON<T: Decodable>(_ object: Any) throws -> T {
+        try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: object))
     }
 
     private func state(for query: String) -> UIWorldDictionaryLookupState {

@@ -126,7 +126,7 @@ extension KGService {
         query: String, sourceLanguage: String = "en", targetLanguage: String = "zh-Hant"
     ) async throws -> DictionarySearchResponse {
         #if DEBUG
-        if let fixture = fixtureDictionaryServiceIfAvailable() {
+        if let fixture = try fixtureDictionaryServiceIfAvailable() {
             return try await fixture.searchDictionary(
                 query: query,
                 sourceLanguage: sourceLanguage,
@@ -150,7 +150,7 @@ extension KGService {
         provider: String, entryKey: String, targetLanguage: String = "zh-Hant"
     ) async throws -> DictionaryEntryResponse {
         #if DEBUG
-        if let fixture = fixtureDictionaryServiceIfAvailable() {
+        if let fixture = try fixtureDictionaryServiceIfAvailable() {
             return try await fixture.fetchDictionaryEntry(
                 provider: provider,
                 entryKey: entryKey,
@@ -167,17 +167,20 @@ extension KGService {
     }
 
     #if DEBUG
-    private func fixtureDictionaryServiceIfAvailable() -> FixtureDictionaryServing? {
+    private func fixtureDictionaryServiceIfAvailable() throws -> FixtureDictionaryServing? {
         let fixtureID = UIWorldDictionaryFixtureID.p1DictionaryRich
-        guard FixtureDatasetStore.dictionarySeed(for: fixtureID) != nil else {
+        switch FixtureDatasetStore.availability {
+        case .absent:
             return nil
+        case let .invalid(reason):
+            throw FixtureDictionaryServing.FixtureError.invalidDataset(reason)
+        case .loaded:
+            break
         }
         if let fixtureDictionaryService {
             return fixtureDictionaryService
         }
-        guard let service = try? FixtureDictionaryServing.fromFixtureDatasetStore(fixtureID: fixtureID) else {
-            return nil
-        }
+        let service = try FixtureDictionaryServing.fromFixtureDatasetStore(fixtureID: fixtureID)
         fixtureDictionaryService = service
         return service
     }
@@ -221,6 +224,14 @@ extension KGService {
     func materializeDictionaryLink(
         request: DictionaryMaterializeLinkRequest, idempotencyKey: String
     ) async throws -> DictionaryMaterializeLinkResponse {
+        #if DEBUG
+        if let fixture = try fixtureDictionaryServiceIfAvailable() {
+            return try await fixture.materializeDictionaryLink(
+                request: request,
+                idempotencyKey: idempotencyKey
+            )
+        }
+        #endif
         try await authenticatedDecode(
             DictionaryMaterializeLinkResponse.self,
             path: "api/graph/links/from-dictionary",

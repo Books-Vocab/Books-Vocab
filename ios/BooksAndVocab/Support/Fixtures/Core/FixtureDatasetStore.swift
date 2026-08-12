@@ -9,6 +9,12 @@ private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 // container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 enum FixtureDatasetStore {
+    enum Availability: Equatable {
+        case absent
+        case loaded
+        case invalid(String)
+    }
+
     @TaskLocal static var testingOverrideData: Data?
 
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
@@ -208,7 +214,18 @@ enum FixtureDatasetStore {
 
     static func sha256Hex(for url: URL) throws -> String {
         let data = try Data(contentsOf: url)
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return sha256Hex(for: data)
+    }
+
+    private static func sha256Hex(for data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func rawDatasetData() -> Data? {
+        switch loadSource() {
+        case let .data(data, _): return data
+        case .absent, .invalid: return nil
+        }
     }
 
     static func byteSize(for url: URL) throws -> Int {
@@ -536,6 +553,38 @@ enum FixtureDatasetStore {
         case let .loaded(document, source):
             return "\(document.datasetID) @ \(source)"
         }
+    }
+
+    static var availability: Availability {
+        switch loadState() {
+        case .absent: return .absent
+        case .loaded: return .loaded
+        case let .invalid(_, error): return .invalid(error)
+        }
+    }
+
+    static func dictionaryRuntimeMaterialization(
+        for fixtureID: UIWorldDictionaryFixtureID
+    ) -> DictionaryMaterializationSnapshot? {
+        guard case let .loaded(document, _) = loadState(),
+              let dictionary = document.scenarioContext?.dictionary,
+              dictionarySurfaceContract(for: fixtureID) != nil,
+              let data = rawDatasetData() else { return nil }
+        let assetID = dictionary.coverage["required"]?.assetIDs.first
+        let asset = document.assets.refs.compactMap { ref -> UIWorldAsset? in
+            guard ref.split(separator: ".").last.map(String.init) == assetID else { return nil }
+            return document.assets.asset(for: ref)
+        }.first
+        return DictionaryMaterializationSnapshot(
+            status: dictionary.materialization.status,
+            selectedSenseID: dictionary.materialization.selectedSenseID,
+            selectedExampleID: dictionary.materialization.selectedExampleID,
+            sourceFixtureID: dictionary.materialization.sourceFixtureID,
+            datasetID: document.datasetID,
+            datasetSHA256: sha256Hex(for: data),
+            sourceAssetID: assetID,
+            sourceAssetSHA256: asset?.sha256
+        )
     }
 
     private enum LoadState {
