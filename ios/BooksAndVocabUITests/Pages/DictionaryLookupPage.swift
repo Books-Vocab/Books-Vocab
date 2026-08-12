@@ -54,6 +54,10 @@ struct DictionaryLookupPage {
             file: file,
             line: line
         )
+        let matches = app.descendants(matching: .any).matching(identifier: "addLink.dictionary.\(expected.accessibilitySuffix)")
+        XCTAssertEqual(matches.count, 1, "canonical selector must resolve exactly once: \(expected.canonicalFixtureID)", file: file, line: line)
+        XCTAssertGreaterThan(marker.frame.width, 0, "canonical selector has no positive width: \(expected.canonicalFixtureID)", file: file, line: line)
+        XCTAssertGreaterThan(marker.frame.height, 0, "canonical selector has no positive height: \(expected.canonicalFixtureID)", file: file, line: line)
         XCTAssertEqual(
             marker.value as? String,
             expected.canonicalFixtureID,
@@ -74,6 +78,32 @@ struct DictionaryLookupPage {
 
     func materialization(status: String) -> XCUIElement {
         element("addLink.dictionary.materialization.\(status)")
+    }
+
+    func tapSense(id: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        let target = sense(id: id)
+        assertUnique(target, identifier: "addLink.sense.\(id)", file: file, line: line)
+        target.tapWhenReady(file: file, line: line)
+    }
+
+    func tapExample(id: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        let target = example(id: id)
+        assertUnique(target, identifier: "addLink.example.\(id)", file: file, line: line)
+        target.tapWhenReady(file: file, line: line)
+    }
+
+    func tapMaterialize(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        let target = element("addLink.dictionary.materialize")
+        assertUnique(target, identifier: "addLink.dictionary.materialize", file: file, line: line)
+        target.tapWhenReady(file: file, line: line)
+    }
+
+    func assertRetryButton(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        let matches = app.buttons.matching(identifier: "addLink.dictionary.retry")
+        XCTAssertEqual(matches.count, 1, "retry action selector must resolve exactly once", file: file, line: line)
+        XCTAssertTrue(retryButton.waitUntilHittable(timeout: 5), "retry action must be live and hittable", file: file, line: line)
+        XCTAssertGreaterThan(retryButton.frame.width, 0, "retry action has no positive width", file: file, line: line)
+        XCTAssertGreaterThan(retryButton.frame.height, 0, "retry action has no positive height", file: file, line: line)
     }
 
     @discardableResult
@@ -98,10 +128,22 @@ struct DictionaryLookupPage {
     private func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)
             .matching(identifier: identifier)
-            .firstMatch
+            .element(boundBy: 0)
     }
 
     private func stateMarker(_ state: CanonicalLookupState) -> XCUIElement {
         element("addLink.dictionary.\(state.accessibilitySuffix)")
+    }
+
+    private func assertUnique(
+        _ element: XCUIElement,
+        identifier: String,
+        file: StaticString,
+        line: UInt
+    ) {
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        XCTAssertEqual(matches.count, 1, "canonical selector must resolve exactly once: \(identifier)", file: file, line: line)
+        XCTAssertGreaterThan(element.frame.width, 0, "selector has no positive width: \(identifier)", file: file, line: line)
+        XCTAssertGreaterThan(element.frame.height, 0, "selector has no positive height: \(identifier)", file: file, line: line)
     }
 }

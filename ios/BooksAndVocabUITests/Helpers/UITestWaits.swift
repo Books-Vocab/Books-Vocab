@@ -54,6 +54,15 @@ extension XCUIElement {
         )
     }
 
+    func waitUntilValueContains(_ substring: String, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (value as? String)?.contains(substring) == true { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return (value as? String)?.contains(substring) == true
+    }
+
     func assertExists(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         XCTAssertTrue(waitUntilExists(timeout: timeout), "Expected element to exist: \(self.description)", file: file, line: line)
     }

@@ -17,10 +17,14 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.example(id: "example-1").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
-        XCTAssertTrue(page.materialization(status: "ready").waitUntilValueEquals(
-            "sense-1|example-1|dictionary.lookup.result",
+        XCTAssertTrue(page.materialization(status: "ready").waitUntilValueContains(
+            "sense-1|example-1|dictionary.lookup.result|marketing_demo|",
             timeout: 5
         ))
+        page.tapSense(id: "sense-1")
+        page.tapExample(id: "example-1")
+        page.tapMaterialize()
+        TodayReviewPage(app: app).assertLink(id: "fixture-dictionary-card")
         captureStep("canonical-result", app: app)
     }
 
@@ -45,7 +49,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         let (app, page) = try openDictionarySheet(perfLog: "dictionary-partial-retry")
         page.search("partial")
         page.assertCanonicalState("partial")
-        XCTAssertTrue(page.retryButton.waitUntilHittable(timeout: 5))
+        page.assertRetryButton()
         captureStep("partial", app: app)
 
         page.retryButton.tap()
@@ -59,13 +63,13 @@ final class DictionaryLookupFlowUITests: UITestCase {
         let (offlineApp, offlinePage) = try openDictionarySheet(perfLog: "dictionary-offline")
         offlinePage.search("offline")
         offlinePage.assertCanonicalState("offline")
-        XCTAssertTrue(offlinePage.retryButton.waitUntilHittable(timeout: 5))
+        offlinePage.assertRetryButton()
         captureStep("offline", app: offlineApp)
 
         let (errorApp, errorPage) = try openDictionarySheet(perfLog: "dictionary-error")
         errorPage.search("error")
         errorPage.assertCanonicalState("error")
-        XCTAssertTrue(errorPage.retryButton.waitUntilHittable(timeout: 5))
+        errorPage.assertRetryButton()
         captureStep("error", app: errorApp)
     }
 

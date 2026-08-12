@@ -417,17 +417,29 @@ struct DictionaryMaterializationSnapshot: Codable, Equatable {
     let selectedSenseID: String?
     let selectedExampleID: String?
     let sourceFixtureID: String
+    let datasetID: String?
+    let datasetSHA256: String?
+    let sourceAssetID: String?
+    let sourceAssetSHA256: String?
 
     init(
         status: String,
         selectedSenseID: String?,
         selectedExampleID: String?,
-        sourceFixtureID: String
+        sourceFixtureID: String,
+        datasetID: String? = nil,
+        datasetSHA256: String? = nil,
+        sourceAssetID: String? = nil,
+        sourceAssetSHA256: String? = nil
     ) {
         self.status = status
         self.selectedSenseID = selectedSenseID
         self.selectedExampleID = selectedExampleID
         self.sourceFixtureID = sourceFixtureID
+        self.datasetID = datasetID
+        self.datasetSHA256 = datasetSHA256
+        self.sourceAssetID = sourceAssetID
+        self.sourceAssetSHA256 = sourceAssetSHA256
     }
 }
 
