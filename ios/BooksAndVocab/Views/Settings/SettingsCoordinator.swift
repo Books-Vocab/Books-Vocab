@@ -32,8 +32,11 @@ typealias SettingsSyncService = any BackgroundSyncing & HealthChecking & QuotaSe
     func clearDeleteAccountError()
     func presentSubscriptionPaywall()
     func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
+    func readResetSnapshot(
+        authManager: any AuthManaging,
+        modelContext: ModelContext
+    ) -> SettingsResetLifecycle.Snapshot
     func resetLocalData(
-        before: SettingsResetLifecycle.Snapshot,
         authManager: any AuthManaging,
         kgService: any LocalDataResetting,
         modelContext: ModelContext
@@ -73,6 +76,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// 這一輪同步的逐步進度。生命週期由 `syncLifecycle` 單一擁有，避免
     /// 進行中狀態與終態不另外漂移成兩份真相。
     let syncProgress = SyncProgressStore()
+    private let resetStateStore: any SettingsResetStorePort
     private var settingsSyncService: SettingsSyncService?
     private let syncPersistence: any SettingsSyncPersisting
 #if DEBUG
@@ -81,13 +85,15 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     init(
         settingsSyncService: SettingsSyncService? = nil,
-        syncPersistence: (any SettingsSyncPersisting)? = nil
+        syncPersistence: (any SettingsSyncPersisting)? = nil,
+        resetStateStore: (any SettingsResetStorePort)? = nil
     ) {
         // A default argument is evaluated before entering this @MainActor
         // initializer. Constructing the @MainActor persistence adapter there
         // is therefore a compile-time isolation violation. Resolve the default
         // after entering the actor instead of weakening the adapter's isolation.
         self.syncPersistence = syncPersistence ?? ModelContextSettingsSyncPersistence()
+        self.resetStateStore = resetStateStore ?? LiveSettingsResetStore()
 
 #if DEBUG
         var resolvedService = settingsSyncService
@@ -390,7 +396,6 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// The signed-in session remains visible so the account danger group can show
     /// the terminal boundary instead of disappearing during logout cleanup.
     func resetLocalData(
-        before: SettingsResetLifecycle.Snapshot,
         authManager: any AuthManaging,
         kgService: any LocalDataResetting,
         modelContext: ModelContext
@@ -399,7 +404,9 @@ final class SettingsCoordinator: SettingsCoordinating {
               resetLifecycle?.phase != .resetting
         else { return }
 
-        let pending = SettingsResetLifecycle.preReset(before: before).resetting()
+        let lifecycleBefore = resetLifecycle?.before
+            ?? readResetSnapshot(authManager: authManager, modelContext: modelContext)
+        let pending = SettingsResetLifecycle.preReset(before: lifecycleBefore).resetting()
         resetLifecycle = pending
 
         do {
@@ -407,23 +414,28 @@ final class SettingsCoordinator: SettingsCoordinating {
                 container: modelContext.container,
                 reason: "settings_reset_local_data"
             )
-            ReviewSettingsStore.shared.update(.default)
-            TranslationLanguage.currentSource = .en
-            TranslationLanguage.currentTarget = .zhHant
-            AppLanguageStore.shared.setLanguage(.system)
-            AppAppearanceStore.shared.setAppearance(.system)
-            AutoSyncSettingsStore.shared.setEnabled(false)
-            AutoLinkSettingsStore.shared.setEnabled(true)
-            FeedbackSettingsStore.shared.setSoundFeedbackEnabled(false)
-            FeedbackSettingsStore.shared.setHapticFeedbackEnabled(true)
+            resetStateStore.resetPreferences()
+            let after = readResetSnapshot(authManager: authManager, modelContext: modelContext)
 
-            resetLifecycle = pending.succeeded(message: L10n.string("本機資料與設定已重設。"))
+            resetLifecycle = pending.succeeded(
+                after: after,
+                message: L10n.string("本機資料與設定已重設。")
+            )
         } catch {
             AppLog.kg.error("Settings local reset failed: \(error.localizedDescription)")
+            let after = readResetSnapshot(authManager: authManager, modelContext: modelContext)
             resetLifecycle = pending.failed(
+                after: after,
                 message: L10n.format("本機資料重設失敗：%@", error.localizedDescription)
             )
         }
+    }
+
+    func readResetSnapshot(
+        authManager: any AuthManaging,
+        modelContext: ModelContext
+    ) -> SettingsResetLifecycle.Snapshot {
+        resetStateStore.readSnapshot(authManager: authManager, modelContext: modelContext)
     }
 
     /// 回傳 true 代表已儲存（或免儲存的 guest 路徑），false 代表遠端 update 失敗。

@@ -402,7 +402,7 @@ struct SettingsResetLifecycle: Equatable {
         .init(
             phase: .preReset,
             before: before,
-            after: .defaults(preservingLogin: before.isLoggedIn),
+            after: before,
             terminalMessage: nil,
             canRetry: true
         )
@@ -418,32 +418,24 @@ struct SettingsResetLifecycle: Equatable {
         )
     }
 
-    func succeeded(message: String) -> Self {
+    func succeeded(after: Snapshot, message: String) -> Self {
         .init(
             phase: .succeeded,
             before: before,
-            after: .defaults(preservingLogin: before.isLoggedIn),
+            after: after,
             terminalMessage: message,
             canRetry: false
         )
     }
 
-    func failed(message: String) -> Self {
+    func failed(after: Snapshot, message: String) -> Self {
         .init(
             phase: .failed,
             before: before,
-            // A failed cleanup has not established the post-reset state. Keep
-            // the observed pre-reset values visible so a retry is honest.
-            after: before,
+            after: after,
             terminalMessage: message,
             canRetry: true
         )
-    }
-}
-
-private extension SettingsResetLifecycle.Snapshot {
-    static func defaults(preservingLogin isLoggedIn: Bool) -> Self {
-        .init(localCardCount: 0, hasCustomPreferences: false, isLoggedIn: isLoggedIn)
     }
 }
 

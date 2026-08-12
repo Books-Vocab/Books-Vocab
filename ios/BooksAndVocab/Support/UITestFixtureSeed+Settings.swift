@@ -5,18 +5,25 @@ import SwiftData
 extension UITestFixtureSeed {
     @MainActor
     static func seedSettings(_ id: String, into container: ModelContainer) {
-        switch id {
-        case "cleanPreferences":
+        if id == "cleanPreferences" {
             seedCleanPreferences()
-        case SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue:
-            FixtureDatasetStore.activateSettingsFixture(.syncTerminalErrorRetrySuccess)
-            AppLog.app.info("UI-test fixture selected: settings.\(id, privacy: .public)")
-        case "longContent":
-            seedLongContent()
-        case "resetLifecycle":
-            seedResetLifecycle(into: container)
-        default:
+            return
+        }
+
+        guard let fixtureID = SettingsFixtureID(rawValue: id) else {
             failFixtureSeed("Unknown settings fixture ID: \(id)")
+        }
+
+        switch fixtureID {
+        case .syncTerminalErrorRetrySuccess:
+            FixtureDatasetStore.activateSettingsFixture(fixtureID)
+            AppLog.app.info("UI-test fixture selected: settings.\(id, privacy: .public)")
+        case .longContentCounterexample:
+            seedLongContent(from: fixtureID)
+        case .resetCounterexample:
+            seedResetLifecycle(from: fixtureID, into: container)
+        default:
+            failFixtureSeed("Settings UI test requires a counterexample fixture, got \(fixtureID.rawValue)")
         }
     }
 
@@ -49,12 +56,15 @@ extension UITestFixtureSeed {
     }
 
     @MainActor
-    private static func seedLongContent() {
+    private static func seedLongContent(from fixtureID: SettingsFixtureID) {
         #if targetEnvironment(simulator)
-        seedSignedInLoginFromWorld(using: .longIdentity)
-        AppLog.app.info("UI-test fixture seeded: settings.longContent")
+        let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
+        seedSignedInLoginFromWorld(using: authFixtureID(for: seed))
+        applySettingsPreferences(seed.preferences)
+        logEvidence(for: fixtureID, seed: seed)
+        AppLog.app.info("UI-test fixture seeded: settings.\(fixtureID.rawValue)")
         #else
-        failFixtureSeed("UITestFixtureSeed: refused settings.longContent on device — it writes the real Keychain session")
+        failFixtureSeed("UITestFixtureSeed: refused settings.\(fixtureID.rawValue) on device — it writes the real Keychain session")
         #endif
     }
 
@@ -62,68 +72,93 @@ extension UITestFixtureSeed {
     /// deterministic local cards plus non-default Settings-owned preferences;
     /// the reset action then has observable before/after state to render.
     @MainActor
-    private static func seedResetLifecycle(into container: ModelContainer) {
+    private static func seedResetLifecycle(from fixtureID: SettingsFixtureID, into container: ModelContainer) {
         #if targetEnvironment(simulator)
         if ProcessInfo.processInfo.environment["KG_UI_TEST_SETTINGS_RESET_FAIL_ONCE"] == "1" {
             UserDefaults.standard.removeObject(forKey: "kg.ui.test.settings.reset.failure.consumed")
         }
-        seedSignedInLoginFromWorld(using: .settingsSignedIn)
 
-        ReviewSettingsStore.shared.update(
-            ReviewSettings(
-                mode: .intensive,
-                customInitialIntervalHours: 12,
-                customRememberedMultiplier: 1.9,
-                customForgotMultiplier: 0.45,
-                customMinimumIntervalHours: 6,
-                customMaximumIntervalHours: 1440,
-                autoplaySpeed: .fast,
-                autoplaySoundEnabled: true
-            )
-        )
-        TranslationLanguage.restore(
-            source: .en,
-            sourceUpdatedAt: 1_735_000_000,
-            target: .ja,
-            targetUpdatedAt: 1_735_000_000
-        )
-        AppLanguageStore.shared.setLanguage(.system)
-        AppAppearanceStore.shared.setAppearance(.dark)
-        AutoSyncSettingsStore.shared.setEnabled(true)
-        AutoLinkSettingsStore.shared.setEnabled(false, updatedAt: 1_735_000_000)
-        FeedbackSettingsStore.shared.setSoundFeedbackEnabled(true)
-        FeedbackSettingsStore.shared.setHapticFeedbackEnabled(false)
+        let settingsSeed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
+        guard let lifecycle = settingsSeed.resetLifecycle else {
+            failFixtureSeed("UI World settings.\(fixtureID.rawValue) must declare resetLifecycle")
+        }
+        seedSignedInLoginFromWorld(using: authFixtureID(for: settingsSeed))
+        applySettingsPreferences(settingsSeed.preferences)
 
         let context = ModelContext(container)
         do {
             try clearVocabularyEntries(from: context)
-            let fixedDate = Date(timeIntervalSince1970: 1_735_000_000)
-            for (word, translation, contextText) in [
-                ("boundary", "邊界", "reset fixture card one"),
-                ("observable", "可觀察", "reset fixture card two"),
-                ("terminal", "終端", "reset fixture card three"),
-            ] {
-                let entry = VocabularyEntry(
-                    word: word,
-                    translation: translation,
-                    context: contextText,
-                    bookTitle: "Settings reset fixture"
+            let vocabularySeed = FixtureDatasetStore.requireVocabularySeed(for: .vocabListPopulated)
+            let expectedCount = lifecycle.before.localCardCount
+            guard expectedCount > 0, vocabularySeed.entries.count >= expectedCount else {
+                failFixtureSeed(
+                    "UI World settings.\(fixtureID.rawValue) requires \(expectedCount) canonical vocabulary entries"
                 )
-                entry.syncStatus = VocabularySyncState.synced.rawValue
-                entry.actionType = VocabularySyncAction.add.rawValue
-                entry.isArchived = false
-                entry.dateAdded = fixedDate
-                entry.nextReviewAt = fixedDate
-                context.insert(entry)
+            }
+
+            let notebook = Notebook(
+                remoteId: vocabularySeed.notebookRemoteId,
+                name: vocabularySeed.notebookName
+            )
+            notebook.syncStatus = vocabularySeed.notebookSyncStatus
+            context.insert(notebook)
+
+            for entrySeed in vocabularySeed.entries.prefix(expectedCount) {
+                context.insert(makeVocabularyEntry(from: entrySeed, notebookId: vocabularySeed.notebookRemoteId))
             }
             try context.save()
         } catch {
-            failFixtureSeed("UITestFixtureSeed: settings.resetLifecycle could not seed local cards: \(error.localizedDescription)")
+            failFixtureSeed("UITestFixtureSeed: settings.\(fixtureID.rawValue) could not seed canonical local cards: \(error.localizedDescription)")
         }
-        AppLog.app.info("UI-test fixture seeded: settings.resetLifecycle")
+        logEvidence(for: fixtureID, seed: settingsSeed)
+        AppLog.app.info("UI-test fixture seeded: settings.\(fixtureID.rawValue)")
         #else
-        failFixtureSeed("UITestFixtureSeed: refused settings.resetLifecycle on device — it writes real UserDefaults/iCloud KVS")
+        failFixtureSeed("UITestFixtureSeed: refused settings.\(fixtureID.rawValue) on device — it writes real UserDefaults/iCloud KVS")
         #endif
+    }
+
+    @MainActor
+    private static func applySettingsPreferences(_ seed: SettingsFixtureSeed.Preferences) {
+        guard let language = AppLanguage.allCases.first(where: { $0.titleKey == seed.selectedLanguage }) else {
+            failFixtureSeed("UI World settings preference has unknown language \(seed.selectedLanguage)")
+        }
+        guard let appearance = AppAppearanceMode.allCases.first(where: { $0.titleKey == seed.selectedAppearance }) else {
+            failFixtureSeed("UI World settings preference has unknown appearance \(seed.selectedAppearance)")
+        }
+        guard let source = TranslationLanguage.allCases.first(where: { $0.nativeName == seed.translationSource }),
+              let target = TranslationLanguage.allCases.first(where: { $0.nativeName == seed.translationTarget })
+        else {
+            failFixtureSeed("UI World settings preference has unknown translation pair")
+        }
+        guard let mode = ReviewSettingsMode.allCases.first(where: { $0.displayName == seed.selectedReviewMode }) else {
+            failFixtureSeed("UI World settings preference has unknown review mode \(seed.selectedReviewMode)")
+        }
+
+        AppLanguageStore.shared.setLanguage(language)
+        AppAppearanceStore.shared.setAppearance(appearance)
+        TranslationLanguage.currentSource = source
+        TranslationLanguage.currentTarget = target
+        var review = ReviewSettings.default
+        review.mode = mode
+        ReviewSettingsStore.shared.update(review)
+        AutoSyncSettingsStore.shared.setEnabled(seed.autoSyncEnabled)
+    }
+
+    private static func authFixtureID(for seed: SettingsFixtureSeed) -> UIWorldAuthFixtureID {
+        let prefix = "auth."
+        guard seed.authFixtureRef.hasPrefix(prefix),
+              let fixtureID = UIWorldAuthFixtureID(rawValue: String(seed.authFixtureRef.dropFirst(prefix.count)))
+        else {
+            failFixtureSeed("UI World settings.\(seed.authFixtureRef) must reference a known auth fixture")
+        }
+        return fixtureID
+    }
+
+    private static func logEvidence(for fixtureID: SettingsFixtureID, seed: SettingsFixtureSeed) {
+        guard let evidence = seed.evidence else {
+            failFixtureSeed("UI World settings.\(fixtureID.rawValue) must declare evidence")
+        }
+        AppLog.app.info("UI-test fixture evidence: fixture=\(fixtureID.rawValue) asset=\(evidence.assetID)")
     }
 }
 #endif
