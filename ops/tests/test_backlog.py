@@ -318,6 +318,216 @@ def test_content_derived_ids_validate_when_unchanged(tmp_path):
     ), problems
 
 
+KNOWN_ID_DRIFT_BASELINE = {
+    "IMP-20260809-1c4bcf": "IMP-20260809-4b0c92",
+    "IMP-20260809-84e9e4": "IMP-20260809-022d00",
+    "IMP-20260809-aa70b0": "IMP-20260809-0a7029",
+    "IMP-20260809-dc2a65": "IMP-20260809-ef4785",
+    "IMP-20260809-f4517a": "IMP-20260809-ccf412",
+    "IMP-20260810-7b0c9e": "IMP-20260810-a54d69",
+    "IMP-20260811-6b7d2e": "IMP-20260811-7f20a1",
+}
+
+
+def _write_id_drift_baseline(path, pairs):
+    path.write_text(
+        "# observed id followed by the expected id for the frozen historical payload\n"
+        + "".join(f"{entry_id} {expected_id}\n"
+                  for entry_id, expected_id in sorted(pairs.items())),
+        encoding="utf-8",
+    )
+
+
+def _use_id_drift_baseline(monkeypatch, tmp_path, pairs):
+    baseline = tmp_path / "backlog_id_drift_baseline.txt"
+    _write_id_drift_baseline(baseline, pairs)
+    monkeypatch.setenv("KG_BACKLOG_ID_DRIFT_BASELINE", str(baseline))
+    # Keep this test about the id-drift ratchet. Open synthetic entries owe no
+    # closure baseline, while the shipped-store case already has its own
+    # checked-in closure baseline.
+    closed_baseline = tmp_path / "closed_without_verification.txt"
+    closed_baseline.write_text("", encoding="utf-8")
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", str(closed_baseline))
+    return baseline
+
+
+def test_id_drift_baseline_grandfathers_only_the_seven_known_exact_pairs(
+    tmp_path, monkeypatch, capsys
+):
+    """Historical debt is seven exact payload pairs, never seven reusable ids.
+
+    Five entries matched their digest at creation and were later rewritten by
+    pre-invariant lifecycle tooling; two were born with arbitrary dated ids.
+    Renaming those files destroys references, while forgiving their ids alone
+    creates seven permanent tamper slots.  The ratchet therefore binds each
+    observed id to the expected id of its *current* frozen payload.
+    """
+    store = tmp_path / "backlog"
+    shutil.copytree(ROOT / "docs" / "runbook" / "backlog", store)
+    baseline = _use_id_drift_baseline(
+        monkeypatch, tmp_path, KNOWN_ID_DRIFT_BASELINE
+    )
+    # The shipped closure debt has an independent ratchet; use its real file so
+    # this full-store control differs from the synthetic cases below only in the
+    # id-drift baseline under test.
+    monkeypatch.setenv(
+        "KG_BACKLOG_BASELINE",
+        str(ROOT / "ops" / "backlog_closed_unverified_baseline.txt"),
+    )
+
+    observed = {
+        (problem["id"], problem["expected_id"])
+        for problem in BACKLOG.validate_store(store)
+        if problem["kind"] == "id-content-drift"
+    }
+    assert observed == set(KNOWN_ID_DRIFT_BASELINE.items())
+    assert baseline.read_text(encoding="utf-8").count("\n") == 8
+
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 0
+    assert "0 problems" in capsys.readouterr().out
+
+
+def test_id_drift_baseline_rejects_a_second_identity_mutation(
+    tmp_path, monkeypatch, capsys
+):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="content at creation")
+    path = store / f"{entry['id']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["detail"] = "the one historical mutation being frozen"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    frozen_expected = BACKLOG.make_entry_id(
+        stream=payload["stream"], date=payload["date"],
+        source=payload["source"], detail=payload["detail"],
+    )
+    _use_id_drift_baseline(
+        monkeypatch, tmp_path, {entry["id"]: frozen_expected}
+    )
+
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 0
+    capsys.readouterr()
+
+    payload["detail"] = "a second mutation must not reuse the historical slot"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 2
+    assert "id-content-drift" in capsys.readouterr().out
+
+
+def test_id_drift_baseline_rejects_unknown_drift(tmp_path, monkeypatch, capsys):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="content at creation")
+    path = store / f"{entry['id']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["source"] = "an unrecorded immutable-field mutation"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    _use_id_drift_baseline(monkeypatch, tmp_path, {})
+
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 2
+    assert "id-content-drift" in capsys.readouterr().out
+
+
+def test_id_drift_baseline_rejects_a_row_for_an_unknown_entry(
+    tmp_path, monkeypatch, capsys
+):
+    store = tmp_path / "backlog"
+    store.mkdir()
+    _use_id_drift_baseline(
+        monkeypatch, tmp_path,
+        {"IMP-20260813-missing": "IMP-20260813-deadbe"},
+    )
+
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 2
+    output = capsys.readouterr().out
+    assert "stale-id-content-drift-baseline" in output
+    assert "IMP-20260813-missing" in output
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        "IMP-20260813-only-one-column\n",
+        (
+            "IMP-20260813-abcdef IMP-20260813-111111\n"
+            "IMP-20260813-abcdef IMP-20260813-222222\n"
+        ),
+    ],
+    ids=["malformed", "duplicate-observed-id"],
+)
+def test_id_drift_baseline_rejects_malformed_or_duplicate_rows(
+    tmp_path, monkeypatch, capsys, lines
+):
+    store = tmp_path / "backlog"
+    store.mkdir()
+    baseline = tmp_path / "backlog_id_drift_baseline.txt"
+    baseline.write_text(lines, encoding="utf-8")
+    monkeypatch.setenv("KG_BACKLOG_ID_DRIFT_BASELINE", str(baseline))
+    closed_baseline = tmp_path / "closed_without_verification.txt"
+    closed_baseline.write_text("", encoding="utf-8")
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", str(closed_baseline))
+
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 2
+    assert "invalid-id-content-drift-baseline" in capsys.readouterr().out
+
+
+def test_id_drift_baseline_rejects_stale_pairs(tmp_path, monkeypatch, capsys):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="content already matches its derived id")
+    stale_expected = BACKLOG.make_entry_id(
+        stream=entry["stream"], date=entry["date"], source=entry["source"],
+        detail="historical debt that has already been repaired",
+    )
+    _use_id_drift_baseline(
+        monkeypatch, tmp_path, {entry["id"]: stale_expected}
+    )
+
+    assert BACKLOG.main([
+        "validate", "--store", str(store), "--baseline-check",
+    ]) == 2
+    output = capsys.readouterr().out
+    assert "stale-id-content-drift-baseline" in output
+    assert entry["id"] in output
+
+
+def test_legal_lifecycle_mutations_do_not_change_a_modern_derived_id(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="identity stays fixed while lifecycle advances")
+
+    BACKLOG.update_entry(
+        store,
+        entry["id"],
+        severity="high",
+        resolution="triage notes are mutable",
+        **_groom_kwargs(),
+    )
+    BACKLOG.update_entry(
+        store,
+        entry["id"],
+        verdict="CONFIRMED-OPEN",
+        verified_at="2026-08-13",
+        verified_by="agent:test",
+        verified_evidence="focused lifecycle identity control",
+    )
+
+    payload = BACKLOG.load_entry(store, entry["id"])
+    assert payload["id"] == entry["id"]
+    assert not any(
+        problem["kind"] == "id-content-drift"
+        for problem in BACKLOG.validate_store(store)
+    )
+
+
 @pytest.mark.parametrize(
     "field,bad_value,kind",
     [
