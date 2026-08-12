@@ -70,10 +70,23 @@ struct RepoFixtureDatasetsContractTests {
         #expect(!document.syncPresenter.isEmpty)
         #expect(Set(document.syncPresenter.keys).isSubset(of: Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue))))
 
-        // Optional scenario context carries reusable Reader/Word Detail content;
-        // the checked-in generated fixture intentionally leaves its clock null.
+        // Canonical scenario context carries one clock, dictionary materialization,
+        // surface contracts, and reusable Reader/Word Detail content.
         let scenario = try #require(document.scenarioContext, "generated demo must declare scenarioContext")
-        #expect(scenario.reviewClock == nil, "checked-in generated fixture must keep reviewClock null")
+        #expect(scenario.reviewClock?.now == "2026-06-15T23:59:59Z")
+        #expect(scenario.reviewClock?.timeZone == "UTC")
+        #expect(scenario.reviewClock?.frozenNow == nil)
+        let dictionary = try #require(scenario.dictionary, "canonical scenarioContext must declare dictionary")
+        #expect(dictionary.lookup.count == 7)
+        #expect(dictionary.materialization.status == "ready")
+        #expect(dictionary.materialization.selectedSenseID == "sense-1")
+        #expect(dictionary.materialization.selectedExampleID == "example-1")
+        let surfaceContracts = try #require(
+            scenario.surfaceContracts,
+            "canonical scenarioContext must declare surfaceContracts"
+        )
+        #expect(surfaceContracts["explore"]?.required.isEmpty == false)
+        #expect(surfaceContracts["settings"]?.required.isEmpty == false)
         let passage = try #require(scenario.readerPassage, "scenarioContext must declare readerPassage")
         #expect(!passage.paragraphs.isEmpty)
         #expect(passage.activeWords == [passage.activeWord])
@@ -90,6 +103,34 @@ struct RepoFixtureDatasetsContractTests {
         expectEntitlementsKeys(topLevel, dataset: "ios_fixture_dataset")
         expectTodayReviewKeys(topLevel, dataset: "ios_fixture_dataset")
         expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
+    }
+
+    @Test func legacyScenarioContextShapesRemainReadable() throws {
+        let url = Self.datasetsDirectory
+            .deletingLastPathComponent() // ui_worlds
+            .deletingLastPathComponent() // fixtures
+            .appendingPathComponent("demo/generated/ios_fixture_dataset.json")
+        let data = try Data(contentsOf: url)
+        var topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+        context.removeValue(forKey: "dictionary")
+        context.removeValue(forKey: "surfaceContracts")
+        context["reviewClock"] = NSNull()
+        topLevel["scenarioContext"] = context
+        let nullClockData = try JSONSerialization.data(withJSONObject: topLevel)
+        _ = try FixtureDatasetStore.decode(nullClockData)
+
+        context["reviewClock"] = [
+            "frozenNow": "2026-06-15T23:59:59Z",
+            "frozenEpoch": 1781567999,
+            "anchorDay": "2026-06-15",
+            "source": "legacy.fixture",
+        ]
+        topLevel["scenarioContext"] = context
+        let frozenNowData = try JSONSerialization.data(withJSONObject: topLevel)
+        let legacyDocument = try FixtureDatasetStore.decode(frozenNowData)
+        #expect(legacyDocument.scenarioContext?.dictionary == nil)
+        #expect(legacyDocument.scenarioContext?.reviewClock?.frozenNow == "2026-06-15T23:59:59Z")
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {
