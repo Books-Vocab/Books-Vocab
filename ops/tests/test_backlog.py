@@ -2146,7 +2146,13 @@ def _payload(**overrides):
     exemption, and then the thing under test would not be the thing asserted.
     """
     base = _entry_kwargs(**overrides)
-    return dict(base, id="IMP-20260807-000001", schema="kg.backlog.entry.v1")
+    entry_id = BACKLOG.make_entry_id(
+        stream=base["stream"],
+        date=base["date"],
+        source=base["source"],
+        detail=base["detail"],
+    )
+    return dict(base, id=entry_id, schema="kg.backlog.entry.v1")
 
 
 def _traced(state_by_sha):
@@ -7862,18 +7868,18 @@ def test_audit_criteria_filter_does_not_match_across_the_seam(tmp_path, capsys):
     store = tmp_path / "s"
     ran = tmp_path / "seam-ran"
     entry = BACKLOG.add_entry(store, **_entry_kwargs(
-        entry_id="IMP-0091-ALPHA",
+        entry_id="IMP-0091",
         detail="an entry whose id ends where the command begins"))
     BACKLOG.update_entry(store, entry["id"],
                          **_groom_kwargs(acceptance_cmd=f"BETA=1; touch {ran}"))
 
-    payload, _ = _criteria_audit(store, "--filter", r"ALPHA\s+BETA", capsys=capsys)
+    payload, _ = _criteria_audit(store, "--filter", r"0091\s+BETA", capsys=capsys)
 
     assert payload["selected"] == 0, payload
     assert not ran.exists(), "a pattern that matches neither field selected the entry"
     # Positive control: the filter is not simply broken. Same store, a pattern that
     # really is in the id, selects it.
-    payload, _ = _criteria_audit(store, "--filter", "ALPHA", capsys=capsys)
+    payload, _ = _criteria_audit(store, "--filter", "0091", capsys=capsys)
     assert payload["selected"] == 1 and ran.exists()
 
 
