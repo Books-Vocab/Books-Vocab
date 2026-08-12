@@ -26,6 +26,12 @@ enum SettingsScenarios {
             Scenario("Debug Backend Local", layout: .fill) {
                 SettingsFixtureScene(fixtureID: .debugBackendLocal)
             }
+            Scenario("required-settings", layout: .fill) {
+                SettingsFixtureScene(fixtureID: .preferencesAutoSyncOff)
+            }
+            Scenario("section-navigation", layout: .fill) {
+                SettingsFixtureScene(fixtureID: .preferencesLoggedOutNoSync)
+            }
         }
     }
 }

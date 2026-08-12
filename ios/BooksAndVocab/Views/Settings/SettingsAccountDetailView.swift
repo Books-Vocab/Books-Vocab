@@ -95,6 +95,10 @@ struct SettingsAccountDetailView: View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: L10n.string("危險操作"), icon: "exclamationmark.triangle")
 
+            if let resetLifecycle = danger.resetLifecycle {
+                resetBoundaryCard(resetLifecycle)
+            }
+
             VocabStateMessageCard(
                 title: danger.isDeletingAccount ? L10n.string("正在刪除帳號") : L10n.string("此操作不可逆"),
                 systemImage: danger.isDeletingAccount ? "hourglass" : "exclamationmark.triangle.fill",
@@ -124,6 +128,152 @@ struct SettingsAccountDetailView: View {
             SettingsSectionFooter(L10n.string("此操作不可逆，會刪除帳號與所有雲端資料。"))
         }
         .accessibilityIdentifier("settings.account.dangerGroup")
+    }
+
+    private func resetBoundaryCard(_ lifecycle: SettingsResetLifecycle) -> some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            HStack(spacing: appSkin.spacing.controlGap) {
+                Image(systemName: resetSystemImage(for: lifecycle.phase))
+                    .font(appSkin.typography.iconMedium)
+                    .foregroundStyle(resetTone(for: lifecycle.phase))
+
+                Text(resetPhaseTitle(for: lifecycle.phase))
+                    .font(appSkin.typography.body.weight(.semibold))
+                    .foregroundStyle(appSkin.palette.primaryText)
+                    .accessibilityIdentifier("settings.account.resetBoundary.phase")
+                    .accessibilityValue(lifecycle.phase.rawValue)
+
+                Spacer()
+            }
+
+            if let terminalMessage = lifecycle.terminalMessage {
+                Text(terminalMessage)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(resetDescription(for: lifecycle.phase))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                resetSnapshotSection(
+                    title: L10n.string("重設前"),
+                    snapshot: lifecycle.before,
+                    identifier: "settings.account.resetBoundary.before"
+                )
+                SettingsDivider(leadingInset: 0)
+                resetSnapshotSection(
+                    title: L10n.string("完成後"),
+                    snapshot: lifecycle.after,
+                    identifier: "settings.account.resetBoundary.after"
+                )
+            }
+            .settingsCard()
+
+            Button(action: actions.resetLocalData) {
+                HStack {
+                    Text(resetActionTitle(for: lifecycle.phase))
+                        .font(appSkin.typography.body)
+                    Spacer()
+                    if lifecycle.phase == .resetting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: lifecycle.phase == .failed ? "arrow.clockwise" : "arrow.counterclockwise")
+                            .font(appSkin.typography.iconTiny)
+                    }
+                }
+                .foregroundStyle(lifecycle.canRetry ? appSkin.palette.destructive : appSkin.palette.tertiaryText)
+            }
+            .buttonStyle(.appAction(.destructive))
+            .disabled(!lifecycle.canRetry || lifecycle.phase == .resetting)
+            .accessibilityIdentifier("settings.account.resetBoundary.resetButton")
+            .accessibilityLabel(resetActionTitle(for: lifecycle.phase))
+        }
+        .padding(appSkin.spacing.cardPadding)
+        .background(appSkin.palette.cardBackground)
+        .clipShape(AppRoundedRect(roundness: AppRoundness.card))
+        .accessibilityIdentifier("settings.account.resetBoundary")
+    }
+
+    private func resetSnapshotSection(
+        title: String,
+        snapshot: SettingsResetLifecycle.Snapshot,
+        identifier: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(appSkin.typography.caption.weight(.semibold))
+                .foregroundStyle(appSkin.palette.secondaryText)
+                .padding(.horizontal, appSkin.spacing.cardPadding)
+                .padding(.top, appSkin.spacing.rowMicroGap)
+
+            AppKeyValueRow(icon: "square.stack.3d.up", label: L10n.string("本機單字"), style: .settings(appSkin)) {
+                SettingsStatusValue(
+                    text: L10n.format("%@ 張", "\(snapshot.localCardCount)"),
+                    color: appSkin.palette.secondaryText
+                )
+            }
+            AppKeyValueRow(icon: "slider.horizontal.3", label: L10n.string("設定偏好"), style: .settings(appSkin)) {
+                SettingsStatusValue(
+                    text: snapshot.hasCustomPreferences ? L10n.string("已自訂") : L10n.string("預設值"),
+                    color: appSkin.palette.secondaryText
+                )
+            }
+            AppKeyValueRow(icon: "person.crop.circle", label: L10n.string("登入狀態"), style: .settings(appSkin)) {
+                SettingsStatusValue(
+                    text: snapshot.isLoggedIn ? L10n.string("已登入") : L10n.string("未登入"),
+                    color: appSkin.palette.secondaryText
+                )
+            }
+        }
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func resetPhaseTitle(for phase: SettingsResetLifecycle.Phase) -> String {
+        switch phase {
+        case .preReset: return L10n.string("準備重設本機資料")
+        case .resetting: return L10n.string("正在重設本機資料")
+        case .succeeded: return L10n.string("本機資料已重設")
+        case .failed: return L10n.string("重設本機資料失敗")
+        }
+    }
+
+    private func resetDescription(for phase: SettingsResetLifecycle.Phase) -> String {
+        switch phase {
+        case .preReset:
+            return L10n.string("這會清除本機單字與設定偏好，但保留目前登入帳號。")
+        case .resetting:
+            return L10n.string("正在清除本機資料，完成前請勿關閉 app。")
+        case .succeeded:
+            return L10n.string("本機資料與設定已回到預設狀態。")
+        case .failed:
+            return L10n.string("本機資料尚未清除，請重試。")
+        }
+    }
+
+    private func resetActionTitle(for phase: SettingsResetLifecycle.Phase) -> String {
+        phase == .failed ? L10n.string("重試本機資料重設") : L10n.string("重設本機資料")
+    }
+
+    private func resetSystemImage(for phase: SettingsResetLifecycle.Phase) -> String {
+        switch phase {
+        case .preReset: return "exclamationmark.triangle"
+        case .resetting: return "hourglass"
+        case .succeeded: return "checkmark.circle"
+        case .failed: return "xmark.circle"
+        }
+    }
+
+    private func resetTone(for phase: SettingsResetLifecycle.Phase) -> Color {
+        switch phase {
+        case .preReset, .failed: return appSkin.palette.destructive
+        case .resetting: return appSkin.palette.secondaryText
+        case .succeeded: return appSkin.palette.success
+        }
     }
 }
 

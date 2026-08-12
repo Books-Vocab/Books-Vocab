@@ -572,6 +572,8 @@ SETTINGS_SEED_KEYS = {
     "bookSync",
     "about",
     "danger",
+    "evidence",
+    "resetLifecycle",
     "manualLoginUserId",
     "debugLocalServerURL",
 }
@@ -647,6 +649,32 @@ VALID_SETTINGS_SYNC_LIFECYCLES = {
 VALID_SETTINGS_SYNC_DATA_OUTCOMES = {"none", "partial", "complete"}
 SETTINGS_ABOUT_KEYS = {"version", "developerName"}
 SETTINGS_DANGER_KEYS = {"isDeletingAccount"}
+SETTINGS_EVIDENCE_KEYS = {"label", "assetID", "stepLabel"}
+SETTINGS_RESET_LIFECYCLE_KEYS = {"phase", "before", "after", "terminalMessage", "canRetry"}
+SETTINGS_RESET_SNAPSHOT_KEYS = {"localCardCount", "hasCustomPreferences", "isLoggedIn"}
+VALID_SETTINGS_RESET_PHASES = {"preReset", "resetting", "succeeded", "failed"}
+SETTINGS_EVIDENCE_CONTRACT = {
+    "preferences_auto_sync_off": {
+        "label": "required-settings",
+        "assetID": "settings-required",
+        "stepLabel": "required-settings",
+    },
+    "preferences_logged_out_no_sync": {
+        "label": "section-navigation",
+        "assetID": "settings-section-navigation",
+        "stepLabel": "section-navigation",
+    },
+    "long_content_counterexample": {
+        "label": "long-content-counterexample",
+        "assetID": "settings-long-content-counterexample",
+        "stepLabel": "long-content-counterexample",
+    },
+    "reset_counterexample": {
+        "label": "reset-counterexample",
+        "assetID": "settings-reset-counterexample",
+        "stepLabel": "reset-counterexample",
+    },
+}
 SETTINGS_BOOK_SYNC_KEYS = {"text", "detail", "tone"}
 VALID_SETTINGS_REVIEW_MODES = {"relaxed", "intensive", "custom"}
 VALID_SETTINGS_AUTOPLAY_SPEEDS = {"slow", "normal", "fast"}
@@ -1484,6 +1512,86 @@ def _validate_settings_sync_summary(
             )
 
 
+def _validate_settings_evidence(seed: Any, *, owner: str, label: str) -> None:
+    if seed is None:
+        return
+    evidence = _require_mapping(seed, field=owner, label=label)
+    _validate_exact_keys(evidence, expected=SETTINGS_EVIDENCE_KEYS, owner=owner, label=label)
+    for field in ("label", "assetID", "stepLabel"):
+        value = _ensure_str(evidence.get(field), field=f"{owner}.{field}", label=label).strip()
+        if not value:
+            raise UIWorldManifestError(f"{label} {owner}.{field} must not be empty")
+
+
+def _validate_settings_reset_lifecycle(seed: Any, *, owner: str, label: str) -> None:
+    if seed is None:
+        return
+    lifecycle = _require_mapping(seed, field=owner, label=label)
+    _validate_exact_keys(lifecycle, expected=SETTINGS_RESET_LIFECYCLE_KEYS, owner=owner, label=label)
+    phase = _ensure_str(lifecycle.get("phase"), field=f"{owner}.phase", label=label)
+    if phase not in VALID_SETTINGS_RESET_PHASES:
+        raise UIWorldManifestError(f"{label} {owner}.phase is invalid")
+
+    snapshots: dict[str, Mapping[str, Any]] = {}
+    for field in ("before", "after"):
+        snapshot_owner = f"{owner}.{field}"
+        snapshot = _require_mapping(lifecycle.get(field), field=snapshot_owner, label=label)
+        _validate_exact_keys(snapshot, expected=SETTINGS_RESET_SNAPSHOT_KEYS, owner=snapshot_owner, label=label)
+        card_count = _ensure_int(snapshot.get("localCardCount"), field=f"{snapshot_owner}.localCardCount", label=label)
+        if card_count < 0:
+            raise UIWorldManifestError(f"{label} {snapshot_owner}.localCardCount must be non-negative")
+        _ensure_bool(snapshot.get("hasCustomPreferences"), field=f"{snapshot_owner}.hasCustomPreferences", label=label)
+        _ensure_bool(snapshot.get("isLoggedIn"), field=f"{snapshot_owner}.isLoggedIn", label=label)
+        snapshots[field] = snapshot
+
+    terminal_message = lifecycle.get("terminalMessage")
+    _validate_nullable_string(terminal_message, owner=f"{owner}.terminalMessage", label=label)
+    can_retry = _ensure_bool(lifecycle.get("canRetry"), field=f"{owner}.canRetry", label=label)
+    if phase == "succeeded":
+        if can_retry:
+            raise UIWorldManifestError(f"{label} {owner}.succeeded lifecycle must have canRetry=false")
+        if not isinstance(terminal_message, str) or not terminal_message.strip():
+            raise UIWorldManifestError(f"{label} {owner}.succeeded lifecycle needs a terminalMessage")
+    elif phase == "failed":
+        if not can_retry:
+            raise UIWorldManifestError(f"{label} {owner}.failed lifecycle must have canRetry=true")
+        if not isinstance(terminal_message, str) or not terminal_message.strip():
+            raise UIWorldManifestError(f"{label} {owner}.failed lifecycle needs a terminalMessage")
+    elif terminal_message is not None:
+        raise UIWorldManifestError(f"{label} {owner}.{phase} lifecycle must not carry terminalMessage")
+
+    if phase in {"succeeded", "failed"}:
+        before = snapshots["before"]
+        after = snapshots["after"]
+        if before == after:
+            raise UIWorldManifestError(f"{label} {owner} terminal lifecycle must change an observable snapshot field")
+
+
+def _validate_settings_evidence_contract(settings: Mapping[str, Any], *, label: str) -> None:
+    records: dict[str, Mapping[str, str]] = {}
+    for fixture_id, expected in SETTINGS_EVIDENCE_CONTRACT.items():
+        seed = _require_mapping(settings.get(fixture_id), field=f"settings.{fixture_id}", label=label)
+        evidence = _require_mapping(seed.get("evidence"), field=f"settings.{fixture_id}.evidence", label=label)
+        actual = {
+            field: _ensure_str(evidence.get(field), field=f"settings.{fixture_id}.evidence.{field}", label=label)
+            for field in ("label", "assetID", "stepLabel")
+        }
+        if actual != expected:
+            raise UIWorldManifestError(
+                f"{label} settings.{fixture_id}.evidence must exactly match the evidence consumer contract"
+            )
+        if actual["label"] in records:
+            raise UIWorldManifestError(f"{label} duplicate settings evidence label {actual['label']!r}")
+        records[actual["label"]] = actual
+
+    asset_ids = [record["assetID"] for record in records.values()]
+    _validate_unique(asset_ids, owner="settings.evidence.assetID", label=label)
+    required_asset_ids = {SETTINGS_EVIDENCE_CONTRACT[key]["assetID"] for key in SETTINGS_EVIDENCE_CONTRACT if key.startswith("preferences_")}
+    counterexample_asset_ids = {SETTINGS_EVIDENCE_CONTRACT[key]["assetID"] for key in SETTINGS_EVIDENCE_CONTRACT if key.endswith("counterexample")}
+    if not required_asset_ids.isdisjoint(counterexample_asset_ids):
+        raise UIWorldManifestError(f"{label} required and counterexample settings evidence assets must be disjoint")
+
+
 def _validate_settings_seed(seed: Mapping[str, Any], *, fixture_id: str, owner: str, label: str) -> None:
     _validate_exact_keys(seed, expected=SETTINGS_SEED_KEYS, owner=owner, label=label)
     _ensure_str(seed.get("authFixtureRef"), field=f"{owner}.authFixtureRef", label=label)
@@ -1529,6 +1637,8 @@ def _validate_settings_seed(seed: Mapping[str, Any], *, fixture_id: str, owner: 
         danger_obj = _require_mapping(danger, field=f"{owner}.danger", label=label)
         _validate_exact_keys(danger_obj, expected=SETTINGS_DANGER_KEYS, owner=f"{owner}.danger", label=label)
         _ensure_bool(danger_obj.get("isDeletingAccount"), field=f"{owner}.danger.isDeletingAccount", label=label)
+    _validate_settings_evidence(seed.get("evidence"), owner=f"{owner}.evidence", label=label)
+    _validate_settings_reset_lifecycle(seed.get("resetLifecycle"), owner=f"{owner}.resetLifecycle", label=label)
     book_sync = seed.get("bookSync")
     if book_sync is not None:
         book_sync_obj = _require_mapping(book_sync, field=f"{owner}.bookSync", label=label)
@@ -1543,9 +1653,11 @@ def _validate_settings_seed(seed: Mapping[str, Any], *, fixture_id: str, owner: 
 
 
 def _validate_settings(data: dict[str, Any], *, label: str) -> None:
-    for fixture_id, seed in _require_mapping(data.get("settings"), field="settings", label=label).items():
+    settings = _require_mapping(data.get("settings"), field="settings", label=label)
+    for fixture_id, seed in settings.items():
         seed_obj = _require_mapping(seed, field=f"settings.{fixture_id}", label=label)
         _validate_settings_seed(seed_obj, fixture_id=fixture_id, owner=f"settings.{fixture_id}", label=label)
+    _validate_settings_evidence_contract(settings, label=label)
 
 
 def _validate_today_review_link(seed: Mapping[str, Any], *, owner: str, bucket_kind: str, label: str) -> None:

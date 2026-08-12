@@ -178,6 +178,8 @@ struct SettingsAccountSection: View {
                 state: state,
                 isProActive: subscription?.isActive ?? false
             )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings.account.accountDetailRow")
         }
         .accessibilityIdentifier(
             state.identityFingerprint.map { "settings.account.identity.\($0)" }

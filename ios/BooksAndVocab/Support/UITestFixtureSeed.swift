@@ -152,8 +152,11 @@ enum UITestFixtureSeed {
         }
         let auth = auth ?? AuthManager.shared
         let seed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
+    static func seedSignedInLoginFromWorld(using fixtureID: UIWorldAuthFixtureID = .signedIn) {
+        #if targetEnvironment(simulator)
+        let seed = FixtureDatasetStore.requireAuthSeed(for: fixtureID)
         guard seed.isLoggedIn else {
-            preconditionFailure("auth.signedIn fixture requires auth.signedIn.isLoggedIn = true")
+            preconditionFailure("\(fixtureID.rawValue) fixture requires a logged-in auth seed")
         }
         let userId = seed.userId ?? ""
         guard !userId.isEmpty else {

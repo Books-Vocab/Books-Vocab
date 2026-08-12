@@ -353,6 +353,8 @@
         "developerName": "MPSO"
       },
       "danger": null,
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null,
       "reviewSettings": null,
@@ -389,6 +391,8 @@
         "developerName": "MPSO"
       },
       "danger": null,
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null,
       "reviewSettings": null,
@@ -477,6 +481,12 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": {
+        "label": "required-settings",
+        "assetID": "settings-required",
+        "stepLabel": "required-settings"
+      },
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
@@ -523,6 +533,12 @@
         "developerName": "MPSO"
       },
       "danger": null,
+      "evidence": {
+        "label": "section-navigation",
+        "assetID": "settings-section-navigation",
+        "stepLabel": "section-navigation"
+      },
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null,
       "bookSync": null
@@ -610,6 +626,8 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
@@ -696,6 +714,8 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
@@ -782,6 +802,8 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
@@ -851,6 +873,8 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null,
       "reviewSettings": null,
@@ -922,6 +946,8 @@
       "danger": {
         "isDeletingAccount": true
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null,
       "reviewSettings": null,
@@ -957,11 +983,17 @@
       "bookSync": null,
       "about": {
         "version": "2.0.1 (7)",
-        "developerName": "Settings UI World long-content counterexample"
+        "developerName": "MPSO"
       },
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": {
+        "label": "long-content-counterexample",
+        "assetID": "settings-long-content-counterexample",
+        "stepLabel": "long-content-counterexample"
+      },
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
@@ -980,13 +1012,13 @@
         "manualLoginHint": null
       },
       "preferences": {
-        "selectedLanguage": "繁體中文",
-        "selectedAppearance": "跟隨系統",
+        "selectedLanguage": "English",
+        "selectedAppearance": "深色",
         "translationSource": "English",
-        "translationTarget": "繁體中文",
-        "selectedReviewMode": "寬鬆",
-        "autoSyncEnabled": false,
-        "showAutoSync": false
+        "translationTarget": "日本語",
+        "selectedReviewMode": "密集",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
       },
       "reviewSettings": null,
       "kg": null,
@@ -995,10 +1027,30 @@
       "bookSync": null,
       "about": {
         "version": "2.0.1 (7)",
-        "developerName": "Settings UI World reset boundary counterexample"
+        "developerName": "MPSO"
       },
       "danger": {
         "isDeletingAccount": false
+      },
+      "evidence": {
+        "label": "reset-counterexample",
+        "assetID": "settings-reset-counterexample",
+        "stepLabel": "reset-counterexample"
+      },
+      "resetLifecycle": {
+        "phase": "succeeded",
+        "before": {
+          "localCardCount": 3,
+          "hasCustomPreferences": true,
+          "isLoggedIn": true
+        },
+        "after": {
+          "localCardCount": 0,
+          "hasCustomPreferences": false,
+          "isLoggedIn": true
+        },
+        "terminalMessage": "本機資料與設定已重設。",
+        "canRetry": false
       },
       "manualLoginUserId": null,
       "debugLocalServerURL": null
@@ -1074,6 +1126,8 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": null,
       "debugLocalServerURL": null,
       "reviewSettings": null
@@ -1207,6 +1261,8 @@
       "danger": {
         "isDeletingAccount": false
       },
+      "evidence": null,
+      "resetLifecycle": null,
       "manualLoginUserId": "debug-user-id",
       "debugLocalServerURL": "http://127.0.0.1:8000",
       "reviewSettings": null,
