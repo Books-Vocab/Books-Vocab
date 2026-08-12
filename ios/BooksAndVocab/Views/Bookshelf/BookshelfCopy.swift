@@ -23,6 +23,11 @@ enum BookshelfCopy {
     static var retryImportTitle: String { L10n.string("再試匯入") }
     static var closeTitle: String { L10n.string("關閉") }
 
+    static func readingProgressAccessibilityValue(_ progression: Double?) -> String {
+        let clamped = min(max(progression ?? 0, 0), 1)
+        return L10n.format("進度 %d%%", Int(clamped * 100))
+    }
+
     static var emptyState: BookshelfEmptyStateCopy {
         .init(
             title: L10n.string("尚無書籍"),
