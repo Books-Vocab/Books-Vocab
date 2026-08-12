@@ -18,6 +18,63 @@ enum DictionarySearchPhase: Equatable {
     case failed(DictionarySearchFailure)
 }
 
+enum DictionaryLookupState: Equatable {
+    case idle
+    case loading(query: String)
+    case partial(query: String, hit: DictionarySearchHit, failure: DictionarySearchFailure)
+    case success(query: String, entry: LexicalEntry?, cacheStatus: String)
+    case error(query: String, failure: DictionarySearchFailure)
+    case offline(query: String)
+    case retry(query: String, attempt: Int)
+
+    var isPartial: Bool {
+        if case .partial = self { return true }
+        return false
+    }
+
+    var isSuccess: Bool {
+        if case .success = self { return true }
+        return false
+    }
+
+    var isOffline: Bool {
+        if case .offline = self { return true }
+        return false
+    }
+}
+
+struct DictionaryMaterializedSelection: Equatable {
+    let sense: LexicalSense
+    let example: LexicalExample
+    let provenance: LexicalAttribution
+}
+
+enum DictionarySelectionState: Equatable {
+    case unavailable
+    case selected(DictionaryMaterializedSelection)
+    case invalid(senseKey: String, exampleKey: String)
+}
+
+extension DictionarySelectionState {
+    var isSelected: Bool {
+        if case .selected = self { return true }
+        return false
+    }
+
+    var materialization: DictionaryMaterializedSelection? {
+        if case .selected(let value) = self { return value }
+        return nil
+    }
+}
+
+enum DictionaryMaterializeFailure: Equatable {
+    case offline
+    case rateLimited
+    case timeout
+    case malformed
+    case unavailable
+}
+
 enum DictionaryMaterializePhase: Equatable {
     case idle
     case running
@@ -28,7 +85,10 @@ enum DictionaryMaterializePhase: Equatable {
 @Observable @MainActor
 final class AddLinkCoordinator {
     private(set) var searchPhase: DictionarySearchPhase = .idle
+    private(set) var lookupState: DictionaryLookupState = .idle
     private(set) var materializePhase: DictionaryMaterializePhase = .idle
+    private(set) var materializeFailure: DictionaryMaterializeFailure?
+    private(set) var selectionState: DictionarySelectionState = .unavailable
     private(set) var selectedSenseKey: String?
     private(set) var selectedExampleKey: String?
 
@@ -36,6 +96,23 @@ final class AddLinkCoordinator {
     private var searchTask: Task<Void, Never>?
     private var materializeKey: String?
     private var materializeRequest: DictionaryMaterializeLinkRequest?
+    private var lastQuery: String?
+    private var retryAttempt = 0
+    private var lastHit: DictionarySearchHit?
+    private var lastEntry: LexicalEntry?
+    private var lastCacheStatus = ""
+
+    var selectedMaterialization: DictionaryMaterializedSelection? {
+        selectionState.materialization
+    }
+
+    func lookupFailure(for state: DictionaryLookupState) -> DictionarySearchFailure {
+        switch state {
+        case .partial(_, _, let failure), .error(_, let failure): return failure
+        case .offline: return .offline
+        case .idle, .loading, .success, .retry: return .unavailable
+        }
+    }
 
     nonisolated static func localCandidates(
         query: String,
@@ -82,12 +159,48 @@ final class AddLinkCoordinator {
         guard !trimmed.isEmpty else {
             cancelSearch()
             searchPhase = .idle
+            lookupState = .idle
             return
         }
 
+        retryAttempt = 0
+        startSearch(
+            query: trimmed,
+            using: service,
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+            state: .loading(query: trimmed)
+        )
+    }
+
+    func retrySearch(
+        using service: any DictionaryServing,
+        sourceLanguage: String = "en",
+        targetLanguage: String = "zh-Hant"
+    ) {
+        guard let lastQuery else { return }
+        retryAttempt += 1
+        startSearch(
+            query: lastQuery,
+            using: service,
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+            state: .retry(query: lastQuery, attempt: retryAttempt)
+        )
+    }
+
+    private func startSearch(
+        query: String,
+        using service: any DictionaryServing,
+        sourceLanguage: String,
+        targetLanguage: String,
+        state: DictionaryLookupState
+    ) {
         searchTask?.cancel()
         searchGeneration += 1
         let generation = searchGeneration
+        lastQuery = query
+        lookupState = state
         searchPhase = .loading
         clearSelection()
 
@@ -95,16 +208,23 @@ final class AddLinkCoordinator {
             guard let self else { return }
             do {
                 let search = try await service.searchDictionary(
-                    query: trimmed,
+                    query: query,
                     sourceLanguage: sourceLanguage,
                     targetLanguage: targetLanguage
                 )
                 try Task.checkCancellation()
                 guard generation == searchGeneration else { return }
                 guard let hit = search.hits.first else {
+                    self.lastHit = nil
+                    self.lastEntry = nil
+                    self.lastCacheStatus = search.cacheStatus
+                    self.lookupState = .success(
+                        query: query, entry: nil, cacheStatus: search.cacheStatus
+                    )
                     searchPhase = .empty
                     return
                 }
+                self.lastHit = hit
                 let detail = try await service.fetchDictionaryEntry(
                     provider: hit.provider,
                     entryKey: hit.entryKey,
@@ -112,12 +232,27 @@ final class AddLinkCoordinator {
                 )
                 try Task.checkCancellation()
                 guard generation == searchGeneration else { return }
+                self.lastEntry = detail.entry
+                self.lastCacheStatus = detail.cacheStatus
+                self.lookupState = .success(
+                    query: query, entry: detail.entry, cacheStatus: detail.cacheStatus
+                )
                 searchPhase = .result(detail.entry, cacheStatus: detail.cacheStatus)
             } catch is CancellationError {
                 // A newer submit owns the UI state.
             } catch {
                 guard generation == searchGeneration else { return }
-                searchPhase = .failed(Self.classify(error))
+                let failure = Self.classify(error)
+                if let hit = self.lastHit {
+                    self.lookupState = .partial(
+                        query: query, hit: hit, failure: failure
+                    )
+                } else if failure == .offline {
+                    self.lookupState = .offline(query: query)
+                } else {
+                    self.lookupState = .error(query: query, failure: failure)
+                }
+                searchPhase = .failed(failure)
             }
         }
     }
@@ -126,19 +261,43 @@ final class AddLinkCoordinator {
         searchTask?.cancel()
         searchTask = nil
         searchGeneration += 1
-        if searchPhase == .loading { searchPhase = .idle }
+        if searchPhase == .loading {
+            searchPhase = .idle
+            lookupState = .idle
+        }
     }
 
     func queryDidChange() {
         cancelSearch()
         searchPhase = .idle
+        lookupState = .idle
         clearSelection()
     }
 
     func select(senseKey: String, exampleKey: String) {
         selectedSenseKey = senseKey
         selectedExampleKey = exampleKey
+        guard let entry = lastEntry,
+              let sense = entry.senses.first(where: { $0.id == senseKey }),
+              let example = sense.examples.first(where: { $0.id == exampleKey }) else {
+            selectionState = .invalid(senseKey: senseKey, exampleKey: exampleKey)
+            return
+        }
+        selectionState = .selected(
+            DictionaryMaterializedSelection(
+                sense: sense,
+                example: example,
+                provenance: LexicalAttribution(
+                    provider: entry.provider,
+                    sourceURL: entry.sourceUrl,
+                    licenseName: entry.licenseName,
+                    licenseURL: entry.licenseUrl,
+                    attributionText: entry.attributionText
+                )
+            )
+        )
         materializePhase = .idle
+        materializeFailure = nil
         materializeKey = nil
         materializeRequest = nil
     }
@@ -167,6 +326,7 @@ final class AddLinkCoordinator {
         guard let materializeKey else { return }
 
         materializePhase = .running
+        materializeFailure = nil
         do {
             let response = try await service.materializeDictionaryLink(
                 request: request,
@@ -187,6 +347,7 @@ final class AddLinkCoordinator {
         } catch {
             // Keep the idempotency key so explicit Retry converges the saga.
             materializePhase = .failed
+            materializeFailure = Self.classifyMaterialize(error)
         }
     }
 
@@ -200,6 +361,7 @@ final class AddLinkCoordinator {
                 from: sourceEntry, to: target
               ) else { return }
         materializePhase = .running
+        materializeFailure = nil
         do {
             let link = try await service.createManualLink(
                 fromId: sourceCardID,
@@ -214,12 +376,18 @@ final class AddLinkCoordinator {
         } catch {
             VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
             materializePhase = .failed
+            materializeFailure = Self.classifyMaterialize(error)
         }
     }
 
     private func clearSelection() {
         selectedSenseKey = nil
         selectedExampleKey = nil
+        selectionState = .unavailable
+        materializeFailure = nil
+        lastHit = nil
+        lastEntry = nil
+        lastCacheStatus = ""
         materializePhase = .idle
         materializeKey = nil
         materializeRequest = nil
@@ -278,5 +446,15 @@ final class AddLinkCoordinator {
             }
         }
         return .unavailable
+    }
+
+    private static func classifyMaterialize(_ error: Error) -> DictionaryMaterializeFailure {
+        switch classify(error) {
+        case .offline: return .offline
+        case .rateLimited: return .rateLimited
+        case .timeout: return .timeout
+        case .malformed: return .malformed
+        case .unavailable: return .unavailable
+        }
     }
 }
