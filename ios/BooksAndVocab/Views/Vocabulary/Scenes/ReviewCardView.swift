@@ -285,6 +285,7 @@ struct ReviewCardView: View {
                         face: .front,
                         policy: layout.policy(for: .field(field))
                     )
+                        .accessibilityIdentifier("todayReview.card.front.field.\(field.rawValue)")
                 }
             }
             // 右上角 chrome（喇叭 / 詳情）是 overlay（必須在 reveal 手勢外才能獨立點），
@@ -317,6 +318,7 @@ struct ReviewCardView: View {
                             )
                         }
                     }
+                    .accessibilityIdentifier("todayReview.card.front.field.\(field.rawValue)")
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                         recordReviewSectionHeight(
                             height,

@@ -3,6 +3,7 @@ import XCTest
 private enum ReviewCardVisualEvidenceStep {
     static let optionalSectionsCounterexample = "optional-sections-counterexample"
     static let smallViewportCounterexample = "small-viewport-counterexample"
+    static let compactBackCounterexample = "compact-back-counterexample"
     static let largeTextCounterexample = "large-text-counterexample"
 }
 
@@ -72,14 +73,19 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         )
         editor.done()
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
-        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
-        // Visual evidence of the live relayout. The front fold publishes itself as
-        // ONE combined accessibility element (and repeats its identifier on nested
-        // buttons), so the rendered fields are not assertable from the outside —
-        // the machine-checkable half of "the store reached the UI" is step 5's
-        // derived Settings summary, which re-renders from the same store.
         // P12 required/counterexample state: optional sections are intentionally
-        // absent under compact, with a dedicated screenshot identity.
+        // absent under compact, with a dedicated screenshot identity. Readiness
+        // proves the card itself and the explicit absence independently.
+        guard review.waitForFrontReadiness(
+            presentation: .natural,
+            requiredFields: ["partOfSpeech"],
+            absentFields: ["example", "explanation", "collocations"],
+            timeout: 8
+        ) else {
+            captureStep("optional-sections-not-ready", app: app)
+            XCTFail("P12 optional evidence 必須等 canonical front、natural presentation 與 optional absence")
+            return
+        }
         captureStep(ReviewCardVisualEvidenceStep.optionalSectionsCounterexample, app: app)
 
         // Layout only: the card must still be on its front, still card 1.
@@ -160,7 +166,12 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.done()
         // P13 large-text counterexample: the full-content fixture gives the front
         // a deliberately wrapping translation, distinct from the back screenshot.
-        guard review.waitForFrontReadiness(presentation: .scroll, timeout: 8) else {
+        guard review.waitForFrontReadiness(
+            presentation: .scroll,
+            requiredFields: ["partOfSpeech"],
+            absentFields: ["example", "explanation", "collocations"],
+            timeout: 8
+        ) else {
             captureStep("large-text-not-ready", app: app)
             XCTFail("P13 正面 evidence 必須等 canonical card 與 scroll presentation mounted")
             return
@@ -182,7 +193,8 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         let backFields = ["difficultyTier", "graphLinks", "example", "explanation", "collocations"]
         guard review.waitForBackReadiness(
             presentation: .scroll,
-            fields: backFields,
+            requiredFields: backFields,
+            absentFields: [],
             timeout: 8
         ) else {
             captureStep("small-viewport-not-ready", app: app)
@@ -219,15 +231,17 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.done()
 
         review.flipCard()
-        XCTAssertTrue(review.cardBack.waitUntilExists(timeout: 8))
-        XCTAssertTrue(review.backField("difficultyTier").waitUntilExists(timeout: 3))
-        XCTAssertFalse(review.backField("example").waitUntilExists(timeout: 1))
-        XCTAssertFalse(review.backField("explanation").waitUntilExists(timeout: 1))
-        XCTAssertFalse(review.backField("collocations").waitUntilExists(timeout: 1))
-
-        let natural = review.backNaturalContent.waitUntilExists(timeout: 3)
-        let scroll = review.backScrollContent.waitUntilExists(timeout: 3)
-        XCTAssertNotEqual(natural, scroll, "compact 背面必須只發布一種 presentation")
+        guard review.waitForBackReadiness(
+            presentation: .natural,
+            requiredFields: ["difficultyTier", "graphLinks"],
+            absentFields: ["example", "explanation", "collocations"],
+            timeout: 8
+        ) else {
+            captureStep("compact-back-not-ready", app: app)
+            XCTFail("P12 compact 背面 evidence 必須等 canonical card、natural presentation、required fields 與 optional absence")
+            return
+        }
+        captureStep(ReviewCardVisualEvidenceStep.compactBackCounterexample, app: app)
     }
 
     /// Autoplay must not keep flipping cards under the editor sheet, and the pause
