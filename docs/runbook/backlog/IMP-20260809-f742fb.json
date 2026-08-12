@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "FixtureDatasetStore.swift 共 2659 行、59 個型別或 extension 宣告；FixtureDatasetDocument 直接列出 15 個功能領域，領域 seed、驗證、載入器與 accessor 全集中一檔。FixtureDatasetStoreTests.swift 共 3442 行、86 個測試；只有開頭少數案例修改 process environment，但整個 suite 都標為 serialized，後續純 decoding 與 TaskLocal 測試也無法平行。任一功能 fixture 變更都集中衝突同一對檔案並擴大失敗診斷範圍。",
   "fix_site": "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift:27; ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift:2198; ios/BooksAndVocabTests/FixtureDatasetStoreTests.swift:7",
+  "fixed_by": [
+    "9a6e2624cd5462b3c101f6402a3843c8d6e1aaef"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:ios-maintainability-audit",
@@ -17,10 +20,10 @@
   "scope": "十五個功能資料契約分檔、共用載入核心與按領域拆分的測試套件。",
   "severity": "med",
   "source": "iOS maintainability audit 2026-08-09",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ios-maintainability-audit",
-  "verified_evidence": "set -x; awk 'END { exit !(NR >= 2500) }' ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift; awk 'END { exit !(NR >= 3000) }' ios/BooksAndVocabTests/FixtureDatasetStoreTests.swift; rg -q '@Suite[(][.]serialized[)]' ios/BooksAndVocabTests/FixtureDatasetStoreTests.swift"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "delivery-coordinator:f742fb",
+  "verified_evidence": "Fresh Gate run 9a6e2624cd54-87087-72447299684916 bound integration HEAD 9a6e2624: ios-test-unit rc0, 2013 tests passed; focused split-aware UITestFixtureSeedIsolationTests 7/7 rc0; FixtureDatasetEnvironmentTests 7/7 rc0; RepoFixtureDatasetsContractTests 4/4 rc0; FixtureDatasetStoreTests 30/30 rc0; review_audit c8da7125..e121b5b7 2/2; source hand-back seal 5f8c8ac8."
 }
