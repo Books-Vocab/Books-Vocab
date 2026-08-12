@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -78,6 +80,8 @@ def test_receipt_is_asymmetric_and_ack_is_controller_only(tmp_path: Path):
     assert public_verifier.verify(receipt)["job_id"] == "job-1"
     with pytest.raises(ReceiptError, match="receipt-digest|signature"):
         signer.verify({**receipt, "returncode": 1})
+    with pytest.raises(ReceiptError, match="signature"):
+        signer.verify({**receipt, "signature": "not-base64!"})
     authority = OscarAckAuthority(tmp_path / "ack-ledger.json", key=b"k" * 32)
     ack = authority.issue("job-1", receipt["receipt_digest"])
     wrong_digest = dict(ack, receipt_digest="0" * 64)
@@ -98,16 +102,39 @@ def test_lifecycle_requires_order_and_reaps_only_terminal(tmp_path: Path):
     lifecycle.transition("job-1", "terminal")
     lifecycle.transition("job-1", "fetched")
     lifecycle.transition("job-1", "acked")
-    assert lifecycle.reap(now=10_000) == ["job-1"]
+    now = int(time.time()) + 10_000
+    assert lifecycle.reap(now=now) == ["job-1"]
     lifecycle.stage("job-active")
     lifecycle.transition("job-active", "running")
     lifecycle.stage("job-terminal")
     lifecycle.transition("job-terminal", "running")
     lifecycle.transition("job-terminal", "terminal")
-    assert lifecycle.reap(now=10_000) == ["job-terminal"]
+    assert lifecycle.reap(now=now) == ["job-terminal"]
     assert lifecycle.get("job-active")["state"] == "running"
     with pytest.raises(LifecycleError, match="unknown|order"):
         lifecycle.transition("job-2", "acked")
+
+
+def test_ack_concurrent_verify_consumes_once(tmp_path: Path):
+    ledger = tmp_path / "ack-ledger.json"
+    first = OscarAckAuthority(ledger, key=b"k" * 32)
+    ack = first.issue("job-concurrent", "a" * 64)
+    authorities = [OscarAckAuthority(ledger, key=b"k" * 32) for _ in range(2)]
+    results: list[str] = []
+
+    def verify(authority: OscarAckAuthority) -> None:
+        try:
+            authority.verify(ack)
+            results.append("ok")
+        except AckReplayError:
+            results.append("replay")
+
+    threads = [threading.Thread(target=verify, args=(authority,)) for authority in authorities]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(results) == ["ok", "replay"]
 
 
 def test_worker_refuses_caller_paths_and_admin_is_honest():
