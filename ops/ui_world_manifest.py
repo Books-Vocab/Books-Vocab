@@ -2090,7 +2090,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
             raise UIWorldManifestError(f"{label} assets.{bucket} 必須是 object: {path}")
         for asset_id, asset in sorted(entries.items()):
             asset_label = f"assets.{bucket}.{asset_id}"
-            if not isinstance(asset_id, str) or not asset_id:
+            if not isinstance(asset_id, str) or not asset_id.strip():
                 raise UIWorldManifestError(f"{label} {asset_label} key 必須是非空字串")
             if not isinstance(asset, dict):
                 raise UIWorldManifestError(f"{label} {asset_label} 必須是 object")
@@ -2218,10 +2218,13 @@ def _validate_asset_pair(
             f"{label} {field}.assetIDs references unknown assets: {unknown_assets}")
     asset_inodes = _validate_string_list(
         raw_asset_inodes, field=f"{field}.assetInodes", label=label)
-    invalid_inodes = [inode for inode in asset_inodes if not inode.startswith("inode:")]
+    invalid_inodes = [
+        inode for inode in asset_inodes
+        if not inode.startswith("inode:") or not inode.removeprefix("inode:").strip()
+    ]
     if invalid_inodes:
         raise UIWorldManifestError(
-            f"{label} {field}.assetInodes must use inode: tokens: {invalid_inodes}")
+            f"{label} {field}.assetInodes must use non-empty inode:<assetID> tokens: {invalid_inodes}")
     expected_inodes = {f"inode:{asset_id}" for asset_id in referenced_assets}
     if set(asset_inodes) != expected_inodes or len(asset_inodes) != len(referenced_assets):
         referenced_types = {asset_types[asset_id] for asset_id in referenced_assets}
