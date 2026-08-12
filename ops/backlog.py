@@ -808,8 +808,9 @@ def _check_groom(payload: dict) -> list[dict]:
         # is what lets a later reader judge how much the badge is worth.
         problems.append({"kind": "groom-claim-without-groomer"})
     if not _real_date(payload.get("groomed_at")):
-        # Without a date the badge cannot go stale, and a badge that never
-        # expires is a claim about code that has since moved.
+        # Without a date the explicit `list --ungroomed --groom-stale-days N`
+        # audit cannot classify the badge; ordinary `--ungroomed` remains a
+        # deliberate, non-expiring queue rather than silently changing policy.
         problems.append({"kind": "groom-claim-bad-date", "value": payload.get("groomed_at")})
 
     # Exactly one proof of acceptance — see ACCEPTANCE_PROOF.
@@ -1982,6 +1983,7 @@ def list_entries(
     category: str | None = None,
     groomed: bool = False,
     ungroomed: bool = False,
+    groom_stale_days: int | None = None,
     include_closed: bool = False,
     acceptance_manual: bool = False,
     acceptance_green_expected: bool = False,
@@ -1994,6 +1996,11 @@ def list_entries(
 ) -> list[dict]:
     if groomed and ungroomed:
         raise BacklogError("--groomed and --ungroomed are mutually exclusive")
+    if groom_stale_days is not None:
+        if not ungroomed:
+            raise BacklogError("--groom-stale-days only applies with --ungroomed")
+        if groom_stale_days < 0:
+            raise BacklogError("--groom-stale-days must be a non-negative integer")
     if dispatch:
         # Each of these intersects dispatch's own clauses to nothing, and an empty
         # dispatch queue is the worst false read this tool can produce: it says
@@ -2049,8 +2056,15 @@ def list_entries(
     if groomed:
         hits = [payload for payload in hits if payload.get("groomed_by")]
     if ungroomed:
+        groom_cutoff = (
+            _days_before(_today(), groom_stale_days)
+            if groom_stale_days is not None else None
+        )
         hits = [payload for payload in hits
-                if not payload.get("groomed_by")
+                if (not payload.get("groomed_by")
+                    or (groom_cutoff is not None
+                        and _DATE_RE.match(str(payload.get("groomed_at") or ""))
+                        and str(payload["groomed_at"]) < groom_cutoff))
                 and (include_closed
                      or payload.get("status") not in ("fixed", "wont-fix"))]
     if acceptance_manual:
@@ -2306,6 +2320,7 @@ def select_entries(
     *,
     unverified: bool = False,
     stale_days: int | None = None,
+    groom_stale_days: int | None = None,
     today: str | None = None,
     **filters,
 ) -> list[dict]:
@@ -2329,7 +2344,7 @@ def select_entries(
         # --groomed/--ungroomed pair already refuses its own contradiction; an
         # empty result here would read as "both queues are clear".
         raise BacklogError("--unverified and --stale are mutually exclusive")
-    hits = list_entries(store, **filters)
+    hits = list_entries(store, groom_stale_days=groom_stale_days, **filters)
     if unverified:
         # No ATTRIBUTABLE verification — missing date OR missing verifier. The
         # first cut tested only the date, which made the safety net it was
@@ -3124,6 +3139,12 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
         "--include-closed", dest="include_closed", action="store_true",
         help="with --ungroomed, include fixed and wont-fix entries too; by default "
              "closed entries are excluded because nobody will ever groom them",
+    )
+    parser.add_argument(
+        "--groom-stale-days", type=int, default=None, metavar="N",
+        help="with --ungroomed, also requeue groomed entries whose groomed_at is "
+             "older than N days; opt-in only (suggested audit window: 90 days; "
+             "default: disabled)",
     )
     parser.add_argument(
         "--groomed", action="store_true", help="only entries carrying a groom stamp"
@@ -5527,9 +5548,14 @@ def _cmd_list(args) -> int:
             "status", "stream", "severity", "category", "ungroomed",
             "include_closed", "groomed", "held", "dispatch", "acceptance_manual",
             "acceptance_green_expected", "fixed_elsewhere", "missing_brief",
-            "unverified", "stale", "grep",
+            "unverified", "stale", "groom_stale_days", "grep",
         )
-        if any(getattr(args, name, None) for name in filters):
+        if any(
+            (getattr(args, name, None) is not None
+             if name == "groom_stale_days"
+             else bool(getattr(args, name, None)))
+            for name in filters
+        ):
             raise BacklogError(
                 "--zombie-suspects is a standalone query; drop the other list "
                 "filters and keep only --store/--json/--zombie-search-depth"
@@ -5591,6 +5617,7 @@ def _cmd_list(args) -> int:
         "category": args.category,
         "groomed": args.groomed,
         "ungroomed": args.ungroomed,
+        "groom_stale_days": getattr(args, "groom_stale_days", None),
         "include_closed": getattr(args, "include_closed", False),
         "acceptance_manual": args.acceptance_manual,
         "acceptance_green_expected": getattr(args, "acceptance_green_expected", False),

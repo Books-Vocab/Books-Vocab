@@ -1108,6 +1108,15 @@ def test_ungroomed_groom_stale_days_requeues_old_groomed_entries(tmp_path, monke
     assert [row["id"] for row in payload["entries"]] == [old["id"]]
 
 
+def test_groom_stale_days_requires_ungroomed_and_nonnegative(tmp_path):
+    store = tmp_path / "backlog"
+    _add(store)
+    with pytest.raises(BACKLOG.BacklogError, match="only applies with --ungroomed"):
+        BACKLOG.list_entries(store, groom_stale_days=30)
+    with pytest.raises(BACKLOG.BacklogError, match="non-negative"):
+        BACKLOG.list_entries(store, ungroomed=True, groom_stale_days=-1)
+
+
 def test_include_closed_requires_ungroomed(tmp_path):
     with pytest.raises(BACKLOG.BacklogError, match="--ungroomed"):
         BACKLOG.list_entries(tmp_path / "backlog", include_closed=True)

@@ -367,6 +367,8 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 
 `backlog.py add` 可用完整 grooming/contract 旗標一次原子建立 `status=triaged`、可派工 entry；部分旗標會在寫入前拒絕，plain detail 則輸出不在 dispatch queue。完整 acceptance proof 契約仍以 `backlog.py update --help` 為準。
 
+`backlog.py list --ungroomed --groom-stale-days N` 是明示的重梳理查詢：除了未帶 groom badge 的票，也會列出 `groomed_at` 早於 N 日窗口的 badge；不帶旗標時既有 `--ungroomed` 語意不變。
+
 ## Backlog acceptance contract pointer
 
 `backlog.py` 的 acceptance proof 契約唯一入口是 `./ops/backlog.py update --help` 的 epilog；本索引只保留指標，不重複契約內容。
