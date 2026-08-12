@@ -959,6 +959,77 @@
       "debugLocalServerURL": null,
       "reviewSettings": null
     },
+    "sync_terminal_error_retry_success": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.pro",
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 2,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "Pro",
+        "badgeTone": "success",
+        "summary": "已解鎖全部功能。",
+        "detail": "同步生命週期測試使用固定 Pro 帳號。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 2 張",
+        "lastSyncedText": "上次同步 10 分鐘前",
+        "lifecycle": "terminalError",
+        "message": "同步失敗，部分資料已保留，可重試。",
+        "attempt": 1,
+        "dataOutcome": "partial"
+      },
+      "bookSync": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null,
+      "reviewSettings": null
+    },
     "debug_backend_local": {
       "authFixtureRef": "auth.settingsSignedIn",
       "entitlementsFixtureRef": null,
