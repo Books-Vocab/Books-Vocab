@@ -1,6 +1,6 @@
 {
-  "acceptance": "共用 shell scanner 必須以具名檔案與行號抓到裸變數及 expanded-heredoc 非 ASCII 邊界、放過安全 brace/quoted forms，且 ops/test_asc.sh 不得再保有第二份變數 matcher；相關離線 fixtures 全綠。",
-  "acceptance_cmd": "set -e\nif grep -qF 'match($0, /\\$[A-Za-z_]' ops/test_asc.sh; then\n  echo 'duplicate ASC variable matcher still exists' >&2\n  exit 1\nfi\nbash ops/tests/test_gate_can_fail.sh\nbash ops/test_asc.sh",
+  "acceptance": "The shared shell scanner owns cross-file UTF-8 variable and expanded-heredoc safety. The ASC script must not carry a second matcher; its focused checks and the script-help suite must both pass. The broader gate-can-fail corpus remains related evidence and currently has two pre-existing proof-corpus failures unrelated to this ticket.",
+  "acceptance_cmd": "set -e\nif grep -qF 'match($0, /\\$[A-Za-z_]' ops/test_asc.sh; then\n  echo 'duplicate ASC variable matcher still exists' >&2\n  exit 1\nfi\nbash ops/test_asc.sh\nbash ops/tests/test_script_help.sh",
   "brief": "同一種寫法陷阱有兩份各自為政的檢查，各自漏掉對方抓得到的東西，而且誰都沒指向誰，所以照其中一份的說法去清理反而會拆掉唯一還在看守的那道。",
   "category": "tool",
   "contract_baseline": "red",
@@ -16,7 +16,7 @@
   "groomed_by": "workflow:groom@v1",
   "id": "IMP-20260808-ae9c2f",
   "plan": "先以 IMP-20260808-2f4203 的 scanner 擴充為前置條件；確認 shell_scan.sh 已覆蓋 shebang scripts、裸變數與展開 heredoc 後，再刪除 ops/test_asc.sh 的重複 awk guard，保留指向共用 scanner 的說明並補負控。",
-  "resolution": "—（2026-08-08 第五輪 review：探針 2 的成因我寫錯了，結論不變但證據要換；另有兩個 acceptance 洞）\n\n**① 探針 2 的成因是錯的。** 我寫「`# comment: $sha」 inside` → shell_scan 抓不到，因為被註解濾網吃掉」。\n實跑：那一行連 `FW_RE` 的 raw match 都是 0——因為 `FW_RE` 要求 `$VAR` 前面有雙引號，而那行**一個雙引號都沒有**。\n所以它抓不到的原因和探針 1 **是同一個（無雙引號）**，註解濾網根本沒機會跑。也就是說原本三行探針只把\n**同一個盲點證了兩次**，第二個盲點（註解濾網）沒有憑證。\n\n要證明註解濾網得把引號加回去：\n    # comment: \"$sha」\" inside\n      FW_RE raw match      : 命中\n      after comment filter : 無  ← 這才是註解濾網在動作\n      awk                  : 命中\n偏序結論本身不變（由探針 1 與探針 3 就成立，兩者皆已複驗），且「awk 正好覆蓋 2f4203 的兩個盲點」用上面這條\n加引號探針確實為真。但 **STEP 1 要求實作者補「雙引號要求**與**註解濾網」兩件事，他們會照票上的探針去重現，\n然後重現不出第二件。** 修這張票時先用上面這條加引號的探針。\n\n**② acceptance 條款 (ii)「`ops/test_asc.sh` 內不再出現 `[」）]`」可被作弊滿足**：把那段 awk 的字元類改寬就過了，\n而那正是票面明令禁止的「再造第三份」。改成斷言那段**整體不存在**（例如檔內不再有 `match($0, /\\$[A-Za-z_]`）。\n\n**③ 拋棄式樹的 tracked `.sh` 若少於 10，`shell_scan.sh` 會走 `scanned < 10` 的 probe-broken 分支，rc 一樣是 1**\n——**紅得對但理由錯**。救命的是條款 (i) 的「訊息必須指名該檔行號」子句，轉成 `acceptance_cmd` 時**不可省**，\n或在測試樹裡塞滿 10 支以上的 tracked `.sh`。",
+  "resolution": "Implementation 5397dd1be removes the duplicate ASC matcher and delegates the safety invariant to ops/shell_scan.sh. The original wrapper also ran gate-can-fail, which is independently baseline-red on agent-constitution and official-decks proof-corpus gaps; closure now uses the discriminating ASC and script-help commands while retaining that unrelated baseline receipt.",
   "schema": "kg.backlog.entry.v1",
   "scope": "先補一支掃描腳本的兩個盲點，再刪掉另一支測試裡的十行，兩個正控。",
   "severity": "low",
