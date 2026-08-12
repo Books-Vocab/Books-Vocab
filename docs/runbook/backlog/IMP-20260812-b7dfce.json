@@ -1,0 +1,23 @@
+{
+  "acceptance": "RED 先證明 pause clock 缺少可替換 server seam；GREEN 後 applyServerPauseState、較新本機拒收與同機切帳號隔離測試通過。OK child-1",
+  "acceptance_cmd": "./ops/ios_ops.sh test --unit --file SettingsCoordinatorReviewClockTests",
+  "acceptance_expect_rc": 0,
+  "brief": "複習時鐘的伺服器更新沒有和本機時間做帳號隔離的合併。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-12",
+  "detail": "[IMP-0029 子項] child-1 pause clock：將 review clock 轉成以 server timestamp 做 LWW，移除 dead flag 並保留本機較新值的拒收測試。",
+  "fix_site": "ios/BooksAndVocab/Models/ReviewSettings.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift",
+  "groomed_against": "eff22fabe297c3562724e496b6f0c2ba33ffbc38",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:delivery-team-a-supervisor",
+  "id": "IMP-20260812-b7dfce",
+  "plan": "在 ReviewSettings 與 coordinator 建立 applyServerPauseState 的 server timestamp LWW；本機 timestamp 較新時拒收，刪除 serverReviewClockLwwEnabled dead flag，補 plain/cross-account regression。",
+  "resolution": "—",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 review clock model/coordinator seam 與一組回歸測試。",
+  "severity": "low",
+  "source": "IMP-0029/child-1",
+  "status": "triaged",
+  "stream": "IMP"
+}

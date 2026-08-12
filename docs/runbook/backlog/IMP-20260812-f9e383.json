@@ -1,0 +1,23 @@
+{
+  "acceptance": "RED 先證明四份文件仍宣稱 cold-start 或缺少 LWW verified_against；GREEN 後四份 SoT 文件與 registry lint 對齊已落地設定行為，且不改產品程式。OK child-5",
+  "acceptance_cmd": "./ops/docs_lint.sh --registry",
+  "acceptance_expect_rc": 0,
+  "brief": "四個同步設定的文件宣告沒有和實際 LWW 行為一致。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-12",
+  "detail": "[IMP-0029 子項] child-5 docs：同步 architecture、tech_index、product_surface、notebook boundary 四份文件，移除舊 cold-start 宣告並更新 verified_against。",
+  "fix_site": "docs/sop/architecture.md; docs/reference/tech_index.md; docs/reference/product_surface.md; docs/reference/feature_boundary/notebook.md",
+  "groomed_against": "eff22fabe297c3562724e496b6f0c2ba33ffbc38",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:delivery-team-a-supervisor",
+  "id": "IMP-20260812-f9e383",
+  "plan": "待 child-1 至 child-4 完成後同步 docs/sop/architecture.md、docs/reference/tech_index.md、docs/reference/product_surface.md、docs/reference/feature_boundary/notebook.md，移除 cold-start/feature-flagged-off 舊語句，更新 verified_against 至可達 main，並跑 docs impact/lint。",
+  "resolution": "—",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "四份 SoT 文件與 verified_against 收尾，不改產品程式。",
+  "severity": "low",
+  "source": "IMP-0029/child-5",
+  "status": "triaged",
+  "stream": "IMP"
+}

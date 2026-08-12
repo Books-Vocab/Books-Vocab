@@ -1,0 +1,23 @@
+{
+  "acceptance": "RED 先證明 active notebook 只有本機 cold-start 狀態；GREEN 後 syncActiveNotebookFromServer、帳號切換隔離、較新本機拒收與非 default notebook regression 通過。OK child-4",
+  "acceptance_cmd": "./ops/ios_ops.sh test --unit --file ActiveNotebookStoreTests",
+  "acceptance_expect_rc": 0,
+  "brief": "新字歸屬與 vocab UI 設定切換帳號時可能沿用舊的本機狀態。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-12",
+  "detail": "[IMP-0029 子項] child-4 vocab_ui：實作 syncActiveNotebookFromServer 的 server LWW，清理所有 cold-start 敘述與 dead flag，補 active notebook 拒收回歸。",
+  "fix_site": "ios/BooksAndVocab/Models/ActiveNotebookStore.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocabTests/ActiveNotebookStoreTests.swift",
+  "groomed_against": "eff22fabe297c3562724e496b6f0c2ba33ffbc38",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:delivery-team-a-supervisor",
+  "id": "IMP-20260812-8f46f2",
+  "plan": "在 ActiveNotebookStore 與 notebook coordinator 建立 syncActiveNotebookFromServer 的 server LWW，移除 serverVocabUiLwwEnabled 與所有 cold-start 敘述，接入 settings 呼叫點，補 active notebook、non-default 與較新本機拒收回歸。",
+  "resolution": "—",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 active notebook/vocab UI sync seam、設定呼叫點與回歸測試。",
+  "severity": "low",
+  "source": "IMP-0029/child-4",
+  "status": "triaged",
+  "stream": "IMP"
+}

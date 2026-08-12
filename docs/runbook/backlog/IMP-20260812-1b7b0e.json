@@ -1,0 +1,22 @@
+{
+  "acceptance": "RED 先以 contract matrix 找出各入口對 pass、tool error、block、warn、usage 的漂移；GREEN 後所有列出的 entrypoints 與 wrapper 使用同一矩陣，contract suite、branch/review audit 與 coverage registration 全綠。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_exit_code_contract.py -k exit_code_surface",
+  "acceptance_expect_rc": 0,
+  "brief": "不同工具對同一類成功、警告、阻擋與用法錯誤使用不同編號，自動流程無法可靠分流。",
+  "category": "arch",
+  "date": "2026-08-12",
+  "detail": "[IMP-0042/A2] 將 repo 內既有 exit-code 對外契約統一到 pass、tool error、block、warn、usage，並同步 wrapper 與測試註冊。",
+  "fix_site": "ops/lib/exit_codes.py; ops/docs_lint.sh; ops/branch_audit.sh; ops/review_audit.sh; ops/lib/ios_ops_release.sh; ops/app_review_gate.py; ops/app_review_evidence.py; ops/tests/test_exit_code_contract.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+  "groomed_against": "eff22fabe297c3562724e496b6f0c2ba33ffbc38",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:delivery-team-a-supervisor",
+  "id": "IMP-20260812-1b7b0e",
+  "plan": "建立統一 exit-code contract matrix，依序更新 docs_lint.sh、branch_audit.sh、review_audit.sh、ios release helpers、app review evidence/gate 與其 shell/python tests；把新增 exit_code contract suite 註冊進 ops/test_ops.sh 與 ops/tests/test_ops_ci_coverage.sh；保留 75 為 claimed 的非密集碼。",
+  "resolution": "—",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "多個 ops shell/python entrypoints 與既有測試的 exit-code 契約統一。",
+  "severity": "med",
+  "source": "IMP-0042/A2",
+  "status": "triaged",
+  "stream": "IMP"
+}
