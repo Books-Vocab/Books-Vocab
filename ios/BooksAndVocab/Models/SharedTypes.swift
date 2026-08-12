@@ -767,7 +767,7 @@ struct SharedDeckSummary: Codable, Identifiable {
 }
 
 /// 牌組卡片內容平面（backend `DeckCard`）。**零 SRS 欄位** —— 洩漏結構性不可能。
-struct SharedDeckCard: Codable, Identifiable {
+struct SharedDeckCard: Codable, Identifiable, Equatable {
     let id: String
     let content: String
     let pos: String?
