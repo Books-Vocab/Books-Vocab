@@ -11,6 +11,7 @@
 //      ./ops/ios_test.sh --ui --dataset marketing_demo -g FixtureDatasetUITests
 //
 
+import CryptoKit
 import XCTest
 
 final class FixtureDatasetUITests: UITestCase {
@@ -20,6 +21,8 @@ final class FixtureDatasetUITests: UITestCase {
     }
 
     private enum ReviewCalendarEvidence {
+        static let selector = "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors"
+        static let source = "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift"
         static let requiredLabels = [
             "calendar",
             "empty-day",
@@ -57,16 +60,22 @@ final class FixtureDatasetUITests: UITestCase {
             let required: [EvidenceAsset]
             let counterexamples: [EvidenceAsset]
         }
-        struct GeneratedEvidence: Encodable {
+        struct GeneratedEvidence: Codable {
             let fixtureID: String
             let stepLabel: String
             let manifestAssetID: String
+            let manifestPath: String
             let assetID: String
             let artifactPath: String
             let inode: UInt64
+            let sha256: String
+            let selector: String
+            let source: String
+            let datasetID: String
+            let device: String
             let group: String
         }
-        struct GeneratedEvidenceFile: Encodable {
+        struct GeneratedEvidenceFile: Codable {
             let schema: String
             let records: [GeneratedEvidence]
         }
@@ -161,6 +170,8 @@ final class FixtureDatasetUITests: UITestCase {
             XCTFail("scenarioContext.reviewClock must be explicit; null/fallback clock is not valid evidence")
             return
         }
+        XCTAssertFalse(document.datasetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        let device = try evidenceDevice()
         let history = try XCTUnwrap(document.vocabulary["reviewCalendarDense"]?.reviewHistory)
         XCTAssertFalse(history.isEmpty, "reviewCalendarDense must provide populated-day evidence")
         let evidence = try XCTUnwrap(document.scenarioContext?.surfaceContracts?.reviewCalendar)
@@ -216,7 +227,8 @@ final class FixtureDatasetUITests: UITestCase {
         }
         assertClockProvenance(in: app)
         generatedEvidence.append(try captureEvidence(
-            evidence.required[0], group: "required", app: app
+            evidence.required[0], group: "required", app: app,
+            datasetID: document.datasetID, device: device
         ))
 
         // All navigation and day keys are derived from the injected anchor and
@@ -234,7 +246,8 @@ final class FixtureDatasetUITests: UITestCase {
             return
         }
         generatedEvidence.append(try captureEvidence(
-            evidence.required[1], group: "required", app: app
+            evidence.required[1], group: "required", app: app,
+            datasetID: document.datasetID, device: device
         ))
 
         moveCalendar(calendar, from: previousMonth, to: populatedMonth)
@@ -249,7 +262,8 @@ final class FixtureDatasetUITests: UITestCase {
             label: "populated-day"
         )
         generatedEvidence.append(try captureEvidence(
-            evidence.required[2], group: "required", app: app
+            evidence.required[2], group: "required", app: app,
+            datasetID: document.datasetID, device: device
         ))
         let requiredBoundaryMonth = monthKey(for: boundaryDays.local)
         moveCalendar(calendar, from: populatedMonth, to: requiredBoundaryMonth)
@@ -261,7 +275,8 @@ final class FixtureDatasetUITests: UITestCase {
         )
         XCTAssertEqual(requiredBoundaryCount, boundaryDays.localCount)
         generatedEvidence.append(try captureEvidence(
-            evidence.required[3], group: "required", app: app
+            evidence.required[3], group: "required", app: app,
+            datasetID: document.datasetID, device: device
         ))
 
         // Counterexamples are captured from a separate app launch so their
@@ -279,7 +294,8 @@ final class FixtureDatasetUITests: UITestCase {
         counterexampleCalendar.day(emptyCounterexampleDay).tapWhenReady()
         counterexampleCalendar.emptyDayDetail.assertExists(timeout: 5)
         generatedEvidence.append(try captureEvidence(
-            evidence.counterexamples[0], group: "counterexamples", app: counterexampleApp
+            evidence.counterexamples[0], group: "counterexamples", app: counterexampleApp,
+            datasetID: document.datasetID, device: device
         ))
         let counterexampleBoundaryMonth = monthKey(for: boundaryDays.utc)
         moveCalendar(counterexampleCalendar, from: previousMonth, to: counterexampleBoundaryMonth)
@@ -295,10 +311,16 @@ final class FixtureDatasetUITests: UITestCase {
             "UTC/local selected day states must differ, not merely be non-empty"
         )
         generatedEvidence.append(try captureEvidence(
-            evidence.counterexamples[1], group: "counterexamples", app: counterexampleApp
+            evidence.counterexamples[1], group: "counterexamples", app: counterexampleApp,
+            datasetID: document.datasetID, device: device
         ))
 
-        assertGeneratedEvidence(evidence, records: generatedEvidence)
+        assertGeneratedEvidence(
+            evidence,
+            records: generatedEvidence,
+            datasetID: document.datasetID,
+            device: device
+        )
     }
 
     private struct DayBucket {
@@ -481,7 +503,9 @@ final class FixtureDatasetUITests: UITestCase {
     private func captureEvidence(
         _ row: DatasetDocument.EvidenceAsset,
         group: String,
-        app: XCUIApplication
+        app: XCUIApplication,
+        datasetID: String,
+        device: String
     ) throws -> DatasetDocument.GeneratedEvidence {
         XCTAssertEqual(row.assetIDs.count, 1, "evidence row must declare one logical asset ID")
         captureStep(row.stepLabel, app: app)
@@ -510,20 +534,29 @@ final class FixtureDatasetUITests: UITestCase {
         )
         XCTAssertEqual(artifacts.count, 1, "duplicate generated screenshot artifacts must fail")
         let inode = try XCTUnwrap(fileNumber(artifact), "generated screenshot must expose its actual inode")
+        let sha256 = try XCTUnwrap(fileSHA256(artifact), "generated screenshot must expose its SHA-256")
         return DatasetDocument.GeneratedEvidence(
             fixtureID: row.fixtureID,
             stepLabel: row.stepLabel,
             manifestAssetID: row.assetIDs[0],
+            manifestPath: artifact.lastPathComponent,
             assetID: artifact.deletingPathExtension().lastPathComponent,
             artifactPath: artifact.path,
             inode: inode,
+            sha256: sha256,
+            selector: ReviewCalendarEvidence.selector,
+            source: ReviewCalendarEvidence.source,
+            datasetID: datasetID,
+            device: device,
             group: group
         )
     }
 
     private func assertGeneratedEvidence(
         _ evidence: DatasetDocument.EvidenceGroups,
-        records: [DatasetDocument.GeneratedEvidence]
+        records: [DatasetDocument.GeneratedEvidence],
+        datasetID: String,
+        device: String
     ) {
         let allRows = evidence.required + evidence.counterexamples
         XCTAssertEqual(records.count, allRows.count, "all manifest evidence rows must bind generated artifacts")
@@ -532,6 +565,27 @@ final class FixtureDatasetUITests: UITestCase {
         let required = Set(records.filter { $0.group == "required" }.map(\.assetID))
         let counterexamples = Set(records.filter { $0.group == "counterexamples" }.map(\.assetID))
         XCTAssertTrue(required.isDisjoint(with: counterexamples), "required/counterexample artifacts must be disjoint")
+
+        let rowsByAssetID = Dictionary(uniqueKeysWithValues: (evidence.required + evidence.counterexamples).map {
+            ($0.assetIDs[0], $0)
+        })
+        for record in records {
+            guard let row = rowsByAssetID[record.manifestAssetID] else {
+                XCTFail("generated evidence must reference a declared review manifest asset ID: \(record.manifestAssetID)")
+                continue
+            }
+            XCTAssertEqual(record.fixtureID, row.fixtureID)
+            XCTAssertEqual(record.stepLabel, row.stepLabel)
+            XCTAssertEqual(record.datasetID, datasetID)
+            XCTAssertEqual(record.device, device)
+            XCTAssertEqual(record.selector, ReviewCalendarEvidence.selector)
+            XCTAssertEqual(record.source, ReviewCalendarEvidence.source)
+            XCTAssertFalse(record.manifestPath.isEmpty)
+            XCTAssertEqual(record.manifestPath, URL(fileURLWithPath: record.artifactPath).lastPathComponent)
+            XCTAssertTrue(record.artifactPath.hasSuffix("/\(record.manifestPath)"))
+            XCTAssertEqual(fileNumber(URL(fileURLWithPath: record.artifactPath)), record.inode)
+            XCTAssertEqual(fileSHA256(URL(fileURLWithPath: record.artifactPath)), record.sha256)
+        }
 
         let requiredLabelSet = Set(ReviewCalendarEvidence.requiredLabels)
         let counterexampleLabelSet = Set(ReviewCalendarEvidence.counterexampleLabels)
@@ -559,19 +613,40 @@ final class FixtureDatasetUITests: UITestCase {
         }
 
         let directory = URL(fileURLWithPath: rawDirectory)
-        let manifestURL = directory.appendingPathComponent("p9_review_calendar_evidence.json")
+        let manifestURL = directory.appendingPathComponent("p9_review_calendar_review_manifest.json")
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(DatasetDocument.GeneratedEvidenceFile(
-                schema: "kg.p9.review_calendar.evidence.v1",
+                schema: "kg.p9.review_calendar.review_manifest.v2",
                 records: records
             ))
                 .write(to: manifestURL)
+            let consumer = try JSONDecoder().decode(
+                DatasetDocument.GeneratedEvidenceFile.self,
+                from: Data(contentsOf: manifestURL)
+            )
+            XCTAssertEqual(consumer.schema, "kg.p9.review_calendar.review_manifest.v2")
+            XCTAssertEqual(consumer.records.count, records.count)
+            XCTAssertEqual(consumer.records.map(\.sha256), records.map(\.sha256))
+            XCTAssertEqual(consumer.records.map(\.inode), records.map(\.inode))
         } catch {
             XCTFail("failed to write actual generated evidence metadata: \(error)")
         }
 
+    }
+
+    private func evidenceDevice() throws -> String {
+        let environment = ProcessInfo.processInfo.environment
+        let keys = ["SIMULATOR_UDID", "DEVICE_UDID", "KG_UI_TEST_DEVICE_UDID"]
+        guard let device = keys.lazy
+            .compactMap({ environment[$0]?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty })
+        else {
+            XCTFail("UI evidence requires a concrete device identifier; run with --lease or --device")
+            throw NSError(domain: "P9Evidence", code: 2)
+        }
+        return device
     }
 
     private func fileNumber(_ url: URL) -> UInt64? {
@@ -579,5 +654,12 @@ final class FixtureDatasetUITests: UITestCase {
               let number = attributes[.systemFileNumber] as? NSNumber
         else { return nil }
         return number.uint64Value
+    }
+
+    private func fileSHA256(_ url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 }

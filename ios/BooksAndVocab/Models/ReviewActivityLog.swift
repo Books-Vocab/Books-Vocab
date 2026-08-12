@@ -46,29 +46,6 @@ enum ReviewActivityLog {
         return result
     }
 
-    /// Compatibility seam for non-production callers that already provide a
-    /// concrete reference date. Production projections use the clock overload.
-    static func activity(
-        for days: Int = 180,
-        records: [ReviewRecord],
-        now: Date
-    ) -> [String: Int] {
-        activity(
-            for: days,
-            records: records,
-            clock: ReviewCalendarClock(now: now, timeZone: .current)
-        )
-    }
-
-    /// Legacy convenience for tests/old call sites. The actual projection
-    /// still runs through the same explicit clock contract.
-    static func activity(
-        for days: Int = 180,
-        records: [ReviewRecord]
-    ) -> [String: Int] {
-        activity(for: days, records: records, clock: .live())
-    }
-
     /// Compute both streaks in a single pass over the records (one `groupByDay`).
     static func streaks(
         records: [ReviewRecord],
@@ -79,22 +56,6 @@ enum ReviewActivityLog {
             current: computeCurrentStreak(grouped: grouped, clock: clock),
             longest: computeLongestStreak(grouped: grouped, clock: clock)
         )
-    }
-
-    static func streaks(
-        records: [ReviewRecord],
-        now: Date
-    ) -> (current: Int, longest: Int) {
-        streaks(
-            records: records,
-            clock: ReviewCalendarClock(now: now, timeZone: .current)
-        )
-    }
-
-    static func streaks(
-        records: [ReviewRecord]
-    ) -> (current: Int, longest: Int) {
-        streaks(records: records, clock: .live())
     }
 
     // MARK: - Streak internals
@@ -179,22 +140,6 @@ enum ReviewActivityLog {
         return records.filter { clock.dayKey(for: $0.reviewedAt) == todayKey }.count
     }
 
-    static func reviewedToday(
-        records: [ReviewRecord],
-        now: Date
-    ) -> Int {
-        reviewedToday(
-            records: records,
-            clock: ReviewCalendarClock(now: now, timeZone: .current)
-        )
-    }
-
-    static func reviewedToday(
-        records: [ReviewRecord]
-    ) -> Int {
-        reviewedToday(records: records, clock: .live())
-    }
-
     static func recordsForDay(
         _ dayKey: String,
         from records: [ReviewRecord],
@@ -203,13 +148,6 @@ enum ReviewActivityLog {
         records
             .filter { clock.dayKey(for: $0.reviewedAt) == dayKey }
             .sorted { $0.reviewedAt > $1.reviewedAt }
-    }
-
-    static func recordsForDay(
-        _ dayKey: String,
-        from records: [ReviewRecord]
-    ) -> [ReviewRecord] {
-        recordsForDay(dayKey, from: records, clock: .live())
     }
 
     // MARK: - Helpers
