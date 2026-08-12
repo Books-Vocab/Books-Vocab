@@ -100,6 +100,21 @@ def test_the_commit_state_stub_matches_the_real_signature():
         assert stub.parameters[name].default == param.default, name
 
 
+def test_validate_store_threads_explicit_repo_to_commit_state(tmp_path, monkeypatch):
+    """Validation of another checkout must resolve fixed shas in that repo."""
+    store = tmp_path / "store"
+    store.mkdir()
+    seen = []
+
+    def fake_make_commit_state(repo=None):
+        seen.append(repo)
+        return lambda _sha: "ok"
+
+    monkeypatch.setattr(BACKLOG, "make_commit_state", fake_make_commit_state)
+    BACKLOG.validate_store(store, repo=tmp_path / "other-repo")
+    assert seen == [tmp_path / "other-repo"]
+
+
 def _entry_kwargs(**overrides):
     stream = overrides.get("stream", "IMP")
     base = dict(
