@@ -13,13 +13,16 @@ enum ReadiumNavigatorJS {
         underlineOpacity: Double,
         isDebugMode: String
     ) -> String {
-        [
+        var scripts = [
             buildBaseStyleScript(fontFaceCSS: fontFaceCSS, underlineOpacity: underlineOpacity),
             buildContentStyleScript(contentStyleCSS: contentStyleCSS),
-            buildHighlightScript(),
-            buildDebugScript(isDebugMode: isDebugMode),
-            buildSelectionScript(isDebugMode: isDebugMode)
-        ].joined(separator: "\n\n")
+            buildHighlightScript()
+        ]
+#if DEBUG
+        scripts.append(buildDebugScript(isDebugMode: isDebugMode))
+#endif
+        scripts.append(buildSelectionScript(isDebugMode: isDebugMode))
+        return scripts.joined(separator: "\n\n")
     }
 }
 #endif

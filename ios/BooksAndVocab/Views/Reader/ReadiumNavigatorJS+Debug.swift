@@ -1,4 +1,4 @@
-#if os(iOS)
+#if os(iOS) && DEBUG
 //
 //  ReadiumNavigatorJS+Debug.swift
 //  Books & Vocab
