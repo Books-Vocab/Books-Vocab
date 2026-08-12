@@ -8193,6 +8193,54 @@ def test_noop_recovery_preserves_true_anchor_exact_identity_refusal(tmp_path):
     assert "exact commit" in refused["error"]
 
 
+def test_noop_recovery_rejects_foreign_source_renamed_into_backlog(tmp_path):
+    """A foreign source path cannot enter the allowlist via a rename."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    ticket_id = "IMP-20260813-noop-recovery"
+    foreign = repo / "frozen" / "foreign.json"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text('{"status":"foreign"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base foreign source"],
+                   cwd=repo, check=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    target = repo / "docs" / "runbook" / "backlog" / f"{ticket_id}.json"
+    target.parent.mkdir(parents=True)
+    subprocess.run(["git", "mv", str(foreign), str(target)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "rename foreign source"],
+                   cwd=repo, check=True)
+    current_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    marker = {
+        "anchor_noop": True,
+        "anchor_committed": False,
+        "expected_ticket_ids": [ticket_id],
+        "phases": {"anchor": {
+            "status": "completed",
+            "applied_ticket_ids": [],
+            "queue_state": "consumed",
+            "acceptance_receipt": {
+                "schema": "kg.backlog.anchor.v1",
+                "applied": [],
+                "problems": [],
+            },
+        }},
+    }
+    assert not MODULE._delivery_anchor_noop_recovery_is_safe(
+        repo, marker, stored_base=base_sha, current_head=current_head,
+    )
+
+
 def _git_repo_with_anchor_ticket(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
