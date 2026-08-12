@@ -114,6 +114,7 @@ struct StatsPresenter: View {
                         .padding(.bottom, appSkin.metrics.pageBottomInset)
                     }
                     .vocabCanvasBackground()
+                    .accessibilityElement(children: .contain)
                     // UI-test hook: only reachable in the `.content` phase
                     // (VocabSceneShell renders this closure for `.content` only),
                     // so its existence proves the stats dashboard truly rendered
