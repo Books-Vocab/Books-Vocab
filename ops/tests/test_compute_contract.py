@@ -73,6 +73,7 @@ def test_profile_resolves_literal_argv_and_stable_digest() -> None:
         ({"test_path": "backend/tests/`id`.py"}, "shell-token"),
         ({"test_path": "backend/tests/$(id).py"}, "shell-token"),
         ({"test_path": "backend/tests/測試.py"}, "non-ascii"),
+        ({"test_path": "backend/tests/teсt.py"}, "non-ascii"),
         ({"test_path": "backend/tests/" + "x" * 300 + ".py"}, "too-long"),
     ],
 )
@@ -95,20 +96,53 @@ def test_unknown_and_extra_parameters_are_named() -> None:
 def test_raw_top_level_execution_controls_are_rejected(field: str) -> None:
     registry = load_profile_registry(REGISTRY)
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
-    profile[field] = [] if field == "argv" else False
+    profile[field] = False
     with pytest.raises(ContractError, match="forbidden-field"):
         validate_profile(profile, name="backend.targeted-pytest")
 
 
 @pytest.mark.parametrize(
     ("field", "value", "code"),
-    [("argv", ["sh", "-c", "id"], "parameter-contract"), ("shell", True, "shell-disabled")],
+    [("argv", ["sh", "-c", "id"], "shell-disabled"), ("shell", True, "shell-disabled")],
 )
 def test_nested_command_controls_are_rejected(field: str, value: object, code: str) -> None:
     registry = load_profile_registry(REGISTRY)
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["command"][field] = value
     with pytest.raises(ContractError, match=code):
+        validate_profile(profile, name="backend.targeted-pytest")
+
+
+def test_shell_interpreter_chain_cannot_consume_typed_placeholder() -> None:
+    registry = load_profile_registry(REGISTRY)
+    profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
+    profile["command"]["argv"] = ["sh", "-c", "{test_path}"]
+    with pytest.raises(ContractError, match="shell-disabled"):
+        validate_profile(profile, name="backend.targeted-pytest")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["/bin/sh", "{test_path}"],
+        ["env", "/bin/sh", "{test_path}"],
+        ["env", "sh", "{test_path}"],
+    ],
+)
+def test_shell_interpreter_wrappers_cannot_consume_typed_placeholder(argv: list[str]) -> None:
+    registry = load_profile_registry(REGISTRY)
+    profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
+    profile["command"]["argv"] = argv
+    with pytest.raises(ContractError, match="shell-disabled"):
+        validate_profile(profile, name="backend.targeted-pytest")
+
+
+@pytest.mark.parametrize("prefix", ["/", "../", "~/repo/"])
+def test_relative_path_prefix_cannot_be_absolute_or_escaping(prefix: str) -> None:
+    registry = load_profile_registry(REGISTRY)
+    profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
+    profile["parameters"]["test_path"]["prefix"] = prefix
+    with pytest.raises(ContractError, match="parameter-schema"):
         validate_profile(profile, name="backend.targeted-pytest")
 
 
@@ -178,5 +212,5 @@ def test_canonical_spec_is_json_not_shell() -> None:
     spec = {"argv": ["pytest", "a b;$(id)"], "shell": False, "source": "clean"}
     encoded = canonical_spec(spec)
     assert json.loads(encoded) == spec
-    assert "\\u0027" not in encoded
-    assert "\\u003b" not in encoded
+    assert '"a b;$(id)"' in encoded
+    assert '"shell":false' in encoded

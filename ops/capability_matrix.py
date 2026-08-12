@@ -5,6 +5,10 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.compute_contract import load_profile_registry
 
 
 SCHEMA = "kg.capability_matrix.v1"
@@ -72,7 +76,26 @@ SURFACES = [
     Surface("devops.safe.run-exception", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh run \"<cmd>\"", "production-capable", "prod-escape-hatch", "production", "exception path for raw remote commands"),
     Surface("devops.safe.container-run-exception", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh container-run \"<cmd>\"", "production-capable", "prod-escape-hatch", "production", "exception path for raw container commands"),
     Surface("ios.ops.archive-upload", "./ops/ios_ops.sh", "./ops/ios_ops.sh archive --upload --json", "production-capable", "external-upload local-build", "external", "archive/export/upload build artifact"),
+    Surface("compute.profile.backend-targeted-pytest", "ops/compute_profiles.yml", "profile:backend.targeted-pytest", "operator", "local-test", "local", "controlled backend targeted pytest plan; no raw shell or remote host"),
+    Surface("compute.profile.docs-lint-registry", "ops/compute_profiles.yml", "profile:ops.docs-lint-registry", "observer", "repo-read", "repo", "controlled docs registry lint plan"),
 ]
+
+
+def _compute_profiles() -> list[dict[str, object]]:
+    registry = load_profile_registry(Path(__file__).resolve().with_name("compute_profiles.yml"))
+    return [
+        {
+            "name": name,
+            "version": registry["version"],
+            "resourceClass": profile["resource_class"],
+            "minimumTier": profile["minimum_tier"],
+            "remoteEligible": profile["remote_eligible"],
+            "networkPolicy": profile["network_policy"],
+            "sandboxPolicy": profile["sandbox_policy"],
+            "runnerImageDigest": profile["runner_image_digest"],
+        }
+        for name, profile in sorted(registry["profiles"].items())
+    ]
 
 
 def build_payload(tier_filter: str | None) -> dict:
@@ -88,6 +111,7 @@ def build_payload(tier_filter: str | None) -> dict:
             "productionWriteSurfaces": sum("prod-write" in s["sideEffect"] for s in surfaces),
             "readOnlySurfaces": sum(s["sideEffect"] in {"repo-read", "prod-read", "local-read"} for s in surfaces),
         },
+        "computeProfiles": _compute_profiles(),
         "surfaces": surfaces,
     }
 

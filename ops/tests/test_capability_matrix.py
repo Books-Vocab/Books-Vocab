@@ -76,6 +76,11 @@ def test_json_schema_exposes_tiers_and_surfaces(capsys):
     }
     exposed = {surface["key"] for surface in payload["surfaces"]}
     assert required_router_surfaces <= exposed
+    profiles = {profile["name"]: profile for profile in payload["computeProfiles"]}
+    assert profiles["backend.targeted-pytest"]["remoteEligible"] is False
+    assert profiles["backend.targeted-pytest"]["networkPolicy"] == "none"
+    assert profiles["ops.docs-lint-registry"]["minimumTier"] == "observer"
+    assert all(profile["runnerImageDigest"].startswith("sha256:") for profile in profiles.values())
 
 
 def test_tier_filter_only_returns_requested_tier(capsys):
