@@ -21,6 +21,10 @@ import ReadiumShared
 @MainActor
 struct ReaderProgressSaverTests {
 
+    @Test func defaultProgressSaverCanBeConstructedFromMainActor() {
+        _ = ReaderProgressSaver()
+    }
+
     /// Consecutive page-turns inside the debounce window collapse to a single
     /// save — no per-page synchronous I/O.
     @Test func consecutivePageTurnsCoalesceToSingleSave() {
