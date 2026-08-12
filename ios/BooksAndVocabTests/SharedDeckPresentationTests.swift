@@ -40,6 +40,7 @@ struct SharedDeckPresentationTests {
         #expect(preview.retryPhase == .loaded)
     }
 
+#if DEBUG && targetEnvironment(simulator)
     @Test func exploreCatalogFixtureIDs_keepRequiredAndCounterexampleLabelsSeparate() {
         #expect(ExploreCatalogFixtureID.requiredStepLabels == [
             "explore-loading",
@@ -51,13 +52,15 @@ struct SharedDeckPresentationTests {
             "explore-empty-counterexample",
             "explore-retry-counterexample",
         ])
-        #expect(Set(ExploreCatalogFixtureID.requiredStepLabels).isDisjoint(
-            Set(ExploreCatalogFixtureID.counterexampleLabels)
-        ))
-        #expect(Set(SharedDeckCatalogFixtures.populated.map(\.remoteId)).isDisjoint(
-            Set(SharedDeckCatalogFixtures.counterexample.map(\.remoteId))
-        ))
+        let requiredLabels: Set<String> = Set(ExploreCatalogFixtureID.requiredStepLabels)
+        let counterexampleLabels: Set<String> = Set(ExploreCatalogFixtureID.counterexampleLabels)
+        #expect(requiredLabels.isDisjoint(with: counterexampleLabels))
+
+        let requiredFixtureIDs: Set<String> = Set(UIWorldExploreFixtureID.required.map(\.rawValue))
+        let counterexampleFixtureIDs: Set<String> = Set(UIWorldExploreFixtureID.counterexamples.map(\.rawValue))
+        #expect(requiredFixtureIDs.isDisjoint(with: counterexampleFixtureIDs))
     }
+#endif
 
     @Test func explorePhase_keepsCachedDecksVisibleAsPartialWhenSyncFails() {
         #expect(

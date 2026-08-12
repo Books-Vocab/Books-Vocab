@@ -36,6 +36,9 @@ struct FixtureDatasetDocument: Decodable {
     let vocabulary: [String: UIWorldVocabularySeed]
     let reviewDeck: [String: UIWorldReviewDeckSeed]
     let syncPresenter: [String: UIWorldSyncPresenterSeed]
+    /// Explore catalog fixtures. This optional domain is backward-compatible
+    /// with existing worlds; Explore UI-test/preview paths require it.
+    let sharedDecks: UIWorldSharedDeckCatalogSeed?
     /// Optional cross-domain state for scenarios that need one coherent clock
     /// or content projection. Ordinary UI Worlds may omit it entirely.
     let scenarioContext: UIWorldScenarioContextSeed?
@@ -57,6 +60,7 @@ struct FixtureDatasetDocument: Decodable {
         case vocabulary
         case reviewDeck
         case syncPresenter
+        case sharedDecks
         case scenarioContext
     }
 
@@ -101,6 +105,7 @@ struct FixtureDatasetDocument: Decodable {
         vocabulary: [String: UIWorldVocabularySeed] = [:],
         reviewDeck: [String: UIWorldReviewDeckSeed] = [:],
         syncPresenter: [String: UIWorldSyncPresenterSeed] = [:],
+        sharedDecks: UIWorldSharedDeckCatalogSeed? = nil,
         scenarioContext: UIWorldScenarioContextSeed? = nil
     ) {
         self.schema = schema
@@ -119,6 +124,7 @@ struct FixtureDatasetDocument: Decodable {
         self.vocabulary = vocabulary
         self.reviewDeck = reviewDeck
         self.syncPresenter = syncPresenter
+        self.sharedDecks = sharedDecks
         self.scenarioContext = scenarioContext
     }
 
@@ -177,6 +183,9 @@ struct FixtureDatasetDocument: Decodable {
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
         // Legacy clock shapes remain readable, but passage/wordDetail content
         // stays fail-closed; canonical context is validated as one contract.
+        sharedDecks = try container.decodeIfPresent(UIWorldSharedDeckCatalogSeed.self, forKey: .sharedDecks)
+        // Optional domain: absent (older QA worlds) or present-but-null-clock
+        // (checked-in baseline / generated demo) both decode fine.
         scenarioContext = try container.decodeIfPresent(UIWorldScenarioContextSeed.self, forKey: .scenarioContext)
 
         try validateKnownFixtureIDs(codingPath: container.codingPath)
@@ -196,6 +205,7 @@ struct FixtureDatasetDocument: Decodable {
         if let scenarioContext {
             try scenarioContext.validate(assets: assets, vocabulary: vocabulary, decoder: decoder)
         }
+        try sharedDecks?.validateAssets(assets)
     }
 
     private func validateKnownFixtureIDs(codingPath: [CodingKey]) throws {

@@ -485,6 +485,18 @@ enum FixtureDatasetStore {
         return document
     }
 
+    static func sharedDeckCatalogSeed() -> UIWorldSharedDeckCatalogSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.sharedDecks
+    }
+
+    static func requireSharedDeckCatalogSeed() -> UIWorldSharedDeckCatalogSeed {
+        guard let seed = sharedDeckCatalogSeed() else {
+            preconditionFailure(seedResolutionFailureDescription(resolving: "sharedDecks"))
+        }
+        return seed
+    }
+
     /// Safe (non-`require`) accessor for optional scenario context. Returns
     /// nil when the UI World is absent/invalid or omits `scenarioContext`, so
     /// independent scenarios can fall back gracefully without a

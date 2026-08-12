@@ -47,6 +47,9 @@ final class ExploreNavigationUITests: UITestCase {
         let loaded = AppPage(app: loadedApp).goToExplore()
         XCTAssertTrue(loaded.exploreLoadedState.waitUntilExists(timeout: 5))
         XCTAssertTrue(loaded.exploreDeck(id: "deck_official_gre_high_freq").waitUntilExists(timeout: 5))
+        XCTAssertTrue(
+            loaded.exploreAsset(assetID: "images.explore_required").waitUntilExists(timeout: 5)
+        )
         captureStep("explore-loaded", app: loadedApp)
 
         let emptyApp = launchIsolatedApp(fixtures: [.explore("empty")], perfLog: "explore-empty")
@@ -60,6 +63,9 @@ final class ExploreNavigationUITests: UITestCase {
         XCTAssertTrue(retry.exploreRetryButton.waitUntilExists(timeout: 5))
         retry.exploreRetryButton.tapWhenReady()
         XCTAssertTrue(retry.exploreLoadedState.waitUntilExists(timeout: 5))
+        XCTAssertTrue(
+            retry.exploreAsset(assetID: "images.explore_required").waitUntilExists(timeout: 5)
+        )
         captureStep("explore-retry", app: retryApp)
     }
 
@@ -71,6 +77,9 @@ final class ExploreNavigationUITests: UITestCase {
         )
         let empty = AppPage(app: emptyApp).goToExplore()
         XCTAssertTrue(empty.exploreEmptyState.waitUntilExists(timeout: 5))
+        XCTAssertTrue(
+            empty.exploreAsset(assetID: "images.explore_counterexample_empty").waitUntilExists(timeout: 5)
+        )
         captureStep("explore-empty-counterexample", app: emptyApp)
 
         let retryApp = launchIsolatedApp(
@@ -79,6 +88,14 @@ final class ExploreNavigationUITests: UITestCase {
         )
         let retry = AppPage(app: retryApp).goToExplore()
         XCTAssertTrue(retry.exploreErrorState.waitUntilExists(timeout: 5))
+        retry.exploreRetryButton.tapWhenReady()
+        XCTAssertTrue(retry.exploreLoadedState.waitUntilExists(timeout: 5))
+        XCTAssertTrue(
+            retry.exploreDeck(id: "deck_counterexample_retry").waitUntilExists(timeout: 5)
+        )
+        XCTAssertTrue(
+            retry.exploreAsset(assetID: "images.explore_counterexample_retry").waitUntilExists(timeout: 5)
+        )
         captureStep("explore-retry-counterexample", app: retryApp)
     }
 }

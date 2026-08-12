@@ -100,6 +100,10 @@ struct AppPage {
         exploreElement(identifier: "explore.deck.\(id)")
     }
 
+    func exploreAsset(assetID: String) -> XCUIElement {
+        exploreElement(identifier: "explore.asset.\(assetID)")
+    }
+
     // MARK: - Assertions
 
     func assertAllTabsVisible(file: StaticString = #filePath, line: UInt = UInt(#line)) {
