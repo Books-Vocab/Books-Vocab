@@ -18,18 +18,53 @@ import ReadiumShared
 /// pending flush 的排程/取消固定走 main queue，避免 `DispatchWorkItem` cancel/
 /// reschedule 競態。
 @MainActor
+protocol ReaderProgressDebouncing: AnyObject {
+    func schedule(after delay: TimeInterval, action: @escaping @MainActor () -> Void)
+    func cancel()
+}
+
+@MainActor
+final class SystemReaderProgressDebouncer: ReaderProgressDebouncing {
+    private let clock = ContinuousClock()
+    private var pendingTask: Task<Void, Never>?
+
+    func schedule(after delay: TimeInterval, action: @escaping @MainActor () -> Void) {
+        pendingTask?.cancel()
+        pendingTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.clock.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            action()
+            self.pendingTask = nil
+        }
+    }
+
+    func cancel() {
+        pendingTask?.cancel()
+        pendingTask = nil
+    }
+}
+
+@MainActor
 final class ReaderProgressSaver {
     /// debounce 視窗：連續翻頁在此窗口內 coalesce 成單次落盤。
     private let flushDelay: TimeInterval
-    /// pending 的 debounced flush task；nil 表示無待執行。MainActor 隔離下排程/取消，
-    /// 無 `DispatchWorkItem` 跨 isolation 競態（mirror `GlobalDebouncer` 的 Task/sleep）。
-    private var pendingFlush: Task<Void, Never>?
+    /// 可替換的 debounce clock/scheduler；測試不依賴 wall clock。
+    private let debouncer: any ReaderProgressDebouncing
     /// 最近一次排程時帶入的落盤副作用（最新 save closure），供 `flush()` 直接執行。
     private var latestSave: (() -> Void)?
 
     /// 預設生產窗口 1.2s — 翻頁停止後才落盤。
-    init(flushDelay: TimeInterval = ReaderMetrics.progressFlushDelay) {
+    init(
+        flushDelay: TimeInterval = ReaderMetrics.progressFlushDelay,
+        debouncer: any ReaderProgressDebouncing = SystemReaderProgressDebouncer()
+    ) {
         self.flushDelay = flushDelay
+        self.debouncer = debouncer
     }
 
     /// 將 `locator` 序列化為 Readium Locator JSON。
@@ -61,8 +96,7 @@ final class ReaderProgressSaver {
     /// 即退出時最後一次寫入仍落地。無 pending 則 no-op。
     func flush() {
         guard let save = latestSave else { return }
-        pendingFlush?.cancel()
-        pendingFlush = nil
+        debouncer.cancel()
         latestSave = nil
         save()
     }
@@ -70,11 +104,9 @@ final class ReaderProgressSaver {
     // MARK: - Debounce
 
     private func scheduleFlush() {
-        pendingFlush?.cancel()
-        pendingFlush = Task { [weak self, flushDelay] in
-            try? await Task.sleep(for: .seconds(flushDelay))
-            guard !Task.isCancelled, let self else { return }
-            self.pendingFlush = nil
+        debouncer.cancel()
+        debouncer.schedule(after: flushDelay) { [weak self] in
+            guard let self else { return }
             let save = self.latestSave
             self.latestSave = nil
             save?()
