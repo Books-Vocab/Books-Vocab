@@ -17,6 +17,16 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "ops") not in sys.path:
+    sys.path.insert(0, str(ROOT / "ops"))
+
+from review_calendar_clock import (  # noqa: E402
+    HISTORY_PLAN_SOURCE,
+    SPEC_HISTORY_SOURCE,
+    ReviewClockPlanError,
+    clock_from_plan,
+)
+
 FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
 FIXTURE_TOP_LEVEL_KEYS = {
     "schema",
@@ -105,9 +115,16 @@ SHARED_DECK_CARD_KEYS = {
     "difficulty", "mode", "rootForm", "inflections",
 }
 SHARED_DECK_CARD_REQUIRED_KEYS = {"id", "content", "meaning"}
-REVIEW_CLOCK_SOURCE = "history_plan.anchor_day"
-REVIEW_CLOCK_TIME_ZONE = "UTC"
+REVIEW_CLOCK_SOURCE = HISTORY_PLAN_SOURCE
+REVIEW_CLOCK_SPEC_SOURCE = SPEC_HISTORY_SOURCE
+REVIEW_CLOCK_TIME_ZONE = clock_from_plan()["timeZone"]
 REVIEW_CLOCK_HISTORY_FIXTURES = ("statsPopulated", "reviewCalendarDense")
+REVIEW_CALENDAR_REQUIRED_LABELS = (
+    "calendar", "empty-day", "populated-day", "timezone-boundary",
+)
+REVIEW_CALENDAR_COUNTEREXAMPLE_LABELS = (
+    "empty-day-counterexample", "timezone-boundary-counterexample",
+)
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
@@ -681,7 +698,7 @@ def _resolve_path(
     path = Path(raw)
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         raise UIWorldManifestError(
-            f"{label} {field} sourcePath 必須是 repo-relative path，不得使用絕對路徑或 traversal: {raw}"
+            f"{label} {field} sourcePath escape repo root: {raw}"
         )
     root = ROOT.resolve()
     resolved = (root / path).resolve()
@@ -2415,6 +2432,154 @@ def _validate_asset_reference_lists(
         field=field, label=label, asset_types=asset_types,
     )
     return fixture_ids, step_labels, referenced_assets
+def _review_clock_instant(
+    clock: Mapping[str, Any], *, label: str
+) -> tuple[datetime, ZoneInfo, datetime.date, str]:
+    now = _ensure_str(
+        clock.get("now"),
+        field="scenarioContext.reviewClock.now",
+        label=label,
+    )
+    try:
+        parsed_now = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError as exc:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock.now 必須是 "
+            f"YYYY-MM-DDTHH:MM:SSZ: {now!r}"
+        ) from exc
+
+    frozen_epoch = clock.get("frozenEpoch")
+    if not isinstance(frozen_epoch, int) or isinstance(frozen_epoch, bool):
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock.frozenEpoch 必須是整數"
+        )
+    if abs(parsed_now.timestamp() - frozen_epoch) >= 0.5:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock now/frozenEpoch 不一致"
+        )
+
+    anchor_day = _ensure_str(
+        clock.get("anchorDay"),
+        field="scenarioContext.reviewClock.anchorDay",
+        label=label,
+    )
+    try:
+        anchor_date = datetime.strptime(anchor_day, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock.anchorDay 必須是 YYYY-MM-DD: {anchor_day!r}"
+        ) from exc
+
+    time_zone_identifier = _ensure_str(
+        clock.get("timeZone"),
+        field="scenarioContext.reviewClock.timeZone",
+        label=label,
+    )
+    try:
+        time_zone = ZoneInfo(time_zone_identifier)
+    except ZoneInfoNotFoundError as exc:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock.timeZone 無效: {time_zone_identifier!r}"
+        ) from exc
+
+    if parsed_now.astimezone(time_zone).date() != anchor_date:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock anchorDay 不符合 injected timeZone"
+        )
+    source = _ensure_str(
+        clock.get("source"),
+        field="scenarioContext.reviewClock.source",
+        label=label,
+    )
+    if source not in {REVIEW_CLOCK_SOURCE, REVIEW_CLOCK_SPEC_SOURCE}:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.reviewClock.source 必須是 "
+            f"{REVIEW_CLOCK_SOURCE!r} 或 {REVIEW_CLOCK_SPEC_SOURCE!r}"
+        )
+    if source == REVIEW_CLOCK_SOURCE:
+        try:
+            expected = clock_from_plan()
+        except ReviewClockPlanError as exc:
+            raise UIWorldManifestError(
+                f"{label} canonical history plan cannot project review clock: {exc}"
+            ) from exc
+        if dict(clock) != expected:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.reviewClock must match history_plan "
+                f"anchor/latest/timeZone exactly; expected={expected!r} got={dict(clock)!r}"
+            )
+    return parsed_now, time_zone, anchor_date, source
+
+
+def _validate_review_clock_history_alignment(
+    data: dict[str, Any],
+    *,
+    parsed_now: datetime,
+    time_zone: ZoneInfo,
+    anchor_date: datetime.date,
+    source: str,
+    label: str,
+) -> None:
+    vocabulary = _require_mapping(data.get("vocabulary"), field="vocabulary", label=label)
+    now_local = parsed_now.astimezone(time_zone)
+    for fixture_id in REVIEW_CLOCK_HISTORY_FIXTURES:
+        seed = _require_mapping(
+            vocabulary.get(fixture_id), field=f"vocabulary.{fixture_id}", label=label
+        )
+        history = _require_list(
+            seed.get("reviewHistory"),
+            field=f"vocabulary.{fixture_id}.reviewHistory",
+            label=label,
+        )
+        if not history:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.reviewClock requires non-empty "
+                f"vocabulary.{fixture_id}.reviewHistory"
+            )
+        parsed_history: list[datetime] = []
+        for index, item in enumerate(history):
+            item_obj = _require_mapping(
+                item,
+                field=f"vocabulary.{fixture_id}.reviewHistory[{index}]",
+                label=label,
+            )
+            parsed_history.append(
+                _parse_iso8601(
+                    item_obj.get("reviewedAt"),
+                    owner=f"vocabulary.{fixture_id}.reviewHistory[{index}].reviewedAt",
+                    label=label,
+                ).astimezone(timezone.utc)
+            )
+        latest = max(parsed_history)
+        latest_local = latest.astimezone(time_zone)
+        if latest > parsed_now:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.reviewClock history latest exceeds frozen now "
+                f"for vocabulary.{fixture_id}"
+            )
+        if (latest_local.year, latest_local.month) != (now_local.year, now_local.month):
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.reviewClock history month mismatch "
+                f"for vocabulary.{fixture_id}"
+            )
+        if latest_local.date() > anchor_date:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.reviewClock history day exceeds anchorDay "
+                f"for vocabulary.{fixture_id}"
+            )
+        if fixture_id == "reviewCalendarDense" and source == REVIEW_CLOCK_SOURCE:
+            has_boundary = any(
+                event.astimezone(timezone.utc).date()
+                != event.astimezone(time_zone).date()
+                for event in parsed_history
+            )
+            if not has_boundary:
+                raise UIWorldManifestError(
+                    f"{label} scenarioContext.reviewClock requires timezone-boundary "
+                    "evidence in vocabulary.reviewCalendarDense.reviewHistory"
+                )
 
 
 def _validate_asset_pair(
@@ -2432,7 +2597,6 @@ def _validate_asset_pair(
         raise UIWorldManifestError(
             f"{label} {field}.assetIDs references unknown assets: {unknown_assets}")
     return referenced_assets
-
 
 def _validate_disjoint_coverage(
     required: Mapping[str, Any], counterexamples: Mapping[str, Any], *,
@@ -2652,6 +2816,8 @@ def _validate_surface_contracts(
     for surface, contract in sorted(contracts.items()):
         if not isinstance(surface, str) or not surface.strip():
             raise UIWorldManifestError(f"{label} scenarioContext.surfaceContracts key must be non-empty")
+        if surface == "reviewCalendar":
+            continue
         contract_map = _require_mapping(
             contract, field=f"scenarioContext.surfaceContracts.{surface}", label=label)
         if set(contract_map) != SURFACE_CONTRACT_KEYS:
@@ -2741,6 +2907,97 @@ def _validate_surface_contracts(
                 )
 
 
+def _validate_review_calendar_evidence(
+    scenario_context: Mapping[str, Any], *, label: str, required: bool
+) -> None:
+    """Validate label -> logical asset ID/inode metadata as a one-to-one map."""
+    surface = scenario_context.get("surfaceContracts")
+    if surface is None:
+        if required:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.surfaceContracts.reviewCalendar is required"
+            )
+        return
+    surface_map = _require_mapping(
+        surface, field="scenarioContext.surfaceContracts", label=label
+    )
+    review_calendar = surface_map.get("reviewCalendar")
+    if review_calendar is None:
+        if required:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.surfaceContracts.reviewCalendar is required"
+            )
+        return
+    evidence = _require_mapping(
+        review_calendar,
+        field="scenarioContext.surfaceContracts.reviewCalendar",
+        label=label,
+    )
+    expected_groups = {
+        "required": REVIEW_CALENDAR_REQUIRED_LABELS,
+        "counterexamples": REVIEW_CALENDAR_COUNTEREXAMPLE_LABELS,
+    }
+    seen_labels: set[str] = set()
+    seen_asset_ids: set[str] = set()
+    for group, expected_labels in expected_groups.items():
+        rows = _require_list(
+            evidence.get(group),
+            field=f"scenarioContext.surfaceContracts.reviewCalendar.{group}",
+            label=label,
+        )
+        actual_labels: list[str] = []
+        for index, row in enumerate(rows):
+            row_map = _require_mapping(
+                row,
+                field=f"scenarioContext.surfaceContracts.reviewCalendar.{group}[{index}]",
+                label=label,
+            )
+            required_keys = {"fixtureID", "stepLabel", "index", "assetIDs"}
+            if set(row_map) != required_keys:
+                raise UIWorldManifestError(
+                    f"{label} {group} evidence row keys must be "
+                    f"{sorted(required_keys)}"
+                )
+            step_label = _ensure_str(
+                row_map.get("stepLabel"),
+                field=f"{group}[{index}].stepLabel",
+                label=label,
+            )
+            actual_labels.append(step_label)
+            if step_label in seen_labels:
+                raise UIWorldManifestError(
+                    f"{label} {group} stepLabel must be one-to-one and unique: {step_label!r}"
+                )
+            seen_labels.add(step_label)
+            if row_map.get("index") != index:
+                raise UIWorldManifestError(
+                    f"{label} {group} evidence index must equal row position: {step_label!r}"
+                )
+            _ensure_str(
+                row_map.get("fixtureID"),
+                field=f"{group}[{index}].fixtureID",
+                label=label,
+            )
+            asset_ids = _require_list(
+                row_map.get("assetIDs"),
+                field=f"{group}[{index}].assetIDs",
+                label=label,
+            )
+            if len(asset_ids) != 1 or not isinstance(asset_ids[0], str) or not asset_ids[0]:
+                raise UIWorldManifestError(
+                    f"{label} {group} assetIDs must be exactly one non-empty ID per step"
+                )
+            asset_id = asset_ids[0]
+            if asset_id in seen_asset_ids:
+                raise UIWorldManifestError(
+                    f"{label} assetIDs must be one-to-one and unique: {asset_id!r}"
+                )
+            seen_asset_ids.add(asset_id)
+        if actual_labels != list(expected_labels):
+            raise UIWorldManifestError(
+                f"{label} {group} evidence required step labels must equal "
+                f"{list(expected_labels)!r}, got {actual_labels!r}"
+            )
 def _validate_shared_deck_asset_ref(
     raw: Any,
     *,
@@ -3098,7 +3355,18 @@ def _validate_scenario_context(
         now_dt = None
         zone = None
     elif keys == SCENARIO_CONTEXT_KEYS:
-        now_dt, zone = _validate_canonical_review_clock(mc["reviewClock"], label=label)
+        if require_review_clock or require_review_history_alignment:
+            now_dt, zone, anchor_date, source = _review_clock_instant(
+                mc["reviewClock"], label=label
+            )
+        else:
+            now_dt, zone = _validate_canonical_review_clock(mc["reviewClock"], label=label)
+            anchor_date = now_dt.astimezone(zone).date()
+            source = _ensure_str(
+                _require_mapping(mc["reviewClock"], field="scenarioContext.reviewClock", label=label).get("source"),
+                field="scenarioContext.reviewClock.source",
+                label=label,
+            )
         canonical = True
     else:
         extra = sorted(keys - SCENARIO_CONTEXT_KEYS)
@@ -3108,7 +3376,6 @@ def _validate_scenario_context(
             "expected legacy or canonical shape")
 
     if canonical:
-        history_dates: list[str] = []
         assert now_dt is not None and zone is not None
         for fixture_id, fixture in data["vocabulary"].items():
             if not isinstance(fixture, Mapping) or "reviewHistory" not in fixture:
@@ -3133,7 +3400,6 @@ def _validate_scenario_context(
                     raise UIWorldManifestError(
                         f"{label} scenarioContext.reviewClock must not precede reviewHistory "
                         f"vocabulary.{fixture_id}.reviewHistory[{index}]")
-                history_dates.append(reviewed_at.astimezone(zone).date().isoformat())
         _validate_dictionary_context(
             mc["dictionary"], label=label, asset_types=asset_types)
         contracts = _require_mapping(
@@ -3146,6 +3412,20 @@ def _validate_scenario_context(
         )
         _validate_explore_surface_projection(
             contracts["explore"], shared_decks=data["sharedDecks"], label=label)
+        if require_review_history_alignment:
+            _validate_review_clock_history_alignment(
+                data,
+                parsed_now=now_dt,
+                time_zone=zone,
+                anchor_date=anchor_date,
+                source=source,
+                label=label,
+            )
+        _validate_review_calendar_evidence(
+            mc,
+            label=label,
+            required=require_review_clock and source == REVIEW_CLOCK_SOURCE,
+        )
 
     passage = _require_mapping(mc["readerPassage"], field="scenarioContext.readerPassage", label=label)
     pk = set(passage)

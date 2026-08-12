@@ -37,6 +37,10 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import spec_world  # noqa: E402
+from review_calendar_clock import (  # noqa: E402
+    clock_from_plan,
+    clock_from_spec,
+)
 from ui_world_manifest import (  # noqa: E402
     UIWorldManifestError,
     build_p1_dictionary_surface_contract,
@@ -187,61 +191,31 @@ def _overlay_review_clock(
     return preferences
 
 
-def _review_clock_field(
-    frozen_at: "object", *, source: str = "history_plan.anchor_day",
-) -> dict[str, Any]:
-    """把凍結時刻（datetime）攤成 reviewClock 顯式欄位。
-
-    now / frozenEpoch = 同一凍結時刻（= preferences review-clock overlay 的
-    epoch，單一 SoT）；timeZone 明確宣告日曆日解讀區；anchorDay = 該時刻的 UTC 日。
-    """
-    from datetime import timezone
-    dt = frozen_at.astimezone(timezone.utc)  # type: ignore[attr-defined]
-    return {
-        "now": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "timeZone": "UTC",
-        "frozenEpoch": int(dt.timestamp()),
-        "anchorDay": dt.date().isoformat(),
-        "source": source,
-    }
-
-
-def _default_review_clock(spec: dict[str, Any]) -> "object":
-    """Derive a deterministic explicit clock when no history plan is supplied."""
-    from datetime import datetime, time, timezone
-
-    dates = []
-    for card in spec.get("cards", []):
-        review = card.get("review", {})
-        raw = review.get("last_reviewed_at")
-        if isinstance(raw, str) and raw.strip():
-            dates.append(datetime.fromisoformat(raw.replace("Z", "+00:00")))
-    if dates:
-        latest = max(dates).astimezone(timezone.utc)
-        return datetime.combine(latest.date(), time(23, 59, 59), tzinfo=timezone.utc)
-    return datetime(2026, 1, 1, 23, 59, 59, tzinfo=timezone.utc)
-
-
 def _build_scenario_context(
     spec: dict[str, Any], *, review_clock_frozen_at: "object | None",
-    baseline_context: dict[str, Any],
+    baseline_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """scenarioContext domain：reviewClock（plan 或 spec history 凍結時鐘）
-    + readerPassage（Reader 結構化段落）+ wordDetail（Word Detail seed），
-    後二者 spec 驅動、恆存在於 spec 模式。"""
-    clock = review_clock_frozen_at or _default_review_clock(spec)
+    """Build a strict deterministic scenario context without wall-clock fallback."""
+    if review_clock_frozen_at is not None:
+        expected = clock_from_plan()
+        actual_epoch = int(review_clock_frozen_at.timestamp())  # type: ignore[attr-defined]
+        if actual_epoch != expected["frozenEpoch"]:
+            raise ValueError(
+                "review clock must equal history_plan freeze: "
+                f"got epoch {actual_epoch}, expected {expected['frozenEpoch']}"
+            )
+        clock = expected
+    else:
+        clock = clock_from_spec(spec)
     context = {
-        "reviewClock": _review_clock_field(
-            clock,
-            source=("history_plan.anchor_day" if review_clock_frozen_at is not None
-                    else "spec.last_reviewed_at"),
-        ),
+        "reviewClock": clock,
         "readerPassage": spec_world.derive_reader_passage(spec),
         "wordDetail": spec_world.derive_word_detail(spec),
     }
-    for key in ("dictionary", "surfaceContracts"):
-        if key in baseline_context:
-            context[key] = baseline_context[key]
+    if baseline_context:
+        for key in SCENARIO_CONTEXT_OPTIONAL_KEYS:
+            if key in baseline_context:
+                context[key] = baseline_context[key]
     return context
 
 
@@ -252,6 +226,9 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     document["schema"] = FIXTURE_SCHEMA
     document["datasetID"] = f"demo-{identity['user_id']}"
     document["auth"] = _overlay_identity_auth(baseline["auth"], identity)
+    baseline_context = dict(baseline["scenarioContext"])
+    baseline_context["reviewClock"] = clock_from_plan()
+    document["scenarioContext"] = baseline_context
     _validate_fixture_document(document, baseline)
     return document
 
@@ -280,8 +257,10 @@ def _build_spec_fixture_document(
         document[domain] = merged
     document["auth"] = _overlay_identity_auth(baseline["auth"], sot.identity)
     document["scenarioContext"] = _build_scenario_context(
-        spec, review_clock_frozen_at=review_clock_frozen_at,
-        baseline_context=baseline["scenarioContext"])
+        spec,
+        review_clock_frozen_at=review_clock_frozen_at,
+        baseline_context=baseline.get("scenarioContext"),
+    )
     if review_clock_frozen_at is not None:
         document["preferences"] = _overlay_review_clock(baseline["preferences"], review_clock_frozen_at)
     _validate_fixture_document(
@@ -391,12 +370,12 @@ def _validate_scenario_context_field(
 ) -> None:
     """scenarioContext 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
 
-    emitter 只產生 canonical 五鍵形狀；readerPassage keys 恆 == READER_PASSAGE_KEYS；
-    reviewClock、dictionary、surfaceContracts 必須完整存在，並沿用 baseline 的 canonical
-    contract，避免 spec emitter 另造一份 domain schema。
+    required keys 恆存在；optional surface contracts/dictionary 只可由 baseline
+    明確帶入。reviewClock 永遠是完整 clock dict，不允許 null/fallback。
     """
     mc = document.get("scenarioContext")
-    if not isinstance(mc, dict) or set(mc) != set(SCENARIO_CONTEXT_KEYS):
+    if not isinstance(mc, dict) or not SCENARIO_CONTEXT_REQUIRED_KEYS <= set(mc) \
+            or not set(mc) <= SCENARIO_CONTEXT_KEYS:
         got = sorted(mc) if isinstance(mc, dict) else type(mc).__name__
         raise ValueError(
             f"scenarioContext keys must be {sorted(SCENARIO_CONTEXT_KEYS)}, got {got}")
@@ -590,7 +569,8 @@ def _spec_build(
     content = _json_bytes(document)
     _validate_fixture_json_bytes(
         content,
-        require_review_clock=review_clock_frozen_at is not None,
+        require_review_clock=True,
+        require_review_history_alignment=True,
     )
     return Path(out_path), content, document, stats, spec
 

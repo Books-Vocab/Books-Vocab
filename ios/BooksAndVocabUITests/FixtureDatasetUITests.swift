@@ -35,14 +35,29 @@ final class FixtureDatasetUITests: UITestCase {
             let books: [Book]
         }
         struct ReviewClock: Decodable {
-            let frozenNow: String?
+            let now: String?
             let frozenEpoch: Int?
             let anchorDay: String?
             let timeZone: String?
             let source: String?
         }
+        struct EvidenceAsset: Decodable {
+            let fixtureID: String
+            let stepLabel: String
+            let index: Int
+            let assetIDs: [String]
+            let assetInodes: [String]
+        }
+        struct EvidenceGroups: Decodable {
+            let required: [EvidenceAsset]
+            let counterexamples: [EvidenceAsset]
+        }
+        struct SurfaceContracts: Decodable {
+            let reviewCalendar: EvidenceGroups?
+        }
         struct ScenarioContext: Decodable {
             let reviewClock: ReviewClock?
+            let surfaceContracts: SurfaceContracts?
         }
         struct ReviewHistoryItem: Decodable {
             let reviewedAt: Date
@@ -119,7 +134,7 @@ final class FixtureDatasetUITests: UITestCase {
         decoder.dateDecodingStrategy = .iso8601
         let document = try decoder.decode(DatasetDocument.self, from: data)
         guard let clock = document.scenarioContext?.reviewClock,
-              clock.frozenNow != nil,
+              clock.now != nil,
               clock.frozenEpoch != nil,
               clock.anchorDay != nil,
               clock.timeZone != nil,
@@ -130,6 +145,8 @@ final class FixtureDatasetUITests: UITestCase {
         }
         let history = try XCTUnwrap(document.vocabulary["reviewCalendarDense"]?.reviewHistory)
         XCTAssertFalse(history.isEmpty, "reviewCalendarDense must provide populated-day evidence")
+        let evidence = try XCTUnwrap(document.scenarioContext?.surfaceContracts?.reviewCalendar)
+        assertManifestEvidenceMapping(evidence)
         guard let boundaryDays = timezoneBoundaryDays(
             in: history,
             timeZoneIdentifier: clock.timeZone!
@@ -137,9 +154,30 @@ final class FixtureDatasetUITests: UITestCase {
             XCTFail("reviewCalendarDense must include a UTC/local timezone-boundary event")
             return
         }
-        XCTAssertTrue(
-            boundaryDays.local.hasPrefix("2026-06-"),
-            "timezone-boundary evidence must stay in the dense fixture month"
+        XCTAssertNotEqual(
+            boundaryDays.utcCount,
+            boundaryDays.localCount,
+            "UTC/local timezone counterexample must select different day-bucket states"
+        )
+
+        let anchorDay = try XCTUnwrap(clock.anchorDay)
+        let anchorMonth = monthKey(for: anchorDay)
+        let previousMonth = monthKey(for: anchorDay, offset: -1)
+        let counts = dayCounts(in: history, timeZoneIdentifier: clock.timeZone!)
+        let emptyDay = try XCTUnwrap(
+            emptyDay(in: previousMonth, occupied: Set(counts.local.keys)),
+            "dense fixture must expose an empty day in the previous month"
+        )
+        let emptyCounterexampleDay = try XCTUnwrap(
+            emptyDay(in: previousMonth, occupied: Set(counts.local.keys), excluding: [emptyDay]),
+            "dense fixture must expose a second empty day for the counterexample"
+        )
+        let populatedMonth = counts.local.keys
+            .filter { $0.hasPrefix(previousMonth) }
+            .isEmpty ? monthKey(for: boundaryDays.local) : previousMonth
+        let populatedDay = try XCTUnwrap(
+            mostPopulatedDay(in: populatedMonth, counts: counts.local),
+            "dense fixture must expose a populated day"
         )
 
         let app = launchIsolatedApp(fixtures: [.shellNavigation], perfLog: "review-calendar")
@@ -158,11 +196,9 @@ final class FixtureDatasetUITests: UITestCase {
         }
         captureStep("calendar", app: app)
 
-        // The previous month contains an intentionally empty day in the dense
-        // history. Its selector is identifier-based; the exact localized text
-        // is not part of this contract.
-        calendar.previousMonthButton.tapWhenReady()
-        let emptyDay = "2026-05-18"
+        // All navigation and day keys are derived from the injected anchor and
+        // decoded history; no localized labels or wall-clock dates are used.
+        moveCalendar(calendar, from: anchorMonth, to: previousMonth)
         guard calendar.day(emptyDay).waitUntilExists(timeout: 5) else {
             captureStep("empty-day", app: app)
             XCTFail("dense calendar fixture must expose an empty selectable day")
@@ -176,20 +212,27 @@ final class FixtureDatasetUITests: UITestCase {
         }
         captureStep("empty-day", app: app)
 
-        calendar.nextMonthButton.tapWhenReady()
-        let populatedDay = "2026-06-14"
+        moveCalendar(calendar, from: previousMonth, to: populatedMonth)
         guard calendar.day(populatedDay).waitUntilExists(timeout: 5) else {
             XCTFail("dense calendar fixture must expose a populated selectable day")
             return
         }
         calendar.day(populatedDay).tapWhenReady()
-        guard calendar.populatedDayDetail.waitUntilExists(timeout: 5) else {
-            XCTFail("populated-day selection must render the populated detail state")
-            return
-        }
+        assertPopulatedDay(
+            calendar,
+            expectedCount: try XCTUnwrap(counts.local[populatedDay]),
+            label: "populated-day"
+        )
         captureStep("populated-day", app: app)
+        let requiredBoundaryMonth = monthKey(for: boundaryDays.local)
+        moveCalendar(calendar, from: populatedMonth, to: requiredBoundaryMonth)
         calendar.day(boundaryDays.local).tapWhenReady()
-        calendar.populatedDayDetail.assertExists(timeout: 5)
+        let requiredBoundaryCount = try assertPopulatedDay(
+            calendar,
+            expectedCount: boundaryDays.localCount,
+            label: "timezone-boundary"
+        )
+        XCTAssertEqual(requiredBoundaryCount, boundaryDays.localCount)
         captureStep("timezone-boundary", app: app)
 
         // Counterexamples are captured from a separate app launch so their
@@ -202,16 +245,22 @@ final class FixtureDatasetUITests: UITestCase {
         let counterexampleOverview = AppPage(app: counterexampleApp).goToOverview()
         counterexampleOverview.reviewCalendarButton.tapWhenReady()
         let counterexampleCalendar = ReviewCalendarPage(app: counterexampleApp)
-        counterexampleCalendar.previousMonthButton.tapWhenReady()
-        counterexampleCalendar.day("2026-05-17").tapWhenReady()
+        moveCalendar(counterexampleCalendar, from: anchorMonth, to: previousMonth)
+        counterexampleCalendar.day(emptyCounterexampleDay).tapWhenReady()
         counterexampleCalendar.emptyDayDetail.assertExists(timeout: 5)
         captureStep("empty-day-counterexample", app: counterexampleApp)
-        counterexampleCalendar.nextMonthButton.tapWhenReady()
+        let counterexampleBoundaryMonth = monthKey(for: boundaryDays.utc)
+        moveCalendar(counterexampleCalendar, from: previousMonth, to: counterexampleBoundaryMonth)
         counterexampleCalendar.day(boundaryDays.utc).tapWhenReady()
-        XCTAssertTrue(
-            counterexampleCalendar.emptyDayDetail.waitUntilExists(timeout: 5)
-                || counterexampleCalendar.populatedDayDetail.waitUntilExists(timeout: 5),
-            "UTC bucket counterexample must render a selected-day detail state"
+        let counterexampleBoundaryCount = try assertPopulatedDay(
+            counterexampleCalendar,
+            expectedCount: boundaryDays.utcCount,
+            label: "timezone-boundary-counterexample"
+        )
+        XCTAssertNotEqual(
+            counterexampleBoundaryCount,
+            requiredBoundaryCount,
+            "UTC/local selected day states must differ, not merely be non-empty"
         )
         captureStep("timezone-boundary-counterexample", app: counterexampleApp)
 
@@ -221,10 +270,22 @@ final class FixtureDatasetUITests: UITestCase {
         )
     }
 
+    private struct DayBucket {
+        let utc: String
+        let local: String
+        let utcCount: Int
+        let localCount: Int
+    }
+
+    private struct DayCounts {
+        let utc: [String: Int]
+        let local: [String: Int]
+    }
+
     private func timezoneBoundaryDays(
         in history: [DatasetDocument.ReviewHistoryItem],
         timeZoneIdentifier: String
-    ) -> (utc: String, local: String)? {
+    ) -> DayBucket? {
         guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -237,12 +298,146 @@ final class FixtureDatasetUITests: UITestCase {
             else { return nil }
             return String(format: "%04d-%02d-%02d", year, month, day)
         }
-        return history.lazy.compactMap { item in
+        var utcCounts: [String: Int] = [:]
+        var localCounts: [String: Int] = [:]
+        var pairs: Set<String> = []
+        for item in history {
             let utc = key(utcCalendar.dateComponents([.year, .month, .day], from: item.reviewedAt))
             let local = key(localCalendar.dateComponents([.year, .month, .day], from: item.reviewedAt))
-            guard let utc, let local, utc != local else { return nil }
-            return (utc: utc, local: local)
+            guard let utc, let local else { continue }
+            utcCounts[utc, default: 0] += 1
+            localCounts[local, default: 0] += 1
+            if utc != local { pairs.insert("\(utc)|\(local)") }
+        }
+        return pairs.sorted().compactMap { pair in
+            let parts = pair.split(separator: "|", omittingEmptySubsequences: false)
+            guard parts.count == 2 else { return nil }
+            let utc = String(parts[0])
+            let local = String(parts[1])
+            let utcCount = utcCounts[utc, default: 0]
+            let localCount = localCounts[local, default: 0]
+            guard utcCount != localCount else { return nil }
+            return DayBucket(utc: utc, local: local, utcCount: utcCount, localCount: localCount)
         }.first
+    }
+
+    private func dayCounts(
+        in history: [DatasetDocument.ReviewHistoryItem],
+        timeZoneIdentifier: String
+    ) -> DayCounts {
+        guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else {
+            return DayCounts(utc: [:], local: [:])
+        }
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        var localCalendar = Calendar(identifier: .gregorian)
+        localCalendar.timeZone = timeZone
+        func key(_ components: DateComponents) -> String? {
+            guard let year = components.year, let month = components.month,
+                  let day = components.day else { return nil }
+            return String(format: "%04d-%02d-%02d", year, month, day)
+        }
+        var utc: [String: Int] = [:]
+        var local: [String: Int] = [:]
+        for item in history {
+            if let key = key(utcCalendar.dateComponents([.year, .month, .day], from: item.reviewedAt)) {
+                utc[key, default: 0] += 1
+            }
+            if let key = key(localCalendar.dateComponents([.year, .month, .day], from: item.reviewedAt)) {
+                local[key, default: 0] += 1
+            }
+        }
+        return DayCounts(utc: utc, local: local)
+    }
+
+    private func monthKey(for day: String, offset: Int = 0) -> String {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count >= 2 else { return day }
+        let monthIndex = (parts[0] * 12 + parts[1] - 1) + offset
+        let year = monthIndex / 12
+        let month = monthIndex % 12 + 1
+        return String(format: "%04d-%02d", year, month)
+    }
+
+    private func dayKeys(in month: String) -> [String] {
+        let parts = month.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return [] }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1)),
+              let range = calendar.range(of: .day, in: .month, for: start) else { return [] }
+        return range.map { String(format: "%04d-%02d-%02d", parts[0], parts[1], $0) }
+    }
+
+    private func emptyDay(
+        in month: String,
+        occupied: Set<String>,
+        excluding: [String] = []
+    ) -> String? {
+        let excluded = Set(excluding)
+        return dayKeys(in: month).first { !occupied.contains($0) && !excluded.contains($0) }
+    }
+
+    private func mostPopulatedDay(in month: String, counts: [String: Int]) -> String? {
+        counts.filter { $0.key.hasPrefix(month) }
+            .sorted { lhs, rhs in lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value }
+            .first?.key
+    }
+
+    private func moveCalendar(_ page: ReviewCalendarPage, from current: String, to target: String) {
+        let currentParts = current.split(separator: "-").compactMap { Int($0) }
+        let targetParts = target.split(separator: "-").compactMap { Int($0) }
+        guard currentParts.count == 2, targetParts.count == 2 else { return }
+        let delta = (targetParts[0] * 12 + targetParts[1]) - (currentParts[0] * 12 + currentParts[1])
+        if delta < 0 {
+            for _ in 0 ..< -delta { page.previousMonthButton.tapWhenReady() }
+        } else {
+            for _ in 0 ..< delta { page.nextMonthButton.tapWhenReady() }
+        }
+    }
+
+    @discardableResult
+    private func assertPopulatedDay(
+        _ page: ReviewCalendarPage,
+        expectedCount: Int,
+        label: String
+    ) throws -> Int {
+        page.populatedDayDetail.assertExists(timeout: 5)
+        page.selectedDay.assertExists(timeout: 5)
+        page.populatedDaySummary.assertExists(timeout: 5)
+        let value = try XCTUnwrap(
+            page.populatedDaySummary.value as? String,
+            "\(label) summary must expose a numeric accessibility value"
+        )
+        let actual = try XCTUnwrap(
+            Int(value),
+            "\(label) summary value must be an integer"
+        )
+        XCTAssertEqual(actual, expectedCount, "\(label) must expose the selected day bucket count")
+        return actual
+    }
+
+    private func assertManifestEvidenceMapping(_ evidence: DatasetDocument.EvidenceGroups) {
+        XCTAssertEqual(evidence.required.map(\.stepLabel), ReviewCalendarEvidence.requiredLabels)
+        XCTAssertEqual(evidence.counterexamples.map(\.stepLabel), ReviewCalendarEvidence.counterexampleLabels)
+        let all = evidence.required + evidence.counterexamples
+        XCTAssertEqual(all.count, Set(all.map(\.stepLabel)).count, "evidence labels must be unique")
+        XCTAssertTrue(
+            all.allSatisfy { $0.assetIDs.count == 1 && $0.assetInodes.count == 1 },
+            "each label maps to one asset ID and inode"
+        )
+        XCTAssertEqual(all.count, Set(all.map { $0.assetIDs[0] }).count, "asset IDs must be one-to-one")
+        XCTAssertEqual(all.count, Set(all.map { $0.assetInodes[0] }).count, "asset inodes must be one-to-one")
+        XCTAssertEqual(
+            Set(evidence.required.map { $0.assetIDs[0] }).intersection(Set(evidence.counterexamples.map { $0.assetIDs[0] })),
+            [],
+            "required/counterexample asset IDs must be disjoint"
+        )
+        XCTAssertEqual(
+            Set(evidence.required.map { $0.assetInodes[0] }).intersection(Set(evidence.counterexamples.map { $0.assetInodes[0] })),
+            [],
+            "required/counterexample asset inodes must be disjoint"
+        )
     }
 
     private func assertEvidenceGroupsAreDisjoint(

@@ -26,7 +26,7 @@ enum FixtureReviewClock {
                 "UI World scenarioContext.reviewClock is required for review calendar fixture \(fixtureID)"
             )
         }
-        guard let frozenNow = seed.frozenNow,
+        guard let now = seed.now,
               let frozenEpoch = seed.frozenEpoch,
               let anchorDay = seed.anchorDay,
               let source = seed.source,
@@ -36,19 +36,19 @@ enum FixtureReviewClock {
               let timeZone = TimeZone(identifier: timeZoneIdentifier)
         else {
             preconditionFailure(
-                "UI World scenarioContext.reviewClock must declare frozenNow, frozenEpoch, anchorDay, timeZone, and source=history_plan.anchor_day for fixture \(fixtureID)"
+                "UI World scenarioContext.reviewClock must declare now, frozenEpoch, anchorDay, timeZone, and source=history_plan.anchor_day for fixture \(fixtureID)"
             )
         }
 
-        guard let parsedNow = parseISO8601(frozenNow) else {
+        guard let parsedNow = parseISO8601(now) else {
             preconditionFailure(
-                "UI World scenarioContext.reviewClock.frozenNow is not ISO-8601 for fixture \(fixtureID)"
+                "UI World scenarioContext.reviewClock.now is not ISO-8601 for fixture \(fixtureID)"
             )
         }
         let epochNow = Date(timeIntervalSince1970: TimeInterval(frozenEpoch))
         guard abs(parsedNow.timeIntervalSince1970 - epochNow.timeIntervalSince1970) < 0.5 else {
             preconditionFailure(
-                "UI World review clock frozenNow/frozenEpoch drift for fixture \(fixtureID)"
+                "UI World review clock now/frozenEpoch drift for fixture \(fixtureID)"
             )
         }
 

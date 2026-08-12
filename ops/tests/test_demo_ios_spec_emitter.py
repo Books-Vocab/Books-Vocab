@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,15 @@ def _small_spec() -> dict:
              "confidence": 0.6, "reason": "contrast", "notebook": nb},
         ],
     }
+
+
+def _small_spec_aligned_to_plan() -> dict:
+    """Use the canonical plan month for tests that explicitly request plan freeze."""
+    payload = _small_spec()
+    for card in payload["cards"]:
+        if card["review"].get("last_reviewed_at") is not None:
+            card["review"]["last_reviewed_at"] = "2026-07-09T12:00:00+00:00"
+    return payload
 
 
 def _big_spec(n: int = 636) -> dict:
@@ -403,7 +413,7 @@ def test_spec_mode_date_added_precedes_first_synth_review_event(tmp_path):
 
 
 def test_spec_mode_date_added_deterministic_fallback_without_review_dates(tmp_path):
-    """spec 完全無 review 日期素材時，dateAdded 落到固定錨點（禁 Date.now/隨機）。"""
+    """spec 無 review 日期時，strict emitter 必須拒絕而非使用 fallback。"""
     payload = _small_spec()
     for card in payload["cards"]:
         card["review"] = {
@@ -411,10 +421,8 @@ def test_spec_mode_date_added_deterministic_fallback_without_review_dates(tmp_pa
             "review_interval_hours": 12.0, "next_review_at": None,
             "last_reviewed_at": None, "last_review_feedback": -1,
         }
-    content = _emit_spec_bytes(tmp_path, payload)
-    front = json.loads(content)["todayReview"]["front"]
-    assert front["currentCard"]["dateAdded"] == spec_world._DATE_ADDED_FALLBACK_ANCHOR
-    assert content == _emit_spec_bytes(tmp_path, payload)  # byte-stable
+    with pytest.raises(ValueError, match="at least one last_reviewed_at"):
+        _emit_spec_bytes(tmp_path, payload)
 
 
 def test_spec_mode_keeps_content_pinned_fixtures_baseline(tmp_path):
@@ -436,8 +444,7 @@ def test_spec_mode_keeps_content_pinned_fixtures_baseline(tmp_path):
 
 
 def test_spec_mode_date_added_anchor_fallback_without_history(tmp_path):
-    """階梯第 2 級：無合成 history（review_count=0）但有 next_review_at →
-    dateAdded = 錨點往前 _DATE_ADDED_LEAD_HOURS。"""
+    """無合成 history 時 strict emitter 不可產出帶 fallback clock 的 artifact。"""
     payload = _small_spec()
     for card in payload["cards"]:
         card["review"] = {
@@ -446,9 +453,8 @@ def test_spec_mode_date_added_anchor_fallback_without_history(tmp_path):
             "next_review_at": "2026-06-10T08:00:00+00:00",
             "last_reviewed_at": None, "last_review_feedback": -1,
         }
-    content = _emit_spec_bytes(tmp_path, payload)
-    front = json.loads(content)["todayReview"]["front"]
-    assert front["currentCard"]["dateAdded"] == "2026-06-09T08:00:00Z"  # 錨點 - 24h
+    with pytest.raises(ValueError, match="at least one last_reviewed_at"):
+        _emit_spec_bytes(tmp_path, payload)
 
 
 def test_spec_mode_prunes_graph_links_to_in_seed_targets(tmp_path):
@@ -827,7 +833,7 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     overlay epoch，單一 SoT）+ readerPassage 齊備。"""
     freeze = _freeze_dt_from_plan(_scenario_plan())
     epoch = int(freeze.timestamp())
-    spec_path = _write_spec(tmp_path, _small_spec())
+    spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
@@ -840,7 +846,6 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     clock = mc["reviewClock"]
     assert clock["frozenEpoch"] == epoch  # 與 preferences overlay 同一凍結時刻
     assert clock["now"] == "2026-07-09T14:59:59Z"
-    assert clock["timeZone"] == "UTC"
     assert clock["anchorDay"] == "2026-07-09"
     assert clock["timeZone"] == emit_ios.REVIEW_CLOCK_TIME_ZONE
     assert clock["source"] == "history_plan.anchor_day"
@@ -849,15 +854,16 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     assert passage["activeWords"] == [passage["activeWord"]]
 
 
-def test_scenario_context_unplanned_review_clock_is_explicit(tmp_path):
-    """無 plan emit 仍產出由 spec history 推導的 explicit review clock。"""
+def test_scenario_context_unfrozen_review_clock_is_explicit_from_spec_history(tmp_path):
+    """未傳 plan 也必須從 spec latest history 產生顯式 clock，不得 null/fallback。"""
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
     mc = json.loads(content)["scenarioContext"]
-    assert mc["reviewClock"]["now"] == "2026-05-31T23:59:59Z"
+    assert mc["reviewClock"]["source"] == "spec.last_reviewed_at"
     assert mc["reviewClock"]["timeZone"] == "UTC"
+    assert mc["reviewClock"]["now"] == "2026-05-31T23:59:59Z"
     assert mc["readerPassage"]["activeWord"]
 
 
@@ -865,7 +871,7 @@ def test_review_clock_field_matches_preferences_overlay_epoch(tmp_path):
     """reviewClock.frozenEpoch 必須 == preferences review-clock overlay 的 epoch
     （防兩處錨日 drift；單一 SoT = plan freeze 時刻）。"""
     freeze = _freeze_dt_from_plan(_scenario_plan())
-    spec_path = _write_spec(tmp_path, _small_spec())
+    spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "f.json",
@@ -880,7 +886,8 @@ def test_baseline_emission_requires_the_explicit_review_clock():
     document = emit_ios._build_fixture_document(sot.load_sot())
     clock = document["scenarioContext"]["reviewClock"]
 
-    assert set(clock) == {"frozenNow", "frozenEpoch", "anchorDay", "timeZone", "source"}
+    assert set(clock) == {"now", "frozenEpoch", "anchorDay", "timeZone", "source"}
+    assert clock["now"] == "2026-07-09T14:59:59Z"
     assert clock["timeZone"] == "Pacific/Honolulu"
     assert clock["source"] == "history_plan.anchor_day"
 
@@ -904,11 +911,38 @@ def test_review_clock_freeze_matches_known_scenario_epoch():
     assert freeze.isoformat() == "2026-07-09T14:59:59+00:00"
 
 
+def test_spec_build_rejects_bad_clock_history_alignment(tmp_path):
+    """所有 spec emitter path 都走 strict history alignment；plan clock 對舊 history 必須 fail。"""
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    with pytest.raises(ValueError, match="history month mismatch|latest exceeds"):
+        emit_ios._spec_artifacts(
+            bundle,
+            spec_path=spec_path,
+            out_path=tmp_path / "bad-clock-history.json",
+            review_clock_frozen_at=_freeze_dt_from_plan(_scenario_plan()),
+        )
+
+
+def test_spec_build_rejects_clock_not_from_canonical_history_plan(tmp_path):
+    """Emitter rejects a clock instant that strict manifest validation would reject."""
+    spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
+    bundle = sot.load_sot()
+    bad_clock = _freeze_dt_from_plan(_scenario_plan()) - timedelta(seconds=1)
+    with pytest.raises(ValueError, match="must equal history_plan freeze"):
+        emit_ios._spec_artifacts(
+            bundle,
+            spec_path=spec_path,
+            out_path=tmp_path / "bad-clock.json",
+            review_clock_frozen_at=bad_clock,
+        )
+
+
 def test_review_clock_freeze_overlays_both_stores(tmp_path):
     """(a) emit with freeze → preferences 兩 store 都 paused@epoch（含新增 paused_at）。"""
     freeze = _freeze_dt_from_plan(_scenario_plan())
     epoch = int(freeze.timestamp())
-    spec_path = _write_spec(tmp_path, _small_spec())
+    spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
@@ -942,7 +976,7 @@ def test_review_clock_unfrozen_preferences_byte_equal_baseline(tmp_path):
 def test_review_clock_validator_blocks_non_clock_preferences_drift(tmp_path):
     """(c) validator 仍擋非時鐘 key 的 preferences 偏離（精準守住只有時鐘可變）。"""
     bundle = sot.load_sot()
-    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec()))
+    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec_aligned_to_plan()))
     freeze = _freeze_dt_from_plan(_scenario_plan())
     doc, _stats = emit_ios._build_spec_fixture_document(
         bundle, spec, review_clock_frozen_at=freeze)
@@ -962,7 +996,7 @@ def test_review_clock_validator_blocks_non_clock_preferences_drift(tmp_path):
 def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
     """(c') 新增非時鐘 preferences key 也要 raise（不可整域放行）。"""
     bundle = sot.load_sot()
-    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec()))
+    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec_aligned_to_plan()))
     freeze = _freeze_dt_from_plan(_scenario_plan())
     doc, _stats = emit_ios._build_spec_fixture_document(
         bundle, spec, review_clock_frozen_at=freeze)
@@ -981,7 +1015,7 @@ def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
 def test_review_clock_freeze_deterministic(tmp_path):
     """(d) 同 plan 重跑 → 同 epoch、byte-stable。"""
     freeze = _freeze_dt_from_plan(_scenario_plan())
-    spec_path = _write_spec(tmp_path, _small_spec())
+    spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     bundle = sot.load_sot()
     first = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "a.json",
@@ -1002,7 +1036,7 @@ def test_emit_rejects_freeze_without_spec_mode(tmp_path):
 
 def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
     """build_demo emit-ios --plan → world 凍結；--plan 無 --spec 應報錯。"""
-    spec_path = _write_spec(tmp_path, _small_spec())
+    spec_path = _write_spec(tmp_path, _small_spec_aligned_to_plan())
     out_path = tmp_path / "frozen_cli.json"
     rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
                           "--plan", str(SCENARIO_PLAN_PATH),

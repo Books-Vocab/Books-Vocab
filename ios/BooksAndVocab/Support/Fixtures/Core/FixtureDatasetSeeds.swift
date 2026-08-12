@@ -646,9 +646,9 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case reviewClock
         case dictionary
-        case surfaceContracts
         case readerPassage
         case wordDetail
+        case surfaceContracts
     }
 
     private static let legacyKeys: Set<String> = ["reviewClock", "readerPassage", "wordDetail"]
@@ -663,9 +663,9 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
     ) {
         self.reviewClock = reviewClock
         self.dictionary = dictionary
-        self.surfaceContracts = surfaceContracts
         self.readerPassage = readerPassage
         self.wordDetail = wordDetail
+        self.surfaceContracts = surfaceContracts
     }
 
     init(from decoder: Decoder) throws {
@@ -728,6 +728,7 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
                 )
             }
         }
+
         try dictionary.validate(assets: assets, decoder: decoder)
         for (surface, contract) in surfaceContracts {
             try contract.validate(assets: assets, decoder: decoder)
@@ -742,6 +743,23 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
             )
         }
     }
+}
+
+struct UIWorldSurfaceContractsSeed: Codable, Equatable {
+    let reviewCalendar: UIWorldReviewCalendarEvidenceGroupsSeed?
+}
+
+struct UIWorldReviewCalendarEvidenceGroupsSeed: Codable, Equatable {
+    let required: [UIWorldReviewCalendarEvidenceSeed]
+    let counterexamples: [UIWorldReviewCalendarEvidenceSeed]
+}
+
+struct UIWorldReviewCalendarEvidenceSeed: Codable, Equatable {
+    let fixtureID: String
+    let stepLabel: String
+    let index: Int
+    let assetIDs: [String]
+    let assetInodes: [String]
 }
 
 /// Reader scenario passage. `activeWord` is the just-tapped word tied to the

@@ -36,8 +36,11 @@ from pathlib import Path
 # modules importable by absolute name. When run via `-m ops.demo.build_demo`
 # the package import path already exists, so these are no-ops.
 _HERE = Path(__file__).resolve().parent
+_OPS_DIR = _HERE.parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+if str(_OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(_OPS_DIR))
 
 import emit_backend  # noqa: E402
 import emit_ios  # noqa: E402
@@ -99,13 +102,10 @@ def _freeze_from_plan(plan_path: str) -> "object":
     freeze = datetime(anchor_day) + timedelta(hours=24 - max(render_utc_offset_hours))
              - timedelta(seconds=1)（UTC）。單一 source 自 plan，不 hardcode。
     """
-    from datetime import date, datetime, timedelta, timezone
+    from review_calendar_clock import freeze_from_plan
 
     plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
-    anchor = date.fromisoformat(str(plan["anchor_day"]))
-    max_offset = max(plan["render_utc_offset_hours"])
-    base = datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
-    return base + timedelta(hours=24 - max_offset) - timedelta(seconds=1)
+    return freeze_from_plan(plan)
 
 
 def _emit_output(payload: dict, *, json_mode: bool) -> None:

@@ -57,6 +57,10 @@ struct ReviewCalendarPage {
         app.descendants(matching: .any)["reviewCalendar.populatedDayDetail"].firstMatch
     }
 
+    var populatedDaySummary: XCUIElement {
+        app.staticTexts["reviewCalendar.populatedDaySummary"].firstMatch
+    }
+
     func day(_ key: String) -> XCUIElement {
         app.buttons["reviewCalendar.day.\(key)"].firstMatch
     }
