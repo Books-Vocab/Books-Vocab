@@ -280,8 +280,9 @@ import Testing
         #expect(asset.contentType == "application/epub+zip", "\(label): \(ref) must declare EPUB contentType")
         #expect(URL(fileURLWithPath: asset.sourcePath).pathExtension == "epub", "\(label): \(ref) source must be .epub")
         #expect(asset.installAs == "Books/\(epubBook.fileName)", "\(label): \(ref) must install as the book fileName")
-        #expect(FileManager.default.fileExists(atPath: asset.sourcePath), "\(label): \(ref) source file must exist")
-        let data = try Data(contentsOf: URL(fileURLWithPath: asset.sourcePath))
+        let sourceURL = try FixtureDatasetStore.resolveSourceURL(for: asset)
+        #expect(FileManager.default.fileExists(atPath: sourceURL.path), "\(label): \(ref) source file must exist")
+        let data = try Data(contentsOf: sourceURL)
         #expect(data.starts(with: Data("PK".utf8)), "\(label): \(ref) must be a ZIP-backed EPUB package")
     }
 }

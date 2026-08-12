@@ -698,7 +698,6 @@ def _resolve_path(
     resolved = (root / path).resolve()
     if resolved != root and root not in resolved.parents:
         raise UIWorldManifestError(
-        raise UIWorldManifestError(
             f"{label} {field} sourcePath escape repo root: {raw}"
         )
     return resolved
