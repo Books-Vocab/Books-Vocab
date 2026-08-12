@@ -170,6 +170,8 @@ final class ReaderFlowUITests: UITestCase {
 
         XCTAssertTrue(reader.tocError.waitUntilExists(timeout: 5))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tocDone.waitUntilExists(timeout: 5))
+        XCTAssertFalse(reader.tocDone.isEnabled)
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         captureStep("toc-failure-retryable", app: app)
         reader.tocRetry.tapWhenReady()
@@ -197,6 +199,8 @@ final class ReaderFlowUITests: UITestCase {
 
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 5))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tocDone.waitUntilExists(timeout: 5))
+        XCTAssertFalse(reader.tocDone.isEnabled)
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         captureStep("toc-missing-destination-retryable", app: app)
         reader.tocRetry.tapWhenReady()

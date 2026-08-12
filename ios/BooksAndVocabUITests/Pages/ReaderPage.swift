@@ -81,6 +81,10 @@ struct ReaderPage {
         app.buttons["reader.toc.retry"]
     }
 
+    var tocDone: XCUIElement {
+        app.buttons["reader.toc.done"]
+    }
+
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {
