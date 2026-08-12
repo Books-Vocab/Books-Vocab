@@ -83,6 +83,7 @@ extension ReaderViewPresenter {
             .frame(width: 1, height: 1)
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("reader.runtime.state")
+            .accessibilityLabel(L10n.string("閱讀器狀態"))
             .accessibilityValue(state.runtimeStateAccessibilityValue)
     }
 
