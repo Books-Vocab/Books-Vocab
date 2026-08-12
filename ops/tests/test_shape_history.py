@@ -55,6 +55,7 @@ def _plan(**overrides) -> dict:
         "schema": "kg.history_plan.v1",
         "anchor_day": "2026-07-09",
         "render_utc_offset_hours": [9, 8],
+        "review_clock_time_zone": "Pacific/Honolulu",
         "current_streak_days": 5,
         "longest_streak_days": 8,
         "due_at_anchor": {"primary": 2, "other": 1},

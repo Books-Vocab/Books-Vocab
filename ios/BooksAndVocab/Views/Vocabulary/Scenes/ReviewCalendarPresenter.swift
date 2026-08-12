@@ -64,6 +64,7 @@ enum ReviewCalendarAccessibility {
     static let selectedDay = "reviewCalendar.selectedDay"
     static let emptyDayDetail = "reviewCalendar.emptyDayDetail"
     static let populatedDayDetail = "reviewCalendar.populatedDayDetail"
+    static let populatedDaySummary = "reviewCalendar.populatedDaySummary"
 
     static func day(_ key: String) -> String {
         "reviewCalendar.day.\(key)"
@@ -273,6 +274,8 @@ struct ReviewCalendarPresenter: View {
                 Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
+                    .accessibilityIdentifier(ReviewCalendarAccessibility.populatedDaySummary)
+                    .accessibilityValue("\(s.total)")
             }
 
             VStack(spacing: 0) {

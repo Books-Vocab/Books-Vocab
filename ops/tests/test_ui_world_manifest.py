@@ -6,8 +6,9 @@ import re
 import subprocess
 import sys
 import zipfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -273,6 +274,26 @@ def test_manifest_path_resolver_rejects_symlink_escape(tmp_path: Path) -> None:
     finally:
         if link.is_symlink() or link.exists():
             link.unlink()
+def _history_plan() -> dict:
+    return json.loads((ROOT / "ops" / "demo" / "ui_world_seed" / "history_plan.json").read_text(encoding="utf-8"))
+
+
+def _plan_review_clock(plan: dict) -> dict:
+    anchor = date.fromisoformat(plan["anchor_day"])
+    freeze = (
+        datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
+        + timedelta(hours=24 - max(plan["render_utc_offset_hours"]))
+        - timedelta(seconds=1)
+    )
+    time_zone = plan["review_clock_time_zone"]
+    assert freeze.astimezone(ZoneInfo(time_zone)).date() == anchor
+    return {
+        "now": freeze.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "frozenEpoch": int(freeze.timestamp()),
+        "anchorDay": anchor.isoformat(),
+        "timeZone": time_zone,
+        "source": "history_plan.anchor_day",
+    }
 
 
 def _swift_source(path: str) -> str:
@@ -425,11 +446,10 @@ def test_validate_rejects_absolute_or_escaping_asset_source_path(tmp_path: Path,
 def test_marketing_demo_review_clock_is_explicit_and_history_aligned():
     data = _marketing_demo()
     clock = data["scenarioContext"]["reviewClock"]
+    expected = _plan_review_clock(_history_plan())
 
-    assert isinstance(clock, dict)
-    assert set(clock) == {"frozenNow", "frozenEpoch", "anchorDay", "timeZone", "source"}
-    assert clock["timeZone"] == "Pacific/Honolulu"
-    assert clock["source"] == "history_plan.anchor_day"
+    assert clock == expected
+    assert data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]
     assert validate_fixture_dataset_file(
         ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
         require_review_clock=True,
@@ -439,13 +459,10 @@ def test_marketing_demo_review_clock_is_explicit_and_history_aligned():
 
 def test_review_clock_validator_rejects_timezone_and_history_boundary_drift(tmp_path: Path):
     data = _marketing_demo()
-    data["scenarioContext"]["reviewClock"] = {
-        "frozenNow": "2026-06-16T00:00:00Z",
-        "frozenEpoch": int(datetime(2026, 6, 16, tzinfo=timezone.utc).timestamp()),
-        "anchorDay": "2026-06-16",
-        "timeZone": "UTC",
-        "source": "history_plan.anchor_day",
-    }
+    data["vocabulary"]["reviewCalendarDense"]["reviewHistory"] = [
+        dict(item, reviewedAt="2026-07-09T12:00:00Z")
+        for item in data["vocabulary"]["reviewCalendarDense"]["reviewHistory"]
+    ]
     path = tmp_path / "clock_drift.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
@@ -460,16 +477,16 @@ def test_review_clock_validator_rejects_timezone_and_history_boundary_drift(tmp_
 def test_review_clock_validator_rejects_epoch_anchor_mismatch(tmp_path: Path):
     data = _marketing_demo()
     data["scenarioContext"]["reviewClock"] = {
-        "frozenNow": "2026-06-16T00:00:00Z",
+        "now": "2026-07-09T14:59:59Z",
         "frozenEpoch": 0,
-        "anchorDay": "2026-06-15",
+        "anchorDay": "2026-07-09",
         "timeZone": "Pacific/Honolulu",
         "source": "history_plan.anchor_day",
     }
     path = tmp_path / "clock_epoch_drift.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match="frozenNow/frozenEpoch|anchorDay"):
+    with pytest.raises(UIWorldManifestError, match="now/frozenEpoch|anchorDay"):
         validate_fixture_dataset_file(
             path,
             require_review_clock=True,
@@ -484,6 +501,28 @@ def test_review_clock_validator_rejects_missing_scenario_context(tmp_path: Path)
     path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(UIWorldManifestError, match="requires scenarioContext"):
+        validate_fixture_dataset_file(path, require_review_clock=True)
+
+
+def test_review_calendar_evidence_mapping_rejects_duplicate_asset_id(tmp_path: Path):
+    data = _marketing_demo()
+    rows = data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]["required"]
+    rows[1]["assetIDs"] = list(rows[0]["assetIDs"])
+    path = tmp_path / "duplicate_review_evidence_asset.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="assetIDs.*unique|one-to-one"):
+        validate_fixture_dataset_file(path, require_review_clock=True)
+
+
+def test_review_calendar_evidence_mapping_rejects_missing_label(tmp_path: Path):
+    data = _marketing_demo()
+    rows = data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]["required"]
+    rows.pop()
+    path = tmp_path / "missing_review_evidence_label.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="required.*labels|stepLabel"):
         validate_fixture_dataset_file(path, require_review_clock=True)
 
 

@@ -48,6 +48,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 _HERE = Path(__file__).resolve().parent
 _DEMO_DIR = _HERE.parent
@@ -96,6 +97,10 @@ class _Narrative:
                 f"plan schema 必須是 {PLAN_SCHEMA}，got {plan.get('schema')!r}")
         try:
             self.anchor: date = date.fromisoformat(str(plan["anchor_day"]))
+            time_zone = plan["review_clock_time_zone"]
+            if not isinstance(time_zone, str) or not time_zone.strip():
+                raise ValueError("review_clock_time_zone 必須是非空 IANA timezone")
+            ZoneInfo(time_zone)
             offsets = plan["render_utc_offset_hours"]
             if not isinstance(offsets, list) or not offsets:
                 raise ValueError("render_utc_offset_hours 必須是非空 list")
