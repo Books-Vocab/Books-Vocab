@@ -12,6 +12,9 @@
   "date": "2026-08-12",
   "detail": "ops/tests/test_ui_world_manifest.py hardcodes FixtureDatasetStore.swift, but the split fixture tree now stores UIWorld fixture enums and preference key sets in FixtureDatasetSeeds.swift; the manifest contract therefore fails despite the canonical fixture data remaining present.",
   "fix_site": "ops/tests/test_ui_world_manifest.py; ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift",
+  "fixed_by": [
+    "042663487fec5f6cb449004af0fc24f8fbf5f355"
+  ],
   "groomed_against": "d5daf734fb2394188c927506c84bf9b7890df651",
   "groomed_at": "2026-08-12",
   "groomed_by": "team-a",
@@ -22,6 +25,10 @@
   "scope": "One Python test loader and its regression coverage; no product behavior changes.",
   "severity": "med",
   "source": "Gate ops-pytest baseline on split fixture tree",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-13",
+  "verified_by": "agent:delivery-team-a-supervisor",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_ui_world_manifest.py"
 }
