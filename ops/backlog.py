@@ -375,6 +375,7 @@ CONTRACT_REQUIRED_SINCE = "2026-08-10"
 # the store entirely. Both returned rc=0 before this guard.
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_LEGACY_ENTRY_ID_RE = re.compile(r"^IMP-\d{4}$")
 
 
 class BacklogError(Exception):
@@ -1188,6 +1189,23 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
             }
         )
 
+    payload_id = payload.get("id")
+    digest_inputs = ("stream", "date", "source", "detail")
+    if isinstance(payload_id, str) and not _LEGACY_ENTRY_ID_RE.fullmatch(payload_id) \
+            and all(isinstance(payload.get(field), str) for field in digest_inputs):
+        expected_id = make_entry_id(
+            stream=payload["stream"],
+            date=payload["date"],
+            source=payload["source"],
+            detail=payload["detail"],
+        )
+        if payload_id != expected_id:
+            problems.append({
+                "kind": "id-content-drift",
+                "id": payload_id,
+                "expected_id": expected_id,
+            })
+
     problems.extend(_check_vocabulary(payload))
 
     if payload.get("stream") == "IMP":
@@ -1560,6 +1578,16 @@ def add_entry(
     for field, value in (extra or {}).items():
         if field not in payload and value not in (None, ""):
             payload[field] = value
+
+    if entry_id is not None and not _LEGACY_ENTRY_ID_RE.fullmatch(entry_id):
+        expected_id = make_entry_id(
+            stream=stream, date=date, source=source, detail=detail
+        )
+        if not overwrite or entry_id != expected_id:
+            raise ValueError(
+                "explicit id is reserved for migration of legacy IMP-#### entries; "
+                "new IDs are derived from stream/date/source/detail"
+            )
 
     payload["id"] = entry_id or make_entry_id(
         stream=stream, date=date, source=source, detail=detail
