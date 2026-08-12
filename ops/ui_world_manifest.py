@@ -7,7 +7,9 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import re
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -239,6 +241,8 @@ FIXTURE_DOMAIN_IDS = {
 }
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
+READER_TOC_VALID_ASSET = "reader_real_book_epub"
+READER_TOC_INVALID_DESTINATION_ASSET = "reader_invalid_destination_epub"
 ASSET_CONTENT_TYPES_BY_BUCKET = {
     "books": {"application/epub+zip", "application/pdf", "text/markdown; charset=utf-8", "text/plain; charset=utf-8"},
     "audio": {"audio/mp4", "audio/mpeg"},
@@ -650,6 +654,63 @@ def _sha256_hex(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _epub_nav_destinations(archive: zipfile.ZipFile) -> tuple[set[str], list[str]]:
+    """Return package names and the EPUB nav hrefs, preserving real links."""
+    names = set(archive.namelist())
+    try:
+        nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
+    except (KeyError, UnicodeDecodeError) as exc:
+        raise UIWorldManifestError("Reader EPUB must contain UTF-8 OEBPS/nav.xhtml") from exc
+    return names, re.findall(r'<a\b[^>]*\bhref="([^"]+)"', nav)
+
+
+def _validate_reader_toc_epub(path: Path, *, asset_id: str, label: str) -> None:
+    """Validate the P3 Reader TOC fixtures without turning the app into a parser.
+
+    ``reader_real_book_epub`` is the required A→B publication.  The paired
+    ``reader_invalid_destination_epub`` is deliberately accepted only when its
+    nav contains a real link to a missing package member; it is the
+    retryable/missing-destination counterexample, not a malformed ZIP.
+    """
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names, hrefs = _epub_nav_destinations(archive)
+            if not hrefs:
+                raise UIWorldManifestError(
+                    f"{label} assets.books.{asset_id} nav must contain at least one href"
+                )
+            if asset_id == READER_TOC_VALID_ASSET:
+                required = {"OEBPS/chapter1.xhtml", "OEBPS/chapter2.xhtml"}
+                if not required <= names:
+                    raise UIWorldManifestError(
+                        f"{label} assets.books.{asset_id} must contain chapter1.xhtml and chapter2.xhtml"
+                    )
+                if not {"chapter1.xhtml", "chapter2.xhtml"} <= set(hrefs):
+                    raise UIWorldManifestError(
+                        f"{label} assets.books.{asset_id} nav must link chapter1.xhtml and chapter2.xhtml"
+                    )
+                chapter_a = archive.read("OEBPS/chapter1.xhtml").decode("utf-8")
+                chapter_b = archive.read("OEBPS/chapter2.xhtml").decode("utf-8")
+                if "Introduction" not in chapter_a or "Chapter Two" not in chapter_b:
+                    raise UIWorldManifestError(
+                        f"{label} assets.books.{asset_id} chapters must have distinguishable A→B content"
+                    )
+                if "Introduction" in chapter_b:
+                    raise UIWorldManifestError(
+                        f"{label} assets.books.{asset_id} chapter B must not duplicate chapter A marker"
+                    )
+            elif asset_id == READER_TOC_INVALID_DESTINATION_ASSET:
+                missing = [f"OEBPS/{href.split('#', 1)[0]}" for href in hrefs if href]
+                if not any(destination not in names for destination in missing):
+                    raise UIWorldManifestError(
+                        f"{label} assets.books.{asset_id} must contain a real missing nav destination"
+                    )
+    except zipfile.BadZipFile as exc:
+        raise UIWorldManifestError(
+            f"{label} assets.books.{asset_id} must be a readable EPUB ZIP"
+        ) from exc
 
 
 def _validate_install_as(value: str, *, field: str, label: str) -> None:
@@ -2236,6 +2297,11 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 raise UIWorldManifestError(
                     f"{label} {asset_label}.sha256 mismatch: expected {expected_hash}, got {actual_hash}"
                 )
+            if bucket == "books" and asset_id in {
+                READER_TOC_VALID_ASSET,
+                READER_TOC_INVALID_DESTINATION_ASSET,
+            }:
+                _validate_reader_toc_epub(source_path, asset_id=asset_id, label=label)
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
     _validate_entitlements(data, label=label)

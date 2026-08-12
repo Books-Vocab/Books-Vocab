@@ -39,10 +39,17 @@
         "contentType": "application/epub+zip"
       },
       "reader_real_book_epub": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/reader-real-book.epub",
-        "sha256": "1c903a07f1e75ec48b472062207d543698fe8a8d381348be0f8110953776bb2f",
+        "sourcePath": "/Users/chenliangyu/project/kg/.claude/worktrees/p3-reader-toc-navigation-20260813/ops/fixtures/assets/reader-real-book.epub",
+        "sha256": "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
         "installAs": "Books/reader-real-book.epub",
-        "byteSize": 2236,
+        "byteSize": 18653,
+        "contentType": "application/epub+zip"
+      },
+      "reader_invalid_destination_epub": {
+        "sourcePath": "/Users/chenliangyu/project/kg/.claude/worktrees/p3-reader-toc-navigation-20260813/ops/fixtures/assets/reader-invalid-destination.epub",
+        "sha256": "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f",
+        "installAs": "Books/reader-invalid-destination.epub",
+        "byteSize": 17344,
         "contentType": "application/epub+zip"
       }
     },
