@@ -28,7 +28,7 @@ verified_against: 76256a790
 
 ## Single-flow helper（branch-local；待 code convergence）
 
-單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`：它接受命名 UI World（`--dataset`）或明示 JSON（`--dataset-file`），並以 `--file`、`--grep` 或 `--method` 選 flow；需要 exact `Class/testMethodName` 時用 `--method`。helper 將 source／dataset／device identity、selector、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
+單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`。helper 將 source／dataset／device identity、selector、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
 
 helper 的旗標、normalized verdict schema、artifact hash 與 fail-closed gate 以 `.claude/skills/ios-simulator-verification/references/evidence-contract.md` 為唯一 contract SoT；本 SOP 只定義 flow evidence 的使用時機與收尾判準。helper regression 由 `.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh` 驗證。
 
