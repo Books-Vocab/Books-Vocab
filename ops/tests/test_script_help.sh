@@ -130,6 +130,16 @@ else
   sed 's/^/      /' "$scan_log" >&2
 fi
 
+section "ASC variable safety has one owner"
+# The cross-file UTF-8 variable check belongs to shell_scan.sh.  Keep this
+# source-level guard so a second, narrower matcher cannot silently drift from
+# the shared scanner and produce a contradictory gate result.
+if grep -qF 'match($0, /\$[A-Za-z_]' "$WORKTREE/ops/test_asc.sh"; then
+  fail_t "test_asc.sh still contains a duplicate shell variable matcher"
+else
+  ok "test_asc.sh delegates variable safety to shell_scan.sh"
+fi
+
 section "tag commands name their repository"
 tag_fixture="$TMPDIR/tag_context"
 mkdir -p "$tag_fixture"
