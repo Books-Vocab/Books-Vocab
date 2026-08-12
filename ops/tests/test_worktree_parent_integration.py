@@ -107,6 +107,17 @@ def complete_records(res: dict) -> list[dict]:
     return [child(res, partition) for partition in ("p1", "p2", "p3")]
 
 
+def test_hand_back_manifest_help_identifies_json_file_path(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        REGISTRY.build_parser().parse_args(["hand-back", "--help"])
+
+    assert exc_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--manifest PATH" in help_text
+    assert "--manifest JSON" not in help_text
+    assert "completed child integration manifest JSON file path" in help_text
+
+
 def test_parent_snapshot_accepts_exact_child_partition_set():
     result = CAMPAIGN.parent_child_snapshot(
         reservation(), complete_records(reservation()),

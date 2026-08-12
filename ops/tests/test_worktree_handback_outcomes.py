@@ -76,6 +76,17 @@ def _write_outcomes(path: Path, *, outcome: str = "changed",
     }]}))
 
 
+def test_hand_back_outcomes_help_identifies_json_file_path(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        REGISTRY.build_parser().parse_args(["hand-back", "--help"])
+
+    assert exc_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--outcomes PATH" in help_text
+    assert "--outcomes JSON" not in help_text
+    assert "typed hand-back outcomes JSON file path" in help_text
+
+
 def test_changed_hand_back_creates_sealed_typed_outcome(tmp_path, capsys):
     repo, base_sha = _repo(tmp_path)
     state = tmp_path / "registry.json"
