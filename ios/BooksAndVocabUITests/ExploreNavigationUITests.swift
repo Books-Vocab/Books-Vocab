@@ -35,4 +35,50 @@ final class ExploreNavigationUITests: UITestCase {
             )
         }
     }
+
+    @MainActor
+    func testExploreRequiredStateFlowProducesSeparateEvidenceSteps() throws {
+        let loadingApp = launchIsolatedApp(fixtures: [.explore("loading")], perfLog: "explore-loading")
+        let loading = AppPage(app: loadingApp).goToExplore()
+        XCTAssertTrue(loading.exploreLoadingState.waitUntilExists(timeout: 5))
+        captureStep("explore-loading", app: loadingApp)
+
+        let loadedApp = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-loaded")
+        let loaded = AppPage(app: loadedApp).goToExplore()
+        XCTAssertTrue(loaded.exploreLoadedState.waitUntilExists(timeout: 5))
+        XCTAssertTrue(loaded.exploreDeck(id: "deck_official_gre_high_freq").waitUntilExists(timeout: 5))
+        captureStep("explore-loaded", app: loadedApp)
+
+        let emptyApp = launchIsolatedApp(fixtures: [.explore("empty")], perfLog: "explore-empty")
+        let empty = AppPage(app: emptyApp).goToExplore()
+        XCTAssertTrue(empty.exploreEmptyState.waitUntilExists(timeout: 5))
+        captureStep("explore-empty", app: emptyApp)
+
+        let retryApp = launchIsolatedApp(fixtures: [.explore("retry")], perfLog: "explore-retry")
+        let retry = AppPage(app: retryApp).goToExplore()
+        XCTAssertTrue(retry.exploreErrorState.waitUntilExists(timeout: 5))
+        XCTAssertTrue(retry.exploreRetryButton.waitUntilExists(timeout: 5))
+        retry.exploreRetryButton.tapWhenReady()
+        XCTAssertTrue(retry.exploreLoadedState.waitUntilExists(timeout: 5))
+        captureStep("explore-retry", app: retryApp)
+    }
+
+    @MainActor
+    func testExploreCounterexampleEvidenceUsesDistinctAssets() throws {
+        let emptyApp = launchIsolatedApp(
+            fixtures: [.explore("empty-counterexample")],
+            perfLog: "explore-empty-counterexample"
+        )
+        let empty = AppPage(app: emptyApp).goToExplore()
+        XCTAssertTrue(empty.exploreEmptyState.waitUntilExists(timeout: 5))
+        captureStep("explore-empty-counterexample", app: emptyApp)
+
+        let retryApp = launchIsolatedApp(
+            fixtures: [.explore("retry-counterexample")],
+            perfLog: "explore-retry-counterexample"
+        )
+        let retry = AppPage(app: retryApp).goToExplore()
+        XCTAssertTrue(retry.exploreErrorState.waitUntilExists(timeout: 5))
+        captureStep("explore-retry-counterexample", app: retryApp)
+    }
 }

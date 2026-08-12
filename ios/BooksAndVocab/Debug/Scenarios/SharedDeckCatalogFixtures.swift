@@ -1,4 +1,4 @@
-#if DEBUG && canImport(Playbook)
+#if DEBUG
 //
 //  SharedDeckCatalogFixtures.swift
 //  Books & Vocab
@@ -55,6 +55,27 @@ enum SharedDeckCatalogFixtures {
             author: nil, isOfficial: true, category: "language", languagePair: "en-zh",
             tags: ["business"], cardCount: 300, downloadCount: 980, ratingAvg: nil,
             ratingCount: 0, color: "#C9B8D6", coverPattern: "grid"
+        ),
+    ]
+
+    /// Deliberately independent data for negative/counterexample evidence.
+    /// Do not reuse required fixture rows: evidence consumers must be able to
+    /// distinguish a counterexample asset from a required state asset.
+    static let counterexample: [DeckSpec] = [
+        DeckSpec(
+            remoteId: "deck_counterexample_retry",
+            title: "Counterexample Retry Deck",
+            author: "Counterexample",
+            isOfficial: false,
+            category: "counterexample",
+            languagePair: "en-zh",
+            tags: ["counterexample"],
+            cardCount: 1,
+            downloadCount: 0,
+            ratingAvg: nil,
+            ratingCount: 0,
+            color: "#B8C9A8",
+            coverPattern: "dots"
         ),
     ]
 

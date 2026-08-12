@@ -65,6 +65,10 @@ enum UITestFixtureSeed {
                 seedNotebook(id, into: container)
             case "dictionary":
                 seedDictionary(id)
+#if DEBUG
+            case "explore":
+                seedExplore(id, into: container)
+#endif
             case "entitlements":
                 guard id == "pro" || id == "free" else {
                     failFixtureSeed("Unknown entitlements fixture ID: \(id)")
