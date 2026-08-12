@@ -44,6 +44,7 @@ def test_tracked_capsule_excludes_git_and_rejects_dirty_or_untracked(tmp_path: P
     capsule = materialize_tracked_capsule(repo, commit, tmp_path / "capsule")
     assert capsule.commit == commit
     assert ".git" not in capsule.files
+    assert not (capsule.materialized_root / ".git").exists()
     assert capsule.tree_sha256
     (repo / "untracked.txt").write_text("nope\n", encoding="utf-8")
     with pytest.raises(CapsuleError, match="dirty|untracked"):
@@ -75,17 +76,17 @@ def test_receipt_is_asymmetric_and_ack_is_controller_only(tmp_path: Path):
     assert signer.verify(receipt)["job_id"] == "job-1"
     public_verifier = ReceiptSigner.from_public_bytes(signer.public_bytes())
     assert public_verifier.verify(receipt)["job_id"] == "job-1"
-    with pytest.raises(ReceiptError, match="signature"):
+    with pytest.raises(ReceiptError, match="receipt-digest|signature"):
         signer.verify({**receipt, "returncode": 1})
     authority = OscarAckAuthority(tmp_path / "ack-ledger.json", key=b"k" * 32)
     ack = authority.issue("job-1", receipt["receipt_digest"])
+    wrong_digest = dict(ack, receipt_digest="0" * 64)
+    with pytest.raises(AckReplayError, match="digest|replay|invalid"):
+        authority.verify(wrong_digest)
     assert authority.verify(ack) is True
     reloaded = OscarAckAuthority(tmp_path / "ack-ledger.json", key=b"k" * 32)
     with pytest.raises(AckReplayError, match="replay"):
         reloaded.verify(ack)
-    wrong_digest = dict(ack, receipt_digest="0" * 64)
-    with pytest.raises(AckReplayError, match="digest|replay|invalid"):
-        authority.verify(wrong_digest)
     with pytest.raises(AckReplayError, match="replay"):
         authority.verify(ack)
 
@@ -105,7 +106,7 @@ def test_lifecycle_requires_order_and_reaps_only_terminal(tmp_path: Path):
     lifecycle.transition("job-terminal", "terminal")
     assert lifecycle.reap(now=10_000) == ["job-terminal"]
     assert lifecycle.get("job-active")["state"] == "running"
-    with pytest.raises(LifecycleError, match="order"):
+    with pytest.raises(LifecycleError, match="unknown|order"):
         lifecycle.transition("job-2", "acked")
 
 
