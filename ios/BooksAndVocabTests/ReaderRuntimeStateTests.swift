@@ -55,8 +55,9 @@ struct ReaderRuntimeStateTests {
     @Test func missingAndRetryableLoadingFailOnceThenRetrySuccessfully() {
         for scenario in [ReaderRuntimeScenario.loadingMissing, .loadingErrorRetry] {
             let state = ReaderRuntimeState(selection: ReaderRuntimeFixtureAdapter.selection(scenario: scenario))
+            let expectedFailure: ReaderLoadingFailure = scenario == .loadingMissing ? .missing : .retryable
 
-            #expect(state.beginLoadAttempt() == .failed(scenario == .loadingMissing ? .missing : .retryable))
+            #expect(state.beginLoadAttempt() == .failed(expectedFailure))
             #expect(state.loadingState.isFailed)
             #expect(state.retry())
             #expect(state.beginLoadAttempt() == .proceed)
