@@ -40,6 +40,7 @@ private struct IOSRunVerdict: Decodable {
     struct Invocation: Decodable {
         let ts: Int?
         let pid: Int?
+        let verdictFile: String?
     }
 
     struct Artifacts: Decodable {
@@ -54,7 +55,6 @@ private struct IOSRunVerdict: Decodable {
     let options: Options
     let invocation: Invocation?
     let device: String?
-    let verdictFile: String?
     let artifacts: Artifacts
 }
 
@@ -243,7 +243,10 @@ extension UITestCase {
         }
 
         return ReaderTOCEvidenceRun(
-            verdictPath: try required(verdict.verdictFile, "verdictFile"),
+            verdictPath: try required(
+                verdict.invocation?.verdictFile,
+                "invocation.verdictFile"
+            ),
             sourceCommit: sourceCommit,
             sourceTreeDirty: sourceTreeDirty,
             datasetID: datasetID,
