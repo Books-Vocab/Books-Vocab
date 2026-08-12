@@ -54,14 +54,14 @@ def _plan(**overrides) -> dict:
     plan = {
         "schema": "kg.history_plan.v1",
         "anchor_day": "2026-07-09",
-        "render_utc_offset_hours": [9, 8],
+        "render_utc_offset_hours": [-10],
         "review_clock_time_zone": "Pacific/Honolulu",
         "current_streak_days": 5,
         "longest_streak_days": 8,
         "due_at_anchor": {"primary": 2, "other": 1},
         "due_horizon_days": 10,
         "weekday_weights": [1.0, 1.0, 1.0, 1.0, 1.2, 1.6, 1.5],
-        "event_utc_hours": [1, 14],
+        "event_utc_hours": [10, 23],
         "daily_primary_events_max": 30,
     }
     plan.update(overrides)
@@ -113,9 +113,9 @@ def _dumps(spec: dict) -> str:
 
 
 ANCHOR = date(2026, 7, 9)
-# render 機器牆鐘時區候選（iOS dayKey = Calendar.current）：Tokyo(+9)/Taipei(+8)。
-# 敘事必須在每個 offset 下同時成立 —— L2 曾抓到 +8 假設下最長紀錄在 +9 主機膨脹成 82。
-OFFSETS = (timedelta(hours=9), timedelta(hours=8))
+# iOS production calendar geometry: the synthetic plan must use the same
+# Pacific/Honolulu anchor offset as the canonical history plan.
+OFFSETS = (timedelta(hours=-10),)
 
 
 def _day(ts: str, offset: timedelta = OFFSETS[0]) -> date:
@@ -238,7 +238,7 @@ class TestFreshGreenCohort:
     貼近凍結 now、next=anchor+1..3（短 interval）→ 排最上且 ratio≈0（亮綠）。
     """
 
-    FROZEN_NOW = datetime(2026, 7, 9, 14, 59, 59, tzinfo=timezone.utc)  # anchor 末刻
+    FROZEN_NOW = datetime(2026, 7, 10, 9, 59, 59, tzinfo=timezone.utc)  # anchor 末刻
 
     @staticmethod
     def _fresh_primary(shaped: dict, primary: str, anchor: date,
@@ -297,7 +297,7 @@ class TestDueDistribution:
         plan = _plan()
         shaped = shape_history.shape(_spec(), plan)
         # render 視窗下界：anchor 當地日 00:00（= UTC anchor-1 16:00）
-        render_floor = datetime(2026, 7, 8, 16, 0, tzinfo=timezone.utc)
+        render_floor = datetime(2026, 7, 9, 10, 0, tzinfo=timezone.utc)
         due_primary = due_other = 0
         for card in shaped["cards"]:
             r = card["review"]
@@ -315,14 +315,14 @@ class TestDueDistribution:
     def test_non_due_next_in_horizon_and_decreasing(self):
         plan = _plan()
         shaped = shape_history.shape(_spec(), plan)
-        render_ceiling = datetime(2026, 7, 9, 16, 0, tzinfo=timezone.utc)
+        render_ceiling = datetime(2026, 7, 10, 10, 0, tzinfo=timezone.utc)
         offsets = []
         for card in shaped["cards"]:
             r = card["review"]
             if r["review_count"] <= 0:
                 continue
             nxt = datetime.fromisoformat(r["next_review_at"])
-            if nxt <= datetime(2026, 7, 8, 16, 0, tzinfo=timezone.utc):
+            if nxt <= datetime(2026, 7, 9, 10, 0, tzinfo=timezone.utc):
                 continue  # due 卡
             assert nxt > render_ceiling, card["content"]
             off = (_day(r["next_review_at"]) - ANCHOR).days

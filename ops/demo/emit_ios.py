@@ -39,7 +39,6 @@ if str(_HERE) not in sys.path:
 import spec_world  # noqa: E402
 from review_calendar_clock import (  # noqa: E402
     clock_from_plan,
-    clock_from_spec,
 )
 from ui_world_manifest import (  # noqa: E402
     UIWorldManifestError,
@@ -206,7 +205,9 @@ def _build_scenario_context(
             )
         clock = expected
     else:
-        clock = clock_from_spec(spec)
+        # Generic spec emission is still governed by history_plan. The
+        # explicit legacy spec-history helper is not a second production clock.
+        clock = clock_from_plan()
     context = {
         "reviewClock": clock,
         "readerPassage": spec_world.derive_reader_passage(spec),
@@ -541,6 +542,8 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     _validate_fixture_json_bytes(
         content,
         require_review_clock=True,
+        # The checked-in marketing baseline/generated artifact is the strict
+        # canonical fixture; generic spec mode has its own conditional gate.
         require_review_history_alignment=True,
     )
     _validate_fixture_json_bytes(
@@ -564,13 +567,24 @@ def _spec_build(
     `_spec_artifacts`(測試 seam)與 `_emit_spec`(CLI)都走這一條,防兩路徑 drift。
     """
     spec = spec_world.load_seed_spec(Path(spec_path))
+    if not any(
+        card.get("review", {}).get("last_reviewed_at")
+        for card in spec.get("cards", [])
+    ):
+        raise ValueError(
+            "spec must contain at least one last_reviewed_at; "
+            "dateAdded fallback is not a review-clock source"
+        )
     document, stats = _build_spec_fixture_document(
         sot, spec, review_clock_frozen_at=review_clock_frozen_at)
     content = _json_bytes(document)
     _validate_fixture_json_bytes(
         content,
         require_review_clock=True,
-        require_review_history_alignment=True,
+        # A generic account spec may intentionally contain an old sample
+        # history.  Its clock is still the one canonical history-plan clock;
+        # only an explicit freeze requests strict history alignment.
+        require_review_history_alignment=review_clock_frozen_at is not None,
     )
     return Path(out_path), content, document, stats, spec
 
