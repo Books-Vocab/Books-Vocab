@@ -842,6 +842,7 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     assert clock["now"] == "2026-07-09T14:59:59Z"
     assert clock["timeZone"] == "UTC"
     assert clock["anchorDay"] == "2026-07-09"
+    assert clock["timeZone"] == emit_ios.REVIEW_CLOCK_TIME_ZONE
     assert clock["source"] == "history_plan.anchor_day"
     passage = mc["readerPassage"]
     assert passage["activeWord"] and passage["paragraphs"]
@@ -873,6 +874,15 @@ def test_review_clock_field_matches_preferences_overlay_epoch(tmp_path):
     clock_epoch = doc["scenarioContext"]["reviewClock"]["frozenEpoch"]
     for store in ("userDefaults", "ubiquitousKeyValueStore"):
         assert doc["preferences"][store]["review_settings_progress_paused_at"] == clock_epoch
+
+
+def test_baseline_emission_requires_the_explicit_review_clock():
+    document = emit_ios._build_fixture_document(sot.load_sot())
+    clock = document["scenarioContext"]["reviewClock"]
+
+    assert set(clock) == {"frozenNow", "frozenEpoch", "anchorDay", "timeZone", "source"}
+    assert clock["timeZone"] == "Pacific/Honolulu"
+    assert clock["source"] == "history_plan.anchor_day"
 
 
 def test_word_detail_scenario_emitted_and_word_detail_stays_baseline(tmp_path):

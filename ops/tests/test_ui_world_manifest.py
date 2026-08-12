@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -419,6 +420,61 @@ def test_validate_rejects_absolute_or_escaping_asset_source_path(tmp_path: Path,
 
     with pytest.raises(UIWorldManifestError, match=r"sourcePath.*repo-relative"):
         validate_fixture_dataset_file(path)
+
+
+def test_marketing_demo_review_clock_is_explicit_and_history_aligned():
+    data = _marketing_demo()
+    clock = data["scenarioContext"]["reviewClock"]
+
+    assert isinstance(clock, dict)
+    assert set(clock) == {"frozenNow", "frozenEpoch", "anchorDay", "timeZone", "source"}
+    assert clock["timeZone"] == "Pacific/Honolulu"
+    assert clock["source"] == "history_plan.anchor_day"
+    assert validate_fixture_dataset_file(
+        ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
+        require_review_clock=True,
+        require_review_history_alignment=True,
+    ) == "marketing_demo"
+
+
+def test_review_clock_validator_rejects_timezone_and_history_boundary_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = {
+        "frozenNow": "2026-06-16T00:00:00Z",
+        "frozenEpoch": int(datetime(2026, 6, 16, tzinfo=timezone.utc).timestamp()),
+        "anchorDay": "2026-06-16",
+        "timeZone": "UTC",
+        "source": "history_plan.anchor_day",
+    }
+    path = tmp_path / "clock_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="timezone-boundary"):
+        validate_fixture_dataset_file(
+            path,
+            require_review_clock=True,
+            require_review_history_alignment=True,
+        )
+
+
+def test_review_clock_validator_rejects_epoch_anchor_mismatch(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = {
+        "frozenNow": "2026-06-16T00:00:00Z",
+        "frozenEpoch": 0,
+        "anchorDay": "2026-06-15",
+        "timeZone": "Pacific/Honolulu",
+        "source": "history_plan.anchor_day",
+    }
+    path = tmp_path / "clock_epoch_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="frozenNow/frozenEpoch|anchorDay"):
+        validate_fixture_dataset_file(
+            path,
+            require_review_clock=True,
+            require_review_history_alignment=True,
+        )
 
 
 def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):
