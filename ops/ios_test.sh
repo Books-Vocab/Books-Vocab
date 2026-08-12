@@ -306,6 +306,8 @@ source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
 source "$SCRIPT_DIR/lib/signal_traps.sh"
 # shellcheck source=lib/fixture_dataset_env.sh
 source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"
+# shellcheck source=lib/ios_xctestrun_cache.sh
+source "$SCRIPT_DIR/lib/ios_xctestrun_cache.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -342,31 +344,17 @@ ios_test_build_cache_key() {
   local platform_token
   platform_token="$(printf '%s' "$DESTINATION" | sed -n 's/.*platform=\([^,]*\).*/\1/p' | tr '[:upper:] ' '[:lower:]-')"
   [[ -n "$platform_token" ]] || platform_token="unknown"
-  {
-    printf 'platform=%s\n' "$platform_token"
-    printf 'arch=%s\n' "$(uname -m)"
-    printf 'scope=%s\n' "$TEST_SCOPE"
-    printf 'scheme=%s\n' "$TEST_SCHEME"
-    printf 'configuration=%s\n' "$CONFIGURATION"
-    printf 'coverage=%s\n' "$COVERAGE_ENABLED"
-    # Unsigned generic-device compile products are not installable on a real
-    # device. Keep them out of the signed exact-device cache even though both
-    # destinations share the same platform token (`ios`).
-    printf 'signing=%s\n' "$(ios_test_signing_mode "$DESTINATION")"
-    printf 'xcode=%s\n' "$xcode_version"
-    # Hash all inputs in a single shasum process instead of one fork per file
-    # (~5.3s -> ~0.05s for ~556 files). Paths are already sorted+unique and
-    # relative to the repo root, so the digest stays stable across worktrees
-    # and independent of listing order. Filter to files that exist first:
-    # untracked inputs (e.g. Xcode-generated swiftpm/Package.resolved) are
-    # legitimately absent in fresh worktrees, and a missing file would make
-    # shasum exit non-zero — under set -e + pipefail that silently killed the
-    # whole script (mute exit, no payload) on every cache path.
-    ios_test_build_input_paths \
-      | ( cd "$PROJECT_ROOT" \
-          && while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\n' "$f" || :; done \
-          | tr '\n' '\0' | xargs -0 shasum -a 256 2>/dev/null )
-  } | shasum -a 256 | awk '{print $1}'
+  ios_xctestrun_cache_build_key \
+    "$PROJECT_ROOT" \
+    "$platform_token" \
+    "$(uname -m)" \
+    "$TEST_SCOPE" \
+    "$TEST_SCHEME" \
+    "$CONFIGURATION" \
+    "$COVERAGE_ENABLED" \
+    "$(ios_test_signing_mode "$DESTINATION")" \
+    "$xcode_version" \
+    < <(ios_test_build_input_paths)
 }
 
 ios_test_derived_data_root() {
@@ -377,22 +365,17 @@ ios_test_derived_data_root() {
 }
 
 ios_test_find_xctestrun() {
-  local derived_data_root="$1"
-  local candidate=""
-  [[ -d "$derived_data_root" ]] || return 1
-  while IFS= read -r candidate; do
-    [[ "$candidate" == *.scoped.xctestrun ]] && continue
-    [[ -f "$candidate" ]] || continue
-    printf '%s\n' "$candidate"
-    return 0
-  done < <(find "$derived_data_root" -type f -name '*.xctestrun' | sort)
-  return 1
+  if ! declare -F ios_xctestrun_cache_find >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_find "$1"
 }
 
 ios_test_list_xctestrun_artifacts() {
-  local derived_data_root="$1"
-  [[ -d "$derived_data_root" ]] || return 0
-  find "$derived_data_root" -type f -name '*.xctestrun' | sort
+  if ! declare -F ios_xctestrun_cache_list >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_list "$1"
 }
 
 # Device vs simulator is decided by the destination's PLATFORM, not by its
@@ -413,26 +396,14 @@ ios_test_sdk_suffix() {
 }
 
 ios_test_cached_products_ready() {
-  local xctestrun_path="$1"
-  local products_root app_bundle unit_bundle ui_bundle sdk_suffix
-  [[ -n "$xctestrun_path" && -f "$xctestrun_path" ]] || return 1
-  products_root="$(dirname "$xctestrun_path")"
-  sdk_suffix="$(ios_test_sdk_suffix)"
-  app_bundle="$products_root/$CONFIGURATION-$sdk_suffix/BooksAndVocab.app"
-  unit_bundle="$app_bundle/PlugIns/BooksAndVocabTests.xctest"
-  ui_bundle="$products_root/$CONFIGURATION-$sdk_suffix/BooksAndVocabUITests-Runner.app"
-  [[ -d "$app_bundle" ]] || return 1
-  case "$TEST_SCOPE" in
-    unit)
-      [[ -d "$unit_bundle" ]] || return 1
-      ;;
-    ui)
-      [[ -d "$ui_bundle" ]] || return 1
-      ;;
-    all)
-      [[ -d "$unit_bundle" && -d "$ui_bundle" ]] || return 1
-      ;;
-  esac
+  if ! declare -F ios_xctestrun_cache_products_ready >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_products_ready \
+    "$1" \
+    "$CONFIGURATION" \
+    "$(ios_test_sdk_suffix)" \
+    "$TEST_SCOPE"
 }
 
 # A build-for-testing that is interrupted (INT/TERM) or fails mid-write leaves
@@ -443,9 +414,15 @@ ios_test_cached_products_ready() {
 # never treated as ready and is rebuilt instead of served to parallel agents.
 IOS_TEST_CACHE_SENTINEL=".kg-test-cache-complete"
 ios_test_cache_is_complete() {
-  local xctestrun_path="$1"
-  [[ -n "$DERIVED_DATA_ROOT" && -f "$DERIVED_DATA_ROOT/$IOS_TEST_CACHE_SENTINEL" ]] || return 1
-  ios_test_cached_products_ready "$xctestrun_path"
+  if ! declare -F ios_xctestrun_cache_is_complete >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_is_complete \
+    "$DERIVED_DATA_ROOT/$IOS_TEST_CACHE_SENTINEL" \
+    "$1" \
+    "$CONFIGURATION" \
+    "$(ios_test_sdk_suffix)" \
+    "$TEST_SCOPE"
 }
 
 # --- Build -only-testing flags ---
@@ -1079,47 +1056,32 @@ should_rebuild_after_test_without_building_failure() {
 # 不可經 command substitution 呼叫：cleanup trap 靠父 shell 的
 # STAGED_DATASET_XCTESTRUN 刪檔，subshell 賦值傳不回來（曾為死碼）。
 stage_fixture_dataset_xctestrun() {
-  local base_path="$1" staged_path="$2"
-  cp "$base_path" "$staged_path" || return 1
-  # 先枚舉完再變更（理由見 stage_live_demo_xctestrun 上方）：邊枚舉邊 upsert 會讓
-  # 枚舉器提早收工，漏掉的 target 拿不到 dataset——對空世界跑 UI 測試的假綠。
-  local -a env_roots=()
-  local env_root
-  while IFS= read -r env_root; do
-    [[ -n "$env_root" ]] && env_roots+=("$env_root")
-  done < <(xctestrun_target_env_roots "$staged_path")
-  local i found=0
-  for ((i = 0; i < ${#env_roots[@]}; i++)); do
-    env_root="${env_roots[$i]}"
-    found=1
-    sanitize_xctestrun_evidence_env_root "$staged_path" "$env_root"
-    /usr/libexec/PlistBuddy -c "Add $env_root dict" "$staged_path" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add $env_root:KG_FIXTURE_DATASET_DEFLATE_B64 string $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" || return 1
-  done
-  [[ "$found" -eq 1 ]]
+  if ! declare -F ios_xctestrun_cache_stage_env >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_stage_env \
+    "$1" \
+    "$2" \
+    KG_FIXTURE_DATASET_DEFLATE_B64 \
+    "$UI_FIXTURE_DATASET_DEFLATE_B64" \
+    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
 }
 
 xctestrun_target_env_roots() {
-  local path="$1" configuration=0 target
-  while /usr/libexec/PlistBuddy -c "Print :TestConfigurations:$configuration" "$path" >/dev/null 2>&1; do
-    target=0
-    while /usr/libexec/PlistBuddy -c "Print :TestConfigurations:$configuration:TestTargets:$target" "$path" >/dev/null 2>&1; do
-      printf ':TestConfigurations:%s:TestTargets:%s:TestingEnvironmentVariables\n' "$configuration" "$target"
-      target=$((target + 1))
-    done
-    configuration=$((configuration + 1))
-  done
+  if ! declare -F ios_xctestrun_cache_env_roots >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_env_roots "$1"
 }
 
 sanitize_xctestrun_evidence_env_root() {
-  local path="$1" env_root="$2" key
-  for key in \
-    KG_LIVE_DEMO_RUN \
-    KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 \
-    KG_FIXTURE_DATASET_B64 \
-    KG_FIXTURE_DATASET_DEFLATE_B64; do
-    /usr/libexec/PlistBuddy -c "Delete $env_root:$key" "$path" 2>/dev/null || true
-  done
+  if ! declare -F ios_xctestrun_cache_sanitize_env_root >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  ios_xctestrun_cache_sanitize_env_root \
+    "$1" \
+    "$2" \
+    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
 }
 
 # 枚舉與變更必須嚴格分兩段，不可邊枚舉邊改同一份 plist。

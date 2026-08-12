@@ -5,8 +5,10 @@ update_trigger: manual
 scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
+  - ops/lib/ios_ops_catalog.sh
+  - ops/lib/ios_xctestrun_cache.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 30df7f5f1
+verified_against: e47d59fd6
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -78,7 +80,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | `ios_test.sh` `test`（cache-miss 後備） | 同上 | 2026-06-09 補釘，原本漏到全域 |
 | `ios_test.sh` test-without-building | 走 `-xctestrun`（不編譯） | 免釘 |
 | `ios_release.sh` archive | `.cache/ios-release-derived-data`（共享） | 2026-06-09 補釘；與 Debug 分開避免互相 invalidate |
-| `ios_ops_catalog.sh` build-for-testing | 已釘 `-derivedDataPath` | catalog snapshot |
+| `ios_ops_catalog.sh` `catalog list|open|capture` | 委派 `ios_build.sh` 的共享 DerivedData | Agent UI 工作台；不擁有 xctestrun/test cache lifecycle |
 
 三份共享快取(build / test / release)都靠 `/tmp/kg-ios-build.lock` 同一把鎖序列化,不會並行寫壞。
 
@@ -111,7 +113,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 
 ## Keyed cache 自動 eviction（2026-06-10）
 
-**動機**：`ios-test-derived-data/<content-key>` 與 `ios-catalog-derived-data/<key>` 是 content-keyed——source 一改 key 就換，舊 key 永不重用也從未清理，2026-06-10 累積 94G+31G 兩度塞爆磁碟（xcodebuild exit=73 `No space left on device`）。單一共享快取（build / release）是增量重用、不增長，**不在此政策範圍**。
+**動機**：`ios-test-derived-data/<content-key>` 是 content-keyed——source 一改 key 就換，舊 key 永不重用也從未清理，2026-06-10 累積 94G 兩度塞爆磁碟（xcodebuild exit=73 `No space left on device`）。Catalog 現為 agent UI 工作台，沒有獨立的 snapshot/xctestrun keyed cache。單一共享快取（build / release）是增量重用、不增長，**不在此政策範圍**。
 
 **機制**（`ops/lib/ios_cache_evict.sh`，`kg_ios_cache_evict <root> <current_key>`）：
 - 保留 = mtime 最新 `KG_IOS_CACHE_KEEP`（預設 3）條 ∪ current key ∪ `KG_IOS_CACHE_EVICT_MIN_AGE_HOURS`（預設 6h）內用過的條目；其餘按最舊優先 `rm -rf`。
@@ -122,10 +124,9 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | caller | 時機 | 並發保護 |
 |---|---|---|
 | `ios_test.sh` `rebuild_test_cache` | 取得 build lock 後、build 前 | 持鎖互斥寫者；無鎖讀者（test-without-building）靠 resolve 時 `touch` 續命 + min-age 視窗 |
-| `ios_ops_catalog.sh` `catalog_rebuild_scoped_cache` | scoped rebuild 的 mkdir 後、build 前 | 無共用鎖；靠各 run 自己 key 被 touch + min-age 視窗 |
 | `ios_clean_derived_data.sh` | 手動 sweep（dry-run 預設，`--apply` 才刪） | current_key 留空，靠 keep-N + min-age |
 
-**不變式**：current key 永不被淘汰；任何 6 小時內活動過的 key 永不被淘汰。讀者續命點：`ios_test.sh` 在 resolve 後 touch、catalog 兩條 cache-hit 路徑在 hit 判定時 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。另有刪除前 mtime 重驗（stale-snapshot guard）：快照後才被 touch 的 key 一律放過。回歸測試：`./ops/test_ops.sh ios-cache-evict`。
+**不變式**：current key 永不被淘汰；任何 6 小時內活動過的 key 永不被淘汰。讀者續命點：`ios_test.sh` 在 resolve 後 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。另有刪除前 mtime 重驗（stale-snapshot guard）：快照後才被 touch 的 key 一律放過。回歸測試：`./ops/test_ops.sh ios-cache-evict`。
 
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。

@@ -3,6 +3,11 @@
 
 # shellcheck source=fixture_dataset_env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixture_dataset_env.sh"
+# shellcheck source=ios_xctestrun_cache.sh
+# The current Catalog agent workbench builds via ios_build.sh and does not own
+# a test xctestrun lifecycle; keep the shared primitives available to any
+# scoped test adapter without reviving the removed snapshot pipeline.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ios_xctestrun_cache.sh"
 
 CATALOG_SESSION_ROOT="${KG_IOS_CATALOG_SESSION_ROOT:-$ROOT/.cache/catalog-agent}"
 CATALOG_ACTIVE_SESSION=""
