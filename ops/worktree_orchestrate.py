@@ -177,6 +177,7 @@ from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 from lib import dispatch_preflight  # noqa: E402
 from lib.exit_codes import EXIT_BLOCK, EXIT_OK, EXIT_TOOL_ERROR, EXIT_USAGE, EXIT_WARN  # noqa: E402
+from lib import worktree_integration_status as integrate_status  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
@@ -5169,6 +5170,57 @@ def cmd_integrate(args) -> int:
     discarded commit). Picking is per-commit, so every commit that arrives is one
     somebody named.
     """
+    if getattr(args, "status", False):
+        mutation_flags = {
+            "--branches": bool(args.branches),
+            "--parent": bool(getattr(args, "parent", False)),
+            "--continue": bool(args.cont),
+            "--append": bool(args.append),
+            "--abort": bool(args.abort),
+            "--no-gate": bool(args.no_gate),
+            "--allow-unhanded": bool(args.allow_unhanded),
+            "--commit": bool(args.commit),
+            "--independent": bool(getattr(args, "independent", False)),
+            "--campaign": bool(getattr(args, "campaign", None)),
+            # Even an explicit `--base main` is a source/mutation flag for
+            # status.  `main` is the default only when the caller omitted it.
+            "--base": bool(getattr(args, "_base_explicit", False)) or args.base != BASE_DEFAULT,
+        }
+        present = [flag for flag, enabled in mutation_flags.items() if enabled]
+        if present:
+            _emit({
+                "schema": INTEGRATE_SCHEMA, "step": "integrate",
+                "mode": "refused", "slug": args.slug,
+                "error": "--status is read-only and cannot be combined with "
+                          "mutation or source-selection flags",
+                "conflicts": present,
+            }, args.json, "✗ integrate --status refused: conflicting flags " + ", ".join(present))
+            return EXIT_USAGE
+        state_path = Path(args.state).expanduser().resolve() if args.state else wr.default_state_path()
+        state_file = integrate_status.integration_state_path(state_path, args.slug)
+        status_repo = primary_root()
+        try:
+            raw = json.loads(state_file.read_text(encoding="utf-8"))
+            if isinstance(raw, dict) and raw.get("worktree"):
+                status_repo = Path(str(raw["worktree"])).expanduser().resolve()
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            # The projector emits the typed state-unreadable/missing receipt.  Keep
+            # the fallback repo read-only; it is only used for those failure shapes.
+            pass
+        rc, payload = integrate_status.project_status(
+            slug=args.slug, state_path=state_path, repo=status_repo,
+        )
+        phase = payload.get("phase", "unknown")
+        problems = payload.get("problems") or []
+        next_action = payload.get("next_action")
+        summary = f"# integrate --status {args.slug}: phase={phase} next={next_action}"
+        if problems:
+            summary += "\n  problems: " + "; ".join(
+                str(item.get("kind") or item) for item in problems
+            )
+        _emit(payload, args.json, summary)
+        return rc
+
     blocked = _freeze_guard(args.state, "integrate", args.json)
     if blocked is not None:
         return blocked
@@ -9996,6 +10048,9 @@ def build_parser() -> argparse.ArgumentParser:
     ig.add_argument("--slug", required=True,
                     help="kebab-case slug: names the integration worktree and branch, "
                          "AND identifies the integration for --continue / --abort")
+    ig.add_argument("--status", action="store_true",
+                    help="read-only projection of one in-flight integration; cannot "
+                         "be combined with mutation or source-selection flags")
     source_mode = ig.add_mutually_exclusive_group()
     source_mode.add_argument("--branches", nargs="+", metavar="BRANCH", default=None,
                     help="source branches, cherry-picked IN THIS ORDER. Refused (by "
@@ -10070,6 +10125,11 @@ def main(argv: list[str] | None = None) -> int:
         # normalizing every malformed root/subparser invocation to the shared
         # usage contract.
         return EXIT_OK if exc.code == 0 else EXIT_USAGE
+    # argparse collapses an omitted --base and an explicitly supplied default;
+    # status must reject the latter because its contract is slug/state/json only.
+    setattr(args, "_base_explicit", any(
+        token == "--base" or token.startswith("--base=") for token in tokens
+    ))
     if not getattr(args, "func", None):
         parser.print_help()
         return EXIT_USAGE
