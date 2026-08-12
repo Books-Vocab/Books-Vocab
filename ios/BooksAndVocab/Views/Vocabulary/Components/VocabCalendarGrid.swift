@@ -14,17 +14,13 @@ struct VocabCalendarGrid: View {
     let displayedMonth: Date
     let activityMap: [String: Int]
     @Binding var selectedDay: String?
-
-    private static let calendar = Calendar.current
-    private static let dayFormatter = AppDateFormatters.dayKey
+    let clock: ReviewCalendarClock
 
     // Locale-aware, Monday-first (matches the Monday-start day grid below).
     private let weekdaySymbols = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: AppSpacing.s1), count: 7)
-    private let todayKey = VocabCalendarGrid.dayFormatter.string(from: Date())
-
     private var monthDays: [DayCell] {
-        let cal = Self.calendar
+        let cal = clock.calendar
         let comps = cal.dateComponents([.year, .month], from: displayedMonth)
         guard let firstOfMonth = cal.date(from: comps),
               let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { return [] }
@@ -45,13 +41,13 @@ struct VocabCalendarGrid: View {
             var dayComps = comps
             dayComps.day = day
             guard let date = cal.date(from: dayComps) else { continue }
-            let key = Self.dayFormatter.string(from: date)
+            let key = clock.dayKey(for: date)
             cells.append(DayCell(
                 id: key,
                 dayNumber: day,
                 dayKey: key,
-                isToday: key == todayKey,
-                isFuture: cal.startOfDay(for: date) > cal.startOfDay(for: Date())
+                isToday: key == clock.dayKey(for: clock.now),
+                isFuture: cal.startOfDay(for: date) > cal.startOfDay(for: clock.now)
             ))
         }
         return cells
@@ -125,6 +121,7 @@ struct VocabCalendarGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("reviewCalendar.day.\(cell.id)")
         .disabled(cell.isFuture)
         .opacity(cell.isFuture ? 0.45 : 1)
     }
@@ -160,9 +157,10 @@ private struct DayCell: Identifiable {
 #Preview("VocabCalendarGrid") {
     @Previewable @State var selectedDay: String?
 
-    let cal = Calendar.current
-    let formatter = AppDateFormatters.dayKey
-    let month = Date()
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(secondsFromGMT: 0)!
+    let month = Date(timeIntervalSince1970: 1_767_312_000)
+    let clock = ReviewCalendarClock(now: month, timeZone: cal.timeZone)
     var activity: [String: Int] = [:]
     if let firstOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: month)),
        let range = cal.range(of: .day, in: .month, for: firstOfMonth) {
@@ -170,7 +168,7 @@ private struct DayCell: Identifiable {
             var comps = cal.dateComponents([.year, .month], from: month)
             comps.day = day
             if let date = cal.date(from: comps) {
-                activity[formatter.string(from: date)] = (day % 11) + 1
+                activity[clock.dayKey(for: date)] = (day % 11) + 1
             }
         }
     }
@@ -179,7 +177,8 @@ private struct DayCell: Identifiable {
         VocabCalendarGrid(
             displayedMonth: month,
             activityMap: activity,
-            selectedDay: $selectedDay
+            selectedDay: $selectedDay,
+            clock: clock
         )
         .padding()
     }

@@ -155,7 +155,13 @@ struct StatsPresenter: View {
             await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
-            ReviewCalendarPresenter(filter: filter)
+            ReviewCalendarPresenter(
+                filter: filter,
+                clock: ReviewCalendarClock(
+                    now: reviewSettingsStore.settings.reviewReferenceDate(),
+                    timeZone: .current
+                )
+            )
         }
         .enableInjection()
     }

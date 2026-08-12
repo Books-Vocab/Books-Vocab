@@ -8,6 +8,26 @@
 import SwiftUI
 import SwiftData
 
+struct ReviewCalendarClock: Equatable {
+    let now: Date
+    let timeZone: TimeZone
+
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    init(now: Date, timeZone: TimeZone) {
+        self.now = now
+        self.timeZone = timeZone
+    }
+
+    func dayKey(for date: Date) -> String {
+        LocaleAwareFormatter.shared.machineDayKey(from: date, timeZone: timeZone)
+    }
+}
+
 enum ReviewCalendarPresentation {
     enum DayState: Equatable {
         case empty
@@ -16,6 +36,33 @@ enum ReviewCalendarPresentation {
 
     static func filteredRecords(_ records: [ReviewRecord], filter: NotebookFilter) -> [ReviewRecord] {
         filter.isFiltered ? records.filter { filter.matches($0.notebookId) } : records
+    }
+
+    static func dayKey(for date: Date, clock: ReviewCalendarClock) -> String {
+        clock.dayKey(for: date)
+    }
+
+    static func records(
+        for dayKey: String,
+        from records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [ReviewRecord] {
+        records
+            .filter { clock.dayKey(for: $0.reviewedAt) == dayKey }
+            .sorted { $0.reviewedAt > $1.reviewedAt }
+    }
+
+    static func activity(
+        for days: Int = 365,
+        records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [String: Int] {
+        let cutoff = clock.calendar.date(byAdding: .day, value: -days, to: clock.now) ?? clock.now
+        var result: [String: Int] = [:]
+        for record in records where record.reviewedAt >= cutoff {
+            result[clock.dayKey(for: record.reviewedAt), default: 0] += 1
+        }
+        return result
     }
 
     static func dayState(for records: [ReviewRecord]) -> DayState {
@@ -35,36 +82,32 @@ struct ReviewCalendarPresenter: View {
     @Environment(\.dismiss) private var dismiss
 
     let filter: NotebookFilter
+    let clock: ReviewCalendarClock
     @Query var allRecords: [ReviewRecord]
 
-    private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
-
-    init(filter: NotebookFilter = NotebookFilter()) {
+    init(filter: NotebookFilter = NotebookFilter(), clock: ReviewCalendarClock) {
         self.filter = filter
-        let cutoff = Self.sixMonthsAgo
+        self.clock = clock
+        let cutoff = clock.calendar.date(byAdding: .month, value: -6, to: clock.now) ?? clock.now
         _allRecords = Query(
             filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
             sort: \ReviewRecord.reviewedAt,
             order: .reverse
         )
+        _displayedMonth = State(initialValue: clock.now)
+        _selectedDay = State(initialValue: clock.dayKey(for: clock.now))
     }
 
-    @State private var displayedMonth: Date = Date()
-    @State private var selectedDay: String? = ReviewRecord.makeDayKey(from: Date())
+    @State private var displayedMonth: Date
+    @State private var selectedDay: String?
 
-    private static let calendar = Calendar.current
-
-    private static func formattedMonth(_ date: Date) -> String {
+    private static func formattedMonth(_ date: Date, clock: ReviewCalendarClock) -> String {
         // template "yMMMM" → en "May 2026" / ja "2026年5月" / ko "2026년 5월"
-        LocaleAwareFormatter.shared.string(from: date, template: "yMMMM")
-    }
-
-    private static func formattedTime(_ date: Date) -> String {
-        LocaleAwareFormatter.shared.string(from: date, format: "HH:mm")
+        LocaleAwareFormatter.shared.string(from: date, template: "yMMMM", timeZone: clock.timeZone)
     }
 
     private var activityMap: [String: Int] {
-        ReviewActivityLog.activity(for: 365, records: filteredRecords)
+        ReviewCalendarPresentation.activity(for: 365, records: filteredRecords, clock: clock)
     }
 
     private var filteredRecords: [ReviewRecord] {
@@ -73,7 +116,7 @@ struct ReviewCalendarPresenter: View {
 
     private var selectedDayRecords: [ReviewRecord] {
         guard let day = selectedDay else { return [] }
-        return ReviewActivityLog.recordsForDay(day, from: filteredRecords)
+        return ReviewCalendarPresentation.records(for: day, from: filteredRecords, clock: clock)
     }
 
     private var selectedDaySummary: (total: Int, remembered: Int, forgot: Int) {
@@ -126,7 +169,7 @@ struct ReviewCalendarPresenter: View {
 
                 Spacer()
 
-                Text(Self.formattedMonth(displayedMonth))
+                Text(Self.formattedMonth(displayedMonth, clock: clock))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
@@ -145,7 +188,8 @@ struct ReviewCalendarPresenter: View {
             VocabCalendarGrid(
                 displayedMonth: displayedMonth,
                 activityMap: activityMap,
-                selectedDay: $selectedDay
+                selectedDay: $selectedDay,
+                clock: clock
             )
         }
         .vocabCardBackground()
@@ -214,7 +258,11 @@ struct ReviewCalendarPresenter: View {
                 .font(appSkin.typography.monoLabel)
                 .foregroundStyle(record.feedback == 1 ? appSkin.palette.success : appSkin.palette.destructive)
 
-            Text(Self.formattedTime(record.reviewedAt))
+            Text(LocaleAwareFormatter.shared.string(
+                from: record.reviewedAt,
+                format: "HH:mm",
+                timeZone: clock.timeZone
+            ))
                 .font(appSkin.typography.monoLabel)
                 .foregroundStyle(appSkin.palette.quaternaryText)
         }
@@ -225,15 +273,15 @@ struct ReviewCalendarPresenter: View {
 
     private var dayDisplayTitle: String {
         guard let day = selectedDay else { return "" }
-        let todayKey = ReviewRecord.makeDayKey(from: Date())
+        let todayKey = clock.dayKey(for: clock.now)
         if day == todayKey { return day + "（今天）".localized }
         return day
     }
 
     private var canGoForward: Bool {
-        let cal = Self.calendar
+        let cal = clock.calendar
         let nextMonth = cal.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
-        let nowComps = cal.dateComponents([.year, .month], from: Date())
+        let nowComps = cal.dateComponents([.year, .month], from: clock.now)
         let nextComps = cal.dateComponents([.year, .month], from: nextMonth)
         guard let nextYear = nextComps.year, let nextMonth = nextComps.month,
               let nowYear = nowComps.year, let nowMonth = nowComps.month else { return false }
@@ -242,7 +290,7 @@ struct ReviewCalendarPresenter: View {
 
     private func changeMonth(by offset: Int) {
         withAnimation(AppMotion.phaseChange) {
-            displayedMonth = Self.calendar.date(
+            displayedMonth = clock.calendar.date(
                 byAdding: .month, value: offset, to: displayedMonth
             ) ?? displayedMonth
             selectedDay = nil
