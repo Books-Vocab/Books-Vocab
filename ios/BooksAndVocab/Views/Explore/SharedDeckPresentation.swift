@@ -8,6 +8,47 @@
 
 import Foundation
 
+enum ExploreCatalogFixtureID {
+    static let requiredStepLabels = [
+        "explore-loading",
+        "explore-loaded",
+        "explore-empty",
+        "explore-retry",
+    ]
+
+    static let counterexampleLabels = [
+        "explore-empty-counterexample",
+        "explore-retry-counterexample",
+    ]
+}
+
+struct ExploreCatalogPreview: Equatable {
+    enum Phase: String, Equatable {
+        case loading
+        case error
+        case loaded
+    }
+
+    let initialPhase: Phase
+    let retryPhase: Phase
+
+    static func fromLaunchArguments(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Self? {
+        guard let argument = arguments.first(where: { $0.hasPrefix("-seedFixture:explore:") }) else {
+            return nil
+        }
+        guard let id = argument.split(separator: ":", maxSplits: 2).last.map(String.init) else {
+            return nil
+        }
+        if id.hasPrefix("loading") {
+            return Self(initialPhase: .loading, retryPhase: .loaded)
+        }
+        if id.hasPrefix("retry") {
+            return Self(initialPhase: .error, retryPhase: .loaded)
+        }
+        return nil
+    }
+}
+
 enum ExploreSort: String, CaseIterable, Identifiable {
     case recency
     case alphabetical

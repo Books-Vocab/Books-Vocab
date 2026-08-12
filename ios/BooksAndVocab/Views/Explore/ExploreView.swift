@@ -55,6 +55,8 @@ struct ExploreView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
 
+    private let catalogPreview: ExploreCatalogPreview?
+
     @Query(filter: #Predicate<SharedDeck> { !$0.isSoftDeleted }, sort: \.sortOrder)
     private var decks: [SharedDeck]
 
@@ -62,6 +64,12 @@ struct ExploreView: View {
     @State private var isSyncing = false
     @State private var syncFailed = false
     @State private var filter = ExploreFilter()
+    @State private var previewPhase: ExploreCatalogPreview.Phase?
+
+    init(catalogPreview: ExploreCatalogPreview? = ExploreCatalogPreview.fromLaunchArguments()) {
+        self.catalogPreview = catalogPreview
+        _previewPhase = State(initialValue: catalogPreview?.initialPhase)
+    }
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
@@ -81,7 +89,14 @@ struct ExploreView: View {
     }
 
     private var phase: ExplorePhase {
-        ExplorePhase.resolve(
+        if let previewPhase {
+            switch previewPhase {
+            case .loading: return .loading
+            case .error: return .error
+            case .loaded: break
+            }
+        }
+        return ExplorePhase.resolve(
             isSyncing: isSyncing, syncFailed: syncFailed,
             totalDeckCount: decks.count, filteredCount: filteredDecks.count,
             isFilteringOrSearching: filter.isSearching || filter.hasActiveFilters
@@ -126,7 +141,9 @@ struct ExploreView: View {
                 }
             }
             .task(id: authManager.isLoggedIn) {
-                guard catalogTaskPolicy.runsTasks else { return }
+                guard catalogTaskPolicy.runsTasks,
+                      !AppRuntimeOptions.isUITesting()
+                else { return }
                 await syncCatalog(showToastOnFailure: false)
             }
         }
@@ -155,6 +172,7 @@ struct ExploreView: View {
         #if !targetEnvironment(macCatalyst)
         .refreshable { await refreshCatalog() }
         #endif
+        .accessibilityIdentifier("explore.loadedState")
     }
 
     private var deckGrid: some View {
@@ -236,6 +254,7 @@ struct ExploreView: View {
                 style: .bookshelf(appTheme)
             )
         }
+        .accessibilityIdentifier("explore.emptyState")
     }
 
     private var noResultsState: some View {
@@ -264,11 +283,13 @@ struct ExploreView: View {
                 action: AppEmptyStateAction(
                     title: L10n.string("explore.retry"),
                     systemImage: "arrow.clockwise",
+                    accessibilityIdentifier: "explore.retryButton",
                     handler: { Task { await refreshCatalog() } }
                 ),
                 style: .bookshelf(appTheme)
             )
         }
+        .accessibilityIdentifier("explore.errorState")
     }
 
     private var loadingState: some View {
@@ -284,6 +305,7 @@ struct ExploreView: View {
             Spacer()
         }
         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+        .accessibilityIdentifier("explore.loadingState")
     }
 
     @ViewBuilder
@@ -333,6 +355,10 @@ struct ExploreView: View {
 
     @MainActor
     private func refreshCatalog() async {
+        if let catalogPreview {
+            previewPhase = catalogPreview.retryPhase
+            return
+        }
         await syncCatalog(showToastOnFailure: true)
     }
 }

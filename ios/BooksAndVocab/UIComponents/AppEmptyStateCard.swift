@@ -19,7 +19,7 @@ struct AppEmptyStateAction {
 
     init(
         title: String,
-        systemImage: String?,
+        systemImage: String? = nil,
         accessibilityIdentifier: String? = nil,
         handler: @escaping () -> Void
     ) {

@@ -86,6 +86,20 @@ struct AppPage {
         return self
     }
 
+    func exploreElement(identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    var exploreLoadingState: XCUIElement { exploreElement(identifier: "explore.loadingState") }
+    var exploreLoadedState: XCUIElement { exploreElement(identifier: "explore.loadedState") }
+    var exploreEmptyState: XCUIElement { exploreElement(identifier: "explore.emptyState") }
+    var exploreErrorState: XCUIElement { exploreElement(identifier: "explore.errorState") }
+    var exploreRetryButton: XCUIElement { exploreElement(identifier: "explore.retryButton") }
+
+    func exploreDeck(id: String) -> XCUIElement {
+        exploreElement(identifier: "explore.deck.\(id)")
+    }
+
     // MARK: - Assertions
 
     func assertAllTabsVisible(file: StaticString = #filePath, line: UInt = UInt(#line)) {

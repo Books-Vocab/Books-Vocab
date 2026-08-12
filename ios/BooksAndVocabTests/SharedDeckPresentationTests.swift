@@ -30,6 +30,35 @@ struct SharedDeckPresentationTests {
         #expect(!loadingState.contains("ProgressView"))
     }
 
+    @Test func exploreCatalogPreview_retriesIntoLoadedPhaseWithoutSync() {
+        let preview = ExploreCatalogPreview(
+            initialPhase: .error,
+            retryPhase: .loaded
+        )
+
+        #expect(preview.initialPhase == .error)
+        #expect(preview.retryPhase == .loaded)
+    }
+
+    @Test func exploreCatalogFixtureIDs_keepRequiredAndCounterexampleLabelsSeparate() {
+        #expect(ExploreCatalogFixtureID.requiredStepLabels == [
+            "explore-loading",
+            "explore-loaded",
+            "explore-empty",
+            "explore-retry",
+        ])
+        #expect(ExploreCatalogFixtureID.counterexampleLabels == [
+            "explore-empty-counterexample",
+            "explore-retry-counterexample",
+        ])
+        #expect(Set(ExploreCatalogFixtureID.requiredStepLabels).isDisjoint(
+            Set(ExploreCatalogFixtureID.counterexampleLabels)
+        ))
+        #expect(Set(SharedDeckCatalogFixtures.populated.map(\.remoteId)).isDisjoint(
+            Set(SharedDeckCatalogFixtures.counterexample.map(\.remoteId))
+        ))
+    }
+
     @Test func explorePhase_keepsCachedDecksVisibleAsPartialWhenSyncFails() {
         #expect(
             ExplorePhase.resolve(
