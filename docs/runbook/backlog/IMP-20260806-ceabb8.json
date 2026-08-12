@@ -4,8 +4,14 @@
   "acceptance_expect_rc": 0,
   "brief": "這張和另一張待辦講的是同一個缺陷（說明文件與實際行為不符），修法已在那張定案，本張只等關掉。",
   "category": "cli",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-12",
+  "contract_checked_by": "delivery-coordinator:post-f742fb",
+  "contract_evidence": "2026-08-12 post-f742fb dispatch probe\nticket=IMP-20260806-ceabb8\npreflight=./ops/backlog.py preflight IMP-20260806-ceabb8 --probe-acceptance --json\npreflight_json=/tmp/IMP-20260806-ceabb8-preflight.json\nacceptance_rc=1 expected=0\nacceptance_raw=/tmp/IMP-20260806-ceabb8-preflight.err\nroot_cause=acceptance repeats obsolete exact literals for the open/adopt/freeze dry-run documentation; the canonical current contract is the mutation taxonomy already recorded for IMP-20260805-a95e23\nduplicate_of=IMP-20260805-a95e23\nclassification=CONTRACT-BLOCKED duplicate\naction=do not open child; retain duplicate linkage and update status through official backlog verify",
+  "contract_status": "blocked",
   "date": "2026-08-06",
   "detail": "`ops/worktree_orchestrate.py` 的模組 docstring 寫「Side-effecting steps (worktree add, rebase, push, worktree remove, branch -D) are gated behind --commit; dry-run is the default for every mutation」，worktree-flow skill 也寫「所有 mutation 子指令 dry-run 預設，`--commit` 才落地」。但 `open` **沒有 `--commit` 旗標**，直接落地建工作樹。實測 `open ... --commit` → `error: unrecognized arguments: --commit`（exit 2）。這不是大問題（open 是 additive、可 `resolve` 回收），但它讓「照 skill 抄指令」的 agent 第一步就吃一個 usage error，而且會讓人懷疑自己是不是記錯了整個 dry-run 契約。修法二選一：給 `open` 一個 no-op 相容的 `--commit`，或把 docstring/skill 的「every mutation」改成具名清單並註明 open 例外與理由。",
+  "duplicate_of": "IMP-20260805-a95e23",
   "fix_site": ".claude/skills/worktree-flow/SKILL.md:12 + docs/runbook/system.md:62 + docs/reference/tech_index.md:133 + ops/worktree_orchestrate.py:18-20",
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
@@ -16,6 +22,10 @@
   "scope": "不做事：工作全部走另一張待辦，這張只要標成重複並關閉。",
   "severity": "low",
   "source": "全域收攏：開 worktree 時",
-  "status": "open",
-  "stream": "IMP"
+  "status": "contract-blocked",
+  "stream": "IMP",
+  "verdict": "DUPLICATE-OF-IMP-20260805-a95e23",
+  "verified_at": "2026-08-12",
+  "verified_by": "delivery-coordinator:post-f742fb",
+  "verified_evidence": "2026-08-12 post-f742fb dispatch probe\nticket=IMP-20260806-ceabb8\npreflight=./ops/backlog.py preflight IMP-20260806-ceabb8 --probe-acceptance --json\npreflight_json=/tmp/IMP-20260806-ceabb8-preflight.json\nacceptance_rc=1 expected=0\nacceptance_raw=/tmp/IMP-20260806-ceabb8-preflight.err\nroot_cause=acceptance repeats obsolete exact literals for the open/adopt/freeze dry-run documentation; the canonical current contract is the mutation taxonomy already recorded for IMP-20260805-a95e23\nduplicate_of=IMP-20260805-a95e23\nclassification=CONTRACT-BLOCKED duplicate\naction=do not open child; retain duplicate linkage and update status through official backlog verify"
 }
