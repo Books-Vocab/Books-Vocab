@@ -948,6 +948,9 @@ documents:
       - ops/uitest_review_attest.py
       - ops/uitest_contact_sheet.py
       - ops/uitest_review_contract.py
+      - ops/uitest_evidence_contract.py
+      - ops/uitest_review_attest.py
+      - .claude/skills/ios-simulator-verification/
       - ops/plain_deadzone_lint.sh
       - .claude/skills/ios-simulator-verification/
       - .claude/skills/ios-simulator-verification/SKILL.md
