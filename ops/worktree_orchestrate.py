@@ -7115,22 +7115,23 @@ def _delivery_anchor_noop_recovery_is_safe(
     if ancestor_rc != EXIT_OK:
         return False
     changed_rc, changed = _git(
-        ["diff", "--name-only", stored_base, current_head], cwd=primary,
+        ["diff", "--name-only", "--no-renames", stored_base, current_head],
+        cwd=primary,
     )
     if changed_rc != EXIT_OK:
         return False
     changed_paths = {path for path in changed.splitlines() if path}
     if not changed_paths:
         return False
-    expected_paths = {
-        f"docs/runbook/backlog/{ticket_id}.json" for ticket_id in expected
-    }
-    return all(
-        path.startswith("docs/runbook/backlog/")
-        and path.endswith(".json")
-        and (not expected_paths or path in expected_paths)
-        for path in changed_paths
-    )
+    def is_legal_metadata_path(path: str) -> bool:
+        if path == "ops/backlog_closed_unverified_baseline.txt":
+            return True
+        if not (path.startswith("docs/runbook/backlog/")
+                and path.endswith(".json")):
+            return False
+        return "/" not in path[len("docs/runbook/backlog/"):]
+
+    return all(is_legal_metadata_path(path) for path in changed_paths)
 
 
 def _delivery_anchor_recovery_dirty_allowed(
