@@ -33,6 +33,9 @@ struct ReaderView: View {
 
     @State var publication: Publication?
     @State var readerState = ReaderViewState()
+    @State private var tocNavigationState = ReaderTOCNavigationState()
+    @State private var tocFailureInjectionConsumed = false
+    @State private var tocMissingInjectionConsumed = false
 
     // 翻譯 handler（封裝所有翻譯狀態與詞庫邏輯）
     @State var handler = ReaderTranslationHandler()
@@ -78,7 +81,10 @@ struct ReaderView: View {
         ReaderViewPresenter(
             state: presenterState,
             onDismiss: { dismiss() },
-            onShowTableOfContents: { readerState.showTableOfContents = true },
+            onShowTableOfContents: {
+                tocNavigationState.reset()
+                readerState.showTableOfContents = true
+            },
             onShowReaderSettings: showReaderSettingsPanel,
             onShowNotebookPicker: { showNotebookPicker = true },
             onExpandHeader: expandHeader,
@@ -104,7 +110,7 @@ struct ReaderView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
         .macReaderImmersion()
-        .toastSheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
+        .toastSheet(isPresented: tableOfContentsPresentation) {
             tableOfContentsSheet
         }
         .task {
@@ -185,22 +191,71 @@ struct ReaderView: View {
         if let publication {
             TOCView(
                 publication: publication,
-                onSelect: { link in handleTOCSelection(link, in: publication) }
+                navigationState: $tocNavigationState,
+                onSelect: { item in handleTOCSelection(item, in: publication) }
             )
         }
     }
 
-    private func handleTOCSelection(_ link: ReadiumShared.Link, in publication: Publication) {
-        readerState.showTableOfContents = false
-        AppLog.reader.debug("TOC selected: \(link.title ?? "Untitled")")
-        Task { @MainActor in
-            if let locator = await publication.locate(link) {
-                AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
-                navigateToLocator = (locator: locator, id: UUID())
-            } else {
-                AppLog.reader.error("TOC navigation failed: could not locate link \(String(describing: link))")
+    private var tableOfContentsPresentation: Binding<Bool> {
+        Binding(
+            get: { readerState.showTableOfContents },
+            set: { isPresented in
+                guard isPresented || tocNavigationState.canDismissSheet else { return }
+                readerState.showTableOfContents = isPresented
             }
+        )
+    }
+
+    private func handleTOCSelection(_ item: ReaderTOCItem, in publication: Publication) {
+        tocNavigationState.beginSelection(path: item.path, title: item.title)
+        AppLog.reader.debug("TOC selected: \(item.title)")
+        let injectedFailure = consumeTOCInjection(
+            argument: "-readerTOCInjectLocateFailureOnce",
+            alreadyConsumed: tocFailureInjectionConsumed
+        )
+        let injectedMissingDestination = consumeTOCInjection(
+            argument: "-readerTOCInjectMissingDestinationOnce",
+            alreadyConsumed: tocMissingInjectionConsumed
+        )
+        if injectedFailure { tocFailureInjectionConsumed = true }
+        if injectedMissingDestination { tocMissingInjectionConsumed = true }
+        Task { @MainActor in
+            if injectedFailure {
+                tocNavigationState.failSelection(message: L10n.string("章節無法開啟，請重試。"))
+                return
+            }
+            if injectedMissingDestination {
+                tocNavigationState.markMissingDestination()
+                return
+            }
+            let locator = await publication.locate(item.link)
+            guard !Task.isCancelled else { return }
+            guard let locator else {
+                if item.link.url().string == "#" {
+                    tocNavigationState.markMissingDestination()
+                    AppLog.reader.error("TOC navigation missing destination: \(item.title)")
+                } else {
+                    tocNavigationState.failSelection(
+                        message: L10n.string("章節無法開啟，請重試。")
+                    )
+                    AppLog.reader.error("TOC navigation failed: \(item.title)")
+                }
+                return
+            }
+
+            AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
+            tocNavigationState.succeed()
+            navigateToLocator = (locator: locator, id: UUID())
+            readerState.showTableOfContents = false
         }
+    }
+
+    private func consumeTOCInjection(argument: String, alreadyConsumed: Bool) -> Bool {
+        guard CommandLine.arguments.contains("-ui-testing"),
+              CommandLine.arguments.contains(argument),
+              !alreadyConsumed else { return false }
+        return true
     }
 
     /// 若 book.preferredNotebookId 指向已刪除或不存在的 notebook，清除綁定以避免新單字存入孤兒 notebook。
