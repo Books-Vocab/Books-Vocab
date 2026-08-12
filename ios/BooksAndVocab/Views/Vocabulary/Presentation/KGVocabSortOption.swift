@@ -1,6 +1,6 @@
 import Foundation
 
-enum KGVocabSortOption: String, CaseIterable, Identifiable {
+enum KGVocabSortOption: String, CaseIterable, Identifiable, Hashable {
     case `default`
     case alphabetical
     case dateAdded

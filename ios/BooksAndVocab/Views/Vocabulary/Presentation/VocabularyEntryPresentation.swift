@@ -16,6 +16,112 @@ enum VocabularyRoleFilter: String, CaseIterable, Identifiable {
     }
 }
 
+/// The complete query for the vocabulary library. Content scope, learning state,
+/// search, and ordering are separate dimensions; none is inferred from another
+/// domain field or cleared as a View side effect.
+struct VocabularyLibraryQuery: Equatable {
+    var contentScope: VocabularyRoleFilter
+    var reviewStates: Set<VocabularyReviewState>
+    var searchText: String
+    var sort: KGVocabSortOption
+
+    init(
+        contentScope: VocabularyRoleFilter = .all,
+        reviewStates: Set<VocabularyReviewState> = [],
+        searchText: String = "",
+        sort: KGVocabSortOption = .default
+    ) {
+        self.contentScope = contentScope
+        self.reviewStates = reviewStates
+        self.searchText = searchText
+        self.sort = sort
+    }
+
+    /// Returns the only valid query representation. Dictionary cards have no
+    /// review dimension, and the review-priority sort has no meaning there.
+    var normalized: Self {
+        var value = self
+        value.searchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if contentScope == .dictionary {
+            value.reviewStates = []
+            if sort == .default {
+                value.sort = .alphabetical
+            }
+        }
+        return value
+    }
+
+    func withSearchText(_ text: String) -> Self {
+        var value = self
+        value.searchText = text
+        return value
+    }
+
+    mutating func setContentScope(_ scope: VocabularyRoleFilter) {
+        contentScope = scope
+        if scope == .dictionary {
+            reviewStates = []
+            if sort == .default { sort = .alphabetical }
+        }
+    }
+
+    mutating func setReviewState(_ state: VocabularyReviewState?) {
+        reviewStates = state.map { [$0] } ?? []
+    }
+}
+
+struct VocabularyReviewQueue: Equatable {
+    let due: [VocabularyEntry]
+    let unlearned: [VocabularyEntry]
+
+    var isEmpty: Bool { due.isEmpty && unlearned.isEmpty }
+    var all: [VocabularyEntry] { due + unlearned }
+}
+
+struct VocabularyFacetCounts: Equatable {
+    let content: [VocabularyRoleFilter: Int]
+    let review: [VocabularyReviewState: Int]
+
+    func contentCount(for filter: VocabularyRoleFilter) -> Int {
+        content[filter, default: 0]
+    }
+
+    func reviewCount(for state: VocabularyReviewState) -> Int {
+        review[state, default: 0]
+    }
+}
+
+struct VocabularyEmptyStateContext: Equatable {
+    let hasNoEntries: Bool
+    let hasEntriesInScope: Bool
+    let hasVisibleEntries: Bool
+    let contentScope: VocabularyRoleFilter
+    let searchText: String
+    let reviewStates: Set<VocabularyReviewState>
+
+    /// Kept as a named alias so callers can read the domain term used in
+    /// acceptance criteria without reintroducing a second source of truth.
+    var roleFilter: VocabularyRoleFilter { contentScope }
+}
+
+struct VocabularyLibraryProjection {
+    let effectiveQuery: VocabularyLibraryQuery
+    let visibleEntries: [VocabularyEntry]
+    let facetCounts: VocabularyFacetCounts
+    let reviewQueue: VocabularyReviewQueue
+    let emptyStateContext: VocabularyEmptyStateContext
+
+    func count(for filter: VocabularyRoleFilter) -> Int {
+        facetCounts.contentCount(for: filter)
+    }
+
+    func reviewCount(for state: VocabularyReviewState) -> Int {
+        facetCounts.reviewCount(for: state)
+    }
+
+    var hasEntriesInScope: Bool { emptyStateContext.hasEntriesInScope }
+}
+
 enum VocabularyEntryPresentation {
     static func pendingEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
         entries.filter(\.shouldUploadOnNextSync)
@@ -29,6 +135,60 @@ enum VocabularyEntryPresentation {
         case .learning: entries.filter { $0.cardRole == .learning }
         case .dictionary: entries.filter { $0.cardRole == .dictionary }
         }
+    }
+
+    /// Produces every value consumed by the library chrome from one normalized
+    /// query. This prevents counts, empty copy, visible rows, and review CTA from
+    /// drifting onto different subsets of the same notebook.
+    static func project(
+        _ entries: [VocabularyEntry],
+        query: VocabularyLibraryQuery,
+        now: Date
+    ) -> VocabularyLibraryProjection {
+        let effectiveQuery = query.normalized
+        let allEntriesInScope = filterByRole(entries, filter: effectiveQuery.contentScope)
+        let searchMatches = filterBySearch(allEntriesInScope, searchText: effectiveQuery.searchText)
+        let classified = classifyKnowledgeEntries(in: allEntriesInScope, now: now)
+        let selectedEntries: [VocabularyEntry]
+        if effectiveQuery.reviewStates.isEmpty {
+            selectedEntries = searchMatches
+        } else {
+            let selectedIDs = Set(classified.mergedBucket(for: effectiveQuery.reviewStates).map(\.id))
+            selectedEntries = searchMatches.filter { selectedIDs.contains($0.id) }
+        }
+        let visibleEntries = sortAndFilter(
+            selectedEntries,
+            searchText: "",
+            sortOption: effectiveQuery.sort,
+            now: now
+        )
+
+        let contentCounts = Dictionary(uniqueKeysWithValues: VocabularyRoleFilter.allCases.map { filter in
+            (filter, filterByRole(entries, filter: filter).count)
+        })
+        let reviewCounts = Dictionary(uniqueKeysWithValues: VocabularyReviewState.allCases.map { state in
+            (state, classified.count(for: state))
+        })
+        let reviewVisible = allEntriesInScope.filter { $0.shouldAppearInReview }
+        let reviewQueue = VocabularyReviewQueue(
+            due: reviewVisible.filter { $0.reviewState(at: now) == .due },
+            unlearned: reviewVisible.filter { $0.reviewState(at: now) == .unlearned }
+        )
+
+        return VocabularyLibraryProjection(
+            effectiveQuery: effectiveQuery,
+            visibleEntries: visibleEntries,
+            facetCounts: VocabularyFacetCounts(content: contentCounts, review: reviewCounts),
+            reviewQueue: reviewQueue,
+            emptyStateContext: VocabularyEmptyStateContext(
+                hasNoEntries: entries.isEmpty,
+                hasEntriesInScope: !allEntriesInScope.isEmpty,
+                hasVisibleEntries: !visibleEntries.isEmpty,
+                contentScope: effectiveQuery.contentScope,
+                searchText: effectiveQuery.searchText,
+                reviewStates: effectiveQuery.reviewStates
+            )
+        )
     }
 
     /// 多選模式下實際可被選取的 row id。
@@ -136,6 +296,17 @@ enum VocabularyEntryPresentation {
                 if lhsTier != rhsTier { return lhsTier < rhsTier }
                 return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
             }
+        }
+    }
+
+    private static func filterBySearch(
+        _ entries: [VocabularyEntry],
+        searchText: String
+    ) -> [VocabularyEntry] {
+        guard !searchText.isEmpty else { return entries }
+        return entries.filter {
+            $0.word.localizedCaseInsensitiveContains(searchText) ||
+            $0.translation.localizedCaseInsensitiveContains(searchText)
         }
     }
 

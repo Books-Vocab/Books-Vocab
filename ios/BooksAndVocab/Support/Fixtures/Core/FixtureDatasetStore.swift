@@ -237,10 +237,79 @@ enum FixtureDatasetStore {
     }
 
     static func requireVocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed {
-        guard let seed = vocabularySeed(for: fixtureID) else {
+        guard case let .loaded(document, _) = loadState(), document.vocabulary[fixtureID.rawValue] != nil else {
             preconditionFailure(seedResolutionFailureDescription(resolving: "vocabulary.\(fixtureID.rawValue)"))
         }
-        return seed
+        return resolveVocabularySeed(
+            fixtureID,
+            in: document,
+            visiting: []
+        )
+    }
+
+    private static func resolveVocabularySeed(
+        _ fixtureID: UIWorldVocabularyFixtureID,
+        in document: FixtureDatasetDocument,
+        visiting: Set<String>
+    ) -> UIWorldVocabularySeed {
+        guard let seed = document.vocabulary[fixtureID.rawValue] else {
+            preconditionFailure("UI World is missing vocabulary.\(fixtureID.rawValue)")
+        }
+        guard !visiting.contains(fixtureID.rawValue) else {
+            preconditionFailure("UI World vocabulary inheritance cycle at \(fixtureID.rawValue)")
+        }
+
+        guard let baseFixture = seed.baseFixture else {
+            validateVocabularyOverrides(seed.entryOverrides, entries: seed.entries, fixtureID: fixtureID)
+            return seed
+        }
+        guard let baseID = UIWorldVocabularyFixtureID(rawValue: baseFixture) else {
+            preconditionFailure(
+                "UI World vocabulary.\(fixtureID.rawValue).baseFixture is unknown: \(baseFixture)"
+            )
+        }
+        let base = resolveVocabularySeed(
+            baseID,
+            in: document,
+            visiting: visiting.union([fixtureID.rawValue])
+        )
+        guard seed.entries.isEmpty else {
+            preconditionFailure(
+                "UI World vocabulary.\(fixtureID.rawValue) inherited seed must leave entries empty"
+            )
+        }
+        let overrides = base.entryOverrides + seed.entryOverrides
+        validateVocabularyOverrides(overrides, entries: base.entries, fixtureID: fixtureID)
+        return UIWorldVocabularySeed(
+            notebookRemoteId: seed.notebookRemoteId,
+            notebookName: seed.notebookName,
+            notebookSyncStatus: seed.notebookSyncStatus,
+            bookTitle: seed.bookTitle,
+            entries: base.entries,
+            reviewHistory: seed.reviewHistory,
+            entryOverrides: overrides
+        )
+    }
+
+    private static func validateVocabularyOverrides(
+        _ overrides: [UIWorldVocabularyEntryOverride],
+        entries: [UIWorldVocabularyEntrySeed],
+        fixtureID: UIWorldVocabularyFixtureID
+    ) {
+        let words = Set(entries.map(\.word))
+        var seen: Set<String> = []
+        for override in overrides {
+            guard words.contains(override.word) else {
+                preconditionFailure(
+                    "UI World vocabulary.\(fixtureID.rawValue).entryOverrides references missing word \(override.word)"
+                )
+            }
+            guard seen.insert(override.word).inserted else {
+                preconditionFailure(
+                    "UI World vocabulary.\(fixtureID.rawValue).entryOverrides duplicates word \(override.word)"
+                )
+            }
+        }
     }
 
     static func reviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed? {

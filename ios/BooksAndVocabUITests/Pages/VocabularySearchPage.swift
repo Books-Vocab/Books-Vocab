@@ -33,6 +33,60 @@ struct VocabularySearchPage {
             .firstMatch
     }
 
+    var visibleCount: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "vocab.filter.visibleCount").firstMatch
+    }
+
+    var reviewStateMenu: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "vocab.filter.reviewState").firstMatch
+    }
+
+    func scopeOption(
+        _ rawValue: String,
+        labelPrefix: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement {
+        let byID = app.descendants(matching: .any)
+            .matching(identifier: "vocab.filter.scope.\(rawValue)")
+            .firstMatch
+        if byID.exists { return byID }
+        return app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", labelPrefix)).firstMatch
+    }
+
+    func reviewStateOption(
+        _ rawValue: String,
+        labelPrefix: String
+    ) -> XCUIElement {
+        let byID = app.descendants(matching: .any)
+            .matching(identifier: "vocab.filter.reviewState.\(rawValue)")
+            .firstMatch
+        if byID.exists { return byID }
+        return app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", labelPrefix)).firstMatch
+    }
+
+    func selectScope(
+        _ rawValue: String,
+        labelPrefix: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        scopeOption(rawValue, labelPrefix: labelPrefix).tapWhenReady(file: file, line: line)
+    }
+
+    func openReviewStateMenu(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        reviewStateMenu.tapWhenReady(file: file, line: line)
+    }
+
+    func selectReviewState(
+        _ rawValue: String,
+        labelPrefix: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        reviewStateOption(rawValue, labelPrefix: labelPrefix).tapWhenReady(file: file, line: line)
+    }
+
     /// Any rendered row that does NOT match `fragment` — used to prove the
     /// full (unfiltered) list is back after clearing a query.
     func anyRowNotContaining(_ fragment: String) -> XCUIElement {

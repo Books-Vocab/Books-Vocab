@@ -5,6 +5,60 @@ import Testing
 
 @Suite("Dictionary phase 2B", .serialized)
 struct DictionaryPhase2BTests {
+    @Test("library projection keeps rows, facets, and review CTA on one query")
+    func libraryProjectionUsesOneQueryContract() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let due = Self.entry("alpha", role: .learning)
+        due.reviewCount = 1
+        due.nextReviewAt = now.addingTimeInterval(-1)
+
+        let unlearned = Self.entry("beta", role: .learning)
+        let reviewed = Self.entry("gamma", role: .learning)
+        reviewed.reviewCount = 2
+        reviewed.nextReviewAt = now.addingTimeInterval(3600)
+
+        let dictionary = Self.entry("reference", role: .dictionary)
+        let query = VocabularyLibraryQuery(
+            contentScope: .all,
+            reviewStates: [],
+            searchText: "beta",
+            sort: .default
+        )
+
+        let projection = VocabularyEntryPresentation.project(
+            [due, unlearned, reviewed, dictionary], query: query, now: now
+        )
+
+        #expect(projection.visibleEntries.map(\.word) == ["beta"])
+        #expect(projection.count(for: .all) == 4)
+        #expect(projection.count(for: .learning) == 3)
+        #expect(projection.count(for: .dictionary) == 1)
+        #expect(projection.reviewCount(for: .unlearned) == 1)
+        #expect(projection.reviewCount(for: .due) == 1)
+        #expect(projection.reviewCount(for: .reviewed) == 1)
+        #expect(projection.reviewQueue.due.map(\.word) == ["alpha"])
+        #expect(projection.reviewQueue.unlearned.map(\.word) == ["beta"])
+    }
+
+    @Test("dictionary query explicitly clears review dimension and reports its own empty state")
+    func dictionaryProjectionDoesNotLeakReviewSemantics() {
+        let dictionary = Self.entry("reference", role: .dictionary)
+        let query = VocabularyLibraryQuery(
+            contentScope: .dictionary,
+            reviewStates: [.due, .reviewed],
+            searchText: "missing",
+            sort: .default
+        )
+
+        let projection = VocabularyEntryPresentation.project([dictionary], query: query, now: .now)
+
+        #expect(projection.effectiveQuery.reviewStates.isEmpty)
+        #expect(projection.visibleEntries.isEmpty)
+        #expect(projection.hasEntriesInScope)
+        #expect(projection.reviewQueue.isEmpty)
+        #expect(projection.emptyStateContext.roleFilter == .dictionary)
+    }
+
     @Test("role filter keeps mixed ordering semantics")
     func roleFilterAndRecentSort() {
         let learning = Self.entry("zebra", role: .learning, date: Date(timeIntervalSince1970: 10))
