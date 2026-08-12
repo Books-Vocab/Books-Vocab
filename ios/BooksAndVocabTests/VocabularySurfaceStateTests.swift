@@ -23,6 +23,17 @@ struct VocabularySurfaceStateTests {
         #expect(result.map(\.word) == ["kept"])
     }
 
+    @Test func reviewCalendar_dayStateSeparatesEmptyFromPopulatedStatus() {
+        #expect(ReviewCalendarPresentation.dayState(for: []) == .empty)
+
+        let remembered = ReviewRecord(word: "remembered", entryID: nil, feedback: 1)
+        let forgot = ReviewRecord(word: "forgot", entryID: nil, feedback: 0)
+        #expect(
+            ReviewCalendarPresentation.dayState(for: [remembered, forgot])
+                == .populated(total: 2, remembered: 1, forgot: 1)
+        )
+    }
+
     @Test func notebookListPhase_surfacesEmptySyncFailureAsError() {
         #expect(
             NotebookListPhase.resolve(

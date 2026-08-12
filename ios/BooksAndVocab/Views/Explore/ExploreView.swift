@@ -176,30 +176,32 @@ struct ExploreView: View {
     @ViewBuilder
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: AppSpacing.s2) {
-                sortMenu
-                if !availableCategories.isEmpty {
-                    ForEach(availableCategories, id: \.self) { category in
-                        ExploreFilterChip(
-                            title: SharedDeckFormat.categoryDisplayName(category),
-                            isSelected: filter.category == category
-                        ) {
-                            filter.category = (filter.category == category) ? nil : category
+            GlassEffectContainer(spacing: AppSpacing.s2) {
+                HStack(spacing: AppSpacing.s2) {
+                    sortMenu
+                    if !availableCategories.isEmpty {
+                        ForEach(availableCategories, id: \.self) { category in
+                            ExploreFilterChip(
+                                title: SharedDeckFormat.categoryDisplayName(category),
+                                isSelected: filter.category == category
+                            ) {
+                                filter.category = (filter.category == category) ? nil : category
+                            }
+                        }
+                    }
+                    if !availableLanguagePairs.isEmpty {
+                        ForEach(availableLanguagePairs, id: \.self) { pair in
+                            ExploreFilterChip(
+                                title: pair,   // 語言對代碼（如 en-zh）；render-safe，非 i18n key
+                                isSelected: filter.languagePair == pair
+                            ) {
+                                filter.languagePair = (filter.languagePair == pair) ? nil : pair
+                            }
                         }
                     }
                 }
-                if !availableLanguagePairs.isEmpty {
-                    ForEach(availableLanguagePairs, id: \.self) { pair in
-                        ExploreFilterChip(
-                            title: pair,   // 語言對代碼（如 en-zh）；render-safe，非 i18n key
-                            isSelected: filter.languagePair == pair
-                        ) {
-                            filter.languagePair = (filter.languagePair == pair) ? nil : pair
-                        }
-                    }
-                }
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             }
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
         .accessibilityIdentifier("explore.filterBar")
     }

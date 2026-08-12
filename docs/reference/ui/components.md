@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: 57c2f2204
+verified_against: 2cf93a387
 -->
 # UI Component & Pattern Inventory
 
@@ -52,6 +52,8 @@ Scope: `ios/BooksAndVocab`
 - `AppStateMessageContent`
 - `AppStateMessageCard`
 - `AppTabSelector`
+- `AppFilterChipBar` — 多選 filter 版本；與 `AppTabSelector` 共用 `appChipLabel`、count 與 iOS 26 `GlassEffectContainer`/`glassEffect`，fallback style 仍保留給非 glass consumer
+- `AppLoadingStateCard` / `AppLoadingProgressBar` — loading/status 的共用 surface；Reader、TOC、Explore、Dictionary、Vocabulary、Stats 與 Settings sync 使用同一套原生 `ProgressView`，只由 app/vocab skin 決定配色
 - `AppSearchField`
 - `AppKeyValueRow`
 - `AppActionButtonStyle`
@@ -63,7 +65,7 @@ Scope: `ios/BooksAndVocab`
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
 - `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
 - `SyncStepStatusIcon`（`UIComponents/SyncStepStatusIcon.swift`）— `PipelineStep.StepStatus` 的六態符號（waiting `circle` / running `ProgressView` / retry `arrow.triangle.2.circlepath` + repeating scale / done `checkmark.circle.fill` + bounce / skipped `minus.circle.fill` / error `xmark.circle.fill`），色彩全走 `appSkin.palette`。同檔另附 `StepStatus.detailColor(_:)`——detail 文字色與符號同一組語意，刻意放在一起免得漂移。**兩個消費者**：詞庫頁同步畫面（`SyncPresenter` 已改為委派）與設定頁的逐步同步進度（`SettingsSyncProgressPanel`）。抽出的理由是**對稱的成本**：同一狀態在兩處長得不一樣是使用者學兩次的成本，複製一份 switch 則是下次加狀態時漏改一處的成本。**要加第七個狀態就改這裡**，不要在消費者端各自 switch
-- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；`AppSkeletonCard` 已被 `VocabSceneShell` list 場景採用（1 處），`AppSkeletonLine` 目前僅 def + `AppSkeletonCard` 內部組合 + preview 使用（無外部直接 callsite）；新 loading state 應改用此元件而非自製 placeholder
+- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；`AppSkeletonCard` 已被 `VocabSceneShell` list 場景採用（1 處）。列表/內容骨架用這組；需要明確狀態文案或進度時改用 `AppLoadingStateCard`，不要再自製裸 `ProgressView`。
 - `AppSidebarRow` — Catalyst 側邊欄列（`ContentView` `NavigationSplitView` sidebar 用），取代系統 `.listStyle(.sidebar)` 預設樣式（系統半透明材質 + 系統藍選取色與 app Notion 風割裂）。整列可點（`HStack` + `Spacer` 撐滿 + `.contentShape(Rectangle())` 把整矩形納入 hit-test，水平 padding 由元件內 `appSkin` token 控不靠 List inset）；走 appSkin typography/spacing/palette，選取/未選以灰階配色（`secondaryText`→`primaryText`）+ `primaryText.opacity(0.08)` 自繪 `AppRoundness.control` 圓角背景區分（自訂字體 ElmsSans 不響應 `.fontWeight`，故以配色而非字重表達選取）；hover 走既有 `.appHoverRowTint`；a11y icon `accessibilityHidden` + row 掛 `accessibilityLabel` + selected 加 `.isSelected`；selection 由 caller 自管 `@State`，不用 `List(selection:)`
 
 主導航 pattern：
@@ -153,8 +155,8 @@ Scope: `ios/BooksAndVocab`
 - `ReaderSettingsVocabPresenter`
 - `ReaderViewPresenter`
 - `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter（vocab 單一模式，glass 分支已移除）
-- `VocabHighlightColorPresetPicker` — Reader / Podcast 共用詞庫 highlight 顏色 swatch picker，採 `ReaderSelectionTile` 與 `VocabHighlightColorPreset` 色票
-- `ReaderSettingsPreviewCard` — 閱讀設定頁的即時預覽（見 Pattern 9）。**與 `ReviewCardLayoutPreviewCard` 不同族**：它做不到「就是那個 view」，因為閱讀器正文是 Readium 跑在 WKWebView 裡排的、樣式以 CSS 注入。所以它承諾的是**同一批值**而非同一個 view —— 字體走 `ReaderFont.previewFontName`（與 `family` 同一個 enum、同一批 TTF）、字級/行距是送進 `EPUBPreferences` 的同兩個值、紙墨色取自 `ReaderTheme`、生字色帶取自產 CSS 的同一個 `ReaderContentStyle`。**釘住的只有一部分，別把它讀成整批**（見 Pattern 9 的值/幾何分野）：`ReaderPreviewStyleSourceTests` 釘住的是**色相 / 濃度倍率 / 字體註冊 / 紙色**；**墨色只是 regression pin 不是跨檢**（Readium 前景 CSS 在 SPM bundle、不在版控，測試搆不到，該測試自己講明了）；**字級 / 行距 / 色帶高度屬幾何，沒有任何測試涵蓋**。**四件事具名承認、不假裝沒有**：① `baseFontSize` 是參考基準而非某本書的實際 pt（Readium fontSize 是相對倍率）；② 換行位置與 WebView 不一致（SwiftUI 排版 ≠ Blink 排版）；③ **行距滑桿前 13% 是死區** —— CSS 的 `line-height` 量整個行盒、SwiftUI 的 `lineSpacing` 是加在字體自然行高之外，扣掉內在行高後 `L ≤ 1.2` 全夾成 0，所以那段行程預覽不動而 WebView 會動（`lineSpacing` 不能為負，要消掉得改用 attributed string 的 `lineHeightMultiple`）；④ **色帶高度只是同名不是等量** —— CSS 量的是背景盒（≈ 行盒，隨 line-height 變）的百分比，這裡量的是字級的百分比，`lineHeight` 1.4 附近相近、2.5 時可差近兩倍。**③④ 使用者會直接看到卻不會理解**（拖滑桿沒反應、色帶粗細對不上），所以它們比 ①② 更需要寫在這裡
+- `VocabHighlightColorPresetPicker` — Reader / Podcast 共用詞庫 highlight 顏色入口，採原生 iOS 26 `Picker(.palette)` 與 `VocabHighlightColorPreset` 色票；accessibility identifier 由 caller 注入，避免 Podcast 誤掛 Reader surface id
+- `ReaderSettingsPreviewCard` — 閱讀設定頁的即時預覽（見 Pattern 9）。**與 `ReviewCardLayoutPreviewCard` 不同族**：它做不到「就是那個 view」，因為閱讀器正文是 Readium 跑在 WKWebView 裡排的、樣式以 CSS 注入。所以它承諾的是**同一批值**而非同一個 view —— 字體走 `ReaderFont.previewFontName`、字級/行距是送進 `EPUBPreferences` 的同兩個值、紙墨色取自 `ReaderTheme`、生字色帶取自產 CSS 的同一個 `ReaderContentStyle`。`ReaderPreviewStyleSourceTests` 現在另外釘住 line-height range/tick source、164pt fixed viewport 與 8% edge fade 的 layout contract；仍未宣稱跨 WebView 逐像素一致：`baseFontSize` 是參考基準、換行位置受 SwiftUI/Blink 差異影響、色帶高度仍是示意而非 CSS 等量。
 - `PDFReaderView` — PDF 格式閱讀器（iOS only）
 
 責任：
@@ -273,6 +275,7 @@ Scope: `ios/BooksAndVocab`
 - status + timer
 
 優先元件：
+- `AppLoadingStateCard` / `AppLoadingProgressBar`（loading / progress）
 - `AppStateMessageContent`
 - `AppStateMessageCard`
 - `VocabStateMessageCard`
@@ -489,6 +492,7 @@ Scope: `ios/BooksAndVocab`
 
 現況：
 - `AppSkeletonLine` 目前無外部直接 callsite（僅 def + `AppSkeletonCard` 內部 + preview）；`AppSkeletonCard` 已被 `VocabSceneShell` 採用（1 處）
+- `AppLoadingStateCard` / `AppLoadingProgressBar` 已收斂 Reader、TOC、Explore、Dictionary、Vocab、Stats 與 Settings sync 的明確 loading/status surface；底層 indicator 統一原生 `ProgressView`
 - `AppElevation` 已是全 app shadow 唯一入口（~24 callsites）；`AppCompactActionButtonStyle`（4 處）、`AppOfflineBanner`（ContentView 1 處）、`AppMotion.emphasizedDecelerate`（AppOfflineBanner 內部）皆已落地
 - PR #402 曾規劃的 `AppLayout` / `AppFonts.display1/2` token **從未進入 codebase**（doc 舊版誤記為已定義）；readable-width 實際由 `WordDetailPresenter` local `maxContentWidth=640` 控
 
@@ -518,7 +522,8 @@ Scope: `ios/BooksAndVocab`
 
 簡單決策：
 - 是空狀態？先看 `AppEmptyState*` / `VocabEmptyState*`
-- 是 loading / success / error 訊息？先看 `AppStateMessage*` / `VocabStateMessageCard`
+- 是 loading / 進度訊息？先看 `AppLoadingStateCard` / `AppLoadingProgressBar`
+- 是 success / error 訊息？先看 `AppStateMessage*` / `VocabStateMessageCard`
 - 是大狀態切換？先看 `VocabStatusHero`
 - 是 list + tabs + search？先看 `VocabListCard` + `VocabTabSelector` + `VocabSearchField`
 - 是 panel / drawer / overlay？先看 `TranslationPanel` / `ReaderSettingsPanel` / `VocabOverlayHeader` + motion tokens

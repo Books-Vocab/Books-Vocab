@@ -35,13 +35,11 @@ struct VocabSceneShell<Content: View>: View {
             switch phase {
             case .loading(let title, let systemImage):
                 centeredWrapper {
-                    VocabStateMessageCard(
+                    AppLoadingStateCard(
                         title: title,
-                        systemImage: systemImage
-                    ) {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+                        systemImage: systemImage,
+                        visualStyle: .vocab
+                    )
                 }
 
             case .loadingSkeleton(let rowCount):

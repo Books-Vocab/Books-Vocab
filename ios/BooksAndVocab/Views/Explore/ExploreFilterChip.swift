@@ -3,8 +3,8 @@
 //  ExploreFilterChip.swift
 //  Books & Vocab
 //
-//  Explore 篩選膠囊。Mochi 北極星：無 border、選中只改 bg-color（accent，四軸內）、
-//  非按鈕互動不動 transform。
+//  Explore 篩選膠囊。與 Overview / Vocabulary 共用 iOS 26 system glass，
+//  不在內容層另畫 border、shadow 或第二層背景。
 //
 
 import SwiftUI
@@ -35,10 +35,7 @@ struct ExploreFilterChipLabel: View {
         .foregroundStyle(isSelected ? appTheme.palette.pageBackground : appTheme.palette.secondaryText)
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, AppSpacing.s1)
-        .background(
-            AppRoundedRect(roundness: AppRoundness.pill)
-                .fill(isSelected ? appTheme.palette.accent : appTheme.palette.mutedFill)
-        )
+        .appFilterGlass(isSelected: isSelected, tint: appTheme.palette.accent)
         .enableInjection()
     }
 }

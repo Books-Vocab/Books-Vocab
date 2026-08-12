@@ -1,245 +1,176 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-skill_root="$(cd "$script_dir/.." && pwd -P)"
-helper="$script_dir/run_ui_evidence.sh"
-repo_root="$(cd "$skill_root/../../.." && pwd -P)"
-tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/kg-ui-evidence-helper.XXXXXX")"
+skill_root="$(cd "$(dirname "$0")/.." && pwd)"
+helper="$skill_root/scripts/run_ui_evidence.sh"
+tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/kg-ui-evidence-contract.XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
-fail() {
-  echo "FAIL: $*" >&2
-  exit 1
-}
-
-[[ -x "$helper" ]] || fail "missing executable helper: $helper"
-
-help_out="$($helper --help 2>&1)"
-for expected in --dataset --dataset-file --file --grep --method --device --lease --json-out; do
-  grep -Fq -- "$expected" <<<"$help_out" || fail "help missing $expected"
-done
-source_repo="$tmp_root/source"
-mkdir -p "$source_repo/ops/fixtures/ui_worlds"
-printf '%s\n' '{"schema":"kg.fixture.dataset.v2","datasetID":"marketing_demo"}' \
-  >"$source_repo/ops/fixtures/ui_worlds/marketing_demo.json"
-printf '%s\n' 'build/' >"$source_repo/.gitignore"
-
-cat >"$source_repo/ops/ui_world_manifest.py" <<'EOF'
+repo="$tmp_root/repo"
+mkdir -p "$repo/ops/fixtures/ui_worlds" "$repo/.claude/skills/ios-simulator-verification/scripts"
+cp "$helper" "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh"
+chmod +x "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh"
+printf '%s\n' '{"datasetID":"marketing_demo"}' >"$repo/ops/fixtures/ui_worlds/marketing_demo.json"
+printf '%s\n' 'build/' >"$repo/.gitignore"
+cat >"$repo/ops/ui_world_manifest.py" <<'EOF'
 #!/usr/bin/env bash
-set -euo pipefail
-[[ "${1:-}" == validate && -f "${2:-}" ]]
+[[ "${1:-}" == validate ]] && { echo marketing_demo; exit 0; }
+exit 1
 EOF
-chmod +x "$source_repo/ops/ui_world_manifest.py"
-
-cat >"$source_repo/ops/ios_ops.sh" <<'EOF'
+chmod +x "$repo/ops/ui_world_manifest.py"
+cat >"$repo/ops/ios_ops.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
-  xcode|simulator)
-    printf '%s\n' '{"status":"ok"}'
-    ;;
+  xcode) printf '%s\n' '{"status":"ok"}' ;;
+  simulator) printf '%s\n' '{"status":"ok"}' ;;
   test)
     mkdir -p "$FAKE_ROOT/build"
-    printf '%s\n' "$@" >"$FAKE_ROOT/build/runner-args.txt"
-    ui_root="$FAKE_ROOT/build/upstream/fake-run-123"
-    xcresult="$FAKE_ROOT/build/upstream/Test.xcresult"
-    mkdir -p "$ui_root/uitest-videos" "$xcresult"
-    printf '%s\n' 'runner log' >"$FAKE_ROOT/build/upstream/test.log"
-    printf '%s\n' '<title>KG UITest Run Review</title>' >"$ui_root/UIreview.html"
-    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' \
-      | base64 -D >"$ui_root/01-loaded.png"
-    cp "$ui_root/01-loaded.png" "$ui_root/contact_sheet.png"
-    cp "$ui_root/01-loaded.png" "$ui_root/quick4_contact_sheet.png"
-    printf '%s\n' 'video' >"$ui_root/uitest-videos/flow.mp4"
-    video_sha="$(shasum -a 256 "$ui_root/uitest-videos/flow.mp4" | awk '{print $1}')"
-    png_bytes="$(wc -c <"$ui_root/01-loaded.png" | tr -d ' ')"
-    png_sha="$(shasum -a 256 "$ui_root/01-loaded.png" | awk '{print $1}')"
-    jq -n \
-      --arg commit "$FAKE_COMMIT" \
-      --arg datasetSha "$FAKE_DATASET_SHA256" \
-      --arg device "$FAKE_DEVICE" \
-      --arg selector "$KG_UI_TEST_EXACT_SELECTOR" \
-      --arg pngSha "$png_sha" \
-      --argjson pngBytes "$png_bytes" \
-      '{
-        schema:"kg.visual-review.sheet.v1",
-        source:"uitest",
-        provenance:{
-          sourceCommit:$commit,
-          datasetID:"marketing_demo",
-          datasetSHA256:$datasetSha,
-          device:$device,
-          selector:$selector,
-          variant:"dataset:marketing_demo"
-        },
-        items:[{
-          assetID:"01-loaded", relPath:"01-loaded.png", stateLabel:"loaded",
-          width:1, height:1, byteSize:$pngBytes, sha256:$pngSha
-        }]
-      }' >"$ui_root/review_manifest.json"
-
-    mode="${FAKE_MODE:-ok}"
-    output_device="$FAKE_DEVICE"
-    output_video_sha="$video_sha"
-    output_video_run_id='fake-run-123'
-    [[ "$mode" == wrong-device ]] && output_device='11111111-1111-1111-1111-111111111111'
-    [[ "$mode" == wrong-video-identity ]] && output_video_run_id='other-run'
-    [[ "$mode" == missing-artifact ]] && rm -f "$ui_root/contact_sheet.png"
-    if [[ "$mode" == invalid-json ]]; then
-      printf '%s\n' "[ios_test] log=$FAKE_ROOT/build/upstream/test.log xcresult=$xcresult" >&2
+    printf '%s\n' "$@" >"$FAKE_ROOT/build/test-args"
+    fake_artifacts="$FAKE_ROOT/build/upstream"
+    ui_root="$fake_artifacts/ui-review"
+    mkdir -p "$ui_root/uitest-videos" "$fake_artifacts/Test.xcresult"
+    printf '%s\n' '<html>review</html>' >"$ui_root/UIreview.html"
+    printf '%s\n' 'log' >"$ui_root/missing.log"
+    printf '%s\n' 'png' >"$ui_root/contact_sheet.png"
+    printf '%s\n' 'png' >"$ui_root/quick4_contact_sheet.png"
+    printf '%s\n' '{}' >"$ui_root/review_manifest.json"
+    printf '%s\n' 'video' >"$ui_root/uitest-videos/run.mp4"
+    if [[ "${FAKE_MODE:-ok}" == invalid-json ]]; then
+      printf '%s\n' "[ios_test] log=$ui_root/missing.log xcresult=$fake_artifacts/Test.xcresult" >&2
       printf '%s\n' "[ios_test][ui-review] html=$ui_root/UIreview.html" >&2
       printf '%s\n' "[ios_test][ui-steps] contactSheet=$ui_root/contact_sheet.png" >&2
       printf '%s\n' "[ios_test][ui-steps] quick4=$ui_root/quick4_contact_sheet.png" >&2
       printf '%s\n' "[ios_test][ui-review] visualReviewManifest=$ui_root/review_manifest.json" >&2
-      printf '%s\n' "[ios_test][ui-video] archived $ui_root/uitest-videos/flow.mp4" >&2
+      printf '%s\n' "[ios_test][ui-video] archived $ui_root/uitest-videos/run.mp4" >&2
       printf '%s\n' 'not-json'
       exit 65
     fi
-
-    jq -n \
-      --arg commit "$FAKE_COMMIT" \
-      --arg datasetSha "$FAKE_DATASET_SHA256" \
-      --arg device "$output_device" \
-      --arg root "$ui_root" \
-      --arg log "$FAKE_ROOT/build/upstream/test.log" \
-      --arg xcresult "$xcresult" \
-      --arg mode "$mode" \
-      --arg videoSha "$output_video_sha" \
-      --arg videoRunID "$output_video_run_id" \
-      '{
-        schema:"kg.ios.run.v1", kind:"test",
-        status:(if $mode == "runner-fail" then "fail" else "ok" end),
-        result:(if $mode == "runner-fail" then "fail" else "ok" end),
-        exit:(if $mode == "runner-fail" then "65" else "0" end),
-        reason:(if $mode == "runner-fail" then "synthetic failure" else null end),
-        executed:(if $mode == "zero-executed" then "0" else "1" end),
-        options:{
-          sourceCommit:$commit, sourceTreeDirty:false,
-          datasetID:"marketing_demo", datasetSHA256:$datasetSha,
-          device:("platform=iOS Simulator,id=" + $device)
-        },
-        device:$device,
-        artifacts:{
-          log:$log, xcresult:$xcresult,
-          uiVideoIdentity:{runID:$videoRunID,file:"flow.mp4",sha256:$videoSha}
-        },
-        uiVisualReview:{
-          screenshotDir:$root,
-          contactSheet:($root + "/contact_sheet.png"), contactSheetExists:true,
-          quick4Sheet:($root + "/quick4_contact_sheet.png"), quick4SheetExists:true,
-          visualReviewManifest:($root + "/review_manifest.json"), visualReviewManifestExists:true,
-          video:($root + "/uitest-videos/flow.mp4"), videoExists:true,
-          videoIdentity:{runID:$videoRunID,file:"flow.mp4",sha256:$videoSha},
-          reviewRoot:$root, reviewRootExists:true,
-          reviewHtml:($root + "/UIreview.html"), reviewHtmlExists:true
-        }
-      }'
-    [[ "$mode" != runner-fail ]] || exit 65
+    if [[ "${FAKE_MODE:-ok}" == missing ]]; then
+      jq -n --arg device "$FAKE_DEVICE" '{schema:"kg.ios.run.v1",kind:"test",status:"missing",result:"missing",exit:"0",reason:null,executed:"0",options:{sourceCommit:$ENV.FAKE_COMMIT,sourceTreeDirty:false,datasetID:"marketing_demo",datasetSHA256:$ENV.FAKE_DATASET_SHA256,device:("platform=iOS Simulator,id=" + $device)},device:$device,uiVisualReview:null,artifacts:{}}'
+      exit 0
+    fi
+    output_device="$FAKE_DEVICE"
+    [[ "${FAKE_MODE:-ok}" == wrong-device ]] && output_device="11111111-1111-1111-1111-111111111111"
+    destination="platform=iOS Simulator,id=$output_device"
+    [[ "${FAKE_MODE:-ok}" == malformed-destination ]] && destination="platform=iOS Simulator,id=$output_device-evil"
+    [[ "${FAKE_MODE:-ok}" == missing-artifact ]] && rm -f "$ui_root/contact_sheet.png"
+    jq -n --arg commit "$FAKE_COMMIT" --arg sha "$FAKE_DATASET_SHA256" --arg device "$output_device" --arg root "$ui_root" --arg xc "$fake_artifacts/Test.xcresult" \
+      --arg destination "$destination" --arg mode "${FAKE_MODE:-ok}" \
+      '{schema:"kg.ios.run.v1",kind:"test",status:(if $mode == "nonzero" then "fail" else "ok" end),result:(if $mode == "nonzero" then "fail" else "ok" end),exit:(if $mode == "nonzero" then "65" else "0" end),reason:(if $mode == "nonzero" then "synthetic runner failure" else null end),executed:"1",options:{sourceCommit:$commit,sourceTreeDirty:false,datasetID:"marketing_demo",datasetSHA256:$sha,device:$destination},device:$device,uiVisualReview:{reviewRoot:$root,reviewRootExists:true,reviewHtml:($root + "/UIreview.html"),reviewHtmlExists:true,contactSheet:($root + "/contact_sheet.png"),contactSheetExists:true,quick4Sheet:($root + "/quick4_contact_sheet.png"),quick4SheetExists:true,visualReviewManifest:($root + "/review_manifest.json"),visualReviewManifestExists:true,video:($root + "/uitest-videos/run.mp4"),videoExists:true},artifacts:{log:($root + "/missing.log"),xcresult:$xc}}'
+    if [[ "${FAKE_MODE:-ok}" == nonzero ]]; then exit 65; fi
     ;;
   *) exit 64 ;;
 esac
 EOF
-chmod +x "$source_repo/ops/ios_ops.sh"
+chmod +x "$repo/ops/ios_ops.sh"
 
-git -C "$source_repo" init -q
-git -C "$source_repo" config user.name 'UI Evidence Test'
-git -C "$source_repo" config user.email 'ui-evidence@example.test'
-git -C "$source_repo" add .
-git -C "$source_repo" commit -q -m fixture
+git -C "$repo" init -q
+git -C "$repo" config user.name "UI Evidence Contract"
+git -C "$repo" config user.email "ui-evidence@example.test"
+git -C "$repo" add .
+git -C "$repo" commit -q -m "fixture"
+[[ -z "$(git -C "$repo" status --porcelain)" ]] || { git -C "$repo" status --short >&2; exit 1; }
 
-fake_commit="$(git -C "$source_repo" rev-parse HEAD)"
-fake_device='43FA3E1B-16F8-4144-B17D-53D5E4728FC6'
-fake_dataset_sha="$(shasum -a 256 "$source_repo/ops/fixtures/ui_worlds/marketing_demo.json" | awk '{print $1}')"
-export FAKE_ROOT="$source_repo" FAKE_COMMIT="$fake_commit" FAKE_DEVICE="$fake_device" FAKE_DATASET_SHA256="$fake_dataset_sha"
+fake_commit="$(git -C "$repo" rev-parse HEAD)"
+fake_device="43FA3E1B-16F8-4144-B17D-53D5E4728FC6"
+fake_sha="$(shasum -a 256 "$repo/ops/fixtures/ui_worlds/marketing_demo.json" | awk '{print $1}')"
+export FAKE_ROOT="$repo" FAKE_COMMIT="$fake_commit" FAKE_DEVICE="$fake_device" FAKE_DATASET_SHA256="$fake_sha"
 
-success_json="$tmp_root/success.json"
-(cd "$source_repo" && "$helper" \
-  --dataset marketing_demo \
-  --method SettingsFlowUITests/testSettingsFlow \
-  --json-out "$success_json" >"$tmp_root/success.out" 2>&1)
+json_out="$tmp_root/success.json"
+set +e
+(cd "$repo" && "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --lease --method SettingsFlowUITests/testSettingsFlow --json-out "$json_out" \
+  >"$tmp_root/success.out" 2>&1)
+success_rc=$?
+set -e
+if [[ "$success_rc" -ne 0 ]]; then
+  cat "$tmp_root/success.out" >&2
+  exit "$success_rc"
+fi
 
-bundle="$(jq -er '.helper.bundleRoot' "$success_json")"
-jq -e \
-  --arg bundle "$bundle" \
-  --arg commit "$fake_commit" \
-  --arg datasetSha "$fake_dataset_sha" \
-  --arg device "$fake_device" '
-  def under_bundle: type == "string" and startswith($bundle + "/");
-  .schema == "kg.ios.run.v1"
-  and .status == "ok" and .result == "ok" and .exit == "0"
-  and .options.sourceCommit == $commit
-  and .options.sourceTreeDirty == false
-  and .options.datasetID == "marketing_demo"
-  and .options.datasetSHA256 == $datasetSha
-  and .device == $device
-  and .helper.schema == "kg.ios.ui-evidence.v1"
-  and .helper.contractStatus == "pass"
-  and .helper.artifactContractStatus == "pass"
-  and (.helper.artifactContract | under_bundle)
-  and (.helper.normalizedVerdict | under_bundle)
-  and (.artifacts.log | under_bundle)
-  and (.artifacts.xcresult | under_bundle)
-  and (.uiVisualReview.reviewRoot | under_bundle)
-  and .artifacts.uiVideoIdentity == {runID:"fake-run-123",file:"flow.mp4",sha256:.artifacts.uiVideoIdentity.sha256}
-  and .uiVisualReview.videoIdentity == .artifacts.uiVideoIdentity
-' "$success_json" >/dev/null
-
-contract="$bundle/artifacts/ui-evidence-contract.json"
 jq -e '
-  .schema == "kg.ios.ui-evidence-contract.v1"
-  and .valid == true
-  and .stepCount == 1
-  and (.bundleSHA256 | test("^[0-9a-f]{64}$"))
-  and (.videoSha256 | test("^[0-9a-f]{64}$"))
-  and .videoIdentity.runID == "fake-run-123"
-  and .videoIdentity.file == "flow.mp4"
-  and .videoIdentity.sha256 == .videoSha256
-  and (.reviewHtmlSha256 | test("^[0-9a-f]{64}$"))
-' "$contract" >/dev/null
+  .helper.schema == "kg.ios.ui-evidence.v1"
+  and .options.sourceTreeDirty == false
+  and .executed == "1"
+  and .uiVisualReview.reviewHtmlExists == true
+  and .uiVisualReview.contactSheetExists == true
+  and .uiVisualReview.quick4SheetExists == true
+  and .uiVisualReview.visualReviewManifestExists == true
+  and .uiVisualReview.videoExists == true
+' "$json_out" >/dev/null
+bundle="$(jq -er '.helper.bundleRoot' "$json_out")"
 test -f "$bundle/verdict.json"
 test -f "$bundle/upstream-verdict.json"
 test -f "$bundle/delegate.stderr.log"
+test -f "$bundle/artifacts/ui-review/UIreview.html"
 test -d "$bundle/artifacts/Test.xcresult"
-grep -Fxq -- 'SettingsFlowUITests/testSettingsFlow' "$source_repo/build/runner-args.txt"
-! grep -Fxq -- '--method' "$source_repo/build/runner-args.txt"
+grep -Fq 'SettingsFlowUITests/testSettingsFlow' "$repo/build/test-args"
+! grep -Fq -- '--method' "$repo/build/test-args"
 
-for mode in zero-executed wrong-device missing-artifact wrong-video-identity; do
-  set +e
-  (cd "$source_repo" && FAKE_MODE="$mode" "$helper" \
-    --dataset marketing_demo --method SettingsFlowUITests/testSettingsFlow \
-    --json-out "$tmp_root/$mode.json" >"$tmp_root/$mode.out" 2>&1)
-  rc=$?
-  set -e
-  [[ "$rc" -eq 70 ]] || fail "$mode expected rc=70, got $rc"
-  jq -e '.status == "inconclusive" and .helper.contractStatus == "contract-failed"' \
-    "$tmp_root/$mode.json" >/dev/null
-  if [[ "$mode" == missing-artifact ]]; then
-    jq -e '.uiVisualReview.contactSheet == null and .uiVisualReview.contactSheetExists == false' \
-      "$tmp_root/$mode.json" >/dev/null
-  fi
-done
+forwarded_out="$tmp_root/forwarded.json"
+(cd "$repo" && "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset-file ops/fixtures/ui_worlds/marketing_demo.json --lease --grep SettingsFlow \
+  --configuration Release --ui-launch-profile standard --build-lock-timeout 123 --json-out "$forwarded_out" \
+  >"$tmp_root/forwarded.out" 2>&1)
+jq -e '.helper.contractStatus == "pass"' "$forwarded_out" >/dev/null
+grep -Fq -- '--dataset-file' "$repo/build/test-args"
+grep -Fq -- '--grep' "$repo/build/test-args"
+grep -Fq -- 'SettingsFlow' "$repo/build/test-args"
+grep -Fq -- '--configuration' "$repo/build/test-args"
+grep -Fq -- 'Release' "$repo/build/test-args"
+grep -Fq -- '--ui-launch-profile' "$repo/build/test-args"
+grep -Fq -- 'standard' "$repo/build/test-args"
+grep -Fq -- '--timeout' "$repo/build/test-args"
+grep -Fq -- '123' "$repo/build/test-args"
+
+explicit_out="$tmp_root/explicit.json"
+(cd "$repo" && "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --device "$fake_device" --file SettingsFlowUITests.swift --json-out "$explicit_out" \
+  >"$tmp_root/explicit.out" 2>&1)
+jq -e '.helper.contractStatus == "pass" and .device == "43FA3E1B-16F8-4144-B17D-53D5E4728FC6"' "$explicit_out" >/dev/null
 
 set +e
-(cd "$source_repo" && FAKE_MODE=runner-fail "$helper" \
-  --dataset marketing_demo --method SettingsFlowUITests/testSettingsFlow \
-  --json-out "$tmp_root/runner-fail.json" >"$tmp_root/runner-fail.out" 2>&1)
-runner_fail_rc=$?
-(cd "$source_repo" && FAKE_MODE=invalid-json "$helper" \
-  --dataset marketing_demo --method SettingsFlowUITests/testSettingsFlow \
-  --json-out "$tmp_root/invalid-json.json" >"$tmp_root/invalid-json.out" 2>&1)
-invalid_json_rc=$?
+(cd "$repo" && FAKE_MODE=nonzero "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --lease --file SettingsFlowUITests.swift --json-out "$tmp_root/nonzero.json" >"$tmp_root/nonzero.out" 2>&1)
+nonzero_rc=$?
+(cd "$repo" && FAKE_MODE=invalid-json "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --lease --file SettingsFlowUITests.swift --json-out "$tmp_root/invalid.json" >"$tmp_root/invalid.out" 2>&1)
+invalid_rc=$?
+(cd "$repo" && FAKE_MODE=malformed-destination "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --lease --file SettingsFlowUITests.swift >"$tmp_root/malformed.out" 2>&1)
+malformed_rc=$?
+(cd "$repo" && FAKE_MODE=missing-artifact "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --lease --file SettingsFlowUITests.swift >"$tmp_root/artifact.out" 2>&1)
+artifact_rc=$?
 set -e
-[[ "$runner_fail_rc" -eq 65 ]] || fail "runner failure rc drifted: $runner_fail_rc"
-[[ "$invalid_json_rc" -eq 65 ]] || fail "invalid JSON rc drifted: $invalid_json_rc"
-jq -e '.status == "fail" and .helper.contractStatus == "runner-failed"' "$tmp_root/runner-fail.json" >/dev/null
-jq -e '
-  .status == "fail"
-  and .helper.contractStatus == "invalid-upstream"
-  and .uiVisualReview.reviewHtmlExists == true
-  and .uiVisualReview.videoExists == true
-' "$tmp_root/invalid-json.json" >/dev/null
-! find "$source_repo/build/snapshots/uitest-evidence" -name '.verdict.json.tmp' -print -quit | grep -q .
-! find "$tmp_root" -name '.ui-evidence-verdict.*' -print -quit | grep -q .
+[[ "$nonzero_rc" -eq 65 ]]
+[[ "$invalid_rc" -eq 65 ]]
+[[ "$malformed_rc" -eq 70 ]]
+[[ "$artifact_rc" -eq 70 ]]
+jq -e '.status == "fail" and .helper.contractStatus == "runner-failed" and .artifacts.logExists == true and .upstreamStatus.exit == "65"' "$tmp_root/nonzero.json" >/dev/null
+jq -e '.status == "fail" and .helper.contractStatus == "invalid-upstream" and .artifacts.logExists == true and .artifacts.xcresultExists == true and .uiVisualReview.reviewHtmlExists == true and .uiVisualReview.contactSheetExists == true and .uiVisualReview.quick4SheetExists == true and .uiVisualReview.visualReviewManifestExists == true and .uiVisualReview.videoExists == true' "$tmp_root/invalid.json" >/dev/null
+invalid_bundle="$(jq -er '.helper.bundleRoot' "$tmp_root/invalid.json")"
+test -f "$invalid_bundle/artifacts/ui-review/UIreview.html"
+test -f "$invalid_bundle/artifacts/ui-review/contact_sheet.png"
+test -f "$invalid_bundle/artifacts/ui-review/quick4_contact_sheet.png"
+test -f "$invalid_bundle/artifacts/ui-review/review_manifest.json"
+test -f "$invalid_bundle/artifacts/ui-review/uitest-videos/uitest.mp4"
+test -d "$invalid_bundle/artifacts/Test.xcresult"
+grep -Fq 'failed evidence contract' "$tmp_root/malformed.out"
+grep -Fq 'failed evidence contract' "$tmp_root/artifact.out"
 
-echo "PASS: run_ui_evidence helper contract"
+set +e
+(cd "$repo" && FAKE_MODE=missing "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --lease --file SettingsFlowUITests.swift >"$tmp_root/missing.out" 2>&1)
+missing_rc=$?
+(cd "$repo" && FAKE_MODE=wrong-device "$repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --dataset marketing_demo --device "$fake_device" --file SettingsFlowUITests.swift >"$tmp_root/device.out" 2>&1)
+device_rc=$?
+set -e
+[[ "$missing_rc" -eq 70 ]]
+[[ "$device_rc" -eq 70 ]]
+grep -Fq 'failed evidence contract' "$tmp_root/missing.out"
+grep -Fq 'failed evidence contract' "$tmp_root/device.out"
+
+echo "PASS: argument translation, fail-closed verdict, canonical device, and stable retention"

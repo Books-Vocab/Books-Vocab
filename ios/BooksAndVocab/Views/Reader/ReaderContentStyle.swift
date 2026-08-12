@@ -105,9 +105,13 @@ enum ReaderContentStyleFactory {
 
 enum ReaderPresentationMetrics {
     enum Overlay {
+        static let loadingSpacing: CGFloat = 14
+        static let loadingHorizontalInset: CGFloat = 28
+        static let loadingVerticalInset: CGFloat = 20
         static let loadingMaxWidth: CGFloat = 320
         static let loadingOuterInset: CGFloat = 20
         static let progressBarWidth: CGFloat = 80
+        static let progressBarHeight: CGFloat = 3
         static let progressTextWidth: CGFloat = 30
         static let progressHorizontalInset: CGFloat = 16
         static let progressVerticalInset: CGFloat = 10
@@ -163,6 +167,9 @@ enum ReaderPresentationMetrics {
         static let lineHeightTickValues: [Double] = (0..<lineHeightTickCount).map {
             let raw = lineHeightRange.lowerBound + (Double($0) * lineHeightStep)
             return (raw * 10).rounded() / 10
+        }
+        static func lineHeightTickValue(at index: Int) -> Double {
+            lineHeightTickValues[index]
         }
         /// The preview is a viewport, not an intrinsic card. A stable height
         /// prevents every slider tick from moving the controls below it.

@@ -154,40 +154,46 @@ struct ReviewCalendarPresenter: View {
     // MARK: - Day Detail
 
     private var dayDetailSection: some View {
+        Group {
+            if case .empty = ReviewCalendarPresentation.dayState(for: selectedDayRecords) {
+                VocabStateMessageCard(
+                    title: dayDisplayTitle,
+                    systemImage: "calendar.badge.exclamationmark",
+                    description: "這天沒有複習紀錄".localized
+                )
+                .accessibilityIdentifier("reviewCalendar.emptyDay")
+            } else {
+                populatedDayDetailSection
+            }
+        }
+        .animateContentFade(selectedDay)
+    }
+
+    private var populatedDayDetailSection: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
-            // Header
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(dayDisplayTitle)
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
-                if case .empty = ReviewCalendarPresentation.dayState(for: selectedDayRecords) {
-                    Text("這天沒有複習紀錄".localized)
-                        .font(appSkin.typography.caption)
-                        .foregroundStyle(appSkin.palette.quaternaryText)
-                } else {
-                    let s = selectedDaySummary
-                    Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
-                        .font(appSkin.typography.caption)
-                        .foregroundStyle(appSkin.palette.tertiaryText)
-                }
+                let s = selectedDaySummary
+                Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
 
-            if !selectedDayRecords.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(Array(selectedDayRecords.enumerated()), id: \.element.id) { index, record in
-                        if index > 0 {
-                            Divider()
-                                .foregroundStyle(appSkin.palette.divider)
-                                .padding(.leading, AppSpacing.s7 - AppSpacing.s1)
-                        }
-                        recordRow(record)
+            VStack(spacing: 0) {
+                ForEach(Array(selectedDayRecords.enumerated()), id: \.element.id) { index, record in
+                    if index > 0 {
+                        Divider()
+                            .foregroundStyle(appSkin.palette.divider)
+                            .padding(.leading, AppSpacing.s7 - AppSpacing.s1)
                     }
+                    recordRow(record)
                 }
             }
         }
         .vocabCardBackground()
-        .animateContentFade(selectedDay)
     }
 
     private func recordRow(_ record: ReviewRecord) -> some View {
