@@ -87,7 +87,12 @@ struct TOCView: View {
         guard isCurrentLoad(requestID) else { return }
 
         switch result {
-        case .success(let toc):
+        case .success(let publicationTOC):
+            #if DEBUG
+            let toc = uiTestFixtureTOC(from: publicationTOC)
+            #else
+            let toc = publicationTOC
+            #endif
             tocLinks = toc
             loadState = toc.isEmpty ? .empty : .loaded
             AppLog.reader.info("TOC loaded: \(toc.count) items")
@@ -111,6 +116,27 @@ struct TOCView: View {
     private func isCurrentLoad(_ requestID: Int) -> Bool {
         !Task.isCancelled && requestID == loadRequestID
     }
+
+    #if DEBUG
+    /// The missing-destination counterexample is a manifest-backed UI World
+    /// projection: the real catalog EPUB is opened normally, then the fixture
+    /// adds one fragment-only Link so the production `publication.locate` call
+    /// exercises its actual nil-locator branch. It is deliberately not an
+    /// outcome injection or a bypass of Readium navigation.
+    private func uiTestFixtureTOC(from publicationTOC: [ReadiumShared.Link]) -> [ReadiumShared.Link] {
+        guard CommandLine.arguments.contains("-ui-testing"),
+              CommandLine.arguments.contains("-seedFixture:bookshelf:book_card_complete"),
+              !publicationTOC.contains(where: { $0.url().string == "#" }) else {
+            return publicationTOC
+        }
+        return publicationTOC + [
+            ReadiumShared.Link(
+                href: "#",
+                title: L10n.string("找不到章節位置")
+            )
+        ]
+    }
+    #endif
 
     @ViewBuilder
     private func tocLoadingState(_ presentation: ReaderTOCPresentation) -> some View {

@@ -33,9 +33,8 @@ struct ReaderView: View {
 
     @State var publication: Publication?
     @State var readerState = ReaderViewState()
-    @State private var tocNavigationState = ReaderTOCNavigationState()
+    @State var tocNavigationState = ReaderTOCNavigationState()
     @State private var tocFailureInjectionConsumed = false
-    @State private var tocMissingInjectionConsumed = false
 
     // 翻譯 handler（封裝所有翻譯狀態與詞庫邏輯）
     @State var handler = ReaderTranslationHandler()
@@ -214,40 +213,33 @@ struct ReaderView: View {
             argument: "-readerTOCInjectLocateFailureOnce",
             alreadyConsumed: tocFailureInjectionConsumed
         )
-        let injectedMissingDestination = consumeTOCInjection(
-            argument: "-readerTOCInjectMissingDestinationOnce",
-            alreadyConsumed: tocMissingInjectionConsumed
-        )
         if injectedFailure { tocFailureInjectionConsumed = true }
-        if injectedMissingDestination { tocMissingInjectionConsumed = true }
         Task { @MainActor in
             if injectedFailure {
                 tocNavigationState.failSelection(message: L10n.string("章節無法開啟，請重試。"))
                 return
             }
-            if injectedMissingDestination {
-                tocNavigationState.markMissingDestination()
-                return
-            }
             let locator = await publication.locate(item.link)
             guard !Task.isCancelled else { return }
-            guard let locator else {
-                if item.link.url().string == "#" {
-                    tocNavigationState.markMissingDestination()
-                    AppLog.reader.error("TOC navigation missing destination: \(item.title)")
-                } else {
-                    tocNavigationState.failSelection(
-                        message: L10n.string("章節無法開啟，請重試。")
-                    )
-                    AppLog.reader.error("TOC navigation failed: \(item.title)")
-                }
-                return
+            switch ReaderTOCNavigationResolution.resolve(
+                hasLocator: locator != nil,
+                href: item.href
+            ) {
+            case .missingDestination:
+                tocNavigationState.markMissingDestination()
+                AppLog.reader.error("TOC navigation missing destination: \(item.title)")
+            case .failure:
+                tocNavigationState.failSelection(
+                    message: L10n.string("章節無法開啟，請重試。")
+                )
+                AppLog.reader.error("TOC navigation failed: \(item.title)")
+            case .success:
+                guard let locator else { return }
+                AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
+                tocNavigationState.succeed(destinationHref: item.href)
+                navigateToLocator = (locator: locator, id: UUID())
+                readerState.showTableOfContents = false
             }
-
-            AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
-            tocNavigationState.succeed()
-            navigateToLocator = (locator: locator, id: UUID())
-            readerState.showTableOfContents = false
         }
     }
 

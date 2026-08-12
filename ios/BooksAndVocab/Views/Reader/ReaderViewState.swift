@@ -10,11 +10,25 @@ enum ReaderTOCNavigationPhase: Equatable {
     case missingDestination
 }
 
+enum ReaderTOCNavigationResolution: Equatable {
+    case success
+    case failure
+    case missingDestination
+
+    static func resolve(hasLocator: Bool, href: String) -> Self {
+        if hasLocator {
+            return .success
+        }
+        return href == "#" ? .missingDestination : .failure
+    }
+}
+
 struct ReaderTOCNavigationState: Equatable {
     private(set) var phase: ReaderTOCNavigationPhase = .idle
     private(set) var selectedPath: [Int]?
     private(set) var selectedTitle: String?
     private(set) var errorMessage: String?
+    private(set) var destinationHref: String?
 
     var canDismissSheet: Bool {
         phase == .idle || phase == .success
@@ -28,6 +42,7 @@ struct ReaderTOCNavigationState: Equatable {
         selectedPath = path
         selectedTitle = title
         errorMessage = nil
+        destinationHref = nil
         phase = .loading
     }
 
@@ -37,8 +52,9 @@ struct ReaderTOCNavigationState: Equatable {
         phase = .loading
     }
 
-    mutating func succeed() {
+    mutating func succeed(destinationHref: String? = nil) {
         errorMessage = nil
+        self.destinationHref = destinationHref
         phase = .success
     }
 
@@ -49,6 +65,7 @@ struct ReaderTOCNavigationState: Equatable {
 
     mutating func markMissingDestination() {
         errorMessage = L10n.string("找不到章節位置")
+        destinationHref = nil
         phase = .missingDestination
     }
 
@@ -57,6 +74,7 @@ struct ReaderTOCNavigationState: Equatable {
         selectedPath = nil
         selectedTitle = nil
         errorMessage = nil
+        destinationHref = nil
     }
 }
 
@@ -65,6 +83,7 @@ struct ReaderTOCItem: Identifiable {
     let path: [Int]
     let depth: Int
     let title: String
+    let href: String
     let link: ReadiumShared.Link
 }
 
@@ -81,6 +100,7 @@ enum ReaderTOCHierarchy {
                         path: path,
                         depth: depth,
                         title: link.title?.isEmpty == false ? link.title! : L10n.string("目錄"),
+                        href: link.url().string,
                         link: link
                     )
                 )

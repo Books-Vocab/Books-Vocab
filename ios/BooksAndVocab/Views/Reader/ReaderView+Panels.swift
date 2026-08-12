@@ -48,12 +48,38 @@ extension ReaderView {
                 onWordDeselected: handleWordDeselected,
                 onMarkingProgress: handleMarkingProgress
             )
+            .overlay(alignment: .bottom) {
+                tocNavigationSuccessOverlay
+            }
             .ignoresSafeArea(edges: [.horizontal, .bottom])
             .safeAreaInset(edge: .top) {
                 Color.clear.frame(height: 0)
             }
         } else if let error = readerState.errorMessage {
             readerErrorState(error)
+        }
+    }
+
+    @ViewBuilder
+    private var tocNavigationSuccessOverlay: some View {
+        if let destinationHref = tocNavigationState.destinationHref,
+           let selectedTitle = tocNavigationState.selectedTitle {
+            VStack(alignment: .leading, spacing: AppSpacing.s1) {
+                Text(L10n.string("章節已開啟"))
+                    .font(AppFonts.caption())
+                    .accessibilityIdentifier("reader.toc.result.success")
+                Text(selectedTitle)
+                    .font(AppFonts.body())
+                    .lineLimit(1)
+                    .accessibilityIdentifier("reader.toc.destination")
+                    .accessibilityValue(destinationHref)
+            }
+            .padding(AppSpacing.s3)
+            .background(.thinMaterial)
+            .clipShape(AppRoundedRect(roundness: AppRoundness.card))
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.bottom, AppSpacing.s3)
+            .allowsHitTesting(false)
         }
     }
 
