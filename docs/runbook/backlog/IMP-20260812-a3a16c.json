@@ -13,6 +13,9 @@
   "date": "2026-08-12",
   "detail": "318c3e 的 fresh Gate 在 ops-pytest 1604 passed、1 failed、3 skipped；唯一失敗是 test_ios_gate_input_map_covers_declared_shell_dependencies，宣告集合多出 ops/lib/ios_xctestrun_cache.sh。e7cd2ddf primary 直接跑同一 selector 亦 rc1；integration f9e8d8c6 與 e7cd2ddf 的 test_worktree_orchestrate.py blob 完全相同，integration diff 僅三個 Python entrypoint 的 executable mode，因此這是既有 gate contract drift，不是 318c3e 內容變更造成。現有 IMP-20260809-8e99a2 已新增該 helper，但其 acceptance 與 fix_site 未涵蓋 orchestrator 的 _IOS_TEST_INPUTS。",
   "fix_site": "ops/worktree_orchestrate.py; ops/tests/test_worktree_orchestrate.py; docs/reference/tech_index.md",
+  "fixed_by": [
+    "048a255c4da8f8a04afaf86db7ac7af3bd39be1e"
+  ],
   "groomed_against": "e7cd2ddfd6acd0727fa19ea3850759b8117c98ba",
   "groomed_at": "2026-08-12",
   "groomed_by": "agent:team-a-supervisor",
@@ -23,6 +26,10 @@
   "scope": "一個 gate input map、一支回歸測試與一筆技術索引同步。",
   "severity": "med",
   "source": "2026-08-12 318c3e integration Gate BLOCK: the existing ios_test.sh source dependency ops/lib/ios_xctestrun_cache.sh is absent from worktree_orchestrate.py _IOS_TEST_INPUTS; baseline e7cd2ddf reproduces the same selector failure before any mode-only entrypoint change.",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "Delivery recovery evidence (2026-08-12):\n- landed primary HEAD: 048a255c4da8f8a04afaf86db7ac7af3bd39be1e\n- fresh Gate run: 048a255c4da8-55154-50136089572416, rc=0, verdict=warn/non-BLOCK; exact ios input-map selector is green in child and full orchestrator suite 416 passed/304.17s; docs-lint WARN rc3 with ERROR=0 freshness-only.\n- source hand-back seal: a3a16c tip d8a83f8b4daddffc72b165628f5edcb848d4f40a digest 1eeebe81d6b7d824fb9fc5aa83eadc3cbce22cac9e8232371b71da11e62507b5.\n- close-wave cutover landed integration HEAD; expected-ticket closure was the only guard failure and no source/integration state remains active."
 }
