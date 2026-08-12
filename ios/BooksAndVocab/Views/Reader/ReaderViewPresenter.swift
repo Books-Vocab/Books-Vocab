@@ -16,6 +16,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
     let onShowNotebookPicker: () -> Void
     let onExpandHeader: () -> Void
     let onCollapseHeader: () -> Void
+    let onResolveSlowLoading: () -> Void
     @ViewBuilder let mainContent: MainContent
     @ViewBuilder let translationPanel: TranslationPanelContent
 
@@ -27,6 +28,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         onShowNotebookPicker: @escaping () -> Void,
         onExpandHeader: @escaping () -> Void,
         onCollapseHeader: @escaping () -> Void,
+        onResolveSlowLoading: @escaping () -> Void = {},
         @ViewBuilder mainContent: () -> MainContent,
         @ViewBuilder translationPanel: () -> TranslationPanelContent
     ) {
@@ -37,6 +39,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         self.onShowNotebookPicker = onShowNotebookPicker
         self.onExpandHeader = onExpandHeader
         self.onCollapseHeader = onCollapseHeader
+        self.onResolveSlowLoading = onResolveSlowLoading
         self.mainContent = mainContent()
         self.translationPanel = translationPanel()
     }
@@ -57,6 +60,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
 
             bottomOverlay
             topOverlay
+            runtimeStateAccessibility
         }
         .enableInjection()
     }

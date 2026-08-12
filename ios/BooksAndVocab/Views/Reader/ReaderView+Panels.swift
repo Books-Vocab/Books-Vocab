@@ -25,6 +25,11 @@ extension ReaderView {
         }
     }
 
+    func prepareRestoreState() {
+        guard book.lastReadLocatorJSON != nil, initialLocator == nil else { return }
+        readerState.runtime.markRestoreFailure()
+    }
+
     @ViewBuilder
     var readerMainContent: some View {
         if let publication {
@@ -146,11 +151,13 @@ extension ReaderView {
                     systemImage: presentation.systemImage,
                     description: presentation.description,
                     action: AppEmptyStateAction(
-                        title: "重試載入".localized,
+                        title: L10n.string("重試載入"),
                         systemImage: "arrow.clockwise",
                         handler: { retryLoadPublication() }
                     )
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("reader.error.\(readerState.loadingState.accessibilityIdentifier)")
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
                 Spacer(minLength: ReaderPresentationMetrics.Preview.bottomInset)
@@ -167,20 +174,20 @@ extension ReaderView {
         let lower = error.lowercased()
         if lower.contains("icloud") {
             return ReaderErrorPresentation(
-                title: "iCloud 下載失敗".localized,
+                title: L10n.string("iCloud 下載失敗"),
                 systemImage: "icloud.slash",
                 description: error
             )
         }
         if offline || lower.contains("offline") || lower.contains("internet") || lower.contains("network") {
             return ReaderErrorPresentation(
-                title: "目前無法連線".localized,
+                title: L10n.string("目前無法連線"),
                 systemImage: "wifi.slash",
-                description: "請確認網路或 iCloud 同步狀態後再試一次。\n\n".localized + error
+                description: L10n.string("請確認網路或 iCloud 同步狀態後再試一次。\n\n") + error
             )
         }
         return ReaderErrorPresentation(
-            title: "無法開啟書籍".localized,
+            title: L10n.string("無法開啟書籍"),
             systemImage: "exclamationmark.triangle",
             description: error
         )
