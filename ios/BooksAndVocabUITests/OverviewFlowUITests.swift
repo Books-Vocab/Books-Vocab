@@ -337,14 +337,14 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("assert-populated-projection", app: app) {
-            overview.overview.assertExists(timeout: 10)
+            overview.assertStatsAccessibilityHierarchy()
             overview.metrics.assertExists(timeout: 10)
             overview.assertMetric("totalCards", value: "8")
             overview.assertMetric("reviewedToday", value: "2")
             overview.assertMetric("dueToday", value: "0")
             overview.calendar.assertExists(timeout: 10)
-            overview.forecast.assertExists(timeout: 10)
-            let bucket = app.descendants(matching: .any)["forecast.bucket.2026-06-02"].firstMatch
+            overview.assertUniqueForecastContract()
+            let bucket = overview.forecastBucket("2026-06-02")
             bucket.assertExists(timeout: 10)
             XCTAssertTrue((bucket.value as? String)?.contains("8") == true)
         }
@@ -363,15 +363,14 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("assert-zero-and-large", app: app) {
-            overview.overview.assertExists(timeout: 10)
+            overview.assertStatsAccessibilityHierarchy()
             overview.metrics.assertExists(timeout: 10)
             overview.assertMetric("totalCards", value: "40")
             overview.assertMetric("reviewedToday", value: "0")
             overview.assertMetric("dueToday", value: "0")
             overview.calendar.assertExists(timeout: 10)
             XCTAssertEqual(overview.calendar.value as? String, "0")
-            overview.forecastZero.assertExists(timeout: 10)
-            overview.forecastZeroCounterexample.assertExists(timeout: 10)
+            overview.assertUniqueForecastContract()
             overview.largeCounts.assertExists(timeout: 10)
             XCTAssertEqual(overview.largeCounts.value as? String, "40")
         }

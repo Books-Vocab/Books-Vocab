@@ -618,6 +618,7 @@ struct StatsPresenter: View {
                 VStack(spacing: 0) {
                     VocabForecastChart(buckets: summary.forecast)
                         .frame(height: 160)
+                        .accessibilityIdentifier("overview.forecast.chart")
                     Color.clear
                         .frame(width: 1, height: 1)
                         .accessibilityElement()

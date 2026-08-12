@@ -224,6 +224,8 @@ struct OverviewPage {
     var metrics: XCUIElement { app.descendants(matching: .any)["metrics"].firstMatch }
     var calendar: XCUIElement { app.descendants(matching: .any)["calendar"].firstMatch }
     var forecast: XCUIElement { app.descendants(matching: .any)["forecast"].firstMatch }
+    var statsContent: XCUIElement { app.descendants(matching: .any)["overview.statsContent"].firstMatch }
+    var forecastChart: XCUIElement { app.descendants(matching: .any)["overview.forecast.chart"].firstMatch }
     var forecastZero: XCUIElement { app.descendants(matching: .any)["forecast-zero"].firstMatch }
     var forecastZeroCounterexample: XCUIElement {
         app.descendants(matching: .any)["forecast-zero-counterexample"].firstMatch
@@ -238,6 +240,25 @@ struct OverviewPage {
         let element = metric(name)
         element.assertExists(timeout: 10, file: file, line: line)
         XCTAssertEqual(element.value as? String, value, file: file, line: line)
+    }
+
+    func assertStatsAccessibilityHierarchy(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let overviewQuery = app.descendants(matching: .any).matching(identifier: "overview")
+        let statsQuery = app.descendants(matching: .any).matching(identifier: "overview.statsContent")
+        overview.assertExists(timeout: 10, file: file, line: line)
+        statsContent.assertExists(timeout: 10, file: file, line: line)
+        XCTAssertEqual(overviewQuery.count, 1, "overview must be unique", file: file, line: line)
+        XCTAssertEqual(statsQuery.count, 1, "overview.statsContent must be unique", file: file, line: line)
+        XCTAssertEqual(
+            overview.descendants(matching: .any).matching(identifier: "overview.statsContent").count,
+            1,
+            "overview.statsContent must be a descendant of overview",
+            file: file,
+            line: line
+        )
     }
 
     // MARK: - Assertions
