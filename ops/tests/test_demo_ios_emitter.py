@@ -139,7 +139,8 @@ def test_emit_ios_preserves_real_reader_toc_assets():
     valid = books["reader_real_book_epub"]
     invalid = books["reader_invalid_destination_epub"]
     for asset in (valid, invalid):
-        path = Path(asset["sourcePath"])
+        assert not Path(asset["sourcePath"]).is_absolute()
+        path = ROOT / asset["sourcePath"]
         assert path.is_file()
         assert path.stat().st_size == asset["byteSize"]
         assert path.is_relative_to(ROOT)
