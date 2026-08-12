@@ -25,6 +25,13 @@ struct UITestFixtureSeedIsolationTests {
             .appendingPathComponent("BooksAndVocab/Support", isDirectory: true)
     }
 
+    private static var fixtureStoreTestsDirectory: URL {
+        supportDirectory
+            .deletingLastPathComponent() // BooksAndVocab
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocabTests", isDirectory: true)
+    }
+
     private static var reviewProbeWorldData: Data {
         let entries = (0..<40).map { index in
             """
@@ -152,14 +159,21 @@ struct UITestFixtureSeedIsolationTests {
         let authManagerSourceURL = Self.supportDirectory
             .deletingLastPathComponent() // BooksAndVocab
             .appendingPathComponent("Services/AuthManager.swift")
-        let fixtureStoreTestsURL = Self.supportDirectory
-            .deletingLastPathComponent() // BooksAndVocab
-            .deletingLastPathComponent() // ios
-            .appendingPathComponent("BooksAndVocabTests/FixtureDatasetStoreTests.swift")
+        let fixtureStoreTestsSource = try FileManager.default
+            .contentsOfDirectory(
+                at: Self.fixtureStoreTestsDirectory,
+                includingPropertiesForKeys: nil
+            )
+            .filter {
+                $0.lastPathComponent.hasPrefix("FixtureDatasetStoreTests")
+                    && $0.pathExtension == "swift"
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .map { try String(contentsOf: $0, encoding: .utf8) }
+            .joined(separator: "\n")
         let appSource = try String(contentsOf: appSourceURL, encoding: .utf8)
         let managerSource = try String(contentsOf: managerSourceURL, encoding: .utf8)
         let authManagerSource = try String(contentsOf: authManagerSourceURL, encoding: .utf8)
-        let fixtureStoreTestsSource = try String(contentsOf: fixtureStoreTestsURL, encoding: .utf8)
 
         #expect(
             appSource.contains("#if targetEnvironment(simulator)\n        if AppRuntimeOptions.isUITesting"),
