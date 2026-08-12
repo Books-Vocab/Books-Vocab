@@ -9,8 +9,13 @@ import SwiftUI
 import SwiftData
 
 struct ReviewCalendarClock: Equatable {
+    static let historyPlanSource = "history_plan.anchor_day"
+    static let liveSource = "live.Date()"
+    static let explicitSource = "explicit"
+
     let now: Date
     let timeZone: TimeZone
+    let provenance: String
 
     var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -20,9 +25,14 @@ struct ReviewCalendarClock: Equatable {
         return calendar
     }
 
-    init(now: Date, timeZone: TimeZone) {
+    init(
+        now: Date,
+        timeZone: TimeZone,
+        provenance: String = ReviewCalendarClock.explicitSource
+    ) {
         self.now = now
         self.timeZone = timeZone
+        self.provenance = provenance
     }
 
     func dayKey(for date: Date) -> String {
@@ -39,8 +49,78 @@ struct ReviewCalendarClock: Equatable {
         let wallClockNow = Date()
         return Self(
             now: settings.reviewReferenceDate(now: wallClockNow),
-            timeZone: timeZone
+            timeZone: timeZone,
+            provenance: Self.liveSource
         )
+    }
+
+    /// Production composition boundary for UI World and normal app launches.
+    /// A loaded UI World must provide the canonical history-plan clock; it is
+    /// never silently downgraded to `Date()`. Ordinary launches without a UI
+    /// World retain the explicit live production behavior.
+    static func uiWorldOrLive(settings: ReviewSettings = .default) -> Self {
+        guard let context = FixtureDatasetStore.scenarioContext() else {
+            return .live(settings: settings)
+        }
+        guard let seed = context.reviewClock else {
+            preconditionFailure(
+                "UI World scenarioContext.reviewClock is required by the stats/review-calendar composition"
+            )
+        }
+        return fromFixture(seed, fixtureID: "production composition")
+    }
+
+    static func fromFixture(
+        _ seed: FixtureReviewClockSeed,
+        fixtureID: String
+    ) -> Self {
+        guard let now = seed.now,
+              let frozenEpoch = seed.frozenEpoch,
+              let anchorDay = seed.anchorDay,
+              let source = seed.source,
+              source == Self.historyPlanSource,
+              let timeZoneIdentifier = seed.timeZone,
+              let timeZone = TimeZone(identifier: timeZoneIdentifier),
+              let parsedNow = parseISO8601(now)
+        else {
+            preconditionFailure(
+                "UI World review clock must declare valid now, frozenEpoch, anchorDay, timeZone, and source=\(Self.historyPlanSource) for \(fixtureID)"
+            )
+        }
+
+        let epochNow = Date(timeIntervalSince1970: TimeInterval(frozenEpoch))
+        guard abs(parsedNow.timeIntervalSince1970 - epochNow.timeIntervalSince1970) < 0.5 else {
+            preconditionFailure("UI World review clock now/frozenEpoch drift for \(fixtureID)")
+        }
+
+        let clock = Self(now: epochNow, timeZone: timeZone, provenance: source)
+        guard clock.dayKey(for: clock.now) == anchorDay else {
+            preconditionFailure(
+                "UI World review clock anchorDay does not match frozen now in \(timeZoneIdentifier) for \(fixtureID)"
+            )
+        }
+        return clock
+    }
+
+    var provenanceSelector: String {
+        switch provenance {
+        case Self.historyPlanSource:
+            return ReviewCalendarAccessibility.clockHistoryPlan
+        case Self.liveSource:
+            return ReviewCalendarAccessibility.clockLive
+        default:
+            return ReviewCalendarAccessibility.clockExplicit
+        }
+    }
+
+    private static func parseISO8601(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
+            ?? {
+                formatter.formatOptions = [.withInternetDateTime]
+                return formatter.date(from: value)
+            }()
     }
 
     var startOfToday: Date {
@@ -56,6 +136,11 @@ struct ReviewCalendarClock: Equatable {
     }
 }
 
+/// Shared clock contract for Stats forecast and Review Calendar projections.
+/// Keeping the alias at the composition boundary prevents the two surfaces
+/// from acquiring independent date sources.
+typealias StatsProjectionClock = ReviewCalendarClock
+
 enum ReviewCalendarAccessibility {
     static let open = "reviewCalendar.open"
     static let monthHeader = "reviewCalendar.monthHeader"
@@ -65,6 +150,9 @@ enum ReviewCalendarAccessibility {
     static let emptyDayDetail = "reviewCalendar.emptyDayDetail"
     static let populatedDayDetail = "reviewCalendar.populatedDayDetail"
     static let populatedDaySummary = "reviewCalendar.populatedDaySummary"
+    static let clockHistoryPlan = "reviewCalendar.clock.history_plan.anchor_day"
+    static let clockLive = "reviewCalendar.clock.live"
+    static let clockExplicit = "reviewCalendar.clock.explicit"
 
     static func day(_ key: String) -> String {
         "reviewCalendar.day.\(key)"
@@ -199,6 +287,7 @@ struct ReviewCalendarPresenter: View {
             }
         }
         .enableInjection()
+        .accessibilityIdentifier(clock.provenanceSelector)
     }
 
     // MARK: - Calendar

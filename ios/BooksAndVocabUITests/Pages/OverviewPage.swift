@@ -8,22 +8,22 @@ struct OverviewPage {
 
     /// Rendered stats dashboard (only present when the summary computed from
     /// synced entries + review records is non-empty — i.e. real content phase,
-    /// not loading / empty / logged-out).
+    /// not loading / empty / logged-out.
     var statsContent: XCUIElement {
-        app.descendants(matching: .any)["overview.statsContent"].firstMatch
+        exactlyOne(app.descendants(matching: .any)["overview.statsContent"], "overview.statsContent")
     }
 
     /// Calendar entry point. This deliberately uses the stable identifier
     /// rather than the localized section title.
     var reviewCalendarButton: XCUIElement {
-        app.buttons["reviewCalendar.open"].firstMatch
+        exactlyOne(app.buttons["reviewCalendar.open"], "reviewCalendar.open")
     }
 
     // MARK: - Assertions
 
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         // Overview has a NavigationStack with a large title in both logged-in and logged-out states.
-        let navBar = app.navigationBars.firstMatch
+        let navBar = exactlyOne(app.navigationBars, "overview navigation bar", file: file, line: line)
         navBar.assertExists(timeout: 3, file: file, line: line)
     }
 }
@@ -34,34 +34,50 @@ struct ReviewCalendarPage {
     let app: XCUIApplication
 
     var monthHeader: XCUIElement {
-        app.staticTexts["reviewCalendar.monthHeader"].firstMatch
+        exactlyOne(app.staticTexts["reviewCalendar.monthHeader"], "reviewCalendar.monthHeader")
     }
 
     var previousMonthButton: XCUIElement {
-        app.buttons["reviewCalendar.previousMonth"].firstMatch
+        exactlyOne(app.buttons["reviewCalendar.previousMonth"], "reviewCalendar.previousMonth")
     }
 
     var nextMonthButton: XCUIElement {
-        app.buttons["reviewCalendar.nextMonth"].firstMatch
+        exactlyOne(app.buttons["reviewCalendar.nextMonth"], "reviewCalendar.nextMonth")
     }
 
     var selectedDay: XCUIElement {
-        app.buttons["reviewCalendar.selectedDay"].firstMatch
+        exactlyOne(app.buttons["reviewCalendar.selectedDay"], "reviewCalendar.selectedDay")
     }
 
     var emptyDayDetail: XCUIElement {
-        app.descendants(matching: .any)["reviewCalendar.emptyDayDetail"].firstMatch
+        exactlyOne(app.descendants(matching: .any)["reviewCalendar.emptyDayDetail"], "reviewCalendar.emptyDayDetail")
     }
 
     var populatedDayDetail: XCUIElement {
-        app.descendants(matching: .any)["reviewCalendar.populatedDayDetail"].firstMatch
+        exactlyOne(app.descendants(matching: .any)["reviewCalendar.populatedDayDetail"], "reviewCalendar.populatedDayDetail")
     }
 
     var populatedDaySummary: XCUIElement {
-        app.staticTexts["reviewCalendar.populatedDaySummary"].firstMatch
+        exactlyOne(app.staticTexts["reviewCalendar.populatedDaySummary"], "reviewCalendar.populatedDaySummary")
     }
 
     func day(_ key: String) -> XCUIElement {
-        app.buttons["reviewCalendar.day.\(key)"].firstMatch
+        exactlyOne(app.buttons["reviewCalendar.day.\(key)"], "reviewCalendar.day.\(key)")
     }
+}
+
+private func exactlyOne(
+    _ query: XCUIElementQuery,
+    _ label: String,
+    file: StaticString = #filePath,
+    line: UInt = UInt(#line)
+) -> XCUIElement {
+    XCTAssertEqual(
+        query.count,
+        1,
+        "\(label) must resolve exactly one element; duplicates are invalid",
+        file: file,
+        line: line
+    )
+    return query.element(boundBy: 0)
 }

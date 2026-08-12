@@ -104,7 +104,10 @@ private struct VocabCalendarGridScene: View {
         comps.year = 2024
         comps.month = 3
         comps.day = 1
-        return calendar.date(from: comps) ?? month
+        guard let month = calendar.date(from: comps) else {
+            preconditionFailure("VocabCalendarGrid fixture month must be a valid Gregorian date")
+        }
+        return month
     }
 
     private static func dayKey(in month: Date, day: Int) -> String? {

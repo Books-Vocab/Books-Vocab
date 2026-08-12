@@ -31,12 +31,12 @@ enum FixtureReviewClock {
               let anchorDay = seed.anchorDay,
               let source = seed.source,
               !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              source == "history_plan.anchor_day",
+              source == ReviewCalendarClock.historyPlanSource,
               let timeZoneIdentifier = seed.timeZone,
               let timeZone = TimeZone(identifier: timeZoneIdentifier)
         else {
             preconditionFailure(
-                "UI World scenarioContext.reviewClock must declare now, frozenEpoch, anchorDay, timeZone, and source=history_plan.anchor_day for fixture \(fixtureID)"
+                "UI World scenarioContext.reviewClock must declare now, frozenEpoch, anchorDay, timeZone, and source=\(ReviewCalendarClock.historyPlanSource) for fixture \(fixtureID)"
             )
         }
 
@@ -52,7 +52,11 @@ enum FixtureReviewClock {
             )
         }
 
-        let clock = ReviewCalendarClock(now: epochNow, timeZone: timeZone)
+        let clock = ReviewCalendarClock(
+            now: epochNow,
+            timeZone: timeZone,
+            provenance: source
+        )
         guard clock.dayKey(for: clock.now) == anchorDay else {
             preconditionFailure(
                 "UI World review clock anchorDay does not match frozen now in \(timeZoneIdentifier) for fixture \(fixtureID)"
