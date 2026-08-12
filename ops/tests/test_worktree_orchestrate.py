@@ -7968,6 +7968,134 @@ def test_anchor_noop_recovery_after_metadata_commit(tmp_path, monkeypatch):
     ).stdout
 
 
+def test_anchor_noop_recovery_after_multiple_metadata_commits(
+        tmp_path, monkeypatch):
+    """A noop survives every canonical metadata commit in one recovery wave."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"],
+                   cwd=repo, check=True)
+    (repo / ".git" / "info" / "exclude").write_text(".cache/\n", encoding="utf-8")
+    ticket_id = "IMP-20260813-noop-recovery"
+    backlog = repo / "docs" / "runbook" / "backlog"
+    backlog.mkdir(parents=True)
+    ticket = backlog / f"{ticket_id}.json"
+    sibling = backlog / "IMP-20260813-legitimate-metadata.json"
+    baseline = repo / "ops" / "backlog_closed_unverified_baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    ticket.write_text('{"status":"triaged"}\n', encoding="utf-8")
+    sibling.write_text('{"status":"open"}\n', encoding="utf-8")
+    baseline.write_text("baseline-v1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    queue = repo / MODULE.ANCHOR_QUEUE
+    queue.parent.mkdir(parents=True)
+    queue.write_text("", encoding="utf-8")
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "close_wave": {
+            "expected_ticket_ids": [ticket_id],
+            "anchor_base_sha": base_sha,
+            "anchor_ids": [],
+            "anchor_committed": False,
+            "anchor_noop": True,
+            "phases": {"anchor": {
+                "status": "completed",
+                "operation_base": base_sha,
+                "landed_sha": base_sha,
+                "expected_ticket_ids": [ticket_id],
+                "applied_ticket_ids": [],
+                "acceptance_receipt": {
+                    "schema": "kg.backlog.anchor.v1",
+                    "mode": "commit",
+                    "applied": [],
+                    "problems": [],
+                },
+                "queue_state": "consumed",
+            }},
+            "last_successful_phase": "anchor",
+        },
+    }), encoding="utf-8")
+
+    # Three independent, canonical metadata-only advances after the noop.
+    ticket.write_text('{"status":"fixed","fixed_by":"metadata-1"}\n',
+                       encoding="utf-8")
+    subprocess.run(["git", "add", str(ticket)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "ops: verify expected metadata"],
+                   cwd=repo, check=True)
+    sibling.write_text('{"status":"fixed","fixed_by":"metadata-2"}\n',
+                       encoding="utf-8")
+    subprocess.run(["git", "add", str(sibling)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "ops: verify sibling metadata"],
+                   cwd=repo, check=True)
+    baseline.write_text("baseline-v2\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(baseline)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "ops: refresh generated baseline"],
+                   cwd=repo, check=True)
+    current_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    assert current_sha != base_sha
+    changed = subprocess.run(
+        ["git", "diff", "--name-only", base_sha, current_sha], cwd=repo,
+        check=True, capture_output=True, text=True,
+    ).stdout.splitlines()
+    assert changed == [
+        "docs/runbook/backlog/IMP-20260813-legitimate-metadata.json",
+        f"docs/runbook/backlog/{ticket_id}.json",
+        "ops/backlog_closed_unverified_baseline.txt",
+    ]
+
+    @contextmanager
+    def fake_lock(_primary):
+        yield
+
+    def fake_anchor(*_args, **_kwargs):
+        return MODULE.EXIT_OK, {
+            "schema": "kg.backlog.anchor.v1",
+            "mode": "commit",
+            "applied": [],
+            "problems": [],
+            "unstamped": [],
+        }
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", fake_lock)
+    monkeypatch.setattr(MODULE, "_primary_ff_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records", lambda *_a, **_k: (0, [])
+    )
+    monkeypatch.setattr(MODULE, "_delivery_json_tool", fake_anchor)
+
+    rc, steps = MODULE._delivery_anchor_and_commit(
+        argparse.Namespace(base="main", state=None), repo, set(),
+        "delivery-wave", manifest,
+    )
+    assert rc == MODULE.EXIT_OK
+    anchor_commit = next(
+        step["payload"] for step in steps if step.get("name") == "anchor-commit"
+    )
+    assert anchor_commit["committed"] is False
+    assert anchor_commit["noop"] is True
+    marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
+    assert marker["anchor_noop"] is True
+    assert marker["anchor_committed"] is False
+    assert "anchor_commit_sha" not in marker
+    assert marker["anchor_base_sha"] == current_sha
+    assert not subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo,
+        check=True, capture_output=True, text=True,
+    ).stdout
+
+
 def _git_repo_with_anchor_ticket(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
