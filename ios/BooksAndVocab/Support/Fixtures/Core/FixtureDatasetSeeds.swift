@@ -238,6 +238,29 @@ struct FixtureReviewClockSeed: Codable, Equatable {
     }
 }
 
+enum UIWorldDictionaryFixtureID: String, CaseIterable {
+    case p1DictionaryRich = "ui-p1-dictionary-rich"
+
+    var requiredStepLabel: String {
+        switch self {
+        case .p1DictionaryRich:
+            return "dictionary-rich"
+        }
+    }
+}
+
+enum UIWorldDictionaryLookupState: String, CaseIterable {
+    case idle
+    case loading
+    case result
+    case partial
+    case offline
+    case error
+    case retry
+
+    var fixtureID: String { "dictionary.lookup.\(rawValue)" }
+}
+
 struct UIWorldDictionaryLookupSeed: Codable, Equatable {
     let fixtureID: String
     let stepLabel: String
@@ -421,7 +444,7 @@ struct UIWorldDictionarySeed: Codable, Equatable {
         case coverage
     }
 
-    private static let lookupStates: Set<String> = ["idle", "loading", "result", "partial", "offline", "error", "retry"]
+    private static let lookupStates = Set(UIWorldDictionaryLookupState.allCases.map(\.rawValue))
 
     init(from decoder: Decoder) throws {
         let raw = try decoder.container(keyedBy: AnyCodingKey.self)

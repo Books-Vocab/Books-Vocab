@@ -11,7 +11,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         let (app, page) = try openDictionarySheet(perfLog: "dictionary-result")
         page.search("engraved")
 
-        XCTAssertTrue(page.result.waitUntilExists(timeout: 10))
+        page.assertCanonicalState("result")
         XCTAssertTrue(page.sense(id: "sense-1").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.sense(id: "sense-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.example(id: "example-1").waitUntilExists(timeout: 5))
@@ -28,9 +28,9 @@ final class DictionaryLookupFlowUITests: UITestCase {
     func testDictionaryLoadingAndEmptySelectorsAreLive() throws {
         let (app, page) = try openDictionarySheet(perfLog: "dictionary-loading-empty")
         page.search("loading")
-        XCTAssertTrue(page.loadingState.waitUntilExists(timeout: 5))
+        page.assertCanonicalState("loading")
         captureStep("loading", app: app)
-        XCTAssertTrue(page.result.waitUntilExists(timeout: 10))
+        page.assertCanonicalState("result")
 
         // A fresh sheet keeps the query transition deterministic and avoids
         // relying on XCTest's text-selection behavior across iOS versions.
@@ -44,27 +44,27 @@ final class DictionaryLookupFlowUITests: UITestCase {
     func testDictionaryPartialRetryAndRetryingSelectorsAreLive() throws {
         let (app, page) = try openDictionarySheet(perfLog: "dictionary-partial-retry")
         page.search("partial")
-        XCTAssertTrue(page.partialState.waitUntilExists(timeout: 10))
+        page.assertCanonicalState("partial")
         XCTAssertTrue(page.retryButton.waitUntilHittable(timeout: 5))
         captureStep("partial", app: app)
 
         page.retryButton.tap()
-        XCTAssertTrue(page.retryingState.waitUntilExists(timeout: 5))
+        page.assertCanonicalState("retrying")
         captureStep("retrying", app: app)
-        XCTAssertTrue(page.result.waitUntilExists(timeout: 10))
+        page.assertCanonicalState("result")
     }
 
     @MainActor
     func testDictionaryOfflineAndErrorSelectorsExposeRetry() throws {
         let (offlineApp, offlinePage) = try openDictionarySheet(perfLog: "dictionary-offline")
         offlinePage.search("offline")
-        XCTAssertTrue(offlinePage.offlineState.waitUntilExists(timeout: 10))
+        offlinePage.assertCanonicalState("offline")
         XCTAssertTrue(offlinePage.retryButton.waitUntilHittable(timeout: 5))
         captureStep("offline", app: offlineApp)
 
         let (errorApp, errorPage) = try openDictionarySheet(perfLog: "dictionary-error")
         errorPage.search("error")
-        XCTAssertTrue(errorPage.errorState.waitUntilExists(timeout: 10))
+        errorPage.assertCanonicalState("error")
         XCTAssertTrue(errorPage.retryButton.waitUntilHittable(timeout: 5))
         captureStep("error", app: errorApp)
     }
@@ -72,7 +72,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
     @MainActor
     private func openDictionarySheet(perfLog: String) throws -> (XCUIApplication, DictionaryLookupPage) {
         let app = launchIsolatedApp(
-            fixtures: [.notebookReviewDeck],
+            fixtures: [.dictionaryP1Rich, .notebookReviewDeck],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: perfLog
         )
