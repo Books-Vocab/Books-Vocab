@@ -221,6 +221,10 @@ FIXTURE_DOMAIN_IDS = {
         "deleting_account",
         "pricing_unavailable",
         "debug_backend_local",
+        # Canonical P14 route: FixtureDatasetStore -> settingsSeed -> real
+        # KGService transport.  Keep this ID aligned with SettingsFixtureID;
+        # raw launch flags/counters are deliberately not fixture inputs.
+        "sync_terminal_error_retry_success",
     },
     "bookshelf": {
         "book_card_complete",
@@ -629,6 +633,17 @@ SETTINGS_REVIEW_KEYS = {
     "autoplaySoundEnabled",
 }
 SETTINGS_SYNC_SUMMARY_KEYS = {"isConnected", "isSyncing", "summaryText", "lastSyncedText"}
+SETTINGS_SYNC_CANONICAL_FIXTURE_ID = "sync_terminal_error_retry_success"
+SETTINGS_SYNC_METADATA_KEYS = {"lifecycle", "message", "attempt", "dataOutcome"}
+VALID_SETTINGS_SYNC_LIFECYCLES = {
+    "idle",
+    "syncing",
+    "terminalSuccess",
+    "terminalError",
+    "retry",
+    "dismissed",
+}
+VALID_SETTINGS_SYNC_DATA_OUTCOMES = {"none", "partial", "complete"}
 SETTINGS_ABOUT_KEYS = {"version", "developerName"}
 SETTINGS_DANGER_KEYS = {"isDeletingAccount"}
 SETTINGS_BOOK_SYNC_KEYS = {"text", "detail", "tone"}
@@ -1337,7 +1352,57 @@ def _validate_settings_review(seed: Mapping[str, Any], *, owner: str, label: str
     _ensure_bool(seed.get("autoplaySoundEnabled"), field=f"{owner}.autoplaySoundEnabled", label=label)
 
 
-def _validate_settings_seed(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+def _validate_settings_sync_summary(
+    seed: Mapping[str, Any], *, fixture_id: str, owner: str, label: str
+) -> None:
+    sync_obj = _require_mapping(seed, field=owner, label=label)
+    base_keys = SETTINGS_SYNC_SUMMARY_KEYS
+    metadata_keys = SETTINGS_SYNC_METADATA_KEYS
+    keys = set(sync_obj)
+    expected = base_keys | metadata_keys if fixture_id == SETTINGS_SYNC_CANONICAL_FIXTURE_ID else base_keys
+    _validate_exact_keys(sync_obj, expected=expected, owner=owner, label=label)
+    _ensure_bool(sync_obj.get("isConnected"), field=f"{owner}.isConnected", label=label)
+    _ensure_bool(sync_obj.get("isSyncing"), field=f"{owner}.isSyncing", label=label)
+    _ensure_string(sync_obj.get("summaryText"), field=f"{owner}.summaryText", label=label)
+    # Nullable: a device that has never synced (or is offline) has no
+    # last-sync time, and the row omits the line rather than inventing one.
+    _validate_nullable_string(sync_obj.get("lastSyncedText"), owner=f"{owner}.lastSyncedText", label=label)
+
+    present = metadata_keys & keys
+    if present and present != metadata_keys:
+        missing = sorted(metadata_keys - present)
+        raise UIWorldManifestError(f"{label} {owner} lifecycle metadata missing {missing}")
+    if not present:
+        return
+
+    lifecycle = _ensure_string(sync_obj.get("lifecycle"), field=f"{owner}.lifecycle", label=label)
+    if lifecycle not in VALID_SETTINGS_SYNC_LIFECYCLES:
+        raise UIWorldManifestError(f"{label} {owner}.lifecycle is invalid")
+    message = sync_obj.get("message")
+    _validate_nullable_string(message, owner=f"{owner}.message", label=label)
+    attempt = _ensure_non_negative_int(sync_obj.get("attempt"), field=f"{owner}.attempt", label=label)
+    data_outcome = _ensure_string(sync_obj.get("dataOutcome"), field=f"{owner}.dataOutcome", label=label)
+    if data_outcome not in VALID_SETTINGS_SYNC_DATA_OUTCOMES:
+        raise UIWorldManifestError(f"{label} {owner}.dataOutcome is invalid")
+
+    if lifecycle == "terminalError":
+        if not isinstance(message, str) or not message.strip():
+            raise UIWorldManifestError(f"{label} {owner}.message is required for terminalError")
+        if attempt < 1:
+            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for terminalError")
+        if data_outcome != "partial":
+            raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be partial for terminalError")
+    elif lifecycle == "terminalSuccess":
+        if data_outcome != "complete":
+            raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be complete for terminalSuccess")
+    elif lifecycle == "retry":
+        if attempt < 1:
+            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for retry")
+        if data_outcome == "complete":
+            raise UIWorldManifestError(f"{label} {owner}.dataOutcome cannot be complete during retry")
+
+
+def _validate_settings_seed(seed: Mapping[str, Any], *, fixture_id: str, owner: str, label: str) -> None:
     _validate_exact_keys(seed, expected=SETTINGS_SEED_KEYS, owner=owner, label=label)
     _ensure_str(seed.get("authFixtureRef"), field=f"{owner}.authFixtureRef", label=label)
     entitlements_ref = seed.get("entitlementsFixtureRef")
@@ -1368,15 +1433,11 @@ def _validate_settings_seed(seed: Mapping[str, Any], *, owner: str, label: str) 
         )
     sync_summary = seed.get("syncSummary")
     if sync_summary is not None:
-        sync_obj = _require_mapping(sync_summary, field=f"{owner}.syncSummary", label=label)
-        _validate_exact_keys(sync_obj, expected=SETTINGS_SYNC_SUMMARY_KEYS, owner=f"{owner}.syncSummary", label=label)
-        _ensure_bool(sync_obj.get("isConnected"), field=f"{owner}.syncSummary.isConnected", label=label)
-        _ensure_bool(sync_obj.get("isSyncing"), field=f"{owner}.syncSummary.isSyncing", label=label)
-        _ensure_string(sync_obj.get("summaryText"), field=f"{owner}.syncSummary.summaryText", label=label)
-        # Nullable: a device that has never synced (or is offline) has no
-        # last-sync time, and the row omits the line rather than inventing one.
-        _validate_nullable_string(
-            sync_obj.get("lastSyncedText"), owner=f"{owner}.syncSummary.lastSyncedText", label=label
+        _validate_settings_sync_summary(
+            sync_summary,
+            fixture_id=fixture_id,
+            owner=f"{owner}.syncSummary",
+            label=label,
         )
     about = _require_mapping(seed.get("about"), field=f"{owner}.about", label=label)
     _validate_exact_keys(about, expected=SETTINGS_ABOUT_KEYS, owner=f"{owner}.about", label=label)
@@ -1403,7 +1464,7 @@ def _validate_settings_seed(seed: Mapping[str, Any], *, owner: str, label: str) 
 def _validate_settings(data: dict[str, Any], *, label: str) -> None:
     for fixture_id, seed in _require_mapping(data.get("settings"), field="settings", label=label).items():
         seed_obj = _require_mapping(seed, field=f"settings.{fixture_id}", label=label)
-        _validate_settings_seed(seed_obj, owner=f"settings.{fixture_id}", label=label)
+        _validate_settings_seed(seed_obj, fixture_id=fixture_id, owner=f"settings.{fixture_id}", label=label)
 
 
 def _validate_today_review_link(seed: Mapping[str, Any], *, owner: str, bucket_kind: str, label: str) -> None:
