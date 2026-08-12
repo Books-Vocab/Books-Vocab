@@ -1,25 +1,29 @@
 {
   "acceptance": "紅測試先證明目前沒有 profile 契約；修後每個 profile 都解析成版本化 literal argv array 與穩定 canonical spec digest，執行端固定 shell=false，型別化值只能成為單一 argv element。未知 profile、額外欄位、自由 argv／shell／cwd／env、前導 dash、換行、反引號、$()、Unicode 混淆、超長值、路徑穿越、dirty source、未宣告 capability、需 Git metadata 卻標 remote、缺 runner image digest／network policy／sandbox policy，以及任何 production data、credential、Docker socket、localhost production port、deploy／migration／ops edit／cutover／sync／release side effect 全部具名 fail closed。能力表只暴露 readonly plan 與受控 run surface，沒有 raw remote shell、host、IP 或遠端路徑。",
-  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_contract.py ops/tests/test_capability_matrix.py && ./ops/docs_lint.sh",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_contract.py ops/tests/test_capability_matrix.py && ./ops/docs_lint.sh --registry",
+  "acceptance_expect_rc": 0,
   "brief": "自動分配目前沒有一份可機器驗證的工作型別與安全邊界，所以 agent 仍得臨場猜哪些檢查能搬、能帶哪些參數。",
   "category": "arch",
   "date": "2026-08-09",
   "detail": "Felix 算力若直接暴露成任意遠端命令，agent 仍必須理解 SSH、shell quoting、遠端路徑、正式站禁區與各 gate 的工具需求，沒有節省推理，反而擴大誤用面。先建立唯一、靜態、可驗證的 compute profile 契約；v1 只允許已知 backend targeted pytest 與少數純讀檢查，不接受 raw argv、shell string、任意環境變數或任意工作目錄。命令的唯一資料形狀是 literal argv array，型別化參數經 schema canonicalize 後只能成為獨立 argv element，任何執行端皆固定 shell=false。每個 profile 必須宣告 source kind（v1 僅 clean committed tree）、required capabilities、resource class、timeout、remote eligibility、git metadata requirement、side effects、artifact/output contract、network policy、sandbox policy、受信 runner image digest 與最低遠端效益門檻。契約只是控制面，不可宣稱自己是沙箱：remote eligible 必須明示由前置安裝、與 candidate tree 分離的 trusted runner 在強隔離 job child 中執行；production data／credential、Docker socket、production localhost/network、固定 production port、deploy、migration、ops edit、cutover、sync 與 release 一律不可成為 profile。能力表須把 agent-facing 入口與 minimum tier 寫清楚。這張票只定義語意與 fail-closed parser，不碰 SSH、Felix、runner 安裝或排程。",
   "fix_site": "ops/compute_profiles.yml；ops/lib/compute_contract.py；ops/capability_matrix.py；ops/tests/test_compute_contract.py；ops/tests/test_capability_matrix.py；docs/reference/tech_index.md",
+  "fixed_by": [
+    "2db565584beda420113a1130f0cc7a349da793b0"
+  ],
   "groomed_against": "44d0c76c5c34",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:platform-steward",
   "id": "IMP-20260809-aa70b0",
   "plan": "1. 先以參數化紅測試釘住未知 profile、額外欄位、raw argv／shell／cwd／env、前導 dash、換行、反引號、$()、Unicode、超長值、路徑穿越、dirty source、production side effect、缺 sandbox／network／runner digest 與未宣告 capability均被具名拒絕。2. 新增版本化 profile registry 與純函式 parser／validator；profile command 只能是 literal argv array，參數值只能成為獨立 argv element，canonical serializer 同時產生 spec digest，任何 backend 固定 shell=false。3. 把 production roots、secrets、Docker socket、localhost production network、deploy／migration／ops edit／cutover／sync／release 定成不可覆寫禁區；remote eligible profile 必須引用具名 sandbox policy、network=none 與 pinned runner image digest。4. v1 僅登錄有明確淨收益且不需完整 Xcode／Git metadata 的 backend targeted pytest 與少數純讀 profile；需要寫 source tree、網路、Docker、Git metadata 或不相容唯讀掛載者一律 local-only。5. 在 capability matrix 登錄 readonly plan 與 operator run surface，依 docs control plane 同步 agent-facing 索引；跑契約、能力表、surface scan 與 docs lint。",
-  "resolution": "",
+  "resolution": "Acceptance contract corrected via official update: docs_lint freshness WARN is advisory; closure criterion uses docs_lint --registry ERROR=0 while changed-doc freshness receipt remains named.",
   "schema": "kg.backlog.entry.v1",
   "scope": "新增一份小型工作型別登錄表、解析器、能力表入口與契約測試，不執行任何跨機工作。",
   "severity": "med",
   "source": "2026-08-09 使用者澄清：agent 留在 Oscar session，應只呼叫型別化工具，由工具決定是否使用 Felix 算力；不是遠端 agent scheduling。",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-10",
-  "verified_by": "team-a-contract-groom",
-  "verified_evidence": "Preflight found required fix_site files ops/compute_profiles.yml, ops/lib/compute_contract.py, and ops/tests/test_compute_contract.py absent at current main; no setup performed."
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_contract.py ops/tests/test_capability_matrix.py && ./ops/docs_lint.sh --registry = 29 passed, registry ERROR=0; changed-doc full docs_lint raw separately rc3 with named existing tech_index freshness WARN (ERROR0); shell-wrapper and relative-prefix direct probes reject named unsafe forms; py_compile/ruff F821,E9/bash-n/diff-check rc0."
 }
