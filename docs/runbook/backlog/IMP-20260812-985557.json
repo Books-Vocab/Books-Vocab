@@ -1,0 +1,22 @@
+{
+  "acceptance": "RED 先用跨模組 fixture 證明三個實作可能漂移；GREEN 後兩個呼叫端都委派 provenance helper，既有 provenance、reviewer evidence、UI world manifest 測試與 digest bytes 比對全綠。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_provenance.py ops/tests/test_reviewer_evidence.py ops/tests/test_ui_world_manifest.py",
+  "acceptance_expect_rc": 0,
+  "brief": "相同檔案雜湊邏輯散落多處，摘要結果容易因修補不同步而漂移。",
+  "category": "arch",
+  "date": "2026-08-12",
+  "detail": "[IMP-0042/B1] 以 ops/lib/provenance.py 的 sha256 helper 為唯一實作，收斂 reviewer evidence 與 UI world manifest 的重複雜湊邏輯。",
+  "fix_site": "ops/lib/provenance.py; ops/reviewer_evidence.py; ops/ui_world_manifest.py; ops/tests/test_provenance.py; ops/tests/test_reviewer_evidence.py; ops/tests/test_ui_world_manifest.py",
+  "groomed_against": "eff22fabe297c3562724e496b6f0c2ba33ffbc38",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:delivery-team-a-supervisor",
+  "id": "IMP-20260812-985557",
+  "plan": "以 ops/lib/provenance.py 的 sha256_file 與 streaming digest 為 SoT，移除 reviewer_evidence.py 與 ui_world_manifest.py 的重複實作，保留 digest bytes、摘要欄位與既有錯誤語意；補跨模組等值測試。",
+  "resolution": "—",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 provenance helper、兩個呼叫端與跨模組回歸測試。",
+  "severity": "med",
+  "source": "IMP-0042/B1",
+  "status": "triaged",
+  "stream": "IMP"
+}

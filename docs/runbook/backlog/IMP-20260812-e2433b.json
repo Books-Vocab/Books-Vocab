@@ -1,0 +1,23 @@
+{
+  "acceptance": "RED 先證明 review mode 只有 cold-start 路徑；GREEN 後 applyServerModeState、較新本機拒收與同帳號多裝置合併測試通過。OK child-2",
+  "acceptance_cmd": "./ops/ios_ops.sh test --unit --file SettingsCoordinatorReviewClockTests",
+  "acceptance_expect_rc": 0,
+  "brief": "複習模式的跨裝置更新仍依賴舊的 cold-start 行為。",
+  "category": "arch",
+  "cost": "S",
+  "date": "2026-08-12",
+  "detail": "[IMP-0029 子項] child-2 review mode：實作 applyServerModeState 的 LWW 合併，清理對應 dead flag 並補本機較新值拒收測試。",
+  "fix_site": "ios/BooksAndVocab/Models/ReviewSettings.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift",
+  "groomed_against": "eff22fabe297c3562724e496b6f0c2ba33ffbc38",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:delivery-team-a-supervisor",
+  "id": "IMP-20260812-e2433b",
+  "plan": "在 ReviewSettings 與 coordinator 建立 applyServerModeState 的 server timestamp LWW；本機 timestamp 較新時拒收，刪除 serverReviewModeLwwEnabled dead flag，補模式切換與拒收 regression。",
+  "resolution": "—",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 review mode model/coordinator seam 與一組回歸測試。",
+  "severity": "low",
+  "source": "IMP-0029/child-2",
+  "status": "triaged",
+  "stream": "IMP"
+}
