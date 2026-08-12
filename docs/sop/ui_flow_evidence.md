@@ -30,7 +30,7 @@ verified_against: 76256a790
 
 單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`。helper 將 source／dataset／device identity、selector、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
 
-helper 的旗標、normalized verdict schema、artifact hash 與 fail-closed gate 以 `.claude/skills/ios-simulator-verification/references/evidence-contract.md` 為唯一 contract SoT；本 SOP 只定義 flow evidence 的使用時機與收尾判準。helper regression 由 `.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh` 驗證。
+helper 的 CLI 語法以 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh --help` 為權威；normalized verdict schema、artifact hash 與 fail-closed gate 以 `.claude/skills/ios-simulator-verification/references/evidence-contract.md` 為 contract SoT。本 SOP 只定義 flow evidence 的使用時機與收尾判準。helper regression 由 `.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh` 驗證。
 
 ## P1–P15 coverage control plane（branch-local；待 code convergence）
 
@@ -70,7 +70,7 @@ P11 的 branch-local UI World／fixture／test mapping 為：`ops/fixtures/ui_wo
 - Live demo access 只能由 `app_review_evidence.py demo-run --live-mirror-bundle <dir>` 啟動：destination 必須是 physical `platform=iOS,id=...`，底層 products 走 `Release-iphoneos`，不注入 UI World；producer 從 hash-closed ASC live mirror 的 normalized reviewer account 派生預期 SHA-256。`ios_test.sh` 先 sanitize/scan 所有 xctestrun configuration/target 的保留 live/fixture keys，再只對唯一 `BlueprintName=BooksAndVocabUITests` target 注入 live marker 與 account SHA（零個或多個匹配都 fail-closed）；host process 同時 unset 這些 keys，其他 test target 不得收到 live env。非-live run 若殘留或偽造 `KG_LIVE_DEMO_*` 會被拒絕。
 - 固定測試 `LiveDemoAccessUITests.testLiveDemoAccountHasProEntitlement` 會拒絕 Debug、simulator、缺 marker/hash、fixture args/env、backend override、錯誤／缺失 account 與 Free entitlement；通過條件是 Settings 暴露的 account identity SHA 等於 live mirror 且 live backend 顯示 Pro，之後 `ios_test.sh` 才產生綁同一 SHA 的 `demoEvidence`。這份機器證據不宣稱 fresh credential SSO；重新登入與 credential 可用性由 root-bound human attestation 證明。caller 自填 nested JSON 不能成為 live-demo 證據。
 - 同一個 flow 要補多個狀態/資料 variants 時，用 `./ops/uitest_flow_matrix.py --file <Flow>UITests.swift --profile ui-smoke --profile standard --dataset marketing_demo --lease --json`。它會展開 profile × dataset，多次呼叫 `ios_ops.sh test --ui` 且 keep-going；底層 `variantId` 會保留組合軸，例如 `dataset:marketing_demo+profile:standard`，因此新 run 不會覆蓋同 flow 的另一個狀態/資料 entry。
-- P1–P15 matrix 與 stable evidence bundle 的落盤只能由 `ios_ui_review_matrix.py record` 驗證後完成；新 run 必須保留自己的 source HEAD、dataset hash、device、exact selector 與 artifact paths，不得借用上一輪綠燈。
+- stable evidence bundle 由 helper 為每次 run 獨立落盤；必須保留該次 source HEAD、dataset hash、device、selector 與 artifact paths，不得借用上一輪綠燈。`ios_ui_review_matrix.py record` 消費並驗證既有 bundle，只在通過後更新 P1–P15 matrix 的 verification 狀態。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 
