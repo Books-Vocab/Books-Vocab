@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "validate_store 是 repo-threading 鏈上唯一沒收 repo 參數的一環(硬編 make_commit_state()),所以 --store <另一個 checkout 的 ledger> 是一個『沒有正確叫法』的組態:2026-08-07 起它會對那些 sha 給出確定性的假紅,且原本『站到對的 checkout 去』那條逃生路已被移除(那正是解除 gate 的同一根槓桿,移除是對的)。修法是把 repo 一路穿進 validate_store,代價是六個 make_commit_state test double 都是零參數 lambda,實測會當場 13 failed(TypeError),需一併加寬。另:fixed-by-unresolvable / fixed-by-orphaned 兩個 problem 都沒有指出判決是對哪個 repo 下的——加一個 repo 鍵就能讓那個假紅自我解釋。",
   "fix_site": "ops/backlog.py:validate_store（750 行）+ _cmd_validate（約 951 行）+ ops/tests/test_backlog.py 的 make_commit_state test double",
+  "fixed_by": [
+    "07cdfa25edeb2e0f07a6335372503f6184a66b0d"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-afa11d",
@@ -16,6 +19,10 @@
   "scope": "一支待辦工具的驗證函式多穿一個參數、錯誤訊息多一個欄位，連帶放寬六個測試替身。",
   "severity": "low",
   "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "acceptance rc0: explicit repo threading probe passed; ops/tests/test_backlog.py 342 passed/45.98s; ops/test_ops.sh backlog 395 passed/50s; review_audit 2/2; py_compile/ruff F821,E9/bash -n/diff-check rc0; docs_lint registry 45/0/0."
 }
