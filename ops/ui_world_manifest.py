@@ -58,11 +58,74 @@ SURFACE_CONTRACT_KEYS = {"required", "counterexamples"}
 SURFACE_CONTRACT_ROW_KEYS = {
     "fixtureID", "stepLabel", "index", "assetIDs", "assetInodes",
 }
-REQUIRED_SURFACE_CONTRACTS = {"explore", "settings"}
+P1_DICTIONARY_SURFACE = "dictionary"
+P1_DICTIONARY_REQUIRED_FIXTURE_ID = "ui-p1-dictionary-rich"
+P1_DICTIONARY_REQUIRED_STEP_LABEL = "dictionary-rich"
+P1_DICTIONARY_COUNTEREXAMPLE_STATES = ("partial", "offline", "error", "retry")
+REQUIRED_SURFACE_CONTRACTS = {"explore", "settings", P1_DICTIONARY_SURFACE}
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
 }
+
+
+def build_p1_dictionary_surface_contract(
+    dictionary: Mapping[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    """Project the P1 dictionary matrix row from the canonical dictionary seed.
+
+    The dictionary payload remains the single source for lookup fixture IDs and
+    asset identity.  This surface contract adds the matrix-facing fixture ID
+    and its partial/offline/error/retry counterexamples without introducing a
+    second dictionary schema or duplicating hit/sense/example data.
+    """
+    try:
+        lookup = dictionary["lookup"]
+        coverage = dictionary["coverage"]
+        required_coverage = coverage["required"]
+        counterexample_coverage = coverage["counterexamples"]
+        required_assets = list(required_coverage["assetIDs"])
+        required_inodes = list(required_coverage["assetInodes"])
+        counterexample_assets = list(counterexample_coverage["assetIDs"])
+        counterexample_inodes = list(counterexample_coverage["assetInodes"])
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            "canonical dictionary seed must expose lookup/coverage asset identity"
+        ) from exc
+
+    counterexamples = []
+    for index, state in enumerate(P1_DICTIONARY_COUNTEREXAMPLE_STATES, start=1):
+        try:
+            lookup_row = lookup[state]
+            fixture_id = lookup_row["fixtureID"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError(
+                f"canonical dictionary seed must expose lookup state {state!r}"
+            ) from exc
+        counterexamples.append(
+            {
+                "fixtureID": fixture_id,
+                "stepLabel": f"{state}-counterexample",
+                "index": index,
+                "assetIDs": counterexample_assets if state == "error" else [],
+                "assetInodes": counterexample_inodes if state == "error" else [],
+            }
+        )
+
+    return {
+        "required": [
+            {
+                "fixtureID": P1_DICTIONARY_REQUIRED_FIXTURE_ID,
+                "stepLabel": P1_DICTIONARY_REQUIRED_STEP_LABEL,
+                "index": 0,
+                "assetIDs": required_assets,
+                "assetInodes": required_inodes,
+            }
+        ],
+        "counterexamples": counterexamples,
+    }
+
+
 FIXTURE_DOMAIN_IDS = {
     "auth": {"guest", "guestAuthenticating", "guestError", "signedIn", "settingsSignedIn", "longIdentity"},
     "entitlements": {"adminGranted", "cancelledButActive", "free", "pro"},
@@ -2439,6 +2502,7 @@ def _validate_dictionary_context(
 def _validate_surface_contracts(
     contracts: Mapping[str, Any], *, label: str,
     asset_types: Mapping[str, str],
+    dictionary: Mapping[str, Any],
 ) -> None:
     if not contracts:
         raise UIWorldManifestError(f"{label} scenarioContext.surfaceContracts must not be empty")
@@ -2528,6 +2592,18 @@ def _validate_surface_contracts(
             if overlap:
                 raise UIWorldManifestError(
                     f"{label} scenarioContext.surfaceContracts.{surface}.{attr} required/counterexamples must be disjoint: {overlap}")
+        if surface == P1_DICTIONARY_SURFACE:
+            try:
+                expected = build_p1_dictionary_surface_contract(dictionary)
+            except ValueError as exc:
+                raise UIWorldManifestError(
+                    f"{label} scenarioContext.dictionary cannot project P1 surface contract: {exc}"
+                ) from exc
+            if contract_map != expected:
+                raise UIWorldManifestError(
+                    f"{label} scenarioContext.surfaceContracts.{surface} must match the canonical "
+                    f"{P1_DICTIONARY_REQUIRED_FIXTURE_ID} matrix contract"
+                )
 
 
 def _validate_legacy_review_clock(clock: Any, *, label: str) -> None:
@@ -2672,7 +2748,11 @@ def _validate_scenario_context(
         contracts = _require_mapping(
             mc["surfaceContracts"], field="scenarioContext.surfaceContracts", label=label)
         _validate_surface_contracts(
-            contracts, label=label, asset_types=asset_types)
+            contracts,
+            label=label,
+            asset_types=asset_types,
+            dictionary=mc["dictionary"],
+        )
 
     passage = _require_mapping(mc["readerPassage"], field="scenarioContext.readerPassage", label=label)
     pk = set(passage)

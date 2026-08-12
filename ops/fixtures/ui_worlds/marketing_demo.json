@@ -35889,31 +35889,64 @@
     },
     "dictionary": {
       "lookup": {
-        "idle": {"fixtureID": "dictionary.lookup.idle", "stepLabel": "idle"},
-        "loading": {"fixtureID": "dictionary.lookup.loading", "stepLabel": "loading"},
-        "result": {"fixtureID": "dictionary.lookup.result", "stepLabel": "result"},
-        "partial": {"fixtureID": "dictionary.lookup.partial", "stepLabel": "partial"},
-        "offline": {"fixtureID": "dictionary.lookup.offline", "stepLabel": "offline"},
-        "error": {"fixtureID": "dictionary.lookup.error", "stepLabel": "error"},
-        "retry": {"fixtureID": "dictionary.lookup.retry", "stepLabel": "retry"}
+        "idle": {
+          "fixtureID": "dictionary.lookup.idle",
+          "stepLabel": "idle"
+        },
+        "loading": {
+          "fixtureID": "dictionary.lookup.loading",
+          "stepLabel": "loading"
+        },
+        "result": {
+          "fixtureID": "dictionary.lookup.result",
+          "stepLabel": "result"
+        },
+        "partial": {
+          "fixtureID": "dictionary.lookup.partial",
+          "stepLabel": "partial"
+        },
+        "offline": {
+          "fixtureID": "dictionary.lookup.offline",
+          "stepLabel": "offline"
+        },
+        "error": {
+          "fixtureID": "dictionary.lookup.error",
+          "stepLabel": "error"
+        },
+        "retry": {
+          "fixtureID": "dictionary.lookup.retry",
+          "stepLabel": "retry"
+        }
       },
       "senses": [
         {
           "id": "sense-1",
           "partOfSpeech": "adjective",
           "gloss": "marked by a durable trace",
-          "exampleIDs": ["example-1"]
+          "exampleIDs": [
+            "example-1"
+          ]
         },
         {
           "id": "sense-2",
           "partOfSpeech": "verb",
           "gloss": "to leave a lasting mark",
-          "exampleIDs": ["example-2"]
+          "exampleIDs": [
+            "example-2"
+          ]
         }
       ],
       "examples": [
-        {"id": "example-1", "senseID": "sense-1", "text": "The engraved cup remained."},
-        {"id": "example-2", "senseID": "sense-2", "text": "The artist engraved the glass."}
+        {
+          "id": "example-1",
+          "senseID": "sense-1",
+          "text": "The engraved cup remained."
+        },
+        {
+          "id": "example-2",
+          "senseID": "sense-2",
+          "text": "The artist engraved the glass."
+        }
       ],
       "provenance": {
         "provider": "fixture",
@@ -35928,16 +35961,39 @@
       },
       "coverage": {
         "required": {
-          "fixtureIDs": ["dictionary.lookup.result", "dictionary.detail.senses"],
-          "stepLabels": ["idle", "loading", "result", "partial", "offline", "error", "retry"],
-          "assetIDs": ["catalog_reader_epub"],
-          "assetInodes": ["inode:catalog_reader_epub"]
+          "fixtureIDs": [
+            "dictionary.lookup.result",
+            "dictionary.detail.senses"
+          ],
+          "stepLabels": [
+            "idle",
+            "loading",
+            "result",
+            "partial",
+            "offline",
+            "error",
+            "retry"
+          ],
+          "assetIDs": [
+            "catalog_reader_epub"
+          ],
+          "assetInodes": [
+            "inode:catalog_reader_epub"
+          ]
         },
         "counterexamples": {
-          "fixtureIDs": ["dictionary.lookup.error"],
-          "stepLabels": ["error-counterexample"],
-          "assetIDs": ["catalog_reader_pdf"],
-          "assetInodes": ["inode:catalog_reader_pdf"]
+          "fixtureIDs": [
+            "dictionary.lookup.error"
+          ],
+          "stepLabels": [
+            "error-counterexample"
+          ],
+          "assetIDs": [
+            "catalog_reader_pdf"
+          ],
+          "assetInodes": [
+            "inode:catalog_reader_pdf"
+          ]
         }
       }
     },
@@ -35948,8 +36004,12 @@
             "fixtureID": "explore.rich-catalog",
             "stepLabel": "explore-loaded",
             "index": 0,
-            "assetIDs": ["catalog_reader_epub"],
-            "assetInodes": ["inode:catalog_reader_epub"]
+            "assetIDs": [
+              "catalog_reader_epub"
+            ],
+            "assetInodes": [
+              "inode:catalog_reader_epub"
+            ]
           }
         ],
         "counterexamples": [
@@ -35977,6 +36037,55 @@
             "fixtureID": "settings.reset-counterexample",
             "stepLabel": "reset-counterexample",
             "index": 1,
+            "assetIDs": [],
+            "assetInodes": []
+          }
+        ]
+      },
+      "dictionary": {
+        "required": [
+          {
+            "fixtureID": "ui-p1-dictionary-rich",
+            "stepLabel": "dictionary-rich",
+            "index": 0,
+            "assetIDs": [
+              "catalog_reader_epub"
+            ],
+            "assetInodes": [
+              "inode:catalog_reader_epub"
+            ]
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "dictionary.lookup.partial",
+            "stepLabel": "partial-counterexample",
+            "index": 1,
+            "assetIDs": [],
+            "assetInodes": []
+          },
+          {
+            "fixtureID": "dictionary.lookup.offline",
+            "stepLabel": "offline-counterexample",
+            "index": 2,
+            "assetIDs": [],
+            "assetInodes": []
+          },
+          {
+            "fixtureID": "dictionary.lookup.error",
+            "stepLabel": "error-counterexample",
+            "index": 3,
+            "assetIDs": [
+              "catalog_reader_pdf"
+            ],
+            "assetInodes": [
+              "inode:catalog_reader_pdf"
+            ]
+          },
+          {
+            "fixtureID": "dictionary.lookup.retry",
+            "stepLabel": "retry-counterexample",
+            "index": 4,
             "assetIDs": [],
             "assetInodes": []
           }
