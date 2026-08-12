@@ -441,7 +441,7 @@ def test_id_drift_baseline_rejects_a_row_for_an_unknown_entry(
     store.mkdir()
     _use_id_drift_baseline(
         monkeypatch, tmp_path,
-        {"IMP-20260813-missing": "IMP-20260813-deadbe"},
+        {"IMP-20260813-dead01": "IMP-20260813-deadbe"},
     )
 
     assert BACKLOG.main([
@@ -449,7 +449,7 @@ def test_id_drift_baseline_rejects_a_row_for_an_unknown_entry(
     ]) == 2
     output = capsys.readouterr().out
     assert "stale-id-content-drift-baseline" in output
-    assert "IMP-20260813-missing" in output
+    assert "IMP-20260813-dead01" in output
 
 
 @pytest.mark.parametrize(
@@ -460,8 +460,9 @@ def test_id_drift_baseline_rejects_a_row_for_an_unknown_entry(
             "IMP-20260813-abcdef IMP-20260813-111111\n"
             "IMP-20260813-abcdef IMP-20260813-222222\n"
         ),
+        "NOT-AN-ID IMP-20260813-111111\n",
     ],
-    ids=["malformed", "duplicate-observed-id"],
+    ids=["malformed", "duplicate-observed-id", "invalid-id-format"],
 )
 def test_id_drift_baseline_rejects_malformed_or_duplicate_rows(
     tmp_path, monkeypatch, capsys, lines
@@ -526,6 +527,61 @@ def test_legal_lifecycle_mutations_do_not_change_a_modern_derived_id(tmp_path):
         problem["kind"] == "id-content-drift"
         for problem in BACKLOG.validate_store(store)
     )
+
+
+def test_content_drift_recomputation_uses_digest_fields_as_its_single_source(
+    monkeypatch,
+):
+    payload = {
+        **_entry_kwargs(detail="future digest input"),
+        "schema": BACKLOG.SCHEMA,
+        "id": "IMP-20260805-abcdef",
+        "future_identity": "must reach the digest function",
+    }
+    seen = []
+
+    def fake_make_entry_id(**fields):
+        seen.append(fields)
+        return payload["id"]
+
+    monkeypatch.setattr(
+        BACKLOG,
+        "DIGEST_FIELDS",
+        (*BACKLOG.DIGEST_FIELDS, "future_identity"),
+    )
+    monkeypatch.setattr(BACKLOG, "make_entry_id", fake_make_entry_id)
+
+    problems = BACKLOG.validate_entry(payload, entry_id=payload["id"])
+
+    assert not any(problem["kind"] == "id-content-drift" for problem in problems)
+    assert seen == [{
+        field: payload[field] for field in BACKLOG.DIGEST_FIELDS
+    }]
+
+
+def test_add_id_derivation_uses_digest_fields_as_its_single_source(
+    tmp_path, monkeypatch
+):
+    fields = (*BACKLOG.DIGEST_FIELDS, "future_identity")
+    seen = []
+
+    def fake_make_entry_id(**values):
+        seen.append(values)
+        return "IMP-20260805-abcdef"
+
+    monkeypatch.setattr(BACKLOG, "DIGEST_FIELDS", fields)
+    monkeypatch.setattr(BACKLOG, "make_entry_id", fake_make_entry_id)
+
+    entry = BACKLOG.add_entry(
+        tmp_path / "backlog",
+        **_entry_kwargs(),
+        extra={"future_identity": "must reach the digest function"},
+    )
+
+    assert entry["id"] == "IMP-20260805-abcdef"
+    assert seen[0] == {
+        field: entry[field] for field in BACKLOG.DIGEST_FIELDS
+    }
 
 
 @pytest.mark.parametrize(

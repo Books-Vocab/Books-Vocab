@@ -1,0 +1,11 @@
+# Historical content-derived ID debt. Each row freezes one exact mismatch as
+#   <observed id> <expected id recomputed from the current immutable payload>
+# `validate --baseline-check` refuses unknown, changed, malformed, duplicate,
+# or stale rows. This file is reviewed debt, never generated automatically.
+IMP-20260809-1c4bcf IMP-20260809-4b0c92
+IMP-20260809-84e9e4 IMP-20260809-022d00
+IMP-20260809-aa70b0 IMP-20260809-0a7029
+IMP-20260809-dc2a65 IMP-20260809-ef4785
+IMP-20260809-f4517a IMP-20260809-ccf412
+IMP-20260810-7b0c9e IMP-20260810-a54d69
+IMP-20260811-6b7d2e IMP-20260811-7f20a1

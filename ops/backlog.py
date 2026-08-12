@@ -376,6 +376,7 @@ CONTRACT_REQUIRED_SINCE = "2026-08-10"
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _LEGACY_ENTRY_ID_RE = re.compile(r"^IMP-\d{4}$")
+_MODERN_ENTRY_ID_RE = re.compile(r"^(?:APP|IMP)-\d{8}-[0-9a-f]{6}$")
 
 
 class BacklogError(Exception):
@@ -1190,15 +1191,12 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
         )
 
     payload_id = payload.get("id")
-    digest_inputs = ("stream", "date", "source", "detail")
+    digest_inputs = DIGEST_FIELDS
     if isinstance(payload_id, str) and not _LEGACY_ENTRY_ID_RE.fullmatch(payload_id) \
             and all(isinstance(payload.get(field), str) for field in digest_inputs):
-        expected_id = make_entry_id(
-            stream=payload["stream"],
-            date=payload["date"],
-            source=payload["source"],
-            detail=payload["detail"],
-        )
+        expected_id = make_entry_id(**{
+            field: payload[field] for field in DIGEST_FIELDS
+        })
         if payload_id != expected_id:
             problems.append({
                 "kind": "id-content-drift",
@@ -1579,19 +1577,17 @@ def add_entry(
         if field not in payload and value not in (None, ""):
             payload[field] = value
 
+    derived_id = make_entry_id(**{
+        field: payload[field] for field in DIGEST_FIELDS
+    })
     if entry_id is not None and not _LEGACY_ENTRY_ID_RE.fullmatch(entry_id):
-        expected_id = make_entry_id(
-            stream=stream, date=date, source=source, detail=detail
-        )
-        if not overwrite or entry_id != expected_id:
+        if not overwrite or entry_id != derived_id:
             raise ValueError(
                 "explicit id is reserved for migration of legacy IMP-#### entries; "
                 "new IDs are derived from stream/date/source/detail"
             )
 
-    payload["id"] = entry_id or make_entry_id(
-        stream=stream, date=date, source=source, detail=detail
-    )
+    payload["id"] = entry_id or derived_id
     if not _SAFE_ID_RE.match(payload["id"]):
         raise ValueError(f"unusable entry id (must be a bare filename): {payload['id']!r}")
 
@@ -2338,6 +2334,60 @@ def _baseline_path() -> Path:
     if override:
         return ROOT / override
     return ROOT / "ops" / "backlog_closed_unverified_baseline.txt"
+
+
+def _id_drift_baseline_path(store: Path) -> Path | None:
+    override = os.environ.get("KG_BACKLOG_ID_DRIFT_BASELINE")
+    if override:
+        return ROOT / override
+    try:
+        if Path(store).resolve() == DEFAULT_STORE.resolve():
+            return ROOT / "ops" / "backlog_id_drift_baseline.txt"
+    except OSError:
+        pass
+    return None
+
+
+def _read_id_drift_baseline(path: Path) -> tuple[dict[str, str], list[dict]]:
+    if not path.exists():
+        return {}, []
+    pairs: dict[str, str] = {}
+    problems: list[dict] = []
+    for line_number, raw in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        columns = line.split()
+        if len(columns) != 2:
+            problems.append({
+                "kind": "invalid-id-content-drift-baseline",
+                "line": line_number,
+                "value": raw,
+                "reason": "expected exactly: <observed-id> <current-expected-id>",
+            })
+            continue
+        observed_id, expected_id = columns
+        if not (_MODERN_ENTRY_ID_RE.fullmatch(observed_id)
+                and _MODERN_ENTRY_ID_RE.fullmatch(expected_id)):
+            problems.append({
+                "kind": "invalid-id-content-drift-baseline",
+                "line": line_number,
+                "value": raw,
+                "reason": "both columns must be modern content-derived ids",
+            })
+            continue
+        if observed_id in pairs:
+            problems.append({
+                "kind": "invalid-id-content-drift-baseline",
+                "line": line_number,
+                "id": observed_id,
+                "reason": "duplicate observed id",
+            })
+            continue
+        pairs[observed_id] = expected_id
+    return pairs, problems
 
 
 def _read_baseline(path: Path) -> set[str]:
@@ -6176,6 +6226,33 @@ def _cmd_validate(args) -> int:
         print(f"wrote {_baseline_path()} ({len(current)} entries)")
         return 0
     if getattr(args, "baseline_check", False):
+        id_drift_path = _id_drift_baseline_path(Path(args.store))
+        id_drift_pairs, baseline_problems = (
+            _read_id_drift_baseline(id_drift_path)
+            if id_drift_path is not None else ({}, [])
+        )
+        problems.extend(baseline_problems)
+        drift_by_id = {
+            str(problem.get("id")): str(problem.get("expected_id"))
+            for problem in problems
+            if problem.get("kind") == "id-content-drift"
+        }
+        exact_pairs = set(id_drift_pairs.items())
+        problems = [
+            problem for problem in problems
+            if problem.get("kind") != "id-content-drift"
+            or (str(problem.get("id")), str(problem.get("expected_id")))
+            not in exact_pairs
+        ]
+        for entry_id, expected_id in sorted(id_drift_pairs.items()):
+            if drift_by_id.get(entry_id) != expected_id:
+                problems.append({
+                    "kind": "stale-id-content-drift-baseline",
+                    "id": entry_id,
+                    "expected_id": expected_id,
+                    "current_expected_id": drift_by_id.get(entry_id),
+                    "path": str(Path(args.store) / f"{entry_id}.json"),
+                })
         allowed = _read_baseline(_baseline_path())
         for entry_id in current:
             if entry_id not in allowed:

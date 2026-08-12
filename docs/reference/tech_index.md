@@ -375,6 +375,14 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 
 `backlog.py` 的 acceptance proof 契約唯一入口是 `./ops/backlog.py update --help` 的 epilog；本索引只保留指標，不重複契約內容。
 
+`backlog.py validate --baseline-check` 另以 `ops/backlog_id_drift_baseline.txt`
+收斂七筆歷史 identity debt；每列必須是 `<observed-id> <current-expected-id>`
+的唯一 exact pair，且反向檢查 entry 存在、目前 payload 仍重算為同一 expected id。
+未知、再次漂移、stale、duplicate 或 malformed row 都會失敗；`IMP-####` legacy id
+維持既有 grandfather。這份 baseline 只由 review 過的 commit 維護，不由命令自動擴張；
+預設路徑錨在 repo root 且只套用預設 backlog store，fixture／其他 store 要以
+`KG_BACKLOG_ID_DRIFT_BASELINE` 明示自己的檔案（相對路徑同樣對 repo root 解析）。
+
 ## Gate receipt tail contract
 
 `ops/worktree_orchestrate.py gate` 的人類可讀報告在實際執行時最後一行恆是可貼上的
