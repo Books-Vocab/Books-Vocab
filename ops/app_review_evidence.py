@@ -23,6 +23,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.exit_codes import EXIT_BLOCK, EXIT_TOOL_ERROR, EXIT_USAGE
+from lib.canonical_json import canonical_json_bytes
 from lib.streaming_command import run_streamed_command
 
 URL_SCHEMA = "kg.app_review.url_checks.v1"
@@ -512,7 +513,7 @@ def evaluate_gate(spec_path: Path, workspace_root: Path) -> dict[str, Any]:
 
 
 def _write_or_print(document: dict[str, Any], out: Path | None, commit: bool) -> None:
-    encoded = json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    encoded = canonical_json_bytes(document).decode("utf-8")
     if commit:
         if out is None:
             raise EvidenceError("--commit requires --out")

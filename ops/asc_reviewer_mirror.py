@@ -36,6 +36,7 @@ from asc_text_bundle import (  # noqa: E402
     DEFAULT_KEY_DIR,
     DEFAULT_KEY_ID,
 )
+from lib.canonical_json import canonical_json_bytes as _canonical_json_bytes  # noqa: E402
 
 
 AUDIT_SCHEMA = "kg.app_review.asc_audit.v1"
@@ -82,9 +83,7 @@ class AuditResult:
 
 
 def canonical_json_bytes(value: dict[str, Any]) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-    ).encode("utf-8")
+    return _canonical_json_bytes(value)
 
 
 def _sha256(payload: bytes) -> str:
