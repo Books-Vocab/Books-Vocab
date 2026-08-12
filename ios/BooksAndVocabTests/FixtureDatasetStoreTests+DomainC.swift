@@ -84,7 +84,7 @@ extension FixtureDatasetStoreTests {
         }
     }
 
-    @Test @MainActor func assetInstallPlanCopiesIntoAppContainerAndVerifiesHash() throws {
+    @Test @MainActor func assetInstallPlanRejectsAbsoluteSourcePath() throws {
         let source = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-ui-world-asset-source-\(UUID().uuidString).txt")
         try Data("asset payload".utf8).write(to: source)
@@ -113,20 +113,14 @@ extension FixtureDatasetStoreTests {
         }
         """
 
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let expected = documents.appendingPathComponent(installAs)
         defer {
             try? FileManager.default.removeItem(at: source)
-            try? FileManager.default.removeItem(at: expected.deletingLastPathComponent())
         }
 
-        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-            let installed = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
-            #expect(installed == expected)
-            #expect(FileManager.default.fileExists(atPath: installed.path))
-            #expect(try Data(contentsOf: installed) == Data("asset payload".utf8))
-            #expect(try FixtureDatasetStore.byteSize(for: installed) == byteSize)
-            #expect(try FixtureDatasetStore.sha256Hex(for: installed) == hash)
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+            }
         }
     }
 

@@ -364,9 +364,9 @@ enum FixtureDatasetStore {
         return url
     }
 
-    /// Resolve a manifest source against the checkout that compiled this app.
-    /// Relative paths are canonical; older absolute paths are accepted only
-    /// when their suffix identifies a path inside this checkout.
+    /// Resolve a canonical repo-relative manifest source against the checkout
+    /// that compiled this app. Installed filesystem identity is observed only
+    /// after copying and is never used to resolve a checked-in fixture.
     static func resolveSourceURL(for asset: UIWorldAsset) throws -> URL {
         let root = repositoryRootURL.standardizedFileURL
         let rawPath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -376,30 +376,15 @@ enum FixtureDatasetStore {
             ])
         }
         let rawURL = URL(fileURLWithPath: rawPath)
-        let candidate: URL
-        if rawURL.path.hasPrefix("/") {
-            let rawComponents = rawURL.standardizedFileURL.pathComponents
-            let rootComponents = root.pathComponents
-            let rootName = rootComponents
-                .lastIndex(of: ".claude")
-                .flatMap { index in index > 0 ? rootComponents[index - 1] : nil }
-            if let rootName,
-               let rootIndex = rawComponents.lastIndex(of: rootName),
-               rootIndex + 1 < rawComponents.count {
-                let suffix = rawComponents[(rootIndex + 1)...].joined(separator: "/")
-                candidate = root.appendingPathComponent(suffix)
-            } else {
-                candidate = rawURL
-            }
-        } else {
-            let components = rawPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-            guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
-                throw CocoaError(.fileReadCorruptFile, userInfo: [
-                    NSLocalizedDescriptionKey: "UI World asset sourcePath must be a safe repo-relative path",
-                ])
-            }
-            candidate = root.appendingPathComponent(rawPath)
+        let components = rawPath.split(separator: "/").map(String.init)
+        guard !rawURL.path.hasPrefix("/"),
+              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw CocoaError(.fileReadNoPermission, userInfo: [
+                NSFilePathErrorKey: rawPath,
+                NSLocalizedDescriptionKey: "UI World asset sourcePath must be repo-relative without traversal",
+            ])
         }
+        let candidate = root.appendingPathComponent(rawPath)
         let lexical = candidate.standardizedFileURL
         guard isContained(lexical, in: root) else {
             throw CocoaError(.fileReadNoPermission, userInfo: [

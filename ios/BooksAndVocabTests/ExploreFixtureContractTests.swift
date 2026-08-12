@@ -1,5 +1,6 @@
 #if DEBUG && targetEnvironment(simulator)
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -32,7 +33,27 @@ struct ExploreFixtureContractTests {
         }
     }
 
-    @Test func assetResolutionUsesCurrentWorktreeAndInstalledSnapshot() throws {
+    @Test func exploreWireContractRejectsLegacySyntheticAssetToken() throws {
+        var object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: Self.marketingDemoURL)
+            ) as? [String: Any]
+        )
+        var sharedDecks = try #require(object["sharedDecks"] as? [String: Any])
+        var fixtures = try #require(sharedDecks["fixtures"] as? [String: Any])
+        var loaded = try #require(fixtures["loaded"] as? [String: Any])
+        loaded["assetInodes"] = ["inode:explore_required"]
+        fixtures["loaded"] = loaded
+        sharedDecks["fixtures"] = fixtures
+        object["sharedDecks"] = sharedDecks
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(data)
+        }
+    }
+
+    @Test func assetResolutionRejectsStaleAbsoluteSourcePath() throws {
         let relativeSourcePath = "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png"
         let staleAbsoluteSourcePath = "/Users/chenliangyu/project/kg/\(relativeSourcePath)"
         let sourceURL = URL(fileURLWithPath: #filePath)
@@ -61,17 +82,39 @@ struct ExploreFixtureContractTests {
         object["assets"] = assets
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
 
-        let resolved = try FixtureDatasetStore.resolveSourceURL(
-            for: try #require(try FixtureDatasetStore.decode(data).assets.asset(for: "images.explore_required"))
+        let staleAsset = try #require(
+            try FixtureDatasetStore.decode(data).assets.asset(for: "images.explore_required")
         )
-        #expect(resolved.path.hasSuffix(relativeSourcePath))
-        #expect(!resolved.path.contains("/Users/chenliangyu/project/kg/ios/"))
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.resolveSourceURL(for: staleAsset)
+        }
+    }
 
-        let installed = try FixtureDatasetStore.withTestingData(data) {
+    @Test func assetResolutionUsesCanonicalManifestAndInstalledSnapshot() throws {
+        let data = try Data(contentsOf: Self.marketingDemoURL)
+        let asset = try #require(
+            try FixtureDatasetStore.decode(data).assets.asset(for: "images.explore_required")
+        )
+        #expect(!asset.sourcePath.hasPrefix("/"))
+        #expect(asset.sourcePath == "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png")
+        let installAs = "ExploreContractTests/\(UUID().uuidString)/cover.png"
+        var object = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var assets = try #require(object["assets"] as? [String: Any])
+        var images = try #require(assets["images"] as? [String: Any])
+        var imageAsset = try #require(images["explore_required"] as? [String: Any])
+        imageAsset["installAs"] = installAs
+        images["explore_required"] = imageAsset
+        assets["images"] = images
+        object["assets"] = assets
+        let installData = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+        let installed = try FixtureDatasetStore.withTestingData(installData) {
             try FixtureDatasetStore.requireInstalledAsset(ref: "images.explore_required")
         }
-        #expect(installed.sha256 == sha256)
-        #expect(installed.byteSize == sourceData.count)
+        #expect(installed.sha256 == asset.sha256)
+        #expect(installed.byteSize == asset.byteSize)
         #expect(installed.contentType == "image/png")
         #expect(installed.fileSystemInode > 0)
         #expect(FileManager.default.fileExists(atPath: installed.url.path))
@@ -101,7 +144,14 @@ struct ExploreFixtureContractTests {
                 deck.coverImagePath.map { FileManager.default.fileExists(atPath: $0) } == .some(true)
             )
             #expect(deck.coverImageSHA256 == "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109")
+            #expect(deck.coverImageByteSize == 30129)
+            #expect(deck.coverImageContentType == "image/png")
             #expect(deck.coverImageFileSystemInode ?? 0 > 0)
+            let reloadedContext = ModelContext(container)
+            let persistedDeck = try #require(
+                reloadedContext.fetch(FetchDescriptor<SharedDeck>()).first
+            )
+            #expect(persistedDeck.coverImageFileSystemInode == nil)
         }
     }
 

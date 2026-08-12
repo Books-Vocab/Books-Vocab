@@ -46,7 +46,9 @@ final class SharedDeck {
     var coverImageSHA256: String?
     var coverImageByteSize: Int?
     var coverImageContentType: String?
-    var coverImageFileSystemInode: Int?
+    /// Runtime-only observation of the installed copy; never part of fixture
+    /// wire identity or persisted provenance.
+    @Transient var coverImageFileSystemInode: Int? = nil
     /// 伺服器端 updatedAt（已 parse 成 Date；nil = 伺服器未下發或無法解析）。UI 走 LocaleAwareFormatter。
     var updatedAt: Date?
     /// server browse 排序位置（reconcile 時以 server 回傳次序固化，供本機 grid 穩定排序）。
