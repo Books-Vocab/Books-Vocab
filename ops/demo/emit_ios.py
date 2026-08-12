@@ -157,6 +157,11 @@ SPEC_BASELINE_KEPT_FIXTURES = (
     # 非帳號資料；probe 另為 flip-probe rig 卡組（UITestFixtureSeed+TodayReview）
     ("reviewDeck", "probe"),
     ("reviewDeck", "notebookReviewDeck"),
+    # P12/P13 ReviewCard evidence is canonical UI World data consumed through
+    # FixtureDatasetStore.requireReviewDeckSeed; arbitrary seed specs cannot
+    # preserve the long front/back payload or its compact counterexample.
+    ("reviewDeck", "review.card-full-info"),
+    ("reviewDeck", "review.card-compact-counterexample"),
 )
 
 

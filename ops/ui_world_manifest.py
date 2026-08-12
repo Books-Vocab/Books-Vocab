@@ -132,8 +132,6 @@ READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
 }
-
-
 def build_p1_dictionary_surface_contract(
     dictionary: Mapping[str, Any],
 ) -> dict[str, list[dict[str, Any]]]:
@@ -203,6 +201,10 @@ def build_p1_dictionary_surface_contract(
         ],
     }
 
+REVIEW_CARD_EVIDENCE_FIXTURE_IDS = {
+    "review.card-full-info",
+    "review.card-compact-counterexample",
+}
 
 FIXTURE_DOMAIN_IDS = {
     "auth": {"guest", "guestAuthenticating", "guestError", "signedIn", "settingsSignedIn", "longIdentity"},
@@ -287,7 +289,14 @@ FIXTURE_DOMAIN_IDS = {
         "wordDetail",
         "wordEdit",
     },
-    "reviewDeck": {"phaseLongContent", "phaseMulti", "phaseSingle", "probe", "notebookReviewDeck"},
+    "reviewDeck": {
+        "phaseLongContent",
+        "phaseMulti",
+        "phaseSingle",
+        "probe",
+        "notebookReviewDeck",
+        *REVIEW_CARD_EVIDENCE_FIXTURE_IDS,
+    },
     "syncPresenter": {"ready", "running", "completed", "partialFailure", "fullFailure"},
 }
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
