@@ -92,6 +92,9 @@ enum UITestFixtureSeed {
 
     /// Dictionary content is canonical scenarioContext data; the seed only
     /// verifies that the declared fixture resolves to the injected dataset.
+    /// Dictionary data is already canonical scenarioContext content. The
+    /// launch seed only resolves the declared surface row; it never writes a
+    /// synthetic dictionary response into SwiftData.
     private static func seedDictionary(_ id: String) {
         guard let fixtureID = UIWorldDictionaryFixtureID(rawValue: id) else {
             failFixtureSeed("Unknown dictionary fixture ID: \(id)")
