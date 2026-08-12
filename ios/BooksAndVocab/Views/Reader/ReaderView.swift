@@ -65,6 +65,9 @@ struct ReaderView: View {
     @State private var retryLoadTask: Task<Void, Never>?
     @State private var tocNavigationTask: Task<Void, Never>?
     @State private var tocNavigationDismissTask: Task<Void, Never>?
+    /// Retry/disappear generation owner: a late publication result must not
+    /// write into a newer Reader view after its request has been superseded.
+    @State private var publicationLoadCoordinator = ReaderPublicationLoadCoordinator()
 
     @Environment(\.authManager) var authManager
     @Environment(\.toastCoordinator) var toastCoordinator
@@ -148,6 +151,7 @@ struct ReaderView: View {
             // retry 走非結構化 Task，不隨 view 生命週期自動取消 —
             // 在此一併取消其 in-flight extractUniqueWords，避免寫回已棄置的 handler。
             retryLoadTask?.cancel()
+            publicationLoadCoordinator.cancelAndInvalidate()
             tocNavigationTask?.cancel()
             tocNavigationDismissTask?.cancel()
             // dismiss / pop 時若 debounce 窗口未到期，flush 最後一次翻頁進度，
@@ -332,6 +336,7 @@ struct ReaderView: View {
         _ = readerState.runtime.retry()
         readerState.resetLoadingPhase()
         readerState.isWebViewReady = false
+        publicationLoadCoordinator.cancelAndInvalidate()
         // 持 handle：retry 為非結構化 Task，需 onDisappear 顯式取消（見 retryLoadTask 宣告）。
         // 重入先取消舊 retry，避免連點時舊 in-flight 載入洩漏（與 onDisappear 對稱）。
         retryLoadTask?.cancel()
@@ -344,6 +349,7 @@ struct ReaderView: View {
         readerState.resetLoadingPhase()
         readerState.isWebViewReady = false
         retryLoadTask?.cancel()
+        publicationLoadCoordinator.cancelAndInvalidate()
         retryLoadTask = Task { await loadPublication() }
     }
 
@@ -363,18 +369,20 @@ struct ReaderView: View {
             readerState.resetLoadingPhase()
         }
 
-        do {
-            let loader = ReaderPublicationLoader(
-                readiumService: readiumService,
-                downloadManager: downloadManager
-            )
-            let result = try await loader.loadPublication(for: book) { phase in
+        let loader = ReaderPublicationLoader(
+            readiumService: readiumService,
+            downloadManager: downloadManager
+        )
+        await publicationLoadCoordinator.load(
+            book: book,
+            loader: loader,
+            onPhase: { phase in
                 readerState.updateLoadingPhase(phase)
-            }
-            await MainActor.run {
-                publication = result.publication
+            },
+            onPublication: { loadedPublication in
+                publication = loadedPublication
                 if book.lastReadLocatorJSON != nil, initialLocator == nil {
-                    restoreFallbackLocator = result.publication.readingOrder.compactMap { link in
+                    restoreFallbackLocator = loadedPublication.readingOrder.compactMap { link in
                         guard let mediaType = link.mediaType else { return nil }
                         return Locator(href: link.url(), mediaType: mediaType)
                     }.first
@@ -386,22 +394,16 @@ struct ReaderView: View {
                     from: allVocabulary,
                     notebookId: book.resolvedNotebookId
                 )
-            }
-
-            // 收進 `.task` 結構化作用域：擷取在同一 async 流程內 `await`，
-            // 隨 view 生命週期自動取消，不再 fire-and-forget。
-            // dismiss 中途離開時整條鏈一併取消，避免寫回已棄置的 handler。
-            let uniqueWords = await result.extractUniqueWords()
-            // cancel 後（dismiss 中途離開 / retry 被 onDisappear 取消）不寫回已棄置的 handler。
-            guard !Task.isCancelled else { return }
-            handler.bookUniqueWords = uniqueWords
-        } catch {
-            AppLog.reader.error("Publication load failed (book=\(book.title)): \(error.localizedDescription, privacy: .public)")
-            await MainActor.run {
+            },
+            onUniqueWords: { uniqueWords in
+                handler.bookUniqueWords = uniqueWords
+            },
+            onError: { error in
+                AppLog.reader.error("Publication load failed (book=\(book.title)): \(error.localizedDescription, privacy: .public)")
                 readerState.runtime.fail(.openFailed, message: error.localizedDescription)
                 readerState.isWebViewReady = true  // 顯示錯誤畫面
             }
-        }
+        )
     }
 }
 #endif
