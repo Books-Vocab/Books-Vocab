@@ -260,7 +260,9 @@ Campaign reservation 是多票並行的 registry control plane：`campaign-reser
 iOS 可執行 gate 的 input scope 依 command delegate 分離：`ios-build` / Catalyst 雜湊 iOS tree、
 `ios_ops.sh` 共用載入面與 build runner；unit/UI/live-demo compile 改雜湊同一共用面與 test runner。
 因此只修 `ios_test.sh` 時可重用已綠 build，改共用 dispatcher/helper 時兩者仍重跑；未具名的新
-iOS gate 保守退回完整 iOS surface，不能自行取得窄 scope。
+iOS gate 保守退回完整 iOS surface，不能自行取得窄 scope。test runner 的共用載入面包含
+`ops/lib/ios_xctestrun_cache.sh`；它由 `ios_test.sh` 載入，變更時必須使 test input
+fingerprint 失效並重跑相應 gate。
 
 空 diff 仍可合法重跑，但 gate record 會以 `no_changed_files=true` 明示「沒有變更路徑被驗證」；人讀輸出會警告，`--receipt-line` 會加 `no-changes`，避免把合法 re-gate 或錯樹空跑誤讀成新修改已被驗證。
 

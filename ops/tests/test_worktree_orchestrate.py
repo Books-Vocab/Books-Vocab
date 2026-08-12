@@ -10186,6 +10186,7 @@ def test_ios_gate_input_map_covers_declared_shell_dependencies():
         for pattern in ("ops/uitest_review_*.py", "ops/catalog_*.py")
         for p in ROOT.glob(pattern)
     )
+    assert "ops/lib/ios_xctestrun_cache.sh" in MODULE._IOS_TEST_INPUTS
     assert declared_files("ops/ios_test.sh") <= test_inputs
 
 
