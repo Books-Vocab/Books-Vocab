@@ -77,6 +77,37 @@ def _by_name(gates):
     return {g["name"]: g for g in gates}
 
 
+def test_gate_omission_always_plans_official_deck_check():
+    """The deck index check is fixed-set, not selected by a changed path."""
+    gates = plan_gates(
+        [],
+        ops_test_exists=lambda rel: rel == "ops/official_decks/build_official.py",
+        base="main",
+    )
+    deck = _by_name(gates)["official-decks-check"]
+    assert deck["level"] == "block"
+    assert deck["cwd"] == "backend"
+    assert deck["cmd"] == [
+        "uv", "run", "python", "../ops/official_decks/build_official.py",
+        "check", "--json",
+    ]
+
+
+def test_gate_omission_routes_untracked_paths_into_the_gate_plan(monkeypatch):
+    """A new untracked spec must be visible even when HEAD has no diff."""
+    def fake_git(args, cwd=None):
+        if args[:2] == ["diff", "--name-only"]:
+            return 0, ""
+        if args == ["status", "--porcelain", "--untracked-files=all"]:
+            return 0, "?? ops/official_decks/untracked.json\n"
+        raise AssertionError(f"unexpected git probe: {args!r}")
+
+    monkeypatch.setattr(MODULE, "_git", fake_git)
+    assert MODULE._changed_vs_base("/tmp/fixture", "main") == [
+        "ops/official_decks/untracked.json"
+    ]
+
+
 # ============================================================================
 # P0: dispatch preflight compiler
 # ============================================================================
