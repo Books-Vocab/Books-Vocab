@@ -904,6 +904,19 @@ def plan_gates(changed_files: list[str],
     neutral file selects nothing."""
     gates: list[dict[str, Any]] = []
 
+    # Official-deck specs are a fixed-set gate, not a diff-routed gate. A new spec can
+    # be present in the worktree without changing any tracked file; the check must still
+    # compare the on-disk set with the git index and name the omitted deck (IMP-20260808-
+    # 88c404). Synthetic repos without this tool are intentionally left alone.
+    if (ops_test_exists is not None
+            and ops_test_exists("ops/official_decks/build_official.py")):
+        gates.append(_shell(
+            "official-decks-check", "data",
+            ["uv", "run", "python", "../ops/official_decks/build_official.py",
+             "check", "--json"],
+            "block", cwd="backend",
+        ))
+
     # Iron law 4's mechanical half. review_audit only checks that each commit
     # carries a `Reviewed-by:` or a whitelisted `Review-Exempt:` trailer — it
     # cannot judge review quality, and the trailer is agent-authored. Its value
@@ -1804,15 +1817,31 @@ def _primary_ff_ready(primary: Path, local: str, branch: str | None = None,
 
 
 def _changed_vs_base(worktree: str, base: str) -> list[str]:
-    """Committed files the worktree's HEAD changed relative to base (merge-base diff:
-    `git diff --name-only base...HEAD`). This is the PATCH a cutover would land — which
-    equals the TREE the gates execute against only while the base is already contained
-    in HEAD; `_base_containment` is what makes that precondition true."""
+    """Files changed against base, plus current tracked/untracked worktree paths.
+
+    The committed diff is the PATCH a cutover would land. The status union is needed
+    for omission checks: a newly created file that was never staged is absent from the
+    patch but is still an input the gate must inspect (IMP-20260808-88c404).
+    """
     rc, out = _git(["diff", "--name-only", f"{base}...HEAD"], cwd=worktree)
     if rc != 0:
         # base unresolved (e.g. no origin/main locally) — fall back to two-dot.
         rc, out = _git(["diff", "--name-only", f"{base}..HEAD"], cwd=worktree)
-    return [ln for ln in out.splitlines() if ln]
+    changed = {ln for ln in out.splitlines() if ln}
+    status_rc, status = _git(
+        ["status", "--porcelain", "--untracked-files=all"], cwd=worktree
+    )
+    if status_rc == 0:
+        # Only the omission-sensitive official-deck specs belong in this status
+        # union. Treating every untracked helper (for example the synthetic
+        # orchestrator copy used by provenance tests) as a committed Python diff
+        # would spuriously arm unrelated source gates that cannot run in a fixture
+        # tree. The fixed official-decks gate still runs independently of this list.
+        changed.update(
+            path for path in _porcelain_paths(status)
+            if path.startswith("ops/official_decks/") and path.endswith(".json")
+        )
+    return sorted(changed)
 
 
 def _local_trunk(base: str) -> str:
