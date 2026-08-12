@@ -8095,6 +8095,103 @@ def test_anchor_noop_recovery_after_multiple_metadata_commits(
         check=True, capture_output=True, text=True,
     ).stdout
 
+    # A similarly named nested path is not canonical backlog metadata.
+    nested_base_sha = current_sha
+    nested = backlog / "nested" / "rogue.json"
+    nested.parent.mkdir(parents=True)
+    nested.write_text('{"status":"foreign"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", str(nested)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "ops: foreign nested metadata"],
+                   cwd=repo, check=True)
+    persisted = json.loads(manifest.read_text(encoding="utf-8"))
+    persisted["close_wave"]["anchor_base_sha"] = nested_base_sha
+    manifest.write_text(json.dumps(persisted), encoding="utf-8")
+    rc, steps = MODULE._delivery_anchor_and_commit(
+        argparse.Namespace(base="main", state=None), repo, set(),
+        "delivery-wave", manifest,
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert any(
+        step.get("name") == "anchor-guard"
+        and "primary moved after the persisted anchor base" in step.get("error", "")
+        for step in steps
+    )
+
+
+@pytest.mark.parametrize(
+    "illegal_path",
+    [
+        "docs/runbook/backlog/nested/rogue.json",
+        "frozen/foreign.json",
+    ],
+)
+def test_noop_recovery_rejects_nested_or_foreign_source_paths(
+        tmp_path, illegal_path):
+    """Noop provenance accepts only top-level backlog metadata and baseline."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    ticket_id = "IMP-20260813-noop-recovery"
+    ticket = repo / "docs" / "runbook" / "backlog" / f"{ticket_id}.json"
+    ticket.parent.mkdir(parents=True)
+    ticket.write_text('{"status":"triaged"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    illegal = repo / illegal_path
+    illegal.parent.mkdir(parents=True, exist_ok=True)
+    illegal.write_text("foreign\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(illegal)], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "foreign path"], cwd=repo, check=True)
+    current_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    marker = {
+        "anchor_noop": True,
+        "anchor_committed": False,
+        "expected_ticket_ids": [ticket_id],
+        "phases": {"anchor": {
+            "status": "completed",
+            "applied_ticket_ids": [],
+            "queue_state": "consumed",
+            "acceptance_receipt": {
+                "schema": "kg.backlog.anchor.v1",
+                "applied": [],
+                "problems": [],
+            },
+        }},
+    }
+    assert not MODULE._delivery_anchor_noop_recovery_is_safe(
+        repo, marker, stored_base=base_sha, current_head=current_head,
+    )
+
+
+def test_noop_recovery_preserves_true_anchor_exact_identity_refusal(tmp_path):
+    """A true anchor still requires its exact persisted commit identity."""
+    repo, base_sha = _git_repo_with_anchor_ticket(tmp_path)
+    ticket_id = "IMP-20260809-crash"
+    rc, committed = MODULE._delivery_anchor_commit(
+        repo, applied_ids=[ticket_id], anchor_base_sha=base_sha,
+    )
+    assert rc == MODULE.EXIT_OK
+    assert committed["committed"] is True
+    rc, refused = MODULE._delivery_anchor_commit(
+        repo,
+        applied_ids=[ticket_id],
+        already_committed=True,
+        anchor_base_sha=base_sha,
+        already_committed_sha="0" * 40,
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert "exact commit" in refused["error"]
+
 
 def _git_repo_with_anchor_ticket(tmp_path):
     repo = tmp_path / "repo"
