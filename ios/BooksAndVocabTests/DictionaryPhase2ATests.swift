@@ -301,6 +301,8 @@ struct DictionaryPhase2ATests {
             sourceEntry: missingSource, entry: lexical, using: service, container: container
         )
         #expect(missingSourceCoordinator.materializePhase == .failed)
+        #expect(missingSourceCoordinator.actionPhase == .failed)
+        #expect(missingSourceCoordinator.actionError == .missingSourceCard)
 
         let source = Self.entry("source", cardID: "source", notebook: "nb")
         let missingSenseCoordinator = AddLinkCoordinator()
@@ -309,6 +311,7 @@ struct DictionaryPhase2ATests {
             sourceEntry: source, entry: lexical, using: service, container: container
         )
         #expect(missingSenseCoordinator.materializePhase == .failed)
+        #expect(missingSenseCoordinator.actionError == .missingSense)
 
         let missingExampleCoordinator = AddLinkCoordinator()
         missingExampleCoordinator.select(senseKey: "sense_1", exampleKey: "missing-example")
@@ -316,6 +319,7 @@ struct DictionaryPhase2ATests {
             sourceEntry: source, entry: lexical, using: service, container: container
         )
         #expect(missingExampleCoordinator.materializePhase == .failed)
+        #expect(missingExampleCoordinator.actionError == .missingExample)
         #expect(await service.materializeCount == 0)
     }
 
@@ -335,6 +339,8 @@ struct DictionaryPhase2ATests {
         )
 
         #expect(coordinator.materializePhase == .failed)
+        #expect(coordinator.actionPhase == .failed)
+        #expect(coordinator.actionError == .projectionRefreshFailed)
         #expect(source.graphLinksByKind.isEmpty)
         #expect(await service.fetchProjectionCount == 1)
     }
@@ -355,6 +361,8 @@ struct DictionaryPhase2ATests {
         )
 
         #expect(coordinator.materializePhase == .succeeded)
+        #expect(coordinator.actionPhase == .succeeded)
+        #expect(coordinator.actionError == nil)
         #expect(await service.fetchProjectionCount == 1)
         let rows = try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>())
         let target = try #require(rows.first(where: { $0.kgCardId == "target" }))
@@ -362,6 +370,34 @@ struct DictionaryPhase2ATests {
         #expect(target.dictionarySelectedSenseKey == "sense_1")
         #expect(target.dictionarySelectedExampleKey == "example_1")
         #expect(source.graphLinksByKind.values.flatMap { $0 }.contains { $0.cardId == "target" })
+    }
+
+    @Test("sheet disappearance cancels an in-flight materialization") @MainActor
+    func materializeCancellation() async throws {
+        let container = try Self.container()
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let lexical = try JSONDecoder().decode(
+            DictionaryEntryResponse.self, from: Data(Self.entryJSON.utf8)
+        ).entry
+        let service = SlowP1MaterializeService()
+        let coordinator = AddLinkCoordinator()
+        coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
+
+        coordinator.startMaterializeSelectedExample(
+            sourceEntry: source, entry: lexical, using: service, container: container
+        )
+        for _ in 0..<50 {
+            if await service.materializeCount == 1 { break }
+            await Task.yield()
+        }
+        #expect(await service.materializeCount == 1)
+
+        coordinator.cancel()
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(coordinator.actionPhase == .cancelled)
+        #expect(coordinator.actionError == nil)
+        #expect(coordinator.materializePhase == .idle)
+        #expect(source.graphLinksByKind.isEmpty)
     }
 
     @Test("materialize rejects an empty link response") @MainActor
@@ -380,6 +416,7 @@ struct DictionaryPhase2ATests {
         )
 
         #expect(coordinator.materializePhase == .failed)
+        #expect(coordinator.actionError == .missingLink)
         #expect(source.graphLinksByKind.isEmpty)
     }
 
@@ -393,6 +430,7 @@ struct DictionaryPhase2ATests {
             target: target, sourceEntry: missingSource, using: KGService()
         )
         #expect(missingSourceCoordinator.materializePhase == .failed)
+        #expect(missingSourceCoordinator.actionError == .missingSourceCard)
 
         let duplicateSource = Self.entry("source", cardID: "source", notebook: "nb")
         duplicateSource.insertLink(
@@ -407,6 +445,7 @@ struct DictionaryPhase2ATests {
             target: target, sourceEntry: duplicateSource, using: KGService()
         )
         #expect(duplicateCoordinator.materializePhase == .failed)
+        #expect(duplicateCoordinator.actionError == .duplicateLink)
         #expect(duplicateSource.graphLinksByKind.values.flatMap { $0 }.count == 1)
     }
 
@@ -599,6 +638,13 @@ private actor RetryDictionaryService: DictionaryServing {
         let json = #"{"targetCard":{"id":"target","content":"lucid","meaning":"clear","pos":"adjective","examples":["A lucid answer."],"inflections":[],"notebookId":"nb","cardRole":"dictionary","reviewEligible":false,"readerHidden":false,"promotionState":"idle","promotedAt":null,"isDeleted":false,"isArchived":false,"createdAt":"2026-08-05T00:00:00Z","updatedAt":"2026-08-05T00:00:00Z"},"link":{"id":"link-1","fromId":"source","toId":"target","kind":"related","confidence":0.9,"reason":"related"},"createdCard":true,"createdLink":true,"replayed":false}"#
         return try JSONDecoder().decode(DictionaryMaterializeLinkResponse.self, from: Data(json.utf8))
     }
+
+    func fetchDictionaryCard(cardId: String) async throws -> KGDictionaryCardProjection {
+        try JSONDecoder().decode(
+            KGDictionaryCardProjection.self,
+            from: Data(DictionaryPhase2ATests.materializedProjectionJSON.utf8)
+        )
+    }
 }
 
 private actor P1MaterializeService: DictionaryServing {
@@ -631,6 +677,18 @@ private actor P1MaterializeService: DictionaryServing {
             KGDictionaryCardProjection.self,
             from: Data(DictionaryPhase2ATests.materializedProjectionJSON.utf8)
         )
+    }
+}
+
+private actor SlowP1MaterializeService: DictionaryServing {
+    private(set) var materializeCount = 0
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest, idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        materializeCount += 1
+        try await Task.sleep(for: .seconds(5))
+        throw KGError.serverError("unexpected materialization completion")
     }
 }
 
