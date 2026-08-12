@@ -26,6 +26,23 @@ struct RepoFixtureDatasetsContractTests {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    private static func generatedDemoTopLevel() throws -> [String: Any] {
+        let url = datasetsDirectory
+            .deletingLastPathComponent() // ui_worlds
+            .deletingLastPathComponent() // fixtures
+            .appendingPathComponent("demo/generated/ios_fixture_dataset.json")
+        let data = try Data(contentsOf: url)
+        return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private static func encodedGeneratedDemo(
+        _ mutate: (inout [String: Any]) throws -> Void
+    ) throws -> Data {
+        var topLevel = try generatedDemoTopLevel()
+        try mutate(&topLevel)
+        return try JSONSerialization.data(withJSONObject: topLevel)
+    }
+
     @Test func repoContainsAtLeastOneDataset() throws {
         #expect(try !Self.datasetURLs().isEmpty)
     }
@@ -131,6 +148,189 @@ struct RepoFixtureDatasetsContractTests {
         let legacyDocument = try FixtureDatasetStore.decode(frozenNowData)
         #expect(legacyDocument.scenarioContext?.dictionary == nil)
         #expect(legacyDocument.scenarioContext?.reviewClock?.frozenNow == "2026-06-15T23:59:59Z")
+    }
+
+    @Test func legacyScenarioContextRequiresReaderAndWordDetailWithCompatibleClocks() throws {
+        let clocks: [Any] = [
+            NSNull(),
+            [
+                "frozenNow": "2026-06-15T23:59:59Z",
+                "frozenEpoch": 1781567999,
+                "anchorDay": "2026-06-15",
+                "source": "legacy.fixture",
+            ] as [String: Any],
+        ]
+
+        for missingField in ["readerPassage", "wordDetail"] {
+            for clock in clocks {
+                let data = try Self.encodedGeneratedDemo { topLevel in
+                    var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+                    context.removeValue(forKey: "dictionary")
+                    context.removeValue(forKey: "surfaceContracts")
+                    context["reviewClock"] = clock
+                    context[missingField] = NSNull()
+                    topLevel["scenarioContext"] = context
+                }
+                #expect(throws: (any Error).self) {
+                    try FixtureDatasetStore.decode(data)
+                }
+            }
+        }
+    }
+
+    @Test func canonicalScenarioContextRejectsPartialAndMixedShapes() throws {
+        for missingField in ["dictionary", "surfaceContracts"] {
+            let data = try Self.encodedGeneratedDemo { topLevel in
+                var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+                context.removeValue(forKey: missingField)
+                topLevel["scenarioContext"] = context
+            }
+            #expect(throws: (any Error).self) {
+                try FixtureDatasetStore.decode(data)
+            }
+        }
+
+        let mixedData = try Self.encodedGeneratedDemo { topLevel in
+            var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+            context["reviewClock"] = [
+                "frozenNow": "2026-06-15T23:59:59Z",
+                "frozenEpoch": 1781567999,
+                "anchorDay": "2026-06-15",
+                "source": "legacy.fixture",
+            ] as [String: Any]
+            topLevel["scenarioContext"] = context
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(mixedData)
+        }
+    }
+
+    @Test func canonicalDictionaryRejectsPendingReadyMaterializationContradictions() throws {
+        for status in ["pending", "ready"] {
+            let data = try Self.encodedGeneratedDemo { topLevel in
+                var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+                var dictionary = try #require(context["dictionary"] as? [String: Any])
+                var materialization = try #require(dictionary["materialization"] as? [String: Any])
+                materialization["status"] = status
+                if status == "ready" {
+                    materialization["selectedSenseID"] = NSNull()
+                    materialization["selectedExampleID"] = NSNull()
+                }
+                dictionary["materialization"] = materialization
+                context["dictionary"] = dictionary
+                topLevel["scenarioContext"] = context
+            }
+            #expect(throws: (any Error).self) {
+                try FixtureDatasetStore.decode(data)
+            }
+        }
+    }
+
+    @Test func canonicalSurfaceContractsRejectDuplicateRowsAndAssetMismatches() throws {
+        let duplicateRowData = try Self.encodedGeneratedDemo { topLevel in
+            var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+            var contracts = try #require(context["surfaceContracts"] as? [String: Any])
+            var explore = try #require(contracts["explore"] as? [String: Any])
+            var required = try #require(explore["required"] as? [[String: Any]])
+            required.append(try #require(required.first))
+            explore["required"] = required
+            contracts["explore"] = explore
+            context["surfaceContracts"] = contracts
+            topLevel["scenarioContext"] = context
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(duplicateRowData)
+        }
+
+        let mismatchData = try Self.encodedGeneratedDemo { topLevel in
+            var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+            var contracts = try #require(context["surfaceContracts"] as? [String: Any])
+            var explore = try #require(contracts["explore"] as? [String: Any])
+            var required = try #require(explore["required"] as? [[String: Any]])
+            required[0]["assetInodes"] = ["inode:catalog_reader_pdf"]
+            explore["required"] = required
+            contracts["explore"] = explore
+            context["surfaceContracts"] = contracts
+            topLevel["scenarioContext"] = context
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(mismatchData)
+        }
+    }
+
+    @Test func canonicalAssetManifestRejectsEmptyKeysAndCrossTypeDuplicateIDs() throws {
+        let emptyKeyData = try Self.encodedGeneratedDemo { topLevel in
+            var assets = try #require(topLevel["assets"] as? [String: Any])
+            var images = try #require(assets["images"] as? [String: Any])
+            var asset = try #require(images["notebook_cover_app_icon"] as? [String: Any])
+            asset["installAs"] = "Assets/empty-key.png"
+            images["   "] = asset
+            assets["images"] = images
+            topLevel["assets"] = assets
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(emptyKeyData)
+        }
+
+        let duplicateIDData = try Self.encodedGeneratedDemo { topLevel in
+            var assets = try #require(topLevel["assets"] as? [String: Any])
+            var images = try #require(assets["images"] as? [String: Any])
+            let asset = try #require(images["notebook_cover_app_icon"] as? [String: Any])
+            images["catalog_reader_epub"] = asset
+            assets["images"] = images
+            topLevel["assets"] = assets
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(duplicateIDData)
+        }
+    }
+
+    @Test func canonicalSurfaceContractsRejectEmptyAssetValuesAndInodeTokens() throws {
+        let emptyAssetIDData = try Self.encodedGeneratedDemo { topLevel in
+            var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+            var contracts = try #require(context["surfaceContracts"] as? [String: Any])
+            var explore = try #require(contracts["explore"] as? [String: Any])
+            var required = try #require(explore["required"] as? [[String: Any]])
+            required[0]["assetIDs"] = [""]
+            required[0]["assetInodes"] = ["inode:"]
+            explore["required"] = required
+            contracts["explore"] = explore
+            context["surfaceContracts"] = contracts
+            topLevel["scenarioContext"] = context
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(emptyAssetIDData)
+        }
+
+        let emptyAssetInodeData = try Self.encodedGeneratedDemo { topLevel in
+            var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+            var contracts = try #require(context["surfaceContracts"] as? [String: Any])
+            var explore = try #require(contracts["explore"] as? [String: Any])
+            var required = try #require(explore["required"] as? [[String: Any]])
+            required[0]["assetInodes"] = ["inode:"]
+            explore["required"] = required
+            contracts["explore"] = explore
+            context["surfaceContracts"] = contracts
+            topLevel["scenarioContext"] = context
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(emptyAssetInodeData)
+        }
+    }
+
+    @Test func canonicalReviewHistoryRejectsDatesAfterReviewClockNow() throws {
+        let data = try Self.encodedGeneratedDemo { topLevel in
+            var vocabulary = try #require(topLevel["vocabulary"] as? [String: Any])
+            var seed = try #require(vocabulary["reviewCalendarDense"] as? [String: Any])
+            var history = try #require(seed["reviewHistory"] as? [[String: Any]])
+            history[0]["reviewedAt"] = "2026-06-16T00:00:00Z"
+            seed["reviewHistory"] = history
+            vocabulary["reviewCalendarDense"] = seed
+            topLevel["vocabulary"] = vocabulary
+        }
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(data)
+        }
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {

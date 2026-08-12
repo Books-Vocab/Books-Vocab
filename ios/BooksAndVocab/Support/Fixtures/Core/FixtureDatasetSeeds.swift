@@ -49,6 +49,22 @@ private func uiWorldRequireUnique(
     }
 }
 
+private func uiWorldRequireAssetInodeTokens(
+    _ values: [String],
+    decoder: Decoder,
+    label: String
+) throws {
+    let prefix = "inode:"
+    guard values.allSatisfy({
+        guard $0.hasPrefix(prefix) else { return false }
+        return !$0.dropFirst(prefix.count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+    }) else {
+        throw uiWorldDataCorrupted(decoder, "\(label) must use non-empty inode:<assetID> tokens")
+    }
+}
+
 private func uiWorldParseCanonicalDate(
     _ value: String,
     decoder: Decoder,
@@ -380,9 +396,11 @@ struct UIWorldAssetCoverageSeed: Codable, Equatable {
         for value in fixtureIDs + stepLabels + assetIDs + assetInodes {
             _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "asset coverage value")
         }
-        guard assetInodes.allSatisfy({ $0.hasPrefix("inode:") }) else {
-            throw uiWorldDataCorrupted(decoder, "asset coverage.assetInodes must use inode: tokens")
-        }
+        try uiWorldRequireAssetInodeTokens(
+            assetInodes,
+            decoder: decoder,
+            label: "asset coverage.assetInodes"
+        )
     }
 }
 
@@ -535,8 +553,15 @@ struct UIWorldSurfaceContractRowSeed: Codable, Equatable {
         assetInodes = try container.decode([String].self, forKey: .assetInodes)
         try uiWorldRequireUnique(assetIDs, decoder: decoder, label: "surface contract.assetIDs")
         try uiWorldRequireUnique(assetInodes, decoder: decoder, label: "surface contract.assetInodes")
-        guard assetInodes.allSatisfy({ $0.hasPrefix("inode:") }),
-              Set(assetInodes) == Set(assetIDs.map { "inode:\($0)" }),
+        for value in assetIDs {
+            _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "surface contract.assetIDs value")
+        }
+        try uiWorldRequireAssetInodeTokens(
+            assetInodes,
+            decoder: decoder,
+            label: "surface contract.assetInodes"
+        )
+        guard Set(assetInodes) == Set(assetIDs.map { "inode:\($0)" }),
               assetIDs.count == assetInodes.count else {
             throw uiWorldDataCorrupted(decoder, "surface contract assetIDs/assetInodes must be one-to-one")
         }
@@ -664,13 +689,34 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
         }
     }
 
-    func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
+    func validate(
+        assets: UIWorldAssetManifest,
+        vocabulary: [String: UIWorldVocabularySeed],
+        decoder: Decoder
+    ) throws {
+        guard readerPassage != nil, wordDetail != nil else {
+            throw uiWorldDataCorrupted(decoder, "scenarioContext must declare readerPassage and wordDetail")
+        }
         guard let dictionary, let surfaceContracts else {
             return
         }
         guard let reviewClock, reviewClock.isCanonical,
-              readerPassage != nil, wordDetail != nil else {
+              let nowText = reviewClock.now else {
             throw uiWorldDataCorrupted(decoder, "canonical scenarioContext must declare clock, readerPassage and wordDetail")
+        }
+        let reviewClockNow = try uiWorldParseCanonicalDate(
+            nowText,
+            decoder: decoder,
+            label: "scenarioContext.reviewClock.now"
+        )
+        for (fixtureID, seed) in vocabulary {
+            for (index, record) in seed.reviewHistory.enumerated()
+                where record.reviewedAt > reviewClockNow {
+                throw uiWorldDataCorrupted(
+                    decoder,
+                    "scenarioContext.reviewClock must not precede reviewHistory vocabulary.\(fixtureID).reviewHistory[\(index)]"
+                )
+            }
         }
         try dictionary.validate(assets: assets, decoder: decoder)
         for (surface, contract) in surfaceContracts {
@@ -1115,6 +1161,16 @@ struct UIWorldAssetManifest: Codable, Equatable {
         subtitles = try container.decode([String: UIWorldAsset].self, forKey: .subtitles)
         text = try container.decode([String: UIWorldAsset].self, forKey: .text)
         images = try container.decode([String: UIWorldAsset].self, forKey: .images)
+        try Self.validateAssetIDs(
+            buckets: [
+                "books": books,
+                "audio": audio,
+                "subtitles": subtitles,
+                "text": text,
+                "images": images,
+            ],
+            codingPath: container.codingPath
+        )
         try Self.validateUniqueAssetIDs(
             buckets: [
                 "books": books,
@@ -1187,6 +1243,24 @@ struct UIWorldAssetManifest: Codable, Equatable {
             }
         }
         return result
+    }
+
+    private static func validateAssetIDs(
+        buckets: [String: [String: UIWorldAsset]],
+        codingPath: [CodingKey]
+    ) throws {
+        for (bucket, assets) in buckets {
+            for assetID in assets.keys {
+                guard !assetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: codingPath,
+                            debugDescription: "UI World asset ID in \(bucket) must be non-empty"
+                        )
+                    )
+                }
+            }
+        }
     }
 
     private static func validateUniqueInstallPaths(
