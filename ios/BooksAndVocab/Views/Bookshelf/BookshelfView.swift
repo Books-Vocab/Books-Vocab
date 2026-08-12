@@ -275,6 +275,7 @@ struct BookshelfView: View {
                     .buttonStyle(.bookshelfCard)
                     .accessibilityIdentifier("book.card.\(book.id.uuidString)")
                     .accessibilityLabel("\(book.title), \(book.author)")
+                    .accessibilityValue(BookshelfCopy.readingProgressAccessibilityValue(book.progression))
                     .accessibilityHint(BookshelfCopy.readBookHint)
                     .transition(.bookshelfCard)
                     .contextMenu {
