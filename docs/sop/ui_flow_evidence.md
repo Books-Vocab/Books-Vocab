@@ -28,13 +28,13 @@ verified_against: 76256a790
 
 ## Single-flow helper（branch-local；待 code convergence）
 
-單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`：它要求命名 UI World 與 exact test selector，將 source／dataset／device identity、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
+單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`：它接受命名 UI World（`--dataset`）或明示 JSON（`--dataset-file`），並以 `--file`、`--grep` 或 `--method` 選 flow；需要 exact `Class/testMethodName` 時用 `--method`。helper 將 source／dataset／device identity、selector、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
 
 helper 的旗標、normalized verdict schema、artifact hash 與 fail-closed gate 以 `.claude/skills/ios-simulator-verification/references/evidence-contract.md` 為唯一 contract SoT；本 SOP 只定義 flow evidence 的使用時機與收尾判準。helper regression 由 `.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh` 驗證。
 
 ## P1–P15 coverage control plane（branch-local；待 code convergence）
 
-`ops/fixtures/ios_ui_review_matrix.json` 是報告圖片與可執行驗證之間的唯一 mapping；圖片只是 reference，不是 test plan。每列要宣告 UI World fixture IDs、exact `ClassName/testMethodName` selector、runtime steps、counterexample steps 與 visual checks。先驗整張矩陣，再對實際要跑的單列做 fixture hard gate：
+`ops/fixtures/ios_ui_review_matrix.json` 是報告圖片與可執行驗證之間的唯一 mapping；圖片只是 reference，不是 test plan。每列要宣告 UI World fixture IDs、runtime steps、counterexample steps 與 visual checks；`pending`／`in_progress`／`blocked` 收斂期間可尚未選定 selector，只有寫成 `verified` 時才必須綁 normalized exact `ClassName/testMethodName`。先驗整張矩陣，再對實際要跑的單列做 fixture hard gate：
 
 ```bash
 ./ops/ios_ui_review_matrix.py validate ops/fixtures/ios_ui_review_matrix.json --root .
