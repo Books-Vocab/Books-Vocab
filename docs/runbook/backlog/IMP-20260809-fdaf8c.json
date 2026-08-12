@@ -8,6 +8,9 @@
   "date": "2026-08-09",
   "detail": "backend/tests/test_dictionary_v1.py 有 1812 行與 41 個測試函式，test_ops_cli.py 有 1356 行與 90 個測試函式及 28 個類別，test_ops_edit.py 有 1112 行與 65 個測試函式及 21 個類別。三檔收集共 209 個案例，但各自跨多個 router、store 或 command ownership，局部失敗與 fixture 邊界難定位。",
   "fix_site": "backend/tests/test_dictionary_v1.py; backend/tests/test_ops_cli.py; backend/tests/test_ops_edit.py; backend/tests/test_test_topology_contract.py",
+  "fixed_by": [
+    "8dfe3313376fe752031be8a39c7b7319726f2567"
+  ],
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
@@ -18,10 +21,10 @@
   "scope": "依產品責任拆三個測試巨檔並保留二百零九個案例的收集與行為覆蓋。",
   "severity": "med",
   "source": "backend maintainability audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:backend-maintainability-audit",
-  "verified_evidence": "wc -l backend/tests/test_dictionary_v1.py backend/tests/test_ops_cli.py backend/tests/test_ops_edit.py"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:delivery-team-a-supervisor",
+  "verified_evidence": "backend topology acceptance 481 passed; topology manifest/ownership/duplicate baseline evidence retained in fdaf8c hand-back"
 }
