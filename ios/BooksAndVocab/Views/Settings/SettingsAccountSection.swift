@@ -179,12 +179,14 @@ struct SettingsAccountSection: View {
                 isProActive: subscription?.isActive ?? false
             )
             .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("settings.account.accountDetailRow")
+            .accessibilityIdentifier(
+                state.identityFingerprint.map { "settings.account.identity.\($0)" }
+                    ?? "settings.account.identity.unavailable"
+            )
         }
-        .accessibilityIdentifier(
-            state.identityFingerprint.map { "settings.account.identity.\($0)" }
-                ?? "settings.account.identity.unavailable"
-        )
+        // The action target is a Button (`SettingsCardNavigationRow`), so the
+        // identifier must live on that element rather than its nested summary.
+        .accessibilityIdentifier("settings.account.accountDetailRow")
     }
 
     private func subscriptionSummaryRow(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {

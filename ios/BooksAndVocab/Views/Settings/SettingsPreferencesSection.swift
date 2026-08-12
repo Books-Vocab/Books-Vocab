@@ -43,6 +43,7 @@ struct SettingsPreferencesSection: View {
             }
             .settingsCard()
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.preferences.appearanceGroup")
     }
 
@@ -72,6 +73,7 @@ struct SettingsPreferencesSection: View {
             }
             .settingsCard()
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.preferences.feedbackGroup")
     }
 

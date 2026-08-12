@@ -462,6 +462,26 @@ actor BackgroundSyncActor {
         AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks + \(series.count) podcast series + \(episodes.count) orphan episodes + \(progress.count) podcast progress (Book preserved: Apple-ID-scoped). reason=\(reason)")
     }
 
+#if DEBUG
+    /// Remove one reset-visible card and commit it before the UI-test failure is
+    /// raised. This proves the Settings UI observes a real residual store and
+    /// that retry runs against that residual rather than a pre-cleanup throw.
+    func clearFirstUserDataForInjectedFailure() throws {
+        let descriptor = FetchDescriptor<VocabularyEntry>(predicate: #Predicate {
+            $0.syncStatus == 1 &&
+            $0.actionType != "delete" &&
+            $0.isArchived == false
+        })
+        guard let entry = try modelContext.fetch(descriptor).first else {
+            AppLog.sync.warning("Settings reset failure injection found no reset-visible vocabulary entry")
+            return
+        }
+        modelContext.delete(entry)
+        try modelContext.save()
+        AppLog.sync.warning("Settings reset failure injection committed one-card partial cleanup")
+    }
+#endif
+
     /// Returns the number of synced entries in the local store.
     func syncedEntryCount() throws -> Int {
         let descriptor = FetchDescriptor<VocabularyEntry>(

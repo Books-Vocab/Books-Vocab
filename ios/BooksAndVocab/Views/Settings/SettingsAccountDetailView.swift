@@ -66,6 +66,7 @@ struct SettingsAccountDetailView: View {
 
             SettingsSectionFooter(L10n.string("將所有單字本內的單字匯出為 CSV，方便備份或匯入其他工具。"))
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.account.dataManagementGroup")
     }
 
@@ -93,6 +94,7 @@ struct SettingsAccountDetailView: View {
             }
             .settingsCard()
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.account.infoGroup")
     }
 
@@ -132,6 +134,7 @@ struct SettingsAccountDetailView: View {
 
             SettingsSectionFooter(L10n.string("此操作不可逆，會刪除帳號與所有雲端資料。"))
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.account.dangerGroup")
     }
 
@@ -201,6 +204,7 @@ struct SettingsAccountDetailView: View {
         .padding(appSkin.spacing.cardPadding)
         .background(appSkin.palette.cardBackground)
         .clipShape(AppRoundedRect(roundness: AppRoundness.card))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.account.resetBoundary")
     }
 
@@ -218,10 +222,12 @@ struct SettingsAccountDetailView: View {
 
             AppKeyValueRow(icon: "square.stack.3d.up", label: L10n.string("本機單字"), style: .settings(appSkin)) {
                 SettingsStatusValue(
-                    text: L10n.format("%@ 張", "\(snapshot.localCardCount)"),
+                    text: snapshot.localCardCount.map { L10n.format("%@ 張", "\($0)") }
+                        ?? L10n.string("無法讀取"),
                     color: appSkin.palette.secondaryText
                 )
                 .accessibilityIdentifier("\(identifier).localCardCount")
+                .accessibilityValue(snapshot.localCardCountError ?? "")
             }
             AppKeyValueRow(icon: "slider.horizontal.3", label: L10n.string("設定偏好"), style: .settings(appSkin)) {
                 SettingsStatusValue(
@@ -238,6 +244,7 @@ struct SettingsAccountDetailView: View {
                 .accessibilityIdentifier("\(identifier).loginStatus")
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
     }
 

@@ -183,6 +183,87 @@ import Testing
         #expect(accountDetailSource.contains("settings.account.dangerGroup"))
     }
 
+    @Test func p15SettingsAccessibilityContractMatchesExactPageObjectElementTypes() throws {
+        let iosRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let preferencesSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"
+            ),
+            encoding: .utf8
+        )
+        let detailSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsAccountDetailView.swift"
+            ),
+            encoding: .utf8
+        )
+        let accountSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsAccountSection.swift"
+            ),
+            encoding: .utf8
+        )
+        let pageObjectSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocabUITests/Pages/SettingsSheetPage.swift"
+            ),
+            encoding: .utf8
+        )
+
+        let preferenceGroups = [
+            "settings.preferences.appearanceGroup",
+            "settings.preferences.learningGroup",
+            "settings.preferences.feedbackGroup",
+            "settings.preferences.readerGroup",
+            "settings.preferences.syncGroup",
+        ]
+        for identifier in preferenceGroups {
+            #expect(pageObjectSource.contains("app.otherElements[\"\(identifier)\"]"))
+            #expect(sourceIdentifierIsContained(identifier, in: preferencesSource))
+        }
+
+        let accountGroups = [
+            "settings.account.infoGroup",
+            "settings.account.dataManagementGroup",
+            "settings.account.dangerGroup",
+            "settings.account.resetBoundary",
+            "settings.account.resetBoundary.before",
+            "settings.account.resetBoundary.after",
+        ]
+        for identifier in accountGroups {
+            #expect(sourceIdentifierIsContained(identifier, in: detailSource))
+        }
+        #expect(pageObjectSource.contains("app.otherElements[\"settings.account.dangerGroup\"]"))
+        #expect(pageObjectSource.contains("app.otherElements[\"settings.account.resetBoundary\"]"))
+        #expect(pageObjectSource.contains("app.buttons[\"settings.account.accountDetailRow\"]"))
+        #expect(accountSource.contains("SettingsCardNavigationRow"))
+        #expect(accountSource.contains(".accessibilityIdentifier(\"settings.account.accountDetailRow\")"))
+    }
+
+    @Test func p15LiveResetSnapshotReadFailureCannotBecomeZero() throws {
+        let resetStoreURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Settings/SettingsResetStore.swift")
+        let resetStoreSource = try String(contentsOf: resetStoreURL, encoding: .utf8)
+
+        #expect(resetStoreSource.contains("unreadableLocalCardCount"))
+        #expect(!resetStoreSource.contains("localCardCount = 0"))
+    }
+
+    @Test func p15ResetFailureInjectorMustCleanupBeforeThrowing() throws {
+        let syncURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Services/KGService+Sync.swift")
+        let syncSource = try String(contentsOf: syncURL, encoding: .utf8)
+
+        #expect(syncSource.contains("clearFirstUserDataForInjectedFailure"))
+        #expect(syncSource.contains("try await actor.clearFirstUserDataForInjectedFailure()"))
+    }
+
     @Test func p15EvidenceContractBindsRequiredAndCounterexampleAssetsOneToOne() throws {
         let expected: [(fixtureID: String, label: String, assetID: String, stepLabel: String)] = [
             ("preferences_auto_sync_off", "required-settings", "settings-required", "required-settings"),
@@ -350,6 +431,32 @@ import Testing
         #expect(resetStore.readSnapshots.contains(.init(localCardCount: 0, hasCustomPreferences: false, isLoggedIn: true)))
     }
 
+    @Test @MainActor func p15ResetCoordinatorFailsClosedWhenBeforeSnapshotIsUnreadable() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let authManager = LoggedInAuthStub()
+        let resetStore = StatefulSettingsResetStore()
+        resetStore.makeUnreadable()
+        let resetService = StatefulResetService(store: resetStore, outcomes: [.success])
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore)
+
+        await coordinator.resetLocalData(
+            authManager: authManager,
+            kgService: resetService,
+            modelContext: ModelContext(container)
+        )
+
+        let lifecycle = try #require(coordinator.resetLifecycle)
+        #expect(lifecycle.phase == .preReset)
+        #expect(lifecycle.before.localCardCount == nil)
+        #expect(lifecycle.before.localCardCountError == "SwiftData read failed")
+        #expect(lifecycle.after == lifecycle.before)
+        #expect(lifecycle.canRetry == false)
+        #expect(resetService.callCount == 0)
+    }
+
     private struct ResetFailure: Error {}
 
     @MainActor
@@ -357,11 +464,21 @@ import Testing
         var localCardCount = 3
         var hasCustomPreferences = true
         private(set) var readSnapshots: [SettingsResetLifecycle.Snapshot] = []
+        private var unreadable = false
 
         func readSnapshot(
             authManager: any AuthManaging,
             modelContext: ModelContext
         ) -> SettingsResetLifecycle.Snapshot {
+            if unreadable {
+                let snapshot = SettingsResetLifecycle.Snapshot(
+                    unreadableLocalCardCount: "SwiftData read failed",
+                    hasCustomPreferences: hasCustomPreferences,
+                    isLoggedIn: authManager.isLoggedIn
+                )
+                readSnapshots.append(snapshot)
+                return snapshot
+            }
             let snapshot = SettingsResetLifecycle.Snapshot(
                 localCardCount: localCardCount,
                 hasCustomPreferences: hasCustomPreferences,
@@ -381,6 +498,10 @@ import Testing
 
         func finishCleanup() {
             localCardCount = 0
+        }
+
+        func makeUnreadable() {
+            unreadable = true
         }
     }
 
@@ -446,6 +567,19 @@ import Testing
         func logout(modelContainer: ModelContainer?, reason: String) {}
         func loginWithGoogle(modelContainer: ModelContainer?) {}
         func loginWithApple(modelContainer: ModelContainer?) {}
+    }
+
+    private func sourceIdentifierIsContained(_ identifier: String, in source: String) -> Bool {
+        let range = source.range(of: "accessibilityIdentifier(\"\(identifier)\")")
+            ?? ((identifier.hasSuffix(".before") || identifier.hasSuffix(".after"))
+                ? source.range(of: ".accessibilityIdentifier(identifier)")
+                : nil)
+        guard let range else {
+            return false
+        }
+        return source[..<range.lowerBound]
+            .suffix(320)
+            .contains(".accessibilityElement(children: .contain)")
     }
 
     private static func jsonObject(_ data: Data) throws -> [String: Any] {

@@ -135,7 +135,7 @@ struct SettingsSheetPage {
     /// row's separate identity fingerprint remains available for account proof;
     /// this selector is the action target and never depends on localized text.
     var accountDetailRow: XCUIElement {
-        app.descendants(matching: .any)["settings.account.accountDetailRow"]
+        app.buttons["settings.account.accountDetailRow"]
     }
 
     var accountDangerGroup: XCUIElement {
