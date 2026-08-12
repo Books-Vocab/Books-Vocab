@@ -31,9 +31,7 @@ struct KGVocabView: View {
     @Environment(\.authManager) private var authManager
 
     @State private var coordinator = KGVocabCoordinator()
-    @State private var selectedReviewStates: Set<VocabularyReviewState>
-    @State private var selectedRoleFilter: VocabularyRoleFilter
-    @State private var sortOption: KGVocabSortOption
+    @State private var query: VocabularyLibraryQuery
     @State private var selectionState = SelectionModeState()
     @State private var selectedRowID: UUID?
     @State private var loginGate = LoginGateState()
@@ -52,12 +50,14 @@ struct KGVocabView: View {
         self.notebookId = notebookId
         self.onEntrySelected = onEntrySelected
         self.onStartReview = onStartReview
-        // Seed the review-state tab + sort. Defaults preserve the shipped
-        // behaviour (no filter, review-priority sort); the optional
-        // `Reviewed · Dense` scenario opens on "已複習" to show that cohort.
-        self._selectedReviewStates = State(initialValue: initialReviewStates)
-        self._selectedRoleFilter = State(initialValue: initialRoleFilter)
-        self._sortOption = State(initialValue: initialSort)
+        // Keep the legacy initializer surface for callers/scenarios, but store
+        // the values as one query so every projection consumer sees the same
+        // content scope, progress filter, and sort.
+        self._query = State(initialValue: VocabularyLibraryQuery(
+            contentScope: initialRoleFilter,
+            reviewStates: initialReviewStates,
+            sort: initialSort
+        ))
         let nbId = notebookId
         // Notebook-scoped knowledge list. The isArchived guard (inside the shared
         // predicate) keeps archived words out of the KG list and out of
@@ -72,27 +72,21 @@ struct KGVocabView: View {
 
     var body: some View {
         let n = reviewSettingsStore.settings.reviewReferenceDate()
-        let roleFiltered = VocabularyEntryPresentation.filterByRole(
-            syncedEntries, filter: selectedRoleFilter
-        )
-        let c = VocabularyEntryPresentation.classifyKnowledgeEntries(in: roleFiltered, now: n)
-        let selectedEntries = selectedReviewStates.isEmpty
-            ? roleFiltered
-            : c.mergedBucket(for: selectedReviewStates)
-        let filtered = VocabularyEntryPresentation.sortAndFilter(
-            selectedEntries,
-            searchText: searchText,
-            sortOption: sortOption,
+        let projectionQuery = query.withSearchText(searchText)
+        let projection = VocabularyEntryPresentation.project(
+            syncedEntries,
+            query: projectionQuery,
             now: n
         )
 
-        VocabSceneShell(phase: buildScenePhase(classified: c)) {
-            contentView(classified: c, filteredEntries: filtered)
+        VocabSceneShell(phase: buildScenePhase()) {
+            contentView(projection: projection)
         }
         // Low-frequency search evidence mark: fires once per (debounced) query
         // change, with the freshly filtered result count from this body eval.
         .onChange(of: searchText) { _, newValue in
-            PerfLog.search.mark("search.results.shown", "query=\(newValue) count=\(filtered.count)")
+            query.searchText = newValue
+            PerfLog.search.mark("search.results.shown", "query=\(newValue) count=\(projection.visibleEntries.count)")
         }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
@@ -121,62 +115,60 @@ struct KGVocabView: View {
     }
 
     private func contentView(
-        classified c: VocabularyEntryPresentation.ClassifiedResult,
-        filteredEntries: [VocabularyEntry]
+        projection: VocabularyLibraryProjection
     ) -> some View {
         let tabOptions = VocabularyReviewState.allCases.map { state in
             VocabTabOption(
                 id: state,
                 title: state.title,
-                count: c.count(for: state)
+                count: projection.reviewCount(for: state)
             )
         }
         let roleOptions = VocabularyRoleFilter.allCases.map { filter in
             VocabTabOption(
                 id: filter,
                 title: filter.title,
-                count: VocabularyEntryPresentation.filterByRole(syncedEntries, filter: filter).count
+                count: projection.count(for: filter)
             )
         }
-        // 多選只挑得動 learning row；`selectAll` 與 `updateVisibleCount` 必須吃
-        // 同一份集合，否則 isAllSelected 在混合清單上永遠不成立（見 selectableIDs）。
-        let selectableIDs = VocabularyEntryPresentation.selectableIDs(in: filteredEntries)
+        // Selection, empty state, and CTA all use the same visible projection.
+        let selectableIDs = VocabularyEntryPresentation.selectableIDs(in: projection.visibleEntries)
         let reviewCTA: KGVocabPresenter.State.ReviewCTA? = {
             guard let handler = onStartReview else { return nil }
-            guard c.dueCount > 0 || c.unlearnedCount > 0 else { return nil }
-            let due = c.dueBucket
-            let unlearned = c.unlearnedBucket
+            let due = projection.reviewQueue.due
+            let unlearned = projection.reviewQueue.unlearned
+            guard !due.isEmpty || !unlearned.isEmpty else { return nil }
             return .init(
-                dueCount: c.dueCount,
-                unlearnedCount: c.unlearnedCount,
+                dueCount: due.count,
+                unlearnedCount: unlearned.count,
                 onStartDue: { handler(due) },
                 onStartUnlearned: { handler(unlearned) },
                 onStartMixed: { handler(due + unlearned) }
             )
         }()
+        let resolvedEmptyState = KGVocabEmptyState.resolve(projection.emptyStateContext)
+        let emptyState = KGVocabPresenter.State.EmptyState(
+            title: resolvedEmptyState.title,
+            systemImage: resolvedEmptyState.systemImage,
+            description: resolvedEmptyState.description,
+            action: emptyStateAction(for: projection)
+        )
 
         let state = KGVocabPresenter.State(
             banner: bannerState,
             roleOptions: roleOptions,
             reviewStateOptions: tabOptions,
-            rows: filteredEntries.map {
+            rows: projection.visibleEntries.map {
                 KGVocabPresenter.State.RowItem(id: $0.id, entry: $0)
             },
-            emptyState: .init(
-                title: emptyStateTitle,
-                systemImage: emptyStateIcon,
-                description: emptyStateDescription,
-                action: emptyStateAction
-            ),
+            emptyState: emptyState,
             reviewCTA: reviewCTA,
             selectedRowID: selectedRowID
         )
 
         return KGVocabPresenter(
             state: state,
-            selectedRoleFilter: $selectedRoleFilter,
-            selectedReviewStates: $selectedReviewStates,
-            sortOption: $sortOption,
+            query: $query,
             onDismissBanner: { coordinator.dismissBanner() },
             // 待刪除 banner → 重試刪除；refresh 錯誤 banner → 重試 forceRefresh。
             // 兩者互斥（banner factory 優先序：待刪除 > 錯誤），可否重試由 banner.canRetry 決定顯示。
@@ -219,18 +211,13 @@ struct KGVocabView: View {
             }
         }
         .animateSpring(selectionState.isSelecting)
-        .onChange(of: selectedReviewStates) { _, _ in
+        .onChange(of: query) { _, _ in
             selectionState.exit()
-        }
-        .onChange(of: selectedRoleFilter) { _, role in
-            selectedReviewStates = []
-            selectionState.exit()
-            if role == .dictionary { sortOption = .default }
         }
         .onChange(of: selectableIDs.count) { _, newCount in
             selectionState.updateVisibleCount(newCount)
         }
-        .onChange(of: filteredEntries.map(\.id)) { _, ids in
+        .onChange(of: projection.visibleEntries.map(\.id)) { _, ids in
             if let selectedRowID, !ids.contains(selectedRowID) {
                 self.selectedRowID = nil
             }
@@ -256,9 +243,7 @@ struct KGVocabView: View {
 
     // MARK: - Computed
 
-    private func buildScenePhase(
-        classified c: VocabularyEntryPresentation.ClassifiedResult
-    ) -> VocabScenePhase {
+    private func buildScenePhase() -> VocabScenePhase {
         if !authManager.isLoggedIn {
             return .empty(
                 title: "尚未登入".localized,
@@ -299,30 +284,13 @@ struct KGVocabView: View {
     }
 
 
-    private var emptyStateTitle: String {
-        KGVocabEmptyState.title(
-            hasNoEntries: syncedEntries.isEmpty, searchText: searchText, filters: selectedReviewStates
-        )
-    }
-
-    private var emptyStateDescription: String {
-        KGVocabEmptyState.description(
-            hasNoEntries: syncedEntries.isEmpty, searchText: searchText, filters: selectedReviewStates
-        )
-    }
-
-    private var emptyStateIcon: String {
-        KGVocabEmptyState.systemImage(
-            hasNoEntries: syncedEntries.isEmpty, searchText: searchText, filters: selectedReviewStates
-        )
-    }
-
     /// CTA：僅在「整本 notebook 完全沒卡」時提供 — 觸發強制同步以拉雲端資料。
     /// 搜尋/篩選導致為空時不顯示 CTA（清掉條件即可）。
-    private var emptyStateAction: AppEmptyStateAction? {
+    private func emptyStateAction(for projection: VocabularyLibraryProjection) -> AppEmptyStateAction? {
         guard syncedEntries.isEmpty,
-              searchText.isEmpty,
-              selectedReviewStates.isEmpty,
+              projection.effectiveQuery.searchText.isEmpty,
+              projection.effectiveQuery.reviewStates.isEmpty,
+              projection.effectiveQuery.contentScope == .all,
               authManager.isLoggedIn else {
             return nil
         }

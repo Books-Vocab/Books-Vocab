@@ -212,10 +212,12 @@ struct VocabSortPill: View {
                 AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(appSkin.palette.mutedFill)
             )
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .appPointerHover()
         .accessibilityLabel(L10n.format("排序方式：%@", sortOption.label))
-        .accessibilityHint("點兩下切換排序".localized)
+        .accessibilityHint(L10n.string("點兩下開啟排序選單"))
         .enableInjection()
     }
 }

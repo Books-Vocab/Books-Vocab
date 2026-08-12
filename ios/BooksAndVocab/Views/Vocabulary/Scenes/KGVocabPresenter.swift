@@ -83,9 +83,7 @@ struct KGVocabPresenter: View {
     }
 
     let state: State
-    @Binding var selectedRoleFilter: VocabularyRoleFilter
-    @Binding var selectedReviewStates: Set<VocabularyReviewState>
-    @Binding var sortOption: KGVocabSortOption
+    @Binding var query: VocabularyLibraryQuery
     let onDismissBanner: (() -> Void)?
     let onRetryBanner: (() -> Void)?
     let onRowTapped: (UUID) -> Void
@@ -97,13 +95,18 @@ struct KGVocabPresenter: View {
         VStack(alignment: .leading, spacing: 0) {
             // Pinned filter bar — stays visible while scrolling
             VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
-                VocabTabSelector(options: state.roleOptions, selection: $selectedRoleFilter)
-                if selectedRoleFilter != .dictionary {
-                    VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
-                }
+                VocabLibraryFilterBar(
+                    roleOptions: state.roleOptions,
+                    reviewOptions: state.reviewStateOptions,
+                    query: $query,
+                    visibleCount: state.rows.count
+                )
                 HStack(spacing: appSkin.spacing.inlineGap) {
                     Spacer()
-                    VocabSortPill(sortOption: $sortOption)
+                    VocabSortPill(sortOption: Binding(
+                        get: { query.sort },
+                        set: { query.sort = $0 }
+                    ))
                     if let cta = state.reviewCTA {
                         VocabReviewCTAPill(
                             dueCount: cta.dueCount,
@@ -340,9 +343,7 @@ private enum KGVocabPresenterPreviewData {
     AppThemeContainer {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.populatedState,
-            selectedRoleFilter: .constant(.all),
-            selectedReviewStates: .constant([]),
-            sortOption: .constant(.default),
+            query: .constant(VocabularyLibraryQuery()),
             onDismissBanner: {},
             onRetryBanner: {},
             onRowTapped: { _ in },
@@ -358,9 +359,7 @@ private enum KGVocabPresenterPreviewData {
     AppThemeContainer {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.emptyState,
-            selectedRoleFilter: .constant(.all),
-            selectedReviewStates: .constant([.reviewed]),
-            sortOption: .constant(.alphabetical),
+            query: .constant(VocabularyLibraryQuery(reviewStates: [.reviewed], sort: .alphabetical)),
             onDismissBanner: nil,
             onRetryBanner: nil,
             onRowTapped: { _ in },

@@ -11,6 +11,70 @@
 import Foundation
 
 enum KGVocabEmptyState {
+    struct Resolved: Equatable {
+        let title: String
+        let systemImage: String
+        let description: String
+    }
+
+    static func resolve(_ context: VocabularyEmptyStateContext) -> Resolved {
+        if context.hasNoEntries {
+            return Resolved(
+                title: "尚無已收錄單字".localized,
+                systemImage: "books.vertical",
+                description: "在書架閱讀時長按生字加入單字本，或重新整理以拉取雲端已有資料。".localized
+            )
+        }
+        if !context.searchText.isEmpty {
+            return Resolved(
+                title: "沒有符合的單字".localized,
+                systemImage: "magnifyingglass",
+                description: "試試其他關鍵字，或取消部分篩選條件。".localized
+            )
+        }
+        if !context.hasEntriesInScope {
+            switch context.contentScope {
+            case .all:
+                break
+            case .learning:
+                return Resolved(
+                    title: "尚無學習卡片".localized,
+                    systemImage: "character.book.closed",
+                    description: "將單字加入學習卡片後，會在這裡顯示。".localized
+                )
+            case .dictionary:
+                return Resolved(
+                    title: "尚無字典卡片".localized,
+                    systemImage: "book.closed",
+                    description: "從閱讀器或單字詳情搜尋字典後，會在這裡保留參考卡片。".localized
+                )
+            }
+        }
+        if !context.reviewStates.isEmpty {
+            return Resolved(
+                title: "目前沒有符合篩選條件的單字".localized,
+                systemImage: reviewFilterIcon(for: context.reviewStates),
+                description: "試試取消部分篩選條件，或切換排序方式。".localized
+            )
+        }
+        return Resolved(
+            title: "尚無符合的單字".localized,
+            systemImage: "line.3.horizontal.decrease.circle",
+            description: "同步完成後，這裡會顯示你的雲端單字。".localized
+        )
+    }
+
+    private static func reviewFilterIcon(for filters: Set<VocabularyReviewState>) -> String {
+        guard filters.count == 1, let state = filters.first else {
+            return "line.3.horizontal.decrease.circle"
+        }
+        switch state {
+        case .unlearned: return "sparkles"
+        case .due: return "checkmark.seal"
+        case .reviewed: return "leaf"
+        }
+    }
+
     /// - Parameters:
     ///   - hasNoEntries: 整本 notebook 完全沒有已收錄單字（`syncedEntries.isEmpty`）。
     ///   - searchText: 目前搜尋字串。
