@@ -213,6 +213,10 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         captureStep("full", app: app)
         captureStep("large-text", app: app)
         captureStep("large-text-counterexample", app: app)
+        let frontNatural = review.frontNaturalContent.waitUntilExists(timeout: 3)
+        let frontScroll = review.frontScrollContent.waitUntilExists(timeout: 3)
+        XCTAssertNotEqual(frontNatural, frontScroll, "正面必須只發布一種 natural/scroll presentation")
+        XCTAssertTrue(frontScroll, "Dynamic Type 長正面必須進入 scroll presentation")
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容正面下，底部評分按鈕必須仍可操作"
@@ -227,6 +231,16 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         guard captureCanonicalStep(backCapture, review: review, app: app) else { return }
         captureStep("small-viewport", app: app)
         captureStep("small-viewport-counterexample", app: app)
+        let backNatural = review.backNaturalContent.waitUntilExists(timeout: 3)
+        let backScroll = review.backScrollContent.waitUntilExists(timeout: 3)
+        XCTAssertNotEqual(backNatural, backScroll, "背面必須只發布一種 natural/scroll presentation")
+        XCTAssertTrue(backScroll, "Dynamic Type 長背面必須進入 scroll presentation")
+        for field in ["difficultyTier", "graphLinks", "example", "explanation", "collocations"] {
+            XCTAssertTrue(
+                review.backField(field).waitUntilExists(timeout: 2),
+                "正常 profile 背面必須保留 \(field) 欄位 selector"
+            )
+        }
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容背面下，底部評分按鈕必須仍可操作"
@@ -264,6 +278,13 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         }
         guard captureCanonicalStep(compactBackCapture, review: review, app: app) else { return }
         captureStep("compact", app: app)
+        XCTAssertTrue(review.backField("difficultyTier").waitUntilExists(timeout: 3))
+        XCTAssertFalse(review.backField("example").waitUntilExists(timeout: 1))
+        XCTAssertFalse(review.backField("explanation").waitUntilExists(timeout: 1))
+        XCTAssertFalse(review.backField("collocations").waitUntilExists(timeout: 1))
+        let natural = review.backNaturalContent.waitUntilExists(timeout: 3)
+        let scroll = review.backScrollContent.waitUntilExists(timeout: 3)
+        XCTAssertNotEqual(natural, scroll, "compact 背面必須只發布一種 presentation")
     }
 
     /// Autoplay must not keep flipping cards under the editor sheet, and the pause
