@@ -180,11 +180,12 @@ struct BridgePlanner {
     }
 
     private mutating func commandsForDebugMode(_ isEnabled: Bool) -> [BridgeCommand] {
-        if let lastHitTestingDebug, isEnabled != lastHitTestingDebug {
-            self.lastHitTestingDebug = isEnabled
-            return [.dom(.setDebugMode(isEnabled))]
+        let effectiveValue = ReaderDebugTools.isAvailable && isEnabled
+        if let lastHitTestingDebug, effectiveValue != lastHitTestingDebug {
+            self.lastHitTestingDebug = effectiveValue
+            return [.dom(.setDebugMode(effectiveValue))]
         } else if lastHitTestingDebug == nil {
-            lastHitTestingDebug = isEnabled
+            lastHitTestingDebug = effectiveValue
         }
         return []
     }

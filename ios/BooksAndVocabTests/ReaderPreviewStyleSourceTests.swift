@@ -92,18 +92,35 @@ struct ReaderPreviewStyleSourceTests {
         #expect(maximum > next)
     }
 
-    @Test func readerSettingsPreviewUsesAStableViewportAndSharedSliderScale() {
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightRange.lowerBound == 1.0)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightRange.upperBound == 2.5)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightStep == 0.1)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickCount == 16)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues == [
+    @Test func readerSettingsPreviewUsesOneGeometryAndRoundTripContract() {
+        typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+
+        #expect(Metrics.lineHeightRange.lowerBound == 1.0)
+        #expect(Metrics.lineHeightRange.upperBound == 2.5)
+        #expect(Metrics.lineHeightStep == 0.1)
+        #expect(Metrics.lineHeightTickCount == 16)
+        #expect(Metrics.lineHeightTickValues == [
             1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7,
             1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5
         ])
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValue(at: 0) == 1.0)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValue(at: 8) == 1.8)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValue(at: 15) == 2.5)
+
+        for value in Metrics.lineHeightTickValues {
+            let index = Metrics.lineHeightIndex(for: value)
+            #expect(Metrics.lineHeightTickValue(at: index) == value)
+
+            let spacing = ReaderSettingsPreviewCard.lineSpacing(
+                fontSize: Metrics.baseFontSize,
+                lineHeight: value
+            )
+            #expect(spacing == Metrics.baseFontSize * (CGFloat(value) - Metrics.intrinsicLineHeightRatio))
+        }
+
+        #expect(Metrics.lineHeightIndex(for: -1) == 0)
+        #expect(Metrics.lineHeightIndex(for: 99) == Metrics.lineHeightTickValues.count - 1)
+        #expect(Metrics.lineHeightIndex(for: ReaderSettings.defaultLineHeight) == 4)
+        #expect(Metrics.lineHeightTickValue(at: 0) == 1.0)
+        #expect(Metrics.lineHeightTickValue(at: 8) == 1.8)
+        #expect(Metrics.lineHeightTickValue(at: 15) == 2.5)
         let layout = ReaderSettingsPreviewCard.layoutContract
         #expect(layout.viewportHeight == 164)
         #expect(layout.fadeEdgeFraction == 0.08)

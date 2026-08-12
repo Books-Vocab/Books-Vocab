@@ -33,7 +33,9 @@ extension ReaderSettingsPresenter {
             vocabTypographySection
             vocabAppearanceSection
             vocabHighlightSection
+            #if DEBUG
             vocabDebugSection
+            #endif
         }
         .navigationTitle(L10n.string("reader.settings.title"))
         .inlineNavigationBarTitle()
@@ -107,6 +109,7 @@ extension ReaderSettingsPresenter {
                     Text(state.fontSizeText).monospacedDigit()
                 }
             }
+            .accessibilityIdentifier("reader.settings.fontSizeStepper")
 
             VStack(alignment: .leading, spacing: AppSpacing.s1) {
                 LabeledContent(L10n.string("reader.settings.lineHeight")) {
@@ -123,6 +126,7 @@ extension ReaderSettingsPresenter {
                 Text(L10n.string("reader.settings.readingMode"))
             }
             .pickerStyle(.menu)
+            .accessibilityIdentifier("reader.settings.readingMode")
         } header: {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.typography"), icon: "textformat.size")
         }
@@ -140,16 +144,9 @@ extension ReaderSettingsPresenter {
                 Text(L10n.string("reader.settings.font"))
             }
             .pickerStyle(.menu)
+            .accessibilityIdentifier("reader.settings.font")
 
-            Picker(selection: themeSelection) {
-                ForEach(ReaderTheme.allCases) { theme in
-                    themeOptionLabel(theme).tag(theme)
-                }
-            } label: {
-                Text(L10n.string("reader.settings.theme"))
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
+            themeOptions
         } header: {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.appearance"), icon: "paintpalette")
         }
@@ -167,13 +164,34 @@ extension ReaderSettingsPresenter {
         }
     }
 
-    /// 主題與標記濃度都走既有 closure（而不是直接寫 binding）：那兩個 closure
-    /// 各自帶 `withAnimation(AppMotion.panelState)`，繞過它們等於默默拿掉動畫。
-    private var themeSelection: Binding<ReaderTheme> {
-        Binding(
-            get: { bindings.theme.wrappedValue },
-            set: { onSelectTheme($0) }
-        )
+    /// An explicit button list keeps each theme choice addressable in UI tests.
+    /// SwiftUI's inline Picker does not preserve child accessibility identifiers
+    /// in the XCTest hierarchy, making theme counterexamples flaky by construction.
+    private var themeOptions: some View {
+        VStack(spacing: 0) {
+            ForEach(ReaderTheme.allCases) { theme in
+                Button {
+                    onSelectTheme(theme)
+                } label: {
+                    HStack(spacing: AppSpacing.s2) {
+                        themeOptionLabel(theme)
+                        Spacer(minLength: AppSpacing.s2)
+                        if bindings.theme.wrappedValue == theme {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.tint)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("reader.settings.theme.\(theme.rawValue.lowercased())")
+                .accessibilityAddTraits(bindings.theme.wrappedValue == theme ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("reader.settings.theme")
     }
 
     private var underlineOpacitySelection: Binding<Double> {
@@ -201,6 +219,7 @@ extension ReaderSettingsPresenter {
                 Text(L10n.string("vocab.highlight.opacity.label"))
             }
             .pickerStyle(.menu)
+            .accessibilityIdentifier("reader.settings.highlightOpacity")
         } header: {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.highlight"), icon: "highlighter")
         }
@@ -208,15 +227,46 @@ extension ReaderSettingsPresenter {
 
     // MARK: Debug
 
+    #if DEBUG
     var vocabDebugSection: some View {
         Section {
             Toggle(isOn: bindings.showHitTestingDebug) {
                 Text(L10n.string("reader.settings.debug.hitTesting"))
             }
+            .accessibilityIdentifier("reader.settings.debug.hitTesting")
         } header: {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.debug"), icon: "ladybug")
         } footer: {
             SettingsSectionFooter(L10n.string("reader.settings.debug.footer"))
+        }
+    }
+    #endif
+}
+
+private struct ReaderSettingsLineHeightSlider: View {
+    @Binding var value: Double
+
+    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+
+    var body: some View {
+        VStack(spacing: AppSpacing.microGap) {
+            Slider(value: $value, in: Metrics.lineHeightRange, step: Metrics.lineHeightStep)
+                .accessibilityLabel(L10n.string("reader.settings.lineHeight"))
+                .accessibilityIdentifier("reader.settings.lineHeight")
+
+            HStack(spacing: 0) {
+                ForEach(Metrics.lineHeightTickValues.indices, id: \.self) { index in
+                    Rectangle()
+                        .fill(.secondary.opacity(index.isMultiple(of: 5) ? 0.55 : 0.3))
+                        .frame(width: 1, height: index.isMultiple(of: 5) ? 6 : 4)
+
+                    if index < Metrics.lineHeightTickValues.count - 1 {
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.horizontal, AppSpacing.s2)
+            .accessibilityHidden(true)
         }
     }
 }

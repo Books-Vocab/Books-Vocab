@@ -32,6 +32,58 @@ struct ReaderPage {
         app.otherElements["reader.settingsPanel"]
     }
 
+    var settingsButton: XCUIElement {
+        app.buttons["reader.header.settingsButton"]
+    }
+
+    var settingsDoneButton: XCUIElement {
+        app.buttons["reader.settings.done"]
+    }
+
+    var settingsPreview: XCUIElement {
+        app.otherElements["reader.settings.preview"]
+    }
+
+    var fontSizeStepper: XCUIElement {
+        app.steppers["reader.settings.fontSizeStepper"]
+    }
+
+    var lineHeightSlider: XCUIElement {
+        app.sliders["reader.settings.lineHeight"]
+    }
+
+    var readingModePicker: XCUIElement {
+        app.buttons["reader.settings.readingMode"]
+    }
+
+    var fontPicker: XCUIElement {
+        app.buttons["reader.settings.font"]
+    }
+
+    var themePicker: XCUIElement {
+        app.otherElements["reader.settings.theme"]
+    }
+
+    func themeOption(_ theme: String) -> XCUIElement {
+        app.buttons["reader.settings.theme.\(theme)"]
+    }
+
+    var highlightColorPicker: XCUIElement {
+        app.otherElements["reader.settings.highlightColor"]
+    }
+
+    var highlightOpacityPicker: XCUIElement {
+        app.buttons["reader.settings.highlightOpacity"]
+    }
+
+    var resetMenu: XCUIElement {
+        app.buttons["reader.settings.resetMenu"]
+    }
+
+    var resetAllButton: XCUIElement {
+        app.buttons["reader.settings.reset.all"]
+    }
+
     /// Compact header progress badge text (e.g. "12.3%"); only present once
     /// `totalProgression > 0` and no overlay is shown.
     var progressBadge: XCUIElement {
@@ -272,6 +324,60 @@ struct ReaderPage {
         }
         backButton.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
+    }
+
+    @discardableResult
+    func openSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> ReaderPage {
+        if !settingsButton.exists, expandHeaderButton.waitForExistence(timeout: 5) {
+            expandHeaderButton.tapWhenReady(file: file, line: line)
+        }
+        settingsButton.tapWhenReady(file: file, line: line)
+        settingsPanel.waitUntilExists(timeout: 5)
+        return self
+    }
+
+    @discardableResult
+    func selectTheme(_ theme: String, timeout: TimeInterval = 8) -> Bool {
+        let option = themeOption(theme)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if option.exists && option.isHittable {
+                option.tap()
+                return true
+            }
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
+    }
+
+    @discardableResult
+    func showPreview(timeout: TimeInterval = 8) -> Bool {
+        // `isHittable` is true even when a Form row is only partially exposed.
+        // Move the scroll view to its canonical top position before sampling
+        // geometry; otherwise the first frame can be a clipped intersection.
+        app.swipeDown()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if settingsPreview.exists && settingsPreview.isHittable {
+                return true
+            }
+            app.swipeDown()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return settingsPreview.exists
+    }
+
+    func resetReaderSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        resetMenu.tapWhenReady(file: file, line: line)
+        resetAllButton.tapWhenReady(file: file, line: line)
+    }
+
+    func lineHeightValue() -> Double? {
+        guard let raw = lineHeightSlider.value else { return nil }
+        return Double(String(describing: raw))
     }
 
     // MARK: - Assertions
