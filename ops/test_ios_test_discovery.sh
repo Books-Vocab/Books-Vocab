@@ -491,6 +491,39 @@ grep -q "ios_build.sh --catalyst" <<<"$CAT_ERR" \
   && ok "錯誤訊息指向 ios_build.sh --catalyst" \
   || fail_t "錯誤訊息未指向替代入口: $CAT_ERR"
 
+# ── 21. runner help/list/benchmark surface + tech-index anchors ──────────────
+# 這些都是 parse-only 路徑：不得取得 build lock、啟動 xcodebuild，且 help/docs
+# 必須同時描述三個 agent 會實際呼叫的入口。Anchor 斷言刻意放在 regression
+# group 而非只依賴 backlog acceptance，避免 tech_index 重複/漏字時沒有近端訊號。
+section "ios_test help/list/benchmark surface and tech-index anchors"
+HELP_OUT="$($IOS_TEST --help 2>&1)" || HELP_OUT=""
+grep -qF -- "--list" <<<"$HELP_OUT" \
+  && ok "--help 列出 --list" || fail_t "--help 未列出 --list: $HELP_OUT"
+grep -qF -- "--launch-benchmark" <<<"$HELP_OUT" \
+  && ok "--help 列出 --launch-benchmark" || fail_t "--help 未列出 --launch-benchmark: $HELP_OUT"
+
+UNIT_LIST="$($IOS_TEST --list 2>/dev/null)" || UNIT_LIST=""
+grep -qxF -- "-only-testing:BooksAndVocabTests" <<<"$UNIT_LIST" \
+  && ok "--list 只讀輸出 unit target selector" \
+  || fail_t "--list 未輸出 unit selector: $UNIT_LIST"
+
+BENCH_LIST="$($IOS_TEST --list --launch-benchmark 2>/dev/null)" || BENCH_LIST=""
+grep -qxF -- "-only-testing:BooksAndVocabUITests/BooksAndVocabUITests/testLaunchPerformance" <<<"$BENCH_LIST" \
+  && ok "--launch-benchmark --list 固定輸出 launch performance selector" \
+  || fail_t "--launch-benchmark --list selector 漂移: $BENCH_LIST"
+
+IOS_ROW="$(grep -F '| `ios_test.sh` |' "$WORKSPACE/docs/reference/tech_index.md" || true)"
+KEYED_HITS="$(grep -oF 'keyed cache 於 build lock 內自動 LRU eviction' <<<"$IOS_ROW" || true)"
+BENCH_HITS="$(grep -oF -- '--list / --launch-benchmark' <<<"$IOS_ROW" || true)"
+KEYED_COUNT="$(wc -l <<<"$KEYED_HITS" | tr -d ' ')"
+BENCH_COUNT="$(wc -l <<<"$BENCH_HITS" | tr -d ' ')"
+[[ "$KEYED_COUNT" -eq 1 ]] \
+  && ok "tech_index keyed-cache anchor 唯一" \
+  || fail_t "tech_index keyed-cache anchor 出現 ${KEYED_COUNT} 次（應 1）"
+[[ "$BENCH_COUNT" -eq 1 ]] \
+  && ok "tech_index --list / --launch-benchmark anchor 唯一" \
+  || fail_t "tech_index --list / --launch-benchmark anchor 出現 ${BENCH_COUNT} 次（應 1）"
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

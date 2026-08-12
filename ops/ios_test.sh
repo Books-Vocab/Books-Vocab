@@ -26,6 +26,7 @@
 #                                                 # patterns together.
 #   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
 #   ./ops/ios_test.sh --ui testLaunchShowsAllTabs
+#   ./ops/ios_test.sh --list                       # resolve selectors without lock/xcodebuild
 #   ./ops/ios_test.sh --launch-benchmark
 #   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsAllTabs
 #   ./ops/ios_test.sh --ui --dataset <name>       # inject ops/fixtures/ui_worlds/<name>.json into the app (KG_FIXTURE_DATASET_DEFLATE_B64)
