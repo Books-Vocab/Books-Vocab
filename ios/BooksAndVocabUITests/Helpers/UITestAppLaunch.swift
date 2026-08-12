@@ -21,6 +21,7 @@ enum UITestFixture: Equatable {
     case vocabularyLibraryP11ReviewMix
     case vocabularyLibraryP11MixedRoleCounterexample
     case readerRealBookLibrary
+    case readerInvalidDestinationLibrary
     case notebookReviewDeck
     case notebookReviewDeckVaried
     case dictionaryP1Rich
@@ -54,6 +55,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:vocabulary:role.mixed"
         case .readerRealBookLibrary:
             return "-seedFixture:reader:realBookLibrary"
+        case .readerInvalidDestinationLibrary:
+            return "-seedFixture:reader:invalidDestinationLibrary"
         case .notebookReviewDeck:
             return "-seedFixture:notebook:reviewDeck"
         case .notebookReviewDeckVaried:

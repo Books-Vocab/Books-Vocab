@@ -2660,6 +2660,45 @@
         "isExcludedFromReader": false
       },
       "notebookSyncStatus": 1
+    },
+    "invalidDestinationLibrary": {
+      "textAssetRef": "text.atomic_habits_raw_ch_04",
+      "bookAssetRef": "books.reader_invalid_destination_epub",
+      "title": "Reader Invalid Destination",
+      "author": "KG Fixture",
+      "bookFileName": "reader-invalid-destination.epub",
+      "notebookRemoteId": "ui-reader-invalid-destination-notebook",
+      "notebookName": "Reader Invalid Destination Vocab",
+      "entry": {
+        "explanation": "invalid destination counterexample 的詞庫資料，不應由 TOC 導覽假成功掩蓋。",
+        "partOfSpeech": "n.",
+        "chapterTitle": "Valid Chapter",
+        "kgCardId": "ui-reader-invalid-destination",
+        "difficultyTier": "core",
+        "reviewExamples": [
+          "Valid Chapter — reader retry path"
+        ],
+        "collocations": null,
+        "rootForm": null,
+        "inflections": null,
+        "reviewIntervalHours": 24,
+        "nextReviewAt": "2026-01-06T00:00:00Z",
+        "lastReviewedAt": "2026-01-05T00:00:00Z",
+        "reviewCount": 1,
+        "reviewStreak": 1,
+        "lastReviewFeedbackRaw": 1,
+        "graphLinksByKind": {},
+        "word": "valid",
+        "translation": "有效",
+        "context": "Valid Chapter — reader retry path",
+        "bookTitle": "Reader Invalid Destination",
+        "reviewMode": "recognition",
+        "syncStatus": 1,
+        "actionType": "add",
+        "isArchived": false,
+        "isExcludedFromReader": false
+      },
+      "notebookSyncStatus": 1
     }
   },
   "vocabulary": {

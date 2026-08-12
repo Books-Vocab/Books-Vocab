@@ -174,4 +174,56 @@ final class ReaderFlowUITests: UITestCase {
             contentSelector: Self.secondChapterWord
         )
     }
+
+    @MainActor
+    func testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.authSignedIn, .readerInvalidDestinationLibrary],
+            extraEnvironment: Self.fixtureEnvironment,
+            perfLog: "reader-toc-invalid-destination"
+        )
+        captureStep("invalid-destination-launch", app: app)
+
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+        XCTAssertTrue(
+            bookshelf.anyBookCard.label.contains("Reader Invalid Destination"),
+            "invalid-destination fixture must materialize the real counterexample EPUB"
+        )
+
+        let reader = ReaderPage(app: app)
+        bookshelf.anyBookCard.tapWhenReady()
+        reader.assertSingleWebView()
+        XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        captureStep("invalid-destination-reader-open", app: app)
+
+        reader.expandHeaderButton.tapWhenReady()
+        reader.tableOfContentsButton.tapWhenReady()
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocChapter("1").waitUntilExists(timeout: 10))
+        captureStep("invalid-destination-toc-loaded", app: app)
+
+        // This is the actual Link produced by Readium from the invalid EPUB's
+        // nav.xhtml. No command-line href, synthetic View link, or fake
+        // navigator participates in this path.
+        reader.tocChapter("1").tapWhenReady()
+        XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        XCTAssertFalse(reader.tocDone.isEnabled)
+        captureStep("invalid-destination-missing", app: app)
+
+        reader.tocRetry.tapWhenReady()
+        XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        XCTAssertFalse(reader.tocDone.isEnabled)
+        reader.assertIsActive()
+        captureStep("invalid-destination-retry-still-open", app: app)
+        attachText(
+            "fixture=reader.invalidDestinationLibrary\nasset=books.reader_invalid_destination_epub\n"
+                + "expected=reader.toc.missingDestination + reader.toc.retry + sheet-open",
+            named: "Reader Invalid Destination Metrics"
+        )
+    }
 }

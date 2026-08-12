@@ -9,61 +9,18 @@ private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 // container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 enum FixtureDatasetStore {
-    enum RuntimeMaterializationError: Error, Equatable {
-        case unavailable(fixtureID: String)
-        case missingSourceAsset(assetID: String)
-        case invalidSourceAsset(ref: String, reason: String)
-    }
-
-    enum Availability: Equatable {
-        case absent
-        case loaded
-        case invalid(String)
-    }
-
     @TaskLocal static var testingOverrideData: Data?
-    @TaskLocal static var testingOverrideIsActive = false
 
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
-        try $testingOverrideIsActive.withValue(true) {
-            try $testingOverrideData.withValue(data) {
-                try perform()
-            }
+        try $testingOverrideData.withValue(data) {
+            try perform()
         }
     }
 
     static func withTestingData<T>(_ data: Data?, perform: () async throws -> T) async rethrows -> T {
-        try await $testingOverrideIsActive.withValue(true) {
-            try await $testingOverrideData.withValue(data) {
-                try await perform()
-            }
+        try await $testingOverrideData.withValue(data) {
+            try await perform()
         }
-    }
-
-    static var isFixtureDriven: Bool {
-        if testingOverrideIsActive || AppRuntimeOptions.isUITesting() {
-            return true
-        }
-        let environment = ProcessInfo.processInfo.environment
-        return environment.keys.contains {
-            $0 == fixtureDatasetDeflateEnvKey || $0 == fixtureDatasetEnvKey
-        }
-    }
-
-    /// Resolve the dictionary surface selected by a UI-test launch argument.
-    /// Existing callers without a dictionary seed keep the P1-compatible
-    /// default; a malformed explicit seed is never silently remapped.
-    static func activeDictionaryFixtureID(
-        arguments: [String] = ProcessInfo.processInfo.arguments
-    ) -> UIWorldDictionaryFixtureID {
-        let prefix = "-seedFixture:dictionary:"
-        guard let rawID = arguments.first(where: { $0.hasPrefix(prefix) })?.dropFirst(prefix.count) else {
-            return .p1DictionaryRich
-        }
-        guard let fixtureID = UIWorldDictionaryFixtureID(rawValue: String(rawID)) else {
-            preconditionFailure("Unknown dictionary fixture ID: (rawID)")
-        }
-        return fixtureID
     }
 
     static func settingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed? {
@@ -215,9 +172,38 @@ enum FixtureDatasetStore {
     }
 
     private static func validatedSourceURL(for asset: UIWorldAsset, ref: String) throws -> URL {
-        let url = URL(fileURLWithPath: asset.sourcePath)
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
+        let sourcePath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url: URL
+        if sourcePath.hasPrefix("/") {
+            url = URL(fileURLWithPath: sourcePath)
+        } else {
+            // Checked-in UI World assets use repo-relative locators. Resolve
+            // them from this source file's checkout so a child worktree can
+            // materialize the same fixture without embedding its path.
+            let components = sourcePath.split(separator: "/").map(String.init)
+            guard !components.isEmpty,
+                  components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [
+                    NSFilePathErrorKey: sourcePath,
+                    NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath must be a safe repo-relative path",
+                ])
+            }
+            let repoRoot = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // Core
+                .deletingLastPathComponent() // Fixtures
+                .deletingLastPathComponent() // Support
+                .deletingLastPathComponent() // BooksAndVocab
+                .deletingLastPathComponent() // ios
+            let resolved = repoRoot.appendingPathComponent(sourcePath).standardizedFileURL
+            let rootPath = repoRoot.standardizedFileURL.path
+            guard resolved.path.hasPrefix(rootPath + "/") else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [
+                    NSFilePathErrorKey: resolved.path,
+                    NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath escapes the repository root",
+                ])
+            }
+            url = resolved
+        }
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
         }
@@ -253,18 +239,7 @@ enum FixtureDatasetStore {
 
     static func sha256Hex(for url: URL) throws -> String {
         let data = try Data(contentsOf: url)
-        return sha256Hex(for: data)
-    }
-
-    private static func sha256Hex(for data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func rawDatasetData() -> Data? {
-        switch loadSource() {
-        case let .data(data, _): return data
-        case .absent, .invalid: return nil
-        }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     static func byteSize(for url: URL) throws -> Int {
@@ -293,79 +268,10 @@ enum FixtureDatasetStore {
     }
 
     static func requireVocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed {
-        guard case let .loaded(document, _) = loadState(), document.vocabulary[fixtureID.rawValue] != nil else {
+        guard let seed = vocabularySeed(for: fixtureID) else {
             preconditionFailure(seedResolutionFailureDescription(resolving: "vocabulary.\(fixtureID.rawValue)"))
         }
-        return resolveVocabularySeed(
-            fixtureID,
-            in: document,
-            visiting: []
-        )
-    }
-
-    private static func resolveVocabularySeed(
-        _ fixtureID: UIWorldVocabularyFixtureID,
-        in document: FixtureDatasetDocument,
-        visiting: Set<String>
-    ) -> UIWorldVocabularySeed {
-        guard let seed = document.vocabulary[fixtureID.rawValue] else {
-            preconditionFailure("UI World is missing vocabulary.\(fixtureID.rawValue)")
-        }
-        guard !visiting.contains(fixtureID.rawValue) else {
-            preconditionFailure("UI World vocabulary inheritance cycle at \(fixtureID.rawValue)")
-        }
-
-        guard let baseFixture = seed.baseFixture else {
-            validateVocabularyOverrides(seed.entryOverrides, entries: seed.entries, fixtureID: fixtureID)
-            return seed
-        }
-        guard let baseID = UIWorldVocabularyFixtureID(rawValue: baseFixture) else {
-            preconditionFailure(
-                "UI World vocabulary.\(fixtureID.rawValue).baseFixture is unknown: \(baseFixture)"
-            )
-        }
-        let base = resolveVocabularySeed(
-            baseID,
-            in: document,
-            visiting: visiting.union([fixtureID.rawValue])
-        )
-        guard seed.entries.isEmpty else {
-            preconditionFailure(
-                "UI World vocabulary.\(fixtureID.rawValue) inherited seed must leave entries empty"
-            )
-        }
-        let overrides = base.entryOverrides + seed.entryOverrides
-        validateVocabularyOverrides(overrides, entries: base.entries, fixtureID: fixtureID)
-        return UIWorldVocabularySeed(
-            notebookRemoteId: seed.notebookRemoteId,
-            notebookName: seed.notebookName,
-            notebookSyncStatus: seed.notebookSyncStatus,
-            bookTitle: seed.bookTitle,
-            entries: base.entries,
-            reviewHistory: seed.reviewHistory,
-            entryOverrides: overrides
-        )
-    }
-
-    private static func validateVocabularyOverrides(
-        _ overrides: [UIWorldVocabularyEntryOverride],
-        entries: [UIWorldVocabularyEntrySeed],
-        fixtureID: UIWorldVocabularyFixtureID
-    ) {
-        let words = Set(entries.map(\.word))
-        var seen: Set<String> = []
-        for override in overrides {
-            guard words.contains(override.word) else {
-                preconditionFailure(
-                    "UI World vocabulary.\(fixtureID.rawValue).entryOverrides references missing word \(override.word)"
-                )
-            }
-            guard seen.insert(override.word).inserted else {
-                preconditionFailure(
-                    "UI World vocabulary.\(fixtureID.rawValue).entryOverrides duplicates word \(override.word)"
-                )
-            }
-        }
+        return seed
     }
 
     static func reviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed? {
@@ -380,189 +286,11 @@ enum FixtureDatasetStore {
         return seed
     }
 
-    /// Resolve the canonical dictionary source only through a matrix-facing
-    /// required surface contract. A dictionary payload without its declared
-    /// P1/P2 row is not a consumable fixture and must not silently become a
-    /// fake service response.
-    static func dictionarySurfaceContract(
-        for fixtureID: UIWorldDictionaryFixtureID
-    ) -> UIWorldSurfaceContractRowSeed? {
-        guard case let .loaded(document, _) = loadState(),
-              let context = document.scenarioContext,
-              let dictionaryContract = context.surfaceContracts?["dictionary"] else {
-            return nil
-        }
-        return dictionaryContract.required.first {
-            $0.fixtureID == fixtureID.rawValue &&
-            $0.stepLabel == fixtureID.requiredStepLabel
-        }
-    }
-
-    static func dictionaryCounterexampleContract(
-        for fixtureID: UIWorldDictionaryCounterexampleID
-    ) -> UIWorldSurfaceContractRowSeed? {
-        guard case let .loaded(document, _) = loadState(),
-              let context = document.scenarioContext,
-              let dictionaryContract = context.surfaceContracts?["dictionary"] else {
-            return nil
-        }
-        return dictionaryContract.counterexamples.first {
-            $0.fixtureID == fixtureID.rawValue &&
-            $0.stepLabel == fixtureID.stepLabel
-        }
-    }
-
-    static func dictionarySeed(
-        for fixtureID: UIWorldDictionaryFixtureID
-    ) -> UIWorldDictionarySeed? {
-        guard dictionarySurfaceContract(for: fixtureID) != nil,
-              case let .loaded(document, _) = loadState() else {
-            return nil
-        }
-        return document.scenarioContext?.dictionary
-    }
-
-    static func requireDictionarySeed(
-        for fixtureID: UIWorldDictionaryFixtureID
-    ) -> UIWorldDictionarySeed {
-        guard let seed = dictionarySeed(for: fixtureID) else {
-            preconditionFailure(seedResolutionFailureDescription(resolving: "dictionary.\(fixtureID.rawValue)"))
-        }
-        return seed
-    }
-
     /// Decode a dataset document without going through the ambient load chain.
     /// Used by contract tests (and any tooling) to fail loudly on malformed
     /// UI World files.
     static func decode(_ data: Data) throws -> FixtureDatasetDocument {
-        let document = try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
-        return try materializingVocabularyInheritance(in: document)
-    }
-
-    private static func materializingVocabularyInheritance(
-        in document: FixtureDatasetDocument
-    ) throws -> FixtureDatasetDocument {
-        var resolved: [String: UIWorldVocabularySeed] = [:]
-
-        func resolve(_ fixtureID: String, visiting: [String]) throws -> UIWorldVocabularySeed {
-            if let seed = resolved[fixtureID] { return seed }
-            guard !visiting.contains(fixtureID) else {
-                throw DecodingError.dataCorrupted(
-                    .init(
-                        codingPath: [],
-                        debugDescription: "UI World vocabulary inheritance cycle: \((visiting + [fixtureID]).joined(separator: " -> "))"
-                    )
-                )
-            }
-            guard let seed = document.vocabulary[fixtureID] else {
-                throw DecodingError.dataCorrupted(
-                    .init(codingPath: [], debugDescription: "UI World vocabulary inheritance is missing base fixture \(fixtureID)")
-                )
-            }
-
-            let base: UIWorldVocabularySeed?
-            if let baseFixture = seed.baseFixture {
-                guard UIWorldVocabularyFixtureID(rawValue: baseFixture) != nil else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID).baseFixture is unknown: \(baseFixture)"
-                        )
-                    )
-                }
-                guard seed.entries.isEmpty else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID) must not declare entries when baseFixture is present"
-                        )
-                    )
-                }
-                base = try resolve(baseFixture, visiting: visiting + [fixtureID])
-            } else {
-                base = nil
-            }
-
-            let entries = base?.entries ?? seed.entries
-            var overridesByWord = Dictionary(
-                uniqueKeysWithValues: (base?.entryOverrides ?? []).map { ($0.word, $0) }
-            )
-            var localOverrideWords: Set<String> = []
-            for override in seed.entryOverrides {
-                guard localOverrideWords.insert(override.word).inserted else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides duplicates word \(override.word)"
-                        )
-                    )
-                }
-                guard overridesByWord[override.word] == nil else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides duplicates inherited word \(override.word)"
-                        )
-                    )
-                }
-                overridesByWord[override.word] = override
-            }
-
-            let entryWords = Set(entries.map(\.word))
-            let missingWords = Set(overridesByWord.keys).subtracting(entryWords)
-            guard missingWords.isEmpty else {
-                throw DecodingError.dataCorrupted(
-                    .init(
-                        codingPath: [],
-                        debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides references missing words \(missingWords.sorted())"
-                    )
-                )
-            }
-            for record in seed.reviewHistory where !entryWords.contains(record.word) {
-                throw DecodingError.dataCorrupted(
-                    .init(
-                        codingPath: [],
-                        debugDescription: "UI World vocabulary.\(fixtureID).reviewHistory.\(record.word) must reference a resolved entry"
-                    )
-                )
-            }
-
-            let materialized = UIWorldVocabularySeed(
-                notebookRemoteId: seed.notebookRemoteId,
-                notebookName: seed.notebookName,
-                notebookSyncStatus: seed.notebookSyncStatus,
-                bookTitle: seed.bookTitle,
-                entries: entries,
-                reviewHistory: seed.reviewHistory,
-                entryOverrides: entries.compactMap { overridesByWord[$0.word] }
-            )
-            resolved[fixtureID] = materialized
-            return materialized
-        }
-
-        for fixtureID in document.vocabulary.keys {
-            _ = try resolve(fixtureID, visiting: [])
-        }
-
-        return FixtureDatasetDocument(
-            schema: document.schema,
-            datasetID: document.datasetID,
-            assets: document.assets,
-            preferences: document.preferences,
-            auth: document.auth,
-            entitlements: document.entitlements,
-            settings: document.settings,
-            bookshelf: document.bookshelf,
-            todayReview: document.todayReview,
-            notebook: document.notebook,
-            podcast: document.podcast,
-            runtimePodcast: document.runtimePodcast,
-            reader: document.reader,
-            vocabulary: resolved,
-            reviewDeck: document.reviewDeck,
-            syncPresenter: document.syncPresenter,
-            scenarioContext: document.scenarioContext
-        )
+        try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
     }
 
     static func requireDocument() -> FixtureDatasetDocument {
@@ -605,88 +333,6 @@ enum FixtureDatasetStore {
             return "invalid @ \(source) (\(error))"
         case let .loaded(document, source):
             return "\(document.datasetID) @ \(source)"
-        }
-    }
-
-    static var availability: Availability {
-        switch loadState() {
-        case .absent: return .absent
-        case .loaded: return .loaded
-        case let .invalid(_, error): return .invalid(error)
-        }
-    }
-
-    static func dictionaryRuntimeMaterialization(
-        for fixtureID: UIWorldDictionaryFixtureID
-    ) throws -> DictionaryMaterializationSnapshot {
-        guard case let .loaded(document, _) = loadState() else {
-            throw RuntimeMaterializationError.unavailable(fixtureID: fixtureID.rawValue)
-        }
-        guard let dictionary = document.scenarioContext?.dictionary,
-              dictionarySurfaceContract(for: fixtureID) != nil,
-              let data = rawDatasetData() else {
-            throw RuntimeMaterializationError.unavailable(fixtureID: fixtureID.rawValue)
-        }
-        guard !document.datasetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw RuntimeMaterializationError.invalidSourceAsset(
-                ref: "dataset",
-                reason: "datasetID is empty"
-            )
-        }
-        guard let requiredCoverage = dictionary.coverage["required"],
-              requiredCoverage.assetIDs.count == 1,
-              let assetID = requiredCoverage.assetIDs.first,
-              let assetBucket = document.assets.typeByID[assetID],
-              let asset = document.assets.asset(for: "\(assetBucket).\(assetID)") else {
-            throw RuntimeMaterializationError.missingSourceAsset(
-                assetID: dictionary.coverage["required"]?.assetIDs.first ?? ""
-            )
-        }
-
-        let sourceRef = "\(assetBucket).\(assetID)"
-        let sourceURL: URL
-        do {
-            sourceURL = try validatedSourceURL(for: asset, ref: sourceRef)
-        } catch {
-            throw RuntimeMaterializationError.invalidSourceAsset(
-                ref: sourceRef,
-                reason: String(describing: error)
-            )
-        }
-        do {
-            let actualByteSize = try byteSize(for: sourceURL)
-            let actualSHA256 = try sha256Hex(for: sourceURL)
-            guard actualByteSize == asset.byteSize else {
-                throw RuntimeMaterializationError.invalidSourceAsset(
-                    ref: sourceRef,
-                    reason: "byteSize mismatch: expected \(asset.byteSize), got \(actualByteSize)"
-                )
-            }
-            guard actualSHA256 == asset.sha256 else {
-                throw RuntimeMaterializationError.invalidSourceAsset(
-                    ref: sourceRef,
-                    reason: "sha256 mismatch: expected \(asset.sha256), got \(actualSHA256)"
-                )
-            }
-            return DictionaryMaterializationSnapshot(
-                status: dictionary.materialization.status,
-                selectedSenseID: dictionary.materialization.selectedSenseID,
-                selectedExampleID: dictionary.materialization.selectedExampleID,
-                sourceFixtureID: dictionary.materialization.sourceFixtureID,
-                datasetID: document.datasetID,
-                datasetSHA256: sha256Hex(for: data),
-                sourceAssetID: assetID,
-                sourceAssetPath: sourceURL.path,
-                sourceAssetByteSize: actualByteSize,
-                sourceAssetSHA256: actualSHA256
-            )
-        } catch let error as RuntimeMaterializationError {
-            throw error
-        } catch {
-            throw RuntimeMaterializationError.invalidSourceAsset(
-                ref: sourceRef,
-                reason: String(describing: error)
-            )
         }
     }
 
