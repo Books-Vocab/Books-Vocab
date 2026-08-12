@@ -1090,6 +1090,24 @@ def test_ungroomed_refuses_closed_status_without_include_closed(tmp_path, status
         BACKLOG.list_entries(store, ungroomed=True, status=status)
 
 
+def test_ungroomed_groom_stale_days_requeues_old_groomed_entries(tmp_path, monkeypatch, capsys):
+    """The documented stale-groom audit must be reachable through the CLI."""
+    store = tmp_path / "backlog"
+    old = _add(store, detail="old groomed ticket")
+    fresh = _add(store, detail="fresh groomed ticket")
+    BACKLOG.update_entry(store, old["id"], **_groom_kwargs(groomed_at="2026-01-01"))
+    BACKLOG.update_entry(store, fresh["id"], **_groom_kwargs(groomed_at="2026-08-01"))
+    monkeypatch.setattr(BACKLOG, "_today", lambda: "2026-08-12")
+
+    # RED before implementation: the acceptance command's historical flag was
+    # removed from argparse even though the helper contract still requires it.
+    assert BACKLOG.main([
+        "list", "--store", str(store), "--ungroomed", "--groom-stale-days", "30", "--json"
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [row["id"] for row in payload["entries"]] == [old["id"]]
+
+
 def test_include_closed_requires_ungroomed(tmp_path):
     with pytest.raises(BACKLOG.BacklogError, match="--ungroomed"):
         BACKLOG.list_entries(tmp_path / "backlog", include_closed=True)
