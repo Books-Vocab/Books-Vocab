@@ -1,0 +1,17 @@
+"""Feature-owned admin API route registrations."""
+
+from .registry import (
+    ADMIN_API_ROUTE_REGISTRY,
+    AdminRouteRegistration,
+    BoundAdminRoute,
+    iter_bound_admin_api_routes,
+    validate_admin_route_registry,
+)
+
+__all__ = [
+    "ADMIN_API_ROUTE_REGISTRY",
+    "AdminRouteRegistration",
+    "BoundAdminRoute",
+    "iter_bound_admin_api_routes",
+    "validate_admin_route_registry",
+]

@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from ..admin_handlers import check_admin_auth
 from ..api_models import AdminUserEntitlementResponse
 from ..deps import get_admin_user
+from .admin_features.registry import iter_bound_admin_api_routes
 
 AdminEndpointResult = dict[str, Any] | HTMLResponse | AdminUserEntitlementResponse
 
@@ -289,50 +290,16 @@ def _build_api_admin_router_from_handlers(
     handlers: AdminApiHandlers,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
-    specs = [
-        _AdminApiRouteSpec("get", "/api/admin/stats", handlers.admin_stats),
-        _AdminApiRouteSpec("get", "/api/admin/logs", handlers.admin_logs),
-        # NOTE: static "/users/search" MUST register before dynamic
-        # "/users/{user_id}/…" or FastAPI will greedy-match "search" as user_id.
-        _AdminApiRouteSpec("get", "/api/admin/users/search", handlers.admin_users_search),
-        _AdminApiRouteSpec(
-            "get",
-            "/api/admin/users/{user_id}/entitlement",
-            handlers.admin_user_entitlement,
-            response_model=AdminUserEntitlementResponse,
-        ),
-        _AdminApiRouteSpec(
-            "post",
-            "/api/admin/users/{user_id}/admin-grant",
-            handlers.admin_grant_pro_access,
-            response_model=AdminUserEntitlementResponse,
-        ),
-        _AdminApiRouteSpec(
-            "delete",
-            "/api/admin/users/{user_id}/admin-grant",
-            handlers.admin_revoke_pro_access,
-            response_model=AdminUserEntitlementResponse,
-        ),
-        _AdminApiRouteSpec("post", "/api/admin/tests/run", handlers.admin_run_tests),
-        _AdminApiRouteSpec("get", "/api/admin/tests/last", handlers.admin_last_test_run),
-        _AdminApiRouteSpec("get", "/api/admin/tests/catalog", handlers.admin_test_catalog),
-        _AdminApiRouteSpec("get", "/api/admin/graph-density", handlers.admin_graph_density),
-        _AdminApiRouteSpec("get", "/api/admin/graph-playback", handlers.admin_graph_playback),
-        _AdminApiRouteSpec("get", "/api/admin/pipeline-runs", handlers.admin_pipeline_runs),
-        _AdminApiRouteSpec("get", "/api/admin/judge-stats", handlers.admin_judge_stats),
-        _AdminApiRouteSpec("get", "/api/admin/translate-history", handlers.admin_translate_history),
-        _AdminApiRouteSpec("get", "/api/admin/user-activity", handlers.admin_user_activity),
-        _AdminApiRouteSpec("get", "/api/admin/user-usage", handlers.admin_user_usage),
-        _AdminApiRouteSpec("get", "/api/admin/user-cost-summary", handlers.admin_user_cost_summary),
-        _AdminApiRouteSpec("get", "/api/admin/host-metrics", handlers.admin_host_metrics),
-        _AdminApiRouteSpec("get", "/api/admin/observability", handlers.admin_observability),
-        _AdminApiRouteSpec("get", "/api/admin/stats/trends", handlers.admin_stats_trends),
-        _AdminApiRouteSpec("post", "/api/admin/log-retention/run", handlers.admin_log_retention_run),
-        _AdminApiRouteSpec("get", "/api/admin/audit", handlers.admin_audit),
-        _AdminApiRouteSpec("get", "/api/admin/orphans/scan", handlers.admin_orphans_scan),
-    ]
-    for spec in specs:
-        _register_api_route(router, spec)
+    for registration in iter_bound_admin_api_routes(handlers):
+        _register_api_route(
+            router,
+            _AdminApiRouteSpec(
+                registration.method,
+                registration.path,
+                registration.endpoint,
+                response_model=registration.response_model,
+            ),
+        )
     return router
 
 
