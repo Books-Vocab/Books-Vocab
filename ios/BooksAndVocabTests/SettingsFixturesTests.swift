@@ -37,6 +37,8 @@ import Testing
             "settings.preferences_logged_out_no_sync",
             "settings.subscribed_active",
             "settings.account_long_identity",
+            "settings.long_content_counterexample",
+            "settings.reset_counterexample",
             "settings.subscription_free",
             "settings.subscription_loading",
             "settings.deleting_account",
@@ -148,6 +150,39 @@ import Testing
             #expect(paused.isProgressPaused == true)
             #expect(paused.progressPausedAt == Date(timeIntervalSince1970: 1_733_500_000))
         }
+    }
+
+    @Test func p15SettingsCounterexamplesAndInformationArchitectureContract() throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let expectedCounterexamples = [
+            "long_content_counterexample",
+            "reset_counterexample",
+        ]
+
+        for fixtureID in expectedCounterexamples {
+            #expect(document.settings[fixtureID] != nil, "UI World must inject settings.\(fixtureID)")
+        }
+
+        let settingsSourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift")
+        let settingsSource = try String(contentsOf: settingsSourceURL, encoding: .utf8)
+        for identifier in [
+            "settings.preferences.appearanceGroup",
+            "settings.preferences.learningGroup",
+            "settings.preferences.feedbackGroup",
+            "settings.preferences.readerGroup",
+            "settings.preferences.syncGroup",
+        ] {
+            #expect(settingsSource.contains(identifier), "Settings section selector missing: \(identifier)")
+        }
+
+        let accountDetailURL = settingsSourceURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("SettingsAccountDetailView.swift")
+        let accountDetailSource = try String(contentsOf: accountDetailURL, encoding: .utf8)
+        #expect(accountDetailSource.contains("settings.account.dangerGroup"))
     }
 }
 #endif

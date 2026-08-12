@@ -216,6 +216,8 @@ FIXTURE_DOMAIN_IDS = {
         "preferences_logged_out_no_sync",
         "subscribed_active",
         "account_long_identity",
+        "long_content_counterexample",
+        "reset_counterexample",
         "subscription_free",
         "subscription_loading",
         "deleting_account",

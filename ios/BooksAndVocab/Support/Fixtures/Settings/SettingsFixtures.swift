@@ -25,6 +25,8 @@ enum SettingsFixtureID: String, CaseIterable {
     case subscriptionFree = "subscription_free"
     case subscriptionLoading = "subscription_loading"
     case deletingAccount = "deleting_account"
+    case longContentCounterexample = "long_content_counterexample"
+    case resetCounterexample = "reset_counterexample"
     case pricingUnavailable = "pricing_unavailable"
     case debugBackendLocal = "debug_backend_local"
     case syncTerminalErrorRetrySuccess = "sync_terminal_error_retry_success"
@@ -530,7 +532,8 @@ enum SettingsFixtures {
         switch fixtureID {
         case .loggedOut, .subscribedActive, .subscriptionFree, .subscriptionLoading:
             return ["baseline"]
-        case .accountLoggedOutError, .accountLongIdentity, .deletingAccount, .pricingUnavailable:
+        case .accountLoggedOutError, .accountLongIdentity, .deletingAccount,
+             .longContentCounterexample, .resetCounterexample, .pricingUnavailable:
             return ["edge"]
         case .preferencesAutoSyncOff, .preferencesLoggedOutNoSync:
             return ["preferences"]

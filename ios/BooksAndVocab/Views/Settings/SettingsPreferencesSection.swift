@@ -19,7 +19,9 @@ struct SettingsPreferencesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            generalPreferencesGroup
+            appearancePreferencesGroup
+            learningPreferencesGroup
+            feedbackPreferencesGroup
             readerPreferencesGroup
             if state.showAutoSync || state.showAutoLink {
                 syncPreferencesGroup
@@ -30,27 +32,47 @@ struct SettingsPreferencesSection: View {
         .enableInjection()
     }
 
-    private var generalPreferencesGroup: some View {
+    private var appearancePreferencesGroup: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: L10n.string("偏好設定"), icon: "slider.horizontal.3")
+            SettingsSectionHeader(title: L10n.string("介面與語言"), icon: "slider.horizontal.3")
 
             VStack(spacing: 0) {
                 appearanceRow
                 SettingsDivider()
                 languageRow
-                SettingsDivider()
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.preferences.appearanceGroup")
+    }
+
+    private var learningPreferencesGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: L10n.string("學習與複習"), icon: "graduationcap")
+
+            VStack(spacing: 0) {
                 reviewRhythmRow
-                SettingsDivider()
-                soundFeedbackRow
-                SettingsDivider()
-                hapticFeedbackRow
                 SettingsDivider()
                 reviewCardLayoutRow
             }
             .settingsCard()
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("settings.preferences.generalGroup")
+        .accessibilityIdentifier("settings.preferences.learningGroup")
+    }
+
+    private var feedbackPreferencesGroup: some View {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: L10n.string("互動回饋"), icon: "hand.tap")
+
+            VStack(spacing: 0) {
+                soundFeedbackRow
+                SettingsDivider()
+                hapticFeedbackRow
+            }
+            .settingsCard()
+        }
+        .accessibilityIdentifier("settings.preferences.feedbackGroup")
     }
 
     private var readerPreferencesGroup: some View {
@@ -95,29 +117,29 @@ struct SettingsPreferencesSection: View {
     }
 
     private var appearanceRow: some View {
-        AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(appSkin)) {
+        AppKeyValueRow(icon: "circle.lefthalf.filled", label: L10n.string("外觀"), style: .settings(appSkin)) {
             Menu {
                 ForEach(AppAppearanceMode.allCases) { mode in
                     Button {
                         actions.selectAppearance(mode)
                     } label: {
                         if state.selectedAppearance == mode.titleKey {
-                            Label(mode.titleKey.localized, systemImage: "checkmark")
+                            Label(L10n.string(mode.titleKey), systemImage: "checkmark")
                         } else {
-                            Text(mode.titleKey.localized)
+                            Text(L10n.string(mode.titleKey))
                         }
                     }
                 }
             } label: {
-                SettingsMenuValue(text: state.selectedAppearance.localized)
+                SettingsMenuValue(text: L10n.string(state.selectedAppearance))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\("選擇外觀".localized)：\(state.selectedAppearance.localized)")
+            .accessibilityLabel(L10n.format("選擇外觀：%@", L10n.string(state.selectedAppearance)))
         }
     }
 
     private var languageRow: some View {
-        AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(appSkin)) {
+        AppKeyValueRow(icon: "character.bubble", label: L10n.string("語言"), style: .settings(appSkin)) {
             Menu {
                 ForEach(AppLanguage.allCases) { language in
                     Button {
@@ -134,14 +156,14 @@ struct SettingsPreferencesSection: View {
                 SettingsMenuValue(text: state.selectedLanguage)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
+            .accessibilityLabel(L10n.format("選擇語言：%@", state.selectedLanguage))
         }
     }
 
     private var translationLanguageRow: some View {
         SettingsNavigationRow(
             icon: "textformat.abc",
-            label: "翻譯語言",
+            label: L10n.string("翻譯語言"),
             action: onShowTranslationLanguage
         ) {
             SettingsStatusValue(
@@ -156,7 +178,7 @@ struct SettingsPreferencesSection: View {
     private var reviewRhythmRow: some View {
         SettingsNavigationRow(
             icon: "timer",
-            label: "複習節奏",
+            label: L10n.string("複習節奏"),
             action: onShowReviewSettings
         ) {
             SettingsStatusValue(
@@ -203,7 +225,7 @@ struct SettingsPreferencesSection: View {
     private var reviewCardLayoutRow: some View {
         SettingsNavigationRow(
             icon: "rectangle.split.2x1",
-            label: "複習卡片",
+            label: L10n.string("複習卡片"),
             action: onShowReviewCardLayout,
             accessibilityIdentifier: "settings.preferences.reviewCardLayoutRow"
         ) {
@@ -218,7 +240,7 @@ struct SettingsPreferencesSection: View {
     private var readerSettingsRow: some View {
         SettingsNavigationRow(
             icon: "textformat.size",
-            label: "reader.settings.title",
+            label: L10n.string("reader.settings.title"),
             action: onShowReaderSettings
         ) {
             SettingsStatusValue(
@@ -233,7 +255,7 @@ struct SettingsPreferencesSection: View {
     private var autoSyncRow: some View {
         AppKeyValueRow(
             icon: "arrow.triangle.2.circlepath",
-            label: "自動同步".localized,
+            label: L10n.string("自動同步"),
             style: .settings(appSkin)
         ) {
             Toggle("", isOn: Binding(
@@ -248,7 +270,7 @@ struct SettingsPreferencesSection: View {
     private var autoLinkRow: some View {
         AppKeyValueRow(
             icon: "point.3.connected.trianglepath.dotted",
-            label: "自動連結".localized,
+            label: L10n.string("自動連結"),
             style: .settings(appSkin)
         ) {
             Toggle("", isOn: Binding(
@@ -265,10 +287,10 @@ struct SettingsPreferencesSection: View {
     /// 顯示自動連結 toggle 時追加一句說明。
     private var footerText: String {
         var text = state.showAutoSync
-            ? "切換後會立即套用到 app 介面。開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。".localized
-            : "切換後會立即套用到 app 介面。".localized
+            ? L10n.string("切換後會立即套用到 app 介面。開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。")
+            : L10n.string("切換後會立即套用到 app 介面。")
         if state.showAutoLink {
-            text += "關閉自動連結後，新單字不再自動建立知識圖譜連結；重新開啟會繼續處理累積的單字。".localized
+            text += L10n.string("關閉自動連結後，新單字不再自動建立知識圖譜連結；重新開啟會繼續處理累積的單字。")
         }
         return text
     }
