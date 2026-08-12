@@ -114,6 +114,7 @@ struct StatsPresenter: View {
                         .padding(.bottom, appSkin.metrics.pageBottomInset)
                     }
                     .vocabCanvasBackground()
+                    .accessibilityIdentifier("overview.statsContent")
                     .opacity(contentReady ? 1 : 0)
                     .scaleEffect(contentReady ? 1 : 0.98)
                     .onAppear {
@@ -515,6 +516,16 @@ struct StatsPresenter: View {
                 )
             }
         }
+        .accessibilityIdentifier("metrics")
+        .background {
+            if summary.totalCards >= 40 {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement()
+                    .accessibilityIdentifier("large-counts")
+                    .accessibilityValue(summary.formattedCount(summary.totalCards))
+            }
+        }
     }
 
     private func statCard(
@@ -604,11 +615,27 @@ struct StatsPresenter: View {
             }
 
             VocabCard {
-                VocabForecastChart(buckets: summary.forecast)
-                    .frame(height: 160)
+                VStack(spacing: 0) {
+                    VocabForecastChart(buckets: summary.forecast)
+                        .frame(height: 160)
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier(
+                            summary.forecast.allSatisfy { $0.count == 0 } ? "forecast-zero" : "forecast"
+                        )
+                }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("overview.forecast.card")
+            .background {
+                if summary.forecast.allSatisfy({ $0.count == 0 }) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier("forecast-zero-counterexample")
+                }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("overview.forecast")
