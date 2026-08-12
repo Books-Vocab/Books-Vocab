@@ -1237,3 +1237,10 @@
 "reader.theme.light" = "淺色";
 "reader.theme.sepia" = "暖紙";
 "reader.theme.dark" = "深色";
+
+/* i18n strict coverage: Vocabulary / Reader / Sync */
+"iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。" = "iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID，並開啟 iCloud 雲碟。";
+"上次同步 %@" = "上次同步 %@";
+"明天再來複習新到期的單字" = "明天再來複習新到期的單字";
+"正在載入文件內容與閱讀位置。" = "正在載入文件內容與閱讀位置。";
+"正在開啟 PDF" = "正在開啟 PDF";

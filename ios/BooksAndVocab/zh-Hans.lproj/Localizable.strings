@@ -1222,3 +1222,10 @@
 "reader.theme.light" = "浅色";
 "reader.theme.sepia" = "暖纸";
 "reader.theme.dark" = "深色";
+
+/* i18n strict coverage: Vocabulary / Reader / Sync */
+"iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。" = "iCloud 同步超时。可能原因：\n• 原设备尚未完成上传\n• 网络连接不稳定\n\n请确认两台设备都已登录相同 Apple ID，并已开启 iCloud 云盘。";
+"上次同步 %@" = "上次同步 %@";
+"明天再來複習新到期的單字" = "明天再来复习新到期的单词";
+"正在載入文件內容與閱讀位置。" = "正在加载文档内容和阅读位置。";
+"正在開啟 PDF" = "正在打开 PDF";

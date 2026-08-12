@@ -1222,3 +1222,10 @@
 "reader.theme.light" = "라이트";
 "reader.theme.sepia" = "세피아";
 "reader.theme.dark" = "다크";
+
+/* i18n strict coverage: Vocabulary / Reader / Sync */
+"iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。" = "iCloud 동기화 시간이 초과되었습니다. 가능한 원인:\n• 원본 기기에서 업로드가 완료되지 않음\n• 네트워크 연결이 불안정함\n\n두 기기 모두 동일한 Apple ID로 로그인되어 있고 iCloud Drive가 켜져 있는지 확인하세요.";
+"上次同步 %@" = "마지막 동기화: %@";
+"明天再來複習新到期的單字" = "내일 다시 돌아와 새로 복습할 단어를 확인하세요";
+"正在載入文件內容與閱讀位置。" = "문서 내용과 읽던 위치를 불러오는 중입니다.";
+"正在開啟 PDF" = "PDF 여는 중";

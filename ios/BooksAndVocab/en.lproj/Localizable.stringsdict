@@ -141,5 +141,53 @@
 			<string>You have %d collected words.</string>
 		</dict>
 	</dict>
+	<key>%d 到期</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld due</string>
+			<key>other</key>
+			<string>%lld due</string>
+		</dict>
+	</dict>
+	<key>%d 未學</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld unlearned</string>
+			<key>other</key>
+			<string>%lld unlearned</string>
+		</dict>
+	</dict>
+	<key>進度 %d%%</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Progress %lld%%</string>
+			<key>other</key>
+			<string>Progress %lld%%</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

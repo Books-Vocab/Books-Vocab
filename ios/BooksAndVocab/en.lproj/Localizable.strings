@@ -1254,3 +1254,10 @@
 "reader.theme.light" = "Light";
 "reader.theme.sepia" = "Sepia";
 "reader.theme.dark" = "Dark";
+
+/* i18n strict coverage: Vocabulary / Reader / Sync */
+"iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。" = "iCloud sync timed out. Possible reasons:\n• The original device has not finished uploading\n• The network connection is unstable\n\nMake sure both devices are signed in with the same Apple ID and have iCloud Drive enabled.";
+"上次同步 %@" = "Last synced %@";
+"明天再來複習新到期的單字" = "Come back tomorrow to review newly due words";
+"正在載入文件內容與閱讀位置。" = "Loading the document and your reading position.";
+"正在開啟 PDF" = "Opening PDF";
