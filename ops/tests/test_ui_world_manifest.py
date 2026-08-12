@@ -1081,3 +1081,177 @@ def test_cli_prints_dataset_id_for_valid_world():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "marketing_demo"
+
+
+def _canonical_review_clock():
+    return {
+        "now": "2026-06-15T23:59:59Z",
+        "timeZone": "UTC",
+        "frozenEpoch": 1781567999,
+        "anchorDay": "2026-06-15",
+        "source": "history_plan.anchor_day",
+    }
+
+
+def _canonical_dictionary_context():
+    state_rows = {
+        state: {
+            "fixtureID": f"dictionary.lookup.{state}",
+            "stepLabel": state,
+        }
+        for state in ("idle", "loading", "result", "partial", "offline", "error", "retry")
+    }
+    return {
+        "lookup": state_rows,
+        "senses": [
+            {
+                "id": "sense-1",
+                "partOfSpeech": "noun",
+                "gloss": "a durable trace",
+                "exampleIDs": ["example-1"],
+            }
+        ],
+        "examples": [
+            {"id": "example-1", "senseID": "sense-1", "text": "The mark remained."}
+        ],
+        "provenance": {
+            "provider": "fixture",
+            "entryID": "mark",
+            "sourceLabel": "canonical dictionary fixture",
+        },
+        "materialization": {
+            "status": "ready",
+            "selectedSenseID": "sense-1",
+            "selectedExampleID": "example-1",
+            "sourceFixtureID": "dictionary.lookup.result",
+        },
+        "coverage": {
+            "required": {
+                "fixtureIDs": ["dictionary.lookup.result", "dictionary.detail.senses"],
+                "stepLabels": ["idle", "loading", "result", "partial", "offline", "error", "retry"],
+                "assetIDs": ["catalog_reader_epub"],
+                "assetInodes": ["inode:catalog_reader_epub"],
+            },
+            "counterexamples": {
+                "fixtureIDs": ["dictionary.lookup.error"],
+                "stepLabels": ["error-counterexample"],
+                "assetIDs": ["catalog_reader_pdf"],
+                "assetInodes": ["inode:catalog_reader_pdf"],
+            },
+        },
+    }
+
+
+def _canonical_surface_contracts():
+    return {
+        "explore": {
+            "required": [
+                {
+                    "fixtureID": "explore.rich-catalog",
+                    "stepLabel": "explore-loaded",
+                    "index": 0,
+                    "assetIDs": ["catalog_reader_epub"],
+                    "assetInodes": ["inode:catalog_reader_epub"],
+                }
+            ],
+            "counterexamples": [
+                {
+                    "fixtureID": "explore.empty",
+                    "stepLabel": "explore-empty-counterexample",
+                    "index": 1,
+                    "assetIDs": [],
+                    "assetInodes": [],
+                }
+            ],
+        },
+        "settings": {
+            "required": [
+                {
+                    "fixtureID": "settings.clean-preferences",
+                    "stepLabel": "settings",
+                    "index": 0,
+                    "assetIDs": [],
+                    "assetInodes": [],
+                }
+            ],
+            "counterexamples": [
+                {
+                    "fixtureID": "settings.reset-counterexample",
+                    "stepLabel": "reset-counterexample",
+                    "index": 1,
+                    "assetIDs": [],
+                    "assetInodes": [],
+                }
+            ],
+        },
+    }
+
+
+def test_validate_rejects_null_review_clock(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = None
+    path = tmp_path / "null_review_clock.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"scenarioContext.reviewClock must be an object"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_accepts_canonical_dictionary_clock_and_surface_contracts(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
+    data["scenarioContext"]["dictionary"] = _canonical_dictionary_context()
+    data["scenarioContext"]["surfaceContracts"] = _canonical_surface_contracts()
+    path = tmp_path / "canonical_dictionary_and_clock.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_dictionary_required_counterexample_overlap(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
+    dictionary = _canonical_dictionary_context()
+    dictionary["coverage"]["counterexamples"]["stepLabels"] = ["loading"]
+    data["scenarioContext"]["dictionary"] = dictionary
+    path = tmp_path / "dictionary_coverage_overlap.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"dictionary.*stepLabels.*disjoint"):
+        validate_fixture_dataset_file(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "overlap_value"),
+    [
+        ("fixtureIDs", "dictionary.lookup.result"),
+        ("assetIDs", "catalog_reader_epub"),
+        ("assetInodes", "inode:catalog_reader_epub"),
+    ],
+)
+def test_validate_rejects_dictionary_coverage_overlap_for_each_identity_set(
+    tmp_path: Path, field: str, overlap_value: str,
+):
+    data = _marketing_demo()
+    dictionary = _canonical_dictionary_context()
+    data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
+    dictionary["coverage"]["counterexamples"][field] = [overlap_value]
+    data["scenarioContext"]["dictionary"] = dictionary
+    path = tmp_path / f"dictionary_{field}_overlap.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=rf"dictionary.*{field}.*disjoint"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_review_clock_history_day_mismatch(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
+    data["vocabulary"]["reviewCalendarDense"]["reviewHistory"][0]["reviewedAt"] = (
+        "2026-06-16T00:00:00Z"
+    )
+    path = tmp_path / "review_clock_history_mismatch.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"reviewClock.*reviewHistory"):
+        validate_fixture_dataset_file(path)

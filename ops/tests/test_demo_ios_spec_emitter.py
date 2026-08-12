@@ -830,11 +830,14 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
         bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
         review_clock_frozen_at=freeze)
     mc = json.loads(content)["scenarioContext"]
-    assert set(mc) == {"reviewClock", "readerPassage", "wordDetail"}
+    assert set(mc) == {
+        "reviewClock", "readerPassage", "wordDetail", "dictionary", "surfaceContracts",
+    }
     assert mc["wordDetail"]["entries"][0]["word"]  # 聚焦字非空
     clock = mc["reviewClock"]
     assert clock["frozenEpoch"] == epoch  # 與 preferences overlay 同一凍結時刻
-    assert clock["frozenNow"] == "2026-07-09T14:59:59Z"
+    assert clock["now"] == "2026-07-09T14:59:59Z"
+    assert clock["timeZone"] == "UTC"
     assert clock["anchorDay"] == "2026-07-09"
     assert clock["source"] == "history_plan.anchor_day"
     passage = mc["readerPassage"]
@@ -842,14 +845,15 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     assert passage["activeWords"] == [passage["activeWord"]]
 
 
-def test_scenario_context_unfrozen_review_clock_is_null(tmp_path):
-    """未凍結（無 plan）emit → reviewClock null（無 anchor 素材）、readerPassage 仍在。"""
+def test_scenario_context_unplanned_review_clock_is_explicit(tmp_path):
+    """無 plan emit 仍產出由 spec history 推導的 explicit review clock。"""
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
     mc = json.loads(content)["scenarioContext"]
-    assert mc["reviewClock"] is None
+    assert mc["reviewClock"]["now"] == "2026-05-31T23:59:59Z"
+    assert mc["reviewClock"]["timeZone"] == "UTC"
     assert mc["readerPassage"]["activeWord"]
 
 
