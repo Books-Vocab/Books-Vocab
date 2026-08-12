@@ -8,9 +8,10 @@ module; no consumer may invent a second frozen date or call the wall clock.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from collections.abc import Mapping, Sequence
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,131 @@ UTC = timezone.utc
 
 class ReviewClockPlanError(ValueError):
     """Raised when the canonical history plan cannot produce a clock."""
+
+
+def _parse_utc_timestamp(raw: object, *, label: str) -> datetime:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ReviewClockPlanError(f"{label} must be a non-empty ISO-8601 timestamp")
+    normalized = raw.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ReviewClockPlanError(f"{label} is not a valid ISO-8601 timestamp: {raw!r}") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).replace(microsecond=0)
+
+
+def _event_window(plan: Mapping[str, Any]) -> tuple[int, int]:
+    validate_render_geometry(plan)
+    try:
+        values = plan["event_utc_hours"]
+        lo, hi = (int(value) for value in values)  # type: ignore[union-attr]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ReviewClockPlanError(
+            f"history plan event_utc_hours are invalid: {plan.get('event_utc_hours')!r}"
+        ) from exc
+    if not 0 <= lo <= hi <= 23:
+        raise ReviewClockPlanError(
+            f"history plan event_utc_hours must be within [0,23]: [{lo},{hi}]"
+        )
+    return lo, hi
+
+
+def _same_local_day_candidates(
+    local_day: date,
+    instant: datetime,
+    *,
+    time_zone: ZoneInfo,
+    hour_lo: int,
+    hour_hi: int,
+) -> list[datetime]:
+    """Return UTC instants in the plan window that still render on local_day."""
+    candidates: list[datetime] = []
+    # The plan's event window is validated against the production timezone.  A
+    # +/-2-day search keeps this helper correct across ordinary offset/DST
+    # transitions without assuming a fixed UTC date relationship.
+    for day_delta in range(-2, 3):
+        utc_day = local_day + timedelta(days=day_delta)
+        for hour in range(hour_lo, hour_hi + 1):
+            candidate = datetime.combine(
+                utc_day,
+                time(hour, instant.minute, instant.second),
+                tzinfo=UTC,
+            )
+            if candidate.astimezone(time_zone).date() == local_day:
+                candidates.append(candidate)
+    return candidates
+
+
+def canonicalize_review_history(
+    events: Sequence[Mapping[str, Any]],
+    plan: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Normalize emitted review events to the plan's UTC-hour window.
+
+    ``spec_world._card_history`` deliberately synthesizes prior events from
+    interval arithmetic.  That can produce a timestamp outside the visual
+    event-hour window even though its local calendar day is correct.  The
+    producer owns this final serialization boundary: preserve each event's
+    local day, feedback, word, and deterministic ordering while selecting the
+    nearest allowed UTC hour.  No inode, wall clock, or random value enters
+    the artifact.
+    """
+    active_plan = plan if plan is not None else load_history_plan()
+    hour_lo, hour_hi = _event_window(active_plan)
+    try:
+        time_zone = ZoneInfo(str(active_plan["review_clock_time_zone"]))
+    except (KeyError, ZoneInfoNotFoundError) as exc:
+        raise ReviewClockPlanError("history plan review_clock_time_zone is invalid") from exc
+
+    normalized: list[dict[str, Any]] = []
+    for index, event in enumerate(events):
+        if not isinstance(event, Mapping):
+            raise ReviewClockPlanError(f"review history event[{index}] must be an object")
+        instant = _parse_utc_timestamp(event.get("reviewedAt"), label=f"review history event[{index}].reviewedAt")
+        local_day = instant.astimezone(time_zone).date()
+        candidates = _same_local_day_candidates(
+            local_day,
+            instant,
+            time_zone=time_zone,
+            hour_lo=hour_lo,
+            hour_hi=hour_hi,
+        )
+        if not candidates:
+            raise ReviewClockPlanError(
+                "history plan event window has no UTC/local-day intersection for "
+                f"{local_day.isoformat()}"
+            )
+        chosen = min(
+            candidates,
+            key=lambda candidate: (
+                abs((candidate - instant).total_seconds()),
+                candidate,
+            ),
+        )
+        item = dict(event)
+        item["reviewedAt"] = chosen.strftime("%Y-%m-%dT%H:%M:%SZ")
+        normalized.append(item)
+    return normalized
+
+
+def validate_review_history_hours(
+    events: Sequence[Mapping[str, Any]],
+    plan: Mapping[str, Any] | None = None,
+    *,
+    label: str = "review history",
+) -> None:
+    """Fail closed when an emitted history event escapes plan.event_utc_hours."""
+    active_plan = plan if plan is not None else load_history_plan()
+    hour_lo, hour_hi = _event_window(active_plan)
+    for index, event in enumerate(events):
+        instant = _parse_utc_timestamp(event.get("reviewedAt"), label=f"{label}[{index}].reviewedAt")
+        if not hour_lo <= instant.hour <= hour_hi:
+            raise ReviewClockPlanError(
+                f"{label}[{index}] UTC hour {instant.hour} escapes "
+                f"history plan event_utc_hours [{hour_lo},{hour_hi}]"
+            )
 
 
 def production_utc_offset_hours(plan: Mapping[str, Any]) -> int:

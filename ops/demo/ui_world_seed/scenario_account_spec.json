@@ -632,8 +632,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-08T22:51:05+00:00",
-    "last_reviewed_at": "2026-07-08T10:51:05+00:00",
+    "next_review_at": "2026-07-10T11:51:05+00:00",
+    "last_reviewed_at": "2026-07-09T23:51:05+00:00",
     "last_review_feedback": -1
    }
   },
@@ -1746,8 +1746,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-08T22:54:59+00:00",
-    "last_reviewed_at": "2026-07-08T10:54:59+00:00",
+    "next_review_at": "2026-07-10T11:54:59+00:00",
+    "last_reviewed_at": "2026-07-09T23:54:59+00:00",
     "last_review_feedback": -1
    }
   },
@@ -3328,8 +3328,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-08T22:45:18+00:00",
-    "last_reviewed_at": "2026-07-08T10:45:18+00:00",
+    "next_review_at": "2026-07-10T11:45:18+00:00",
+    "last_reviewed_at": "2026-07-09T23:45:18+00:00",
     "last_review_feedback": -1
    }
   },
@@ -7480,8 +7480,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-09T22:48:34+00:00",
-    "last_reviewed_at": "2026-07-09T10:48:34+00:00",
+    "next_review_at": "2026-07-10T11:48:34+00:00",
+    "last_reviewed_at": "2026-07-09T23:48:34+00:00",
     "last_review_feedback": -1
    }
   },
@@ -8290,8 +8290,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-08T22:41:00+00:00",
-    "last_reviewed_at": "2026-07-08T10:41:00+00:00",
+    "next_review_at": "2026-07-10T11:41:00+00:00",
+    "last_reviewed_at": "2026-07-09T23:41:00+00:00",
     "last_review_feedback": -1
    }
   },
@@ -12891,8 +12891,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-08T22:21:58+00:00",
-    "last_reviewed_at": "2026-07-08T10:21:58+00:00",
+    "next_review_at": "2026-07-10T11:21:58+00:00",
+    "last_reviewed_at": "2026-07-09T23:21:58+00:00",
     "last_review_feedback": -1
    }
   },
@@ -15713,8 +15713,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-09T22:21:09+00:00",
-    "last_reviewed_at": "2026-07-09T10:21:09+00:00",
+    "next_review_at": "2026-07-10T11:21:09+00:00",
+    "last_reviewed_at": "2026-07-09T23:21:09+00:00",
     "last_review_feedback": -1
    }
   },
@@ -16466,8 +16466,8 @@
     "review_streak": 0,
     "lapse_count": 0,
     "review_interval_hours": 12.0,
-    "next_review_at": "2026-07-07T22:07:15+00:00",
-    "last_reviewed_at": "2026-07-07T10:07:15+00:00",
+    "next_review_at": "2026-07-10T11:07:15+00:00",
+    "last_reviewed_at": "2026-07-09T23:07:15+00:00",
     "last_review_feedback": -1
    }
   },

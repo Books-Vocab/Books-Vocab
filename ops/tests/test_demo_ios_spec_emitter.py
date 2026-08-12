@@ -959,8 +959,9 @@ def test_review_clock_freeze_overlays_both_stores(tmp_path):
             if k in emit_ios.REVIEW_CLOCK_OVERLAY_KEYS:
                 continue
             assert s[k] == v, f"non-clock preferences.{store}.{k} drifted"
-    # LWW：freeze epoch 晚於 baseline updated_at 故勝
-    assert epoch > baseline["preferences"]["userDefaults"]["review_settings_progress_updated_at"]
+    # LWW：canonical marketing baseline may already carry the same plan freeze;
+    # an explicit freeze must never move backwards.
+    assert epoch >= baseline["preferences"]["userDefaults"]["review_settings_progress_updated_at"]
 
 
 def test_review_clock_unfrozen_preferences_byte_equal_baseline(tmp_path):

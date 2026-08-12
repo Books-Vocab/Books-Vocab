@@ -2569,17 +2569,6 @@ def _validate_review_clock_history_alignment(
                 f"{label} scenarioContext.reviewClock history day exceeds anchorDay "
                 f"for vocabulary.{fixture_id}"
             )
-        if fixture_id == "reviewCalendarDense" and source == REVIEW_CLOCK_SOURCE:
-            has_boundary = any(
-                event.astimezone(timezone.utc).date()
-                != event.astimezone(time_zone).date()
-                for event in parsed_history
-            )
-            if not has_boundary:
-                raise UIWorldManifestError(
-                    f"{label} scenarioContext.reviewClock requires timezone-boundary "
-                    "evidence in vocabulary.reviewCalendarDense.reviewHistory"
-                )
 
 
 def _validate_asset_pair(

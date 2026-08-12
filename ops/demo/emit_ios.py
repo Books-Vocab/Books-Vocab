@@ -22,6 +22,7 @@ import logging
 import sys
 import tempfile
 import zlib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,9 +39,13 @@ if str(_HERE) not in sys.path:
 
 import spec_world  # noqa: E402
 from review_calendar_clock import (  # noqa: E402
+    canonicalize_review_history,
     clock_from_plan,
+    load_history_plan,
+    validate_review_history_hours,
 )
 from ui_world_manifest import (  # noqa: E402
+    REVIEW_CLOCK_TIME_ZONE,  # noqa: F401 - retained as a Swift-facing module export
     UIWorldManifestError,
     build_p1_dictionary_surface_contract,
     validate_fixture_dataset_file,
@@ -193,10 +198,11 @@ def _overlay_review_clock(
 def _build_scenario_context(
     spec: dict[str, Any], *, review_clock_frozen_at: "object | None",
     baseline_context: dict[str, Any] | None = None,
+    review_clock_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a strict deterministic scenario context without wall-clock fallback."""
     if review_clock_frozen_at is not None:
-        expected = clock_from_plan()
+        expected = clock_from_plan(review_clock_plan)
         actual_epoch = int(review_clock_frozen_at.timestamp())  # type: ignore[attr-defined]
         if actual_epoch != expected["frozenEpoch"]:
             raise ValueError(
@@ -207,7 +213,7 @@ def _build_scenario_context(
     else:
         # Generic spec emission is still governed by history_plan. The
         # explicit legacy spec-history helper is not a second production clock.
-        clock = clock_from_plan()
+        clock = clock_from_plan(review_clock_plan)
     context = {
         "reviewClock": clock,
         "readerPassage": spec_world.derive_reader_passage(spec),
@@ -240,7 +246,9 @@ def _spec_digest(spec: dict[str, Any]) -> str:
 
 
 def _build_spec_fixture_document(
-    sot: DemoSoT, spec: dict[str, Any], *, review_clock_frozen_at: "object | None" = None
+    sot: DemoSoT, spec: dict[str, Any], *, review_clock_frozen_at: "object | None" = None,
+    out_path: Path | None = None,
+    review_clock_plan: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """spec 模式:baseline + 四 domain spec-derived merge + identity auth overlay。
 
@@ -251,7 +259,14 @@ def _build_spec_fixture_document(
     derived, stats = spec_world.derive_domains(spec)
     document = dict(baseline)
     document["schema"] = FIXTURE_SCHEMA
-    document["datasetID"] = f"spec-{_spec_digest(spec)}"
+    # The committed marketing seed is itself a canonical spec projection.  It
+    # keeps its stable Swift-facing dataset ID when produced through the
+    # existing --spec/--out entrypoint; ad-hoc spec outputs retain their digest
+    # identity so unrelated fixture consumers cannot silently alias them.
+    if out_path is not None and out_path.resolve() == BASE_UI_WORLD_PATH.resolve():
+        document["datasetID"] = baseline["datasetID"]
+    else:
+        document["datasetID"] = f"spec-{_spec_digest(spec)}"
     for domain, seeds in derived.items():
         merged = dict(baseline[domain])
         merged.update(seeds)
@@ -261,6 +276,7 @@ def _build_spec_fixture_document(
         spec,
         review_clock_frozen_at=review_clock_frozen_at,
         baseline_context=baseline.get("scenarioContext"),
+        review_clock_plan=review_clock_plan,
     )
     if review_clock_frozen_at is not None:
         document["preferences"] = _overlay_review_clock(baseline["preferences"], review_clock_frozen_at)
@@ -534,10 +550,43 @@ def _validate_fixture_json_bytes(
             raise ValueError(str(exc)) from exc
 
 
+def _canonicalize_review_history(document: dict[str, Any], plan: Mapping[str, Any]) -> None:
+    """Apply the plan-owned event-hour boundary to every stats history seed."""
+    vocabulary = document.get("vocabulary")
+    if not isinstance(vocabulary, dict):
+        raise ValueError("generated UI World vocabulary domain is missing")
+    for fixture_id in REVIEW_CLOCK_HISTORY_FIXTURES:
+        seed = vocabulary.get(fixture_id)
+        if not isinstance(seed, dict):
+            raise ValueError(f"generated UI World vocabulary.{fixture_id} is missing")
+        history = seed.get("reviewHistory")
+        if not isinstance(history, list):
+            raise ValueError(f"generated UI World vocabulary.{fixture_id}.reviewHistory is missing")
+        seed["reviewHistory"] = canonicalize_review_history(history, plan)
+        try:
+            validate_review_history_hours(
+                seed["reviewHistory"], plan, label=f"vocabulary.{fixture_id}.reviewHistory"
+            )
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
+
+REVIEW_CLOCK_HISTORY_FIXTURES = ("statsPopulated", "reviewCalendarDense")
+
+
 def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     baseline = _load_base_ui_world()
     baseline_content = _json_bytes(baseline)
     document = _build_fixture_document(sot)
+    plan = load_history_plan()
+    try:
+        for fixture_id in REVIEW_CLOCK_HISTORY_FIXTURES:
+            seed = document["vocabulary"][fixture_id]
+            validate_review_history_hours(
+                seed["reviewHistory"], plan, label=f"vocabulary.{fixture_id}.reviewHistory"
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"committed marketing fixture is not history-plan canonical: {exc}") from exc
     content = _json_bytes(document)
     _validate_fixture_json_bytes(
         content,
@@ -561,6 +610,7 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
 def _spec_build(
     sot: DemoSoT, *, spec_path: Path, out_path: Path,
     review_clock_frozen_at: "object | None" = None,
+    review_clock_plan: Mapping[str, Any] | None = None,
 ) -> tuple[Path, bytes, dict[str, Any], dict[str, Any], dict[str, Any]]:
     """spec 模式共用管線:載入 → 投影 → serialize → shared-validator 驗證。
 
@@ -576,7 +626,14 @@ def _spec_build(
             "dateAdded fallback is not a review-clock source"
         )
     document, stats = _build_spec_fixture_document(
-        sot, spec, review_clock_frozen_at=review_clock_frozen_at)
+        sot,
+        spec,
+        review_clock_frozen_at=review_clock_frozen_at,
+        out_path=out_path,
+        review_clock_plan=review_clock_plan,
+    )
+    if review_clock_plan is not None:
+        _canonicalize_review_history(document, review_clock_plan)
     content = _json_bytes(document)
     _validate_fixture_json_bytes(
         content,
@@ -584,7 +641,9 @@ def _spec_build(
         # A generic account spec may intentionally contain an old sample
         # history.  Its clock is still the one canonical history-plan clock;
         # only an explicit freeze requests strict history alignment.
-        require_review_history_alignment=review_clock_frozen_at is not None,
+        require_review_history_alignment=(
+            review_clock_frozen_at is not None or review_clock_plan is not None
+        ),
     )
     return Path(out_path), content, document, stats, spec
 
@@ -592,11 +651,13 @@ def _spec_build(
 def _spec_artifacts(
     sot: DemoSoT, *, spec_path: Path, out_path: Path,
     review_clock_frozen_at: "object | None" = None,
+    review_clock_plan: Mapping[str, Any] | None = None,
 ) -> list[tuple[Path, bytes]]:
     """spec 模式 artifact:回傳 (out_path, bytes)。"""
     out, content, _document, _stats, _spec = _spec_build(
         sot, spec_path=spec_path, out_path=out_path,
-        review_clock_frozen_at=review_clock_frozen_at)
+        review_clock_frozen_at=review_clock_frozen_at,
+        review_clock_plan=review_clock_plan)
     return [(out, content)]
 
 
@@ -655,11 +716,13 @@ def _emit_spec(
     check: bool,
     commit: bool,
     review_clock_frozen_at: "object | None" = None,
+    review_clock_plan: Mapping[str, Any] | None = None,
 ) -> dict:
     """Spec 模式的 emit:輸出到呼叫者指定路徑，不碰 committed artifact。"""
     out, content, document, stats, spec = _spec_build(
         sot, spec_path=spec_path, out_path=out_path,
-        review_clock_frozen_at=review_clock_frozen_at)
+        review_clock_frozen_at=review_clock_frozen_at,
+        review_clock_plan=review_clock_plan)
     staleness = spec_staleness_warning(spec)
     if staleness:
         print(staleness, file=sys.stderr)
@@ -714,6 +777,7 @@ def emit(
     spec_path: str | Path | None = None,
     out_path: str | Path | None = None,
     review_clock_frozen_at: "object | None" = None,
+    review_clock_plan: Mapping[str, Any] | None = None,
 ) -> dict:
     """Emit the iOS UI World FixtureDatasetDocument JSON from the SoT.
 
@@ -747,7 +811,10 @@ def emit(
         assert out_path is not None
         return _emit_spec(
             sot, spec_path=Path(spec_path), out_path=Path(out_path),
-            check=check, commit=commit, review_clock_frozen_at=review_clock_frozen_at,
+            check=check,
+            commit=commit,
+            review_clock_frozen_at=review_clock_frozen_at,
+            review_clock_plan=review_clock_plan,
         )
 
     artifacts = _artifacts(sot)

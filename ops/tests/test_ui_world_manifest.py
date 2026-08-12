@@ -457,16 +457,16 @@ def test_marketing_demo_review_clock_is_explicit_and_history_aligned():
     ) == "marketing_demo"
 
 
-def test_review_clock_validator_rejects_timezone_and_history_boundary_drift(tmp_path: Path):
+def test_review_clock_validator_rejects_history_after_anchor(tmp_path: Path):
     data = _marketing_demo()
     data["vocabulary"]["reviewCalendarDense"]["reviewHistory"] = [
-        dict(item, reviewedAt="2026-07-09T12:00:00Z")
+        dict(item, reviewedAt="2026-07-10T12:00:00Z")
         for item in data["vocabulary"]["reviewCalendarDense"]["reviewHistory"]
     ]
     path = tmp_path / "clock_drift.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match="timezone-boundary"):
+    with pytest.raises(UIWorldManifestError, match="latest exceeds|history day exceeds"):
         validate_fixture_dataset_file(
             path,
             require_review_clock=True,
