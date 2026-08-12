@@ -14,8 +14,12 @@ extension UITestFixtureSeed {
         }
 
         let seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+        let context = container.mainContext
         do {
-            let entries = try insertVocabularySeed(seed, into: container.mainContext)
+            if fixtureID == .reviewCalendarDense {
+                try clearReviewCalendarFixtures(from: context)
+            }
+            let entries = try insertVocabularySeed(seed, into: context)
             if !AuthManager.shared.isLoggedIn {
                 seedSignedInLoginFromWorld()
             }
@@ -25,6 +29,20 @@ extension UITestFixtureSeed {
         } catch {
             failFixtureSeed("Failed to seed vocabulary.\(id) fixture: \(error)")
         }
+    }
+
+    @MainActor
+    private static func clearReviewCalendarFixtures(from context: ModelContext) throws {
+        for record in try context.fetch(FetchDescriptor<ReviewRecord>()) {
+            context.delete(record)
+        }
+        for entry in try context.fetch(FetchDescriptor<VocabularyEntry>()) {
+            context.delete(entry)
+        }
+        for notebook in try context.fetch(FetchDescriptor<Notebook>()) {
+            context.delete(notebook)
+        }
+        try context.save()
     }
 }
 #endif

@@ -13,6 +13,7 @@ struct OverviewTab: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appSkin) private var skin
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     @State private var filter = NotebookFilter.load()
     @State private var loginGate = LoginGateState()
@@ -20,7 +21,12 @@ struct OverviewTab: View {
     var body: some View {
         NavigationStack {
             if authManager.isLoggedIn || authManager.isDemoMode {
-                StatsPresenter(filter: filter)
+                StatsPresenter(
+                    filter: filter,
+                    reviewClock: ReviewCalendarClock.uiWorldOrLive(
+                        settings: reviewSettingsStore.settings
+                    )
+                )
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             NotebookFilterChip(filter: $filter)

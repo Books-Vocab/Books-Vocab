@@ -61,6 +61,7 @@ enum UITestFixture: Equatable {
     case entitlementsProAccess
     case settingsCleanPreferences
     case shellNavigation
+    case reviewCalendarDense
     case searchVocabNotebook
     case vocabularyLibraryFilterRich
     case vocabularyLibraryP11ReviewMix
@@ -92,6 +93,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:settings:cleanPreferences"
         case .shellNavigation:
             return "-seedFixture:shell:navigation"
+        case .reviewCalendarDense:
+            return "-seedFixture:vocabulary:reviewCalendarDense"
         case .searchVocabNotebook:
             return "-seedFixture:search:vocabNotebook"
         case .vocabularyLibraryFilterRich:

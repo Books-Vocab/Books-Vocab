@@ -55,6 +55,8 @@ enum UITestFixtureSeed {
                 seedSettings(id, into: container)
             case "shell":
                 seedShell(id, into: container)
+            case "vocabulary":
+                seedVocabulary(id, into: container)
             case "search":
                 seedSearch(id, into: container)
             case "vocabulary":

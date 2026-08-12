@@ -14,6 +14,11 @@
 import XCTest
 
 final class FixtureDatasetUITests: UITestCase {
+    private enum ReviewCalendarClockSelector {
+        static let canonical = "reviewCalendar.clock.history_plan.anchor_day"
+        static let live = "reviewCalendar.clock.live"
+    }
+
     private enum ReviewCalendarEvidence {
         static let requiredLabels = [
             "calendar",
@@ -51,6 +56,19 @@ final class FixtureDatasetUITests: UITestCase {
         struct EvidenceGroups: Decodable {
             let required: [EvidenceAsset]
             let counterexamples: [EvidenceAsset]
+        }
+        struct GeneratedEvidence: Encodable {
+            let fixtureID: String
+            let stepLabel: String
+            let manifestAssetID: String
+            let assetID: String
+            let artifactPath: String
+            let inode: UInt64
+            let group: String
+        }
+        struct GeneratedEvidenceFile: Encodable {
+            let schema: String
+            let records: [GeneratedEvidence]
         }
         struct SurfaceContracts: Decodable {
             let reviewCalendar: EvidenceGroups?
@@ -147,6 +165,7 @@ final class FixtureDatasetUITests: UITestCase {
         XCTAssertFalse(history.isEmpty, "reviewCalendarDense must provide populated-day evidence")
         let evidence = try XCTUnwrap(document.scenarioContext?.surfaceContracts?.reviewCalendar)
         assertManifestEvidenceMapping(evidence)
+        XCTAssertEqual(clock.source, "history_plan.anchor_day")
         guard let boundaryDays = timezoneBoundaryDays(
             in: history,
             timeZoneIdentifier: clock.timeZone!
@@ -180,7 +199,8 @@ final class FixtureDatasetUITests: UITestCase {
             "dense fixture must expose a populated day"
         )
 
-        let app = launchIsolatedApp(fixtures: [.shellNavigation], perfLog: "review-calendar")
+        var generatedEvidence: [DatasetDocument.GeneratedEvidence] = []
+        let app = launchIsolatedApp(fixtures: [.reviewCalendarDense], perfLog: "review-calendar")
         let overview = AppPage(app: app).goToOverview()
         guard overview.statsContent.waitUntilExists(timeout: 10) else {
             captureStep("calendar", app: app)
@@ -194,7 +214,10 @@ final class FixtureDatasetUITests: UITestCase {
             XCTFail("Review Calendar month header must render")
             return
         }
-        captureStep("calendar", app: app)
+        assertClockProvenance(in: app)
+        generatedEvidence.append(try captureEvidence(
+            evidence.required[0], group: "required", app: app
+        ))
 
         // All navigation and day keys are derived from the injected anchor and
         // decoded history; no localized labels or wall-clock dates are used.
@@ -210,7 +233,9 @@ final class FixtureDatasetUITests: UITestCase {
             XCTFail("empty-day selection must render the empty detail state")
             return
         }
-        captureStep("empty-day", app: app)
+        generatedEvidence.append(try captureEvidence(
+            evidence.required[1], group: "required", app: app
+        ))
 
         moveCalendar(calendar, from: previousMonth, to: populatedMonth)
         guard calendar.day(populatedDay).waitUntilExists(timeout: 5) else {
@@ -223,7 +248,9 @@ final class FixtureDatasetUITests: UITestCase {
             expectedCount: try XCTUnwrap(counts.local[populatedDay]),
             label: "populated-day"
         )
-        captureStep("populated-day", app: app)
+        generatedEvidence.append(try captureEvidence(
+            evidence.required[2], group: "required", app: app
+        ))
         let requiredBoundaryMonth = monthKey(for: boundaryDays.local)
         moveCalendar(calendar, from: populatedMonth, to: requiredBoundaryMonth)
         calendar.day(boundaryDays.local).tapWhenReady()
@@ -233,22 +260,27 @@ final class FixtureDatasetUITests: UITestCase {
             label: "timezone-boundary"
         )
         XCTAssertEqual(requiredBoundaryCount, boundaryDays.localCount)
-        captureStep("timezone-boundary", app: app)
+        generatedEvidence.append(try captureEvidence(
+            evidence.required[3], group: "required", app: app
+        ))
 
         // Counterexamples are captured from a separate app launch so their
         // screenshot files/inodes cannot alias the required-state evidence.
         app.terminate()
         let counterexampleApp = launchIsolatedApp(
-            fixtures: [.shellNavigation],
+            fixtures: [.reviewCalendarDense],
             perfLog: "review-calendar-counterexamples"
         )
         let counterexampleOverview = AppPage(app: counterexampleApp).goToOverview()
         counterexampleOverview.reviewCalendarButton.tapWhenReady()
         let counterexampleCalendar = ReviewCalendarPage(app: counterexampleApp)
+        assertClockProvenance(in: counterexampleApp)
         moveCalendar(counterexampleCalendar, from: anchorMonth, to: previousMonth)
         counterexampleCalendar.day(emptyCounterexampleDay).tapWhenReady()
         counterexampleCalendar.emptyDayDetail.assertExists(timeout: 5)
-        captureStep("empty-day-counterexample", app: counterexampleApp)
+        generatedEvidence.append(try captureEvidence(
+            evidence.counterexamples[0], group: "counterexamples", app: counterexampleApp
+        ))
         let counterexampleBoundaryMonth = monthKey(for: boundaryDays.utc)
         moveCalendar(counterexampleCalendar, from: previousMonth, to: counterexampleBoundaryMonth)
         counterexampleCalendar.day(boundaryDays.utc).tapWhenReady()
@@ -262,12 +294,11 @@ final class FixtureDatasetUITests: UITestCase {
             requiredBoundaryCount,
             "UTC/local selected day states must differ, not merely be non-empty"
         )
-        captureStep("timezone-boundary-counterexample", app: counterexampleApp)
+        generatedEvidence.append(try captureEvidence(
+            evidence.counterexamples[1], group: "counterexamples", app: counterexampleApp
+        ))
 
-        assertEvidenceGroupsAreDisjoint(
-            requiredLabels: ReviewCalendarEvidence.requiredLabels,
-            counterexampleLabels: ReviewCalendarEvidence.counterexampleLabels
-        )
+        assertGeneratedEvidence(evidence, records: generatedEvidence)
     }
 
     private struct DayBucket {
@@ -440,12 +471,70 @@ final class FixtureDatasetUITests: UITestCase {
         )
     }
 
-    private func assertEvidenceGroupsAreDisjoint(
-        requiredLabels: [String],
-        counterexampleLabels: [String]
+    private func assertClockProvenance(in app: XCUIApplication) {
+        let canonical = app.descendants(matching: .any)[ReviewCalendarClockSelector.canonical]
+        let live = app.descendants(matching: .any)[ReviewCalendarClockSelector.live]
+        XCTAssertEqual(canonical.count, 1, "UI World must expose canonical history-plan clock provenance")
+        XCTAssertEqual(live.count, 0, "UI World must not expose live Date() clock provenance")
+    }
+
+    private func captureEvidence(
+        _ row: DatasetDocument.EvidenceAsset,
+        group: String,
+        app: XCUIApplication
+    ) throws -> DatasetDocument.GeneratedEvidence {
+        XCTAssertEqual(row.assetIDs.count, 1, "evidence row must declare one logical asset ID")
+        captureStep(row.stepLabel, app: app)
+
+        guard let rawDirectory = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
+              !rawDirectory.isEmpty
+        else {
+            XCTFail("KG_UI_TEST_SCREENSHOT_DIR is required for generated evidence metadata")
+            throw NSError(domain: "P9Evidence", code: 1)
+        }
+        let directory = URL(fileURLWithPath: rawDirectory)
+        let safeLabel = row.stepLabel
+            .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let artifacts = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ))?.filter {
+            $0.pathExtension == "png" &&
+            $0.deletingPathExtension().lastPathComponent.hasSuffix("-\(safeLabel)")
+        } ?? []
+        let artifact = try XCTUnwrap(
+            artifacts.sorted { $0.lastPathComponent < $1.lastPathComponent }.last,
+            "exactly one generated screenshot is required for \(row.stepLabel)"
+        )
+        XCTAssertEqual(artifacts.count, 1, "duplicate generated screenshot artifacts must fail")
+        let inode = try XCTUnwrap(fileNumber(artifact), "generated screenshot must expose its actual inode")
+        return DatasetDocument.GeneratedEvidence(
+            fixtureID: row.fixtureID,
+            stepLabel: row.stepLabel,
+            manifestAssetID: row.assetIDs[0],
+            assetID: artifact.deletingPathExtension().lastPathComponent,
+            artifactPath: artifact.path,
+            inode: inode,
+            group: group
+        )
+    }
+
+    private func assertGeneratedEvidence(
+        _ evidence: DatasetDocument.EvidenceGroups,
+        records: [DatasetDocument.GeneratedEvidence]
     ) {
-        let requiredLabelSet = Set(requiredLabels)
-        let counterexampleLabelSet = Set(counterexampleLabels)
+        let allRows = evidence.required + evidence.counterexamples
+        XCTAssertEqual(records.count, allRows.count, "all manifest evidence rows must bind generated artifacts")
+        XCTAssertEqual(Set(records.map(\.assetID)).count, records.count, "generated asset IDs must be unique")
+        XCTAssertEqual(Set(records.map(\.inode)).count, records.count, "generated screenshot inodes must be unique")
+        let required = Set(records.filter { $0.group == "required" }.map(\.assetID))
+        let counterexamples = Set(records.filter { $0.group == "counterexamples" }.map(\.assetID))
+        XCTAssertTrue(required.isDisjoint(with: counterexamples), "required/counterexample artifacts must be disjoint")
+
+        let requiredLabelSet = Set(ReviewCalendarEvidence.requiredLabels)
+        let counterexampleLabelSet = Set(ReviewCalendarEvidence.counterexampleLabels)
         XCTAssertEqual(
             requiredLabelSet.intersection(counterexampleLabelSet),
             [],
@@ -453,12 +542,12 @@ final class FixtureDatasetUITests: UITestCase {
         )
         XCTAssertEqual(
             requiredLabelSet.count,
-            requiredLabels.count,
+            ReviewCalendarEvidence.requiredLabels.count,
             "required step labels must be unique"
         )
         XCTAssertEqual(
             counterexampleLabelSet.count,
-            counterexampleLabels.count,
+            ReviewCalendarEvidence.counterexampleLabels.count,
             "counterexample step labels must be unique"
         )
 
@@ -470,48 +559,19 @@ final class FixtureDatasetUITests: UITestCase {
         }
 
         let directory = URL(fileURLWithPath: rawDirectory)
-        let pngs = (try? FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ))?.filter { $0.pathExtension == "png" } ?? []
-
-        func assets(for label: String) -> [URL] {
-            pngs.filter { $0.deletingPathExtension().lastPathComponent.hasSuffix("-\(label)") }
+        let manifestURL = directory.appendingPathComponent("p9_review_calendar_evidence.json")
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(DatasetDocument.GeneratedEvidenceFile(
+                schema: "kg.p9.review_calendar.evidence.v1",
+                records: records
+            ))
+                .write(to: manifestURL)
+        } catch {
+            XCTFail("failed to write actual generated evidence metadata: \(error)")
         }
 
-        let requiredAssets = requiredLabels.flatMap { assets(for: $0) }
-        let counterexampleAssets = counterexampleLabels.flatMap { assets(for: $0) }
-        XCTAssertEqual(
-            Set(requiredAssets.map { $0.deletingPathExtension().lastPathComponent })
-                .intersection(Set(counterexampleAssets.map { $0.deletingPathExtension().lastPathComponent })),
-            [],
-            "required/counterexample asset IDs must be disjoint"
-        )
-        XCTAssertEqual(requiredAssets.count, requiredLabels.count, "every required step must have one asset")
-        XCTAssertEqual(
-            counterexampleAssets.count,
-            counterexampleLabels.count,
-            "every counterexample step must have one asset"
-        )
-
-        let requiredInodes = requiredAssets.compactMap { fileNumber($0) }
-        let counterexampleInodes = counterexampleAssets.compactMap { fileNumber($0) }
-        XCTAssertEqual(
-            requiredInodes.count,
-            requiredAssets.count,
-            "every required asset must expose a filesystem inode"
-        )
-        XCTAssertEqual(
-            counterexampleInodes.count,
-            counterexampleAssets.count,
-            "every counterexample asset must expose a filesystem inode"
-        )
-        XCTAssertEqual(
-            Set(requiredInodes).intersection(Set(counterexampleInodes)),
-            [],
-            "required/counterexample asset inodes must be disjoint"
-        )
     }
 
     private func fileNumber(_ url: URL) -> UInt64? {

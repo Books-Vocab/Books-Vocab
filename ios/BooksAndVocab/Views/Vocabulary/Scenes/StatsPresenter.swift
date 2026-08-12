@@ -55,12 +55,12 @@ struct StatsPresenter: View {
     /// production; the DEBUG catalog init disables it and injects links
     /// directly (mirrors `KnowledgeGraphView`'s DEBUG entry point).
     private let shouldLoadGraphData: Bool
-    private let injectedReviewClock: ReviewCalendarClock?
+    private let injectedReviewClock: StatsProjectionClock?
 
     init(
         filter: NotebookFilter = NotebookFilter(),
         initialSummary: StatsPresentation.Summary? = nil,
-        reviewClock: ReviewCalendarClock? = nil
+        reviewClock: StatsProjectionClock? = nil
     ) {
         self.filter = filter
         self.shouldLoadGraphData = true
@@ -82,7 +82,7 @@ struct StatsPresenter: View {
         initialSummary: StatsPresentation.Summary? = nil,
         initialGraphLinks: [KGGraphLink],
         shouldLoadGraphData: Bool,
-        reviewClock: ReviewCalendarClock? = nil
+        reviewClock: StatsProjectionClock? = nil
     ) {
         self.filter = filter
         self.shouldLoadGraphData = shouldLoadGraphData
@@ -183,8 +183,8 @@ struct StatsPresenter: View {
         )
     }
 
-    private var reviewClock: ReviewCalendarClock {
-        injectedReviewClock ?? ReviewCalendarClock.live(settings: reviewSettingsStore.settings)
+    private var reviewClock: StatsProjectionClock {
+        injectedReviewClock ?? StatsProjectionClock.uiWorldOrLive(settings: reviewSettingsStore.settings)
     }
 
     private func loadGraphLinks() async {
