@@ -403,16 +403,19 @@ struct ReviewCardView: View {
         let layout = reviewCardLayout(for: currentCard, face: .back, availableHeight: backAvailableHeight)
         let maxHeight = max(backAvailableHeight, 1)
         return Group {
-            if layout.requiresScrollFallback {
-                ScrollView(.vertical) { answerContent(currentCard, plan: plan, layout: layout) }
-                    .frame(maxHeight: maxHeight)
-            } else {
-                ViewThatFits(in: .vertical) {
+            switch layout.backPresentation {
+            case .natural:
+                answerContent(currentCard, plan: plan, layout: layout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, maxHeight: maxHeight, alignment: .topLeading)
+                    .accessibilityIdentifier("todayReview.card.back.content.natural")
+            case .scroll:
+                ScrollView(.vertical) {
                     answerContent(currentCard, plan: plan, layout: layout)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ScrollView(.vertical) { answerContent(currentCard, plan: plan, layout: layout) }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .frame(maxHeight: maxHeight)
+                .frame(maxWidth: .infinity, maxHeight: maxHeight, alignment: .topLeading)
+                .accessibilityIdentifier("todayReview.card.back.content.scroll")
             }
         }
     }
@@ -537,6 +540,7 @@ struct ReviewCardView: View {
                         level: layout.policy(for: .field(field)).measurementLevel
                     )
                 }
+                .accessibilityIdentifier("todayReview.card.back.field.\(field.rawValue)")
         }
     }
 
@@ -679,6 +683,7 @@ struct ReviewCardView: View {
             measurements: measurements,
             viewportHeight: availableHeight,
             minimumHeight: face == .front ? 0 : answerCardHeight,
+            preset: profile.preset(for: currentCard.card.reviewMode),
             columns: columns
         ))
     }

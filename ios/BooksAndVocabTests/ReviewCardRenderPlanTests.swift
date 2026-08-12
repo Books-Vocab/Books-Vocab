@@ -171,7 +171,10 @@ struct ReviewCardRenderPlanTests {
 struct ReviewCardLayoutSolverTests {
     private let fields: [ReviewCardField] = [.example, .explanation, .collocations, .graphLinks]
 
-    private func input(height: CGFloat) -> ReviewCardLayoutSolver.Input {
+    private func input(
+        height: CGFloat,
+        preset: ReviewCardLayoutPreset = .compact
+    ) -> ReviewCardLayoutSolver.Input {
         .init(
             fields: fields,
             measurements: [
@@ -185,7 +188,8 @@ struct ReviewCardLayoutSolverTests {
             chromeHeight: 0,
             minimumHeight: 80,
             sectionSpacing: 0,
-            compactSectionSpacing: 0
+            compactSectionSpacing: 0,
+            preset: preset
         )
     }
 
@@ -211,6 +215,104 @@ struct ReviewCardLayoutSolverTests {
         #expect(graphSummary.graphLinkPresentation == .summary)
         #expect(graphSummary.height == 20)
         #expect(ReviewCardLayoutSolver.solve(input(height: 220)).usesCompactSpacing)
+    }
+
+    @Test func standard_overflow_preserves_full_fields_and_exposes_scroll() {
+        let result = ReviewCardLayoutSolver.solve(input(height: 300, preset: .standard))
+
+        #expect(result.backPresentation == .scroll)
+        #expect(!result.usesCompactSpacing)
+        #expect(result.policy(for: .example).exampleRadius == nil)
+        #expect(result.policy(for: .explanation).lineLimit == nil)
+        #expect(result.policy(for: .collocations).lineLimit == nil)
+        #expect(!result.policy(for: .collocations).summarizesOverflow)
+        #expect(result.policy(for: .graphLinks).graphLinkPresentation == .twoPerGroup)
+        #expect(!result.policy(for: .graphLinks).summarizesOverflow)
+    }
+
+    @Test func standard_fit_uses_the_natural_presentation_contract() {
+        let result = ReviewCardLayoutSolver.solve(input(height: 500, preset: .standard))
+
+        #expect(result.backPresentation == .natural)
+    }
+
+    @Test func standard_full_profile_selector_keeps_every_back_payload_field() {
+        let profile = ReviewCardLayoutProfile(recognition: .standard, production: .standard)
+        let plan = ReviewCardRenderPlan.make(
+            profile: profile,
+            mode: .recognition,
+            availability: .init(
+                partOfSpeech: true,
+                difficultyTier: true,
+                example: true,
+                explanation: true,
+                collocations: true,
+                graphLinks: true
+            )
+        )
+
+        #expect(plan.back.fields == [.difficultyTier, .graphLinks, .example, .explanation, .collocations])
+        #expect(plan.back.rows.contains(.field(.graphLinks)))
+        #expect(plan.back.rows.contains(.field(.example)))
+        #expect(plan.back.rows.contains(.field(.explanation)))
+        #expect(plan.back.rows.contains(.field(.collocations)))
+    }
+
+    @Test func compact_profile_is_the_only_summary_contract() {
+        let standard = ReviewCardLayoutSolver.solve(input(height: 260, preset: .standard))
+        let compact = ReviewCardLayoutSolver.solve(input(height: 260, preset: .compact))
+
+        #expect(standard.backPresentation == .scroll)
+        #expect(standard.policy(for: .graphLinks).graphLinkPresentation == .twoPerGroup)
+        #expect(!standard.policy(for: .collocations).summarizesOverflow)
+        #expect(compact.policy(for: .graphLinks).graphLinkPresentation == .summary)
+        #expect(compact.policy(for: .graphLinks).summarizesOverflow)
+    }
+
+    @Test func standard_small_viewport_selector_keeps_full_payload_on_scroll_path() {
+        let result = ReviewCardLayoutSolver.solve(input(height: 40, preset: .standard))
+
+        #expect(result.backPresentation == .scroll)
+        #expect(result.cardHeight == 80)
+        #expect(result.policy(for: .example).isVisible)
+        #expect(result.policy(for: .explanation).isVisible)
+        #expect(result.policy(for: .collocations).isVisible)
+        #expect(result.policy(for: .graphLinks).isVisible)
+        #expect(result.policy(for: .example).exampleRadius == nil)
+        #expect(result.policy(for: .explanation).lineLimit == nil)
+        #expect(result.policy(for: .collocations).lineLimit == nil)
+        #expect(result.policy(for: .graphLinks).graphLinkPresentation == .twoPerGroup)
+    }
+
+    @Test func large_text_measurements_keep_full_payload_on_scroll_path() {
+        let result = ReviewCardLayoutSolver.solve(.init(
+            fields: fields,
+            measurements: [
+                .core: .init(naturalHeight: 240, compactHeight: 80),
+                .example: .init(naturalHeight: 210, compactHeight: 44),
+                .explanation: .init(naturalHeight: 220, intermediateHeight: 100, compactHeight: 40),
+                .collocations: .init(naturalHeight: 200, intermediateHeight: 100, compactHeight: 40),
+                .graphLinks: .init(naturalHeight: 180, intermediateHeight: 90, compactHeight: 32)
+            ],
+            viewportHeight: 320,
+            chromeHeight: 0,
+            minimumHeight: 80,
+            sectionSpacing: 0,
+            compactSectionSpacing: 0,
+            preset: .standard
+        ))
+
+        #expect(result.backPresentation == .scroll)
+        #expect(result.policy(for: .core).height == 240)
+        #expect(result.policy(for: .example).height == 210)
+        #expect(result.policy(for: .explanation).height == 220)
+        #expect(result.policy(for: .collocations).height == 200)
+        #expect(result.policy(for: .graphLinks).height == 180)
+        #expect(result.policy(for: .explanation).lineLimit == nil)
+        #expect(result.policy(for: .collocations).lineLimit == nil)
+        #expect(result.policy(for: .graphLinks).graphLinkPresentation == .twoPerGroup)
+        #expect(!result.policy(for: .collocations).summarizesOverflow)
+        #expect(!result.policy(for: .graphLinks).summarizesOverflow)
     }
 
     @Test func one_line_collocation_tier_caps_visible_pills_to_one() {
@@ -260,7 +362,8 @@ struct ReviewCardLayoutSolverTests {
             chromeHeight: 0,
             minimumHeight: 0,
             sectionSpacing: 0,
-            compactSectionSpacing: 0
+            compactSectionSpacing: 0,
+            preset: .standard
         ))
 
         #expect(result.requiresScrollFallback)
@@ -280,7 +383,8 @@ struct ReviewCardLayoutSolverTests {
             chromeHeight: 0,
             minimumHeight: 0,
             sectionSpacing: 24,
-            compactSectionSpacing: 8
+            compactSectionSpacing: 8,
+            preset: .compact
         ))
 
         #expect(result.usesCompactSpacing)
@@ -322,7 +426,8 @@ struct ReviewCardLayoutSolverTests {
             chromeHeight: 0,
             minimumHeight: 0,
             sectionSpacing: 24,
-            compactSectionSpacing: 8
+            compactSectionSpacing: 8,
+            preset: .compact
         )
     }
 

@@ -30,6 +30,15 @@ struct ReviewCardLayoutGoldenTests {
             let drawsAnswerDivider: Divider
         }
 
+        struct BackOverflow: Codable, Equatable {
+            let presentation: String
+            let exampleRadius: Int?
+            let explanationLineLimit: Int?
+            let collocationLineLimit: Int?
+            let graphPresentation: String
+            let summarizesOverflow: Bool
+        }
+
         struct Viewport: Codable, Equatable {
             let containerHeight: Double
             let contentHeight: Double
@@ -43,6 +52,7 @@ struct ReviewCardLayoutGoldenTests {
 
         let modes: [String: Mode]
         let naturalTier: NaturalTier
+        let backOverflow: BackOverflow
         let viewport: Viewport
     }
 
@@ -102,6 +112,7 @@ struct ReviewCardLayoutGoldenTests {
         return Golden(
             modes: modes,
             naturalTier: naturalTier,
+            backOverflow: backOverflowSnapshot(),
             viewport: .init(
                 containerHeight: Double(viewport.containerHeight),
                 contentHeight: Double(viewport.contentHeight),
@@ -111,6 +122,44 @@ struct ReviewCardLayoutGoldenTests {
                     viewport.frontDrawnHeight(solvedContentHeight: 86, chrome: 78)
                 )
             )
+        )
+    }
+
+    private func backOverflowSnapshot() -> Golden.BackOverflow {
+        let result = ReviewCardLayoutSolver.solve(.init(
+            fields: [.example, .explanation, .collocations, .graphLinks],
+            measurements: [
+                .core: .init(naturalHeight: 100),
+                .example: .init(naturalHeight: 80, compactHeight: 40),
+                .explanation: .init(naturalHeight: 60, intermediateHeight: 40, compactHeight: 20),
+                .collocations: .init(naturalHeight: 60, intermediateHeight: 40, compactHeight: 20),
+                .graphLinks: .init(naturalHeight: 60, intermediateHeight: 40, compactHeight: 20)
+            ],
+            viewportHeight: 300,
+            chromeHeight: 0,
+            minimumHeight: 0,
+            sectionSpacing: 0,
+            compactSectionSpacing: 0,
+            preset: .standard
+        ))
+
+        let graphPresentation: String = switch result.policy(for: .graphLinks).graphLinkPresentation {
+        case .twoPerGroup: "twoPerGroup"
+        case .onePerGroup: "onePerGroup"
+        case .summary: "summary"
+        case nil: "none"
+        }
+        let example = result.policy(for: .example)
+        let explanation = result.policy(for: .explanation)
+        let collocations = result.policy(for: .collocations)
+        return .init(
+            presentation: result.backPresentation == .scroll ? "scroll" : "natural",
+            exampleRadius: example.exampleRadius,
+            explanationLineLimit: explanation.lineLimit,
+            collocationLineLimit: collocations.lineLimit,
+            graphPresentation: graphPresentation,
+            summarizesOverflow: collocations.summarizesOverflow
+                || result.policy(for: .graphLinks).summarizesOverflow
         )
     }
 

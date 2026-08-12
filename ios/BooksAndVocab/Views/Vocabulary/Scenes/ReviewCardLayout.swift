@@ -283,6 +283,11 @@ enum ReviewCardExplanationContent {
 /// A value-only solver for the active card face. View code supplies its natural and
 /// compact measurements; no state is retained and each section is visited at most once.
 enum ReviewCardLayoutSolver {
+    enum BackPresentation: Equatable {
+        case natural
+        case scroll
+    }
+
     enum Section: Hashable {
         case core
         case field(ReviewCardField)
@@ -323,6 +328,10 @@ enum ReviewCardLayoutSolver {
         var dividerCount: Int = 0
         /// 一條 hairline 的高度（`AppMetrics.dividerThin`）。
         var dividerHeight: CGFloat = 0
+        /// Standard cards preserve every selected field and use scrolling when
+        /// natural content exceeds the viewport. Only compact cards may enter
+        /// the summary ladder.
+        var preset: ReviewCardLayoutPreset = .standard
     }
 
     enum GraphLinkPresentation: Equatable { case twoPerGroup, onePerGroup, summary }
@@ -381,6 +390,13 @@ enum ReviewCardLayoutSolver {
         let usesCompactSpacing: Bool
         let requiresScrollFallback: Bool
 
+        /// Explicit contract consumed by the back renderer: a fitting natural
+        /// layout is top-anchored; an overfull layout gets a top-anchored scroll
+        /// path without discarding standard-profile fields.
+        var backPresentation: BackPresentation {
+            requiresScrollFallback ? .scroll : .natural
+        }
+
         func policy(for section: Section) -> Policy {
             policies[section] ?? .init(height: 0)
         }
@@ -433,45 +449,49 @@ enum ReviewCardLayoutSolver {
             policies[section] = policy
         }
 
-        // Fixed priority: example → explanation → collocations → graph twice → padding.
-        if totalHeight() > available, var policy = policies[.example] {
-            policy.exampleRadius = 3
-            policies[.example] = policy
-            compact(.example)
+        if input.preset == .compact {
+            // Fixed priority: example → explanation → collocations → graph twice → padding.
+            if totalHeight() > available, var policy = policies[.example] {
+                policy.exampleRadius = 3
+                policies[.example] = policy
+                compact(.example)
+            }
+            if totalHeight() > available, var policy = policies[.explanation] {
+                policy.lineLimit = 2
+                policies[.explanation] = policy
+                intermediate(.explanation)
+            }
+            if totalHeight() > available, var policy = policies[.explanation] {
+                policy.lineLimit = 1
+                policies[.explanation] = policy
+                compact(.explanation)
+            }
+            if totalHeight() > available, var policy = policies[.collocations] {
+                policy.lineLimit = 2
+                policies[.collocations] = policy
+                intermediate(.collocations)
+            }
+            if totalHeight() > available, var policy = policies[.collocations] {
+                policy.lineLimit = 1
+                policy.summarizesOverflow = true
+                policies[.collocations] = policy
+                compact(.collocations)
+            }
+            if totalHeight() > available, var policy = policies[.graphLinks] {
+                policy.graphLinkPresentation = .onePerGroup
+                policies[.graphLinks] = policy
+                intermediate(.graphLinks)
+            }
+            if totalHeight() > available, var policy = policies[.graphLinks] {
+                policy.graphLinkPresentation = .summary
+                policy.summarizesOverflow = true
+                policies[.graphLinks] = policy
+                compact(.graphLinks)
+            }
         }
-        if totalHeight() > available, var policy = policies[.explanation] {
-            policy.lineLimit = 2
-            policies[.explanation] = policy
-            intermediate(.explanation)
+        if input.preset == .compact, totalHeight() > available {
+            compactSpacing = true
         }
-        if totalHeight() > available, var policy = policies[.explanation] {
-            policy.lineLimit = 1
-            policies[.explanation] = policy
-            compact(.explanation)
-        }
-        if totalHeight() > available, var policy = policies[.collocations] {
-            policy.lineLimit = 2
-            policies[.collocations] = policy
-            intermediate(.collocations)
-        }
-        if totalHeight() > available, var policy = policies[.collocations] {
-            policy.lineLimit = 1
-            policy.summarizesOverflow = true
-            policies[.collocations] = policy
-            compact(.collocations)
-        }
-        if totalHeight() > available, var policy = policies[.graphLinks] {
-            policy.graphLinkPresentation = .onePerGroup
-            policies[.graphLinks] = policy
-            intermediate(.graphLinks)
-        }
-        if totalHeight() > available, var policy = policies[.graphLinks] {
-            policy.graphLinkPresentation = .summary
-            policy.summarizesOverflow = true
-            policies[.graphLinks] = policy
-            compact(.graphLinks)
-        }
-        if totalHeight() > available { compactSpacing = true }
 
         let contentHeight = totalHeight()
         return Result(
@@ -587,23 +607,23 @@ extension ReviewCardLayoutSolver.Input {
         measurements: [ReviewCardLayoutSolver.Section: ReviewCardLayoutSolver.Measurement],
         viewportHeight: CGFloat,
         minimumHeight: CGFloat,
+        preset: ReviewCardLayoutPreset = .standard,
         columns: [[ReviewCardField]]? = nil
     ) {
-        self.init(
-            fields: fields,
-            measurements: measurements,
-            viewportHeight: viewportHeight,
-            chromeHeight: ReviewCardChrome.verticalInset(for: face),
-            minimumHeight: minimumHeight,
-            sectionSpacing: TodayReviewMetrics.foldSectionSpacing,
-            compactSectionSpacing: TodayReviewMetrics.foldSectionSpacingCompact,
-            // 渲染端把 block 欄位分成 core 之上／之下兩欄畫，每一欄各自記帳 hairline。
-            // 沒給 columns 就是單欄（測試用的任意幾何）。
-            dividerCount: ReviewCardLayoutSolver.fieldDividerCount(
-                face: face,
-                columns: columns ?? [fields]
-            ),
-            dividerHeight: AppMetrics.dividerThin
+        self.fields = fields
+        self.measurements = measurements
+        self.preset = preset
+        self.viewportHeight = viewportHeight
+        self.chromeHeight = ReviewCardChrome.verticalInset(for: face)
+        self.minimumHeight = minimumHeight
+        self.sectionSpacing = TodayReviewMetrics.foldSectionSpacing
+        self.compactSectionSpacing = TodayReviewMetrics.foldSectionSpacingCompact
+        // 渲染端把 block 欄位分成 core 之上／之下兩欄畫，每一欄各自記帳 hairline。
+        // 沒給 columns 就是單欄（測試用的任意幾何）。
+        self.dividerCount = ReviewCardLayoutSolver.fieldDividerCount(
+            face: face,
+            columns: columns ?? [fields]
         )
+        self.dividerHeight = AppMetrics.dividerThin
     }
 }
