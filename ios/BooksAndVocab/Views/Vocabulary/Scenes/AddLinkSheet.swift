@@ -138,85 +138,93 @@ struct AddLinkSheet: View {
                     .accessibilityIdentifier("addLink.dictionary.idle")
 
                 case .loading:
-                    AppLoadingStateCard(
-                        title: L10n.string("addLink.dictionaryLoading"),
-                        systemImage: "magnifyingglass",
-                        visualStyle: .vocab
-                    )
-                    .listRowBackground(Color.clear)
-                    .accessibilityIdentifier("addLink.dictionary.loading")
-
-                case .partial(_, _, let failure):
-                    VocabStateMessageCard(
-                        title: L10n.string("addLink.dictionarySection"),
-                        systemImage: "exclamationmark.triangle",
-                        description: failureMessage(failure)
-                    ) {
-                        Button(L10n.string("重試")) {
-                            coordinator.retrySearch(using: kgService)
-                        }
-                        .buttonStyle(.vocabAction(.neutral))
-                        .accessibilityIdentifier("addLink.dictionary.retry")
+                    ZStack(alignment: .topLeading) {
+                        AppLoadingStateCard(
+                            title: L10n.string("addLink.dictionaryLoading"),
+                            systemImage: "magnifyingglass",
+                            visualStyle: .vocab
+                        )
+                        dictionaryAccessibilityMarker("addLink.dictionary.loading")
                     }
                     .listRowBackground(Color.clear)
-                    .accessibilityIdentifier("addLink.dictionary.partial")
+
+                case .partial(_, _, let failure):
+                    ZStack(alignment: .topLeading) {
+                        VocabStateMessageCard(
+                            title: L10n.string("addLink.dictionarySection"),
+                            systemImage: "exclamationmark.triangle",
+                            description: failureMessage(failure)
+                        ) {
+                            Button(L10n.string("重試")) {
+                                coordinator.retrySearch(using: kgService)
+                            }
+                            .buttonStyle(.vocabAction(.neutral))
+                            .accessibilityIdentifier("addLink.dictionary.retry")
+                        }
+                        dictionaryAccessibilityMarker("addLink.dictionary.partial")
+                    }
+                    .listRowBackground(Color.clear)
 
                 case .success(_, let entry, let cacheStatus):
                     if let entry {
                         dictionaryResult(entry, cacheStatus: cacheStatus)
                     } else {
-                        VocabStateMessageCard(
-                            title: L10n.string("addLink.dictionaryEmpty"),
-                            systemImage: "text.book.closed"
-                        )
+                        ZStack(alignment: .topLeading) {
+                            VocabStateMessageCard(
+                                title: L10n.string("addLink.dictionaryEmpty"),
+                                systemImage: "text.book.closed"
+                            )
+                            dictionaryAccessibilityMarker("addLink.dictionary.empty")
+                        }
                         .listRowBackground(Color.clear)
-                        .accessibilityIdentifier("addLink.dictionary.empty")
                     }
 
                 case .error(_, let failure):
-                    VocabStateMessageCard(
-                        title: L10n.string("addLink.dictionarySection"),
-                        systemImage: "exclamationmark.triangle",
-                        description: failureMessage(failure)
-                    ) {
-                        Button(L10n.string("重試")) {
-                            coordinator.retrySearch(using: kgService)
+                    ZStack(alignment: .topLeading) {
+                        VocabStateMessageCard(
+                            title: L10n.string("addLink.dictionarySection"),
+                            systemImage: "exclamationmark.triangle",
+                            description: failureMessage(failure)
+                        ) {
+                            Button(L10n.string("重試")) {
+                                coordinator.retrySearch(using: kgService)
+                            }
+                            .buttonStyle(.vocabAction(.neutral))
+                            .accessibilityIdentifier("addLink.dictionary.retry")
                         }
-                        .buttonStyle(.vocabAction(.neutral))
-                        .accessibilityIdentifier("addLink.dictionary.retry")
+                        dictionaryAccessibilityMarker("addLink.dictionary.error")
                     }
                     .listRowBackground(Color.clear)
-                    .accessibilityIdentifier(
-                        "addLink.dictionary.error"
-                    )
 
                 case .offline:
-                    VocabStateMessageCard(
-                        title: L10n.string("addLink.dictionarySection"),
-                        systemImage: "exclamationmark.triangle",
-                        description: failureMessage(.offline)
-                    ) {
-                        Button(L10n.string("重試")) {
-                            coordinator.retrySearch(using: kgService)
+                    ZStack(alignment: .topLeading) {
+                        VocabStateMessageCard(
+                            title: L10n.string("addLink.dictionarySection"),
+                            systemImage: "exclamationmark.triangle",
+                            description: failureMessage(.offline)
+                        ) {
+                            Button(L10n.string("重試")) {
+                                coordinator.retrySearch(using: kgService)
+                            }
+                            .buttonStyle(.vocabAction(.neutral))
+                            .accessibilityIdentifier("addLink.dictionary.retry")
                         }
-                        .buttonStyle(.vocabAction(.neutral))
-                        .accessibilityIdentifier("addLink.dictionary.retry")
+                        dictionaryAccessibilityMarker("addLink.dictionary.offline")
                     }
                     .listRowBackground(Color.clear)
-                    .accessibilityIdentifier(
-                        "addLink.dictionary.offline"
-                    )
 
                 case .retry:
-                    VocabStateMessageCard(
-                        title: L10n.string("addLink.dictionaryLoading"),
-                        systemImage: "arrow.clockwise"
-                    ) {
-                        ProgressView()
-                            .controlSize(.small)
+                    ZStack(alignment: .topLeading) {
+                        VocabStateMessageCard(
+                            title: L10n.string("addLink.dictionaryLoading"),
+                            systemImage: "arrow.clockwise"
+                        ) {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        dictionaryAccessibilityMarker("addLink.dictionary.retrying")
                     }
                     .listRowBackground(Color.clear)
-                    .accessibilityIdentifier("addLink.dictionary.retrying")
                 }
             }
         }
@@ -249,7 +257,6 @@ struct AddLinkSheet: View {
                         .truncationMode(.tail)
                 }
             }
-            .accessibilityIdentifier("addLink.dictionary.result")
         } else {
             VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
                 ForEach(entry.senses) { sense in
@@ -266,6 +273,11 @@ struct AddLinkSheet: View {
                         .lineLimit(3)
                         .truncationMode(.tail)
                         .accessibilityIdentifier("addLink.sense.\(sense.id)")
+                        .accessibilityValue(
+                            coordinator.selectedSenseKey == sense.id
+                                ? L10n.string("a11y.toggle.on")
+                                : L10n.string("a11y.toggle.off")
+                        )
                     ForEach(sense.examples) { example in
                         Button {
                             coordinator.select(senseKey: sense.id, exampleKey: example.id)
@@ -324,8 +336,9 @@ struct AddLinkSheet: View {
                     )
                 }
             }
-            .accessibilityIdentifier("addLink.dictionary.result")
         }
+
+        dictionaryAccessibilityMarker("addLink.dictionary.result")
 
         VStack(alignment: .leading, spacing: AppSpacing.microGap) {
             if cacheStatus == "stale" {
@@ -350,6 +363,25 @@ struct AddLinkSheet: View {
         .font(appSkin.typography.caption)
         .foregroundStyle(appSkin.palette.tertiaryText)
         .accessibilityIdentifier("addLink.dictionary.provenance")
+        .accessibilityValue("\(entry.provider)|\(entry.attributionText)")
+
+        if let materialization = coordinator.dictionaryMaterialization {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityIdentifier(
+                    "addLink.dictionary.materialization.\(materialization.status)"
+                )
+                .accessibilityValue(
+                    [
+                        materialization.selectedSenseID,
+                        materialization.selectedExampleID,
+                        materialization.sourceFixtureID,
+                    ]
+                    .compactMap { $0 }
+                    .joined(separator: "|")
+                )
+        }
     }
 
     private func failureMessage(_ failure: DictionarySearchFailure) -> String {
@@ -360,6 +392,13 @@ struct AddLinkSheet: View {
         case .malformed: L10n.string("addLink.error.malformed")
         case .unavailable: L10n.string("addLink.error.unavailable")
         }
+    }
+
+    private func dictionaryAccessibilityMarker(_ identifier: String) -> some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement()
+            .accessibilityIdentifier(identifier)
     }
 
     private func selectEntry(_ entry: VocabularyEntry) {
@@ -383,6 +422,7 @@ struct AddLinkSheet: View {
             TextField(L10n.string("搜尋單字…"), text: $searchText)
                 .platformTextInputConfig()
                 .submitLabel(.search)
+                .accessibilityIdentifier("addLink.dictionary.searchField")
                 .onSubmit {
                     coordinator.submitSearch(query: searchText, using: kgService)
                 }

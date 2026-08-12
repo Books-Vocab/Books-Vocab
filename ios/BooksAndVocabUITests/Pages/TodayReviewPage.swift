@@ -83,6 +83,11 @@ struct TodayReviewPage {
         element("todayReview.feedback.forgot")
     }
 
+    /// Add-link entry point on the current card's graph-link section.
+    var addLinkButton: XCUIElement {
+        element("todayReview.card.addLink")
+    }
+
     // MARK: - Readers
 
     var progressText: String { progressLabel.label }

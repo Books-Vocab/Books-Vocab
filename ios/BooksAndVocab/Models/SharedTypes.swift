@@ -176,6 +176,24 @@ struct LexicalSense: Codable, Equatable, Identifiable {
         case examples, synonyms, antonyms
     }
 
+    init(
+        id: String,
+        partOfSpeech: String?,
+        definition: String,
+        translations: [String] = [],
+        examples: [LexicalExample] = [],
+        synonyms: [String] = [],
+        antonyms: [String] = []
+    ) {
+        self.id = id
+        self.partOfSpeech = partOfSpeech
+        self.definition = definition
+        self.translations = translations
+        self.examples = examples
+        self.synonyms = synonyms
+        self.antonyms = antonyms
+    }
+
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decodeIfPresent(String.self, forKey: .id)
@@ -280,6 +298,42 @@ struct LexicalEntry: Codable, Equatable, Identifiable {
         case fetched_at, truncated
     }
 
+    init(
+        provider: String,
+        dictionaryId: String,
+        entryKey: String,
+        schemaVersion: String,
+        word: String,
+        sourceLanguage: String,
+        targetLanguage: String?,
+        pronunciations: [String],
+        senses: [LexicalSense],
+        forms: [String],
+        sourceUrl: String,
+        licenseName: String,
+        licenseUrl: String,
+        attributionText: String,
+        fetchedAt: String,
+        truncated: Bool
+    ) {
+        self.provider = provider
+        self.dictionaryId = dictionaryId
+        self.entryKey = entryKey
+        self.schemaVersion = schemaVersion
+        self.word = word
+        self.sourceLanguage = sourceLanguage
+        self.targetLanguage = targetLanguage
+        self.pronunciations = pronunciations
+        self.senses = senses
+        self.forms = forms
+        self.sourceUrl = sourceUrl
+        self.licenseName = licenseName
+        self.licenseUrl = licenseUrl
+        self.attributionText = attributionText
+        self.fetchedAt = fetchedAt
+        self.truncated = truncated
+    }
+
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         provider = try values.decode(String.self, forKey: .provider)
@@ -358,9 +412,65 @@ struct DictionarySearchResponse: Codable, Equatable {
     let cacheStatus: String
 }
 
+struct DictionaryMaterializationSnapshot: Codable, Equatable {
+    let status: String
+    let selectedSenseID: String?
+    let selectedExampleID: String?
+    let sourceFixtureID: String
+
+    init(
+        status: String,
+        selectedSenseID: String?,
+        selectedExampleID: String?,
+        sourceFixtureID: String
+    ) {
+        self.status = status
+        self.selectedSenseID = selectedSenseID
+        self.selectedExampleID = selectedExampleID
+        self.sourceFixtureID = sourceFixtureID
+    }
+}
+
 struct DictionaryEntryResponse: Codable, Equatable {
     let entry: LexicalEntry
     let cacheStatus: String
+
+    /// Optional presentation metadata is populated only by the canonical UI
+    /// World adapter. Backend payloads remain compatible because the field is
+    /// decoded opportunistically and omitted by default.
+    let materialization: DictionaryMaterializationSnapshot?
+
+    init(
+        entry: LexicalEntry,
+        cacheStatus: String,
+        materialization: DictionaryMaterializationSnapshot? = nil
+    ) {
+        self.entry = entry
+        self.cacheStatus = cacheStatus
+        self.materialization = materialization
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case entry, cacheStatus, cache_status, materialization
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        entry = try values.decode(LexicalEntry.self, forKey: .entry)
+        cacheStatus = try values.decodeIfPresent(String.self, forKey: .cacheStatus)
+            ?? values.decode(String.self, forKey: .cache_status)
+        materialization = try values.decodeIfPresent(
+            DictionaryMaterializationSnapshot.self,
+            forKey: .materialization
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(entry, forKey: .entry)
+        try values.encode(cacheStatus, forKey: .cacheStatus)
+        try values.encodeIfPresent(materialization, forKey: .materialization)
+    }
 }
 
 struct KGDictionaryCardProjection: Decodable {

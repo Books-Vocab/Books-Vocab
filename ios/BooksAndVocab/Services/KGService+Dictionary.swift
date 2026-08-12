@@ -125,7 +125,16 @@ extension KGService {
     func searchDictionary(
         query: String, sourceLanguage: String = "en", targetLanguage: String = "zh-Hant"
     ) async throws -> DictionarySearchResponse {
-        try await authenticatedDecode(
+        #if DEBUG
+        if let fixture = fixtureDictionaryServiceIfAvailable() {
+            return try await fixture.searchDictionary(
+                query: query,
+                sourceLanguage: sourceLanguage,
+                targetLanguage: targetLanguage
+            )
+        }
+        #endif
+        return try await authenticatedDecode(
             DictionarySearchResponse.self,
             path: "api/dictionary/search",
             queryItems: [
@@ -140,13 +149,36 @@ extension KGService {
     func fetchDictionaryEntry(
         provider: String, entryKey: String, targetLanguage: String = "zh-Hant"
     ) async throws -> DictionaryEntryResponse {
-        try await authenticatedDecode(
+        #if DEBUG
+        if let fixture = fixtureDictionaryServiceIfAvailable() {
+            return try await fixture.fetchDictionaryEntry(
+                provider: provider,
+                entryKey: entryKey,
+                targetLanguage: targetLanguage
+            )
+        }
+        #endif
+        return try await authenticatedDecode(
             DictionaryEntryResponse.self,
             path: "api/dictionary/entries/\(provider)/\(entryKey)",
             queryItems: [URLQueryItem(name: "target_lang", value: targetLanguage)],
             retryPolicy: .none
         )
     }
+
+    #if DEBUG
+    private func fixtureDictionaryServiceIfAvailable() -> FixtureDictionaryServing? {
+        guard let dictionary = FixtureDatasetStore.scenarioContext()?.dictionary else {
+            return nil
+        }
+        if let fixtureDictionaryService {
+            return fixtureDictionaryService
+        }
+        let service = FixtureDictionaryServing(dictionary: dictionary)
+        fixtureDictionaryService = service
+        return service
+    }
+    #endif
 
     func fetchDictionaryCard(cardId: String) async throws -> KGDictionaryCardProjection {
         try await authenticatedDecode(
