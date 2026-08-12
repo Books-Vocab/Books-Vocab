@@ -10,12 +10,16 @@ import Testing
 /// matching its filename, and only key into fixture IDs that exist in the Swift
 /// registries.
 struct RepoFixtureDatasetsContractTests {
-    private static var datasetsDirectory: URL {
-        // …/ios/BooksAndVocabTests/RepoFixtureDatasetsContractTests.swift → repo root
+    private static var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // BooksAndVocabTests
             .deletingLastPathComponent() // ios
             .deletingLastPathComponent() // repo root
+    }
+
+    private static var datasetsDirectory: URL {
+        // …/ios/BooksAndVocabTests/RepoFixtureDatasetsContractTests.swift → repo root
+        Self.repoRoot
             .appendingPathComponent("ops/fixtures/ui_worlds", isDirectory: true)
     }
 
@@ -90,9 +94,10 @@ struct RepoFixtureDatasetsContractTests {
         // Canonical scenario context carries one clock, dictionary materialization,
         // surface contracts, and reusable Reader/Word Detail content.
         let scenario = try #require(document.scenarioContext, "generated demo must declare scenarioContext")
-        #expect(scenario.reviewClock?.now == "2026-06-15T23:59:59Z")
-        #expect(scenario.reviewClock?.timeZone == "UTC")
-        #expect(scenario.reviewClock?.frozenNow == nil)
+        let reviewClock = try #require(scenario.reviewClock, "generated demo must declare reviewClock")
+        let clock = try Self.requireCanonicalClock(reviewClock)
+        #expect(clock.provenance == ReviewCalendarClock.historyPlanSource)
+        #expect(clock.dayKey(for: clock.now) == reviewClock.anchorDay)
         let dictionary = try #require(scenario.dictionary, "canonical scenarioContext must declare dictionary")
         #expect(dictionary.lookup.count == 7)
         #expect(dictionary.materialization.status == "ready")
@@ -104,13 +109,6 @@ struct RepoFixtureDatasetsContractTests {
         )
         #expect(surfaceContracts["explore"]?.required.isEmpty == false)
         #expect(surfaceContracts["settings"]?.required.isEmpty == false)
-        // The same explicit clock is consumed by review calendar/stats; it is
-        // never reconstructed from wall-clock time in the consumer.
-        #expect(scenario.reviewClock?.now == "2026-06-15T23:59:59Z")
-        #expect(scenario.reviewClock?.frozenEpoch == 1_781_567_999)
-        #expect(scenario.reviewClock?.anchorDay == "2026-06-15")
-        #expect(scenario.reviewClock?.timeZone == "UTC")
-        #expect(scenario.reviewClock?.source == "history_plan.anchor_day")
         let passage = try #require(scenario.readerPassage, "scenarioContext must declare readerPassage")
         #expect(!passage.paragraphs.isEmpty)
         #expect(passage.activeWords == [passage.activeWord])
@@ -414,6 +412,92 @@ struct RepoFixtureDatasetsContractTests {
         #expect(throws: (any Error).self) {
             try FixtureDatasetStore.decode(data)
         }
+    }
+
+    @Test func emittedAndCommittedReviewCalendarSeedsMatchHistoryPlanGeometry() throws {
+        let generatedURL = Self.repoRoot
+            .appendingPathComponent("ops/demo/generated/ios_fixture_dataset.json")
+        let marketingURL = Self.datasetsDirectory.appendingPathComponent("marketing_demo.json")
+        let generated = try FixtureDatasetStore.decode(Data(contentsOf: generatedURL))
+        let marketing = try FixtureDatasetStore.decode(Data(contentsOf: marketingURL))
+        let generatedClock = try #require(generated.scenarioContext?.reviewClock)
+        let marketingClock = try #require(marketing.scenarioContext?.reviewClock)
+        let clock = try Self.requireCanonicalClock(generatedClock)
+        let dense = try #require(generated.vocabulary[UIWorldVocabularyFixtureID.reviewCalendarDense.rawValue])
+        let committedDense = try #require(marketing.vocabulary[UIWorldVocabularyFixtureID.reviewCalendarDense.rawValue])
+        let planData = try Data(contentsOf: Self.repoRoot
+            .appendingPathComponent("ops/demo/ui_world_seed/history_plan.json"))
+        let plan = try #require(try JSONSerialization.jsonObject(with: planData) as? [String: Any])
+        let eventHours = try #require(plan["event_utc_hours"] as? [Int])
+        let expectedCurrent = try #require(plan["current_streak_days"] as? Int)
+        let expectedLongest = try #require(plan["longest_streak_days"] as? Int)
+        let expectedDue = try #require(plan["due_at_anchor"] as? [String: Any])
+        let expectedPrimaryDue = try #require(expectedDue["primary"] as? Int)
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        #expect(generatedClock == marketingClock)
+        #expect(dense == committedDense)
+        #expect(!dense.reviewHistory.isEmpty)
+        #expect(dense.reviewHistory.allSatisfy { event in
+            let hour = utcCalendar.component(.hour, from: event.reviewedAt)
+            return eventHours[0] <= hour && hour <= eventHours[1]
+        }, "emitted dense history must use history_plan.event_utc_hours")
+
+        var dayCounts: [String: Int] = [:]
+        for event in dense.reviewHistory {
+            let key = clock.dayKey(for: event.reviewedAt)
+            dayCounts[key, default: 0] += 1
+        }
+        let anchor = try #require(generatedClock.anchorDay)
+        var current = 0
+        var cursor = try #require(Self.date(forDayKey: anchor, clock: clock))
+        while dayCounts[clock.dayKey(for: cursor), default: 0] > 0 {
+            current += 1
+            guard let previous = clock.calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
+        }
+        let sortedDates = dayCounts.keys.compactMap { Self.date(forDayKey: $0, clock: clock) }.sorted()
+        var longest = 0
+        var run = 0
+        if let first = sortedDates.first, let last = sortedDates.last {
+            var day = first
+            while day <= last {
+                if dayCounts[clock.dayKey(for: day), default: 0] > 0 {
+                    run += 1
+                    longest = max(longest, run)
+                } else {
+                    run = 0
+                }
+                guard let next = clock.calendar.date(byAdding: .day, value: 1, to: day) else { break }
+                day = next
+            }
+        }
+        #expect(current == expectedCurrent, "emitted current streak must equal history_plan")
+        #expect(longest == expectedLongest, "emitted longest streak must equal history_plan")
+
+        let dueToday = dense.entries.filter { entry in
+            guard let next = entry.nextReviewAt else { return false }
+            return clock.dayKey(for: next) <= anchor
+        }.count
+        #expect(dueToday == expectedPrimaryDue, "emitted UI due count must equal history_plan.primary")
+    }
+
+    private static func requireCanonicalClock(_ seed: FixtureReviewClockSeed) throws -> ReviewCalendarClock {
+        try #require(seed.now)
+        try #require(seed.frozenEpoch)
+        try #require(seed.anchorDay)
+        try #require(seed.timeZone)
+        try #require(seed.source)
+        return ReviewCalendarClock.fromFixture(seed, fixtureID: "repo fixture contract")
+    }
+
+    private static func date(forDayKey key: String, clock: ReviewCalendarClock) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return clock.calendar.date(from: DateComponents(
+            year: parts[0], month: parts[1], day: parts[2]
+        ))
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {

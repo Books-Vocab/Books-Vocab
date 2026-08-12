@@ -115,36 +115,4 @@ enum StatsPresentation {
         )
     }
 
-    /// Compatibility seam for callers that already own a concrete reference
-    /// date. New production code should pass the complete clock so timezone
-    /// and date projection share one context.
-    static func buildSummary(
-        from entries: [VocabularyEntry],
-        reviewRecords: [ReviewRecord],
-        forecastDays: Int = 14,
-        now: Date
-    ) -> Summary {
-        buildSummary(
-            from: entries,
-            reviewRecords: reviewRecords,
-            forecastDays: forecastDays,
-            clock: ReviewCalendarClock(now: now, timeZone: .current)
-        )
-    }
-
-    /// Legacy convenience for tests and previews. The live source is still
-    /// centralized in `ReviewCalendarClock`, rather than hidden in this
-    /// projection layer.
-    static func buildSummary(
-        from entries: [VocabularyEntry],
-        reviewRecords: [ReviewRecord],
-        forecastDays: Int = 14
-    ) -> Summary {
-        buildSummary(
-            from: entries,
-            reviewRecords: reviewRecords,
-            forecastDays: forecastDays,
-            clock: .live()
-        )
-    }
 }

@@ -17,26 +17,42 @@ import Testing
 ///  - the `isSummaryEmpty` invariant that drives the scene's `.empty` phase
 ///  - boundary inputs: empty data, single record
 ///
-/// All dates are built relative to `Date()` because `buildSummary` formats
-/// with `Calendar.current` / `AppDateFormatters.dayKey` in the device time
-/// zone — hard-coded calendar dates would be flaky across zones.
+/// All dates are built relative to the review clock decoded from the committed
+/// generated UI World. The projection must never silently switch to the host
+/// wall clock or a hand-written epoch.
 struct StatsPresenterTests {
 
     // MARK: - Helpers
 
-    private static let calendar = Calendar.current
+    fileprivate static let canonicalClock: ReviewCalendarClock = {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repo root
+        let url = root.appendingPathComponent("ops/demo/generated/ios_fixture_dataset.json")
+        let data = try! Data(contentsOf: url)
+        let document = try! FixtureDatasetStore.decode(data)
+        let seed = document.scenarioContext!.reviewClock!
+        return ReviewCalendarClock.fromFixture(seed, fixtureID: "StatsPresenterTests")
+    }()
+
+    private static let calendar = canonicalClock.calendar
 
     /// A date `offset` days from now (negative = past), normalized to noon so
     /// `+12h` / `-12h` jitter inside `buildSummary` never crosses a day key.
     private func day(_ offset: Int) -> Date {
-        let base = Self.calendar.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+        let base = Self.calendar.date(
+            byAdding: .day,
+            value: offset,
+            to: Self.canonicalClock.now
+        ) ?? Self.canonicalClock.now
         return Self.calendar.date(
             bySettingHour: 12, minute: 0, second: 0, of: base
         ) ?? base
     }
 
     private func dayKey(_ offset: Int) -> String {
-        AppDateFormatters.dayKey.string(from: day(offset))
+        Self.canonicalClock.dayKey(for: day(offset))
     }
 
     /// A synced vocabulary entry whose `nextReviewAt` lands on `dueOffset`
@@ -62,7 +78,7 @@ struct StatsPresenterTests {
     // MARK: - Empty / boundary inputs
 
     @Test func emptyInput_producesAllZeroSummary() {
-        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: [])
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: [], clock: Self.canonicalClock)
 
         #expect(summary.totalCards == 0)
         #expect(summary.reviewedToday == 0)
@@ -76,7 +92,7 @@ struct StatsPresenterTests {
     /// drives the scene into its `.empty` phase. If `buildSummary` ever stopped
     /// producing this shape for empty input, the empty state would never show.
     @Test func emptyInput_satisfiesSceneEmptyInvariant() {
-        let s = StatsPresentation.buildSummary(from: [], reviewRecords: [])
+        let s = StatsPresentation.buildSummary(from: [], reviewRecords: [], clock: Self.canonicalClock)
         let isEmpty = s.totalCards == 0
             && s.activity.values.allSatisfy { $0 == 0 }
             && s.currentStreak == 0
@@ -85,7 +101,7 @@ struct StatsPresenterTests {
     }
 
     @Test func emptyInput_forecastStillHasDefaultDayCount() {
-        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: [])
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: [], clock: Self.canonicalClock)
         // forecastDays defaults to 14 — the forecast array is always fully
         // populated even with no data, so the chart never collapses.
         #expect(summary.forecast.count == 14)
@@ -107,7 +123,8 @@ struct StatsPresenterTests {
     @Test func singleCard_singleReview_countsAsOne() {
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 0)],
-            reviewRecords: [review(dayOffset: 0)]
+            reviewRecords: [review(dayOffset: 0)],
+            clock: Self.canonicalClock
         )
         #expect(summary.totalCards == 1)
         #expect(summary.reviewedToday == 1)
@@ -123,7 +140,8 @@ struct StatsPresenterTests {
         // syncStatus left at default 0 → not synced → excluded
         let summary = StatsPresentation.buildSummary(
             from: [pending, syncedEntry(dueOffset: 1)],
-            reviewRecords: []
+            reviewRecords: [],
+            clock: Self.canonicalClock
         )
         #expect(summary.totalCards == 1, "only synced entries contribute to totalCards")
     }
@@ -133,14 +151,15 @@ struct StatsPresenterTests {
         toDelete.actionType = "delete"
         let summary = StatsPresentation.buildSummary(
             from: [toDelete, syncedEntry(dueOffset: 2)],
-            reviewRecords: []
+            reviewRecords: [],
+            clock: Self.canonicalClock
         )
         #expect(summary.totalCards == 1, "synced entries pending deletion must not be counted")
     }
 
     @Test func totalCards_countsAllSyncedNonDeleteEntries() {
         let entries = (0..<5).map { syncedEntry(dueOffset: $0) }
-        let summary = StatsPresentation.buildSummary(from: entries, reviewRecords: [])
+        let summary = StatsPresentation.buildSummary(from: entries, reviewRecords: [], clock: Self.canonicalClock)
         #expect(summary.totalCards == 5)
     }
 
@@ -149,7 +168,8 @@ struct StatsPresenterTests {
     @Test func forecast_dueToday_countsTodayBucket() {
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 0), syncedEntry(dueOffset: 0)],
-            reviewRecords: []
+            reviewRecords: [],
+            clock: Self.canonicalClock
         )
         #expect(summary.dueToday == 2)
         #expect(summary.forecast.first?.count == 2)
@@ -159,7 +179,8 @@ struct StatsPresenterTests {
         // nextReviewAt in the past → key <= todayKey → folded into today's bucket
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: -3), syncedEntry(dueOffset: -10)],
-            reviewRecords: []
+            reviewRecords: [],
+            clock: Self.canonicalClock
         )
         #expect(summary.dueToday == 2, "overdue cards must roll forward into today, not vanish")
         #expect(summary.forecast.first?.count == 2)
@@ -169,7 +190,8 @@ struct StatsPresenterTests {
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 3)],
             reviewRecords: [],
-            forecastDays: 14
+            forecastDays: 14,
+            clock: Self.canonicalClock
         )
         let targetKey = dayKey(3)
         let bucket = summary.forecast.first { $0.id == targetKey }
@@ -183,7 +205,8 @@ struct StatsPresenterTests {
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 30)],
             reviewRecords: [],
-            forecastDays: 7
+            forecastDays: 7,
+            clock: Self.canonicalClock
         )
         #expect(summary.forecast.count == 7)
         #expect(summary.forecast.allSatisfy { $0.count == 0 })
@@ -193,7 +216,8 @@ struct StatsPresenterTests {
     @Test func forecast_respectsForecastDaysParameter() {
         for days in [7, 14, 30] {
             let summary = StatsPresentation.buildSummary(
-                from: [], reviewRecords: [], forecastDays: days
+                from: [], reviewRecords: [], forecastDays: days,
+                clock: Self.canonicalClock
             )
             #expect(summary.forecast.count == days, "forecast length must equal forecastDays=\(days)")
         }
@@ -201,7 +225,8 @@ struct StatsPresenterTests {
 
     @Test func forecast_firstTwoBucketsLabeledTodayAndTomorrow() {
         let summary = StatsPresentation.buildSummary(
-            from: [], reviewRecords: [], forecastDays: 14
+            from: [], reviewRecords: [], forecastDays: 14,
+            clock: Self.canonicalClock
         )
         #expect(summary.forecast[0].label == "今天".localized)
         #expect(summary.forecast[1].label == "明天".localized)
@@ -209,7 +234,8 @@ struct StatsPresenterTests {
 
     @Test func forecast_bucketIdsAreDistinctDayKeys() {
         let summary = StatsPresentation.buildSummary(
-            from: [], reviewRecords: [], forecastDays: 14
+            from: [], reviewRecords: [], forecastDays: 14,
+            clock: Self.canonicalClock
         )
         let ids = Set(summary.forecast.map(\.id))
         #expect(ids.count == 14, "each forecast bucket must have a unique day-key id")
@@ -225,7 +251,8 @@ struct StatsPresenterTests {
                 review(dayOffset: 0),
                 review(dayOffset: -1),
                 review(dayOffset: -5),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.reviewedToday == 2, "only records with today's dayKey count")
     }
@@ -239,7 +266,8 @@ struct StatsPresenterTests {
                 review(dayOffset: 0),
                 review(dayOffset: -1),
                 review(dayOffset: -2),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.currentStreak == 3)
         #expect(summary.longestStreak == 3)
@@ -253,7 +281,8 @@ struct StatsPresenterTests {
             reviewRecords: [
                 review(dayOffset: -1),
                 review(dayOffset: -2),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.currentStreak == 2, "today not yet reviewed must not reset an active streak")
     }
@@ -266,7 +295,8 @@ struct StatsPresenterTests {
                 review(dayOffset: 0),
                 review(dayOffset: -3),
                 review(dayOffset: -4),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.currentStreak == 1)
         #expect(summary.longestStreak == 2, "the older 2-day block is the longest run")
@@ -281,7 +311,8 @@ struct StatsPresenterTests {
                 review(dayOffset: -11),
                 review(dayOffset: -12),
                 review(dayOffset: -13),                     // old run: 4 days
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.currentStreak == 1)
         #expect(summary.longestStreak == 4)
@@ -294,29 +325,37 @@ struct StatsPresenterTests {
                 review(dayOffset: 0),
                 review(dayOffset: 0),
                 review(dayOffset: 0),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.currentStreak == 1, "a streak counts distinct days, not record volume")
         #expect(summary.reviewedToday == 3, "reviewedToday counts records, not days")
     }
 
-    // MARK: - Frozen clock (injected `now`)
+    // MARK: - Explicit clock propagation
     //
-    // ReviewActivityLog 的 streaks / reviewedToday / activity 過去內部取
-    // `Date()`，使 `buildSummary(now:)` 的凍結時鐘只凍到 forecast——catalog
-    // 快照的 streak / 今日複習卡因牆鐘漂移。這批測試釘住 `now` 全鏈注入。
+    // Every downstream query receives the same explicit clock. This keeps the
+    // test anchored to the canonical generated fixture instead of a wall clock.
 
-    @Test func reviewedToday_countsRelativeToInjectedNow() {
-        // anchor 遠離牆鐘「今天」→ 若實作偷用 Date()，這裡數不到任何紀錄。
+    @Test func reviewedToday_countsRelativeToInjectedClock() {
         let anchor = day(-400)
+        let clock = ReviewCalendarClock(
+            now: anchor,
+            timeZone: Self.canonicalClock.timeZone,
+            provenance: "test.explicit"
+        )
         let records = [ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)]
 
-        #expect(ReviewActivityLog.reviewedToday(records: records, now: anchor) == 1)
-        #expect(ReviewActivityLog.reviewedToday(records: records) == 0, "wall-clock default must not see a 400-day-old record")
+        #expect(ReviewActivityLog.reviewedToday(records: records, clock: clock) == 1)
     }
 
-    @Test func streaks_currentStreakAnchorsOnInjectedNow() {
+    @Test func streaks_currentStreakAnchorsOnInjectedClock() {
         let anchor = day(-400)
+        let clock = ReviewCalendarClock(
+            now: anchor,
+            timeZone: Self.canonicalClock.timeZone,
+            provenance: "test.explicit"
+        )
         let records = [
             ReviewRecord(word: "a", entryID: nil, feedback: 1, reviewedAt: anchor),
             ReviewRecord(
@@ -325,31 +364,34 @@ struct StatsPresenterTests {
             ),
         ]
 
-        let frozen = ReviewActivityLog.streaks(records: records, now: anchor)
+        let frozen = ReviewActivityLog.streaks(records: records, clock: clock)
         #expect(frozen.current == 2)
         #expect(frozen.longest == 2)
-
-        let wallClock = ReviewActivityLog.streaks(records: records)
-        #expect(wallClock.current == 0, "a 400-day-old run must not count as current against the wall clock")
-        #expect(wallClock.longest == 2, "longest streak is clock-independent")
     }
 
-    @Test func activity_cutoffAnchorsOnInjectedNow() {
+    @Test func activity_cutoffAnchorsOnInjectedClock() {
         let anchor = day(-400)
+        let clock = ReviewCalendarClock(
+            now: anchor,
+            timeZone: Self.canonicalClock.timeZone,
+            provenance: "test.explicit"
+        )
         let records = [ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)]
 
-        let frozen = ReviewActivityLog.activity(for: 180, records: records, now: anchor)
+        let frozen = ReviewActivityLog.activity(for: 180, records: records, clock: clock)
         #expect(frozen.values.reduce(0, +) == 1)
-
-        let wallClock = ReviewActivityLog.activity(for: 180, records: records)
-        #expect(wallClock.isEmpty, "a 400-day-old record is outside the wall-clock 180-day window")
     }
 
-    @Test func buildSummary_threadsNowIntoActivityLog() {
+    @Test func buildSummary_threadsClockIntoActivityLog() {
         let anchor = day(-400)
+        let clock = ReviewCalendarClock(
+            now: anchor,
+            timeZone: Self.canonicalClock.timeZone,
+            provenance: "test.explicit"
+        )
         let records = [ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)]
 
-        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records, now: anchor)
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records, clock: clock)
         #expect(summary.reviewedToday == 1)
         #expect(summary.currentStreak == 1)
         #expect(summary.activity.values.reduce(0, +) == 1)
@@ -364,7 +406,8 @@ struct StatsPresenterTests {
                 review(dayOffset: 0),
                 review(dayOffset: 0),
                 review(dayOffset: -1),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.activity[dayKey(0)] == 2)
         #expect(summary.activity[dayKey(-1)] == 1)
@@ -380,13 +423,14 @@ struct StatsPresenterTests {
                 review(dayOffset: 0),
                 review(dayOffset: -1),
                 review(dayOffset: -2),
-            ]
+            ],
+            clock: Self.canonicalClock
         )
         #expect(summary.heatmapThresholds == [1, 2, 3], "sparse data must use the simple fallback ramp")
     }
 
     @Test func heatmapThresholds_emptyInputUsesFallback() {
-        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: [])
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: [], clock: Self.canonicalClock)
         #expect(summary.heatmapThresholds == [1, 2, 3])
     }
 
@@ -400,7 +444,7 @@ struct StatsPresenterTests {
                 records.append(review(dayOffset: -dayOffset))
             }
         }
-        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records)
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records, clock: Self.canonicalClock)
         #expect(summary.heatmapThresholds == [3, 5, 7],
                 "with >= 4 non-zero days the ramp must come from p25/p50/p75 of the sorted counts")
     }
@@ -412,7 +456,7 @@ struct StatsPresenterTests {
         for (dayOffset, volume) in volumes.enumerated() {
             for _ in 0..<volume { records.append(review(dayOffset: -dayOffset)) }
         }
-        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records)
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records, clock: Self.canonicalClock)
         let t = summary.heatmapThresholds
         #expect(t.count == 3)
         #expect(t[0] <= t[1] && t[1] <= t[2], "percentile thresholds must be monotonically non-descending")
@@ -425,7 +469,8 @@ struct StatsPresenterTests {
         // scene resolves to `.content`.
         let s = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 0)],
-            reviewRecords: [review(dayOffset: 0)]
+            reviewRecords: [review(dayOffset: 0)],
+            clock: Self.canonicalClock
         )
         let isEmpty = s.totalCards == 0
             && s.activity.values.allSatisfy { $0 == 0 }
@@ -437,20 +482,25 @@ struct StatsPresenterTests {
 
 #if DEBUG && canImport(Playbook)
 /// Pins `StatsViewTime.anchor` — the catalog Stats View frozen "today" must be
-/// derived from the seed's latest review event (寫死日期會讓「複習預測/今日到期」
+/// derived from the canonical generated clock (寫死日期會讓「複習預測/今日到期」
 /// 在 seed 錨日移動後恆 0)。
 @Suite struct StatsViewSceneTimeTests {
     @Test func anchorDerivesNoonOfLatestReviewedAt() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        let latest = try #require(calendar.date(from: DateComponents(year: 2026, month: 7, day: 9, hour: 3, minute: 17)))
+        let latest = try #require(calendar.date(
+            byAdding: .minute,
+            value: -42,
+            to: StatsPresenterTests.canonicalClock.now
+        ))
+        let expectedDay = calendar.dateComponents([.year, .month, .day], from: latest)
 
         let anchor = StatsViewTime.anchor(latestReviewedAt: latest)
 
         let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
-        #expect(comps.year == 2026)
-        #expect(comps.month == 7)
-        #expect(comps.day == 9)
+        #expect(comps.year == expectedDay.year)
+        #expect(comps.month == expectedDay.month)
+        #expect(comps.day == expectedDay.day)
         #expect(comps.hour == 12)
         #expect(comps.minute == 0)
     }
