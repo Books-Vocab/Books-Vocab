@@ -90,6 +90,7 @@ enum UITestFixture: Equatable {
     case dictionaryP2Senses
     case explore(String)
     case vocabulary(String)
+    case notebookReviewCardFullContent
 
     var launchArgument: String {
         switch self {
@@ -137,6 +138,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:explore:\(id)"
         case .vocabulary(let id):
             return "-seedFixture:vocabulary:\(id)"
+        case .notebookReviewCardFullContent:
+            return "-seedFixture:notebook:reviewCardFullContent"
         }
     }
 }

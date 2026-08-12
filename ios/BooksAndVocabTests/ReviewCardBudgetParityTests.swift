@@ -92,7 +92,8 @@ struct ReviewCardViewportTests {
                 fields: [.example, .explanation],
                 measurements: measurements,
                 viewportHeight: height,
-                minimumHeight: 0
+                minimumHeight: 0,
+                preset: .compact
             ))
         }
 

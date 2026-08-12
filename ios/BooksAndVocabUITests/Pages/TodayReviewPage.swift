@@ -65,6 +65,24 @@ struct TodayReviewPage {
         element("todayReview.card.back")
     }
 
+    /// The renderer publishes exactly one of these two content selectors. They
+    /// make the natural-fit versus top-anchored-scroll contract assertable without
+    /// depending on localized text or screenshot pixel matching.
+    var backNaturalContent: XCUIElement {
+        element("todayReview.card.back.content.natural")
+    }
+
+    var backScrollContent: XCUIElement {
+        element("todayReview.card.back.content.scroll")
+    }
+
+    /// Field-level selectors are deliberately stable raw-value IDs. The standard
+    /// profile test uses them to prove example/explanation/collocations/graph links
+    /// remain mounted on the back face, while compact remains testable by absence.
+    func backField(_ rawValue: String) -> XCUIElement {
+        element("todayReview.card.back.field.\(rawValue)")
+    }
+
     /// The "tap to expand" zone below the card (front stage only). Its
     /// `frame.minY` is the top boundary of the region directly below the card
     /// region; `expandZone.minY − cardFront.maxY` is the visible gap between the

@@ -1,5 +1,11 @@
 import XCTest
 
+private enum ReviewCardVisualEvidenceStep {
+    static let optionalSectionsCounterexample = "optional-sections-counterexample"
+    static let smallViewportCounterexample = "small-viewport-counterexample"
+    static let largeTextCounterexample = "large-text-counterexample"
+}
+
 /// End-to-end contract for the review-card layout editor (Phase C).
 ///
 /// The signal for "the card re-laid out" is the front card's measured HEIGHT, not
@@ -68,7 +74,9 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         // buttons), so the rendered fields are not assertable from the outside —
         // the machine-checkable half of "the store reached the UI" is step 5's
         // derived Settings summary, which re-renders from the same store.
-        captureStep("card-after-switching-to-compact", app: app)
+        // P12 required/counterexample state: optional sections are intentionally
+        // absent under compact, with a dedicated screenshot identity.
+        captureStep(ReviewCardVisualEvidenceStep.optionalSectionsCounterexample, app: app)
 
         // Layout only: the card must still be on its front, still card 1.
         review.cardBack.assertDoesNotExist()
@@ -130,7 +138,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     @MainActor
     func testGradingToolbarStaysOperableWithEveryFieldEnabled() throws {
         let app = launchIsolatedApp(
-            fixtures: [.notebookReviewDeckVaried],
+            fixtures: [.notebookReviewCardFullContent],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: "review"
         )
@@ -145,7 +153,9 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.selectPreset("production", index: ReviewCardLayoutEditorPage.PresetIndex.standard)
         editor.previewCard.assertExists()
         editor.done()
-        captureStep("both-directions-standard", app: app)
+        // P13 large-text counterexample: the full-content fixture gives the front
+        // a deliberately wrapping translation, distinct from the back screenshot.
+        captureStep(ReviewCardVisualEvidenceStep.largeTextCounterexample, app: app)
 
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
         XCTAssertTrue(
@@ -160,7 +170,20 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             return
         }
         RunLoop.current.run(until: Date().addingTimeInterval(0.6))
-        captureStep("all-fields-back", app: app)
+        // P12/P13 small-viewport counterexample: every standard field remains
+        // addressable, with natural-vs-scroll presentation made explicit.
+        captureStep(ReviewCardVisualEvidenceStep.smallViewportCounterexample, app: app)
+        XCTAssertTrue(
+            review.backNaturalContent.waitUntilExists(timeout: 2)
+                || review.backScrollContent.waitUntilExists(timeout: 2),
+            "背面必須明確發布 natural 或 scroll content selector"
+        )
+        for field in ["graphLinks", "example", "explanation", "collocations"] {
+            XCTAssertTrue(
+                review.backField(field).waitUntilExists(timeout: 2),
+                "正常 profile 背面必須保留 \(field) 欄位 selector"
+            )
+        }
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容背面下，底部評分按鈕必須仍可操作"

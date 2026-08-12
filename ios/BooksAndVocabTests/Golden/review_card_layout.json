@@ -55,6 +55,14 @@
       "withFields": true
     }
   },
+  "backOverflow": {
+    "presentation": "scroll",
+    "exampleRadius": null,
+    "explanationLineLimit": null,
+    "collocationLineLimit": null,
+    "graphPresentation": "twoPerGroup",
+    "summarizesOverflow": false
+  },
   "viewport": {
     "containerHeight": 600,
     "contentHeight": 584,
