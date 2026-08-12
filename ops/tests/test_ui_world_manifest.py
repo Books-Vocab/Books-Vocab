@@ -1221,6 +1221,33 @@ def test_validate_accepts_legacy_frozen_now_review_clock(tmp_path: Path):
     assert validate_fixture_dataset_file(path) == "marketing_demo"
 
 
+@pytest.mark.parametrize("missing_field", ["readerPassage", "wordDetail"])
+@pytest.mark.parametrize(
+    "review_clock",
+    [
+        None,
+        {
+            "frozenNow": "2026-06-15T23:59:59Z",
+            "frozenEpoch": 1781567999,
+            "anchorDay": "2026-06-15",
+            "source": "legacy.fixture",
+        },
+    ],
+)
+def test_validate_rejects_legacy_missing_content_even_with_compatible_clock(
+    tmp_path: Path, missing_field: str, review_clock,
+):
+    data = _marketing_demo()
+    context = _legacy_scenario_context(data, review_clock=review_clock)
+    context[missing_field] = None
+    data["scenarioContext"] = context
+    path = tmp_path / f"legacy_missing_{missing_field}.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=rf"scenarioContext\.{missing_field}.*object"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_null_review_clock_in_canonical_context(tmp_path: Path):
     data = _marketing_demo()
     data["scenarioContext"]["reviewClock"] = None
@@ -1384,6 +1411,30 @@ def test_validate_rejects_asset_id_mapped_to_multiple_asset_types(tmp_path: Path
     path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(UIWorldManifestError, match=r"asset ID .*one asset type"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_empty_asset_manifest_key(tmp_path: Path):
+    data = _marketing_demo()
+    empty_key_asset = dict(data["assets"]["images"]["notebook_cover_app_icon"])
+    empty_key_asset["installAs"] = "Assets/empty-key.png"
+    data["assets"]["images"]["   "] = empty_key_asset
+    path = tmp_path / "empty_asset_manifest_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"assets\.images\..*key 必須是非空字串"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_empty_inode_token(tmp_path: Path):
+    data = _marketing_demo()
+    contracts = _canonical_surface_contracts()
+    contracts["explore"]["required"][0]["assetInodes"] = ["inode:"]
+    data["scenarioContext"]["surfaceContracts"] = contracts
+    path = tmp_path / "empty_inode_token.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"surfaceContracts.*assetInodes.*inode:<assetID>"):
         validate_fixture_dataset_file(path)
 
 
