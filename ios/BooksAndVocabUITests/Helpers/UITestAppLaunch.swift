@@ -67,6 +67,18 @@ enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
             return "KG_UI_TEST_APP_ARGS_JSON is not valid UTF-8"
         case .invalidJSON(let underlying):
             return "KG_UI_TEST_APP_ARGS_JSON must be a JSON array of strings: \(underlying)"
+
+    /// Canonical production Reader progress IDs use typed state labels, not
+    /// fixture scenario labels such as `progress-zero`.
+    var readerProgressAccessibilityIdentifier: String {
+        switch self {
+        case .progressUnknown: return "reader.progress.unknown"
+        case .progressZero: return "reader.progress.zero"
+        case .progressMiddle: return "reader.progress.middle"
+        case .progressComplete: return "reader.progress.complete"
+        case .progressRestoreFailure: return "reader.progress.restore-failure"
+        case .loadingSlow, .loadingMissing, .loadingErrorRetry:
+            preconditionFailure("Loading scenarios do not have a progress-state selector")
         }
     }
 }

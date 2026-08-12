@@ -25,6 +25,23 @@ struct ReaderProgressSaverTests {
         _ = ReaderProgressSaver()
     }
 
+    @Test func readerLocationHandlerUsesInjectedRuntimeClock() throws {
+        let expectedDate = Date(timeIntervalSince1970: 123)
+        let book = Book(title: "Clocked Reader", author: "Test", fileName: "clocked.epub")
+        var sut = ReaderView(
+            book: book,
+            readerRuntimeClock: ReaderRuntimeClock(now: { expectedDate })
+        )
+        let locator = try #require(try? Locator(jsonString: """
+        {"href":"chapter1.html","type":"text/html","locations":{"totalProgression":0.42}}
+        """))
+
+        sut.handleLocationChange(locator)
+
+        #expect(book.dateLastRead == expectedDate)
+        #expect(book.progression == 0.42)
+    }
+
     /// Consecutive page-turns inside the debounce window collapse to a single
     /// save — no per-page synchronous I/O.
     @Test func consecutivePageTurnsCoalesceToSingleSave() {
