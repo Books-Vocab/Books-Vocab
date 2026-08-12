@@ -35,7 +35,7 @@ typealias SettingsSyncService = any BackgroundSyncing & HealthChecking & QuotaSe
     func resetLocalData(
         before: SettingsResetLifecycle.Snapshot,
         authManager: any AuthManaging,
-        kgService: any KGServing,
+        kgService: any LocalDataResetting,
         modelContext: ModelContext
     ) async
     func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator) async -> Bool
@@ -392,7 +392,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     func resetLocalData(
         before: SettingsResetLifecycle.Snapshot,
         authManager: any AuthManaging,
-        kgService: any KGServing,
+        kgService: any LocalDataResetting,
         modelContext: ModelContext
     ) async {
         guard authManager.isLoggedIn,
@@ -402,21 +402,28 @@ final class SettingsCoordinator: SettingsCoordinating {
         let pending = SettingsResetLifecycle.preReset(before: before).resetting()
         resetLifecycle = pending
 
-        await kgService.clearLocalData(
-            container: modelContext.container,
-            reason: "settings_reset_local_data"
-        )
-        ReviewSettingsStore.shared.update(.default)
-        TranslationLanguage.currentSource = .en
-        TranslationLanguage.currentTarget = .zhHant
-        AppLanguageStore.shared.setLanguage(.system)
-        AppAppearanceStore.shared.setAppearance(.system)
-        AutoSyncSettingsStore.shared.setEnabled(false)
-        AutoLinkSettingsStore.shared.setEnabled(true)
-        FeedbackSettingsStore.shared.setSoundFeedbackEnabled(false)
-        FeedbackSettingsStore.shared.setHapticFeedbackEnabled(true)
+        do {
+            try await kgService.clearLocalData(
+                container: modelContext.container,
+                reason: "settings_reset_local_data"
+            )
+            ReviewSettingsStore.shared.update(.default)
+            TranslationLanguage.currentSource = .en
+            TranslationLanguage.currentTarget = .zhHant
+            AppLanguageStore.shared.setLanguage(.system)
+            AppAppearanceStore.shared.setAppearance(.system)
+            AutoSyncSettingsStore.shared.setEnabled(false)
+            AutoLinkSettingsStore.shared.setEnabled(true)
+            FeedbackSettingsStore.shared.setSoundFeedbackEnabled(false)
+            FeedbackSettingsStore.shared.setHapticFeedbackEnabled(true)
 
-        resetLifecycle = pending.succeeded(message: L10n.string("本機資料與設定已重設。"))
+            resetLifecycle = pending.succeeded(message: L10n.string("本機資料與設定已重設。"))
+        } catch {
+            AppLog.kg.error("Settings local reset failed: \(error.localizedDescription)")
+            resetLifecycle = pending.failed(
+                message: L10n.format("本機資料重設失敗：%@", error.localizedDescription)
+            )
+        }
     }
 
     /// 回傳 true 代表已儲存（或免儲存的 guest 路徑），false 代表遠端 update 失敗。

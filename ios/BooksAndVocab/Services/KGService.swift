@@ -28,7 +28,7 @@ struct FixedConnectivityGate: KGConnectivityGating {
 
 /// Manages communication with the Knowledge Graph API server
 @Observable
-final class KGService: KGServing, LocalDataClearing {
+final class KGService: KGServing {
     enum SyncKeys {
         static let incrementalBoundary = "kg_last_incremental_sync"
         static let reviewEventPullBoundary = "kg_review_events_since"

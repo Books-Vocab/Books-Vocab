@@ -30,21 +30,11 @@ import Testing
         let previewKeys = SettingsFixtures.recipes(for: .preview).map(\.key.rawValue)
         let catalogKeys = SettingsFixtures.recipes(for: .catalog).map(\.key.rawValue)
 
-        #expect(previewKeys == [
-            "settings.logged_out",
-            "settings.account_logged_out_error",
-            "settings.preferences_auto_sync_off",
-            "settings.preferences_logged_out_no_sync",
-            "settings.subscribed_active",
-            "settings.account_long_identity",
-            "settings.long_content_counterexample",
-            "settings.reset_counterexample",
-            "settings.subscription_free",
-            "settings.subscription_loading",
-            "settings.deleting_account",
-            "settings.pricing_unavailable",
-            "settings.debug_backend_local",
-        ])
+        // The enum manifest is the only ordering contract. Do not duplicate the
+        // fixture list here: a new fixture must update one SoT, not this test.
+        let expectedKeys = SettingsFixtureID.allCases.map { $0.key.rawValue }
+        #expect(Set(expectedKeys).count == expectedKeys.count)
+        #expect(previewKeys == expectedKeys)
 
         #expect(catalogKeys == previewKeys)
     }
@@ -274,10 +264,95 @@ import Testing
             #expect(preReset.phase == .preReset)
             #expect(resetting.phase == .resetting)
             #expect(failed.phase == .failed)
+            #expect(failed.after == failed.before)
             #expect(failed.canRetry == true)
             #expect(retry.phase == .resetting)
             #expect(retry.before == failed.before)
         }
+    }
+
+    @Test @MainActor func p15ResetCoordinatorPropagatesFailureAndRetry() async throws {
+        let container = try ModelContainer(
+            for: Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let authManager = LoggedInAuthStub()
+        let resetService = ScriptedResetService(outcomes: [
+            .failure(ResetFailure()),
+            .success(())
+        ])
+        let coordinator = SettingsCoordinator()
+        let before = SettingsResetLifecycle.Snapshot(
+            localCardCount: 3,
+            hasCustomPreferences: true,
+            isLoggedIn: true
+        )
+
+        await coordinator.resetLocalData(
+            before: before,
+            authManager: authManager,
+            kgService: resetService,
+            modelContext: ModelContext(container)
+        )
+
+        let failed = try #require(coordinator.resetLifecycle)
+        #expect(failed.phase == .failed)
+        #expect(failed.before == before)
+        #expect(failed.after == before)
+        #expect(failed.canRetry == true)
+        #expect(resetService.callCount == 1)
+
+        await coordinator.resetLocalData(
+            before: before,
+            authManager: authManager,
+            kgService: resetService,
+            modelContext: ModelContext(container)
+        )
+
+        let succeeded = try #require(coordinator.resetLifecycle)
+        #expect(succeeded.phase == .succeeded)
+        #expect(succeeded.before == before)
+        #expect(succeeded.after == .init(localCardCount: 0, hasCustomPreferences: false, isLoggedIn: true))
+        #expect(succeeded.canRetry == false)
+        #expect(resetService.callCount == 2)
+    }
+
+    private struct ResetFailure: Error {}
+
+    private final class ScriptedResetService: LocalDataResetting, @unchecked Sendable {
+        private var outcomes: [Result<Void, Error>]
+        private(set) var callCount = 0
+
+        init(outcomes: [Result<Void, Error>]) {
+            self.outcomes = outcomes
+        }
+
+        func clearLocalData(container: ModelContainer, reason: String) async throws {
+            callCount += 1
+            try outcomes.removeFirst().get()
+        }
+    }
+
+    @MainActor
+    private final class LoggedInAuthStub: AuthManaging {
+        var isLoggedIn = true
+        var userId: String? = "settings-reset-test-user"
+        var token: String? = "settings-reset-test-token"
+        var displayName: String? = "Settings Reset Test"
+        var userEmail: String? = "settings-reset@test.invalid"
+        var avatarURL: URL?
+        var authError: String?
+        var isAuthenticating = false
+        var isDemoMode = false
+
+        func enterDemoMode(modelContainer: ModelContainer) {}
+        func exitDemoMode(modelContainer: ModelContainer) {}
+        func refreshSessionIfNeeded() {}
+        func login(userId: String, token: String) {}
+        func login(customToken: String) async {}
+        func logout(modelContainer: ModelContainer?, reason: String) {}
+        func loginWithGoogle(modelContainer: ModelContainer?) {}
+        func loginWithApple(modelContainer: ModelContainer?) {}
     }
 
     private static func jsonObject(_ data: Data) throws -> [String: Any] {

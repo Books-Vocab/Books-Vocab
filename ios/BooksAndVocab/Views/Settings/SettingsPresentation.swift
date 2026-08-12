@@ -432,7 +432,9 @@ struct SettingsResetLifecycle: Equatable {
         .init(
             phase: .failed,
             before: before,
-            after: after,
+            // A failed cleanup has not established the post-reset state. Keep
+            // the observed pre-reset values visible so a retry is honest.
+            after: before,
             terminalMessage: message,
             canRetry: true
         )
