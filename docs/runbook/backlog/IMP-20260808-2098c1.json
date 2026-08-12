@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "`ops/worktree_orchestrate.py open` 由 `--intent` 的自由文字猜分支型別（debug/* | feat/* | research/*），猜錯時 ledger 的分支名會與該工作樹實際在做的事不符。實測 2026-08-08 開第一批 dogfood 的 10 條工作樹：\n\n- `research/review-card-a11y` —— 修一個 high/correctness 的 a11y 迴歸（VoiceOver 走不到卡片背面），不是 research。intent 文字是「review card front merges into one accessibility element, breaking VoiceOver and UI queries」。\n- `debug/docs-impact-merge-base` —— 把 `f\"{base}..HEAD\"` 改成三點，是 feature/fix 不是 debug。\n- `debug/ui-fixture-lint` —— 新增一支 lint 腳本，是 feat。\n- `debug/tipkit-reset-order` —— 修 crash，debug 尚可接受但邊界模糊。\n\n10 條裡至少 3 條的型別與內容不符（30%）。\n\n影響是**帳本可讀性**，不是流程正確性：型別不參與任何 gate 判斷，cutover / resolve / 審計都不看它。所以這是 low。但 ledger 是「誰在做哪張票」的 SoT，而 `research/*` 在本 repo 的語意是「會產出 commit 的探索」——一條掛著 research 前綴的 bug fix 會讓讀帳本的人對它的成熟度做出錯誤預期。\n\n可能的方向（未裁決）：① 讓 `open` 收一個顯式 `--type {debug,feat,research}`，猜測只當預設 ② 票已經帶 `stream` / `category` / `severity`，`--backlog` 有給 id 時直接從票推型別，比猜自由文字準 ③ 接受它是雜訊、把型別從分支名拿掉。",
   "fix_site": "ops/worktree_orchestrate.py:233,ops/worktree_orchestrate.py:1905,ops/worktree_orchestrate.py:4604,ops/worktree_orchestrate.py:3298,ops/tests/test_worktree_orchestrate.py:111,.claude/skills/worktree-flow/SKILL.md:45",
+  "fixed_by": [
+    "023ca15e16f0ede5fca1e92de9a30766b4e685bc"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-2098c1",
@@ -16,6 +19,10 @@
   "scope": "分支型別解析、open parser/wiring、整合路徑測試與 worktree-flow 文件。",
   "severity": "low",
   "source": "dogfood batch 1：開 10 條工作樹時觀察到",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "acceptance rc0: preflight probe acceptance exact branch type override, parser choices, cmd_open forwarding, and tech_index contract"
 }
