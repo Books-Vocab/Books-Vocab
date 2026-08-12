@@ -327,6 +327,33 @@ enum FixtureDatasetStore {
         )
     }
 
+    /// Materialize the exact dataset bytes consumed by the app and return a
+    /// portable attestation for evidence consumers. This is intentionally
+    /// separate from the manifest's declared asset metadata: the proof is
+    /// generated after the app has loaded and written the fixture bytes.
+    static func materializeEvidenceFixture() throws -> UIWorldInstalledFixtureProof {
+        guard case let .data(data, _) = loadSource() else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [
+                NSLocalizedDescriptionKey: "UI World dataset is unavailable for evidence materialization",
+            ])
+        }
+        let document = try decode(data)
+        let relativePath = "Evidence/\(document.datasetID).json"
+        let destination = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(relativePath)
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: destination, options: .atomic)
+        return UIWorldInstalledFixtureProof(
+            datasetID: document.datasetID,
+            path: relativePath,
+            bytes: try byteSize(for: destination),
+            sha256: try sha256Hex(for: destination)
+        )
+    }
+
     private static func requireAsset(ref: String) throws -> UIWorldAsset {
         guard case let .loaded(document, _) = loadState() else {
             preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))

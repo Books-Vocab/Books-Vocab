@@ -61,6 +61,14 @@ struct ReviewCalendarPage {
         exactlyOne(app.staticTexts["reviewCalendar.populatedDaySummary"], "reviewCalendar.populatedDaySummary")
     }
 
+    var installedFixtureProof: XCUIElement {
+        exactlyOne(app.descendants(matching: .any)["reviewCalendar.installedFixture"], "reviewCalendar.installedFixture")
+    }
+
+    var runtimeGeometry: XCUIElement {
+        exactlyOne(app.descendants(matching: .any)["reviewCalendar.runtimeGeometry"], "reviewCalendar.runtimeGeometry")
+    }
+
     func day(_ key: String) -> XCUIElement {
         exactlyOne(app.buttons["reviewCalendar.day.\(key)"], "reviewCalendar.day.\(key)")
     }

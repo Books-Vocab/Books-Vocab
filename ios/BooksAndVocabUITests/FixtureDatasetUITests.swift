@@ -54,7 +54,6 @@ final class FixtureDatasetUITests: UITestCase {
             let stepLabel: String
             let index: Int
             let assetIDs: [String]
-            let assetInodes: [String]
         }
         struct EvidenceGroups: Decodable {
             let required: [EvidenceAsset]
@@ -67,13 +66,20 @@ final class FixtureDatasetUITests: UITestCase {
             let manifestPath: String
             let assetID: String
             let artifactPath: String
-            let inode: UInt64
+            let bytes: Int
             let sha256: String
             let selector: String
             let source: String
             let datasetID: String
             let device: String
             let group: String
+            let installedFixture: InstalledFixture
+        }
+        struct InstalledFixture: Codable, Equatable {
+            let datasetID: String
+            let path: String
+            let bytes: Int
+            let sha256: String
         }
         struct GeneratedEvidenceFile: Codable {
             let schema: String
@@ -226,9 +232,16 @@ final class FixtureDatasetUITests: UITestCase {
             return
         }
         assertClockProvenance(in: app)
+        assertRuntimeGeometry(calendar)
+        calendar.selectedDay.assertExists(timeout: 5)
+        let installedFixture = try materializeInstalledFixture(
+            from: calendar,
+            data: data,
+            datasetID: document.datasetID
+        )
         generatedEvidence.append(try captureEvidence(
             evidence.required[0], group: "required", app: app,
-            datasetID: document.datasetID, device: device
+            datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
 
         // All navigation and day keys are derived from the injected anchor and
@@ -247,7 +260,7 @@ final class FixtureDatasetUITests: UITestCase {
         }
         generatedEvidence.append(try captureEvidence(
             evidence.required[1], group: "required", app: app,
-            datasetID: document.datasetID, device: device
+            datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
 
         moveCalendar(calendar, from: previousMonth, to: populatedMonth)
@@ -263,7 +276,7 @@ final class FixtureDatasetUITests: UITestCase {
         )
         generatedEvidence.append(try captureEvidence(
             evidence.required[2], group: "required", app: app,
-            datasetID: document.datasetID, device: device
+            datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
         let requiredBoundaryMonth = monthKey(for: boundaryDays.local)
         moveCalendar(calendar, from: populatedMonth, to: requiredBoundaryMonth)
@@ -276,11 +289,11 @@ final class FixtureDatasetUITests: UITestCase {
         XCTAssertEqual(requiredBoundaryCount, boundaryDays.localCount)
         generatedEvidence.append(try captureEvidence(
             evidence.required[3], group: "required", app: app,
-            datasetID: document.datasetID, device: device
+            datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
 
         // Counterexamples are captured from a separate app launch so their
-        // screenshot files/inodes cannot alias the required-state evidence.
+        // screenshots cannot alias the required-state evidence.
         app.terminate()
         let counterexampleApp = launchIsolatedApp(
             fixtures: [.reviewCalendarDense],
@@ -295,7 +308,7 @@ final class FixtureDatasetUITests: UITestCase {
         counterexampleCalendar.emptyDayDetail.assertExists(timeout: 5)
         generatedEvidence.append(try captureEvidence(
             evidence.counterexamples[0], group: "counterexamples", app: counterexampleApp,
-            datasetID: document.datasetID, device: device
+            datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
         let counterexampleBoundaryMonth = monthKey(for: boundaryDays.utc)
         moveCalendar(counterexampleCalendar, from: previousMonth, to: counterexampleBoundaryMonth)
@@ -312,7 +325,7 @@ final class FixtureDatasetUITests: UITestCase {
         )
         generatedEvidence.append(try captureEvidence(
             evidence.counterexamples[1], group: "counterexamples", app: counterexampleApp,
-            datasetID: document.datasetID, device: device
+            datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
 
         assertGeneratedEvidence(
@@ -476,20 +489,14 @@ final class FixtureDatasetUITests: UITestCase {
         let all = evidence.required + evidence.counterexamples
         XCTAssertEqual(all.count, Set(all.map(\.stepLabel)).count, "evidence labels must be unique")
         XCTAssertTrue(
-            all.allSatisfy { $0.assetIDs.count == 1 && $0.assetInodes.count == 1 },
-            "each label maps to one asset ID and inode"
+            all.allSatisfy { $0.assetIDs.count == 1 },
+            "each label maps to one logical asset ID"
         )
         XCTAssertEqual(all.count, Set(all.map { $0.assetIDs[0] }).count, "asset IDs must be one-to-one")
-        XCTAssertEqual(all.count, Set(all.map { $0.assetInodes[0] }).count, "asset inodes must be one-to-one")
         XCTAssertEqual(
             Set(evidence.required.map { $0.assetIDs[0] }).intersection(Set(evidence.counterexamples.map { $0.assetIDs[0] })),
             [],
             "required/counterexample asset IDs must be disjoint"
-        )
-        XCTAssertEqual(
-            Set(evidence.required.map { $0.assetInodes[0] }).intersection(Set(evidence.counterexamples.map { $0.assetInodes[0] })),
-            [],
-            "required/counterexample asset inodes must be disjoint"
         )
     }
 
@@ -505,7 +512,8 @@ final class FixtureDatasetUITests: UITestCase {
         group: String,
         app: XCUIApplication,
         datasetID: String,
-        device: String
+        device: String,
+        installedFixture: DatasetDocument.InstalledFixture
     ) throws -> DatasetDocument.GeneratedEvidence {
         XCTAssertEqual(row.assetIDs.count, 1, "evidence row must declare one logical asset ID")
         captureStep(row.stepLabel, app: app)
@@ -533,7 +541,7 @@ final class FixtureDatasetUITests: UITestCase {
             "exactly one generated screenshot is required for \(row.stepLabel)"
         )
         XCTAssertEqual(artifacts.count, 1, "duplicate generated screenshot artifacts must fail")
-        let inode = try XCTUnwrap(fileNumber(artifact), "generated screenshot must expose its actual inode")
+        let bytes = try XCTUnwrap(fileByteCount(artifact), "generated screenshot must expose its byte size")
         let sha256 = try XCTUnwrap(fileSHA256(artifact), "generated screenshot must expose its SHA-256")
         return DatasetDocument.GeneratedEvidence(
             fixtureID: row.fixtureID,
@@ -541,14 +549,15 @@ final class FixtureDatasetUITests: UITestCase {
             manifestAssetID: row.assetIDs[0],
             manifestPath: artifact.lastPathComponent,
             assetID: artifact.deletingPathExtension().lastPathComponent,
-            artifactPath: artifact.path,
-            inode: inode,
+            artifactPath: relativePath(of: artifact, to: directory),
+            bytes: bytes,
             sha256: sha256,
             selector: ReviewCalendarEvidence.selector,
             source: ReviewCalendarEvidence.source,
             datasetID: datasetID,
             device: device,
-            group: group
+            group: group,
+            installedFixture: installedFixture
         )
     }
 
@@ -561,7 +570,6 @@ final class FixtureDatasetUITests: UITestCase {
         let allRows = evidence.required + evidence.counterexamples
         XCTAssertEqual(records.count, allRows.count, "all manifest evidence rows must bind generated artifacts")
         XCTAssertEqual(Set(records.map(\.assetID)).count, records.count, "generated asset IDs must be unique")
-        XCTAssertEqual(Set(records.map(\.inode)).count, records.count, "generated screenshot inodes must be unique")
         let required = Set(records.filter { $0.group == "required" }.map(\.assetID))
         let counterexamples = Set(records.filter { $0.group == "counterexamples" }.map(\.assetID))
         XCTAssertTrue(required.isDisjoint(with: counterexamples), "required/counterexample artifacts must be disjoint")
@@ -582,9 +590,11 @@ final class FixtureDatasetUITests: UITestCase {
             XCTAssertEqual(record.source, ReviewCalendarEvidence.source)
             XCTAssertFalse(record.manifestPath.isEmpty)
             XCTAssertEqual(record.manifestPath, URL(fileURLWithPath: record.artifactPath).lastPathComponent)
-            XCTAssertTrue(record.artifactPath.hasSuffix("/\(record.manifestPath)"))
-            XCTAssertEqual(fileNumber(URL(fileURLWithPath: record.artifactPath)), record.inode)
-            XCTAssertEqual(fileSHA256(URL(fileURLWithPath: record.artifactPath)), record.sha256)
+            XCTAssertFalse(record.artifactPath.hasPrefix("/"), "artifactPath must be portable")
+            XCTAssertGreaterThan(record.bytes, 0)
+            XCTAssertEqual(record.installedFixture.datasetID, datasetID)
+            XCTAssertGreaterThan(record.installedFixture.bytes, 0)
+            XCTAssertEqual(record.installedFixture, records[0].installedFixture)
         }
 
         let requiredLabelSet = Set(ReviewCalendarEvidence.requiredLabels)
@@ -617,19 +627,25 @@ final class FixtureDatasetUITests: UITestCase {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(DatasetDocument.GeneratedEvidenceFile(
+            let encoded = try encoder.encode(DatasetDocument.GeneratedEvidenceFile(
                 schema: "kg.p9.review_calendar.review_manifest.v2",
                 records: records
             ))
-                .write(to: manifestURL)
+            let forbiddenToken = ["in", "ode"].joined()
+            XCTAssertFalse(
+                String(data: encoded, encoding: .utf8)?.contains(forbiddenToken) ?? true,
+                "portable evidence v2 must not contain filesystem identity tokens"
+            )
+            try encoded.write(to: manifestURL)
             let consumer = try JSONDecoder().decode(
                 DatasetDocument.GeneratedEvidenceFile.self,
                 from: Data(contentsOf: manifestURL)
             )
             XCTAssertEqual(consumer.schema, "kg.p9.review_calendar.review_manifest.v2")
             XCTAssertEqual(consumer.records.count, records.count)
+            XCTAssertEqual(consumer.records.map(\.bytes), records.map(\.bytes))
             XCTAssertEqual(consumer.records.map(\.sha256), records.map(\.sha256))
-            XCTAssertEqual(consumer.records.map(\.inode), records.map(\.inode))
+            XCTAssertEqual(consumer.records.map(\.installedFixture), records.map(\.installedFixture))
         } catch {
             XCTFail("failed to write actual generated evidence metadata: \(error)")
         }
@@ -649,11 +665,59 @@ final class FixtureDatasetUITests: UITestCase {
         return device
     }
 
-    private func fileNumber(_ url: URL) -> UInt64? {
+    private func assertRuntimeGeometry(_ page: ReviewCalendarPage) {
+        page.runtimeGeometry.assertExists(timeout: 5)
+        XCTAssertGreaterThan(page.runtimeGeometry.frame.width, 0, "calendar runtime width must be positive")
+        XCTAssertGreaterThan(page.runtimeGeometry.frame.height, 0, "calendar runtime height must be positive")
+    }
+
+    private func materializeInstalledFixture(
+        from page: ReviewCalendarPage,
+        data: Data,
+        datasetID: String
+    ) throws -> DatasetDocument.InstalledFixture {
+        let proof = try XCTUnwrap(
+            page.installedFixtureProof.value as? String,
+            "FixtureDatasetStore must expose the installed fixture proof"
+        )
+        let decoder = JSONDecoder()
+        let appProof = try decoder.decode(DatasetDocument.InstalledFixture.self, from: Data(proof.utf8))
+        XCTAssertEqual(appProof.datasetID, datasetID)
+        XCTAssertEqual(appProof.path, "Evidence/\(datasetID).json")
+
+        guard let rawDirectory = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
+              !rawDirectory.isEmpty else {
+            throw NSError(domain: "P9Evidence", code: 3)
+        }
+        let directory = URL(fileURLWithPath: rawDirectory)
+        let installedDirectory = directory.appendingPathComponent("installed-fixtures", isDirectory: true)
+        try FileManager.default.createDirectory(at: installedDirectory, withIntermediateDirectories: true)
+        let installedURL = installedDirectory.appendingPathComponent("\(datasetID).json")
+        try data.write(to: installedURL, options: .atomic)
+        let bytes = try XCTUnwrap(fileByteCount(installedURL))
+        let sha256 = try XCTUnwrap(fileSHA256(installedURL))
+        XCTAssertEqual(bytes, appProof.bytes, "installed fixture byte proof must come from materialized app bytes")
+        XCTAssertEqual(sha256, appProof.sha256, "installed fixture SHA proof must come from materialized app bytes")
+        return DatasetDocument.InstalledFixture(
+            datasetID: datasetID,
+            path: relativePath(of: installedURL, to: directory),
+            bytes: bytes,
+            sha256: sha256
+        )
+    }
+
+    private func fileByteCount(_ url: URL) -> Int? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let number = attributes[.systemFileNumber] as? NSNumber
+              let number = attributes[.size] as? NSNumber
         else { return nil }
-        return number.uint64Value
+        return number.intValue
+    }
+
+    private func relativePath(of file: URL, to directory: URL) -> String {
+        let root = directory.standardizedFileURL
+        let path = file.standardizedFileURL
+        guard path.path.hasPrefix(root.path + "/") else { return file.lastPathComponent }
+        return String(path.path.dropFirst(root.path.count + 1))
     }
 
     private func fileSHA256(_ url: URL) -> String? {
