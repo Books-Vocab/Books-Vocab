@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import zipfile
 from pathlib import Path
 import pytest
 
@@ -129,6 +130,25 @@ def test_p1_dictionary_rich_fixture_is_emitted_across_canonical_artifacts():
     ]
     assert surface["required"][0]["assetIDs"] == ["catalog_reader_epub"]
     assert surface["required"][0]["assetInodes"] == ["inode:catalog_reader_epub"]
+def test_emit_ios_preserves_real_reader_toc_assets():
+    bundle = sot.load_sot()
+    [(_, fresh_bytes)] = emit_ios._artifacts(bundle)
+    document = json.loads(fresh_bytes)
+    books = document["assets"]["books"]
+
+    valid = books["reader_real_book_epub"]
+    invalid = books["reader_invalid_destination_epub"]
+    for asset in (valid, invalid):
+        path = Path(asset["sourcePath"])
+        assert path.is_file()
+        assert path.stat().st_size == asset["byteSize"]
+        assert path.is_relative_to(ROOT)
+
+    with zipfile.ZipFile(valid["sourcePath"]) as archive:
+        assert "OEBPS/chapter1.xhtml" in archive.namelist()
+        assert "OEBPS/chapter2.xhtml" in archive.namelist()
+    with zipfile.ZipFile(invalid["sourcePath"]) as archive:
+        assert "chapter-missing.xhtml" in archive.read("OEBPS/nav.xhtml").decode("utf-8")
 
 
 def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch):

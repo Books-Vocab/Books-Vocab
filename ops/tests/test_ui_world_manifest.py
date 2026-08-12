@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,44 @@ def _vocabulary_override(word: str, *, card_role: str = "learning", review_eligi
         "reviewStreak": 0,
         "lastReviewFeedbackRaw": -1,
     }
+def _asset_path(data: dict, ref: str) -> Path:
+    bucket, asset_id = ref.split(".", 1)
+    return Path(data["assets"][bucket][asset_id]["sourcePath"])
+
+
+def test_reader_real_book_is_a_distinguishable_two_chapter_epub() -> None:
+    data = _marketing_demo()
+    asset = data["assets"]["books"]["reader_real_book_epub"]
+    path = _asset_path(data, "books.reader_real_book_epub")
+
+    assert path.is_relative_to(ROOT), "P3 asset must resolve inside this worktree"
+    assert asset["sourcePath"].startswith(str(ROOT) + "/")
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        assert {"OEBPS/chapter1.xhtml", "OEBPS/chapter2.xhtml"} <= names
+        nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
+        assert 'href="chapter1.xhtml"' in nav
+        assert 'href="chapter2.xhtml"' in nav
+        chapter_a = archive.read("OEBPS/chapter1.xhtml").decode("utf-8")
+        chapter_b = archive.read("OEBPS/chapter2.xhtml").decode("utf-8")
+        assert "Introduction" in chapter_a
+        assert "Chapter Two" in chapter_b
+        assert "Introduction" not in chapter_b
+
+
+def test_reader_invalid_destination_asset_is_declared_and_really_broken() -> None:
+    data = _marketing_demo()
+    asset = data["assets"]["books"]["reader_invalid_destination_epub"]
+    path = _asset_path(data, "books.reader_invalid_destination_epub")
+
+    assert path.is_relative_to(ROOT), "P3 counterexample asset must resolve inside this worktree"
+    assert asset["sourcePath"].startswith(str(ROOT) + "/")
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
+        destinations = re.findall(r'href="([^"]+)"', nav)
+        assert destinations
+        assert any(f"OEBPS/{destination}" not in names for destination in destinations)
 
 
 def _swift_source(path: str) -> str:
