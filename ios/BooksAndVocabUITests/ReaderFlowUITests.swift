@@ -124,4 +124,83 @@ final class ReaderFlowUITests: UITestCase {
             named: "Reader Flow Metrics"
         )
     }
+
+    @MainActor
+    func testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.authSignedIn, .readerRealBookLibrary],
+            extraEnvironment: Self.fixtureEnvironment,
+            perfLog: "reader-toc-required"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+
+        let reader = ReaderPage(app: app)
+        bookshelf.anyBookCard.tapWhenReady()
+        XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        reader.expandHeaderButton.tapWhenReady()
+        reader.tableOfContentsButton.tapWhenReady()
+        XCTAssertTrue(reader.tocHierarchy.waitUntilExists(timeout: 10))
+        reader.tocChapter("0").tapWhenReady()
+
+        XCTAssertTrue(reader.tocSelected.waitUntilExists(timeout: 5))
+        captureStep("toc-selected-loading", app: app)
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
+        reader.assertIsActive()
+        captureStep("toc-navigation-success", app: app)
+    }
+
+    @MainActor
+    func testReaderTOCCounterexampleFailureRetainsRetryableSheet() throws {
+        let app = launchIsolatedApp(
+            extraArgs: ["-readerTOCInjectLocateFailureOnce"],
+            fixtures: [.bookshelf("book_card_complete")],
+            perfLog: "reader-toc-counterexample-failure"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+
+        let reader = ReaderPage(app: app)
+        bookshelf.anyBookCard.tapWhenReady()
+        XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        reader.expandHeaderButton.tapWhenReady()
+        reader.tableOfContentsButton.tapWhenReady()
+        XCTAssertTrue(reader.tocHierarchy.waitUntilExists(timeout: 10))
+        reader.tocChapter("0").tapWhenReady()
+
+        XCTAssertTrue(reader.tocError.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        captureStep("toc-failure-retryable", app: app)
+        reader.tocRetry.tapWhenReady()
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
+        reader.assertIsActive()
+    }
+
+    @MainActor
+    func testReaderTOCCounterexampleMissingDestinationRetainsRetryableSheet() throws {
+        let app = launchIsolatedApp(
+            extraArgs: ["-readerTOCInjectMissingDestinationOnce"],
+            fixtures: [.bookshelf("book_card_complete")],
+            perfLog: "reader-toc-counterexample-missing"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+
+        let reader = ReaderPage(app: app)
+        bookshelf.anyBookCard.tapWhenReady()
+        XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        reader.expandHeaderButton.tapWhenReady()
+        reader.tableOfContentsButton.tapWhenReady()
+        XCTAssertTrue(reader.tocHierarchy.waitUntilExists(timeout: 10))
+        reader.tocChapter("0").tapWhenReady()
+
+        XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        captureStep("toc-missing-destination-retryable", app: app)
+        reader.tocRetry.tapWhenReady()
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
+        reader.assertIsActive()
+    }
 }

@@ -64,7 +64,12 @@ struct ReaderTopChrome: View, Equatable {
             Spacer(minLength: AppSpacing.s2)
 
             HStack(spacing: AppSpacing.s1) {
-                toolButton("list.bullet", L10n.string("目錄"), onShowTableOfContents)
+                toolButton(
+                    "list.bullet",
+                    L10n.string("目錄"),
+                    onShowTableOfContents,
+                    accessibilityIdentifier: "reader.header.tocButton"
+                )
                 toolButton("textformat.size", L10n.string("reader.settings.title"), onShowReaderSettings)
                 toolButton("text.book.closed", L10n.string("選擇單字本"), onShowNotebookPicker)
                 toolButton("chevron.up", L10n.string("收起標題列"), onCollapseHeader)
@@ -97,9 +102,14 @@ struct ReaderTopChrome: View, Equatable {
     private func toolButton(
         _ systemImage: String,
         _ label: String,
-        _ action: @escaping () -> Void
+        _ action: @escaping () -> Void,
+        accessibilityIdentifier: String? = nil
     ) -> some View {
-        AppFloatingChromeButton(accessibilityLabel: label, action: action) {
+        AppFloatingChromeButton(
+            accessibilityLabel: label,
+            accessibilityIdentifier: accessibilityIdentifier,
+            action: action
+        ) {
             Image(systemName: systemImage)
                 .font(appSkin.typography.iconToolbar)
                 .foregroundStyle(appSkin.palette.secondaryText)

@@ -37,6 +37,50 @@ struct ReaderPage {
         app.staticTexts["reader.header.progressBadge"]
     }
 
+    var tableOfContentsButton: XCUIElement {
+        app.buttons["reader.header.tocButton"]
+    }
+
+    var tableOfContentsSheet: XCUIElement {
+        app.otherElements["reader.toc.sheet"]
+    }
+
+    var tocHierarchy: XCUIElement {
+        app.tables["reader.toc.chapterHierarchy"]
+    }
+
+    func tocChapter(_ path: String) -> XCUIElement {
+        app.buttons["reader.toc.chapter.\(path)"]
+    }
+
+    var tocLoading: XCUIElement {
+        app.otherElements["reader.toc.loading"]
+    }
+
+    var tocNavigationLoading: XCUIElement {
+        app.activityIndicators["reader.toc.navigation.loading"]
+    }
+
+    var tocSelected: XCUIElement {
+        app.staticTexts["reader.toc.selected"]
+    }
+
+    var tocSuccess: XCUIElement {
+        app.staticTexts["reader.toc.result.success"]
+    }
+
+    var tocError: XCUIElement {
+        app.staticTexts["reader.toc.error"]
+    }
+
+    var tocMissingDestination: XCUIElement {
+        app.staticTexts["reader.toc.missingDestination"]
+    }
+
+    var tocRetry: XCUIElement {
+        app.buttons["reader.toc.retry"]
+    }
+
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {

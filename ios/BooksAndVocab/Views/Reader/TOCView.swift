@@ -13,13 +13,23 @@ struct TOCView: View {
     @ObserveInjection private var inject
 
     let publication: Publication
-    let onSelect: (ReadiumShared.Link) -> Void
+    @Binding var navigationState: ReaderTOCNavigationState
+    let onSelect: (ReaderTOCItem) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var appTheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var tocLinks: [ReadiumShared.Link] = []
     @State private var loadState: LoadState = .loading
     @State private var loadRequestID = 0
+
+    private var tocItems: [ReaderTOCItem] {
+        ReaderTOCHierarchy.flatten(tocLinks)
+    }
+
+    private var selectedItem: ReaderTOCItem? {
+        guard let selectedPath = navigationState.selectedPath else { return nil }
+        return tocItems.first { $0.path == selectedPath }
+    }
 
     private var phaseAnimationKey: String {
         switch loadState {
@@ -52,12 +62,15 @@ struct TOCView: View {
                 .frame(maxWidth: presentation.contentMaxWidth)
                 .padding(.horizontal, presentation.horizontalPadding)
             }
+            .accessibilityIdentifier("reader.toc.sheet")
             .animatePhaseChange(phaseAnimationKey)
             .navigationTitle(L10n.string("目錄"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(L10n.string("完成")) { dismiss() }
+                        .disabled(!navigationState.canDismissSheet)
+                        .accessibilityIdentifier("reader.toc.done")
                 }
             }
             .task(id: loadRequestID) {
@@ -109,6 +122,7 @@ struct TOCView: View {
                 description: L10n.string("正在整理這本書的章節結構。"),
                 visualStyle: .app
             )
+            .accessibilityIdentifier("reader.toc.loading")
             .frame(maxWidth: presentation.stateCardMaxWidth)
             .padding(.horizontal, presentation == .compact ? AppShellMetrics.pageHorizontalPadding : 0)
             Spacer()
@@ -118,22 +132,95 @@ struct TOCView: View {
     @ViewBuilder
     private func tocLoadedList() -> some View {
         List {
-            ForEach(tocLinks.indices, id: \.self) { index in
-                let link = tocLinks[index]
+            ForEach(tocItems) { item in
                 Button {
-                    onSelect(link)
-                    dismiss()
+                    guard navigationState.phase != .loading else { return }
+                    onSelect(item)
                 } label: {
-                    Text(link.title ?? L10n.string("目錄"))
-                        .font(AppFonts.body())
-                        .lineLimit(2)
-                        .truncationMode(.tail)
+                    HStack {
+                        Text(item.title)
+                            .font(AppFonts.body())
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: AppSpacing.s2)
+                        if navigationState.selectedPath == item.path {
+                            Image(systemName: "checkmark")
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.leading, CGFloat(item.depth) * AppSpacing.s3)
+                    .contentShape(Rectangle())
                 }
-                .accessibilityIdentifier("reader.toc.item.\(index)")
+                .disabled(navigationState.phase == .loading)
+                .accessibilityIdentifier("reader.toc.chapter.\(item.id)")
+                .accessibilityAddTraits(navigationState.selectedPath == item.path ? .isSelected : [])
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
+        .accessibilityIdentifier("reader.toc.chapterHierarchy")
+        .overlay(alignment: .bottom) {
+            navigationOutcome
+        }
+    }
+
+    @ViewBuilder
+    private var navigationOutcome: some View {
+        switch navigationState.phase {
+        case .idle:
+            EmptyView()
+        case .loading:
+            selectedOutcome
+        case .success:
+            Text(L10n.string("章節已開啟"))
+                .accessibilityIdentifier("reader.toc.result.success")
+        case .failure:
+            retryOutcome(
+                identifier: "reader.toc.error",
+                title: L10n.string("章節開啟失敗")
+            )
+        case .missingDestination:
+            retryOutcome(
+                identifier: "reader.toc.missingDestination",
+                title: L10n.string("找不到章節位置")
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var selectedOutcome: some View {
+        VStack(spacing: AppSpacing.s1) {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityIdentifier("reader.toc.navigation.loading")
+            if let selectedTitle = navigationState.selectedTitle {
+                Text(selectedTitle)
+                    .accessibilityIdentifier("reader.toc.selected")
+                    .opacity(0.01)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func retryOutcome(identifier: String, title: String) -> some View {
+        VStack(spacing: AppSpacing.s2) {
+            Text(title)
+                .accessibilityIdentifier(identifier)
+            if let message = navigationState.errorMessage {
+                Text(message)
+                    .font(AppFonts.caption())
+            }
+            Button(L10n.string("重試")) {
+                navigationState.beginRetry()
+                if let selectedItem {
+                    onSelect(selectedItem)
+                }
+            }
+            .accessibilityIdentifier("reader.toc.retry")
+        }
+        .padding(AppSpacing.s3)
+        .background(appTheme.palette.cardBackground)
+        .clipShape(AppRoundedRect(roundness: AppRoundness.card))
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
