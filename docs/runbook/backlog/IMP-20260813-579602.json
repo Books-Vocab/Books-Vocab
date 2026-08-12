@@ -11,6 +11,9 @@
   "date": "2026-08-13",
   "detail": "Fresh Gate 的 lint-baselines 聚合檢查仍有兩個同形狀的 watermark slack：injection baseline 含 11 個已不在當前 findings 的 stale keys，每個都是永久再犯槽位；i18n baseline 的 localized_calls=346 高於當前 322，留下 24 個免費槽位。i18n findings 當前仍為 0。兩者皆是既有掃描器已量到改善、checked-in baseline 未向下 ratchet，不是 scanner 實作缺陷。歷史 owner IMP-20260807-1674d1、IMP-0048、IMP-20260805-b7e6e4、IMP-20260805-2834b2 均已 fixed，本次是新 recurrence，不能重開舊票。",
   "fix_site": "ops/injection_baseline.txt; ops/i18n_baseline.txt",
+  "fixed_by": [
+    "b67a8db163055aad44ab785d258dbd979f2f8f07"
+  ],
   "groomed_against": "76256a790b7a3a6e6ef00d4808b0437b04198fee",
   "groomed_at": "2026-08-13",
   "groomed_by": "agent:delivery-team-b-integrator",
@@ -21,6 +24,10 @@
   "scope": "兩份機器產生的水位檔，以既有聚合檢查驗收，不改掃描器或產品程式。",
   "severity": "med",
   "source": "Gate ops-shell:test_lint_baselines.sh run 3ae4676d28ca9d49 on 2026-08-13",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-13",
+  "verified_by": "agent:delivery-team-a-supervisor",
+  "verified_evidence": "official close-wave Gate and focused plus related acceptance passed on integrated HEAD b67a8db1; implementation b67a8db1"
 }
