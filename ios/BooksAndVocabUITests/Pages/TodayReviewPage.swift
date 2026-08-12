@@ -8,6 +8,11 @@ import XCTest
 struct TodayReviewPage {
     let app: XCUIApplication
 
+    enum CardPresentation: String {
+        case natural
+        case scroll
+    }
+
     // MARK: - Chrome
 
     /// "k / N" progress capsule in the top bar — the queue-position truth.
@@ -179,6 +184,51 @@ struct TodayReviewPage {
 
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         progressLabel.assertExists(file: file, line: line)
+        XCTAssertEqual(
+            elements(for: "todayReview.progressLabel").count,
+            1,
+            "Today Review progress label must have exactly one accessibility element",
+            file: file,
+            line: line
+        )
+    }
+
+    // MARK: - Evidence readiness
+
+    /// Wait for the exact card/presentation state before taking a screenshot.
+    ///
+    /// Every query is re-evaluated because SwiftUI can publish a transient
+    /// accessibility tree while the fold is mounting. `firstMatch` remains the
+    /// accessor used by actions/readers, but it is never the cardinality contract.
+    @discardableResult
+    func waitForFrontReadiness(
+        presentation: CardPresentation,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        waitForCardReadiness(
+            cardIdentifier: "todayReview.card.front",
+            presentationIdentifier: presentation.identifier(for: "todayReview.card.front.content"),
+            alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.front.content"),
+            fieldIdentifiers: [],
+            timeout: timeout
+        )
+    }
+
+    /// Wait until the mounted back face, its chosen presentation, and every
+    /// requested field are uniquely addressable before evidence capture.
+    @discardableResult
+    func waitForBackReadiness(
+        presentation: CardPresentation,
+        fields: [String],
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        waitForCardReadiness(
+            cardIdentifier: "todayReview.card.back",
+            presentationIdentifier: presentation.identifier(for: "todayReview.card.back.content"),
+            alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.back.content"),
+            fieldIdentifiers: fields.map { "todayReview.card.back.field.\($0)" },
+            timeout: timeout
+        )
     }
 
     // MARK: - Waits
@@ -210,6 +260,47 @@ struct TodayReviewPage {
 
     // MARK: - Helpers
 
+    private func waitForCardReadiness(
+        cardIdentifier: String,
+        presentationIdentifier: String,
+        alternatePresentationIdentifier: String,
+        fieldIdentifiers: [String],
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cardIsCanonical(cardIdentifier),
+               exactlyOne(presentationIdentifier),
+               elements(for: alternatePresentationIdentifier).count == 0,
+               fieldIdentifiers.allSatisfy({ exactlyOne($0) }) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        return cardIsCanonical(cardIdentifier)
+            && exactlyOne(presentationIdentifier)
+            && elements(for: alternatePresentationIdentifier).count == 0
+            && fieldIdentifiers.allSatisfy({ exactlyOne($0) })
+    }
+
+    private func cardIsCanonical(_ identifier: String) -> Bool {
+        let matching = elements(for: identifier)
+        guard matching.count == 1 else { return false }
+        let card = matching.firstMatch
+        let frame = card.frame
+        return card.exists && frame.width > 0 && frame.height >= 100
+    }
+
+    private func exactlyOne(_ identifier: String) -> Bool {
+        let matching = elements(for: identifier)
+        return matching.count == 1 && matching.firstMatch.exists
+    }
+
+    private func elements(for identifier: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: identifier)
+    }
+
     private func element(_ identifier: String) -> XCUIElement {
         exactlyOne(identifier, in: app.descendants(matching: .any))
     }
@@ -218,5 +309,13 @@ struct TodayReviewPage {
         let matches = query.matching(identifier: identifier)
         XCTAssertEqual(matches.count, 1, "P1 selector must resolve exactly once: \(identifier)")
         return matches.element
+    }
+}
+
+private extension TodayReviewPage.CardPresentation {
+    var alternate: Self { self == .natural ? .scroll : .natural }
+
+    func identifier(for prefix: String) -> String {
+        "\(prefix).\(rawValue)"
     }
 }

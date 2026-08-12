@@ -6,6 +6,10 @@ private enum ReviewCardVisualEvidenceStep {
     static let largeTextCounterexample = "large-text-counterexample"
 }
 
+private enum ReviewCardLayoutEditorUITestError: Error {
+    case preconditionFailed
+}
+
 /// End-to-end contract for the review-card layout editor (Phase C).
 ///
 /// The signal for "the card re-laid out" is the front card's measured HEIGHT, not
@@ -156,13 +160,12 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.done()
         // P13 large-text counterexample: the full-content fixture gives the front
         // a deliberately wrapping translation, distinct from the back screenshot.
+        guard review.waitForFrontReadiness(presentation: .scroll, timeout: 8) else {
+            captureStep("large-text-not-ready", app: app)
+            XCTFail("P13 正面 evidence 必須等 canonical card 與 scroll presentation mounted")
+            return
+        }
         captureStep(ReviewCardVisualEvidenceStep.largeTextCounterexample, app: app)
-
-        XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
-        let frontNatural = review.frontNaturalContent.waitUntilExists(timeout: 3)
-        let frontScroll = review.frontScrollContent.waitUntilExists(timeout: 3)
-        XCTAssertNotEqual(frontNatural, frontScroll, "正面必須只發布一種 natural/scroll presentation")
-        XCTAssertTrue(frontScroll, "Dynamic Type 長正面必須進入 scroll presentation")
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容正面下，底部評分按鈕必須仍可操作"
@@ -174,20 +177,19 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             XCTFail("欄位全開後仍必須能翻面")
             return
         }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
         // P12/P13 small-viewport counterexample: every standard field remains
         // addressable, with natural-vs-scroll presentation made explicit.
-        captureStep(ReviewCardVisualEvidenceStep.smallViewportCounterexample, app: app)
-        let backNatural = review.backNaturalContent.waitUntilExists(timeout: 3)
-        let backScroll = review.backScrollContent.waitUntilExists(timeout: 3)
-        XCTAssertNotEqual(backNatural, backScroll, "背面必須只發布一種 natural/scroll presentation")
-        XCTAssertTrue(backScroll, "Dynamic Type 長背面必須進入 scroll presentation")
-        for field in ["difficultyTier", "graphLinks", "example", "explanation", "collocations"] {
-            XCTAssertTrue(
-                review.backField(field).waitUntilExists(timeout: 2),
-                "正常 profile 背面必須保留 \(field) 欄位 selector"
-            )
+        let backFields = ["difficultyTier", "graphLinks", "example", "explanation", "collocations"]
+        guard review.waitForBackReadiness(
+            presentation: .scroll,
+            fields: backFields,
+            timeout: 8
+        ) else {
+            captureStep("small-viewport-not-ready", app: app)
+            XCTFail("P13 背面 evidence 必須等 canonical card、scroll presentation 與 fields mounted")
+            return
         }
+        captureStep(ReviewCardVisualEvidenceStep.smallViewportCounterexample, app: app)
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容背面下，底部評分按鈕必須仍可操作"
@@ -268,16 +270,19 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         let notebook = AppPage(app: app).goToNotebooks()
         guard notebook.notebookCard(id: Self.notebookCardID).waitUntilExists(timeout: 10) else {
             captureStep("no-notebook-card", app: app)
-            throw XCTSkip("review deck fixture 未種出單字本卡片 \(Self.notebookCardID)")
+            XCTFail("review deck fixture 未種出單字本卡片 \(Self.notebookCardID)")
+            throw ReviewCardLayoutEditorUITestError.preconditionFailed
         }
         guard notebook.reviewCTAButton.waitUntilExists(timeout: 10) else {
             captureStep("no-review-cta", app: app)
-            throw XCTSkip("fixture 未產生今日複習 CTA")
+            XCTFail("fixture 未產生今日複習 CTA")
+            throw ReviewCardLayoutEditorUITestError.preconditionFailed
         }
         let review = notebook.startReview()
         guard review.progressLabel.waitUntilExists(timeout: 10) else {
             captureStep("review-not-started", app: app)
-            throw XCTSkip("複習 session 未啟動")
+            XCTFail("複習 session 未啟動")
+            throw ReviewCardLayoutEditorUITestError.preconditionFailed
         }
         return review
     }
