@@ -340,6 +340,7 @@ struct ReaderView: View {
         // 持 handle：retry 為非結構化 Task，需 onDisappear 顯式取消（見 retryLoadTask 宣告）。
         // 重入先取消舊 retry，避免連點時舊 in-flight 載入洩漏（與 onDisappear 對稱）。
         retryLoadTask?.cancel()
+        publicationLoadCoordinator.cancelAndInvalidate()
         retryLoadTask = Task { await loadPublication() }
     }
 
