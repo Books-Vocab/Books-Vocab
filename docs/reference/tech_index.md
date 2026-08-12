@@ -7,12 +7,14 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 18f37badc
+verified_against: 76256a790
 -->
 # Technical Reference Index
 
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。
 新增 router / table / env var / ops 腳本時,**同 PR 內補一行**。
+
+> **Convergence boundary（此 docs worktree）**：下列標示 `branch-local` 的 rows 描述協調 worktree 內尚待 code convergence 的 P1–P15 / UI evidence surface。frontmatter 的 `verified_against` 僅核對目前 `origin/main` 的 baseline；不表示這些 branch-local paths 或 semantics 已存在於 `origin/main`。code convergence 後才可移除標記並重新錨定。
 
 ## Reconciler poison cooldown
 
@@ -139,6 +141,11 @@ cutover 前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml`
 | `catalog_review_cli.py` | catalog review / UI asset gallery CLI：`summary`/`show`/`list`/`stats`/`report` 查 artifact 與單張資產、`gaps` 查 surface 層 lane-aware 覆蓋缺口（哪些可上架 surface 缺哪些 ship-critical 狀態；此為 **CLI-only 覆蓋/策展視角**——`UIreview.html` gallery 已於 `catalog/gallery-admin-skin` 重構為極簡 source-declared 瀏覽器（三桶 lane 畫面/浮層/組件 + /admin 設計語言），不再含 Coverage 視圖與 eligibility/qualityTier/hero/review-state 策展 UI；這些欄位仍留在 manifest 供本 CLI 消費）、`mark`/`apply` 寫 review state、`verify`/`repair`/`doctor` 做 sidecar 健康檢查與操作建議，另有 `hero`/`coverage`/`cleanup` shortcut 視角。輸入是 `review_manifest.json + review_state.json`，主用途是離線審圖、批量標記、以及對 `UIreview.html` 內的 `assetID/permalink` 做機器可讀操作（gallery 仍提供每張的 Copy ID / Permalink）。lane/feature/screen taxonomy 由 snapshot run 吐的 `catalog_index.json`（iOS source SoT）決定；缺 `catalog_index.json`、壞 JSON、`surfaces` 非 object 或單筆 surface entry 非 object 都直接 fail-fast，不降級到透明邊緣像素 + title regex heuristic；`ui_graph.json` 可缺（surface 顯示 `graph-missing`），但若存在就必須是有效 `kg.ui.graph.v1`。測試：`ops/tests/test_catalog_review.py` |
 | `uitest_contact_sheet.py` | UITest step screenshot 的獨立行為證據工具；從單次 UI test run 產生 full / quick4 contact sheet 與 manifest，供 agent 一次檢視多個步驟。它不讀 Catalog scene、不提供 gallery adapter，也不建立發行素材。 |
 | `uitest_review_page.py` / `uitest_review_workspace.py` | UITest 行為證據 workspace：`ios_test.sh` 在 UI scope 結束後收攏 step screenshots、`uitest_contact_sheet.py` 產物、測試 log 與 mp4，生成單次 run review page、manifest 與 workspace index。`start.sh` 只服務 UITest runs，不接受 Catalog artifact。 |
+| `[branch-local] ops/ios_ui_review_matrix.py` + `ops/fixtures/ios_ui_review_matrix.json` | P1–P15 UI review coverage control plane。`validate <matrix> --root <repo>` 驗 schema、report image、source refs、UI World fixture IDs、exact `Class/testMethodName` selector、required/counterexample steps 與 visual checks；`--dataset-id <id> --requirement-id <Pn> --require-fixtures` 做單列 fixture hard gate；`--strict-complete` 在未全數 `verified` 時 fail-closed。`record <matrix> <Pn>` 只接受 clean source、normalized verdict、stable evidence bundle、machine contract 與最新完整 `kg.ui.review-state.v2` pass attestation，並 atomic append `verification.history`。測試：`ops/tests/test_ios_ui_review_matrix.py`。 |
+| `[branch-local] ops/uitest_evidence_contract.py` | UITest 視覺 evidence contract validator：驗每個 step PNG 的 metadata/SHA-256、contact/quick4、video 與 `UIreview.html` 的存在與內容，以及同一 source/dataset/device/selector/variant provenance；輸出 machine contract，video 與 HTML 也以內容 hash 綁定。 |
+| `[branch-local] ops/uitest_review_attest.py` | root-bound human visual attestation writer：`--status pass|fail`、`--all-steps`/`--asset-id` 與 repeatable `--visual-check`；pass 必須覆蓋全部 manifest assets 並具名 visual checks，狀態以 lock + atomic replace append 到 `review_state.json`。 |
+| `[branch-local] ops/uitest_review_page.py` | UITest review page writer：將單次 flow 的 screenshots、contact sheets、video、log 與 manifest 綁入 review root；拒絕 symlink escape、重複 asset identity 與非空 root 覆寫。 |
+| `[branch-local] .claude/skills/ios-simulator-verification/` | `SKILL.md`、`references/evidence-contract.md` 與 `scripts/run_ui_evidence.sh` 的 agent-facing 單 flow evidence helper；將 dataset、exact selector、source/device provenance 與 failure bundle 綁在同一 run。 |
 | `uitest_flow_matrix.py` | 同一個 UITest flow 的 state/data variant runner。輸入單一 `--file`，用 repeatable `--profile`、`--dataset`、`--dataset-file` 展開 profile × UI World matrix，先以 `ui_world_manifest.py validate` 驗證每個 UI World，再逐一呼叫 `ops/ios_ops.sh test --ui --file ... --json` 並 keep-going；輸出 schema `kg.ios.uitest-flow-matrix.v1`，每列帶 `variantId`、command、returnCode、result、`reviewHtml`。底層 `ios_test.sh` 的 `variantId` 會組合 dataset + launch profile（如 `dataset:marketing_demo+profile:standard`），所以 workspace `UIreview.html` 可在同 flow 下面同時保留多個狀態/資料 entry。測試：`ops/tests/test_uitest_flow_matrix.py` |
 | `ios_diagnostics.py` | iOS diagnostics adapter：`xcresulttool get build-results` 為 build/archive 優先資料源，抽官方 `.xcresult` 的 `errorCount`/`warningCount`/issues；`--kind test` 用 `xcresulttool get test-results summary/tests/metrics` 抽 executed/failures/failing tests、`testBodyMs`/`xcresultSessionMs` 與 `XCTApplicationLaunchMetric` 的 `AppLaunch average/min/max/samples`。raw xcodebuild log parser 只作 fallback，分類 Swift 6 concurrency、StoreKit config、SPM、signing。文字輸出第一屏 summary，`--json` 給 agent/CI。`ios_build.sh` / `ios_test.sh` / `ios_release.sh` / `ios_ops.sh runs|snapshot` 已接線 |
 | `ios_coverage.py` | iOS coverage adapter：讀 `xcrun xccov view --report --json <Test.xcresult>`，輸出 `kg.ios.coverage.v1`。預設 selected target 為 `BooksAndVocab`，避開 Tests/UITests target；`summary.lineCoverage` 是 app target line coverage，`summary.lowestFiles[]` 預設列最低覆蓋的前 10 個檔案（`--max-low-files <n>` 可調），`--fail-under-lines <percent>` 產生 machine-readable fail verdict。`ios_test.sh --coverage` 已接線，會在 `kg.ios.run.v1.coverage` 內嵌同 payload，且第一屏印前三個 `[ios][coverage][low]`。測試：`ops/tests/test_ios_coverage.py` |

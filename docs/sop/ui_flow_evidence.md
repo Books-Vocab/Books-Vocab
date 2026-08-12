@@ -6,9 +6,12 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: 57c2f2204
+  - .claude/skills/ios-simulator-verification/
+verified_against: 76256a790
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
+
+> **Convergence boundary（此 docs worktree）**：本檔新增的單 flow helper、P1–P15 matrix、UI World fixture mapping 與 evidence attestation 內容，描述協調 worktree 內尚待 code convergence 的 branch-local surface。frontmatter 的 `verified_against` 僅核對目前 `origin/main` 的既有 baseline；不表示這些 branch-local paths 或 semantics 已存在於 `origin/main`。code convergence 後才可移除標記並重新錨定。
 
 每條重要 UI flow 都必須能回答：**現在在哪個畫面、為什麼到這裡、是否真的觸發核心行為、是否有 log 證據**。「只跑過 test」不是 UI 結論；完成標準必含視覺證據。Podcast 是活樣板（`PodcastPlaybackPerfUITests.swift`），所有新 flow 照抄此模型。
 
@@ -23,6 +26,39 @@ verified_against: 57c2f2204
 | 5 | **KG_PERF log marks** | `ios/BooksAndVocab/Services/PerfLog.swift` | 核心行為打低頻 domain mark（如 `play.started`/`pause`/`seek`）。新常數 **append** 到 PerfLog，勿改既有 mark 名。驗證：`./ops/ios_ops.sh logs --simulator --device <udid> --debug --since 5m --predicate 'process == "BooksAndVocab" AND eventMessage CONTAINS "KG_PERF"'`。 |
 | 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 由獨立的 `uitest_contact_sheet.py` 產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）+ standalone run `UIreview.html`，並同步更新常駐 `build/snapshots/uitest-runs/UIreview.html` workspace 導覽頁。沒有任何 run 時，workspace 仍會掃 `ios/BooksAndVocabUITests/*UITests.swift` 顯示 flow / test methods / run command，狀態為 `never-run`。收尾回報**必貼** quick4 / full sheet 或直接貼 `uiVisualReview.reviewHtml`，並親眼 Read 過。這是行為測試證據，不是 Catalog gallery。 |
 
+## Single-flow helper（branch-local；待 code convergence）
+
+單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`：它要求命名 UI World 與 exact test selector，將 source／dataset／device identity、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
+
+helper 的旗標、normalized verdict schema、artifact hash 與 fail-closed gate 以 `.claude/skills/ios-simulator-verification/references/evidence-contract.md` 為唯一 contract SoT；本 SOP 只定義 flow evidence 的使用時機與收尾判準。helper regression 由 `.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh` 驗證。
+
+## P1–P15 coverage control plane（branch-local；待 code convergence）
+
+`ops/fixtures/ios_ui_review_matrix.json` 是報告圖片與可執行驗證之間的唯一 mapping；圖片只是 reference，不是 test plan。每列要宣告 UI World fixture IDs、exact `ClassName/testMethodName` selector、runtime steps、counterexample steps 與 visual checks。先驗整張矩陣，再對實際要跑的單列做 fixture hard gate：
+
+```bash
+./ops/ios_ui_review_matrix.py validate ops/fixtures/ios_ui_review_matrix.json --root .
+./ops/ios_ui_review_matrix.py validate ops/fixtures/ios_ui_review_matrix.json \
+  --root . --dataset-id marketing_demo --requirement-id P11 --require-fixtures
+```
+
+`pending`／`in_progress`／`blocked` 是收斂中的狀態，不能當成完成；只有 clean Simulator run、machine evidence contract 與最新完整 `kg.ui.review-state.v2` pass attestation 都對上同一 source/dataset/device/selector 時，才能由 `record <matrix> <Pn>` 寫入 `verified`。全報告宣稱完成前再跑：
+
+```bash
+./ops/ios_ui_review_matrix.py validate ops/fixtures/ios_ui_review_matrix.json \
+  --root . --strict-complete
+```
+
+P11 的典型收斂順序是 exact selector `VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently` → `marketing_demo` → stable evidence bundle → `uitest_review_attest.py --all-steps --visual-check ...` → matrix `record`；不要手動編輯 `verification.status`。
+
+P11 的 branch-local UI World／fixture／test mapping 為：`ops/fixtures/ui_worlds/marketing_demo.json` + `ios/BooksAndVocab/Support/UITestFixtureSeed+Vocabulary.swift`／`UITestFixtureSeed+WorldModels.swift` 提供資料世界；`ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift` 提供 exact runtime surface；`ops/ios_ui_review_matrix.py`、`ops/uitest_evidence_contract.py`、`ops/uitest_review_page.py`、`ops/uitest_review_attest.py` 與其 `ops/tests/test_*.py` 驗證、渲染及記錄證據。這份 mapping 只描述待 convergence 的協調 worktree，不是 origin/main 的完成宣稱。
+
+## Evidence integrity and human attestation（branch-local；待 code convergence）
+
+`run_ui_evidence.sh` 會把 dataset realpath 限制在目前 worktree，將 selector 傳入 runner，並保存 per-run normalized/upstream verdict、log、xcresult 與視覺產物；細節以 skill reference contract 為準。`uitest_review_page.py`、`uitest_evidence_contract.py` 與 `uitest_review_attest.py` 的流程 owner 是本 SOP，`docs/reference/tech_index.md` 僅作 path lookup；不另在本檔建立第二份 schema SoT。
+
+人工視覺結果只能透過 `uitest_review_attest.py` append 寫入：pass 必須覆蓋 manifest 全部 assets 並逐項提供 `--visual-check`；它以 lock + atomic replace 保留 append-only history，後來的 fail 會使先前 pass 不再代表最新狀態。partial asset review 只能是 fail／未完成，不能推導 visual pass。
+
 ## 執行契約
 
 ```bash
@@ -34,6 +70,7 @@ verified_against: 57c2f2204
 - Live demo access 只能由 `app_review_evidence.py demo-run --live-mirror-bundle <dir>` 啟動：destination 必須是 physical `platform=iOS,id=...`，底層 products 走 `Release-iphoneos`，不注入 UI World；producer 從 hash-closed ASC live mirror 的 normalized reviewer account 派生預期 SHA-256。`ios_test.sh` 先 sanitize/scan 所有 xctestrun configuration/target 的保留 live/fixture keys，再只對唯一 `BlueprintName=BooksAndVocabUITests` target 注入 live marker 與 account SHA（零個或多個匹配都 fail-closed）；host process 同時 unset 這些 keys，其他 test target 不得收到 live env。非-live run 若殘留或偽造 `KG_LIVE_DEMO_*` 會被拒絕。
 - 固定測試 `LiveDemoAccessUITests.testLiveDemoAccountHasProEntitlement` 會拒絕 Debug、simulator、缺 marker/hash、fixture args/env、backend override、錯誤／缺失 account 與 Free entitlement；通過條件是 Settings 暴露的 account identity SHA 等於 live mirror 且 live backend 顯示 Pro，之後 `ios_test.sh` 才產生綁同一 SHA 的 `demoEvidence`。這份機器證據不宣稱 fresh credential SSO；重新登入與 credential 可用性由 root-bound human attestation 證明。caller 自填 nested JSON 不能成為 live-demo 證據。
 - 同一個 flow 要補多個狀態/資料 variants 時，用 `./ops/uitest_flow_matrix.py --file <Flow>UITests.swift --profile ui-smoke --profile standard --dataset marketing_demo --lease --json`。它會展開 profile × dataset，多次呼叫 `ios_ops.sh test --ui` 且 keep-going；底層 `variantId` 會保留組合軸，例如 `dataset:marketing_demo+profile:standard`，因此新 run 不會覆蓋同 flow 的另一個狀態/資料 entry。
+- P1–P15 matrix 與 stable evidence bundle 的落盤只能由 `ios_ui_review_matrix.py record` 驗證後完成；新 run 必須保留自己的 source HEAD、dataset hash、device、exact selector 與 artifact paths，不得借用上一輪綠燈。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 
@@ -76,4 +113,5 @@ verified_against: 57c2f2204
 2. 獨立 reviewer **親 Read** 每張 step PNG 與 quick4，對照 KG_PERF log——不信 agent 自稱通過。
 3. workspace `build/snapshots/uitest-runs/UIreview.html` 能從該 flow 導到本次 run page / video / log。
 4. `./ops/test_ios_ops.sh` 與 `./ops/docs_lint.sh` 綠。
-5. playbook 有新 seam 就回寫本檔。
+5. P1–P15 若要宣稱全數完成，`./ops/ios_ui_review_matrix.py validate ops/fixtures/ios_ui_review_matrix.json --root . --strict-complete` 必須綠。
+6. playbook 有新 seam 就回寫本檔。
