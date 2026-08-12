@@ -1,67 +1,125 @@
 import Foundation
 import CryptoKit
 
-struct UIWorldScenarioContextSeed: Codable, Equatable {
-    /// Optional anchor-day clock. `frozenEpoch` matches preferences
-    /// `review_settings_progress_paused_at` when both are declared.
-    let reviewClock: FixtureReviewClockSeed?
-    /// Reader passage plus highlight words.
-    let readerPassage: UIWorldReaderPassageSeed?
-    /// Word Detail seed — `entries[0]` is the focused card, the
-    /// rest are its graph-link targets. Reuses the vocabulary seed shape.
-    let wordDetail: UIWorldVocabularySeed?
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case reviewClock
-        case readerPassage
-        case wordDetail
-    }
-
-    init(
-        reviewClock: FixtureReviewClockSeed? = nil,
-        readerPassage: UIWorldReaderPassageSeed? = nil,
-        wordDetail: UIWorldVocabularySeed? = nil
-    ) {
-        self.reviewClock = reviewClock
-        self.readerPassage = readerPassage
-        self.wordDetail = wordDetail
-    }
-
-    init(from decoder: Decoder) throws {
-        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
-        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
-            .subtracting(CodingKeys.allCases.map(\.rawValue))
-        guard unknownKeys.isEmpty else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "UI World scenarioContext contains unknown keys \(unknownKeys.sorted())"
-                )
-            )
-        }
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        reviewClock = try container.decodeIfPresent(FixtureReviewClockSeed.self, forKey: .reviewClock)
-        readerPassage = try container.decodeIfPresent(UIWorldReaderPassageSeed.self, forKey: .readerPassage)
-        wordDetail = try container.decodeIfPresent(UIWorldVocabularySeed.self, forKey: .wordDetail)
+private func uiWorldDataCorrupted(_ decoder: Decoder, _ description: String) -> DecodingError {
+    .dataCorrupted(
+        .init(codingPath: decoder.codingPath, debugDescription: description)
+    )
 }
+
+private func uiWorldRequireExactKeys(
+    _ rawContainer: KeyedDecodingContainer<AnyCodingKey>,
+    expected: Set<String>,
+    decoder: Decoder,
+    label: String
+) throws {
+    let actual = Set(rawContainer.allKeys.map(\.stringValue))
+    guard actual == expected else {
+        let extra = actual.subtracting(expected).sorted()
+        let missing = expected.subtracting(actual).sorted()
+        throw uiWorldDataCorrupted(
+            decoder,
+            "\(label) keys must be exact; extra=\(extra), missing=\(missing)"
+        )
+    }
 }
-/// Frozen review clock. All fields are optional; when present, `frozenEpoch`
-/// equals preferences
-/// `review_settings_progress_paused_at`.
+
+private func uiWorldRequireNonEmpty(
+    _ value: String,
+    decoder: Decoder,
+    label: String
+) throws -> String {
+    guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw uiWorldDataCorrupted(decoder, "\(label) must be non-empty")
+    }
+    return value
+}
+
+private func uiWorldRequireUnique(
+    _ values: [String],
+    decoder: Decoder,
+    label: String,
+    allowEmpty: Bool = true
+) throws {
+    if !allowEmpty && values.isEmpty {
+        throw uiWorldDataCorrupted(decoder, "\(label) must be a non-empty list")
+    }
+    guard values.count == Set(values).count else {
+        throw uiWorldDataCorrupted(decoder, "\(label) must be unique")
+    }
+}
+
+private func uiWorldParseCanonicalDate(
+    _ value: String,
+    decoder: Decoder,
+    label: String
+) throws -> Date {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    guard let date = formatter.date(from: value), formatter.string(from: date) == value else {
+        throw uiWorldDataCorrupted(
+            decoder,
+            "\(label) must be YYYY-MM-DDTHH:MM:SSZ"
+        )
+    }
+    return date
+}
+
+private func uiWorldParseAnchorDay(
+    _ value: String,
+    decoder: Decoder,
+    label: String
+) throws {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: value), formatter.string(from: date) == value else {
+        throw uiWorldDataCorrupted(decoder, "\(label) must be YYYY-MM-DD")
+    }
+}
+
+/// The shared review-clock contract has two exact wire shapes. Legacy worlds
+/// retain the historical `frozenNow` object; canonical worlds use `now` and
+/// `timeZone` and validate epoch/day consistency.
 struct FixtureReviewClockSeed: Codable, Equatable {
+    let now: String?
+    let timeZone: String?
     let frozenNow: String?
     let frozenEpoch: Int?
     let anchorDay: String?
     let source: String?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
+        case now
+        case timeZone
         case frozenNow
         case frozenEpoch
         case anchorDay
         case source
     }
 
-    init(frozenNow: String? = nil, frozenEpoch: Int? = nil, anchorDay: String? = nil, source: String? = nil) {
+    private static let legacyKeys: Set<String> = ["frozenNow", "frozenEpoch", "anchorDay", "source"]
+    private static let canonicalKeys: Set<String> = ["now", "timeZone", "frozenEpoch", "anchorDay", "source"]
+
+    var isCanonical: Bool {
+        now != nil && timeZone != nil && frozenEpoch != nil && anchorDay != nil && source != nil
+    }
+
+    init(
+        now: String? = nil,
+        timeZone: String? = nil,
+        frozenNow: String? = nil,
+        frozenEpoch: Int? = nil,
+        anchorDay: String? = nil,
+        source: String? = nil
+    ) {
+        self.now = now
+        self.timeZone = timeZone
         self.frozenNow = frozenNow
         self.frozenEpoch = frozenEpoch
         self.anchorDay = anchorDay
@@ -70,21 +128,557 @@ struct FixtureReviewClockSeed: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
-        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
-            .subtracting(CodingKeys.allCases.map(\.rawValue))
-        guard unknownKeys.isEmpty else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "UI World scenarioContext.reviewClock contains unknown keys \(unknownKeys.sorted())"
-                )
+        let keys = Set(rawContainer.allKeys.map(\.stringValue))
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if keys == Self.legacyKeys {
+            now = nil
+            timeZone = nil
+            frozenNow = try container.decode(String.self, forKey: .frozenNow)
+            frozenEpoch = try container.decode(Int.self, forKey: .frozenEpoch)
+            anchorDay = try container.decode(String.self, forKey: .anchorDay)
+            source = try container.decode(String.self, forKey: .source)
+            _ = try uiWorldRequireNonEmpty(
+                frozenNow!, decoder: decoder, label: "scenarioContext.reviewClock.frozenNow"
             )
+            try uiWorldParseCanonicalDate(
+                frozenNow!, decoder: decoder, label: "scenarioContext.reviewClock.frozenNow"
+            )
+            try uiWorldParseAnchorDay(
+                anchorDay!, decoder: decoder, label: "scenarioContext.reviewClock.anchorDay"
+            )
+            _ = try uiWorldRequireNonEmpty(
+                source!, decoder: decoder, label: "scenarioContext.reviewClock.source"
+            )
+        } else if keys == Self.canonicalKeys {
+            now = try container.decode(String.self, forKey: .now)
+            timeZone = try container.decode(String.self, forKey: .timeZone)
+            frozenNow = nil
+            frozenEpoch = try container.decode(Int.self, forKey: .frozenEpoch)
+            anchorDay = try container.decode(String.self, forKey: .anchorDay)
+            source = try container.decode(String.self, forKey: .source)
+            let date = try uiWorldParseCanonicalDate(
+                now!, decoder: decoder, label: "scenarioContext.reviewClock.now"
+            )
+            guard let zone = TimeZone(identifier: timeZone!),
+                  !timeZone!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw uiWorldDataCorrupted(
+                    decoder,
+                    "scenarioContext.reviewClock.timeZone must be a valid identifier"
+                )
+            }
+            guard frozenEpoch == Int(date.timeIntervalSince1970) else {
+                throw uiWorldDataCorrupted(
+                    decoder,
+                    "scenarioContext.reviewClock.frozenEpoch must match now"
+                )
+            }
+            try uiWorldParseAnchorDay(
+                anchorDay!, decoder: decoder, label: "scenarioContext.reviewClock.anchorDay"
+            )
+            let dayFormatter = DateFormatter()
+            dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+            dayFormatter.calendar = Calendar(identifier: .gregorian)
+            dayFormatter.timeZone = zone
+            dayFormatter.dateFormat = "yyyy-MM-dd"
+            guard dayFormatter.string(from: date) == anchorDay else {
+                throw uiWorldDataCorrupted(
+                    decoder,
+                    "scenarioContext.reviewClock.anchorDay must match now/timeZone"
+                )
+            }
+            _ = try uiWorldRequireNonEmpty(
+                source!, decoder: decoder, label: "scenarioContext.reviewClock.source"
+            )
+        } else {
+            try uiWorldRequireExactKeys(
+                rawContainer,
+                expected: Self.canonicalKeys,
+                decoder: decoder,
+                label: "scenarioContext.reviewClock"
+            )
+            now = nil
+            timeZone = nil
+            frozenNow = nil
+            frozenEpoch = nil
+            anchorDay = nil
+            source = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if isCanonical {
+            try container.encode(now, forKey: .now)
+            try container.encode(timeZone, forKey: .timeZone)
+            try container.encode(frozenEpoch, forKey: .frozenEpoch)
+            try container.encode(anchorDay, forKey: .anchorDay)
+            try container.encode(source, forKey: .source)
+        } else {
+            try container.encode(frozenNow, forKey: .frozenNow)
+            try container.encode(frozenEpoch, forKey: .frozenEpoch)
+            try container.encode(anchorDay, forKey: .anchorDay)
+            try container.encode(source, forKey: .source)
+        }
+    }
+}
+
+struct UIWorldDictionaryLookupSeed: Codable, Equatable {
+    let fixtureID: String
+    let stepLabel: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case fixtureID
+        case stepLabel
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["fixtureID", "stepLabel"], decoder: decoder, label: "dictionary.lookup")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fixtureID = try uiWorldRequireNonEmpty(
+            container.decode(String.self, forKey: .fixtureID),
+            decoder: decoder,
+            label: "dictionary.lookup.fixtureID"
+        )
+        stepLabel = try uiWorldRequireNonEmpty(
+            container.decode(String.self, forKey: .stepLabel),
+            decoder: decoder,
+            label: "dictionary.lookup.stepLabel"
+        )
+    }
+}
+
+struct UIWorldDictionarySenseSeed: Codable, Equatable {
+    let id: String
+    let partOfSpeech: String
+    let gloss: String
+    let exampleIDs: [String]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case partOfSpeech
+        case gloss
+        case exampleIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["id", "partOfSpeech", "gloss", "exampleIDs"], decoder: decoder, label: "dictionary.sense")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .id), decoder: decoder, label: "dictionary.sense.id")
+        partOfSpeech = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .partOfSpeech), decoder: decoder, label: "dictionary.sense.partOfSpeech")
+        gloss = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .gloss), decoder: decoder, label: "dictionary.sense.gloss")
+        exampleIDs = try container.decode([String].self, forKey: .exampleIDs)
+        try uiWorldRequireUnique(exampleIDs, decoder: decoder, label: "dictionary.sense.exampleIDs", allowEmpty: false)
+        for value in exampleIDs {
+            _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "dictionary.sense.exampleIDs")
+        }
+    }
+}
+
+struct UIWorldDictionaryExampleSeed: Codable, Equatable {
+    let id: String
+    let senseID: String
+    let text: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case senseID
+        case text
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["id", "senseID", "text"], decoder: decoder, label: "dictionary.example")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .id), decoder: decoder, label: "dictionary.example.id")
+        senseID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .senseID), decoder: decoder, label: "dictionary.example.senseID")
+        text = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .text), decoder: decoder, label: "dictionary.example.text")
+    }
+}
+
+struct UIWorldDictionaryProvenanceSeed: Codable, Equatable {
+    let provider: String
+    let entryID: String
+    let sourceLabel: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case provider
+        case entryID
+        case sourceLabel
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["provider", "entryID", "sourceLabel"], decoder: decoder, label: "dictionary.provenance")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .provider), decoder: decoder, label: "dictionary.provenance.provider")
+        entryID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .entryID), decoder: decoder, label: "dictionary.provenance.entryID")
+        sourceLabel = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .sourceLabel), decoder: decoder, label: "dictionary.provenance.sourceLabel")
+    }
+}
+
+struct UIWorldDictionaryMaterializationSeed: Codable, Equatable {
+    let status: String
+    let selectedSenseID: String?
+    let selectedExampleID: String?
+    let sourceFixtureID: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case status
+        case selectedSenseID
+        case selectedExampleID
+        case sourceFixtureID
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["status", "selectedSenseID", "selectedExampleID", "sourceFixtureID"], decoder: decoder, label: "dictionary.materialization")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .status), decoder: decoder, label: "dictionary.materialization.status")
+        guard ["pending", "ready", "failed"].contains(status) else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.materialization.status is invalid")
+        }
+        selectedSenseID = try container.decodeIfPresent(String.self, forKey: .selectedSenseID)
+        selectedExampleID = try container.decodeIfPresent(String.self, forKey: .selectedExampleID)
+        sourceFixtureID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .sourceFixtureID), decoder: decoder, label: "dictionary.materialization.sourceFixtureID")
+        if status == "ready" {
+            guard selectedSenseID != nil, selectedExampleID != nil else {
+                throw uiWorldDataCorrupted(decoder, "dictionary.materialization ready requires selected sense/example")
+            }
+        } else if selectedSenseID != nil || selectedExampleID != nil {
+            throw uiWorldDataCorrupted(decoder, "dictionary.materialization pending/failed must not carry selected sense/example")
+        }
+    }
+}
+
+struct UIWorldAssetCoverageSeed: Codable, Equatable {
+    let fixtureIDs: [String]
+    let stepLabels: [String]
+    let assetIDs: [String]
+    let assetInodes: [String]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case fixtureIDs
+        case stepLabels
+        case assetIDs
+        case assetInodes
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["fixtureIDs", "stepLabels", "assetIDs", "assetInodes"], decoder: decoder, label: "asset coverage")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fixtureIDs = try container.decode([String].self, forKey: .fixtureIDs)
+        stepLabels = try container.decode([String].self, forKey: .stepLabels)
+        assetIDs = try container.decode([String].self, forKey: .assetIDs)
+        assetInodes = try container.decode([String].self, forKey: .assetInodes)
+        try uiWorldRequireUnique(fixtureIDs, decoder: decoder, label: "asset coverage.fixtureIDs")
+        try uiWorldRequireUnique(stepLabels, decoder: decoder, label: "asset coverage.stepLabels")
+        try uiWorldRequireUnique(assetIDs, decoder: decoder, label: "asset coverage.assetIDs")
+        try uiWorldRequireUnique(assetInodes, decoder: decoder, label: "asset coverage.assetInodes")
+        for value in fixtureIDs + stepLabels + assetIDs + assetInodes {
+            _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "asset coverage value")
+        }
+        guard assetInodes.allSatisfy({ $0.hasPrefix("inode:") }) else {
+            throw uiWorldDataCorrupted(decoder, "asset coverage.assetInodes must use inode: tokens")
+        }
+    }
+}
+
+struct UIWorldDictionarySeed: Codable, Equatable {
+    let lookup: [String: UIWorldDictionaryLookupSeed]
+    let senses: [UIWorldDictionarySenseSeed]
+    let examples: [UIWorldDictionaryExampleSeed]
+    let provenance: UIWorldDictionaryProvenanceSeed
+    let materialization: UIWorldDictionaryMaterializationSeed
+    let coverage: [String: UIWorldAssetCoverageSeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case lookup
+        case senses
+        case examples
+        case provenance
+        case materialization
+        case coverage
+    }
+
+    private static let lookupStates: Set<String> = ["idle", "loading", "result", "partial", "offline", "error", "retry"]
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["lookup", "senses", "examples", "provenance", "materialization", "coverage"], decoder: decoder, label: "scenarioContext.dictionary")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lookup = try container.decode([String: UIWorldDictionaryLookupSeed].self, forKey: .lookup)
+        senses = try container.decode([UIWorldDictionarySenseSeed].self, forKey: .senses)
+        examples = try container.decode([UIWorldDictionaryExampleSeed].self, forKey: .examples)
+        provenance = try container.decode(UIWorldDictionaryProvenanceSeed.self, forKey: .provenance)
+        materialization = try container.decode(UIWorldDictionaryMaterializationSeed.self, forKey: .materialization)
+        coverage = try container.decode([String: UIWorldAssetCoverageSeed].self, forKey: .coverage)
+        try validateShape(decoder: decoder)
+    }
+
+    private func validateShape(decoder: Decoder) throws {
+        guard Set(lookup.keys) == Self.lookupStates else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.lookup states must be exact")
+        }
+        guard !senses.isEmpty, !examples.isEmpty else {
+            throw uiWorldDataCorrupted(decoder, "dictionary senses/examples must be non-empty")
+        }
+        guard Set(senses.map(\.id)).count == senses.count else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.senses.id must be unique")
+        }
+        guard Set(examples.map(\.id)).count == examples.count else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.examples.id must be unique")
+        }
+        guard Set(lookup.values.map(\.fixtureID)).count == lookup.count else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.lookup.fixtureID must be unique")
+        }
+        guard Set(lookup.values.map(\.stepLabel)).count == lookup.count else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.lookup.stepLabel must be unique")
+        }
+        let senseIDs = Set(senses.map(\.id))
+        let exampleByID = Dictionary(uniqueKeysWithValues: examples.map { ($0.id, $0) })
+        var referencedExampleIDs: Set<String> = []
+        for sense in senses {
+            for exampleID in sense.exampleIDs {
+                guard let example = exampleByID[exampleID], example.senseID == sense.id else {
+                    throw uiWorldDataCorrupted(decoder, "dictionary sense/example references must correspond")
+                }
+                referencedExampleIDs.insert(exampleID)
+            }
+        }
+        guard referencedExampleIDs == Set(exampleByID.keys) else {
+            throw uiWorldDataCorrupted(decoder, "dictionary examples must be referenced by their sense")
+        }
+        guard examples.allSatisfy({ senseIDs.contains($0.senseID) }) else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.example.senseID references unknown sense")
+        }
+        guard lookup.values.contains(where: { $0.fixtureID == materialization.sourceFixtureID }) else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.materialization.sourceFixtureID must reference lookup")
+        }
+        if materialization.status == "ready" {
+            guard let selectedSenseID = materialization.selectedSenseID,
+                  let selectedExampleID = materialization.selectedExampleID,
+                  senseIDs.contains(selectedSenseID),
+                  let example = exampleByID[selectedExampleID],
+                  example.senseID == selectedSenseID else {
+                throw uiWorldDataCorrupted(decoder, "dictionary materialization selected sense/example must correspond")
+            }
+        }
+        guard Set(coverage.keys) == Set(["required", "counterexamples"]) else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.coverage keys must be required/counterexamples")
+        }
+        guard let required = coverage["required"], !required.fixtureIDs.isEmpty, !required.stepLabels.isEmpty,
+              let counterexamples = coverage["counterexamples"] else {
+            throw uiWorldDataCorrupted(decoder, "dictionary.coverage required must be non-empty")
+        }
+        try validateDisjoint(required, counterexamples, decoder: decoder, label: "dictionary.coverage")
+    }
+
+    private func validateDisjoint(
+        _ required: UIWorldAssetCoverageSeed,
+        _ counterexamples: UIWorldAssetCoverageSeed,
+        decoder: Decoder,
+        label: String
+    ) throws {
+        let pairs: [(String, Set<String>, Set<String>)] = [
+            ("fixtureIDs", Set(required.fixtureIDs), Set(counterexamples.fixtureIDs)),
+            ("stepLabels", Set(required.stepLabels), Set(counterexamples.stepLabels)),
+            ("assetIDs", Set(required.assetIDs), Set(counterexamples.assetIDs)),
+            ("assetInodes", Set(required.assetInodes), Set(counterexamples.assetInodes)),
+        ]
+        for (name, requiredValues, counterexampleValues) in pairs where !requiredValues.isDisjoint(with: counterexampleValues) {
+            throw uiWorldDataCorrupted(decoder, "\(label).\(name) required/counterexamples must be disjoint")
+        }
+    }
+
+    func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
+        let assetTypes = assets.typeByID
+        for (name, values) in coverage {
+            let expected = Set(values.assetIDs.map { "inode:\($0)" })
+            guard Set(values.assetIDs).isSubset(of: Set(assetTypes.keys)),
+                  Set(values.assetInodes) == expected,
+                  values.assetIDs.count == values.assetInodes.count else {
+                throw uiWorldDataCorrupted(decoder, "dictionary.coverage.\(name).assetIDs/assetInodes must be one-to-one")
+            }
+        }
+    }
+}
+
+struct UIWorldSurfaceContractRowSeed: Codable, Equatable {
+    let fixtureID: String
+    let stepLabel: String
+    let index: Int
+    let assetIDs: [String]
+    let assetInodes: [String]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case fixtureID
+        case stepLabel
+        case index
+        case assetIDs
+        case assetInodes
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["fixtureID", "stepLabel", "index", "assetIDs", "assetInodes"], decoder: decoder, label: "surface contract row")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fixtureID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .fixtureID), decoder: decoder, label: "surface contract.fixtureID")
+        stepLabel = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .stepLabel), decoder: decoder, label: "surface contract.stepLabel")
+        index = try container.decode(Int.self, forKey: .index)
+        guard index >= 0 else {
+            throw uiWorldDataCorrupted(decoder, "surface contract.index must be non-negative")
+        }
+        assetIDs = try container.decode([String].self, forKey: .assetIDs)
+        assetInodes = try container.decode([String].self, forKey: .assetInodes)
+        try uiWorldRequireUnique(assetIDs, decoder: decoder, label: "surface contract.assetIDs")
+        try uiWorldRequireUnique(assetInodes, decoder: decoder, label: "surface contract.assetInodes")
+        guard assetInodes.allSatisfy({ $0.hasPrefix("inode:") }),
+              Set(assetInodes) == Set(assetIDs.map { "inode:\($0)" }),
+              assetIDs.count == assetInodes.count else {
+            throw uiWorldDataCorrupted(decoder, "surface contract assetIDs/assetInodes must be one-to-one")
+        }
+    }
+}
+
+struct UIWorldSurfaceContractSeed: Codable, Equatable {
+    let required: [UIWorldSurfaceContractRowSeed]
+    let counterexamples: [UIWorldSurfaceContractRowSeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case required
+        case counterexamples
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        try uiWorldRequireExactKeys(raw, expected: ["required", "counterexamples"], decoder: decoder, label: "surface contract")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        required = try container.decode([UIWorldSurfaceContractRowSeed].self, forKey: .required)
+        counterexamples = try container.decode([UIWorldSurfaceContractRowSeed].self, forKey: .counterexamples)
+        guard !required.isEmpty else {
+            throw uiWorldDataCorrupted(decoder, "surface contract.required must be non-empty")
+        }
+        try validateUnique(required, decoder: decoder, label: "surface contract.required")
+        try validateUnique(counterexamples, decoder: decoder, label: "surface contract.counterexamples")
+        let pairs: [(String, Set<String>, Set<String>)] = [
+            ("fixtureID", Set(required.map(\.fixtureID)), Set(counterexamples.map(\.fixtureID))),
+            ("stepLabel", Set(required.map(\.stepLabel)), Set(counterexamples.map(\.stepLabel))),
+            ("index", Set(required.map { String($0.index) }), Set(counterexamples.map { String($0.index) })),
+            ("assetIDs", Set(required.flatMap(\.assetIDs)), Set(counterexamples.flatMap(\.assetIDs))),
+            ("assetInodes", Set(required.flatMap(\.assetInodes)), Set(counterexamples.flatMap(\.assetInodes))),
+        ]
+        for (name, requiredValues, counterexampleValues) in pairs where !requiredValues.isDisjoint(with: counterexampleValues) {
+            throw uiWorldDataCorrupted(decoder, "surface contract.\(name) required/counterexamples must be disjoint")
+        }
+    }
+
+    private func validateUnique(
+        _ rows: [UIWorldSurfaceContractRowSeed],
+        decoder: Decoder,
+        label: String
+    ) throws {
+        guard Set(rows.map(\.fixtureID)).count == rows.count,
+              Set(rows.map(\.stepLabel)).count == rows.count,
+              Set(rows.map { $0.index }).count == rows.count else {
+            throw uiWorldDataCorrupted(decoder, "\(label) fixtureID/stepLabel/index must be unique")
+        }
+    }
+
+    func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
+        let assetTypes = assets.typeByID
+        for row in required + counterexamples {
+            let expected = Set(row.assetIDs.map { "inode:\($0)" })
+            guard Set(row.assetIDs).isSubset(of: Set(assetTypes.keys)),
+                  Set(row.assetInodes) == expected,
+                  row.assetIDs.count == row.assetInodes.count else {
+                throw uiWorldDataCorrupted(decoder, "surface contract assetIDs/assetInodes must be one-to-one")
+            }
+        }
+    }
+}
+
+struct UIWorldScenarioContextSeed: Codable, Equatable {
+    /// Legacy worlds use exactly these three keys; canonical worlds add the
+    /// dictionary and surface contracts as an inseparable five-key shape.
+    let reviewClock: FixtureReviewClockSeed?
+    let dictionary: UIWorldDictionarySeed?
+    let surfaceContracts: [String: UIWorldSurfaceContractSeed]?
+    let readerPassage: UIWorldReaderPassageSeed?
+    let wordDetail: UIWorldVocabularySeed?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case reviewClock
+        case dictionary
+        case surfaceContracts
+        case readerPassage
+        case wordDetail
+    }
+
+    private static let legacyKeys: Set<String> = ["reviewClock", "readerPassage", "wordDetail"]
+    private static let canonicalKeys: Set<String> = ["reviewClock", "dictionary", "surfaceContracts", "readerPassage", "wordDetail"]
+
+    init(
+        reviewClock: FixtureReviewClockSeed? = nil,
+        dictionary: UIWorldDictionarySeed? = nil,
+        surfaceContracts: [String: UIWorldSurfaceContractSeed]? = nil,
+        readerPassage: UIWorldReaderPassageSeed? = nil,
+        wordDetail: UIWorldVocabularySeed? = nil
+    ) {
+        self.reviewClock = reviewClock
+        self.dictionary = dictionary
+        self.surfaceContracts = surfaceContracts
+        self.readerPassage = readerPassage
+        self.wordDetail = wordDetail
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let keys = Set(rawContainer.allKeys.map(\.stringValue))
+        guard keys == Self.legacyKeys || keys == Self.canonicalKeys else {
+            try uiWorldRequireExactKeys(rawContainer, expected: Self.canonicalKeys, decoder: decoder, label: "UI World scenarioContext")
+            throw uiWorldDataCorrupted(decoder, "UI World scenarioContext has an unsupported key shape")
         }
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        frozenNow = try container.decodeIfPresent(String.self, forKey: .frozenNow)
-        frozenEpoch = try container.decodeIfPresent(Int.self, forKey: .frozenEpoch)
-        anchorDay = try container.decodeIfPresent(String.self, forKey: .anchorDay)
-        source = try container.decodeIfPresent(String.self, forKey: .source)
+        reviewClock = try container.decodeIfPresent(FixtureReviewClockSeed.self, forKey: .reviewClock)
+        readerPassage = try container.decodeIfPresent(UIWorldReaderPassageSeed.self, forKey: .readerPassage)
+        wordDetail = try container.decodeIfPresent(UIWorldVocabularySeed.self, forKey: .wordDetail)
+        if keys == Self.canonicalKeys {
+            guard reviewClock?.isCanonical == true else {
+                throw uiWorldDataCorrupted(decoder, "canonical scenarioContext requires canonical reviewClock")
+            }
+            dictionary = try container.decode(UIWorldDictionarySeed.self, forKey: .dictionary)
+            surfaceContracts = try container.decode([String: UIWorldSurfaceContractSeed].self, forKey: .surfaceContracts)
+            guard surfaceContracts?.keys.contains("explore") == true,
+                  surfaceContracts?.keys.contains("settings") == true else {
+                throw uiWorldDataCorrupted(decoder, "canonical scenarioContext requires explore/settings surfaceContracts")
+            }
+        } else {
+            guard reviewClock?.isCanonical != true else {
+                throw uiWorldDataCorrupted(decoder, "legacy scenarioContext cannot use canonical reviewClock")
+            }
+            dictionary = nil
+            surfaceContracts = nil
+        }
+    }
+
+    func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
+        guard let dictionary, let surfaceContracts else {
+            return
+        }
+        guard let reviewClock, reviewClock.isCanonical,
+              readerPassage != nil, wordDetail != nil else {
+            throw uiWorldDataCorrupted(decoder, "canonical scenarioContext must declare clock, readerPassage and wordDetail")
+        }
+        try dictionary.validate(assets: assets, decoder: decoder)
+        for (surface, contract) in surfaceContracts {
+            try contract.validate(assets: assets, decoder: decoder)
+            guard !surface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw uiWorldDataCorrupted(decoder, "surfaceContracts keys must be non-empty")
+            }
+        }
     }
 }
 
@@ -521,6 +1115,16 @@ struct UIWorldAssetManifest: Codable, Equatable {
         subtitles = try container.decode([String: UIWorldAsset].self, forKey: .subtitles)
         text = try container.decode([String: UIWorldAsset].self, forKey: .text)
         images = try container.decode([String: UIWorldAsset].self, forKey: .images)
+        try Self.validateUniqueAssetIDs(
+            buckets: [
+                "books": books,
+                "audio": audio,
+                "subtitles": subtitles,
+                "text": text,
+                "images": images,
+            ],
+            codingPath: container.codingPath
+        )
         try Self.validateUniqueInstallPaths(
             buckets: [
                 "books": books,
@@ -566,6 +1170,25 @@ struct UIWorldAssetManifest: Codable, Equatable {
         }
     }
 
+    /// Canonical scenario references identify an asset by ID plus its manifest
+    /// bucket/type. A duplicated ID across buckets would make that identity
+    /// ambiguous, so the decoder rejects it before coverage validation.
+    var typeByID: [String: String] {
+        var result: [String: String] = [:]
+        for (bucket, assets) in [
+            ("books", books),
+            ("audio", audio),
+            ("subtitles", subtitles),
+            ("text", text),
+            ("images", images),
+        ] {
+            for assetID in assets.keys {
+                result[assetID] = bucket
+            }
+        }
+        return result
+    }
+
     private static func validateUniqueInstallPaths(
         buckets: [String: [String: UIWorldAsset]],
         codingPath: [CodingKey]
@@ -584,6 +1207,27 @@ struct UIWorldAssetManifest: Codable, Equatable {
                     )
                 }
                 seen[installAs] = ref
+            }
+        }
+    }
+
+    private static func validateUniqueAssetIDs(
+        buckets: [String: [String: UIWorldAsset]],
+        codingPath: [CodingKey]
+    ) throws {
+        var seen: [String: String] = [:]
+        for (bucket, assets) in buckets {
+            for assetID in assets.keys {
+                let ref = "\(bucket).\(assetID)"
+                if let previous = seen[assetID] {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: codingPath,
+                            debugDescription: "UI World asset ID \(assetID) must map to one asset type; found \(previous) and \(ref)"
+                        )
+                    )
+                }
+                seen[assetID] = ref
             }
         }
     }
