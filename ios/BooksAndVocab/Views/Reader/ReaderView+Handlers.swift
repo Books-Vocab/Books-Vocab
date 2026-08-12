@@ -8,7 +8,8 @@ extension ReaderView {
             withAnimation(AppMotion.contentFade) { readerState.isWebViewReady = true }
         }
         currentLocator = locator
-        totalProgression = locator.locations.totalProgression ?? 0
+        readerState.runtime.recordLocationProgression(locator.locations.totalProgression)
+        totalProgression = readerState.progressState.progression ?? 0
 
         // 序列化失敗時**不覆寫**既有值（避免舊 `"{}"` 污染下次還原），整筆 persist
         // 一併跳過，保留上次有效的 locator/progression 快照不致 JSON 與進度錯配。
@@ -19,7 +20,7 @@ extension ReaderView {
         // 路徑的顯式 save，但避開每頁同步 I/O 卡頓。
         progressSaver.recordChange {
             book.lastReadLocatorJSON = json
-            book.dateLastRead = Date()
+            book.dateLastRead = readerState.clock.now()
             book.progression = progression
         } save: { [book, modelContext] in
             if modelContext.safeSave() {

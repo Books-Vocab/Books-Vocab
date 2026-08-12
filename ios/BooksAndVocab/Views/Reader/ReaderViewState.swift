@@ -515,14 +515,37 @@ enum ReaderTOCHierarchy {
 
 /// 閱讀器 UI 狀態容器，整合原本散落在 ReaderView 的 @State 屬性
 @Observable
+@MainActor
 final class ReaderViewState {
+    let runtime: ReaderRuntimeState
+    let clock: ReaderRuntimeClock
+
+    init(
+        runtimeSelection: ReaderRuntimeSelection = ReaderRuntimeFixtureAdapter.selection(scenario: nil),
+        clock: ReaderRuntimeClock = .live
+    ) {
+        runtime = ReaderRuntimeState(selection: runtimeSelection)
+        self.clock = clock
+    }
+
     // Loading
-    var isLoading = true
     var isWebViewReady = false
-    var loadingPhase = L10n.string("開啟書本…")
-    var errorMessage: String?
+    var isLoading: Bool { runtime.isLoading }
+    private(set) var loadingPhaseOverride: String?
+    var loadingPhase: String { loadingPhaseOverride ?? runtime.loadingPhase }
+    var errorMessage: String? { runtime.errorMessage }
+    var loadingState: ReaderLoadingState { runtime.loadingState }
+
+    func updateLoadingPhase(_ phase: String) {
+        loadingPhaseOverride = phase
+    }
+
+    func resetLoadingPhase() {
+        loadingPhaseOverride = nil
+    }
 
     // Progress
+    var progressState: ReaderProgressState { runtime.progressState }
     var underlineProgress: Double?
     var hasCompletedInitialMarking = false
 

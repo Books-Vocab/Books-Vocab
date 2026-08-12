@@ -12,9 +12,37 @@ struct ReaderPublicationLoadResult {
 }
 
 @MainActor
+protocol ReaderLoadClock {
+    var now: ContinuousClock.Instant { get }
+    func sleep(for duration: Duration) async throws
+}
+
+@MainActor
+struct SystemReaderLoadClock: ReaderLoadClock {
+    private let clock = ContinuousClock()
+
+    var now: ContinuousClock.Instant { clock.now }
+
+    func sleep(for duration: Duration) async throws {
+        try await clock.sleep(for: duration)
+    }
+}
+
+@MainActor
 struct ReaderPublicationLoader {
     let readiumService: any ReadiumServing
     let downloadManager: ICloudDownloadManager
+    let clock: any ReaderLoadClock
+
+    init(
+        readiumService: any ReadiumServing,
+        downloadManager: ICloudDownloadManager,
+        clock: any ReaderLoadClock = SystemReaderLoadClock()
+    ) {
+        self.readiumService = readiumService
+        self.downloadManager = downloadManager
+        self.clock = clock
+    }
 
     func loadPublication(
         for book: Book,
@@ -58,9 +86,9 @@ struct ReaderPublicationLoader {
             updatePhase(L10n.string("等待 iCloud 同步…"))
         }
 
-        let deadline = Date().addingTimeInterval(ReaderMetrics.iCloudWaitTimeout)
+        let deadline = clock.now.advanced(by: .seconds(ReaderMetrics.iCloudWaitTimeout))
         var retried = false
-        while Date() < deadline {
+        while clock.now < deadline {
             if fm.isReadableFile(atPath: url.path) {
                 AppLog.readium.info("iCloud file ready: \(fileName)")
                 return
@@ -69,7 +97,7 @@ struct ReaderPublicationLoader {
             if let state = downloadManager.state(for: fileName) {
                 switch state {
                 case .current:
-                    try await Task.sleep(for: .seconds(ReaderMetrics.iCloudCurrentPollInterval))
+                    try await clock.sleep(for: .seconds(ReaderMetrics.iCloudCurrentPollInterval))
                     continue
                 case .downloading(let progress):
                     updatePhase(L10n.format("正在從 iCloud 下載… %@%%", String(Int(progress * 100))))
@@ -99,7 +127,7 @@ struct ReaderPublicationLoader {
                 }
             }
 
-            try await Task.sleep(for: .seconds(ReaderMetrics.iCloudWaitPollInterval))
+            try await clock.sleep(for: .seconds(ReaderMetrics.iCloudWaitPollInterval))
         }
 
         AppLog.readium.error("iCloud file wait timed out: \(fileName)")

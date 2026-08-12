@@ -9,9 +9,8 @@
 //  explicit safeSave()), so the last position could be lost on crash/OOM before
 //  SwiftData's non-deterministic autosave flushed.
 //
-//  NOTE: This target cannot run locally in this environment (CLAUDE.md Scope
-//  forbids ios_test.sh here). Cases are the executable spec for the debounce /
-//  flush / encode-skip behaviour, validated by CI / reviewer.
+//  The debounce contract is exercised through an injected deterministic
+//  scheduler; no wall-clock wait is needed to verify flush/coalescing.
 //
 
 import Foundation
@@ -24,9 +23,10 @@ struct ReaderProgressSaverTests {
 
     /// Consecutive page-turns inside the debounce window collapse to a single
     /// save — no per-page synchronous I/O.
-    @Test func consecutivePageTurnsCoalesceToSingleSave() async throws {
+    @Test func consecutivePageTurnsCoalesceToSingleSave() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.05)
+        let debouncer = TestReaderProgressDebouncer()
+        let sut = ReaderProgressSaver(flushDelay: 0.05, debouncer: debouncer)
 
         var applied = 0
         for _ in 0..<10 {
@@ -38,16 +38,17 @@ struct ReaderProgressSaverTests {
         // ...but no save has flushed yet within the window.
         #expect(saves.value == 0)
 
-        try await Task.sleep(nanoseconds: 200_000_000)
+        debouncer.fire()
         // Exactly one coalesced save fires at the window tail.
         #expect(saves.value == 1)
     }
 
     /// flush() persists immediately and cancels the pending debounced save,
     /// so it never double-fires — covers onDisappear / scenePhase .background.
-    @Test func flushSavesImmediatelyAndCancelsPending() async throws {
+    @Test func flushSavesImmediatelyAndCancelsPending() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.5)
+        let debouncer = TestReaderProgressDebouncer()
+        let sut = ReaderProgressSaver(flushDelay: 0.5, debouncer: debouncer)
 
         sut.recordChange(apply: {}, save: { saves.increment() })
         #expect(saves.value == 0)   // still pending
@@ -56,29 +57,30 @@ struct ReaderProgressSaverTests {
         #expect(saves.value == 1)   // immediate
 
         // The previously-scheduled debounced save must have been cancelled.
-        try await Task.sleep(nanoseconds: 700_000_000)
+        debouncer.fire()
         #expect(saves.value == 1)
     }
 
     /// flush() with nothing pending is a no-op (no spurious save).
     @Test func flushWithoutPendingIsNoOp() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.5)
+        let sut = ReaderProgressSaver(flushDelay: 0.5, debouncer: TestReaderProgressDebouncer())
         sut.flush()
         #expect(saves.value == 0)
     }
 
     /// A record() arriving after a flush() schedules a fresh debounce window.
-    @Test func recordAfterFlushSchedulesNewWindow() async throws {
+    @Test func recordAfterFlushSchedulesNewWindow() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.05)
+        let debouncer = TestReaderProgressDebouncer()
+        let sut = ReaderProgressSaver(flushDelay: 0.05, debouncer: debouncer)
 
         sut.recordChange(apply: {}, save: { saves.increment() })
         sut.flush()                 // save #1
         #expect(saves.value == 1)
 
         sut.recordChange(apply: {}, save: { saves.increment() })
-        try await Task.sleep(nanoseconds: 200_000_000)
+        debouncer.fire()
         #expect(saves.value == 2)   // debounced save #2
     }
 
@@ -102,7 +104,7 @@ struct ReaderProgressSaverTests {
     /// Calling flush() twice without an intervening recordChange is a no-op.
     @Test func doubleFlushWithoutRecordIsNoOp() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.5)
+        let sut = ReaderProgressSaver(flushDelay: 0.5, debouncer: TestReaderProgressDebouncer())
 
         sut.recordChange(apply: {}, save: { saves.increment() })
         sut.flush()   // save #1
@@ -112,29 +114,31 @@ struct ReaderProgressSaverTests {
 
     /// flush() cancels the pending debounce task; even if the original window
     /// expires later, no late save fires because the task was cancelled.
-    @Test func flushCancelsPendingTaskSoNoLateSave() async throws {
+    @Test func flushCancelsPendingTaskSoNoLateSave() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.5)
+        let debouncer = TestReaderProgressDebouncer()
+        let sut = ReaderProgressSaver(flushDelay: 0.5, debouncer: debouncer)
 
         sut.recordChange(apply: {}, save: { saves.increment() })
         sut.flush()   // immediate save + cancel pending task
 
         // Wait well past the original debounce window.
-        try await Task.sleep(nanoseconds: 700_000_000)
+        debouncer.fire()
         #expect(saves.value == 1)   // still only the flush save
     }
 
     /// The save closure from the most recent recordChange wins — intermediate
     /// closures are never executed.
-    @Test func intermediateSaveClosuresAreNeverExecuted() async throws {
+    @Test func intermediateSaveClosuresAreNeverExecuted() {
         let saves = Counter()
-        let sut = ReaderProgressSaver(flushDelay: 0.05)
+        let debouncer = TestReaderProgressDebouncer()
+        let sut = ReaderProgressSaver(flushDelay: 0.05, debouncer: debouncer)
 
         sut.recordChange(apply: {}, save: { saves.increment() })          // closure A
         sut.recordChange(apply: {}, save: { saves.increment() })          // closure B
         sut.recordChange(apply: {}, save: { saves.increment() })          // closure C
 
-        try await Task.sleep(nanoseconds: 200_000_000)
+        debouncer.fire()
         // Only the latest closure (C) executes once; A and B are dropped.
         #expect(saves.value == 1)
     }
@@ -146,4 +150,23 @@ private final class Counter: @unchecked Sendable {
     private var _value = 0
     var value: Int { lock.lock(); defer { lock.unlock() }; return _value }
     func increment() { lock.lock(); _value += 1; lock.unlock() }
+}
+
+@MainActor
+private final class TestReaderProgressDebouncer: ReaderProgressDebouncing {
+    private var pendingAction: (@MainActor () -> Void)?
+
+    func schedule(after _: TimeInterval, action: @escaping @MainActor () -> Void) {
+        pendingAction = action
+    }
+
+    func cancel() {
+        pendingAction = nil
+    }
+
+    func fire() {
+        let action = pendingAction
+        pendingAction = nil
+        action?()
+    }
 }
