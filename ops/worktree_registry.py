@@ -2492,16 +2492,16 @@ def build_parser() -> argparse.ArgumentParser:
     hb.add_argument("--branch", default=None, help="branch of the active record")
     hb.add_argument("--path", default=None,
                     help="worktree path (default: current worktree)")
-    hb.add_argument("--outcomes", default=None, metavar="JSON",
-                    help="typed hand-back outcomes JSON; required for closed-loop integration")
+    hb.add_argument("--outcomes", default=None, metavar="PATH",
+                    help="typed hand-back outcomes JSON file path; required for closed-loop integration")
     hb.add_argument("--campaign", default=None, metavar="ID",
                     help="campaign id when handing back a child integration receipt")
     hb.add_argument("--partition", default=None, metavar="ID",
                     help="campaign partition id for a child integration receipt")
     hb.add_argument("--role", default=None, choices=("child",),
                     help="receipt role (currently only child is integrable by a parent)")
-    hb.add_argument("--manifest", default=None, metavar="JSON",
-                    help="completed child integration manifest used to build the receipt")
+    hb.add_argument("--manifest", default=None, metavar="PATH",
+                    help="completed child integration manifest JSON file path used to build the receipt")
     hb.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     hb.set_defaults(func=cmd_hand_back)
 
