@@ -32,7 +32,7 @@ struct ReaderView: View {
     private var liveNotebooks: [Notebook]
 
     @State var publication: Publication?
-    @State var readerState = ReaderViewState()
+    @State var readerState: ReaderViewState
     @State var tocNavigationState = ReaderTOCNavigationState()
     /// Readiness/settings receipt emitted by the live Readium navigator.
     /// `nil` is intentionally exposed as a pending state until the navigator
@@ -78,6 +78,11 @@ struct ReaderView: View {
 
     init(book: Book) {
         self._book = Bindable(book)
+        let runtimeSelection = ReaderRuntimeFixtureAdapter.selection(
+            arguments: ProcessInfo.processInfo.arguments,
+            dataset: FixtureDatasetStore.readerProvenance()
+        ) ?? ReaderRuntimeFixtureAdapter.selection(scenario: nil, dataset: FixtureDatasetStore.readerProvenance())
+        self._readerState = State(initialValue: ReaderViewState(runtimeSelection: runtimeSelection))
     }
 
     var body: some View {
@@ -91,7 +96,8 @@ struct ReaderView: View {
             onShowReaderSettings: showReaderSettingsPanel,
             onShowNotebookPicker: { showNotebookPicker = true },
             onExpandHeader: expandHeader,
-            onCollapseHeader: collapseHeader
+            onCollapseHeader: collapseHeader,
+            onResolveSlowLoading: resolveSlowLoading
         ) {
             readerMainContent
         } translationPanel: {
@@ -119,6 +125,7 @@ struct ReaderView: View {
         .task {
             sanitizeStaleBoundNotebook()
             seedNotebookBindingIfNeeded()
+            prepareRestoreState()
             await loadPublication()
         }
         .onDisappear {
@@ -279,8 +286,12 @@ struct ReaderView: View {
             loadingPhase: readerState.loadingPhase,
             underlineProgress: readerState.underlineProgress,
             chrome: chromeState,
-            totalProgression: totalProgression,
-            bookTitle: book.title
+            totalProgression: readerState.progressState.progression ?? totalProgression,
+            bookTitle: book.title,
+            progressState: readerState.progressState,
+            loadingState: readerState.loadingState,
+            runtimeStateAccessibilityValue: readerState.runtime.runtimeStateAccessibilityValue,
+            canResolveSlowLoading: readerState.runtime.selection.loadMode == .slow && readerState.loadingState == .loading(.slow)
         )
     }
 
@@ -289,28 +300,46 @@ struct ReaderView: View {
     /// 從錯誤狀態回到 loading 並重新呼叫 `loadPublication()`。
     /// 在 error overlay 上的「重試載入」按鈕觸發。
     func retryLoadPublication() {
-        readerState.errorMessage = nil
-        readerState.isLoading = true
+        _ = readerState.runtime.retry()
+        readerState.resetLoadingPhase()
         readerState.isWebViewReady = false
-        readerState.loadingPhase = L10n.string("開啟書本…")
         // 持 handle：retry 為非結構化 Task，需 onDisappear 顯式取消（見 retryLoadTask 宣告）。
         // 重入先取消舊 retry，避免連點時舊 in-flight 載入洩漏（與 onDisappear 對稱）。
         retryLoadTask?.cancel()
         retryLoadTask = Task { await loadPublication() }
     }
 
+    private func resolveSlowLoading() {
+        guard readerState.runtime.releaseSlowLoading() else { return }
+        readerState.resetLoadingPhase()
+        readerState.isWebViewReady = false
+        retryLoadTask?.cancel()
+        retryLoadTask = Task { await loadPublication() }
+    }
+
     private func loadPublication() async {
+        switch readerState.runtime.beginLoadAttempt() {
+        case .holdSlow:
+            readerState.isWebViewReady = false
+            return
+        case .failed:
+            readerState.isWebViewReady = true
+            return
+        case .proceed:
+            readerState.resetLoadingPhase()
+        }
+
         do {
             let loader = ReaderPublicationLoader(
                 readiumService: readiumService,
                 downloadManager: downloadManager
             )
             let result = try await loader.loadPublication(for: book) { phase in
-                readerState.loadingPhase = phase
+                readerState.updateLoadingPhase(phase)
             }
             await MainActor.run {
                 publication = result.publication
-                readerState.isLoading = false
+                readerState.runtime.markReady()
                 PerfLog.reader.mark("reader.opened", "title=\(book.title)")
                 handler.loadLookedUpWords(
                     from: allVocabulary,
@@ -328,8 +357,7 @@ struct ReaderView: View {
         } catch {
             AppLog.reader.error("Publication load failed (book=\(book.title)): \(error.localizedDescription, privacy: .public)")
             await MainActor.run {
-                readerState.errorMessage = error.localizedDescription
-                readerState.isLoading = false
+                readerState.runtime.fail(.openFailed, message: error.localizedDescription)
                 readerState.isWebViewReady = true  // 顯示錯誤畫面
             }
         }

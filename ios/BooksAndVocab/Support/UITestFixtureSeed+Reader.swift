@@ -17,14 +17,18 @@ extension UITestFixtureSeed {
     /// (the reader flow asserts on exactly one seeded book); other domains'
     /// fixtures are untouched.
     @MainActor
-    static func seedReader(_ id: String, into container: ModelContainer) {
+    static func seedReader(
+        _ id: String,
+        into container: ModelContainer,
+        runtime: ReaderRuntimeSelection? = nil
+    ) {
         // 模擬器限定：reader fixture 會把 manifest EPUB 寫進「真實」Books
         // 目錄（容器 guard 罩不到的磁碟平面）。真機上殘留檔案會在下次正常
         // 啟動被 orphan recovery 收編進使用者真實書庫——一律拒絕。
         #if targetEnvironment(simulator)
         switch id {
         case "realBookLibrary", "invalidDestinationLibrary":
-            seedReaderLibrary(id: id, into: container)
+            seedReaderRealBookLibrary(id: id, into: container, runtime: runtime)
         default:
             failFixtureSeed("Unknown reader fixture ID: \(id)")
         }
@@ -34,7 +38,11 @@ extension UITestFixtureSeed {
     }
 
     @MainActor
-    private static func seedReaderLibrary(id: String, into container: ModelContainer) {
+    private static func seedReaderRealBookLibrary(
+        id: String,
+        into container: ModelContainer,
+        runtime: ReaderRuntimeSelection?
+    ) {
         let context = container.mainContext
         do {
             guard let fixtureID = UIWorldReaderFixtureID(rawValue: id) else {
@@ -61,6 +69,9 @@ extension UITestFixtureSeed {
                 format: .epub
             )
             book.preferredNotebookId = fixture.seed.notebookRemoteId
+            if runtime?.scenario == .progressRestoreFailure {
+                book.lastReadLocatorJSON = "{\"invalid\":true}"
+            }
             context.insert(book)
 
             try context.save()

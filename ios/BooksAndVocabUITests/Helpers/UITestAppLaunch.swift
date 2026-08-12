@@ -7,6 +7,17 @@ private let uiTestPerfLogEnvKey = "KG_PERF_LOG"
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 
+enum UITestReaderRuntimeScenario: String, CaseIterable, Equatable {
+    case progressUnknown = "progress-unknown"
+    case progressZero = "progress-zero"
+    case progressMiddle = "progress-middle"
+    case progressComplete = "progress-complete"
+    case progressRestoreFailure = "progress-restore-failure"
+    case loadingSlow = "loading-slow"
+    case loadingMissing = "loading-missing"
+    case loadingErrorRetry = "loading-error-retry"
+}
+
 enum UITestFixture: Equatable {
     case raw(String)
     case bookshelf(String)
@@ -22,6 +33,7 @@ enum UITestFixture: Equatable {
     case vocabularyLibraryP11MixedRoleCounterexample
     case readerRealBookLibrary
     case readerInvalidDestinationLibrary
+    case readerRuntime(UITestReaderRuntimeScenario)
     case notebookReviewDeck
     case notebookReviewDeckVaried
     case dictionaryP1Rich
@@ -57,6 +69,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:reader:realBookLibrary"
         case .readerInvalidDestinationLibrary:
             return "-seedFixture:reader:invalidDestinationLibrary"
+        case .readerRuntime(let scenario):
+            return "-readerRuntimeScenario:\(scenario.rawValue)"
         case .notebookReviewDeck:
             return "-seedFixture:notebook:reviewDeck"
         case .notebookReviewDeckVaried:

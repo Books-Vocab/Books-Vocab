@@ -5,11 +5,18 @@ extension ReaderViewPresenter {
     var loadingOverlay: some View {
         state.paperColor.ignoresSafeArea()
             .overlay {
-                AppLoadingStateCard(
-                    title: state.loadingPhase,
-                    systemImage: "book.closed",
-                    visualStyle: .vocab
-                )
+                VStack(spacing: AppSpacing.s3) {
+                    AppLoadingStateCard(
+                        title: state.loadingPhase,
+                        systemImage: "book.closed",
+                        visualStyle: .vocab
+                    )
+                    if state.canResolveSlowLoading {
+                        Button(L10n.string("繼續載入"), action: onResolveSlowLoading)
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("reader.loading.resolve")
+                    }
+                }
                 .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
                 .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
             }
@@ -69,6 +76,14 @@ extension ReaderViewPresenter {
             .padding(.horizontal, placement.horizontalInset)
             .padding(.bottom, placement.bottomInset)
             .transition(.readerPanelReveal)
+    }
+
+    private var runtimeStateAccessibility: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("reader.runtime.state")
+            .accessibilityValue(state.runtimeStateAccessibilityValue)
     }
 
 }

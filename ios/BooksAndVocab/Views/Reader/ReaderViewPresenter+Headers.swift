@@ -8,6 +8,7 @@ struct ReaderTopChromeModel: Equatable {
     var isExpanded: Bool
     var bookTitle: String
     var totalProgression: Double
+    var progressState: ReaderProgressState
     var titleMaxWidth: CGFloat
 }
 
@@ -128,13 +129,8 @@ struct ReaderTopChrome: View, Equatable {
         HStack(spacing: AppSpacing.s2) {
             Spacer()
 
-            // 刻意不給進度膠囊 morph id：它是條件式的（totalProgression == 0 時整個
-            // 不存在），而 morph 需要兩態都有對象。曾經把 `chrome` 掛在這裡，新書／
-            // PDF 首次事件前就會變成「有時 morph、有時直接消失」的不一致動畫。
-            if model.totalProgression > 0 {
-                progressBadge
-                    .appFloatingChromeItem(union: "nav", in: glass, interactive: false)
-            }
+            progressBadge
+                .appFloatingChromeItem(union: "nav", in: glass, interactive: false)
 
             AppFloatingChromeButton(
                 accessibilityLabel: L10n.string("展開標題列"),
@@ -155,14 +151,46 @@ struct ReaderTopChrome: View, Equatable {
     // locale-aware 化要連同 ReaderPage 的解析一起改，走獨立 PR。
     private var progressBadge: some View {
         HStack(spacing: AppSpacing.s1) {
-            Image(systemName: "book.closed")
+            Image(systemName: progressIcon)
                 .font(appSkin.typography.iconSmall)
-            Text(String(format: "%.1f%%", model.totalProgression * 100))
-                .font(appSkin.typography.monoLabel)
-                .accessibilityIdentifier("reader.header.progressBadge")
+            if let progressText {
+                Text(progressText)
+                    .font(appSkin.typography.monoLabel)
+                    .accessibilityIdentifier("reader.header.progressBadge")
+            } else {
+                Text(progressLabel)
+                    .font(appSkin.typography.caption)
+            }
         }
         .foregroundStyle(appSkin.palette.secondaryText)
         .padding(.horizontal, AppSpacing.s2)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("reader.progress.\(model.progressState.accessibilityIdentifier)")
+    }
+
+    private var progressIcon: String {
+        switch model.progressState {
+        case .restoreFailure: return "exclamationmark.triangle"
+        case .unknown: return "questionmark"
+        case .zero, .middle, .complete: return "book.closed"
+        }
+    }
+
+    private var progressText: String? {
+        switch model.progressState {
+        case .zero, .middle, .complete:
+            return String(format: "%.1f%%", model.totalProgression * 100)
+        case .unknown, .restoreFailure:
+            return nil
+        }
+    }
+
+    private var progressLabel: String {
+        switch model.progressState {
+        case .unknown: return L10n.string("閱讀進度未知")
+        case .restoreFailure: return L10n.string("閱讀進度無法還原")
+        case .zero, .middle, .complete: return ""
+        }
     }
 }
 
@@ -177,6 +205,7 @@ extension ReaderViewPresenter {
                         isExpanded: state.chrome.header == .expanded,
                         bookTitle: state.bookTitle,
                         totalProgression: state.totalProgression,
+                        progressState: state.progressState,
                         titleMaxWidth: LayoutMode(horizontalSizeClass: sizeClass).readerTitleMaxWidth
                     ),
                     onDismiss: onDismiss,

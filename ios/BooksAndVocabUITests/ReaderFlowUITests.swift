@@ -337,5 +337,64 @@ final class ReaderFlowUITests: UITestCase {
                 + "expected=reader.toc.missingDestination + reader.toc.retry + sheet-open",
             named: "Reader Invalid Destination Metrics"
         )
+    @MainActor
+    func testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance() throws {
+        let scenarios: [UITestReaderRuntimeScenario] = [
+            .progressUnknown,
+            .progressZero,
+            .progressMiddle,
+            .progressComplete,
+            .progressRestoreFailure
+        ]
+
+        for scenario in scenarios {
+            let app = launchIsolatedApp(
+                fixtures: [.authSignedIn, .readerRealBookLibrary, .readerRuntime(scenario)],
+                extraEnvironment: Self.fixtureEnvironment
+            )
+            let bookshelf = AppPage(app: app).goToBookshelf()
+            XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+            bookshelf.anyBookCard.tapWhenReady()
+
+            let reader = ReaderPage(app: app)
+            XCTAssertTrue(
+                reader.progressState(scenario).waitUntilExists(timeout: 20),
+                "Reader progress state must expose exact identifier: \(scenario.rawValue)"
+            )
+            XCTAssertTrue(reader.runtimeState.waitUntilExists(timeout: 5))
+            let provenance = String(describing: reader.runtimeState.value ?? reader.runtimeState.label)
+            XCTAssertTrue(provenance.contains("dataset=marketing_demo"), provenance)
+            XCTAssertTrue(provenance.contains("scenario=\(scenario.rawValue)"), provenance)
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess() throws {
+        for scenario in [UITestReaderRuntimeScenario.loadingSlow, .loadingMissing, .loadingErrorRetry] {
+            let app = launchIsolatedApp(
+                fixtures: [.authSignedIn, .readerRealBookLibrary, .readerRuntime(scenario)],
+                extraEnvironment: Self.fixtureEnvironment
+            )
+            let bookshelf = AppPage(app: app).goToBookshelf()
+            XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+            bookshelf.anyBookCard.tapWhenReady()
+
+            let reader = ReaderPage(app: app)
+            if scenario == .loadingSlow {
+                XCTAssertTrue(reader.loadingState(scenario).waitUntilExists(timeout: 10))
+                reader.slowLoadingResolveButton.tapWhenReady()
+            } else {
+                let error = reader.errorState(scenario)
+                XCTAssertTrue(error.waitUntilExists(timeout: 10))
+                error.buttons.firstMatch.tapWhenReady()
+            }
+
+            XCTAssertTrue(
+                reader.contentText(Self.seededWord).waitUntilExists(timeout: 45),
+                "Retry path must open the local fixture book for \(scenario.rawValue)"
+            )
+            app.terminate()
+        }
     }
 }

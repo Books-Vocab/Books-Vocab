@@ -33,5 +33,41 @@ struct ReaderViewPresenterState {
     let chrome: ReaderChromeState
     let totalProgression: Double
     let bookTitle: String
+    let progressState: ReaderProgressState
+    let loadingState: ReaderLoadingState
+    let runtimeStateAccessibilityValue: String
+    let canResolveSlowLoading: Bool
+
+    init(
+        paperColor: Color,
+        isWebViewReady: Bool,
+        loadingPhase: String,
+        underlineProgress: Double?,
+        chrome: ReaderChromeState,
+        totalProgression: Double,
+        bookTitle: String,
+        progressState: ReaderProgressState? = nil,
+        loadingState: ReaderLoadingState? = nil,
+        runtimeStateAccessibilityValue: String? = nil,
+        canResolveSlowLoading: Bool = false
+    ) {
+        self.paperColor = paperColor
+        self.isWebViewReady = isWebViewReady
+        self.loadingPhase = loadingPhase
+        self.underlineProgress = underlineProgress
+        self.chrome = chrome
+        self.totalProgression = totalProgression
+        self.bookTitle = bookTitle
+        let resolvedProgressState = progressState ?? {
+            if !isWebViewReady, totalProgression == 0 { return .unknown }
+            return ReaderProgressState.classify(progression: totalProgression)
+        }()
+        let resolvedLoadingState = loadingState ?? (isWebViewReady ? .ready : .loading(.opening))
+        self.progressState = resolvedProgressState
+        self.loadingState = resolvedLoadingState
+        self.runtimeStateAccessibilityValue = runtimeStateAccessibilityValue
+            ?? "scenario=preview;progress=\(resolvedProgressState.accessibilityIdentifier);loading=\(resolvedLoadingState.accessibilityIdentifier);state=preview"
+        self.canResolveSlowLoading = canResolveSlowLoading
+    }
 }
 #endif

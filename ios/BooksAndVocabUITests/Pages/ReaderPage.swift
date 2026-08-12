@@ -225,6 +225,34 @@ struct ReaderPage {
         app.staticTexts["reader.currentLocator"]
     }
 
+    /// Compact header progress badge text (e.g. "12.3%"); the typed progress
+    /// state badge is present even when its numeric value is unknown.
+    var progressBadge: XCUIElement {
+        app.staticTexts["reader.header.progressBadge"]
+    }
+
+    var runtimeState: XCUIElement {
+        app.otherElements["reader.runtime.state"]
+    }
+
+    func progressState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
+        app.otherElements["reader.progress.\(state.rawValue)"]
+    }
+
+    func loadingState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
+        let phase = state == .loadingSlow ? "slow" : "opening"
+        return app.otherElements["reader.loading.\(phase)"]
+    }
+
+    func errorState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
+        let failure = state == .loadingMissing ? "missing" : "retryable"
+        return app.otherElements["reader.error.\(failure)"]
+    }
+
+    var slowLoadingResolveButton: XCUIElement {
+        app.buttons["reader.loading.resolve"]
+    }
+
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {
@@ -463,8 +491,8 @@ struct ReaderPage {
     // MARK: - Progress
 
     /// Parse the compact-header progress badge ("12.3%") into a Double.
-    /// Returns nil while the badge is absent (totalProgression == 0 or
-    /// chrome hidden behind an overlay).
+    /// Returns nil while the numeric badge is not applicable (unknown/restore
+    /// failure or chrome hidden behind an overlay).
     func progressPercent() -> Double? {
         guard let progressBadge = exactlyOneIfPresent(
             progressBadgeQuery,
@@ -478,14 +506,17 @@ struct ReaderPage {
     /// than `threshold` (real page-turn evidence, not just a gesture).
     @discardableResult
     func waitUntilProgressExceeds(_ threshold: Double, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let value = progressPercent(), value > threshold {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        }
-        return false
+        UITestWaits.wait(
+            for: NSPredicate { [app] _, _ in
+                let badge = app.staticTexts["reader.header.progressBadge"].firstMatch
+                guard badge.exists,
+                      let value = Double(badge.label.replacingOccurrences(of: "%", with: ""))
+                else { return false }
+                return value > threshold
+            },
+            on: app,
+            timeout: timeout
+        )
     }
 
     // MARK: - Actions

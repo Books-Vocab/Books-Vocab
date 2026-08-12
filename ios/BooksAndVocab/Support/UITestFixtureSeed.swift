@@ -21,6 +21,15 @@ enum UITestFixtureSeed {
             return
         }
 
+        let readerRuntimeSelection = ReaderRuntimeFixtureAdapter.selection(
+            arguments: arguments,
+            dataset: FixtureDatasetStore.readerProvenance()
+        )
+        if arguments.contains(where: { $0.hasPrefix("-readerRuntimeScenario:") }),
+           readerRuntimeSelection == nil {
+            failFixtureSeed("Unknown Reader runtime scenario argument")
+        }
+
         applyPreferencesFromWorld()
 
         for arg in arguments {
@@ -51,7 +60,7 @@ enum UITestFixtureSeed {
             case "vocabulary":
                 seedVocabulary(id, into: container)
             case "reader":
-                seedReader(id, into: container)
+                seedReader(id, into: container, runtime: readerRuntimeSelection)
             case "notebook":
                 seedNotebook(id, into: container)
             case "dictionary":

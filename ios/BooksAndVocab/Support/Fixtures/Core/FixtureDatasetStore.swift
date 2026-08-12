@@ -521,6 +521,11 @@ enum FixtureDatasetStore {
         }
     }
 
+    static func readerProvenance() -> ReaderFixtureDatasetProvenance? {
+        guard case let .loaded(document, source) = loadState() else { return nil }
+        return ReaderFixtureDatasetProvenance(datasetID: document.datasetID, source: source)
+    }
+
     private enum LoadState {
         case absent
         case invalid(source: String, error: String)
