@@ -50,8 +50,13 @@ final class LocaleAwareFormatter: @unchecked Sendable {
     /// Format a date using a fixed `dateFormat` pattern (`"yyyy-MM-dd"` etc.).
     /// Use for machine-style patterns where you want the exact format string.
     func string(from date: Date, format: String) -> String {
+        string(from: date, format: format, timeZone: .current)
+    }
+
+    /// Format a date using a fixed pattern and an explicit timezone.
+    func string(from date: Date, format: String, timeZone: TimeZone) -> String {
         let locale = AppLanguageStore.shared.formatLocale
-        let cacheKey = "\(locale.identifier)|\(format)"
+        let cacheKey = "\(locale.identifier)|\(format)|\(timeZone.identifier)"
         return lock.withLock { storage in
             let formatter: DateFormatter
             if let cached = storage.dateFormatters[cacheKey] {
@@ -60,7 +65,7 @@ final class LocaleAwareFormatter: @unchecked Sendable {
                 let f = DateFormatter()
                 f.dateFormat = format
                 f.locale = locale
-                f.timeZone = .current
+                f.timeZone = timeZone
                 storage.dateFormatters[cacheKey] = f
                 formatter = f
             }
@@ -73,8 +78,13 @@ final class LocaleAwareFormatter: @unchecked Sendable {
     /// ko `"5월 22일"`. The template is applied via
     /// `setLocalizedDateFormatFromTemplate` ONCE at cache fill time.
     func string(from date: Date, template: String) -> String {
+        string(from: date, template: template, timeZone: .current)
+    }
+
+    /// Format a localized date template with an explicit timezone.
+    func string(from date: Date, template: String, timeZone: TimeZone) -> String {
         let locale = AppLanguageStore.shared.formatLocale
-        let cacheKey = "TPL|\(locale.identifier)|\(template)"
+        let cacheKey = "TPL|\(locale.identifier)|\(template)|\(timeZone.identifier)"
         return lock.withLock { storage in
             let formatter: DateFormatter
             if let cached = storage.templateFormatters[cacheKey] {
@@ -82,9 +92,28 @@ final class LocaleAwareFormatter: @unchecked Sendable {
             } else {
                 let f = DateFormatter()
                 f.locale = locale
-                f.timeZone = .current
+                f.timeZone = timeZone
                 f.setLocalizedDateFormatFromTemplate(template)
                 storage.templateFormatters[cacheKey] = f
+                formatter = f
+            }
+            return formatter.string(from: date)
+        }
+    }
+
+    /// Locale-neutral day key for projections that explicitly inject a timezone.
+    func machineDayKey(from date: Date, timeZone: TimeZone) -> String {
+        let cacheKey = "MACHINE|yyyy-MM-dd|\(timeZone.identifier)"
+        return lock.withLock { storage in
+            let formatter: DateFormatter
+            if let cached = storage.dateFormatters[cacheKey] {
+                formatter = cached
+            } else {
+                let f = DateFormatter()
+                f.dateFormat = "yyyy-MM-dd"
+                f.locale = Locale(identifier: "en_US_POSIX")
+                f.timeZone = timeZone
+                storage.dateFormatters[cacheKey] = f
                 formatter = f
             }
             return formatter.string(from: date)

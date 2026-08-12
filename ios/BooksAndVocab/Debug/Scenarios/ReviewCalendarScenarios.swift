@@ -12,13 +12,13 @@ import SwiftData
 enum ReviewCalendarScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Review Calendar Presenter") {
-            Scenario("Recent review history", layout: .fill) {
+            Scenario("calendar · populated-day", layout: .fill) {
                 ReviewCalendarScene(fixture: .recent)
             }
-            Scenario("Heavy month streak", layout: .fill) {
+            Scenario("calendar · timezone-boundary", layout: .fill) {
                 ReviewCalendarScene(fixture: .dense)
             }
-            Scenario("Empty DB", layout: .fill) {
+            Scenario("calendar · empty-day", layout: .fill) {
                 ReviewCalendarScene(fixture: .empty)
             }
         }
@@ -79,6 +79,7 @@ private enum ReviewCalendarExpectedCount {
 
 private struct ReviewCalendarScene: View {
     private let container: ModelContainer
+    private let clock: ReviewCalendarClock
 
     init(fixture: ReviewCalendarFixture) {
         let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
@@ -92,6 +93,10 @@ private struct ReviewCalendarScene: View {
             let records = try container.mainContext.fetch(FetchDescriptor<ReviewRecord>())
             fixture.expectedReviewRecords.validate(records.count, fixtureID: fixture.vocabularyID)
             self.container = container
+            self.clock = ReviewCalendarClock(
+                now: FixtureReviewClock.now(fallback: Date(timeIntervalSince1970: 1_750_000_000)),
+                timeZone: TimeZone(identifier: "UTC")!
+            )
         } catch {
             preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for ReviewCalendarScenarios: \(error)")
         }
@@ -99,7 +104,7 @@ private struct ReviewCalendarScene: View {
 
     var body: some View {
         AppThemeContainer {
-            ReviewCalendarPresenter()
+            ReviewCalendarPresenter(clock: clock)
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)

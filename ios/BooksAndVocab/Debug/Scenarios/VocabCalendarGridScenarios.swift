@@ -51,8 +51,11 @@ private struct VocabCalendarGridScene: View {
 
     @State private var selectedDay: String?
 
-    private static let calendar = Calendar.current
-    private static let formatter = AppDateFormatters.dayKey
+    private static let clock = ReviewCalendarClock(
+        now: Date(timeIntervalSince1970: 1_709_251_200),
+        timeZone: TimeZone(secondsFromGMT: 0)!
+    )
+    private static let calendar = clock.calendar
 
     var body: some View {
         let config = makeConfig()
@@ -60,7 +63,8 @@ private struct VocabCalendarGridScene: View {
             VocabCalendarGrid(
                 displayedMonth: config.month,
                 activityMap: config.activity,
-                selectedDay: $selectedDay
+                selectedDay: $selectedDay,
+                clock: Self.clock
             )
             .padding()
         }
@@ -90,7 +94,7 @@ private struct VocabCalendarGridScene: View {
             let month = Self.fixedMonth()
             return Config(month: month, activity: [:], initialSelection: nil)
         case .currentMonth:
-            return Config(month: Date(), activity: Self.gradientActivity(in: Date()), initialSelection: nil)
+            return Config(month: Self.clock.now, activity: Self.gradientActivity(in: Self.clock.now), initialSelection: nil)
         }
     }
 
@@ -100,13 +104,13 @@ private struct VocabCalendarGridScene: View {
         comps.year = 2024
         comps.month = 3
         comps.day = 1
-        return calendar.date(from: comps) ?? Date()
+        return calendar.date(from: comps) ?? month
     }
 
     private static func dayKey(in month: Date, day: Int) -> String? {
         var comps = calendar.dateComponents([.year, .month], from: month)
         comps.day = day
-        return calendar.date(from: comps).map { formatter.string(from: $0) }
+        return calendar.date(from: comps).map { clock.dayKey(for: $0) }
     }
 
     /// Spreads counts across every intensity band (1-3, 4-7, 8-14, 15+),
