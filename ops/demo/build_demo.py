@@ -143,7 +143,11 @@ def main(argv: list[str] | None = None) -> int:
         extra_kwargs = {"spec_path": getattr(args, "spec", None),
                         "out_path": getattr(args, "out", None)}
         if plan_path is not None:
+            plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
             extra_kwargs["review_clock_frozen_at"] = _freeze_from_plan(plan_path)
+            # Pass the same plan object through the producer instead of using
+            # the freeze instant as an implicit second source of geometry.
+            extra_kwargs["review_clock_plan"] = plan
     try:
         result = emit_fn(sot, check=args.check, commit=args.commit, **extra_kwargs)
     except NotImplementedError as exc:

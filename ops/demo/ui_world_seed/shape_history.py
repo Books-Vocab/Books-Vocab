@@ -528,12 +528,16 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         fields[word]["review_interval_hours"] = round(
             (fields[word]["next_dt"] - fields[word]["last_dt"]).total_seconds() / 3600, 6)
 
-    # -- 5. 未學卡：近錨日剛加入（保留 export 面 12h 預設排程形狀） ------------ #
+    # -- 5. 未學卡：錨日末段剛加入（保留 export 面 12h 預設排程形狀） ----------- #
+    #    emitted UI due geometry counts active entries by nextReviewAt, including
+    #    review_count==0 cards.  Put the synthetic first schedule after the
+    #    anchor local day; otherwise a fresh card silently consumes one of the
+    #    plan's learned-card due slots in RepoFixtureDatasetsContractTests.
     for card in fresh:
         word = card["content"]
-        d = narrative.anchor - timedelta(days=_u64("new", word) % 3)
-        last_dt = _event_time(word, d, hour_lo=narrative.hour_lo,
-                              hour_hi=min(narrative.hour_hi, 10))
+        last_dt = _event_time(word, narrative.anchor,
+                              hour_lo=narrative.hour_hi,
+                              hour_hi=narrative.hour_hi)
         _register(card, last_dt)
         fields[word]["review_interval_hours"] = _NEW_CARD_INTERVAL_HOURS
         fields[word]["next_dt"] = last_dt + timedelta(
@@ -668,7 +672,7 @@ def narrative_report(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
     horizon_violations: list[str] = []
     for card in spec["cards"]:
         r = card["review"]
-        if r["review_count"] <= 0 or card.get("is_archived"):
+        if card.get("is_archived"):
             continue
         nxt = datetime.fromisoformat(r["next_review_at"])
         if nxt.tzinfo is None:
