@@ -60,6 +60,21 @@ declare -a SET_LINTS=(
   "backlog.py validate|ops/backlog_closed_unverified_baseline.txt|KG_BACKLOG_BASELINE"
 )
 
+# Pair baselines are not writable lint watermarks.  They carry an exact
+# observed-id -> recomputed-id relation and therefore need a typed extractor;
+# routing them through SET_LINTS would ask `validate --baseline` to rewrite the
+# unrelated closed-without-verification baseline.
+declare -a PAIR_BASELINES=(
+  "backlog.py validate|ops/backlog_id_drift_baseline.txt|id-content-drift"
+)
+
+# Contract-only hook for the typed implementation phase.  Phase 1 deliberately
+# has no producer yet, so the focused pair assertions below are RED without
+# weakening or rewriting any checked-in baseline.
+emit_current_pairs() {  # $1 = lint entrypoint, $2 = problem kind, $3 = out path
+  return 1
+}
+
 section "key-set baselines must be a subset of today's findings"
 for spec in "${SET_LINTS[@]}"; do
   IFS='|' read -r entry real envvar <<<"$spec"
@@ -69,6 +84,18 @@ for spec in "${SET_LINTS[@]}"; do
     continue
   fi
   assert_subset "${entry%.sh}" "$real" "$cur" "bash ops/$entry --baseline"
+done
+
+section "typed pair baselines must match today's reported relations"
+for spec in "${PAIR_BASELINES[@]}"; do
+  IFS='|' read -r entry real kind <<<"$spec"
+  cur="$TMP/$(basename "$real")"
+  if ! emit_current_pairs "$entry" "$kind" "$cur"; then
+    fail_t "$entry — could not emit current $kind pairs; the typed probe itself is broken"
+    continue
+  fi
+  assert_subset "$kind" "$real" "$cur" \
+    "review and remove stale rows from $real; never regenerate it automatically"
 done
 
 section "the subset check can actually fail (self-test)"
@@ -118,6 +145,10 @@ for f in ops/*_baseline.txt; do
   esac
   covered=0
   for spec in "${SET_LINTS[@]}"; do
+    IFS='|' read -r _ real _ <<<"$spec"
+    [[ "$real" == "$f" ]] && covered=1
+  done
+  for spec in "${PAIR_BASELINES[@]}"; do
     IFS='|' read -r _ real _ <<<"$spec"
     [[ "$real" == "$f" ]] && covered=1
   done
