@@ -46,7 +46,7 @@ struct ReaderPage {
     }
 
     var tocHierarchy: XCUIElement {
-        app.tables["reader.toc.chapterHierarchy"]
+        app.otherElements["reader.toc.chapterHierarchy"]
     }
 
     func tocChapter(_ path: String) -> XCUIElement {
@@ -67,6 +67,10 @@ struct ReaderPage {
 
     var tocSuccess: XCUIElement {
         app.staticTexts["reader.toc.result.success"]
+    }
+
+    var tocDestination: XCUIElement {
+        app.staticTexts["reader.toc.destination"]
     }
 
     var tocError: XCUIElement {

@@ -140,14 +140,28 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
-        XCTAssertTrue(reader.tocHierarchy.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocChapter("0").waitUntilExists(timeout: 10))
         reader.tocChapter("0").tapWhenReady()
 
-        XCTAssertTrue(reader.tocSelected.waitUntilExists(timeout: 5))
-        captureStep("toc-selected-loading", app: app)
+        XCTAssertTrue(reader.tocSuccess.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocDestination.waitUntilExists(timeout: 10))
+        XCTAssertEqual(reader.tocDestination.value as? String, "OEBPS/chapter1.xhtml")
+        XCTAssertTrue(reader.contentText(Self.seededWord).waitUntilExists(timeout: 10))
+        captureStep("toc-destination-content", app: app)
         XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
         reader.assertIsActive()
         captureStep("toc-navigation-success", app: app)
+        try writeReaderTOCEvidence(
+            label: "reader-toc-required",
+            partition: "required",
+            fixtureID: "reader.realBookLibrary",
+            assetID: "books.reader_real_book_epub",
+            path: [0],
+            href: "OEBPS/chapter1.xhtml",
+            locatorHref: "OEBPS/chapter1.xhtml",
+            destinationSelector: "reader.toc.destination",
+            contentSelector: "Introduction"
+        )
     }
 
     @MainActor
@@ -165,7 +179,7 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
-        XCTAssertTrue(reader.tocHierarchy.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocChapter("0").waitUntilExists(timeout: 10))
         reader.tocChapter("0").tapWhenReady()
 
         XCTAssertTrue(reader.tocError.waitUntilExists(timeout: 5))
@@ -177,12 +191,20 @@ final class ReaderFlowUITests: UITestCase {
         reader.tocRetry.tapWhenReady()
         XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
         reader.assertIsActive()
+        try writeReaderTOCEvidence(
+            label: "reader-toc-counterexample-failure",
+            partition: "counterexample",
+            fixtureID: "bookshelf.book_card_complete",
+            assetID: "books.catalog_reader_epub",
+            path: [0],
+            href: "OEBPS/chapter1.xhtml",
+            locatorHref: nil
+        )
     }
 
     @MainActor
     func testReaderTOCCounterexampleMissingDestinationRetainsRetryableSheet() throws {
         let app = launchIsolatedApp(
-            extraArgs: ["-readerTOCInjectMissingDestinationOnce"],
             fixtures: [.bookshelf("book_card_complete")],
             perfLog: "reader-toc-counterexample-missing"
         )
@@ -194,8 +216,8 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
-        XCTAssertTrue(reader.tocHierarchy.waitUntilExists(timeout: 10))
-        reader.tocChapter("0").tapWhenReady()
+        XCTAssertTrue(reader.tocChapter("1").waitUntilExists(timeout: 10))
+        reader.tocChapter("1").tapWhenReady()
 
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 5))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 5))
@@ -204,7 +226,19 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         captureStep("toc-missing-destination-retryable", app: app)
         reader.tocRetry.tapWhenReady()
-        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
-        reader.assertIsActive()
+        XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 5))
+        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        XCTAssertFalse(reader.tocDone.isEnabled)
+        captureStep("toc-missing-destination-retried", app: app)
+        try writeReaderTOCEvidence(
+            label: "reader-toc-counterexample-missing",
+            partition: "counterexample",
+            fixtureID: "bookshelf.book_card_complete",
+            assetID: "books.catalog_reader_epub",
+            path: [1],
+            href: "#",
+            locatorHref: nil
+        )
     }
 }
