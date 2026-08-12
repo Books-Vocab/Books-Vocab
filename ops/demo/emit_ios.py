@@ -67,6 +67,7 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "vocabulary",
     "reviewDeck",
     "syncPresenter",
+    "sharedDecks",
     # Optional cross-domain inputs: a frozen clock, Reader passage and Word
     # Detail seed. Ordinary UI Worlds may omit this whole domain.
     "scenarioContext",

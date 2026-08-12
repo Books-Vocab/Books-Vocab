@@ -35,6 +35,7 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "vocabulary",
     "reviewDeck",
     "syncPresenter",
+    "sharedDecks",
     # Optional cross-domain state for scenarios that need one coherent clock or
     # content projection. It is not a fixture-id dictionary, so it is validated
     # separately from FIXTURE_DOMAIN_IDS.
@@ -71,6 +72,39 @@ P2_DICTIONARY_COUNTEREXAMPLES = (
     ("dictionary.p2.materialize-error", "materialize-error-counterexample"),
 )
 REQUIRED_SURFACE_CONTRACTS = {"explore", "settings", P1_DICTIONARY_SURFACE}
+SHARED_DECKS_KEYS = {"fixtures", "decks"}
+EXPLORE_FIXTURE_IDS = {
+    "loading",
+    "loaded",
+    "empty",
+    "retry",
+    "empty-counterexample",
+    "retry-counterexample",
+}
+EXPLORE_FIXTURE_LABELS = {
+    "loading": "explore-loading",
+    "loaded": "explore-loaded",
+    "empty": "explore-empty",
+    "retry": "explore-retry",
+    "empty-counterexample": "explore-empty-counterexample",
+    "retry-counterexample": "explore-retry-counterexample",
+}
+EXPLORE_REQUIRED_FIXTURE_IDS = {"loading", "loaded", "empty", "retry"}
+EXPLORE_COUNTEREXAMPLE_FIXTURE_IDS = {"empty-counterexample", "retry-counterexample"}
+EXPLORE_REQUIRED_FIXTURE_ORDER = ("loading", "loaded", "empty", "retry")
+EXPLORE_COUNTEREXAMPLE_FIXTURE_ORDER = ("empty-counterexample", "retry-counterexample")
+EXPLORE_FIXTURE_KEYS = {"label", "phase", "retryPhase", "deckIDs", "assetIDs"}
+SHARED_DECK_ALLOWED_KEYS = {
+    "remoteId", "title", "authorLabel", "isOfficial", "category", "languagePair",
+    "tags", "cardCount", "downloadCount", "ratingAvg", "ratingCount", "color",
+    "coverPattern", "updatedAt", "assetID", "sampleCards",
+}
+SHARED_DECK_REQUIRED_KEYS = {"remoteId", "title", "assetID"}
+SHARED_DECK_CARD_KEYS = {
+    "id", "content", "pos", "meaning", "examples", "collocations", "note",
+    "difficulty", "mode", "rootForm", "inflections",
+}
+SHARED_DECK_CARD_REQUIRED_KEYS = {"id", "content", "meaning"}
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
@@ -2329,6 +2363,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 READER_TOC_INVALID_DESTINATION_ASSET,
             }:
                 _validate_reader_toc_epub(source_path, asset_id=asset_id, label=label)
+    _validate_shared_decks(data, label=label, asset_types=asset_types)
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
     _validate_entitlements(data, label=label)
@@ -2724,6 +2759,265 @@ def _validate_surface_contracts(
                 )
 
 
+def _validate_shared_deck_asset_ref(
+    raw: Any,
+    *,
+    field: str,
+    label: str,
+    asset_types: Mapping[str, str],
+) -> str:
+    asset_ref = _ensure_str(raw, field=field, label=label).strip()
+    bucket, separator, asset_id = asset_ref.partition(".")
+    if separator != "." or bucket != "images" or not asset_id.strip():
+        raise UIWorldManifestError(
+            f"{label} {field} must use an images.<assetID> ref for sharedDecks: {asset_ref!r}"
+        )
+    if asset_types.get(asset_id) != "images":
+        raise UIWorldManifestError(
+            f"{label} {field} must resolve to an images asset: {asset_ref!r}"
+        )
+    return asset_ref
+
+
+def _validate_shared_deck_card(
+    card: Any, *, field: str, label: str,
+) -> None:
+    card_map = _require_mapping(card, field=field, label=label)
+    keys = set(card_map)
+    missing = sorted(SHARED_DECK_CARD_REQUIRED_KEYS - keys)
+    extra = sorted(keys - SHARED_DECK_CARD_KEYS)
+    if missing or extra:
+        raise UIWorldManifestError(
+            f"{label} {field} keys 不符合 SharedDeckCard: extra={extra} missing={missing}"
+        )
+    for key in ("id", "content", "meaning"):
+        _ensure_str(card_map[key], field=f"{field}.{key}", label=label)
+    for key in ("pos", "note", "mode", "rootForm"):
+        if key in card_map and card_map[key] is not None:
+            _ensure_str(card_map[key], field=f"{field}.{key}", label=label)
+    for key in ("examples", "collocations", "inflections"):
+        if key in card_map:
+            _validate_string_list(card_map[key], field=f"{field}.{key}", label=label)
+    if "difficulty" in card_map and card_map["difficulty"] is not None:
+        _ensure_number(card_map["difficulty"], field=f"{field}.difficulty", label=label)
+
+
+def _validate_shared_decks(
+    data: Mapping[str, Any], *, label: str,
+    asset_types: Mapping[str, str],
+) -> None:
+    """Validate the top-level Explore catalog consumed by Swift.
+
+    scenarioContext.surfaceContracts is a generic coverage matrix. It is
+    deliberately not used as the Explore catalog source; the Swift consumer's
+    only canonical catalog key is this top-level sharedDecks object.
+    """
+    catalog = _require_mapping(data.get("sharedDecks"), field="sharedDecks", label=label)
+    if set(catalog) != SHARED_DECKS_KEYS:
+        extra = sorted(set(catalog) - SHARED_DECKS_KEYS)
+        missing = sorted(SHARED_DECKS_KEYS - set(catalog))
+        raise UIWorldManifestError(
+            f"{label} sharedDecks keys 不符合 canonical Explore schema: extra={extra} missing={missing}"
+        )
+
+    fixtures = _require_mapping(catalog["fixtures"], field="sharedDecks.fixtures", label=label)
+    actual_fixture_ids = set(fixtures)
+    if actual_fixture_ids != EXPLORE_FIXTURE_IDS:
+        extra = sorted(actual_fixture_ids - EXPLORE_FIXTURE_IDS)
+        missing = sorted(EXPLORE_FIXTURE_IDS - actual_fixture_ids)
+        raise UIWorldManifestError(
+            f"{label} sharedDecks fixture IDs drifted: extra={extra} missing={missing}"
+        )
+
+    fixture_deck_ids: dict[str, list[str]] = {}
+    fixture_asset_ids: dict[str, list[str]] = {}
+    for fixture_id in sorted(EXPLORE_FIXTURE_IDS):
+        field = f"sharedDecks.fixtures.{fixture_id}"
+        fixture = _require_mapping(fixtures[fixture_id], field=field, label=label)
+        if set(fixture) != EXPLORE_FIXTURE_KEYS:
+            extra = sorted(set(fixture) - EXPLORE_FIXTURE_KEYS)
+            missing = sorted(EXPLORE_FIXTURE_KEYS - set(fixture))
+            raise UIWorldManifestError(
+                f"{label} {field} keys 不符合 canonical Explore schema: extra={extra} missing={missing}"
+            )
+        expected_label = EXPLORE_FIXTURE_LABELS[fixture_id]
+        if _ensure_str(fixture["label"], field=f"{field}.label", label=label) != expected_label:
+            raise UIWorldManifestError(
+                f"{label} {field}.label must be {expected_label!r}"
+            )
+        phase = _ensure_str(fixture["phase"], field=f"{field}.phase", label=label)
+        retry_phase_raw = fixture["retryPhase"]
+        retry_phase = None if retry_phase_raw is None else _ensure_str(
+            retry_phase_raw, field=f"{field}.retryPhase", label=label)
+        deck_ids = _validate_string_list(
+            fixture["deckIDs"], field=f"{field}.deckIDs", label=label)
+        asset_ids = _validate_string_list(
+            fixture["assetIDs"], field=f"{field}.assetIDs", label=label,
+            allow_empty=False,
+        )
+        for asset_index, asset_ref in enumerate(asset_ids):
+            _validate_shared_deck_asset_ref(
+                asset_ref,
+                field=f"{field}.assetIDs[{asset_index}]",
+                label=label,
+                asset_types=asset_types,
+            )
+        # The canonical asset identity is the full images.<id> ref. Deriving
+        # inode:<ref> here makes the one-to-one/type invariant explicit without
+        # adding a second, Swift-incompatible assetInodes field to sharedDecks.
+        inode_tokens = [f"inode:{asset_ref}" for asset_ref in asset_ids]
+        if len(inode_tokens) != len(set(inode_tokens)):
+            raise UIWorldManifestError(
+                f"{label} {field}.assetIDs and inode tokens must be one-to-one"
+            )
+        if fixture_id == "loading" and (phase != "loading" or retry_phase is not None or deck_ids):
+            raise UIWorldManifestError(f"{label} {field} has invalid loading phase/deck mapping")
+        if fixture_id == "loaded" and (phase != "loaded" or retry_phase is not None or not deck_ids):
+            raise UIWorldManifestError(f"{label} {field} has invalid loaded phase/deck mapping")
+        if fixture_id in {"empty", "empty-counterexample"} and (
+            phase != "empty" or retry_phase is not None or deck_ids
+        ):
+            raise UIWorldManifestError(f"{label} {field} has invalid empty phase/deck mapping")
+        if fixture_id in {"retry", "retry-counterexample"} and (
+            phase != "error" or retry_phase != "loaded" or not deck_ids
+        ):
+            raise UIWorldManifestError(f"{label} {field} has invalid retry phase/deck mapping")
+        fixture_deck_ids[fixture_id] = deck_ids
+        fixture_asset_ids[fixture_id] = asset_ids
+
+    decks = _require_mapping(catalog["decks"], field="sharedDecks.decks", label=label)
+    required_deck_ids = {
+        deck_id
+        for fixture_id in EXPLORE_REQUIRED_FIXTURE_IDS
+        for deck_id in fixture_deck_ids[fixture_id]
+    }
+    counterexample_deck_ids = {
+        deck_id
+        for fixture_id in EXPLORE_COUNTEREXAMPLE_FIXTURE_IDS
+        for deck_id in fixture_deck_ids[fixture_id]
+    }
+    required_asset_ids = {
+        asset_id
+        for fixture_id in EXPLORE_REQUIRED_FIXTURE_IDS
+        for asset_id in fixture_asset_ids[fixture_id]
+    }
+    counterexample_asset_ids = {
+        asset_id
+        for fixture_id in EXPLORE_COUNTEREXAMPLE_FIXTURE_IDS
+        for asset_id in fixture_asset_ids[fixture_id]
+    }
+    if required_deck_ids & counterexample_deck_ids:
+        raise UIWorldManifestError(
+            f"{label} sharedDecks required/counterexample deck IDs must be disjoint"
+        )
+    if required_asset_ids & counterexample_asset_ids:
+        raise UIWorldManifestError(
+            f"{label} sharedDecks required/counterexample asset IDs must be disjoint"
+        )
+    referenced_deck_ids = required_deck_ids | counterexample_deck_ids
+    if set(decks) != referenced_deck_ids:
+        extra = sorted(set(decks) - referenced_deck_ids)
+        missing = sorted(referenced_deck_ids - set(decks))
+        raise UIWorldManifestError(
+            f"{label} sharedDecks deck map must exactly match fixture references: "
+            f"extra={extra} missing={missing}"
+        )
+
+    for remote_id in sorted(decks):
+        field = f"sharedDecks.decks.{remote_id}"
+        deck = _require_mapping(decks[remote_id], field=field, label=label)
+        missing = sorted(SHARED_DECK_REQUIRED_KEYS - set(deck))
+        extra = sorted(set(deck) - SHARED_DECK_ALLOWED_KEYS)
+        if missing or extra:
+            raise UIWorldManifestError(
+                f"{label} {field} keys 不符合 SharedDeckSeed: extra={extra} missing={missing}"
+            )
+        if _ensure_str(deck["remoteId"], field=f"{field}.remoteId", label=label) != remote_id:
+            raise UIWorldManifestError(f"{label} {field}.remoteId must match its deck map key")
+        _ensure_str(deck["title"], field=f"{field}.title", label=label)
+        for key in ("authorLabel", "category", "languagePair", "color", "coverPattern", "updatedAt"):
+            if key in deck and deck[key] is not None:
+                _ensure_str(deck[key], field=f"{field}.{key}", label=label)
+        if "isOfficial" in deck:
+            _ensure_bool(deck["isOfficial"], field=f"{field}.isOfficial", label=label)
+        for key in ("cardCount", "downloadCount", "ratingCount"):
+            if key in deck:
+                _ensure_non_negative_int(deck[key], field=f"{field}.{key}", label=label)
+        if "ratingAvg" in deck and deck["ratingAvg"] is not None:
+            _ensure_number(deck["ratingAvg"], field=f"{field}.ratingAvg", label=label)
+        if "tags" in deck:
+            _validate_string_list(deck["tags"], field=f"{field}.tags", label=label)
+        asset_ref = _validate_shared_deck_asset_ref(
+            deck["assetID"], field=f"{field}.assetID", label=label, asset_types=asset_types)
+        sample_cards = deck.get("sampleCards")
+        if sample_cards is not None:
+            for index, card in enumerate(_require_list(sample_cards, field=f"{field}.sampleCards", label=label)):
+                _validate_shared_deck_card(
+                    card, field=f"{field}.sampleCards[{index}]", label=label)
+        for fixture_id, deck_ids in fixture_deck_ids.items():
+            if remote_id in deck_ids and asset_ref not in fixture_asset_ids[fixture_id]:
+                raise UIWorldManifestError(
+                    f"{label} sharedDecks fixture {fixture_id} deck {remote_id} must map to an assetID in that fixture"
+                )
+
+    official = decks.get("deck_official_gre_high_freq")
+    if official is not None:
+        title = _ensure_str(
+            official.get("title"),
+            field="sharedDecks.decks.deck_official_gre_high_freq.title",
+            label=label,
+        )
+        if len(title) < 80 or "🧭" not in title or not any("\u0590" <= char <= "\u08ff" for char in title):
+            raise UIWorldManifestError(
+                f"{label} sharedDecks official deck title must cover long-title, emoji, and RTL text"
+            )
+
+
+def _expected_explore_surface_projection(
+    shared_decks: Mapping[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    """Build the legacy coverage projection from top-level sharedDecks only."""
+    fixtures = shared_decks["fixtures"]
+
+    def rows(fixture_ids: tuple[str, ...], *, index_offset: int = 0) -> list[dict[str, Any]]:
+        result = []
+        for index, fixture_id in enumerate(fixture_ids):
+            fixture = fixtures[fixture_id]
+            raw_asset_ids = [
+                asset_ref.split(".", 1)[1]
+                for asset_ref in fixture["assetIDs"]
+            ]
+            result.append({
+                "fixtureID": fixture_id,
+                "stepLabel": fixture["label"],
+                "index": index + index_offset,
+                "assetIDs": raw_asset_ids,
+                "assetInodes": [f"inode:{asset_id}" for asset_id in raw_asset_ids],
+            })
+        return result
+
+    return {
+        "required": rows(EXPLORE_REQUIRED_FIXTURE_ORDER),
+        "counterexamples": rows(
+            EXPLORE_COUNTEREXAMPLE_FIXTURE_ORDER,
+            index_offset=len(EXPLORE_REQUIRED_FIXTURE_ORDER),
+        ),
+    }
+
+
+def _validate_explore_surface_projection(
+    contract: Mapping[str, Any], *,
+    shared_decks: Mapping[str, Any],
+    label: str,
+) -> None:
+    expected = _expected_explore_surface_projection(shared_decks)
+    if dict(contract) != expected:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.surfaceContracts.explore must be a projection "
+            "of top-level sharedDecks; top-level sharedDecks is canonical"
+        )
+
+
 def _validate_legacy_review_clock(clock: Any, *, label: str) -> None:
     if clock is None:
         return
@@ -2871,6 +3165,8 @@ def _validate_scenario_context(
             asset_types=asset_types,
             dictionary=mc["dictionary"],
         )
+        _validate_explore_surface_projection(
+            contracts["explore"], shared_decks=data["sharedDecks"], label=label)
 
     passage = _require_mapping(mc["readerPassage"], field="scenarioContext.readerPassage", label=label)
     pk = set(passage)
