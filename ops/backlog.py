@@ -1417,10 +1417,11 @@ def make_commit_state(repo: Path | None = None):
     return state
 
 
-def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
+def validate_store(store: Path, *, repo: Path | None = None,
+                   commit_state=..., ) -> list[dict]:
     store = Path(store)
     if commit_state is ...:
-        commit_state = make_commit_state()
+        commit_state = make_commit_state(repo)
     problems: list[dict] = []
     if not store.exists():
         # A typo'd --store used to report "0 problems, exit 0" — a green gate
@@ -1431,7 +1432,8 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         # Same rule one level up: the resolver says None when it could not be
         # built, and reading that as "every sha is fine" is the clean bill it
         # explicitly refused to sign. Name the gap instead of inheriting it.
-        problems.append({"kind": "commit-state-unavailable", "repo": str(GIT_REPO)})
+        problems.append({"kind": "commit-state-unavailable",
+                         "repo": str(repo or GIT_REPO)})
 
     # `glob("*.json")` is deliberately non-recursive: a legal entry under
     # `<store>/archive` is invisible to validate, ratchet, list, and render.
@@ -1455,6 +1457,8 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         payloads.append((str(path), payload))
         for problem in validate_entry(payload, entry_id=path.stem,
                                       commit_state=commit_state):
+            if problem["kind"] in {"fixed-by-orphaned", "fixed-by-unresolvable"}:
+                problem = {**problem, "repo": str(repo or GIT_REPO)}
             problems.append({**problem, "path": str(path)})
 
     for problem in _check_blocking_graph(payloads):
@@ -6119,7 +6123,7 @@ def _cmd_reanchor(args) -> int:
 
 
 def _cmd_validate(args) -> int:
-    problems = validate_store(args.store)
+    problems = validate_store(args.store, repo=getattr(args, "repo", None))
     staged_queue = _pending_queue_summary()
 
     current = closed_without_verification(args.store)

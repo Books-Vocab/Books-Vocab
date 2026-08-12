@@ -3049,7 +3049,7 @@ def test_verify_can_close_an_entry_in_the_same_act(tmp_path, monkeypatch):
     """
     store = tmp_path / "s"
     entry = _add(store, detail="closing act")
-    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: lambda sha: "ok")
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda *a, **k: lambda sha: "ok")
 
     rc = BACKLOG.main([
         "verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-FIXED",
@@ -3162,7 +3162,7 @@ def test_the_ratchet_blocks_closing_without_verifying(tmp_path, monkeypatch):
     store = tmp_path / "s"
     baseline = tmp_path / "baseline.txt"
     monkeypatch.setenv("KG_BACKLOG_BASELINE", str(baseline))
-    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: lambda sha: "ok")
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda *a, **k: lambda sha: "ok")
 
     grandfathered = _add(store, detail="closed long ago, nobody checked")
     BACKLOG.update_entry(store, grandfathered["id"], status="fixed",
@@ -3282,7 +3282,7 @@ def test_validate_says_the_check_did_not_run_rather_than_saying_ok(tmp_path, mon
     BACKLOG.update_entry(store, entry["id"], status="fixed",
                          fixed_by=["813356b1"], resolution="done")
 
-    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: None)
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda *a, **k: None)
     kinds = {p["kind"] for p in BACKLOG.validate_store(store)}
     assert "commit-state-unavailable" in kinds
     assert BACKLOG.main(["validate", "--store", str(store)]) == 2
