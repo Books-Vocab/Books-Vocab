@@ -1,11 +1,13 @@
-#if DEBUG && os(iOS)
-import SwiftUI
+import Foundation
 
 struct PodcastPlayerCatalogPreview: Equatable {
     let durationSec: TimeInterval
     let currentSec: TimeInterval
     let subtitleSRT: String?
 }
+
+#if DEBUG && os(iOS)
+import SwiftUI
 
 private struct PodcastPlayerCatalogPreviewKey: EnvironmentKey {
     static let defaultValue: PodcastPlayerCatalogPreview? = nil

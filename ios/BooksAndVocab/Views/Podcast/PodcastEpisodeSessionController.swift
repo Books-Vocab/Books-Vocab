@@ -37,6 +37,7 @@ protocol PodcastEpisodeSessionLoading: AnyObject {
     ) async -> String?
 }
 
+#if DEBUG
 @MainActor
 protocol PodcastEpisodeSessionPreviewLoading: AnyObject {
     func loadCatalogPreview(
@@ -44,6 +45,7 @@ protocol PodcastEpisodeSessionPreviewLoading: AnyObject {
         into viewModel: PodcastPlayerViewModel
     )
 }
+#endif
 
 @MainActor
 protocol PodcastEpisodeSessionProgressStoring: AnyObject {
@@ -78,9 +80,7 @@ protocol PodcastEpisodeSessionQueueing {
 }
 
 @MainActor
-final class PodcastEpisodeSessionLoader: PodcastEpisodeSessionLoading
-    , PodcastEpisodeSessionPreviewLoading
-{
+final class PodcastEpisodeSessionLoader: PodcastEpisodeSessionLoading {
     func makeViewModel(for episode: PodcastEpisode) -> PodcastPlayerViewModel {
         PodcastPlayerViewModel(hostNames: episode.series?.hostNames ?? [])
     }
@@ -130,6 +130,10 @@ final class PodcastEpisodeSessionLoader: PodcastEpisodeSessionLoading
         )
     }
 
+}
+
+#if DEBUG
+extension PodcastEpisodeSessionLoader: PodcastEpisodeSessionPreviewLoading {
     func loadCatalogPreview(
         _ preview: PodcastPlayerCatalogPreview,
         into viewModel: PodcastPlayerViewModel
@@ -141,6 +145,7 @@ final class PodcastEpisodeSessionLoader: PodcastEpisodeSessionLoading
         )
     }
 }
+#endif
 
 @MainActor
 final class PodcastEpisodeSessionProgressStore: PodcastEpisodeSessionProgressStoring {
