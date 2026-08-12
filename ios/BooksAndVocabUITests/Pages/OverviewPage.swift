@@ -4,6 +4,14 @@ import XCTest
 struct OverviewPage {
     let app: XCUIApplication
 
+    private func elements(identifier: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: identifier)
+    }
+
+    private func element(identifier: String) -> XCUIElement {
+        elements(identifier: identifier).element(boundBy: 0)
+    }
+
     // MARK: - Content
 
     /// Rendered stats dashboard (only present when the summary computed from
@@ -22,18 +30,56 @@ struct OverviewPage {
         exactlyOne(app.buttons.matching(identifier: "reviewCalendar.open"), "reviewCalendar.open")
     }
 
-    var overview: XCUIElement { app.descendants(matching: .any)["overview"].firstMatch }
-    var metrics: XCUIElement { app.descendants(matching: .any)["metrics"].firstMatch }
-    var calendar: XCUIElement { app.descendants(matching: .any)["calendar"].firstMatch }
-    var forecast: XCUIElement { app.descendants(matching: .any)["forecast"].firstMatch }
-    var forecastZero: XCUIElement { app.descendants(matching: .any)["forecast-zero"].firstMatch }
-    var forecastZeroCounterexample: XCUIElement {
-        app.descendants(matching: .any)["forecast-zero-counterexample"].firstMatch
-    }
-    var largeCounts: XCUIElement { app.descendants(matching: .any)["large-counts"].firstMatch }
+    var overview: XCUIElement { element(identifier: "overview") }
+    var metrics: XCUIElement { element(identifier: "metrics") }
+    var calendar: XCUIElement { element(identifier: "calendar") }
+    var forecast: XCUIElement { element(identifier: "overview.forecast") }
+    var forecastCard: XCUIElement { element(identifier: "overview.forecast.card") }
+    var forecastChart: XCUIElement { element(identifier: "overview.forecast.chart") }
+    var largeCounts: XCUIElement { element(identifier: "large-counts") }
 
     func metric(_ name: String) -> XCUIElement {
-        app.descendants(matching: .any)["overview.metric.\(name)"].firstMatch
+        element(identifier: "overview.metric.\(name)")
+    }
+
+    func forecastBucket(_ dayKey: String) -> XCUIElement {
+        forecastChart
+            .descendants(matching: .any)
+            .matching(identifier: "forecast.bucket.\(dayKey)")
+            .element(boundBy: 0)
+    }
+
+    func assertStatsAccessibilityHierarchy(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let overviewQuery = elements(identifier: "overview")
+        let statsContentQuery = elements(identifier: "overview.statsContent")
+        overview.assertExists(timeout: 10, file: file, line: line)
+        statsContent.assertExists(timeout: 10, file: file, line: line)
+        XCTAssertEqual(overviewQuery.count, 1, "overview must be a unique live AX ancestor", file: file, line: line)
+        XCTAssertEqual(statsContentQuery.count, 1, "overview.statsContent must be a unique live AX child", file: file, line: line)
+        XCTAssertEqual(
+            overview.descendants(matching: .any).matching(identifier: "overview.statsContent").count,
+            1,
+            "overview.statsContent must be descended from overview in the live AX tree",
+            file: file,
+            line: line
+        )
+    }
+
+    func assertUniqueForecastContract(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        for (identifier, element) in [
+            ("overview.forecast", forecast),
+            ("overview.forecast.card", forecastCard),
+            ("overview.forecast.chart", forecastChart),
+        ] {
+            XCTAssertEqual(elements(identifier: identifier).count, 1, "\(identifier) must be unique", file: file, line: line)
+            element.assertExists(timeout: 10, file: file, line: line)
+        }
     }
 
     func assertMetric(_ name: String, value: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {

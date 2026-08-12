@@ -89,14 +89,17 @@ enum StatsViewTime {
     /// Deterministic fallback anchor for seeds with no review events（statsEmpty）
     /// — nothing to derive from, and wall-clock `Date()` would re-introduce
     /// snapshot drift.
-    static let emptySeedFallback: Date = {
-        var comps = DateComponents()
+    static let emptySeedFallback: Date = fallbackAnchor(calendar: calendar)
+
+    static func fallbackAnchor(calendar: Calendar) -> Date {
+        var comps = DateComponents(calendar: calendar, timeZone: calendar.timeZone)
         comps.year = 2026
         comps.month = 6
         comps.day = 1
         comps.hour = 12
+        comps.timeZone = calendar.timeZone
         return calendar.date(from: comps) ?? Date(timeIntervalSince1970: 0)
-    }()
+    }
 
     /// Frozen "today" so streak / heatmap / forecast snapshots stay stable across
     /// catalog re-runs (the presenter is otherwise `Date()`-relative, which made
@@ -104,9 +107,16 @@ enum StatsViewTime {
     /// seed's latest review event (noon of that day): a hard-coded date left the
     /// 「複習預測/今日到期」 cards permanently 0 once the seed narrative anchored
     /// on a different day.
-    static func anchor(latestReviewedAt: Date?) -> Date {
-        guard let latest = latestReviewedAt else { return emptySeedFallback }
+    static func anchor(latestReviewedAt: Date?, calendar: Calendar) -> Date {
+        guard let latest = latestReviewedAt else { return fallbackAnchor(calendar: calendar) }
         return calendar.date(bySettingHour: 12, minute: 0, second: 0, of: latest) ?? latest
+    }
+
+    static func clock(latestReviewedAt: Date?, calendar: Calendar) -> StatsProjectionClock {
+        StatsProjectionClock(
+            now: anchor(latestReviewedAt: latestReviewedAt, calendar: calendar),
+            calendar: calendar
+        )
     }
 }
 
@@ -117,6 +127,7 @@ enum StatsViewTime {
 private struct StatsViewScene: View {
     let container: ModelContainer
     let initialSummary: StatsPresentation.Summary
+    private let projectionClock: StatsProjectionClock
     /// 關聯圖 card links, derived from the same UI World seed as the entries
     /// (manifest is the single link source; empty when the dataset carries no
     /// links, which legitimately renders the card's empty state).
@@ -155,7 +166,10 @@ private struct StatsViewScene: View {
                 fixtureID: fixture.vocabularyID
             )
 
-            let frozenNow = StatsViewTime.anchor(latestReviewedAt: records.map(\.reviewedAt).max())
+            let clock = StatsViewTime.clock(
+                latestReviewedAt: records.map(\.reviewedAt).max(),
+                calendar: StatsViewTime.calendar
+            )
             self.container = container
             self.graphLinks = UIWorldGraphLinks.makeGraphLinks(
                 from: visibleEntries,
@@ -165,9 +179,10 @@ private struct StatsViewScene: View {
                 entries: visibleEntries,
                 reviewRecords: records,
                 forecastDays: 14,
-                clock: StatsProjectionClock(now: frozenNow, calendar: StatsViewTime.calendar)
+                clock: clock
             )
-            self.frozenStore = Self.makeFrozenStore(now: frozenNow)
+            self.frozenStore = Self.makeFrozenStore(now: clock.now)
+            self.projectionClock = clock
         } catch {
             preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for Stats View catalog: \(error)")
         }
@@ -184,7 +199,7 @@ private struct StatsViewScene: View {
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
-        .environment(\.statsProjectionClock, StatsProjectionClock(now: frozenStore.settings.reviewReferenceDate(), calendar: StatsViewTime.calendar))
+        .environment(\.statsProjectionClock, projectionClock)
         // The presenter's `.task` recomputes `summary` using
         // `reviewSettingsStore.settings.reviewReferenceDate()` as "now", which is
         // live `Date()` unless progress is paused — that recompute would override

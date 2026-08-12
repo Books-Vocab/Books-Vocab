@@ -100,36 +100,39 @@ struct StatsPresenter: View {
     var body: some View {
         VocabSceneShell(phase: currentPhase) {
             if let summary {
-                ScrollView {
-                    VStack(spacing: appSkin.spacing.sectionGap) {
-                        graphEntrySection
-                        metricsSection(summary)
-                        heatmapSection(summary)
-                        forecastSection(summary)
-                        totalsFooter(summary)
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(spacing: appSkin.spacing.sectionGap) {
+                            graphEntrySection
+                            metricsSection(summary)
+                            heatmapSection(summary)
+                            forecastSection(summary)
+                            totalsFooter(summary)
+                        }
+                        .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                        .padding(.top, appSkin.metrics.pageTopInset)
+                        .padding(.bottom, appSkin.metrics.pageBottomInset)
                     }
-                    .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
-                    .padding(.top, appSkin.metrics.pageTopInset)
-                    .padding(.bottom, appSkin.metrics.pageBottomInset)
-                }
-                .vocabCanvasBackground()
-                .accessibilityIdentifier("overview")
-                // UI-test hook: only reachable in the `.content` phase
-                // (VocabSceneShell renders this closure for `.content` only),
-                // so its existence proves the stats dashboard truly rendered
-                // from a non-empty summary — not loading / empty / logged-out.
-                .accessibilityIdentifier("overview.statsContent")
-                .opacity(contentReady ? 1 : 0)
-                .scaleEffect(contentReady ? 1 : 0.98)
-                .onAppear {
+                    .vocabCanvasBackground()
+                    // UI-test hook: only reachable in the `.content` phase
+                    // (VocabSceneShell renders this closure for `.content` only),
+                    // so its existence proves the stats dashboard truly rendered
+                    // from a non-empty summary — not loading / empty / logged-out.
+                    .accessibilityIdentifier("overview.statsContent")
+                    .opacity(contentReady ? 1 : 0)
+                    .scaleEffect(contentReady ? 1 : 0.98)
+                    .onAppear {
 #if KG_RUN_CATALOG_SNAPSHOTS
-                    contentReady = true
-#else
-                    withAnimation(AppMotion.contentReveal) {
                         contentReady = true
-                    }
+#else
+                        withAnimation(AppMotion.contentReveal) {
+                            contentReady = true
+                        }
 #endif
+                    }
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("overview")
             }
         }
         .animatePhaseChange(summary != nil)
@@ -596,11 +599,14 @@ struct StatsPresenter: View {
             VocabCard {
                 VocabForecastChart(buckets: summary.forecast)
                     .frame(height: 160)
-                    .accessibilityIdentifier(summary.forecast.allSatisfy { $0.count == 0 } ? "forecast-zero" : "forecast")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("overview.forecast.chart")
             }
-            .accessibilityIdentifier(summary.forecast.allSatisfy { $0.count == 0 } ? "forecast-zero-counterexample" : "forecast-card")
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("overview.forecast.card")
         }
-        .accessibilityIdentifier("forecast")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("overview.forecast")
     }
 
     private func totalsFooter(_ summary: StatsPresentation.Summary) -> some View {
