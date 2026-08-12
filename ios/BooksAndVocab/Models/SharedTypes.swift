@@ -495,6 +495,26 @@ struct KGDictionaryCardProjection: Decodable {
     let promotionRetryable: Bool
     let links: [KGGraphLink]
 
+    init(
+        card: KGCard,
+        dictionaryEntry: LexicalEntry,
+        selectedSenseKey: String,
+        selectedExampleKey: String,
+        materializationStatus: String,
+        promotionErrorCode: String?,
+        promotionRetryable: Bool,
+        links: [KGGraphLink]
+    ) {
+        self.card = card
+        self.dictionaryEntry = dictionaryEntry
+        self.selectedSenseKey = selectedSenseKey
+        self.selectedExampleKey = selectedExampleKey
+        self.materializationStatus = materializationStatus
+        self.promotionErrorCode = promotionErrorCode
+        self.promotionRetryable = promotionRetryable
+        self.links = links
+    }
+
     enum CodingKeys: String, CodingKey {
         case card, dictionaryEntry, entry, dictionary
         case selectedSenseKey, selectedExampleKey, materializationStatus

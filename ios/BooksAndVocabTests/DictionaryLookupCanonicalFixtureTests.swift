@@ -32,6 +32,10 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(coordinator.dictionaryMaterialization?.selectedSenseID == "sense-1")
         #expect(coordinator.dictionaryMaterialization?.selectedExampleID == "example-1")
         #expect(coordinator.dictionaryMaterialization?.sourceFixtureID == "dictionary.lookup.result")
+        #expect(coordinator.dictionaryMaterialization?.datasetID == "marketing_demo")
+        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "986c04b5219bfa9c9a5f3922864f42034081cbd90939db4353de8160656e6bd0")
+        #expect(coordinator.dictionaryMaterialization?.sourceAssetID == "catalog_reader_epub")
+        #expect(coordinator.dictionaryMaterialization?.sourceAssetSHA256 == "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de")
     }
 
     @Test("KGService routes the P1 fixture source into AddLink state")
@@ -66,6 +70,9 @@ struct DictionaryLookupCanonicalFixtureTests {
         source.kgCardId = "source-card"
         source.notebookId = "notebook"
         let container = try Self.inMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
 
         coordinator.submitSearch(query: "engraved", using: service)
         try await settle { coordinator.lookupState.isSuccess }
@@ -93,6 +100,8 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(dictionaryCard.cardRole == .dictionary)
         #expect(dictionaryCard.dictionarySelectedSenseKey == "sense-1")
         #expect(dictionaryCard.dictionarySelectedExampleKey == "example-1")
+        #expect(dictionaryCard.graphLinksByKind["shares_usage"]?.count == 1)
+        #expect(dictionaryCard.graphLinksByKind["shares_usage"]?.first?.cardId == "source-card")
     }
 
     @Test("invalid fixture-driven dictionary lookup fails closed instead of using network")
@@ -108,6 +117,91 @@ struct DictionaryLookupCanonicalFixtureTests {
                 Issue.record("unexpected error for invalid fixture: \(error)")
             }
         }
+    }
+
+    @Test("absent fixture-driven dictionary lookup fails closed instead of using network")
+    func absentFixtureDrivenLookupFailsClosed() async throws {
+        let service = KGService()
+        try await FixtureDatasetStore.withTestingData(nil) {
+            do {
+                _ = try await service.searchDictionary(query: "engraved")
+                Issue.record("fixture-driven run without a UI World must not use network dictionary lookup")
+            } catch let error as FixtureDictionaryServing.FixtureError {
+                guard case .unavailable(let fixtureID) = error else {
+                    Issue.record("expected unavailable fixture error, got \(error)")
+                    return
+                }
+                #expect(fixtureID == "ui-p1-dictionary-rich")
+            } catch {
+                Issue.record("unexpected error for absent fixture: \(error)")
+            }
+        }
+    }
+
+    @Test("materialization fails closed when the dictionary projection cannot be read back")
+    func materializationFailsClosedWhenProjectionCannotBeReadBack() async throws {
+        let base = try canonicalService()
+        let service = MissingProjectionDictionaryService(base: base)
+        let coordinator = AddLinkCoordinator()
+        let source = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        source.kgCardId = "source-card"
+        source.notebookId = "notebook"
+        let container = try Self.inMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
+
+        coordinator.submitSearch(query: "engraved", using: base)
+        try await settle { coordinator.lookupState.isSuccess }
+        guard case .success(_, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected canonical dictionary entry before materialization")
+            return
+        }
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source,
+            entry: entry,
+            using: service,
+            container: container
+        )
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(source.graphLinksByKind["shares_usage"] == nil)
+    }
+
+    @Test("materialization fails closed when the projection omits the graph link")
+    func materializationFailsClosedWhenProjectionOmitsGraphLink() async throws {
+        let base = try canonicalService()
+        let service = MissingGraphLinkDictionaryService(base: base)
+        let coordinator = AddLinkCoordinator()
+        let source = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        source.kgCardId = "source-card"
+        source.notebookId = "notebook"
+        let container = try Self.inMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
+
+        coordinator.submitSearch(query: "engraved", using: base)
+        try await settle { coordinator.lookupState.isSuccess }
+        guard case .success(_, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected canonical dictionary entry before materialization")
+            return
+        }
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source,
+            entry: entry,
+            using: service,
+            container: container
+        )
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(source.graphLinksByKind["shares_usage"] == nil)
     }
 
     private func canonicalService() throws -> FixtureDictionaryServing {
@@ -147,5 +241,74 @@ struct DictionaryLookupCanonicalFixtureTests {
             try await Task.sleep(for: .milliseconds(2))
         }
         Issue.record("timed out waiting for state transition")
+    }
+}
+
+private actor MissingProjectionDictionaryService: DictionaryServing {
+    let base: FixtureDictionaryServing
+
+    init(base: FixtureDictionaryServing) {
+        self.base = base
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest,
+        idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        let response = try await base.materializeDictionaryLink(
+            request: request,
+            idempotencyKey: idempotencyKey
+        )
+        return DictionaryMaterializeLinkResponse(
+            targetCard: response.targetCard,
+            dictionaryCard: nil,
+            link: response.link,
+            createdCard: response.createdCard,
+            createdLink: response.createdLink,
+            replayed: response.replayed
+        )
+    }
+
+    func fetchDictionaryCard(cardId: String) async throws -> KGDictionaryCardProjection {
+        throw FixtureDictionaryServing.FixtureError.unavailable(fixtureID: cardId)
+    }
+}
+
+private actor MissingGraphLinkDictionaryService: DictionaryServing {
+    let base: FixtureDictionaryServing
+
+    init(base: FixtureDictionaryServing) {
+        self.base = base
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest,
+        idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        let response = try await base.materializeDictionaryLink(
+            request: request,
+            idempotencyKey: idempotencyKey
+        )
+        guard let projection = response.dictionaryCard else {
+            throw FixtureDictionaryServing.FixtureError.missingCanonicalDictionary
+        }
+        let missingLinkProjection = KGDictionaryCardProjection(
+            card: projection.card,
+            dictionaryEntry: projection.dictionaryEntry,
+            selectedSenseKey: projection.selectedSenseKey,
+            selectedExampleKey: projection.selectedExampleKey,
+            materializationStatus: projection.materializationStatus,
+            promotionErrorCode: projection.promotionErrorCode,
+            promotionRetryable: projection.promotionRetryable,
+            links: []
+        )
+        return DictionaryMaterializeLinkResponse(
+            targetCard: response.targetCard,
+            dictionaryCard: missingLinkProjection,
+            link: response.link,
+            createdCard: response.createdCard,
+            createdLink: response.createdLink,
+            replayed: response.replayed
+        )
     }
 }

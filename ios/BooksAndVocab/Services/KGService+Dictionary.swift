@@ -171,6 +171,11 @@ extension KGService {
         let fixtureID = UIWorldDictionaryFixtureID.p1DictionaryRich
         switch FixtureDatasetStore.availability {
         case .absent:
+            guard !FixtureDatasetStore.isFixtureDriven else {
+                throw FixtureDictionaryServing.FixtureError.unavailable(
+                    fixtureID: fixtureID.rawValue
+                )
+            }
             return nil
         case let .invalid(reason):
             throw FixtureDictionaryServing.FixtureError.invalidDataset(reason)

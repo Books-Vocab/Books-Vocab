@@ -75,6 +75,40 @@ struct DictionaryLookupStateFlowTests {
         try await settle { coordinator.lookupState.isSuccess }
     }
 
+    @Test("a cancelled loading fixture cannot win a newer lookup")
+    func cancelledLoadingFixtureCannotWinNewerLookup() async throws {
+        let service = try canonicalService()
+        let coordinator = AddLinkCoordinator()
+
+        coordinator.submitSearch(query: "loading", using: service)
+        coordinator.submitSearch(query: "engraved", using: service)
+        try await settle { coordinator.lookupState.isSuccess }
+
+        guard case .success(let query, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected the newer dictionary lookup to succeed")
+            return
+        }
+        #expect(query == "engraved")
+        #expect(entry.entryKey == "engraved")
+    }
+
+    @Test("a cancelled partial fixture cannot poison a newer lookup")
+    func cancelledPartialFixtureCannotPoisonNewerLookup() async throws {
+        let service = try canonicalService()
+        let coordinator = AddLinkCoordinator()
+
+        coordinator.submitSearch(query: "partial", using: service)
+        coordinator.submitSearch(query: "engraved", using: service)
+        try await settle { coordinator.lookupState.isSuccess }
+
+        guard case .success(let query, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected the newer dictionary lookup to succeed")
+            return
+        }
+        #expect(query == "engraved")
+        #expect(entry.entryKey == "engraved")
+    }
+
     @Test("selected sense example and provenance are canonical materialization data")
     func selectionMaterializationIsObservable() async throws {
         let service = try canonicalService()

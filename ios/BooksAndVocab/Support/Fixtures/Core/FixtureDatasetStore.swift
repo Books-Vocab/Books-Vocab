@@ -16,16 +16,31 @@ enum FixtureDatasetStore {
     }
 
     @TaskLocal static var testingOverrideData: Data?
+    @TaskLocal static var testingOverrideIsActive = false
 
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
-        try $testingOverrideData.withValue(data) {
-            try perform()
+        try $testingOverrideIsActive.withValue(true) {
+            try $testingOverrideData.withValue(data) {
+                try perform()
+            }
         }
     }
 
     static func withTestingData<T>(_ data: Data?, perform: () async throws -> T) async rethrows -> T {
-        try await $testingOverrideData.withValue(data) {
-            try await perform()
+        try await $testingOverrideIsActive.withValue(true) {
+            try await $testingOverrideData.withValue(data) {
+                try await perform()
+            }
+        }
+    }
+
+    static var isFixtureDriven: Bool {
+        if testingOverrideIsActive || AppRuntimeOptions.isUITesting() {
+            return true
+        }
+        let environment = ProcessInfo.processInfo.environment
+        return environment.keys.contains {
+            $0 == fixtureDatasetDeflateEnvKey || $0 == fixtureDatasetEnvKey
         }
     }
 
