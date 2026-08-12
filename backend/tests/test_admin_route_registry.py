@@ -116,4 +116,4 @@ def test_admin_api_router_keeps_registry_surface_and_admin_dependency_in_sync():
 
     assert isinstance(router, APIRouter)
     assert legacy_surface == registry_surface
-    assert [dependency.call for dependency in router.dependencies] == [get_admin_user]
+    assert [dependency.dependency for dependency in router.dependencies] == [get_admin_user]
