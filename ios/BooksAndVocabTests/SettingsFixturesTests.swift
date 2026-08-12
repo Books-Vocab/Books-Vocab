@@ -184,5 +184,105 @@ import Testing
         let accountDetailSource = try String(contentsOf: accountDetailURL, encoding: .utf8)
         #expect(accountDetailSource.contains("settings.account.dangerGroup"))
     }
+
+    @Test func p15EvidenceContractBindsRequiredAndCounterexampleAssetsOneToOne() throws {
+        let expected: [(fixtureID: String, label: String, assetID: String, stepLabel: String)] = [
+            ("preferences_auto_sync_off", "required-settings", "settings-required", "required-settings"),
+            ("preferences_logged_out_no_sync", "section-navigation", "settings-section-navigation", "section-navigation"),
+            ("long_content_counterexample", "long-content-counterexample", "settings-long-content-counterexample", "long-content-counterexample"),
+            ("reset_counterexample", "reset-counterexample", "settings-reset-counterexample", "reset-counterexample"),
+        ]
+        let requiredAssetIDs = Set(expected.prefix(2).map(\.assetID))
+        let counterexampleAssetIDs = Set(expected.suffix(2).map(\.assetID))
+        #expect(requiredAssetIDs.isDisjoint(with: counterexampleAssetIDs))
+
+        for data in [try Self.marketingDemoData, try Self.generatedDemoData] {
+            let root = try Self.jsonObject(data)
+            let settings = try #require(root["settings"] as? [String: Any])
+            var assetIDs: [String] = []
+
+            for contract in expected {
+                let seed = try #require(settings[contract.fixtureID] as? [String: Any])
+                let evidence = try #require(seed["evidence"] as? [String: Any])
+                #expect(evidence["label"] as? String == contract.label)
+                #expect(evidence["assetID"] as? String == contract.assetID)
+                #expect(evidence["stepLabel"] as? String == contract.stepLabel)
+                assetIDs.append(try #require(evidence["assetID"] as? String))
+            }
+
+            #expect(Set(assetIDs).count == expected.count, "Every evidence mapping must resolve to one distinct asset")
+        }
+
+        let manifestSourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ops/ui_world_manifest.py")
+        let manifestSource = try String(contentsOf: manifestSourceURL, encoding: .utf8)
+        for label in expected.map(\.label) {
+            #expect(manifestSource.contains(label), "Manifest must name evidence step label (label)")
+        }
+    }
+
+    @Test func p15ResetCounterexampleHasObservableLifecycleBoundary() throws {
+        let root = try Self.jsonObject(Self.marketingDemoData)
+        let settings = try #require(root["settings"] as? [String: Any])
+        let seed = try #require(settings["reset_counterexample"] as? [String: Any])
+        let lifecycle = try #require(seed["resetLifecycle"] as? [String: Any])
+        let before = try #require(lifecycle["before"] as? [String: Any])
+        let after = try #require(lifecycle["after"] as? [String: Any])
+
+        #expect((before["localCardCount"] as? Int ?? 0) > (after["localCardCount"] as? Int ?? 0))
+        #expect((before["hasCustomPreferences"] as? Bool) != (after["hasCustomPreferences"] as? Bool))
+        #expect(before["isLoggedIn"] as? Bool == true)
+        #expect(after["isLoggedIn"] as? Bool == true)
+        #expect(lifecycle["phase"] as? String == "succeeded")
+        #expect(lifecycle["canRetry"] as? Bool == false)
+        #expect((lifecycle["terminalMessage"] as? String)?.isEmpty == false)
+
+        let accountDetailURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Settings/SettingsAccountDetailView.swift")
+        let accountDetailSource = try String(contentsOf: accountDetailURL, encoding: .utf8)
+        for contractIdentifier in [
+            "settings.account.resetBoundary",
+            "settings.account.resetBoundary.phase",
+            "settings.account.resetBoundary.resetButton",
+            "resetLifecycle",
+        ] {
+            #expect(accountDetailSource.contains(contractIdentifier), "Production reset boundary is missing (contractIdentifier)")
+        }
+    }
+
+    @Test func p15ResetLifecycleAdapterAndTerminalTransitionsAreObservable() throws {
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let lifecycle = try #require(SettingsFixtures.state(for: .resetCounterexample).danger?.resetLifecycle)
+            #expect(lifecycle.phase == .succeeded)
+            #expect(lifecycle.before.localCardCount == 3)
+            #expect(lifecycle.after.localCardCount == 0)
+            #expect(lifecycle.before.hasCustomPreferences == true)
+            #expect(lifecycle.after.hasCustomPreferences == false)
+            #expect(lifecycle.before.isLoggedIn == lifecycle.after.isLoggedIn)
+            #expect(lifecycle.terminalMessage?.isEmpty == false)
+            #expect(lifecycle.canRetry == false)
+
+            let preReset = SettingsResetLifecycle.preReset(before: lifecycle.before)
+            let resetting = preReset.resetting()
+            let failed = resetting.failed(message: "fixture failure")
+            let retry = SettingsResetLifecycle.preReset(before: failed.before).resetting()
+            #expect(preReset.phase == .preReset)
+            #expect(resetting.phase == .resetting)
+            #expect(failed.phase == .failed)
+            #expect(failed.canRetry == true)
+            #expect(retry.phase == .resetting)
+            #expect(retry.before == failed.before)
+        }
+    }
+
+    private static func jsonObject(_ data: Data) throws -> [String: Any] {
+        let object = try JSONSerialization.jsonObject(with: data)
+        return try #require(object as? [String: Any])
+    }
 }
 #endif

@@ -16,7 +16,7 @@ struct SettingsSheetPage {
     }
 
     var closeButton: XCUIElement {
-        app.buttons["完成"]
+        app.buttons["settings.dismissButton"]
     }
 
     // MARK: - Home: account section (guest vs logged-in)
@@ -125,6 +125,43 @@ struct SettingsSheetPage {
         app.otherElements["settings.preferences.readerGroup"]
     }
 
+    var conditionalSyncGroup: XCUIElement {
+        app.otherElements["settings.preferences.syncGroup"]
+    }
+
+    // MARK: - Account detail danger boundary
+
+    /// Stable child selector inside the production account navigation row. The
+    /// row's separate identity fingerprint remains available for account proof;
+    /// this selector is the action target and never depends on localized text.
+    var accountDetailRow: XCUIElement {
+        app.descendants(matching: .any)["settings.account.accountDetailRow"]
+    }
+
+    var accountDangerGroup: XCUIElement {
+        app.otherElements["settings.account.dangerGroup"]
+    }
+
+    var resetBoundary: XCUIElement {
+        app.otherElements["settings.account.resetBoundary"]
+    }
+
+    var resetBeforeSnapshot: XCUIElement {
+        app.otherElements["settings.account.resetBoundary.before"]
+    }
+
+    var resetAfterSnapshot: XCUIElement {
+        app.otherElements["settings.account.resetBoundary.after"]
+    }
+
+    var resetPhase: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.phase"]
+    }
+
+    var resetButton: XCUIElement {
+        app.buttons["settings.account.resetBoundary.resetButton"]
+    }
+
     // MARK: - Review rhythm section (pushed)
 
     var pauseReviewClockToggle: XCUIElement {
@@ -181,6 +218,13 @@ struct SettingsSheetPage {
         XCTAssertTrue(row.exists, file: file, line: line)
         row.scrollIntoView(file: file, line: line)
         tapExactlyOne(row, named: "settings.preferences.translationLanguageRow", file: file, line: line)
+        return self
+    }
+
+    @discardableResult
+    func openAccountDetail(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
+        accountDetailRow.scrollIntoView(file: file, line: line)
+        accountDetailRow.tapWhenReady(file: file, line: line)
         return self
     }
 

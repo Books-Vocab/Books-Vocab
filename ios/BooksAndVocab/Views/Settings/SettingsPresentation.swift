@@ -355,6 +355,12 @@ struct SettingsPresenterState {
 
     struct DangerSection {
         let isDeletingAccount: Bool
+        let resetLifecycle: SettingsResetLifecycle?
+
+        init(isDeletingAccount: Bool, resetLifecycle: SettingsResetLifecycle? = nil) {
+            self.isDeletingAccount = isDeletingAccount
+            self.resetLifecycle = resetLifecycle
+        }
     }
 
     let auth: AuthSection
@@ -366,6 +372,77 @@ struct SettingsPresenterState {
     var bookSync: BookSyncState? = nil
     let about: AboutSection
     let danger: DangerSection?
+}
+
+/// Observable boundary for the local-data reset operation. The snapshot pair is
+/// intentionally part of the state rather than inferred from the current view:
+/// the UI must show what existed before the destructive operation and what the
+/// terminal state contains after it completes.
+struct SettingsResetLifecycle: Equatable {
+    enum Phase: String, Equatable {
+        case preReset
+        case resetting
+        case succeeded
+        case failed
+    }
+
+    struct Snapshot: Equatable {
+        let localCardCount: Int
+        let hasCustomPreferences: Bool
+        let isLoggedIn: Bool
+    }
+
+    let phase: Phase
+    let before: Snapshot
+    let after: Snapshot
+    let terminalMessage: String?
+    let canRetry: Bool
+
+    static func preReset(before: Snapshot) -> Self {
+        .init(
+            phase: .preReset,
+            before: before,
+            after: .defaults(preservingLogin: before.isLoggedIn),
+            terminalMessage: nil,
+            canRetry: true
+        )
+    }
+
+    func resetting() -> Self {
+        .init(
+            phase: .resetting,
+            before: before,
+            after: after,
+            terminalMessage: nil,
+            canRetry: false
+        )
+    }
+
+    func succeeded(message: String) -> Self {
+        .init(
+            phase: .succeeded,
+            before: before,
+            after: .defaults(preservingLogin: before.isLoggedIn),
+            terminalMessage: message,
+            canRetry: false
+        )
+    }
+
+    func failed(message: String) -> Self {
+        .init(
+            phase: .failed,
+            before: before,
+            after: after,
+            terminalMessage: message,
+            canRetry: true
+        )
+    }
+}
+
+private extension SettingsResetLifecycle.Snapshot {
+    static func defaults(preservingLogin isLoggedIn: Bool) -> Self {
+        .init(localCardCount: 0, hasCustomPreferences: false, isLoggedIn: isLoggedIn)
+    }
 }
 
 extension SettingsPresenterState.BookSyncState {
@@ -430,4 +507,5 @@ struct SettingsPresenterActions {
     var toggleAutoLink: (Bool) -> Void = { _ in }
     var toggleSoundFeedback: (Bool) -> Void = { _ in }
     var toggleHapticFeedback: (Bool) -> Void = { _ in }
+    var resetLocalData: () -> Void = {}
 }

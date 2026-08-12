@@ -373,6 +373,94 @@ struct SettingsFixtureSeed: Codable {
         }
     }
 
+    struct Evidence: Codable, Equatable {
+        let label: String
+        let assetID: String
+        let stepLabel: String
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case label
+            case assetID
+            case stepLabel
+        }
+
+        init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings evidence"
+            )
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings evidence")
+            label = try container.decode(String.self, forKey: .label)
+            assetID = try container.decode(String.self, forKey: .assetID)
+            stepLabel = try container.decode(String.self, forKey: .stepLabel)
+        }
+    }
+
+    struct ResetLifecycle: Codable, Equatable {
+        enum Phase: String, Codable {
+            case preReset
+            case resetting
+            case succeeded
+            case failed
+        }
+
+        struct Snapshot: Codable, Equatable {
+            let localCardCount: Int
+            let hasCustomPreferences: Bool
+            let isLoggedIn: Bool
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case localCardCount
+                case hasCustomPreferences
+                case isLoggedIn
+            }
+
+            init(from decoder: Decoder) throws {
+                try SettingsFixtureSeed.rejectUnknownKeys(
+                    from: decoder,
+                    keys: CodingKeys.allCases,
+                    context: "UI World settings reset snapshot"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings reset snapshot")
+                localCardCount = try container.decode(Int.self, forKey: .localCardCount)
+                hasCustomPreferences = try container.decode(Bool.self, forKey: .hasCustomPreferences)
+                isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
+            }
+        }
+
+        let phase: Phase
+        let before: Snapshot
+        let after: Snapshot
+        let terminalMessage: String?
+        let canRetry: Bool
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case phase
+            case before
+            case after
+            case terminalMessage
+            case canRetry
+        }
+
+        init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings reset lifecycle"
+            )
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings reset lifecycle")
+            phase = try container.decode(Phase.self, forKey: .phase)
+            before = try container.decode(Snapshot.self, forKey: .before)
+            after = try container.decode(Snapshot.self, forKey: .after)
+            terminalMessage = try container.decodeIfPresent(String.self, forKey: .terminalMessage)
+            canRetry = try container.decode(Bool.self, forKey: .canRetry)
+        }
+    }
+
     struct BookSync: Codable {
         enum Tone: String, Codable {
             case progress
@@ -415,6 +503,8 @@ struct SettingsFixtureSeed: Codable {
     let bookSync: BookSync?
     let about: About
     let danger: Danger?
+    let evidence: Evidence?
+    let resetLifecycle: ResetLifecycle?
     let manualLoginUserId: String?
     let debugLocalServerURL: String?
 
@@ -430,6 +520,8 @@ struct SettingsFixtureSeed: Codable {
         case bookSync
         case about
         case danger
+        case evidence
+        case resetLifecycle
         case manualLoginUserId
         case debugLocalServerURL
     }
@@ -469,6 +561,8 @@ struct SettingsFixtureSeed: Codable {
         bookSync = try container.decodeIfPresent(BookSync.self, forKey: .bookSync)
         about = try container.decode(About.self, forKey: .about)
         danger = try container.decodeIfPresent(Danger.self, forKey: .danger)
+        evidence = try container.decodeIfPresent(Evidence.self, forKey: .evidence)
+        resetLifecycle = try container.decodeIfPresent(ResetLifecycle.self, forKey: .resetLifecycle)
         manualLoginUserId = try container.decodeIfPresent(String.self, forKey: .manualLoginUserId)
         debugLocalServerURL = try container.decodeIfPresent(String.self, forKey: .debugLocalServerURL)
     }
@@ -647,7 +741,30 @@ private enum SettingsFixtureAdapter {
                 .init(text: $0.text, detail: $0.detail, tone: makeBookSyncTone($0.tone))
             },
             about: .init(version: seed.about.version, developerName: seed.about.developerName),
-            danger: seed.danger.map { .init(isDeletingAccount: $0.isDeletingAccount) }
+            danger: seed.danger.map {
+                .init(
+                    isDeletingAccount: $0.isDeletingAccount,
+                    resetLifecycle: seed.resetLifecycle.map(makeResetLifecycle(from:))
+                )
+            }
+        )
+    }
+
+    private static func makeResetLifecycle(from seed: SettingsFixtureSeed.ResetLifecycle) -> SettingsResetLifecycle {
+        SettingsResetLifecycle(
+            phase: .init(rawValue: seed.phase.rawValue)!,
+            before: .init(
+                localCardCount: seed.before.localCardCount,
+                hasCustomPreferences: seed.before.hasCustomPreferences,
+                isLoggedIn: seed.before.isLoggedIn
+            ),
+            after: .init(
+                localCardCount: seed.after.localCardCount,
+                hasCustomPreferences: seed.after.hasCustomPreferences,
+                isLoggedIn: seed.after.isLoggedIn
+            ),
+            terminalMessage: seed.terminalMessage.map(L10n.string),
+            canRetry: seed.canRetry
         )
     }
 

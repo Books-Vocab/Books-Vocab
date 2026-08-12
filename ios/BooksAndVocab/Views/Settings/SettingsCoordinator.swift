@@ -23,6 +23,7 @@ typealias SettingsSyncService = any BackgroundSyncing & HealthChecking & QuotaSe
     var showDeleteAccountConfirm: Bool { get set }
     var isDeletingAccount: Bool { get }
     var deleteAccountError: String? { get }
+    var resetLifecycle: SettingsResetLifecycle? { get }
     var translationSourceLang: TranslationLanguage { get set }
     var translationTargetLang: TranslationLanguage { get set }
     func handleAppear()
@@ -31,6 +32,12 @@ typealias SettingsSyncService = any BackgroundSyncing & HealthChecking & QuotaSe
     func clearDeleteAccountError()
     func presentSubscriptionPaywall()
     func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
+    func resetLocalData(
+        before: SettingsResetLifecycle.Snapshot,
+        authManager: any AuthManaging,
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async
     func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator) async -> Bool
 }
 
@@ -48,6 +55,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     private(set) var syncEvidence: SettingsSyncLifecycleEvidence?
     var isManualLoggingIn = false
     var deleteAccountError: String?
+    var resetLifecycle: SettingsResetLifecycle?
     var manualLoginUserId = ""
     var debugLocalServerURL = ""
     var observationPreviewLines: [String] = []
@@ -376,6 +384,39 @@ final class SettingsCoordinator: SettingsCoordinating {
             // 失敗時關閉 confirm sheet，讓使用者看到錯誤 alert
             showDeleteAccountConfirm = false
         }
+    }
+
+    /// Reset only this account's local vocabulary and Settings-owned preferences.
+    /// The signed-in session remains visible so the account danger group can show
+    /// the terminal boundary instead of disappearing during logout cleanup.
+    func resetLocalData(
+        before: SettingsResetLifecycle.Snapshot,
+        authManager: any AuthManaging,
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async {
+        guard authManager.isLoggedIn,
+              resetLifecycle?.phase != .resetting
+        else { return }
+
+        let pending = SettingsResetLifecycle.preReset(before: before).resetting()
+        resetLifecycle = pending
+
+        await kgService.clearLocalData(
+            container: modelContext.container,
+            reason: "settings_reset_local_data"
+        )
+        ReviewSettingsStore.shared.update(.default)
+        TranslationLanguage.currentSource = .en
+        TranslationLanguage.currentTarget = .zhHant
+        AppLanguageStore.shared.setLanguage(.system)
+        AppAppearanceStore.shared.setAppearance(.system)
+        AutoSyncSettingsStore.shared.setEnabled(false)
+        AutoLinkSettingsStore.shared.setEnabled(true)
+        FeedbackSettingsStore.shared.setSoundFeedbackEnabled(false)
+        FeedbackSettingsStore.shared.setHapticFeedbackEnabled(true)
+
+        resetLifecycle = pending.succeeded(message: L10n.string("本機資料與設定已重設。"))
     }
 
     /// 回傳 true 代表已儲存（或免儲存的 guest 路徑），false 代表遠端 update 失敗。

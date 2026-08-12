@@ -57,7 +57,7 @@ final class SettingsFlowUITests: UITestCase {
             return page
         }
 
-        captureStep("required-settings", app: app)
+        captureStep("required-settings", assetID: "settings-required", app: app)
         for group in [
             settings.appearanceGroup,
             settings.learningGroup,
@@ -133,7 +133,7 @@ final class SettingsFlowUITests: UITestCase {
             settings.openReviewRhythm()
             XCTAssertTrue(app.waitForNavigationToSettle())
         }
-        captureStep("section-navigation", app: app)
+        captureStep("section-navigation", assetID: "settings-section-navigation", app: app)
         guard settings.pauseReviewClockToggle.waitUntilExists(timeout: 5) else {
             captureStep("no-pause-toggle", app: app)
             XCTFail("複習節奏 section must expose the 凍結複習時鐘 toggle")
@@ -219,5 +219,56 @@ final class SettingsFlowUITests: UITestCase {
             settings.closeButton.assertDoesNotExist()
             bookshelf.assertIsActive()
         }
+    }
+
+    @MainActor
+    func testSettingsLongContentCounterexampleResolvesProductionSelectors() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.settingsLongContent],
+            perfLog: "settings-long-content-counterexample"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let settings = bookshelf.tapSettings()
+        settings.assertIsPresented()
+        XCTAssertTrue(settings.logoutButton.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.conditionalSyncGroup.waitUntilExists(timeout: 5))
+
+        settings.openAccountDetail()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+        XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
+        captureStep("long-content-counterexample", assetID: "settings-long-content-counterexample", app: app)
+    }
+
+    @MainActor
+    func testSettingsResetCounterexampleShowsObservableBoundary() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.settingsResetLifecycle],
+            perfLog: "settings-reset-counterexample"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let settings = bookshelf.tapSettings()
+        settings.assertIsPresented()
+        XCTAssertTrue(settings.logoutButton.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.conditionalSyncGroup.waitUntilExists(timeout: 5))
+
+        settings.openAccountDetail()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+        XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetBeforeSnapshot.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetAfterSnapshot.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
+
+        settings.resetButton.tapWhenReady()
+        XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("succeeded", timeout: 10))
+        XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
+        captureStep("reset-counterexample", assetID: "settings-reset-counterexample", app: app)
     }
 }

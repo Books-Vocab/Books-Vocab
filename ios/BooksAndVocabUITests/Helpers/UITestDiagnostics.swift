@@ -94,6 +94,7 @@ class UITestCase: XCTestCase {
 
     func captureStep(
         _ name: String,
+        assetID: String? = nil,
         app: XCUIApplication,
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
@@ -113,7 +114,11 @@ class UITestCase: XCTestCase {
 
         guard let dir = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
               !dir.isEmpty else { return }
-        let url = URL(fileURLWithPath: dir).appendingPathComponent("\(stepName).png")
+        let outputName = assetID ?? stepName
+        let safeAssetID = outputName
+            .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let url = URL(fileURLWithPath: dir).appendingPathComponent("\(safeAssetID).png")
         lastCapturedScreenshotPath = url.path
         do {
             try FileManager.default.createDirectory(

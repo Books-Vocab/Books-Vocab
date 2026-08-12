@@ -68,6 +68,7 @@ struct SettingsPresenter: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized, action: actions.dismiss)
                         .fontWeight(.semibold)
+                        .accessibilityIdentifier("settings.dismissButton")
                 }
             }
             .navigationDestination(isPresented: $showReviewSection) {

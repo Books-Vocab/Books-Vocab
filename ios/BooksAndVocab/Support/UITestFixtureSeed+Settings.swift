@@ -11,6 +11,10 @@ extension UITestFixtureSeed {
         case SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue:
             FixtureDatasetStore.activateSettingsFixture(.syncTerminalErrorRetrySuccess)
             AppLog.app.info("UI-test fixture selected: settings.\(id, privacy: .public)")
+        case "longContent":
+            seedLongContent()
+        case "resetLifecycle":
+            seedResetLifecycle(into: container)
         default:
             failFixtureSeed("Unknown settings fixture ID: \(id)")
         }
@@ -41,6 +45,81 @@ extension UITestFixtureSeed {
         AppLog.app.info("UI-test fixture seeded: settings.cleanPreferences")
         #else
         failFixtureSeed("UITestFixtureSeed: refused settings.cleanPreferences on device — it writes real UserDefaults/iCloud KVS")
+        #endif
+    }
+
+    @MainActor
+    private static func seedLongContent() {
+        #if targetEnvironment(simulator)
+        seedSignedInLoginFromWorld(using: .longIdentity)
+        AppLog.app.info("UI-test fixture seeded: settings.longContent")
+        #else
+        failFixtureSeed("UITestFixtureSeed: refused settings.longContent on device — it writes the real Keychain session")
+        #endif
+    }
+
+    /// Counterexample fixture for the production reset boundary. It starts with
+    /// deterministic local cards plus non-default Settings-owned preferences;
+    /// the reset action then has observable before/after state to render.
+    @MainActor
+    private static func seedResetLifecycle(into container: ModelContainer) {
+        #if targetEnvironment(simulator)
+        seedSignedInLoginFromWorld(using: .settingsSignedIn)
+
+        ReviewSettingsStore.shared.update(
+            ReviewSettings(
+                mode: .intensive,
+                customInitialIntervalHours: 12,
+                customRememberedMultiplier: 1.9,
+                customForgotMultiplier: 0.45,
+                customMinimumIntervalHours: 6,
+                customMaximumIntervalHours: 1440,
+                autoplaySpeed: .fast,
+                autoplaySoundEnabled: true
+            )
+        )
+        TranslationLanguage.restore(
+            source: .en,
+            sourceUpdatedAt: 1_735_000_000,
+            target: .ja,
+            targetUpdatedAt: 1_735_000_000
+        )
+        AppLanguageStore.shared.setLanguage(.system)
+        AppAppearanceStore.shared.setAppearance(.dark)
+        AutoSyncSettingsStore.shared.setEnabled(true)
+        AutoLinkSettingsStore.shared.setEnabled(false, updatedAt: 1_735_000_000)
+        FeedbackSettingsStore.shared.setSoundFeedbackEnabled(true)
+        FeedbackSettingsStore.shared.setHapticFeedbackEnabled(false)
+
+        let context = ModelContext(container)
+        do {
+            try clearVocabularyEntries(from: context)
+            let fixedDate = Date(timeIntervalSince1970: 1_735_000_000)
+            for (word, translation, contextText) in [
+                ("boundary", "邊界", "reset fixture card one"),
+                ("observable", "可觀察", "reset fixture card two"),
+                ("terminal", "終端", "reset fixture card three"),
+            ] {
+                let entry = VocabularyEntry(
+                    word: word,
+                    translation: translation,
+                    context: contextText,
+                    bookTitle: "Settings reset fixture"
+                )
+                entry.syncStatus = VocabularySyncState.synced.rawValue
+                entry.actionType = VocabularySyncAction.add.rawValue
+                entry.isArchived = false
+                entry.dateAdded = fixedDate
+                entry.nextReviewAt = fixedDate
+                context.insert(entry)
+            }
+            try context.save()
+        } catch {
+            failFixtureSeed("UITestFixtureSeed: settings.resetLifecycle could not seed local cards: \(error.localizedDescription)")
+        }
+        AppLog.app.info("UI-test fixture seeded: settings.resetLifecycle")
+        #else
+        failFixtureSeed("UITestFixtureSeed: refused settings.resetLifecycle on device — it writes real UserDefaults/iCloud KVS")
         #endif
     }
 }

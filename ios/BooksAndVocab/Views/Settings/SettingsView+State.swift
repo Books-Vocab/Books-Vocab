@@ -49,6 +49,36 @@ extension SettingsView {
         return L10n.format("上次同步 %@", lastSync.formatted(.relative(presentation: .named)))
     }
 
+    var hasCustomSettingsPreferences: Bool {
+        let review = reviewSettingsStore.settings
+        let defaults = ReviewSettings.default
+        return appLanguage.selection != .system
+            || appearanceStore.selection != .system
+            || coordinator.translationSourceLang != .en
+            || coordinator.translationTargetLang != .zhHant
+            || review.mode != defaults.mode
+            || review.customInitialIntervalHours != defaults.customInitialIntervalHours
+            || review.customRememberedMultiplier != defaults.customRememberedMultiplier
+            || review.customForgotMultiplier != defaults.customForgotMultiplier
+            || review.customMinimumIntervalHours != defaults.customMinimumIntervalHours
+            || review.customMaximumIntervalHours != defaults.customMaximumIntervalHours
+            || review.isProgressPaused != defaults.isProgressPaused
+            || review.autoplaySpeed != defaults.autoplaySpeed
+            || review.autoplaySoundEnabled != defaults.autoplaySoundEnabled
+            || autoSyncSettingsStore.isEnabled
+            || !autoLinkSettingsStore.isEnabled
+            || feedbackSettingsStore.soundFeedbackEnabled
+            || !feedbackSettingsStore.hapticFeedbackEnabled
+    }
+
+    var resetBeforeSnapshot: SettingsResetLifecycle.Snapshot {
+        .init(
+            localCardCount: allEntries.count,
+            hasCustomPreferences: hasCustomSettingsPreferences,
+            isLoggedIn: authManager.isLoggedIn
+        )
+    }
+
     var presenterState: SettingsPresenterState {
         let pro = subscriptionManager.entitlements.pro
         return SettingsPresenterState(
@@ -125,7 +155,12 @@ extension SettingsView {
                 version: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "-",
                 developerName: "陳亮宇" // i18n-allow: 人名
             ),
-            danger: authManager.isLoggedIn ? .init(isDeletingAccount: coordinator.isDeletingAccount) : nil
+            danger: authManager.isLoggedIn
+                ? .init(
+                    isDeletingAccount: coordinator.isDeletingAccount,
+                    resetLifecycle: coordinator.resetLifecycle ?? .preReset(before: resetBeforeSnapshot)
+                )
+                : nil
         )
     }
 
@@ -194,7 +229,17 @@ extension SettingsView {
                 }
             },
             toggleSoundFeedback: { feedbackSettingsStore.setSoundFeedbackEnabled($0) },
-            toggleHapticFeedback: { feedbackSettingsStore.setHapticFeedbackEnabled($0) }
+            toggleHapticFeedback: { feedbackSettingsStore.setHapticFeedbackEnabled($0) },
+            resetLocalData: {
+                Task {
+                    await coordinator.resetLocalData(
+                        before: resetBeforeSnapshot,
+                        authManager: authManager,
+                        kgService: kgService,
+                        modelContext: modelContext
+                    )
+                }
+            }
         )
     }
 
