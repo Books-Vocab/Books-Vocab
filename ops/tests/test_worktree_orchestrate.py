@@ -306,6 +306,17 @@ def test_claude_neutral_reason_does_not_claim_docs_coverage():
     assert not any(claim in reason.casefold() for claim in forbidden_claims), reason
 
 
+def test_agent_constitution_is_routed_to_its_contract_gate():
+    """The root constitution must not remain an anonymous coverage warning."""
+    gates = plan_gates(["CLAUDE.md"], ops_test_exists=lambda rel: True, base="main")
+    coverage = next(g for g in gates if g["name"] == "coverage")
+    constitution = next(g for g in gates if g["name"] == "agent-constitution")
+    assert coverage["uncovered"] == []
+    assert "CLAUDE.md" in coverage["covered"]
+    assert constitution["level"] == "block"
+    assert constitution["cmd"] == ["ops/tests/test_docs_lint.sh"]
+
+
 def test_coverage_partition_is_exact():
     files = ["ios/BooksAndVocab/A.swift", "README.md", "lab/x.rb", "docs/reference/tech_index.md"]
     cov = next(g for g in plan_gates(files) if g["name"] == "coverage")

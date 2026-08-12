@@ -790,6 +790,11 @@ DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
     ),
 }
 
+# Agent-facing constitution files change agent behaviour and therefore need a
+# contract gate of their own; they are not ordinary docs and docs_lint rejects
+# them as invalid --files inputs.
+AGENT_CONSTITUTION: tuple[str, ...] = ("CLAUDE.md", "AGENTS.md")
+
 
 # Paths that legitimately select no gate, each with the reason. Deny-by-default:
 # anything matching neither a gate nor a rule here shows up as `uncovered`.
@@ -1278,8 +1283,14 @@ def plan_gates(changed_files: list[str],
             gates.append(_shell(f"data-plane:{registry_cmd[0]}", "data",
                                 registry_cmd, "block"))
 
+    constitution_files = sorted(set(changed_files) & set(AGENT_CONSTITUTION))
+    if constitution_files:
+        gates.append(_shell("agent-constitution", "docs",
+                            ["ops/tests/test_docs_lint.sh"], "block"))
+
     covered: set[str] = set()
-    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml, backlog_entries, baselines):
+    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml,
+                   backlog_entries, baselines, constitution_files):
         covered.update(bucket)
     cov = _coverage(changed_files, covered)
     note = "every changed file is routed to a gate or declared neutral"

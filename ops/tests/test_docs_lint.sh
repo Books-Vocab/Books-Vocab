@@ -50,6 +50,11 @@ grep -q "cd backend && uv run python ops_cli.py" CLAUDE.md
 grep -q "cd backend && uv run python ops_cli.py" AGENTS.md
 grep -q "uv run python scripts/cli.py" CLAUDE.md
 grep -q "uv run python scripts/cli.py" AGENTS.md
+
+# The nine iron laws advertise their enforcement strength in the constitution.
+# Parse every machine-law reference dynamically: a fixed allow-list would let a
+# newly added or removed file/symbol drift past this gate.
+uv run --no-project --python 3.13 python ops/constitution_lint.py CLAUDE.md AGENTS.md
 # Negative guards ("this string must NOT appear") over a LIST of files.
 #
 # `grep -q` returns 2 when any listed file is missing — and measured, it returns 2
