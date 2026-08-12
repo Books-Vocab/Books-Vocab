@@ -2132,6 +2132,7 @@ _IOS_TEST_INPUTS = frozenset({
     "ops/ui_world_manifest.py",
     "ops/uitest_contact_sheet.py",
     "ops/lib/ios_test_discovery.sh",
+    "ops/lib/ios_xctestrun_cache.sh",
     "ops/lib/ios_build_progress.sh",
     "ops/lib/ios_lock_wait.sh",
     "ops/lib/ios_test_video_archive.sh",
