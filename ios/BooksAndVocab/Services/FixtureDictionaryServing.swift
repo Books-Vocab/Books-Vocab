@@ -18,7 +18,8 @@ actor FixtureDictionaryServing: DictionaryServing {
     private let hit: DictionarySearchHit
     private let materialization: DictionaryMaterializationSnapshot
     private var attempts: [String: Int] = [:]
-    private var lastState: UIWorldDictionaryLookupState = .idle
+    private var pendingDetailFailures: [String: Int] = [:]
+    private var pendingDetailFailureQuery: String?
     private(set) var materializationRequests: [DictionaryMaterializeLinkRequest] = []
 
     init(dictionary: UIWorldDictionarySeed) {
@@ -95,11 +96,16 @@ actor FixtureDictionaryServing: DictionaryServing {
         targetLanguage: String
     ) async throws -> DictionarySearchResponse {
         let state = state(for: query)
-        lastState = state
-        attempts[state.rawValue, default: 0] += 1
+        let queryKey = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if pendingDetailFailureQuery != nil, pendingDetailFailureQuery != queryKey {
+            pendingDetailFailures.removeAll()
+            pendingDetailFailureQuery = nil
+        }
+        attempts[queryKey, default: 0] += 1
         guard let stateSeed = dictionary.lookup[state.rawValue] else {
             throw FixtureError.missingCanonicalDictionary
         }
+        var shouldFailDetail = false
 
         switch state {
         case .idle:
@@ -107,12 +113,13 @@ actor FixtureDictionaryServing: DictionaryServing {
         case .loading:
             // Keep the canonical loading fixture observable through the UI
             // harness's submit/event and first accessibility snapshot costs.
-            try await Task.sleep(for: .seconds(2))
+            try await Task.sleep(for: .milliseconds(250))
         case .result:
             if query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "empty" {
                 return response(hits: [])
             }
         case .partial:
+            shouldFailDetail = attempts[queryKey] == 1
             break
         case .offline:
             throw KGError.offline
@@ -123,6 +130,11 @@ actor FixtureDictionaryServing: DictionaryServing {
                 throw KGError.offline
             }
         }
+        try Task.checkCancellation()
+        if shouldFailDetail {
+            pendingDetailFailures[entry.entryKey, default: 0] += 1
+            pendingDetailFailureQuery = queryKey
+        }
         return response(hits: [hit])
     }
 
@@ -131,10 +143,8 @@ actor FixtureDictionaryServing: DictionaryServing {
         entryKey: String,
         targetLanguage: String
     ) async throws -> DictionaryEntryResponse {
-        if lastState == .partial, attempts[UIWorldDictionaryLookupState.partial.rawValue] == 1 {
-            throw KGError.offline
-        }
-        if lastState == .offline || lastState == .error {
+        if pendingDetailFailures[entryKey, default: 0] > 0 {
+            pendingDetailFailures[entryKey, default: 0] -= 1
             throw KGError.offline
         }
         return DictionaryEntryResponse(

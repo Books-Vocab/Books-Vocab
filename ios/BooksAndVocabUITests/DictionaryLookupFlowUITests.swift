@@ -18,7 +18,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
         XCTAssertTrue(page.materialization(status: "ready").waitUntilValueContains(
-            "sense-1|example-1|dictionary.lookup.result|marketing_demo|",
+            "sense-1|example-1|dictionary.lookup.result|marketing_demo|986c04b5219bfa9c9a5f3922864f42034081cbd90939db4353de8160656e6bd0|catalog_reader_epub|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
             timeout: 5
         ))
         page.tapSense(id: "sense-1")

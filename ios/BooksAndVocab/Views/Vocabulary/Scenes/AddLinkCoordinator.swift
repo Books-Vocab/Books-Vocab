@@ -82,6 +82,12 @@ enum DictionaryMaterializePhase: Equatable {
     case failed
 }
 
+private enum DictionaryMaterializationError: Error {
+    case projectionCardMismatch(expected: String, actual: String)
+    case projectionMissingGraphLink(linkID: String)
+    case missingSourceContext
+}
+
 @Observable @MainActor
 final class AddLinkCoordinator {
     private(set) var searchPhase: DictionarySearchPhase = .idle
@@ -372,14 +378,33 @@ final class AddLinkCoordinator {
                 request: request,
                 idempotencyKey: materializeKey
             )
+            let projection: KGDictionaryCardProjection
+            if let dictionaryCard = response.dictionaryCard {
+                projection = dictionaryCard
+            } else {
+                projection = try await service.fetchDictionaryCard(cardId: response.targetCard.id)
+            }
+            guard projection.card.id == response.targetCard.id else {
+                throw DictionaryMaterializationError.projectionCardMismatch(
+                    expected: response.targetCard.id,
+                    actual: projection.card.id
+                )
+            }
+            guard projection.links.contains(where: { $0.id == response.link.id }) else {
+                throw DictionaryMaterializationError.projectionMissingGraphLink(
+                    linkID: response.link.id
+                )
+            }
             let actor = BackgroundSyncActor(modelContainer: container)
             _ = try await actor.upsertDictionaryMaterialization(response)
-            if response.dictionaryCard == nil,
-               let saved = try? await service.fetchDictionaryCard(cardId: response.targetCard.id) {
-                _ = try? await actor.upsertDictionaryProjection(saved)
+            if response.dictionaryCard == nil {
+                _ = try await actor.upsertDictionaryProjection(projection)
             }
             Self.applyMaterializedLink(response, to: sourceEntry)
-            try sourceEntry.modelContext?.save()
+            guard let sourceContext = sourceEntry.modelContext else {
+                throw DictionaryMaterializationError.missingSourceContext
+            }
+            try sourceContext.save()
             materializePhase = .succeeded
             PerfLog.dictionary.mark(
                 "dictionary.materialization.succeeded",
@@ -389,6 +414,15 @@ final class AddLinkCoordinator {
             materializeRequest = nil
         } catch is CancellationError {
             materializePhase = .idle
+        } catch let error as DictionaryMaterializationError {
+            // A materialization without a read-back projection/link is not a
+            // successful graph mutation, even when the POST itself succeeded.
+            materializePhase = .failed
+            materializeFailure = .malformed
+            PerfLog.dictionary.mark(
+                "dictionary.materialization.failed",
+                "failure=\(String(describing: error)) \(Self.provenanceDetail(dictionaryMaterialization))"
+            )
         } catch {
             // Keep the idempotency key so explicit Retry converges the saga.
             materializePhase = .failed
