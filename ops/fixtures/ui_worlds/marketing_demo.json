@@ -123,7 +123,15 @@
       "review_settings_autoplay_sound_enabled": true,
       "podcast.wordFollowEnabled": true,
       "podcast.autoPauseOnLookup": true,
-      "podcast.subtitleSize": "large"
+      "podcast.subtitleSize": "large",
+      "reader_settings_font": "Mono",
+      "reader_settings_fontSize": 1.25,
+      "reader_settings_lineHeight": 2.1,
+      "reader_settings_scrollMode": true,
+      "reader_settings_showHitTestingDebug": false,
+      "reader_settings_underlineOpacity": 0.60,
+      "vocab_highlight_colorPreset": "rose",
+      "vocab_highlight_opacity": 0.60
     },
     "ubiquitousKeyValueStore": {
       "app_language_selection": "traditionalChinese",
@@ -137,7 +145,14 @@
       "review_settings_mode": "relaxed",
       "review_settings_mode_updated_at": 1781424000,
       "review_settings_progress_paused": false,
-      "review_settings_progress_updated_at": 1781424000
+      "review_settings_progress_updated_at": 1781424000,
+      "reader_settings_font": "Mono",
+      "reader_settings_fontSize": 1.25,
+      "reader_settings_lineHeight": 2.1,
+      "reader_settings_scrollMode": true,
+      "reader_settings_underlineOpacity": 0.60,
+      "vocab_highlight_colorPreset": "rose",
+      "vocab_highlight_opacity": 0.60
     }
   },
   "auth": {

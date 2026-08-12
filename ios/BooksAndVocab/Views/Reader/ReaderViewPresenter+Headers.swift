@@ -70,7 +70,12 @@ struct ReaderTopChrome: View, Equatable {
                     onShowTableOfContents,
                     accessibilityIdentifier: "reader.header.tocButton"
                 )
-                toolButton("textformat.size", L10n.string("reader.settings.title"), onShowReaderSettings)
+                toolButton(
+                    "textformat.size",
+                    L10n.string("reader.settings.title"),
+                    onShowReaderSettings,
+                    accessibilityIdentifier: "reader.header.settingsButton"
+                )
                 toolButton("text.book.closed", L10n.string("選擇單字本"), onShowNotebookPicker)
                 toolButton("chevron.up", L10n.string("收起標題列"), onCollapseHeader)
                     .appFloatingChromeMorph(id: "more", in: glass)

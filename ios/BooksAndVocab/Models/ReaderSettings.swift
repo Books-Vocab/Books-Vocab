@@ -11,6 +11,17 @@ import ReadiumShared
 import ReadiumNavigator
 import Foundation
 
+/// Hit-testing boxes are a developer calibration aid, never a Release feature.
+enum ReaderDebugTools {
+    static var isAvailable: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+}
+
 /// 閱讀字體型別
 enum ReaderFont: String, CaseIterable, Identifiable {
     case serif      = "Garamond"
@@ -403,7 +414,7 @@ final class ReaderSettings {
             ),
             underlineOpacity: underlineOpacity,
             highlightPreferences: vocabHighlightPreferences,
-            showHitTestingDebug: showHitTestingDebug,
+            showHitTestingDebug: ReaderDebugTools.isAvailable && showHitTestingDebug,
             swiftUIColorScheme: theme == .dark ? .dark : .light
         )
     }

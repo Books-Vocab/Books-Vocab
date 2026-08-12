@@ -48,7 +48,7 @@ struct ReaderSettingsPreviewCard: View {
 
     private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
 
-    /// The view and its source tests share this contract so a metric change
+    /// The view and its geometry tests share this contract, so a metric change
     /// cannot silently leave the frame or fade mask wired to a different value.
     static let layoutContract = ReaderSettingsPreviewLayoutContract(
         viewportHeight: Metrics.previewHeight,

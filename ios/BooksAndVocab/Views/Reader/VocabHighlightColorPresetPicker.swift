@@ -21,7 +21,6 @@ struct VocabHighlightColorPresetPicker: View {
         self.title = title
         self.accessibilityIdentifier = accessibilityIdentifier
     }
-
     var body: some View {
         Picker(title, selection: $selection) {
             ForEach(VocabHighlightColorPreset.allCases) { preset in

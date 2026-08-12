@@ -247,7 +247,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             let fontFaceCSS = Self.buildFontFaceCSS()
 
             // ★ 傳遞除錯模式開關
-            let isDebugMode = parent.viewConfiguration.showHitTestingDebug ? "true" : "false"
+            let isDebugMode = (
+                ReaderDebugTools.isAvailable && parent.viewConfiguration.showHitTestingDebug
+            ) ? "true" : "false"
             let contentStyleCSS = parent.viewConfiguration.contentStyleCSS
 
             let js = ReadiumNavigatorJS.buildInjectionScript(

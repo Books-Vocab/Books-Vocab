@@ -37,6 +37,7 @@ struct ReaderDOMExecutor {
                 navigator: navigator
             )
         case .setDebugMode(let isEnabled):
+            guard ReaderDebugTools.isAvailable else { return }
             evaluateJavaScript(
                 "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));",
                 "setDebugMode",

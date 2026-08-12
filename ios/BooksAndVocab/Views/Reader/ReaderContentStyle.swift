@@ -156,9 +156,9 @@ enum ReaderPresentationMetrics {
         static let wordSpacingRatio: CGFloat = 0.25
         static let paragraphSpacingRatio: CGFloat = 0.9
         static let contentInset: CGFloat = AppSpacing.s4
-        /// ReaderSettings uses the same discrete scale in its native Slider and
-        /// tick rail. Keeping the range here prevents the control and preview
-        /// from silently drifting apart.
+        /// ReaderSettings and its preview share one discrete line-height scale
+        /// in the native Slider and tick rail. Keeping the source here prevents
+        /// the control and preview from silently drifting apart.
         static let lineHeightRange: ClosedRange<Double> = 1.0...2.5
         static let lineHeightStep: Double = 0.1
         static let lineHeightTickCount: Int = Int(
@@ -171,11 +171,18 @@ enum ReaderPresentationMetrics {
         static func lineHeightTickValue(at index: Int) -> Double {
             lineHeightTickValues[index]
         }
+
+        static func lineHeightIndex(for value: Double) -> Int {
+            guard value.isFinite else { return 0 }
+            let clamped = min(max(value, lineHeightRange.lowerBound), lineHeightRange.upperBound)
+            let index = Int(((clamped - lineHeightRange.lowerBound) / lineHeightStep).rounded())
+            return min(max(index, 0), lineHeightTickValues.count - 1)
+        }
+
         /// The preview is a viewport, not an intrinsic card. A stable height
-        /// prevents every slider tick from moving the controls below it.
+        /// prevents every line-height tick from moving the controls below it.
         static let previewHeight: CGFloat = 164
-        /// Fade the prose at the viewport edges so clipped lines read as an
-        /// intentional continuation rather than a hard crop.
+        /// Fade clipped prose at the viewport edges instead of ending at a hard crop.
         static let previewFadeEdgeFraction: CGFloat = 0.08
         static let bandOverhang: CGFloat = 2
         /// 色帶圓度：帶高 ≈ 字級 × 32% ≈ 6.4pt，短邊遠小於 30pt → pill。
