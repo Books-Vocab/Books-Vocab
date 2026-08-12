@@ -26,6 +26,14 @@ enum SettingsAccountDetailScenarios {
             Scenario("Long name & email stress", layout: .fill) {
                 AccountDetailScene(fixtureID: .accountLongIdentity)
             }
+
+            Scenario("long-content-counterexample", layout: .fill) {
+                AccountDetailScene(fixtureID: .longContentCounterexample)
+            }
+
+            Scenario("reset-counterexample", layout: .fill) {
+                AccountDetailScene(fixtureID: .resetCounterexample)
+            }
         }
     }
 }

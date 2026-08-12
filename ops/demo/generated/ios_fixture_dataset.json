@@ -927,6 +927,82 @@
       "reviewSettings": null,
       "bookSync": null
     },
+    "long_content_counterexample": {
+      "authFixtureRef": "auth.longIdentity",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "王明",
+        "avatarURL": null,
+        "displayName": "王小明的超級長英文混中文顯示名稱測試 Wonderfully Long Display Name",
+        "email": "an.extremely.long.email.address.for.layout.testing@example-domain.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "reviewSettings": null,
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "bookSync": null,
+      "about": {
+        "version": "2.0.1 (7)",
+        "developerName": "Settings UI World long-content counterexample"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "reset_counterexample": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": null,
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "reviewSettings": null,
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "bookSync": null,
+      "about": {
+        "version": "2.0.1 (7)",
+        "developerName": "Settings UI World reset boundary counterexample"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
     "pricing_unavailable": {
       "authFixtureRef": "auth.settingsSignedIn",
       "entitlementsFixtureRef": "entitlements.free",

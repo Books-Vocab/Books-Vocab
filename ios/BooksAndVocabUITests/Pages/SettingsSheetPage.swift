@@ -109,6 +109,22 @@ struct SettingsSheetPage {
         app.buttons["settings.syncLifecycle.dismissButton"]
     }
 
+    var appearanceGroup: XCUIElement {
+        app.otherElements["settings.preferences.appearanceGroup"]
+    }
+
+    var learningGroup: XCUIElement {
+        app.otherElements["settings.preferences.learningGroup"]
+    }
+
+    var feedbackGroup: XCUIElement {
+        app.otherElements["settings.preferences.feedbackGroup"]
+    }
+
+    var readerGroup: XCUIElement {
+        app.otherElements["settings.preferences.readerGroup"]
+    }
+
     // MARK: - Review rhythm section (pushed)
 
     var pauseReviewClockToggle: XCUIElement {

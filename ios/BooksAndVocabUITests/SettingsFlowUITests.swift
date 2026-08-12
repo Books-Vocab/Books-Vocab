@@ -57,6 +57,16 @@ final class SettingsFlowUITests: UITestCase {
             return page
         }
 
+        captureStep("required-settings", app: app)
+        for group in [
+            settings.appearanceGroup,
+            settings.learningGroup,
+            settings.feedbackGroup,
+            settings.readerGroup,
+        ] {
+            XCTAssertTrue(group.waitUntilExists(timeout: 5), "Settings section group must expose a stable accessibility identifier")
+        }
+
         // Guest gate: isolated auth session must start logged out. A logged-in
         // account card means this flow is not testing the guest surface — fail,
         // don't skip.
@@ -123,6 +133,7 @@ final class SettingsFlowUITests: UITestCase {
             settings.openReviewRhythm()
             XCTAssertTrue(app.waitForNavigationToSettle())
         }
+        captureStep("section-navigation", app: app)
         guard settings.pauseReviewClockToggle.waitUntilExists(timeout: 5) else {
             captureStep("no-pause-toggle", app: app)
             XCTFail("複習節奏 section must expose the 凍結複習時鐘 toggle")

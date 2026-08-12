@@ -17,11 +17,11 @@ struct SettingsAccountDetailView: View {
 
     private var accountInfoItems: [AccountInfoItem] {
         var items: [AccountInfoItem] = [
-            .init(icon: "person", label: "名稱".localized, value: authState.displayName)
+            .init(icon: "person", label: L10n.string("名稱"), value: authState.displayName)
         ]
 
         if let email = authState.email, !email.isEmpty {
-            items.append(.init(icon: "envelope", label: "信箱".localized, value: email))
+            items.append(.init(icon: "envelope", label: L10n.string("信箱"), value: email))
         }
 
         return items
@@ -45,31 +45,32 @@ struct SettingsAccountDetailView: View {
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
-        .navigationTitle("帳號詳情".localized)
+        .navigationTitle(L10n.string("帳號詳情"))
         .inlineNavigationBarTitle()
         .enableInjection()
     }
 
     private var dataManagementCard: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "資料管理".localized, icon: "tray.and.arrow.up")
+            SettingsSectionHeader(title: L10n.string("資料管理"), icon: "tray.and.arrow.up")
 
             VStack(spacing: 0) {
                 SettingsNavigationRow(
                     icon: "square.and.arrow.up",
-                    label: "匯出全部單字 CSV".localized,
+                    label: L10n.string("匯出全部單字 CSV"),
                     action: actions.exportVocabularyCSV
                 )
             }
             .settingsCard()
 
-            SettingsSectionFooter("將所有單字本內的單字匯出為 CSV，方便備份或匯入其他工具。".localized)
+            SettingsSectionFooter(L10n.string("將所有單字本內的單字匯出為 CSV，方便備份或匯入其他工具。"))
         }
+        .accessibilityIdentifier("settings.account.dataManagementGroup")
     }
 
     private var accountInfoCard: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "帳號資訊".localized, icon: "person.crop.circle")
+            SettingsSectionHeader(title: L10n.string("帳號資訊"), icon: "person.crop.circle")
 
             VStack(spacing: 0) {
                 ForEach(Array(accountInfoItems.enumerated()), id: \.element.id) { index, item in
@@ -87,24 +88,25 @@ struct SettingsAccountDetailView: View {
             }
             .settingsCard()
         }
+        .accessibilityIdentifier("settings.account.infoGroup")
     }
 
     private func dangerCard(_ danger: SettingsPresenterState.DangerSection) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "危險操作".localized, icon: "exclamationmark.triangle")
+            SettingsSectionHeader(title: L10n.string("危險操作"), icon: "exclamationmark.triangle")
 
             VocabStateMessageCard(
-                title: danger.isDeletingAccount ? "正在刪除帳號".localized : "此操作不可逆".localized,
+                title: danger.isDeletingAccount ? L10n.string("正在刪除帳號") : L10n.string("此操作不可逆"),
                 systemImage: danger.isDeletingAccount ? "hourglass" : "exclamationmark.triangle.fill",
                 description: danger.isDeletingAccount
-                    ? "系統正在刪除帳號與雲端資料，完成前請勿關閉 app。".localized
-                    : "刪除後會移除帳號與所有雲端資料，且無法復原。".localized
+                    ? L10n.string("系統正在刪除帳號與雲端資料，完成前請勿關閉 app。")
+                    : L10n.string("刪除後會移除帳號與所有雲端資料，且無法復原。")
             )
 
             VStack(spacing: 0) {
                 Button(role: .destructive, action: actions.requestDeleteAccount) {
                     HStack {
-                        Text((danger.isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料").localized)
+                        Text(L10n.string(danger.isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料"))
                             .font(appSkin.typography.body)
                             .foregroundStyle(appSkin.palette.destructive)
                         Spacer()
@@ -115,12 +117,13 @@ struct SettingsAccountDetailView: View {
                 }
                 .buttonStyle(.appAction(.destructive))
                 .disabled(danger.isDeletingAccount)
-                .accessibilityLabel("刪除帳號與雲端資料".localized)
+                .accessibilityLabel(L10n.string("刪除帳號與雲端資料"))
             }
             .settingsCard()
 
-            SettingsSectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。".localized)
+            SettingsSectionFooter(L10n.string("此操作不可逆，會刪除帳號與所有雲端資料。"))
         }
+        .accessibilityIdentifier("settings.account.dangerGroup")
     }
 }
 
