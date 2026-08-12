@@ -39,6 +39,13 @@ enum ReaderProgressState: Equatable, Sendable {
         }
     }
 
+    /// Canonical accessibility identifier consumed by Reader UI tests and the
+    /// compact header. Scenario labels intentionally remain separate from this
+    /// typed runtime-state identifier.
+    var readerProgressAccessibilityIdentifier: String {
+        "reader.progress.\(accessibilityIdentifier)"
+    }
+
     var progression: Double? {
         switch self {
         case .unknown, .restoreFailure: return nil

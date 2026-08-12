@@ -165,7 +165,7 @@ struct ReaderTopChrome: View, Equatable {
         .foregroundStyle(appSkin.palette.secondaryText)
         .padding(.horizontal, AppSpacing.s2)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("reader.progress.\(model.progressState.accessibilityIdentifier)")
+        .accessibilityIdentifier(model.progressState.readerProgressAccessibilityIdentifier)
     }
 
     private var progressIcon: String {

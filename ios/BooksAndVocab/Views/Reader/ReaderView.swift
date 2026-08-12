@@ -81,7 +81,7 @@ struct ReaderView: View {
         settings.viewConfiguration(systemColorScheme: colorScheme)
     }
 
-    init(book: Book) {
+    init(book: Book, readerRuntimeClock: ReaderRuntimeClock = .live) {
         self._book = Bindable(book)
         let runtimeSelection = ReaderRuntimeFixtureAdapter.selection(
             arguments: ProcessInfo.processInfo.arguments,
@@ -90,7 +90,8 @@ struct ReaderView: View {
         self._readerState = State(
             initialValue: ReaderViewState(
                 runtimeSelection: runtimeSelection,
-                initialProgression: book.progression
+                initialProgression: book.progression,
+                clock: readerRuntimeClock
             )
         )
     }
