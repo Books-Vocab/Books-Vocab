@@ -1,0 +1,23 @@
+{
+  "acceptance": "RED：在 e7cd2ddf baseline，test_ios_gate_input_map_covers_declared_shell_dependencies 以缺少 ops/lib/ios_xctestrun_cache.sh 失敗；318c3e mode-only integration 的 fresh Gate 同樣因該 selector BLOCK。GREEN：input map 收納所有 ios_test.sh shell dependencies，exact selector 通過，且以固定 mode-only integration 等價 probe 證明該 Gate 不再因 cache helper 缺漏而 BLOCK。",
+  "acceptance_cmd": "set -eu\ntest -f ops/lib/ios_xctestrun_cache.sh\nrg -n 'ios_xctestrun_cache' ops/worktree_orchestrate.py >/dev/null\nuv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k test_ios_gate_input_map_covers_declared_shell_dependencies",
+  "acceptance_cmd_static": "set -eu\ntest -f ops/lib/ios_xctestrun_cache.sh\nrg -n 'ios_xctestrun_cache' ops/worktree_orchestrate.py >/dev/null",
+  "acceptance_expect_rc": 0,
+  "brief": "一個測試依賴沒有被整合檢查追蹤，無關的小改動也會在落地前被錯誤擋下。",
+  "category": "tool",
+  "date": "2026-08-12",
+  "detail": "318c3e 的 fresh Gate 在 ops-pytest 1604 passed、1 failed、3 skipped；唯一失敗是 test_ios_gate_input_map_covers_declared_shell_dependencies，宣告集合多出 ops/lib/ios_xctestrun_cache.sh。e7cd2ddf primary 直接跑同一 selector 亦 rc1；integration f9e8d8c6 與 e7cd2ddf 的 test_worktree_orchestrate.py blob 完全相同，integration diff 僅三個 Python entrypoint 的 executable mode，因此這是既有 gate contract drift，不是 318c3e 內容變更造成。現有 IMP-20260809-8e99a2 已新增該 helper，但其 acceptance 與 fix_site 未涵蓋 orchestrator 的 _IOS_TEST_INPUTS。",
+  "fix_site": "ops/worktree_orchestrate.py:_IOS_TEST_INPUTS；ops/tests/test_worktree_orchestrate.py:test_ios_gate_input_map_covers_declared_shell_dependencies；docs/reference/tech_index.md（若 docs impact 命中）",
+  "groomed_against": "e7cd2ddfd6acd0727fa19ea3850759b8117c98ba",
+  "groomed_at": "2026-08-12",
+  "groomed_by": "agent:team-a-supervisor",
+  "id": "IMP-20260812-a3a16c",
+  "plan": "1. 在 current main e7cd2ddf 上以 exact selector 重現 RED，並保存 baseline receipt；確認 ios_test.sh 的 source 宣告與 _IOS_TEST_INPUTS 的差集。\n2. 最小更新 ops/worktree_orchestrate.py 的 _IOS_TEST_INPUTS，納入 ops/lib/ios_xctestrun_cache.sh；不改 gate 判定語意、不改 318c3e mode-only source。\n3. 新增或強化 test_worktree_orchestrate.py 回歸，固定 source 宣告集合必須包含 input map，並以 mode-only integration 等價輸入證明該 Gate selector 不再 BLOCK。\n4. 跑 exact selector、related/full orchestrator suite、py_compile/ruff/diff-check；依 docs impact 同步 tech_index（若只補既有索引語意則保持最小變更）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 gate input map、一支回歸測試與一筆技術索引同步。",
+  "severity": "med",
+  "source": "2026-08-12 318c3e integration Gate BLOCK: the existing ios_test.sh source dependency ops/lib/ios_xctestrun_cache.sh is absent from worktree_orchestrate.py _IOS_TEST_INPUTS; baseline e7cd2ddf reproduces the same selector failure before any mode-only entrypoint change.",
+  "status": "triaged",
+  "stream": "IMP"
+}
