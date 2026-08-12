@@ -24,8 +24,17 @@ def _marketing_demo() -> dict:
     return json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(encoding="utf-8"))
 
 
+def _swift_source(path: str) -> str:
+    """Read a canonical Swift fixture declaration, including split siblings."""
+    requested = ROOT / path
+    sources = [requested]
+    if requested.name == "FixtureDatasetStore.swift":
+        sources.append(requested.with_name("FixtureDatasetSeeds.swift"))
+    return "\n".join(source.read_text(encoding="utf-8") for source in sources)
+
+
 def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
-    source = (ROOT / path).read_text(encoding="utf-8")
+    source = _swift_source(path)
     match = re.search(rf"enum {enum_name}: String, CaseIterable \{{(?P<body>.*?)\n\}}", source, flags=re.S)
     assert match, f"missing Swift enum {enum_name}"
     fixture_ids = set()
@@ -38,7 +47,7 @@ def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
 
 
 def _swift_string_set(path: str, constant_name: str) -> set[str]:
-    source = (ROOT / path).read_text(encoding="utf-8")
+    source = _swift_source(path)
     match = re.search(rf"static let {constant_name}: Set<String> = \[(?P<body>.*?)\n\s*\]", source, flags=re.S)
     assert match, f"missing Swift Set constant {constant_name}"
     values = set(re.findall(r'"([^"]+)"', match.group("body")))
