@@ -12,6 +12,9 @@
 
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+#endif
 
 /// 唯讀目錄的展示相位。內容為主（有牌組即 content），其餘退回 loading/error/空。
 enum ExplorePhase: Equatable {
@@ -57,6 +60,7 @@ struct ExploreView: View {
 
 #if DEBUG && targetEnvironment(simulator)
     private let catalogPreview: ExploreCatalogPreview?
+    private let catalogServiceOverride: (any SharedDeckCatalogServicing)?
 #endif
 
     @Query(filter: #Predicate<SharedDeck> { !$0.isSoftDeleted }, sort: \.sortOrder)
@@ -67,11 +71,21 @@ struct ExploreView: View {
     @State private var syncFailed = false
     @State private var filter = ExploreFilter()
 #if DEBUG && targetEnvironment(simulator)
-    @State private var previewPhase: ExploreCatalogPreview.Phase?
-
-    init(catalogPreview: ExploreCatalogPreview? = ExploreCatalogPreview.fromLaunchArguments()) {
+    init(
+        catalogPreview: ExploreCatalogPreview? = ExploreCatalogPreview.fromLaunchArguments(),
+        catalogService: (any SharedDeckCatalogServicing)? = nil
+    ) {
         self.catalogPreview = catalogPreview
-        _previewPhase = State(initialValue: catalogPreview?.initialPhase)
+        if let catalogService {
+            self.catalogServiceOverride = catalogService
+        } else if let catalogPreview {
+            self.catalogServiceOverride = ExploreUIWorldCatalogService(
+                fixtureID: catalogPreview.fixtureID,
+                initialCacheFixtureID: catalogPreview.initialCacheFixtureID
+            )
+        } else {
+            self.catalogServiceOverride = nil
+        }
     }
 #else
     init() {}
@@ -95,16 +109,6 @@ struct ExploreView: View {
     }
 
     private var phase: ExplorePhase {
-#if DEBUG && targetEnvironment(simulator)
-        if let previewPhase {
-            switch previewPhase {
-            case .loading: return .loading
-            case .error: return .error
-            case .empty: return .empty
-            case .loaded: break
-            }
-        }
-#endif
         return ExplorePhase.resolve(
             isSyncing: isSyncing, syncFailed: syncFailed,
             totalDeckCount: decks.count, filteredCount: filteredDecks.count,
@@ -150,9 +154,7 @@ struct ExploreView: View {
                 }
             }
             .task(id: authManager.isLoggedIn) {
-                guard catalogTaskPolicy.runsTasks,
-                      !AppRuntimeOptions.isUITesting()
-                else { return }
+                guard shouldRunCatalogTask else { return }
                 await syncCatalog(showToastOnFailure: false)
             }
         }
@@ -171,6 +173,7 @@ struct ExploreView: View {
                         onRetry: { Task { await refreshCatalog() } }
                     )
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                    .accessibilityIdentifier("explore.partialState")
                 }
                 filterBar
                 deckGrid
@@ -188,7 +191,7 @@ struct ExploreView: View {
         LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
             ForEach(filteredDecks) { deck in
 #if DEBUG && targetEnvironment(simulator)
-                let assetSelector = catalogPreview?.assetID(for: deck.remoteId)
+                let assetSelector = deck.coverAssetID
                     .map(UIWorldExploreFixtureID.assetSelector(for:))
 #else
                 let assetSelector: String? = nil
@@ -321,11 +324,22 @@ struct ExploreView: View {
     private var fixtureAssetProof: some View {
 #if DEBUG && targetEnvironment(simulator)
         if let assetID = catalogPreview?.assetIDs.first {
-            Color.clear
-                .frame(width: 1, height: 1)
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier(UIWorldExploreFixtureID.assetSelector(for: assetID))
-                .allowsHitTesting(false)
+            if let snapshot = try? FixtureDatasetStore.installedAssetSnapshot(ref: assetID),
+               let image = UIImage(contentsOfFile: snapshot.url.path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier(UIWorldExploreFixtureID.assetSelector(for: assetID))
+                    .accessibilityLabel(assetID)
+                    .accessibilityValue(
+                        "sha256:\(snapshot.sha256); path:\(snapshot.url.path)"
+                    )
+                    .allowsHitTesting(false)
+            } else {
+                EmptyView()
+            }
         }
 #else
         EmptyView()
@@ -366,11 +380,25 @@ struct ExploreView: View {
 
     // MARK: - Sync
 
+    private var shouldRunCatalogTask: Bool {
+        guard catalogTaskPolicy.runsTasks else { return false }
+#if DEBUG && targetEnvironment(simulator)
+        if catalogServiceOverride != nil { return true }
+#endif
+        return !AppRuntimeOptions.isUITesting()
+    }
+
     @MainActor
     private func syncCatalog(showToastOnFailure: Bool) async {
         isSyncing = true
         defer { isSyncing = false }
-        let outcome = await SharedDeckCatalogService(kgService: kgService).syncAll(context: modelContext)
+        let service: any SharedDeckCatalogServicing
+#if DEBUG && targetEnvironment(simulator)
+        service = catalogServiceOverride ?? SharedDeckCatalogService(kgService: kgService)
+#else
+        service = SharedDeckCatalogService(kgService: kgService)
+#endif
+        let outcome = await service.syncAll(context: modelContext)
         syncFailed = outcome == .listFetchFailed
         if syncFailed && showToastOnFailure {
             toastCoordinator.warning(L10n.string("explore.error.title"))
@@ -395,14 +423,6 @@ struct ExploreView: View {
 
     @MainActor
     private func refreshCatalog() async {
-#if DEBUG && targetEnvironment(simulator)
-        if let catalogPreview {
-            if let retryPhase = catalogPreview.retryPhase {
-                previewPhase = retryPhase
-                return
-            }
-        }
-#endif
         await syncCatalog(showToastOnFailure: true)
     }
 }

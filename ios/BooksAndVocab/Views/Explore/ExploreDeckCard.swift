@@ -31,6 +31,7 @@ struct ExploreDeckCard: View {
         // 整卡單一 a11y element：title + 官方 + 卡片數 + 下載 + 評分 收成一句。
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(assetAccessibilityValue ?? "")
         .accessibilityAddTraits(.isButton)
 #if DEBUG && targetEnvironment(simulator)
         .modifier(ExploreAssetAccessibilityModifier(identifier: assetAccessibilityIdentifier))
@@ -44,7 +45,7 @@ struct ExploreDeckCard: View {
         NotebookCoverView(
             color: coverColor,
             pattern: deck.coverPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
-            coverImagePath: nil,   // Phase 1b-iii procedural only — 無遠端封面圖
+            coverImagePath: deck.coverImagePath,
             name: deck.title
         )
         .aspectRatio(2/3, contentMode: .fill)
@@ -102,6 +103,11 @@ struct ExploreDeckCard: View {
             ))
         }
         return parts.joined(separator: L10n.string("，"))
+    }
+
+    private var assetAccessibilityValue: String? {
+        guard let sha256 = deck.coverImageSHA256 else { return nil }
+        return "sha256:\(sha256); path:\(deck.coverImagePath ?? "")"
     }
 }
 

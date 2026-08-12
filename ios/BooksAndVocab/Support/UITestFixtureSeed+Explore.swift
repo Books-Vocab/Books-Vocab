@@ -4,10 +4,18 @@ import SwiftData
 extension UITestFixtureSeed {
     @MainActor
     static func seedExplore(_ id: String, into container: ModelContainer) {
-        guard let fixtureID = UIWorldExploreFixtureID(rawValue: id) else {
+        let fixtureID: UIWorldExploreFixtureID
+        if id == "partial" {
+            // Partial is an explicit debug alias: the service starts with a
+            // loaded cache, then returns a real list failure.
+            fixtureID = .retry
+        } else if let parsed = UIWorldExploreFixtureID(rawValue: id) {
+            fixtureID = parsed
+        } else {
             failFixtureSeed("Unknown explore fixture ID: \(id)")
         }
-        ExploreFixtureMaterializer.seed(fixtureID, into: container)
+        _ = container
+        ExploreFixtureMaterializer.prepare(fixtureID)
     }
 }
 #endif

@@ -20,16 +20,15 @@ enum ExploreCatalogFixtureID {
 }
 
 struct ExploreCatalogPreview: Equatable {
-    typealias Phase = UIWorldExplorePhase
     let fixtureID: UIWorldExploreFixtureID
-    let initialPhase: UIWorldExplorePhase
-    let retryPhase: UIWorldExplorePhase?
+    let initialCacheFixtureID: UIWorldExploreFixtureID?
 
-    init(fixtureID: UIWorldExploreFixtureID) {
-        let fixture = FixtureDatasetStore.requireSharedDeckCatalogSeed().fixture(for: fixtureID)
+    init(
+        fixtureID: UIWorldExploreFixtureID,
+        initialCacheFixtureID: UIWorldExploreFixtureID? = nil
+    ) {
         self.fixtureID = fixtureID
-        self.initialPhase = fixture.phase
-        self.retryPhase = fixture.retryPhase
+        self.initialCacheFixtureID = initialCacheFixtureID
     }
 
     static func fromLaunchArguments(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Self? {
@@ -42,15 +41,11 @@ struct ExploreCatalogPreview: Equatable {
         guard let id = argument.split(separator: ":", maxSplits: 2).last.map(String.init) else {
             return nil
         }
+        if id == "partial" {
+            return Self(fixtureID: .retry, initialCacheFixtureID: .loaded)
+        }
         guard let fixtureID = UIWorldExploreFixtureID(rawValue: id) else { return nil }
         return Self(fixtureID: fixtureID)
-    }
-
-    func assetID(for remoteId: String) -> String? {
-        let catalog = FixtureDatasetStore.requireSharedDeckCatalogSeed()
-        let fixture = catalog.fixture(for: fixtureID)
-        guard fixture.deckIDs.contains(remoteId) else { return nil }
-        return catalog.deck(for: remoteId)?.assetID
     }
 
     var assetIDs: [String] {

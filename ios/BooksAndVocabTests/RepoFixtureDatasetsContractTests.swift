@@ -146,10 +146,7 @@ struct RepoFixtureDatasetsContractTests {
         for url in urls {
             let data = try Data(contentsOf: url)
             let document = try FixtureDatasetStore.decode(data)
-            let catalog = try #require(
-                document.sharedDecks,
-                "\(url.lastPathComponent) must load Explore sharedDecks at the top level"
-            )
+            let catalog = document.sharedDecks
 
             #expect(Set(catalog.fixtures.keys) == expectedFixtureIDs)
             #expect(catalog.requiredFixtureLabels == UIWorldExploreFixtureID.required.map(\.label))

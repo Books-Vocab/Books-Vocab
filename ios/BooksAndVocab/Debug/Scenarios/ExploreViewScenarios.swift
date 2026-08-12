@@ -6,9 +6,10 @@ import SwiftUI
 /// Catalog scenarios for the full `ExploreView` surface.
 ///
 /// `ExploreView` is `@Query<SharedDeck>`-backed and normally runs a network
-/// auto-sync `.task`. `CatalogTaskPolicy.disabled` skips that task so the view
-/// renders purely from the UI World materialized through the production
-/// SharedDeckSummary -> SharedDeck projection. Auth comes from UI World auth.signedIn.
+/// auto-sync task. A live named async service fake drives each state; the
+/// The successful path materializes through the production
+/// SharedDeckSummary -> SharedDeck projection. Auth comes from
+/// UI World auth.signedIn.
 enum ExploreViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Explore View") {
@@ -24,15 +25,19 @@ enum ExploreViewScenarios {
             Scenario("Error / Retry", layout: .fill) {
                 ExploreScene(fixture: .retry)
             }
+            Scenario("Partial / Stale Cache", layout: .fill) {
+                ExploreScene(fixture: .partial)
+            }
         }
     }
 }
 
-private enum ExploreFixture {
+private enum ExploreFixture: Equatable {
     case loading
     case populated
     case empty
     case retry
+    case partial
 
     var fixtureID: UIWorldExploreFixtureID {
         switch self {
@@ -40,11 +45,22 @@ private enum ExploreFixture {
         case .populated: return .loaded
         case .empty: return .empty
         case .retry: return .retry
+        case .partial: return .retry
         }
     }
 
     var preview: ExploreCatalogPreview {
-        ExploreCatalogPreview(fixtureID: fixtureID)
+        ExploreCatalogPreview(
+            fixtureID: fixtureID,
+            initialCacheFixtureID: self == .partial ? .loaded : nil
+        )
+    }
+
+    var service: ExploreUIWorldCatalogService {
+        ExploreUIWorldCatalogService(
+            fixtureID: fixtureID,
+            initialCacheFixtureID: self == .partial ? .loaded : nil
+        )
     }
 }
 
@@ -52,20 +68,25 @@ private struct ExploreScene: View {
     let container: ModelContainer
     let auth: CatalogPreviewAuth
     let preview: ExploreCatalogPreview?
+    let service: ExploreUIWorldCatalogService
 
     init(fixture: ExploreFixture) {
         let authSeed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
-        self.container = ExploreFixtureMaterializer.makeContainer(for: fixture.fixtureID)
+        self.container = ExploreFixtureMaterializer.makeContainer(
+            for: fixture.fixtureID,
+            seedCatalog: false
+        )
         self.auth = Self.makeAuth(from: authSeed)
         self.preview = fixture.preview
+        self.service = fixture.service
     }
 
     var body: some View {
         AppThemeContainer {
-            ExploreView(catalogPreview: preview)
+            ExploreView(catalogPreview: preview, catalogService: service)
                 .modelContainer(container)
                 .environment(\.authManager, auth)
-                .environment(\.catalogTaskPolicy, .disabled)
+                .environment(\.catalogTaskPolicy, .live)
         }
         .environmentObject(AppAppearanceStore.preview)
     }

@@ -36,9 +36,17 @@ final class SharedDeck {
     var downloadCount: Int = 0
     var ratingAvg: Double?
     var ratingCount: Int = 0
-    /// Procedural cover（復用 NotebookCoverView）——**非** image path。
+    /// Procedural fallback cover metadata.
     var color: String?
     var coverPattern: String?
+    /// UI World / future remote cover asset projection. The path always points
+    /// to an installed copy; source checkout paths never enter SwiftData.
+    var coverAssetID: String?
+    var coverImagePath: String?
+    var coverImageSHA256: String?
+    var coverImageByteSize: Int?
+    var coverImageContentType: String?
+    var coverImageFileSystemInode: Int?
     /// 伺服器端 updatedAt（已 parse 成 Date；nil = 伺服器未下發或無法解析）。UI 走 LocaleAwareFormatter。
     var updatedAt: Date?
     /// server browse 排序位置（reconcile 時以 server 回傳次序固化，供本機 grid 穩定排序）。
