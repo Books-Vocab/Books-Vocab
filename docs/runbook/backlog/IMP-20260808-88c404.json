@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "這個 repo 的 gate 幾乎全部是 **diff 驅動**的：`worktree_orchestrate.py gate` 把改動的檔路由到對應工具，CI 用 path filter 決定跑哪些 job。這個設計對「改壞了」很有效，對**「該有的東西沒出現」結構性失明**——一個沒有 `git add` 的檔不在 diff 裡，所以沒有任何 diff 驅動的規則選得到它。\n\n2026-08-08 由 `official-decks-track` 的受派者具體證出（reviewer 逼出來的，它自己寫進 SoT 以免下一個人誤讀）：\n\n- `ops/official_decks/build_official.py check` 現在能抓出「spec 在磁碟上但不在 git index」，**但沒有任何自動觸發點**。沒有 workflow、沒有 ops 腳本呼叫它；唯一的自動觸發是 `test_cli_check_all_committed_specs`，而 cutover gate 只在**該測試檔本身**進 diff 時才選它。**單獨新增一個牌組 spec，什麼 gate 都不會選。**\n- **CI 原理上也救不了**：CI checkout 的 index 與工作樹恆等，漏 add 的檔根本不在 runner 裡。所以「CI 綠」不能當成「新牌組會出貨」的證據。\n- 另有一層更細的：參考系是 **index 而非 commit**。`git commit -o <別的路徑>` 可以把已 staged 的 spec 排除在 tree 之外（受派者在暫存 repo 實測確認才敢寫進 SoT）。\n\n同族的既有實例：`IMP-20260805-679442` 講的正是這個症狀在牌組上的表現（本地與 CI 都全綠，上線才發現那副牌不存在）。它的修法把**偵測**做出來了，但**觸發**這一半沒有解，而觸發正是 diff 驅動架構給不了的東西。\n\n一般化的形狀：**任何「該存在的東西不存在」類判準，都不能掛在 diff 驅動的路由上。** 目前 repo 裡屬於這一類的至少還有：registry 覆蓋（有 doc 沒進 registry）、測試覆蓋（有 script 沒有測試）、i18n（有 user-facing 字串沒走 L10n）。它們今天各自用不同方式繞過這個限制，沒有一致做法。",
   "fix_site": "ops/worktree_orchestrate.py 的 gate 固定集合 + ops/official_decks/build_official.py check 的觸發點",
+  "fixed_by": [
+    "6deb279a1090765f9d51659f714f5634cf7fc397"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-88c404",
@@ -15,6 +18,10 @@
   "scope": "先盤點四條這類檢查各自靠什麼觸發並量它們的耗時，再決定要不要讓它們無條件跑；不建新框架。",
   "severity": "med",
   "source": "2026-08-08 official-decks-track 受派者的 reviewer 逼出的結論：偵測做好了但沒有任何自動觸發點，且 diff 驅動的 gate 原理上救不了它",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "WARN `--no-project` was provided, but no project was found\n..                                                                       [100%]\n2 passed, 416 deselected in 0.54s"
 }
