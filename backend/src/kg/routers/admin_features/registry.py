@@ -98,16 +98,40 @@ ADMIN_API_ROUTE_REGISTRY: tuple[AdminRouteRegistration, ...] = (
     AdminRouteRegistration("orphans", "get", "/api/admin/orphans/scan", "admin_orphans_scan"),
 )
 
+# Independent compatibility oracle: validation must still reject a registry
+# whose global source has accidentally lost one entry.
+REQUIRED_ADMIN_API_ROUTE_KEYS: tuple[tuple[str, str], ...] = (
+    ("get", "/api/admin/stats"),
+    ("get", "/api/admin/logs"),
+    ("get", "/api/admin/users/search"),
+    ("get", "/api/admin/users/{user_id}/entitlement"),
+    ("post", "/api/admin/users/{user_id}/admin-grant"),
+    ("delete", "/api/admin/users/{user_id}/admin-grant"),
+    ("post", "/api/admin/tests/run"),
+    ("get", "/api/admin/tests/last"),
+    ("get", "/api/admin/tests/catalog"),
+    ("get", "/api/admin/graph-density"),
+    ("get", "/api/admin/graph-playback"),
+    ("get", "/api/admin/pipeline-runs"),
+    ("get", "/api/admin/judge-stats"),
+    ("get", "/api/admin/translate-history"),
+    ("get", "/api/admin/user-activity"),
+    ("get", "/api/admin/user-usage"),
+    ("get", "/api/admin/user-cost-summary"),
+    ("get", "/api/admin/host-metrics"),
+    ("get", "/api/admin/observability"),
+    ("get", "/api/admin/stats/trends"),
+    ("post", "/api/admin/log-retention/run"),
+    ("get", "/api/admin/audit"),
+    ("get", "/api/admin/orphans/scan"),
+)
 
 def validate_admin_route_registry(
-    registrations: Iterable[AdminRouteRegistration] = ADMIN_API_ROUTE_REGISTRY,
+    registrations: Iterable[AdminRouteRegistration] | None = None,
 ) -> None:
     """Reject malformed, duplicate, or incomplete route ownership tables."""
-    entries = tuple(registrations)
-    expected = {
-        (registration.method.lower(), registration.path)
-        for registration in ADMIN_API_ROUTE_REGISTRY
-    }
+    entries = tuple(ADMIN_API_ROUTE_REGISTRY if registrations is None else registrations)
+    expected = set(REQUIRED_ADMIN_API_ROUTE_KEYS)
     seen: dict[tuple[str, str], str] = {}
     for registration in entries:
         method = registration.method.lower()

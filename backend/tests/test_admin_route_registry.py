@@ -6,13 +6,41 @@ from types import SimpleNamespace
 import pytest
 from fastapi import APIRouter
 
+from kg.api_models import AdminUserEntitlementResponse
 from kg.deps import get_admin_user
 from kg.routers.admin import build_api_admin_router
+from kg.routers.admin_features import registry as registry_module
 from kg.routers.admin_features.registry import (
     ADMIN_API_ROUTE_REGISTRY,
     AdminRouteRegistration,
     iter_bound_admin_api_routes,
     validate_admin_route_registry,
+)
+
+EXPECTED_ADMIN_API_ROUTE_KEYS = (
+    ("get", "/api/admin/stats"),
+    ("get", "/api/admin/logs"),
+    ("get", "/api/admin/users/search"),
+    ("get", "/api/admin/users/{user_id}/entitlement"),
+    ("post", "/api/admin/users/{user_id}/admin-grant"),
+    ("delete", "/api/admin/users/{user_id}/admin-grant"),
+    ("post", "/api/admin/tests/run"),
+    ("get", "/api/admin/tests/last"),
+    ("get", "/api/admin/tests/catalog"),
+    ("get", "/api/admin/graph-density"),
+    ("get", "/api/admin/graph-playback"),
+    ("get", "/api/admin/pipeline-runs"),
+    ("get", "/api/admin/judge-stats"),
+    ("get", "/api/admin/translate-history"),
+    ("get", "/api/admin/user-activity"),
+    ("get", "/api/admin/user-usage"),
+    ("get", "/api/admin/user-cost-summary"),
+    ("get", "/api/admin/host-metrics"),
+    ("get", "/api/admin/observability"),
+    ("get", "/api/admin/stats/trends"),
+    ("post", "/api/admin/log-retention/run"),
+    ("get", "/api/admin/audit"),
+    ("get", "/api/admin/orphans/scan"),
 )
 
 
@@ -24,12 +52,22 @@ def test_admin_route_registry_has_unique_feature_owned_routes_in_safe_order():
         for registration in ADMIN_API_ROUTE_REGISTRY
     ]
 
+    assert tuple(route_keys) == EXPECTED_ADMIN_API_ROUTE_KEYS
     assert len(route_keys) == len(set(route_keys))
     assert route_keys.index(("get", "/api/admin/users/search")) < route_keys.index(
         ("get", "/api/admin/users/{user_id}/entitlement")
     )
     assert all(registration.feature for registration in ADMIN_API_ROUTE_REGISTRY)
     assert all(registration.handler_name for registration in ADMIN_API_ROUTE_REGISTRY)
+    assert {
+        (registration.method, registration.path): registration.response_model
+        for registration in ADMIN_API_ROUTE_REGISTRY
+        if "{user_id}" in registration.path
+    } == {
+        ("get", "/api/admin/users/{user_id}/entitlement"): AdminUserEntitlementResponse,
+        ("post", "/api/admin/users/{user_id}/admin-grant"): AdminUserEntitlementResponse,
+        ("delete", "/api/admin/users/{user_id}/admin-grant"): AdminUserEntitlementResponse,
+    }
 
 
 def test_admin_route_registry_binds_optional_missing_handlers_without_dropping_ownership():
@@ -73,6 +111,17 @@ def test_admin_route_registration_requires_admin_api_paths():
 def test_admin_route_registry_rejects_missing_required_registration():
     with pytest.raises(ValueError, match="missing required admin route"):
         validate_admin_route_registry(ADMIN_API_ROUTE_REGISTRY[:-1])
+
+
+def test_admin_route_registry_global_mutation_cannot_remove_required_route(monkeypatch):
+    monkeypatch.setattr(
+        registry_module,
+        "ADMIN_API_ROUTE_REGISTRY",
+        registry_module.ADMIN_API_ROUTE_REGISTRY[:-1],
+    )
+
+    with pytest.raises(ValueError, match="missing required admin route"):
+        registry_module.validate_admin_route_registry()
 
 
 def test_admin_api_router_keeps_registry_surface_and_admin_dependency_in_sync():
