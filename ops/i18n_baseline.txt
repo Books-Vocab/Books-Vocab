@@ -1,2 +1,2 @@
 findings=0
-localized_calls=346
+localized_calls=322
