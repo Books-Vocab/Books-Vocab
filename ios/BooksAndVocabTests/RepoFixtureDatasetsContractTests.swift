@@ -122,6 +122,65 @@ struct RepoFixtureDatasetsContractTests {
         expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
     }
 
+    @Test func committedExploreDatasetsUseTopLevelSharedDecksContract() throws {
+        let expectedFixtureIDs = Set(UIWorldExploreFixtureID.allCases.map(\.rawValue))
+        let expectedRequiredDeckIDs = Set(["deck_official_gre_high_freq"])
+        let expectedCounterexampleDeckIDs = Set(["deck_counterexample_retry"])
+        let expectedRequiredAssetIDs = Set([
+            "images.explore_required",
+            "images.explore_required_empty",
+        ])
+        let expectedCounterexampleAssetIDs = Set([
+            "images.explore_counterexample_empty",
+            "images.explore_counterexample_retry",
+        ])
+
+        let urls = [
+            Self.datasetsDirectory.appendingPathComponent("marketing_demo.json"),
+            Self.datasetsDirectory
+                .deletingLastPathComponent() // ui_worlds
+                .deletingLastPathComponent() // fixtures
+                .appendingPathComponent("demo/generated/ios_fixture_dataset.json"),
+        ]
+
+        for url in urls {
+            let data = try Data(contentsOf: url)
+            let document = try FixtureDatasetStore.decode(data)
+            let catalog = try #require(
+                document.sharedDecks,
+                "\(url.lastPathComponent) must load Explore sharedDecks at the top level"
+            )
+
+            #expect(Set(catalog.fixtures.keys) == expectedFixtureIDs)
+            #expect(catalog.requiredFixtureLabels == UIWorldExploreFixtureID.required.map(\.label))
+            #expect(catalog.counterexampleFixtureLabels == UIWorldExploreFixtureID.counterexamples.map(\.label))
+            #expect(catalog.requiredDeckIDs == expectedRequiredDeckIDs)
+            #expect(catalog.counterexampleDeckIDs == expectedCounterexampleDeckIDs)
+            #expect(catalog.requiredAssetIDs == expectedRequiredAssetIDs)
+            #expect(catalog.counterexampleAssetIDs == expectedCounterexampleAssetIDs)
+
+            let loaded = try #require(catalog.fixtures[UIWorldExploreFixtureID.loaded.rawValue])
+            #expect(loaded.phase == .loaded)
+            #expect(loaded.deckIDs == ["deck_official_gre_high_freq"])
+            #expect(loaded.assetIDs == ["images.explore_required"])
+
+            let emptyCounterexample = try #require(
+                catalog.fixtures[UIWorldExploreFixtureID.emptyCounterexample.rawValue]
+            )
+            #expect(emptyCounterexample.phase == .empty)
+            #expect(emptyCounterexample.deckIDs.isEmpty)
+            #expect(emptyCounterexample.assetIDs == ["images.explore_counterexample_empty"])
+
+            let requiredDeck = try #require(catalog.deck(for: "deck_official_gre_high_freq"))
+            #expect(requiredDeck.assetID == "images.explore_required")
+            #expect(requiredDeck.title.count >= 80)
+            #expect(requiredDeck.title.contains("🧭"))
+            #expect(requiredDeck.title.unicodeScalars.contains { scalar in
+                (0x0590...0x08FF).contains(Int(scalar.value))
+            })
+        }
+    }
+
     @Test func legacyScenarioContextShapesRemainReadable() throws {
         let url = Self.datasetsDirectory
             .deletingLastPathComponent() // ui_worlds
