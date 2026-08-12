@@ -70,9 +70,9 @@ ops/worktree_orchestrate.py preflight --commit --json # 確認殘骸可清才落
 
 **b. open**：
 ```
-ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab-slug> [--backlog IMP-xxxx ...] --json
+ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab-slug> [--type debug|feat|research] [--backlog IMP-xxxx ...] --json
 ```
-**先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 由 intent 自動判定）。記下回傳的 `path`。
+**先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 預設由 intent 推論，`--type` 可顯式指定並勝過推論）。記下回傳的 `path`。
 
 單一協調者可先用 `./ops/backlog.py dispatch` 再明示 `--backlog`。**兩個以上協調者同步取票時改用 `--next-backlog`**：工具在同一把本機 registry lock 內，以 backlog 的既有 dispatch predicate/worst-first 排序選第一張尚未認領的票並立即登記；兩邊會拿到不同票，不會都讀到同一份 top-N snapshot 再讓敗方整批重試。明示 `--backlog` 也不能繞過未解的 `blocked_by`；同 slug/path 的第二次 `open` 由 exclusive birth 拒絕，不會把第一個成功者當成 idempotent update。
 

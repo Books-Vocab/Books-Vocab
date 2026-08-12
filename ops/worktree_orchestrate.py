@@ -249,9 +249,13 @@ def classify_intent(text: str) -> str:
     return "feat"
 
 
-def branch_for(intent_text: str, slug: str) -> str:
-    """Branch name = <type>/<slug>, type derived from the intent text."""
-    return f"{classify_intent(intent_text)}/{slug}"
+def branch_for(
+    intent_text: str,
+    slug: str,
+    branch_type: str | None = None,
+) -> str:
+    """Branch name = ``<type>/<slug>``; an explicit type beats inference."""
+    return f"{branch_type or classify_intent(intent_text)}/{slug}"
 
 
 def _is_ui_path(p: str) -> bool:
@@ -3354,7 +3358,7 @@ def cmd_open(args: argparse.Namespace) -> int:
               f"✗ slug {args.slug!r} must be kebab-case ([a-z0-9] joined by '-')")
         return EXIT_USAGE
 
-    branch = branch_for(args.intent, args.slug)
+    branch = branch_for(args.intent, args.slug, getattr(args, "type", None))
     root = primary_root()
     path = root / ".claude" / "worktrees" / args.slug
     base = args.base
@@ -5524,12 +5528,11 @@ def _integrate_start(args, spath: Path) -> int:
     intent = f"integrate a batch of {len(plan)} branch(es) into {trunk}"
     if getattr(args, "independent", False):
         intent = _INDEPENDENT_NO_TICKET_INTENT + intent
-    # The intent text deliberately omits the branch NAMES: `classify_intent` reads it
-    # to pick the branch type, and a source branch called `debug/fix-crash` would flip
-    # this worktree's own type to `debug`. The full list lives in the payload and in
-    # the state file, where nothing parses it for meaning.
+    # The intent text deliberately omits branch names. The integration worktree is
+    # always a feature branch, so pass that type explicitly instead of asking the
+    # free-text classifier to infer it from the batch description.
     orc, opay = _land_step(cmd_open, state=args.state, json=True, base=args.base,
-                           slug=args.slug, intent=intent, backlog=None,
+                           slug=args.slug, intent=intent, type="feat", backlog=None,
                            allow_ungroomed=False)
     if orc != EXIT_OK:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
@@ -9872,6 +9875,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_base(op)
     op.add_argument("--intent", required=True, help="free-text intent (drives branch type)")
     op.add_argument("--slug", required=True, help="kebab-case slug for branch + path")
+    op.add_argument(
+        "--type", choices=("debug", "feat", "research"), default=None,
+        help="explicit branch type; overrides the type inferred from --intent",
+    )
     claim_mode = op.add_mutually_exclusive_group()
     claim_mode.add_argument(
         "--backlog", nargs="*", default=None, metavar="ID",

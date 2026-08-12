@@ -252,6 +252,26 @@ def test_branch_for_composes_type_and_slug():
     assert branch_for("research pagination", "pagination-study") == "research/pagination-study"
 
 
+def test_branch_for_explicit_type_overrides_intent_inference():
+    assert branch_for(
+        "review card front merges into one accessibility element",
+        "review-card-a11y",
+        branch_type="debug",
+    ) == "debug/review-card-a11y"
+    assert branch_for("fix the crash", "x", branch_type="research") == "research/x"
+
+
+def test_open_parser_exposes_explicit_branch_type_choices():
+    parser = MODULE.build_parser()
+    subparsers = next(
+        action for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    open_parser = subparsers.choices["open"]
+    type_action = next(action for action in open_parser._actions if "--type" in action.option_strings)
+    assert set(type_action.choices) == {"debug", "feat", "research"}
+
+
 # ============================================================================
 # PURE: impact -> gate plan (the orchestrator's one real judgement)
 # ============================================================================
