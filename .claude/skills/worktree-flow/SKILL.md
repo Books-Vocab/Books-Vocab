@@ -324,6 +324,16 @@ ops/worktree_orchestrate.py integrate --slug integrate-<batch> --branches <b1> <
 #   ↑ dry-run：逐顆列出每條分支會被 pick 的 commit，什麼都不建
 ops/worktree_orchestrate.py integrate --slug integrate-<batch> --branches <b1> <b2> … --commit --no-gate --json
 ```
+   需要盤點已暫停的整合時，使用獨立的唯讀投影，不要直接讀暫存 JSON 或猜下一步：
+```
+ops/worktree_orchestrate.py integrate --slug integrate-<batch> --status --json
+```
+   `--status` 只接受 `--slug`、`--state`、`--json`；它不取得 integration lock、不 mkdir、不建立
+   worktree/verdict，也不隱式 continue、Gate 或 abort。輸出固定列出 phase（picking / conflicted /
+   gate-pending / gate-blocked）、picked/remaining/conflicts、current HEAD/source tips、reservation
+   owner、gate freshness 與恰一個 `next_action`。state/branch/HEAD/source/owner/gate drift 回 rc1 並具名
+   problem；unknown slug、unreadable state 或與 mutation/source flags 併用回 rc64。freeze 期間仍可查，
+   因為它沒有 mutation path。
    **`cherry-pick` 而非 `merge`**（工具內建，不是慣例）：merge 會讓每條來源分支的整段祖先
    變成結果的祖先，把它**碰巧帶著**的別人的 commit 一起復活（實測踩過——兩條分支各帶著另一個
    session 已丟棄的 commit）。picking 是逐顆的，所以進來的每一顆都是有人指名的。來源分支
