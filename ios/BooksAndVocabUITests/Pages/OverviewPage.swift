@@ -42,11 +42,26 @@ struct OverviewPage {
         element(identifier: "overview.metric.\(name)")
     }
 
-    func forecastBucket(_ dayKey: String) -> XCUIElement {
+    private func forecastBucketQuery(_ dayKey: String) -> XCUIElementQuery {
         forecastChart
             .descendants(matching: .any)
             .matching(identifier: "forecast.bucket.\(dayKey)")
-            .element(boundBy: 0)
+    }
+
+    func forecastBucket(
+        _ dayKey: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement {
+        let query = forecastBucketQuery(dayKey)
+        XCTAssertEqual(
+            query.count,
+            1,
+            "forecast.bucket.\(dayKey) must resolve to exactly one live AX element",
+            file: file,
+            line: line
+        )
+        return query.firstMatch
     }
 
     func assertStatsAccessibilityHierarchy(
@@ -66,6 +81,13 @@ struct OverviewPage {
             file: file,
             line: line
         )
+        XCTAssertEqual(
+            overview.children(matching: .any).matching(identifier: "overview.statsContent").count,
+            1,
+            "overview.statsContent must be the unique direct live AX child of overview",
+            file: file,
+            line: line
+        )
     }
 
     func assertUniqueForecastContract(
@@ -80,6 +102,37 @@ struct OverviewPage {
             XCTAssertEqual(elements(identifier: identifier).count, 1, "\(identifier) must be unique", file: file, line: line)
             element.assertExists(timeout: 10, file: file, line: line)
         }
+
+        let bucketQuery = forecastChart
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "forecast.bucket."))
+        XCTAssertGreaterThan(bucketQuery.count, 0, "forecast must expose at least one bucket", file: file, line: line)
+        for bucket in bucketQuery.allElementsBoundByIndex {
+            XCTAssertEqual(
+                elements(identifier: bucket.identifier).count,
+                1,
+                "\(bucket.identifier) must be globally unique",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    func assertForecastContainsCount(
+        _ count: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let buckets = forecastChart
+            .descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "forecast.bucket."))
+            .allElementsBoundByIndex
+        XCTAssertTrue(
+            buckets.contains { ($0.value as? String)?.contains(count) == true },
+            "forecast must expose a bucket with count \(count)",
+            file: file,
+            line: line
+        )
     }
 
     func assertMetric(_ name: String, value: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {

@@ -20,6 +20,18 @@ import Testing
 /// All dates are built relative to the review clock decoded from the committed
 /// generated UI World. The projection must never silently switch to the host
 /// wall clock or a hand-written epoch.
+private enum StatsPresenterFixtureData {
+    static var marketingDemoData: Data {
+        get throws {
+            let url = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // BooksAndVocabTests
+                .deletingLastPathComponent() // ios
+                .deletingLastPathComponent() // repo root
+                .appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
+            return try Data(contentsOf: url)
+        }
+    }
+}
 struct StatsPresenterTests {
 
     // MARK: - Helpers
@@ -548,91 +560,53 @@ struct StatsPresenterTests {
         #expect(projection.formattedCount(0) == "0")
     }
 
-    @Test func projection_fixtureLongDueDateOutsideHorizonStaysZero() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
-        let anchor = try #require(calendar.date(from: DateComponents(
-            calendar: calendar,
-            timeZone: calendar.timeZone,
-            year: 2025,
-            month: 12,
-            day: 20,
-            hour: 12
-        )))
-        let dueDate = try #require(calendar.date(from: DateComponents(
-            calendar: calendar,
-            timeZone: calendar.timeZone,
-            year: 2026,
-            month: 1,
-            day: 6,
-            hour: 0
-        )))
-        let entries = (0..<40).map { index -> VocabularyEntry in
-            let entry = VocabularyEntry(
-                word: "long-\(index)",
-                translation: "t",
-                context: "c",
-                bookTitle: "B"
+    @Test @MainActor func projection_fixtureLongUsesCanonicalSeedForOverdueAndFutureZero() throws {
+        try FixtureDatasetStore.withTestingData(StatsPresenterFixtureData.marketingDemoData) {
+            let fixtureID: UIWorldVocabularyFixtureID = .vocabListLong
+            let seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+            let entries = seed.entries.map {
+                UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
+            }
+            let entriesByWord = Dictionary(uniqueKeysWithValues: entries.map { ($0.word, $0) })
+            let reviewRecords = try seed.reviewHistory.map { history -> ReviewRecord in
+                let entry = try #require(entriesByWord[history.word])
+                let record = ReviewRecord(
+                    word: history.word,
+                    entryID: entry.id,
+                    feedback: history.feedback,
+                    reviewedAt: history.reviewedAt,
+                    kgCardId: entry.kgCardId
+                )
+                record.notebookId = seed.notebookRemoteId
+                return record
+            }
+            let clock = UITestFixtureSeed.makeStatsProjectionClock(
+                for: fixtureID,
+                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
             )
-            entry.syncStatus = 1
-            entry.nextReviewAt = dueDate
-            return entry
-        }
+            let visibleEntries = entries.filter(\.shouldAppearInKnowledgeList)
+            let todayKey = clock.dayKey(clock.now)
+            let expectedDueToday = visibleEntries.filter {
+                clock.dayKey($0.nextReviewAt) <= todayKey
+            }.count
+            let expectedFutureCards = visibleEntries.filter {
+                clock.dayKey($0.nextReviewAt) > todayKey
+            }.count
 
-        let projection = StatsPresentation.project(
-            entries: entries,
-            reviewRecords: [],
-            forecastDays: 14,
-            clock: StatsProjectionClock(now: anchor, calendar: calendar)
-        )
-
-        #expect(projection.totalCards == 40)
-        #expect(projection.dueToday == 0)
-        #expect(projection.forecast.allSatisfy { $0.count == 0 })
-    }
-
-    @Test func projection_overdueCounterexampleFoldsIntoToday() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
-        let anchor = try #require(calendar.date(from: DateComponents(
-            calendar: calendar,
-            timeZone: calendar.timeZone,
-            year: 2026,
-            month: 1,
-            day: 7,
-            hour: 12
-        )))
-        let dueDate = try #require(calendar.date(from: DateComponents(
-            calendar: calendar,
-            timeZone: calendar.timeZone,
-            year: 2026,
-            month: 1,
-            day: 6,
-            hour: 0
-        )))
-        let entries = (0..<40).map { index -> VocabularyEntry in
-            let entry = VocabularyEntry(
-                word: "overdue-\(index)",
-                translation: "t",
-                context: "c",
-                bookTitle: "B"
+            let projection = StatsPresentation.project(
+                entries: entries,
+                reviewRecords: reviewRecords,
+                forecastDays: 14,
+                clock: clock
             )
-            entry.syncStatus = 1
-            entry.nextReviewAt = dueDate
-            return entry
+
+            #expect(projection.totalCards == visibleEntries.count)
+            #expect(projection.dueToday == expectedDueToday)
+            #expect(projection.forecast.first?.id == todayKey)
+            #expect(projection.forecast.first?.count == expectedDueToday)
+            #expect(projection.forecast.dropFirst().reduce(0) { $0 + $1.count } == expectedFutureCards)
+            #expect(projection.forecast.dropFirst().allSatisfy { $0.count == 0 })
         }
-
-        let clock = StatsProjectionClock(now: anchor, calendar: calendar)
-        let projection = StatsPresentation.project(
-            entries: entries,
-            reviewRecords: [],
-            forecastDays: 14,
-            clock: clock
-        )
-
-        #expect(projection.dueToday == 40)
-        #expect(projection.forecast.first?.id == clock.dayKey(anchor))
-        #expect(projection.forecast.first?.count == 40)
     }
 }
 
@@ -670,24 +644,18 @@ struct StatsPresenterTests {
         #expect(clock.calendar.timeZone == calendar.timeZone)
     }
 
-    @Test @MainActor func longFixtureClockPlacesDueDateOutsideForecast() throws {
-        let clock = UITestFixtureSeed.makeStatsProjectionClock(
-            for: .vocabListLong,
-            latestReviewedAt: nil
-        )
-        let dueDate = try #require(clock.calendar.date(from: DateComponents(
-            calendar: clock.calendar,
-            timeZone: clock.calendar.timeZone,
-            year: 2026,
-            month: 1,
-            day: 6,
-            hour: 0
-        )))
-        let horizonEnd = try #require(clock.date(byAdding: .day, value: 13, to: clock.now))
+    @Test @MainActor func longFixtureClockFoldsCanonicalDueDateIntoToday() throws {
+        try FixtureDatasetStore.withTestingData(StatsPresenterFixtureData.marketingDemoData) {
+            let seed = FixtureDatasetStore.requireVocabularySeed(for: .vocabListLong)
+            let clock = UITestFixtureSeed.makeStatsProjectionClock(
+                for: .vocabListLong,
+                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
+            )
+            let dueDate = try #require(seed.entries.compactMap(\.nextReviewAt).min())
 
-        #expect(clock.calendar.timeZone == StatsViewTime.calendar.timeZone)
-        #expect(clock.dayKey(clock.now) == "2025-12-20")
-        #expect(horizonEnd < dueDate)
+            #expect(clock.calendar.timeZone == StatsViewTime.calendar.timeZone)
+            #expect(clock.dayKey(clock.now) > clock.dayKey(dueDate))
+        }
     }
 }
 #endif

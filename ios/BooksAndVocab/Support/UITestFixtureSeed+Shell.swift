@@ -104,9 +104,10 @@ extension UITestFixtureSeed {
     }
 
     /// Every UI fixture gets an explicit UTC projection clock. `vocabListLong`
-    /// intentionally anchors before its 2026-01-06 due date so its 14-day
-    /// forecast is genuinely zero; overdue folding remains covered by the
-    /// projection regression tests instead of being hidden by the fixture.
+    /// derives its fallback from the canonical seed: noon on the day after its
+    /// earliest due date. That single fixture-derived clock exposes both the
+    /// overdue-to-today bucket and the zero future buckets without a second
+    /// hand-written anchor.
     @MainActor
     static func makeStatsProjectionClock(
         for fixtureID: UIWorldVocabularyFixtureID,
@@ -117,12 +118,23 @@ extension UITestFixtureSeed {
         let fallbackComponents: DateComponents
         switch fixtureID {
         case .vocabListLong:
+            let seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+            if let earliestDueDate = seed.entries.compactMap(\.nextReviewAt).min(),
+               let dayAfterDueDate = calendar.date(byAdding: .day, value: 1, to: earliestDueDate),
+               let noonAfterDueDate = calendar.date(
+                   bySettingHour: 12,
+                   minute: 0,
+                   second: 0,
+                   of: dayAfterDueDate
+               ) {
+                return StatsProjectionClock(now: latestReviewedAt ?? noonAfterDueDate, calendar: calendar)
+            }
             fallbackComponents = DateComponents(
                 calendar: calendar,
                 timeZone: calendar.timeZone,
-                year: 2025,
-                month: 12,
-                day: 20,
+                year: 2026,
+                month: 1,
+                day: 7,
                 hour: 12
             )
         default:

@@ -97,6 +97,7 @@ struct VocabForecastChart: View {
                 .frame(height: labelHeight)
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
         .accessibilityValue("\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))")
         .onTapGesture {
