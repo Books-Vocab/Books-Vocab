@@ -4,6 +4,11 @@
   "acceptance_expect_rc": 0,
   "brief": "說明文件宣稱所有動作預設只是預演，實際上有三個指令一叫就直接生效，照著說明多加參數還會報錯。",
   "category": "doc",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-12",
+  "contract_checked_by": "delivery-coordinator:post-f742fb",
+  "contract_evidence": "2026-08-12 post-f742fb dispatch probe\nticket=IMP-20260805-a95e23\npreflight=./ops/backlog.py preflight IMP-20260805-a95e23 --probe-acceptance --json\npreflight_json=/tmp/IMP-20260805-a95e23-preflight.json\nacceptance_rc=1 expected=0\nacceptance_raw=/tmp/IMP-20260805-a95e23-acceptance-full.out\nacceptance_stderr=/tmp/IMP-20260805-a95e23-acceptance-full.err\nfirst_failure=grep -qF 'open` / `adopt` / `freeze` 沒有 `--commit`' .claude/skills/worktree-flow/SKILL.md\nroot_cause=the stored literal acceptance is stale: current worktree-flow SKILL, docs/runbook/system.md, docs/reference/tech_index.md, and ops/worktree_orchestrate.py already document immediate open/adopt/freeze semantics via the current mutation taxonomy, but do not contain the obsolete exact strings\ncurrent_contract_probe=/tmp/IMP-20260805-a95e23-current-contract.out (docs/runbook/system.md:65 explicitly states the current mutation taxonomy and immediate lifecycle semantics)\nclassification=CONTRACT-BLOCKED\naction=do not open child; refresh acceptance/fix_site contract through official backlog lifecycle before any implementation claim",
+  "contract_status": "blocked",
   "date": "2026-08-05",
   "detail": "worktree-flow skill 寫「所有 mutation 子指令 dry-run 預設，--commit 才落地」，但 worktree_orchestrate.py open 沒有 --commit 參數（直接落地）。照 skill 字面下 --commit 會得到 argparse error: unrecognized arguments。preflight/resolve/sync/deploy 確實有 --commit，只有 open（與 adopt？）是例外。修 skill 文字或補 open 的 no-op --commit。",
   "fix_site": ".claude/skills/worktree-flow/SKILL.md:12 + docs/runbook/system.md:62 + docs/reference/tech_index.md:133 + ops/worktree_orchestrate.py:18-20（即 IMP-0040 的落點）",
@@ -16,6 +21,10 @@
   "scope": "四個地方各改一句措辭（技能說明、流程手冊、索引、程式檔頭），不改行為；與另一張同因的票一起收。",
   "severity": "low",
   "source": "worktree-flow skill",
-  "status": "open",
-  "stream": "IMP"
+  "status": "contract-blocked",
+  "stream": "IMP",
+  "verdict": "CONTRACT-BLOCKED",
+  "verified_at": "2026-08-12",
+  "verified_by": "delivery-coordinator:post-f742fb",
+  "verified_evidence": "2026-08-12 post-f742fb dispatch probe\nticket=IMP-20260805-a95e23\npreflight=./ops/backlog.py preflight IMP-20260805-a95e23 --probe-acceptance --json\npreflight_json=/tmp/IMP-20260805-a95e23-preflight.json\nacceptance_rc=1 expected=0\nacceptance_raw=/tmp/IMP-20260805-a95e23-acceptance-full.out\nacceptance_stderr=/tmp/IMP-20260805-a95e23-acceptance-full.err\nfirst_failure=grep -qF 'open` / `adopt` / `freeze` 沒有 `--commit`' .claude/skills/worktree-flow/SKILL.md\nroot_cause=the stored literal acceptance is stale: current worktree-flow SKILL, docs/runbook/system.md, docs/reference/tech_index.md, and ops/worktree_orchestrate.py already document immediate open/adopt/freeze semantics via the current mutation taxonomy, but do not contain the obsolete exact strings\ncurrent_contract_probe=/tmp/IMP-20260805-a95e23-current-contract.out (docs/runbook/system.md:65 explicitly states the current mutation taxonomy and immediate lifecycle semantics)\nclassification=CONTRACT-BLOCKED\naction=do not open child; refresh acceptance/fix_site contract through official backlog lifecycle before any implementation claim"
 }
