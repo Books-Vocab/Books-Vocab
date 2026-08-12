@@ -12,11 +12,11 @@
   "groomed_by": "agent:delivery-team-a-supervisor",
   "id": "IMP-20260812-985557",
   "plan": "以 ops/lib/provenance.py 的 sha256_file 與 streaming digest 為 SoT，移除 reviewer_evidence.py 與 ui_world_manifest.py 的重複實作，保留 digest bytes、摘要欄位與既有錯誤語意；補跨模組等值測試。",
-  "resolution": "—",
+  "resolution": "duplicate decomposition of existing IMP-0042 source child; canonical existing child retained",
   "schema": "kg.backlog.entry.v1",
   "scope": "一個 provenance helper、兩個呼叫端與跨模組回歸測試。",
   "severity": "med",
   "source": "IMP-0042/B1",
-  "status": "triaged",
+  "status": "wont-fix",
   "stream": "IMP"
 }

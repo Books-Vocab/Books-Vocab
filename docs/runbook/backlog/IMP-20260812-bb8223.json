@@ -12,11 +12,11 @@
   "groomed_by": "agent:delivery-team-a-supervisor",
   "id": "IMP-20260812-bb8223",
   "plan": "抽出共用 canonical_json helper，固定 UTF-8、排序、compact separators 與 newline/bytes policy；讓 reviewer_evidence.py、app_review_evidence.py、app_review_gate.py 委派同一 helper，逐一核對現有指紋 bytes 不變，ops/demo/emit_ios.py 維持排除。",
-  "resolution": "—",
+  "resolution": "duplicate decomposition of existing IMP-0042 source child; canonical existing child retained",
   "schema": "kg.backlog.entry.v1",
   "scope": "一個 canonical JSON helper、三個呼叫端與既有 app-review 測試。",
   "severity": "med",
   "source": "IMP-0042/B2",
-  "status": "triaged",
+  "status": "wont-fix",
   "stream": "IMP"
 }
