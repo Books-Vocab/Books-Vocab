@@ -55,7 +55,9 @@ struct ExploreView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
 
+#if DEBUG && targetEnvironment(simulator)
     private let catalogPreview: ExploreCatalogPreview?
+#endif
 
     @Query(filter: #Predicate<SharedDeck> { !$0.isSoftDeleted }, sort: \.sortOrder)
     private var decks: [SharedDeck]
@@ -64,12 +66,16 @@ struct ExploreView: View {
     @State private var isSyncing = false
     @State private var syncFailed = false
     @State private var filter = ExploreFilter()
+#if DEBUG && targetEnvironment(simulator)
     @State private var previewPhase: ExploreCatalogPreview.Phase?
 
     init(catalogPreview: ExploreCatalogPreview? = ExploreCatalogPreview.fromLaunchArguments()) {
         self.catalogPreview = catalogPreview
         _previewPhase = State(initialValue: catalogPreview?.initialPhase)
     }
+#else
+    init() {}
+#endif
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
     private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
@@ -89,13 +95,16 @@ struct ExploreView: View {
     }
 
     private var phase: ExplorePhase {
+#if DEBUG && targetEnvironment(simulator)
         if let previewPhase {
             switch previewPhase {
             case .loading: return .loading
             case .error: return .error
+            case .empty: return .empty
             case .loaded: break
             }
         }
+#endif
         return ExplorePhase.resolve(
             isSyncing: isSyncing, syncFailed: syncFailed,
             totalDeckCount: decks.count, filteredCount: filteredDecks.count,
@@ -178,8 +187,18 @@ struct ExploreView: View {
     private var deckGrid: some View {
         LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
             ForEach(filteredDecks) { deck in
+#if DEBUG && targetEnvironment(simulator)
+                let assetSelector = catalogPreview?.assetID(for: deck.remoteId)
+                    .map(UIWorldExploreFixtureID.assetSelector(for:))
+#else
+                let assetSelector: String? = nil
+#endif
                 NavigationLink(value: ExploreNavRoute.deck(deckId: deck.remoteId)) {
-                    ExploreDeckCard(deck: deck, coverHeight: coverHeight)
+                    ExploreDeckCard(
+                        deck: deck,
+                        coverHeight: coverHeight,
+                        assetAccessibilityIdentifier: assetSelector
+                    )
                 }
                 .buttonStyle(.bookshelfCard)
                 .accessibilityIdentifier("explore.deck.\(deck.remoteId)")
@@ -246,13 +265,16 @@ struct ExploreView: View {
 
     private var emptyState: some View {
         stateScroll {
-            AppEmptyStateContent(
-                title: L10n.string("explore.empty.title"),
-                systemImage: "sparkles",
-                description: L10n.string("explore.empty.description"),
-                guidanceText: L10n.string("explore.empty.guidance"),
-                style: .bookshelf(appTheme)
-            )
+            VStack(spacing: AppSpacing.s2) {
+                AppEmptyStateContent(
+                    title: L10n.string("explore.empty.title"),
+                    systemImage: "sparkles",
+                    description: L10n.string("explore.empty.description"),
+                    guidanceText: L10n.string("explore.empty.guidance"),
+                    style: .bookshelf(appTheme)
+                )
+                fixtureAssetProof
+            }
         }
         .accessibilityIdentifier("explore.emptyState")
     }
@@ -275,21 +297,39 @@ struct ExploreView: View {
 
     private var errorState: some View {
         stateScroll {
-            AppEmptyStateContent(
-                title: L10n.string("explore.error.title"),
-                systemImage: "exclamationmark.triangle",
-                description: L10n.string("explore.error.description"),
-                guidanceText: L10n.string("explore.error.guidance"),
-                action: AppEmptyStateAction(
-                    title: L10n.string("explore.retry"),
-                    systemImage: "arrow.clockwise",
-                    accessibilityIdentifier: "explore.retryButton",
-                    handler: { Task { await refreshCatalog() } }
-                ),
-                style: .bookshelf(appTheme)
-            )
+            VStack(spacing: AppSpacing.s2) {
+                AppEmptyStateContent(
+                    title: L10n.string("explore.error.title"),
+                    systemImage: "exclamationmark.triangle",
+                    description: L10n.string("explore.error.description"),
+                    guidanceText: L10n.string("explore.error.guidance"),
+                    action: AppEmptyStateAction(
+                        title: L10n.string("explore.retry"),
+                        systemImage: "arrow.clockwise",
+                        accessibilityIdentifier: "explore.retryButton",
+                        handler: { Task { await refreshCatalog() } }
+                    ),
+                    style: .bookshelf(appTheme)
+                )
+                fixtureAssetProof
+            }
         }
         .accessibilityIdentifier("explore.errorState")
+    }
+
+    @ViewBuilder
+    private var fixtureAssetProof: some View {
+#if DEBUG && targetEnvironment(simulator)
+        if let assetID = catalogPreview?.assetIDs.first {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier(UIWorldExploreFixtureID.assetSelector(for: assetID))
+                .allowsHitTesting(false)
+        }
+#else
+        EmptyView()
+#endif
     }
 
     private var loadingState: some View {
@@ -355,10 +395,14 @@ struct ExploreView: View {
 
     @MainActor
     private func refreshCatalog() async {
+#if DEBUG && targetEnvironment(simulator)
         if let catalogPreview {
-            previewPhase = catalogPreview.retryPhase
-            return
+            if let retryPhase = catalogPreview.retryPhase {
+                previewPhase = retryPhase
+                return
+            }
         }
+#endif
         await syncCatalog(showToastOnFailure: true)
     }
 }

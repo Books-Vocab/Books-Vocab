@@ -1,4 +1,4 @@
-#if DEBUG && canImport(Playbook)
+#if DEBUG && canImport(Playbook) && targetEnvironment(simulator)
 import Playbook
 import SwiftData
 import SwiftUI
@@ -47,9 +47,12 @@ private enum DetailFixture {
     case official
     case noCards
 
-    var previewCards: [SharedDeckCard] {
+    func previewCards(
+        catalog: UIWorldSharedDeckCatalogSeed,
+        remoteId: String
+    ) -> [SharedDeckCard] {
         switch self {
-        case .official: return SharedDeckCatalogFixtures.sampleCards()
+        case .official: return catalog.deck(for: remoteId)?.sampleCards ?? []
         case .noCards: return []
         }
     }
@@ -62,10 +65,14 @@ private struct SharedDeckDetailScene: View {
     let copyState: SharedDeckCopyController.CopyState?
 
     init(fixture: DetailFixture, copyState: SharedDeckCopyController.CopyState? = nil) {
-        let spec = SharedDeckCatalogFixtures.populated[0]
-        self.container = SharedDeckCatalogFixtures.makeContainer(specs: [spec])
-        self.deckId = spec.remoteId
-        self.previewCards = fixture.previewCards
+        let catalog = FixtureDatasetStore.requireSharedDeckCatalogSeed()
+        let loaded = catalog.fixture(for: .loaded)
+        guard let deckId = loaded.deckIDs.first else {
+            preconditionFailure("UI World sharedDecks.loaded must contain a deck for detail preview")
+        }
+        self.container = ExploreFixtureMaterializer.makeContainer(for: .loaded)
+        self.deckId = deckId
+        self.previewCards = fixture.previewCards(catalog: catalog, remoteId: deckId)
         self.copyState = copyState
     }
 

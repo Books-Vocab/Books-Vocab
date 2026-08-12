@@ -1,4 +1,4 @@
-#if DEBUG && canImport(Playbook)
+#if DEBUG && canImport(Playbook) && targetEnvironment(simulator)
 import Playbook
 import SwiftData
 import SwiftUI
@@ -7,8 +7,8 @@ import SwiftUI
 ///
 /// `ExploreView` is `@Query<SharedDeck>`-backed and normally runs a network
 /// auto-sync `.task`. `CatalogTaskPolicy.disabled` skips that task so the view
-/// renders purely off the locally-seeded in-memory store
-/// (`SharedDeckCatalogFixtures`). Auth comes from UI World `auth.signedIn`.
+/// renders purely from the UI World materialized through the production
+/// SharedDeckSummary -> SharedDeck projection. Auth comes from UI World auth.signedIn.
 enum ExploreViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Explore View") {
@@ -34,23 +34,17 @@ private enum ExploreFixture {
     case empty
     case retry
 
-    var specs: [SharedDeckCatalogFixtures.DeckSpec] {
+    var fixtureID: UIWorldExploreFixtureID {
         switch self {
-        case .loading, .retry: return SharedDeckCatalogFixtures.populated
-        case .populated: return SharedDeckCatalogFixtures.populated
-        case .empty: return []
+        case .loading: return .loading
+        case .populated: return .loaded
+        case .empty: return .empty
+        case .retry: return .retry
         }
     }
 
-    var preview: ExploreCatalogPreview? {
-        switch self {
-        case .loading:
-            return .init(initialPhase: .loading, retryPhase: .loaded)
-        case .retry:
-            return .init(initialPhase: .error, retryPhase: .loaded)
-        case .populated, .empty:
-            return nil
-        }
+    var preview: ExploreCatalogPreview {
+        ExploreCatalogPreview(fixtureID: fixtureID)
     }
 }
 
@@ -61,7 +55,7 @@ private struct ExploreScene: View {
 
     init(fixture: ExploreFixture) {
         let authSeed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
-        self.container = SharedDeckCatalogFixtures.makeContainer(specs: fixture.specs)
+        self.container = ExploreFixtureMaterializer.makeContainer(for: fixture.fixtureID)
         self.auth = Self.makeAuth(from: authSeed)
         self.preview = fixture.preview
     }

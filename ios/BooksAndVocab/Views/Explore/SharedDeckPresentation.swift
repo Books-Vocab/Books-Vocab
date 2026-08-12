@@ -8,46 +8,58 @@
 
 import Foundation
 
+#if DEBUG && targetEnvironment(simulator)
 enum ExploreCatalogFixtureID {
-    static let requiredStepLabels = [
-        "explore-loading",
-        "explore-loaded",
-        "explore-empty",
-        "explore-retry",
-    ]
+    static var requiredStepLabels: [String] {
+        UIWorldExploreFixtureID.required.map(\.label)
+    }
 
-    static let counterexampleLabels = [
-        "explore-empty-counterexample",
-        "explore-retry-counterexample",
-    ]
+    static var counterexampleLabels: [String] {
+        UIWorldExploreFixtureID.counterexamples.map(\.label)
+    }
 }
 
 struct ExploreCatalogPreview: Equatable {
-    enum Phase: String, Equatable {
-        case loading
-        case error
-        case loaded
+    typealias Phase = UIWorldExplorePhase
+    let fixtureID: UIWorldExploreFixtureID
+    let initialPhase: UIWorldExplorePhase
+    let retryPhase: UIWorldExplorePhase?
+
+    init(fixtureID: UIWorldExploreFixtureID) {
+        let fixture = FixtureDatasetStore.requireSharedDeckCatalogSeed().fixture(for: fixtureID)
+        self.fixtureID = fixtureID
+        self.initialPhase = fixture.phase
+        self.retryPhase = fixture.retryPhase
     }
 
-    let initialPhase: Phase
-    let retryPhase: Phase
-
     static func fromLaunchArguments(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Self? {
+        guard AppRuntimeOptions.isUITesting(arguments: arguments) else {
+            return nil
+        }
         guard let argument = arguments.first(where: { $0.hasPrefix("-seedFixture:explore:") }) else {
             return nil
         }
         guard let id = argument.split(separator: ":", maxSplits: 2).last.map(String.init) else {
             return nil
         }
-        if id.hasPrefix("loading") {
-            return Self(initialPhase: .loading, retryPhase: .loaded)
-        }
-        if id.hasPrefix("retry") {
-            return Self(initialPhase: .error, retryPhase: .loaded)
-        }
-        return nil
+        guard let fixtureID = UIWorldExploreFixtureID(rawValue: id) else { return nil }
+        return Self(fixtureID: fixtureID)
+    }
+
+    func assetID(for remoteId: String) -> String? {
+        let catalog = FixtureDatasetStore.requireSharedDeckCatalogSeed()
+        let fixture = catalog.fixture(for: fixtureID)
+        guard fixture.deckIDs.contains(remoteId) else { return nil }
+        return catalog.deck(for: remoteId)?.assetID
+    }
+
+    var assetIDs: [String] {
+        FixtureDatasetStore.requireSharedDeckCatalogSeed()
+            .fixture(for: fixtureID)
+            .assetIDs
     }
 }
+#endif
 
 enum ExploreSort: String, CaseIterable, Identifiable {
     case recency

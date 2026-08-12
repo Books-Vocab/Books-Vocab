@@ -14,6 +14,7 @@ struct ExploreDeckCard: View {
     @Environment(\.appTheme) private var appTheme
     let deck: SharedDeck
     var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
+    var assetAccessibilityIdentifier: String? = nil
 
     private var coverColor: Color { NotebookPalette.color(for: deck.color) }
 
@@ -31,6 +32,9 @@ struct ExploreDeckCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(.isButton)
+#if DEBUG && targetEnvironment(simulator)
+        .modifier(ExploreAssetAccessibilityModifier(identifier: assetAccessibilityIdentifier))
+#endif
         .enableInjection()
     }
 
@@ -100,4 +104,19 @@ struct ExploreDeckCard: View {
         return parts.joined(separator: L10n.string("，"))
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+private struct ExploreAssetAccessibilityModifier: ViewModifier {
+    let identifier: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let identifier {
+            content.accessibilityIdentifier(identifier)
+        } else {
+            content
+        }
+    }
+}
+#endif
 #endif

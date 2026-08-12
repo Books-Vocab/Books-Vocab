@@ -66,6 +66,7 @@ enum UITestFixtureSeed {
             case "dictionary":
                 seedDictionary(id)
 #if DEBUG
+#if DEBUG && targetEnvironment(simulator)
             case "explore":
                 seedExplore(id, into: container)
 #endif
