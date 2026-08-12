@@ -19,6 +19,11 @@
 
 The runner also records timings such as `deviceRunLockWaitMs`, `buildForTestingMs`, `testBodyMs`, and `totalMs`. A high lock wait is queueing evidence, not app slowness.
 
+`artifacts/ui-evidence-contract.json` must bind every step PNG, contact sheet, quick4 sheet,
+video and `UIreview.html` to current bytes. In addition to `stepSha256`, it records
+`videoSha256` and `reviewHtmlSha256`; byte size or a retained HTML marker alone is not evidence
+integrity.
+
 ## Helper success gate
 
 `run_ui_evidence.sh` is fail-closed. It returns `0` only when all of these hold:
@@ -29,6 +34,15 @@ The runner also records timings such as `deviceRunLockWaitMs`, `buildForTestingM
 - top-level `device` is a UUID and agrees with the `id=` in `options.device`; explicit `--device` must match it;
 - `uiVisualReview.reviewHtml`, contact sheet, quick4 sheet, manifest, video and review root all exist;
 - normalized log, xcresult and visual artifacts are copied under `build/snapshots/uitest-evidence/<run>/`.
+- the visual manifest resolves every `relPath` inside its stable screenshot root; symlink escapes
+  are rejected before PNG metadata is trusted.
+
+When the helper is invoked from a different source worktree, it resolves `toolRoot` from the
+helper's own skill repository, not from the caller's git root. The validator must therefore be
+`<toolRoot>/ops/uitest_evidence_contract.py`; a missing or unusable canonical validator is a
+named `tool-missing`/`tool-invalid` preflight failure with exit `70`, never a source-worktree
+copy or a contract downgrade. Successful normalized verdicts retain `helper.toolRoot`,
+`helper.validator`, and `helper.toolResolution` so the tool provenance is auditable.
 
 The helper keeps `upstream-verdict.json`, the delegate stderr log, command metadata and every upstream artifact that still exists in the complete UI review directory even when the upstream runner's temporary paths are removed. For a non-zero runner it still emits a normalized `status=fail` verdict; for invalid JSON or a zero-exit contract violation it emits `status=inconclusive`. Missing upstream artifacts remain explicit `*Exists=false` fields and never become a pass.
 
@@ -43,6 +57,11 @@ Use the strongest available evidence and name what is missing:
 5. **Physical device／live service**: separate release or app-review evidence; never substitute with Simulator.
 
 For a UI improvement, a source-only result is not a visual pass; a UI test pass with an uninspected screenshot is not a visual review; a visual review with a system prompt is invalid.
+
+The matrix recorder accepts only the latest append-only `review_state.json` entry, which must be
+`kg.ui.review-state.v2`, a complete `pass`, and hash/provenance-equal to the current bundle. A
+later `fail` invalidates earlier `pass` entries. Required steps and counterexamples must map to
+disjoint screenshot assets.
 
 ## Reproducibility rules
 
