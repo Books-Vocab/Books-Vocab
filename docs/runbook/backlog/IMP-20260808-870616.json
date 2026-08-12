@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "groomed_at 強制帶日期的理由是「讓徽章會過期」，但沒有任何程式計算它的年齡。\n\nops/backlog.py:501 的 _check_groom 只驗 _DATE_RE 的格式，註解寫的是「沒有日期徽章就不會過期，而永不過期的徽章是在替早就移動過的碼背書」——那個推論是對的，但只實作了「必須有日期」，沒實作「日期太舊就失效」。grep groomed_at 全檔只有格式檢查與 GROOM_FIELDS 宣告，零個年齡計算。\n\n所以現況是：一筆 2026-06 梳理過的單，它的 plan 指向的檔案可能已經重構過三輪，list --ungroomed 仍然不會把它撈回來，因為徽章還在。徽章的成本（要寫 plan/acceptance/fix_site）付過一次就永久生效。\n\n與 IMP-20260808-9f3838 同一類：欄位存在、前提被檢查、內容從不被使用。建議同一個 PR 處置。",
   "fix_site": "ops/backlog.py:list_entries（1030-1065 行）+ build_parser 的 p_list（1926 / 1954-1958 行）+ _cmd_list（2738 行附近）+ _check_groom 的註解（584-587 行）",
+  "fixed_by": [
+    "6f0255642ad1c66b9b9f6d8ec3d6e74728cbee65"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260808-870616",
@@ -16,6 +19,10 @@
   "scope": "照現成的同型旗標複製一份到待辦工具的列表指令，改一段註解，加一支測試。",
   "severity": "low",
   "source": "架構閉環檢視（使用者要求深度論證），2026-08-08",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "acceptance rc0: ./ops/backlog.py list --ungroomed --groom-stale-days 0 --json | grep groomed_by"
 }
