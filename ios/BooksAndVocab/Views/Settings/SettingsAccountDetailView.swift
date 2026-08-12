@@ -44,6 +44,7 @@ struct SettingsAccountDetailView: View {
             .padding(.top, AppShellMetrics.pageTopPadding)
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
+        .accessibilityIdentifier("settings.account.scrollView")
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle(L10n.string("帳號詳情"))
         .inlineNavigationBarTitle()
@@ -77,8 +78,12 @@ struct SettingsAccountDetailView: View {
                     AppKeyValueRow(icon: item.icon, label: item.label, style: .settings(appSkin)) {
                         SettingsStatusValue(
                             text: item.value,
-                            color: appSkin.palette.secondaryText
+                            color: appSkin.palette.secondaryText,
+                            lineLimit: nil
                         )
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+                        .accessibilityIdentifier(index == 0 ? "settings.account.info.name" : "settings.account.info.email")
                     }
 
                     if index < accountInfoItems.count - 1 {

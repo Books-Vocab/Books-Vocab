@@ -72,11 +72,7 @@ extension SettingsView {
     }
 
     var resetBeforeSnapshot: SettingsResetLifecycle.Snapshot {
-        .init(
-            localCardCount: allEntries.count,
-            hasCustomPreferences: hasCustomSettingsPreferences,
-            isLoggedIn: authManager.isLoggedIn
-        )
+        coordinator.readResetSnapshot(authManager: authManager, modelContext: modelContext)
     }
 
     var presenterState: SettingsPresenterState {
@@ -233,7 +229,6 @@ extension SettingsView {
             resetLocalData: {
                 Task {
                     await coordinator.resetLocalData(
-                        before: resetBeforeSnapshot,
                         authManager: authManager,
                         kgService: kgService,
                         modelContext: modelContext

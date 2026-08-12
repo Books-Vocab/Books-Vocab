@@ -41,11 +41,11 @@ enum SettingsFixtureID: String, CaseIterable {
         .preferencesLoggedOutNoSync,
         .subscribedActive,
         .accountLongIdentity,
-        .longContentCounterexample,
-        .resetCounterexample,
         .subscriptionFree,
         .subscriptionLoading,
         .deletingAccount,
+        .longContentCounterexample,
+        .resetCounterexample,
         .pricingUnavailable,
         .debugBackendLocal,
     ]

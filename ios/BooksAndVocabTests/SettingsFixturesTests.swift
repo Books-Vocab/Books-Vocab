@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -68,6 +69,13 @@ import Testing
         #expect(Set(repoDocument.settings.keys).isSubset(of: expected))
         #expect(!generatedDocument.settings.isEmpty)
         #expect(Set(generatedDocument.settings.keys).isSubset(of: expected))
+    }
+
+    @Test func p15SettingsFixtureOrderMatchesBothV2WorldsAndSwiftRegistry() throws {
+        let expected = SettingsFixtureID.allCases.map(\.rawValue)
+
+        #expect(try Self.objectMemberOrder(Self.marketingDemoData, key: "settings") == expected)
+        #expect(try Self.objectMemberOrder(Self.generatedDemoData, key: "settings") == expected)
     }
 
     @Test func subscriptionFreeFixtureComesFromUIWorld() async throws {
@@ -214,6 +222,28 @@ import Testing
         }
     }
 
+    @Test func p15SettingsUITestRoutesConsumeCanonicalCounterexampleIDs() throws {
+        let iosRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let launchSource = try String(
+            contentsOf: iosRoot.appendingPathComponent("BooksAndVocabUITests/Helpers/UITestAppLaunch.swift"),
+            encoding: .utf8
+        )
+        #expect(launchSource.contains("-seedFixture:settings:\(SettingsFixtureID.longContentCounterexample.rawValue)"))
+        #expect(launchSource.contains("-seedFixture:settings:\(SettingsFixtureID.resetCounterexample.rawValue)"))
+
+        let seedSource = try String(
+            contentsOf: iosRoot.appendingPathComponent("BooksAndVocab/Support/UITestFixtureSeed+Settings.swift"),
+            encoding: .utf8
+        )
+        #expect(seedSource.contains("SettingsFixtureID(rawValue: id)"))
+        #expect(seedSource.contains("case .longContentCounterexample"))
+        #expect(seedSource.contains("case .resetCounterexample"))
+        #expect(seedSource.contains("requireVocabularySeed(for: .vocabListPopulated)"))
+        #expect(!seedSource.contains("for (word, translation, contextText)"))
+    }
+
     @Test func p15ResetCounterexampleHasObservableLifecycleBoundary() throws {
         let root = try Self.jsonObject(Self.marketingDemoData)
         let settings = try #require(root["settings"] as? [String: Any])
@@ -259,7 +289,7 @@ import Testing
 
             let preReset = SettingsResetLifecycle.preReset(before: lifecycle.before)
             let resetting = preReset.resetting()
-            let failed = resetting.failed(message: "fixture failure")
+            let failed = resetting.failed(after: lifecycle.before, message: "fixture failure")
             let retry = SettingsResetLifecycle.preReset(before: failed.before).resetting()
             #expect(preReset.phase == .preReset)
             #expect(resetting.phase == .resetting)
@@ -271,17 +301,19 @@ import Testing
         }
     }
 
-    @Test @MainActor func p15ResetCoordinatorPropagatesFailureAndRetry() async throws {
+    @Test @MainActor func p15ResetCoordinatorReadsStatefulStoreForBeforeAndTerminalAfter() async throws {
         let container = try ModelContainer(
             for: Notebook.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let authManager = LoggedInAuthStub()
-        let resetService = ScriptedResetService(outcomes: [
-            .failure(ResetFailure()),
-            .success(())
+        let resetStore = StatefulSettingsResetStore()
+        let resetService = StatefulResetService(store: resetStore, outcomes: [
+            .partialFailure,
+            .success
         ])
-        let coordinator = SettingsCoordinator()
+        let context = ModelContext(container)
+        let coordinator = SettingsCoordinator(resetStateStore: resetStore)
         let before = SettingsResetLifecycle.Snapshot(
             localCardCount: 3,
             hasCustomPreferences: true,
@@ -289,24 +321,22 @@ import Testing
         )
 
         await coordinator.resetLocalData(
-            before: before,
             authManager: authManager,
             kgService: resetService,
-            modelContext: ModelContext(container)
+            modelContext: context
         )
 
         let failed = try #require(coordinator.resetLifecycle)
         #expect(failed.phase == .failed)
         #expect(failed.before == before)
-        #expect(failed.after == before)
+        #expect(failed.after == .init(localCardCount: 1, hasCustomPreferences: true, isLoggedIn: true))
         #expect(failed.canRetry == true)
         #expect(resetService.callCount == 1)
 
         await coordinator.resetLocalData(
-            before: before,
             authManager: authManager,
             kgService: resetService,
-            modelContext: ModelContext(container)
+            modelContext: context
         )
 
         let succeeded = try #require(coordinator.resetLifecycle)
@@ -315,9 +345,72 @@ import Testing
         #expect(succeeded.after == .init(localCardCount: 0, hasCustomPreferences: false, isLoggedIn: true))
         #expect(succeeded.canRetry == false)
         #expect(resetService.callCount == 2)
+        #expect(resetStore.readSnapshots.first == before)
+        #expect(resetStore.readSnapshots.contains(.init(localCardCount: 1, hasCustomPreferences: true, isLoggedIn: true)))
+        #expect(resetStore.readSnapshots.contains(.init(localCardCount: 0, hasCustomPreferences: false, isLoggedIn: true)))
     }
 
     private struct ResetFailure: Error {}
+
+    @MainActor
+    private final class StatefulSettingsResetStore: SettingsResetStorePort {
+        var localCardCount = 3
+        var hasCustomPreferences = true
+        private(set) var readSnapshots: [SettingsResetLifecycle.Snapshot] = []
+
+        func readSnapshot(
+            authManager: any AuthManaging,
+            modelContext: ModelContext
+        ) -> SettingsResetLifecycle.Snapshot {
+            let snapshot = SettingsResetLifecycle.Snapshot(
+                localCardCount: localCardCount,
+                hasCustomPreferences: hasCustomPreferences,
+                isLoggedIn: authManager.isLoggedIn
+            )
+            readSnapshots.append(snapshot)
+            return snapshot
+        }
+
+        func resetPreferences() {
+            hasCustomPreferences = false
+        }
+
+        func leavePartialCleanupState() {
+            localCardCount = 1
+        }
+
+        func finishCleanup() {
+            localCardCount = 0
+        }
+    }
+
+    private enum StatefulResetOutcome {
+        case partialFailure
+        case success
+    }
+
+    private final class StatefulResetService: LocalDataResetting, @unchecked Sendable {
+        private let store: StatefulSettingsResetStore
+        private var outcomes: [StatefulResetOutcome]
+        private(set) var callCount = 0
+
+        init(store: StatefulSettingsResetStore, outcomes: [StatefulResetOutcome]) {
+            self.store = store
+            self.outcomes = outcomes
+        }
+
+        func clearLocalData(container: ModelContainer, reason: String) async throws {
+            callCount += 1
+            let outcome = outcomes.removeFirst()
+            switch outcome {
+            case .partialFailure:
+                await store.leavePartialCleanupState()
+                throw ResetFailure()
+            case .success:
+                await store.finishCleanup()
+            }
+        }
+    }
 
     private final class ScriptedResetService: LocalDataResetting, @unchecked Sendable {
         private var outcomes: [Result<Void, Error>]
@@ -358,6 +451,84 @@ import Testing
     private static func jsonObject(_ data: Data) throws -> [String: Any] {
         let object = try JSONSerialization.jsonObject(with: data)
         return try #require(object as? [String: Any])
+    }
+
+    private static func objectMemberOrder(_ data: Data, key objectKey: String) throws -> [String] {
+        let text = try #require(String(data: data, encoding: .utf8))
+        let characters = Array(text)
+        let token = Array("\"\(objectKey)\"")
+        guard characters.count >= token.count else {
+            throw NSError(domain: "SettingsFixturesTests", code: 1)
+        }
+
+        var tokenStart: Int?
+        for candidate in 0...(characters.count - token.count) {
+            if Array(characters[candidate..<(candidate + token.count)]) == token {
+                tokenStart = candidate
+                break
+            }
+        }
+        var index = try #require(tokenStart) + token.count
+        while index < characters.count, characters[index].isWhitespace { index += 1 }
+        try #require(index < characters.count && characters[index] == ":")
+        index += 1
+        while index < characters.count, characters[index].isWhitespace { index += 1 }
+        try #require(index < characters.count && characters[index] == "{")
+
+        var depth = 0
+        var result: [String] = []
+        var inString = false
+        var escaped = false
+
+        while index < characters.count {
+            let character = characters[index]
+            if inString {
+                if character == "\\" && !escaped {
+                    escaped = true
+                } else if character == "\"" && !escaped {
+                    inString = false
+                } else {
+                    escaped = false
+                }
+                index += 1
+                continue
+            }
+
+            switch character {
+            case "\"":
+                let start = index
+                inString = true
+                escaped = false
+                index += 1
+                while index < characters.count {
+                    if characters[index] == "\\" && !escaped {
+                        escaped = true
+                    } else if characters[index] == "\"" && !escaped {
+                        break
+                    } else {
+                        escaped = false
+                    }
+                    index += 1
+                }
+                let end = index
+                var lookahead = index + 1
+                while lookahead < characters.count, characters[lookahead].isWhitespace { lookahead += 1 }
+                if depth == 1, lookahead < characters.count, characters[lookahead] == ":" {
+                    result.append(String(characters[(start + 1)..<end]))
+                }
+                inString = false
+            case "{", "[":
+                depth += 1
+            case "}", "]":
+                depth -= 1
+                if depth == 0 { return result }
+            default:
+                break
+            }
+            index += 1
+        }
+
+        throw NSError(domain: "SettingsFixturesTests", code: 2)
     }
 }
 #endif

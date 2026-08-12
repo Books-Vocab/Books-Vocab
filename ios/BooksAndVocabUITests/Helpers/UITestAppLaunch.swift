@@ -117,9 +117,9 @@ enum UITestFixture: Equatable {
         case .settingsSyncTerminalErrorRetrySuccess:
             return "-seedFixture:settings:sync_terminal_error_retry_success"
         case .settingsLongContent:
-            return "-seedFixture:settings:longContent"
+            return "-seedFixture:settings:long_content_counterexample"
         case .settingsResetLifecycle:
-            return "-seedFixture:settings:resetLifecycle"
+            return "-seedFixture:settings:reset_counterexample"
         case .shellNavigation:
             return "-seedFixture:shell:navigation"
         case .reviewCalendarDense:

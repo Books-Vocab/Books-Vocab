@@ -142,6 +142,18 @@ struct SettingsSheetPage {
         app.otherElements["settings.account.dangerGroup"]
     }
 
+    var accountScrollView: XCUIElement {
+        app.scrollViews["settings.account.scrollView"]
+    }
+
+    var accountNameValue: XCUIElement {
+        app.staticTexts["settings.account.info.name"]
+    }
+
+    var accountEmailValue: XCUIElement {
+        app.staticTexts["settings.account.info.email"]
+    }
+
     var resetBoundary: XCUIElement {
         app.otherElements["settings.account.resetBoundary"]
     }

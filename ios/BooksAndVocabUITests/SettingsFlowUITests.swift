@@ -22,6 +22,7 @@
 //
 
 import XCTest
+import Foundation
 
 final class SettingsFlowUITests: UITestCase {
     override func setUpWithError() throws {
@@ -57,7 +58,11 @@ final class SettingsFlowUITests: UITestCase {
             return page
         }
 
-        captureStep("required-settings", assetID: "settings-required", app: app)
+        captureStep(
+            "required-settings",
+            assetID: try SettingsFixtureManifest.evidenceAssetID(for: "preferences_auto_sync_off"),
+            app: app
+        )
         for group in [
             settings.appearanceGroup,
             settings.learningGroup,
@@ -133,7 +138,11 @@ final class SettingsFlowUITests: UITestCase {
             settings.openReviewRhythm()
             XCTAssertTrue(app.waitForNavigationToSettle())
         }
-        captureStep("section-navigation", assetID: "settings-section-navigation", app: app)
+        captureStep(
+            "section-navigation",
+            assetID: try SettingsFixtureManifest.evidenceAssetID(for: "preferences_logged_out_no_sync"),
+            app: app
+        )
         guard settings.pauseReviewClockToggle.waitUntilExists(timeout: 5) else {
             captureStep("no-pause-toggle", app: app)
             XCTFail("複習節奏 section must expose the 凍結複習時鐘 toggle")
@@ -223,8 +232,19 @@ final class SettingsFlowUITests: UITestCase {
 
     @MainActor
     func testSettingsLongContentCounterexampleResolvesProductionSelectors() throws {
+        let longDisplayName = try SettingsFixtureManifest.authValue(
+            fixtureID: "long_content_counterexample",
+            key: "displayName"
+        )
+        let longEmail = try SettingsFixtureManifest.authValue(
+            fixtureID: "long_content_counterexample",
+            key: "email"
+        )
         let app = launchIsolatedApp(
             fixtures: [.settingsLongContent],
+            extraEnvironment: [
+                "UIPreferredContentSizeCategoryName": "UICTContentSizeCategoryAccessibilityXXXL"
+            ],
             perfLog: "settings-long-content-counterexample"
         )
         let bookshelf = AppPage(app: app).goToBookshelf()
@@ -240,11 +260,67 @@ final class SettingsFlowUITests: UITestCase {
         XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
         XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
-        captureStep("long-content-counterexample", assetID: "settings-long-content-counterexample", app: app)
+        XCTAssertTrue(settings.accountScrollView.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.accountNameValue.waitUntilExists(timeout: 5))
+        XCTAssertTrue(settings.accountEmailValue.waitUntilExists(timeout: 5))
+
+        for (element, expected) in [
+            (settings.accountNameValue, longDisplayName),
+            (settings.accountEmailValue, longEmail),
+        ] {
+            element.scrollIntoView()
+            XCTAssertEqual(element.label, expected, "long account value must remain fully visible")
+            XCTAssertTrue(
+                settings.accountScrollView.frame.intersects(element.frame),
+                "long account value must remain inside the scrollable account content"
+            )
+        }
+
+        captureStep(
+            "long-content-counterexample",
+            assetID: try SettingsFixtureManifest.evidenceAssetID(for: "long_content_counterexample"),
+            app: app
+        )
     }
 
     @MainActor
     func testSettingsResetCounterexampleShowsObservableBoundary() throws {
+        let beforeCardCount = try SettingsFixtureManifest.snapshotInt(
+            fixtureID: "reset_counterexample",
+            phase: "before",
+            key: "localCardCount"
+        )
+        let beforeHasCustomPreferences = try SettingsFixtureManifest.snapshotBool(
+            fixtureID: "reset_counterexample",
+            phase: "before",
+            key: "hasCustomPreferences"
+        )
+        let beforeIsLoggedIn = try SettingsFixtureManifest.snapshotBool(
+            fixtureID: "reset_counterexample",
+            phase: "before",
+            key: "isLoggedIn"
+        )
+        let afterCardCount = try SettingsFixtureManifest.snapshotInt(
+            fixtureID: "reset_counterexample",
+            phase: "after",
+            key: "localCardCount"
+        )
+        let afterHasCustomPreferences = try SettingsFixtureManifest.snapshotBool(
+            fixtureID: "reset_counterexample",
+            phase: "after",
+            key: "hasCustomPreferences"
+        )
+        let afterIsLoggedIn = try SettingsFixtureManifest.snapshotBool(
+            fixtureID: "reset_counterexample",
+            phase: "after",
+            key: "isLoggedIn"
+        )
+        let beforeCardLabel = "\(beforeCardCount) 張"
+        let beforePreferencesLabel = beforeHasCustomPreferences ? "已自訂" : "預設值"
+        let beforeLoginLabel = beforeIsLoggedIn ? "已登入" : "未登入"
+        let afterCardLabel = "\(afterCardCount) 張"
+        let afterPreferencesLabel = afterHasCustomPreferences ? "已自訂" : "預設值"
+        let afterLoginLabel = afterIsLoggedIn ? "已登入" : "未登入"
         let app = launchIsolatedApp(
             fixtures: [.settingsResetLifecycle],
             extraEnvironment: ["KG_UI_TEST_SETTINGS_RESET_FAIL_ONCE": "1"],
@@ -265,44 +341,113 @@ final class SettingsFlowUITests: UITestCase {
         XCTAssertTrue(settings.resetBeforeSnapshot.waitUntilExists(timeout: 5))
         XCTAssertTrue(settings.resetAfterSnapshot.waitUntilExists(timeout: 5))
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
-        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains("3 張", timeout: 5))
-        XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains("已自訂", timeout: 5))
-        XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains("已登入", timeout: 5))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains("0 張", timeout: 5))
-        XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains("預設值", timeout: 5))
-        XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains("已登入", timeout: 5))
-        XCTAssertEqual(settings.resetBeforeCardCount.label, "3 張")
-        XCTAssertEqual(settings.resetBeforePreferences.label, "已自訂")
-        XCTAssertEqual(settings.resetBeforeLoginStatus.label, "已登入")
-        XCTAssertEqual(settings.resetAfterCardCount.label, "0 張")
-        XCTAssertEqual(settings.resetAfterPreferences.label, "預設值")
-        XCTAssertEqual(settings.resetAfterLoginStatus.label, "已登入")
+        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
+        XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
+        XCTAssertEqual(settings.resetBeforeCardCount.label, beforeCardLabel)
+        XCTAssertEqual(settings.resetBeforePreferences.label, beforePreferencesLabel)
+        XCTAssertEqual(settings.resetBeforeLoginStatus.label, beforeLoginLabel)
+        XCTAssertEqual(settings.resetAfterCardCount.label, beforeCardLabel)
+        XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
+        XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("failed", timeout: 10))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains("3 張", timeout: 5))
-        XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains("已自訂", timeout: 5))
-        XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains("已登入", timeout: 5))
-        XCTAssertEqual(settings.resetAfterCardCount.label, "3 張")
-        XCTAssertEqual(settings.resetAfterPreferences.label, "已自訂")
-        XCTAssertEqual(settings.resetAfterLoginStatus.label, "已登入")
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
+        XCTAssertEqual(settings.resetAfterCardCount.label, beforeCardLabel)
+        XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
+        XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("succeeded", timeout: 10))
-        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains("3 張", timeout: 5))
-        XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains("已自訂", timeout: 5))
-        XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains("已登入", timeout: 5))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains("0 張", timeout: 5))
-        XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains("預設值", timeout: 5))
-        XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains("已登入", timeout: 5))
-        XCTAssertEqual(settings.resetBeforeCardCount.label, "3 張")
-        XCTAssertEqual(settings.resetBeforePreferences.label, "已自訂")
-        XCTAssertEqual(settings.resetBeforeLoginStatus.label, "已登入")
-        XCTAssertEqual(settings.resetAfterCardCount.label, "0 張")
-        XCTAssertEqual(settings.resetAfterPreferences.label, "預設值")
-        XCTAssertEqual(settings.resetAfterLoginStatus.label, "已登入")
+        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
+        XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(afterCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(afterPreferencesLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(afterLoginLabel, timeout: 5))
+        XCTAssertEqual(settings.resetBeforeCardCount.label, beforeCardLabel)
+        XCTAssertEqual(settings.resetBeforePreferences.label, beforePreferencesLabel)
+        XCTAssertEqual(settings.resetBeforeLoginStatus.label, beforeLoginLabel)
+        XCTAssertEqual(settings.resetAfterCardCount.label, afterCardLabel)
+        XCTAssertEqual(settings.resetAfterPreferences.label, afterPreferencesLabel)
+        XCTAssertEqual(settings.resetAfterLoginStatus.label, afterLoginLabel)
         XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
         XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
-        captureStep("reset-counterexample", assetID: "settings-reset-counterexample", app: app)
+        captureStep(
+            "reset-counterexample",
+            assetID: try SettingsFixtureManifest.evidenceAssetID(for: "reset_counterexample"),
+            app: app
+        )
+    }
+}
+
+private enum SettingsFixtureManifest {
+    private static var url: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabUITests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repo root
+            .appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
+    }
+
+    static func evidenceAssetID(for fixtureID: String) throws -> String {
+        let seed = try settingsSeed(for: fixtureID)
+        let evidence = try requiredDictionary(seed["evidence"], context: "settings.\(fixtureID).evidence")
+        return try requiredString(evidence["assetID"], context: "settings.\(fixtureID).evidence.assetID")
+    }
+
+    static func authValue(fixtureID: String, key: String) throws -> String {
+        let seed = try settingsSeed(for: fixtureID)
+        let auth = try requiredDictionary(seed["auth"], context: "settings.\(fixtureID).auth")
+        return try requiredString(auth[key], context: "settings.\(fixtureID).auth.\(key)")
+    }
+
+    static func snapshotInt(fixtureID: String, phase: String, key: String) throws -> Int {
+        let snapshot = try snapshot(fixtureID: fixtureID, phase: phase)
+        guard let value = snapshot[key] as? Int else {
+            throw NSError(domain: "SettingsFixtureManifest", code: 3)
+        }
+        return value
+    }
+
+    static func snapshotBool(fixtureID: String, phase: String, key: String) throws -> Bool {
+        let snapshot = try snapshot(fixtureID: fixtureID, phase: phase)
+        guard let value = snapshot[key] as? Bool else {
+            throw NSError(domain: "SettingsFixtureManifest", code: 4)
+        }
+        return value
+    }
+
+    private static func settingsSeed(for fixtureID: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: url)
+        let root = try requiredDictionary(JSONSerialization.jsonObject(with: data), context: "UI World root")
+        let settings = try requiredDictionary(root["settings"], context: "UI World settings")
+        return try requiredDictionary(settings[fixtureID], context: "settings.\(fixtureID)")
+    }
+
+    private static func snapshot(fixtureID: String, phase: String) throws -> [String: Any] {
+        let seed = try settingsSeed(for: fixtureID)
+        let lifecycle = try requiredDictionary(seed["resetLifecycle"], context: "settings.\(fixtureID).resetLifecycle")
+        return try requiredDictionary(lifecycle[phase], context: "settings.\(fixtureID).resetLifecycle.\(phase)")
+    }
+
+    private static func requiredDictionary(_ value: Any?, context: String) throws -> [String: Any] {
+        guard let value = value as? [String: Any] else {
+            throw NSError(domain: "SettingsFixtureManifest", code: 1, userInfo: [NSLocalizedDescriptionKey: context])
+        }
+        return value
+    }
+
+    private static func requiredString(_ value: Any?, context: String) throws -> String {
+        guard let value = value as? String, !value.isEmpty else {
+            throw NSError(domain: "SettingsFixtureManifest", code: 2, userInfo: [NSLocalizedDescriptionKey: context])
+        }
+        return value
     }
 }
