@@ -53,6 +53,19 @@ enum FixtureDatasetStore {
     private static var evidenceProofCache: [String: PreparedEvidenceFixtureProof] = [:]
     private static var latestEvidenceCacheKey: String?
 
+    /// The active domain fixture selected by the canonical `-seedFixture`
+    /// router. Production code reads this provenance instead of inspecting raw
+    /// launch arguments or maintaining a second fixture counter.
+    @MainActor private(set) static var activeSettingsFixtureID: SettingsFixtureID?
+
+    @MainActor
+    static func activateSettingsFixture(_ fixtureID: SettingsFixtureID) {
+        guard settingsSeed(for: fixtureID) != nil else {
+            preconditionFailure(seedResolutionFailureDescription(resolving: "settings.\(fixtureID.rawValue)"))
+        }
+        activeSettingsFixtureID = fixtureID
+    }
+
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
         try $testingOverrideData.withValue(data) {
             try perform()

@@ -1,6 +1,118 @@
 import Foundation
 import CryptoKit
 
+enum SettingsSyncDataOutcome: String, Codable, Equatable {
+    case none
+    case partial
+    case complete
+}
+
+enum SettingsSyncFixtureLifecycle: String, Codable, Equatable {
+    case idle
+    case syncing
+    case terminalSuccess
+    case terminalError
+    case retry
+    case dismissed
+}
+
+enum SettingsSyncLifecycle: Equatable {
+    case idle
+    case syncing
+    case terminalSuccess
+    case terminalError(message: String)
+    case retry
+    case dismissed
+
+    enum Action: Equatable {
+        case begin
+        case retry
+        case succeed
+        case fail(message: String)
+        case cancel
+        case dismiss
+        case reset
+    }
+
+    enum TransitionError: Error, Equatable {
+        case illegal(state: SettingsSyncLifecycle, action: Action)
+    }
+
+    var isInFlight: Bool {
+        switch self {
+        case .syncing, .retry: return true
+        case .idle, .terminalSuccess, .terminalError, .dismissed: return false
+        }
+    }
+
+    var isTerminal: Bool {
+        switch self {
+        case .terminalSuccess, .terminalError: return true
+        case .idle, .syncing, .retry, .dismissed: return false
+        }
+    }
+
+    @discardableResult
+    mutating func transition(_ action: Action) throws -> SettingsSyncLifecycle {
+        let next: SettingsSyncLifecycle
+        switch (self, action) {
+        case (.idle, .begin), (.terminalSuccess, .begin), (.dismissed, .begin):
+            next = .syncing
+        case (.terminalError, .retry):
+            next = .retry
+        case (.syncing, .succeed), (.retry, .succeed):
+            next = .terminalSuccess
+        case (.syncing, .fail(let message)), (.retry, .fail(let message)):
+            next = .terminalError(message: message)
+        case (.syncing, .cancel), (.retry, .cancel):
+            next = .idle
+        case (.terminalSuccess, .dismiss), (.terminalError, .dismiss):
+            next = .dismissed
+        case (_, .reset):
+            next = .idle
+        default:
+            throw TransitionError.illegal(state: self, action: action)
+        }
+        self = next
+        return next
+    }
+
+    @discardableResult
+    mutating func begin() -> Bool {
+        (try? transition(.begin)) != nil
+    }
+
+    @discardableResult
+    mutating func retry() -> Bool {
+        (try? transition(.retry)) != nil
+    }
+
+    @discardableResult
+    mutating func succeed() -> Bool {
+        (try? transition(.succeed)) != nil
+    }
+
+    @discardableResult
+    mutating func fail(message: String) -> Bool {
+        (try? transition(.fail(message: message))) != nil
+    }
+
+    @discardableResult
+    mutating func cancel() -> Bool {
+        (try? transition(.cancel)) != nil
+    }
+
+    @discardableResult
+    mutating func dismiss() -> Bool {
+        (try? transition(.dismiss)) != nil
+    }
+
+    @discardableResult
+    mutating func reset() -> Bool {
+        (try? transition(.reset)) != nil
+    }
+}
+
 /// A one-way identity seam for exact-account UI evidence. The raw reviewer
 /// username never enters an accessibility identifier or test log.
 enum AccountIdentityFingerprint {
@@ -89,7 +201,7 @@ struct SettingsPresenterState {
 
     struct SyncSummaryState {
         let isConnected: Bool
-        let isSyncing: Bool
+        let lifecycle: SettingsSyncLifecycle
         /// Connection + card count. Kept to two segments so it fits the row's
         /// single trailing line; anything longer is truncated with no way for
         /// the user to see what was cut.
@@ -98,6 +210,31 @@ struct SettingsPresenterState {
         /// be a third segment of `summaryText` and was therefore always the
         /// part that fell off the end.
         let lastSyncedText: String?
+        /// Provenance for the current lifecycle round. Legacy callers keep the
+        /// zero/none defaults until the UI World schema carries these fields.
+        let attempt: Int
+        let dataOutcome: SettingsSyncDataOutcome
+        let message: String?
+
+        init(
+            isConnected: Bool,
+            lifecycle: SettingsSyncLifecycle,
+            summaryText: String,
+            lastSyncedText: String?,
+            attempt: Int = 0,
+            dataOutcome: SettingsSyncDataOutcome = .none,
+            message: String? = nil
+        ) {
+            self.isConnected = isConnected
+            self.lifecycle = lifecycle
+            self.summaryText = summaryText
+            self.lastSyncedText = lastSyncedText
+            self.attempt = attempt
+            self.dataOutcome = dataOutcome
+            self.message = message
+        }
+
+        var isSyncing: Bool { lifecycle.isInFlight }
     }
 
     /// CloudKit 書庫同步狀態列（CloudKitMirroringMonitor.phase 的 UI 投影）。
@@ -190,6 +327,8 @@ struct SettingsPresenterActions {
     let openSupport: () -> Void
     let requestAppRating: () -> Void
     let resync: () -> Void
+    var retrySync: () -> Void = {}
+    var dismissSyncStatus: () -> Void = {}
     let toggleAutoSync: (Bool) -> Void
     let exportVocabularyCSV: () -> Void
     // 預設 no-op 讓既有建構處(preview / scenarios)免改。

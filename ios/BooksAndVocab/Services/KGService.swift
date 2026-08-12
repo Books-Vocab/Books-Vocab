@@ -62,6 +62,8 @@ final class KGService: KGServing, LocalDataClearing {
     @ObservationIgnored
     var fixtureDictionaryService: FixtureDictionaryServing?
     #endif
+    @ObservationIgnored
+    let transport: any KGHTTPTransport
 
     var serverURL: String {
         get { Self.getServerURL() }
@@ -249,12 +251,14 @@ final class KGService: KGServing, LocalDataClearing {
         authSession: any AuthSessionProviding = MainActor.assumeIsolated({ AuthManager.shared }),
         sessionInvalidator: any SessionInvalidating = MainActor.assumeIsolated({ AuthManager.shared }),
         userConfigClient: any KGUserConfigRemoteHandling = KGUserConfigClient(),
-        urlSession: URLSession = sharedURLSession
+        urlSession: URLSession = sharedURLSession,
+        transport: (any KGHTTPTransport)? = nil
     ) {
         self.authSession = authSession
         self.sessionInvalidator = sessionInvalidator
         self.userConfigClient = userConfigClient
         self.urlSession = urlSession
+        self.transport = transport ?? URLSessionKGHTTPTransport(session: urlSession)
     }
 
     // MARK: - Auth Helper

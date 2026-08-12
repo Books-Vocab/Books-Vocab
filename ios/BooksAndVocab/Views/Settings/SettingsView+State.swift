@@ -110,9 +110,12 @@ extension SettingsView {
             syncSummary: authManager.isLoggedIn
                 ? .init(
                     isConnected: kgService.isConnected,
-                    isSyncing: coordinator.isResyncing,
+                    lifecycle: coordinator.syncLifecycle,
                     summaryText: syncSummaryText,
-                    lastSyncedText: lastSyncedText
+                    lastSyncedText: lastSyncedText,
+                    attempt: coordinator.syncAttempt,
+                    dataOutcome: coordinator.syncDataOutcome,
+                    message: coordinator.syncMessage
                 )
                 : nil,
             // 書庫綁 Apple ID 不綁 app 帳號 — 不掛 isLoggedIn gate。
@@ -164,6 +167,12 @@ extension SettingsView {
                     await coordinator.resync(authManager: authManager, kgService: kgService, modelContext: modelContext)
                 }
             },
+            retrySync: {
+                Task {
+                    await coordinator.resync(authManager: authManager, kgService: kgService, modelContext: modelContext)
+                }
+            },
+            dismissSyncStatus: coordinator.dismissSyncStatus,
             toggleAutoSync: { autoSyncSettingsStore.setEnabled($0) },
             exportVocabularyCSV: {
                 if let url = VocabularyExporter.exportAsCSV(entries: allEntries) {

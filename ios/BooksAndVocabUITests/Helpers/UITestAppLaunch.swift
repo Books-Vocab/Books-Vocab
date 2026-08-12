@@ -75,6 +75,7 @@ enum UITestFixture: Equatable {
     case authSignedIn
     case entitlementsProAccess
     case settingsCleanPreferences
+    case settingsSyncTerminalErrorRetrySuccess
     case shellNavigation
     case reviewCalendarDense
     case searchVocabNotebook
@@ -110,6 +111,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:entitlements:pro"
         case .settingsCleanPreferences:
             return "-seedFixture:settings:cleanPreferences"
+        case .settingsSyncTerminalErrorRetrySuccess:
+            return "-seedFixture:settings:sync_terminal_error_retry_success"
         case .shellNavigation:
             return "-seedFixture:shell:navigation"
         case .reviewCalendarDense:

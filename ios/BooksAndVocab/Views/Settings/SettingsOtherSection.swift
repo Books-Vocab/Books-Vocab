@@ -142,6 +142,11 @@ struct SettingsOtherSection: View {
                 )
                 .transition(.statusRowReveal)
             }
+
+            SettingsSyncLifecycleFeedback(
+                lifecycle: summary.lifecycle,
+                actions: actions
+            )
         }
         // 展開與收合共用這一條。收合時 `lastSyncedText` 那一行同時淡回來
         // （它本來就以 `isSyncing` 為條件），所以整段是一次過渡而不是兩段接力。

@@ -27,6 +27,7 @@ enum SettingsFixtureID: String, CaseIterable {
     case deletingAccount = "deleting_account"
     case pricingUnavailable = "pricing_unavailable"
     case debugBackendLocal = "debug_backend_local"
+    case syncTerminalErrorRetrySuccess = "sync_terminal_error_retry_success"
 
     var key: FixtureKey {
         FixtureKey("settings.\(rawValue)")
@@ -288,12 +289,23 @@ struct SettingsFixtureSeed: Codable {
         /// that every field is explicit, so a new presenter field cannot drift
         /// out of the fixture surface unnoticed.
         let lastSyncedText: String?
+        /// Lifecycle provenance for the canonical terminal-error → retry flow.
+        /// Optional for backward compatibility with the frozen v2 worlds; the
+        /// canonical fixture must provide all four metadata fields together.
+        let lifecycle: SettingsSyncFixtureLifecycle?
+        let message: String?
+        let attempt: Int?
+        let dataOutcome: SettingsSyncDataOutcome?
 
         enum CodingKeys: String, CodingKey, CaseIterable {
             case isConnected
             case isSyncing
             case summaryText
             case lastSyncedText
+            case lifecycle
+            case message
+            case attempt
+            case dataOutcome
         }
 
         init(from decoder: Decoder) throws {
@@ -303,11 +315,33 @@ struct SettingsFixtureSeed: Codable {
                 context: "UI World settings syncSummary"
             )
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings syncSummary")
+            for key in [CodingKeys.isConnected, .isSyncing, .summaryText, .lastSyncedText]
+                where !container.contains(key) {
+                throw DecodingError.keyNotFound(
+                    key,
+                    DecodingError.Context(
+                        codingPath: container.codingPath,
+                        debugDescription: "UI World settings syncSummary must explicitly declare \(key.rawValue)"
+                    )
+                )
+            }
             isConnected = try container.decode(Bool.self, forKey: .isConnected)
             isSyncing = try container.decode(Bool.self, forKey: .isSyncing)
             summaryText = try container.decode(String.self, forKey: .summaryText)
             lastSyncedText = try container.decodeIfPresent(String.self, forKey: .lastSyncedText)
+            lifecycle = try container.decodeIfPresent(SettingsSyncFixtureLifecycle.self, forKey: .lifecycle)
+            message = try container.decodeIfPresent(String.self, forKey: .message)
+            attempt = try container.decodeIfPresent(Int.self, forKey: .attempt)
+            dataOutcome = try container.decodeIfPresent(SettingsSyncDataOutcome.self, forKey: .dataOutcome)
+
+            let metadata = [lifecycle != nil, message != nil, attempt != nil, dataOutcome != nil]
+            guard metadata.allSatisfy({ $0 }) || metadata.allSatisfy({ !$0 }) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .lifecycle,
+                    in: container,
+                    debugDescription: "UI World settings syncSummary lifecycle metadata must be all present or all absent"
+                )
+            }
         }
     }
 
@@ -497,11 +531,15 @@ enum SettingsFixtures {
 
     private static let registry = FixtureRegistry<SettingsFixtureSeed>(
         SettingsFixtureID.allCases.map { fixtureID in
-            FixtureRecipe(key: fixtureID.key, surfaces: sharedSurfaces, tags: tags(for: fixtureID)) {
+            FixtureRecipe(key: fixtureID.key, surfaces: surfaces(for: fixtureID), tags: tags(for: fixtureID)) {
                 FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
             }
         }
     )
+
+    private static func surfaces(for fixtureID: SettingsFixtureID) -> Set<FixtureSurface> {
+        fixtureID == .syncTerminalErrorRetrySuccess ? [.marketing] : sharedSurfaces
+    }
 
     private static func tags(for fixtureID: SettingsFixtureID) -> Set<String> {
         switch fixtureID {
@@ -513,6 +551,8 @@ enum SettingsFixtures {
             return ["preferences"]
         case .debugBackendLocal:
             return ["debug"]
+        case .syncTerminalErrorRetrySuccess:
+            return ["edge", "sync"]
         }
     }
 
@@ -614,19 +654,46 @@ private enum SettingsFixtureAdapter {
                     isRefreshing: subscription.isRefreshing
                 )
             },
-            syncSummary: seed.syncSummary.map {
-                .init(
-                    isConnected: $0.isConnected,
-                    isSyncing: $0.isSyncing,
-                    summaryText: $0.summaryText,
-                    lastSyncedText: $0.lastSyncedText
-                )
-            },
+            syncSummary: seed.syncSummary.map { makeSyncSummaryState(from: $0) },
             bookSync: seed.bookSync.map {
                 .init(text: $0.text, detail: $0.detail, tone: makeBookSyncTone($0.tone))
             },
             about: .init(version: seed.about.version, developerName: seed.about.developerName),
             danger: seed.danger.map { .init(isDeletingAccount: $0.isDeletingAccount) }
+        )
+    }
+
+    private static func makeSyncSummaryState(
+        from seed: SettingsFixtureSeed.SyncSummary
+    ) -> SettingsPresenterState.SyncSummaryState {
+        let lifecycle: SettingsSyncLifecycle
+        if let fixtureLifecycle = seed.lifecycle {
+            switch fixtureLifecycle {
+            case .idle:
+                lifecycle = .idle
+            case .syncing:
+                lifecycle = .syncing
+            case .terminalSuccess:
+                lifecycle = .terminalSuccess
+            case .terminalError:
+                lifecycle = .terminalError(message: seed.message ?? L10n.string("同步失敗"))
+            case .retry:
+                lifecycle = .retry
+            case .dismissed:
+                lifecycle = .dismissed
+            }
+        } else {
+            lifecycle = seed.isSyncing ? .syncing : .idle
+        }
+
+        return .init(
+            isConnected: seed.isConnected,
+            lifecycle: lifecycle,
+            summaryText: seed.summaryText,
+            lastSyncedText: seed.lastSyncedText,
+            attempt: seed.attempt ?? 0,
+            dataOutcome: seed.dataOutcome ?? .none,
+            message: seed.message
         )
     }
 
