@@ -295,10 +295,37 @@ review_html_exists=false; contact_exists=false; quick4_exists=false; manifest_ex
 [[ -f "$stable_manifest" ]] && manifest_exists=true
 [[ -f "$stable_video" ]] && video_exists=true
 
+artifact_contract_status="fail"
+artifact_contract_reason="visual evidence artifact contract not run"
+artifact_contract_json="$bundle_root/artifacts/ui-evidence-contract.json"
+
 current_commit="$(git rev-parse HEAD)"
 current_dirty=false
 [[ -n "$(git status --porcelain)" ]] && current_dirty=true
 upstream_device="$(jq -r '.device // empty' "$upstream_stdout")"
+
+if "$repo_root/.venv/bin/python" --version >/dev/null 2>&1; then
+  evidence_python=("$repo_root/.venv/bin/python")
+else
+  evidence_python=(uv run --python 3.13 python)
+fi
+if "${evidence_python[@]}" "$repo_root/ops/uitest_evidence_contract.py" validate \
+    --screenshot-dir "$stable_review_root" \
+    --manifest "$stable_manifest" \
+    --contact-sheet "$stable_contact" \
+    --quick4-sheet "$stable_quick4" \
+    --video "$stable_video" \
+    --review-html "$stable_review_html" \
+    --source-commit "$source_commit" \
+    --dataset-id "$expected_dataset_id" \
+    --dataset-sha256 "$expected_dataset_sha256" \
+    --device "$upstream_device" >"$artifact_contract_json" 2>&1; then
+  artifact_contract_status="pass"
+  artifact_contract_reason=""
+else
+  artifact_contract_status="fail"
+  artifact_contract_reason="$(tail -1 "$artifact_contract_json" 2>/dev/null || printf '%s' 'artifact validator failed')"
+fi
 
 verdict_filter='(.schema == "kg.ios.run.v1") and (.kind == "test") and (.status == "ok") and (.result == "ok") and ((.exit | tostring) == "0")'
 verdict_filter+=' and (((.executed | tostring | tonumber?) // 0) > 0)'
@@ -327,7 +354,8 @@ if [[ "$run_rc" -eq 0 ]]; then
     --arg datasetSHA256 "$expected_dataset_sha256" --arg expectedDevice "$device" --arg udid "$upstream_device" \
     "$verdict_filter" "$upstream_stdout" >/dev/null 2>&1 \
     && [[ "$current_commit" == "$source_commit" && "$current_dirty" == false ]] \
-    && [[ "$review_root_exists" == true && "$review_html_exists" == true && "$contact_exists" == true && "$quick4_exists" == true && "$manifest_exists" == true && "$video_exists" == true && "$xcresult_exists" == true ]]; then
+    && [[ "$review_root_exists" == true && "$review_html_exists" == true && "$contact_exists" == true && "$quick4_exists" == true && "$manifest_exists" == true && "$video_exists" == true && "$xcresult_exists" == true ]] \
+    && [[ "$artifact_contract_status" == "pass" ]]; then
     contract_status="pass"
     normalized_status="ok"
     normalized_result="ok"
@@ -342,6 +370,7 @@ jq --arg bundle "$bundle_root" --arg commandLog "$command_log" --arg runnerLog "
   --arg video "$stable_video" --arg selector "$selector_kind $selector_value" --arg contractStatus "$contract_status" \
   --arg normalizedStatus "$normalized_status" --arg normalizedResult "$normalized_result" --arg normalizedExit "$normalized_exit" \
   --arg normalizedReason "$normalized_reason" --arg upstreamPath "$upstream_stdout" --arg runnerExit "$run_rc" \
+  --arg artifactContractStatus "$artifact_contract_status" --arg artifactContractReason "$artifact_contract_reason" --arg artifactContract "$artifact_contract_json" \
   --argjson reviewRootExists "$review_root_exists" --argjson reviewHtmlExists "$review_html_exists" \
   --argjson contactExists "$contact_exists" --argjson quick4Exists "$quick4_exists" --argjson manifestExists "$manifest_exists" \
   --argjson videoExists "$video_exists" --argjson xcresultExists "$xcresult_exists" \
@@ -360,7 +389,7 @@ jq --arg bundle "$bundle_root" --arg commandLog "$command_log" --arg runnerLog "
        quick4Sheet:(if $quick4Exists then $quick4Sheet else null end),quick4SheetExists:$quick4Exists,visualReviewManifest:(if $manifestExists then $manifest else null end),visualReviewManifestExists:$manifestExists,
        video:(if $videoExists then $video else null end),videoExists:$videoExists,reviewRoot:(if $reviewRootExists then $reviewRoot else null end),reviewRootExists:$reviewRootExists,
        reviewHtml:(if $reviewHtmlExists then $reviewHtml else null end),reviewHtmlExists:$reviewHtmlExists}
-   | .helper = {schema:"kg.ios.ui-evidence.v1",bundleRoot:$bundle,commandLog:$commandLog,selector:$selector,retention:"stable-per-run-bundle",contractStatus:$contractStatus,runnerExit:$runnerExit,upstreamVerdict:$upstreamPath,normalizedVerdict:($bundle + "/verdict.json")}' \
+   | .helper = {schema:"kg.ios.ui-evidence.v1",bundleRoot:$bundle,commandLog:$commandLog,selector:$selector,retention:"stable-per-run-bundle",contractStatus:$contractStatus,artifactContractStatus:$artifactContractStatus,artifactContractReason:(if $artifactContractReason == "" then null else $artifactContractReason end),artifactContract:$artifactContract,runnerExit:$runnerExit,upstreamVerdict:$upstreamPath,normalizedVerdict:($bundle + "/verdict.json")}' \
   "$upstream_stdout" >"$normalized_verdict"
 if [[ -n "$json_out" ]]; then
   json_parent="$(dirname "$json_out")"
