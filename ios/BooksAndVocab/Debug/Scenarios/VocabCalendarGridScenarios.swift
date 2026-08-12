@@ -7,10 +7,27 @@ import SwiftUI
 /// The grid is a pure presentational component: it takes a displayed month,
 /// a `[dayKey: activityCount]` map, and a selected-day binding. All fixtures
 /// here are synthetic so Catalog / Snapshot stay deterministic regardless of
-/// the real review history. Day keys are produced with the same
-/// `AppDateFormatters.dayKey` the component uses, so activity dots / cell fills
-/// land on the intended days.
+/// the real review history. Day keys and "today" are produced from the same
+/// injected UTC projection clock as the component, so future-cell handling
+/// cannot fall back to the epoch environment default.
 enum VocabCalendarGridScenarios {
+    static let projectionClock: StatsProjectionClock = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        let components = DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 6,
+            day: 1,
+            hour: 12
+        )
+        guard let now = calendar.date(from: components) else {
+            preconditionFailure("VocabCalendarGridScenarios requires a valid fixed UTC anchor")
+        }
+        return StatsProjectionClock(now: now, calendar: calendar)
+    }()
+
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Vocab Calendar") {
             // 一個月份的密集活動：覆蓋全部 intensity 階梯（dot + cellFill），
@@ -51,11 +68,8 @@ private struct VocabCalendarGridScene: View {
 
     @State private var selectedDay: String?
 
-    private static let clock = ReviewCalendarClock(
-        now: Date(timeIntervalSince1970: 1_709_251_200),
-        timeZone: TimeZone(secondsFromGMT: 0)!
-    )
-    private static let calendar = clock.calendar
+    private static var projectionClock: StatsProjectionClock { VocabCalendarGridScenarios.projectionClock }
+    private static var calendar: Calendar { projectionClock.calendar }
 
     var body: some View {
         let config = makeConfig()
@@ -63,12 +77,12 @@ private struct VocabCalendarGridScene: View {
             VocabCalendarGrid(
                 displayedMonth: config.month,
                 activityMap: config.activity,
-                selectedDay: $selectedDay,
-                clock: Self.clock
+                selectedDay: $selectedDay
             )
             .padding()
         }
         .environmentObject(AppAppearanceStore.preview)
+        .environment(\.statsProjectionClock, Self.projectionClock)
         .onAppear { selectedDay = config.initialSelection }
     }
 
@@ -94,18 +108,19 @@ private struct VocabCalendarGridScene: View {
             let month = Self.fixedMonth()
             return Config(month: month, activity: [:], initialSelection: nil)
         case .currentMonth:
-            return Config(month: Self.clock.now, activity: Self.gradientActivity(in: Self.clock.now), initialSelection: nil)
+            let month = Self.projectionClock.now
+            return Config(month: month, activity: Self.gradientActivity(in: month), initialSelection: nil)
         }
     }
 
     /// Deterministic month (2024-03) so snapshots are stable across runs.
     private static func fixedMonth() -> Date {
-        var comps = DateComponents()
+        var comps = DateComponents(calendar: calendar, timeZone: calendar.timeZone)
         comps.year = 2024
         comps.month = 3
         comps.day = 1
         guard let month = calendar.date(from: comps) else {
-            preconditionFailure("VocabCalendarGrid fixture month must be a valid Gregorian date")
+            preconditionFailure("VocabCalendarGridScenarios requires a valid fixed month")
         }
         return month
     }
@@ -113,7 +128,7 @@ private struct VocabCalendarGridScene: View {
     private static func dayKey(in month: Date, day: Int) -> String? {
         var comps = calendar.dateComponents([.year, .month], from: month)
         comps.day = day
-        return calendar.date(from: comps).map { clock.dayKey(for: $0) }
+        return calendar.date(from: comps).map { projectionClock.dayKey($0) }
     }
 
     /// Spreads counts across every intensity band (1-3, 4-7, 8-14, 15+),

@@ -43,6 +43,10 @@ extension UITestFixtureSeed {
             if !AuthManager.shared.isLoggedIn {
                 seedSignedInLoginFromWorld()
             }
+            statsProjectionClock = makeStatsProjectionClock(
+                for: .shellNavigation,
+                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
+            )
             AppLog.app.info("UI-test fixture seeded: shell.navigation (\(entries.count) entries)")
         } catch {
             failFixtureSeed("Failed to seed shell.navigation fixture: \(error)")
@@ -89,18 +93,50 @@ extension UITestFixtureSeed {
                 seedSignedInLoginFromWorld()
             }
 
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
-            let latest = seed.reviewHistory.map(\.reviewedAt).max()
-            let fallback = Date(timeIntervalSince1970: 1_780_300_800)
-            statsProjectionClock = StatsProjectionClock(
-                now: latest ?? fallback,
-                calendar: calendar
+            statsProjectionClock = makeStatsProjectionClock(
+                for: fixtureID,
+                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
             )
             AppLog.app.info("UI-test fixture seeded: vocabulary.\(fixtureID.rawValue) (\(seed.entries.count) entries, \(seed.reviewHistory.count) reviews)")
         } catch {
             failFixtureSeed("Failed to seed vocabulary.\(fixtureID.rawValue): \(error)")
         }
+    }
+
+    /// Every UI fixture gets an explicit UTC projection clock. `vocabListLong`
+    /// intentionally anchors before its 2026-01-06 due date so its 14-day
+    /// forecast is genuinely zero; overdue folding remains covered by the
+    /// projection regression tests instead of being hidden by the fixture.
+    @MainActor
+    static func makeStatsProjectionClock(
+        for fixtureID: UIWorldVocabularyFixtureID,
+        latestReviewedAt: Date?
+    ) -> StatsProjectionClock {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        let fallbackComponents: DateComponents
+        switch fixtureID {
+        case .vocabListLong:
+            fallbackComponents = DateComponents(
+                calendar: calendar,
+                timeZone: calendar.timeZone,
+                year: 2025,
+                month: 12,
+                day: 20,
+                hour: 12
+            )
+        default:
+            fallbackComponents = DateComponents(
+                calendar: calendar,
+                timeZone: calendar.timeZone,
+                year: 2026,
+                month: 6,
+                day: 1,
+                hour: 12
+            )
+        }
+        let fallback = calendar.date(from: fallbackComponents) ?? Date(timeIntervalSince1970: 0)
+        return StatsProjectionClock(now: latestReviewedAt ?? fallback, calendar: calendar)
     }
 }
 #endif

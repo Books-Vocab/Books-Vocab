@@ -547,35 +547,147 @@ struct StatsPresenterTests {
         #expect(projection.formattedCount(projection.totalCards) == "1,234")
         #expect(projection.formattedCount(0) == "0")
     }
+
+    @Test func projection_fixtureLongDueDateOutsideHorizonStaysZero() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let anchor = try #require(calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2025,
+            month: 12,
+            day: 20,
+            hour: 12
+        )))
+        let dueDate = try #require(calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 1,
+            day: 6,
+            hour: 0
+        )))
+        let entries = (0..<40).map { index -> VocabularyEntry in
+            let entry = VocabularyEntry(
+                word: "long-\(index)",
+                translation: "t",
+                context: "c",
+                bookTitle: "B"
+            )
+            entry.syncStatus = 1
+            entry.nextReviewAt = dueDate
+            return entry
+        }
+
+        let projection = StatsPresentation.project(
+            entries: entries,
+            reviewRecords: [],
+            forecastDays: 14,
+            clock: StatsProjectionClock(now: anchor, calendar: calendar)
+        )
+
+        #expect(projection.totalCards == 40)
+        #expect(projection.dueToday == 0)
+        #expect(projection.forecast.allSatisfy { $0.count == 0 })
+    }
+
+    @Test func projection_overdueCounterexampleFoldsIntoToday() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let anchor = try #require(calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 1,
+            day: 7,
+            hour: 12
+        )))
+        let dueDate = try #require(calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 1,
+            day: 6,
+            hour: 0
+        )))
+        let entries = (0..<40).map { index -> VocabularyEntry in
+            let entry = VocabularyEntry(
+                word: "overdue-\(index)",
+                translation: "t",
+                context: "c",
+                bookTitle: "B"
+            )
+            entry.syncStatus = 1
+            entry.nextReviewAt = dueDate
+            return entry
+        }
+
+        let clock = StatsProjectionClock(now: anchor, calendar: calendar)
+        let projection = StatsPresentation.project(
+            entries: entries,
+            reviewRecords: [],
+            forecastDays: 14,
+            clock: clock
+        )
+
+        #expect(projection.dueToday == 40)
+        #expect(projection.forecast.first?.id == clock.dayKey(anchor))
+        #expect(projection.forecast.first?.count == 40)
+    }
 }
 
 #if DEBUG && canImport(Playbook)
-/// Pins `StatsViewTime.anchor` — the catalog Stats View frozen "today" must be
-/// derived from the canonical generated clock (寫死日期會讓「複習預測/今日到期」
+/// Pins `StatsViewTime.clock` — the catalog Stats View frozen "today" must be
+/// derived from the seed's latest review event (寫死日期會讓「複習預測/今日到期」
 /// 在 seed 錨日移動後恆 0)。
 @Suite struct StatsViewSceneTimeTests {
     @Test func anchorDerivesNoonOfLatestReviewedAt() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let calendar = StatsViewTime.calendar
         let latest = try #require(calendar.date(
             byAdding: .minute,
             value: -42,
             to: StatsPresenterTests.canonicalClock.now
         ))
+
+        let clock = StatsViewTime.clock(latestReviewedAt: latest, calendar: calendar)
+
+        let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: clock.now)
         let expectedDay = calendar.dateComponents([.year, .month, .day], from: latest)
-
-        let anchor = StatsViewTime.anchor(latestReviewedAt: latest)
-
-        let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
         #expect(comps.year == expectedDay.year)
         #expect(comps.month == expectedDay.month)
         #expect(comps.day == expectedDay.day)
         #expect(comps.hour == 12)
         #expect(comps.minute == 0)
+        #expect(clock.calendar.timeZone == calendar.timeZone)
+        #expect(clock.dayKey(clock.now) == "2026-07-09")
     }
 
     @Test func anchorFallsBackDeterministicallyForEmptySeeds() {
-        #expect(StatsViewTime.anchor(latestReviewedAt: nil) == StatsViewTime.emptySeedFallback)
+        let calendar = StatsViewTime.calendar
+        let clock = StatsViewTime.clock(latestReviewedAt: nil, calendar: calendar)
+
+        #expect(clock.now == StatsViewTime.emptySeedFallback)
+        #expect(clock.calendar.timeZone == calendar.timeZone)
+    }
+
+    @Test @MainActor func longFixtureClockPlacesDueDateOutsideForecast() throws {
+        let clock = UITestFixtureSeed.makeStatsProjectionClock(
+            for: .vocabListLong,
+            latestReviewedAt: nil
+        )
+        let dueDate = try #require(clock.calendar.date(from: DateComponents(
+            calendar: clock.calendar,
+            timeZone: clock.calendar.timeZone,
+            year: 2026,
+            month: 1,
+            day: 6,
+            hour: 0
+        )))
+        let horizonEnd = try #require(clock.date(byAdding: .day, value: 13, to: clock.now))
+
+        #expect(clock.calendar.timeZone == StatsViewTime.calendar.timeZone)
+        #expect(clock.dayKey(clock.now) == "2025-12-20")
+        #expect(horizonEnd < dueDate)
     }
 }
 #endif
