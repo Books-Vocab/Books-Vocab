@@ -11,35 +11,40 @@ enum VocabActivityHeatmapScenarios {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
                     thresholds: [2, 5, 9],
-                    weeks: 20
+                    weeks: 20,
+                    clock: Self.clock
                 )
             }
             Scenario("Sparse", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.sparseActivity(),
                     thresholds: [2, 5, 9],
-                    weeks: 20
+                    weeks: 20,
+                    clock: Self.clock
                 )
             }
             Scenario("No thresholds (flat level)", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
                     thresholds: [],
-                    weeks: 20
+                    weeks: 20,
+                    clock: Self.clock
                 )
             }
             Scenario("Empty", layout: .compressed) {
                 HeatmapScene(
                     activity: [:],
                     thresholds: [2, 5, 9],
-                    weeks: 20
+                    weeks: 20,
+                    clock: Self.clock
                 )
             }
             Scenario("Short range (8 weeks)", layout: .compressed) {
                 HeatmapScene(
                     activity: Self.gradedActivity(),
                     thresholds: [2, 5, 9],
-                    weeks: 8
+                    weeks: 8,
+                    clock: Self.clock
                 )
             }
         }
@@ -47,16 +52,18 @@ enum VocabActivityHeatmapScenarios {
 
     // MARK: - Fixtures
 
-    private static let formatter = AppDateFormatters.dayKey
-    private static let calendar = Calendar.current
+    private static let clock = ReviewCalendarClock(
+        now: Date(timeIntervalSince1970: 1_781_827_200),
+        timeZone: TimeZone(secondsFromGMT: 0)!
+    )
 
     /// Every non-multiple-of-4 day in the last 120 days, counts cycling 1...13
     /// to exercise all four intensity levels.
     private static func gradedActivity() -> [String: Int] {
         var activity: [String: Int] = [:]
         for offset in 0..<120 where offset % 4 != 0 {
-            if let date = calendar.date(byAdding: .day, value: -offset, to: Date()) {
-                activity[formatter.string(from: date)] = (offset % 13) + 1
+            if let date = clock.calendar.date(byAdding: .day, value: -offset, to: clock.now) {
+                activity[clock.dayKey(for: date)] = (offset % 13) + 1
             }
         }
         return activity
@@ -66,8 +73,8 @@ enum VocabActivityHeatmapScenarios {
     private static func sparseActivity() -> [String: Int] {
         var activity: [String: Int] = [:]
         for offset in stride(from: 0, to: 120, by: 11) {
-            if let date = calendar.date(byAdding: .day, value: -offset, to: Date()) {
-                activity[formatter.string(from: date)] = 1
+            if let date = clock.calendar.date(byAdding: .day, value: -offset, to: clock.now) {
+                activity[clock.dayKey(for: date)] = 1
             }
         }
         return activity
@@ -80,13 +87,15 @@ private struct HeatmapScene: View {
     let activity: [String: Int]
     let thresholds: [Int]
     let weeks: Int
+    let clock: ReviewCalendarClock
 
     var body: some View {
         AppThemeContainer {
             VocabActivityHeatmap(
                 activity: activity,
                 thresholds: thresholds,
-                weeks: weeks
+                weeks: weeks,
+                clock: clock
             )
             .padding()
         }

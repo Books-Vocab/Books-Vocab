@@ -441,7 +441,8 @@ struct StatsPresenterTests {
 /// 在 seed 錨日移動後恆 0)。
 @Suite struct StatsViewSceneTimeTests {
     @Test func anchorDerivesNoonOfLatestReviewedAt() throws {
-        let calendar = Calendar.current
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let latest = try #require(calendar.date(from: DateComponents(year: 2026, month: 7, day: 9, hour: 3, minute: 17)))
 
         let anchor = StatsViewTime.anchor(latestReviewedAt: latest)

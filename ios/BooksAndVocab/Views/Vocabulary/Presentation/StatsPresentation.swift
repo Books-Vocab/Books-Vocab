@@ -31,24 +31,27 @@ enum StatsPresentation {
         case graph
     }
 
-    private static let calendar = Calendar.current
-
-    private static let dayFormatter = AppDateFormatters.dayKey
-
     static func graphThumbnailBodyKind(linksLoaded: Bool, nodeCount: Int) -> GraphThumbnailBodyKind {
         guard linksLoaded else { return .loading }
         return nodeCount == 0 ? .empty : .graph
     }
 
-    private static func compactDayLabel(for date: Date) -> String {
-        LocaleAwareFormatter.shared.string(from: date, template: "Md")
+    private static func compactDayLabel(
+        for date: Date,
+        clock: ReviewCalendarClock
+    ) -> String {
+        LocaleAwareFormatter.shared.string(
+            from: date,
+            template: "Md",
+            timeZone: clock.timeZone
+        )
     }
 
     static func buildSummary(
         from entries: [VocabularyEntry],
         reviewRecords: [ReviewRecord],
         forecastDays: Int = 14,
-        now: Date = Date()
+        clock: ReviewCalendarClock
     ) -> Summary {
         // shouldAppearInKnowledgeList == isSynced && !delete && !isArchived.
         // Archived entries must NOT inflate the review forecast / stats.
@@ -56,9 +59,9 @@ enum StatsPresentation {
 
         // Forecast
         var forecastMap: [String: Int] = [:]
-        let todayKey = dayFormatter.string(from: now)
+        let todayKey = clock.dayKey(for: clock.now)
         for entry in synced {
-            let key = dayFormatter.string(from: entry.nextReviewAt)
+            let key = clock.dayKey(for: entry.nextReviewAt)
             if key <= todayKey {
                 forecastMap[todayKey, default: 0] += 1
             } else {
@@ -68,19 +71,23 @@ enum StatsPresentation {
 
         var forecast: [ForecastBucket] = []
         for offset in 0..<forecastDays {
-            guard let date = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
-            let key = dayFormatter.string(from: date)
+            guard let date = clock.calendar.date(
+                byAdding: .day,
+                value: offset,
+                to: clock.startOfToday
+            ) else { continue }
+            let key = clock.dayKey(for: date)
             let label: String
             switch offset {
             case 0: label = "今天".localized
             case 1: label = "明天".localized
             default:
-                label = Self.compactDayLabel(for: date)
+                label = Self.compactDayLabel(for: date, clock: clock)
             }
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
 
-        let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords, now: now)
+        let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords, clock: clock)
 
         // Compute adaptive heatmap thresholds from activity data
         let nonZeroCounts = activity.values.filter { $0 > 0 }.sorted()
@@ -94,17 +101,50 @@ enum StatsPresentation {
             heatmapThresholds = [p25, p50, p75]
         }
 
-        let streakResult = ReviewActivityLog.streaks(records: reviewRecords, now: now)
+        let streakResult = ReviewActivityLog.streaks(records: reviewRecords, clock: clock)
 
         return Summary(
             totalCards: synced.count,
-            reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords, now: now),
+            reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords, clock: clock),
             dueToday: forecastMap[todayKey] ?? 0,
             currentStreak: streakResult.current,
             longestStreak: streakResult.longest,
             activity: activity,
             forecast: forecast,
             heatmapThresholds: heatmapThresholds
+        )
+    }
+
+    /// Compatibility seam for callers that already own a concrete reference
+    /// date. New production code should pass the complete clock so timezone
+    /// and date projection share one context.
+    static func buildSummary(
+        from entries: [VocabularyEntry],
+        reviewRecords: [ReviewRecord],
+        forecastDays: Int = 14,
+        now: Date
+    ) -> Summary {
+        buildSummary(
+            from: entries,
+            reviewRecords: reviewRecords,
+            forecastDays: forecastDays,
+            clock: ReviewCalendarClock(now: now, timeZone: .current)
+        )
+    }
+
+    /// Legacy convenience for tests and previews. The live source is still
+    /// centralized in `ReviewCalendarClock`, rather than hidden in this
+    /// projection layer.
+    static func buildSummary(
+        from entries: [VocabularyEntry],
+        reviewRecords: [ReviewRecord],
+        forecastDays: Int = 14
+    ) -> Summary {
+        buildSummary(
+            from: entries,
+            reviewRecords: reviewRecords,
+            forecastDays: forecastDays,
+            clock: .live()
         )
     }
 }

@@ -35,7 +35,10 @@ struct StatsPresenter: View {
     })
     private var syncedEntries: [VocabularyEntry]
 
-    /// init 覆寫為只載入近 6 個月的紀錄（統計用途不需全量）
+    /// The query is intentionally unbounded. The six-month window is a
+    /// timezone-aware projection concern and is applied after the injected
+    /// clock is available, rather than being frozen by a wall-clock predicate
+    /// during view initialization.
     @Query var reviewRecords: [ReviewRecord]
 
     @AppStorage("stats_forecast_days") private var forecastDays = 14
@@ -48,24 +51,23 @@ struct StatsPresenter: View {
     @State private var graphLoadError: Bool = false
     @State private var retryToken: Int = 0
 
-    private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
-
     /// Whether the graph `.task` may fetch links (demo/remote). Always true in
     /// production; the DEBUG catalog init disables it and injects links
     /// directly (mirrors `KnowledgeGraphView`'s DEBUG entry point).
     private let shouldLoadGraphData: Bool
+    private let injectedReviewClock: ReviewCalendarClock?
 
     init(
         filter: NotebookFilter = NotebookFilter(),
-        initialSummary: StatsPresentation.Summary? = nil
+        initialSummary: StatsPresentation.Summary? = nil,
+        reviewClock: ReviewCalendarClock? = nil
     ) {
         self.filter = filter
         self.shouldLoadGraphData = true
+        self.injectedReviewClock = reviewClock
         _summary = State(initialValue: initialSummary)
         _contentReady = State(initialValue: initialSummary != nil)
-        let cutoff = Self.sixMonthsAgo
         _reviewRecords = Query(
-            filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
             sort: \ReviewRecord.reviewedAt,
             order: .reverse
         )
@@ -79,16 +81,16 @@ struct StatsPresenter: View {
         filter: NotebookFilter = NotebookFilter(),
         initialSummary: StatsPresentation.Summary? = nil,
         initialGraphLinks: [KGGraphLink],
-        shouldLoadGraphData: Bool
+        shouldLoadGraphData: Bool,
+        reviewClock: ReviewCalendarClock? = nil
     ) {
         self.filter = filter
         self.shouldLoadGraphData = shouldLoadGraphData
+        self.injectedReviewClock = reviewClock
         _summary = State(initialValue: initialSummary)
         _contentReady = State(initialValue: initialSummary != nil)
         _graphLinks = State(initialValue: initialGraphLinks)
-        let cutoff = Self.sixMonthsAgo
         _reviewRecords = Query(
-            filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
             sort: \ReviewRecord.reviewedAt,
             order: .reverse
         )
@@ -134,12 +136,11 @@ struct StatsPresenter: View {
             let entries = filteredEntries
             let records = filteredReviewRecords
             let days = forecastDays
-            let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
             summary = StatsPresentation.buildSummary(
                 from: entries,
                 reviewRecords: records,
                 forecastDays: days,
-                now: reviewNow
+                clock: reviewClock
             )
         }
         .task(id: graphKey) {
@@ -157,10 +158,7 @@ struct StatsPresenter: View {
         .toastSheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter(
                 filter: filter,
-                clock: ReviewCalendarClock(
-                    now: reviewSettingsStore.settings.reviewReferenceDate(),
-                    timeZone: .current
-                )
+                clock: reviewClock
             )
         }
         .enableInjection()
@@ -175,9 +173,18 @@ struct StatsPresenter: View {
     }
 
     private var filteredReviewRecords: [ReviewRecord] {
-        filter.isFiltered
+        let notebookRecords = filter.isFiltered
             ? reviewRecords.filter { filter.matches($0.notebookId) }
             : reviewRecords
+        return ReviewCalendarPresentation.records(
+            inLastMonths: 6,
+            from: notebookRecords,
+            clock: reviewClock
+        )
+    }
+
+    private var reviewClock: ReviewCalendarClock {
+        injectedReviewClock ?? ReviewCalendarClock.live(settings: reviewSettingsStore.settings)
     }
 
     private func loadGraphLinks() async {
@@ -253,6 +260,7 @@ struct StatsPresenter: View {
         hasher.combine(forecastDays)
         hasher.combine(reviewSettingsStore.settings.isProgressPaused)
         hasher.combine(reviewSettingsStore.settings.progressPausedAt)
+        hasher.combine(reviewClock.timeZone.identifier)
         return hasher.finalize()
     }
 
@@ -413,12 +421,11 @@ struct StatsPresenter: View {
 
     private var graphThumbnailNodes: [KnowledgeGraphNode] {
         guard let graphLinks else { return [] }
-        let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
         return KnowledgeGraphPresentation.nodes(
             from: filteredEntries,
             links: graphLinks,
             showIsolatedNodes: false,
-            now: reviewNow
+            now: reviewClock.now
         )
     }
 
@@ -527,13 +534,15 @@ struct StatsPresenter: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(ReviewCalendarAccessibility.open)
 
             Button { showCalendar = true } label: {
                 VocabCard {
                     VocabActivityHeatmap(
                         activity: summary.activity,
                         thresholds: summary.heatmapThresholds,
-                        weeks: 20
+                        weeks: 20,
+                        clock: reviewClock
                     )
                 }
             }

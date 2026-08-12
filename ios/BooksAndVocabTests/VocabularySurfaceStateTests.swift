@@ -104,6 +104,76 @@ struct VocabularySurfaceStateTests {
         )
     }
 
+    @Test func reviewCalendar_activityUsesInjectedStartOfDayCutoff() throws {
+        let timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        // 07:30Z is 23:30 on the previous local day. A one-day window must
+        // begin at that local day's midnight, not at 07:30Z minus 24 hours.
+        let clock = ReviewCalendarClock(
+            now: try fixedDate("2026-03-10T07:30:00Z"),
+            timeZone: timeZone
+        )
+        let recordJustAfterLocalMidnight = ReviewRecord(
+            word: "cutoff",
+            entryID: nil,
+            feedback: 1,
+            reviewedAt: try fixedDate("2026-03-09T08:05:00Z")
+        )
+
+        let activity = ReviewCalendarPresentation.activity(
+            for: 1,
+            records: [recordJustAfterLocalMidnight],
+            clock: clock
+        )
+
+        #expect(
+            activity["2026-03-09"] == 1,
+            "startOfDay cutoff must retain current local-day records before the exact injected now"
+        )
+    }
+
+    @Test func statsSummaryUsesInjectedClockAcrossMidnightAndTimezone() throws {
+        let timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        let clock = ReviewCalendarClock(
+            now: try fixedDate("2026-01-02T00:30:00Z"),
+            timeZone: timeZone
+        )
+        let recordBeforeLocalMidnight = ReviewRecord(
+            word: "before",
+            entryID: nil,
+            feedback: 1,
+            reviewedAt: try fixedDate("2026-01-01T07:30:00Z")
+        )
+        let summary = StatsPresentation.buildSummary(
+            from: [],
+            reviewRecords: [recordBeforeLocalMidnight],
+            forecastDays: 1,
+            clock: clock
+        )
+
+        #expect(summary.reviewedToday == 0, "the record is yesterday in the injected timezone")
+        #expect(summary.activity["2025-12-31"] == 1)
+        #expect(summary.currentStreak == 1, "yesterday's injected-timezone review remains the current streak")
+    }
+
+    @Test func reviewActivityLogQueriesUseInjectedClockForTheWholeChain() throws {
+        let timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        let clock = ReviewCalendarClock(
+            now: try fixedDate("2026-01-02T08:30:00Z"),
+            timeZone: timeZone
+        )
+        let record = ReviewRecord(
+            word: "boundary",
+            entryID: nil,
+            feedback: 1,
+            reviewedAt: try fixedDate("2026-01-02T00:30:00Z")
+        )
+
+        #expect(ReviewActivityLog.reviewedToday(records: [record], clock: clock) == 0)
+        #expect(ReviewActivityLog.recordsForDay("2026-01-01", from: [record], clock: clock).count == 1)
+        #expect(ReviewActivityLog.streaks(records: [record], clock: clock).current == 1)
+        #expect(ReviewActivityLog.activity(for: 1, records: [record], clock: clock)["2026-01-01"] == 1)
+    }
+
     private func fixedDate(_ value: String) throws -> Date {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
