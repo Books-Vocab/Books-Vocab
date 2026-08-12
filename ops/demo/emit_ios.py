@@ -66,9 +66,11 @@ FIXTURE_TOP_LEVEL_KEYS = {
     # Detail seed. Ordinary UI Worlds may omit this whole domain.
     "scenarioContext",
 }
-SCENARIO_CONTEXT_KEYS = frozenset({"reviewClock", "readerPassage", "wordDetail"})
+SCENARIO_CONTEXT_REQUIRED_KEYS = frozenset({"reviewClock", "readerPassage", "wordDetail"})
+SCENARIO_CONTEXT_OPTIONAL_KEYS = frozenset({"dictionary", "surfaceContracts"})
+SCENARIO_CONTEXT_KEYS = SCENARIO_CONTEXT_REQUIRED_KEYS | SCENARIO_CONTEXT_OPTIONAL_KEYS
 REVIEW_CLOCK_FIELD_KEYS = frozenset(
-    {"frozenNow", "frozenEpoch", "anchorDay", "source"})
+    {"now", "timeZone", "frozenEpoch", "anchorDay", "source"})
 IDENTITY_OWNED_SIGNED_IN_KEYS = {
     "isLoggedIn",
     "userId",
@@ -179,38 +181,64 @@ def _overlay_review_clock(
     return preferences
 
 
-def _review_clock_field(frozen_at: "object") -> dict[str, Any]:
+def _review_clock_field(
+    frozen_at: "object", *, source: str = "history_plan.anchor_day",
+) -> dict[str, Any]:
     """把凍結時刻（datetime）攤成 reviewClock 顯式欄位。
 
-    frozenNow / frozenEpoch = 同一凍結時刻（= preferences review-clock overlay 的
-    epoch，單一 SoT）；anchorDay = 該時刻的 UTC 日（恆等於 plan.anchor_day，
+    now / frozenEpoch = 同一凍結時刻（= preferences review-clock overlay 的
+    epoch，單一 SoT）；timeZone 明確宣告日曆日解讀區；anchorDay = 該時刻的 UTC 日（恆等於 plan.anchor_day，
     因 freeze = anchor 00:00Z + (24-max_offset)h - 1s，落在 anchor 當日 UTC）。
     """
     from datetime import timezone
 
     dt = frozen_at.astimezone(timezone.utc)  # type: ignore[attr-defined]
     return {
-        "frozenNow": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "now": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timeZone": "UTC",
         "frozenEpoch": int(dt.timestamp()),
         "anchorDay": dt.date().isoformat(),
-        "source": "history_plan.anchor_day",
+        "source": source,
     }
 
 
+def _default_review_clock(spec: dict[str, Any]) -> "object":
+    """Derive a deterministic explicit clock when no history plan is supplied."""
+    from datetime import datetime, time, timezone
+
+    dates = []
+    for card in spec.get("cards", []):
+        review = card.get("review", {})
+        raw = review.get("last_reviewed_at")
+        if isinstance(raw, str) and raw.strip():
+            dates.append(datetime.fromisoformat(raw.replace("Z", "+00:00")))
+    if dates:
+        latest = max(dates).astimezone(timezone.utc)
+        return datetime.combine(latest.date(), time(23, 59, 59), tzinfo=timezone.utc)
+    return datetime(2026, 1, 1, 23, 59, 59, tzinfo=timezone.utc)
+
+
 def _build_scenario_context(
-    spec: dict[str, Any], *, review_clock_frozen_at: "object | None"
+    spec: dict[str, Any], *, review_clock_frozen_at: "object | None",
+    baseline_context: dict[str, Any],
 ) -> dict[str, Any]:
-    """scenarioContext domain：reviewClock（plan 凍結時鐘，未凍結時 null）
+    """scenarioContext domain：reviewClock（plan 或 spec history 凍結時鐘）
     + readerPassage（Reader 結構化段落）+ wordDetail（Word Detail seed），
     後二者 spec 驅動、恆存在於 spec 模式。"""
-    return {
-        "reviewClock": (
-            _review_clock_field(review_clock_frozen_at)
-            if review_clock_frozen_at is not None else None
+    clock = review_clock_frozen_at or _default_review_clock(spec)
+    context = {
+        "reviewClock": _review_clock_field(
+            clock,
+            source=("history_plan.anchor_day" if review_clock_frozen_at is not None
+                    else "spec.last_reviewed_at"),
         ),
         "readerPassage": spec_world.derive_reader_passage(spec),
         "wordDetail": spec_world.derive_word_detail(spec),
     }
+    for key in ("dictionary", "surfaceContracts"):
+        if key in baseline_context:
+            context[key] = baseline_context[key]
+    return context
 
 
 def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
@@ -248,7 +276,8 @@ def _build_spec_fixture_document(
         document[domain] = merged
     document["auth"] = _overlay_identity_auth(baseline["auth"], sot.identity)
     document["scenarioContext"] = _build_scenario_context(
-        spec, review_clock_frozen_at=review_clock_frozen_at)
+        spec, review_clock_frozen_at=review_clock_frozen_at,
+        baseline_context=baseline["scenarioContext"])
     if review_clock_frozen_at is not None:
         document["preferences"] = _overlay_review_clock(baseline["preferences"], review_clock_frozen_at)
     _validate_fixture_document(
@@ -308,12 +337,13 @@ def _validate_scenario_context_field(
 ) -> None:
     """scenarioContext 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
 
-    keys 恆 == {reviewClock, readerPassage}；readerPassage keys 恆 == READER_PASSAGE_KEYS；
-    reviewClock 在凍結 emit 下必為完整 clock dict，否則允許 None（未凍結 spec 模式）
-    或 baseline 沿用的完整 clock dict。
+    keys 必須包含 required scenarioContext keys；readerPassage keys 恆 == READER_PASSAGE_KEYS；
+    reviewClock 一律為完整 clock dict，dictionary/surfaceContracts 若存在則沿用 baseline
+    的 canonical contract，避免 spec emitter 另造一份 domain schema。
     """
     mc = document.get("scenarioContext")
-    if not isinstance(mc, dict) or set(mc) != SCENARIO_CONTEXT_KEYS:
+    if not isinstance(mc, dict) or not SCENARIO_CONTEXT_REQUIRED_KEYS <= set(mc) \
+            or set(mc) - set(SCENARIO_CONTEXT_KEYS):
         got = sorted(mc) if isinstance(mc, dict) else type(mc).__name__
         raise ValueError(
             f"scenarioContext keys must be {sorted(SCENARIO_CONTEXT_KEYS)}, got {got}")
@@ -327,15 +357,9 @@ def _validate_scenario_context_field(
     if not isinstance(word_detail, dict) or not word_detail.get("entries"):
         raise ValueError("scenarioContext.wordDetail must be a vocab seed with non-empty entries")
     clock = mc["reviewClock"]
-    if review_clock_frozen:
-        if not isinstance(clock, dict) or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS):
-            raise ValueError(
-                "frozen emit requires scenarioContext.reviewClock with keys "
-                f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
-    elif clock is not None and (not isinstance(clock, dict)
-                               or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS)):
+    if not isinstance(clock, dict) or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS):
         raise ValueError(
-            "scenarioContext.reviewClock must be null or a full clock dict with keys "
+            "scenarioContext.reviewClock must be a full clock dict with keys "
             f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
 
 

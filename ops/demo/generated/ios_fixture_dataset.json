@@ -35737,7 +35737,169 @@
     }
   },
   "scenarioContext": {
-    "reviewClock": null,
+    "reviewClock": {
+      "now": "2026-06-15T23:59:59Z",
+      "timeZone": "UTC",
+      "frozenEpoch": 1781567999,
+      "anchorDay": "2026-06-15",
+      "source": "history_plan.anchor_day"
+    },
+    "dictionary": {
+      "lookup": {
+        "idle": {
+          "fixtureID": "dictionary.lookup.idle",
+          "stepLabel": "idle"
+        },
+        "loading": {
+          "fixtureID": "dictionary.lookup.loading",
+          "stepLabel": "loading"
+        },
+        "result": {
+          "fixtureID": "dictionary.lookup.result",
+          "stepLabel": "result"
+        },
+        "partial": {
+          "fixtureID": "dictionary.lookup.partial",
+          "stepLabel": "partial"
+        },
+        "offline": {
+          "fixtureID": "dictionary.lookup.offline",
+          "stepLabel": "offline"
+        },
+        "error": {
+          "fixtureID": "dictionary.lookup.error",
+          "stepLabel": "error"
+        },
+        "retry": {
+          "fixtureID": "dictionary.lookup.retry",
+          "stepLabel": "retry"
+        }
+      },
+      "senses": [
+        {
+          "id": "sense-1",
+          "partOfSpeech": "adjective",
+          "gloss": "marked by a durable trace",
+          "exampleIDs": [
+            "example-1"
+          ]
+        },
+        {
+          "id": "sense-2",
+          "partOfSpeech": "verb",
+          "gloss": "to leave a lasting mark",
+          "exampleIDs": [
+            "example-2"
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "id": "example-1",
+          "senseID": "sense-1",
+          "text": "The engraved cup remained."
+        },
+        {
+          "id": "example-2",
+          "senseID": "sense-2",
+          "text": "The artist engraved the glass."
+        }
+      ],
+      "provenance": {
+        "provider": "fixture",
+        "entryID": "engraved",
+        "sourceLabel": "canonical dictionary fixture"
+      },
+      "materialization": {
+        "status": "ready",
+        "selectedSenseID": "sense-1",
+        "selectedExampleID": "example-1",
+        "sourceFixtureID": "dictionary.lookup.result"
+      },
+      "coverage": {
+        "required": {
+          "fixtureIDs": [
+            "dictionary.lookup.result",
+            "dictionary.detail.senses"
+          ],
+          "stepLabels": [
+            "idle",
+            "loading",
+            "result",
+            "partial",
+            "offline",
+            "error",
+            "retry"
+          ],
+          "assetIDs": [
+            "catalog_reader_epub"
+          ],
+          "assetInodes": [
+            "inode:catalog_reader_epub"
+          ]
+        },
+        "counterexamples": {
+          "fixtureIDs": [
+            "dictionary.lookup.error"
+          ],
+          "stepLabels": [
+            "error-counterexample"
+          ],
+          "assetIDs": [
+            "catalog_reader_pdf"
+          ],
+          "assetInodes": [
+            "inode:catalog_reader_pdf"
+          ]
+        }
+      }
+    },
+    "surfaceContracts": {
+      "explore": {
+        "required": [
+          {
+            "fixtureID": "explore.rich-catalog",
+            "stepLabel": "explore-loaded",
+            "index": 0,
+            "assetIDs": [
+              "catalog_reader_epub"
+            ],
+            "assetInodes": [
+              "inode:catalog_reader_epub"
+            ]
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "explore.empty",
+            "stepLabel": "explore-empty-counterexample",
+            "index": 1,
+            "assetIDs": [],
+            "assetInodes": []
+          }
+        ]
+      },
+      "settings": {
+        "required": [
+          {
+            "fixtureID": "settings.clean-preferences",
+            "stepLabel": "settings",
+            "index": 0,
+            "assetIDs": [],
+            "assetInodes": []
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "settings.reset-counterexample",
+            "stepLabel": "reset-counterexample",
+            "index": 1,
+            "assetIDs": [],
+            "assetInodes": []
+          }
+        ]
+      }
+    },
     "readerPassage": {
       "bookTitle": "人物群像",
       "activeWord": "engraved",
