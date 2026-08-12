@@ -121,7 +121,11 @@ struct VocabCalendarGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("reviewCalendar.day.\(cell.id)")
+        .accessibilityIdentifier(
+            isSelected
+                ? ReviewCalendarAccessibility.selectedDay
+                : ReviewCalendarAccessibility.day(cell.id)
+        )
         .disabled(cell.isFuture)
         .opacity(cell.isFuture ? 0.45 : 1)
     }

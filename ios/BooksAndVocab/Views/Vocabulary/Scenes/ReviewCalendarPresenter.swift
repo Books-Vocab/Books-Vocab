@@ -15,6 +15,8 @@ struct ReviewCalendarClock: Equatable {
     var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
         return calendar
     }
 
@@ -25,6 +27,46 @@ struct ReviewCalendarClock: Equatable {
 
     func dayKey(for date: Date) -> String {
         LocaleAwareFormatter.shared.machineDayKey(from: date, timeZone: timeZone)
+    }
+
+    /// Production composition boundary. All calendar/statistics projections
+    /// below consume the returned value; callers that need deterministic UI
+    /// state pass an explicit `ReviewCalendarClock` instead.
+    static func live(
+        settings: ReviewSettings = .default,
+        timeZone: TimeZone = .current
+    ) -> Self {
+        let wallClockNow = Date()
+        return Self(
+            now: settings.reviewReferenceDate(now: wallClockNow),
+            timeZone: timeZone
+        )
+    }
+
+    var startOfToday: Date {
+        calendar.startOfDay(for: now)
+    }
+
+    func cutoff(days: Int) -> Date {
+        calendar.date(byAdding: .day, value: -days, to: startOfToday) ?? startOfToday
+    }
+
+    func cutoff(months: Int) -> Date {
+        calendar.date(byAdding: .month, value: -months, to: startOfToday) ?? startOfToday
+    }
+}
+
+enum ReviewCalendarAccessibility {
+    static let open = "reviewCalendar.open"
+    static let monthHeader = "reviewCalendar.monthHeader"
+    static let previousMonth = "reviewCalendar.previousMonth"
+    static let nextMonth = "reviewCalendar.nextMonth"
+    static let selectedDay = "reviewCalendar.selectedDay"
+    static let emptyDayDetail = "reviewCalendar.emptyDayDetail"
+    static let populatedDayDetail = "reviewCalendar.populatedDayDetail"
+
+    static func day(_ key: String) -> String {
+        "reviewCalendar.day.\(key)"
     }
 }
 
@@ -52,17 +94,21 @@ enum ReviewCalendarPresentation {
             .sorted { $0.reviewedAt > $1.reviewedAt }
     }
 
+    static func records(
+        inLastMonths months: Int,
+        from records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [ReviewRecord] {
+        let cutoff = clock.cutoff(months: months)
+        return records.filter { $0.reviewedAt >= cutoff }
+    }
+
     static func activity(
         for days: Int = 365,
         records: [ReviewRecord],
         clock: ReviewCalendarClock
     ) -> [String: Int] {
-        let cutoff = clock.calendar.date(byAdding: .day, value: -days, to: clock.now) ?? clock.now
-        var result: [String: Int] = [:]
-        for record in records where record.reviewedAt >= cutoff {
-            result[clock.dayKey(for: record.reviewedAt), default: 0] += 1
-        }
-        return result
+        ReviewActivityLog.activity(for: days, records: records, clock: clock)
     }
 
     static func dayState(for records: [ReviewRecord]) -> DayState {
@@ -88,9 +134,9 @@ struct ReviewCalendarPresenter: View {
     init(filter: NotebookFilter = NotebookFilter(), clock: ReviewCalendarClock) {
         self.filter = filter
         self.clock = clock
-        let cutoff = clock.calendar.date(byAdding: .month, value: -6, to: clock.now) ?? clock.now
+        let cutoff = clock.cutoff(months: 6)
         _allRecords = Query(
-            filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
+            filter: #Predicate<ReviewRecord> { $0.reviewedAt >= cutoff },
             sort: \ReviewRecord.reviewedAt,
             order: .reverse
         )
@@ -165,6 +211,7 @@ struct ReviewCalendarPresenter: View {
                         .font(appSkin.typography.iconMedium)
                         .foregroundStyle(appSkin.palette.secondaryText)
                 }
+                .accessibilityIdentifier(ReviewCalendarAccessibility.previousMonth)
                 .accessibilityLabel(L10n.string("calendar.month.previous"))
 
                 Spacer()
@@ -172,6 +219,7 @@ struct ReviewCalendarPresenter: View {
                 Text(Self.formattedMonth(displayedMonth, clock: clock))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
+                    .accessibilityIdentifier(ReviewCalendarAccessibility.monthHeader)
 
                 Spacer()
 
@@ -181,6 +229,7 @@ struct ReviewCalendarPresenter: View {
                         .foregroundStyle(canGoForward ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
                 }
                 .disabled(!canGoForward)
+                .accessibilityIdentifier(ReviewCalendarAccessibility.nextMonth)
                 .accessibilityLabel(L10n.string("calendar.month.next"))
             }
             .padding(.horizontal, appSkin.spacing.rowMicroGap)
@@ -205,7 +254,7 @@ struct ReviewCalendarPresenter: View {
                     systemImage: "calendar.badge.exclamationmark",
                     description: "這天沒有複習紀錄".localized
                 )
-                .accessibilityIdentifier("reviewCalendar.emptyDay")
+                .accessibilityIdentifier(ReviewCalendarAccessibility.emptyDayDetail)
             } else {
                 populatedDayDetailSection
             }
@@ -238,6 +287,7 @@ struct ReviewCalendarPresenter: View {
             }
         }
         .vocabCardBackground()
+        .accessibilityIdentifier(ReviewCalendarAccessibility.populatedDayDetail)
     }
 
     private func recordRow(_ record: ReviewRecord) -> some View {

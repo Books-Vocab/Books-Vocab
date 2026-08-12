@@ -9,9 +9,6 @@ import Foundation
 import SwiftData
 
 enum ReviewActivityLog {
-    private static let calendar = Calendar.current
-
-    private static let dayFormatter = AppDateFormatters.dayKey
     // MARK: - Record
 
     @MainActor
@@ -20,48 +17,100 @@ enum ReviewActivityLog {
         entryID: UUID?,
         feedback: ReviewFeedback,
         context: ModelContext,
+        clock: ReviewCalendarClock,
         notebookId: String = "default"
     ) {
         let record = ReviewRecord(
             word: word,
             entryID: entryID,
-            feedback: feedback == .remembered ? 1 : 0
+            feedback: feedback == .remembered ? 1 : 0,
+            reviewedAt: clock.now
         )
+        record.dayKey = clock.dayKey(for: clock.now)
         record.notebookId = notebookId
         context.insert(record)
     }
 
     // MARK: - Queries (from SwiftData)
 
-    /// `now` 可注入（catalog / 測試凍結時鐘）；預設牆鐘。
-    static func activity(for days: Int = 180, records: [ReviewRecord], now: Date = Date()) -> [String: Int] {
-        let cutoff = calendar.date(byAdding: .day, value: -days, to: now) ?? now
-        let cutoffKey = dayFormatter.string(from: cutoff)
+    static func activity(
+        for days: Int = 180,
+        records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [String: Int] {
+        let cutoff = clock.cutoff(days: days)
         var result: [String: Int] = [:]
-        for record in records where record.dayKey >= cutoffKey {
-            result[record.dayKey, default: 0] += 1
+        for record in records where record.reviewedAt >= cutoff {
+            result[clock.dayKey(for: record.reviewedAt), default: 0] += 1
         }
         return result
     }
 
-    /// Compute both streaks in a single pass over the records (one `groupByDay`).
-    /// `now` 只影響 current streak 的錨點；longest 與時鐘無關。
-    static func streaks(records: [ReviewRecord], now: Date = Date()) -> (current: Int, longest: Int) {
-        let grouped = groupByDay(records)
-        return (
-            current: computeCurrentStreak(grouped: grouped, now: now),
-            longest: computeLongestStreak(grouped: grouped)
+    /// Compatibility seam for non-production callers that already provide a
+    /// concrete reference date. Production projections use the clock overload.
+    static func activity(
+        for days: Int = 180,
+        records: [ReviewRecord],
+        now: Date
+    ) -> [String: Int] {
+        activity(
+            for: days,
+            records: records,
+            clock: ReviewCalendarClock(now: now, timeZone: .current)
         )
+    }
+
+    /// Legacy convenience for tests/old call sites. The actual projection
+    /// still runs through the same explicit clock contract.
+    static func activity(
+        for days: Int = 180,
+        records: [ReviewRecord]
+    ) -> [String: Int] {
+        activity(for: days, records: records, clock: .live())
+    }
+
+    /// Compute both streaks in a single pass over the records (one `groupByDay`).
+    static func streaks(
+        records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> (current: Int, longest: Int) {
+        let grouped = groupByDay(records, clock: clock)
+        return (
+            current: computeCurrentStreak(grouped: grouped, clock: clock),
+            longest: computeLongestStreak(grouped: grouped, clock: clock)
+        )
+    }
+
+    static func streaks(
+        records: [ReviewRecord],
+        now: Date
+    ) -> (current: Int, longest: Int) {
+        streaks(
+            records: records,
+            clock: ReviewCalendarClock(now: now, timeZone: .current)
+        )
+    }
+
+    static func streaks(
+        records: [ReviewRecord]
+    ) -> (current: Int, longest: Int) {
+        streaks(records: records, clock: .live())
     }
 
     // MARK: - Streak internals
 
-    private static func computeCurrentStreak(grouped: [String: Int], now: Date) -> Int {
-        let today = now
+    private static func computeCurrentStreak(
+        grouped: [String: Int],
+        clock: ReviewCalendarClock
+    ) -> Int {
         var streak = 0
         for offset in 0... {
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { break }
-            let key = dayFormatter.string(from: date)
+            guard let date = clock.calendar.date(
+                byAdding: .day,
+                value: -offset,
+                to: clock.startOfToday
+            ) else { break }
+            let key = clock.dayKey(for: date)
             if let count = grouped[key], count > 0 {
                 streak += 1
             } else {
@@ -72,21 +121,31 @@ enum ReviewActivityLog {
         return streak
     }
 
-    private static func computeLongestStreak(grouped: [String: Int]) -> Int {
+    private static func computeLongestStreak(
+        grouped: [String: Int],
+        clock: ReviewCalendarClock
+    ) -> Int {
         guard !grouped.isEmpty else { return 0 }
 
         let sortedDays = grouped.keys.sorted()
-        guard let firstDay = sortedDays.first,
-              let firstDate = dayFormatter.date(from: firstDay),
-              let lastDay = sortedDays.last,
-              let lastDate = dayFormatter.date(from: lastDay) else { return 0 }
+        guard let firstDate = date(forDayKey: sortedDays[0], clock: clock),
+              let lastDate = date(forDayKey: sortedDays[sortedDays.count - 1], clock: clock)
+        else { return 0 }
 
-        let totalDays = calendar.dateComponents([.day], from: firstDate, to: lastDate).day ?? 0
+        let totalDays = clock.calendar.dateComponents(
+            [.day],
+            from: firstDate,
+            to: lastDate
+        ).day ?? 0
         var longest = 0
         var current = 0
         for offset in 0...totalDays {
-            guard let date = calendar.date(byAdding: .day, value: offset, to: firstDate) else { continue }
-            let key = dayFormatter.string(from: date)
+            guard let date = clock.calendar.date(
+                byAdding: .day,
+                value: offset,
+                to: firstDate
+            ) else { continue }
+            let key = clock.dayKey(for: date)
             if let count = grouped[key], count > 0 {
                 current += 1
                 longest = max(longest, current)
@@ -97,22 +156,71 @@ enum ReviewActivityLog {
         return longest
     }
 
-    static func reviewedToday(records: [ReviewRecord], now: Date = Date()) -> Int {
-        let todayKey = dayFormatter.string(from: now)
-        return records.filter { $0.dayKey == todayKey }.count
+    private static func date(
+        forDayKey key: String,
+        clock: ReviewCalendarClock
+    ) -> Date? {
+        let components = key.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return nil }
+        var dateComponents = DateComponents()
+        dateComponents.year = components[0]
+        dateComponents.month = components[1]
+        dateComponents.day = components[2]
+        return clock.calendar.date(from: dateComponents)
     }
 
-    static func recordsForDay(_ dayKey: String, from records: [ReviewRecord]) -> [ReviewRecord] {
-        records.filter { $0.dayKey == dayKey }
+    // MARK: - Day queries
+
+    static func reviewedToday(
+        records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> Int {
+        let todayKey = clock.dayKey(for: clock.now)
+        return records.filter { clock.dayKey(for: $0.reviewedAt) == todayKey }.count
+    }
+
+    static func reviewedToday(
+        records: [ReviewRecord],
+        now: Date
+    ) -> Int {
+        reviewedToday(
+            records: records,
+            clock: ReviewCalendarClock(now: now, timeZone: .current)
+        )
+    }
+
+    static func reviewedToday(
+        records: [ReviewRecord]
+    ) -> Int {
+        reviewedToday(records: records, clock: .live())
+    }
+
+    static func recordsForDay(
+        _ dayKey: String,
+        from records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [ReviewRecord] {
+        records
+            .filter { clock.dayKey(for: $0.reviewedAt) == dayKey }
             .sorted { $0.reviewedAt > $1.reviewedAt }
+    }
+
+    static func recordsForDay(
+        _ dayKey: String,
+        from records: [ReviewRecord]
+    ) -> [ReviewRecord] {
+        recordsForDay(dayKey, from: records, clock: .live())
     }
 
     // MARK: - Helpers
 
-    private static func groupByDay(_ records: [ReviewRecord]) -> [String: Int] {
+    private static func groupByDay(
+        _ records: [ReviewRecord],
+        clock: ReviewCalendarClock
+    ) -> [String: Int] {
         var result: [String: Int] = [:]
         for record in records {
-            result[record.dayKey, default: 0] += 1
+            result[clock.dayKey(for: record.reviewedAt), default: 0] += 1
         }
         return result
     }
