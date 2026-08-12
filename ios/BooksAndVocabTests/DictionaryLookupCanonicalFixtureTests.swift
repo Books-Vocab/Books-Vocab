@@ -525,6 +525,56 @@ struct DictionaryLookupCanonicalFixtureTests {
         return (coordinator, source, container)
     }
 
+    @Test("KGService routes the P1 fixture source into AddLink state")
+    func kgServiceRoutesP1FixtureIntoAddLinkState() async throws {
+        let data = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")
+        let service = KGService()
+        let coordinator = AddLinkCoordinator()
+
+        try await FixtureDatasetStore.withTestingData(data) {
+            coordinator.submitSearch(query: "engraved", using: service)
+            try await settle { coordinator.lookupState.isSuccess }
+        }
+
+        guard case .success(let query, let entry?, let cacheStatus) = coordinator.lookupState else {
+            Issue.record("expected KGService to consume the P1 canonical dictionary fixture")
+            return
+        }
+        #expect(query == "engraved")
+        #expect(entry.entryKey == "engraved")
+        #expect(cacheStatus == "fixture")
+        #expect(coordinator.selectedSenseKey == "sense-1")
+        #expect(coordinator.selectedExampleKey == "example-1")
+    }
+
+    @Test("ready canonical materialization completes without a synthetic response")
+    func readyCanonicalMaterializationCompletes() async throws {
+        let service = try canonicalService()
+        let coordinator = AddLinkCoordinator()
+        let source = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        source.kgCardId = "source-card"
+        source.notebookId = "notebook"
+        let container = try Self.inMemoryContainer()
+
+        coordinator.submitSearch(query: "engraved", using: service)
+        try await settle { coordinator.lookupState.isSuccess }
+        guard case .success(_, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected canonical dictionary entry before materialization")
+            return
+        }
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source,
+            entry: entry,
+            using: service,
+            container: container
+        )
+
+        #expect(coordinator.materializePhase == .succeeded)
+    }
+
     private func canonicalService() throws -> FixtureDictionaryServing {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
