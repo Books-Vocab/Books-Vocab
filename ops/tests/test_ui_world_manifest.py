@@ -303,6 +303,19 @@ def _swift_source(path: str) -> str:
     if requested.name == "FixtureDatasetStore.swift":
         sources.append(requested.with_name("FixtureDatasetSeeds.swift"))
     return "\n".join(source.read_text(encoding="utf-8") for source in sources)
+REVIEW_CARD_EVIDENCE_FIXTURE_IDS = {
+    "review.card-full-info",
+    "review.card-compact-counterexample",
+}
+REVIEW_CARD_VISUAL_ASSET_IDS = {
+    "optional-sections-counterexample",
+    "small-viewport-counterexample",
+    "large-text-counterexample",
+}
+REVIEW_CARD_UI_FIXTURE_CASES = {
+    "review.card-full-info": "notebookReviewCardFullInfo",
+    "review.card-compact-counterexample": "notebookReviewCardCompactCounterexample",
+}
 
 
 def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
@@ -640,21 +653,90 @@ def test_validate_accepts_all_repo_and_generated_ui_worlds():
     assert "demo-demo-user" in dataset_ids
 
 
+def test_review_card_evidence_fixtures_materialize_and_keep_asset_id_parity():
+    """P12/P13 contract: canonical deck seeds must reach both UI World artifacts.
+
+    The Swift decoder intentionally has no synthetic front/back fields: front and
+    back materialization is the non-empty field set consumed by ReviewCardView.
+    The screenshot identities are source-level assets, so this contract remains
+    executable without starting Xcode or a Simulator.
+    """
+    assert REVIEW_CARD_EVIDENCE_FIXTURE_IDS <= MODULE.FIXTURE_DOMAIN_IDS["reviewDeck"]
+
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+    repo = _marketing_demo()
+    generated = json.loads(generated_path.read_text(encoding="utf-8"))
+
+    assert REVIEW_CARD_EVIDENCE_FIXTURE_IDS <= set(repo["reviewDeck"])
+    assert REVIEW_CARD_EVIDENCE_FIXTURE_IDS <= set(generated["reviewDeck"])
+
+    for fixture_id in sorted(REVIEW_CARD_EVIDENCE_FIXTURE_IDS):
+        repo_seed = repo["reviewDeck"][fixture_id]
+        generated_seed = generated["reviewDeck"][fixture_id]
+        assert repo_seed == generated_seed, f"generated drift for reviewDeck.{fixture_id}"
+        entries = repo_seed["entries"]
+        assert entries, fixture_id
+        for entry in entries:
+            # Front materialization: identity, difficulty, and mode are present.
+            assert entry["word"].strip(), fixture_id
+            assert entry["difficultyTier"].strip(), fixture_id
+            assert entry["reviewMode"] in {"recognition", "production"}, fixture_id
+            # Back materialization: all long-content surfaces are non-empty.
+            assert entry["translation"].strip(), fixture_id
+            assert entry["context"].strip(), fixture_id
+            assert entry["reviewExamples"] and all(
+                example.strip() for example in entry["reviewExamples"]
+            ), fixture_id
+
+    full_info = repo["reviewDeck"]["review.card-full-info"]["entries"]
+    assert {entry["reviewMode"] for entry in full_info} >= {"recognition", "production"}
+    assert any(
+        entry["reviewMode"] == "recognition" and len(entry["translation"]) >= 180
+        for entry in full_info
+    )
+    assert any(
+        entry["reviewMode"] == "production" and len(entry["translation"]) >= 180
+        for entry in full_info
+    )
+    assert any(
+        any(len(example) >= 240 for example in entry["reviewExamples"])
+        for entry in full_info
+    )
+    assert any(len(entry["explanation"] or "") >= 240 for entry in full_info)
+    assert any(len(entry["collocations"] or []) >= 3 for entry in full_info)
+
+    compact = repo["reviewDeck"]["review.card-compact-counterexample"]["entries"]
+    assert any(len(entry["translation"]) >= 180 for entry in compact)
+    assert any(
+        any(len(example) >= 240 for example in entry["reviewExamples"])
+        for entry in compact
+    )
+    assert any(len(entry["explanation"] or "") >= 240 for entry in compact)
+
+    visual_source = (ROOT / "ios" / "BooksAndVocabUITests" / "ReviewCardLayoutEditorUITests.swift").read_text(
+        encoding="utf-8"
+    )
+    actual_asset_ids = set(re.findall(r'static let \w+ = "([^"]+-counterexample)"', visual_source))
+    assert actual_asset_ids == REVIEW_CARD_VISUAL_ASSET_IDS
+    for fixture_id, swift_case in REVIEW_CARD_UI_FIXTURE_CASES.items():
+        assert f"fixtures: [.{swift_case}]" in visual_source, fixture_id
+
+
 @pytest.mark.parametrize(
     ("domain", "path", "enum_name"),
     [
-        ("auth", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldAuthFixtureID"),
-        ("entitlements", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldEntitlementsFixtureID"),
+        ("auth", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldAuthFixtureID"),
+        ("entitlements", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldEntitlementsFixtureID"),
         ("settings", "ios/BooksAndVocab/Support/Fixtures/Settings/SettingsFixtures.swift", "SettingsFixtureID"),
         ("bookshelf", "ios/BooksAndVocab/Support/Fixtures/Bookshelf/BookshelfFixtures.swift", "BookshelfFixtureID"),
         ("todayReview", "ios/BooksAndVocab/Support/Fixtures/TodayReview/TodayReviewFixtures.swift", "TodayReviewFixtureID"),
         ("notebook", "ios/BooksAndVocab/Support/Fixtures/Notebook/NotebookFixtures.swift", "NotebookFixtureID"),
         ("podcast", "ios/BooksAndVocab/Support/Fixtures/Podcast/PodcastFixtures.swift", "PodcastFixtureID"),
-        ("runtimePodcast", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldRuntimePodcastFixtureID"),
-        ("reader", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldReaderFixtureID"),
-        ("vocabulary", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldVocabularyFixtureID"),
-        ("reviewDeck", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldReviewDeckFixtureID"),
-        ("syncPresenter", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldSyncPresenterFixtureID"),
+        ("runtimePodcast", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldRuntimePodcastFixtureID"),
+        ("reader", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldReaderFixtureID"),
+        ("vocabulary", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldVocabularyFixtureID"),
+        ("reviewDeck", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldReviewDeckFixtureID"),
+        ("syncPresenter", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift", "UIWorldSyncPresenterFixtureID"),
     ],
 )
 def test_fixture_domain_ids_are_a_subset_of_swift_fixture_enums(domain: str, path: str, enum_name: str):
@@ -685,7 +767,7 @@ def test_fixture_domain_ids_are_a_subset_of_swift_fixture_enums(domain: str, pat
     ],
 )
 def test_preference_domain_keys_match_swift_preferences_seed(domain: str, swift_constant: str):
-    swift_path = "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift"
+    swift_path = "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift"
 
     assert MODULE.PREFERENCE_DOMAIN_KEYS[domain] == _swift_string_set(swift_path, swift_constant)
 

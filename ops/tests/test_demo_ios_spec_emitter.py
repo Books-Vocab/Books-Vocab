@@ -45,6 +45,10 @@ CONTENT_PINNED_FIXTURES = (
     # UITest seam pins（NotebookReviewFlowUITests: probeword 前綴 + 量測卡片配對）
     ("reviewDeck", "probe"),
     ("reviewDeck", "notebookReviewDeck"),
+    # P12/P13 ReviewCard evidence is a canonical UI World projection, not a
+    # test-only raw seed; a spec must keep both IDs and their payload intact.
+    ("reviewDeck", "review.card-full-info"),
+    ("reviewDeck", "review.card-compact-counterexample"),
 )
 
 

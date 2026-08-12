@@ -65497,6 +65497,137 @@
         }
       ],
       "notebookSyncStatus": 1
+    },
+    "review.card-full-info": {
+      "notebookRemoteId": "ui-review-notebook",
+      "notebookName": "Review Card Full Content",
+      "entries": [
+        {
+          "explanation": "「strangulation」是描述呼吸道受到外力壓迫的正式詞彙；它可以出現在犯罪調查、法醫報告、醫療紀錄或文學敘事中，重點不只是短暫掐住脖子，而是逐步限制呼吸、造成缺氧、失去意識與死亡風險的完整過程。這段說明保留足夠的語意層次，讓標準版面能同時測量長背面、Dynamic Type 換行、自然高度與滾動容器，並確認底部評分工具列不會被內容推出畫面；測試資料不省略中段語意，才能讓前後面同時承受真實的內容密度。這也使截圖能辨識完整欄位與 compact 反例之間的差異，而不是把任何短字串都誤認成完整卡片。",
+          "partOfSpeech": "n.",
+          "chapterTitle": "Pressure and Evidence",
+          "kgCardId": "review-card-full-strangulation",
+          "difficultyTier": "advanced",
+          "reviewExamples": [
+            "The forensic report described the marks around the victim's neck as evidence of strangulation, while the investigators carefully compared the witness statements, the medical findings, and the timeline before deciding whether the injury could have been caused by an accident or by deliberate violence.",
+            "The long example remains intact so the review card can exercise natural height, scrolling, Dynamic Type, and the grading toolbar without relying on an artificial test-only payload."
+          ],
+          "collocations": [
+            "attempted strangulation",
+            "death by strangulation",
+            "signs of strangulation",
+            "strangulation injury"
+          ],
+          "rootForm": "strangle",
+          "inflections": [
+            "strangle",
+            "strangled",
+            "strangling"
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "strangulation",
+          "translation": "絞殺（strangulation）；以手、繩索或其他外力壓迫頸部，使人無法正常呼吸並可能失去意識的行為，也可泛指在暴力、醫學、法律或犯罪敘事中逐步限制呼吸、造成窒息與死亡風險的過程。這個詞比單純的「掐住」更正式，常與受害者、證據、調查、求救、法醫報告和責任判定一起出現；完整文字刻意保留，用於檢查複習卡正面與背面在標準版面、Dynamic Type、換行與滾動中的實際表現，避免 UI 測試只通過短字串而漏掉長內容問題。",
+          "context": "The forensic report described the marks around the victim's neck as evidence of strangulation, while the investigators compared witness statements, medical findings, and the timeline.",
+          "bookTitle": "Review Card Evidence Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "explanation": "「coaxed」表示以溫和、耐心而有技巧的方式，使某人逐漸願意做原本不打算做的事；它可以譯為哄勸、誘導或軟化對方，通常暗示說話者沒有直接強迫，而是透過鼓勵、談判、耐心解釋和建立信任讓對方改變決定。這段完整說明與較長的譯文、例句及搭配詞一起保留，專門用來壓力測試複習卡正面長文字、背面可選欄位、滾動行為和評分工具列的穩定性；保留完整上下文也能避免只用短句得到不具代表性的綠燈。這個長度讓 P13 的前面換行與背面滾動都由同一份 canonical payload 驅動，不需要另造 test-only seed。",
+          "partOfSpeech": "v.",
+          "chapterTitle": "Persuasion and Tone",
+          "kgCardId": "review-card-full-coaxed",
+          "difficultyTier": "advanced",
+          "reviewExamples": [
+            "After several careful conversations, the mediator coaxed the reluctant witness into explaining what had happened, reassuring her that the investigators wanted an accurate account rather than a convenient story and that every uncertain detail could be marked as uncertain.",
+            "The full-content example deliberately stays longer than a normal card so the layout evidence covers wrapping, scroll presentation, and a still-hittable grading toolbar."
+          ],
+          "collocations": [
+            "coax someone into something",
+            "gently coax",
+            "coax an answer out of someone",
+            "coaxed into agreement"
+          ],
+          "rootForm": "coax",
+          "inflections": [
+            "coax",
+            "coaxes",
+            "coaxing"
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "coaxed",
+          "translation": "說服；以溫和、耐心而有技巧的方式，使某人逐漸願意做原本不打算做的事，也可譯為哄勸、誘導或軟化對方。它通常暗示說話者沒有強迫對方，而是透過鼓勵、談判、耐心解釋和建立信任讓對方改變決定；完整文字刻意保留，用於檢查複習卡正面長譯文在標準與 Dynamic Type 版面中的換行、滾動與評分工具列可操作性，確保 P13 的長文字 counterexample 不是短資料假象。",
+          "context": "After several careful conversations, the mediator coaxed the reluctant witness into explaining what had happened, reassuring her that the investigators wanted an accurate account.",
+          "bookTitle": "Review Card Evidence Fixture",
+          "reviewMode": "production",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "notebookSyncStatus": 1
+    },
+    "review.card-compact-counterexample": {
+      "notebookRemoteId": "ui-review-notebook",
+      "notebookName": "Review Card Compact Counterexample",
+      "entries": [
+        {
+          "explanation": "「coaxed」表示透過耐心、溫和而有技巧的說服，使原本猶豫或拒絕的人慢慢願意採取某個行動；它與命令、威脅或直接強迫不同，語氣通常包含談判、鼓勵、建立信任，以及在對方仍保有選擇的情況下逐步改變決定。這個 counterexample 保留完整 explanation、長譯文與長例句，但在 compact profile 下故意隱藏 example、explanation 和 collocations 等 optional sections，用來證明 required 欄位仍能 materialize，而 optional 欄位確實可以消失。",
+          "partOfSpeech": "v.",
+          "chapterTitle": "Compact Counterexample",
+          "kgCardId": "review-card-compact-coaxed",
+          "difficultyTier": "advanced",
+          "reviewExamples": [
+            "The teacher gently coaxed the exhausted child into taking one more step toward the waiting car, explaining that they could stop whenever she needed and that the important thing was to move at a pace that felt safe rather than to pretend that the difficult journey had been easy.",
+            "This long example is retained in the canonical seed even when the compact layout omits optional sections, so the back-side materialization contract remains measurable."
+          ],
+          "collocations": [
+            "coax someone into something",
+            "gently coax",
+            "coax a confession out of someone",
+            "coaxed into trying"
+          ],
+          "rootForm": "coax",
+          "inflections": [
+            "coax",
+            "coaxes",
+            "coaxing"
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "word": "coaxed",
+          "translation": "說服、哄勸、誘導；以溫柔而有技巧的方式慢慢讓某人接受原本不想做的事情，通常包含耐心溝通、鼓勵、談判與建立信任，而不是用命令或威脅迫使對方服從。這個完整翻譯刻意保留多層語意與使用語氣，讓 compact counterexample 能在 required 欄位存在、optional 欄位隱藏的同時，測量長文字換行、Dynamic Type 滾動與底部操作區的邊界。",
+          "context": "The teacher gently coaxed the exhausted child into taking one more step toward the waiting car, explaining that they could stop whenever she needed.",
+          "bookTitle": "Review Card Evidence Fixture",
+          "reviewMode": "recognition",
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "notebookSyncStatus": 1
     }
   },
   "syncPresenter": {
