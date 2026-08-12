@@ -65,6 +65,14 @@ struct TodayReviewPage {
         element("todayReview.card.back")
     }
 
+    var frontNaturalContent: XCUIElement {
+        element("todayReview.card.front.content.natural")
+    }
+
+    var frontScrollContent: XCUIElement {
+        element("todayReview.card.front.content.scroll")
+    }
+
     /// The renderer publishes exactly one of these two content selectors. They
     /// make the natural-fit versus top-anchored-scroll contract assertable without
     /// depending on localized text or screenshot pixel matching.

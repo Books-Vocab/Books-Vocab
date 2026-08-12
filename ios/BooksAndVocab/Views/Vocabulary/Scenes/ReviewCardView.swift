@@ -212,13 +212,16 @@ struct ReviewCardView: View {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
             }
                 .frame(height: drawnHeight, alignment: .top)
+                .accessibilityIdentifier("todayReview.card.front.content.scroll")
         } else {
             ViewThatFits(in: .vertical) {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("todayReview.card.front.content.natural")
                 ScrollView(.vertical) {
                     reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                 }
+                .accessibilityIdentifier("todayReview.card.front.content.scroll")
             }
             .frame(height: drawnHeight, alignment: .top)
         }
@@ -268,7 +271,9 @@ struct ReviewCardView: View {
                     Text(card.translation)
                         .font(appSkin.typography.body.weight(.semibold))
                         .foregroundStyle(appSkin.palette.primaryTextMuted)
+                        .lineLimit(3)
                         .minimumScaleFactor(0.75)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 // Inline 欄位（詞性）與核心詞共用這條 firstTextBaseline —— 它是單字的

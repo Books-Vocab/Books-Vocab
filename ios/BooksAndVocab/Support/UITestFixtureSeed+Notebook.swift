@@ -15,8 +15,10 @@ extension UITestFixtureSeed {
             seedNotebookReviewDeck(into: container)
         case "reviewDeckVaried":
             seedNotebookReviewDeckVaried(into: container)
-        case "reviewCardFullContent":
-            seedNotebookReviewCardFullContent(into: container)
+        case UIWorldReviewDeckFixtureID.reviewCardFullInfo.rawValue:
+            seedNotebookReviewCardEvidence(for: .reviewCardFullInfo, into: container)
+        case UIWorldReviewDeckFixtureID.reviewCardCompactCounterexample.rawValue:
+            seedNotebookReviewCardEvidence(for: .reviewCardCompactCounterexample, into: container)
         default:
             failFixtureSeed("Unknown notebook fixture ID: \(id)")
         }
@@ -97,75 +99,23 @@ extension UITestFixtureSeed {
         }
     }
 
-    /// Dedicated Review Card evidence fixture: every standard-profile back field
-    /// has real payload, so UI selectors can distinguish full content from the
-    /// compact profile without borrowing the geometry-only varied deck.
     @MainActor
-    private static func seedNotebookReviewCardFullContent(into container: ModelContainer) {
+    private static func seedNotebookReviewCardEvidence(
+        for fixtureID: UIWorldReviewDeckFixtureID,
+        into container: ModelContainer
+    ) {
+        let seed = FixtureDatasetStore.requireReviewDeckSeed(for: fixtureID)
         let context = container.mainContext
-        let notebookId = "ui-review-notebook"
-        let base = Date(timeIntervalSince1970: 1_700_100_000)
-        let example = "The observant researcher connected the scattered clues before anyone else noticed the pattern."
-        let explanation = "A detailed explanation remains available when the standard profile is shown. It is intentionally long enough to exercise the scroll path."
-
         do {
-            for notebook in try context.fetch(
-                FetchDescriptor<Notebook>(predicate: #Predicate { $0.remoteId == notebookId })
-            ) {
+            for notebook in try context.fetch(FetchDescriptor<Notebook>()) {
                 context.delete(notebook)
             }
             try clearVocabularyEntries(from: context)
 
-            let notebook = Notebook(remoteId: notebookId, name: "Review Card Full Content")
-            notebook.syncStatus = 1
-            context.insert(notebook)
-
-            for index in 0..<2 {
-                let word = "reviewfull\(index)"
-                let translation = index == 1
-                    ? "A complete review-card translation with deliberately long text that wraps across several lines for the large text counterexample."
-                    : "A complete review-card translation"
-                let entry = VocabularyEntry(
-                    word: word,
-                    translation: translation,
-                    context: example,
-                    explanation: explanation,
-                    partOfSpeech: "n.",
-                    bookTitle: "Review Card Fixture",
-                    chapterTitle: "Full Content"
-                )
-                entry.notebookId = notebookId
-                entry.kgCardId = "review-full-\(index)"
-                entry.difficultyTier = "advanced"
-                entry.reviewMode = .recognition
-                entry.reviewExamples = [example, "A second example keeps the natural measurement non-trivial."]
-                entry.collocations = ["complete review", "full context", "preserve payload"]
-                entry.graphLinksByKind = [
-                    "related": [
-                        KGCardLinkSummary(
-                            id: "review-full-link-\(index)",
-                            cardId: "review-full-target-\(index)",
-                            word: "connected",
-                            kind: "related",
-                            label: "related",
-                            confidence: 0.9,
-                            reason: "fixture evidence",
-                            hidden: false
-                        )
-                    ]
-                ]
-                entry.syncStatus = 1
-                entry.actionType = "add"
-                entry.reviewCount = 0
-                entry.reviewStreak = 0
-                entry.dateAdded = base.addingTimeInterval(Double(index))
-                entry.nextReviewAt = base
-                context.insert(entry)
-            }
-            try context.save()
-            AppLog.app.info("UI-test fixture seeded: notebook.reviewCardFullContent")
+            let deck = try insertReviewDeckSeed(seed, into: context)
+            AppLog.app.info("UI-test fixture seeded: notebook.\(fixtureID.rawValue) (\(deck.count) cards)")
         } catch {
-            failFixtureSeed("Failed to seed notebook.reviewCardFullContent fixture: \(error)")
+            failFixtureSeed("Failed to seed notebook.\(fixtureID.rawValue) fixture: \(error)")
         }
     }
 
