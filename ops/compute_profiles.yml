@@ -1,0 +1,54 @@
+{
+  "schema": "kg.compute_profiles.v1",
+  "version": 1,
+  "profiles": {
+    "backend.targeted-pytest": {
+      "command": {
+        "argv": [
+          "uv", "run", "--no-project", "--python", "3.13", "--with", "pytest",
+          "pytest", "-q", "{test_path}"
+        ],
+        "shell": false
+      },
+      "parameters": {
+        "test_path": {
+          "type": "relative-path",
+          "prefix": "backend/tests/",
+          "suffix": ".py",
+          "max_length": 256
+        }
+      },
+      "source_kind": "clean-committed-tree",
+      "required_capabilities": ["python-3.13", "pytest"],
+      "resource_class": "backend-targeted",
+      "minimum_tier": "operator",
+      "timeout_seconds": 300,
+      "remote_eligible": false,
+      "git_metadata_required": false,
+      "side_effects": ["repo-read"],
+      "network_policy": "none",
+      "sandbox_policy": "uv-no-project",
+      "runner_image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifact_contract": "stdout-stderr-only"
+    },
+    "ops.docs-lint-registry": {
+      "command": {
+        "argv": ["./ops/docs_lint.sh", "--registry"],
+        "shell": false
+      },
+      "parameters": {},
+      "source_kind": "clean-committed-tree",
+      "required_capabilities": ["bash"],
+      "resource_class": "ops-readonly",
+      "minimum_tier": "observer",
+      "timeout_seconds": 120,
+      "remote_eligible": false,
+      "git_metadata_required": false,
+      "side_effects": ["repo-read"],
+      "network_policy": "none",
+      "sandbox_policy": "repo-readonly",
+      "runner_image_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifact_contract": "stdout-stderr-only"
+    }
+  }
+}

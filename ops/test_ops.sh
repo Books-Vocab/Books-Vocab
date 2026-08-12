@@ -149,7 +149,9 @@ run_one() {
     review-audit)       ./ops/tests/test_review_audit.sh ;;
     review-cycle)       ./ops/tests/test_review_cycle.sh ;;
     capability-matrix)
-      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_capability_matrix.py
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
+        ops/tests/test_capability_matrix.py \
+        ops/tests/test_compute_contract.py
       ;;
     ui-deadcode)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_deadcode.py &&
