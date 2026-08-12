@@ -4,6 +4,11 @@
   "acceptance_expect_rc": 0,
   "brief": "三筆已經存檔的紀錄裡寫著事後被推翻的數字，紀錄不能再改，之後翻閱的人會照著錯的數字理解當時狀況。",
   "category": "doc",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-12",
+  "contract_checked_by": "delivery-coordinator:post-f742fb",
+  "contract_evidence": "2026-08-12 post-f742fb dispatch probe\nticket=IMP-20260807-adfc53\npreflight=./ops/backlog.py preflight IMP-20260807-adfc53 --probe-acceptance --json\npreflight_json=/tmp/IMP-20260807-adfc53-preflight.json\nacceptance_rc=1 expected=0\nacceptance=./ops/backlog.py show IMP-20260807-adfc53 --json | python3 -c '<stored resolution-token assertion>'\nshow_raw=/tmp/IMP-20260807-adfc53-show.json\nobserved=entry.resolution is empty; required tokens 6826af14d, bb65a92cb, 3b0b98afc, ec2278e6d, 65, 101, closed_without_verification are absent\nhistory_probe=git log --all -S'6826af14d' --oneline -- docs/runbook/backlog/IMP-20260807-adfc53.json; only ticket creation/groom commits exist and no resolution-bearing version is present\nroot_cause=metadata-only historical closure evidence is missing, so the stored acceptance cannot be made executable or truthfully verified from current SoT\nclassification=CONTRACT-BLOCKED\naction=do not open child; preserve RED/raw and require an official contract/evidence update before any closure claim",
+  "contract_status": "blocked",
   "date": "2026-08-07",
   "detail": "三顆已落地 commit 的訊息裡有經稽核推翻的數字,因無法改寫歷史(改寫會把本批 fixed_by 的 sha 全部變成孤兒,正是本分支存在的理由)故記錄於此:(1) 6826af14d 的『16 個 archive + 3 個 reference 在用 frozen』在任何 commit 狀態都不成立,那是修到一半的工作目錄快照;(2) bb65a92cb 的『回填前 66:63 缺 fixed_by + 3 壞 verdict』用該 commit 自己的碼實跑是 65(63+2);(3) 3b0b98afc 的『99/159 根本沒有 verdict(62%)』拿的是另一個謂詞的數字,沒有 verdict 的是 101/159。另 ec2278e6d 的『160 筆全部被赦免』:160 確實是該 commit 當下的 store 大小,但赦免迴圈走的是 closed_without_verification(69 筆),數字為真而掛在錯的名詞上。教訓與 IMP-0047 同族:量測要連謂詞一起記,只記數字就無法在事後判斷它答的是哪個問題。",
   "fix_site": "docs/runbook/backlog/IMP-20260807-adfc53.json 的 resolution 欄（經 ops/backlog.py verify 或 anchor 寫入，不要手改 json）",
@@ -16,6 +21,10 @@
   "scope": "只在這張票裡補一段更正說明然後結案，不動任何程式、也不動歷史紀錄。",
   "severity": "low",
   "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "contract-blocked",
+  "stream": "IMP",
+  "verdict": "CONTRACT-BLOCKED",
+  "verified_at": "2026-08-12",
+  "verified_by": "delivery-coordinator:post-f742fb",
+  "verified_evidence": "2026-08-12 post-f742fb dispatch probe\nticket=IMP-20260807-adfc53\npreflight=./ops/backlog.py preflight IMP-20260807-adfc53 --probe-acceptance --json\npreflight_json=/tmp/IMP-20260807-adfc53-preflight.json\nacceptance_rc=1 expected=0\nacceptance=./ops/backlog.py show IMP-20260807-adfc53 --json | python3 -c '<stored resolution-token assertion>'\nshow_raw=/tmp/IMP-20260807-adfc53-show.json\nobserved=entry.resolution is empty; required tokens 6826af14d, bb65a92cb, 3b0b98afc, ec2278e6d, 65, 101, closed_without_verification are absent\nhistory_probe=git log --all -S'6826af14d' --oneline -- docs/runbook/backlog/IMP-20260807-adfc53.json; only ticket creation/groom commits exist and no resolution-bearing version is present\nroot_cause=metadata-only historical closure evidence is missing, so the stored acceptance cannot be made executable or truthfully verified from current SoT\nclassification=CONTRACT-BLOCKED\naction=do not open child; preserve RED/raw and require an official contract/evidence update before any closure claim"
 }
