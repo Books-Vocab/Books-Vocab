@@ -215,6 +215,30 @@ struct SettingsSheetPage {
         exact(.staticText, "settings.account.resetBoundary.message")
     }
 
+    var syncSummaryButton: XCUIElement {
+        app.buttons["settings.syncSummary"]
+    }
+
+    var syncLifecycle: XCUIElement {
+        app.otherElements["settings.syncLifecycle"]
+    }
+
+    var syncLifecycleStatus: XCUIElement {
+        app.staticTexts["settings.syncLifecycle.status"]
+    }
+
+    var syncLifecycleMessage: XCUIElement {
+        app.staticTexts["settings.syncLifecycle.message"]
+    }
+
+    var retrySyncButton: XCUIElement {
+        app.buttons["settings.syncLifecycle.retryButton"]
+    }
+
+    var dismissSyncStatusButton: XCUIElement {
+        app.buttons["settings.syncLifecycle.dismissButton"]
+    }
+
     // MARK: - Review rhythm section (pushed)
 
     var pauseReviewClockToggle: XCUIElement {
