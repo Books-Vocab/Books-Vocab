@@ -4,6 +4,134 @@ import Testing
 @testable import BooksAndVocab
 
 struct ExploreFixtureContractTests {
+    private static var marketingDemoURL: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repository root
+            .appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
+    }
+
+    @Test func fixtureDatasetRequiresTopLevelSharedDecks() throws {
+        let complete = try FixtureDatasetStoreTests.completeV2DatasetData(
+            """
+            {
+              "schema": "kg.fixture.dataset.v2",
+              "datasetID": "missing-shared-decks"
+            }
+            """
+        )
+        var object = try #require(
+            try JSONSerialization.jsonObject(with: complete) as? [String: Any]
+        )
+        object.removeValue(forKey: "sharedDecks")
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+        #expect(throws: DecodingError.self) {
+            try FixtureDatasetStore.decode(data)
+        }
+    }
+
+    @Test func assetResolutionUsesCurrentWorktreeAndInstalledSnapshot() throws {
+        let relativeSourcePath = "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png"
+        let staleAbsoluteSourcePath = "/Users/chenliangyu/project/kg/\(relativeSourcePath)"
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repository root
+            .appendingPathComponent(relativeSourcePath)
+        let sourceData = try Data(contentsOf: sourceURL)
+        let sha256 = try FixtureDatasetStore.sha256Hex(for: sourceURL)
+        let installAs = "ExploreContractTests/\(UUID().uuidString)/cover.png"
+
+        var object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: Self.marketingDemoURL)
+            ) as? [String: Any]
+        )
+        var assets = try #require(object["assets"] as? [String: Any])
+        var images = try #require(assets["images"] as? [String: Any])
+        var asset = try #require(images["explore_required"] as? [String: Any])
+        asset["sourcePath"] = staleAbsoluteSourcePath
+        asset["sha256"] = sha256
+        asset["byteSize"] = sourceData.count
+        asset["installAs"] = installAs
+        images["explore_required"] = asset
+        assets["images"] = images
+        object["assets"] = assets
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+        let resolved = try FixtureDatasetStore.resolveSourceURL(
+            for: try #require(try FixtureDatasetStore.decode(data).assets.asset(for: "images.explore_required"))
+        )
+        #expect(resolved.path.hasSuffix(relativeSourcePath))
+        #expect(!resolved.path.contains("/Users/chenliangyu/project/kg/ios/"))
+
+        let installed = try FixtureDatasetStore.withTestingData(data) {
+            try FixtureDatasetStore.requireInstalledAsset(ref: "images.explore_required")
+        }
+        #expect(installed.sha256 == sha256)
+        #expect(installed.byteSize == sourceData.count)
+        #expect(installed.contentType == "image/png")
+        #expect(installed.fileSystemInode > 0)
+        #expect(FileManager.default.fileExists(atPath: installed.url.path))
+        #expect(installed.url.path.hasSuffix(installAs))
+        try? FileManager.default.removeItem(at: installed.url)
+    }
+
+    @Test @MainActor func exploreFixtureServiceFailsThenProjectsRetryThroughProductionService() async throws {
+        let data = try Data(contentsOf: Self.marketingDemoURL)
+        try await FixtureDatasetStore.withTestingData(data) {
+            let container = ExploreFixtureMaterializer.makeContainer(
+                for: .retry,
+                seedCatalog: false
+            )
+            let service = ExploreUIWorldCatalogService(fixtureID: .retry)
+
+            let first = await service.syncAll(context: container.mainContext)
+            #expect(first == .listFetchFailed)
+            #expect(try container.mainContext.fetch(FetchDescriptor<SharedDeck>()).isEmpty)
+
+            let second = await service.syncAll(context: container.mainContext)
+            #expect(second == .completed(catalogCount: 1))
+            let decks = try container.mainContext.fetch(FetchDescriptor<SharedDeck>())
+            let deck = try #require(decks.first)
+            #expect(deck.coverAssetID == "images.explore_required")
+            #expect(
+                deck.coverImagePath.map { FileManager.default.fileExists(atPath: $0) } == .some(true)
+            )
+            #expect(deck.coverImageSHA256 == "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109")
+            #expect(deck.coverImageFileSystemInode ?? 0 > 0)
+        }
+    }
+
+    @Test @MainActor func exploreFixtureServiceCanExposePartialCacheFromRealFailure() async throws {
+        let data = try Data(contentsOf: Self.marketingDemoURL)
+        try await FixtureDatasetStore.withTestingData(data) {
+            let container = ExploreFixtureMaterializer.makeContainer(
+                for: .retry,
+                seedCatalog: false
+            )
+            let service = ExploreUIWorldCatalogService(
+                fixtureID: .retry,
+                initialCacheFixtureID: .loaded
+            )
+
+            let outcome = await service.syncAll(context: container.mainContext)
+            #expect(outcome == .listFetchFailed)
+            let deckCount = try container.mainContext.fetch(FetchDescriptor<SharedDeck>()).count
+            #expect(
+                ExplorePhase.resolve(
+                    isSyncing: false,
+                    syncFailed: true,
+                    totalDeckCount: deckCount,
+                    filteredCount: deckCount,
+                    isFilteringOrSearching: false
+                ) == .partial
+            )
+        }
+    }
+
     @Test func sharedDeckWorldPartitionsRequiredAndCounterexampleAssets() throws {
         let catalog = try UIWorldSharedDeckCatalogSeed(
                 fixtures: [
@@ -208,7 +336,7 @@ struct ExploreFixtureContractTests {
         )
 
         let document = try FixtureDatasetStore.decode(complete)
-        let loaded = try #require(document.sharedDecks)
+        let loaded = document.sharedDecks
         #expect(loaded.requiredAssetIDs == Set([
             "images.explore_required",
             "images.explore_required_empty",

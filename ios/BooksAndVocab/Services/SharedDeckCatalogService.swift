@@ -17,7 +17,12 @@
 import Foundation
 import SwiftData
 
-final class SharedDeckCatalogService {
+@MainActor
+protocol SharedDeckCatalogServicing {
+    func syncAll(context: ModelContext) async -> SharedDeckCatalogService.SyncOutcome
+}
+
+final class SharedDeckCatalogService: SharedDeckCatalogServicing {
     /// Shared-deck 目錄只 host 在公開後端，故釘 `AppURLs.domain`；唯一例外是 UI-test
     /// override（隔離 world 絕不可打真實目錄，否則 reconcile 會 tombstone 掉 seed）。
     static var baseURL: String {
@@ -270,7 +275,12 @@ final class SharedDeckCatalogService {
     // MARK: - Upsert
 
     @MainActor
-    static func upsertDeck(summary: SharedDeckSummary, sortOrder: Int, context: ModelContext) {
+    static func upsertDeck(
+        summary: SharedDeckSummary,
+        sortOrder: Int,
+        context: ModelContext,
+        installedAsset: UIWorldInstalledAsset? = nil
+    ) {
         let deckId = summary.deckId
         let descriptor = FetchDescriptor<SharedDeck>(
             predicate: #Predicate { $0.remoteId == deckId }
@@ -295,6 +305,12 @@ final class SharedDeckCatalogService {
         deck.ratingCount = summary.ratingCount
         deck.color = summary.color
         deck.coverPattern = summary.coverPattern
+        deck.coverAssetID = installedAsset?.ref
+        deck.coverImagePath = installedAsset?.url.path
+        deck.coverImageSHA256 = installedAsset?.sha256
+        deck.coverImageByteSize = installedAsset?.byteSize
+        deck.coverImageContentType = installedAsset?.contentType
+        deck.coverImageFileSystemInode = installedAsset.map { Int($0.fileSystemInode) }
         deck.updatedAt = summary.updatedAt.flatMap(AppDateFormatters.parseISO8601)
         deck.sortOrder = sortOrder
         deck.syncedAt = Date()

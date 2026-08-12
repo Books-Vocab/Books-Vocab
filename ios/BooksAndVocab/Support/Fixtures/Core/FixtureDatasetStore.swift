@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import UniformTypeIdentifiers
 
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 // base64(raw DEFLATE(JSON)) — preferred injection key. Plaintext base64 of a
@@ -27,6 +28,16 @@ struct FixtureInstalledAssetProof: Equatable {
             String(actualByteSize),
         ].joined(separator: "|")
     }
+}
+
+struct UIWorldInstalledAsset: Equatable {
+    let ref: String
+    let url: URL
+    let sha256: String
+    let byteSize: Int
+    let contentType: String
+    /// 僅記錄安裝副本的 filesystem identity；manifest 不依賴 source inode。
+    let fileSystemInode: UInt64
 }
 
 enum FixtureDatasetStore {
@@ -152,7 +163,7 @@ enum FixtureDatasetStore {
         return seed
     }
 
-    static func requireInstalledAssetURL(ref: String) throws -> URL {
+    static func requireInstalledAsset(ref: String) throws -> UIWorldInstalledAsset {
         let asset = try requireAsset(ref: ref)
         let sourceURL = try validatedSourceURL(for: asset, ref: ref)
         let destination = try installURL(for: asset, ref: ref)
@@ -203,7 +214,43 @@ enum FixtureDatasetStore {
                 NSLocalizedDescriptionKey: "UI World installed asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(installedHash)",
             ])
         }
-        return destination
+        return try installedAssetSnapshot(ref: ref)
+    }
+
+    static func requireInstalledAssetURL(ref: String) throws -> URL {
+        try requireInstalledAsset(ref: ref).url
+    }
+
+    static func installedAssetSnapshot(ref: String) throws -> UIWorldInstalledAsset {
+        let asset = try requireAsset(ref: ref)
+        let destination = try installURL(for: asset, ref: ref)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: destination.path) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: destination.path])
+        }
+        let installedSize = try byteSize(for: destination)
+        guard installedSize == asset.byteSize else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: destination.path,
+                NSLocalizedDescriptionKey: "UI World installed asset \(ref) byteSize mismatch: expected \(asset.byteSize), got \(installedSize)",
+            ])
+        }
+        let installedHash = try sha256Hex(for: destination)
+        guard installedHash == asset.sha256 else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: destination.path,
+                NSLocalizedDescriptionKey: "UI World installed asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(installedHash)",
+            ])
+        }
+        try validateContentType(asset.contentType, for: destination, ref: ref)
+        return UIWorldInstalledAsset(
+            ref: ref,
+            url: destination,
+            sha256: installedHash,
+            byteSize: installedSize,
+            contentType: asset.contentType,
+            fileSystemInode: try fileSystemInode(for: destination)
+        )
     }
 
     /// Returns proof for the one canonical Reader asset matching the installed
@@ -292,66 +339,13 @@ enum FixtureDatasetStore {
 
     private static func validatedSourceURL(for asset: UIWorldAsset, ref: String) throws -> URL {
         let sourcePath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requiresRepoRelativePath = isReaderBookAsset(ref: ref)
-        guard !sourcePath.isEmpty else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: sourcePath,
-                NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath must not be empty",
-            ])
-        }
-        guard !requiresRepoRelativePath || !sourcePath.hasPrefix("/") else {
+        guard !(!sourcePath.isEmpty && isReaderBookAsset(ref: ref) && sourcePath.hasPrefix("/")) else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
                 NSFilePathErrorKey: sourcePath,
                 NSLocalizedDescriptionKey: "Reader asset \(ref) sourcePath must be repo-relative, not absolute",
             ])
         }
-        let url: URL
-        if sourcePath.hasPrefix("/") {
-            url = URL(fileURLWithPath: sourcePath)
-        } else {
-            // Checked-in UI World assets use repo-relative locators. Resolve
-            // them from this source file's checkout so a child worktree can
-            // materialize the same fixture without embedding its path.
-            let components = sourcePath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-            guard !components.isEmpty,
-                  components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
-                throw CocoaError(.fileReadCorruptFile, userInfo: [
-                    NSFilePathErrorKey: sourcePath,
-                    NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath must be a safe repo-relative path",
-                ])
-            }
-            let checkoutRoot = URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent() // Core
-                .deletingLastPathComponent() // Fixtures
-                .deletingLastPathComponent() // Support
-                .deletingLastPathComponent() // BooksAndVocab
-                .deletingLastPathComponent() // ios
-            let lexicalRoot = checkoutRoot.standardizedFileURL
-            let lexicalCandidate = lexicalRoot
-                .appendingPathComponent(sourcePath)
-                .standardizedFileURL
-            guard isContained(lexicalCandidate, in: lexicalRoot) else {
-                throw CocoaError(.fileReadCorruptFile, userInfo: [
-                    NSFilePathErrorKey: lexicalCandidate.path,
-                    NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath escapes the repository root",
-                ])
-            }
-            guard FileManager.default.fileExists(atPath: lexicalCandidate.path) else {
-                throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: lexicalCandidate.path])
-            }
-            let resolvedRoot = lexicalRoot.resolvingSymlinksInPath().standardizedFileURL
-            let resolvedCandidate = lexicalCandidate.resolvingSymlinksInPath().standardizedFileURL
-            guard isContained(resolvedCandidate, in: resolvedRoot) else {
-                throw CocoaError(.fileReadCorruptFile, userInfo: [
-                    NSFilePathErrorKey: resolvedCandidate.path,
-                    NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath escapes the repository root through a symlink",
-                ])
-            }
-            url = resolvedCandidate
-        }
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
-        }
+        let url = try resolveSourceURL(for: asset)
         let size = try byteSize(for: url)
         guard size == asset.byteSize else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
@@ -366,7 +360,65 @@ enum FixtureDatasetStore {
                 NSLocalizedDescriptionKey: "UI World asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(actual)",
             ])
         }
+        try validateContentType(asset.contentType, for: url, ref: ref)
         return url
+    }
+
+    /// Resolve a manifest source against the checkout that compiled this app.
+    /// Relative paths are canonical; older absolute paths are accepted only
+    /// when their suffix identifies a path inside this checkout.
+    static func resolveSourceURL(for asset: UIWorldAsset) throws -> URL {
+        let root = repositoryRootURL.standardizedFileURL
+        let rawPath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPath.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "UI World asset sourcePath must not be empty",
+            ])
+        }
+        let rawURL = URL(fileURLWithPath: rawPath)
+        let candidate: URL
+        if rawURL.path.hasPrefix("/") {
+            let rawComponents = rawURL.standardizedFileURL.pathComponents
+            let rootComponents = root.pathComponents
+            let rootName = rootComponents
+                .lastIndex(of: ".claude")
+                .flatMap { index in index > 0 ? rootComponents[index - 1] : nil }
+            if let rootName,
+               let rootIndex = rawComponents.lastIndex(of: rootName),
+               rootIndex + 1 < rawComponents.count {
+                let suffix = rawComponents[(rootIndex + 1)...].joined(separator: "/")
+                candidate = root.appendingPathComponent(suffix)
+            } else {
+                candidate = rawURL
+            }
+        } else {
+            let components = rawPath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+            guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [
+                    NSLocalizedDescriptionKey: "UI World asset sourcePath must be a safe repo-relative path",
+                ])
+            }
+            candidate = root.appendingPathComponent(rawPath)
+        }
+        let lexical = candidate.standardizedFileURL
+        guard isContained(lexical, in: root) else {
+            throw CocoaError(.fileReadNoPermission, userInfo: [
+                NSFilePathErrorKey: lexical.path,
+                NSLocalizedDescriptionKey: "UI World asset sourcePath must resolve inside the current checkout",
+            ])
+        }
+        guard FileManager.default.fileExists(atPath: lexical.path) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: lexical.path])
+        }
+        let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let resolved = lexical.resolvingSymlinksInPath().standardizedFileURL
+        guard isContained(resolved, in: resolvedRoot) else {
+            throw CocoaError(.fileReadNoPermission, userInfo: [
+                NSFilePathErrorKey: resolved.path,
+                NSLocalizedDescriptionKey: "UI World asset sourcePath escapes the current checkout through a symlink",
+            ])
+        }
+        return resolved
     }
 
     private static func isReaderBookAsset(ref: String) -> Bool {
@@ -378,6 +430,15 @@ enum FixtureDatasetStore {
         let rootPath = root.standardizedFileURL.path
         let candidatePath = candidate.standardizedFileURL.path
         return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
+    }
+
+    private static var repositoryRootURL: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Core
+            .deletingLastPathComponent() // Fixtures
+            .deletingLastPathComponent() // Support
+            .deletingLastPathComponent() // BooksAndVocab
+            .deletingLastPathComponent() // ios
     }
 
     private static func validateDestinationContainment(
@@ -418,8 +479,34 @@ enum FixtureDatasetStore {
         guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
             preconditionFailure("UI World asset \(ref) installAs contains an unsafe path component: \(installAs)")
         }
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(installAs)
+        let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let destination = root.appendingPathComponent(installAs).standardizedFileURL
+        guard isContained(destination, in: root.standardizedFileURL) else {
+            preconditionFailure("UI World asset \(ref) installAs escaped the document directory: \(installAs)")
+        }
+        return destination
+    }
+
+    private static func validateContentType(_ contentType: String, for url: URL, ref: String) throws {
+        let expected = contentType.split(separator: ";", maxSplits: 1).first.map(String.init) ?? contentType
+        guard let actual = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType,
+              actual == expected else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: url.path,
+                NSLocalizedDescriptionKey: "UI World asset \(ref) contentType mismatch: expected \(expected)",
+            ])
+        }
+    }
+
+    private static func fileSystemInode(for url: URL) throws -> UInt64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let number = attributes[.systemFileNumber] as? NSNumber else {
+            throw CocoaError(.fileReadUnknown, userInfo: [
+                NSFilePathErrorKey: url.path,
+                NSLocalizedDescriptionKey: "UI World installed asset has no filesystem inode snapshot",
+            ])
+        }
+        return number.uint64Value
     }
 
     static func sha256Hex(for url: URL) throws -> String {

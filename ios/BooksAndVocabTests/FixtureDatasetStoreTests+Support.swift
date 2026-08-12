@@ -58,13 +58,29 @@ extension FixtureDatasetStoreTests {
 
     static func completeV2DatasetData(_ json: String) throws -> Data {
         var object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        object["assets"] = object["assets"] ?? [
-            "books": [:],
-            "audio": [:],
-            "subtitles": [:],
-            "text": [:],
-            "images": [:],
+        var assets = (object["assets"] as? [String: Any]) ?? [:]
+        assets["books"] = assets["books"] ?? [:]
+        assets["audio"] = assets["audio"] ?? [:]
+        assets["subtitles"] = assets["subtitles"] ?? [:]
+        assets["text"] = assets["text"] ?? [:]
+        var images = (assets["images"] as? [String: Any]) ?? [:]
+        let defaultImageAssets: [(String, String)] = [
+            ("ui_world_required", "required"),
+            ("ui_world_empty", "empty"),
+            ("ui_world_counterexample_empty", "counterexample-empty"),
+            ("ui_world_counterexample_retry", "counterexample-retry"),
         ]
+        for (assetID, name) in defaultImageAssets where images[assetID] == nil {
+            images[assetID] = [
+                "sourcePath": "/tmp/\(name).png",
+                "sha256": String(repeating: "a", count: 64),
+                "installAs": "FixtureDatasetStoreTests/\(name).png",
+                "byteSize": 1,
+                "contentType": "image/png",
+            ]
+        }
+        assets["images"] = images
+        object["assets"] = assets
         object["preferences"] = object["preferences"] ?? [
             "userDefaults": [:],
             "ubiquitousKeyValueStore": [:],
@@ -84,6 +100,66 @@ extension FixtureDatasetStoreTests {
             "syncPresenter",
         ] where object[key] == nil {
             object[key] = [:]
+        }
+        if object["sharedDecks"] == nil {
+            object["sharedDecks"] = [
+                "fixtures": [
+                    "loading": [
+                        "label": "explore-loading",
+                        "phase": "loading",
+                        "retryPhase": NSNull(),
+                        "deckIDs": ["ui-world-required"],
+                        "assetIDs": ["images.ui_world_required"],
+                    ],
+                    "loaded": [
+                        "label": "explore-loaded",
+                        "phase": "loaded",
+                        "retryPhase": NSNull(),
+                        "deckIDs": ["ui-world-required"],
+                        "assetIDs": ["images.ui_world_required"],
+                    ],
+                    "empty": [
+                        "label": "explore-empty",
+                        "phase": "empty",
+                        "retryPhase": NSNull(),
+                        "deckIDs": [],
+                        "assetIDs": ["images.ui_world_empty"],
+                    ],
+                    "retry": [
+                        "label": "explore-retry",
+                        "phase": "error",
+                        "retryPhase": "loaded",
+                        "deckIDs": ["ui-world-required"],
+                        "assetIDs": ["images.ui_world_required"],
+                    ],
+                    "empty-counterexample": [
+                        "label": "explore-empty-counterexample",
+                        "phase": "empty",
+                        "retryPhase": NSNull(),
+                        "deckIDs": [],
+                        "assetIDs": ["images.ui_world_counterexample_empty"],
+                    ],
+                    "retry-counterexample": [
+                        "label": "explore-retry-counterexample",
+                        "phase": "error",
+                        "retryPhase": "loaded",
+                        "deckIDs": ["ui-world-counterexample"],
+                        "assetIDs": ["images.ui_world_counterexample_retry"],
+                    ],
+                ],
+                "decks": [
+                    "ui-world-required": [
+                        "remoteId": "ui-world-required",
+                        "title": "UI World fixture deck",
+                        "assetID": "images.ui_world_required",
+                    ],
+                    "ui-world-counterexample": [
+                        "remoteId": "ui-world-counterexample",
+                        "title": "UI World counterexample deck",
+                        "assetID": "images.ui_world_counterexample_retry",
+                    ],
+                ],
+            ]
         }
         return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }

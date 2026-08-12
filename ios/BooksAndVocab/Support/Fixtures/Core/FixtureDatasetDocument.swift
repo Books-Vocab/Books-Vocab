@@ -183,7 +183,7 @@ struct FixtureDatasetDocument: Decodable {
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
         // Legacy clock shapes remain readable, but passage/wordDetail content
         // stays fail-closed; canonical context is validated as one contract.
-        sharedDecks = try container.decodeIfPresent(UIWorldSharedDeckCatalogSeed.self, forKey: .sharedDecks)
+        sharedDecks = try container.decode(UIWorldSharedDeckCatalogSeed.self, forKey: .sharedDecks)
         // Optional domains remain backward-compatible when absent. Legacy
         // clock shapes stay readable, while present canonical content is
         // validated as one fail-closed contract.
@@ -206,10 +206,7 @@ struct FixtureDatasetDocument: Decodable {
         if let scenarioContext {
             try scenarioContext.validate(assets: assets, vocabulary: vocabulary, decoder: decoder)
         }
-        try sharedDecks?.validateAssets(assets)
-        if let scenarioContext {
-            try scenarioContext.validate(assets: assets, vocabulary: vocabulary, decoder: decoder)
-        }
+        try sharedDecks.validateAssets(assets)
     }
 
     private func validateKnownFixtureIDs(codingPath: [CodingKey]) throws {
