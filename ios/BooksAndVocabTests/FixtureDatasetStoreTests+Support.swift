@@ -18,6 +18,12 @@ extension FixtureDatasetStoreTests {
             .path
     }
 
+    static var readerInvalidDestinationAssetPath: String {
+        repoRootURL
+            .appendingPathComponent("ops/fixtures/assets/reader-invalid-destination.epub")
+            .path
+    }
+
     static func withEnv<T>(_ key: String, _ value: String?, perform: () throws -> T) rethrows -> T {
         let previous = getenv(key).map { String(cString: $0) }
         if let value {

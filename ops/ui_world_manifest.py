@@ -207,7 +207,7 @@ FIXTURE_DOMAIN_IDS = {
     },
     "podcast": {"shelf_continue", "shelf_single"},
     "runtimePodcast": {"playablePreview", "tieredCatalog"},
-    "reader": {"realBookLibrary"},
+    "reader": {"realBookLibrary", "invalidDestinationLibrary"},
     "vocabulary": {
         "archivedEmpty",
         "archivedLong",

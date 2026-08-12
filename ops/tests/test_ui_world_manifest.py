@@ -118,14 +118,26 @@ def test_validate_accepts_repo_ui_world():
 
 def test_validator_rejects_absolute_or_escaping_asset_source_paths(tmp_path: Path):
     data = _marketing_demo()
-    data["assets"]["books"]["reader_real_book_epub"]["sourcePath"] = str(
-        (ROOT.parent / "outside-reader.epub").resolve()
-    )
-    path = tmp_path / "absolute-source.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
+    cases = [
+        (
+            str((ROOT.parent / "outside-reader.epub").resolve()),
+            "absolute-source.json",
+            "sourcePath.*repo-relative",
+        ),
+        (
+            "ops/fixtures/assets/reader-does-not-exist.epub",
+            "broken-source.json",
+            "sourcePath 不存在",
+        ),
+    ]
+    for source_path, file_name, message in cases:
+        case_data = json.loads(json.dumps(data))
+        case_data["assets"]["books"]["reader_real_book_epub"]["sourcePath"] = source_path
+        path = tmp_path / file_name
+        path.write_text(json.dumps(case_data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match="sourcePath.*repo-relative"):
-        validate_fixture_dataset_file(path)
+        with pytest.raises(UIWorldManifestError, match=message):
+            validate_fixture_dataset_file(path)
 
 
 def test_reader_invalid_destination_ui_flow_is_real_and_retryable():
@@ -135,13 +147,26 @@ def test_reader_invalid_destination_ui_flow_is_real_and_retryable():
 
     assert "readerInvalidDestinationLibrary" in source
     assert "reader:invalidDestinationLibrary" in launch
-    assert "readerInvalidDestinationLibrary" in seed
+    assert '"invalidDestinationLibrary"' in seed
     assert "reader.toc.missingDestination" in source
     assert "reader.toc.retry" in source
-    assert "tableOfContentsSheet.waitUntilExists" in source
-    assert "tableOfContentsSheet.waitUntilGone" not in source
-    assert "FakeReaderNavigator" not in source
-    assert "does-not-exist" not in source
+    match = re.search(
+        r"func testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable\(\) throws \{(?P<body>.*?)\n    \}",
+        source,
+        flags=re.S,
+    )
+    assert match, "missing real invalid-book UI flow"
+    body = match.group("body")
+    assert "tableOfContentsSheet.waitUntilExists" in body
+    assert "tocMissingDestination" in body
+    assert "tocRetry" in body
+    page = (ROOT / "ios/BooksAndVocabUITests/Pages/ReaderPage.swift").read_text(encoding="utf-8")
+    assert '"reader.toc.missingDestination"' in page
+    assert '"reader.toc.retry"' in page
+    assert "tocDone.isEnabled" in body
+    assert "tableOfContentsSheet.waitUntilGone" not in body
+    assert "FakeReaderNavigator" not in body
+    assert "does-not-exist" not in body
 
 
 def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):

@@ -130,6 +130,77 @@ extension FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func readerTOCAssetsMaterializeWithCheckedInIntegrity() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "reader-toc-asset-integrity",
+          "assets": {
+            "books": {
+              "reader_real_book_epub": {
+                "sourcePath": "ops/fixtures/assets/reader-real-book.epub",
+                "sha256": "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
+                "byteSize": 18653,
+                "installAs": "Books/reader-real-book-contract.epub",
+                "contentType": "application/epub+zip"
+              },
+              "reader_invalid_destination_epub": {
+                "sourcePath": "ops/fixtures/assets/reader-invalid-destination.epub",
+                "sha256": "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f",
+                "byteSize": 17344,
+                "installAs": "Books/reader-invalid-destination-contract.epub",
+                "contentType": "application/epub+zip"
+              }
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {}
+          }
+        }
+        """
+        let installedPaths = [
+            "Books/reader-real-book-contract.epub",
+            "Books/reader-invalid-destination-contract.epub",
+        ].map {
+            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent($0)
+        }
+        defer {
+            for path in installedPaths {
+                try? FileManager.default.removeItem(at: path)
+            }
+        }
+
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+            let contracts = [
+                (
+                    ref: "books.reader_real_book_epub",
+                    source: Self.readerRealBookAssetPath,
+                    fileName: "reader-real-book-contract.epub",
+                    sha256: "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
+                    byteSize: 18653
+                ),
+                (
+                    ref: "books.reader_invalid_destination_epub",
+                    source: Self.readerInvalidDestinationAssetPath,
+                    fileName: "reader-invalid-destination-contract.epub",
+                    sha256: "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f",
+                    byteSize: 17344
+                ),
+            ]
+
+            for contract in contracts {
+                let installed = try FixtureDatasetStore.requireInstalledAssetURL(ref: contract.ref)
+                let source = URL(fileURLWithPath: contract.source)
+                #expect(installed.lastPathComponent == contract.fileName)
+                #expect(try FixtureDatasetStore.byteSize(for: installed) == contract.byteSize)
+                #expect(try FixtureDatasetStore.sha256Hex(for: installed) == contract.sha256)
+                #expect(try Data(contentsOf: installed) == Data(contentsOf: source))
+            }
+        }
+    }
+
     // MARK: - Books/ containment guard (IMP-20260806-edac2b)
 
     /// The fixture seeders guard that an installed book asset landed directly
@@ -199,8 +270,8 @@ extension FixtureDatasetStoreTests {
             "books": {
               "editorial_english_epub": {
                 "sourcePath": "\(Self.readerRealBookAssetPath)",
-                "sha256": "1c903a07f1e75ec48b472062207d543698fe8a8d381348be0f8110953776bb2f",
-                "byteSize": 2236,
+                "sha256": "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
+                "byteSize": 18653,
                 "installAs": "Books/editorial-english.epub",
                 "contentType": "application/epub+zip"
               }

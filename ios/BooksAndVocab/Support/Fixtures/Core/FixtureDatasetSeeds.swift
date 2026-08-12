@@ -1947,6 +1947,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
 
 enum UIWorldReaderFixtureID: String, CaseIterable {
     case realBookLibrary
+    case invalidDestinationLibrary
 }
 
 struct UIWorldReaderSeed: Codable, Equatable {

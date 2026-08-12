@@ -3,7 +3,8 @@ import Foundation
 import SwiftData
 
 extension UITestFixtureSeed {
-    /// Reader-flow fixture (`-seedFixture:reader:realBookLibrary`).
+    /// Reader-flow fixtures (`-seedFixture:reader:realBookLibrary` and
+    /// `-seedFixture:reader:invalidDestinationLibrary`).
     ///
     /// Seeds a REAL book from the UI World asset manifest. The complete EPUB is
     /// installed through `bookAssetRef`, while `textAssetRef` remains a
@@ -22,8 +23,8 @@ extension UITestFixtureSeed {
         // 啟動被 orphan recovery 收編進使用者真實書庫——一律拒絕。
         #if targetEnvironment(simulator)
         switch id {
-        case "realBookLibrary":
-            seedReaderRealBookLibrary(into: container)
+        case "realBookLibrary", "invalidDestinationLibrary":
+            seedReaderLibrary(id: id, into: container)
         default:
             failFixtureSeed("Unknown reader fixture ID: \(id)")
         }
@@ -33,10 +34,13 @@ extension UITestFixtureSeed {
     }
 
     @MainActor
-    private static func seedReaderRealBookLibrary(into container: ModelContainer) {
+    private static func seedReaderLibrary(id: String, into container: ModelContainer) {
         let context = container.mainContext
         do {
-            let seed = FixtureDatasetStore.requireReaderSeed(for: .realBookLibrary)
+            guard let fixtureID = UIWorldReaderFixtureID(rawValue: id) else {
+                failFixtureSeed("Unknown reader fixture ID: \(id)")
+            }
+            let seed = FixtureDatasetStore.requireReaderSeed(for: fixtureID)
             try clearReaderFixtureWorld(from: context, seed: seed)
             let fixture = try resolveReaderFixture(from: seed)
 
@@ -60,9 +64,9 @@ extension UITestFixtureSeed {
             context.insert(book)
 
             try context.save()
-            AppLog.app.info("UI-test fixture seeded: reader.realBookLibrary (book=\(fixture.title), epub=\(fixture.bookURL.lastPathComponent))")
+            AppLog.app.info("UI-test fixture seeded: reader.\(id) (book=\(fixture.title), epub=\(fixture.bookURL.lastPathComponent))")
         } catch {
-            failFixtureSeed("Failed to seed reader.realBookLibrary fixture: \(error)")
+            failFixtureSeed("Failed to seed reader.\(id) fixture: \(error)")
         }
     }
 
@@ -113,14 +117,14 @@ extension UITestFixtureSeed {
             Book.localBooksDirectory.standardizedFileURL.path
         else {
             preconditionFailure(
-                "UI World reader.realBookLibrary book asset \(seed.bookAssetRef) must install directly under Books/: "
+                "UI World reader book asset \(seed.bookAssetRef) must install directly under Books/: "
                     + "asset=\(bookURL.path) "
                     + "installedDirectory=\(bookURL.deletingLastPathComponent().standardizedFileURL.path) "
                     + "booksDirectory=\(Book.localBooksDirectory.standardizedFileURL.path)"
             )
         }
         guard bookURL.lastPathComponent == seed.bookFileName else {
-            preconditionFailure("UI World reader.realBookLibrary bookFileName \(seed.bookFileName) must match installed asset \(bookURL.lastPathComponent)")
+            preconditionFailure("UI World reader bookFileName \(seed.bookFileName) must match installed asset \(bookURL.lastPathComponent)")
         }
         return ReaderFixture(
             seed: seed,
