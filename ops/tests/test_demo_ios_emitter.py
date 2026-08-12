@@ -34,16 +34,17 @@ build_demo = _load_module("build_demo")
 def test_emit_ios_matches_committed_generated_fixture_dataset():
     """Generated iOS UI World must not drift from the emitter."""
     bundle = sot.load_sot()
-    [(path, fresh_bytes)] = emit_ios._artifacts(bundle)
+    artifacts = dict(emit_ios._artifacts(bundle))
+    path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
 
-    assert path == ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
-    assert path.read_bytes() == fresh_bytes
+    assert path.read_bytes() == artifacts[path]
 
 
 def test_emit_ios_uses_full_ui_world_manifest_baseline():
     """The emitter must not regress to the old partial empty-domain skeleton."""
     bundle = sot.load_sot()
-    [(_, fresh_bytes)] = emit_ios._artifacts(bundle)
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+    fresh_bytes = dict(emit_ios._artifacts(bundle))[generated_path]
     document = json.loads(fresh_bytes)
 
     assert document["schema"] == "kg.fixture.dataset.v2"
@@ -61,6 +62,62 @@ def test_emit_ios_uses_full_ui_world_manifest_baseline():
     assert document["reader"]
     assert document["vocabulary"]
     assert document["reviewDeck"]
+
+
+def test_p1_dictionary_rich_fixture_is_emitted_across_canonical_artifacts():
+    bundle = sot.load_sot()
+    artifacts = dict(emit_ios._artifacts(bundle))
+    marketing_path = ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+
+    assert set(artifacts) == {marketing_path, generated_path}
+    documents = [json.loads(artifacts[path]) for path in (marketing_path, generated_path)]
+    contexts = [document["scenarioContext"] for document in documents]
+    assert contexts[0] == contexts[1]
+
+    dictionary = contexts[0]["dictionary"]
+    assert set(dictionary["lookup"]) == {
+        "idle", "loading", "result", "partial", "offline", "error", "retry",
+    }
+    assert dictionary["lookup"]["result"] == {
+        "fixtureID": "dictionary.lookup.result",
+        "stepLabel": "result",
+    }
+    assert dictionary["provenance"] == {
+        "provider": "fixture",
+        "entryID": "engraved",
+        "sourceLabel": "canonical dictionary fixture",
+    }
+    assert [sense["id"] for sense in dictionary["senses"]] == ["sense-1", "sense-2"]
+    assert [sense["exampleIDs"] for sense in dictionary["senses"]] == [
+        ["example-1"],
+        ["example-2"],
+    ]
+    assert [example["id"] for example in dictionary["examples"]] == ["example-1", "example-2"]
+    assert dictionary["materialization"] == {
+        "status": "ready",
+        "selectedSenseID": "sense-1",
+        "selectedExampleID": "example-1",
+        "sourceFixtureID": "dictionary.lookup.result",
+    }
+    assert dictionary["materialization"]["sourceFixtureID"] == dictionary["lookup"]["result"]["fixtureID"]
+
+    surface = contexts[0]["surfaceContracts"]["dictionary"]
+    assert [row["fixtureID"] for row in surface["required"]] == ["ui-p1-dictionary-rich"]
+    assert [row["fixtureID"] for row in surface["counterexamples"]] == [
+        "dictionary.lookup.partial",
+        "dictionary.lookup.offline",
+        "dictionary.lookup.error",
+        "dictionary.lookup.retry",
+    ]
+    assert [row["stepLabel"] for row in surface["counterexamples"]] == [
+        "partial-counterexample",
+        "offline-counterexample",
+        "error-counterexample",
+        "retry-counterexample",
+    ]
+    assert surface["required"][0]["assetIDs"] == ["catalog_reader_epub"]
+    assert surface["required"][0]["assetInodes"] == ["inode:catalog_reader_epub"]
 
 
 def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch):
@@ -84,7 +141,8 @@ def test_emit_ios_only_overlays_identity_owned_auth_fields():
     """Generated demo must remain the baseline UI World plus identity overlay."""
     bundle = sot.load_sot()
     baseline = emit_ios._load_base_ui_world()
-    [(_, fresh_bytes)] = emit_ios._artifacts(bundle)
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+    fresh_bytes = dict(emit_ios._artifacts(bundle))[generated_path]
     document = json.loads(fresh_bytes)
 
     for key in emit_ios.FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"}:

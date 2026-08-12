@@ -4,8 +4,9 @@ The generated JSON uses the same structured injection contract as Catalog and
 UITests. ``KG_FIXTURE_DATASET_DEFLATE_B64`` transports the raw-DEFLATE-compressed
 document into the app; this module itself writes plaintext JSON.
 
-Default mode copies the checked-in baseline world, overlays the demo identity,
-and writes ``ops/demo/generated/ios_fixture_dataset.json``. Spec mode derives
+Default mode normalizes the checked-in baseline world, overlays the demo
+identity, and writes both the canonical marketing world and
+``ops/demo/generated/ios_fixture_dataset.json``. Spec mode derives
 the vocabulary, notebook, reviewDeck and todayReview domains from an explicit
 ``kg.seed_spec.v1`` and writes only the caller-provided output. Both modes are
 byte-deterministic and ``--check`` reports drift. This is data production only;
@@ -36,7 +37,11 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import spec_world  # noqa: E402
-from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file  # noqa: E402
+from ui_world_manifest import (  # noqa: E402
+    UIWorldManifestError,
+    build_p1_dictionary_surface_contract,
+    validate_fixture_dataset_file,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -295,6 +300,20 @@ def _load_base_ui_world() -> dict[str, Any]:
         raise ValueError(
             f"{BASE_UI_WORLD_PATH} schema must be {FIXTURE_SCHEMA!r}, got {data.get('schema')!r}"
         )
+    context = data.get("scenarioContext")
+    if not isinstance(context, dict):
+        raise ValueError(f"{BASE_UI_WORLD_PATH} scenarioContext must be an object")
+    dictionary = context.get("dictionary")
+    if not isinstance(dictionary, dict):
+        raise ValueError(f"{BASE_UI_WORLD_PATH} scenarioContext.dictionary must be an object")
+    surface_contracts = context.get("surfaceContracts")
+    if not isinstance(surface_contracts, dict):
+        raise ValueError(f"{BASE_UI_WORLD_PATH} scenarioContext.surfaceContracts must be an object")
+    normalized_context = dict(context)
+    normalized_surface_contracts = dict(surface_contracts)
+    normalized_surface_contracts["dictionary"] = build_p1_dictionary_surface_contract(dictionary)
+    normalized_context["surfaceContracts"] = normalized_surface_contracts
+    data["scenarioContext"] = normalized_context
     return data
 
 
@@ -459,21 +478,27 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
-def _validate_fixture_json_bytes(content: bytes) -> None:
+def _validate_fixture_json_bytes(content: bytes, *, label: str = "Generated demo UI World") -> None:
     with tempfile.TemporaryDirectory(prefix="kg-demo-ui-world-") as tmp:
         path = Path(tmp) / "ios_fixture_dataset.json"
         path.write_bytes(content)
         try:
-            validate_fixture_dataset_file(path, label="Generated demo UI World")
+            validate_fixture_dataset_file(path, label=label)
         except UIWorldManifestError as exc:
             raise ValueError(str(exc)) from exc
 
 
 def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
+    baseline = _load_base_ui_world()
+    baseline_content = _json_bytes(baseline)
     document = _build_fixture_document(sot)
     content = _json_bytes(document)
     _validate_fixture_json_bytes(content)
-    return [(FIXTURE_JSON_PATH, content)]
+    _validate_fixture_json_bytes(baseline_content, label="Marketing demo UI World")
+    return [
+        (FIXTURE_JSON_PATH, content),
+        (BASE_UI_WORLD_PATH, baseline_content),
+    ]
 
 
 def _spec_build(

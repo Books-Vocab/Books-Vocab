@@ -18,6 +18,7 @@ SPEC.loader.exec_module(MODULE)
 
 UIWorldManifestError = MODULE.UIWorldManifestError
 validate_fixture_dataset_file = MODULE.validate_fixture_dataset_file
+build_p1_dictionary_surface_contract = MODULE.build_p1_dictionary_surface_contract
 
 
 def _marketing_demo() -> dict:
@@ -1142,8 +1143,8 @@ def _canonical_dictionary_context():
     }
 
 
-def _canonical_surface_contracts():
-    return {
+def _canonical_surface_contracts(dictionary=None):
+    contracts = {
         "explore": {
             "required": [
                 {
@@ -1185,6 +1186,10 @@ def _canonical_surface_contracts():
             ],
         },
     }
+    if dictionary is None:
+        dictionary = _marketing_demo()["scenarioContext"]["dictionary"]
+    contracts["dictionary"] = build_p1_dictionary_surface_contract(dictionary)
+    return contracts
 
 
 def _legacy_scenario_context(data: dict, *, review_clock=None) -> dict:
@@ -1272,12 +1277,26 @@ def test_validate_rejects_partial_canonical_scenario_context(tmp_path: Path, mis
 def test_validate_accepts_canonical_dictionary_clock_and_surface_contracts(tmp_path: Path):
     data = _marketing_demo()
     data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
-    data["scenarioContext"]["dictionary"] = _canonical_dictionary_context()
-    data["scenarioContext"]["surfaceContracts"] = _canonical_surface_contracts()
+    dictionary = _canonical_dictionary_context()
+    data["scenarioContext"]["dictionary"] = dictionary
+    data["scenarioContext"]["surfaceContracts"] = _canonical_surface_contracts(dictionary)
     path = tmp_path / "canonical_dictionary_and_clock.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
     validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_missing_p1_dictionary_rich_surface_contract(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["surfaceContracts"].pop("dictionary", None)
+    path = tmp_path / "p1_dictionary_rich_surface_missing.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(
+        UIWorldManifestError,
+        match=r"surfaceContracts\.dictionary\.required contract is missing",
+    ):
+        validate_fixture_dataset_file(path)
 
 
 def test_validate_rejects_dictionary_materialization_sense_example_mismatch(tmp_path: Path):

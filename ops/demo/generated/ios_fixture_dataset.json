@@ -35898,6 +35898,55 @@
             "assetInodes": []
           }
         ]
+      },
+      "dictionary": {
+        "required": [
+          {
+            "fixtureID": "ui-p1-dictionary-rich",
+            "stepLabel": "dictionary-rich",
+            "index": 0,
+            "assetIDs": [
+              "catalog_reader_epub"
+            ],
+            "assetInodes": [
+              "inode:catalog_reader_epub"
+            ]
+          }
+        ],
+        "counterexamples": [
+          {
+            "fixtureID": "dictionary.lookup.partial",
+            "stepLabel": "partial-counterexample",
+            "index": 1,
+            "assetIDs": [],
+            "assetInodes": []
+          },
+          {
+            "fixtureID": "dictionary.lookup.offline",
+            "stepLabel": "offline-counterexample",
+            "index": 2,
+            "assetIDs": [],
+            "assetInodes": []
+          },
+          {
+            "fixtureID": "dictionary.lookup.error",
+            "stepLabel": "error-counterexample",
+            "index": 3,
+            "assetIDs": [
+              "catalog_reader_pdf"
+            ],
+            "assetInodes": [
+              "inode:catalog_reader_pdf"
+            ]
+          },
+          {
+            "fixtureID": "dictionary.lookup.retry",
+            "stepLabel": "retry-counterexample",
+            "index": 4,
+            "assetIDs": [],
+            "assetInodes": []
+          }
+        ]
       }
     },
     "readerPassage": {

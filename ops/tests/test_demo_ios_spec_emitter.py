@@ -726,7 +726,10 @@ def test_build_demo_baseline_mode_unaffected_by_spec_flags(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload["result"]["drift"] is False
-    assert payload["result"]["checked"] == ["ops/demo/generated/ios_fixture_dataset.json"]
+    assert payload["result"]["checked"] == [
+        "ops/demo/generated/ios_fixture_dataset.json",
+        "ops/fixtures/ui_worlds/marketing_demo.json",
+    ]
 
 
 # --------------------------------------------------------------------------- #
