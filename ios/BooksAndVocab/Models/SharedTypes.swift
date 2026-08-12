@@ -208,6 +208,20 @@ struct LexicalAttribution: Codable, Equatable {
     let licenseURL: String
     let attributionText: String
 
+    init(
+        provider: String,
+        sourceURL: String,
+        licenseName: String,
+        licenseURL: String,
+        attributionText: String
+    ) {
+        self.provider = provider
+        self.sourceURL = sourceURL
+        self.licenseName = licenseName
+        self.licenseURL = licenseURL
+        self.attributionText = attributionText
+    }
+
     enum CodingKeys: String, CodingKey {
         case provider, sourceURL, source_url, licenseName, license_name
         case licenseURL, license_url, attributionText, attribution_text

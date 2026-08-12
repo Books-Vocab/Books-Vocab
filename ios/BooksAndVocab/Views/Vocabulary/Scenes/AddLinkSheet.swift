@@ -123,7 +123,7 @@ struct AddLinkSheet: View {
                 Text(L10n.string("addLink.dictionaryPrompt"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
             } else {
-                switch coordinator.searchPhase {
+                switch coordinator.lookupState {
                 case .idle:
                     Button {
                         coordinator.submitSearch(query: trimmed, using: kgService)
@@ -135,7 +135,7 @@ struct AddLinkSheet: View {
                     }
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .accessibilityIdentifier("addLink.dictionary.search")
+                    .accessibilityIdentifier("addLink.dictionary.idle")
 
                 case .loading:
                     AppLoadingStateCard(
@@ -144,30 +144,79 @@ struct AddLinkSheet: View {
                         visualStyle: .vocab
                     )
                     .listRowBackground(Color.clear)
+                    .accessibilityIdentifier("addLink.dictionary.loading")
 
-                case .empty:
-                    VocabStateMessageCard(
-                        title: L10n.string("addLink.dictionaryEmpty"),
-                        systemImage: "text.book.closed"
-                    )
-                    .listRowBackground(Color.clear)
-
-                case .failed(let failure):
+                case .partial(_, _, let failure):
                     VocabStateMessageCard(
                         title: L10n.string("addLink.dictionarySection"),
                         systemImage: "exclamationmark.triangle",
                         description: failureMessage(failure)
                     ) {
                         Button(L10n.string("重試")) {
-                            coordinator.submitSearch(query: trimmed, using: kgService)
+                            coordinator.retrySearch(using: kgService)
                         }
                         .buttonStyle(.vocabAction(.neutral))
                         .accessibilityIdentifier("addLink.dictionary.retry")
                     }
                     .listRowBackground(Color.clear)
+                    .accessibilityIdentifier("addLink.dictionary.partial")
 
-                case .result(let entry, let cacheStatus):
-                    dictionaryResult(entry, cacheStatus: cacheStatus)
+                case .success(_, let entry, let cacheStatus):
+                    if let entry {
+                        dictionaryResult(entry, cacheStatus: cacheStatus)
+                    } else {
+                        VocabStateMessageCard(
+                            title: L10n.string("addLink.dictionaryEmpty"),
+                            systemImage: "text.book.closed"
+                        )
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("addLink.dictionary.empty")
+                    }
+
+                case .error(_, let failure):
+                    VocabStateMessageCard(
+                        title: L10n.string("addLink.dictionarySection"),
+                        systemImage: "exclamationmark.triangle",
+                        description: failureMessage(failure)
+                    ) {
+                        Button(L10n.string("重試")) {
+                            coordinator.retrySearch(using: kgService)
+                        }
+                        .buttonStyle(.vocabAction(.neutral))
+                        .accessibilityIdentifier("addLink.dictionary.retry")
+                    }
+                    .listRowBackground(Color.clear)
+                    .accessibilityIdentifier(
+                        "addLink.dictionary.error"
+                    )
+
+                case .offline:
+                    VocabStateMessageCard(
+                        title: L10n.string("addLink.dictionarySection"),
+                        systemImage: "exclamationmark.triangle",
+                        description: failureMessage(.offline)
+                    ) {
+                        Button(L10n.string("重試")) {
+                            coordinator.retrySearch(using: kgService)
+                        }
+                        .buttonStyle(.vocabAction(.neutral))
+                        .accessibilityIdentifier("addLink.dictionary.retry")
+                    }
+                    .listRowBackground(Color.clear)
+                    .accessibilityIdentifier(
+                        "addLink.dictionary.offline"
+                    )
+
+                case .retry:
+                    VocabStateMessageCard(
+                        title: L10n.string("addLink.dictionaryLoading"),
+                        systemImage: "arrow.clockwise"
+                    ) {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    .listRowBackground(Color.clear)
+                    .accessibilityIdentifier("addLink.dictionary.retrying")
                 }
             }
         }
@@ -200,9 +249,11 @@ struct AddLinkSheet: View {
                         .truncationMode(.tail)
                 }
             }
+            .accessibilityIdentifier("addLink.dictionary.result")
         } else {
-            ForEach(entry.senses) { sense in
-                VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+            VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+                ForEach(entry.senses) { sense in
+                    VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
                     if let partOfSpeech = sense.partOfSpeech {
                         Text(partOfSpeech)
                             .font(appSkin.typography.caption)
@@ -214,6 +265,7 @@ struct AddLinkSheet: View {
                         .font(appSkin.typography.body)
                         .lineLimit(3)
                         .truncationMode(.tail)
+                        .accessibilityIdentifier("addLink.sense.\(sense.id)")
                     ForEach(sense.examples) { example in
                         Button {
                             coordinator.select(senseKey: sense.id, exampleKey: example.id)
@@ -238,34 +290,41 @@ struct AddLinkSheet: View {
                                 : L10n.string("a11y.toggle.off")
                         )
                     }
+                    }
+                    .padding(.vertical, AppSpacing.microGap)
                 }
-                .padding(.vertical, AppSpacing.microGap)
-            }
 
-            if coordinator.selectedExampleKey != nil {
-                Button {
-                    Task {
-                        await coordinator.materializeSelectedExample(
-                            sourceEntry: sourceEntry,
-                            entry: entry,
-                            using: kgService,
-                            container: modelContext.container
-                        )
+                if coordinator.selectedExampleKey != nil {
+                    Button {
+                        Task {
+                            await coordinator.materializeSelectedExample(
+                                sourceEntry: sourceEntry,
+                                entry: entry,
+                                using: kgService,
+                                container: modelContext.container
+                            )
+                        }
+                    } label: {
+                        if coordinator.materializePhase == .running {
+                            ProgressView()
+                        } else {
+                            Text(coordinator.materializePhase == .failed
+                                 ? L10n.string("重試")
+                                 : L10n.string("addLink.addSelectedExample"))
+                        }
                     }
-                } label: {
-                    if coordinator.materializePhase == .running {
-                        ProgressView()
-                    } else {
-                        Text(coordinator.materializePhase == .failed
-                             ? L10n.string("重試")
-                             : L10n.string("addLink.addSelectedExample"))
-                    }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.vocabAction(.primary))
+                    .disabled(coordinator.materializePhase == .running)
+                    .accessibilityIdentifier("addLink.dictionary.materialize")
+                    .accessibilityValue(
+                        coordinator.selectionState.isSelected
+                            ? L10n.string("a11y.toggle.on")
+                            : L10n.string("a11y.toggle.off")
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .buttonStyle(.vocabAction(.primary))
-                .disabled(coordinator.materializePhase == .running)
-                .accessibilityIdentifier("addLink.addSelectedExample")
             }
+            .accessibilityIdentifier("addLink.dictionary.result")
         }
 
         VStack(alignment: .leading, spacing: AppSpacing.microGap) {
@@ -290,6 +349,7 @@ struct AddLinkSheet: View {
         }
         .font(appSkin.typography.caption)
         .foregroundStyle(appSkin.palette.tertiaryText)
+        .accessibilityIdentifier("addLink.dictionary.provenance")
     }
 
     private func failureMessage(_ failure: DictionarySearchFailure) -> String {
