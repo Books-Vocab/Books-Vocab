@@ -252,6 +252,19 @@ def test_explicit_legacy_id_is_preserved(tmp_path):
     assert (store / "IMP-0052.json").exists()
 
 
+def test_add_rejects_non_legacy_explicit_id(tmp_path):
+    store = tmp_path / "backlog"
+
+    with pytest.raises(ValueError, match="explicit id.*legacy IMP-####"):
+        BACKLOG.add_entry(
+            store,
+            entry_id="IMP-20260813-deadbe",
+            **_entry_kwargs(detail="caller supplied a modern-looking id"),
+        )
+
+    assert not store.exists() or not list(store.iterdir())
+
+
 # --------------------------------------------------------------------------
 # 4. the id inside the file cannot drift from the filename
 # --------------------------------------------------------------------------
@@ -267,6 +280,42 @@ def test_validate_catches_id_filename_drift(tmp_path):
 
     problems = BACKLOG.validate_store(store)
     assert any(p["kind"] == "id-filename-drift" for p in problems), problems
+
+
+def test_validate_rejects_content_derived_id_drift(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="the digest input that minted this id")
+    path = store / f"{entry['id']}.json"
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["detail"] = "a changed digest input under the old id"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    problems = BACKLOG.validate_store(store)
+    assert any(
+        problem["kind"] == "id-content-drift"
+        and problem["id"] == entry["id"]
+        and problem["expected_id"] == BACKLOG.make_entry_id(
+            stream=payload["stream"],
+            date=payload["date"],
+            source=payload["source"],
+            detail=payload["detail"],
+        )
+        for problem in problems
+    ), problems
+
+
+def test_content_derived_ids_validate_when_unchanged(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="unchanged digest inputs")
+
+    problems = BACKLOG.validate_store(store)
+
+    assert not any(
+        problem["kind"] in {"id-content-drift", "id-not-content-derived"}
+        and problem.get("id") == entry["id"]
+        for problem in problems
+    ), problems
 
 
 @pytest.mark.parametrize(
