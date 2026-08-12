@@ -4,35 +4,35 @@
   "assets": {
     "books": {
       "atomic_habits_markdown": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
-        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
         "installAs": "Books/atomic-habits.md",
-        "byteSize": 17431,
+        "byteSize": 391,
         "contentType": "text/markdown; charset=utf-8"
       },
       "word_architect_markdown": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
-        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
         "installAs": "Books/word-architect.md",
-        "byteSize": 17431,
+        "byteSize": 391,
         "contentType": "text/markdown; charset=utf-8"
       },
       "the_shallows_markdown": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
-        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
         "installAs": "Books/the-shallows.md",
-        "byteSize": 17431,
+        "byteSize": 391,
         "contentType": "text/markdown; charset=utf-8"
       },
       "catalog_reader_pdf": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.pdf",
+        "sourcePath": "ops/fixtures/assets/catalog-reader.pdf",
         "sha256": "8538c4b3876e20bc3a473a82930ebccbf0699595544fd98ccb750214f451a662",
         "installAs": "Books/catalog-reader.pdf",
         "byteSize": 752,
         "contentType": "application/pdf"
       },
       "catalog_reader_epub": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub",
+        "sourcePath": "ops/fixtures/assets/catalog-reader.epub",
         "sha256": "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
         "installAs": "Books/catalog-reader.epub",
         "byteSize": 1690,
@@ -55,76 +55,76 @@
     },
     "audio": {
       "atomic_habits_ep1_flash_playable": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
-        "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
-        "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a",
-        "byteSize": 16655874,
-        "contentType": "audio/mp4"
+        "sourcePath": "frozen/2026-06-14-web-chrome-parity/web/src/assets/podcast_demo.mp3",
+        "sha256": "415409cd0d2e2cf204c63a2cf318d3766da0bac0b6d74499eb9da9184f2ff108",
+        "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
+        "byteSize": 96591,
+        "contentType": "audio/mpeg"
       },
       "atomic_habits_ep1_flash_auth": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
-        "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
-        "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
-        "byteSize": 16655874,
-        "contentType": "audio/mp4"
+        "sourcePath": "frozen/2026-06-14-web-chrome-parity/web/src/assets/podcast_demo.mp3",
+        "sha256": "415409cd0d2e2cf204c63a2cf318d3766da0bac0b6d74499eb9da9184f2ff108",
+        "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
+        "byteSize": 96591,
+        "contentType": "audio/mpeg"
       }
     },
     "subtitles": {
       "atomic_habits_ep1_flash_srt_playable": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
-        "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
+        "sourcePath": "ops/fixtures/assets/fixture-subtitles.srt",
+        "sha256": "fdc8e9d460d85d362f4271ec7d3ab63d630df31313df4ec02fd27163fc485ae3",
         "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt",
-        "byteSize": 144638,
+        "byteSize": 196,
         "contentType": "application/x-subrip; charset=utf-8"
       },
       "atomic_habits_ep1_flash_srt_auth": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
-        "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
+        "sourcePath": "ops/fixtures/assets/fixture-subtitles.srt",
+        "sha256": "fdc8e9d460d85d362f4271ec7d3ab63d630df31313df4ec02fd27163fc485ae3",
         "installAs": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt",
-        "byteSize": 144638,
+        "byteSize": 196,
         "contentType": "application/x-subrip; charset=utf-8"
       }
     },
     "text": {
       "atomic_habits_raw_ch_04": {
-        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
-        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "sourcePath": "ops/fixtures/assets/fixture-reader.md",
+        "sha256": "3818bcb6c58f1055a5b5ab79c52bd806c30bc4278c20329d71c9e9f610cad7a0",
         "installAs": "Books/sources/atomic-habits-raw-ch-04.md",
-        "byteSize": 17431,
+        "byteSize": 391,
         "contentType": "text/markdown; charset=utf-8"
       }
     },
     "images": {
       "notebook_cover_app_icon": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
         "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
         "installAs": "NotebookCovers/catalog-notebook-cover.png",
         "byteSize": 30129,
         "contentType": "image/png"
       },
       "explore_required": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
         "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
         "installAs": "ExploreAssets/explore-required.png",
         "byteSize": 30129,
         "contentType": "image/png"
       },
       "explore_required_empty": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
         "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
         "installAs": "ExploreAssets/explore-required-empty.png",
         "byteSize": 30129,
         "contentType": "image/png"
       },
       "explore_counterexample_empty": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
         "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
         "installAs": "ExploreAssets/explore-counterexample-empty.png",
         "byteSize": 30129,
         "contentType": "image/png"
       },
       "explore_counterexample_retry": {
-        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
         "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
         "installAs": "ExploreAssets/explore-counterexample-retry.png",
         "byteSize": 30129,
@@ -2609,7 +2609,7 @@
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_playable",
             "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable",
-            "localAudioPath": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a",
+            "localAudioPath": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
             "localSubtitlePath": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt"
           }
         }
@@ -2641,7 +2641,7 @@
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
             "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
-            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
+            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
             "localSubtitlePath": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
           }
         },
@@ -2657,7 +2657,7 @@
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
             "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
-            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
+            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
             "localSubtitlePath": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
           }
         }
