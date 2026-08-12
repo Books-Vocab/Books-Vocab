@@ -14,6 +14,19 @@
 import XCTest
 
 final class FixtureDatasetUITests: UITestCase {
+    private enum ReviewCalendarEvidence {
+        static let requiredLabels = [
+            "calendar",
+            "empty-day",
+            "populated-day",
+            "timezone-boundary",
+        ]
+        static let counterexampleLabels = [
+            "empty-day-counterexample",
+            "timezone-boundary-counterexample",
+        ]
+    }
+
     /// Minimal mirror of `kg.fixture.dataset.v2` — enough to assert the runner
     /// injected the same required manifest shape the app consumes.
     private struct DatasetDocument: Decodable {
@@ -203,8 +216,8 @@ final class FixtureDatasetUITests: UITestCase {
         captureStep("timezone-boundary-counterexample", app: counterexampleApp)
 
         assertEvidenceGroupsAreDisjoint(
-            requiredLabels: ["calendar", "empty-day", "populated-day", "timezone-boundary"],
-            counterexampleLabels: ["empty-day-counterexample", "timezone-boundary-counterexample"]
+            requiredLabels: ReviewCalendarEvidence.requiredLabels,
+            counterexampleLabels: ReviewCalendarEvidence.counterexampleLabels
         )
     }
 
@@ -236,6 +249,24 @@ final class FixtureDatasetUITests: UITestCase {
         requiredLabels: [String],
         counterexampleLabels: [String]
     ) {
+        let requiredLabelSet = Set(requiredLabels)
+        let counterexampleLabelSet = Set(counterexampleLabels)
+        XCTAssertEqual(
+            requiredLabelSet.intersection(counterexampleLabelSet),
+            [],
+            "required/counterexample step labels must be disjoint"
+        )
+        XCTAssertEqual(
+            requiredLabelSet.count,
+            requiredLabels.count,
+            "required step labels must be unique"
+        )
+        XCTAssertEqual(
+            counterexampleLabelSet.count,
+            counterexampleLabels.count,
+            "counterexample step labels must be unique"
+        )
+
         guard let rawDirectory = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
               !rawDirectory.isEmpty
         else {
@@ -271,6 +302,16 @@ final class FixtureDatasetUITests: UITestCase {
 
         let requiredInodes = requiredAssets.compactMap { fileNumber($0) }
         let counterexampleInodes = counterexampleAssets.compactMap { fileNumber($0) }
+        XCTAssertEqual(
+            requiredInodes.count,
+            requiredAssets.count,
+            "every required asset must expose a filesystem inode"
+        )
+        XCTAssertEqual(
+            counterexampleInodes.count,
+            counterexampleAssets.count,
+            "every counterexample asset must expose a filesystem inode"
+        )
         XCTAssertEqual(
             Set(requiredInodes).intersection(Set(counterexampleInodes)),
             [],

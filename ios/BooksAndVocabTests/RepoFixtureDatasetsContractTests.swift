@@ -104,6 +104,13 @@ struct RepoFixtureDatasetsContractTests {
         )
         #expect(surfaceContracts["explore"]?.required.isEmpty == false)
         #expect(surfaceContracts["settings"]?.required.isEmpty == false)
+        // The same explicit clock is consumed by review calendar/stats; it is
+        // never reconstructed from wall-clock time in the consumer.
+        #expect(scenario.reviewClock?.now == "2026-06-15T23:59:59Z")
+        #expect(scenario.reviewClock?.frozenEpoch == 1_781_567_999)
+        #expect(scenario.reviewClock?.anchorDay == "2026-06-15")
+        #expect(scenario.reviewClock?.timeZone == "UTC")
+        #expect(scenario.reviewClock?.source == "history_plan.anchor_day")
         let passage = try #require(scenario.readerPassage, "scenarioContext must declare readerPassage")
         #expect(!passage.paragraphs.isEmpty)
         #expect(passage.activeWords == [passage.activeWord])
