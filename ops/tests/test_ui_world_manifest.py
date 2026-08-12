@@ -26,6 +26,55 @@ def _marketing_demo() -> dict:
     return json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(encoding="utf-8"))
 
 
+def test_marketing_demo_declares_canonical_explore_shared_decks_contract():
+    data = _marketing_demo()
+    catalog = data["sharedDecks"]
+    assert set(catalog["fixtures"]) == {
+        "loading", "loaded", "empty", "retry",
+        "empty-counterexample", "retry-counterexample",
+    }
+    assert set(catalog["decks"]) == {
+        "deck_official_gre_high_freq", "deck_counterexample_retry",
+    }
+    assert catalog["fixtures"]["loaded"]["deckIDs"] == ["deck_official_gre_high_freq"]
+    assert catalog["fixtures"]["retry-counterexample"]["deckIDs"] == ["deck_counterexample_retry"]
+    assert catalog["fixtures"]["loaded"]["assetIDs"] == ["images.explore_required"]
+    assert catalog["fixtures"]["retry-counterexample"]["assetIDs"] == [
+        "images.explore_counterexample_retry"
+    ]
+    title = catalog["decks"]["deck_official_gre_high_freq"]["title"]
+    assert len(title) >= 80
+    assert "🧭" in title
+    assert any("\u0590" <= char <= "\u08ff" for char in title)
+
+
+def test_validate_rejects_ui_world_without_top_level_shared_decks(tmp_path: Path):
+    data = _marketing_demo()
+    data.pop("sharedDecks")
+    path = tmp_path / "missing_shared_decks.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(UIWorldManifestError, match=r"top-level keys .*sharedDecks"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_shared_deck_asset_from_non_image_bucket(tmp_path: Path):
+    data = _marketing_demo()
+    data["sharedDecks"]["fixtures"]["loaded"]["assetIDs"] = ["books.catalog_reader_epub"]
+    path = tmp_path / "shared_decks_wrong_asset_type.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(UIWorldManifestError, match=r"sharedDecks.*images"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_stale_explore_surface_contract_projection(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["surfaceContracts"]["explore"]["required"][0]["fixtureID"] = "explore.rich-catalog"
+    path = tmp_path / "stale_explore_surface_contract.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(UIWorldManifestError, match=r"surfaceContracts\.explore.*projection.*sharedDecks"):
+        validate_fixture_dataset_file(path)
+
+
 def _vocabulary_override(word: str, *, card_role: str = "learning", review_eligible: bool = True) -> dict:
     return {
         "word": word,

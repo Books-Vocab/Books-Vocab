@@ -101,6 +101,34 @@
         "installAs": "NotebookCovers/catalog-notebook-cover.png",
         "byteSize": 30129,
         "contentType": "image/png"
+      },
+      "explore_required": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-required.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_required_empty": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-required-empty.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_counterexample_empty": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-counterexample-empty.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
+      },
+      "explore_counterexample_retry": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "ExploreAssets/explore-counterexample-retry.png",
+        "byteSize": 30129,
+        "contentType": "image/png"
       }
     }
   },
@@ -35782,6 +35810,136 @@
       "pendingRows": []
     }
   },
+  "sharedDecks": {
+    "fixtures": {
+      "loading": {
+        "label": "explore-loading",
+        "phase": "loading",
+        "retryPhase": null,
+        "deckIDs": [],
+        "assetIDs": [
+          "images.explore_required"
+        ]
+      },
+      "loaded": {
+        "label": "explore-loaded",
+        "phase": "loaded",
+        "retryPhase": null,
+        "deckIDs": [
+          "deck_official_gre_high_freq"
+        ],
+        "assetIDs": [
+          "images.explore_required"
+        ]
+      },
+      "empty": {
+        "label": "explore-empty",
+        "phase": "empty",
+        "retryPhase": null,
+        "deckIDs": [],
+        "assetIDs": [
+          "images.explore_required_empty"
+        ]
+      },
+      "retry": {
+        "label": "explore-retry",
+        "phase": "error",
+        "retryPhase": "loaded",
+        "deckIDs": [
+          "deck_official_gre_high_freq"
+        ],
+        "assetIDs": [
+          "images.explore_required"
+        ]
+      },
+      "empty-counterexample": {
+        "label": "explore-empty-counterexample",
+        "phase": "empty",
+        "retryPhase": null,
+        "deckIDs": [],
+        "assetIDs": [
+          "images.explore_counterexample_empty"
+        ]
+      },
+      "retry-counterexample": {
+        "label": "explore-retry-counterexample",
+        "phase": "error",
+        "retryPhase": "loaded",
+        "deckIDs": [
+          "deck_counterexample_retry"
+        ],
+        "assetIDs": [
+          "images.explore_counterexample_retry"
+        ]
+      }
+    },
+    "decks": {
+      "deck_official_gre_high_freq": {
+        "remoteId": "deck_official_gre_high_freq",
+        "title": "🧭 GRE high-frequency vocabulary for deliberate reading — العربية עברית and durable recall across scripts",
+        "authorLabel": "KG Editorial",
+        "isOfficial": true,
+        "category": "exam",
+        "languagePair": "en-zh-Hant",
+        "tags": [
+          "GRE",
+          "high-frequency",
+          "cross-script"
+        ],
+        "cardCount": 120,
+        "downloadCount": 2450,
+        "ratingAvg": 4.8,
+        "ratingCount": 128,
+        "color": "#315C8C",
+        "coverPattern": "aurora",
+        "updatedAt": "2026-08-12T00:00:00Z",
+        "assetID": "images.explore_required",
+        "sampleCards": [
+          {
+            "id": "card-gre-001",
+            "content": "abate",
+            "pos": "verb",
+            "meaning": "減弱；緩和",
+            "examples": [
+              "The storm began to abate."
+            ],
+            "collocations": [
+              "abate concern"
+            ],
+            "note": "Usage note: pair with calm and deliberate reading.",
+            "difficulty": 0.3,
+            "mode": "recognition",
+            "rootForm": "abate",
+            "inflections": [
+              "abates",
+              "abated",
+              "abating"
+            ]
+          }
+        ]
+      },
+      "deck_counterexample_retry": {
+        "remoteId": "deck_counterexample_retry",
+        "title": "Retry counterexample deck",
+        "authorLabel": "Fixture Counterexample",
+        "isOfficial": false,
+        "category": "counterexample",
+        "languagePair": "en-zh-Hant",
+        "tags": [
+          "counterexample"
+        ],
+        "cardCount": 1,
+        "downloadCount": 0,
+        "ratingAvg": null,
+        "ratingCount": 0,
+        "color": "#8C3B3B",
+        "coverPattern": "retry",
+        "updatedAt": "2026-08-12T00:00:00Z",
+        "assetID": "images.explore_counterexample_retry",
+        "sampleCards": []
+      }
+    }
+  },
   "scenarioContext": {
     "reviewClock": {
       "now": "2026-06-15T23:59:59Z",
@@ -35904,24 +36062,72 @@
       "explore": {
         "required": [
           {
-            "fixtureID": "explore.rich-catalog",
-            "stepLabel": "explore-loaded",
+            "fixtureID": "loading",
+            "stepLabel": "explore-loading",
             "index": 0,
             "assetIDs": [
-              "catalog_reader_epub"
+              "explore_required"
             ],
             "assetInodes": [
-              "inode:catalog_reader_epub"
+              "inode:explore_required"
+            ]
+          },
+          {
+            "fixtureID": "loaded",
+            "stepLabel": "explore-loaded",
+            "index": 1,
+            "assetIDs": [
+              "explore_required"
+            ],
+            "assetInodes": [
+              "inode:explore_required"
+            ]
+          },
+          {
+            "fixtureID": "empty",
+            "stepLabel": "explore-empty",
+            "index": 2,
+            "assetIDs": [
+              "explore_required_empty"
+            ],
+            "assetInodes": [
+              "inode:explore_required_empty"
+            ]
+          },
+          {
+            "fixtureID": "retry",
+            "stepLabel": "explore-retry",
+            "index": 3,
+            "assetIDs": [
+              "explore_required"
+            ],
+            "assetInodes": [
+              "inode:explore_required"
             ]
           }
         ],
         "counterexamples": [
           {
-            "fixtureID": "explore.empty",
+            "fixtureID": "empty-counterexample",
             "stepLabel": "explore-empty-counterexample",
-            "index": 1,
-            "assetIDs": [],
-            "assetInodes": []
+            "index": 4,
+            "assetIDs": [
+              "explore_counterexample_empty"
+            ],
+            "assetInodes": [
+              "inode:explore_counterexample_empty"
+            ]
+          },
+          {
+            "fixtureID": "retry-counterexample",
+            "stepLabel": "explore-retry-counterexample",
+            "index": 5,
+            "assetIDs": [
+              "explore_counterexample_retry"
+            ],
+            "assetInodes": [
+              "inode:explore_counterexample_retry"
+            ]
           }
         ]
       },

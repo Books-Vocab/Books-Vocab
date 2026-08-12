@@ -41,6 +41,17 @@ def test_emit_ios_matches_committed_generated_fixture_dataset():
     assert path.read_bytes() == artifacts[path]
 
 
+def test_emit_ios_carries_canonical_shared_decks_from_baseline():
+    bundle = sot.load_sot()
+    baseline = emit_ios._load_base_ui_world()
+    [(_, fresh_bytes)] = emit_ios._artifacts(bundle)
+    generated = json.loads(fresh_bytes)
+
+    assert set(baseline["sharedDecks"]) == {"fixtures", "decks"}
+    assert generated["sharedDecks"] == baseline["sharedDecks"]
+    assert "sharedDecks" not in generated["scenarioContext"].get("surfaceContracts", {})
+
+
 def test_emit_ios_uses_full_ui_world_manifest_baseline():
     """The emitter must not regress to the old partial empty-domain skeleton."""
     bundle = sot.load_sot()
