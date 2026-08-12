@@ -50,7 +50,7 @@ struct ReaderPage {
     }
 
     func tocChapter(_ path: String) -> XCUIElement {
-        app.buttons["reader.toc.chapter.\(path)"]
+        tableOfContentsSheet.buttons["reader.toc.chapter.\(path)"]
     }
 
     var tocLoading: XCUIElement {
@@ -62,44 +62,84 @@ struct ReaderPage {
     }
 
     var tocSelected: XCUIElement {
-        app.staticTexts["reader.toc.selected"]
+        tableOfContentsSheet.staticTexts["reader.toc.selected"]
     }
 
     var tocSuccess: XCUIElement {
-        app.staticTexts["reader.toc.result.success"]
+        tableOfContentsSheet.staticTexts["reader.toc.sheet.result.success"]
+    }
+
+    var tocReaderOverlaySuccess: XCUIElement {
+        app.otherElements["reader.toc.readerOverlay"].staticTexts[
+            "reader.toc.readerOverlay.result.success"
+        ]
     }
 
     var tocDestination: XCUIElement {
-        app.staticTexts["reader.toc.destination"]
+        app.otherElements["reader.toc.readerOverlay"].staticTexts[
+            "reader.toc.readerOverlay.destination"
+        ]
     }
 
     var tocError: XCUIElement {
-        app.staticTexts["reader.toc.error"]
+        tableOfContentsSheet.staticTexts["reader.toc.error"]
     }
 
     var tocMissingDestination: XCUIElement {
-        app.staticTexts["reader.toc.missingDestination"]
+        tableOfContentsSheet.staticTexts["reader.toc.missingDestination"]
     }
 
     var tocRetry: XCUIElement {
-        app.buttons["reader.toc.retry"]
+        tableOfContentsSheet.buttons["reader.toc.retry"]
     }
 
     var tocDone: XCUIElement {
-        app.buttons["reader.toc.done"]
+        tableOfContentsSheet.buttons["reader.toc.done"]
+    }
+
+    var currentLocator: XCUIElement {
+        app.staticTexts["reader.currentLocator"]
     }
 
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {
-        app.webViews.firstMatch
+        app.webViews.element(boundBy: 0)
     }
 
     /// A rendered text block inside the Readium WebView. Single-word
     /// paragraphs (e.g. a chapter heading line) expose an exact-label
     /// staticText whose center is a deterministic word-tap target.
     func contentText(_ text: String) -> XCUIElement {
-        app.webViews.staticTexts[text].firstMatch
+        webView.staticTexts[text].element(boundBy: 0)
+    }
+
+    func assertTOCScopedCounts(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertEqual(tableOfContentsSheet.count, 1, file: file, line: line)
+        XCTAssertEqual(
+            tableOfContentsSheet.staticTexts["reader.toc.sheet.result.success"].count,
+            1,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            app.otherElements["reader.toc.readerOverlay"].staticTexts[
+                "reader.toc.readerOverlay.destination"
+            ].count,
+            1,
+            file: file,
+            line: line
+        )
+    }
+
+    func assertSingleWebView(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertEqual(app.webViews.count, 1, file: file, line: line)
     }
 
     // MARK: - Translation Panel
@@ -159,13 +199,17 @@ struct ReaderPage {
         // 兩個 chrome 狀態各有一顆必然存在的按鈕：compact = expand、expanded = back。
         // 不要在 chrome root 掛 identifier——實測 SwiftUI 會把它往下推、蓋掉子按鈕
         // 自己的 id（a11y 樹裡 expand 按鈕變成 identifier: 'reader.header'）。
-        let anyChromeButton = app.buttons.matching(
+        let chromeButtons = app.buttons.matching(
             NSPredicate(format: "identifier IN %@",
                         ["reader.header.expandButton", "reader.header.backButton"])
-        ).firstMatch
-        if !anyChromeButton.waitForExistence(timeout: 5) {
+        )
+        guard chromeButtons.waitForExistence(timeout: 5) else {
             XCTFail("reader chrome not found. Accessibility tree:\n\(app.debugDescription)",
                     file: file, line: line)
+            return
         }
+        XCTAssertEqual(chromeButtons.count, 1,
+                       "reader chrome must expose exactly one active button",
+                       file: file, line: line)
     }
 }

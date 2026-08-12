@@ -45,6 +45,8 @@ enum ReaderMetrics {
 
     /// 套用閱讀偏好後等待 navigator 重排的緩衝
     static let applyPreferencesSettleDelay: TimeInterval = 0.8
+    /// TOC 導覽的 Readium go() 上限；超時保持 sheet 可重試。
+    static let tocNavigationTimeoutNanoseconds: UInt64 = 5_000_000_000
     /// 生字標記去抖動視窗
     static let markVocabDebounceDuration: TimeInterval = 0.8
     /// 首次標記完成後底線消退前的停留

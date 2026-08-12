@@ -1,48 +1,67 @@
 import Foundation
+import XCTest
+@testable import BooksAndVocab
 
 private enum ReaderTOCEvidenceWriterError: Error, CustomStringConvertible {
-    case invalidManifest
-    case missingAsset(String)
-    case missingAssetSource(String)
+    case missingRunnerVerdict
+    case invalidRunnerVerdict(String)
+    case missingAccessibilityObservation(String)
+    case observationMismatch(String)
+    case missingScreenshotBundle
+    case invalidArtifact
 
     var description: String {
         switch self {
-        case .invalidManifest:
-            return "marketing_demo UI World manifest is invalid"
-        case .missingAsset(let assetID):
-            return "UI World manifest is missing asset \(assetID)"
-        case .missingAssetSource(let path):
-            return "UI World asset source is missing or has no inode: \(path)"
+        case .missingRunnerVerdict:
+            return "current ios_test --json verdict is required"
+        case .invalidRunnerVerdict(let field):
+            return "current ios_test --json is missing \(field)"
+        case .missingAccessibilityObservation(let identifier):
+            return "current Reader accessibility observation is missing \(identifier)"
+        case .observationMismatch(let field):
+            return "Reader observation does not match \(field)"
+        case .missingScreenshotBundle:
+            return "current UI screenshot bundle is missing"
+        case .invalidArtifact:
+            return "Reader TOC evidence contract validation failed"
         }
     }
 }
 
-private struct ReaderTOCEvidenceArtifact: Codable {
-    let schema: String
-    let datasetID: String
-    let producer: String
-    var entries: [ReaderTOCEvidenceEntry]
-}
+private struct IOSRunVerdict: Decodable {
+    struct Options: Decodable {
+        let sourceCommit: String?
+        let sourceTreeDirty: Bool?
+        let datasetID: String?
+        let datasetSHA256: String?
+        let device: String?
+    }
 
-private struct ReaderTOCEvidenceEntry: Codable {
-    let label: String
-    let partition: String
-    let fixtureID: String
-    let assetID: String
-    let assetPath: String
-    let assetInode: String
-    let path: [Int]
-    let href: String
-    let locatorHref: String?
-    let destinationSelector: String?
-    let contentSelector: String?
+    struct Invocation: Decodable {
+        let ts: Int?
+        let pid: Int?
+    }
+
+    struct Artifacts: Decodable {
+        let log: String?
+        let xcresult: String?
+        let uiScreenshotDir: String?
+        let uiVisualReviewManifest: String?
+        let uiReviewRoot: String?
+        let uiVideo: String?
+    }
+
+    let options: Options
+    let invocation: Invocation?
+    let device: String?
+    let verdictFile: String?
+    let artifacts: Artifacts
 }
 
 extension UITestCase {
-    /// Produce the structured KG_PERF/UI artifact consumed by the unit
-    /// partition test. The label is recorded from the running test, while the
-    /// asset ID/path/inode are resolved from the real UI World manifest; no
-    /// test-source parsing is involved.
+    /// Writes only evidence from the current UI run. The runner verdict is
+    /// intentionally required: a fixture manifest or caller-provided href is
+    /// not provenance for an installed EPUB or a current simulator run.
     func writeReaderTOCEvidence(
         label: String,
         partition: String,
@@ -54,60 +73,73 @@ extension UITestCase {
         destinationSelector: String? = nil,
         contentSelector: String? = nil
     ) throws {
-        let artifactDirectory: URL
-        if let screenshotDirectory = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
-           !screenshotDirectory.isEmpty {
-            artifactDirectory = URL(fileURLWithPath: screenshotDirectory)
-        } else {
-            // xcodebuild does not reliably forward runner-only environment
-            // variables into the XCTest process. Keep the artifact contract
-            // fail-closed by saving to XCTest's writable temporary directory;
-            // the JSON is also attached to the xcresult below.
-            artifactDirectory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("kg-reader-toc-ui-evidence", isDirectory: true)
-        }
-
-        var rootURL = URL(fileURLWithPath: #filePath)
-        for _ in 0..<4 {
-            rootURL.deleteLastPathComponent()
-        }
-        let manifestURL = rootURL.appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
-        let manifestData = try Data(contentsOf: manifestURL)
-        guard let manifest = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
-              let datasetID = manifest["datasetID"] as? String,
-              let assets = manifest["assets"] as? [String: Any] else {
-            throw ReaderTOCEvidenceWriterError.invalidManifest
-        }
-
-        let asset = try Self.manifestAsset(assetID, in: assets)
-        guard let sourcePath = asset["sourcePath"] as? String else {
-            throw ReaderTOCEvidenceWriterError.missingAsset(assetID)
-        }
-        let sourceURL = URL(fileURLWithPath: sourcePath)
-        let attributes = try? FileManager.default.attributesOfItem(atPath: sourceURL.path)
-        guard let inode = attributes?[.systemFileNumber] as? NSNumber else {
-            throw ReaderTOCEvidenceWriterError.missingAssetSource(sourceURL.path)
-        }
-
-        let artifactURL = artifactDirectory.appendingPathComponent("reader-toc-ui-evidence.json")
-        try FileManager.default.createDirectory(
-            at: artifactDirectory,
-            withIntermediateDirectories: true
+        let verdict = try Self.currentIOSRunVerdict()
+        let app = try XCTUnwrap(currentApp)
+        let run = try Self.makeRun(
+            verdict: verdict,
+            selector: name,
+            screenshotDirectory: ProcessInfo.processInfo.environment[
+                "KG_UI_TEST_SCREENSHOT_DIR"
+            ]
         )
+        let asset = try Self.readInstalledAsset(from: app, assetID: assetID)
+        let observedLocator = try Self.readRequiredValue(
+            app,
+            identifier: "reader.currentLocator"
+        )
+        let observedContent = try Self.readContent(
+            app,
+            selector: contentSelector
+        )
+        if let locatorHref, locatorHref != observedLocator {
+            throw ReaderTOCEvidenceWriterError.observationMismatch("locatorHref")
+        }
+        if let destinationSelector {
+            let destination = try Self.readScopedValue(
+                app,
+                rootIdentifier: "reader.toc.readerOverlay",
+                identifier: destinationSelector
+            )
+            guard destination == observedLocator else {
+                throw ReaderTOCEvidenceWriterError.observationMismatch(
+                    "destinationSelector"
+                )
+            }
+        }
 
+        guard !href.isEmpty, !label.isEmpty, !fixtureID.isEmpty, !assetID.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.invalidArtifact
+        }
+
+        let artifactDirectory = URL(fileURLWithPath: run.uiScreenshotDirectory)
+        guard FileManager.default.fileExists(atPath: artifactDirectory.path) else {
+            throw ReaderTOCEvidenceWriterError.missingScreenshotBundle
+        }
+        let screenshotNames = try FileManager.default.contentsOfDirectory(
+            at: artifactDirectory,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.pathExtension.lowercased() == "png" }
+        guard !screenshotNames.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.missingScreenshotBundle
+        }
+
+        let artifactURL = artifactDirectory.appendingPathComponent(
+            "reader-toc-ui-evidence.json"
+        )
         var artifact: ReaderTOCEvidenceArtifact
         if FileManager.default.fileExists(atPath: artifactURL.path) {
-            let existingData = try Data(contentsOf: artifactURL)
-            artifact = try JSONDecoder().decode(ReaderTOCEvidenceArtifact.self, from: existingData)
-            guard artifact.schema == "kg.ui.perf.evidence.v1",
-                  artifact.datasetID == datasetID else {
-                throw ReaderTOCEvidenceWriterError.invalidManifest
+            artifact = try JSONDecoder().decode(
+                ReaderTOCEvidenceArtifact.self,
+                from: Data(contentsOf: artifactURL)
+            )
+            guard artifact.run.runIdentity == run.runIdentity else {
+                throw ReaderTOCEvidenceWriterError.observationMismatch("runIdentity")
             }
         } else {
             artifact = ReaderTOCEvidenceArtifact(
-                schema: "kg.ui.perf.evidence.v1",
-                datasetID: datasetID,
-                producer: "BooksAndVocabUITests.ReaderFlowUITests",
+                schema: "kg.ui.perf.evidence.v2",
+                run: run,
                 entries: []
             )
         }
@@ -117,48 +149,198 @@ extension UITestCase {
                 label: label,
                 partition: partition,
                 fixtureID: fixtureID,
-                assetID: assetID,
-                assetPath: sourceURL.path,
-                assetInode: inode.stringValue,
+                asset: asset,
                 path: path,
-                href: href,
-                locatorHref: locatorHref,
-                destinationSelector: destinationSelector,
-                contentSelector: contentSelector
+                observation: ReaderTOCEvidenceObservation(
+                    requestedHref: href,
+                    observedLocatorHref: observedLocator,
+                    observedContent: observedContent,
+                    contentSelector: contentSelector
+                )
             )
         )
+        guard artifact.validationErrors.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.invalidArtifact
+        }
 
         let encoded = try JSONEncoder.readerTOCEvidence.encode(artifact)
         try encoded.write(to: artifactURL, options: .atomic)
-        // Parse the persisted bytes again before attaching them. This makes
-        // the attachment itself proof that the saved runner artifact is valid.
-        let persistedData = try Data(contentsOf: artifactURL)
-        let reparsed = try JSONDecoder().decode(ReaderTOCEvidenceArtifact.self, from: persistedData)
-        guard reparsed.entries.last?.label == label else {
-            throw ReaderTOCEvidenceWriterError.invalidManifest
+        let reparsed = try JSONDecoder().decode(
+            ReaderTOCEvidenceArtifact.self,
+            from: Data(contentsOf: artifactURL)
+        )
+        guard reparsed.validationErrors.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.invalidArtifact
         }
         attachText(
-            String(decoding: persistedData, as: UTF8.self),
+            String(decoding: encoded, as: UTF8.self),
             named: "KG_PERF UI Evidence \(label)"
         )
     }
 
-    private static func manifestAsset(
-        _ assetID: String,
-        in assets: [String: Any]
-    ) throws -> [String: Any] {
-        var cursor: Any = assets
-        for component in assetID.split(separator: ".") {
-            guard let dictionary = cursor as? [String: Any],
-                  let next = dictionary[String(component)] else {
-                throw ReaderTOCEvidenceWriterError.missingAsset(assetID)
-            }
-            cursor = next
+    private static func currentIOSRunVerdict() throws -> IOSRunVerdict {
+        let environment = ProcessInfo.processInfo.environment
+        var candidates: [URL] = []
+        if let path = environment["KG_UI_TEST_VERDICT_JSON"], !path.isEmpty {
+            candidates.append(URL(fileURLWithPath: path))
         }
-        guard let asset = cursor as? [String: Any] else {
-            throw ReaderTOCEvidenceWriterError.missingAsset(assetID)
+        if let path = environment["KG_IOS_VERDICT_FILE"], !path.isEmpty {
+            candidates.append(URL(fileURLWithPath: "\(path).json"))
         }
-        return asset
+        guard let url = candidates.first(where: {
+            FileManager.default.fileExists(atPath: $0.path)
+        }) else {
+            throw ReaderTOCEvidenceWriterError.missingRunnerVerdict
+        }
+        do {
+            return try JSONDecoder().decode(
+                IOSRunVerdict.self,
+                from: Data(contentsOf: url)
+            )
+        } catch {
+            throw ReaderTOCEvidenceWriterError.invalidRunnerVerdict(error.localizedDescription)
+        }
+    }
+
+    private static func makeRun(
+        verdict: IOSRunVerdict,
+        selector: String,
+        screenshotDirectory: String?
+    ) throws -> ReaderTOCEvidenceRun {
+        let sourceCommit = try required(verdict.options.sourceCommit, "options.sourceCommit")
+        let sourceTreeDirty = try required(verdict.options.sourceTreeDirty, "options.sourceTreeDirty")
+        guard !sourceTreeDirty else {
+            throw ReaderTOCEvidenceWriterError.invalidRunnerVerdict(
+                "options.sourceTreeDirty=true"
+            )
+        }
+        let datasetID = try required(verdict.options.datasetID, "options.datasetID")
+        let datasetSHA256 = try required(
+            verdict.options.datasetSHA256,
+            "options.datasetSHA256"
+        )
+        let destination = try required(verdict.options.device, "options.device")
+        let resolvedDevice = verdict.device ?? ""
+        let logPath = try required(verdict.artifacts.log, "artifacts.log")
+        let xcresultPath = try required(verdict.artifacts.xcresult, "artifacts.xcresult")
+        let uiScreenshotDirectory = try required(
+            screenshotDirectory ?? verdict.artifacts.uiScreenshotDir,
+            "artifacts.uiScreenshotDir"
+        )
+        let uiVisualReviewManifest = try required(
+            verdict.artifacts.uiVisualReviewManifest,
+            "artifacts.uiVisualReviewManifest"
+        )
+        let uiReviewRoot = try required(
+            verdict.artifacts.uiReviewRoot,
+            "artifacts.uiReviewRoot"
+        )
+        let uiVideo = try required(verdict.artifacts.uiVideo, "artifacts.uiVideo")
+        let timestamp = try required(verdict.invocation?.ts, "invocation.ts")
+        let pid = try required(verdict.invocation?.pid, "invocation.pid")
+        guard !selector.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.invalidRunnerVerdict("selector")
+        }
+
+        return ReaderTOCEvidenceRun(
+            verdictPath: try required(verdict.verdictFile, "verdictFile"),
+            sourceCommit: sourceCommit,
+            sourceTreeDirty: sourceTreeDirty,
+            datasetID: datasetID,
+            datasetSHA256: datasetSHA256,
+            device: resolvedDevice.isEmpty ? destination : "\(destination) | \(resolvedDevice)",
+            selector: selector,
+            runIdentity: "\(timestamp)-\(pid)-\(selector)",
+            logPath: logPath,
+            xcresultPath: xcresultPath,
+            uiScreenshotDirectory: uiScreenshotDirectory,
+            uiVisualReviewManifest: uiVisualReviewManifest,
+            uiReviewRoot: uiReviewRoot,
+            uiVideo: uiVideo
+        )
+    }
+
+    private static func readInstalledAsset(
+        from app: XCUIApplication,
+        assetID: String
+    ) throws -> ReaderTOCEvidenceAsset {
+        let descriptor = try readRequiredValue(app, identifier: "reader.evidence.asset")
+        let parts = descriptor.split(separator: "|", omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              let byteSize = Int(parts[2]),
+              !parts[0].isEmpty,
+              parts[1].count == 64 else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
+                "reader.evidence.asset"
+            )
+        }
+        return ReaderTOCEvidenceAsset(
+            assetID: assetID,
+            installedPath: String(parts[0]),
+            sha256: String(parts[1]),
+            byteSize: byteSize
+        )
+    }
+
+    private static func readContent(
+        _ app: XCUIApplication,
+        selector: String?
+    ) throws -> String? {
+        guard let selector, !selector.isEmpty else { return nil }
+        let webViews = app.webViews
+        guard webViews.count == 1 else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
+                "webView"
+            )
+        }
+        let content = webViews.element(boundBy: 0).staticTexts[selector]
+        guard content.count == 1 else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
+                "contentSelector:\(selector)"
+            )
+        }
+        return content.element(boundBy: 0).label
+    }
+
+    private static func readScopedValue(
+        _ app: XCUIApplication,
+        rootIdentifier: String,
+        identifier: String
+    ) throws -> String {
+        let roots = app.otherElements[rootIdentifier]
+        guard roots.count == 1 else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(rootIdentifier)
+        }
+        let elements = roots.element(boundBy: 0).staticTexts[identifier]
+        guard elements.count == 1,
+              let value = elements.element(boundBy: 0).value as? String,
+              !value.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(identifier)
+        }
+        return value
+    }
+
+    private static func readRequiredValue(
+        _ app: XCUIApplication,
+        identifier: String
+    ) throws -> String {
+        let elements = app.staticTexts[identifier]
+        guard elements.count == 1,
+              let value = elements.element(boundBy: 0).value as? String,
+              !value.isEmpty else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(identifier)
+        }
+        return value
+    }
+
+    private static func required<T>(_ value: T?, _ field: String) throws -> T {
+        guard let value else {
+            throw ReaderTOCEvidenceWriterError.invalidRunnerVerdict(field)
+        }
+        if let string = value as? String, string.isEmpty {
+            throw ReaderTOCEvidenceWriterError.invalidRunnerVerdict(field)
+        }
+        return value
     }
 }
 

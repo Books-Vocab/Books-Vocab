@@ -150,7 +150,7 @@ struct BridgePlanner {
     private mutating func commandsForNavigation(trigger: (locator: Locator, id: UUID)?) -> [BridgeCommand] {
         guard let trigger, lastNavigateId != trigger.id else { return [] }
         lastNavigateId = trigger.id
-        return [.navigator(.navigate(trigger.locator))]
+        return [.navigator(.navigate(trigger.locator, requestID: trigger.id))]
     }
 
     private mutating func commandsForPreferences(_ preferences: EPUBPreferences) -> [BridgeCommand] {

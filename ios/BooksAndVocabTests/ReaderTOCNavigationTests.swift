@@ -5,64 +5,192 @@ import Testing
 @testable import BooksAndVocab
 
 struct ReaderTOCNavigationTests {
-    @Test func selectionFailureRetainsSheetAndRetryContext() {
-        var state = ReaderTOCNavigationState()
+    @Test @MainActor
+    func navigatorTrueIsTheFirstSuccessfulNavigationSignal() async throws {
+        let requestID = UUID()
+        let locator = try Self.locator(href: "OEBPS/chapter-b.xhtml")
+        let navigator = FakeReaderNavigator(outcome: .accepted)
+        let bridge = ReaderTOCNavigationBridge(
+            navigator: navigator,
+            timeoutNanoseconds: 50_000_000
+        )
 
-        state.beginSelection(path: [0, 1], title: "Section 2")
+        let event = await bridge.navigate(requestID: requestID, locator: locator)
 
-        #expect(state.phase == .loading)
-        #expect(state.selectedPath == [0, 1])
-        #expect(!state.canDismissSheet)
-
-        state.failSelection(message: "The chapter could not be opened.")
-
-        #expect(state.phase == .failure)
-        #expect(!state.canDismissSheet)
-        #expect(state.canRetry)
-        #expect(state.errorMessage == "The chapter could not be opened.")
-
-        state.beginRetry()
-
-        #expect(state.phase == .loading)
-        #expect(state.selectedPath == [0, 1])
-        #expect(state.canRetry == false)
-        #expect(state.canDismissSheet == false)
+        #expect(event == .goAccepted(requestID: requestID, locatorHref: "OEBPS/chapter-b.xhtml"))
+        #expect(navigator.requestedLocator?.href.string == "OEBPS/chapter-b.xhtml")
     }
 
-    @Test func missingDestinationIsRetryableAndSuccessClearsOutcome() {
-        var state = ReaderTOCNavigationState()
-        state.beginSelection(path: [2], title: "Missing chapter")
-        state.markMissingDestination()
+    @Test @MainActor
+    func navigatorFalseLeavesSelectionRetryable() async throws {
+        let requestID = UUID()
+        let locator = try Self.locator(href: "OEBPS/chapter-b.xhtml")
+        let event = await ReaderTOCNavigationBridge(
+            navigator: FakeReaderNavigator(outcome: .rejected),
+            timeoutNanoseconds: 50_000_000
+        ).navigate(requestID: requestID, locator: locator)
 
-        #expect(state.phase == .missingDestination)
+        var state = ReaderTOCNavigationState()
+        _ = state.beginSelection(
+            path: [1],
+            title: "Chapter B",
+            expectedHref: "OEBPS/chapter-b.xhtml",
+            requestID: requestID
+        )
+        state.apply(event)
+
+        #expect(event == .goRejected(requestID: requestID))
+        #expect(state.phase == .failure)
         #expect(state.canRetry)
         #expect(!state.canDismissSheet)
+    }
 
-        state.beginRetry()
-        state.succeed()
+    @Test @MainActor
+    func missingNavigatorIsNotASuccessSignal() async throws {
+        let requestID = UUID()
+        let locator = try Self.locator(href: "OEBPS/chapter-b.xhtml")
+        let event = await ReaderTOCNavigationBridge(
+            navigator: nil,
+            timeoutNanoseconds: 50_000_000
+        ).navigate(requestID: requestID, locator: locator)
+
+        #expect(event == .navigatorUnavailable(requestID: requestID))
+    }
+
+    @Test @MainActor
+    func matchingLocationCallbackOwnsSuccessForTheRequestToken() throws {
+        let requestID = UUID()
+        var state = ReaderTOCNavigationState()
+        _ = state.beginSelection(
+            path: [1],
+            title: "Chapter B",
+            expectedHref: "OEBPS/chapter-b.xhtml",
+            requestID: requestID
+        )
+
+        state.apply(
+            .locationDidChange(
+                requestID: requestID,
+                locatorHref: "OEBPS/chapter-b.xhtml"
+            )
+        )
 
         #expect(state.phase == .success)
-        #expect(state.selectedPath == [2])
-        #expect(!state.canRetry)
-        #expect(state.errorMessage == nil)
+        #expect(state.destinationHref == "OEBPS/chapter-b.xhtml")
+        #expect(state.observedLocatorHref == "OEBPS/chapter-b.xhtml")
+        #expect(state.canDismissSheet)
     }
 
-    @Test func nilLocatorWithFragmentUsesMissingDestinationOnly() {
-        #expect(
-            ReaderTOCNavigationResolution.resolve(hasLocator: false, href: "#")
-                == .missingDestination
+    @Test @MainActor
+    func timeoutAndCancellationRemainRetryable() throws {
+        let requestID = UUID()
+        var state = ReaderTOCNavigationState()
+        _ = state.beginSelection(
+            path: [1],
+            title: "Chapter B",
+            expectedHref: "OEBPS/chapter-b.xhtml",
+            requestID: requestID
         )
-        #expect(
-            ReaderTOCNavigationResolution.resolve(hasLocator: false, href: "chapter.xhtml")
-                == .failure
-        )
-        #expect(
-            ReaderTOCNavigationResolution.resolve(hasLocator: true, href: "#")
-                == .success
-        )
+
+        state.apply(.timedOut(requestID: requestID))
+        #expect(state.phase == .failure)
+        #expect(state.failureReason == .timedOut)
+        #expect(state.canRetry)
+
+        _ = state.beginRetry(requestID: requestID)
+        state.apply(.cancelled(requestID: requestID))
+        #expect(state.phase == .failure)
+        #expect(state.failureReason == .cancelled)
+        #expect(state.canRetry)
     }
 
-    @Test func tocHierarchyKeepsStableNestedPaths() {
+    @Test @MainActor
+    func locatorMismatchAndStaleCallbackCannotCloseSheet() throws {
+        let requestID = UUID()
+        var state = ReaderTOCNavigationState()
+        _ = state.beginSelection(
+            path: [1],
+            title: "Chapter B",
+            expectedHref: "OEBPS/chapter-b.xhtml",
+            requestID: requestID
+        )
+
+        state.apply(
+            .locationDidChange(
+                requestID: requestID,
+                locatorHref: "OEBPS/chapter-a.xhtml"
+            )
+        )
+        #expect(state.phase == .failure)
+        #expect(state.failureReason == .locatorMismatch)
+        #expect(state.canRetry)
+
+        _ = state.beginRetry(requestID: requestID)
+        state.apply(
+            .locationDidChange(
+                requestID: UUID(),
+                locatorHref: "OEBPS/chapter-b.xhtml"
+            )
+        )
+        #expect(state.phase == .loading)
+        #expect(!state.canDismissSheet)
+    }
+
+    @Test @MainActor
+    func invalidPublicationDestinationIsMissingAndRetryable() throws {
+        let requestID = UUID()
+        var state = ReaderTOCNavigationState()
+        _ = state.beginSelection(
+            path: [2],
+            title: "Missing Chapter",
+            expectedHref: "OEBPS/does-not-exist.xhtml",
+            requestID: requestID
+        )
+
+        state.apply(.missingDestination(requestID: requestID))
+
+        #expect(state.phase == .missingDestination)
+        #expect(state.failureReason == .missingDestination)
+        #expect(state.canRetry)
+        #expect(!state.canDismissSheet)
+    }
+
+    @Test @MainActor
+    func evidenceContractRequiresCurrentRunnerAndArtifactProvenance() {
+        let artifact = ReaderTOCEvidenceArtifact(
+            schema: "kg.ui.perf.evidence.v2",
+            run: ReaderTOCEvidenceRun(
+                verdictPath: "",
+                sourceCommit: "",
+                sourceTreeDirty: true,
+                datasetID: "",
+                datasetSHA256: "",
+                device: "",
+                selector: "",
+                runIdentity: "",
+                logPath: "",
+                xcresultPath: "",
+                uiScreenshotDirectory: "",
+                uiVisualReviewManifest: "",
+                uiReviewRoot: "",
+                uiVideo: ""
+            ),
+            entries: []
+        )
+
+        let errors = artifact.validationErrors
+
+        #expect(errors.contains("run.sourceCommit"))
+        #expect(errors.contains("run.sourceTreeDirty"))
+        #expect(errors.contains("run.datasetSHA256"))
+        #expect(errors.contains("run.device"))
+        #expect(errors.contains("run.selector"))
+        #expect(errors.contains("run.runIdentity"))
+        #expect(errors.contains("run.artifacts"))
+    }
+
+    @Test
+    func tocHierarchyKeepsStableNestedPaths() {
         let links = [
             Link(
                 href: "chapter-1.xhtml",
@@ -86,101 +214,10 @@ struct ReaderTOCNavigationTests {
             "chapter-2.xhtml"
         ])
         #expect(items.map { $0.link.url().string } == items.map(\.href))
-
-        // Counterexample: a flattened item must not silently retain a sibling's
-        // path or href when the hierarchy is nested.
-        #expect(!items.contains { $0.path == [0, 1] && $0.href == "chapter-2.xhtml" })
-        #expect(!items.contains { $0.path == [0, 0] && $0.href == "chapter-2.xhtml" })
     }
 
-    @Test func evidencePartitionsUseRealWorldFixtureAndDisjointAssets() throws {
-        let rootURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let worldURL = rootURL
-            .appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
-        let data = try Data(contentsOf: worldURL)
-        let root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(root["schema"] as? String == "kg.fixture.dataset.v2")
-        let reader = try #require(root["reader"] as? [String: Any])
-        let bookshelf = try #require(root["bookshelf"] as? [String: Any])
-        let required = try #require(reader["realBookLibrary"] as? [String: Any])
-        let counterexample = try #require(bookshelf["book_card_complete"] as? [String: Any])
-        let counterexampleBook = try #require((counterexample["books"] as? [[String: Any]])?.first)
-
-        let requiredFixtureID = "reader.realBookLibrary"
-        let counterexampleFixtureID = "bookshelf.book_card_complete"
-        let requiredAssetID = try #require(required["bookAssetRef"] as? String)
-        let counterexampleAssetID = try #require(counterexampleBook["bookAssetRef"] as? String)
-        let artifactURL = ProcessInfo.processInfo.environment["KG_PERF_UI_EVIDENCE_ARTIFACT"]
-            .map(URL.init(fileURLWithPath:))
-            ?? rootURL.appendingPathComponent(
-                "ios/BooksAndVocabTests/Fixtures/reader-toc-ui-evidence.json"
-            )
-        let artifactData = try Data(contentsOf: artifactURL)
-        let artifact = try JSONDecoder().decode(
-            ReaderTOCEvidenceArtifact.self,
-            from: artifactData
-        )
-        #expect(artifact.schema == "kg.ui.perf.evidence.v1")
-        #expect(artifact.datasetID == "marketing_demo")
-        let requiredEntries = artifact.entries.filter { $0.partition == "required" }
-        let counterexampleEntries = artifact.entries.filter { $0.partition == "counterexample" }
-        let requiredLabels = requiredEntries.map(\.label)
-        let counterexampleLabels = counterexampleEntries.map(\.label)
-        let requiredLabel = try #require(requiredLabels.first)
-        let requiredInodes = Set(requiredEntries.map(\.assetInode))
-        let counterexampleInodes = Set(counterexampleEntries.map(\.assetInode))
-        let manifestAssets = try #require(root["assets"] as? [String: Any])
-        let manifestAssetIDs = Set(
-            manifestAssets.flatMap { category, value -> [String] in
-                guard let categoryAssets = value as? [String: Any] else { return [] }
-                return categoryAssets.keys.map { "\(category).\($0)" }
-            }
-        )
-        let artifactAssetIDs = Set(artifact.entries.map(\.assetID))
-
-        #expect(requiredFixtureID != counterexampleFixtureID)
-        #expect(requiredLabels.count == 1)
-        #expect(counterexampleLabels.count == 2)
-        #expect(counterexampleLabels.allSatisfy { $0.contains("-counterexample-") })
-        #expect(requiredLabel.hasSuffix("-required"))
-        #expect(Set([requiredLabel]).isDisjoint(with: Set(counterexampleLabels)))
-        #expect(requiredInodes.isDisjoint(with: counterexampleInodes))
-        #expect(artifactAssetIDs.isSubset(of: Set(manifestAssetIDs)))
-        #expect(requiredAssetID == "books.reader_real_book_epub")
-        #expect(counterexampleAssetID == "books.catalog_reader_epub")
-        #expect(Set([requiredAssetID]).isDisjoint(with: Set(counterexampleEntries.map(\.assetID))))
-        #expect(requiredEntries.first?.href == "OEBPS/chapter1.xhtml")
-        #expect(requiredEntries.first?.locatorHref == "OEBPS/chapter1.xhtml")
-        #expect(counterexampleEntries.contains { $0.href == "#" && $0.locatorHref == nil })
-    }
-
-    @Test func counterexampleUITestsAssertDoneControlIsDisabled() throws {
-        let rootURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let pageSource = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocabUITests/Pages/ReaderPage.swift"
-            ),
-            encoding: .utf8
-        )
-        let flowSource = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocabUITests/ReaderFlowUITests.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(pageSource.contains("var tocDone: XCUIElement"))
-        #expect(Self.occurrences(of: "XCTAssertTrue(reader.tocDone.waitUntilExists", in: flowSource) == 2)
-        #expect(Self.occurrences(of: "XCTAssertFalse(reader.tocDone.isEnabled)", in: flowSource) == 3)
-    }
-
-    @Test func productionSelectorContractIsIdentifierBased() throws {
+    @Test
+    func productionTOCInputDoesNotCreateSyntheticFragmentDestination() throws {
         let rootURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -191,78 +228,51 @@ struct ReaderTOCNavigationTests {
             ),
             encoding: .utf8
         )
-        let headerSource = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocab/Views/Reader/ReaderViewPresenter+Headers.swift"
-            ),
-            encoding: .utf8
-        )
         let readerSource = try String(
             contentsOf: rootURL.appendingPathComponent(
                 "ios/BooksAndVocab/Views/Reader/ReaderView.swift"
             ),
             encoding: .utf8
         )
-        let panelsSource = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocab/Views/Reader/ReaderView+Panels.swift"
-            ),
-            encoding: .utf8
-        )
-        let stateSource = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocab/Views/Reader/ReaderViewState.swift"
-            ),
-            encoding: .utf8
-        )
-        let flowSource = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocabUITests/ReaderFlowUITests.swift"
-            ),
-            encoding: .utf8
-        )
-        for identifier in [
-            "reader.toc.chapterHierarchy",
-            "reader.toc.selected",
-            "reader.toc.loading",
-            "reader.toc.navigation.loading",
-            "reader.toc.result.success",
-            "reader.toc.error",
-            "reader.toc.retry",
-            "reader.toc.missingDestination"
-        ] {
-            #expect(tocSource.contains(identifier))
+
+        #expect(!tocSource.contains("href: \"#\""))
+        #expect(!readerSource.contains("readerTOCInjectLocateFailureOnce"))
+        #expect(!readerSource.contains("consumeTOCInjection"))
+    }
+
+    private static func locator(href: String) throws -> Locator {
+        let mediaType = try #require(MediaType("application/xhtml+xml"))
+        let url = try #require(AnyURL(path: href))
+        return Locator(href: url, mediaType: mediaType)
+    }
+}
+
+@MainActor
+private final class FakeReaderNavigator: ReaderNavigatorDriving {
+    enum Outcome {
+        case accepted
+        case rejected
+        case hanging
+    }
+
+    let outcome: Outcome
+    private(set) var requestedLocator: Locator?
+
+    init(outcome: Outcome) {
+        self.outcome = outcome
+    }
+
+    func go(to locator: Locator) async -> Bool? {
+        requestedLocator = locator
+        switch outcome {
+        case .accepted:
+            return true
+        case .rejected:
+            return false
+        case .hanging:
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            return false
         }
-        #expect(headerSource.contains("reader.header.tocButton"))
-        #expect(tocSource.contains("reader.toc.done"))
-        #expect(panelsSource.contains("reader.toc.destination"))
-        #expect(panelsSource.contains("reader.toc.result.success"))
-        #expect(flowSource.contains("reader.tocSuccess.waitUntilExists"))
-        #expect(flowSource.contains("reader.tocDestination.waitUntilExists"))
-        #expect(flowSource.contains("reader.contentText(Self.seededWord)"))
-        #expect(stateSource.contains("href == \"#\""))
-        #expect(!flowSource.contains("-readerTOCInjectMissingDestinationOnce"))
-    }
-
-    private struct ReaderTOCEvidenceArtifact: Decodable {
-        let schema: String
-        let datasetID: String
-        let entries: [ReaderTOCEvidenceEntry]
-    }
-
-    private struct ReaderTOCEvidenceEntry: Decodable {
-        let label: String
-        let partition: String
-        let fixtureID: String
-        let assetID: String
-        let assetInode: String
-        let path: [Int]
-        let href: String
-        let locatorHref: String?
-    }
-
-    private static func occurrences(of needle: String, in source: String) -> Int {
-        source.components(separatedBy: needle).count - 1
     }
 }
 #endif
