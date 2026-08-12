@@ -203,13 +203,16 @@ struct TodayReviewPage {
     @discardableResult
     func waitForFrontReadiness(
         presentation: CardPresentation,
+        requiredFields: [String] = [],
+        absentFields: [String] = [],
         timeout: TimeInterval = 8
     ) -> Bool {
         waitForCardReadiness(
             cardIdentifier: "todayReview.card.front",
             presentationIdentifier: presentation.identifier(for: "todayReview.card.front.content"),
             alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.front.content"),
-            fieldIdentifiers: [],
+            requiredFieldIdentifiers: requiredFields.map { "todayReview.card.front.field.\($0)" },
+            absentFieldIdentifiers: absentFields.map { "todayReview.card.front.field.\($0)" },
             timeout: timeout
         )
     }
@@ -219,14 +222,16 @@ struct TodayReviewPage {
     @discardableResult
     func waitForBackReadiness(
         presentation: CardPresentation,
-        fields: [String],
+        requiredFields: [String],
+        absentFields: [String] = [],
         timeout: TimeInterval = 8
     ) -> Bool {
         waitForCardReadiness(
             cardIdentifier: "todayReview.card.back",
             presentationIdentifier: presentation.identifier(for: "todayReview.card.back.content"),
             alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.back.content"),
-            fieldIdentifiers: fields.map { "todayReview.card.back.field.\($0)" },
+            requiredFieldIdentifiers: requiredFields.map { "todayReview.card.back.field.\($0)" },
+            absentFieldIdentifiers: absentFields.map { "todayReview.card.back.field.\($0)" },
             timeout: timeout
         )
     }
@@ -264,7 +269,8 @@ struct TodayReviewPage {
         cardIdentifier: String,
         presentationIdentifier: String,
         alternatePresentationIdentifier: String,
-        fieldIdentifiers: [String],
+        requiredFieldIdentifiers: [String],
+        absentFieldIdentifiers: [String],
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -272,7 +278,8 @@ struct TodayReviewPage {
             if cardIsCanonical(cardIdentifier),
                exactlyOne(presentationIdentifier),
                elements(for: alternatePresentationIdentifier).count == 0,
-               fieldIdentifiers.allSatisfy({ exactlyOne($0) }) {
+               requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) }),
+               absentFieldIdentifiers.allSatisfy({ elements(for: $0).count == 0 }) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -281,7 +288,8 @@ struct TodayReviewPage {
         return cardIsCanonical(cardIdentifier)
             && exactlyOne(presentationIdentifier)
             && elements(for: alternatePresentationIdentifier).count == 0
-            && fieldIdentifiers.allSatisfy({ exactlyOne($0) })
+            && requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) })
+            && absentFieldIdentifiers.allSatisfy({ elements(for: $0).count == 0 })
     }
 
     private func cardIsCanonical(_ identifier: String) -> Bool {
