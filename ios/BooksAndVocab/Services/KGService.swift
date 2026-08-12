@@ -56,6 +56,13 @@ final class KGService: KGServing, LocalDataClearing {
     @ObservationIgnored
     let urlSession: URLSession
 
+    /// DEBUG UI World runs use the canonical dictionary scenario context as a
+    /// hermetic service seam. Release builds never route through this adapter.
+    #if DEBUG
+    @ObservationIgnored
+    var fixtureDictionaryService: FixtureDictionaryServing?
+    #endif
+
     var serverURL: String {
         get { Self.getServerURL() }
         set { Self.setServerURL(newValue) }

@@ -91,6 +91,7 @@ final class AddLinkCoordinator {
     private(set) var selectionState: DictionarySelectionState = .unavailable
     private(set) var selectedSenseKey: String?
     private(set) var selectedExampleKey: String?
+    private(set) var dictionaryMaterialization: DictionaryMaterializationSnapshot?
 
     private var searchGeneration = 0
     private var searchTask: Task<Void, Never>?
@@ -234,10 +235,17 @@ final class AddLinkCoordinator {
                 guard generation == searchGeneration else { return }
                 self.lastEntry = detail.entry
                 self.lastCacheStatus = detail.cacheStatus
+                self.dictionaryMaterialization = detail.materialization
                 self.lookupState = .success(
                     query: query, entry: detail.entry, cacheStatus: detail.cacheStatus
                 )
                 searchPhase = .result(detail.entry, cacheStatus: detail.cacheStatus)
+                if let materialization = detail.materialization,
+                   materialization.status == "ready",
+                   let senseID = materialization.selectedSenseID,
+                   let exampleID = materialization.selectedExampleID {
+                    select(senseKey: senseID, exampleKey: exampleID)
+                }
             } catch is CancellationError {
                 // A newer submit owns the UI state.
             } catch {
@@ -311,6 +319,22 @@ final class AddLinkCoordinator {
         guard let sourceCardID = sourceEntry.kgCardId,
               let senseKey = selectedSenseKey,
               let exampleKey = selectedExampleKey else { return }
+
+        // The canonical UI World materialization is already a ready projection.
+        // Treating it as such keeps UI runs hermetic and exercises the same
+        // selected sense/example contract without inventing a graph response.
+        if lastCacheStatus == "fixture",
+           let materialization = dictionaryMaterialization,
+           materialization.status == "ready",
+           materialization.selectedSenseID == senseKey,
+           materialization.selectedExampleID == exampleKey {
+            materializePhase = .succeeded
+            materializeFailure = nil
+            materializeKey = nil
+            materializeRequest = nil
+            return
+        }
+
         let request = DictionaryMaterializeLinkRequest(
             sourceCardId: sourceCardID,
             notebookId: sourceEntry.notebookId,
@@ -383,6 +407,7 @@ final class AddLinkCoordinator {
     private func clearSelection() {
         selectedSenseKey = nil
         selectedExampleKey = nil
+        dictionaryMaterialization = nil
         selectionState = .unavailable
         materializeFailure = nil
         lastHit = nil
