@@ -337,13 +337,12 @@ def _validate_scenario_context_field(
 ) -> None:
     """scenarioContext 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
 
-    keys 必須包含 required scenarioContext keys；readerPassage keys 恆 == READER_PASSAGE_KEYS；
-    reviewClock 一律為完整 clock dict，dictionary/surfaceContracts 若存在則沿用 baseline
-    的 canonical contract，避免 spec emitter 另造一份 domain schema。
+    emitter 只產生 canonical 五鍵形狀；readerPassage keys 恆 == READER_PASSAGE_KEYS；
+    reviewClock、dictionary、surfaceContracts 必須完整存在，並沿用 baseline 的 canonical
+    contract，避免 spec emitter 另造一份 domain schema。
     """
     mc = document.get("scenarioContext")
-    if not isinstance(mc, dict) or not SCENARIO_CONTEXT_REQUIRED_KEYS <= set(mc) \
-            or set(mc) - set(SCENARIO_CONTEXT_KEYS):
+    if not isinstance(mc, dict) or set(mc) != set(SCENARIO_CONTEXT_KEYS):
         got = sorted(mc) if isinstance(mc, dict) else type(mc).__name__
         raise ValueError(
             f"scenarioContext keys must be {sorted(SCENARIO_CONTEXT_KEYS)}, got {got}")
