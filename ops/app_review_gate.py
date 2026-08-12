@@ -36,6 +36,7 @@ from lib.app_review_evaluators import (
     merge_result,
     thaw,
 )
+from lib.canonical_json import canonical_json_bytes, canonical_json_sha256
 from lib.exit_codes import EXIT_TOOL_ERROR, EXIT_USAGE
 
 SPEC_SCHEMA = "kg.app_review.gate.v1"
@@ -118,9 +119,7 @@ class GateResult:
 
 
 def _canonical(value: Any) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-    ).encode("utf-8")
+    return canonical_json_bytes(value)
 
 
 def _sha(payload: bytes) -> str:
@@ -128,11 +127,7 @@ def _sha(payload: bytes) -> str:
 
 
 def _json_sha(value: Any) -> str:
-    return _sha(
-        json.dumps(
-            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-    )
+    return canonical_json_sha256(value)
 
 
 def _git_blob_sha256(
