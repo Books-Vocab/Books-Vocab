@@ -105,6 +105,9 @@ SHARED_DECK_CARD_KEYS = {
     "difficulty", "mode", "rootForm", "inflections",
 }
 SHARED_DECK_CARD_REQUIRED_KEYS = {"id", "content", "meaning"}
+REVIEW_CLOCK_SOURCE = "history_plan.anchor_day"
+REVIEW_CLOCK_TIME_ZONE = "UTC"
+REVIEW_CLOCK_HISTORY_FIXTURES = ("statsPopulated", "reviewCalendarDense")
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
@@ -2241,7 +2244,13 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
         _validate_seed_graph_links(entry_objs, set(entry_words), owner_prefix=f"reviewDeck.{fixture_id}", label=label)
 
 
-def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset") -> str:
+def validate_fixture_dataset_file(
+    path: Path,
+    *,
+    label: str = "UI World dataset",
+    require_review_clock: bool = False,
+    require_review_history_alignment: bool = False,
+) -> str:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -2362,7 +2371,13 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
     _validate_podcast(data, label=label)
     _validate_today_review(data, label=label)
     _validate_sync_presenter(data, label=label)
-    _validate_scenario_context(data, label=label, asset_types=asset_types)
+    _validate_scenario_context(
+        data,
+        asset_types=asset_types,
+        label=label,
+        require_review_clock=require_review_clock,
+        require_review_history_alignment=require_review_history_alignment,
+    )
     _validate_cross_references(data, label=label)
     return dataset_id
 
@@ -3060,6 +3075,8 @@ def _validate_canonical_review_clock(
 
 def _validate_scenario_context(
     data: dict[str, Any], *, label: str, asset_types: Mapping[str, str],
+    require_review_clock: bool = False,
+    require_review_history_alignment: bool = False,
 ) -> None:
     """Validate legacy and canonical scenario context without broad fallback.
 
@@ -3068,6 +3085,10 @@ def _validate_scenario_context(
     carry the new clock, dictionary and surface contracts together.
     """
     if "scenarioContext" not in data:
+        if require_review_clock:
+            raise UIWorldManifestError(
+                f"{label} scenarioContext.reviewClock requires scenarioContext"
+            )
         return
     mc = _require_mapping(data.get("scenarioContext"), field="scenarioContext", label=label)
     keys = set(mc)
@@ -3180,11 +3201,26 @@ def main(argv: list[str] | None = None) -> int:
     validate = sub.add_parser("validate", help="validate one UI World v2 dataset")
     validate.add_argument("path", type=Path)
     validate.add_argument("--label", default="UI World dataset")
+    validate.add_argument(
+        "--require-review-clock",
+        action="store_true",
+        help="require an explicit scenarioContext.reviewClock",
+    )
+    validate.add_argument(
+        "--require-review-history-alignment",
+        action="store_true",
+        help="require review calendar/stats histories to align with the injected clock",
+    )
     args = parser.parse_args(argv)
 
     if args.cmd == "validate":
         try:
-            dataset_id = validate_fixture_dataset_file(args.path, label=args.label)
+            dataset_id = validate_fixture_dataset_file(
+                args.path,
+                label=args.label,
+                require_review_clock=args.require_review_clock,
+                require_review_history_alignment=args.require_review_history_alignment,
+            )
         except UIWorldManifestError as exc:
             print(str(exc), file=sys.stderr)
             return 64

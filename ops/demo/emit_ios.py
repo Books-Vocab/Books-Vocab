@@ -193,11 +193,9 @@ def _review_clock_field(
     """把凍結時刻（datetime）攤成 reviewClock 顯式欄位。
 
     now / frozenEpoch = 同一凍結時刻（= preferences review-clock overlay 的
-    epoch，單一 SoT）；timeZone 明確宣告日曆日解讀區；anchorDay = 該時刻的 UTC 日（恆等於 plan.anchor_day，
-    因 freeze = anchor 00:00Z + (24-max_offset)h - 1s，落在 anchor 當日 UTC）。
+    epoch，單一 SoT）；timeZone 明確宣告日曆日解讀區；anchorDay = 該時刻的 UTC 日。
     """
     from datetime import timezone
-
     dt = frozen_at.astimezone(timezone.utc)  # type: ignore[attr-defined]
     return {
         "now": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -473,7 +471,10 @@ def _validate_fixture_document(
                 "generated iOS UI World may only overlay identity-owned auth; "
                 f"domain {key!r} drifted from {BASE_UI_WORLD_PATH}"
             )
-    _validate_scenario_context_field(document, review_clock_frozen=review_clock_frozen)
+    _validate_scenario_context_field(
+        document,
+        review_clock_frozen=review_clock_frozen or not spec_domains,
+    )
     if review_clock_frozen:
         _validate_review_clock_overlay(document["preferences"], baseline["preferences"])
 
@@ -528,7 +529,13 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
-def _validate_fixture_json_bytes(content: bytes, *, label: str = "Generated demo UI World") -> None:
+def _validate_fixture_json_bytes(
+    content: bytes,
+    *,
+    label: str = "Generated demo UI World",
+    require_review_clock: bool = False,
+    require_review_history_alignment: bool = False,
+) -> None:
     # The shared validator is the canonical producer/consumer gate: checked-in
     # assets carry only repo-relative sourcePath + sha256 + byteSize/contentType.
     # Installed filesystem inode is runtime-only materializer evidence and must
@@ -537,7 +544,12 @@ def _validate_fixture_json_bytes(content: bytes, *, label: str = "Generated demo
         path = Path(tmp) / "ios_fixture_dataset.json"
         path.write_bytes(content)
         try:
-            validate_fixture_dataset_file(path, label=label)
+            validate_fixture_dataset_file(
+                path,
+                label=label,
+                require_review_clock=require_review_clock,
+                require_review_history_alignment=require_review_history_alignment,
+            )
         except UIWorldManifestError as exc:
             raise ValueError(str(exc)) from exc
 
@@ -547,8 +559,17 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     baseline_content = _json_bytes(baseline)
     document = _build_fixture_document(sot)
     content = _json_bytes(document)
-    _validate_fixture_json_bytes(content)
-    _validate_fixture_json_bytes(baseline_content, label="Marketing demo UI World")
+    _validate_fixture_json_bytes(
+        content,
+        require_review_clock=True,
+        require_review_history_alignment=True,
+    )
+    _validate_fixture_json_bytes(
+        baseline_content,
+        label="Marketing demo UI World",
+        require_review_clock=True,
+        require_review_history_alignment=True,
+    )
     return [
         (FIXTURE_JSON_PATH, content),
         (BASE_UI_WORLD_PATH, baseline_content),
@@ -567,7 +588,10 @@ def _spec_build(
     document, stats = _build_spec_fixture_document(
         sot, spec, review_clock_frozen_at=review_clock_frozen_at)
     content = _json_bytes(document)
-    _validate_fixture_json_bytes(content)
+    _validate_fixture_json_bytes(
+        content,
+        require_review_clock=review_clock_frozen_at is not None,
+    )
     return Path(out_path), content, document, stats, spec
 
 

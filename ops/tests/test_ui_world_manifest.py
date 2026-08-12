@@ -477,6 +477,16 @@ def test_review_clock_validator_rejects_epoch_anchor_mismatch(tmp_path: Path):
         )
 
 
+def test_review_clock_validator_rejects_missing_scenario_context(tmp_path: Path):
+    data = _marketing_demo()
+    data.pop("scenarioContext")
+    path = tmp_path / "missing_clock_context.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="requires scenarioContext"):
+        validate_fixture_dataset_file(path, require_review_clock=True)
+
+
 def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):
     data = _marketing_demo()
     data.pop("scenarioContext")
