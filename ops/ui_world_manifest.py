@@ -22,7 +22,7 @@ if str(ROOT / "ops") not in sys.path:
 
 from review_calendar_clock import (  # noqa: E402
     HISTORY_PLAN_SOURCE,
-    SPEC_HISTORY_SOURCE,
+    LEGACY_SPEC_HISTORY_SOURCE,
     ReviewClockPlanError,
     clock_from_plan,
 )
@@ -116,7 +116,7 @@ SHARED_DECK_CARD_KEYS = {
 }
 SHARED_DECK_CARD_REQUIRED_KEYS = {"id", "content", "meaning"}
 REVIEW_CLOCK_SOURCE = HISTORY_PLAN_SOURCE
-REVIEW_CLOCK_SPEC_SOURCE = SPEC_HISTORY_SOURCE
+REVIEW_CLOCK_SPEC_SOURCE = LEGACY_SPEC_HISTORY_SOURCE
 REVIEW_CLOCK_TIME_ZONE = clock_from_plan()["timeZone"]
 REVIEW_CLOCK_HISTORY_FIXTURES = ("statsPopulated", "reviewCalendarDense")
 REVIEW_CALENDAR_REQUIRED_LABELS = (

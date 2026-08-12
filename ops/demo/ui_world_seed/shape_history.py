@@ -22,17 +22,17 @@
   `review_count > 0 ⇒ last_reviewed_at 非空`（synthesize_many 前置）。
 
 敘事形狀（相對 anchor_day；day 分桶 = UTC ts + render offset。iOS dayKey 用
-render 機器牆鐘時區（Calendar.current）→ plan 的 `render_utc_offset_hours` 列出
-候選時區（如 [9, 8] = Tokyo/Taipei，首位 canonical），敘事斷言（streak /
-forbidden day 零事件 / 覆蓋）必須在**每個** offset 下同時成立）：
+render 機器牆鐘時區（Calendar.current）→ plan 的 `render_utc_offset_hours` 必須
+是 anchor 當日 production timezone 的唯一 offset；敘事分桶與 production anchor
+geometry 不得各自發明時區：
 - 目前 streak：[anchor-cs+1 .. anchor] 每日有事件（cs = current_streak_days）。
 - 斷檔日：anchor-cs 零事件（streak 邊界）。
 - 最長紀錄：[anchor-cs-ls .. anchor-cs-1] 每日有事件（ls = longest_streak_days），
   其前一日（pre-gap）零事件。
 - 到期：primary/other 各 due_at_anchor 張在錨日（當地日任一時刻 render）到期；
   其餘 next_review 落在 (anchor, anchor+due_horizon_days]，線性遞減分佈。
-- 事件 UTC 時刻限制在 event_utc_hours 窗（預設 01–14），確保 UTC 與 UTC+8 判定
-  同一天（render 機器在 Asia/Taipei）。
+- 事件 UTC 時刻限制在 event_utc_hours 窗，且必須落在 production timezone 的
+  anchor-day 交集。
 
 iOS 端的「今天」是 render 牆鐘 → 錨日離今天越遠敘事越崩；`emit_ios` 對 > 48h 的
 spec 印 WARN（`spec_staleness_warning`），重新錨定 = 改 plan `anchor_day` 重跑本
@@ -100,12 +100,12 @@ class _Narrative:
             time_zone = plan["review_clock_time_zone"]
             if not isinstance(time_zone, str) or not time_zone.strip():
                 raise ValueError("review_clock_time_zone 必須是非空 IANA timezone")
-            ZoneInfo(time_zone)
+            production_zone = ZoneInfo(time_zone)
             offsets = plan["render_utc_offset_hours"]
             if not isinstance(offsets, list) or not offsets:
                 raise ValueError("render_utc_offset_hours 必須是非空 list")
-            # render 機器牆鐘時區候選（iOS dayKey 用 Calendar.current）。
-            # 首位 = canonical（報表分桶）；敘事斷言須在每個 offset 下同時成立。
+            # iOS dayKey 用 Calendar.current；唯一 canonical offset 必須與
+            # production timezone 在 anchor 當日的實際 offset 相同。
             self.offsets = [timedelta(hours=int(h)) for h in offsets]
             self.offset = self.offsets[0]
             self.current_days = int(plan["current_streak_days"])
@@ -127,12 +127,26 @@ class _Narrative:
             raise HistoryShapeError("weekday_weights 必須是 7 元素（Mon..Sun）")
         max_off = max(td.total_seconds() / 3600 for td in self.offsets)
         min_off = min(td.total_seconds() / 3600 for td in self.offsets)
-        if min_off < 0 or max_off > 14:
-            raise HistoryShapeError("render_utc_offset_hours 必須落在 [0,14]")
-        if not (0 <= self.hour_lo <= self.hour_hi <= 23 - int(max_off)):
+        if min_off < -14 or max_off > 14:
+            raise HistoryShapeError("render_utc_offset_hours 必須落在 [-14,14]")
+        production_offset = datetime.combine(
+            self.anchor, datetime.min.time(), tzinfo=production_zone
+        ).utcoffset()
+        if production_offset is None or production_offset.total_seconds() % 3600 != 0:
+            raise HistoryShapeError("production timezone anchor offset 必須是整數小時")
+        production_offset_hours = int(production_offset.total_seconds() // 3600)
+        actual_offsets = [int(td.total_seconds() // 3600) for td in self.offsets]
+        if actual_offsets != [production_offset_hours]:
             raise HistoryShapeError(
-                f"event_utc_hours 必須落在 [0,{23 - int(max_off)}]"
-                "（UTC 與所有 render offset 同日的交集）")
+                "render_utc_offset_hours 必須唯一且等於 production timezone anchor offset: "
+                f"expected={[production_offset_hours]!r} got={actual_offsets!r}"
+            )
+        event_floor = max(0, int(-min_off))
+        event_ceiling = min(23, int(23 - max_off))
+        if not (event_floor <= self.hour_lo <= self.hour_hi <= event_ceiling):
+            raise HistoryShapeError(
+                f"event_utc_hours 必須落在 [{event_floor},{event_ceiling}]"
+                "（UTC 與 production render timezone 同日的交集）")
         if self.horizon < 1:
             raise HistoryShapeError("due_horizon_days 必須 >= 1")
 
@@ -327,17 +341,27 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         word = card["content"]
         r = card["review"]
         chosen = _FRESH_NEXT_DAYS[_u64("freshnext", word) % len(_FRESH_NEXT_DAYS)]
+        offset_hours = int(narrative.offset.total_seconds() // 3600)
+        # For a west-of-UTC production day, anchor UTC 10..23 is the stable
+        # overlap with the local anchor day.  Keeping the next review at least
+        # two UTC dates out preserves the 12..72h fresh interval while keeping
+        # both generated timestamps inside the plan's event window.
+        min_next_day = 2 if offset_hours < 0 else 1
+        last_date = narrative.anchor
+        last_hour_lo = max(narrative.hour_lo, narrative.hour_hi - 1)
+        last_hour_hi = narrative.hour_hi
         for off in (chosen, *sorted(o for o in _FRESH_NEXT_DAYS if o != chosen)):
+            if off < min_next_day:
+                continue
             next_dt = _event_time(
                 word + f"#freshnext{off}", narrative.anchor + timedelta(days=off),
                 hour_lo=narrative.hour_lo, hour_hi=narrative.hour_hi)
             for salt in range(_PLACE_HOUR_SALTS):
                 last_dt = _event_time(
-                    word + "#freshlast", narrative.anchor,
-                    hour_lo=max(narrative.hour_lo, narrative.hour_hi - 2),
-                    hour_hi=narrative.hour_hi, salt=salt)
+                    word + "#freshlast", last_date,
+                    hour_lo=last_hour_lo, hour_hi=last_hour_hi, salt=salt)
                 interval = round((next_dt - last_dt).total_seconds() / 3600, 6)
-                if interval <= 0:
+                if not (_NEW_CARD_INTERVAL_HOURS <= interval <= 72.0):
                     continue
                 trial = {
                     "content": word,

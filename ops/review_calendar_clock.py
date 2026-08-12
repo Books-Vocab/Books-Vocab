@@ -17,12 +17,43 @@ ROOT = Path(__file__).resolve().parents[1]
 HISTORY_PLAN_PATH = ROOT / "ops" / "demo" / "ui_world_seed" / "history_plan.json"
 PLAN_SCHEMA = "kg.history_plan.v1"
 HISTORY_PLAN_SOURCE = "history_plan.anchor_day"
-SPEC_HISTORY_SOURCE = "spec.last_reviewed_at"
+LEGACY_SPEC_HISTORY_SOURCE = "legacy.spec.last_reviewed_at"
 UTC = timezone.utc
 
 
 class ReviewClockPlanError(ValueError):
     """Raised when the canonical history plan cannot produce a clock."""
+
+
+def production_utc_offset_hours(plan: Mapping[str, Any]) -> int:
+    """Return the production calendar offset at the plan's anchor day."""
+    try:
+        anchor = date.fromisoformat(str(plan["anchor_day"]))
+        time_zone = ZoneInfo(str(plan["review_clock_time_zone"]))
+        instant = datetime.combine(anchor, datetime.min.time(), tzinfo=time_zone)
+        offset = instant.utcoffset()
+    except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError) as exc:
+        raise ReviewClockPlanError(f"history plan production timezone is invalid: {exc}") from exc
+    if offset is None or offset.total_seconds() % 3600 != 0:
+        raise ReviewClockPlanError("history plan production timezone offset must be a whole hour")
+    return int(offset.total_seconds() // 3600)
+
+
+def validate_render_geometry(plan: Mapping[str, Any]) -> None:
+    """Ensure history rendering uses the same timezone/anchor geometry as iOS."""
+    offsets = plan.get("render_utc_offset_hours")
+    if not isinstance(offsets, list) or not offsets:
+        raise ReviewClockPlanError("history plan render_utc_offset_hours must be a non-empty list")
+    try:
+        normalized = [int(value) for value in offsets]
+    except (TypeError, ValueError) as exc:
+        raise ReviewClockPlanError(f"history plan render_utc_offset_hours are invalid: {exc}") from exc
+    expected = production_utc_offset_hours(plan)
+    if normalized != [expected]:
+        raise ReviewClockPlanError(
+            "history plan render_utc_offset_hours must equal the production "
+            f"review timezone offset at anchor: expected={[expected]!r} got={normalized!r}"
+        )
 
 
 def load_history_plan(path: Path = HISTORY_PLAN_PATH) -> dict[str, Any]:
@@ -44,11 +75,13 @@ def load_history_plan(path: Path = HISTORY_PLAN_PATH) -> dict[str, Any]:
         raise ReviewClockPlanError(
             f"history plan review_clock_time_zone is invalid: {plan['review_clock_time_zone']!r}"
         ) from exc
+    validate_render_geometry(plan)
     return plan
 
 
 def freeze_from_plan(plan: Mapping[str, Any]) -> datetime:
     """Return anchor local-day end under the plan's canonical render offset."""
+    validate_render_geometry(plan)
     try:
         anchor = date.fromisoformat(str(plan["anchor_day"]))
         offsets = plan["render_utc_offset_hours"]
@@ -89,11 +122,11 @@ def clock_from_plan(plan: Mapping[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def clock_from_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
-    """Derive an explicit non-plan clock from spec history for generic spec emits.
+def legacy_clock_from_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
+    """Explicit legacy-only clock projection for callers outside generic emit.
 
-    This is deterministic content projection, not a wall-clock fallback. P9's
-    marketing source/generated artifacts always use :func:`clock_from_plan`.
+    This path is retained only as a named compatibility contract. Generic
+    emitter and canonical marketing artifacts must use :func:`clock_from_plan`.
     """
     latest: datetime | None = None
     for card in spec.get("cards", []):
@@ -118,5 +151,5 @@ def clock_from_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         "frozenEpoch": int(frozen.timestamp()),
         "anchorDay": latest.date().isoformat(),
         "timeZone": "UTC",
-        "source": SPEC_HISTORY_SOURCE,
+        "source": LEGACY_SPEC_HISTORY_SOURCE,
     }

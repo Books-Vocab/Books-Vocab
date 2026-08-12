@@ -845,7 +845,7 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     assert mc["wordDetail"]["entries"][0]["word"]  # 聚焦字非空
     clock = mc["reviewClock"]
     assert clock["frozenEpoch"] == epoch  # 與 preferences overlay 同一凍結時刻
-    assert clock["now"] == "2026-07-09T14:59:59Z"
+    assert clock["now"] == "2026-07-10T09:59:59Z"
     assert clock["anchorDay"] == "2026-07-09"
     assert clock["timeZone"] == emit_ios.REVIEW_CLOCK_TIME_ZONE
     assert clock["source"] == "history_plan.anchor_day"
@@ -854,16 +854,16 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
     assert passage["activeWords"] == [passage["activeWord"]]
 
 
-def test_scenario_context_unfrozen_review_clock_is_explicit_from_spec_history(tmp_path):
-    """未傳 plan 也必須從 spec latest history 產生顯式 clock，不得 null/fallback。"""
+def test_scenario_context_unfrozen_review_clock_is_from_history_plan(tmp_path):
+    """未傳 plan 仍使用 canonical history-plan clock，不得另立 spec clock。"""
     spec_path = _write_spec(tmp_path, _small_spec())
     bundle = sot.load_sot()
     [(_, content)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
     mc = json.loads(content)["scenarioContext"]
-    assert mc["reviewClock"]["source"] == "spec.last_reviewed_at"
-    assert mc["reviewClock"]["timeZone"] == "UTC"
-    assert mc["reviewClock"]["now"] == "2026-05-31T23:59:59Z"
+    assert mc["reviewClock"]["source"] == "history_plan.anchor_day"
+    assert mc["reviewClock"]["timeZone"] == "Pacific/Honolulu"
+    assert mc["reviewClock"]["now"] == "2026-07-10T09:59:59Z"
     assert mc["readerPassage"]["activeWord"]
 
 
@@ -887,7 +887,7 @@ def test_baseline_emission_requires_the_explicit_review_clock():
     clock = document["scenarioContext"]["reviewClock"]
 
     assert set(clock) == {"now", "frozenEpoch", "anchorDay", "timeZone", "source"}
-    assert clock["now"] == "2026-07-09T14:59:59Z"
+    assert clock["now"] == "2026-07-10T09:59:59Z"
     assert clock["timeZone"] == "Pacific/Honolulu"
     assert clock["source"] == "history_plan.anchor_day"
 
@@ -905,10 +905,10 @@ def test_word_detail_scenario_emitted_and_word_detail_stays_baseline(tmp_path):
 
 
 def test_review_clock_freeze_matches_known_scenario_epoch():
-    """scenario plan（anchor 2026-07-09、offsets [9,8]）→ 2026-07-09T14:59:59Z。"""
+    """scenario plan（anchor 2026-07-09、offset [-10]）→ 2026-07-10T09:59:59Z。"""
     freeze = _freeze_dt_from_plan(_scenario_plan())
-    assert int(freeze.timestamp()) == 1783609199
-    assert freeze.isoformat() == "2026-07-09T14:59:59+00:00"
+    assert int(freeze.timestamp()) == 1783677599
+    assert freeze.isoformat() == "2026-07-10T09:59:59+00:00"
 
 
 def test_spec_build_rejects_bad_clock_history_alignment(tmp_path):
