@@ -1,6 +1,6 @@
 {
   "acceptance": "管理路由 registry 必須讓每個 method/path 只有一個 feature owner，缺少註冊或授權契約漂移會被 focused tests 抓到，且既有 admin router builders 與 wiring contracts 全綠。",
-  "acceptance_cmd": "set -e\ntest -d backend/src/kg/routers/admin_features\ntest -f backend/tests/test_admin_route_registry.py\ncd backend\nuv run python -m pytest -q \\\n  tests/test_admin_route_registry.py \\\n  tests/test_admin_router_builders.py \\\n  tests/test_admin_wiring_contracts.py",
+  "acceptance_cmd": "set -e\nfind backend/src/kg/routers -maxdepth 1 -type d -print | grep -q '/admin_features$'\nfind backend/tests -maxdepth 1 -type f -name 'test_admin_route_registry.py' -print | grep -q '/test_admin_route_registry.py$'\ncd backend\nuv run python -m pytest -q tests/test_admin_route_registry.py tests/test_admin_router_builders.py tests/test_admin_wiring_contracts.py",
   "brief": "管理端每條功能都要在兩套處理器集合與一座大型工廠重複接線，新增路由容易漏掉其中一層。",
   "category": "arch",
   "contract_baseline": "red",
@@ -11,7 +11,7 @@
   "cost": "M",
   "date": "2026-08-09",
   "detail": "backend/src/kg/admin_wiring.py 有 493 行，backend/src/kg/routers/admin.py 有 545 行。AdminHandlers、AdminApiHandlers、mapping、route spec 與 builders 讓 23 個 handler 名稱在兩檔共出現 459 次；build_admin_router 是 346 行工廠並含 28 個巢狀函式。新增或改一個管理功能需同步多層宣告，形成平行結構漂移風險。",
-  "fix_site": "backend/src/kg/admin_wiring.py; backend/src/kg/routers/admin.py; backend/src/kg/routers/admin_features/; backend/tests/test_admin_route_registry.py",
+  "fix_site": "backend/src/kg/admin_wiring.py; backend/src/kg/routers/admin.py; backend/src/kg/routers; backend/tests",
   "groomed_against": "55baa5099ddd47bf4f5adc474acd6b5ee1c728a5",
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:backend-maintainability-audit",
