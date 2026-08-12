@@ -10,22 +10,23 @@ import SwiftUI
 struct VocabActivityHeatmap: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.statsProjectionClock) private var projectionClock
 
     let activity: [String: Int]  // "yyyy-MM-dd" -> count
     let thresholds: [Int]
     let weeks: Int
-    let clock: ReviewCalendarClock
+    private let explicitProjectionClock: StatsProjectionClock?
 
     init(
         activity: [String: Int],
         thresholds: [Int] = [],
         weeks: Int = 20,
-        clock: ReviewCalendarClock
+        clock: StatsProjectionClock? = nil
     ) {
         self.activity = activity
         self.thresholds = thresholds
         self.weeks = weeks
-        self.clock = clock
+        self.explicitProjectionClock = clock
     }
 
     private let cellSize: CGFloat = 13
@@ -41,13 +42,13 @@ struct VocabActivityHeatmap: View {
 
     @State private var grid: [[CellData]] = []
 
-    private static func buildGrid(
-        activity: [String: Int],
-        weeks: Int,
-        clock: ReviewCalendarClock
-    ) -> [[CellData]] {
-        let today = clock.now
-        let cal = clock.calendar
+    private var activeProjectionClock: StatsProjectionClock {
+        explicitProjectionClock ?? projectionClock
+    }
+
+    private func buildGrid(activity: [String: Int], weeks: Int) -> [[CellData]] {
+        let today = activeProjectionClock.now
+        let cal = activeProjectionClock.calendar
 
         // 找到本週一
         var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
@@ -60,9 +61,9 @@ struct VocabActivityHeatmap: View {
             var column: [CellData] = []
             for dayOffset in 0..<7 {
                 guard let date = cal.date(byAdding: .day, value: dayOffset, to: weekStart) else { continue }
-                let key = clock.dayKey(for: date)
+                let key = activeProjectionClock.dayKey(date)
                 let count = activity[key] ?? 0
-                let isFuture = cal.startOfDay(for: date) > cal.startOfDay(for: today)
+                let isFuture = date > today
                 column.append(CellData(key: key, count: count, isFuture: isFuture))
             }
             columns.append(column)
@@ -124,10 +125,8 @@ struct VocabActivityHeatmap: View {
                     .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
-        .task(id: clock) { grid = Self.buildGrid(activity: activity, weeks: weeks, clock: clock) }
-        .onChange(of: activity) { _, new in
-            grid = Self.buildGrid(activity: new, weeks: weeks, clock: clock)
-        }
+        .task(id: activeProjectionClock) { grid = buildGrid(activity: activity, weeks: weeks) }
+        .onChange(of: activity) { _, new in grid = buildGrid(activity: new, weeks: weeks) }
         .enableInjection()
     }
 
@@ -136,6 +135,8 @@ struct VocabActivityHeatmap: View {
         if cell.isFuture {
             Color.clear
                 .frame(width: cellSize, height: cellSize)
+                .accessibilityIdentifier("calendar.day.\(cell.key)")
+                .accessibilityValue("0")
         } else {
             let level = intensityLevel(cell.count)
             let dotSize: CGFloat = level >= 3 ? cellSize * 1.15 : cellSize
@@ -143,6 +144,8 @@ struct VocabActivityHeatmap: View {
                 .fill(levelColor(level))
                 .frame(width: dotSize, height: dotSize)
                 .frame(width: cellSize, height: cellSize) // outer frame for consistent grid spacing
+                .accessibilityIdentifier("calendar.day.\(cell.key)")
+                .accessibilityValue(LocaleAwareFormatter.shared.string(from: NSNumber(value: cell.count)))
         }
     }
 
@@ -173,15 +176,13 @@ private struct CellData {
 }
 
 #Preview("VocabActivityHeatmap") {
-    let timeZone = TimeZone(secondsFromGMT: 0)!
-    let clock = ReviewCalendarClock(
-        now: Date(timeIntervalSince1970: 1_781_827_200),
-        timeZone: timeZone
-    )
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(secondsFromGMT: 0) ?? cal.timeZone
+    let clock = StatsProjectionClock(now: Date(timeIntervalSince1970: 1_780_300_800), calendar: cal)
     var activity: [String: Int] = [:]
     for offset in 0..<120 where offset % 4 != 0 {
-        if let date = clock.calendar.date(byAdding: .day, value: -offset, to: clock.now) {
-            activity[clock.dayKey(for: date)] = (offset % 13) + 1
+        if let date = cal.date(byAdding: .day, value: -offset, to: clock.now) {
+            activity[clock.dayKey(date)] = (offset % 13) + 1
         }
     }
 
@@ -189,10 +190,10 @@ private struct CellData {
         VocabActivityHeatmap(
             activity: activity,
             thresholds: [2, 5, 9],
-            weeks: 20,
-            clock: clock
+            weeks: 20
         )
         .padding()
     }
     .environmentObject(AppAppearanceStore.preview)
+    .environment(\.statsProjectionClock, clock)
 }

@@ -478,6 +478,75 @@ struct StatsPresenterTests {
             && s.longestStreak == 0
         #expect(!isEmpty, "any card or review activity must push the scene into `.content`")
     }
+
+    // MARK: - P10 projection contract
+
+    @Test func projection_usesOneInjectedClockForForecastAndActivity() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let anchor = try #require(calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2030,
+            month: 1,
+            day: 10,
+            hour: 12
+        )))
+        let clock = StatsProjectionClock(now: anchor, calendar: calendar)
+        let entry = syncedEntry(dueOffset: 0)
+        entry.nextReviewAt = anchor
+        let record = ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)
+
+        let projection = StatsPresentation.project(
+            entries: [entry],
+            reviewRecords: [record],
+            forecastDays: 1,
+            clock: clock
+        )
+
+        #expect(projection.totalCards == 1)
+        #expect(projection.reviewedToday == 1)
+        #expect(projection.dueToday == 1)
+        #expect(projection.forecast.first?.id == clock.dayKey(anchor))
+        #expect(projection.activity[clock.dayKey(anchor)] == 1)
+    }
+
+    @Test func projection_countsZeroAndLargeForecastWithoutWallClock() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let anchor = try #require(calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2030,
+            month: 1,
+            day: 10,
+            hour: 12
+        )))
+        let clock = StatsProjectionClock(now: anchor, calendar: calendar)
+        let entries = (0..<1_234).map { index -> VocabularyEntry in
+            let entry = VocabularyEntry(
+                word: "large-\(index)",
+                translation: "t",
+                context: "c",
+                bookTitle: "B"
+            )
+            entry.syncStatus = 1
+            entry.nextReviewAt = anchor
+            return entry
+        }
+
+        let projection = StatsPresentation.project(
+            entries: entries,
+            reviewRecords: [],
+            forecastDays: 1,
+            clock: clock
+        )
+
+        #expect(projection.totalCards == 1_234)
+        #expect(projection.forecast.first?.count == 1_234)
+        #expect(projection.formattedCount(projection.totalCards) == "1,234")
+        #expect(projection.formattedCount(0) == "0")
+    }
 }
 
 #if DEBUG && canImport(Playbook)

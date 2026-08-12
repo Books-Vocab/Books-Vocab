@@ -25,7 +25,7 @@ struct StatsPresenter: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
+    @Environment(\.statsProjectionClock) private var projectionClock
 
     let filter: NotebookFilter
 
@@ -35,10 +35,8 @@ struct StatsPresenter: View {
     })
     private var syncedEntries: [VocabularyEntry]
 
-    /// The query is intentionally unbounded. The six-month window is a
-    /// timezone-aware projection concern and is applied after the injected
-    /// clock is available, rather than being frozen by a wall-clock predicate
-    /// during view initialization.
+    /// The projection owns its time-window filtering; keeping the query clock-free
+    /// prevents a static wall-clock cutoff from escaping into the view path.
     @Query var reviewRecords: [ReviewRecord]
 
     @AppStorage("stats_forecast_days") private var forecastDays = 14
@@ -55,16 +53,18 @@ struct StatsPresenter: View {
     /// production; the DEBUG catalog init disables it and injects links
     /// directly (mirrors `KnowledgeGraphView`'s DEBUG entry point).
     private let shouldLoadGraphData: Bool
-    private let reviewClock: StatsProjectionClock
+    /// P9 callers may still provide the canonical fixture clock explicitly;
+    /// ordinary composition injects the same value through the environment.
+    private let explicitProjectionClock: StatsProjectionClock?
 
     init(
         filter: NotebookFilter = NotebookFilter(),
         initialSummary: StatsPresentation.Summary? = nil,
-        reviewClock: StatsProjectionClock
+        reviewClock: StatsProjectionClock? = nil
     ) {
         self.filter = filter
         self.shouldLoadGraphData = true
-        self.reviewClock = reviewClock
+        self.explicitProjectionClock = reviewClock
         _summary = State(initialValue: initialSummary)
         _contentReady = State(initialValue: initialSummary != nil)
         _reviewRecords = Query(
@@ -82,11 +82,11 @@ struct StatsPresenter: View {
         initialSummary: StatsPresentation.Summary? = nil,
         initialGraphLinks: [KGGraphLink],
         shouldLoadGraphData: Bool,
-        reviewClock: StatsProjectionClock
+        reviewClock: StatsProjectionClock? = nil
     ) {
         self.filter = filter
         self.shouldLoadGraphData = shouldLoadGraphData
-        self.reviewClock = reviewClock
+        self.explicitProjectionClock = reviewClock
         _summary = State(initialValue: initialSummary)
         _contentReady = State(initialValue: initialSummary != nil)
         _graphLinks = State(initialValue: initialGraphLinks)
@@ -103,7 +103,7 @@ struct StatsPresenter: View {
                 ScrollView {
                     VStack(spacing: appSkin.spacing.sectionGap) {
                         graphEntrySection
-                        streakSection(summary)
+                        metricsSection(summary)
                         heatmapSection(summary)
                         forecastSection(summary)
                         totalsFooter(summary)
@@ -113,6 +113,7 @@ struct StatsPresenter: View {
                     .padding(.bottom, appSkin.metrics.pageBottomInset)
                 }
                 .vocabCanvasBackground()
+                .accessibilityIdentifier("overview")
                 // UI-test hook: only reachable in the `.content` phase
                 // (VocabSceneShell renders this closure for `.content` only),
                 // so its existence proves the stats dashboard truly rendered
@@ -136,11 +137,11 @@ struct StatsPresenter: View {
             let entries = filteredEntries
             let records = filteredReviewRecords
             let days = forecastDays
-            summary = StatsPresentation.buildSummary(
-                from: entries,
+            summary = StatsPresentation.project(
+                entries: entries,
                 reviewRecords: records,
                 forecastDays: days,
-                clock: reviewClock
+                clock: activeProjectionClock
             )
         }
         .task(id: graphKey) {
@@ -156,10 +157,7 @@ struct StatsPresenter: View {
             await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
-            ReviewCalendarPresenter(
-                filter: filter,
-                clock: reviewClock
-            )
+            ReviewCalendarPresenter(filter: filter, clock: activeProjectionClock)
         }
         .enableInjection()
     }
@@ -173,14 +171,13 @@ struct StatsPresenter: View {
     }
 
     private var filteredReviewRecords: [ReviewRecord] {
-        let notebookRecords = filter.isFiltered
+        filter.isFiltered
             ? reviewRecords.filter { filter.matches($0.notebookId) }
             : reviewRecords
-        return ReviewCalendarPresentation.records(
-            inLastMonths: 6,
-            from: notebookRecords,
-            clock: reviewClock
-        )
+    }
+
+    private var activeProjectionClock: StatsProjectionClock {
+        explicitProjectionClock ?? projectionClock
     }
 
     private func loadGraphLinks() async {
@@ -254,9 +251,7 @@ struct StatsPresenter: View {
         hasher.combine(reviewRecords.count)
         hasher.combine(filter.selectedIds)
         hasher.combine(forecastDays)
-        hasher.combine(reviewSettingsStore.settings.isProgressPaused)
-        hasher.combine(reviewSettingsStore.settings.progressPausedAt)
-        hasher.combine(reviewClock.timeZone.identifier)
+        hasher.combine(activeProjectionClock.now)
         return hasher.finalize()
     }
 
@@ -390,11 +385,8 @@ struct StatsPresenter: View {
             nodeCount: nodes.count
         ) {
         case .loading:
-            AppLoadingStateCard(
-                title: StatsCopy.loadingTitle,
-                systemImage: "chart.bar",
-                visualStyle: .vocab
-            )
+            ProgressView()
+                .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .empty:
             AppStateMessageContent(
@@ -421,7 +413,7 @@ struct StatsPresenter: View {
             from: filteredEntries,
             links: graphLinks,
             showIsolatedNodes: false,
-            now: reviewClock.now
+            now: activeProjectionClock.now
         )
     }
 
@@ -468,20 +460,55 @@ struct StatsPresenter: View {
 
     // MARK: - Sections
 
-    private func streakSection(_ summary: StatsPresentation.Summary) -> some View {
-        HStack(spacing: appSkin.spacing.sectionGap) {
-            statCard(
-                title: StatsCopy.currentStreakTitle,
-                value: "\(summary.currentStreak)",
-                unit: StatsCopy.dayUnit,
-                systemImage: "flame"
-            )
-            statCard(
-                title: StatsCopy.longestStreakTitle,
-                value: "\(summary.longestStreak)",
-                unit: StatsCopy.dayUnit,
-                systemImage: "trophy"
-            )
+    private func metricsSection(_ summary: StatsPresentation.Summary) -> some View {
+        VStack(spacing: appSkin.spacing.sectionGap) {
+            HStack(spacing: appSkin.spacing.sectionGap) {
+                statCard(
+                    title: StatsCopy.totalCardsTitle,
+                    value: summary.formattedCount(summary.totalCards),
+                    unit: StatsCopy.cardUnit,
+                    systemImage: "rectangle.stack",
+                    identifier: "overview.metric.totalCards"
+                )
+                statCard(
+                    title: StatsCopy.reviewedTodayTitle,
+                    value: summary.formattedCount(summary.reviewedToday),
+                    unit: StatsCopy.cardUnit,
+                    systemImage: "checkmark.circle",
+                    identifier: "overview.metric.reviewedToday"
+                )
+                statCard(
+                    title: StatsCopy.dueTodayTitle,
+                    value: summary.formattedCount(summary.dueToday),
+                    unit: StatsCopy.cardUnit,
+                    systemImage: "clock",
+                    identifier: "overview.metric.dueToday"
+                )
+            }
+            HStack(spacing: appSkin.spacing.sectionGap) {
+                statCard(
+                    title: StatsCopy.currentStreakTitle,
+                    value: summary.formattedCount(summary.currentStreak),
+                    unit: StatsCopy.dayUnit,
+                    systemImage: "flame",
+                    identifier: "overview.metric.currentStreak"
+                )
+                statCard(
+                    title: StatsCopy.longestStreakTitle,
+                    value: summary.formattedCount(summary.longestStreak),
+                    unit: StatsCopy.dayUnit,
+                    systemImage: "trophy",
+                    identifier: "overview.metric.longestStreak"
+                )
+            }
+        }
+        .accessibilityIdentifier("metrics")
+        .background {
+            if summary.totalCards >= 40 {
+                Color.clear
+                    .accessibilityIdentifier("large-counts")
+                    .accessibilityValue(summary.formattedCount(summary.totalCards))
+            }
         }
     }
 
@@ -489,7 +516,8 @@ struct StatsPresenter: View {
         title: String,
         value: String,
         unit: String,
-        systemImage: String
+        systemImage: String,
+        identifier: String
     ) -> some View {
         VocabCard {
             VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
@@ -513,6 +541,9 @@ struct StatsPresenter: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+        .accessibilityValue(value)
     }
 
     private func heatmapSection(_ summary: StatsPresentation.Summary) -> some View {
@@ -530,7 +561,6 @@ struct StatsPresenter: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier(ReviewCalendarAccessibility.open)
 
             Button { showCalendar = true } label: {
                 VocabCard {
@@ -538,12 +568,14 @@ struct StatsPresenter: View {
                         activity: summary.activity,
                         thresholds: summary.heatmapThresholds,
                         weeks: 20,
-                        clock: reviewClock
+                        clock: activeProjectionClock
                     )
                 }
             }
             .buttonStyle(.liftable)
         }
+        .accessibilityIdentifier("calendar")
+        .accessibilityValue(summary.activity.values.reduce(0, +) == 0 ? "0" : "populated")
     }
 
     private func forecastSection(_ summary: StatsPresentation.Summary) -> some View {
@@ -564,8 +596,11 @@ struct StatsPresenter: View {
             VocabCard {
                 VocabForecastChart(buckets: summary.forecast)
                     .frame(height: 160)
+                    .accessibilityIdentifier(summary.forecast.allSatisfy { $0.count == 0 } ? "forecast-zero" : "forecast")
             }
+            .accessibilityIdentifier(summary.forecast.allSatisfy { $0.count == 0 } ? "forecast-zero-counterexample" : "forecast-card")
         }
+        .accessibilityIdentifier("forecast")
     }
 
     private func totalsFooter(_ summary: StatsPresentation.Summary) -> some View {

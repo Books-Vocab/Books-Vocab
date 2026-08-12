@@ -22,6 +22,26 @@ struct OverviewPage {
         exactlyOne(app.buttons.matching(identifier: "reviewCalendar.open"), "reviewCalendar.open")
     }
 
+    var overview: XCUIElement { app.descendants(matching: .any)["overview"].firstMatch }
+    var metrics: XCUIElement { app.descendants(matching: .any)["metrics"].firstMatch }
+    var calendar: XCUIElement { app.descendants(matching: .any)["calendar"].firstMatch }
+    var forecast: XCUIElement { app.descendants(matching: .any)["forecast"].firstMatch }
+    var forecastZero: XCUIElement { app.descendants(matching: .any)["forecast-zero"].firstMatch }
+    var forecastZeroCounterexample: XCUIElement {
+        app.descendants(matching: .any)["forecast-zero-counterexample"].firstMatch
+    }
+    var largeCounts: XCUIElement { app.descendants(matching: .any)["large-counts"].firstMatch }
+
+    func metric(_ name: String) -> XCUIElement {
+        app.descendants(matching: .any)["overview.metric.\(name)"].firstMatch
+    }
+
+    func assertMetric(_ name: String, value: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        let element = metric(name)
+        element.assertExists(timeout: 10, file: file, line: line)
+        XCTAssertEqual(element.value as? String, value, file: file, line: line)
+    }
+
     // MARK: - Assertions
 
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {

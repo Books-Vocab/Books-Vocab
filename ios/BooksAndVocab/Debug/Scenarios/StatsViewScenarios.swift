@@ -80,18 +80,27 @@ private struct StatsViewExpectedShape {
 
 /// Internal (not private) so unit tests can pin the anchor derivation.
 enum StatsViewTime {
-    /// Deterministic anchor for seeds with no review events（statsEmpty）—nothing
-    /// to derive from, and a system wall clock would re-introduce snapshot drift.
-    private static var calendar: Calendar {
+    static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
         return calendar
-    }
+    }()
 
-    static let emptySeedFallback = Date(timeIntervalSince1970: 1_780_315_200)
+    /// Deterministic fallback anchor for seeds with no review events（statsEmpty）
+    /// — nothing to derive from, and wall-clock `Date()` would re-introduce
+    /// snapshot drift.
+    static let emptySeedFallback: Date = {
+        var comps = DateComponents()
+        comps.year = 2026
+        comps.month = 6
+        comps.day = 1
+        comps.hour = 12
+        return calendar.date(from: comps) ?? Date(timeIntervalSince1970: 0)
+    }()
 
     /// Frozen "today" so streak / heatmap / forecast snapshots stay stable across
-    /// catalog re-runs. Derived from the
+    /// catalog re-runs (the presenter is otherwise `Date()`-relative, which made
+    /// this group's reference PNGs drift on every capture). Derived from the
     /// seed's latest review event (noon of that day): a hard-coded date left the
     /// 「複習預測/今日到期」 cards permanently 0 once the seed narrative anchored
     /// on a different day.
@@ -112,7 +121,6 @@ private struct StatsViewScene: View {
     /// (manifest is the single link source; empty when the dataset carries no
     /// links, which legitimately renders the card's empty state).
     let graphLinks: [KGGraphLink]
-    private let reviewClock: ReviewCalendarClock
     private let frozenStore: ReviewSettingsStore
 
     init(fixture: StatsViewFixture) {
@@ -147,23 +155,17 @@ private struct StatsViewScene: View {
                 fixtureID: fixture.vocabularyID
             )
 
-            let reviewClock = FixtureReviewClock.required(
-                context: FixtureDatasetStore.scenarioContext(),
-                reviewHistory: seed.reviewHistory,
-                fixtureID: fixture.vocabularyID.rawValue
-            )
-            let frozenNow = reviewClock.now
+            let frozenNow = StatsViewTime.anchor(latestReviewedAt: records.map(\.reviewedAt).max())
             self.container = container
-            self.reviewClock = reviewClock
             self.graphLinks = UIWorldGraphLinks.makeGraphLinks(
                 from: visibleEntries,
                 fixtureID: fixture.vocabularyID
             )
-            self.initialSummary = StatsPresentation.buildSummary(
-                from: visibleEntries,
+            self.initialSummary = StatsPresentation.project(
+                entries: visibleEntries,
                 reviewRecords: records,
                 forecastDays: 14,
-                clock: reviewClock
+                clock: StatsProjectionClock(now: frozenNow, calendar: StatsViewTime.calendar)
             )
             self.frozenStore = Self.makeFrozenStore(now: frozenNow)
         } catch {
@@ -177,15 +179,18 @@ private struct StatsViewScene: View {
                 filter: NotebookFilter(),
                 initialSummary: initialSummary,
                 initialGraphLinks: graphLinks,
-                shouldLoadGraphData: false,
-                reviewClock: reviewClock
+                shouldLoadGraphData: false
             )
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
-        // The presenter's `.task` recomputes `summary` from the same injected
-        // clock. Keep the paused store aligned with that clock so the live
-        // recompute is deterministic too.
+        .environment(\.statsProjectionClock, StatsProjectionClock(now: frozenStore.settings.reviewReferenceDate(), calendar: StatsViewTime.calendar))
+        // The presenter's `.task` recomputes `summary` using
+        // `reviewSettingsStore.settings.reviewReferenceDate()` as "now", which is
+        // live `Date()` unless progress is paused — that recompute would override
+        // the frozen `initialSummary` and re-introduce date drift. Inject a paused
+        // store anchored at the seed-derived frozen now so the live recompute is
+        // deterministic too.
         .environment(\.reviewSettingsStore, frozenStore)
     }
 

@@ -35,8 +35,25 @@ struct ReviewCalendarClock: Equatable {
         self.provenance = provenance
     }
 
+    init(
+        now: Date,
+        calendar: Calendar,
+        provenance: String = ReviewCalendarClock.explicitSource
+    ) {
+        self.init(now: now, timeZone: calendar.timeZone, provenance: provenance)
+    }
+
     func dayKey(for date: Date) -> String {
         LocaleAwareFormatter.shared.machineDayKey(from: date, timeZone: timeZone)
+    }
+
+    // StatsProjectionClock compatibility surface. Keep the P9 clock as the
+    // canonical provenance-bearing value while allowing P10 projection code
+    // to use the shorter method spellings.
+    func dayKey(_ date: Date) -> String { dayKey(for: date) }
+
+    func date(byAdding component: Calendar.Component, value: Int, to date: Date) -> Date? {
+        calendar.date(byAdding: component, value: value, to: date)
     }
 
     /// Production composition boundary. All calendar/statistics projections
@@ -218,28 +235,34 @@ struct ReviewCalendarPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.statsProjectionClock) private var injectedClock
 
     let filter: NotebookFilter
-    let clock: ReviewCalendarClock
+    private let explicitClock: ReviewCalendarClock?
     @Query var allRecords: [ReviewRecord]
 
-    init(filter: NotebookFilter = NotebookFilter(), clock: ReviewCalendarClock) {
+    init(
+        filter: NotebookFilter = NotebookFilter(),
+        clock: ReviewCalendarClock? = nil
+    ) {
         self.filter = filter
-        self.clock = clock
+        self.explicitClock = clock
         self.installedFixtureProof = FixtureDatasetStore.preparedEvidenceFixtureProofValue()
-        let cutoff = clock.cutoff(months: 6)
         _allRecords = Query(
-            filter: #Predicate<ReviewRecord> { $0.reviewedAt >= cutoff },
             sort: \ReviewRecord.reviewedAt,
             order: .reverse
         )
-        _displayedMonth = State(initialValue: clock.now)
-        _selectedDay = State(initialValue: clock.dayKey(for: clock.now))
+        _displayedMonth = State(initialValue: clock?.now ?? .distantPast)
+        _selectedDay = State(initialValue: clock.map { $0.dayKey(for: $0.now) })
     }
 
     @State private var displayedMonth: Date
     @State private var selectedDay: String?
     private let installedFixtureProof: String?
+
+    private var clock: ReviewCalendarClock {
+        explicitClock ?? injectedClock
+    }
 
     private static func formattedMonth(_ date: Date, clock: ReviewCalendarClock) -> String {
         // template "yMMMM" → en "May 2026" / ja "2026年5月" / ko "2026년 5월"
@@ -251,7 +274,11 @@ struct ReviewCalendarPresenter: View {
     }
 
     private var filteredRecords: [ReviewRecord] {
-        ReviewCalendarPresentation.filteredRecords(allRecords, filter: filter)
+        let cutoff = clock.cutoff(months: 6)
+        return ReviewCalendarPresentation.filteredRecords(
+            allRecords.filter { $0.reviewedAt >= cutoff },
+            filter: filter
+        )
     }
 
     private var selectedDayRecords: [ReviewRecord] {
@@ -298,6 +325,11 @@ struct ReviewCalendarPresenter: View {
             }
         }
         .enableInjection()
+        .task {
+            guard displayedMonth == .distantPast else { return }
+            displayedMonth = clock.now
+            selectedDay = clock.dayKey(for: clock.now)
+        }
         .accessibilityIdentifier(clock.provenanceSelector)
     }
 
