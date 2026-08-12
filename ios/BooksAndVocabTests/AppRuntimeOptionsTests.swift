@@ -28,4 +28,22 @@ struct AppRuntimeOptionsTests {
         let arguments = ["BooksAndVocab", "-ui-testing", "-isolatedAuthSession"]
         #expect(AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: arguments) == true)
     }
+
+    @Test func reviewCardDynamicTypeRequiresUITestingAndParsesAccessibility3() {
+        #expect(
+            AppRuntimeOptions.reviewCardDynamicType(
+                arguments: ["BooksAndVocab", "-reviewCardDynamicType", "accessibility3"]
+            ) == nil
+        )
+        #expect(
+            AppRuntimeOptions.reviewCardDynamicType(
+                arguments: ["BooksAndVocab", "-ui-testing", "-reviewCardDynamicType", "accessibility3"]
+            ) == .accessibility3
+        )
+        #expect(
+            AppRuntimeOptions.reviewCardDynamicType(
+                arguments: ["BooksAndVocab", "-ui-testing", "-reviewCardDynamicType", "unsupported"]
+            ) == nil
+        )
+    }
 }

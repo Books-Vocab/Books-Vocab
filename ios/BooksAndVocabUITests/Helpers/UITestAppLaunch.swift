@@ -91,6 +91,8 @@ enum UITestFixture: Equatable {
     case explore(String)
     case vocabulary(String)
     case notebookReviewCardFullContent
+    case notebookReviewCardFullInfo
+    case notebookReviewCardCompactCounterexample
 
     var launchArgument: String {
         switch self {
@@ -140,6 +142,10 @@ enum UITestFixture: Equatable {
             return "-seedFixture:vocabulary:\(id)"
         case .notebookReviewCardFullContent:
             return "-seedFixture:notebook:reviewCardFullContent"
+        case .notebookReviewCardFullInfo:
+            return "-seedFixture:notebook:review.card-full-info"
+        case .notebookReviewCardCompactCounterexample:
+            return "-seedFixture:notebook:review.card-compact-counterexample"
         }
     }
 }

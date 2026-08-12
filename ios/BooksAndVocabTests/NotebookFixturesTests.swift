@@ -82,6 +82,63 @@ import Testing
         #expect(Set(generatedDocument.notebook.keys).isSubset(of: expected))
     }
 
+    @Test func reviewCardEvidenceDecksAreCanonicalAndStressLayoutInputs() throws {
+        let repoDocument = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let generatedDocument = try FixtureDatasetStore.decode(Self.generatedDemoData)
+        let evidenceIDs = ["review.card-full-info", "review.card-compact-counterexample"]
+
+        for document in [repoDocument, generatedDocument] {
+            for fixtureID in evidenceIDs {
+                let seed = try #require(document.reviewDeck[fixtureID])
+                #expect(!seed.entries.isEmpty)
+                #expect(seed.entries.allSatisfy { $0.difficultyTier?.isEmpty == false })
+                #expect(seed.entries.allSatisfy { !$0.reviewExamples.isEmpty })
+            }
+        }
+
+        let fullInfo = try #require(repoDocument.reviewDeck[evidenceIDs[0]])
+        #expect(fullInfo.entries.contains { $0.reviewMode == .production && $0.translation.count >= 180 })
+        #expect(fullInfo.entries.contains { $0.reviewMode == .recognition && $0.translation.count >= 180 })
+        #expect(fullInfo.entries.contains { $0.reviewExamples.contains { $0.count >= 240 } })
+        #expect(fullInfo.entries.contains { ($0.explanation?.count ?? 0) >= 240 })
+        #expect(fullInfo.entries.contains { ($0.collocations?.count ?? 0) >= 3 })
+
+        let compactCounterexample = try #require(repoDocument.reviewDeck[evidenceIDs[1]])
+        #expect(compactCounterexample.entries.contains { $0.translation.count >= 180 })
+        #expect(compactCounterexample.entries.contains { $0.reviewExamples.contains { $0.count >= 240 } })
+        #expect(compactCounterexample.entries.contains { ($0.explanation?.count ?? 0) >= 240 })
+    }
+
+    @Test func reviewCardEvidenceSeederUsesCanonicalDatasetProjection() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Support/UITestFixtureSeed+Notebook.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try #require(source.range(of: "private static func seedNotebookReviewCardEvidence"))
+        let end = try #require(source.range(of: "\n    @MainActor", range: start.upperBound..<source.endIndex))
+        let evidenceSeeder = String(source[start.lowerBound..<end.lowerBound])
+
+        #expect(evidenceSeeder.contains("FixtureDatasetStore.requireReviewDeckSeed"))
+        #expect(evidenceSeeder.contains("insertReviewDeckSeed"))
+        #expect(!evidenceSeeder.contains("VocabularyEntry("))
+        #expect(!evidenceSeeder.contains("Notebook("))
+    }
+
+    @MainActor
+    @Test func reviewCardEvidenceProjectionUsesCanonicalSeedRows() throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let seed = try #require(document.reviewDeck["review.card-full-info"])
+        let schema = Schema([VocabularyEntry.self, Notebook.self])
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+
+        let entries = try UITestFixtureSeed.insertReviewDeckSeed(seed, into: container.mainContext)
+        #expect(entries.map(\.word) == seed.entries.map(\.word))
+        #expect(entries.allSatisfy { $0.difficultyTier?.isEmpty == false })
+        #expect(entries.contains { $0.translation.count >= 180 })
+    }
+
     @MainActor
     @Test func cardGalleryMaterializesManifestCardState() async throws {
         let document = try FixtureDatasetStore.decode(Self.marketingDemoData)

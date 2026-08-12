@@ -2385,6 +2385,8 @@ enum UIWorldReviewDeckFixtureID: String, CaseIterable {
     case phaseSingle
     case probe
     case notebookReviewDeck
+    case reviewCardFullInfo = "review.card-full-info"
+    case reviewCardCompactCounterexample = "review.card-compact-counterexample"
 }
 
 struct UIWorldReviewDeckSeed: Codable, Equatable {

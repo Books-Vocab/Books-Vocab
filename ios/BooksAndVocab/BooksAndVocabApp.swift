@@ -180,6 +180,13 @@ struct BooksAndVocabApp: App {
                 .environment(\.feedbackAudioService, FeedbackAudioService.shared)
                 .environment(\.toastCoordinator, toastCoordinator)
                 .environment(\.appCommandCoordinator, appCommandCoordinator)
+                .modifier(
+                    ReviewCardUITestDynamicTypeModifier(
+                        size: AppRuntimeOptions.reviewCardDynamicType(arguments: runtimeArguments) == .accessibility3
+                            ? .accessibility3
+                            : nil
+                    )
+                )
                 .toastOverlay()
         }
         .environmentObject(appearanceStore)
@@ -354,4 +361,17 @@ struct BooksAndVocabApp: App {
         }
     }
 
+}
+
+private struct ReviewCardUITestDynamicTypeModifier: ViewModifier {
+    let size: DynamicTypeSize?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let size {
+            content.environment(\.dynamicTypeSize, size)
+        } else {
+            content
+        }
+    }
 }

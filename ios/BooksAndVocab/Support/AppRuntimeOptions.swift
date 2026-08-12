@@ -14,6 +14,10 @@ enum AppLaunchProfile: String, Equatable {
     }
 }
 
+enum ReviewCardUITestDynamicType: String, Equatable {
+    case accessibility3
+}
+
 enum AppRuntimeOptions {
     static func isUITesting(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
         arguments.contains("-ui-testing")
@@ -40,5 +44,15 @@ enum AppRuntimeOptions {
     /// -ui-testing，避免單獨旗標誤觸。
     static func shouldOpenSettingsOnLaunch(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
         isUITesting(arguments: arguments) && arguments.contains("-openSettingsOnLaunch")
+    }
+
+    static func reviewCardDynamicType(arguments: [String] = ProcessInfo.processInfo.arguments) -> ReviewCardUITestDynamicType? {
+        guard isUITesting(arguments: arguments),
+              let index = arguments.firstIndex(of: "-reviewCardDynamicType"),
+              arguments.indices.contains(index + 1)
+        else {
+            return nil
+        }
+        return ReviewCardUITestDynamicType(rawValue: arguments[index + 1])
     }
 }
