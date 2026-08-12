@@ -39,6 +39,17 @@ verified_against: 2cf93a387
 
 `build/snapshots/uitest-evidence/` 是每次 helper run 的 immutable-style evidence bundle；既有 `build/snapshots/uitest-runs/<run>/`、`build/snapshots/uitest-runs/UIreview.html` 與 `build/snapshots/uitest-videos/` 仍是 `ios_ops.sh` producer 的 workspace 導覽／相容產物。兩者不是互相覆寫的 SoT：helper verdict 以自己的 bundle 為準，workspace page 仍從 producer run 導覽。
 
+若 source worktree 沒有這個新 validator，從 canonical tool worktree 呼叫 helper，並把 cwd 保留在 source worktree：
+
+```bash
+canonical_helper=/path/to/tool-repo/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh
+(cd /path/to/source-worktree && "$canonical_helper" --dataset marketing_demo --file <Flow>UITests.swift --lease)
+```
+
+helper 會將 source root 與 tool root 分開：dataset、HEAD/dirty、runner 與 bundle 來自 source；`ops/uitest_evidence_contract.py` 只從 helper 自身 skill repo 的 canonical location 解析。tool 不存在或 `--help` contract preflight 失敗時，在任何 Xcode 動作前回 `70/inconclusive`，具名記錄 `tool-missing`／`tool-invalid`；不把 validator 複製到 feature branch，也不降低 artifact contract。成功的 normalized verdict 保留 `helper.toolRoot`、`helper.validator` 與 `helper.toolResolution`，讓跨 worktree 的工具來源可稽核。
+
+`artifacts/ui-evidence-contract.json` 必須把每張 step PNG、contact/quick4 sheet、video 與 `UIreview.html` 綁定目前 bytes：除 `stepSha256` 外，還要有 `videoSha256` 與 `reviewHtmlSha256`；manifest 的 `relPath` 解析若逃出 stable screenshot root（含 symlink escape）即 fail-closed。
+
 ```bash
 ./ops/ios_ops.sh test --ui --file <Flow>UITests.swift --lease --json   # 一律 --lease（pool 預設 3 台，KG_IOS_SIM_POOL_SIZE 可調）
 ```
@@ -50,6 +61,7 @@ verified_against: 2cf93a387
 - 同一個 flow 要補多個狀態/資料 variants 時，用 `./ops/uitest_flow_matrix.py --file <Flow>UITests.swift --profile ui-smoke --profile standard --dataset marketing_demo --lease --json`。它會展開 profile × dataset，多次呼叫 `ios_ops.sh test --ui` 且 keep-going；底層 `variantId` 會保留組合軸，例如 `dataset:marketing_demo+profile:standard`，因此新 run 不會覆蓋同 flow 的另一個狀態/資料 entry。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - helper contract regression：`./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；它也驗證 non-zero／invalid JSON failure retention、explicit device、destination identity、selector forwarding 與缺 artifact fail-closed。
+- 人工視覺 pass 必須以 `ops/uitest_review_attest.py` 寫入 run 的 `review_state.json`：`--all-steps` 覆蓋整份 manifest，且每項視覺判準用 repeatable `--visual-check '<check>'` 明名；pass 缺 visual check 或未覆蓋所有 asset 時拒絕。只審部分 step 可用 `--asset-id`，但只能記錄 partial／fail，不能當成完整 visual pass。寫入採 append-only `kg.ui.review-state.v2`，並以 manifest／evidence root hash 綁定目前 bundle。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 
 ## 熱點所有權（多 agent 並行時）
