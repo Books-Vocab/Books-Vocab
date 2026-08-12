@@ -395,8 +395,11 @@ struct StatsPresenter: View {
             nodeCount: nodes.count
         ) {
         case .loading:
-            ProgressView()
-                .controlSize(.small)
+            AppLoadingStateCard(
+                title: StatsCopy.loadingTitle,
+                systemImage: "chart.bar",
+                visualStyle: .vocab
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .empty:
             AppStateMessageContent(
