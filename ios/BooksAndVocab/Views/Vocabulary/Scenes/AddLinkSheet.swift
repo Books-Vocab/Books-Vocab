@@ -144,7 +144,10 @@ struct AddLinkSheet: View {
                             systemImage: "magnifyingglass",
                             visualStyle: .vocab
                         )
-                        dictionaryAccessibilityMarker("addLink.dictionary.loading")
+                        dictionaryAccessibilityMarker(
+                            "addLink.dictionary.loading",
+                            fixtureID: .loading
+                        )
                     }
                     .listRowBackground(Color.clear)
 
@@ -161,7 +164,10 @@ struct AddLinkSheet: View {
                             .buttonStyle(.vocabAction(.neutral))
                             .accessibilityIdentifier("addLink.dictionary.retry")
                         }
-                        dictionaryAccessibilityMarker("addLink.dictionary.partial")
+                        dictionaryAccessibilityMarker(
+                            "addLink.dictionary.partial",
+                            fixtureID: .partial
+                        )
                     }
                     .listRowBackground(Color.clear)
 
@@ -174,7 +180,10 @@ struct AddLinkSheet: View {
                                 title: L10n.string("addLink.dictionaryEmpty"),
                                 systemImage: "text.book.closed"
                             )
-                            dictionaryAccessibilityMarker("addLink.dictionary.empty")
+                            dictionaryAccessibilityMarker(
+                                "addLink.dictionary.empty",
+                                fixtureID: .result
+                            )
                         }
                         .listRowBackground(Color.clear)
                     }
@@ -192,7 +201,10 @@ struct AddLinkSheet: View {
                             .buttonStyle(.vocabAction(.neutral))
                             .accessibilityIdentifier("addLink.dictionary.retry")
                         }
-                        dictionaryAccessibilityMarker("addLink.dictionary.error")
+                        dictionaryAccessibilityMarker(
+                            "addLink.dictionary.error",
+                            fixtureID: .error
+                        )
                     }
                     .listRowBackground(Color.clear)
 
@@ -209,7 +221,10 @@ struct AddLinkSheet: View {
                             .buttonStyle(.vocabAction(.neutral))
                             .accessibilityIdentifier("addLink.dictionary.retry")
                         }
-                        dictionaryAccessibilityMarker("addLink.dictionary.offline")
+                        dictionaryAccessibilityMarker(
+                            "addLink.dictionary.offline",
+                            fixtureID: .offline
+                        )
                     }
                     .listRowBackground(Color.clear)
 
@@ -222,7 +237,10 @@ struct AddLinkSheet: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        dictionaryAccessibilityMarker("addLink.dictionary.retrying")
+                        dictionaryAccessibilityMarker(
+                            "addLink.dictionary.retrying",
+                            fixtureID: .retry
+                        )
                     }
                     .listRowBackground(Color.clear)
                 }
@@ -338,7 +356,10 @@ struct AddLinkSheet: View {
             }
         }
 
-        dictionaryAccessibilityMarker("addLink.dictionary.result")
+        dictionaryAccessibilityMarker(
+            "addLink.dictionary.result",
+            fixtureID: .result
+        )
 
         VStack(alignment: .leading, spacing: AppSpacing.microGap) {
             if cacheStatus == "stale" {
@@ -394,11 +415,20 @@ struct AddLinkSheet: View {
         }
     }
 
-    private func dictionaryAccessibilityMarker(_ identifier: String) -> some View {
-        Color.clear
+    @ViewBuilder
+    private func dictionaryAccessibilityMarker(
+        _ identifier: String,
+        fixtureID: UIWorldDictionaryLookupState? = nil
+    ) -> some View {
+        let marker = Color.clear
             .frame(width: 1, height: 1)
             .accessibilityElement()
             .accessibilityIdentifier(identifier)
+        if let fixtureID {
+            marker.accessibilityValue(fixtureID.fixtureID)
+        } else {
+            marker
+        }
     }
 
     private func selectEntry(_ entry: VocabularyEntry) {

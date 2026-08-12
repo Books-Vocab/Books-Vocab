@@ -12,22 +12,12 @@ actor FixtureDictionaryServing: DictionaryServing {
         case missingCanonicalDictionary
     }
 
-    private enum LookupState: String {
-        case idle
-        case loading
-        case result
-        case partial
-        case offline
-        case error
-        case retry
-    }
-
     private let dictionary: UIWorldDictionarySeed
     private let entry: LexicalEntry
     private let hit: DictionarySearchHit
     private let materialization: DictionaryMaterializationSnapshot
     private var attempts: [String: Int] = [:]
-    private var lastState: LookupState = .idle
+    private var lastState: UIWorldDictionaryLookupState = .idle
 
     init(dictionary: UIWorldDictionarySeed) {
         self.dictionary = dictionary
@@ -86,8 +76,10 @@ actor FixtureDictionaryServing: DictionaryServing {
         )
     }
 
-    static func fromFixtureDatasetStore() throws -> FixtureDictionaryServing {
-        guard let dictionary = FixtureDatasetStore.scenarioContext()?.dictionary else {
+    static func fromFixtureDatasetStore(
+        fixtureID: UIWorldDictionaryFixtureID = .p1DictionaryRich
+    ) throws -> FixtureDictionaryServing {
+        guard let dictionary = FixtureDatasetStore.dictionarySeed(for: fixtureID) else {
             throw FixtureError.missingCanonicalDictionary
         }
         return FixtureDictionaryServing(dictionary: dictionary)
@@ -135,7 +127,7 @@ actor FixtureDictionaryServing: DictionaryServing {
         entryKey: String,
         targetLanguage: String
     ) async throws -> DictionaryEntryResponse {
-        if lastState == .partial, attempts[LookupState.partial.rawValue] == 1 {
+        if lastState == .partial, attempts[UIWorldDictionaryLookupState.partial.rawValue] == 1 {
             throw KGError.offline
         }
         if lastState == .offline || lastState == .error {
@@ -148,9 +140,9 @@ actor FixtureDictionaryServing: DictionaryServing {
         )
     }
 
-    private func state(for query: String) -> LookupState {
+    private func state(for query: String) -> UIWorldDictionaryLookupState {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard let state = LookupState(rawValue: normalized), dictionary.lookup[normalized] != nil else {
+        guard let state = UIWorldDictionaryLookupState(rawValue: normalized), dictionary.lookup[normalized] != nil else {
             return .result
         }
         return state

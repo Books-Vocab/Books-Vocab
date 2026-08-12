@@ -324,6 +324,43 @@ enum FixtureDatasetStore {
         return seed
     }
 
+    /// Resolve the canonical dictionary source only through the matrix-facing
+    /// surface contract. A dictionary payload without its declared P1 surface
+    /// row is not a consumable fixture and must not silently become a fake
+    /// service response.
+    static func dictionarySurfaceContract(
+        for fixtureID: UIWorldDictionaryFixtureID
+    ) -> UIWorldSurfaceContractRowSeed? {
+        guard case let .loaded(document, _) = loadState(),
+              let context = document.scenarioContext,
+              let dictionaryContract = context.surfaceContracts?["dictionary"] else {
+            return nil
+        }
+        return dictionaryContract.required.first {
+            $0.fixtureID == fixtureID.rawValue &&
+            $0.stepLabel == fixtureID.requiredStepLabel
+        }
+    }
+
+    static func dictionarySeed(
+        for fixtureID: UIWorldDictionaryFixtureID
+    ) -> UIWorldDictionarySeed? {
+        guard dictionarySurfaceContract(for: fixtureID) != nil,
+              case let .loaded(document, _) = loadState() else {
+            return nil
+        }
+        return document.scenarioContext?.dictionary
+    }
+
+    static func requireDictionarySeed(
+        for fixtureID: UIWorldDictionaryFixtureID
+    ) -> UIWorldDictionarySeed {
+        guard let seed = dictionarySeed(for: fixtureID) else {
+            preconditionFailure(seedResolutionFailureDescription(resolving: "dictionary.\(fixtureID.rawValue)"))
+        }
+        return seed
+    }
+
     /// Decode a dataset document without going through the ambient load chain.
     /// Used by contract tests (and any tooling) to fail loudly on malformed
     /// UI World files.

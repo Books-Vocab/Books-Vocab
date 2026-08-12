@@ -168,13 +168,16 @@ extension KGService {
 
     #if DEBUG
     private func fixtureDictionaryServiceIfAvailable() -> FixtureDictionaryServing? {
-        guard let dictionary = FixtureDatasetStore.scenarioContext()?.dictionary else {
+        let fixtureID = UIWorldDictionaryFixtureID.p1DictionaryRich
+        guard FixtureDatasetStore.dictionarySeed(for: fixtureID) != nil else {
             return nil
         }
         if let fixtureDictionaryService {
             return fixtureDictionaryService
         }
-        let service = FixtureDictionaryServing(dictionary: dictionary)
+        guard let service = try? FixtureDictionaryServing.fromFixtureDatasetStore(fixtureID: fixtureID) else {
+            return nil
+        }
         fixtureDictionaryService = service
         return service
     }
