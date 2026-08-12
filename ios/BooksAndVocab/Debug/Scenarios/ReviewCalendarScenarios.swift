@@ -93,9 +93,10 @@ private struct ReviewCalendarScene: View {
             let records = try container.mainContext.fetch(FetchDescriptor<ReviewRecord>())
             fixture.expectedReviewRecords.validate(records.count, fixtureID: fixture.vocabularyID)
             self.container = container
-            self.clock = ReviewCalendarClock(
-                now: FixtureReviewClock.now(fallback: Date(timeIntervalSince1970: 1_750_000_000)),
-                timeZone: TimeZone(identifier: "UTC")!
+            self.clock = FixtureReviewClock.required(
+                context: FixtureDatasetStore.scenarioContext(),
+                reviewHistory: seed.reviewHistory,
+                fixtureID: fixture.vocabularyID.rawValue
             )
         } catch {
             preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for ReviewCalendarScenarios: \(error)")
