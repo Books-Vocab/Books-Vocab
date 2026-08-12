@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 WORKSPACE="${KG_TEST_IOS_OPS_WORKSPACE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+export KG_IOS_XCTESTRUN_CACHE_LIB="$WORKSPACE/ops/lib/ios_xctestrun_cache.sh"
 IOS_OPS="$WORKSPACE/ops/ios_ops.sh"
 IOS_OPS_XCODE_LIB="$WORKSPACE/ops/lib/ios_ops_xcode.sh"
 IOS_OPS_LOGS_LIB="$WORKSPACE/ops/lib/ios_ops_logs.sh"
