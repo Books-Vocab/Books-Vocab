@@ -8,6 +8,22 @@ import Testing
 @MainActor
 struct ReaderPublicationLoadCoordinatorTests {
     @Test
+    func retryInvalidatesBeforeSchedulingReplacementTask() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Views/Reader/ReaderView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let retryStart = try #require(source.range(of: "func retryLoadPublication()"))
+        let retryEnd = try #require(source.range(of: "\n    private func loadPublication()", range: retryStart.upperBound..<source.endIndex))
+        let retryBody = source[retryStart.lowerBound..<retryEnd.lowerBound]
+        let invalidateOffset = try #require(retryBody.range(of: "publicationLoadCoordinator.cancelAndInvalidate()"))
+        let scheduleOffset = try #require(retryBody.range(of: "retryLoadTask = Task"))
+
+        #expect(invalidateOffset.lowerBound < scheduleOffset.lowerBound)
+    }
+
+    @Test
     func supersededLoadCannotPublishLateSuccessOrUniqueWords() async {
         let loader = ControlledReaderPublicationLoader()
         let coordinator = ReaderPublicationLoadCoordinator()
