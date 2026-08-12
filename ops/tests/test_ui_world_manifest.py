@@ -364,6 +364,52 @@ def test_reader_invalid_destination_ui_flow_is_real_and_retryable():
     assert "does-not-exist" not in body
 
 
+def test_repo_fixture_asset_sources_are_relative_and_reproducible():
+    data = _marketing_demo()
+
+    for bucket, assets in data["assets"].items():
+        for asset_id, asset in assets.items():
+            source_path = Path(asset["sourcePath"])
+            assert not source_path.is_absolute(), (
+                f"assets.{bucket}.{asset_id}.sourcePath must be repo-relative"
+            )
+            assert not any(part in {".", ".."} for part in source_path.parts), (
+                f"assets.{bucket}.{asset_id}.sourcePath must not contain traversal"
+            )
+
+    assert validate_fixture_dataset_file(
+        ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
+    ) == "marketing_demo"
+
+
+def test_git_fixture_asset_identity_is_path_hash_and_size_only():
+    data = _marketing_demo()
+
+    for bucket, assets in data["assets"].items():
+        for asset_id, asset in assets.items():
+            assert set(asset) == {
+                "sourcePath", "sha256", "installAs", "byteSize", "contentType"
+            }, f"assets.{bucket}.{asset_id} must not persist runtime filesystem identity"
+            assert "inode" not in json.dumps(asset)
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        str(ROOT / "ops" / "fixtures" / "assets" / "catalog-reader.epub"),
+        "../AGENTS.md",
+    ],
+)
+def test_validate_rejects_absolute_or_escaping_asset_source_path(tmp_path: Path, source_path: str):
+    data = _marketing_demo()
+    data["assets"]["books"]["catalog_reader_epub"]["sourcePath"] = source_path
+    path = tmp_path / "unsafe_source_path.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"sourcePath.*repo-relative"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):
     data = _marketing_demo()
     data.pop("scenarioContext")
@@ -1741,7 +1787,7 @@ def test_validate_rejects_empty_inode_token(tmp_path: Path):
     path = tmp_path / "empty_inode_token.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match=r"surfaceContracts.*assetInodes.*inode:<assetID>"):
+    with pytest.raises(UIWorldManifestError, match=r"surfaceContracts.*assetInodes.*coverage tokens"):
         validate_fixture_dataset_file(path)
 
 

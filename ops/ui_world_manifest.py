@@ -277,6 +277,9 @@ ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
 READER_TOC_VALID_ASSET = "reader_real_book_epub"
 READER_TOC_INVALID_DESTINATION_ASSET = "reader_invalid_destination_epub"
+# Kept only because the already-shipped Swift wire schema calls this array
+# `assetInodes`; the values are coverage labels, not filesystem provenance.
+ASSET_COVERAGE_TOKEN_PREFIX = "inode:"
 ASSET_CONTENT_TYPES_BY_BUCKET = {
     "books": {"application/epub+zip", "application/pdf", "text/markdown; charset=utf-8", "text/plain; charset=utf-8"},
     "audio": {"audio/mp4", "audio/mpeg"},
@@ -671,6 +674,11 @@ class UIWorldManifestError(ValueError):
     pass
 
 
+def _asset_coverage_token(asset_id: str) -> str:
+    """Build the legacy opaque coverage label for an asset reference."""
+    return f"{ASSET_COVERAGE_TOKEN_PREFIX}{asset_id}"
+
+
 def _ensure_str(raw: Any, *, field: str, label: str) -> str:
     if not isinstance(raw, str) or not raw.strip():
         raise UIWorldManifestError(f"{label} {field} 必須是非空字串")
@@ -680,21 +688,19 @@ def _ensure_str(raw: Any, *, field: str, label: str) -> str:
 def _resolve_path(
     raw: str, *, field: str, label: str, require_repo_relative: bool = False
 ) -> Path:
+    """Resolve a checked-in asset from a canonical repo-relative locator."""
     path = Path(raw)
-    if path.is_absolute() and require_repo_relative:
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         raise UIWorldManifestError(
-            f"{label} {field} sourcePath 必須是 repo-relative path，不得使用絕對路徑: {raw}"
+            f"{label} {field} sourcePath 必須是 repo-relative path，不得使用絕對路徑或 traversal: {raw}"
         )
-    if path.is_absolute():
-        return path.resolve()
     root = ROOT.resolve()
     resolved = (root / path).resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
+    if resolved != root and root not in resolved.parents:
+        raise UIWorldManifestError(
         raise UIWorldManifestError(
             f"{label} {field} sourcePath escape repo root: {raw}"
-        ) from exc
+        )
     return resolved
 
 
@@ -2404,16 +2410,16 @@ def _validate_asset_reference_lists(
     step_labels = _validate_string_list(
         container.get("stepLabels"), field=f"{field}.stepLabels", label=label,
         allow_empty=allow_empty)
-    referenced_assets, asset_inodes = _validate_asset_pair(
+    referenced_assets, asset_coverage_tokens = _validate_asset_pair(
         container.get("assetIDs"), container.get("assetInodes"),
         field=field, label=label, asset_types=asset_types,
     )
-    return fixture_ids, step_labels, referenced_assets, asset_inodes
+    return fixture_ids, step_labels, referenced_assets, asset_coverage_tokens
 
 
 def _validate_asset_pair(
     raw_asset_ids: Any,
-    raw_asset_inodes: Any,
+    raw_asset_coverage_tokens: Any,
     *,
     field: str,
     label: str,
@@ -2421,10 +2427,10 @@ def _validate_asset_pair(
 ) -> tuple[list[str], list[str]]:
     """Validate the canonical asset identity pair.
 
-    The manifest bucket is the asset type.  Canonical scenario references keep
-    the compact ``inode:<assetID>`` representation, so an ID, its inode and its
-    bucket/type form one bijective identity rather than three independently
-    disjoint sets.
+    The manifest bucket is the asset type.  The historical JSON wire key is
+    ``assetInodes`` but its values are opaque coverage labels, never filesystem
+    identity.  The actual Git identity is the asset's repo-relative sourcePath,
+    sha256, and byteSize; installed inode evidence belongs to runtime only.
     """
     referenced_assets = _validate_string_list(
         raw_asset_ids, field=f"{field}.assetIDs", label=label)
@@ -2432,22 +2438,22 @@ def _validate_asset_pair(
     if unknown_assets:
         raise UIWorldManifestError(
             f"{label} {field}.assetIDs references unknown assets: {unknown_assets}")
-    asset_inodes = _validate_string_list(
-        raw_asset_inodes, field=f"{field}.assetInodes", label=label)
-    invalid_inodes = [
-        inode for inode in asset_inodes
-        if not inode.startswith("inode:") or not inode.removeprefix("inode:").strip()
+    asset_coverage_tokens = _validate_string_list(
+        raw_asset_coverage_tokens, field=f"{field}.assetInodes", label=label)
+    invalid_tokens = [
+        token for token in asset_coverage_tokens
+        if not token.startswith(ASSET_COVERAGE_TOKEN_PREFIX) or not token.removeprefix(ASSET_COVERAGE_TOKEN_PREFIX).strip()
     ]
-    if invalid_inodes:
+    if invalid_tokens:
         raise UIWorldManifestError(
-            f"{label} {field}.assetInodes must use non-empty inode:<assetID> tokens: {invalid_inodes}")
-    expected_inodes = {f"inode:{asset_id}" for asset_id in referenced_assets}
-    if set(asset_inodes) != expected_inodes or len(asset_inodes) != len(referenced_assets):
+            f"{label} {field}.assetInodes must use non-empty coverage tokens: {invalid_tokens}")
+    expected_tokens = {_asset_coverage_token(asset_id) for asset_id in referenced_assets}
+    if set(asset_coverage_tokens) != expected_tokens or len(asset_coverage_tokens) != len(referenced_assets):
         referenced_types = {asset_types[asset_id] for asset_id in referenced_assets}
         raise UIWorldManifestError(
             f"{label} {field}.assetIDs and {field}.assetInodes must be one-to-one "
             f"with asset type(s) {sorted(referenced_types)}")
-    return referenced_assets, asset_inodes
+    return referenced_assets, asset_coverage_tokens
 
 
 def _validate_disjoint_coverage(
@@ -2865,10 +2871,10 @@ def _validate_shared_decks(
         # The canonical asset identity is the full images.<id> ref. Deriving
         # inode:<ref> here makes the one-to-one/type invariant explicit without
         # adding a second, Swift-incompatible assetInodes field to sharedDecks.
-        inode_tokens = [f"inode:{asset_ref}" for asset_ref in asset_ids]
-        if len(inode_tokens) != len(set(inode_tokens)):
+        coverage_tokens = [_asset_coverage_token(asset_ref) for asset_ref in asset_ids]
+        if len(coverage_tokens) != len(set(coverage_tokens)):
             raise UIWorldManifestError(
-                f"{label} {field}.assetIDs and inode tokens must be one-to-one"
+                f"{label} {field}.assetIDs and coverage tokens must be one-to-one"
             )
         if fixture_id == "loading" and (phase != "loading" or retry_phase is not None or deck_ids):
             raise UIWorldManifestError(f"{label} {field} has invalid loading phase/deck mapping")
@@ -2992,7 +2998,7 @@ def _expected_explore_surface_projection(
                 "stepLabel": fixture["label"],
                 "index": index + index_offset,
                 "assetIDs": raw_asset_ids,
-                "assetInodes": [f"inode:{asset_id}" for asset_id in raw_asset_ids],
+                "assetInodes": [_asset_coverage_token(asset_id) for asset_id in raw_asset_ids],
             })
         return result
 

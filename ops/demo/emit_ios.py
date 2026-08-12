@@ -516,6 +516,10 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
 
 
 def _validate_fixture_json_bytes(content: bytes, *, label: str = "Generated demo UI World") -> None:
+    # The shared validator is the canonical producer/consumer gate: checked-in
+    # assets carry only repo-relative sourcePath + sha256 + byteSize/contentType.
+    # Installed filesystem inode is runtime-only materializer evidence and must
+    # never be serialized into the Git fixture or generated artifact.
     with tempfile.TemporaryDirectory(prefix="kg-demo-ui-world-") as tmp:
         path = Path(tmp) / "ios_fixture_dataset.json"
         path.write_bytes(content)
