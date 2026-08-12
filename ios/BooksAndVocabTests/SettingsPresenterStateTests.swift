@@ -3,6 +3,27 @@ import Testing
 
 @Suite("SettingsPresenterState")
 struct SettingsPresenterStateTests {
+    @Test func syncLifecycleTransitionsFromErrorThroughRetryToSuccess() {
+        var lifecycle = SettingsSyncLifecycle.idle
+
+        #expect(lifecycle == .idle)
+        lifecycle.begin()
+        #expect(lifecycle == .syncing)
+
+        lifecycle.fail(message: L10n.string("同步失敗"))
+        #expect(lifecycle == .terminalError(message: L10n.string("同步失敗")))
+
+        lifecycle.retry()
+        #expect(lifecycle == .retry)
+        lifecycle.succeed()
+        #expect(lifecycle == .terminalSuccess)
+
+        lifecycle.dismiss()
+        #expect(lifecycle == .dismissed)
+        lifecycle.reset()
+        #expect(lifecycle == .idle)
+    }
+
     @Test func selectedReviewModeUsesModeDisplayNameWhenActive() {
         var settings = ReviewSettings.default
         settings.mode = .relaxed

@@ -2,6 +2,20 @@ import Foundation
 import SwiftData
 import os
 
+@MainActor
+protocol SettingsSyncPersisting: AnyObject {
+    func save(container: ModelContainer) throws
+}
+
+@MainActor
+final class ModelContextSettingsSyncPersistence: SettingsSyncPersisting {
+    func save(container: ModelContainer) throws {
+        try container.mainContext.save()
+    }
+}
+
+typealias SettingsSyncService = any BackgroundSyncing & HealthChecking & QuotaServing
+
 @MainActor protocol SettingsCoordinating: AnyObject, Observable {
     var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
@@ -27,7 +41,10 @@ final class SettingsCoordinator: SettingsCoordinating {
     var iconBreathing = false
     var showDeleteAccountConfirm = false
     var isDeletingAccount = false
-    var isResyncing = false
+    private(set) var syncLifecycle: SettingsSyncLifecycle = .idle
+    private(set) var syncAttempt = 0
+    private(set) var syncDataOutcome: SettingsSyncDataOutcome = .none
+    private(set) var syncMessage: String?
     var isManualLoggingIn = false
     var deleteAccountError: String?
     var manualLoginUserId = ""
@@ -44,10 +61,40 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// protects identity changes; this token also prevents an older round's
     /// defer from clearing the flag belonging to a newer round.
     private var resyncRequestID = 0
-    /// 這一輪同步的逐步進度。`isResyncing` 只回答「在不在跑」；這個回答「跑到哪」。
-    /// 兩者並存而非取代：`isResyncing` 同時守著重入 guard 與按鈕 disabled。
+    /// 這一輪同步的逐步進度。生命週期由 `syncLifecycle` 單一擁有，避免
+    /// 進行中狀態與終態不另外漂移成兩份真相。
     let syncProgress = SyncProgressStore()
-    init() {
+    private let settingsSyncService: SettingsSyncService?
+    private let syncPersistence: any SettingsSyncPersisting
+#if DEBUG
+    private let settingsSyncFixtureSummary: SettingsFixtureSeed.SyncSummary?
+#endif
+
+    init(
+        settingsSyncService: SettingsSyncService? = nil,
+        syncPersistence: any SettingsSyncPersisting = ModelContextSettingsSyncPersistence()
+    ) {
+        self.syncPersistence = syncPersistence
+
+#if DEBUG
+        var resolvedService = settingsSyncService
+        var resolvedFixtureSummary: SettingsFixtureSeed.SyncSummary?
+        if resolvedService == nil,
+           FixtureDatasetStore.activeSettingsFixtureID == .syncTerminalErrorRetrySuccess,
+           let fixtureID = FixtureDatasetStore.activeSettingsFixtureID {
+            let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
+            guard let summary = seed.syncSummary else {
+                preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare syncSummary")
+            }
+            resolvedFixtureSummary = summary
+            resolvedService = KGService(transport: SettingsSyncFixtureTransport(summary: summary))
+        }
+        self.settingsSyncService = resolvedService
+        self.settingsSyncFixtureSummary = resolvedFixtureSummary
+#else
+        self.settingsSyncService = settingsSyncService
+#endif
+
         #if DEBUG
         debugLocalServerURL = KGService.getDebugLocalServerURL()
         #endif
@@ -64,7 +111,6 @@ final class SettingsCoordinator: SettingsCoordinating {
     func resetForAccountBoundary() {
         accountGeneration &+= 1
         resyncRequestID &+= 1
-        isResyncing = false
         syncProgress.reset()
     }
 
@@ -381,7 +427,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         let id = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
         // in-flight guard：login(customToken:) 現為 async，會 await clearLocalData；
         // 無 guard 時連點兩下會 spawn 兩個 Task，兩者都在第一個的 await 解開前讀到舊 userId
-        // → 重複清理（第二次為 no-op 但多一次 BackgroundSyncActor purge）。對齊 isResyncing。
+        // → 重複清理（第二次為 no-op 但多一次 BackgroundSyncActor purge）。
         guard !id.isEmpty, !isManualLoggingIn else { return }
         isManualLoggingIn = true
         Task {
@@ -390,26 +436,48 @@ final class SettingsCoordinator: SettingsCoordinating {
         }
     }
 
+    func dismissSyncStatus() {
+        do {
+            try syncLifecycle.transition(.dismiss)
+        } catch {
+            AppLog.kg.warning("Settings sync dismiss rejected: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     func resync(
         authManager: any AuthManaging,
-        kgService: any BackgroundSyncing & HealthChecking & QuotaServing,
+        kgService: SettingsSyncService,
         modelContext: ModelContext
     ) async {
         // 資格 gate：demo 模式 `isLoggedIn == true` 但無真 token，同步會踩 `unauthorized`
         // → 誤彈「登入已過期」。與 `ExplicitSync` / 自動同步同政策：登出 / demo 一律 no-op。
         // （UI 已以 syncSummary 擋登出，此處 defense-in-depth 並補上 demo 漏洞。）
         guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
-        guard !isResyncing else { return }
+        guard !syncLifecycle.isInFlight else { return }
         let requestGeneration = accountGeneration
         let requestUserID = authManager.userId
         resyncRequestID &+= 1
         let requestID = resyncRequestID
-        isResyncing = true
-        defer {
-            if resyncRequestID == requestID {
-                isResyncing = false
-            }
+
+        let action: SettingsSyncLifecycle.Action
+        if case .terminalError = syncLifecycle {
+            action = .retry
+        } else {
+            action = .begin
         }
+        do {
+            try syncLifecycle.transition(action)
+        } catch {
+            AppLog.kg.error("Settings sync transition rejected: \(String(describing: error), privacy: .public)")
+            return
+        }
+
+        syncAttempt += 1
+        syncDataOutcome = .none
+        syncMessage = nil
+        PerfLog.sync.mark("settings.sync.lifecycle.started", "attempt=\(syncAttempt)")
+
+        let activeSyncService = settingsSyncService ?? kgService
 
         // 進度模型：宣告 backgroundSync 會跑的步驟 + 本函式自己收尾的那一列。
         // UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
@@ -436,7 +504,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             }
         }
 
-        let outcome = await kgService.backgroundSync(container: modelContext.container) { event in
+        let outcome = await activeSyncService.backgroundSync(container: modelContext.container) { event in
             continuation.yield(event)
         }
         guard isCurrentResync(
@@ -449,10 +517,16 @@ final class SettingsCoordinator: SettingsCoordinating {
             await pump.value
             return
         }
+        let saveSucceeded: Bool
         do {
-            try modelContext.container.mainContext.save()
+            try syncPersistence.save(container: modelContext.container)
+            saveSucceeded = true
+            PerfLog.sync.mark("settings.sync.lifecycle.saveResult", "attempt=\(syncAttempt) result=success")
         } catch {
+            saveSucceeded = false
+            syncMessage = L10n.string("同步失敗")
             AppLog.kg.error("resync mainContext save failed: \(error.localizedDescription)")
+            PerfLog.sync.mark("settings.sync.lifecycle.saveResult", "attempt=\(syncAttempt) result=failure")
         }
 
         // 額度與連線檢查併發。兩者都是唯讀 GET、彼此無依賴，序列跑純粹是多一趟
@@ -464,8 +538,8 @@ final class SettingsCoordinator: SettingsCoordinating {
         // ——為了省約 100ms 去換一個真實的 data race 不划算。這一輪真正的 6 秒在
         // podcast，那筆已經收掉了。
         continuation.yield(.started(.status))
-        async let health: Void = kgService.healthCheck()
-        async let quota: Void = kgService.fetchQuota()
+        async let health: Void = activeSyncService.healthCheck()
+        async let quota: Void = activeSyncService.fetchQuota()
         _ = await (health, quota)
         continuation.yield(.finished(.status, status: .done, detail: ""))
 
@@ -483,11 +557,44 @@ final class SettingsCoordinator: SettingsCoordinating {
         // trigger 共用的全域欄位，對「被別的 round 佔著 claim 所以什麼都沒做」與
         // 「跑到一半被取消」這兩條路徑，它會讓面板宣稱 100% 完成。
         switch outcome {
-        case .completed: syncProgress.finish(.completed)
-        case .failed:    syncProgress.finish(.failed)
-        case .didNotRun: syncProgress.reset()  // 直接收合，不宣稱任何事
+        case .completed where saveSucceeded:
+            syncDataOutcome = .complete
+            syncProgress.finish(.completed)
+            do {
+                try syncLifecycle.transition(.succeed)
+            } catch {
+                AppLog.kg.error("Settings sync success transition rejected: \(String(describing: error), privacy: .public)")
+                syncProgress.finish(.failed)
+                syncDataOutcome = .partial
+                syncMessage = L10n.string("同步失敗")
+            }
+            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=completed")
+        case .completed:
+            syncDataOutcome = .partial
+            syncProgress.finish(.failed)
+            failSyncLifecycle(message: syncMessage ?? L10n.string("同步失敗"))
+            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=saveFailure")
+        case .failed:
+            syncDataOutcome = dataOutcome(for: outcome)
+            syncProgress.finish(.failed)
+            failSyncLifecycle(message: syncMessage ?? syncFailureMessage())
+            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=failed")
+        case .didNotRun:
+            syncDataOutcome = .none
+            syncProgress.reset()
+            do {
+                try syncLifecycle.transition(.cancel)
+            } catch {
+                try? syncLifecycle.transition(.reset)
+                AppLog.kg.warning("Settings sync cancellation transition rejected: \(String(describing: error), privacy: .public)")
+            }
+            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=didNotRun")
         }
 
+        PerfLog.sync.mark(
+            "settings.sync.lifecycle.terminal",
+            "attempt=\(syncAttempt) state=\(syncLifecycleName) data=\(syncDataOutcome.rawValue)"
+        )
         refreshObservationPreview()
     }
 
@@ -503,6 +610,44 @@ final class SettingsCoordinator: SettingsCoordinating {
             authManager.isLoggedIn &&
             !authManager.isDemoMode &&
             authManager.userId == userID
+    }
+
+    private func failSyncLifecycle(message: String) {
+        syncMessage = message
+        do {
+            try syncLifecycle.transition(.fail(message: message))
+        } catch {
+            AppLog.kg.error("Settings sync failure transition rejected: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func dataOutcome(for outcome: SyncRoundOutcome) -> SettingsSyncDataOutcome {
+        guard outcome == .failed else { return .none }
+        let pullFinished = syncProgress.steps.contains {
+            $0.id == SyncStepID.pull.rawValue && $0.status == .done
+        }
+        return pullFinished ? .partial : .none
+    }
+
+    private var syncLifecycleName: String {
+        switch syncLifecycle {
+        case .idle: return "idle"
+        case .syncing: return "syncing"
+        case .terminalSuccess: return "terminalSuccess"
+        case .terminalError: return "terminalError"
+        case .retry: return "retry"
+        case .dismissed: return "dismissed"
+        }
+    }
+
+    private func syncFailureMessage() -> String {
+        #if DEBUG
+        if let fixtureMessage = settingsSyncFixtureSummary?.message, !fixtureMessage.isEmpty {
+            return fixtureMessage
+        }
+        #endif
+        syncProgress.steps.first(where: { $0.status == .error && !$0.detail.isEmpty })?.detail
+            ?? L10n.string("同步失敗")
     }
 
     #if DEBUG

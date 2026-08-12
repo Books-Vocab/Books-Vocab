@@ -8,6 +8,9 @@ extension UITestFixtureSeed {
         switch id {
         case "cleanPreferences":
             seedCleanPreferences()
+        case SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue:
+            FixtureDatasetStore.activateSettingsFixture(.syncTerminalErrorRetrySuccess)
+            AppLog.app.info("UI-test fixture selected: settings.\(id, privacy: .public)")
         default:
             failFixtureSeed("Unknown settings fixture ID: \(id)")
         }

@@ -96,7 +96,7 @@ extension KGService {
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
 
-                let (data, response) = try await urlSession.data(for: request)
+                let (data, response) = try await transport.data(for: request)
 
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw KGError.serverError("Invalid response from \(path)")
