@@ -175,8 +175,8 @@ struct FixtureDatasetDocument: Decodable {
         vocabulary = try container.decode([String: UIWorldVocabularySeed].self, forKey: .vocabulary)
         reviewDeck = try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck)
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
-        // Optional domain: absent or legacy (including a null clock) remains
-        // readable; a present canonical domain is validated as one contract.
+        // Legacy clock shapes remain readable, but passage/wordDetail content
+        // stays fail-closed; canonical context is validated as one contract.
         scenarioContext = try container.decodeIfPresent(UIWorldScenarioContextSeed.self, forKey: .scenarioContext)
 
         try validateKnownFixtureIDs(codingPath: container.codingPath)
@@ -194,7 +194,7 @@ struct FixtureDatasetDocument: Decodable {
         try Self.validateReaderAssetReferences(reader, assets: assets, codingPath: container.codingPath)
         try Self.validateBookshelfAssetReferences(bookshelf, assets: assets, codingPath: container.codingPath)
         if let scenarioContext {
-            try scenarioContext.validate(assets: assets, decoder: decoder)
+            try scenarioContext.validate(assets: assets, vocabulary: vocabulary, decoder: decoder)
         }
     }
 
