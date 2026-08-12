@@ -97,6 +97,8 @@ struct VocabForecastChart: View {
                 .frame(height: labelHeight)
         }
         .contentShape(Rectangle())
+        .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
+        .accessibilityValue("\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))")
         .onTapGesture {
             dismissTask?.cancel()
             withAnimation(AppMotion.feedbackPulse) { tappedIndex = index }

@@ -70,4 +70,37 @@ extension UITestFixtureSeed {
         try context.save()
     }
 }
+
+extension UITestFixtureSeed {
+    /// Overview/Stats fixture bridge. The payload is always resolved from the
+    /// injected kg.fixture.dataset.v2 document; this argument only selects the
+    /// named vocabulary seed and never creates a second data source.
+    @MainActor
+    static func seedVocabulary(_ id: String, into container: ModelContainer) {
+        guard let fixtureID = UIWorldVocabularyFixtureID(rawValue: id) else {
+            failFixtureSeed("Unknown vocabulary fixture ID: \(id)")
+        }
+
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+        do {
+            try clearVocabularyEntries(from: container.mainContext)
+            _ = try insertVocabularySeed(seed, into: container.mainContext)
+            if !AuthManager.shared.isLoggedIn {
+                seedSignedInLoginFromWorld()
+            }
+
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+            let latest = seed.reviewHistory.map(\.reviewedAt).max()
+            let fallback = Date(timeIntervalSince1970: 1_780_300_800)
+            statsProjectionClock = StatsProjectionClock(
+                now: latest ?? fallback,
+                calendar: calendar
+            )
+            AppLog.app.info("UI-test fixture seeded: vocabulary.\(fixtureID.rawValue) (\(seed.entries.count) entries, \(seed.reviewHistory.count) reviews)")
+        } catch {
+            failFixtureSeed("Failed to seed vocabulary.\(fixtureID.rawValue): \(error)")
+        }
+    }
+}
 #endif

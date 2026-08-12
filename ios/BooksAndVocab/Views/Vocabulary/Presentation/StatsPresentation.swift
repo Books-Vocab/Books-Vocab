@@ -6,6 +6,21 @@
 //
 
 import Foundation
+import SwiftUI
+
+private struct StatsProjectionClockKey: EnvironmentKey {
+    static let defaultValue = StatsProjectionClock(
+        now: Date(timeIntervalSince1970: 0),
+        calendar: Calendar(identifier: .gregorian)
+    )
+}
+
+extension EnvironmentValues {
+    var statsProjectionClock: StatsProjectionClock {
+        get { self[StatsProjectionClockKey.self] }
+        set { self[StatsProjectionClockKey.self] = newValue }
+    }
+}
 
 enum StatsPresentation {
     struct ForecastBucket: Identifiable {
@@ -23,6 +38,10 @@ enum StatsPresentation {
         let activity: [String: Int]
         let forecast: [ForecastBucket]
         let heatmapThresholds: [Int]
+
+        func formattedCount(_ value: Int) -> String {
+            LocaleAwareFormatter.shared.string(from: NSNumber(value: value))
+        }
     }
 
     enum GraphThumbnailBodyKind: Equatable {
@@ -36,22 +55,29 @@ enum StatsPresentation {
         return nodeCount == 0 ? .empty : .graph
     }
 
-    private static func compactDayLabel(
-        for date: Date,
-        clock: ReviewCalendarClock
-    ) -> String {
-        LocaleAwareFormatter.shared.string(
-            from: date,
-            template: "Md",
-            timeZone: clock.timeZone
-        )
+    private static func compactDayLabel(for date: Date) -> String {
+        LocaleAwareFormatter.shared.string(from: date, template: "Md")
     }
 
     static func buildSummary(
         from entries: [VocabularyEntry],
         reviewRecords: [ReviewRecord],
         forecastDays: Int = 14,
-        clock: ReviewCalendarClock
+        now: Date = Date()
+    ) -> Summary {
+        project(
+            entries: entries,
+            reviewRecords: reviewRecords,
+            forecastDays: forecastDays,
+            clock: StatsProjectionClock(now: now, calendar: Calendar.autoupdatingCurrent)
+        )
+    }
+
+    static func project(
+        entries: [VocabularyEntry],
+        reviewRecords: [ReviewRecord],
+        forecastDays: Int = 14,
+        clock: StatsProjectionClock
     ) -> Summary {
         // shouldAppearInKnowledgeList == isSynced && !delete && !isArchived.
         // Archived entries must NOT inflate the review forecast / stats.
@@ -59,9 +85,9 @@ enum StatsPresentation {
 
         // Forecast
         var forecastMap: [String: Int] = [:]
-        let todayKey = clock.dayKey(for: clock.now)
+        let todayKey = clock.dayKey(clock.now)
         for entry in synced {
-            let key = clock.dayKey(for: entry.nextReviewAt)
+            let key = clock.dayKey(entry.nextReviewAt)
             if key <= todayKey {
                 forecastMap[todayKey, default: 0] += 1
             } else {
@@ -71,18 +97,14 @@ enum StatsPresentation {
 
         var forecast: [ForecastBucket] = []
         for offset in 0..<forecastDays {
-            guard let date = clock.calendar.date(
-                byAdding: .day,
-                value: offset,
-                to: clock.startOfToday
-            ) else { continue }
-            let key = clock.dayKey(for: date)
+            guard let date = clock.date(byAdding: .day, value: offset, to: clock.now) else { continue }
+            let key = clock.dayKey(date)
             let label: String
             switch offset {
             case 0: label = "今天".localized
             case 1: label = "明天".localized
             default:
-                label = Self.compactDayLabel(for: date, clock: clock)
+                label = Self.compactDayLabel(for: date)
             }
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
@@ -114,5 +136,4 @@ enum StatsPresentation {
             heatmapThresholds: heatmapThresholds
         )
     }
-
 }

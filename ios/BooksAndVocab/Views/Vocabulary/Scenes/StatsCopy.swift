@@ -12,6 +12,10 @@ enum StatsCopy {
     static var graphEmptyTitle: String { L10n.string("探索單字建立連結") }
     static var currentStreakTitle: String { L10n.string("連續學習") }
     static var longestStreakTitle: String { L10n.string("最長紀錄") }
+    static var totalCardsTitle: String { L10n.string("單字總數") }
+    static var reviewedTodayTitle: String { L10n.string("今日複習") }
+    static var dueTodayTitle: String { L10n.string("今日到期") }
+    static var cardUnit: String { L10n.string("張") }
     static var dayUnit: String { L10n.string("天") }
     static var calendarTitle: String { L10n.string("學習日曆") }
     static var forecastTitle: String { L10n.string("複習預測") }

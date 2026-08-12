@@ -6,6 +6,8 @@ import SwiftData
 /// Triggered by launch arguments when `-ui-testing` is active.
 @MainActor
 enum UITestFixtureSeed {
+    static var statsProjectionClock: StatsProjectionClock?
+
     /// Parse `-seedFixture:<domain>:<id>` arguments and inject matching fixtures.
     static func injectIfNeeded(into container: ModelContainer, arguments: [String]) {
         guard AppRuntimeOptions.isUITesting(arguments: arguments) else { return }
@@ -72,6 +74,8 @@ enum UITestFixtureSeed {
             case "explore":
                 seedExplore(id, into: container)
 #endif
+            case "vocabulary":
+                seedVocabulary(id, into: container)
             case "entitlements":
                 guard id == "pro" || id == "free" else {
                     failFixtureSeed("Unknown entitlements fixture ID: \(id)")

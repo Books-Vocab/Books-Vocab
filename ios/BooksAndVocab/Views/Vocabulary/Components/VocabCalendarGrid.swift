@@ -10,17 +10,36 @@ import SwiftUI
 struct VocabCalendarGrid: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.statsProjectionClock) private var projectionClock
 
     let displayedMonth: Date
     let activityMap: [String: Int]
     @Binding var selectedDay: String?
-    let clock: ReviewCalendarClock
+    private let explicitProjectionClock: StatsProjectionClock?
+
+    init(
+        displayedMonth: Date,
+        activityMap: [String: Int],
+        selectedDay: Binding<String?>,
+        clock: StatsProjectionClock? = nil
+    ) {
+        self.displayedMonth = displayedMonth
+        self.activityMap = activityMap
+        self._selectedDay = selectedDay
+        self.explicitProjectionClock = clock
+    }
 
     // Locale-aware, Monday-first (matches the Monday-start day grid below).
     private let weekdaySymbols = LocaleAwareFormatter.shared.mondayFirstWeekdaySymbols(short: true)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: AppSpacing.s1), count: 7)
+    private var activeProjectionClock: StatsProjectionClock {
+        explicitProjectionClock ?? projectionClock
+    }
+
+    private var todayKey: String { activeProjectionClock.dayKey(activeProjectionClock.now) }
+
     private var monthDays: [DayCell] {
-        let cal = clock.calendar
+        let cal = activeProjectionClock.calendar
         let comps = cal.dateComponents([.year, .month], from: displayedMonth)
         guard let firstOfMonth = cal.date(from: comps),
               let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { return [] }
@@ -41,13 +60,13 @@ struct VocabCalendarGrid: View {
             var dayComps = comps
             dayComps.day = day
             guard let date = cal.date(from: dayComps) else { continue }
-            let key = clock.dayKey(for: date)
+            let key = activeProjectionClock.dayKey(date)
             cells.append(DayCell(
                 id: key,
                 dayNumber: day,
                 dayKey: key,
-                isToday: key == clock.dayKey(for: clock.now),
-                isFuture: cal.startOfDay(for: date) > cal.startOfDay(for: clock.now)
+                isToday: key == todayKey,
+                isFuture: cal.startOfDay(for: date) > cal.startOfDay(for: activeProjectionClock.now)
             ))
         }
         return cells
@@ -121,13 +140,14 @@ struct VocabCalendarGrid: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(cell.isFuture)
+        .opacity(cell.isFuture ? 0.45 : 1)
         .accessibilityIdentifier(
             isSelected
                 ? ReviewCalendarAccessibility.selectedDay
-                : ReviewCalendarAccessibility.day(cell.id)
+                : cell.dayKey.map { ReviewCalendarAccessibility.day($0) } ?? "calendar.day.blank"
         )
-        .disabled(cell.isFuture)
-        .opacity(cell.isFuture ? 0.45 : 1)
+        .accessibilityValue(LocaleAwareFormatter.shared.string(from: NSNumber(value: count)))
     }
 
     private func dotColor(_ count: Int) -> Color {
@@ -162,9 +182,9 @@ private struct DayCell: Identifiable {
     @Previewable @State var selectedDay: String?
 
     var cal = Calendar(identifier: .gregorian)
-    cal.timeZone = TimeZone(secondsFromGMT: 0)!
-    let month = Date(timeIntervalSince1970: 1_767_312_000)
-    let clock = ReviewCalendarClock(now: month, timeZone: cal.timeZone)
+    cal.timeZone = TimeZone(secondsFromGMT: 0) ?? cal.timeZone
+    let clock = StatsProjectionClock(now: Date(timeIntervalSince1970: 1_780_300_800), calendar: cal)
+    let month = clock.now
     var activity: [String: Int] = [:]
     if let firstOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: month)),
        let range = cal.range(of: .day, in: .month, for: firstOfMonth) {
@@ -172,7 +192,7 @@ private struct DayCell: Identifiable {
             var comps = cal.dateComponents([.year, .month], from: month)
             comps.day = day
             if let date = cal.date(from: comps) {
-                activity[clock.dayKey(for: date)] = (day % 11) + 1
+                activity[clock.dayKey(date)] = (day % 11) + 1
             }
         }
     }
@@ -181,10 +201,10 @@ private struct DayCell: Identifiable {
         VocabCalendarGrid(
             displayedMonth: month,
             activityMap: activity,
-            selectedDay: $selectedDay,
-            clock: clock
+            selectedDay: $selectedDay
         )
         .padding()
     }
     .environmentObject(AppAppearanceStore.preview)
+    .environment(\.statsProjectionClock, clock)
 }

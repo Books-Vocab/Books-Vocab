@@ -12,13 +12,13 @@ import SwiftData
 enum ReviewCalendarScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Review Calendar Presenter") {
-            Scenario("calendar · populated-day", layout: .fill) {
+            Scenario("Recent review history", layout: .fill) {
                 ReviewCalendarScene(fixture: .recent)
             }
-            Scenario("calendar · timezone-boundary", layout: .fill) {
+            Scenario("Heavy month streak", layout: .fill) {
                 ReviewCalendarScene(fixture: .dense)
             }
-            Scenario("calendar · empty-day", layout: .fill) {
+            Scenario("Empty DB", layout: .fill) {
                 ReviewCalendarScene(fixture: .empty)
             }
         }
@@ -79,7 +79,7 @@ private enum ReviewCalendarExpectedCount {
 
 private struct ReviewCalendarScene: View {
     private let container: ModelContainer
-    private let clock: ReviewCalendarClock
+    private let projectionClock: StatsProjectionClock
 
     init(fixture: ReviewCalendarFixture) {
         let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
@@ -93,11 +93,8 @@ private struct ReviewCalendarScene: View {
             let records = try container.mainContext.fetch(FetchDescriptor<ReviewRecord>())
             fixture.expectedReviewRecords.validate(records.count, fixtureID: fixture.vocabularyID)
             self.container = container
-            self.clock = FixtureReviewClock.required(
-                context: FixtureDatasetStore.scenarioContext(),
-                reviewHistory: seed.reviewHistory,
-                fixtureID: fixture.vocabularyID.rawValue
-            )
+            let anchor = StatsViewTime.anchor(latestReviewedAt: records.map(\.reviewedAt).max())
+            self.projectionClock = StatsProjectionClock(now: anchor, calendar: StatsViewTime.calendar)
         } catch {
             preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for ReviewCalendarScenarios: \(error)")
         }
@@ -105,10 +102,11 @@ private struct ReviewCalendarScene: View {
 
     var body: some View {
         AppThemeContainer {
-            ReviewCalendarPresenter(clock: clock)
+            ReviewCalendarPresenter()
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
+        .environment(\.statsProjectionClock, projectionClock)
     }
 }
 #endif
