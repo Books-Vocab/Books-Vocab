@@ -759,7 +759,13 @@ struct UIWorldReviewCalendarEvidenceSeed: Codable, Equatable {
     let stepLabel: String
     let index: Int
     let assetIDs: [String]
-    let assetInodes: [String]
+}
+
+struct UIWorldInstalledFixtureProof: Codable, Equatable {
+    let datasetID: String
+    let path: String
+    let bytes: Int
+    let sha256: String
 }
 
 /// Reader scenario passage. `activeWord` is the just-tapped word tied to the

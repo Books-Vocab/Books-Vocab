@@ -153,6 +153,8 @@ enum ReviewCalendarAccessibility {
     static let clockHistoryPlan = "reviewCalendar.clock.history_plan.anchor_day"
     static let clockLive = "reviewCalendar.clock.live"
     static let clockExplicit = "reviewCalendar.clock.explicit"
+    static let installedFixture = "reviewCalendar.installedFixture"
+    static let runtimeGeometry = "reviewCalendar.runtimeGeometry"
 
     static func day(_ key: String) -> String {
         "reviewCalendar.day.\(key)"
@@ -263,6 +265,12 @@ struct ReviewCalendarPresenter: View {
         }
     }
 
+    private var installedFixtureProof: String? {
+        guard let proof = try? FixtureDatasetStore.materializeEvidenceFixture(),
+              let data = try? JSONEncoder().encode(proof) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -270,6 +278,12 @@ struct ReviewCalendarPresenter: View {
                     calendarSection
                     if selectedDay != nil {
                         dayDetailSection
+                    }
+                    if let installedFixtureProof {
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityIdentifier(ReviewCalendarAccessibility.installedFixture)
+                            .accessibilityValue(installedFixtureProof)
                     }
                 }
                 .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
@@ -332,6 +346,7 @@ struct ReviewCalendarPresenter: View {
             )
         }
         .vocabCardBackground()
+        .accessibilityIdentifier(ReviewCalendarAccessibility.runtimeGeometry)
     }
 
     // MARK: - Day Detail

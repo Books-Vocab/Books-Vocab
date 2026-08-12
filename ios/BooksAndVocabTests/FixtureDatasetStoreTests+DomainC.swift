@@ -1,4 +1,5 @@
 #if DEBUG
+import CryptoKit
 import Foundation
 import SwiftData
 import Testing
@@ -338,6 +339,32 @@ extension FixtureDatasetStoreTests {
             try FixtureDatasetStore.withTestingData(data) {
                 _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "books.reader-book")
             }
+        }
+    }
+
+    @Test @MainActor func evidenceFixtureProofUsesMaterializedDatasetBytes() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "test-evidence-fixture"
+        }
+        """
+        let data = try Self.completeV2DatasetData(dataset)
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let expected = documents.appendingPathComponent("Evidence/test-evidence-fixture.json")
+        defer { try? FileManager.default.removeItem(at: expected.deletingLastPathComponent()) }
+
+        try FixtureDatasetStore.withTestingData(data) {
+            let proof = try FixtureDatasetStore.materializeEvidenceFixture()
+            let expectedHash = SHA256.hash(data: data)
+                .map { String(format: "%02x", $0) }
+                .joined()
+
+            #expect(proof.datasetID == "test-evidence-fixture")
+            #expect(proof.path == "Evidence/test-evidence-fixture.json")
+            #expect(proof.bytes == data.count)
+            #expect(proof.sha256 == expectedHash)
+            #expect(try Data(contentsOf: expected) == data)
         }
     }
 
