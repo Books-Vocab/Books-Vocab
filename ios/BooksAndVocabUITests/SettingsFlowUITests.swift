@@ -316,6 +316,8 @@ final class SettingsFlowUITests: UITestCase {
             key: "isLoggedIn"
         )
         let beforeCardLabel = "\(beforeCardCount) 張"
+        XCTAssertGreaterThan(beforeCardCount, 0)
+        let partialCardLabel = "\(beforeCardCount - 1) 張"
         let beforePreferencesLabel = beforeHasCustomPreferences ? "已自訂" : "預設值"
         let beforeLoginLabel = beforeIsLoggedIn ? "已登入" : "未登入"
         let afterCardLabel = "\(afterCardCount) 張"
@@ -356,10 +358,10 @@ final class SettingsFlowUITests: UITestCase {
 
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("failed", timeout: 10))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(partialCardLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
-        XCTAssertEqual(settings.resetAfterCardCount.label, beforeCardLabel)
+        XCTAssertEqual(settings.resetAfterCardCount.label, partialCardLabel)
         XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 

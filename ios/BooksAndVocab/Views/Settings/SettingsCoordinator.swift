@@ -16,6 +16,14 @@ final class ModelContextSettingsSyncPersistence: SettingsSyncPersisting {
 
 typealias SettingsSyncService = any BackgroundSyncing & HealthChecking & QuotaServing
 
+private struct SettingsResetIncompleteError: LocalizedError {
+    let snapshot: SettingsResetLifecycle.Snapshot
+
+    var errorDescription: String? {
+        L10n.string("重設完成狀態無法確認")
+    }
+}
+
 @MainActor protocol SettingsCoordinating: AnyObject, Observable {
     var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
@@ -406,6 +414,10 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         let lifecycleBefore = resetLifecycle?.before
             ?? readResetSnapshot(authManager: authManager, modelContext: modelContext)
+        guard lifecycleBefore.isReadable else {
+            resetLifecycle = .preReset(before: lifecycleBefore)
+            return
+        }
         let pending = SettingsResetLifecycle.preReset(before: lifecycleBefore).resetting()
         resetLifecycle = pending
 
@@ -416,6 +428,9 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             resetStateStore.resetPreferences()
             let after = readResetSnapshot(authManager: authManager, modelContext: modelContext)
+            guard after.isResetComplete else {
+                throw SettingsResetIncompleteError(snapshot: after)
+            }
 
             resetLifecycle = pending.succeeded(
                 after: after,
@@ -423,10 +438,23 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
         } catch {
             AppLog.kg.error("Settings local reset failed: \(error.localizedDescription)")
-            let after = readResetSnapshot(authManager: authManager, modelContext: modelContext)
+            let after: SettingsResetLifecycle.Snapshot
+            if let incomplete = error as? SettingsResetIncompleteError {
+                after = incomplete.snapshot
+            } else {
+                after = readResetSnapshot(authManager: authManager, modelContext: modelContext)
+            }
+            let message: String
+            if after.localCardCountError != nil {
+                message = L10n.string("本機資料重設失敗，清理結果無法讀取，請重試。")
+            } else if !after.isResetComplete {
+                message = L10n.string("本機資料重設未完成，仍有殘留資料，請重試。")
+            } else {
+                message = L10n.format("本機資料重設失敗：%@", error.localizedDescription)
+            }
             resetLifecycle = pending.failed(
                 after: after,
-                message: L10n.format("本機資料重設失敗：%@", error.localizedDescription)
+                message: message
             )
         }
     }

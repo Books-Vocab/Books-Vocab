@@ -387,9 +387,38 @@ struct SettingsResetLifecycle: Equatable {
     }
 
     struct Snapshot: Equatable {
-        let localCardCount: Int
+        /// `nil` means SwiftData could not prove the count. It is deliberately
+        /// distinct from zero: an unreadable store must never look empty.
+        let localCardCount: Int?
+        let localCardCountError: String?
         let hasCustomPreferences: Bool
         let isLoggedIn: Bool
+
+        init(localCardCount: Int, hasCustomPreferences: Bool, isLoggedIn: Bool) {
+            self.localCardCount = localCardCount
+            self.localCardCountError = nil
+            self.hasCustomPreferences = hasCustomPreferences
+            self.isLoggedIn = isLoggedIn
+        }
+
+        init(
+            unreadableLocalCardCount error: String,
+            hasCustomPreferences: Bool,
+            isLoggedIn: Bool
+        ) {
+            self.localCardCount = nil
+            self.localCardCountError = error
+            self.hasCustomPreferences = hasCustomPreferences
+            self.isLoggedIn = isLoggedIn
+        }
+
+        var isReadable: Bool {
+            localCardCount != nil && localCardCountError == nil
+        }
+
+        var isResetComplete: Bool {
+            isReadable && localCardCount == 0 && !hasCustomPreferences
+        }
     }
 
     let phase: Phase
@@ -403,8 +432,10 @@ struct SettingsResetLifecycle: Equatable {
             phase: .preReset,
             before: before,
             after: before,
-            terminalMessage: nil,
-            canRetry: true
+            terminalMessage: before.isReadable
+                ? nil
+                : L10n.string("無法讀取本機資料，重設已停用。"),
+            canRetry: before.isReadable
         )
     }
 

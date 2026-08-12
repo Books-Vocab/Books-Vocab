@@ -22,24 +22,26 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
         authManager: any AuthManaging,
         modelContext: ModelContext
     ) -> SettingsResetLifecycle.Snapshot {
-        let localCardCount: Int
         do {
             let descriptor = FetchDescriptor<VocabularyEntry>(predicate: #Predicate {
                 $0.syncStatus == 1 &&
                 $0.actionType != "delete" &&
                 $0.isArchived == false
             })
-            localCardCount = try modelContext.fetch(descriptor).count
+            let localCardCount = try modelContext.fetch(descriptor).count
+            return .init(
+                localCardCount: localCardCount,
+                hasCustomPreferences: hasCustomPreferences,
+                isLoggedIn: authManager.isLoggedIn
+            )
         } catch {
             AppLog.kg.error("Settings reset snapshot could not read local cards: \(error.localizedDescription)")
-            localCardCount = 0
+            return .init(
+                unreadableLocalCardCount: error.localizedDescription,
+                hasCustomPreferences: hasCustomPreferences,
+                isLoggedIn: authManager.isLoggedIn
+            )
         }
-
-        return .init(
-            localCardCount: localCardCount,
-            hasCustomPreferences: hasCustomPreferences,
-            isLoggedIn: authManager.isLoggedIn
-        )
     }
 
     func resetPreferences() {

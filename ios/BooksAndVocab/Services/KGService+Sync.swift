@@ -315,6 +315,7 @@ extension KGService {
 
         #if DEBUG
         if SettingsResetFailureInjector.consumeIfRequested(reason: reason) {
+            try await actor.clearFirstUserDataForInjectedFailure()
             AppLog.kg.warning("clearLocalData: injecting one UI-test failure")
             throw SettingsResetInjectedFailure()
         }
