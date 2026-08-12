@@ -285,6 +285,131 @@ struct DictionaryPhase2ATests {
         #expect(source.graphLinksByKind.values.flatMap { $0 }.contains { $0.cardId == "target" })
     }
 
+    @Test("materialize validation failures do not silently become success") @MainActor
+    func materializeValidationFailures() async throws {
+        let container = try Self.container()
+        let lexical = try JSONDecoder().decode(
+            DictionaryEntryResponse.self, from: Data(Self.entryJSON.utf8)
+        ).entry
+        let service = P1MaterializeService()
+
+        let missingSource = Self.entry("source", cardID: "source", notebook: "nb")
+        missingSource.kgCardId = nil
+        let missingSourceCoordinator = AddLinkCoordinator()
+        missingSourceCoordinator.select(senseKey: "sense_1", exampleKey: "example_1")
+        await missingSourceCoordinator.materializeSelectedExample(
+            sourceEntry: missingSource, entry: lexical, using: service, container: container
+        )
+        #expect(missingSourceCoordinator.materializePhase == .failed)
+
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let missingSenseCoordinator = AddLinkCoordinator()
+        missingSenseCoordinator.select(senseKey: "missing-sense", exampleKey: "example_1")
+        await missingSenseCoordinator.materializeSelectedExample(
+            sourceEntry: source, entry: lexical, using: service, container: container
+        )
+        #expect(missingSenseCoordinator.materializePhase == .failed)
+
+        let missingExampleCoordinator = AddLinkCoordinator()
+        missingExampleCoordinator.select(senseKey: "sense_1", exampleKey: "missing-example")
+        await missingExampleCoordinator.materializeSelectedExample(
+            sourceEntry: source, entry: lexical, using: service, container: container
+        )
+        #expect(missingExampleCoordinator.materializePhase == .failed)
+        #expect(await service.materializeCount == 0)
+    }
+
+    @Test("materialize requires the second dictionary projection hit to succeed") @MainActor
+    func materializeProjectionRefreshFailure() async throws {
+        let container = try Self.container()
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let lexical = try JSONDecoder().decode(
+            DictionaryEntryResponse.self, from: Data(Self.entryJSON.utf8)
+        ).entry
+        let service = P1MaterializeService(failProjectionRefresh: true)
+        let coordinator = AddLinkCoordinator()
+        coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source, entry: lexical, using: service, container: container
+        )
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(source.graphLinksByKind.isEmpty)
+        #expect(await service.fetchProjectionCount == 1)
+    }
+
+    @Test("materialize hydrates the parent entry on the second dictionary hit") @MainActor
+    func materializeSecondDictionaryHitHydratesParent() async throws {
+        let container = try Self.container()
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let lexical = try JSONDecoder().decode(
+            DictionaryEntryResponse.self, from: Data(Self.entryJSON.utf8)
+        ).entry
+        let service = P1MaterializeService()
+        let coordinator = AddLinkCoordinator()
+        coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source, entry: lexical, using: service, container: container
+        )
+
+        #expect(coordinator.materializePhase == .succeeded)
+        #expect(await service.fetchProjectionCount == 1)
+        let rows = try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>())
+        let target = try #require(rows.first(where: { $0.kgCardId == "target" }))
+        #expect(target.dictionaryPayloadJSON != nil)
+        #expect(target.dictionarySelectedSenseKey == "sense_1")
+        #expect(target.dictionarySelectedExampleKey == "example_1")
+        #expect(source.graphLinksByKind.values.flatMap { $0 }.contains { $0.cardId == "target" })
+    }
+
+    @Test("materialize rejects an empty link response") @MainActor
+    func materializeMissingLink() async throws {
+        let container = try Self.container()
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let lexical = try JSONDecoder().decode(
+            DictionaryEntryResponse.self, from: Data(Self.entryJSON.utf8)
+        ).entry
+        let service = P1MaterializeService(linkID: "")
+        let coordinator = AddLinkCoordinator()
+        coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source, entry: lexical, using: service, container: container
+        )
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(source.graphLinksByKind.isEmpty)
+    }
+
+    @Test("manual link validation surfaces missing source and duplicate link") @MainActor
+    func manualLinkValidation() async {
+        let target = Self.entry("target", cardID: "target", notebook: "nb")
+        let missingSource = Self.entry("source", cardID: "source", notebook: "nb")
+        missingSource.kgCardId = nil
+        let missingSourceCoordinator = AddLinkCoordinator()
+        await missingSourceCoordinator.linkExisting(
+            target: target, sourceEntry: missingSource, using: KGService()
+        )
+        #expect(missingSourceCoordinator.materializePhase == .failed)
+
+        let duplicateSource = Self.entry("source", cardID: "source", notebook: "nb")
+        duplicateSource.insertLink(
+            KGCardLinkSummary(
+                id: "existing-link", cardId: "target", word: target.word,
+                kind: "related", label: "related", confidence: 1, reason: "existing"
+            ),
+            kind: "related"
+        )
+        let duplicateCoordinator = AddLinkCoordinator()
+        await duplicateCoordinator.linkExisting(
+            target: target, sourceEntry: duplicateSource, using: KGService()
+        )
+        #expect(duplicateCoordinator.materializePhase == .failed)
+        #expect(duplicateSource.graphLinksByKind.values.flatMap { $0 }.count == 1)
+    }
+
     private static func entry(_ word: String, cardID: String, notebook: String) -> VocabularyEntry {
         let value = VocabularyEntry(
             word: word, translation: word, context: "", bookTitle: "Book"
@@ -318,6 +443,13 @@ struct DictionaryPhase2ATests {
     fileprivate static let entryJSON = #"{"entry":{"provider":"free_dictionary","dictionary_id":"wiktionary-en","schema_version":"1","entry_key":"en.bHVjaWQ","word":"lucid","language":"en","pronunciations":["/ˈluːsɪd/"],"forms":[],"senses":[{"key":"sense_1","part_of_speech":"adjective","definition":"clear","examples":[{"key":"example_1","text":"A lucid answer."}],"translations":[],"synonyms":[],"antonyms":[]}],"attribution":{"provider":"free_dictionary","source_url":"https://en.wiktionary.org/wiki/lucid","license_name":"CC BY-SA 4.0","license_url":"https://creativecommons.org/licenses/by-sa/4.0/","attribution_text":"Wiktionary"},"fetched_at":"2026-08-05T00:00:00Z","truncated":false},"cacheStatus":"fresh"}"#
     private static let backendProjectionJSON = #"[{"card":{"id":"card-1","content":"lucid","meaning":"clear","pos":"adjective","examples":["A lucid answer."],"inflections":[],"notebookId":"nb","cardRole":"dictionary","reviewEligible":false,"readerHidden":false,"promotionState":"idle","promotedAt":null,"isDeleted":false,"isArchived":false,"createdAt":"2026-08-05T00:00:00Z","updatedAt":"2026-08-05T00:00:00Z"},"dictionary":{"card":{"id":"card-1","content":"lucid","meaning":"clear","pos":"adjective","examples":["A lucid answer."],"inflections":[],"notebookId":"nb","cardRole":"dictionary","reviewEligible":false,"readerHidden":false,"promotionState":"idle","promotedAt":null,"isDeleted":false,"isArchived":false,"createdAt":"2026-08-05T00:00:00Z","updatedAt":"2026-08-05T00:00:00Z"},"entry":{"provider":"free_dictionary","dictionary_id":"wiktionary-en","schema_version":"1","entry_key":"en.bHVjaWQ","word":"lucid","language":"en","pronunciations":["/ˈluːsɪd/"],"forms":[],"senses":[{"key":"sense_1","part_of_speech":"adjective","definition":"clear","examples":[{"key":"example_1","text":"A lucid answer."}],"translations":[],"synonyms":[],"antonyms":[]}],"attribution":{"provider":"free_dictionary","source_url":"https://en.wiktionary.org/wiki/lucid","license_name":"CC BY-SA 4.0","license_url":"https://creativecommons.org/licenses/by-sa/4.0/","attribution_text":"Wiktionary"},"fetched_at":"2026-08-05T00:00:00Z","truncated":false},"selectedSenseKey":"sense_1","selectedExampleKey":"example_1","materializationStatus":"active"},"readerHidden":false,"links":[{"id":"link-1","fromId":"card-1","toId":"card-2","kind":"related","confidence":0.9,"reason":"related"}]}]"#
     private static let projectionJSON = #"{"card":{"id":"card-1","content":"lucid","meaning":"clear","pos":"adjective","examples":["A lucid answer."],"mode":"recognition","notebookId":"nb","cardRole":"dictionary","reviewEligible":false,"readerHidden":false,"promotionState":"idle"},"dictionaryEntry":{"provider":"free_dictionary","dictionary_id":"wiktionary-en","schema_version":"1","entry_key":"en.bHVjaWQ","word":"lucid","language":"en","pronunciations":["/ˈluːsɪd/"],"forms":[],"senses":[{"key":"sense_1","part_of_speech":"adjective","definition":"clear","examples":[{"key":"example_1","text":"A lucid answer."}],"translations":[],"synonyms":[],"antonyms":[]}],"attribution":{"provider":"free_dictionary","source_url":"https://en.wiktionary.org/wiki/lucid","license_name":"CC BY-SA 4.0","license_url":"https://creativecommons.org/licenses/by-sa/4.0/","attribution_text":"Wiktionary"},"fetched_at":"2026-08-05T00:00:00Z","truncated":false},"selectedSenseKey":"sense_1","selectedExampleKey":"example_1","materializationStatus":"active"}"#
+
+    fileprivate static var materializedProjectionJSON: String {
+        projectionJSON.replacingOccurrences(
+            of: "\"card\":{\"id\":\"card-1\"",
+            with: "\"card\":{\"id\":\"target\""
+        )
+    }
 }
 
 @MainActor
@@ -466,6 +598,39 @@ private actor RetryDictionaryService: DictionaryServing {
         if idempotencyKeys.count == 1 { throw KGError.httpError(statusCode: 503, detail: "retry") }
         let json = #"{"targetCard":{"id":"target","content":"lucid","meaning":"clear","pos":"adjective","examples":["A lucid answer."],"inflections":[],"notebookId":"nb","cardRole":"dictionary","reviewEligible":false,"readerHidden":false,"promotionState":"idle","promotedAt":null,"isDeleted":false,"isArchived":false,"createdAt":"2026-08-05T00:00:00Z","updatedAt":"2026-08-05T00:00:00Z"},"link":{"id":"link-1","fromId":"source","toId":"target","kind":"related","confidence":0.9,"reason":"related"},"createdCard":true,"createdLink":true,"replayed":false}"#
         return try JSONDecoder().decode(DictionaryMaterializeLinkResponse.self, from: Data(json.utf8))
+    }
+}
+
+private actor P1MaterializeService: DictionaryServing {
+    private let failProjectionRefresh: Bool
+    private let linkID: String
+    private(set) var materializeCount = 0
+    private(set) var fetchProjectionCount = 0
+
+    init(failProjectionRefresh: Bool = false, linkID: String = "link-1") {
+        self.failProjectionRefresh = failProjectionRefresh
+        self.linkID = linkID
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest, idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        materializeCount += 1
+        let json = #"{"targetCard":{"id":"target","content":"lucid","meaning":"clear","pos":"adjective","examples":["A lucid answer."],"inflections":[],"notebookId":"nb","cardRole":"dictionary","reviewEligible":false,"readerHidden":false,"promotionState":"idle","promotedAt":null,"isDeleted":false,"isArchived":false,"createdAt":"2026-08-05T00:00:00Z","updatedAt":"2026-08-05T00:00:00Z"},"link":{"id":"\#(linkID)","fromId":"source","toId":"target","kind":"related","confidence":0.9,"reason":"related"},"createdCard":true,"createdLink":true,"replayed":false}"#
+        return try JSONDecoder().decode(
+            DictionaryMaterializeLinkResponse.self, from: Data(json.utf8)
+        )
+    }
+
+    func fetchDictionaryCard(cardId: String) async throws -> KGDictionaryCardProjection {
+        fetchProjectionCount += 1
+        if failProjectionRefresh {
+            throw KGError.serverError("projection refresh failed")
+        }
+        return try JSONDecoder().decode(
+            KGDictionaryCardProjection.self,
+            from: Data(DictionaryPhase2ATests.materializedProjectionJSON.utf8)
+        )
     }
 }
 
