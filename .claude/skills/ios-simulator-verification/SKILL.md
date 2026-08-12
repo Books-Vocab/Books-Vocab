@@ -17,6 +17,9 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - UI test 一律帶 `--dataset` 或 `--dataset-file`；沒有 UI World 就停止，不用真 backend 或任意舊 simulator 狀態代替。
 - 平行／agent 執行預設用 `--lease`。helper 的 `--device` 只接受 canonical UDID，不接受名稱；被 Apple ID、系統設定對話框或其他 worktree 佔用的裝置不可作證據。
 - helper 只在 clean source、`status=result=ok`、`exit=0`、`executed>0`、source/dataset/device identity 全相符，且五類視覺 artifact 真實存在時回 `0`；不能以 process exit 或可解析 JSON 代替 verdict。
+- 視覺 artifact 還必須通過 `ops/uitest_evidence_contract.py validate`：manifest 至少一個真實 step、每個 PNG 有尺寸／byteSize／SHA-256 且與檔案一致，contact/quick4/video/UIreview 非空，並帶同一個 source commit、UI World ID/hash、Simulator UDID provenance。只有路徑存在不算 evidence。
+- 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。
+- `build/snapshots/uitest-runs/index.json` 是 append-only history；同一 flow/variant 的新 run 只更新 cockpit 的 latest status，不得刪除舊的 fail／inconclusive record。
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
 - 每個 helper run 都會保存 `build/snapshots/uitest-evidence/<run>/verdict.json`、`upstream-verdict.json`、command、runner log；upstream 有提供的 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 也會複製到同一 bundle。runner 失敗或 verdict 不合約時仍讀這個 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
 
@@ -87,6 +90,24 @@ git status --short
 
 `--lease` 由 runner 負責 pool claim、boot、execution lock 與 release；不要自己 erase／刪除 simulator data 來「修」測試污染。`--build-lock-timeout` 只控制底層 build/device lock 等待，不是 XCTest 的 test timeout；XCTest timeout 由 `ios_test.sh` 的 runner 契約管理。
 
+### 3.1 視覺證據機器 gate
+
+`run_ui_evidence.sh` 會把 upstream run 複製到 stable per-run bundle，然後執行：
+
+```bash
+uv run --python 3.13 python ops/uitest_evidence_contract.py validate \
+  --screenshot-dir <stable-ui-review-root> \
+  --manifest <stable-ui-review-root>/review_manifest.json \
+  --contact-sheet <stable-ui-review-root>/contact_sheet.png \
+  --quick4-sheet <stable-ui-review-root>/quick4_contact_sheet.png \
+  --video <stable-ui-review-root>/uitest-videos/<run>.mp4 \
+  --review-html <stable-ui-review-root>/UIreview.html \
+  --source-commit <HEAD> --dataset-id <datasetID> \
+  --dataset-sha256 <datasetSHA256> --device <Simulator-UDID>
+```
+
+validator fail 時 helper 回 `70/inconclusive`，即使 XCTest upstream 回 `0` 也不可宣稱 UI pass。讀 `artifacts/ui-evidence-contract.json`；它是 machine verdict，不取代人工檢查。
+
 ### 4. 讀完整證據
 
 成功或失敗都讀：
@@ -106,6 +127,21 @@ git status --short
 - `65 / status=inconclusive`：runner／preflight、contract evidence 或 compile/build 不足；stable bundle 是診斷來源，不是 pass 證據，先看 compiler diagnostics／upstream status。
 - `143` 等 `128+N`：被訊號中止，不是綠也不是產品紅；確認 lock／process cleanup 後重跑。
 - Simulator 被 prompt、其他 app、其他 worktree 或不可識別狀態污染：`inconclusive`，換 `--lease` 裝置重跑。
+
+### 5.1 人工視覺收斂
+
+機器 gate 綠後仍逐 run 檢查 full contact sheet、quick4、UIreview step 順序與 video；至少檢查 loading/empty/error、長資料、深色／字級／Dynamic Type、互動後狀態與反例。人工結果要寫入 run 的 `review_state.json`（reviewer、時間、判定、檢查過的 assetID、notes、manifest root hash）；沒有人工 attestation 只能報「runtime evidence 已產生，visual review pending」，不能報「視覺驗證完成」。
+
+記錄完整 run 的人工通過判定：
+
+```bash
+uv run --python 3.13 python ops/uitest_review_attest.py \
+  build/snapshots/uitest-evidence/<run>/artifacts/ui-review \
+  --reviewer codex --status pass --all-steps \
+  --notes '檢查 full/quick4/UIreview/video；確認狀態順序與反例'
+```
+
+只檢查部分 step 時可用 `--asset-id`，但只能記錄 `fail`／partial review，不能當成整個 run 的 visual pass。
 
 回報至少包含：
 
