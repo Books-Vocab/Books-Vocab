@@ -86,17 +86,62 @@ struct ReaderTOCNavigationTests {
         let counterexampleFixtureID = "bookshelf.book_card_complete"
         let requiredAssetID = try #require(required["bookAssetRef"] as? String)
         let counterexampleAssetID = try #require(counterexampleBook["bookAssetRef"] as? String)
-        let requiredLabel = "reader-toc-required"
-        let counterexampleLabels = [
-            "reader-toc-counterexample-failure",
-            "reader-toc-counterexample-missing"
-        ]
+        let uiTestSource = try String(
+            contentsOf: rootURL.appendingPathComponent(
+                "ios/BooksAndVocabUITests/ReaderFlowUITests.swift"
+            ),
+            encoding: .utf8
+        )
+        let requiredBlock = try #require(
+            Self.sourceBlock(
+                containing: "fixtures: [.authSignedIn, .readerRealBookLibrary]",
+                in: uiTestSource
+            )
+        )
+        let counterexampleBlocks = Self.sourceBlocks(
+            containing: ".bookshelf(\"book_card_complete\")",
+            in: uiTestSource
+        )
+        let requiredLabels = Self.perfLogLabels(in: requiredBlock).filter {
+            $0.hasPrefix("reader-toc-")
+        }
+        let counterexampleLabels = counterexampleBlocks
+            .flatMap(Self.perfLogLabels(in:))
+            .filter { $0.hasPrefix("reader-toc-") }
+        let requiredLabel = try #require(requiredLabels.first)
 
         #expect(requiredFixtureID != counterexampleFixtureID)
-        #expect(!counterexampleLabels.contains(requiredLabel))
+        #expect(requiredLabels.count == 1)
+        #expect(counterexampleLabels.count == 2)
+        #expect(counterexampleLabels.allSatisfy { $0.contains("-counterexample-") })
+        #expect(requiredLabel.hasSuffix("-required"))
+        #expect(Set([requiredLabel]).isDisjoint(with: Set(counterexampleLabels)))
         #expect(requiredAssetID == "books.reader_real_book_epub")
         #expect(counterexampleAssetID == "books.catalog_reader_epub")
         #expect(Set([requiredAssetID]).isDisjoint(with: [counterexampleAssetID]))
+    }
+
+    @Test func counterexampleUITestsAssertDoneControlIsDisabled() throws {
+        let rootURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let pageSource = try String(
+            contentsOf: rootURL.appendingPathComponent(
+                "ios/BooksAndVocabUITests/Pages/ReaderPage.swift"
+            ),
+            encoding: .utf8
+        )
+        let flowSource = try String(
+            contentsOf: rootURL.appendingPathComponent(
+                "ios/BooksAndVocabUITests/ReaderFlowUITests.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(pageSource.contains("var tocDone: XCUIElement"))
+        #expect(Self.occurrences(of: "XCTAssertTrue(reader.tocDone.waitUntilExists", in: flowSource) == 2)
+        #expect(Self.occurrences(of: "XCTAssertFalse(reader.tocDone.isEnabled)", in: flowSource) == 2)
     }
 
     @Test func productionSelectorContractIsIdentifierBased() throws {
@@ -129,6 +174,41 @@ struct ReaderTOCNavigationTests {
             #expect(tocSource.contains(identifier))
         }
         #expect(headerSource.contains("reader.header.tocButton"))
+        #expect(tocSource.contains("reader.toc.done"))
+    }
+
+    private static func perfLogLabels(in source: String) -> [String] {
+        source.split(whereSeparator: \.isNewline).compactMap { line in
+            guard let marker = line.range(of: "perfLog: \"") else { return nil }
+            let valueStart = marker.upperBound
+            guard let valueEnd = line[valueStart...].firstIndex(of: "\"") else { return nil }
+            return String(line[valueStart..<valueEnd])
+        }
+    }
+
+    private static func sourceBlock(containing marker: String, in source: String) -> String? {
+        sourceBlocks(containing: marker, in: source).first
+    }
+
+    private static func sourceBlocks(containing marker: String, in source: String) -> [String] {
+        let lines = source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map(String.init)
+        var blocks: [String] = []
+
+        for markerIndex in lines.indices where lines[markerIndex].contains(marker) {
+            guard let start = lines[...markerIndex].lastIndex(where: {
+                $0.hasPrefix("    func ")
+            }) else { continue }
+            let end = lines[(markerIndex + 1)...].firstIndex(where: {
+                $0.hasPrefix("    @MainActor")
+            }) ?? lines.endIndex
+            blocks.append(lines[start..<end].joined(separator: "\n"))
+        }
+        return blocks
+    }
+
+    private static func occurrences(of needle: String, in source: String) -> Int {
+        source.components(separatedBy: needle).count - 1
     }
 }
 #endif
