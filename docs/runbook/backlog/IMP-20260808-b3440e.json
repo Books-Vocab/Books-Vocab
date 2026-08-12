@@ -12,7 +12,7 @@
   "groomed_by": "workflow:groom@v1",
   "id": "IMP-20260808-b3440e",
   "plan": "Verify current state；目前 ios_test.sh 文件列已漂移至第 147 行，keyed cache 於 build lock 內自動 LRU eviction 與整段 --list / --launch-benchmark 各重複一次。以現行 ops/ios_test.sh 行為比對後刪除重複後半，並掃描同一 table 其他 duplicate。",
-  "resolution": "Updated through the official backlog command because docs_lint returns rc3 for the existing tech_index freshness warning even when the changed document has ERROR=0. The acceptance now accepts only rc0 or rc3, requires the docs_lint output to report ERROR: 0, and still requires the two unique ios_test anchors plus a successful --help parse. The freshness WARN remains named evidence rather than being hidden or globally relaxed.",
+  "resolution": "Updated through the official backlog command because docs_lint returns rc3 for the existing tech_index freshness warning even when the changed document has ERROR=0. The acceptance now accepts only rc0 or rc3, requires the docs_lint output to report ERROR: 0, and still requires the two unique ios_test anchors plus successful parse-only validation of --help, --list, and --list --launch-benchmark. The freshness WARN remains named evidence rather than being hidden or globally relaxed.",
   "schema": "kg.backlog.entry.v1",
   "scope": "單格文字去重，順手確認沒有第二處同樣問題。",
   "severity": "low",
