@@ -64,6 +64,9 @@ extension UITestFixtureSeed {
     @MainActor
     private static func seedResetLifecycle(into container: ModelContainer) {
         #if targetEnvironment(simulator)
+        if ProcessInfo.processInfo.environment["KG_UI_TEST_SETTINGS_RESET_FAIL_ONCE"] == "1" {
+            UserDefaults.standard.removeObject(forKey: "kg.ui.test.settings.reset.failure.consumed")
+        }
         seedSignedInLoginFromWorld(using: .settingsSignedIn)
 
         ReviewSettingsStore.shared.update(

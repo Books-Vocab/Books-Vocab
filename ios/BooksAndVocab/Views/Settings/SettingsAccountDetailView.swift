@@ -216,18 +216,21 @@ struct SettingsAccountDetailView: View {
                     text: L10n.format("%@ 張", "\(snapshot.localCardCount)"),
                     color: appSkin.palette.secondaryText
                 )
+                .accessibilityIdentifier("\(identifier).localCardCount")
             }
             AppKeyValueRow(icon: "slider.horizontal.3", label: L10n.string("設定偏好"), style: .settings(appSkin)) {
                 SettingsStatusValue(
                     text: snapshot.hasCustomPreferences ? L10n.string("已自訂") : L10n.string("預設值"),
                     color: appSkin.palette.secondaryText
                 )
+                .accessibilityIdentifier("\(identifier).preferences")
             }
             AppKeyValueRow(icon: "person.crop.circle", label: L10n.string("登入狀態"), style: .settings(appSkin)) {
                 SettingsStatusValue(
                     text: snapshot.isLoggedIn ? L10n.string("已登入") : L10n.string("未登入"),
                     color: appSkin.palette.secondaryText
                 )
+                .accessibilityIdentifier("\(identifier).loginStatus")
             }
         }
         .accessibilityIdentifier(identifier)

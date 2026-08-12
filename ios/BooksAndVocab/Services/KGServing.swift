@@ -144,6 +144,12 @@ protocol AccountErasing: AnyObject {
     func deleteAccount() async throws
 }
 
+/// Local reset capability exposed to Settings. The throwing contract is
+/// intentional: a terminal success must mean the backing cleanup completed.
+protocol LocalDataResetting: AnyObject {
+    func clearLocalData(container: ModelContainer, reason: String) async throws
+}
+
 /// 訂閱與 entitlement 能力。
 protocol SubscriptionServing: AnyObject {
     func fetchEntitlements() async throws -> KGEntitlements
@@ -164,7 +170,8 @@ protocol KGServing:
     ReviewSyncServing,
     QuotaServing,
     AccountErasing,
-    SubscriptionServing
+    SubscriptionServing,
+    LocalDataResetting
 {
     var serverURL: String { get set }
     var isConnected: Bool { get }
@@ -174,5 +181,4 @@ protocol KGServing:
 
     /// 複製成功後把新 notebook + 其卡片針對性拉回本地。
     func pullCopiedDeck(container: ModelContainer, notebookId: String) async
-    func clearLocalData(container: ModelContainer, reason: String) async
 }

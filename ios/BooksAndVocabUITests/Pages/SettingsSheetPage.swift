@@ -154,6 +154,30 @@ struct SettingsSheetPage {
         app.otherElements["settings.account.resetBoundary.after"]
     }
 
+    var resetBeforeCardCount: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.before.localCardCount"]
+    }
+
+    var resetBeforePreferences: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.before.preferences"]
+    }
+
+    var resetBeforeLoginStatus: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.before.loginStatus"]
+    }
+
+    var resetAfterCardCount: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.after.localCardCount"]
+    }
+
+    var resetAfterPreferences: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.after.preferences"]
+    }
+
+    var resetAfterLoginStatus: XCUIElement {
+        app.staticTexts["settings.account.resetBoundary.after.loginStatus"]
+    }
+
     var resetPhase: XCUIElement {
         app.staticTexts["settings.account.resetBoundary.phase"]
     }

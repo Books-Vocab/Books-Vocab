@@ -6,6 +6,26 @@
 import Foundation
 import SwiftData
 
+#if DEBUG
+private enum SettingsResetFailureInjector {
+    private static let consumedKey = "kg.ui.test.settings.reset.failure.consumed"
+
+    static func consumeIfRequested(reason: String) -> Bool {
+        guard reason == "settings_reset_local_data",
+              ProcessInfo.processInfo.environment["KG_UI_TEST_SETTINGS_RESET_FAIL_ONCE"] == "1",
+              !UserDefaults.standard.bool(forKey: consumedKey)
+        else { return false }
+
+        UserDefaults.standard.set(true, forKey: consumedKey)
+        return true
+    }
+}
+
+private struct SettingsResetInjectedFailure: LocalizedError {
+    var errorDescription: String? { "UI test injected local reset failure" }
+}
+#endif
+
 // MARK: - Sync
 
 extension KGService {
@@ -289,14 +309,23 @@ extension KGService {
         )
     }
 
-    func clearLocalData(container: ModelContainer, reason: String = "unspecified") async {
+    func clearLocalData(container: ModelContainer, reason: String = "unspecified") async throws {
         let actor = BackgroundSyncActor(modelContainer: container)
         AppLog.kg.info("clearLocalData requested. reason=\(reason)")
+
+        #if DEBUG
+        if SettingsResetFailureInjector.consumeIfRequested(reason: reason) {
+            AppLog.kg.warning("clearLocalData: injecting one UI-test failure")
+            throw SettingsResetInjectedFailure()
+        }
+        #endif
+
         do {
             try await actor.clearUserData(reason: reason)
         } catch {
             AppLog.kg.error("clearUserData failed: \(error.localizedDescription)")
             AppCrashReporting.record(error, context: "kg.local.clear")
+            throw error
         }
 
         let defaults = UserDefaults.standard

@@ -31,6 +31,27 @@ enum SettingsFixtureID: String, CaseIterable {
     case debugBackendLocal = "debug_backend_local"
     case syncTerminalErrorRetrySuccess = "sync_terminal_error_retry_success"
 
+    /// Canonical fixture order consumed by preview, catalog, and tests.
+    /// `CaseIterable` derives from this single manifest so adding or moving a
+    /// fixture cannot silently diverge the registry from its contract.
+    static let manifest: [Self] = [
+        .loggedOut,
+        .accountLoggedOutError,
+        .preferencesAutoSyncOff,
+        .preferencesLoggedOutNoSync,
+        .subscribedActive,
+        .accountLongIdentity,
+        .longContentCounterexample,
+        .resetCounterexample,
+        .subscriptionFree,
+        .subscriptionLoading,
+        .deletingAccount,
+        .pricingUnavailable,
+        .debugBackendLocal,
+    ]
+
+    static var allCases: [Self] { manifest }
+
     var key: FixtureKey {
         FixtureKey("settings.\(rawValue)")
     }
