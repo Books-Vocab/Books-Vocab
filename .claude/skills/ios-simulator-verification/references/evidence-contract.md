@@ -2,68 +2,53 @@
 
 ## Verdict identity
 
-`ops/ios_ops.sh test --ui --json` emits `kg.ios.run.v1`. The helper preserves that schema on a valid upstream JSON payload and adds `helper.schema=kg.ios.ui-evidence.v1`. A pre-upstream failure uses `kg.ios.ui-evidence.v1` as the normalized fallback schema.
+`ops/ios_test.sh --json` emits `kg.ios.run-verdict.v1`; the helper writes a normalized copy with `helper.schema=kg.ios.ui-evidence.v1` into a stable per-run bundle. Treat these fields as the minimum identity tuple:
 
-Bind every interpretation to this tuple:
+| Field | Meaning | Required reading |
+|---|---|---|
+| `status` / `result` | `ok`, `fail`, or `inconclusive` | Never infer from process launch |
+| `exit` / `reason` | process classification | `1` and `65` mean different failures |
+| `options.sourceCommit` | source provenance | Bind screenshots to this commit |
+| `options.sourceTreeDirty` | uncommitted source state | Dirty evidence is not a release claim |
+| `options.datasetID` / `datasetSHA256` | UI World provenance | Prevent fixture drift |
+| `device` | resolved Simulator UDID | Required for parallel-run attribution |
+| `artifacts.log` / `xcresult` | raw diagnostics | Normalized paths must point inside the stable bundle and exist |
+| `artifacts.uiReviewHtml` | navigable visual review | Preferred human entrypoint |
+| `artifacts.uiContactSheet` / `uiQuick4Sheet` | screenshot overview | Inspect, do not merely archive |
+| `artifacts.uiVideo` | full interaction recording | Use when timing or transition matters |
 
-| Field | Requirement |
-|---|---|
-| `status`, `result`, `exit` | Read the final normalized state; do not infer it from process launch. |
-| `executed` | Must parse to a number greater than zero for pass. |
-| `options.sourceCommit` | Must equal the clean preflight HEAD and the post-run HEAD. |
-| `options.sourceTreeDirty` | Must be exactly `false`; the helper also rechecks the worktree after the run. |
-| `options.datasetID`, `options.datasetSHA256` | Must equal the validated local UI World bytes. |
-| `device`, `options.device` | Top-level device must be a UUID and must match the Simulator destination `id=`. |
-| `helper.selector` | Must identify exactly one `--file`, `--grep`, or `--method` request. |
-| `uiVisualReview.videoIdentity` | `runID` must equal the upstream review-root basename; `file` and `sha256` must match the retained video. `artifacts.uiVideoIdentity` must be identical. |
+The runner also records timings such as `deviceRunLockWaitMs`, `buildForTestingMs`, `testBodyMs`, and `totalMs`. A high lock wait is queueing evidence, not app slowness.
 
-## Stable bundle
+## Helper success gate
 
-Each invocation creates a unique directory under `build/snapshots/uitest-evidence/<run-id>/` and refuses to reuse an existing directory. The stable bundle contains:
+`run_ui_evidence.sh` is fail-closed. It returns `0` only when all of these hold:
 
-```text
-command.txt
-delegate.stderr.log
-upstream-verdict.json
-verdict.json
-artifacts/delegate.stderr.log
-artifacts/Test.xcresult
-artifacts/ui-evidence-contract.json
-artifacts/ui-review/UIreview.html
-artifacts/ui-review/contact_sheet.png
-artifacts/ui-review/quick4_contact_sheet.png
-artifacts/ui-review/review_manifest.json
-artifacts/ui-review/uitest-videos/<run>.mp4
-artifacts/ui-review/<step>.png
-```
+- `schema=kg.ios.run-verdict.v1`, `kind=test`, `status=result=ok`, `exit=0`, and `executed > 0`;
+- `options.sourceCommit` equals the preflight HEAD and `options.sourceTreeDirty=false`;
+- `options.datasetID` and `datasetSHA256` equal the validated local UI World;
+- top-level `device` is a UUID and agrees with the `id=` in `options.device`; explicit `--device` must match it;
+- `uiVisualReview.reviewHtml`, contact sheet, quick4 sheet, manifest, video and review root all exist;
+- normalized log, xcresult and visual artifacts are copied under `build/snapshots/uitest-evidence/<run>/`.
 
-`verdict.json` is written to a sibling temporary path and atomically renamed into place. `--json-out` is likewise a temporary-file-plus-rename publication; it is an alias to the per-run verdict, not a replacement for the stable bundle. A nonzero runner or malformed upstream JSON still publishes a failure bundle and truthful existence booleans for artifacts that were actually retained.
+The helper keeps `upstream-verdict.json`, the delegate stderr log, command metadata and every upstream artifact that still exists in the complete UI review directory even when the upstream runner's temporary paths are removed. For a non-zero runner it still emits a normalized `status=fail` verdict; for invalid JSON or a zero-exit contract violation it emits `status=inconclusive`. Missing upstream artifacts remain explicit `*Exists=false` fields and never become a pass.
 
-## Machine contract and canonical hash
+## Evidence strength
 
-`ops/uitest_evidence_contract.py validate` emits `kg.ios.ui-evidence-contract.v1`. Pass requires:
+Use the strongest available evidence and name what is missing:
 
-- a `kg.visual-review.sheet.v1` manifest with `source=uitest`, matching provenance, at least one step, and valid PNG metadata and SHA-256 for each step;
-- nonempty full contact sheet, quick contact sheet, video, and UIreview HTML;
-- a nonempty video run identity whose filename and SHA-256 match the canonical video bytes;
-- UIreview HTML containing the expected KG run-review root;
-- every manifest path contained within the screenshot root and every canonical artifact contained within the run root;
-- no canonical symlink, path replacement, or byte mutation observed across containment, descriptor open, and hashing.
+1. **Source contract**: implementation and explicit source tests.
+2. **Unit／integration**: store, coordinator, parser, geometry, or state-machine assertions.
+3. **UI behavior**: exact UITest selector passed on a leased Simulator with a named UI World.
+4. **Visual review**: inspected screenshot/contact sheet/HTML/video from the same run.
+5. **Physical device／live service**: separate release or app-review evidence; never substitute with Simulator.
 
-`bundleSHA256` uses `kg.ios.ui-evidence-bundle.v1` role framing and hashes, in order: manifest, every manifest step keyed by relative path, full contact sheet, quick contact sheet, the sole video, and UIreview HTML. It excludes `review_state.json`, so appending a human attestation does not invalidate itself. The attestation writer uses an exclusive file lock and atomic replacement; its latest complete pass must still match the current canonical bundle hash before it can support a visual claim.
+For a UI improvement, a source-only result is not a visual pass; a UI test pass with an uninspected screenshot is not a visual review; a visual review with a system prompt is invalid.
 
-## Success predicate
+## Reproducibility rules
 
-The helper returns `0` only when all of these are true:
-
-- upstream schema/kind/status/result/exit are `kg.ios.run.v1`, `test`, `ok`, `ok`, and `0`;
-- `executed > 0`;
-- source, UI World, device, selector, review-root, and video identities match;
-- stable log, xcresult, manifest, step PNGs, contact sheets, video, and UIreview exist;
-- the canonical machine contract passes.
-
-If the runner exits nonzero, preserve its exit code. If the runner exits zero but the success predicate fails, normalize to `status=result=inconclusive`, `exit=70`, and `helper.contractStatus=contract-failed`.
-
-## Human review boundary
-
-Machine validation proves provenance and current-byte integrity. It does not prove that loading, empty, error, long-content, dark-appearance, accessibility, or interaction states look correct. Inspect the full step sequence and video. If the visual state is incomplete or polluted by a system prompt, report the bundle as diagnostic or visual-review pending, never as visually passed.
+- Keep the exact command, branch, HEAD, dataset, UDID, verdict, log, xcresult, and visual artifact paths together.
+- Re-run the same selector after a code fix. Do not compare a new source tree against an old simulator recording without naming the mismatch.
+- If the test runner returns `0` but executes zero tests, treat it as false-green and investigate the runner／selector contract.
+- If the test runner returns non-zero, read the helper's normalized stable bundle before changing code; its `upstreamStatus`, stable log, xcresult and any retained UI artifacts are the failure record.
+- A parseable JSON object with `status=missing`, missing `uiVisualReview`, dirty source, mismatched dataset/device, or missing artifacts is still a failed evidence contract, never a pass.
+- If another Xcode process shares the device or DerivedData, wait on the runner lock or use another leased pool device; do not manually mutate shared state.

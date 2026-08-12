@@ -101,9 +101,9 @@ struct ReaderPreviewStyleSourceTests {
             1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7,
             1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5
         ])
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues[0] == 1.0)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues[8] == 1.8)
-        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues[15] == 2.5)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValue(at: 0) == 1.0)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValue(at: 8) == 1.8)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValue(at: 15) == 2.5)
         let layout = ReaderSettingsPreviewCard.layoutContract
         #expect(layout.viewportHeight == 164)
         #expect(layout.fadeEdgeFraction == 0.08)

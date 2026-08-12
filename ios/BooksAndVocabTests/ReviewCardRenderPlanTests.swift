@@ -43,6 +43,22 @@ struct ReviewCardRenderPlanTests {
         ])
     }
 
+    @Test("report AFTER keeps the complete back payload while a short front hugs content")
+    func reportAfterKeepsCompleteBackPayloadWithoutBlankFrontCeiling() {
+        let plan = ReviewCardRenderPlan.make(
+            profile: .default,
+            mode: .recognition,
+            availability: all
+        )
+        let viewport = ReviewCardViewport(containerHeight: 767)
+        let shortFront = viewport.frontDrawnHeight(solvedContentHeight: 86, chrome: 78)
+
+        #expect(plan.back.fields == [.difficultyTier, .graphLinks, .example, .explanation, .collocations])
+        #expect(shortFront == 164)
+        #expect(shortFront < viewport.frontHeight)
+        #expect(viewport.backHeight(frontOccupied: shortFront) == viewport.contentHeight - shortFront)
+    }
+
     /// 版面自由度自 APP-20260808-7f0f3a 起塌縮成兩個 preset，所以這些測試不再
     /// 拿任意欄位陣列建 profile —— 它們驗的本來就是 availability 過濾與順序保留，
     /// 用 preset 產出的面一樣驗得到，而且不必為了測試保留一個沒人用得到的建構子。

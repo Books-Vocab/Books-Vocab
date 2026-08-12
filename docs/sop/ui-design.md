@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
-verified_against: c5d81fe35
+verified_against: 2cf93a387
 -->
 # Books & Vocab UI Design System
 
@@ -288,7 +288,8 @@ PR #402 引入：
 
 - `AppCompactActionButtonStyle` — 取代 `.borderedProminent.controlSize(.small)`，inline 主 CTA；`.appCompactAction(.primary/.neutral/.outline/.destructive)`
 - `AppOfflineBanner` — `.appOfflineBanner()` modifier，root 層套用；訂閱 `NetworkMonitor.shared.isConnected`
-- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；新 loading state 應改用此元件而非自製 placeholder（dormant，0 callsites）
+- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；列表/內容骨架使用此元件
+- `AppLoadingStateCard` / `AppLoadingProgressBar` — 明確 loading/status/進度 primitive；需要狀態文案或進度時使用這組，不自製裸 `ProgressView`
 
 ---
 

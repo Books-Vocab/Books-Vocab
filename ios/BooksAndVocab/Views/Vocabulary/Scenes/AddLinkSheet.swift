@@ -58,7 +58,7 @@ struct AddLinkSheet: View {
                     localSection
                     dictionarySection
                 }
-                .listStyle(.plain)
+                .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
             }
             .vocabCanvasBackground()
@@ -138,13 +138,11 @@ struct AddLinkSheet: View {
                     .accessibilityIdentifier("addLink.dictionary.search")
 
                 case .loading:
-                    VocabStateMessageCard(
+                    AppLoadingStateCard(
                         title: L10n.string("addLink.dictionaryLoading"),
-                        systemImage: "magnifyingglass"
-                    ) {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+                        systemImage: "magnifyingglass",
+                        visualStyle: .vocab
+                    )
                     .listRowBackground(Color.clear)
 
                 case .empty:
