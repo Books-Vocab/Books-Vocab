@@ -6,6 +6,16 @@
 
 import SwiftUI
 
+/// Content identity for the asynchronous cover decode task.
+///
+/// `Data.count` is insufficient: replacing a cover with another blob of the
+/// same size must cancel the old decode and schedule a new one. Keeping the
+/// optional blob itself as the key preserves nil/empty distinctions and lets
+/// `Data`'s copy-on-write storage avoid an eager duplicate.
+struct BookCoverDecodeKey: Hashable {
+    let data: Data?
+}
+
 // MARK: - 書籍卡片
 
 struct BookCard: View {
@@ -55,7 +65,7 @@ struct BookCard: View {
                     .lineLimit(1)
             }
         }
-        .task(id: book.coverImageData?.count) {
+        .task(id: BookCoverDecodeKey(data: book.coverImageData)) {
             await decodeCoverImage()
         }
         .appHoverLift()
