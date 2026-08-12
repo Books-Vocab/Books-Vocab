@@ -14,7 +14,7 @@ enum HostCommand {
 }
 
 enum NavigatorCommand {
-    case navigate(Locator)
+    case navigate(Locator, requestID: UUID)
     case applyPreferences(EPUBPreferences)
 }
 
@@ -27,6 +27,20 @@ enum DOMCommand {
     case setContentStyle(String)
     case setUnderlineOpacity(Double)
     case setDebugMode(Bool)
+}
+
+@MainActor
+final class ReadiumNavigatorDriver: ReaderNavigatorDriving {
+    weak var navigator: EPUBNavigatorViewController?
+
+    init(navigator: EPUBNavigatorViewController?) {
+        self.navigator = navigator
+    }
+
+    func go(to locator: Locator) async -> Bool? {
+        guard let navigator else { return nil }
+        return await navigator.go(to: locator)
+    }
 }
 
 extension ReadiumNavigatorView.Coordinator {
@@ -61,11 +75,21 @@ extension ReadiumNavigatorView.Coordinator {
 
     func apply(_ command: NavigatorCommand, in host: NavigatorHostViewController) {
         switch command {
-        case .navigate(let locator):
-            Task { @MainActor in
+        case .navigate(let locator, let requestID):
+            activeTOCRequestID = requestID
+            let bridge = ReaderTOCNavigationBridge(
+                navigator: ReadiumNavigatorDriver(navigator: navigator),
+                timeoutNanoseconds: ReaderMetrics.tocNavigationTimeoutNanoseconds
+            )
+            Task { @MainActor [weak self] in
                 AppLog.reader.debug("Attempting navigation to: \(String(describing: locator.href))")
-                let success = await navigator?.go(to: locator)
-                AppLog.reader.debug("Navigation result: \(String(describing: success))")
+                let event = await bridge.navigate(requestID: requestID, locator: locator)
+                guard let self else { return }
+                if activeTOCRequestID == requestID {
+                    activeTOCRequestID = nil
+                }
+                AppLog.reader.debug("Navigation result: \(String(describing: event))")
+                parent.onTOCNavigationEvent(event)
             }
         case .applyPreferences(let preferences):
             isApplyingPreferences = true

@@ -32,6 +32,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     let onExplainSelected: (String, String) -> Void
     let onWordDeselected: () -> Void
     var onMarkingProgress: ((Double) -> Void)?
+    var onTOCNavigationEvent: (ReaderTOCNavigationEvent) -> Void = { _ in }
 
     struct BridgeSnapshot {
         let lookedUpWords: [String]
@@ -170,6 +171,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         weak var navigator: EPUBNavigatorViewController?
         var planner = BridgePlanner()
         var isApplyingPreferences = false
+        var activeTOCRequestID: UUID?
         let domExecutor = ReaderDOMExecutor()
 
         /// 記住 setupUserScripts 傳入的 controller，供 dismantle 時移除 handler 打斷 retain cycle
@@ -188,6 +190,14 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
         func navigator(_ navigator: any Navigator, locationDidChange locator: Locator) {
             parent.onLocationChanged(locator)
+            if let requestID = activeTOCRequestID {
+                parent.onTOCNavigationEvent(
+                    .locationDidChange(
+                        requestID: requestID,
+                        locatorHref: locator.href.string
+                    )
+                )
+            }
 
             // 翻頁後重新標記所有生字庫底線（設定調整期間跳過，避免卡頓）
             let words = parent.lookedUpWords

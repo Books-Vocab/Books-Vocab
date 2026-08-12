@@ -1,4 +1,6 @@
 #if os(iOS)
+import CryptoKit
+import Foundation
 import SwiftUI
 import ReadiumShared
 
@@ -46,10 +48,17 @@ extension ReaderView {
                     withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
                 },
                 onWordDeselected: handleWordDeselected,
-                onMarkingProgress: handleMarkingProgress
+                onMarkingProgress: handleMarkingProgress,
+                onTOCNavigationEvent: handleTOCNavigationEvent
             )
             .overlay(alignment: .bottom) {
                 tocNavigationSuccessOverlay
+            }
+            .overlay(alignment: .topLeading) {
+                readerTOCEvidenceLocator
+            }
+            .overlay(alignment: .topTrailing) {
+                readerTOCEvidenceAsset
             }
             .ignoresSafeArea(edges: [.horizontal, .bottom])
             .safeAreaInset(edge: .top) {
@@ -67,13 +76,14 @@ extension ReaderView {
             VStack(alignment: .leading, spacing: AppSpacing.s1) {
                 Text(L10n.string("章節已開啟"))
                     .font(AppFonts.caption())
-                    .accessibilityIdentifier("reader.toc.result.success")
+                    .accessibilityIdentifier("reader.toc.readerOverlay.result.success")
                 Text(selectedTitle)
                     .font(AppFonts.body())
                     .lineLimit(1)
-                    .accessibilityIdentifier("reader.toc.destination")
+                    .accessibilityIdentifier("reader.toc.readerOverlay.destination")
                     .accessibilityValue(destinationHref)
             }
+            .accessibilityIdentifier("reader.toc.readerOverlay")
             .padding(AppSpacing.s3)
             .background(.thinMaterial)
             .clipShape(AppRoundedRect(roundness: AppRoundness.card))
@@ -81,6 +91,34 @@ extension ReaderView {
             .padding(.bottom, AppSpacing.s3)
             .allowsHitTesting(false)
         }
+    }
+
+    @ViewBuilder
+    private var readerTOCEvidenceLocator: some View {
+        if let currentLocator {
+            Text(currentLocator.href.string)
+                .accessibilityIdentifier("reader.currentLocator")
+                .accessibilityValue(currentLocator.href.string)
+                .opacity(0.01)
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private var readerTOCEvidenceAsset: some View {
+        #if DEBUG
+        let url = Book.localBooksDirectory.appendingPathComponent(book.epubFileName)
+        if let data = try? Data(contentsOf: url) {
+            let digest = SHA256.hash(data: data)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            Text("\(url.path)|\(digest)|\(data.count)")
+                .accessibilityIdentifier("reader.evidence.asset")
+                .accessibilityValue("\(url.path)|\(digest)|\(data.count)")
+                .opacity(0.01)
+                .allowsHitTesting(false)
+        }
+        #endif
     }
 
     func readerErrorState(_ error: String) -> some View {
