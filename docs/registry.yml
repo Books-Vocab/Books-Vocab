@@ -95,6 +95,17 @@ documents:
       - "!ops/gen_web_tokens.py"
       - "!ops/infra_health.sh"
       - "!ops/test_infra_health.sh"
+      # UI World/evidence tooling is owned by catalog_scope and ui_flow_evidence,
+      # not by host topology. Keep the broad ops hint from leaking here.
+      - "!ops/ios_test.sh"
+      - "!ops/ios_ui_review_matrix.py"
+      - "!ops/fixtures/ui_worlds/"
+      - "!ops/fixtures/ios_ui_review_matrix.json"
+      - "!ops/ui_world_manifest.py"
+      - "!ops/uitest_*.py"
+      - "!ops/tests/test_ui_world_manifest.py"
+      - "!ops/tests/test_ios_ui_review_matrix.py"
+      - "!ops/tests/test_uitest_*.py"
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -128,6 +139,16 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
+      # UI World/evidence tooling is not a production safety policy surface.
+      - "!ops/ios_test.sh"
+      - "!ops/ios_ui_review_matrix.py"
+      - "!ops/fixtures/ui_worlds/"
+      - "!ops/fixtures/ios_ui_review_matrix.json"
+      - "!ops/ui_world_manifest.py"
+      - "!ops/uitest_*.py"
+      - "!ops/tests/test_ui_world_manifest.py"
+      - "!ops/tests/test_ios_ui_review_matrix.py"
+      - "!ops/tests/test_uitest_*.py"
       - backend/
       - "!backend/tests/"
       - "!backend/src/kg/llm/providers.py"
@@ -145,6 +166,11 @@ documents:
       - ios_surface_changed
     sources:
       - ios/
+      # UITest fixtures/tests are evidence inputs, not shipped product surface.
+      - "!ios/BooksAndVocabUITests/"
+      - "!ios/BooksAndVocabTests/"
+      - "!ios/BooksAndVocab/Support/UITestFixtureSeed*.swift"
+      - "!ios/BooksAndVocab/Support/Fixtures/"
       - backend/
       - "!backend/tests/"
       - "!backend/src/kg/llm/providers.py"
@@ -171,6 +197,16 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
+      # Internal UI evidence helpers are not implemented product features.
+      - "!ops/ios_test.sh"
+      - "!ops/ios_ui_review_matrix.py"
+      - "!ops/fixtures/ui_worlds/"
+      - "!ops/fixtures/ios_ui_review_matrix.json"
+      - "!ops/ui_world_manifest.py"
+      - "!ops/uitest_*.py"
+      - "!ops/tests/test_ui_world_manifest.py"
+      - "!ops/tests/test_ios_ui_review_matrix.py"
+      - "!ops/tests/test_uitest_*.py"
 
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
@@ -179,6 +215,7 @@ documents:
     triggers:
       - catalog_workbench_changed
       - catalog_ui_world_injection_changed
+      - ui_world_fixture_changed
     sources:
       - ios/BooksAndVocab/Debug/
       - ios/BooksAndVocab/BooksAndVocabApp.swift
@@ -186,7 +223,9 @@ documents:
       - ops/lib/ios_ops_catalog.sh
       - ops/tests/test_catalog_agent_boundary.py
       - ops/fixtures/ui_worlds/
+      - ops/fixtures/ui_worlds/marketing_demo.json
       - ops/ui_world_manifest.py
+      - ops/tests/test_ui_world_manifest.py
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
@@ -198,6 +237,12 @@ documents:
       - db_schema_changed
       - ops_command_changed
       - delivery_loop_changed
+      - ui_world_fixture_changed
+      - ui_evidence_runner_changed
+      - ui_review_matrix_changed
+      - ui_evidence_contract_changed
+      - ui_review_page_changed
+      - ui_review_attestation_changed
     sources:
       - backend/
       - "!backend/tests/"
@@ -205,6 +250,19 @@ documents:
       - ops/lib/lock_wait.py
       - ops/worktree_orchestrate.py
       - ops/tests/test_backlog.py
+      - ops/ios_test.sh
+      - ops/ios_ui_review_matrix.py
+      - ops/fixtures/ios_ui_review_matrix.json
+      - ops/fixtures/ui_worlds/marketing_demo.json
+      - ops/ui_world_manifest.py
+      - ops/uitest_evidence_contract.py
+      - ops/uitest_review_page.py
+      - ops/uitest_review_attest.py
+      - ops/tests/test_ios_ui_review_matrix.py
+      - ops/tests/test_ui_world_manifest.py
+      - ops/tests/test_uitest_evidence_contract.py
+      - ops/tests/test_uitest_review_page.py
+      - ops/tests/test_uitest_review_attest.py
       - ops/
       - "!ops/tests/test_docs_*.sh"
 
@@ -808,6 +866,16 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
+      # Backend SOP does not own Simulator evidence helpers.
+      - "!ops/ios_test.sh"
+      - "!ops/ios_ui_review_matrix.py"
+      - "!ops/fixtures/ui_worlds/"
+      - "!ops/fixtures/ios_ui_review_matrix.json"
+      - "!ops/ui_world_manifest.py"
+      - "!ops/uitest_*.py"
+      - "!ops/tests/test_ui_world_manifest.py"
+      - "!ops/tests/test_ios_ui_review_matrix.py"
+      - "!ops/tests/test_uitest_*.py"
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -843,12 +911,20 @@ documents:
     kind: sop
     authority: derived
     triggers:
-      - uitest_evidence_contract_changed
+      - ui_world_fixture_changed
+      - ui_evidence_runner_changed
+      - ui_review_matrix_changed
+      - ui_evidence_contract_changed
+      - ui_review_page_changed
+      - ui_review_attestation_changed
       - ui_fixture_seed_changed
       - perf_mark_convention_changed
     sources:
       - ios/BooksAndVocabUITests/
       - ios/BooksAndVocab/Support/UITestFixtureSeed*.swift
+      - ios/BooksAndVocab/Support/UITestFixtureSeed+Vocabulary.swift
+      - ios/BooksAndVocab/Support/UITestFixtureSeed+WorldModels.swift
+      - ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift
       - ops/ios_test.sh
       - ops/app_review_evidence.py
       - ops/asc_reviewer_mirror.py
@@ -858,10 +934,26 @@ documents:
       - ios/BooksAndVocab/Views/Settings/SettingsSubscriptionSection.swift
       - ios/BooksAndVocab/Views/Settings/SettingsPresentation.swift
       - ios/BooksAndVocab/Views/Settings/SettingsView+State.swift
+      - ops/fixtures/ui_worlds/marketing_demo.json
+      - ops/ui_world_manifest.py
+      - ops/tests/test_ui_world_manifest.py
+      - ops/tests/test_ios_ui_review_matrix.py
+      - ops/tests/test_uitest_evidence_contract.py
+      - ops/tests/test_uitest_review_attest.py
+      - ops/tests/test_uitest_review_page.py
       - ops/uitest_review_page.py
+      - ops/ios_ui_review_matrix.py
+      - ops/fixtures/ios_ui_review_matrix.json
+      - ops/uitest_evidence_contract.py
+      - ops/uitest_review_attest.py
       - ops/uitest_contact_sheet.py
       - ops/uitest_review_contract.py
       - ops/plain_deadzone_lint.sh
+      - .claude/skills/ios-simulator-verification/
+      - .claude/skills/ios-simulator-verification/SKILL.md
+      - .claude/skills/ios-simulator-verification/references/evidence-contract.md
+      - .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh
+      - .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh
 
   - id: sop.deploy
     path: docs/sop/deploy.md
@@ -897,6 +989,16 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
+      # Deployment SOP does not own Simulator evidence helpers.
+      - "!ops/ios_test.sh"
+      - "!ops/ios_ui_review_matrix.py"
+      - "!ops/fixtures/ui_worlds/"
+      - "!ops/fixtures/ios_ui_review_matrix.json"
+      - "!ops/ui_world_manifest.py"
+      - "!ops/uitest_*.py"
+      - "!ops/tests/test_ui_world_manifest.py"
+      - "!ops/tests/test_ios_ui_review_matrix.py"
+      - "!ops/tests/test_uitest_*.py"
       - backend/
       - "!backend/tests/"
       - "!backend/src/kg/llm/providers.py"
@@ -950,5 +1052,15 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
+      # Debug SOP does not own Simulator evidence helpers.
+      - "!ops/ios_test.sh"
+      - "!ops/ios_ui_review_matrix.py"
+      - "!ops/fixtures/ui_worlds/"
+      - "!ops/fixtures/ios_ui_review_matrix.json"
+      - "!ops/ui_world_manifest.py"
+      - "!ops/uitest_*.py"
+      - "!ops/tests/test_ui_world_manifest.py"
+      - "!ops/tests/test_ios_ui_review_matrix.py"
+      - "!ops/tests/test_uitest_*.py"
       - docs/runbook/
       - "!docs/runbook/backlog/"
