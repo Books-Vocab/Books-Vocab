@@ -8,6 +8,9 @@
   "date": "2026-08-09",
   "detail": "B2：三個 reviewer 與 App Review 入口各自組 canonical JSON bytes，規格已一致但共用邏輯重複，且不能牽動 emit_ios 的 dataset ID 雜湊。",
   "fix_site": "ops/lib/canonical_json.py; ops/app_review_evidence.py; ops/app_review_gate.py; ops/asc_reviewer_mirror.py; ops/tests/test_reviewer_evidence.py; ops/tests/test_app_review_evidence.py; ops/tests/test_app_review_gate.py; ops/tests/test_asc_reviewer_mirror.py",
+  "fixed_by": [
+    "b1f44be3193ffb3381f4cbf0df6c21f466fcafd1"
+  ],
   "groomed_against": "785f64052908b6bd5fb0fa406767cbee7db03cba",
   "groomed_at": "2026-08-09",
   "groomed_by": "r6-worker:groom@v1",
@@ -18,6 +21,10 @@
   "scope": "一個共用序列化 helper、三個現行呼叫端與四組 regression（helper、App Review evidence、App Review gate、ASC mirror）。",
   "severity": "med",
   "source": "IMP-0042/B2",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-12",
+  "verified_by": "agent:team-a-supervisor",
+  "verified_evidence": "Acceptance command: uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_reviewer_evidence.py ops/tests/test_app_review_evidence.py ops/tests/test_app_review_gate.py ops/tests/test_asc_reviewer_mirror.py (76 passed, rc=0); related ./ops/test_ops.sh app-review (90 passed, rc=0); fresh Gate run b1f44be3193f-73289-58779282142958 bound to integration HEAD b1f44be3193ffb3381f4cbf0df6c21f466fcafd1, 7/7 gates pass rc=0; cutover landed b1f44be3193ffb3381f4cbf0df6c21f466fcafd1."
 }
