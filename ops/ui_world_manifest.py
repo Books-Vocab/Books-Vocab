@@ -643,9 +643,25 @@ def _ensure_str(raw: Any, *, field: str, label: str) -> str:
     return raw
 
 
-def _resolve_path(raw: str) -> Path:
+def _resolve_path(
+    raw: str, *, field: str, label: str, require_repo_relative: bool = False
+) -> Path:
     path = Path(raw)
-    return path if path.is_absolute() else (ROOT / path)
+    if path.is_absolute() and require_repo_relative:
+        raise UIWorldManifestError(
+            f"{label} {field} sourcePath 必須是 repo-relative path，不得使用絕對路徑: {raw}"
+        )
+    if path.is_absolute():
+        return path.resolve()
+    root = ROOT.resolve()
+    resolved = (root / path).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise UIWorldManifestError(
+            f"{label} {field} sourcePath escape repo root: {raw}"
+        ) from exc
+    return resolved
 
 
 def _sha256_hex(path: Path) -> str:
@@ -2257,7 +2273,18 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 raise UIWorldManifestError(
                     f"{label} {asset_label} keys 不符合 UI World v2: extra={extra} missing={missing}"
                 )
-            source_path = _resolve_path(_ensure_str(asset.get("sourcePath"), field=f"{asset_label}.sourcePath", label=label))
+            source_path = _resolve_path(
+                _ensure_str(asset.get("sourcePath"), field=f"{asset_label}.sourcePath", label=label),
+                field=f"{asset_label}.sourcePath",
+                label=label,
+                require_repo_relative=(
+                    bucket == "books"
+                    and asset_id in {
+                        READER_TOC_VALID_ASSET,
+                        READER_TOC_INVALID_DESTINATION_ASSET,
+                    }
+                ),
+            )
             install_as = _ensure_str(asset.get("installAs"), field=f"{asset_label}.installAs", label=label)
             content_type = _ensure_str(asset.get("contentType"), field=f"{asset_label}.contentType", label=label)
             expected_hash = _ensure_str(asset.get("sha256"), field=f"{asset_label}.sha256", label=label)

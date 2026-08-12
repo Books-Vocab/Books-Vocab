@@ -314,7 +314,43 @@ def _load_base_ui_world() -> dict[str, Any]:
     normalized_surface_contracts["dictionary"] = build_p1_dictionary_surface_contract(dictionary)
     normalized_context["surfaceContracts"] = normalized_surface_contracts
     data["scenarioContext"] = normalized_context
+    _normalize_asset_source_paths(data)
     return data
+
+
+def _normalize_asset_source_paths(document: dict[str, Any]) -> None:
+    """Store portable repo-relative locators while validating from this checkout.
+
+    A generated UI World is checked in and later consumed from another clone or
+    worktree.  Absolute paths are therefore an emitter bug even when they point
+    at a currently valid file.  Resolve against this emitter's repository root,
+    reject escapes, and serialize the canonical POSIX-relative locator.
+    """
+    root = _REPO_ROOT.resolve()
+    assets = document.get("assets")
+    if not isinstance(assets, dict):
+        raise ValueError("UI World assets must be an object before path normalization")
+    for bucket, entries in assets.items():
+        if not isinstance(entries, dict):
+            raise ValueError(f"UI World assets.{bucket} must be an object before path normalization")
+        for asset_id, asset in entries.items():
+            if not isinstance(asset, dict) or not isinstance(asset.get("sourcePath"), str):
+                raise ValueError(f"UI World assets.{bucket}.{asset_id}.sourcePath is missing")
+            if bucket != "books" or asset_id not in {
+                "reader_real_book_epub",
+                "reader_invalid_destination_epub",
+            }:
+                continue
+            raw = Path(asset["sourcePath"])
+            candidate = raw if raw.is_absolute() else root / raw
+            resolved = candidate.resolve()
+            try:
+                relative = resolved.relative_to(root)
+            except ValueError as exc:
+                raise ValueError(
+                    f"UI World assets.{bucket}.{asset_id}.sourcePath escapes repo root: {raw}"
+                ) from exc
+            asset["sourcePath"] = relative.as_posix()
 
 
 def _validate_review_clock_overlay(

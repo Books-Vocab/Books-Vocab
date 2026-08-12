@@ -40,7 +40,8 @@ def _vocabulary_override(word: str, *, card_role: str = "learning", review_eligi
     }
 def _asset_path(data: dict, ref: str) -> Path:
     bucket, asset_id = ref.split(".", 1)
-    return Path(data["assets"][bucket][asset_id]["sourcePath"])
+    raw = Path(data["assets"][bucket][asset_id]["sourcePath"])
+    return raw if raw.is_absolute() else ROOT / raw
 
 
 def test_reader_real_book_is_a_distinguishable_two_chapter_epub() -> None:
@@ -49,7 +50,7 @@ def test_reader_real_book_is_a_distinguishable_two_chapter_epub() -> None:
     path = _asset_path(data, "books.reader_real_book_epub")
 
     assert path.is_relative_to(ROOT), "P3 asset must resolve inside this worktree"
-    assert asset["sourcePath"].startswith(str(ROOT) + "/")
+    assert asset["sourcePath"] == "ops/fixtures/assets/reader-real-book.epub"
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         assert {"OEBPS/chapter1.xhtml", "OEBPS/chapter2.xhtml"} <= names
@@ -69,7 +70,7 @@ def test_reader_invalid_destination_asset_is_declared_and_really_broken() -> Non
     path = _asset_path(data, "books.reader_invalid_destination_epub")
 
     assert path.is_relative_to(ROOT), "P3 counterexample asset must resolve inside this worktree"
-    assert asset["sourcePath"].startswith(str(ROOT) + "/")
+    assert asset["sourcePath"] == "ops/fixtures/assets/reader-invalid-destination.epub"
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
@@ -113,6 +114,34 @@ def test_validate_accepts_repo_ui_world():
     dataset_id = validate_fixture_dataset_file(ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json")
 
     assert dataset_id == "marketing_demo"
+
+
+def test_validator_rejects_absolute_or_escaping_asset_source_paths(tmp_path: Path):
+    data = _marketing_demo()
+    data["assets"]["books"]["reader_real_book_epub"]["sourcePath"] = str(
+        (ROOT.parent / "outside-reader.epub").resolve()
+    )
+    path = tmp_path / "absolute-source.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="sourcePath.*repo-relative"):
+        validate_fixture_dataset_file(path)
+
+
+def test_reader_invalid_destination_ui_flow_is_real_and_retryable():
+    source = (ROOT / "ios/BooksAndVocabUITests/ReaderFlowUITests.swift").read_text(encoding="utf-8")
+    launch = (ROOT / "ios/BooksAndVocabUITests/Helpers/UITestAppLaunch.swift").read_text(encoding="utf-8")
+    seed = (ROOT / "ios/BooksAndVocab/Support/UITestFixtureSeed+Reader.swift").read_text(encoding="utf-8")
+
+    assert "readerInvalidDestinationLibrary" in source
+    assert "reader:invalidDestinationLibrary" in launch
+    assert "readerInvalidDestinationLibrary" in seed
+    assert "reader.toc.missingDestination" in source
+    assert "reader.toc.retry" in source
+    assert "tableOfContentsSheet.waitUntilExists" in source
+    assert "tableOfContentsSheet.waitUntilGone" not in source
+    assert "FakeReaderNavigator" not in source
+    assert "does-not-exist" not in source
 
 
 def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):
