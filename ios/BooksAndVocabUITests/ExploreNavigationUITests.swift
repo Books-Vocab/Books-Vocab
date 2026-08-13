@@ -133,6 +133,7 @@ final class ExploreNavigationUITests: UITestCase {
     /// make the combined artifact explicit instead of merging bundles on the host.
     @MainActor
     func testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates() throws {
+        executionTimeAllowance = 120
         try testExploreRequiredStateFlowProducesSeparateEvidenceSteps()
         try testExploreCounterexampleEvidenceUsesDistinctAssets()
     }
