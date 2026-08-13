@@ -48,7 +48,9 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
         ReviewSettingsStore.shared.update(.default)
         TranslationLanguage.currentSource = .en
         TranslationLanguage.currentTarget = .zhHant
-        AppLanguageStore.shared.setLanguage(.system)
+        // A root language refresh would destroy the active Settings
+        // navigation before the terminal reset state can be observed.
+        AppLanguageStore.shared.setLanguage(.system, preservingRootPresentation: true)
         AppAppearanceStore.shared.setAppearance(.system)
         AutoSyncSettingsStore.shared.setEnabled(false)
         AutoLinkSettingsStore.shared.setEnabled(true)

@@ -159,9 +159,9 @@ struct BooksAndVocabApp: App {
                 .environment(\.locale, appLanguage.locale)
                 // Why: L10n.string(_:) 是 non-reactive function;絕大多數 view 不訂閱
                 // AppLanguageStore,切 selection 後 UI 中英混雜直到 navigation/redraw。
-                // .id(selection) 強制 SwiftUI 在 selection 變更時重建整棵 view tree,
-                // 讓所有 L10n.string 重新計算。代價是切語言瞬間全 tree 重建(可接受)。
-                .id(appLanguage.selection)
+                // rootRefreshID 讓所有 L10n.string 重新計算；Settings 的 account-local
+                // reset 可暫緩這次重建，避免終端狀態尚未被看見就銷毀 navigation。
+                .id(appLanguage.rootRefreshID)
                 // tint 由 AppThemeContainer 的 .tint(theme.palette.tint) 統一供給
                 // （scheme-aware：light→tintLight、dark→tintDark 近白）。此處勿再寫死
                 // .tint(AppColors.tintLight)——它離葉較近會覆蓋外層 scheme-aware tint，

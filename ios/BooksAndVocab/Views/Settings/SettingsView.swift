@@ -107,6 +107,9 @@ struct SettingsView: View {
         .onAppear {
             coordinator.handleAppear()
         }
+        .onDisappear {
+            AppLanguageStore.shared.flushDeferredRootRefresh()
+        }
         .subscriptionPaywallSheet(isPresented: $coordinator.showSubscriptionPaywall)
         .toastSheet(item: $exportURL) { url in
             PlatformShareView(url: url)

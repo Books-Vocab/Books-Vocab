@@ -94,6 +94,10 @@ final class AppLanguageStore: ObservableObject {
     }
 
     @Published private(set) var selection: AppLanguage
+    /// Separate root identity lets an account-local reset update language
+    /// without destroying an active Settings navigation transaction.
+    @Published private(set) var rootRefreshID = UUID()
+    private var hasDeferredRootRefresh = false
 
     private let defaults: UserDefaults
     private let cloud = CloudPreferencesSync.shared
@@ -120,6 +124,7 @@ final class AppLanguageStore: ObservableObject {
                   value != self.selection
             else { return }
             self.selection = value
+            self.rootRefreshID = UUID()
             // 語言有兩條寫入 `selection` 的路徑：Settings UI 走 `setLanguage(_:)`，
             // 跨裝置 KVS 變更走這裡。TipKit 的 reset 旗標本來只長在前者上，所以在
             // A 機切語言、B 機同步收到之後，B 機的 view tree 會整棵換成新語言，
@@ -197,7 +202,7 @@ final class AppLanguageStore: ObservableObject {
         effectiveLanguage.locale
     }
 
-    func setLanguage(_ language: AppLanguage) {
+    func setLanguage(_ language: AppLanguage, preservingRootPresentation: Bool = false) {
         guard selection != language else { return }
         selection = language
         defaults.set(language.rawValue, forKey: Keys.selectedLanguage)
@@ -217,6 +222,18 @@ final class AppLanguageStore: ObservableObject {
         // turned every language switch into a trap (APP-20260806-498c25).
         // Record the intent instead; the launch path drains it before configure.
         PendingTipsReset.mark(in: defaults)
+        if preservingRootPresentation {
+            hasDeferredRootRefresh = true
+        } else {
+            rootRefreshID = UUID()
+        }
+    }
+
+    /// Flush a root rebuild deferred by an account-local Settings reset.
+    func flushDeferredRootRefresh() {
+        guard hasDeferredRootRefresh else { return }
+        hasDeferredRootRefresh = false
+        rootRefreshID = UUID()
     }
 
     /// The concrete language to apply for bundle/font/format decisions.
