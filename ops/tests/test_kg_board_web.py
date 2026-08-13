@@ -273,6 +273,15 @@ def test_index_injects_app_revision_without_browser_write_token(monkeypatch):
     assert "kg-csrf" not in rendered
 
 
+def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "TREE_VIEW_RADIUS = 10" in js
+    assert "firstBranchPoint" in js
+    assert "treeViewport" in js
+    assert "Maximum call stack" not in js
+
+
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
     monkeypatch.setattr(server, "APP_REVISION", "rev")

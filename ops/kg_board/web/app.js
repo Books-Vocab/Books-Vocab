@@ -69,11 +69,59 @@ function renderMetrics(){
     metric("被阻塞",decision.blocked)+metric("未梳理",decision.ungroomed)+
     metric("歷史完成",board.counts.history.fixed+board.counts.history.wont_fix);
 }
-function commitAncestors(sha,commits,seen=new Set()){
-  if(!sha||seen.has(sha))return [];
-  seen.add(sha);
-  const row=commits.get(sha);if(!row)return [sha];
-  return [sha,...(row.parents||[]).flatMap(parent=>commitAncestors(parent,commits,seen))];
+const TREE_VIEW_RADIUS = 10;
+function firstParentChain(sha,commits,limit=commits.size+1){
+  const result=[],seen=new Set();let current=sha;
+  while(current&&!seen.has(current)&&result.length<limit){
+    seen.add(current);result.push(current);
+    current=commits.get(current)?.parents?.[0]||null;
+  }
+  return result;
+}
+function pathToAncestor(start,target,commits,limit=128){
+  if(!start)return [];
+  const pending=[{sha:start,path:[]}],seen=new Set();
+  while(pending.length){
+    const item=pending.pop(),current=item.sha;
+    if(!current||seen.has(current)||item.path.length>limit)continue;
+    const path=[...item.path,current];
+    if(current===target)return path;
+    seen.add(current);
+    const parents=commits.get(current)?.parents||[];
+    for(let index=parents.length-1;index>=0;index--)pending.push({sha:parents[index],path});
+  }
+  return [];
+}
+function firstBranchPoint(mainHead,commits){
+  const children=new Map();
+  commits.forEach(row=>(row.parents||[]).forEach(parent=>{
+    if(!children.has(parent))children.set(parent,new Set());
+    children.get(parent).add(row.sha);
+  }));
+  for(const sha of firstParentChain(mainHead,commits)){
+    if((children.get(sha)?.size||0)>1)return sha;
+  }
+  return null;
+}
+function treeViewport(tree,commits,refs){
+  const mainRef=refs.find(ref=>ref.branch==="main"),mainHead=mainRef?.head;
+  const mainline=firstParentChain(mainHead,commits);
+  const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(TREE_VIEW_RADIUS,Math.max(0,mainline.length-1))]||mainHead;
+  const branchIndex=Math.max(0,mainline.indexOf(branchSha));
+  const visible=new Set(mainline.slice(Math.max(0,branchIndex-TREE_VIEW_RADIUS),branchIndex+TREE_VIEW_RADIUS+1));
+  const visibleBranches=new Set();
+  refs.forEach(ref=>{
+    const path=pathToAncestor(ref.head,branchSha,commits,TREE_VIEW_RADIUS*4);
+    if(path.includes(branchSha)||visible.has(ref.head)){
+      visibleBranches.add(ref.branch);path.slice(0,TREE_VIEW_RADIUS+1).forEach(sha=>visible.add(sha));
+    }
+  });
+  if(branchSha)visible.add(branchSha);
+  return {
+    commits:[...commits.values()].filter(row=>visible.has(row.sha)),
+    refs:refs.filter(ref=>visibleBranches.has(ref.branch)||visible.has(ref.head)),
+    mainline,branchSha,total:tree.commits.length,
+  };
 }
 function commitInspector(row,ref){
   const files=(row.files||[]).map(file=>`<li><code>${esc(file)}</code></li>`).join("")||"<li>沒有檔案統計</li>";
@@ -99,35 +147,37 @@ function renderTree(){
   }
   const commits=new Map(tree.commits.map(row=>[row.sha,row]));
   const refs=tree.refs||[];
-  const lanes=new Map([['main',0],...refs.map((ref,index)=>[ref.branch,index+1])]);
+  const viewport=treeViewport(tree,commits,refs);
+  const visibleCommits=new Map(viewport.commits.map(row=>[row.sha,row]));
   const positions=new Map();
-  const laneRefs=new Map();
-  refs.forEach((ref,index)=>{
-    const chain=commitAncestors(ref.head,commits);
-    chain.forEach(sha=>{if(!positions.has(sha))positions.set(sha,{lane:index+1});});
-    laneRefs.set(ref.branch,index+1);
+  viewport.refs.forEach((ref,index)=>{
+    const chain=pathToAncestor(ref.head,viewport.branchSha,commits,TREE_VIEW_RADIUS*4);
+    (chain.length?chain:firstParentChain(ref.head,commits,TREE_VIEW_RADIUS+1)).forEach(sha=>{
+      if(visibleCommits.has(sha)&&!positions.has(sha))positions.set(sha,{lane:index+1});
+    });
   });
   const main=commits.get(refs.find(ref=>ref.branch==="main")?.head);
-  if(main)commitAncestors(main.sha,commits).forEach(sha=>{if(!positions.has(sha))positions.set(sha,{lane:0});});
-  [...commits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,refs.length+1))});});
-  const ordered=[...commits.values()].sort((a,b)=>(a.committed_at||a.sha).localeCompare(b.committed_at||b.sha));
+  if(main)viewport.mainline.forEach(sha=>{if(visibleCommits.has(sha))positions.set(sha,{lane:0});});
+  [...visibleCommits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,viewport.refs.length+1))});});
+  const ordered=[...visibleCommits.values()].sort((a,b)=>(a.committed_at||a.sha).localeCompare(b.committed_at||b.sha));
   const width=Math.max(520,(Math.max(0,...[...positions.values()].map(pos=>pos.lane))+1)*210);
   const height=Math.max(220,ordered.length*72+70);
   const x=lane=>70+lane*190,y=index=>55+index*72;
   ordered.forEach((row,index)=>{positions.get(row.sha).y=y(index);});
   const edges=[];
   ordered.forEach(row=>{const from=positions.get(row.sha);(row.parents||[]).forEach(parentSha=>{const to=positions.get(parentSha);if(to)edges.push(`<path class="edge" d="M ${x(from.lane)} ${from.y} C ${x(from.lane)} ${from.y+28}, ${x(to.lane)} ${to.y-28}, ${x(to.lane)} ${to.y}"/>`);});});
-  const labels=refs.map(ref=>{
+  const labels=viewport.refs.map(ref=>{
     const pos=positions.get(ref.head);if(!pos)return "";
     const tickets=(ref.tickets||[]).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
     return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(ref.branch)} · ${esc(ref.live_state||ref.status||"unknown")}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
   }).join("");
   const nodes=ordered.map(row=>{
-    const pos=positions.get(row.sha);const ref=refs.find(item=>item.head===row.sha);
+    const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
     return `<g class="commit" tabindex="0" role="button" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(row.subject)}</text></g>`;
   }).join("");
   mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="所有可達 commit 的 Git graph"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
-  document.getElementById("tree-state").textContent=tree.complete?`${ordered.length} commits`:`不完整 · ${ordered.length} commits`;
+  const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
+  document.getElementById("tree-state").textContent=tree.complete?`視野 ${ordered.length} / 完整 ${viewport.total} · ${viewportLabel}`:`不完整 · 視野 ${ordered.length}`;
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
   mount.querySelectorAll(".commit").forEach(node=>{
     const show=()=>commitInspector(commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));
