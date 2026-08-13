@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 
 final class DictionaryLookupFlowUITests: UITestCase {
@@ -18,8 +19,9 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
         let materialization = page.materialization(status: "ready")
+        let datasetSHA256 = try DictionaryFixtureManifest.datasetSHA256()
         XCTAssertTrue(materialization.waitUntilValueContains(
-            "sense-1|example-1|dictionary.lookup.result|marketing_demo|d28b72ea22a689a77cdfb4979e14340a78a7af9e6a37c658429b72ac2ebbd25e|catalog_reader_epub|",
+            "sense-1|example-1|dictionary.lookup.result|marketing_demo|\(datasetSHA256)|catalog_reader_epub|",
             timeout: 5
         ), "materialization AX value did not contain the typed provenance prefix: \(String(describing: materialization.value))")
         XCTAssertTrue(materialization.waitUntilValueContains(
@@ -143,5 +145,26 @@ final class DictionaryLookupFlowUITests: UITestCase {
 
         let page = DictionaryLookupPage(app: app).waitForSheet()
         return (app, page)
+    }
+}
+
+private enum DictionaryFixtureManifest {
+    static func datasetSHA256() throws -> String {
+        let environment = ProcessInfo.processInfo.environment
+        let data: Data
+        if let deflateB64 = environment["KG_FIXTURE_DATASET_DEFLATE_B64"], !deflateB64.isEmpty {
+            guard let compressed = Data(base64Encoded: deflateB64) else {
+                throw NSError(domain: "DictionaryFixtureManifest", code: 1)
+            }
+            data = try (compressed as NSData).decompressed(using: .zlib) as Data
+        } else if let base64 = environment["KG_FIXTURE_DATASET_B64"], !base64.isEmpty {
+            guard let decoded = Data(base64Encoded: base64) else {
+                throw NSError(domain: "DictionaryFixtureManifest", code: 2)
+            }
+            data = decoded
+        } else {
+            throw NSError(domain: "DictionaryFixtureManifest", code: 3)
+        }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
