@@ -109,17 +109,22 @@ function treeViewport(tree,commits,refs){
   const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(TREE_VIEW_RADIUS,Math.max(0,mainline.length-1))]||mainHead;
   const branchIndex=Math.max(0,mainline.indexOf(branchSha));
   const visible=new Set(mainline.slice(Math.max(0,branchIndex-TREE_VIEW_RADIUS),branchIndex+TREE_VIEW_RADIUS+1));
-  const visibleBranches=new Set();
+  const visibleBranches=new Set(["main"]);
+  const branchAnchors=new Map();
   refs.forEach(ref=>{
     const path=pathToAncestor(ref.head,branchSha,commits,TREE_VIEW_RADIUS*4);
-    if(path.includes(branchSha)||visible.has(ref.head)){
-      visibleBranches.add(ref.branch);path.slice(0,TREE_VIEW_RADIUS+1).forEach(sha=>visible.add(sha));
-    }
+    const branchPathIndex=path.indexOf(branchSha);
+    if(ref.branch==="main"||branchPathIndex<0)return;
+    // Keep one anchor per branch at the first child after the branch point.
+    // This preserves topology without dragging every descendant into the view.
+    const anchor=branchPathIndex?path[branchPathIndex-1]:branchSha;
+    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);visible.add(anchor);
   });
   if(branchSha)visible.add(branchSha);
   return {
     commits:[...commits.values()].filter(row=>visible.has(row.sha)),
-    refs:refs.filter(ref=>visibleBranches.has(ref.branch)||visible.has(ref.head)),
+    refs:refs.filter(ref=>visibleBranches.has(ref.branch)),
+    branchAnchors,
     mainline,branchSha,total:tree.commits.length,
   };
 }
@@ -150,11 +155,9 @@ function renderTree(){
   const viewport=treeViewport(tree,commits,refs);
   const visibleCommits=new Map(viewport.commits.map(row=>[row.sha,row]));
   const positions=new Map();
-  viewport.refs.forEach((ref,index)=>{
-    const chain=pathToAncestor(ref.head,viewport.branchSha,commits,TREE_VIEW_RADIUS*4);
-    (chain.length?chain:firstParentChain(ref.head,commits,TREE_VIEW_RADIUS+1)).forEach(sha=>{
-      if(visibleCommits.has(sha)&&!positions.has(sha))positions.set(sha,{lane:index+1});
-    });
+  viewport.refs.filter(ref=>ref.branch!=="main").forEach((ref,index)=>{
+    const anchor=viewport.branchAnchors.get(ref.branch);
+    if(anchor&&visibleCommits.has(anchor)&&!positions.has(anchor))positions.set(anchor,{lane:index+1});
   });
   const main=commits.get(refs.find(ref=>ref.branch==="main")?.head);
   if(main)viewport.mainline.forEach(sha=>{if(visibleCommits.has(sha))positions.set(sha,{lane:0});});
@@ -167,17 +170,18 @@ function renderTree(){
   const edges=[];
   ordered.forEach(row=>{const from=positions.get(row.sha);(row.parents||[]).forEach(parentSha=>{const to=positions.get(parentSha);if(to)edges.push(`<path class="edge" d="M ${x(from.lane)} ${from.y} C ${x(from.lane)} ${from.y+28}, ${x(to.lane)} ${to.y-28}, ${x(to.lane)} ${to.y}"/>`);});});
   const labels=viewport.refs.map(ref=>{
-    const pos=positions.get(ref.head);if(!pos)return "";
+    const anchor=ref.branch==="main"?viewport.branchSha:viewport.branchAnchors.get(ref.branch);
+    const pos=positions.get(anchor);if(!pos)return "";
     const tickets=(ref.tickets||[]).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
     return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(ref.branch)} · ${esc(ref.live_state||ref.status||"unknown")}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
   }).join("");
   const nodes=ordered.map(row=>{
-    const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
+    const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha||viewport.branchAnchors.get(item.branch)===row.sha);
     return `<g class="commit" tabindex="0" role="button" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(row.subject)}</text></g>`;
   }).join("");
   mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="所有可達 commit 的 Git graph"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
-  document.getElementById("tree-state").textContent=tree.complete?`視野 ${ordered.length} / 完整 ${viewport.total} · ${viewportLabel}`:`不完整 · 視野 ${ordered.length}`;
+  document.getElementById("tree-state").textContent=tree.complete?`第一個分支附近 ${ordered.length} / 完整 ${viewport.total} · ${viewportLabel}`:`資料不完整 · 第一個分支附近 ${ordered.length}`;
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
   mount.querySelectorAll(".commit").forEach(node=>{
     const show=()=>commitInspector(commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));

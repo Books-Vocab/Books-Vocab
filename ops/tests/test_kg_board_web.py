@@ -241,6 +241,9 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'class="admin-nav"' in index
     assert 'id="git-tree"' in index and 'id="commit-inspector"' in index
     assert '<details>' not in index  # cards are data-driven and collapsed by default
+    assert '<title>KG 交付工作台 · 唯讀觀測</title>' in index
+    assert '<a class="brand" href="/">KG 交付工作台</a>' in index
+    assert '票、認領與交付進度' in index
     assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "ungroomed", "all", "history")] == [True] * 6
     assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理"))
     assert "歷史完成" in index
@@ -279,6 +282,8 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert "TREE_VIEW_RADIUS = 10" in js
     assert "firstBranchPoint" in js
     assert "treeViewport" in js
+    assert "branchAnchors" in js
+    assert "第一個分支附近" in js
     assert "Maximum call stack" not in js
 
 
