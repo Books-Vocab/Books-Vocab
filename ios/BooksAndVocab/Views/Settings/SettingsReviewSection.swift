@@ -72,15 +72,9 @@ struct SettingsReviewSection: View {
             // render behind its SwiftUI binding. Publish the same presentation
             // state explicitly so UI tests observe the state users see.
             .accessibilityValue(pauseDraft ? "1" : "0")
-            // Form's UIKit bridge can consume the accessibility tap without
-            // invoking a SwiftUI Toggle Binding setter on iOS 26. Keep one
-            // explicit gesture at the view boundary; high priority prevents a
-            // second native toggle and still preserves the platform switch.
-            .highPriorityGesture(
-                TapGesture().onEnded {
-                    pauseBinding.wrappedValue.toggle()
-                }
-            )
+            .onChange(of: pauseDraft) { _, isPaused in
+                persistPauseChange(isPaused)
+            }
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
         } footer: {
@@ -88,30 +82,22 @@ struct SettingsReviewSection: View {
         }
     }
 
-    private var pauseBinding: Binding<Bool> {
-        Binding(
-            get: { pauseDraft },
-            set: { isPaused in
-                // Publish the presentation state before entering the persistence path.
-                // The coordinator still owns the authoritative store write/rollback.
-                pauseDraft = isPaused
-                pauseMutationID &+= 1
-                let mutationID = pauseMutationID
-                let snapshot = reviewSettingsStore.pauseClockSnapshot
-                var updated = reviewSettingsStore.settings
-                if isPaused {
-                    updated.pauseProgress()
-                } else {
-                    updated.resumeProgress()
-                }
-                reviewSettingsStore.update(updated)
-                Task { @MainActor in
-                    await onPauseChanged(isPaused, snapshot)
-                    guard mutationID == pauseMutationID else { return }
-                    pauseDraft = reviewSettingsStore.settings.isProgressPaused
-                }
-            }
-        )
+    private func persistPauseChange(_ isPaused: Bool) {
+        pauseMutationID &+= 1
+        let mutationID = pauseMutationID
+        let snapshot = reviewSettingsStore.pauseClockSnapshot
+        var updated = reviewSettingsStore.settings
+        if isPaused {
+            updated.pauseProgress()
+        } else {
+            updated.resumeProgress()
+        }
+        reviewSettingsStore.update(updated)
+        Task { @MainActor in
+            await onPauseChanged(isPaused, snapshot)
+            guard mutationID == pauseMutationID else { return }
+            pauseDraft = reviewSettingsStore.settings.isProgressPaused
+        }
     }
 
     private var pauseDescription: String {
@@ -134,7 +120,7 @@ struct SettingsReviewSection: View {
     /// UI-test 契約（SettingsSheetPage.reviewModeTile）才穩定成立。
     private var modeSection: some View {
         Section {
-            Picker(selection: modeBinding) {
+            Picker(selection: $modeDraft) {
                 ForEach(ReviewSettingsMode.allCases, id: \.rawValue) { mode in
                     Label(mode.displayName, systemImage: mode.icon)
                         .tag(mode)
@@ -145,6 +131,9 @@ struct SettingsReviewSection: View {
             }
             .pickerStyle(.inline)
             .labelsHidden()
+            .onChange(of: modeDraft) { _, mode in
+                persistModeChange(mode)
+            }
         } header: {
             SettingsSectionHeader(title: L10n.string("複習模式"), icon: "timer")
         } footer: {
@@ -152,24 +141,18 @@ struct SettingsReviewSection: View {
         }
     }
 
-    private var modeBinding: Binding<ReviewSettingsMode> {
-        Binding(
-            get: { modeDraft },
-            set: { mode in
-                modeDraft = mode
-                modeMutationID &+= 1
-                let mutationID = modeMutationID
-                let snapshot = reviewSettingsStore.reviewModeSnapshot
-                var updated = reviewSettingsStore.settings
-                updated.mode = mode
-                reviewSettingsStore.update(updated)
-                Task { @MainActor in
-                    await onModeChanged(updated, snapshot)
-                    guard mutationID == modeMutationID else { return }
-                    modeDraft = reviewSettingsStore.settings.mode
-                }
-            }
-        )
+    private func persistModeChange(_ mode: ReviewSettingsMode) {
+        modeMutationID &+= 1
+        let mutationID = modeMutationID
+        let snapshot = reviewSettingsStore.reviewModeSnapshot
+        var updated = reviewSettingsStore.settings
+        updated.mode = mode
+        reviewSettingsStore.update(updated)
+        Task { @MainActor in
+            await onModeChanged(updated, snapshot)
+            guard mutationID == modeMutationID else { return }
+            modeDraft = reviewSettingsStore.settings.mode
+        }
     }
 
     // MARK: - Custom Params Section
