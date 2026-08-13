@@ -1,6 +1,190 @@
 import Foundation
 import XCTest
-@testable import BooksAndVocab
+
+// UI tests are intentionally black-box: XCTest UI bundles do not link the app
+// executable, so their evidence DTOs must not depend on app-internal symbols.
+// Keep this wire contract byte-for-byte compatible with the app-side
+// ReaderTOCEvidence* types in Views/Reader/ReaderViewState.swift.
+enum ReaderTOCEvidenceHref {
+    static func isSafeRelative(_ href: String) -> Bool {
+        guard !href.isEmpty,
+              href == href.trimmingCharacters(in: .whitespacesAndNewlines),
+              !href.hasPrefix("/"),
+              !href.hasPrefix("\\"),
+              !href.contains("\\"),
+              href.unicodeScalars.allSatisfy({
+                  !CharacterSet.whitespacesAndNewlines.contains($0)
+                      && !CharacterSet.controlCharacters.contains($0)
+              }),
+              let url = URL(string: href),
+              url.scheme == nil,
+              url.host == nil,
+              let decoded = href.removingPercentEncoding else {
+            return false
+        }
+
+        let path = decoded.split(whereSeparator: { $0 == "?" || $0 == "#" }).first
+            ?? Substring(decoded)
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        return !components.isEmpty
+            && components.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+    }
+}
+
+struct ReaderTOCEvidenceContext: Codable, Equatable {
+    struct Invocation: Codable, Equatable {
+        let verdictFile: String
+    }
+
+    static let schema = "kg.ui.perf.evidence.context.v1"
+    let schema: String
+    let invocation: Invocation
+    var selectors: [String]
+    let screenshotDirectory: String
+    var screenshotPath: String
+    var entries: [ReaderTOCEvidenceEntry]
+
+    var validationErrors: [String] {
+        var errors: [String] = []
+        if schema != Self.schema { errors.append("schema") }
+        if invocation.verdictFile.isEmpty || !invocation.verdictFile.hasPrefix("/") {
+            errors.append("invocation.verdictFile")
+        }
+        if selectors.isEmpty || selectors.contains(where: { $0.isEmpty }) {
+            errors.append("selectors")
+        }
+        if screenshotDirectory.isEmpty || !screenshotDirectory.hasPrefix("/") {
+            errors.append("screenshotDirectory")
+        }
+        if screenshotPath.isEmpty || !screenshotPath.hasPrefix("/") {
+            errors.append("screenshotPath")
+        }
+        errors.append(contentsOf: ReaderTOCEvidenceEntry.validationErrors(for: entries))
+        return errors
+    }
+
+    var completeValidationErrors: [String] {
+        var errors = validationErrors
+        let required = entries.filter { $0.partition == "required" }
+        let counterexamples = entries.filter { $0.partition == "counterexample" }
+        if required.count != 1 { errors.append("partitions.required.count") }
+        if counterexamples.count != 2 { errors.append("partitions.counterexample.count") }
+        if entries.contains(where: { !["required", "counterexample"].contains($0.partition) }) {
+            errors.append("partitions.disjoint")
+        }
+        if !Set(required.map(\.label)).intersection(Set(counterexamples.map(\.label))).isEmpty {
+            errors.append("partitions.labelsOverlap")
+        }
+        if !Set(required.map(\.fixtureID)).intersection(Set(counterexamples.map(\.fixtureID))).isEmpty {
+            errors.append("partitions.fixturesOverlap")
+        }
+        if !Set(required.map { $0.asset.assetID }).intersection(Set(counterexamples.map { $0.asset.assetID })).isEmpty {
+            errors.append("partitions.assetsOverlap")
+        }
+        return errors
+    }
+}
+
+struct ReaderTOCEvidenceAsset: Codable, Equatable {
+    let assetID: String
+    let installedPath: String
+    let expectedSHA256: String
+    let expectedByteSize: Int
+    let actualSHA256: String
+    let actualByteSize: Int
+}
+
+struct ReaderTOCEvidenceSelectedRow: Codable, Equatable {
+    let path: [Int]
+    let href: String
+    let title: String
+}
+
+struct ReaderTOCEvidenceObservation: Codable, Equatable {
+    let requestedHref: String
+    let observedLocatorHref: String?
+    let observedContent: String?
+    let contentSelector: String?
+}
+
+struct ReaderTOCEvidenceEntry: Codable, Equatable {
+    let label: String
+    let partition: String
+    let fixtureID: String
+    let asset: ReaderTOCEvidenceAsset
+    let path: [Int]
+    let selectedRow: ReaderTOCEvidenceSelectedRow
+    let observation: ReaderTOCEvidenceObservation
+
+    static func validationErrors(for entries: [ReaderTOCEvidenceEntry]) -> [String] {
+        var errors: [String] = []
+        for (index, entry) in entries.enumerated() {
+            let prefix = "entries[\(index)]"
+            if entry.label.isEmpty { errors.append("\(prefix).label") }
+            if !["required", "counterexample"].contains(entry.partition) {
+                errors.append("\(prefix).partition")
+            }
+            if entry.fixtureID.isEmpty { errors.append("\(prefix).fixtureID") }
+            if !entry.asset.assetID.hasPrefix("books.") { errors.append("\(prefix).asset.assetID") }
+            if entry.asset.installedPath.isEmpty || !entry.asset.installedPath.hasPrefix("/") {
+                errors.append("\(prefix).asset.installedPath")
+            }
+            if entry.asset.expectedSHA256.count != 64 { errors.append("\(prefix).asset.expectedSHA256") }
+            if entry.asset.actualSHA256.count != 64 { errors.append("\(prefix).asset.actualSHA256") }
+            if !entry.asset.expectedSHA256.allSatisfy(\.isHexDigit) {
+                errors.append("\(prefix).asset.expectedSHA256")
+            }
+            if !entry.asset.actualSHA256.allSatisfy(\.isHexDigit) {
+                errors.append("\(prefix).asset.actualSHA256")
+            }
+            if entry.asset.expectedByteSize <= 0 { errors.append("\(prefix).asset.expectedByteSize") }
+            if entry.asset.actualByteSize <= 0 { errors.append("\(prefix).asset.actualByteSize") }
+            if entry.asset.expectedSHA256 != entry.asset.actualSHA256 {
+                errors.append("\(prefix).asset.sha256Mismatch")
+            }
+            if entry.asset.expectedByteSize != entry.asset.actualByteSize {
+                errors.append("\(prefix).asset.byteSizeMismatch")
+            }
+            if entry.path.contains(where: { $0 < 0 }) { errors.append("\(prefix).path") }
+            if entry.selectedRow.path != entry.path {
+                errors.append("\(prefix).selectedRow.pathMismatch")
+            }
+            if entry.selectedRow.href.isEmpty || entry.selectedRow.href != entry.observation.requestedHref {
+                errors.append("\(prefix).selectedRow.hrefMismatch")
+            }
+            if entry.selectedRow.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                errors.append("\(prefix).selectedRow.title")
+            }
+            if entry.observation.requestedHref.isEmpty {
+                errors.append("\(prefix).observation.requestedHref")
+            }
+            if !ReaderTOCEvidenceHref.isSafeRelative(entry.observation.requestedHref) {
+                errors.append("\(prefix).observation.unsafeHref")
+            }
+            switch entry.partition {
+            case "required":
+                if entry.observation.observedLocatorHref != entry.observation.requestedHref {
+                    errors.append("\(prefix).observation.locatorMismatch")
+                }
+                if entry.observation.contentSelector?.isEmpty != false
+                    || entry.observation.observedContent?.isEmpty != false {
+                    errors.append("\(prefix).observation.content")
+                }
+            case "counterexample":
+                if entry.observation.observedLocatorHref == nil
+                    || entry.observation.observedLocatorHref == entry.observation.requestedHref {
+                    errors.append("\(prefix).observation.counterexampleLocator")
+                }
+                if entry.observation.contentSelector != nil || entry.observation.observedContent != nil {
+                    errors.append("\(prefix).observation.counterexampleContent")
+                }
+            default:
+                break
+            }
+        }
+        return errors
+    }
+}
 
 private enum ReaderTOCEvidenceWriterError: Error, CustomStringConvertible {
     case missingInvocationContext
@@ -182,7 +366,7 @@ extension UITestCase {
         }
         let pathID = path.map(String.init).joined(separator: ".")
         let identifier = "reader.toc.chapter.\(pathID)"
-        let rows = app.buttons[identifier]
+        let rows = app.buttons.matching(identifier: identifier)
         guard rows.count == 1,
               let row = rows.allElementsBoundByIndex.first,
               row.exists,
@@ -222,26 +406,23 @@ extension UITestCase {
             throw ReaderTOCEvidenceWriterError.assetIntegrityMismatch("assetID")
         }
         let installedURL = URL(fileURLWithPath: String(parts[1]))
-        let proof = try FixtureDatasetStore.readerAssetProof(
-            forInstalledFileName: installedURL.lastPathComponent
-        )
-        guard proof.assetID == assetID,
-              proof.installedPath == installedURL.path,
-              proof.expectedSHA256 == String(parts[2]),
-              proof.expectedByteSize == expectedByteSize,
-              proof.actualSHA256 == String(parts[4]),
-              proof.actualByteSize == actualByteSize else {
+        guard installedURL.path.hasPrefix("/"),
+              installedURL.deletingLastPathComponent().lastPathComponent == "Books",
+              installedURL.path
+                  == installedURL.deletingLastPathComponent()
+                      .appendingPathComponent(installedURL.lastPathComponent)
+                      .path else {
             throw ReaderTOCEvidenceWriterError.assetIntegrityMismatch(
-                "manifest-or-installed-copy"
+                "installed-path"
             )
         }
         return ReaderTOCEvidenceAsset(
             assetID: assetID,
-            installedPath: proof.installedPath,
-            expectedSHA256: proof.expectedSHA256,
-            expectedByteSize: proof.expectedByteSize,
-            actualSHA256: proof.actualSHA256,
-            actualByteSize: proof.actualByteSize
+            installedPath: installedURL.path,
+            expectedSHA256: String(parts[2]),
+            expectedByteSize: expectedByteSize,
+            actualSHA256: String(parts[4]),
+            actualByteSize: actualByteSize
         )
     }
 
@@ -257,7 +438,7 @@ extension UITestCase {
         guard let webView = webViews.allElementsBoundByIndex.first else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation("webView")
         }
-        let content = webView.staticTexts[selector]
+        let content = webView.staticTexts.matching(identifier: selector)
         guard content.count == 1,
               let element = content.allElementsBoundByIndex.first else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
@@ -272,12 +453,12 @@ extension UITestCase {
         rootIdentifier: String,
         identifier: String
     ) throws -> String {
-        let roots = app.otherElements[rootIdentifier]
+        let roots = app.otherElements.matching(identifier: rootIdentifier)
         guard roots.count == 1,
               let root = roots.allElementsBoundByIndex.first else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(rootIdentifier)
         }
-        let elements = root.staticTexts[identifier]
+        let elements = root.staticTexts.matching(identifier: identifier)
         guard elements.count == 1,
               let element = elements.allElementsBoundByIndex.first,
               let value = element.value as? String,

@@ -13,7 +13,6 @@
 //
 
 import XCTest
-@testable import BooksAndVocab
 
 final class ReaderFlowUITests: UITestCase {
     /// 章首獨立成段的真實單字（fixture 詞庫 entry 的 word）。
@@ -283,8 +282,8 @@ final class ReaderFlowUITests: UITestCase {
         canonicalInvalidRow.tapWhenReady()
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
-        XCTAssertEqual(reader.tocMissingDestination.count, 1)
-        XCTAssertEqual(reader.tocRetry.count, 1)
+        XCTAssertEqual(reader.tocMissingDestinationCount, 1)
+        XCTAssertEqual(reader.tocRetryCount, 1)
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         XCTAssertFalse(reader.tocDone.isEnabled)
         XCTAssertEqual(reader.currentLocator.value as? String, "OEBPS/chapter1.xhtml")
@@ -309,8 +308,8 @@ final class ReaderFlowUITests: UITestCase {
         reader.tocRetry.tapWhenReady()
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
-        XCTAssertEqual(reader.tocMissingDestination.count, 1)
-        XCTAssertEqual(reader.tocRetry.count, 1)
+        XCTAssertEqual(reader.tocMissingDestinationCount, 1)
+        XCTAssertEqual(reader.tocRetryCount, 1)
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         XCTAssertFalse(reader.tocDone.isEnabled)
         reader.assertIsActive()

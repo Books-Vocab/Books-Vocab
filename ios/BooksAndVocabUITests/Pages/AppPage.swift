@@ -93,6 +93,7 @@ struct AppPage {
     var exploreLoadingState: XCUIElement { exploreElement(identifier: "explore.loadingState") }
     var exploreLoadedState: XCUIElement { exploreElement(identifier: "explore.loadedState") }
     var exploreEmptyState: XCUIElement { exploreElement(identifier: "explore.emptyState") }
+    var explorePartialState: XCUIElement { exploreElement(identifier: "explore.partialState") }
     var exploreErrorState: XCUIElement { exploreElement(identifier: "explore.errorState") }
     var exploreRetryButton: XCUIElement { exploreElement(identifier: "explore.retryButton") }
 

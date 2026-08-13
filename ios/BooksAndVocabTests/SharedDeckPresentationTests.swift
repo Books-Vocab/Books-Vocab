@@ -30,6 +30,7 @@ struct SharedDeckPresentationTests {
         #expect(!loadingState.contains("ProgressView"))
     }
 
+#if DEBUG && targetEnvironment(simulator)
     @Test func exploreCatalogPreviewUsesRetryFixtureWithoutDuplicatingPhaseState() {
         let preview = ExploreCatalogPreview(
             fixtureID: .retry
@@ -38,6 +39,7 @@ struct SharedDeckPresentationTests {
         #expect(preview.fixtureID == .retry)
         #expect(preview.initialCacheFixtureID == nil)
     }
+#endif
 
 #if DEBUG && targetEnvironment(simulator)
     @Test func exploreCatalogFixtureIDs_keepRequiredAndCounterexampleLabelsSeparate() {
