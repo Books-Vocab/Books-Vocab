@@ -552,17 +552,27 @@ final class FixtureDatasetUITests: UITestCase {
         let anchorMonth = monthKey(for: anchorDay)
         let previousMonth = monthKey(for: anchorDay, offset: -1)
         let counts = dayCounts(in: history, timeZoneIdentifier: clock.timeZone!)
+        let occupiedDays = Set(counts.local.keys)
+        let emptyMonth = try XCTUnwrap(
+            stride(from: -1, through: -12, by: -1)
+                .map { monthKey(for: anchorDay, offset: $0) }
+                .first { month in
+                    guard let first = emptyDay(in: month, occupied: occupiedDays) else { return false }
+                    return emptyDay(in: month, occupied: occupiedDays, excluding: [first]) != nil
+                },
+            "dense fixture must expose a month with two distinct empty days"
+        )
         let emptyDayKey = try XCTUnwrap(
-            emptyDay(in: previousMonth, occupied: Set(counts.local.keys)),
-            "dense fixture must expose an empty day in the previous month"
+            emptyDay(in: emptyMonth, occupied: occupiedDays),
+            "dense fixture must expose an empty day"
         )
         let emptyCounterexampleDay = try XCTUnwrap(
-            emptyDay(in: previousMonth, occupied: Set(counts.local.keys), excluding: [emptyDayKey]),
-            "dense fixture must expose a second empty day for the counterexample"
+            emptyDay(in: emptyMonth, occupied: occupiedDays, excluding: [emptyDayKey]),
+            "dense fixture must expose a second distinct empty day"
         )
-        let populatedMonth = counts.local.keys
-            .filter { $0.hasPrefix(previousMonth) }
-            .isEmpty ? monthKey(for: boundaryDays.local) : previousMonth
+        let populatedMonth = [previousMonth] + stride(from: -2, through: -12, by: -1).map { monthKey(for: anchorDay, offset: $0) }
+            .first { mostPopulatedDay(in: $0, counts: counts.local) != nil }
+            ?? monthKey(for: boundaryDays.local)
         let populatedDay = try XCTUnwrap(
             mostPopulatedDay(in: populatedMonth, counts: counts.local),
             "dense fixture must expose a populated day"
@@ -606,7 +616,7 @@ final class FixtureDatasetUITests: UITestCase {
 
         // All navigation and day keys are derived from the injected anchor and
         // decoded history; no localized labels or wall-clock dates are used.
-        moveCalendar(calendar, from: anchorMonth, to: previousMonth)
+        moveCalendar(calendar, from: anchorMonth, to: emptyMonth)
         guard calendar.day(emptyDayKey).waitUntilExists(timeout: 5) else {
             captureStep("empty-day", app: app)
             XCTFail("dense calendar fixture must expose an empty selectable day")
@@ -624,7 +634,7 @@ final class FixtureDatasetUITests: UITestCase {
             datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
 
-        moveCalendar(calendar, from: previousMonth, to: populatedMonth)
+        moveCalendar(calendar, from: emptyMonth, to: populatedMonth)
         guard calendar.day(populatedDay).waitUntilExists(timeout: 5) else {
             XCTFail("dense calendar fixture must expose a populated selectable day")
             return
@@ -665,7 +675,7 @@ final class FixtureDatasetUITests: UITestCase {
         counterexampleOverview.reviewCalendarButton.tapWhenReady()
         let counterexampleCalendar = ReviewCalendarPage(app: counterexampleApp)
         assertClockProvenance(in: counterexampleApp)
-        moveCalendar(counterexampleCalendar, from: anchorMonth, to: previousMonth)
+        moveCalendar(counterexampleCalendar, from: anchorMonth, to: emptyMonth)
         counterexampleCalendar.day(emptyCounterexampleDay).tapWhenReady()
         try assertEmptyDay(counterexampleCalendar, label: "empty-day-counterexample")
         generatedEvidence.append(try captureEvidence(
@@ -673,7 +683,7 @@ final class FixtureDatasetUITests: UITestCase {
             datasetID: document.datasetID, device: device, installedFixture: installedFixture
         ))
         let counterexampleBoundaryMonth = monthKey(for: boundaryDays.utc)
-        moveCalendar(counterexampleCalendar, from: previousMonth, to: counterexampleBoundaryMonth)
+        moveCalendar(counterexampleCalendar, from: emptyMonth, to: counterexampleBoundaryMonth)
         counterexampleCalendar.day(boundaryDays.utc).tapWhenReady()
         let counterexampleBoundaryCount = try assertPopulatedDay(
             counterexampleCalendar,
