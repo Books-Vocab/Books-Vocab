@@ -67,18 +67,51 @@ struct SettingsReviewSection: View {
                 Text(L10n.string("凍結複習時鐘"))
                     .accessibilityHidden(true)
             }
-            .accessibilityIdentifier("settings.review.pauseToggle")
-            // iOS 26 Form's synthesized Switch accessibility value can lag one
-            // render behind its SwiftUI binding. Publish the same presentation
-            // state explicitly so UI tests observe the state users see.
-            .accessibilityValue(pauseDraft ? "1" : "0")
-            .onChange(of: pauseDraft) { _, isPaused in
-                persistPauseChange(isPaused)
-            }
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
         } footer: {
             SettingsSectionFooter(pauseDescription)
+        }
+    }
+
+    private struct NativeSettingsPauseSwitch: UIViewRepresentable {
+        @Binding var isOn: Bool
+        let accessibilityLabel: String
+
+        final class Coordinator: NSObject {
+            var binding: Binding<Bool>
+
+            init(binding: Binding<Bool>) {
+                self.binding = binding
+            }
+
+            @objc func valueChanged(_ sender: UISwitch) {
+                binding.wrappedValue = sender.isOn
+            }
+        }
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator(binding: $isOn)
+        }
+
+        func makeUIView(context: Context) -> UISwitch {
+            let control = UISwitch()
+            control.addTarget(
+                context.coordinator,
+                action: #selector(Coordinator.valueChanged(_:)),
+                for: .valueChanged
+            )
+            control.accessibilityLabel = accessibilityLabel
+            control.accessibilityIdentifier = "settings.review.pauseToggle"
+            return control
+        }
+
+        func updateUIView(_ uiView: UISwitch, context: Context) {
+            if uiView.isOn != isOn {
+                uiView.setOn(isOn, animated: false)
+            }
+            uiView.accessibilityLabel = accessibilityLabel
+            uiView.accessibilityIdentifier = "settings.review.pauseToggle"
         }
     }
 
