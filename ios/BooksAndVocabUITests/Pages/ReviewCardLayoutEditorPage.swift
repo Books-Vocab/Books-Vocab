@@ -17,7 +17,7 @@ struct ReviewCardLayoutEditorPage {
 
     // MARK: - Chrome
 
-    var resetMenu: XCUIElement { element("reviewCardLayout.resetMenu") }
+    var resetMenu: XCUIElement { compositeElement("reviewCardLayout.resetMenu") }
     var resetAllItem: XCUIElement { element("reviewCardLayout.reset.all") }
 
     /// Sheet-only confirmation button (absent on the pushed Settings route).
