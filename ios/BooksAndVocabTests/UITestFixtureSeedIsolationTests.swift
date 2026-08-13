@@ -174,6 +174,8 @@ struct UITestFixtureSeedIsolationTests {
             .appendingPathComponent("BooksAndVocabApp.swift")
         let managerSourceURL = Self.supportDirectory
             .appendingPathComponent("UITestSubscriptionManager.swift")
+        let fixtureSeedSourceURL = Self.supportDirectory
+            .appendingPathComponent("UITestFixtureSeed.swift")
         let authManagerSourceURL = Self.supportDirectory
             .deletingLastPathComponent() // BooksAndVocab
             .appendingPathComponent("Services/AuthManager.swift")
@@ -192,6 +194,7 @@ struct UITestFixtureSeedIsolationTests {
         let appSource = try String(contentsOf: appSourceURL, encoding: .utf8)
         let managerSource = try String(contentsOf: managerSourceURL, encoding: .utf8)
         let authManagerSource = try String(contentsOf: authManagerSourceURL, encoding: .utf8)
+        let fixtureSeedSource = try String(contentsOf: fixtureSeedSourceURL, encoding: .utf8)
 
         #expect(
             appSource.contains("#if targetEnvironment(simulator)\n        if AppRuntimeOptions.isUITesting"),
@@ -216,6 +219,12 @@ struct UITestFixtureSeedIsolationTests {
         #expect(
             !authManagerSource.contains("#if DEBUG\n    func applyUITestPersistedSession"),
             "DEBUG must not decide whether explicit auth fixture state can be applied"
+        )
+        #expect(
+            fixtureSeedSource.contains(
+                "#if targetEnvironment(simulator)\n    @MainActor\n    private static func applyAuthSeed"
+            ),
+            "the fixture auth helper must be simulator-only so Catalyst does not compile the simulator auth seam"
         )
         #expect(
             fixtureStoreTestsSource.contains(

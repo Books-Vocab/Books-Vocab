@@ -130,7 +130,12 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) -> XCUIElement {
         let row = tocChapter(path)
-        XCTAssertEqual(row.count, 1, file: file, line: line)
+        XCTAssertEqual(
+            tableOfContentsSheet.buttons.matching(identifier: "reader.toc.chapter.\(path)").count,
+            1,
+            file: file,
+            line: line
+        )
         XCTAssertEqual(row.label, label, file: file, line: line)
         return row
     }
@@ -147,7 +152,12 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        XCTAssertEqual(evidenceAsset.count, 1, file: file, line: line)
+        XCTAssertEqual(
+            app.staticTexts.matching(identifier: "reader.evidence.asset").count,
+            1,
+            file: file,
+            line: line
+        )
         guard let descriptor = evidenceAsset.value as? String, !descriptor.isEmpty else {
             XCTFail("reader.evidence.asset must expose a non-empty proof descriptor", file: file, line: line)
             return
@@ -213,8 +223,16 @@ struct ReaderPage {
         tableOfContentsSheet.staticTexts["reader.toc.missingDestination"]
     }
 
+    var tocMissingDestinationCount: Int {
+        tableOfContentsSheet.staticTexts.matching(identifier: "reader.toc.missingDestination").count
+    }
+
     var tocRetry: XCUIElement {
         tableOfContentsSheet.buttons["reader.toc.retry"]
+    }
+
+    var tocRetryCount: Int {
+        tableOfContentsSheet.buttons.matching(identifier: "reader.toc.retry").count
     }
 
     var tocDone: XCUIElement {
@@ -223,16 +241,6 @@ struct ReaderPage {
 
     var currentLocator: XCUIElement {
         app.staticTexts["reader.currentLocator"]
-    }
-
-    /// Compact header progress badge text (e.g. "12.3%"); the typed progress
-    /// state badge is present even when its numeric value is unknown.
-    var progressBadge: XCUIElement {
-        app.staticTexts["reader.header.progressBadge"]
-    }
-
-    private var progressBadgeQuery: XCUIElementQuery {
-        app.staticTexts.matching(identifier: "reader.header.progressBadge")
     }
 
     var runtimeState: XCUIElement {
@@ -313,11 +321,11 @@ struct ReaderPage {
     /// paragraphs (e.g. a chapter heading line) expose an exact-label
     /// staticText whose center is a deterministic word-tap target.
     func contentText(_ text: String) -> XCUIElement {
-        let matches = webView.staticTexts[text]
+        let matches = webView.staticTexts.matching(identifier: text)
         guard matches.count == 1,
               let element = matches.allElementsBoundByIndex.first else {
             XCTFail("Reader content selector must resolve exactly once: \(text); found \(matches.count)")
-            return matches.element(matching: .any, identifier: "__missing_reader_content__")
+            return matches.element(boundBy: 0)
         }
         return element
     }
@@ -328,7 +336,7 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) {
         XCTAssertEqual(
-            webView.staticTexts[text].count,
+            webView.staticTexts.matching(identifier: text).count,
             0,
             "Reader content must remain absent: \(text)",
             file: file,
@@ -340,17 +348,24 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        XCTAssertEqual(tableOfContentsSheet.count, 1, file: file, line: line)
         XCTAssertEqual(
-            tableOfContentsSheet.staticTexts["reader.toc.sheet.result.success"].count,
+            app.otherElements.matching(identifier: "reader.toc.sheet").count,
             1,
             file: file,
             line: line
         )
         XCTAssertEqual(
-            app.otherElements["reader.toc.readerOverlay"].staticTexts[
-                "reader.toc.readerOverlay.destination"
-            ].count,
+            tableOfContentsSheet.staticTexts.matching(identifier: "reader.toc.sheet.result.success").count,
+            1,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            app.otherElements
+                .matching(identifier: "reader.toc.readerOverlay")
+                .staticTexts
+                .matching(identifier: "reader.toc.readerOverlay.destination")
+                .count,
             1,
             file: file,
             line: line

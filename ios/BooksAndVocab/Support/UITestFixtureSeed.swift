@@ -159,6 +159,7 @@ enum UITestFixtureSeed {
 #endif
     }
 
+#if targetEnvironment(simulator)
     @MainActor
     private static func applyAuthSeed(_ fixtureID: UIWorldAuthFixtureID, auth: AuthManager) {
         let seed = FixtureDatasetStore.requireAuthSeed(for: fixtureID)
@@ -191,5 +192,6 @@ enum UITestFixtureSeed {
             preconditionFailure("\(fixtureID.rawValue) cannot declare keychainTokenState=absent")
         }
     }
+#endif
 }
 #endif
