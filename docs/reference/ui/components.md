@@ -290,6 +290,7 @@ Scope: `ios/BooksAndVocab`
 規則：
 - 若狀態在 panel 內，優先用 `Content`
 - 若狀態本身就是一個獨立區塊，優先用 `Card`
+- UI World asset evidence 不是 loading/empty placeholder：選定 fixture 後，asset snapshot 或 decode 失敗必須 fail-loud；不可用 optional lookup 或 `EmptyView` 把 evidence node 靜默省略。
 
 ### 3. Hero Status Pattern
 

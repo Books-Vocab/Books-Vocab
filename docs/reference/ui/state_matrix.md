@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/
-verified_against: dcb7b705f
+verified_against: 105318f5d518
 -->
 # UI State Matrix
 
@@ -199,6 +199,35 @@ Scope: `ios/BooksAndVocab`
 | 跨裝置衝突 | iCloud KV 外部變更通知 | updatedAt LWW 整組原子取代；時戳不可信（非有限 / 超界 / 版本不明）時整包忽略，不半套 | 已覆蓋 |
 
 ---
+
+## Explore（Shared Deck Catalog）
+
+主要檔案：
+- `ios/BooksAndVocab/Views/Explore/ExploreView.swift`
+- `ios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift`
+- `ios/BooksAndVocab/Services/SharedDeckCatalogService.swift`
+
+### Explore Catalog State
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|---------|------|
+| Loading | sync 中且本機 live deck 數為 0 | loading state message + progress | 已覆蓋 |
+| Empty | sync 成功且 catalog 為空 | empty state | 已覆蓋 |
+| Error | list 或 SwiftData fetch/reconcile/save failure 且沒有 cache | error state + retry | 已覆蓋 |
+| Partial | list 或 SwiftData failure 但保有 cache | cached content + stale/failure banner | 已覆蓋 |
+| No results | 有 catalog 但搜尋/篩選結果為 0 | no-results state + clear filters | 已覆蓋 |
+| Content | 有 live deck 且篩選結果非空 | deck grid/list | 已覆蓋 |
+
+### Explore Detail Storage State
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|---------|------|
+| Loading | detail 讀取本機 SharedDeck 尚未完成 | detail loading state | 已覆蓋 |
+| Loaded | 唯一 deck row 成功讀取 | cover/header/copy/sample cards | 已覆蓋 |
+| Missing | fetch 成功但沒有該 remoteId | missing deck state | 已覆蓋 |
+| Storage failure | SwiftData fetch 失敗或資料列不合法 | 明確 storage-error state + retry；不得顯示 missing | 已覆蓋 |
+
+Explore fixture evidence 另受 `sharedDecks` contract 約束：每個 fixture 恰有一個 `assetIDs`，snapshot/驗證/decode 失敗直接 fail-loud，不以 optional evidence node 形成假成功。
 
 ## Settings
 
