@@ -392,7 +392,7 @@ final class SettingsFlowUITests: UITestCase {
             visible: true,
             hittable: false
         )
-        XCTAssertFalse(settings.resetButton.isHittable, "completed reset must not expose a retry action")
+        XCTAssertFalse(settings.resetButton.isEnabled, "completed reset must not expose an enabled retry action")
         captureStep(
             "reset-counterexample",
             assetID: try SettingsFixtureManifest.evidenceAssetID(for: "reset_counterexample"),
