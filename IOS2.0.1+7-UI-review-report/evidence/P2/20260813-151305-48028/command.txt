@@ -1,0 +1,12 @@
+sourceWorktree=/Users/chenliangyu/project/kg/.claude/worktrees/p1-dictionary-lookup-state-20260813
+helper=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh
+toolRoot=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812
+validator=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812/ops/uitest_evidence_contract.py
+toolResolution=helper-skill-repo
+branch=debug/p1-dictionary-lookup-state-20260813
+sourceCommit=39ef0b8e933e34c86c3a819ac68233ee71ae9ae7
+dataset=marketing_demo
+datasetSHA256=19152bf5e69c9817423661217e1b5b76de418928346b49021c4ae9173f7f4f47
+selector=--method DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector
+simulatorMode=device
+runner=./ops/ios_ops.sh test --ui --json --dataset marketing_demo --device 8B65DAD1-A260-43E5-99EA-6191CB11B33A DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector 

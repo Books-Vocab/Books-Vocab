@@ -1,0 +1,28 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T15:16:22+00:00",
+      "assetIDs": [
+        "01-launch",
+        "02-canonical-result"
+      ],
+      "notes": "主代理視覺複核：dictionary canonical result 的結果卡、sense/provenance 與 materialization 內容可讀，沒有裁切或重疊；launch 與結果狀態均穩定。",
+      "visualChecks": [
+        "內容與狀態可讀且無裁切/重疊",
+        "主要操作控件與結果區域穩定"
+      ],
+      "manifestSHA256": "3ee2eb0d3a0efaf515f51266e66e4bbfedca6b1dccca39f0728acc7e451e65ca",
+      "evidenceRootSHA256": "25c05479ebf44515cfb34d188fb7d16c40ff8a746b3036931735b2b62e77eafa",
+      "provenance": {
+        "sourceCommit": "39ef0b8e933e34c86c3a819ac68233ee71ae9ae7",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "19152bf5e69c9817423661217e1b5b76de418928346b49021c4ae9173f7f4f47",
+        "device": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+        "selector": "--method DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization"
+      }
+    }
+  ]
+}

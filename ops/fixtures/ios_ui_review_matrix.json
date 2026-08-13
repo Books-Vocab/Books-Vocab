@@ -169,7 +169,7 @@
       "title": "Settings information architecture and grouping",
       "surface": "Settings sections",
       "sourceRefs": ["ios/BooksAndVocab/Views/Settings/SettingsView.swift", "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"],
-      "requiredFixtureIDs": ["settings.ia-long-content", "settings.clean-preferences"],
+      "requiredFixtureIDs": ["settings.preferences_auto_sync_off", "settings.long_content_counterexample", "settings.reset_counterexample"],
       "acceptance": ["sections group by user intent with stable navigation/accessibility labels", "long content, reset and destructive actions remain discoverable without ambiguous duplicate rows"],
       "counterexamples": ["long identity/email", "clean defaults versus persisted non-defaults"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["settings", "section-navigation", "long-content", "reset"], "counterexampleSteps": ["long-content-counterexample", "reset-counterexample"], "visualChecks": ["section grouping", "safe-area/scroll behavior"], "blockers": ["IA refactor and Simulator evidence pending"]}

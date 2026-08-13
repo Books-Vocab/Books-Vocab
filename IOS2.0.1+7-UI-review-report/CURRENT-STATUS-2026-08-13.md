@@ -6,19 +6,19 @@
 
 ## 結論
 
-原報告要求的是「重新思考並重構」而非局部修飾。P1–P15 表面上是 15 張圖，實際上是 5 個跨頁系統問題：資料／狀態模型、元件共用、互動時序、長內容／極端狀態與 visual hierarchy 必須一起收斂。只修單頁 padding、顏色或單一 selector，無法達到報告標準。
+原報告要求的是「重新思考並重構」而非局部修飾。P1–P15 表面上是 15 張圖，實際上是 5 個跨頁系統問題：資料／狀態模型、元件共用、互動時序、長內容／極端狀態與 visual hierarchy 必須一起收斂。這不是一次 UI polish；必須以 UI World 注入、狀態矩陣、Simulator/UI-test、證據契約與視覺迭代形成閉環。只修單頁 padding、顏色或單一 selector，無法達到報告標準。
 
-本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。
+本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。目前 14 個 requirement 已有有效 PASS 證據；P3 是唯一 BLOCK，原因是 dependency/cache 無法完成 build，沒有執行到產品測試；P15 的 3 個 selectors 已在最新 Settings lifecycle 修正上重跑收斂。
 
 ## 原報告意圖與目前差距
 
 | Cluster | 報告真正要求 | 目前已完成 | 尚差 | 狀態 |
 |---|---|---|---|---|
-| Dictionary P1–P2 | 詞典不可用、結果／詞義／來源不完整；需重做資料狀態與 typed surface，不是加一個按鈕 | explicit lookup state、canonical senses、provenance/materialization fixture、穩定 selector 已落地；P1 child `63b8d69a` 已 hand-back | fresh simulator P1/P2 evidence 尚未收斂 | IN_PROGRESS |
-| Reader Runtime P3–P7 | TOC 成功邊界、settings round-trip、P5 fixed-height/drag/scale、progress/loading/retry 狀態需同一 runtime 模型 | P4/P5 fresh bundle 已 PASS；P3 child `722b92f`、P6/P7 child `020d5c1` 已 hand-back；P6/P7 已明確化 progress/loading state 與 provenance | P3、P6、P7 fresh simulator + visual attestation | IN_PROGRESS |
+| Dictionary P1–P2 | 詞典不可用、結果／詞義／來源不完整；需重做資料狀態與 typed surface，不是加一個按鈕 | explicit lookup state、canonical senses、provenance/materialization fixture、穩定 selector 已落地；source `39ef0b8e`；P1/P2 fresh bundle 已 PASS 並完成視覺 attestation | 無目前已知功能 blocker；仍是 simulator-only / 單一視覺 reviewer | PASS（範圍受限） |
+| Reader Runtime P3–P7 | TOC 成功邊界、settings round-trip、P5 fixed-height/drag/scale、progress/loading/retry 狀態需同一 runtime 模型 | P4/P5、P6/P7 fresh bundle 已 PASS；P6/P7 source `c6ff48e0`/`e6630961` 已 hand-back | P3 build preflight 解析 `GoogleSignIn`、`Minizip` 失敗，沒有 execution；不可沿用舊 bundle | BLOCK（P3 infra） |
 | Explore/Overview P8–P10 | loading/empty/retry/counterexample、calendar shared components、Overview 需整體重設資訊層次 | P8/P9/P10 契約與視覺 evidence 均 PASS | 無目前已知功能 blocker；仍是 simulator-only / main-agent visual review | PASS（範圍受限） |
-| Vocabulary/Review Card P11–P13 | P11 role/review/search/CTA 需有完整資料世界；P12/P13 需消除留白、資訊隱藏與 toolbar 失控 | P12/P13 PASS；P11 fixture、facet union、CTA、dynamic type、counterexample 已落地 | P11 首輪失敗已修正 test 的 LazyVStack viewport 假設；fresh rerun 尚未完成 | IN_PROGRESS |
-| Settings/Sync P14–P15 | sync/error/retry 動畫與 settings IA 要可觀察、可回復；不可用 optimistic UI 假裝成功 | P14 PASS；P15 native binding、intent/rollback 分離、mutation generation 已落地；主流程 fresh PASS | P15 兩個 counterexample selector 尚在 batch；需補視覺確認 | IN_PROGRESS |
+| Vocabulary/Review Card P11–P13 | P11 role/review/search/CTA 需有完整資料世界；P12/P13 需消除留白、資訊隱藏與 toolbar 失控 | P11 rich world、facet union、CTA、dynamic type、counterexample PASS；P12/P13 PASS | P11 的 O(N) projection/AX scan 只完成靜態風險審查，未宣稱 production perf PASS | PASS（P11 perf 限制） |
+| Settings/Sync P14–P15 | sync/error/retry 動畫與 settings IA 要可觀察、可回復；不可用 optimistic UI 假裝成功 | P14 PASS；P15 以 deferred locale mutation、root refresh boundary、native binding、intent/rollback 分離完成 3-selector batch | 無目前已知功能 blocker；仍是 simulator-only / 單一視覺 reviewer | PASS（範圍受限） |
 
 ## P1–P15 evidence 狀態
 
@@ -26,29 +26,37 @@
 
 | ID | Selector | 程式／交接 | Evidence 狀態 |
 |---|---|---|---|
-| P1 | `DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization` | `63b8d69a` hand-back | fresh run 中 |
-| P2 | `DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector` | `63b8d69a` hand-back | fresh run 中 |
-| P3 | `ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess` | `722b92f` hand-back | fresh run 中；先前曾被 dependency cache 擋住，不能沿用舊結論 |
+| P1 | `DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization` | `39ef0b8e` hand-back | PASS；fresh bundle `evidence/P1/20260813-151159-44623` |
+| P2 | `DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector` | `39ef0b8e` hand-back | PASS；fresh bundle `evidence/P2/20260813-151305-48028` |
+| P3 | `ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess` | `722b92f` hand-back | BLOCK；build preflight 解析 `GoogleSignIn`/`Minizip` 失敗，0 executions |
 | P4 | `ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen` | child bundle | PASS；contract valid，4 steps visual pass |
 | P5 | 同 P4 selector，獨立 requirement | child bundle | PASS；以同一 shared flow 驗證不同 requirement，非重複 requirement |
-| P6 | `ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance` | `020d5c1` hand-back | fresh run 中 |
-| P7 | `ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess` | `020d5c1` hand-back | fresh run 中 |
+| P6 | `ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance` | `c6ff48e0` hand-back | PASS；`evidence/P6/20260813-142032-69495` |
+| P7 | `ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess` | `e6630961` hand-back | PASS；`evidence/P7/20260813-142940-99394` |
 | P8 | `ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates` | child bundle | PASS；contract valid，6 steps visual pass |
 | P9 | `FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors` | child bundle | PASS；contract valid，6 steps visual pass |
 | P10 | `OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory` | child bundle | PASS；contract valid，10 steps visual pass |
-| P11 | `VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently` | parent `790efe0` | fresh rerun 中；首輪 rc=1 根因已確認並修正 |
+| P11 | `VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently` | parent `10cb1a0` | PASS；`evidence/P11/20260813-143617-16438`；首輪 rc=1 根因已確認並修正 |
 | P12 | `ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings` | child bundle | PASS；contract valid，3 steps visual pass |
 | P13 | `ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled` | child bundle | PASS；contract valid，3 steps visual pass |
 | P14 | `SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess` | `e36b22a` hand-back | PASS；contract valid，2 steps visual pass |
-| P15 | `SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges` | `078569c6f` hand-back | PASS；contract valid，18 steps visual pass |
-| P15 | `SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors` | `078569c6f` hand-back | batch 中 |
-| P15 | `SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary` | `078569c6f` hand-back | batch 中 |
+| P15 | `SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges` | `51ea7178` hand-back | PASS；最新 batch，完成視覺 attestation |
+| P15 | `SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors` | `51ea7178` hand-back | PASS；最新 batch，完成視覺 attestation |
+| P15 | `SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary` | `51ea7178` hand-back | PASS；`evidence/P15/20260813-154622-45782`，完成視覺 attestation |
 
 ## P11 首輪失敗的根因與修正
 
 首輪 bundle `20260813-133155-99422` 的 contract 本身有效；唯一 assertion 是清除搜尋後要求 `row(p11-review-word-015).exists`。`visibleCount=644`、facet `14/503/127` 與搜尋投影均已通過。產品使用 `ScrollView + LazyVStack`，清除 query 會恢復完整 projection，但不保證指定 row 立即 materialize 在 viewport；失敗後的 accessibility teardown 才放大成 timeout。
 
 修正 commit `790efe069` 保留 `visibleCount=644` 的完整 projection 判斷，改以「已 materialize 且不含前一個 query 的 row」驗證 query 清除，不修改 production UI。這是對驗收假設的最小根因修正，不是放寬產品行為。
+
+## 已確認的根因與尚未能宣稱的部分
+
+- **P1/P2**：舊問題不是字典卡片少一個欄位，而是 lookup、typed sense、provenance 與 materialization 沒有共同狀態模型；UI World 現在注入 rich payload，驗收固定 idle/loading/success/error/retry、選定 sense 與來源鏈。舊測試另曾把 runner 注入資料的 SHA 寫成舊常數，source `39ef0b8e` 改成由 runner bytes 計算，避免測試自相矛盾。
+- **P3**：`run_ui_evidence` 在 build preflight 無法解析 `GoogleSignIn` 與 `Minizip`，因此沒有 execution、沒有產品畫面 verdict。這是 dependency/cache infrastructure BLOCK，不是把舊 bundle 偷升格成 PASS。
+- **P6/P7**：P6 首輪把 production normalized progress ID 與測試 ID 混用，後續又把 transient restore-warning 當成穩定終態；P7 則錯誤要求 Readium preload web view 數量與全域內容計數。修正為 typed progress state + provenance、等待 stable runtime state；移除受合法 Readium preload 影響的虛假全域假設，保留 content/loading/retry/error 轉換驗收。P6 source `c6ff48e0`、P7 source `e6630961` 的 fresh bundles 已 PASS。
+- **P11**：LazyVStack 的 viewport materialization 被誤當成 projection 不完整；修正驗收 oracle 後 `644` 筆 projection、facet union、搜尋與 CTA 均通過。靜態檢視仍看到 O(N) projection/sort 與 AX teardown 掃描，這是待 profiling 的風險，不足以宣稱 production performance 已證明。
+- **P15**：真正根因是 reset 偏好時 `setLanguage(.system)` 觸發 app root `.id(selection)` 重建，先摧毀 Settings navigation，再讓 locale 變更污染同一個 reset boundary 的 AX 文案。修正分三層：`rootRefreshID` 將一般語言刷新與 root identity 分離；Settings active 時把 reset 的 locale mutation 存成 `deferredSelection`，只持久化 default、保留當前 rendered locale；Settings 離場才一次 apply selection + root refresh。最後將測試 oracle 從 `isHittable` 改成語意正確的 `isEnabled == false`。最新 source `51ea71787` 的主流程、長內容與 reset counterexample 全部 PASS。
 
 ## 可重跑的穩定工作流
 
@@ -97,11 +105,11 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache uv run --python 3.13 \
 
 ## 驗證與偏離
 
-- 已通過：cluster/run-many/matrix targeted tests `27 passed`；`bash -n ops/ios_test.sh`；`docs_lint --registry`；P4/P5/P8/P9/P10/P12/P13/P14/P15 主流程 simulator evidence。
+- 已通過：cluster validator `valid=true clusterCount=5 requirementCount=15 selectorCount=16`；run-many/matrix targeted tests `27 passed`；`bash -n ops/ios_test.sh`；`docs_lint --registry`（45 documents）；P1/P2/P4/P5/P6/P7/P8/P9/P10/P11/P12/P13/P14/P15 simulator evidence。P15 最新 batch source `51ea71787`，3 selectors 均 machine PASS、bundle contract PASS、contact sheet 已逐項視覺 attestation。
 - 平台：本輪是 iOS Simulator 驗證，不是 physical device；報告中的「實機操作」在此以 pinned simulator + exact XCTest + stable visual artifact 實現，不能誤報成真機 PASS。
 - 視覺審查：目前 attestation reviewer 是 `main-agent-visual-review`；沒有第二位獨立視覺 reviewer，因此這是已揭露的 assurance limitation，不升格為雙人審查。
-- P1/P2、P3、P6/P7 與 P11/P15 counterexample 的 fresh batch 完成後，才可把本文件的 IN_PROGRESS 改成 PASS；未完成前保留 fail-closed 狀態。
+- P3 仍是唯一 BLOCK：dependency/cache preflight 失敗且 0 executions；需恢復 Xcode package resolution/cache 後，依同一 pinned device、dataset 與 exact selector 重跑。P11 的 static performance risk 同樣不是已證明的 performance PASS。
 
 ## 工作樹邊界
 
-本輪只完成 child commit + registry hand-back 與本工作樹內的報告／工具變更；沒有執行 integrate、cutover、resolve、sync、deploy，也沒有宣稱 local main、origin/main 或 production 已收斂。
+本輪 child 已完成 commit + registry hand-back；本報告／工具／證據亦已在本工作樹提交。依使用者明示的整合授權，後續會把本輪 scope 的 child branches fan-in 至 local `main`，完成 close-wave、清理本輪 worktrees/branches，並驗證 `main == origin/main == ls-remote origin/main`；不執行 deploy 或觸碰 `origin/prod`。

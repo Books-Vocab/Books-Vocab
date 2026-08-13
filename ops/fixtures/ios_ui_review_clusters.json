@@ -101,9 +101,9 @@
       "visualStateRefs": {"P14": "matrix.P14.verification", "P15": "matrix.P15.verification"},
       "runPlan": [
         {"requirementID": "P14", "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess", "datasetID": "marketing_demo", "status": "verified"},
-        {"requirementID": "P15", "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges", "datasetID": "marketing_demo", "status": "in_progress"},
-        {"requirementID": "P15", "selector": "SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors", "datasetID": "marketing_demo", "status": "pending"},
-        {"requirementID": "P15", "selector": "SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary", "datasetID": "marketing_demo", "status": "pending"}
+        {"requirementID": "P15", "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges", "datasetID": "marketing_demo", "status": "verified"},
+        {"requirementID": "P15", "selector": "SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors", "datasetID": "marketing_demo", "status": "verified"},
+        {"requirementID": "P15", "selector": "SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary", "datasetID": "marketing_demo", "status": "verified"}
       ]
     }
   ]
