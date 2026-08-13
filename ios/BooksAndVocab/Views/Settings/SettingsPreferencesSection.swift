@@ -212,6 +212,7 @@ struct SettingsPreferencesSection: View {
             )
             .accessibilityIdentifier("settings.preferences.reviewCardLayoutValue")
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.preferences.reviewCardLayoutRow")
     }
 
