@@ -37,7 +37,13 @@ struct ReviewCalendarPage {
     let app: XCUIApplication
 
     var monthHeader: XCUIElement {
-        exactlyOne(app.staticTexts.matching(identifier: "reviewCalendar.monthHeader"), "reviewCalendar.monthHeader")
+        // SwiftUI may materialize the identifier-bearing Text as `Other`
+        // inside the calendar composition; the identifier is the stable
+        // contract, not the UIKit-backed accessibility type.
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.monthHeader"),
+            "reviewCalendar.monthHeader"
+        )
     }
 
     var previousMonthButton: XCUIElement {
