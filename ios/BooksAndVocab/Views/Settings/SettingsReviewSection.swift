@@ -47,6 +47,10 @@ struct SettingsReviewSection: View {
             pauseDraft = reviewSettingsStore.settings.isProgressPaused
             modeDraft = reviewSettingsStore.settings.mode
         }
+        .onAppear {
+            pauseDraft = reviewSettingsStore.settings.isProgressPaused
+            modeDraft = reviewSettingsStore.settings.mode
+        }
     }
 
     // MARK: - Pause Section
@@ -60,12 +64,10 @@ struct SettingsReviewSection: View {
             // the identifier and action share the same accessibility element.
             LabeledContent {
                 NativeSettingsPauseSwitch(
-                    isOn: pauseBinding,
-                    accessibilityLabel: L10n.string("凍結複習時鐘")
+                    isOn: $pauseDraft,
+                    accessibilityLabel: L10n.string("凍結複習時鐘"),
+                    onUserChanged: persistPauseChange
                 )
-                .onChange(of: pauseDraft) { _, isPaused in
-                    persistPauseChange(isPaused)
-                }
             } label: {
                 Text(L10n.string("凍結複習時鐘"))
                     .accessibilityHidden(true)
@@ -80,21 +82,25 @@ struct SettingsReviewSection: View {
     private struct NativeSettingsPauseSwitch: UIViewRepresentable {
         @Binding var isOn: Bool
         let accessibilityLabel: String
+        let onUserChanged: (Bool) -> Void
 
         final class Coordinator: NSObject {
             var binding: Binding<Bool>
+            let onUserChanged: (Bool) -> Void
 
-            init(binding: Binding<Bool>) {
+            init(binding: Binding<Bool>, onUserChanged: @escaping (Bool) -> Void) {
                 self.binding = binding
+                self.onUserChanged = onUserChanged
             }
 
             @objc func valueChanged(_ sender: UISwitch) {
                 binding.wrappedValue = sender.isOn
+                onUserChanged(sender.isOn)
             }
         }
 
         func makeCoordinator() -> Coordinator {
-            Coordinator(binding: $isOn)
+            Coordinator(binding: $isOn, onUserChanged: onUserChanged)
         }
 
         func makeUIView(context: Context) -> UISwitch {
@@ -106,6 +112,7 @@ struct SettingsReviewSection: View {
             )
             control.accessibilityLabel = accessibilityLabel
             control.accessibilityIdentifier = "settings.review.pauseToggle"
+            control.accessibilityValue = isOn ? "1" : "0"
             return control
         }
 
@@ -115,6 +122,7 @@ struct SettingsReviewSection: View {
             }
             uiView.accessibilityLabel = accessibilityLabel
             uiView.accessibilityIdentifier = "settings.review.pauseToggle"
+            uiView.accessibilityValue = isOn ? "1" : "0"
         }
     }
 
@@ -156,7 +164,7 @@ struct SettingsReviewSection: View {
     /// UI-test 契約（SettingsSheetPage.reviewModeTile）才穩定成立。
     private var modeSection: some View {
         Section {
-            Picker(selection: $modeDraft) {
+            Picker(selection: modeBinding) {
                 ForEach(ReviewSettingsMode.allCases, id: \.rawValue) { mode in
                     Label(mode.displayName, systemImage: mode.icon)
                         .tag(mode)
@@ -167,14 +175,22 @@ struct SettingsReviewSection: View {
             }
             .pickerStyle(.inline)
             .labelsHidden()
-            .onChange(of: modeDraft) { _, mode in
-                persistModeChange(mode)
-            }
         } header: {
             SettingsSectionHeader(title: L10n.string("複習模式"), icon: "timer")
         } footer: {
             SettingsSectionFooter(L10n.string("選擇符合學習節奏的模式，設定立即生效。"))
         }
+    }
+
+    private var modeBinding: Binding<ReviewSettingsMode> {
+        Binding(
+            get: { modeDraft },
+            set: { mode in
+                guard modeDraft != mode else { return }
+                modeDraft = mode
+                persistModeChange(mode)
+            }
+        )
     }
 
     private func persistModeChange(_ mode: ReviewSettingsMode) {
