@@ -117,8 +117,17 @@ struct OverviewPage {
     }
 
     func assertMetric(_ name: String, value: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        let query = elements(identifier: "overview.metric.\(name)")
         let element = metric(name)
         element.assertExists(timeout: 10, file: file, line: line)
+        XCTAssertEqual(query.count, 1, "overview.metric.\(name) must be globally unique", file: file, line: line)
+        XCTAssertEqual(
+            overview.descendants(matching: .any).matching(identifier: "overview.metric.\(name)").count,
+            1,
+            "overview.metric.\(name) must be a live descendant of overview",
+            file: file,
+            line: line
+        )
         XCTAssertEqual(element.value as? String, value, file: file, line: line)
     }
 
