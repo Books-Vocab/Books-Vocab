@@ -522,9 +522,13 @@ final class ReaderViewState {
 
     init(
         runtimeSelection: ReaderRuntimeSelection = ReaderRuntimeFixtureAdapter.selection(scenario: nil),
+        initialProgression: Double? = nil,
         clock: ReaderRuntimeClock = .live
     ) {
-        runtime = ReaderRuntimeState(selection: runtimeSelection)
+        runtime = ReaderRuntimeState(
+            selection: runtimeSelection,
+            initialProgression: initialProgression
+        )
         self.clock = clock
     }
 

@@ -73,6 +73,8 @@ final class ReaderFlowUITests: UITestCase {
             XCTFail("閱讀器必須渲染真章節文本（章首段落「\(Self.seededWord)」）— 沒出現 = 開書失敗或內容是假的")
             return
         }
+        XCTAssertEqual(reader.webViewCount, 1, "reader webView selector must resolve exactly one element")
+        XCTAssertEqual(reader.contentTextCount(Self.seededWord), 1, "reader content selector must resolve exactly one element")
         captureStep("reader-content", app: app)
 
         // ── 3. 選詞 → 翻譯面板真的出現且帶內容（詞庫命中，零網路）──────────
@@ -361,7 +363,10 @@ final class ReaderFlowUITests: UITestCase {
                 reader.progressState(scenario).waitUntilExists(timeout: 20),
                 "Reader progress state must expose exact identifier: \(scenario.rawValue)"
             )
+            XCTAssertEqual(reader.progressStateCount(scenario), 1,
+                           "Reader progress state selector must resolve exactly one element: \(scenario.rawValue)")
             XCTAssertTrue(reader.runtimeState.waitUntilExists(timeout: 5))
+            XCTAssertEqual(reader.runtimeStateCount, 1, "Reader runtime state selector must resolve exactly one element")
             let provenance = String(describing: reader.runtimeState.value ?? reader.runtimeState.label)
             XCTAssertTrue(provenance.contains("dataset=marketing_demo"), provenance)
             XCTAssertTrue(provenance.contains("scenario=\(scenario.rawValue)"), provenance)
@@ -383,17 +388,24 @@ final class ReaderFlowUITests: UITestCase {
             let reader = ReaderPage(app: app)
             if scenario == .loadingSlow {
                 XCTAssertTrue(reader.loadingState(scenario).waitUntilExists(timeout: 10))
+                XCTAssertEqual(reader.loadingStateCount(scenario), 1,
+                               "Reader loading selector must resolve exactly one element: \(scenario.rawValue)")
                 reader.slowLoadingResolveButton.tapWhenReady()
             } else {
                 let error = reader.errorState(scenario)
                 XCTAssertTrue(error.waitUntilExists(timeout: 10))
-                error.buttons.firstMatch.tapWhenReady()
+                XCTAssertEqual(reader.errorStateCount(scenario), 1,
+                               "Reader error selector must resolve exactly one element: \(scenario.rawValue)")
+                XCTAssertEqual(error.buttons.count, 1, "Reader retry selector must resolve exactly one button")
+                error.buttons.element(boundBy: 0).tapWhenReady()
             }
 
             XCTAssertTrue(
                 reader.contentText(Self.seededWord).waitUntilExists(timeout: 45),
                 "Retry path must open the local fixture book for \(scenario.rawValue)"
             )
+            XCTAssertEqual(reader.webViewCount, 1, "reader webView selector must resolve exactly one element")
+            XCTAssertEqual(reader.contentTextCount(Self.seededWord), 1, "reader content selector must resolve exactly one element")
             app.terminate()
         }
     }

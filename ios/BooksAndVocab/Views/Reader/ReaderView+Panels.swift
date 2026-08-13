@@ -30,9 +30,19 @@ extension ReaderView {
         readerState.runtime.markRestoreFailure()
     }
 
+    var readerMainContentState: ReaderMainContentState {
+        ReaderMainContentState.resolve(
+            hasPublication: publication != nil,
+            errorMessage: readerState.errorMessage,
+            loadingState: readerState.loadingState
+        )
+    }
+
     @ViewBuilder
     var readerMainContent: some View {
-        if let publication {
+        switch readerMainContentState {
+        case .content:
+            if let publication {
             ReadiumNavigatorView(
                 publication: publication,
                 initialLocator: initialLocator,
@@ -78,9 +88,44 @@ extension ReaderView {
                 navigatorSettingsReceipt?.accessibilityValue
                     ?? ReaderNavigatorSettingsReceipt.pendingAccessibilityValue
             )
-        } else if let error = readerState.errorMessage {
-            readerErrorState(error)
+            } else {
+                readerEmptyState()
+            }
+        case .error:
+            if let error = readerState.errorMessage {
+                readerErrorState(error)
+            } else {
+                readerEmptyState()
+            }
+        case .loading:
+            EmptyView()
+        case .empty:
+            readerEmptyState()
         }
+    }
+
+    func readerEmptyState() -> some View {
+        ScrollView {
+            VStack {
+                Spacer(minLength: ReaderPresentationMetrics.Preview.topInset)
+                AppEmptyStateCard(
+                    title: L10n.string("閱讀內容尚未載入"),
+                    systemImage: "book.closed",
+                    description: L10n.string("請重試載入這本書。"),
+                    action: AppEmptyStateAction(
+                        title: L10n.string("重試載入"),
+                        systemImage: "arrow.clockwise",
+                        handler: { retryLoadPublication() }
+                    )
+                )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("reader.empty")
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                Spacer(minLength: ReaderPresentationMetrics.Preview.bottomInset)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .background(viewConfiguration.paperColor.ignoresSafeArea())
     }
 
     @ViewBuilder

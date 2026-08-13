@@ -129,6 +129,24 @@ enum ReaderLoadingState: Equatable, Sendable {
     }
 }
 
+enum ReaderMainContentState: Equatable, Sendable {
+    case loading
+    case error
+    case content
+    case empty
+
+    static func resolve(
+        hasPublication: Bool,
+        errorMessage: String?,
+        loadingState: ReaderLoadingState
+    ) -> Self {
+        if hasPublication { return .content }
+        if errorMessage != nil { return .error }
+        if loadingState.isLoading { return .loading }
+        return .empty
+    }
+}
+
 enum ReaderLoadAttempt: Equatable, Sendable {
     case proceed
     case holdSlow
@@ -148,6 +166,17 @@ struct ReaderRuntimeClock {
     let now: @MainActor () -> Date
 
     static let live = ReaderRuntimeClock(now: Date.init)
+}
+
+@MainActor
+struct ReaderProgressPersistenceSnapshot: Equatable {
+    let progression: Double
+    let dateLastRead: Date
+
+    init(progression: Double, clock: ReaderRuntimeClock) {
+        self.progression = progression
+        self.dateLastRead = clock.now()
+    }
 }
 
 struct ReaderRuntimeProvenance: Equatable, Sendable {
@@ -201,7 +230,9 @@ enum ReaderRuntimeFixtureAdapter {
         arguments: [String],
         dataset: ReaderFixtureDatasetProvenance? = nil
     ) -> ReaderRuntimeSelection? {
-        guard let argument = arguments.first(where: { $0.hasPrefix(argumentPrefix) }) else {
+        let matchingArguments = arguments.filter { $0.hasPrefix(argumentPrefix) }
+        guard matchingArguments.count <= 1 else { return nil }
+        guard let argument = matchingArguments.first else {
             return selection(scenario: nil, dataset: dataset)
         }
         let rawValue = String(argument.dropFirst(argumentPrefix.count))
@@ -234,9 +265,14 @@ final class ReaderRuntimeState {
     private var slowLoadingReleased = false
     private var failureMessage: String?
 
-    init(selection: ReaderRuntimeSelection = ReaderRuntimeFixtureAdapter.selection(scenario: nil)) {
+    init(
+        selection: ReaderRuntimeSelection = ReaderRuntimeFixtureAdapter.selection(scenario: nil),
+        initialProgression: Double? = nil
+    ) {
         self.selection = selection
-        progressState = selection.progressState
+        progressState = selection.locksProgress
+            ? selection.progressState
+            : ReaderProgressState.classify(progression: initialProgression)
     }
 
     var isLoading: Bool { loadingState.isLoading }
@@ -244,7 +280,9 @@ final class ReaderRuntimeState {
     var totalProgression: Double { progressState.progression ?? 0 }
 
     var runtimeStateAccessibilityValue: String {
-        "\(selection.accessibilityValue);state=\(loadingState.accessibilityIdentifier)"
+        let scenarioValue = selection.scenario?.rawValue ?? "production"
+        let provenanceValue = selection.provenance?.accessibilityValue ?? "dataset=none;source=production"
+        return "scenario=\(scenarioValue);progress=\(progressState.accessibilityIdentifier);loading=\(selection.loadMode.accessibilityIdentifier);\(provenanceValue);state=\(loadingState.accessibilityIdentifier)"
     }
 
     var loadingPhase: String {
@@ -304,7 +342,6 @@ final class ReaderRuntimeState {
 
     func markRestoreFailure() {
         progressState = .restoreFailure
-        fail(.restoreFailure)
     }
 
     func recordLocationProgression(_ progression: Double?) {

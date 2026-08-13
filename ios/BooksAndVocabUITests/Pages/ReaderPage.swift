@@ -231,12 +231,24 @@ struct ReaderPage {
         app.staticTexts["reader.header.progressBadge"]
     }
 
+    private var progressBadgeQuery: XCUIElementQuery {
+        app.staticTexts.matching(identifier: "reader.header.progressBadge")
+    }
+
     var runtimeState: XCUIElement {
         app.otherElements["reader.runtime.state"]
     }
 
+    var runtimeStateCount: Int {
+        app.otherElements.matching(identifier: "reader.runtime.state").count
+    }
+
     func progressState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
         app.otherElements["reader.progress.\(state.rawValue)"]
+    }
+
+    func progressStateCount(_ state: UITestReaderRuntimeScenario) -> Int {
+        app.otherElements.matching(identifier: "reader.progress.\(state.rawValue)").count
     }
 
     func loadingState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
@@ -244,9 +256,19 @@ struct ReaderPage {
         return app.otherElements["reader.loading.\(phase)"]
     }
 
+    func loadingStateCount(_ state: UITestReaderRuntimeScenario) -> Int {
+        let phase = state == .loadingSlow ? "slow" : "opening"
+        return app.otherElements.matching(identifier: "reader.loading.\(phase)").count
+    }
+
     func errorState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
         let failure = state == .loadingMissing ? "missing" : "retryable"
         return app.otherElements["reader.error.\(failure)"]
+    }
+
+    func errorStateCount(_ state: UITestReaderRuntimeScenario) -> Int {
+        let failure = state == .loadingMissing ? "missing" : "retryable"
+        return app.otherElements.matching(identifier: "reader.error.\(failure)").count
     }
 
     var slowLoadingResolveButton: XCUIElement {
@@ -263,6 +285,10 @@ struct ReaderPage {
             return matches.element(matching: .any, identifier: "__missing_reader_webview__")
         }
         return element
+    }
+
+    var webViewCount: Int {
+        app.webViews.count
     }
 
     /// A rendered text block inside the Readium WebView. Single-word
@@ -440,6 +466,12 @@ struct ReaderPage {
         return false
     }
 
+    func contentTextCount(_ text: String) -> Int {
+        app.webViews.staticTexts
+            .matching(NSPredicate(format: "label == %@", text))
+            .count
+    }
+
     // MARK: - Translation Panel
 
     private var translationWordQuery: XCUIElementQuery {
@@ -508,8 +540,10 @@ struct ReaderPage {
     func waitUntilProgressExceeds(_ threshold: Double, timeout: TimeInterval) -> Bool {
         UITestWaits.wait(
             for: NSPredicate { [app] _, _ in
-                let badge = app.staticTexts["reader.header.progressBadge"].firstMatch
-                guard badge.exists,
+                let badges = app.staticTexts.matching(identifier: "reader.header.progressBadge")
+                let badge = badges.element(boundBy: 0)
+                guard badges.count == 1,
+                      badge.exists,
                       let value = Double(badge.label.replacingOccurrences(of: "%", with: ""))
                 else { return false }
                 return value > threshold

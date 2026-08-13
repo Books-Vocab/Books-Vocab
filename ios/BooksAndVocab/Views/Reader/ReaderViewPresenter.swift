@@ -50,7 +50,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
 
             mainContent
 
-            if !state.isWebViewReady {
+            if state.loadingState.isLoading {
                 loadingOverlay
             }
 

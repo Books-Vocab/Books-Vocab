@@ -41,6 +41,76 @@ struct ReaderRuntimeStateTests {
         #expect(selection.provenance?.accessibilityValue == "dataset=marketing_demo;source=environment:KG_FIXTURE_DATASET_DEFLATE_B64;scenario=progress-middle")
     }
 
+    @Test func runtimeAdapterRejectsDuplicateScenarioSelectors() {
+        #expect(
+            ReaderRuntimeFixtureAdapter.selection(
+                arguments: [
+                    "-readerRuntimeScenario:progress-middle",
+                    "-readerRuntimeScenario:progress-complete"
+                ]
+            ) == nil
+        )
+    }
+
+    @Test func productionRuntimeStartsFromPersistedProgressionBeforeFirstLocation() {
+        let state = ReaderRuntimeState(
+            selection: ReaderRuntimeFixtureAdapter.selection(scenario: nil),
+            initialProgression: 0.568
+        )
+
+        #expect(state.progressState == .middle(0.568))
+        #expect(state.totalProgression == 0.568)
+        #expect(state.runtimeStateAccessibilityValue.contains("progress=middle"))
+
+        state.recordLocationProgression(0.73)
+
+        #expect(state.progressState == .middle(0.73))
+        #expect(state.totalProgression == 0.73)
+        #expect(state.runtimeStateAccessibilityValue.contains("progress=middle"))
+    }
+
+    @Test func invalidRestoreIsProgressWarningAndDoesNotBecomeLoadFailure() {
+        let state = ReaderRuntimeState(selection: ReaderRuntimeFixtureAdapter.selection(scenario: nil))
+
+        state.markRestoreFailure()
+
+        #expect(state.progressState == .restoreFailure)
+        #expect(state.loadingState == .loading(.opening))
+        #expect(state.errorMessage == nil)
+        #expect(state.beginLoadAttempt() == .proceed)
+    }
+
+    @Test func mainContentStateExposesLoadingErrorContentAndEmptyBranches() {
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: false,
+                errorMessage: nil,
+                loadingState: .loading(.opening)
+            ) == .loading
+        )
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: false,
+                errorMessage: "open failed",
+                loadingState: .failed(.openFailed)
+            ) == .error
+        )
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: true,
+                errorMessage: nil,
+                loadingState: .ready
+            ) == .content
+        )
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: false,
+                errorMessage: nil,
+                loadingState: .ready
+            ) == .empty
+        )
+    }
+
     @Test func slowLoadingCanBeReleasedWithoutWallClockWait() {
         let selection = ReaderRuntimeFixtureAdapter.selection(scenario: .loadingSlow)
         let state = ReaderRuntimeState(selection: selection)
@@ -90,11 +160,13 @@ struct ReaderRuntimeStateTests {
         #expect(saves.value == 1)
     }
 
-    @Test func runtimeTimestampComesFromInjectedClock() {
+    @Test func progressPersistenceSnapshotUsesInjectedClockForTimestampOnly() {
         let expected = Date(timeIntervalSince1970: 123)
         let clock = ReaderRuntimeClock(now: { expected })
+        let snapshot = ReaderProgressPersistenceSnapshot(progression: 0.42, clock: clock)
 
-        #expect(clock.now() == expected)
+        #expect(snapshot.dateLastRead == expected)
+        #expect(snapshot.progression == 0.42)
     }
 }
 

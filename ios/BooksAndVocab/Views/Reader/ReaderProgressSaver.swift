@@ -61,10 +61,10 @@ final class ReaderProgressSaver {
     /// 預設生產窗口 1.2s — 翻頁停止後才落盤。
     init(
         flushDelay: TimeInterval = ReaderMetrics.progressFlushDelay,
-        debouncer: any ReaderProgressDebouncing = SystemReaderProgressDebouncer()
+        debouncer: (any ReaderProgressDebouncing)? = nil
     ) {
         self.flushDelay = flushDelay
-        self.debouncer = debouncer
+        self.debouncer = debouncer ?? SystemReaderProgressDebouncer()
     }
 
     /// 將 `locator` 序列化為 Readium Locator JSON。
