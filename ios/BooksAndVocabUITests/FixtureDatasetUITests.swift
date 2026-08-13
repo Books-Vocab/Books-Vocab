@@ -48,6 +48,15 @@ private func rejectUnknownUITestKeys(
 }
 
 final class FixtureDatasetUITests: UITestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Calendar evidence captures four states and derives month navigation
+        // from the injected clock/history. Keep the allowance above XCTest's
+        // default one-minute limit so a valid full flow is not killed after
+        // the final screenshot.
+        executionTimeAllowance = 150
+    }
+
     private enum ReviewCalendarClockSelector {
         static let canonical = "reviewCalendar.clock.history_plan.anchor_day"
         static let live = "reviewCalendar.clock.live"
