@@ -44,6 +44,17 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 grep -q '"reason":"docker-build-cache"' "$state" && ok "docker cache reason recorded" || bad "docker cache reason"
 [[ "$(wc -c < "$log")" -le 1024 ]] && ok "known log is capped" || bad "known log not capped"
 
+echo "── exact threshold and healthy-disk log cap ──"
+root="$TMP/exact"; state="$TMP/exact/state.json"; log="$TMP/exact/reconcile.log"
+mkdir -p "$root"; printf '%*s' 4096 '' | tr ' ' x > "$log"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_DOCKER_CACHE_BYTES=$((2*1073741824+1)) KG_DISK_GUARD_DOCKER_ACTIVE=0 \
+  KG_DISK_GUARD_LOG_FILES="$log" KG_DISK_GUARD_LOG_MAX_KB=2 KG_DISK_GUARD_LOG_KEEP_KB=1 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"reason":"docker-build-cache"' "$state" && ok "2GiB+1 exact threshold warns" || bad "exact docker threshold"
+[[ "$(wc -c < "$log")" -le 1024 ]] && ok "healthy disk still caps known log" || bad "healthy disk log cap"
+
 echo "── active build: defer and preserve ──"
 root="$TMP/active"; cache="$root/.cache/ios-build-derived-data"; state="$TMP/active/state.json"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
