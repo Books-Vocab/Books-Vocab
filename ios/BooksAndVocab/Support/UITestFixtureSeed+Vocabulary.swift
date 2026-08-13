@@ -20,6 +20,7 @@ extension UITestFixtureSeed {
                 try clearReviewCalendarFixtures(from: context)
             }
             let entries = try insertVocabularySeed(seed, into: context)
+            _ = try FixtureDatasetStore.materializeEvidenceFixture()
             if !AuthManager.shared.isLoggedIn {
                 seedSignedInLoginFromWorld()
             }

@@ -53,6 +53,10 @@ struct ReviewCalendarPage {
         exactlyOne(app.descendants(matching: .any)["reviewCalendar.emptyDayDetail"], "reviewCalendar.emptyDayDetail")
     }
 
+    var emptyDaySummary: XCUIElement {
+        exactlyOne(app.staticTexts["reviewCalendar.emptyDaySummary"], "reviewCalendar.emptyDaySummary")
+    }
+
     var populatedDayDetail: XCUIElement {
         exactlyOne(app.descendants(matching: .any)["reviewCalendar.populatedDayDetail"], "reviewCalendar.populatedDayDetail")
     }

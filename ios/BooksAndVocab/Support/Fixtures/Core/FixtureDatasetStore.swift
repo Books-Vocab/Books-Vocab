@@ -9,6 +9,8 @@ private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 // Apple `.zlib` decompression expects a raw DEFLATE stream (no zlib/gzip
 // container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
+private let installedFixtureProofRelativePathEnvKey = "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH"
+private let uiTestSourceCommitEnvKey = "KG_UI_TEST_SOURCE_COMMIT"
 
 struct FixtureInstalledAssetProof: Equatable {
     let assetID: String
@@ -42,6 +44,14 @@ struct UIWorldInstalledAsset: Equatable {
 
 enum FixtureDatasetStore {
     @TaskLocal static var testingOverrideData: Data?
+
+    private typealias PreparedEvidenceFixtureProof = (
+        proof: UIWorldInstalledFixtureProof,
+        value: String
+    )
+    private static let evidenceCacheLock = NSLock()
+    private static var evidenceProofCache: [String: PreparedEvidenceFixtureProof] = [:]
+    private static var latestEvidenceCacheKey: String?
 
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
         try $testingOverrideData.withValue(data) {
@@ -327,10 +337,10 @@ enum FixtureDatasetStore {
         )
     }
 
-    /// Materialize the exact dataset bytes consumed by the app and return a
-    /// portable attestation for evidence consumers. This is intentionally
-    /// separate from the manifest's declared asset metadata: the proof is
-    /// generated after the app has loaded and written the fixture bytes.
+    /// Decode, canonicalize, re-decode, and write the app's materialized UI
+    /// World state once at fixture seed/install time. The relative proof path
+    /// is supplied by the UI test; the outer runner later reads that
+    /// app-container file without synthesizing its contents.
     static func materializeEvidenceFixture() throws -> UIWorldInstalledFixtureProof {
         guard case let .data(data, _) = loadSource() else {
             throw CocoaError(.fileReadNoSuchFile, userInfo: [
@@ -338,20 +348,86 @@ enum FixtureDatasetStore {
             ])
         }
         let document = try decode(data)
-        let relativePath = "Evidence/\(document.datasetID).json"
+        let sourceHash = SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let sourceCommit = ProcessInfo.processInfo.environment[uiTestSourceCommitEnvKey]
+            ?? "testing"
+        let jsonObject = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        guard JSONSerialization.isValidJSONObject(jsonObject) else {
+            throw CocoaError(.propertyListWriteInvalid)
+        }
+        let canonical = try JSONSerialization.data(withJSONObject: jsonObject, options: [.sortedKeys])
+        // Re-decode the bytes emitted by the app's canonicalization path. This
+        // proves the installed representation still satisfies the app schema.
+        let materializedDocument = try decode(canonical)
+        guard materializedDocument.datasetID == document.datasetID else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "materialized UI World dataset identity drifted",
+            ])
+        }
+
+        let environment = ProcessInfo.processInfo.environment
+        let relativePath = environment[installedFixtureProofRelativePathEnvKey]
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? "Evidence/\(document.datasetID).json"
+        guard !relativePath.hasPrefix("/"),
+              relativePath.split(separator: "/").allSatisfy({ $0 != "." && $0 != ".." })
+        else {
+            throw CocoaError(.fileWriteInvalidFileName, userInfo: [
+                NSLocalizedDescriptionKey: "installed fixture proof path must be portable",
+            ])
+        }
         let destination = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(relativePath)
+        let cacheKey = "\(document.datasetID)|\(sourceHash)|\(sourceCommit)|\(destination.standardizedFileURL.path)"
+        evidenceCacheLock.lock()
+        if let cached = evidenceProofCache[cacheKey] {
+            latestEvidenceCacheKey = cacheKey
+            evidenceCacheLock.unlock()
+            return cached.proof
+        }
+        evidenceCacheLock.unlock()
+
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try data.write(to: destination, options: .atomic)
-        return UIWorldInstalledFixtureProof(
+        try canonical.write(to: destination, options: .atomic)
+        let installedBytes = try Data(contentsOf: destination)
+        guard installedBytes == canonical else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: destination.path,
+                NSLocalizedDescriptionKey: "installed fixture proof bytes differ from app materialization",
+            ])
+        }
+        let proof = UIWorldInstalledFixtureProof(
             datasetID: document.datasetID,
             path: relativePath,
-            bytes: try byteSize(for: destination),
-            sha256: try sha256Hex(for: destination)
+            bytes: installedBytes.count,
+            sha256: SHA256.hash(data: installedBytes)
+                .map { String(format: "%02x", $0) }
+                .joined(),
+            type: "application/json",
+            sourceCommit: sourceCommit,
+            datasetSHA256: sourceHash
         )
+        let encodedProof = String(decoding: try JSONEncoder().encode(proof), as: UTF8.self)
+        evidenceCacheLock.lock()
+        evidenceProofCache[cacheKey] = (proof: proof, value: encodedProof)
+        latestEvidenceCacheKey = cacheKey
+        evidenceCacheLock.unlock()
+        return proof
+    }
+
+    /// Render-time accessor: only returns the proof prepared by fixture seed.
+    /// It intentionally performs no file reads, decoding, encoding, or hashing.
+    static func preparedEvidenceFixtureProofValue() -> String? {
+        evidenceCacheLock.lock()
+        defer { evidenceCacheLock.unlock() }
+        guard let key = latestEvidenceCacheKey,
+              let prepared = evidenceProofCache[key] else { return nil }
+        return prepared.value
     }
 
     private static func requireAsset(ref: String) throws -> UIWorldAsset {

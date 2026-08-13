@@ -95,6 +95,8 @@ EVIDENCE_LOCALE=""
 EVIDENCE_TIMEZONE=""
 EVIDENCE_APPEARANCE=""
 EVIDENCE_KIND="release-equivalent-simulator"
+P9_REVIEW_CALENDAR_SELECTOR="FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors"
+P9_PROOF_RETRIEVAL_STATUS=0
 LIVE_DEMO=0
 DEMO_ACCOUNT_IDENTITY_SHA256=""
 INCONCLUSIVE_REASON=""
@@ -1174,6 +1176,10 @@ run_xcodebuild_test_without_building_once() {
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" \
   KG_UI_TEST_SCREENSHOT_DIR="$UI_TEST_SCREENSHOT_DIR" \
+  KG_UI_TEST_SOURCE_COMMIT="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)" \
+  KG_UI_TEST_DATASET_ID="$EVIDENCE_DATASET_ID" \
+  KG_UI_TEST_DATASET_SHA256="$EVIDENCE_DATASET_SHA256" \
+  KG_UI_TEST_DEVICE_UDID="$(resolve_run_device_udid 2>/dev/null || true)" \
   env -u KG_LIVE_DEMO_RUN -u KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$DESTINATION" \
@@ -1888,9 +1894,50 @@ emit_ui_runner_lifecycle() {
 # as a last-writer-wins LATEST pointer for `ios_ops runs`. See
 # ops/lib/ios_run_verdict.sh.
 kg_ios_verdict_init test "$PROJECT_ROOT"
+
+validate_p9_review_calendar_sidecar() {
+  local manifest_path="$1" verdict_path="$2"
+  [[ -s "$manifest_path" ]] || return 0
+  "$UV_BIN" run --python 3.13 python "$PROJECT_ROOT/ops/p9_review_calendar_evidence.py" validate \
+    "$manifest_path" \
+    --workspace-root "$UI_TEST_SCREENSHOT_DIR" \
+    --outer-verdict "$verdict_path" \
+    >/dev/null
+}
+
+retrieve_p9_installed_fixture_proof() {
+  local manifest_path="$UI_TEST_SCREENSHOT_DIR/p9_review_calendar_review_manifest.json"
+  [[ -s "$manifest_path" ]] || return 0
+  [[ -n "$EVIDENCE_DATASET_ID" ]] || {
+    echo "[ios_test] error: P9 sidecar exists without datasetID" >&2
+    return 1
+  }
+  local device
+  device="$(resolve_run_device_udid 2>/dev/null || true)"
+  [[ -n "$device" ]] || {
+    echo "[ios_test] error: cannot resolve device for P9 installed proof retrieval" >&2
+    return 1
+  }
+  local destination="$UI_TEST_SCREENSHOT_DIR/installed-fixtures/$EVIDENCE_DATASET_ID.json"
+  mkdir -p "$(dirname "$destination")"
+  local pull_args=(pull "Evidence/$EVIDENCE_DATASET_ID.json" "$destination" --device "$device" --app "com.Max0228.BooksBrowser")
+  if [[ "$(ios_test_sdk_suffix)" == "iphonesimulator" ]]; then
+    pull_args+=(--simulator)
+  fi
+  if ! "$PROJECT_ROOT/ops/ios_device_files.sh" "${pull_args[@]}" >/dev/null; then
+    echo "[ios_test] error: failed to retrieve app-installed P9 proof" >&2
+    return 1
+  fi
+  [[ -s "$destination" ]] || {
+    echo "[ios_test] error: retrieved P9 proof is missing or empty: $destination" >&2
+    return 1
+  }
+  return 0
+}
+
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
-  local source_commit source_tree_status source_tree_dirty marketing_version build_number bundle_id started_at finished_at evidence_kind fixture_data_used os_name network_mode
+  local source_commit source_tree_status source_tree_dirty marketing_version build_number bundle_id started_at finished_at evidence_kind fixture_data_used os_name network_mode p9_manifest p9_record_count
   source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
   # The verdict names the commit this run came from, but the build tuple below is
   # read from the WORKING TREE's pbxproj. With uncommitted changes those two
@@ -1915,6 +1962,12 @@ write_json_verdict() {
   [[ "$(ios_test_sdk_suffix)" == iphoneos ]] && os_name="iOS"
   network_mode="fixture"
   [[ "$LIVE_DEMO" -eq 1 ]] && network_mode="live"
+  p9_manifest=""
+  p9_record_count=0
+  if [[ -n "$UI_TEST_SCREENSHOT_DIR" && -s "$UI_TEST_SCREENSHOT_DIR/p9_review_calendar_review_manifest.json" ]]; then
+    p9_manifest="$UI_TEST_SCREENSHOT_DIR/p9_review_calendar_review_manifest.json"
+    p9_record_count="$(jq -r '.records | length' "$p9_manifest" 2>/dev/null || printf '0')"
+  fi
   build_ui_test_review_page "$result"
   jq -nc \
     --arg schema "kg.ios.run-verdict.v1" \
@@ -1964,6 +2017,9 @@ write_json_verdict() {
     --arg uiVideoSHA256 "$UI_TEST_VIDEO_SHA256" \
     --arg uiReviewRoot "$UI_TEST_REVIEW_ROOT" \
     --arg uiReviewHtml "$UI_TEST_REVIEW_HTML" \
+    --arg p9Manifest "$p9_manifest" \
+    --arg p9Selector "$P9_REVIEW_CALENDAR_SELECTOR" \
+    --argjson p9RecordCount "$p9_record_count" \
     --arg device "$(resolve_run_device_udid 2>/dev/null || true)" \
     --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
     --argjson deviceRunLockWaitMs "${DEVICE_RUN_LOCK_WAIT_MS:-0}" \
@@ -2063,9 +2119,29 @@ write_json_verdict() {
         uiVideo:(if $uiVideo == "" then null else $uiVideo end),
         uiVideoIdentity:(if $uiVideo == "" then null else {runID:$uiVideoRunID,file:$uiVideoFile,sha256:$uiVideoSHA256} end),
         uiReviewRoot:(if $uiReviewRoot == "" then null else $uiReviewRoot end),
-        uiReviewHtml:(if $uiReviewHtml == "" then null else $uiReviewHtml end)
+        uiReviewHtml:(if $uiReviewHtml == "" then null else $uiReviewHtml end),
+        p9ReviewCalendarEvidence:(if $p9Manifest == "" then null else {
+          schema:"kg.p9.review_calendar.review_manifest.v2",
+          path:$p9Manifest,
+          sourceCommit:$sourceCommit,
+          datasetID:$datasetID,
+          datasetSHA256:$datasetSHA256,
+          device:$device,
+          selector:$p9Selector,
+          recordCount:$p9RecordCount
+        } end)
       }
     }' >"$VERDICT_JSON_FILE" || true
+  if [[ -n "$p9_manifest" ]] && ! validate_p9_review_calendar_sidecar "$p9_manifest" "$VERDICT_JSON_FILE"; then
+    echo "[ios_test] error: P9 review-calendar sidecar failed the formal outer-verdict contract" >&2
+    result="fail"
+    exit_code="1"
+    reason="p9-review-calendar-evidence-contract"
+    jq --arg result "$result" --arg exit "$exit_code" --arg reason "$reason" \
+      '.status=$result | .result=$result | .exit=$exit | .reason=$reason' \
+      "$VERDICT_JSON_FILE" >"$VERDICT_JSON_FILE.p9" && mv "$VERDICT_JSON_FILE.p9" "$VERDICT_JSON_FILE"
+    return 1
+  fi
   # The per-invocation JSON has no concurrent writer, so per-run metric
   # attribution is correct even when many agents finish at once.
   type append_run_metric >/dev/null 2>&1 && append_run_metric "$VERDICT_JSON_FILE"
@@ -2076,6 +2152,9 @@ populate_timing_breakdown
 build_ui_step_contact_sheet
 archive_ui_test_recording
 populate_coverage_summary || true
+if ! retrieve_p9_installed_fixture_proof; then
+  P9_PROOF_RETRIEVAL_STATUS=1
+fi
 
 # Extract summary from xcresult if available
 if [[ "$EXIT_CODE" -eq "$KG_IOS_EXIT_INFRA_UNAVAILABLE" ]]; then
@@ -2090,6 +2169,17 @@ if [[ "$EXIT_CODE" -eq "$KG_IOS_EXIT_INFRA_UNAVAILABLE" ]]; then
   echo "[ios_test] ? infrastructure unavailable (exit=$EXIT_CODE, ${ELAPSED}s) — $CALLER  verdict=$VERDICT_FILE" >&2
   echo "[ios_test] full log preserved: $TMPOUT" >&2
   echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
+elif [[ "$P9_PROOF_RETRIEVAL_STATUS" -ne 0 ]]; then
+  echo "" >&2
+  PRESERVE_TMPOUT=1
+  echo "RESULT=fail reason=p9-proof-retrieval caller=$CALLER elapsed=${ELAPSED}s log=$TMPOUT xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
+  write_json_verdict "fail" "1" "p9-proof-retrieval" ""
+  print_timing_summary
+  emit_ui_runner_lifecycle
+  echo "[ios_test] ✗ app-installed P9 proof retrieval failed — $CALLER  verdict=$VERDICT_FILE" >&2
+  echo "[ios_test] full log preserved: $TMPOUT" >&2
+  echo "[ios_test] xcresult preserved: $RESULT_BUNDLE" >&2
+  EXIT_CODE=1
 elif grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   EXECUTED="$(count_executed_tests_xcresult || count_executed_tests)"
   if [[ "$EXECUTED" -eq 0 ]]; then

@@ -221,9 +221,71 @@ def test_generated_evidence_metadata_uses_portable_v2_provenance() -> None:
     assert "selector" in ui_test
     assert "source" in ui_test
     assert "datasetID" in ui_test
+    assert "datasetSHA256" in ui_test
+    assert "sourceCommit" in ui_test
     assert "device" in ui_test
+    assert "type" in ui_test
     assert "installedFixture" in ui_test
-    assert "inode" not in ui_test
+
+
+def test_installed_fixture_proof_is_app_materialized_and_runner_read_only() -> None:
+    ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
+    store = _text(IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift")
+
+    assert "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH" in ui_test
+    assert "retrievedPath" in ui_test
+    assert "data.write(to: installedURL" not in ui_test
+    assert "canonical" in store
+    assert "materialized" in store
+    assert "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH" in store
+
+
+def test_review_calendar_render_path_only_reads_cached_proof() -> None:
+    presenter = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift")
+    store = _text(IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift")
+
+    assert "preparedEvidenceFixtureProofValue" in presenter
+    assert "materializeEvidenceFixture" not in presenter
+    assert "JSONEncoder" not in presenter
+    assert "Data(contentsOf:" not in presenter
+    assert "JSONEncoder" in store
+    prepared_accessor = store.split("static func preparedEvidenceFixtureProofValue()", 1)[1].split("\n    }", 1)[0]
+    assert "JSONEncoder" not in prepared_accessor
+    assert "Data(contentsOf:" not in prepared_accessor
+    assert "SHA256" not in prepared_accessor
+
+
+def test_empty_day_exposes_selected_state_and_exact_zero_count() -> None:
+    presenter = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift")
+    page = _text(IOS / "BooksAndVocabUITests/Pages/OverviewPage.swift")
+    ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
+
+    assert "emptyDaySummary" in presenter
+    assert "emptyDaySummary" in page
+    assert re.search(r"emptyDaySummary.*?value.*?Int\(value\)", ui_test, re.DOTALL)
+    assert "emptyDaySummary.assertExists" in ui_test
+
+
+def test_ios_test_publishes_and_validates_p9_sidecar_as_formal_artifact() -> None:
+    ios_test = _text(ROOT / "ops/ios_test.sh")
+
+    assert "p9_review_calendar_evidence.py" in ios_test
+    assert "outer-verdict" in ios_test
+    assert "p9ReviewCalendarEvidence" in ios_test
+    assert "datasetSHA256" in ios_test
+    assert "sourceCommit" in ios_test
+    assert "retrieve_p9_installed_fixture_proof" in ios_test
+    assert "ios_device_files.sh" in ios_test
+
+
+def test_ios_test_fails_closed_when_p9_outer_contract_rejects_sidecar() -> None:
+    ios_test = _text(ROOT / "ops/ios_test.sh")
+
+    validation_block = ios_test.split(
+        'if [[ -n "$p9_manifest" ]] && ! validate_p9_review_calendar_sidecar',
+        1,
+    )[1].split("\n  fi", 1)[0]
+    assert "return 1" in validation_block
 
 
 def test_overview_page_requires_exactly_one_selector_match() -> None:

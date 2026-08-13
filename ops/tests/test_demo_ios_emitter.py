@@ -194,8 +194,8 @@ def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch
     bundle = sot.load_sot()
     calls = []
 
-    def fail_validator(path, *, label):
-        calls.append((path, label))
+    def fail_validator(path, *, label, **kwargs):
+        calls.append((path, label, kwargs))
         raise emit_ios.UIWorldManifestError("shared validator rejected generated demo")
 
     monkeypatch.setattr(emit_ios, "validate_fixture_dataset_file", fail_validator)
@@ -205,6 +205,8 @@ def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch
 
     assert calls
     assert calls[0][1] == "Generated demo UI World"
+    assert calls[0][2]["require_review_clock"] is True
+    assert calls[0][2]["require_review_history_alignment"] is True
 
 
 def test_emit_ios_only_overlays_identity_owned_auth_fields():

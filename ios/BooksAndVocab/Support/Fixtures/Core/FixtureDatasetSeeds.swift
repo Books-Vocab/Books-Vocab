@@ -766,6 +766,9 @@ struct UIWorldInstalledFixtureProof: Codable, Equatable {
     let path: String
     let bytes: Int
     let sha256: String
+    let type: String
+    let sourceCommit: String
+    let datasetSHA256: String
 }
 
 /// Reader scenario passage. `activeWord` is the just-tapped word tied to the
