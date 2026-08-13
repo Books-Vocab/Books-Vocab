@@ -4606,6 +4606,13 @@ def _history_lines(state):
     return [json.loads(ln) for ln in p.read_text().splitlines() if ln.strip()]
 
 
+def _with_canonical_ticket_id(payload):
+    ticket_id = MODULE.backlog_tool.make_entry_id(**{
+        field: payload[field] for field in MODULE.backlog_tool.DIGEST_FIELDS
+    })
+    return ticket_id, {**payload, "id": ticket_id}
+
+
 def test_gate_history_records_duration_and_stable_run_order(tmp_path, monkeypatch):
     moments = iter([
         datetime(2026, 8, 9, 1, 2, 3, 1, tzinfo=timezone.utc),
@@ -8676,12 +8683,17 @@ def test_close_wave_recovery_real_subprocess_wiring(
         ROOT / "ops", repo / "ops",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
+    (repo / "ops" / "backlog_id_drift_baseline.txt").write_text(
+        "", encoding="utf-8"
+    )
+    assert (repo / "ops" / "backlog_id_drift_baseline.txt").read_text(
+        encoding="utf-8"
+    ) == ""
     (repo / ".gitignore").write_text(".cache/\n__pycache__/\n", encoding="utf-8")
     store = repo / "docs" / "runbook" / "backlog"
     store.mkdir(parents=True)
-    ticket_id = "IMP-20260811-real-recovery"
-    (store / f"{ticket_id}.json").write_text(json.dumps({
-        "schema": "kg.backlog.entry.v1", "id": ticket_id, "status": "open",
+    ticket_payload = {
+        "schema": "kg.backlog.entry.v1", "status": "open",
         "stream": "IMP", "severity": "med", "category": "tool",
         "date": "2026-08-11", "source": "fixture",
         "detail": "real close-wave recovery fixture",
@@ -8692,7 +8704,14 @@ def test_close_wave_recovery_real_subprocess_wiring(
         "acceptance_cmd": "true", "acceptance_expect_rc": 0,
         "resolution": "", "fixed_by": [],
         "groomed_at": "2026-08-11", "groomed_by": "fixture",
-    }, indent=2) + "\n", encoding="utf-8")
+    }
+    ticket_id, ticket_payload = _with_canonical_ticket_id(ticket_payload)
+    assert ticket_payload["id"] == ticket_id == MODULE.backlog_tool.make_entry_id(**{
+        field: ticket_payload[field] for field in MODULE.backlog_tool.DIGEST_FIELDS
+    })
+    (store / f"{ticket_id}.json").write_text(
+        json.dumps(ticket_payload, indent=2) + "\n", encoding="utf-8"
+    )
     _git(["add", "-A"], repo)
     _git(["commit", "-qm", "fixture base"], repo)
     base_sha = _git(["rev-parse", "main"], repo)
