@@ -98,6 +98,20 @@ function pathToAncestor(start,target,commits,limit=128){
   }
   return [];
 }
+function pathToAnyTarget(start,targets,commits,limit=commits.size+1){
+  if(!start)return [];
+  const pending=[{sha:start,path:[]}],seen=new Set();
+  while(pending.length){
+    const item=pending.pop(),current=item.sha;
+    if(!current||seen.has(current)||item.path.length>limit)continue;
+    const path=[...item.path,current];
+    if(targets.has(current))return path;
+    seen.add(current);
+    const parents=commits.get(current)?.parents||[];
+    for(let index=parents.length-1;index>=0;index--)pending.push({sha:parents[index],path});
+  }
+  return [];
+}
 function firstBranchPoint(mainHead,commits){
   const children=new Map();
   commits.forEach(row=>(row.parents||[]).forEach(parent=>{
@@ -121,20 +135,39 @@ function treeViewport(tree,commits,refs){
   const visible=new Set(mainlineWindow);
   const visibleBranches=new Set(["main"]);
   const branchAnchors=new Map();
+  const branchPaths=new Map();
+  const mainlineSet=new Set(mainline);
+  const ticketRefs=refs.filter(ref=>ref.branch!=="main"&&(ref.tickets||[]).length);
+  ticketRefs.forEach(ref=>{
+    // Ticket-bearing refs are never hidden by the bounded mainline window.
+    // Their full history remains lazy, but their recent divergent segment and
+    // exact common ancestor are part of this tree projection.
+    const path=pathToAnyTarget(ref.head,mainlineSet,commits);
+    const branchPath=path.length?path.slice(0,TREE_VIEW_RADIUS+1):[ref.head].filter(sha=>commits.has(sha));
+    const anchor=path.at(-1)||branchPath.at(-1)||ref.head;
+    if(anchor)branchPath.push(...(branchPath.at(-1)===anchor?[]:[anchor]));
+    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,branchPath);
+    branchPath.forEach(sha=>visible.add(sha));
+  });
   refs.forEach(ref=>{
-    const path=pathToAncestor(ref.head,branchSha,commits,TREE_VIEW_RADIUS*4);
-    const branchPathIndex=path.indexOf(branchSha);
-    if(ref.branch==="main"||branchPathIndex<0)return;
-    // Keep one anchor per branch at the first child after the branch point.
-    // This preserves topology without dragging every descendant into the view.
-    const anchor=branchPathIndex?path[branchPathIndex-1]:branchSha;
-    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);visible.add(anchor);
+    if(ref.branch==="main")return;
+    if(ticketRefs.includes(ref))return;
+    const path=pathToAnyTarget(ref.head,mainlineSet,commits);
+    // Every branch remains represented; only its recent divergent segment is
+    // bounded. Fully converged history is not loaded into the initial view.
+    const branchPath=path.length?path.slice(0,TREE_VIEW_RADIUS+1):[ref.head].filter(sha=>commits.has(sha));
+    const anchor=path.at(-1)||branchPath.at(-1)||ref.head;
+    if(anchor)branchPath.push(...(branchPath.at(-1)===anchor?[]:[anchor]));
+    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,branchPath);
+    branchPath.forEach(sha=>visible.add(sha));
   });
   if(branchSha)visible.add(branchSha);
   return {
     commits:[...commits.values()].filter(row=>visible.has(row.sha)),
     refs:refs.filter(ref=>visibleBranches.has(ref.branch)),
     branchAnchors,
+    branchPaths,
+    ticketRefs,
     mainline,mainlineWindow,branchSha,total:tree.commits.length,
   };
 }
@@ -195,15 +228,22 @@ function renderTree(){
   });
   const main=commits.get(refs.find(ref=>ref.branch==="main")?.head);
   if(main)viewport.mainline.forEach(sha=>{if(visibleCommits.has(sha))positions.set(sha,{lane:0});});
+  viewport.branchPaths.forEach((path,branch)=>{
+    const anchor=viewport.branchAnchors.get(branch),anchorPosition=anchor&&positions.get(anchor),lane=anchorPosition?.lane;
+    if(lane===undefined)return;
+    path.forEach(sha=>{if(!positions.has(sha))positions.set(sha,{lane});});
+  });
   [...visibleCommits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,viewport.refs.length+1))});});
   const windowRows=viewport.mainlineWindow.map(sha=>visibleCommits.get(sha)).filter(Boolean);
   const anchorRows=[...new Set(viewport.branchAnchors.values())].map(sha=>visibleCommits.get(sha)).filter(Boolean);
   const branchRow=visibleCommits.get(viewport.branchSha);
-  const ordered=[
-    ...(branchRow?[branchRow]:[]),
-    ...anchorRows.filter(row=>row!==branchRow),
-    ...windowRows.filter(row=>row!==branchRow&&!anchorRows.includes(row)),
-  ];
+  const branchRows=[...viewport.branchPaths.values()].flatMap(path=>path.map(sha=>visibleCommits.get(sha)).filter(Boolean));
+  const ordered=[],orderedSet=new Set();
+  const appendRows=rows=>rows.forEach(row=>{if(row&&!orderedSet.has(row.sha)){orderedSet.add(row.sha);ordered.push(row);}});
+  appendRows(branchRow?[branchRow]:[]);
+  appendRows(anchorRows);
+  appendRows(branchRows);
+  appendRows(windowRows);
   const width=Math.max(520,(Math.max(0,...[...positions.values()].map(pos=>pos.lane))+1)*210);
   const height=Math.max(220,ordered.length*72+70);
   const x=lane=>70+lane*190,y=index=>55+index*72;
