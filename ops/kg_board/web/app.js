@@ -108,7 +108,11 @@ function treeViewport(tree,commits,refs){
   const mainline=firstParentChain(mainHead,commits);
   const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(TREE_VIEW_RADIUS,Math.max(0,mainline.length-1))]||mainHead;
   const branchIndex=Math.max(0,mainline.indexOf(branchSha));
-  const visible=new Set(mainline.slice(Math.max(0,branchIndex-TREE_VIEW_RADIUS),branchIndex+TREE_VIEW_RADIUS+1));
+  // The useful inspection window starts at the first branch and looks ten
+  // commits toward its parents. Showing the newest mainline tail first made
+  // the branch point invisible below a long, low-signal wall of commits.
+  const mainlineWindow=mainline.slice(branchIndex,branchIndex+TREE_VIEW_RADIUS+1);
+  const visible=new Set(mainlineWindow);
   const visibleBranches=new Set(["main"]);
   const branchAnchors=new Map();
   refs.forEach(ref=>{
@@ -125,7 +129,7 @@ function treeViewport(tree,commits,refs){
     commits:[...commits.values()].filter(row=>visible.has(row.sha)),
     refs:refs.filter(ref=>visibleBranches.has(ref.branch)),
     branchAnchors,
-    mainline,branchSha,total:tree.commits.length,
+    mainline,mainlineWindow,branchSha,total:tree.commits.length,
   };
 }
 function commitInspector(row,ref){
@@ -162,7 +166,9 @@ function renderTree(){
   const main=commits.get(refs.find(ref=>ref.branch==="main")?.head);
   if(main)viewport.mainline.forEach(sha=>{if(visibleCommits.has(sha))positions.set(sha,{lane:0});});
   [...visibleCommits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,viewport.refs.length+1))});});
-  const ordered=[...visibleCommits.values()].sort((a,b)=>(a.committed_at||a.sha).localeCompare(b.committed_at||b.sha));
+  const windowRows=viewport.mainlineWindow.map(sha=>visibleCommits.get(sha)).filter(Boolean);
+  const anchorRows=[...new Set(viewport.branchAnchors.values())].map(sha=>visibleCommits.get(sha)).filter(Boolean);
+  const ordered=[...anchorRows,...windowRows.filter(row=>!anchorRows.includes(row))];
   const width=Math.max(520,(Math.max(0,...[...positions.values()].map(pos=>pos.lane))+1)*210);
   const height=Math.max(220,ordered.length*72+70);
   const x=lane=>70+lane*190,y=index=>55+index*72;
