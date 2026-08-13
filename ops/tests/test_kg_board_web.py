@@ -293,9 +293,10 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert 'ref.live_state!=="unknown"' in js
     assert "第一個分支附近" in js
     assert "Maximum call stack" not in js
-    assert "treeRadius" in js
-    assert "renderTreeRadius" in js
-    assert "radius=treeRadius" in js
+    assert "treeZoom" in js
+    assert "renderTreeZoom" in js
+    assert "renderedWidth" in js
+    assert 'data-zoom="${treeZoom}"' in js
 
 
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
@@ -306,9 +307,9 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert "交付進度看板" in index
     assert "分支與工作樹" in index
     assert "所有分支保留最近分叉段" in index
-    assert "樹視野大小" in index
-    assert 'id="tree-radius"' in index
-    assert 'id="tree-radius-value"' in index
+    assert "樹圖縮放" in index
+    assert 'id="tree-zoom"' in index
+    assert 'id="tree-zoom-value"' in index
     assert "tree-mobile-list" in js
     assert "renderMobileTree" in js
     assert "tree-held-tickets" in index
