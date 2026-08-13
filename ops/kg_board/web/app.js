@@ -20,6 +20,10 @@ function statusOf(row){
   if(board.blocked_ids.includes(row.id))return "阻塞";
   return "可派工";
 }
+function blockedReason(row){
+  const blocked=(board.dispatch_meta?.withheld_blocked||[]).find(item=>item?.id===row.id);
+  return Array.isArray(blocked?.waiting_on)&&blocked.waiting_on.length?blocked.waiting_on.join("、"):"尚未取得可派工資格";
+}
 function rows(){
   const blocked=new Set(board.blocked_ids);
   const source=tab==="now"?board.board.filter(row=>board.dispatch_ids.includes(row.id)):
@@ -32,6 +36,7 @@ function rows(){
 }
 function detailBody(row){
   return `<div class="meta"><span>${esc(row.stream)}</span><span>${esc(row.held?.branch||"尚未掛入 worktree")}</span><span>${esc(row.area||"未標定")}</span></div>
+    ${board.blocked_ids.includes(row.id)?`<p class="blocked-reason"><strong>阻塞原因</strong> ${esc(blockedReason(row))}</p>`:""}
     <p>${esc(row.detail||"沒有更多技術說明")}</p>
     <dl class="detail-grid">
       <dt>Scope</dt><dd>${esc(row.scope||"—")}</dd>
@@ -45,7 +50,7 @@ function ticket(row){
     <details data-ticket-details="${esc(row.id)}" data-inline="${row.status?"true":"false"}">
       <summary>
         <span class="ticket-title"><code>${esc(row.id)}</code><span>${esc(row.brief||"尚未提供白話摘要")}</span></span>
-        <span class="ticket-meta"><span class="chip severity-${esc(row.severity)}">${esc(row.severity)}</span><span>${esc(statusOf(row))}</span></span>
+        <span class="ticket-meta"><span class="chip severity-${esc(row.severity)}">${esc(row.severity)}</span><span>${esc(statusOf(row))}</span>${board.blocked_ids.includes(row.id)?`<span class="chip blocked-chip">等 ${esc(blockedReason(row))}</span>`:""}</span>
       </summary>
       <div class="ticket-body">${row.status?detailBody(row):'<p class="loading-detail">展開後載入詳細資料…</p>'}</div>
     </details>
@@ -150,8 +155,10 @@ function commitInspector(row,ref){
 }
 function renderTree(){
   const mount=document.getElementById("git-tree");
+  const mobile=document.getElementById("tree-mobile-list");
   if(!tree||!tree.commits?.length){
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
+    if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
     document.getElementById("tree-state").textContent="資料不足";
     return;
   }
@@ -181,29 +188,61 @@ function renderTree(){
   ordered.forEach((row,index)=>{positions.get(row.sha).y=y(index);});
   const edges=[];
   ordered.forEach(row=>{const from=positions.get(row.sha);(row.parents||[]).forEach(parentSha=>{const to=positions.get(parentSha);if(to)edges.push(`<path class="edge" d="M ${x(from.lane)} ${from.y} C ${x(from.lane)} ${from.y+28}, ${x(to.lane)} ${to.y-28}, ${x(to.lane)} ${to.y}"/>`);});});
-  const labels=viewport.refs.map(ref=>{
+  const labelsByAnchor=new Map();
+  viewport.refs.forEach(ref=>{
     const anchor=ref.branch==="main"?viewport.branchSha:viewport.branchAnchors.get(ref.branch);
-    const pos=positions.get(anchor);if(!pos)return "";
-    const refState=ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
-    const tickets=(ref.tickets||[]).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
-    return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(compactLabel(ref.branch,24))} · ${esc(refState)}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
+    if(!anchor||!positions.has(anchor))return;
+    if(!labelsByAnchor.has(anchor))labelsByAnchor.set(anchor,[]);labelsByAnchor.get(anchor).push(ref);
+  });
+  const labels=[...labelsByAnchor.entries()].map(([anchor,anchorRefs])=>{
+    const pos=positions.get(anchor);
+    const labelTop=Math.max(18,pos.y-18-(anchorRefs.length-1)*20);
+    return anchorRefs.map((ref,index)=>{
+      const refState=ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
+      const tickets=(ref.tickets||[]).slice(0,3).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
+      const rowY=labelTop+index*20;
+      return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${rowY}">${esc(compactLabel(ref.branch,24))} · ${esc(refState)}</text><foreignObject x="${x(pos.lane)+18}" y="${rowY+4}" width="190" height="22"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
+    }).join("");
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha||viewport.branchAnchors.get(item.branch)===row.sha);
-    return `<g class="commit" tabindex="0" role="button" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(compactLabel(row.subject,34))}</text></g>`;
+    return `<g class="commit" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(compactLabel(row.subject,30))}</text></g>`;
   }).join("");
-  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="所有可達 commit 的 Git graph"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
+  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="第一個分支附近的 Git 交付樹"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
   document.getElementById("tree-state").textContent=tree.complete?`第一個分支附近 ${ordered.length} / 完整 ${viewport.total} · ${viewportLabel}`:`資料不完整 · 第一個分支附近 ${ordered.length}`;
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
+  renderMobileTree(viewport,commits);
   mount.querySelectorAll(".commit").forEach(node=>{
     const show=()=>commitInspector(commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));
     node.addEventListener("mouseenter",show);node.addEventListener("focus",show);node.addEventListener("click",show);
+    node.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();show()}});
   });
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{
-    event.stopPropagation();const target=document.getElementById(`ticket-${node.dataset.ticketId}`);if(!target)return;
-    target.querySelector("details").open=true;target.scrollIntoView({behavior:"smooth",block:"center"});
+    event.stopPropagation();selectTicket(node.dataset.ticketId);
   }));
+}
+function renderMobileTree(viewport,commits){
+  const mount=document.getElementById("tree-mobile-list");if(!mount)return;
+  const refs=viewport.refs||[];const rows=[];const seen=new Set();
+  [...viewport.mainlineWindow,...viewport.branchAnchors.values()].forEach(sha=>{if(sha&&!seen.has(sha)&&commits.has(sha)){seen.add(sha);rows.push(commits.get(sha));}});
+  const branches=refs.map(ref=>{const tickets=(ref.tickets||[]).slice(0,3).map(t=>`<button class="tree-ticket" data-ticket-id="${esc(t.id)}">${esc(t.id)}</button>`).join("");const more=(ref.tickets||[]).length>3?`<span class="tree-ticket-more">+${(ref.tickets||[]).length-3}</span>`:"";return `<span class="tree-mobile-branch"><strong>${esc(compactLabel(ref.branch,30))}</strong><span>${esc(ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown"))}</span>${tickets}${more}</span>`}).join("");
+  mount.innerHTML=`<div class="tree-mobile-summary"><strong>第一個分支附近</strong><span>${rows.length} 個 commit · ${refs.length} 條分支</span></div><div class="tree-mobile-branches">${branches}</div><ol class="tree-mobile-commits">${rows.map(row=>`<li><button class="tree-mobile-commit" data-sha="${esc(row.sha)}"><code>${esc(shortSha(row.sha))}</code><span>${esc(row.subject)}</span></button></li>`).join("")}</ol>`;
+  mount.querySelectorAll(".tree-mobile-commit").forEach(node=>node.addEventListener("click",()=>commitInspector(commits.get(node.dataset.sha),null)));
+  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{event.stopPropagation();selectTicket(node.dataset.ticketId)}));
+}
+function selectTicket(id){
+  const target=document.getElementById(`ticket-${CSS.escape(id)}`);
+  if(!target){
+    const known=board.board.some(row=>row.id===id);
+    if(!known){
+      if(history?.board?.some(row=>row.id===id)){tab="history";query="";render();return setTimeout(()=>selectTicket(id),0)}
+      document.getElementById("tree-alert").textContent=`票號 ${id} 不在目前投影（可能已結案或鏡像尚未更新）`;
+      return;
+    }
+    tab=board.blocked_ids.includes(id)?"blocked":board.dispatch_ids.includes(id)?"now":"all";query="";render();return setTimeout(()=>selectTicket(id),0);
+  }
+  const details=target.querySelector("details");if(details)details.open=true;target.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"center"});target.classList.add("ticket-highlight");setTimeout(()=>target.classList.remove("ticket-highlight"),1200);
 }
 function render(){
   if(!board)return;
@@ -228,5 +267,6 @@ async function load(){
 }
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
-load().catch(error=>{document.getElementById("trust-state").textContent="看板載入失敗";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=error.message});
-setInterval(load,30000);
+const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
+load().catch(showLoadError);
+setInterval(()=>load().catch(showLoadError),30000);
