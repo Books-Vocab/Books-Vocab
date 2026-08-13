@@ -144,6 +144,14 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             )
         }
 
+        captureStep("rich-projection-verified", app: app)
+
+        // The rich fixture has 644 rows and AX3 intentionally exercises a
+        // large accessibility tree. Terminate it before launching the small
+        // counterexample app so two XCUIApplication processes never compete
+        // for the simulator accessibility/runtime channel.
+        app.terminate()
+
         let mixedApp = launchIsolatedApp(
             extraArgs: [
                 "-UIPreferredContentSizeCategoryName",
@@ -169,6 +177,5 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             XCTAssertTrue(mixedPage.scopeOption("learning", labelPrefix: "學習").label.contains("2"))
         }
 
-        captureStep("rich-projection-verified", app: app)
     }
 }
