@@ -1,5 +1,5 @@
-# injection_lint baseline — generated 2026-08-13
-# sunset: 2026-09-12
+# injection_lint baseline — generated 2026-08-14
+# sunset: 2026-09-13
 # After sunset, --baseline-check FAILS even when count hasn't regressed.
 
 ios/BooksAndVocab/Views/Bookshelf/BookshelfPreviews.swift:84: struct BookshelfFixtureLibraryScene: View missing @ObserveInjection
@@ -14,7 +14,7 @@ ios/BooksAndVocab/Views/Podcast/PodcastSentenceLevelView.swift:42: struct Podcas
 ios/BooksAndVocab/Views/Podcast/PodcastTranscriptColumn.swift:18: struct PodcastTranscriptColumn: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Podcast/PodcastTranscriptColumn.swift:193: struct PodcastBubbleCell: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Reader/QuotaBar.swift:51: struct QuotaBarPreviewHarness: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/TOCView.swift:153: struct TOCViewPreviewScene: View missing @ObserveInjection
+ios/BooksAndVocab/Views/Reader/TOCView.swift:264: struct TOCViewPreviewScene: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Settings/SettingsDebugBackendSection.swift:17: struct SettingsDebugBackendSection: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Settings/SettingsOtherSection.swift:20: struct SettingsOtherSection: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Settings/SettingsPresenter+Preview.swift:37: struct SettingsFixtureScene: View missing @ObserveInjection
