@@ -56,10 +56,10 @@ DICTIONARY_KEYS = {
     "lookup", "senses", "examples", "provenance", "materialization", "coverage",
 }
 COVERAGE_KEYS = {"required", "counterexamples"}
-COVERAGE_SET_KEYS = {"fixtureIDs", "stepLabels", "assetIDs", "assetInodes"}
+COVERAGE_SET_KEYS = {"fixtureIDs", "stepLabels", "assetIDs"}
 SURFACE_CONTRACT_KEYS = {"required", "counterexamples"}
 SURFACE_CONTRACT_ROW_KEYS = {
-    "fixtureID", "stepLabel", "index", "assetIDs", "assetInodes",
+    "fixtureID", "stepLabel", "index", "assetIDs",
 }
 P1_DICTIONARY_SURFACE = "dictionary"
 P1_DICTIONARY_REQUIRED_FIXTURE_ID = "ui-p1-dictionary-rich"
@@ -127,9 +127,7 @@ def build_p1_dictionary_surface_contract(
         required_coverage = coverage["required"]
         counterexample_coverage = coverage["counterexamples"]
         required_assets = list(required_coverage["assetIDs"])
-        required_inodes = list(required_coverage["assetInodes"])
         counterexample_assets = list(counterexample_coverage["assetIDs"])
-        counterexample_inodes = list(counterexample_coverage["assetInodes"])
     except (KeyError, TypeError) as exc:
         raise ValueError(
             "canonical dictionary seed must expose lookup/coverage asset identity"
@@ -150,7 +148,6 @@ def build_p1_dictionary_surface_contract(
                 "stepLabel": f"{state}-counterexample",
                 "index": index,
                 "assetIDs": counterexample_assets if state == "error" else [],
-                "assetInodes": counterexample_inodes if state == "error" else [],
             }
         )
 
@@ -161,14 +158,12 @@ def build_p1_dictionary_surface_contract(
                 "stepLabel": P1_DICTIONARY_REQUIRED_STEP_LABEL,
                 "index": 0,
                 "assetIDs": required_assets,
-                "assetInodes": required_inodes,
             },
             {
                 "fixtureID": P2_DICTIONARY_REQUIRED_FIXTURE_ID,
                 "stepLabel": P2_DICTIONARY_REQUIRED_STEP_LABEL,
                 "index": 1,
                 "assetIDs": required_assets,
-                "assetInodes": required_inodes,
             },
         ],
         "counterexamples": counterexamples + [
@@ -177,7 +172,6 @@ def build_p1_dictionary_surface_contract(
                 "stepLabel": step_label,
                 "index": index,
                 "assetIDs": [],
-                "assetInodes": [],
             }
             for index, (fixture_id, step_label) in enumerate(
                 P2_DICTIONARY_COUNTEREXAMPLES,
@@ -277,9 +271,6 @@ ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
 READER_TOC_VALID_ASSET = "reader_real_book_epub"
 READER_TOC_INVALID_DESTINATION_ASSET = "reader_invalid_destination_epub"
-# Kept only because the already-shipped Swift wire schema calls this array
-# `assetInodes`; the values are coverage labels, not filesystem provenance.
-ASSET_COVERAGE_TOKEN_PREFIX = "inode:"
 ASSET_CONTENT_TYPES_BY_BUCKET = {
     "books": {"application/epub+zip", "application/pdf", "text/markdown; charset=utf-8", "text/plain; charset=utf-8"},
     "audio": {"audio/mp4", "audio/mpeg"},
@@ -672,11 +663,6 @@ BOOK_FORMAT_CONTENT_TYPES = {
 
 class UIWorldManifestError(ValueError):
     pass
-
-
-def _asset_coverage_token(asset_id: str) -> str:
-    """Build the legacy opaque coverage label for an asset reference."""
-    return f"{ASSET_COVERAGE_TOKEN_PREFIX}{asset_id}"
 
 
 def _ensure_str(raw: Any, *, field: str, label: str) -> str:
@@ -2396,7 +2382,7 @@ def _validate_string_list(value: Any, *, field: str, label: str, allow_empty: bo
 def _validate_asset_reference_lists(
     container: Mapping[str, Any], *, field: str, label: str,
     asset_types: Mapping[str, str], allow_empty: bool = True,
-) -> tuple[list[str], list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     keys = set(container)
     if keys != COVERAGE_SET_KEYS:
         extra = sorted(keys - COVERAGE_SET_KEYS)
@@ -2409,50 +2395,28 @@ def _validate_asset_reference_lists(
     step_labels = _validate_string_list(
         container.get("stepLabels"), field=f"{field}.stepLabels", label=label,
         allow_empty=allow_empty)
-    referenced_assets, asset_coverage_tokens = _validate_asset_pair(
-        container.get("assetIDs"), container.get("assetInodes"),
+    referenced_assets = _validate_asset_pair(
+        container.get("assetIDs"),
         field=field, label=label, asset_types=asset_types,
     )
-    return fixture_ids, step_labels, referenced_assets, asset_coverage_tokens
+    return fixture_ids, step_labels, referenced_assets
 
 
 def _validate_asset_pair(
     raw_asset_ids: Any,
-    raw_asset_coverage_tokens: Any,
     *,
     field: str,
     label: str,
     asset_types: Mapping[str, str],
-) -> tuple[list[str], list[str]]:
-    """Validate the canonical asset identity pair.
-
-    The manifest bucket is the asset type.  The historical JSON wire key is
-    ``assetInodes`` but its values are opaque coverage labels, never filesystem
-    identity.  The actual Git identity is the asset's repo-relative sourcePath,
-    sha256, and byteSize; installed inode evidence belongs to runtime only.
-    """
+) -> list[str]:
+    """Validate asset references against the manifest bucket/type map."""
     referenced_assets = _validate_string_list(
         raw_asset_ids, field=f"{field}.assetIDs", label=label)
     unknown_assets = sorted(set(referenced_assets) - set(asset_types))
     if unknown_assets:
         raise UIWorldManifestError(
             f"{label} {field}.assetIDs references unknown assets: {unknown_assets}")
-    asset_coverage_tokens = _validate_string_list(
-        raw_asset_coverage_tokens, field=f"{field}.assetInodes", label=label)
-    invalid_tokens = [
-        token for token in asset_coverage_tokens
-        if not token.startswith(ASSET_COVERAGE_TOKEN_PREFIX) or not token.removeprefix(ASSET_COVERAGE_TOKEN_PREFIX).strip()
-    ]
-    if invalid_tokens:
-        raise UIWorldManifestError(
-            f"{label} {field}.assetInodes must use non-empty coverage tokens: {invalid_tokens}")
-    expected_tokens = {_asset_coverage_token(asset_id) for asset_id in referenced_assets}
-    if set(asset_coverage_tokens) != expected_tokens or len(asset_coverage_tokens) != len(referenced_assets):
-        referenced_types = {asset_types[asset_id] for asset_id in referenced_assets}
-        raise UIWorldManifestError(
-            f"{label} {field}.assetIDs and {field}.assetInodes must be one-to-one "
-            f"with asset type(s) {sorted(referenced_types)}")
-    return referenced_assets, asset_coverage_tokens
+    return referenced_assets
 
 
 def _validate_disjoint_coverage(
@@ -2466,7 +2430,7 @@ def _validate_disjoint_coverage(
         counterexamples, field=f"{field}.counterexamples", label=label,
         asset_types=asset_types)
     for set_name, required_values, counterexample_values in zip(
-        ("fixtureIDs", "stepLabels", "assetIDs", "assetInodes"),
+        ("fixtureIDs", "stepLabels", "assetIDs"),
         required_sets,
         counterexample_sets,
         strict=True,
@@ -2694,7 +2658,6 @@ def _validate_surface_contracts(
             seen_labels: set[str] = set()
             seen_indexes: set[int] = set()
             seen_assets: set[str] = set()
-            seen_inodes: set[str] = set()
             for index, row in enumerate(rows):
                 row_map = _require_mapping(
                     row, field=f"scenarioContext.surfaceContracts.{surface}.{kind}[{index}]", label=label)
@@ -2718,8 +2681,8 @@ def _validate_surface_contracts(
                 if not isinstance(row_index, int) or isinstance(row_index, bool) or row_index < 0:
                     raise UIWorldManifestError(
                         f"{label} scenarioContext.surfaceContracts.{surface}.{kind}[{index}].index must be non-negative integer")
-                row_assets, row_inodes = _validate_asset_pair(
-                    row_map["assetIDs"], row_map["assetInodes"],
+                row_assets = _validate_asset_pair(
+                    row_map["assetIDs"],
                     field=f"scenarioContext.surfaceContracts.{surface}.{kind}[{index}]",
                     label=label, asset_types=asset_types,
                 )
@@ -2738,11 +2701,10 @@ def _validate_surface_contracts(
                 seen_labels.add(step_label)
                 seen_indexes.add(row_index)
                 seen_assets.update(row_assets)
-                seen_inodes.update(row_inodes)
-            rows_by_kind[kind] = (rows, seen_ids, seen_labels, seen_indexes, seen_assets, seen_inodes)
+            rows_by_kind[kind] = (rows, seen_ids, seen_labels, seen_indexes, seen_assets)
         for attr, index in (
             ("fixtureID", 1), ("stepLabel", 2), ("index", 3),
-            ("assetIDs", 4), ("assetInodes", 5),
+            ("assetIDs", 4),
         ):
             required_values = rows_by_kind["required"][index]
             counter_values = rows_by_kind["counterexamples"][index]
@@ -2867,14 +2829,6 @@ def _validate_shared_decks(
                 label=label,
                 asset_types=asset_types,
             )
-        # The canonical asset identity is the full images.<id> ref. Deriving
-        # inode:<ref> here makes the one-to-one/type invariant explicit without
-        # adding a second, Swift-incompatible assetInodes field to sharedDecks.
-        coverage_tokens = [_asset_coverage_token(asset_ref) for asset_ref in asset_ids]
-        if len(coverage_tokens) != len(set(coverage_tokens)):
-            raise UIWorldManifestError(
-                f"{label} {field}.assetIDs and coverage tokens must be one-to-one"
-            )
         if fixture_id == "loading" and (phase != "loading" or retry_phase is not None or deck_ids):
             raise UIWorldManifestError(f"{label} {field} has invalid loading phase/deck mapping")
         if fixture_id == "loaded" and (phase != "loaded" or retry_phase is not None or not deck_ids):
@@ -2997,7 +2951,6 @@ def _expected_explore_surface_projection(
                 "stepLabel": fixture["label"],
                 "index": index + index_offset,
                 "assetIDs": raw_asset_ids,
-                "assetInodes": [_asset_coverage_token(asset_id) for asset_id in raw_asset_ids],
             })
         return result
 

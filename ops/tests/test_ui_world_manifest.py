@@ -1465,13 +1465,11 @@ def _canonical_dictionary_context():
                 "fixtureIDs": ["dictionary.lookup.result", "dictionary.detail.senses"],
                 "stepLabels": ["idle", "loading", "result", "partial", "offline", "error", "retry"],
                 "assetIDs": ["catalog_reader_epub"],
-                "assetInodes": ["inode:catalog_reader_epub"],
             },
             "counterexamples": {
                 "fixtureIDs": ["dictionary.lookup.error"],
                 "stepLabels": ["error-counterexample"],
                 "assetIDs": ["notebook_cover_app_icon"],
-                "assetInodes": ["inode:notebook_cover_app_icon"],
             },
         },
     }
@@ -1482,21 +1480,43 @@ def _canonical_surface_contracts(dictionary=None):
         "explore": {
             "required": [
                 {
-                    "fixtureID": "explore.rich-catalog",
-                    "stepLabel": "explore-loaded",
+                    "fixtureID": "loading",
+                    "stepLabel": "explore-loading",
                     "index": 0,
-                    "assetIDs": ["catalog_reader_epub"],
-                    "assetInodes": ["inode:catalog_reader_epub"],
-                }
+                    "assetIDs": ["explore_required"],
+                },
+                {
+                    "fixtureID": "loaded",
+                    "stepLabel": "explore-loaded",
+                    "index": 1,
+                    "assetIDs": ["explore_required"],
+                },
+                {
+                    "fixtureID": "empty",
+                    "stepLabel": "explore-empty",
+                    "index": 2,
+                    "assetIDs": ["explore_required_empty"],
+                },
+                {
+                    "fixtureID": "retry",
+                    "stepLabel": "explore-retry",
+                    "index": 3,
+                    "assetIDs": ["explore_required"],
+                },
             ],
             "counterexamples": [
                 {
-                    "fixtureID": "explore.empty",
+                    "fixtureID": "empty-counterexample",
                     "stepLabel": "explore-empty-counterexample",
-                    "index": 1,
-                    "assetIDs": [],
-                    "assetInodes": [],
-                }
+                    "index": 4,
+                    "assetIDs": ["explore_counterexample_empty"],
+                },
+                {
+                    "fixtureID": "retry-counterexample",
+                    "stepLabel": "explore-retry-counterexample",
+                    "index": 5,
+                    "assetIDs": ["explore_counterexample_retry"],
+                },
             ],
         },
         "settings": {
@@ -1506,7 +1526,6 @@ def _canonical_surface_contracts(dictionary=None):
                     "stepLabel": "settings",
                     "index": 0,
                     "assetIDs": [],
-                    "assetInodes": [],
                 }
             ],
             "counterexamples": [
@@ -1515,7 +1534,6 @@ def _canonical_surface_contracts(dictionary=None):
                     "stepLabel": "reset-counterexample",
                     "index": 1,
                     "assetIDs": [],
-                    "assetInodes": [],
                 }
             ],
         },
@@ -1714,7 +1732,6 @@ def test_validate_rejects_duplicate_surface_selector(tmp_path: Path, field: str)
     duplicate["fixtureID"] = f"explore.duplicate.{field}"
     duplicate["stepLabel"] = f"duplicate-{field}"
     duplicate["assetIDs"] = []
-    duplicate["assetInodes"] = []
     if field == "index":
         duplicate["index"] = contracts["explore"]["required"][0]["index"]
     else:
@@ -1728,31 +1745,21 @@ def test_validate_rejects_duplicate_surface_selector(tmp_path: Path, field: str)
         validate_fixture_dataset_file(path)
 
 
-@pytest.mark.parametrize(
-    ("owner", "field", "value"),
-    [
-        ("dictionary", "assetInodes", ["inode:catalog_reader_pdf"]),
-        ("surface", "assetInodes", ["inode:catalog_reader_pdf"]),
-    ],
-)
-def test_validate_rejects_asset_id_inode_type_mismatch(
-    tmp_path: Path, owner: str, field: str, value: list[str],
-):
+@pytest.mark.parametrize("owner", ["dictionary", "surface"])
+def test_validate_rejects_unknown_asset_id(tmp_path: Path, owner: str):
     data = _marketing_demo()
     if owner == "dictionary":
         dictionary = _canonical_dictionary_context()
-        dictionary["coverage"]["required"][field] = value
-        dictionary["coverage"]["counterexamples"]["assetIDs"] = ["notebook_cover_app_icon"]
-        dictionary["coverage"]["counterexamples"]["assetInodes"] = ["inode:notebook_cover_app_icon"]
+        dictionary["coverage"]["required"]["assetIDs"] = ["missing_asset"]
         data["scenarioContext"]["dictionary"] = dictionary
     else:
         contracts = _canonical_surface_contracts()
-        contracts["explore"]["required"][0][field] = value
+        contracts["explore"]["required"][0]["assetIDs"] = ["missing_asset"]
         data["scenarioContext"]["surfaceContracts"] = contracts
-    path = tmp_path / f"{owner}_asset_id_inode_mismatch.json"
+    path = tmp_path / f"{owner}_unknown_asset_id.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match=r"assetIDs.*assetInodes.*one-to-one"):
+    with pytest.raises(UIWorldManifestError, match=r"assetIDs references unknown assets"):
         validate_fixture_dataset_file(path)
 
 
@@ -1779,15 +1786,21 @@ def test_validate_rejects_empty_asset_manifest_key(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
-def test_validate_rejects_empty_inode_token(tmp_path: Path):
+@pytest.mark.parametrize("owner", ["dictionary", "surface"])
+def test_validate_rejects_legacy_generic_asset_inodes_wire(tmp_path: Path, owner: str):
     data = _marketing_demo()
-    contracts = _canonical_surface_contracts()
-    contracts["explore"]["required"][0]["assetInodes"] = ["inode:"]
-    data["scenarioContext"]["surfaceContracts"] = contracts
-    path = tmp_path / "empty_inode_token.json"
+    if owner == "dictionary":
+        data["scenarioContext"]["dictionary"]["coverage"]["required"]["assetInodes"] = [
+            "inode:catalog_reader_epub"
+        ]
+    else:
+        data["scenarioContext"]["surfaceContracts"]["explore"]["required"][0]["assetInodes"] = [
+            "inode:explore_required"
+        ]
+    path = tmp_path / f"legacy_generic_asset_inodes_{owner}.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match=r"surfaceContracts.*assetInodes.*coverage tokens"):
+    with pytest.raises(UIWorldManifestError, match=r"assetInodes"):
         validate_fixture_dataset_file(path)
 
 
@@ -1809,7 +1822,6 @@ def test_validate_rejects_dictionary_required_counterexample_overlap(tmp_path: P
     [
         ("fixtureIDs", "dictionary.lookup.result"),
         ("assetIDs", "catalog_reader_epub"),
-        ("assetInodes", "inode:catalog_reader_epub"),
     ],
 )
 def test_validate_rejects_dictionary_coverage_overlap_for_each_identity_set(
@@ -1819,23 +1831,11 @@ def test_validate_rejects_dictionary_coverage_overlap_for_each_identity_set(
     dictionary = _canonical_dictionary_context()
     data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
     dictionary["coverage"]["counterexamples"][field] = [overlap_value]
-    if field == "assetIDs":
-        dictionary["coverage"]["counterexamples"]["assetInodes"] = [
-            f"inode:{overlap_value}"
-        ]
-    elif field == "assetInodes":
-        dictionary["coverage"]["counterexamples"]["assetIDs"] = [
-            overlap_value.removeprefix("inode:")
-        ]
     data["scenarioContext"]["dictionary"] = dictionary
     path = tmp_path / f"dictionary_{field}_overlap.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    disjoint_field = field
-    if field == "assetInodes":
-        # The bijection makes the same identity overlap in assetIDs first.
-        disjoint_field = "assetIDs"
-    with pytest.raises(UIWorldManifestError, match=rf"dictionary.*{disjoint_field}.*disjoint"):
+    with pytest.raises(UIWorldManifestError, match=rf"dictionary.*{field}.*disjoint"):
         validate_fixture_dataset_file(path)
 
 
