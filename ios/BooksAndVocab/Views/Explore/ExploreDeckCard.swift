@@ -3,8 +3,9 @@
 //  ExploreDeckCard.swift
 //  Books & Vocab
 //
-//  Explore 目錄卡片 —— 復用 procedural NotebookCoverView（非 image）+ 官方徽章 +
-//  metadata。鏡射 PodcastSeriesCard 的視覺契約（cover z0、無 border、hover lift）。
+//  Explore 目錄卡片 —— 復用 NotebookCoverView（canonical asset 或 procedural
+//  fallback）+ 官方徽章 + metadata。鏡射 PodcastSeriesCard 的視覺契約（cover z0、無
+//  border、hover lift）。
 //
 
 import SwiftUI

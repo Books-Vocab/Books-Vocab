@@ -299,6 +299,20 @@ struct UIWorldSharedDeckCatalogSeed: Codable, Equatable {
         deckIDs(for: UIWorldExploreFixtureID.counterexamples)
     }
 
+    /// Canonical projection consumed by the generic scenario context. Keep
+    /// this aligned with `ops/ui_world_manifest.py`'s
+    /// `_expected_explore_surface_projection`: top-level sharedDecks owns the
+    /// fixture order and the generic surface contract is only a projection.
+    var canonicalExploreSurfaceContract: UIWorldSurfaceContractSeed {
+        UIWorldSurfaceContractSeed(
+            required: projectionRows(for: UIWorldExploreFixtureID.required),
+            counterexamples: projectionRows(
+                for: UIWorldExploreFixtureID.counterexamples,
+                indexOffset: UIWorldExploreFixtureID.required.count
+            )
+        )
+    }
+
     func fixture(for id: UIWorldExploreFixtureID) -> UIWorldExploreFixtureSeed {
         guard let fixture = fixtures[id.rawValue] else {
             preconditionFailure("UI World is missing sharedDecks fixture \(id.rawValue)")
@@ -327,6 +341,27 @@ struct UIWorldSharedDeckCatalogSeed: Codable, Equatable {
 
     private func deckIDs(for ids: [UIWorldExploreFixtureID]) -> Set<String> {
         Set(ids.flatMap { fixtures[$0.rawValue]?.deckIDs ?? [] })
+    }
+
+    private func projectionRows(
+        for ids: [UIWorldExploreFixtureID],
+        indexOffset: Int = 0
+    ) -> [UIWorldSurfaceContractRowSeed] {
+        ids.enumerated().map { offset, id in
+            let fixture = fixture(for: id)
+            let rawAssetIDs = fixture.assetIDs.map { ref in
+                guard let separator = ref.firstIndex(of: ".") else {
+                    preconditionFailure("sharedDecks asset ref must include a manifest bucket: \(ref)")
+                }
+                return String(ref[ref.index(after: separator)...])
+            }
+            return UIWorldSurfaceContractRowSeed(
+                fixtureID: id.rawValue,
+                stepLabel: fixture.label,
+                index: offset + indexOffset,
+                assetIDs: rawAssetIDs
+            )
+        }
     }
 
     private func validate() throws {

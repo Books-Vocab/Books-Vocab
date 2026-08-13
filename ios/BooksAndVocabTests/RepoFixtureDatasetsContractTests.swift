@@ -314,6 +314,27 @@ struct RepoFixtureDatasetsContractTests {
         }
     }
 
+    @Test func canonicalExploreSurfaceContractsRejectExistingAssetProjectionMismatch() throws {
+        let existingButWrongAssetData = try Self.encodedGeneratedDemo { topLevel in
+            var context = try #require(topLevel["scenarioContext"] as? [String: Any])
+            var contracts = try #require(context["surfaceContracts"] as? [String: Any])
+            var explore = try #require(contracts["explore"] as? [String: Any])
+            var required = try #require(explore["required"] as? [[String: Any]])
+            // This asset exists in the manifest and is valid for another
+            // Explore projection row. ID existence alone must not make this
+            // scenarioContext projection acceptable.
+            required[0]["assetIDs"] = ["explore_required_empty"]
+            explore["required"] = required
+            contracts["explore"] = explore
+            context["surfaceContracts"] = contracts
+            topLevel["scenarioContext"] = context
+        }
+
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(existingButWrongAssetData)
+        }
+    }
+
     @Test func canonicalAssetManifestRejectsEmptyKeysAndCrossTypeDuplicateIDs() throws {
         let emptyKeyData = try Self.encodedGeneratedDemo { topLevel in
             var assets = try #require(topLevel["assets"] as? [String: Any])

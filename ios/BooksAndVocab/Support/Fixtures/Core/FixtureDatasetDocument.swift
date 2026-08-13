@@ -204,7 +204,12 @@ struct FixtureDatasetDocument: Decodable {
         try Self.validateReaderAssetReferences(reader, assets: assets, codingPath: container.codingPath)
         try Self.validateBookshelfAssetReferences(bookshelf, assets: assets, codingPath: container.codingPath)
         if let scenarioContext {
-            try scenarioContext.validate(assets: assets, vocabulary: vocabulary, decoder: decoder)
+            try scenarioContext.validate(
+                assets: assets,
+                vocabulary: vocabulary,
+                sharedDecks: sharedDecks,
+                decoder: decoder
+            )
         }
         try sharedDecks.validateAssets(assets)
     }
