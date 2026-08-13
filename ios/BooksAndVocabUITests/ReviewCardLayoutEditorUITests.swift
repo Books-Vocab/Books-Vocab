@@ -185,8 +185,8 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     @MainActor
     func testGradingToolbarStaysOperableWithEveryFieldEnabled() throws {
         let app = launchIsolatedApp(
-            fixtures: [ReviewCardVisualEvidenceStep.largeTextCounterexample.fixture],
             extraArgs: ["-reviewCardDynamicType", "accessibility3"],
+            fixtures: [ReviewCardVisualEvidenceStep.largeTextCounterexample.fixture],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: "review"
         )
@@ -229,8 +229,8 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     @MainActor
     func testCompactCounterexampleUsesCanonicalSeedAndHidesOnlyOptionalFields() throws {
         let app = launchIsolatedApp(
-            fixtures: [ReviewCardVisualEvidenceStep.compactBackCounterexample.fixture],
             extraArgs: ["-reviewCardDynamicType", "accessibility3"],
+            fixtures: [ReviewCardVisualEvidenceStep.compactBackCounterexample.fixture],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: "review"
         )
