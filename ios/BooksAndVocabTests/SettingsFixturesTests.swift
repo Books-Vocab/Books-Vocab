@@ -211,6 +211,12 @@ import Testing
             ),
             encoding: .utf8
         )
+        let flowSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocabUITests/SettingsFlowUITests.swift"
+            ),
+            encoding: .utf8
+        )
 
         let preferenceGroups = [
             "settings.preferences.appearanceGroup",
@@ -220,7 +226,7 @@ import Testing
             "settings.preferences.syncGroup",
         ]
         for identifier in preferenceGroups {
-            #expect(pageObjectSource.contains("app.otherElements[\"\(identifier)\"]"))
+            #expect(pageObjectSource.contains("exact(.other, \"\(identifier)\")"))
             #expect(sourceIdentifierIsContained(identifier, in: preferencesSource))
         }
 
@@ -235,11 +241,119 @@ import Testing
         for identifier in accountGroups {
             #expect(sourceIdentifierIsContained(identifier, in: detailSource))
         }
-        #expect(pageObjectSource.contains("app.otherElements[\"settings.account.dangerGroup\"]"))
-        #expect(pageObjectSource.contains("app.otherElements[\"settings.account.resetBoundary\"]"))
-        #expect(pageObjectSource.contains("app.buttons[\"settings.account.accountDetailRow\"]"))
+        #expect(pageObjectSource.contains("exact(.other, \"settings.account.dangerGroup\")"))
+        #expect(pageObjectSource.contains("exact(.other, \"settings.account.resetBoundary\")"))
+        #expect(pageObjectSource.contains("exact(.button, \"settings.account.accountDetailRow\")"))
         #expect(accountSource.contains("SettingsCardNavigationRow"))
         #expect(accountSource.contains(".accessibilityIdentifier(\"settings.account.accountDetailRow\")"))
+
+        #expect(pageObjectSource.contains("private func exact(_ type: XCUIElement.ElementType, _ identifier: String)"))
+        #expect(pageObjectSource.contains("app.descendants(matching: type)"))
+        #expect(pageObjectSource.contains("matching(identifier: identifier)"))
+
+        let typedPageSelectors: [(type: String, identifier: String)] = [
+            ("button", "settings.dismissButton"),
+            ("button", "settings.account.accountDetailRow"),
+            ("button", "settings.account.resetBoundary.resetButton"),
+            ("button", "settings.detail.backButton"),
+            ("scrollView", "settings.home.scrollView"),
+            ("scrollView", "settings.account.scrollView"),
+            ("staticText", "settings.preferences.reviewRhythmValue"),
+            ("staticText", "settings.preferences.translationLanguageValue"),
+            ("staticText", "settings.account.info.name"),
+            ("staticText", "settings.account.resetBoundary.phase"),
+            ("switch", "settings.preferences.soundFeedbackToggle"),
+            ("switch", "settings.preferences.hapticFeedbackToggle"),
+            ("switch", "settings.review.pauseToggle"),
+            ("other", "settings.preferences.appearanceGroup"),
+            ("other", "settings.preferences.syncGroup"),
+            ("other", "settings.account.dangerGroup"),
+            ("other", "settings.account.resetBoundary"),
+        ]
+        for selector in typedPageSelectors {
+            #expect(pageObjectSource.contains("exact(.\(selector.type), \"\(selector.identifier)\")"))
+        }
+
+        // Reviewer BLOCK: a Settings selector must resolve the production
+        // contract itself. A firstMatch/boundBy:0 lookup can pass while the
+        // wrong element is present or duplicated.
+        #expect(!pageObjectSource.contains("firstMatch"))
+        #expect(!pageObjectSource.contains("element(boundBy: 0)"))
+        #expect(!flowSource.contains("firstMatch"))
+        #expect(!flowSource.contains("element(boundBy: 0)"))
+        #expect(flowSource.contains("assertExactlyOne"))
+        #expect(flowSource.contains("assertAccountDetailEvidence"))
+    }
+
+    @Test func p15SettingsLiveConfigErrorsRemainTypedAndVisible() throws {
+        let iosRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let coordinatorSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
+        let presentationSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsPresentation.swift"
+            ),
+            encoding: .utf8
+        )
+        let stateSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsView+State.swift"
+            ),
+            encoding: .utf8
+        )
+        let presenterSource = try String(
+            contentsOf: iosRoot.appendingPathComponent(
+                "BooksAndVocab/Views/Settings/SettingsPresenter.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(coordinatorSource.contains("configurationIssue"))
+        #expect(presentationSource.contains("SettingsConfigurationIssue"))
+        #expect(stateSource.contains("configurationIssue: coordinator.configurationIssue"))
+        #expect(presenterSource.contains("settings.configuration.error"))
+    }
+
+    @Test func p15SettingsCounterexampleWorldRejectsMissingAndUnknownFields() throws {
+        var missingLongEvidence = try Self.jsonObject(Self.marketingDemoData)
+        var longSettings = try #require(missingLongEvidence["settings"] as? [String: Any])
+        var longSeed = try #require(longSettings["long_content_counterexample"] as? [String: Any])
+        longSeed.removeValue(forKey: "evidence")
+        longSettings["long_content_counterexample"] = longSeed
+        missingLongEvidence["settings"] = longSettings
+        #expect(throws: DecodingError.self) {
+            try FixtureDatasetStore.decode(try Self.jsonData(missingLongEvidence))
+        }
+
+        var missingResetAfter = try Self.jsonObject(Self.marketingDemoData)
+        var resetSettings = try #require(missingResetAfter["settings"] as? [String: Any])
+        var resetSeed = try #require(resetSettings["reset_counterexample"] as? [String: Any])
+        var resetLifecycle = try #require(resetSeed["resetLifecycle"] as? [String: Any])
+        resetLifecycle.removeValue(forKey: "after")
+        resetSeed["resetLifecycle"] = resetLifecycle
+        resetSettings["reset_counterexample"] = resetSeed
+        missingResetAfter["settings"] = resetSettings
+        #expect(throws: DecodingError.self) {
+            try FixtureDatasetStore.decode(try Self.jsonData(missingResetAfter))
+        }
+
+        var unknownResetField = try Self.jsonObject(Self.marketingDemoData)
+        var unknownSettings = try #require(unknownResetField["settings"] as? [String: Any])
+        var unknownSeed = try #require(unknownSettings["reset_counterexample"] as? [String: Any])
+        var unknownLifecycle = try #require(unknownSeed["resetLifecycle"] as? [String: Any])
+        unknownLifecycle["unexpectedField"] = true
+        unknownSeed["resetLifecycle"] = unknownLifecycle
+        unknownSettings["reset_counterexample"] = unknownSeed
+        unknownResetField["settings"] = unknownSettings
+        #expect(throws: DecodingError.self) {
+            try FixtureDatasetStore.decode(try Self.jsonData(unknownResetField))
+        }
     }
 
     @Test func p15LiveResetSnapshotReadFailureCannotBecomeZero() throws {
@@ -259,9 +373,40 @@ import Testing
             .deletingLastPathComponent()
             .appendingPathComponent("BooksAndVocab/Services/KGService+Sync.swift")
         let syncSource = try String(contentsOf: syncURL, encoding: .utf8)
+        let actorURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Services/BackgroundSyncActor.swift")
+        let actorSource = try String(contentsOf: actorURL, encoding: .utf8)
 
         #expect(syncSource.contains("clearFirstUserDataForInjectedFailure"))
         #expect(syncSource.contains("try await actor.clearFirstUserDataForInjectedFailure()"))
+        #expect(actorSource.contains("throw SettingsResetFailureInjectionError.noResetVisibleCard"))
+        #expect(!syncSource.contains("kg.ui.test.settings.reset.failure.consumed"))
+    }
+
+    @Test @MainActor func p15FailureInjectorCommitsLiveSwiftDataPartialState() async throws {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let first = VocabularyEntry(word: "inject-first", translation: "t", context: "c", bookTitle: "b")
+        let second = VocabularyEntry(word: "inject-second", translation: "t", context: "c", bookTitle: "b")
+        first.markSynced()
+        second.markSynced()
+        context.insert(first)
+        context.insert(second)
+        try context.save()
+
+        let before = try context.fetchCount(FetchDescriptor<VocabularyEntry>())
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.clearFirstUserDataForInjectedFailure()
+        let afterContext = ModelContext(container)
+        let after = try afterContext.fetchCount(FetchDescriptor<VocabularyEntry>())
+
+        #expect(before == 2)
+        #expect(after == 1)
     }
 
     @Test func p15EvidenceContractBindsRequiredAndCounterexampleAssetsOneToOne() throws {
@@ -585,6 +730,10 @@ import Testing
     private static func jsonObject(_ data: Data) throws -> [String: Any] {
         let object = try JSONSerialization.jsonObject(with: data)
         return try #require(object as? [String: Any])
+    }
+
+    private static func jsonData(_ object: [String: Any]) throws -> Data {
+        try JSONSerialization.data(withJSONObject: object)
     }
 
     private static func objectMemberOrder(_ data: Data, key objectKey: String) throws -> [String] {

@@ -221,6 +221,32 @@ enum AccountIdentityFingerprint {
     }
 }
 
+/// A live settings configuration problem is state, not an implicit fallback.
+/// The affected surfaces let the presenter keep account/auth, other settings,
+/// and translation failures distinguishable without exposing server errors as
+/// user-facing copy.
+struct SettingsConfigurationIssue: Equatable {
+    enum Surface: String, CaseIterable, Hashable {
+        case account
+        case other
+        case translation
+    }
+
+    enum Operation: String, Equatable {
+        case fetch
+        case save
+    }
+
+    let surfaces: Set<Surface>
+    let operation: Operation
+    let message: String
+
+    var accessibilityValue: String {
+        let surfaceIDs = surfaces.map(\.rawValue).sorted().joined(separator: ",")
+        return "\(operation.rawValue):\(surfaceIDs)"
+    }
+}
+
 struct SettingsPresenterState {
     struct AuthSection {
         let isLoggedIn: Bool
@@ -370,6 +396,9 @@ struct SettingsPresenterState {
     let syncSummary: SyncSummaryState?
     // 預設值讓既有建構處(fixtures / scenarios)免改。
     var bookSync: BookSyncState? = nil
+    /// Persistent, typed state for a live fetch/save failure. The view must not
+    /// silently render defaults while this is non-nil.
+    var configurationIssue: SettingsConfigurationIssue? = nil
     let about: AboutSection
     let danger: DangerSection?
 }

@@ -28,6 +28,7 @@ struct SettingsReviewSection: View {
         }
         .navigationTitle(L10n.string("複習節奏"))
         .inlineNavigationBarTitle()
+        .settingsDetailNavigationBackButton()
         .enableInjection()
     }
 

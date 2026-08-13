@@ -81,6 +81,7 @@ struct TranslationLanguageSettingsView: View {
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle(L10n.string("翻譯語言"))
         .inlineNavigationBarTitle()
+        .settingsDetailNavigationBackButton()
         .enableInjection()
     }
 
