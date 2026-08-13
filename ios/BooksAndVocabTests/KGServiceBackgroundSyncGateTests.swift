@@ -11,6 +11,7 @@ import Testing
 /// 契約：gate 在 `backgroundSync` 入口單點生效，先於任何 sync phase。
 /// （本測試在連網環境跑：實際斷言的是「gate 被呼叫且先於 sync 工作」；
 /// gate 相對 offline 早退的順序只在離線機器上可被此測試觀測。）
+@Suite(.serialized)
 @MainActor
 struct KGServiceBackgroundSyncGateTests {
 
@@ -52,5 +53,39 @@ struct KGServiceBackgroundSyncGateTests {
 
         #expect(invalidator.events.first == "wait_for_cleanup",
                 "backgroundSync 必須在任何 sync 工作前先過 cleanup gate，實際事件：\(invalidator.events)")
+    }
+
+    @Test func backgroundSyncClaimIsSharedAcrossServiceInstances() {
+        let first = KGService()
+        let second = KGService()
+
+        #expect(first.claimBackgroundSync())
+        #expect(!second.claimBackgroundSync(), "不同 service instance 也必須共用 sync lane")
+
+        first.releaseBackgroundSync()
+        #expect(second.claimBackgroundSync())
+        second.releaseBackgroundSync()
+    }
+
+    @Test func waitingBackgroundSyncCanBeCancelledBeforeItStarts() async {
+        let first = KGService()
+        let second = KGService()
+        #expect(first.claimBackgroundSync())
+        defer { first.releaseBackgroundSync() }
+
+        let waiter = Task {
+            await second.backgroundSyncWhenAvailable(
+                container: Self.makeContainer(),
+                progress: nil
+            )
+        }
+        // Let the waiter reach the shared lane's polling loop before
+        // cancelling it; this covers the actual wait path, not only an
+        // already-cancelled task entering the method.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        waiter.cancel()
+
+        let outcome = await waiter.value
+        #expect(outcome == .didNotRun)
     }
 }

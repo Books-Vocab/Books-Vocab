@@ -44,6 +44,16 @@ protocol BackgroundSyncing: AnyObject {
     /// `lastBackgroundSyncError` 讀——那是四個 trigger 共用的全域欄位，理由見該型別。
     @discardableResult
     func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome
+
+    /// Queue a foreground/settings request behind an already-running sync.
+    /// The ordinary entry point intentionally returns `.didNotRun` when a
+    /// trigger is already active; an explicit account-boundary request must
+    /// not silently inherit that result from the previous account.
+    @discardableResult
+    func backgroundSyncWhenAvailable(
+        container: ModelContainer,
+        progress: SyncProgressReporting?
+    ) async -> SyncRoundOutcome
 }
 
 extension BackgroundSyncing {
@@ -51,6 +61,14 @@ extension BackgroundSyncing {
     func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome {
         await backgroundSync(container: container)
         return .completed
+    }
+
+    @discardableResult
+    func backgroundSyncWhenAvailable(
+        container: ModelContainer,
+        progress: SyncProgressReporting?
+    ) async -> SyncRoundOutcome {
+        await backgroundSync(container: container, progress: progress)
     }
 }
 

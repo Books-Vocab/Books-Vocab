@@ -526,6 +526,25 @@ extension KGService {
             AppLog.kg.info("backgroundSync skipped: already in progress")
             return .didNotRun
         }
+        return await performBackgroundSync(container: container, progress: progress)
+    }
+
+    @discardableResult
+    func backgroundSyncWhenAvailable(
+        container: ModelContainer,
+        progress: SyncProgressReporting?
+    ) async -> SyncRoundOutcome {
+        guard await claimBackgroundSyncWhenAvailable() else {
+            AppLog.kg.info("backgroundSyncWhenAvailable cancelled while waiting")
+            return .didNotRun
+        }
+        return await performBackgroundSync(container: container, progress: progress)
+    }
+
+    private func performBackgroundSync(
+        container: ModelContainer,
+        progress: SyncProgressReporting?
+    ) async -> SyncRoundOutcome {
         defer { releaseBackgroundSync() }
 
         // 每輪開始即重置 error-tracking 欄位：四個 trigger（post-login / scenePhase
