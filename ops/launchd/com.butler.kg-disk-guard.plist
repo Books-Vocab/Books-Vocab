@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.butler.kg-disk-guard</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/chenliangyu/butler/bin/kg_disk_guard.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/chenliangyu/.orbstack/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>KG_DISK_GUARD_WORKSPACE</key><string>/Users/chenliangyu/project/kg</string>
+    <key>KG_DISK_GUARD_STATE</key><string>/Users/chenliangyu/.felix-status/disk_guard.json</string>
+    <key>KG_DISK_GUARD_CACHE_LIB</key><string>/Users/chenliangyu/butler/bin/kg_ios_cache_evict_lib.sh</string>
+    <key>KG_DISK_GUARD_WARN_FREE_GIB</key><string>20</string>
+    <key>KG_DISK_GUARD_CRIT_FREE_GIB</key><string>10</string>
+    <key>KG_DISK_GUARD_GROWTH_WARN_GIB</key><string>5</string>
+    <key>KG_DISK_GUARD_DOCKER_WARN_GIB</key><string>3</string>
+    <key>KG_DISK_GUARD_LOG_FILES</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_reconcile.out.log:/Users/chenliangyu/Library/Logs/kg_reconcile.err.log:/Users/chenliangyu/Library/Logs/kg-board.err.log</string>
+    <key>KG_DISK_GUARD_LOG_MAX_KB</key><string>2048</string>
+    <key>KG_DISK_GUARD_LOG_KEEP_KB</key><string>512</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>300</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>/dev/null</string>
+</dict>
+</plist>
