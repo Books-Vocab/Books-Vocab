@@ -586,8 +586,6 @@ struct StatsPresenter: View {
             VocabCard {
                 VocabForecastChart(buckets: summary.forecast)
                     .frame(height: 160)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("overview.forecast.chart")
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("overview.forecast.card")
