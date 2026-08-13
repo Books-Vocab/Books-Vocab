@@ -75,12 +75,24 @@ struct SettingsSheetPage {
         app.otherElements["settings.syncLifecycle"]
     }
 
+    var syncLifecycleQuery: XCUIElementQuery {
+        app.otherElements.matching(identifier: "settings.syncLifecycle")
+    }
+
     var syncLifecycleStatus: XCUIElement {
         app.staticTexts["settings.syncLifecycle.status"]
     }
 
     var syncLifecycleMessage: XCUIElement {
         app.staticTexts["settings.syncLifecycle.message"]
+    }
+
+    var syncLifecycleTerminalMarker: XCUIElement {
+        app.staticTexts["settings.syncLifecycle.terminalMarker"]
+    }
+
+    var syncLifecycleEvidence: XCUIElement {
+        app.staticTexts["settings.syncLifecycle.evidence"]
     }
 
     var retrySyncButton: XCUIElement {
@@ -168,5 +180,33 @@ struct SettingsSheetPage {
     func assertIsPresented(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         // Confirm by the "完成" (Done) button in the sheet toolbar.
         closeButton.assertExists(file: file, line: line)
+        XCTAssertEqual(app.buttons.matching(identifier: "完成").count, 1, file: file, line: line)
+        XCTAssertEqual(app.navigationBars.count, 1, file: file, line: line)
+        XCTAssertGreaterThan(app.navigationBars.firstMatch.frame.width, 0, file: file, line: line)
+        XCTAssertGreaterThan(app.navigationBars.firstMatch.frame.height, 0, file: file, line: line)
+    }
+
+    func assertTerminalFeedback(
+        status: String,
+        markerContains: [String],
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertTrue(syncLifecycle.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertEqual(syncLifecycleQuery.count, 1, file: file, line: line)
+        XCTAssertGreaterThan(syncLifecycle.frame.width, 0, file: file, line: line)
+        XCTAssertGreaterThan(syncLifecycle.frame.height, 0, file: file, line: line)
+        XCTAssertEqual(app.staticTexts["settings.syncLifecycle.status"].count, 1, file: file, line: line)
+        XCTAssertEqual(syncLifecycleStatus.label, status, file: file, line: line)
+        XCTAssertEqual(syncLifecycleTerminalMarker.count, 1, file: file, line: line)
+        XCTAssertGreaterThan(syncLifecycleTerminalMarker.frame.width, 0, file: file, line: line)
+        XCTAssertGreaterThan(syncLifecycleTerminalMarker.frame.height, 0, file: file, line: line)
+#if DEBUG
+        XCTAssertEqual(syncLifecycleEvidence.count, 1, file: file, line: line)
+        let marker = syncLifecycleEvidence.label
+        for expected in markerContains {
+            XCTAssertTrue(marker.contains(expected), "missing evidence token \(expected) in \(marker)", file: file, line: line)
+        }
+#endif
     }
 }

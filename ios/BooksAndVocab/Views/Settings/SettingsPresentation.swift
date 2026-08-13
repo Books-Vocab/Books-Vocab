@@ -7,6 +7,37 @@ enum SettingsSyncDataOutcome: String, Codable, Equatable {
     case complete
 }
 
+struct SettingsSyncLifecycleEvidence: Equatable {
+    let lifecycle: String
+    let attempt: Int
+    let dataOutcome: SettingsSyncDataOutcome
+    let residualWords: [String]
+    let readBackWords: [String]
+    let transportEvents: [String]
+    let perfMarks: [String]
+
+    /// DEBUG-only accessibility payload. Every field is produced by the real
+    /// transport/model path; it is not a test-controlled phase or counter.
+    var marker: String {
+        let residual = residualWords.isEmpty ? "-" : residualWords.joined(separator: ",")
+        let readBack = readBackWords.isEmpty ? "-" : readBackWords.joined(separator: ",")
+        let transport = transportEvents.isEmpty ? "-" : transportEvents.joined(separator: "|")
+        let perf = perfMarks.isEmpty ? "-" : perfMarks.joined(separator: ",")
+        return [
+            "schema=settings.sync.evidence.v1",
+            "lifecycle=\(lifecycle)",
+            "attempt=\(attempt)",
+            "dataOutcome=\(dataOutcome.rawValue)",
+            "residualCount=\(residualWords.count)",
+            "residualWords=\(residual)",
+            "readBackCount=\(readBackWords.count)",
+            "readBackWords=\(readBack)",
+            "transportEvents=\(transport)",
+            "perfMarks=\(perf)"
+        ].joined(separator: ";")
+    }
+}
+
 enum SettingsSyncFixtureLifecycle: String, Codable, Equatable {
     case idle
     case syncing
@@ -215,6 +246,7 @@ struct SettingsPresenterState {
         let attempt: Int
         let dataOutcome: SettingsSyncDataOutcome
         let message: String?
+        let evidence: SettingsSyncLifecycleEvidence?
 
         init(
             isConnected: Bool,
@@ -223,7 +255,8 @@ struct SettingsPresenterState {
             lastSyncedText: String?,
             attempt: Int = 0,
             dataOutcome: SettingsSyncDataOutcome = .none,
-            message: String? = nil
+            message: String? = nil,
+            evidence: SettingsSyncLifecycleEvidence? = nil
         ) {
             self.isConnected = isConnected
             self.lifecycle = lifecycle
@@ -232,6 +265,7 @@ struct SettingsPresenterState {
             self.attempt = attempt
             self.dataOutcome = dataOutcome
             self.message = message
+            self.evidence = evidence
         }
 
         var isSyncing: Bool { lifecycle.isInFlight }

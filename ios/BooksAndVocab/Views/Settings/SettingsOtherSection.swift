@@ -145,7 +145,10 @@ struct SettingsOtherSection: View {
 
             SettingsSyncLifecycleFeedback(
                 lifecycle: summary.lifecycle,
-                actions: actions
+                actions: actions,
+                attempt: summary.attempt,
+                dataOutcome: summary.dataOutcome,
+                evidence: summary.evidence
             )
         }
         // 展開與收合共用這一條。收合時 `lastSyncedText` 那一行同時淡回來

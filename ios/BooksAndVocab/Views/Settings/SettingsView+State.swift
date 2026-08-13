@@ -115,7 +115,8 @@ extension SettingsView {
                     lastSyncedText: lastSyncedText,
                     attempt: coordinator.syncAttempt,
                     dataOutcome: coordinator.syncDataOutcome,
-                    message: coordinator.syncMessage
+                    message: coordinator.syncMessage,
+                    evidence: coordinator.syncEvidence
                 )
                 : nil,
             // 書庫綁 Apple ID 不綁 app 帳號 — 不掛 isLoggedIn gate。

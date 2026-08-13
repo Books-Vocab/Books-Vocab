@@ -21,32 +21,46 @@ final class SettingsSyncLifecycleUITests: UITestCase {
         settings.assertIsPresented()
 
         settings.syncSummaryButton.scrollIntoView()
+        XCTAssertEqual(settings.app.buttons.matching(identifier: "settings.syncSummary").count, 1)
+        XCTAssertGreaterThan(settings.syncSummaryButton.frame.width, 0)
+        XCTAssertGreaterThan(settings.syncSummaryButton.frame.height, 0)
         settings.syncSummaryButton.tapWhenReady()
-        XCTAssertTrue(
-            settings.syncLifecycleStatus.waitForExistence(timeout: 5),
-            "first deterministic fixture round must render terminal error"
+        settings.assertTerminalFeedback(
+            status: "同步失敗",
+            markerContains: [
+                "schema=settings.sync.evidence.v1",
+                "lifecycle=terminalError",
+                "attempt=1",
+                "dataOutcome=partial",
+                "residualWords=residual",
+                "readBackWords=-",
+                "round=1,path=/api/dictionary-cards,status=429",
+                "settings.sync.lifecycle.serviceResult"
+            ]
         )
-        XCTAssertEqual(settings.syncLifecycleStatus.label, "同步失敗")
-        XCTAssertTrue(settings.retrySyncButton.exists)
-        XCTAssertTrue(settings.syncLifecycleMessage.exists)
+        XCTAssertEqual(settings.retrySyncButton.count, 1)
+        XCTAssertEqual(settings.syncLifecycleMessage.count, 1)
         captureStep("terminal-error-real-service", app: app)
 
         settings.retrySyncButton.tapWhenReady()
-        XCTAssertTrue(
-            settings.syncLifecycleStatus.waitForExistence(timeout: 5),
-            "retry must render terminal success"
+        settings.assertTerminalFeedback(
+            status: "同步完成",
+            markerContains: [
+                "schema=settings.sync.evidence.v1",
+                "lifecycle=terminalSuccess",
+                "attempt=2",
+                "dataOutcome=complete",
+                "residualWords=residual",
+                "readBackWords=complete,residual",
+                "round=2,path=/api/vocab,status=200",
+                "settings.sync.lifecycle.serviceResult"
+            ]
         )
-        XCTAssertEqual(settings.syncLifecycleStatus.label, "同步完成")
-        XCTAssertFalse(settings.retrySyncButton.exists)
-        XCTAssertTrue(settings.dismissSyncStatusButton.exists)
+        XCTAssertEqual(settings.retrySyncButton.count, 0)
+        XCTAssertEqual(settings.dismissSyncStatusButton.count, 1)
         captureStep("retry-real-service", app: app)
 
-        attachText(
-            "lifecycle=terminalError -> retry -> terminalSuccess\nservice=KGService.backgroundSync transport=FixtureDatasetStore\ndata=partial SwiftData residual -> complete SwiftData read\nselectors=settings.syncLifecycle.status,settings.syncLifecycle.message,settings.syncLifecycle.retryButton,settings.syncLifecycle.dismissButton",
-            named: "Settings Sync Lifecycle Evidence"
-        )
-
         settings.dismissSyncStatusButton.tapWhenReady()
-        XCTAssertFalse(settings.syncLifecycle.exists)
+        XCTAssertEqual(settings.syncLifecycleQuery.count, 0)
     }
 }
