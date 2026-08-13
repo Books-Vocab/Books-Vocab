@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
+import os
 import re
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Iterator
 
 from uitest_review_contract import REVIEW_HTML_NAME
 from uitest_review_ui import artifact_link, dom_id, esc, filter_script, shell_css, status_badge, status_kind
@@ -15,6 +21,38 @@ from uitest_review_ui import artifact_link, dom_id, esc, filter_script, shell_cs
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WORKSPACE_ROOT = ROOT / "build" / "snapshots" / "uitest-runs"
 DEFAULT_TEST_ROOT = ROOT / "ios" / "BooksAndVocabUITests"
+
+
+class WorkspacePublicationError(OSError):
+    """Workspace publication failed, with an explicit commit-marker verdict."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        committed: bool,
+        original_error: Exception | None = None,
+        rollback_error: Exception | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.committed = committed
+        self.original_error = original_error
+        self.rollback_error = rollback_error
+        self.cleanup_safe = not committed and rollback_error is None
+        self.indeterminate = not committed and rollback_error is not None
+
+
+class _AtomicWriteError(OSError):
+    def __init__(self, error: Exception, *, path: Path, replaced: bool) -> None:
+        super().__init__(str(error))
+        self.path = path
+        self.replaced = replaced
+
+
+class _WorkspaceRollbackError(OSError):
+    def __init__(self, errors: list[Exception]) -> None:
+        super().__init__("; ".join(str(error) for error in errors))
+        self.errors = errors
 
 
 def workspace_summary(runs: list[dict], flows: list[dict] | None = None) -> dict:
@@ -114,6 +152,159 @@ def load_workspace_index(workspace_root: Path) -> dict:
     return data
 
 
+def _workspace_lock_path(workspace_root: Path) -> Path:
+    identity = hashlib.sha256(str(workspace_root.resolve()).encode()).hexdigest()
+    return Path(tempfile.gettempdir()) / f"kg-uitest-review-workspace-{identity}.lock"
+
+
+@contextmanager
+def _workspace_lock(workspace_root: Path) -> Iterator[None]:
+    lock_path = _workspace_lock_path(workspace_root)
+    with lock_path.open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _after_atomic_replace(_path: Path) -> None:
+    """Fault-injection seam after rename and before directory durability."""
+
+
+def _fsync_directory(directory: Path) -> None:
+    directory_descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    replaced = False
+    try:
+        mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+        replaced = True
+        _after_atomic_replace(path)
+        _fsync_directory(path.parent)
+    except Exception as error:
+        raise _AtomicWriteError(error, path=path, replaced=replaced) from error
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def _file_snapshot(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _restore_file_snapshot(path: Path, content: bytes | None) -> None:
+    current = _file_snapshot(path)
+    if current == content:
+        return
+    if content is None:
+        if path.exists() or path.is_symlink():
+            path.unlink()
+            _fsync_directory(path.parent)
+        return
+    _atomic_write_text(path, content.decode("utf-8"))
+
+
+def _index_matches(path: Path, expected: bytes) -> bool:
+    try:
+        return path.read_bytes() == expected
+    except OSError:
+        return False
+
+
+def _rollback_workspace_files(
+    snapshots: list[tuple[Path, bytes | None]],
+) -> Exception | None:
+    errors: list[Exception] = []
+    for path, content in snapshots:
+        try:
+            _restore_file_snapshot(path, content)
+        except Exception as error:
+            errors.append(error)
+    for path, expected in snapshots:
+        try:
+            observed = _file_snapshot(path)
+        except Exception as error:
+            errors.append(error)
+            continue
+        if observed != expected:
+            errors.append(OSError(f"workspace rollback verification failed: {path}"))
+    if not errors:
+        return None
+    return _WorkspaceRollbackError(errors)
+
+
+def _derive_workspace(
+    index: dict,
+    *,
+    test_root: Path,
+    project_root: Path,
+) -> dict:
+    runs = sorted(index.get("runs", []), key=lambda item: item.get("lastRunAt") or "", reverse=True)
+    stubs = discover_flow_stubs(test_root, project_root)
+    flows = flow_records(runs, stubs)
+    index["runs"] = runs
+    index["flows"] = flows
+    index["summary"] = workspace_summary(runs, flows)
+    return index
+
+
+def _publish_workspace_locked(workspace_root: Path, index: dict) -> None:
+    # Render before publishing either file. HTML lands first; index.json is the
+    # machine-readable commit marker and is replaced last.
+    index_content = json.dumps(index, ensure_ascii=False, indent=2) + "\n"
+    html_content = render_workspace_html(index)
+    html_path = workspace_root / REVIEW_HTML_NAME
+    index_path = workspace_root / "index.json"
+    old_html = _file_snapshot(html_path)
+    old_index = _file_snapshot(index_path)
+    expected_index = index_content.encode("utf-8")
+    committed = False
+    try:
+        _atomic_write_text(html_path, html_content)
+        try:
+            _atomic_write_text(index_path, index_content)
+        except _AtomicWriteError as error:
+            committed = error.replaced or _index_matches(index_path, expected_index)
+            raise
+        committed = True
+    except Exception as error:
+        if not committed:
+            # Restore the human view before its machine-readable commit marker.
+            # Verify both snapshots while the workspace lock still excludes
+            # writers; cleanup is unsafe if either result is indeterminate.
+            rollback_error = _rollback_workspace_files(
+                [(html_path, old_html), (index_path, old_index)]
+            )
+            raise WorkspacePublicationError(
+                str(error),
+                committed=False,
+                original_error=error,
+                rollback_error=rollback_error,
+            ) from error
+        raise WorkspacePublicationError(
+            str(error), committed=True, original_error=error
+        ) from error
+
+
 def ensure_workspace(
     *,
     workspace_root: Path = DEFAULT_WORKSPACE_ROOT,
@@ -121,19 +312,14 @@ def ensure_workspace(
     project_root: Path = ROOT,
 ) -> dict:
     workspace_root.mkdir(parents=True, exist_ok=True)
-    index = load_workspace_index(workspace_root)
-    runs = sorted(index.get("runs", []), key=lambda item: item.get("lastRunAt") or "", reverse=True)
-    stubs = discover_flow_stubs(test_root, project_root)
-    flows = flow_records(runs, stubs)
-    index["runs"] = runs
-    index["flows"] = flows
-    index["summary"] = workspace_summary(runs, flows)
-    (workspace_root / "index.json").write_text(
-        json.dumps(index, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (workspace_root / REVIEW_HTML_NAME).write_text(render_workspace_html(index), encoding="utf-8")
-    return index
+    with _workspace_lock(workspace_root):
+        index = _derive_workspace(
+            load_workspace_index(workspace_root),
+            test_root=test_root,
+            project_root=project_root,
+        )
+        _publish_workspace_locked(workspace_root, index)
+        return index
 
 
 def write_workspace_index(
@@ -144,20 +330,18 @@ def write_workspace_index(
     project_root: Path = ROOT,
 ) -> dict:
     workspace_root.mkdir(parents=True, exist_ok=True)
-    index = load_workspace_index(workspace_root)
-    runs = [
-        existing
-        for existing in index.get("runs", [])
-        if (existing.get("flowId"), existing.get("variantId")) != (run.get("flowId"), run.get("variantId"))
-    ]
-    runs.insert(0, run)
-    runs.sort(key=lambda item: item.get("lastRunAt") or "", reverse=True)
-    index["runs"] = runs
-    (workspace_root / "index.json").write_text(
-        json.dumps(index, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return ensure_workspace(workspace_root=workspace_root, test_root=test_root, project_root=project_root)
+    with _workspace_lock(workspace_root):
+        index = load_workspace_index(workspace_root)
+        # Evidence is an append-only run history. The whole read -> append ->
+        # derive -> publish transaction stays under one path-keyed flock.
+        index["runs"] = [run, *index.get("runs", [])]
+        index = _derive_workspace(
+            index,
+            test_root=test_root,
+            project_root=project_root,
+        )
+        _publish_workspace_locked(workspace_root, index)
+        return index
 
 
 def _relpath(path: Path, root: Path) -> str:

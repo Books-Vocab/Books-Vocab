@@ -8,15 +8,18 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import logging
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from uitest_review_contract import REVIEW_HTML_NAME
 from uitest_review_ui import artifact_link, esc, image_modal_script, shell_css, status_badge
 from uitest_review_workspace import (
+    WorkspacePublicationError,
     ensure_workspace,
     render_workspace_html as render_persistent_workspace_html,
     write_workspace_index as write_persistent_workspace_index,
@@ -37,9 +40,74 @@ def link_or_copy(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
-def load_manifest(path: Path) -> dict:
+def _png_metadata(path: Path) -> dict:
+    import struct
+
+    data = path.read_bytes()
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError(f"step artifact is not a PNG: {path}")
+    width, height = struct.unpack(">II", data[16:24])
+    if width <= 0 or height <= 0:
+        raise ValueError(f"step artifact has invalid dimensions: {path}")
+    return {
+        "width": width,
+        "height": height,
+        "byteSize": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def load_manifest(path: Path, *, screenshot_dir: Path | None = None) -> dict:
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest.setdefault("schema", "kg.visual-review.sheet.v1")
+    items = manifest.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValueError("UI evidence manifest must contain at least one step item")
+    if screenshot_dir is not None:
+        seen: set[str] = set()
+        seen_asset_ids: set[str] = set()
+        seen_file_identity: dict[tuple[int, int], str] = {}
+        screenshot_root = screenshot_dir.resolve()
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"UI evidence manifest item {index} is not an object")
+            asset_id = item.get("assetID")
+            if not isinstance(asset_id, str) or not asset_id.strip():
+                raise ValueError(f"UI evidence manifest item {index} must contain assetID")
+            if asset_id in seen_asset_ids:
+                raise ValueError(f"UI evidence manifest contains duplicate assetID: {asset_id}")
+            seen_asset_ids.add(asset_id)
+            rel = item.get("relPath")
+            if not isinstance(rel, str) or not rel or Path(rel).is_absolute() or ".." in Path(rel).parts:
+                raise ValueError(f"UI evidence manifest item {index} has unsafe relPath: {rel!r}")
+            if rel in seen:
+                raise ValueError(f"UI evidence manifest contains duplicate relPath: {rel}")
+            seen.add(rel)
+            artifact = (screenshot_dir / rel).resolve()
+            try:
+                artifact.relative_to(screenshot_root)
+            except ValueError as error:
+                raise ValueError(
+                    f"UI evidence manifest item {index} resolves outside screenshot root: {rel!r}"
+                ) from error
+            if not artifact.is_file():
+                raise ValueError(f"UI evidence manifest references missing step PNG: {artifact}")
+            identity = (artifact.stat().st_dev, artifact.stat().st_ino)
+            if identity in seen_file_identity:
+                raise ValueError(
+                    "UI evidence manifest maps multiple assets to the same artifact file: "
+                    f"{seen_file_identity[identity]} and {rel}"
+                )
+            seen_file_identity[identity] = rel
+            metadata = _png_metadata(artifact)
+            for key in ("width", "height", "byteSize", "sha256"):
+                expected = item.get(key)
+                if expected is None:
+                    raise ValueError(f"UI evidence manifest item {rel} missing {key}")
+                if expected != metadata[key]:
+                    raise ValueError(
+                        f"UI evidence manifest item {rel} {key} mismatch: expected {expected}, actual {metadata[key]}"
+                    )
     return manifest
 
 
@@ -81,6 +149,7 @@ def infer_flow_id(test_file: str | None, out_root: Path) -> str:
 def run_record(
     *,
     out_root: Path,
+    artifact_root: Path | None = None,
     manifest: dict,
     videos: list[dict],
     log: Path | None,
@@ -92,11 +161,12 @@ def run_record(
     last_run_at: str | None = None,
 ) -> dict:
     workspace_root = out_root.parent
+    artifact_root = artifact_root or out_root
     log_rel = None
     if log and log.is_file():
-        target = out_root / log.name
+        target = artifact_root / log.name
         link_or_copy(log, target)
-        log_rel = relpath(target, workspace_root)
+        log_rel = relpath(out_root / log.name, workspace_root)
 
     review_html = out_root / REVIEW_HTML_NAME
     manifest_path = out_root / "review_manifest.json"
@@ -348,46 +418,74 @@ def build_review_root(
     device: str | None = None,
     last_run_at: str | None = None,
 ) -> dict:
-    out_root.mkdir(parents=True, exist_ok=True)
-    manifest = load_manifest(manifest_path)
-
-    for item in manifest.get("items", []):
-        rel = item.get("relPath")
-        if not rel:
-            continue
-        link_or_copy(screenshot_dir / rel, out_root / rel)
-
-    for sheet in (contact_sheet, quick4_sheet):
-        if sheet and sheet.is_file():
-            link_or_copy(sheet, out_root / sheet.name)
-    sheets = [sheet.name for sheet in (contact_sheet, quick4_sheet) if sheet and sheet.is_file()]
-
-    manifest["imageRoot"] = str(out_root)
-    (out_root / "review_manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    if out_root.exists() and any(out_root.iterdir()):
+        raise FileExistsError(f"refusing to overwrite non-empty UI review root: {out_root}")
+    manifest = load_manifest(manifest_path, screenshot_dir=screenshot_dir)
+    out_root.parent.mkdir(parents=True, exist_ok=True)
+    if out_root.exists():
+        out_root.rmdir()
+    staging_root = Path(
+        tempfile.mkdtemp(prefix=f".{out_root.name}.staging.", dir=out_root.parent)
     )
-    (out_root / "review_state.json").write_text(
-        json.dumps({"schema": "kg.ui.review-state.v1", "entries": {}}, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    published = False
+    try:
+        for item in manifest.get("items", []):
+            rel = item.get("relPath")
+            if not rel:
+                continue
+            link_or_copy(screenshot_dir / rel, staging_root / rel)
 
-    videos = video_entry(video, out_root) if video else []
+        for sheet in (contact_sheet, quick4_sheet):
+            if sheet and sheet.is_file():
+                link_or_copy(sheet, staging_root / sheet.name)
+        sheets = [
+            sheet.name
+            for sheet in (contact_sheet, quick4_sheet)
+            if sheet and sheet.is_file()
+        ]
+
+        manifest["imageRoot"] = str(out_root)
+        (staging_root / "review_manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (staging_root / "review_state.json").write_text(
+            json.dumps({"schema": "kg.ui.review-state.v2", "entries": []}, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+
+        videos = video_entry(video, staging_root) if video else []
+        run = run_record(
+            out_root=out_root,
+            artifact_root=staging_root,
+            manifest=manifest,
+            videos=videos,
+            log=log,
+            flow_id=flow_id,
+            variant_id=variant_id,
+            status=status,
+            test_file=test_file,
+            device=device,
+            last_run_at=last_run_at,
+        )
+        (staging_root / REVIEW_HTML_NAME).write_text(
+            render_run_html(manifest, run, videos, sheets), encoding="utf-8"
+        )
+        os.replace(staging_root, out_root)
+        published = True
+        workspace = write_workspace_index(out_root.parent, run)
+    except Exception as error:
+        cleanup_safe = (
+            isinstance(error, WorkspacePublicationError) and error.cleanup_safe
+        )
+        if not published or cleanup_safe:
+            cleanup_root = out_root if published else staging_root
+            if cleanup_root.exists():
+                shutil.rmtree(cleanup_root)
+        raise
+
     html_path = out_root / REVIEW_HTML_NAME
-    run = run_record(
-        out_root=out_root,
-        manifest=manifest,
-        videos=videos,
-        log=log,
-        flow_id=flow_id,
-        variant_id=variant_id,
-        status=status,
-        test_file=test_file,
-        device=device,
-        last_run_at=last_run_at,
-    )
-    html_path.write_text(render_run_html(manifest, run, videos, sheets), encoding="utf-8")
-    workspace = write_workspace_index(out_root.parent, run)
 
     return {
         "schema": "kg.ios.uitest-review.v1",

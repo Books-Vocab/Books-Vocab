@@ -160,6 +160,22 @@ def test_build_ui_step_manifest_excludes_generated_sheets(tmp_path):
     assert [item["assetID"] for item in manifest["items"]] == [
         "01-launch", "02-player"
     ]
+    assert manifest["items"][0]["width"] == 100
+    assert manifest["items"][0]["height"] == 200
+    assert manifest["items"][0]["byteSize"] == (tmp_path / "01-launch.png").stat().st_size
+    assert len(manifest["items"][0]["sha256"]) == 64
+
+
+def test_build_ui_step_manifest_rejects_non_png_placeholders(tmp_path):
+    mod = _load()
+    (tmp_path / "01-launch.png").write_text("not a screenshot", encoding="utf-8")
+
+    try:
+        mod.build_ui_step_manifest(tmp_path)
+    except ValueError as error:
+        assert "not a PNG" in str(error)
+    else:
+        raise AssertionError("placeholder screenshot must fail closed")
 
 
 def test_images_source_excludes_generated_sheets(tmp_path):
