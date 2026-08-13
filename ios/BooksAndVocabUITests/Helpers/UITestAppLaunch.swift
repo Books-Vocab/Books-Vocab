@@ -6,6 +6,11 @@ private let uiTestLaunchProfileEnvKey = "KG_UI_TEST_LAUNCH_PROFILE"
 private let uiTestPerfLogEnvKey = "KG_PERF_LOG"
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
+private let p9ProofRelativePathEnvKey = "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH"
+private let uiTestSourceCommitEnvKey = "KG_UI_TEST_SOURCE_COMMIT"
+private let uiTestDatasetIDEnvKey = "KG_UI_TEST_DATASET_ID"
+private let uiTestDatasetSHA256EnvKey = "KG_UI_TEST_DATASET_SHA256"
+private let uiTestDeviceUDIDEnvKey = "KG_UI_TEST_DEVICE_UDID"
 
 enum UITestReaderRuntimeScenario: String, CaseIterable, Equatable {
     case progressUnknown = "progress-unknown"
@@ -162,6 +167,21 @@ struct UITestLaunchConfiguration {
                let dataset = ProcessInfo.processInfo.environment[key],
                !dataset.isEmpty {
                 environment[key] = dataset
+            }
+        }
+        // P9 evidence provenance and the app-written proof destination are
+        // explicit launch inputs; no host-side fixture copy is allowed.
+        for key in [
+            p9ProofRelativePathEnvKey,
+            uiTestSourceCommitEnvKey,
+            uiTestDatasetIDEnvKey,
+            uiTestDatasetSHA256EnvKey,
+            uiTestDeviceUDIDEnvKey,
+        ] {
+            if environment[key] == nil,
+               let value = ProcessInfo.processInfo.environment[key],
+               !value.isEmpty {
+                environment[key] = value
             }
         }
         return environment

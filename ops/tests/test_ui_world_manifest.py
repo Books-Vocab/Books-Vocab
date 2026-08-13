@@ -526,6 +526,16 @@ def test_review_calendar_evidence_mapping_rejects_missing_label(tmp_path: Path):
         validate_fixture_dataset_file(path, require_review_clock=True)
 
 
+def test_review_calendar_evidence_mapping_has_no_checkout_identity_fields(tmp_path: Path):
+    data = _marketing_demo()
+    rows = data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]["required"]
+    assert rows
+    assert all(set(row) == {"fixtureID", "stepLabel", "index", "assetIDs"} for row in rows)
+    path = tmp_path / "portable_review_evidence.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert validate_fixture_dataset_file(path, require_review_clock=True) == "marketing_demo"
+
 def test_validate_accepts_ui_world_without_optional_scenario_context(tmp_path: Path):
     data = _marketing_demo()
     data.pop("scenarioContext")

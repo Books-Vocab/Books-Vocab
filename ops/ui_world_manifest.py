@@ -2899,7 +2899,7 @@ def _validate_surface_contracts(
 def _validate_review_calendar_evidence(
     scenario_context: Mapping[str, Any], *, label: str, required: bool
 ) -> None:
-    """Validate label -> logical asset ID/inode metadata as a one-to-one map."""
+    """Validate the portable logical asset mapping as a one-to-one map."""
     surface = scenario_context.get("surfaceContracts")
     if surface is None:
         if required:

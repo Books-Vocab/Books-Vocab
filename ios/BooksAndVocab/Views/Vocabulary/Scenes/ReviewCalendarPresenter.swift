@@ -148,6 +148,7 @@ enum ReviewCalendarAccessibility {
     static let nextMonth = "reviewCalendar.nextMonth"
     static let selectedDay = "reviewCalendar.selectedDay"
     static let emptyDayDetail = "reviewCalendar.emptyDayDetail"
+    static let emptyDaySummary = "reviewCalendar.emptyDaySummary"
     static let populatedDayDetail = "reviewCalendar.populatedDayDetail"
     static let populatedDaySummary = "reviewCalendar.populatedDaySummary"
     static let clockHistoryPlan = "reviewCalendar.clock.history_plan.anchor_day"
@@ -225,6 +226,7 @@ struct ReviewCalendarPresenter: View {
     init(filter: NotebookFilter = NotebookFilter(), clock: ReviewCalendarClock) {
         self.filter = filter
         self.clock = clock
+        self.installedFixtureProof = FixtureDatasetStore.preparedEvidenceFixtureProofValue()
         let cutoff = clock.cutoff(months: 6)
         _allRecords = Query(
             filter: #Predicate<ReviewRecord> { $0.reviewedAt >= cutoff },
@@ -237,6 +239,7 @@ struct ReviewCalendarPresenter: View {
 
     @State private var displayedMonth: Date
     @State private var selectedDay: String?
+    private let installedFixtureProof: String?
 
     private static func formattedMonth(_ date: Date, clock: ReviewCalendarClock) -> String {
         // template "yMMMM" → en "May 2026" / ja "2026年5月" / ko "2026년 5월"
@@ -263,12 +266,6 @@ struct ReviewCalendarPresenter: View {
         case let .populated(total, remembered, forgot):
             return (total, remembered, forgot)
         }
-    }
-
-    private var installedFixtureProof: String? {
-        guard let proof = try? FixtureDatasetStore.materializeEvidenceFixture(),
-              let data = try? JSONEncoder().encode(proof) else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 
     var body: some View {
@@ -374,12 +371,20 @@ struct ReviewCalendarPresenter: View {
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
-                let s = selectedDaySummary
-                Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
-                    .font(appSkin.typography.caption)
-                    .foregroundStyle(appSkin.palette.tertiaryText)
-                    .accessibilityIdentifier(ReviewCalendarAccessibility.populatedDaySummary)
-                    .accessibilityValue("\(s.total)")
+                if case .empty = ReviewCalendarPresentation.dayState(for: selectedDayRecords) {
+                    Text("這天沒有複習紀錄".localized)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
+                        .accessibilityIdentifier(ReviewCalendarAccessibility.emptyDaySummary)
+                        .accessibilityValue("0")
+                } else {
+                    let s = selectedDaySummary
+                    Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                        .accessibilityIdentifier(ReviewCalendarAccessibility.populatedDaySummary)
+                        .accessibilityValue("\(s.total)")
+                }
             }
 
             VStack(spacing: 0) {

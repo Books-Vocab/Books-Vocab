@@ -356,15 +356,23 @@ extension FixtureDatasetStoreTests {
 
         try FixtureDatasetStore.withTestingData(data) {
             let proof = try FixtureDatasetStore.materializeEvidenceFixture()
-            let expectedHash = SHA256.hash(data: data)
+            let rawObject = try JSONSerialization.jsonObject(with: data)
+            let canonical = try JSONSerialization.data(withJSONObject: rawObject, options: [.sortedKeys])
+            let expectedHash = SHA256.hash(data: canonical)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            let sourceHash = SHA256.hash(data: data)
                 .map { String(format: "%02x", $0) }
                 .joined()
 
             #expect(proof.datasetID == "test-evidence-fixture")
             #expect(proof.path == "Evidence/test-evidence-fixture.json")
-            #expect(proof.bytes == data.count)
+            #expect(proof.type == "application/json")
+            #expect(proof.datasetSHA256 == sourceHash)
+            #expect(proof.bytes == canonical.count)
             #expect(proof.sha256 == expectedHash)
-            #expect(try Data(contentsOf: expected) == data)
+            #expect(try Data(contentsOf: expected) == canonical)
+            #expect(try Data(contentsOf: expected) != data)
         }
     }
 

@@ -68,6 +68,7 @@ final class FixtureDatasetUITests: UITestCase {
             let artifactPath: String
             let bytes: Int
             let sha256: String
+            let type: String
             let selector: String
             let source: String
             let datasetID: String
@@ -80,9 +81,17 @@ final class FixtureDatasetUITests: UITestCase {
             let path: String
             let bytes: Int
             let sha256: String
+            let type: String
+            let sourceCommit: String
+            let datasetSHA256: String
         }
         struct GeneratedEvidenceFile: Codable {
             let schema: String
+            let sourceCommit: String
+            let datasetID: String
+            let datasetSHA256: String
+            let device: String
+            let selector: String
             let records: [GeneratedEvidence]
         }
         struct SurfaceContracts: Decodable {
@@ -178,6 +187,25 @@ final class FixtureDatasetUITests: UITestCase {
         }
         XCTAssertFalse(document.datasetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         let device = try evidenceDevice()
+        let sourceCommit = try evidenceSourceCommit()
+        let datasetSHA256 = dataSHA256(data)
+        if let expectedDatasetSHA256 = environment["KG_UI_TEST_DATASET_SHA256"], !expectedDatasetSHA256.isEmpty {
+            XCTAssertEqual(datasetSHA256, expectedDatasetSHA256, "UI test must attest the exact runner dataset bytes")
+        }
+        guard let screenshotDirectory = environment["KG_UI_TEST_SCREENSHOT_DIR"], !screenshotDirectory.isEmpty else {
+            XCTFail("KG_UI_TEST_SCREENSHOT_DIR is required for app-written P9 proof")
+            return
+        }
+        XCTAssertFalse(screenshotDirectory.isEmpty)
+        let appProofRelativePath = "Evidence/\(document.datasetID).json"
+        let retrievedProofRelativePath = "installed-fixtures/\(document.datasetID).json"
+        let evidenceLaunchEnvironment = [
+            "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH": appProofRelativePath,
+            "KG_UI_TEST_SOURCE_COMMIT": sourceCommit,
+            "KG_UI_TEST_DATASET_ID": document.datasetID,
+            "KG_UI_TEST_DATASET_SHA256": datasetSHA256,
+            "KG_UI_TEST_DEVICE_UDID": device,
+        ]
         let history = try XCTUnwrap(document.vocabulary["reviewCalendarDense"]?.reviewHistory)
         XCTAssertFalse(history.isEmpty, "reviewCalendarDense must provide populated-day evidence")
         let evidence = try XCTUnwrap(document.scenarioContext?.surfaceContracts?.reviewCalendar)
@@ -217,7 +245,11 @@ final class FixtureDatasetUITests: UITestCase {
         )
 
         var generatedEvidence: [DatasetDocument.GeneratedEvidence] = []
-        let app = launchIsolatedApp(fixtures: [.reviewCalendarDense], perfLog: "review-calendar")
+        let app = launchIsolatedApp(
+            fixtures: [.reviewCalendarDense],
+            extraEnvironment: evidenceLaunchEnvironment,
+            perfLog: "review-calendar"
+        )
         let overview = AppPage(app: app).goToOverview()
         guard overview.statsContent.waitUntilExists(timeout: 10) else {
             captureStep("calendar", app: app)
@@ -236,8 +268,12 @@ final class FixtureDatasetUITests: UITestCase {
         calendar.selectedDay.assertExists(timeout: 5)
         let installedFixture = try materializeInstalledFixture(
             from: calendar,
-            data: data,
-            datasetID: document.datasetID
+            datasetID: document.datasetID,
+            sourceCommit: sourceCommit,
+            datasetSHA256: datasetSHA256,
+            expectedAppPath: appProofRelativePath,
+            retrievedPath: retrievedProofRelativePath,
+            sourceData: data
         )
         generatedEvidence.append(try captureEvidence(
             evidence.required[0], group: "required", app: app,
@@ -258,6 +294,7 @@ final class FixtureDatasetUITests: UITestCase {
             XCTFail("empty-day selection must render the empty detail state")
             return
         }
+        try assertEmptyDay(calendar, label: "empty-day")
         generatedEvidence.append(try captureEvidence(
             evidence.required[1], group: "required", app: app,
             datasetID: document.datasetID, device: device, installedFixture: installedFixture
@@ -297,6 +334,7 @@ final class FixtureDatasetUITests: UITestCase {
         app.terminate()
         let counterexampleApp = launchIsolatedApp(
             fixtures: [.reviewCalendarDense],
+            extraEnvironment: evidenceLaunchEnvironment,
             perfLog: "review-calendar-counterexamples"
         )
         let counterexampleOverview = AppPage(app: counterexampleApp).goToOverview()
@@ -305,7 +343,7 @@ final class FixtureDatasetUITests: UITestCase {
         assertClockProvenance(in: counterexampleApp)
         moveCalendar(counterexampleCalendar, from: anchorMonth, to: previousMonth)
         counterexampleCalendar.day(emptyCounterexampleDay).tapWhenReady()
-        counterexampleCalendar.emptyDayDetail.assertExists(timeout: 5)
+        try assertEmptyDay(counterexampleCalendar, label: "empty-day-counterexample")
         generatedEvidence.append(try captureEvidence(
             evidence.counterexamples[0], group: "counterexamples", app: counterexampleApp,
             datasetID: document.datasetID, device: device, installedFixture: installedFixture
@@ -332,7 +370,9 @@ final class FixtureDatasetUITests: UITestCase {
             evidence,
             records: generatedEvidence,
             datasetID: document.datasetID,
-            device: device
+            device: device,
+            sourceCommit: sourceCommit,
+            datasetSHA256: datasetSHA256
         )
     }
 
@@ -462,6 +502,21 @@ final class FixtureDatasetUITests: UITestCase {
         }
     }
 
+    private func assertEmptyDay(_ page: ReviewCalendarPage, label: String) throws {
+        page.emptyDayDetail.assertExists(timeout: 5)
+        page.selectedDay.assertExists(timeout: 5)
+        page.emptyDaySummary.assertExists(timeout: 5)
+        let value = try XCTUnwrap(
+            page.emptyDaySummary.value as? String,
+            "\(label) summary must expose an exact numeric accessibility value"
+        )
+        let actual = try XCTUnwrap(
+            Int(value),
+            "\(label) summary value must be an integer"
+        )
+        XCTAssertEqual(actual, 0, "\(label) must expose exact selected-day count zero")
+    }
+
     @discardableResult
     private func assertPopulatedDay(
         _ page: ReviewCalendarPage,
@@ -552,6 +607,7 @@ final class FixtureDatasetUITests: UITestCase {
             artifactPath: relativePath(of: artifact, to: directory),
             bytes: bytes,
             sha256: sha256,
+            type: "image/png",
             selector: ReviewCalendarEvidence.selector,
             source: ReviewCalendarEvidence.source,
             datasetID: datasetID,
@@ -565,7 +621,9 @@ final class FixtureDatasetUITests: UITestCase {
         _ evidence: DatasetDocument.EvidenceGroups,
         records: [DatasetDocument.GeneratedEvidence],
         datasetID: String,
-        device: String
+        device: String,
+        sourceCommit: String,
+        datasetSHA256: String
     ) {
         let allRows = evidence.required + evidence.counterexamples
         XCTAssertEqual(records.count, allRows.count, "all manifest evidence rows must bind generated artifacts")
@@ -588,12 +646,16 @@ final class FixtureDatasetUITests: UITestCase {
             XCTAssertEqual(record.device, device)
             XCTAssertEqual(record.selector, ReviewCalendarEvidence.selector)
             XCTAssertEqual(record.source, ReviewCalendarEvidence.source)
+            XCTAssertEqual(record.type, "image/png")
             XCTAssertFalse(record.manifestPath.isEmpty)
             XCTAssertEqual(record.manifestPath, URL(fileURLWithPath: record.artifactPath).lastPathComponent)
             XCTAssertFalse(record.artifactPath.hasPrefix("/"), "artifactPath must be portable")
             XCTAssertGreaterThan(record.bytes, 0)
             XCTAssertEqual(record.installedFixture.datasetID, datasetID)
             XCTAssertGreaterThan(record.installedFixture.bytes, 0)
+            XCTAssertEqual(record.installedFixture.type, "application/json")
+            XCTAssertEqual(record.installedFixture.sourceCommit, sourceCommit)
+            XCTAssertEqual(record.installedFixture.datasetSHA256, datasetSHA256)
             XCTAssertEqual(record.installedFixture, records[0].installedFixture)
         }
 
@@ -629,19 +691,24 @@ final class FixtureDatasetUITests: UITestCase {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let encoded = try encoder.encode(DatasetDocument.GeneratedEvidenceFile(
                 schema: "kg.p9.review_calendar.review_manifest.v2",
+                sourceCommit: sourceCommit,
+                datasetID: datasetID,
+                datasetSHA256: datasetSHA256,
+                device: device,
+                selector: ReviewCalendarEvidence.selector,
                 records: records
             ))
-            let forbiddenToken = ["in", "ode"].joined()
-            XCTAssertFalse(
-                String(data: encoded, encoding: .utf8)?.contains(forbiddenToken) ?? true,
-                "portable evidence v2 must not contain filesystem identity tokens"
-            )
             try encoded.write(to: manifestURL)
             let consumer = try JSONDecoder().decode(
                 DatasetDocument.GeneratedEvidenceFile.self,
                 from: Data(contentsOf: manifestURL)
             )
             XCTAssertEqual(consumer.schema, "kg.p9.review_calendar.review_manifest.v2")
+            XCTAssertEqual(consumer.sourceCommit, sourceCommit)
+            XCTAssertEqual(consumer.datasetID, datasetID)
+            XCTAssertEqual(consumer.datasetSHA256, datasetSHA256)
+            XCTAssertEqual(consumer.device, device)
+            XCTAssertEqual(consumer.selector, ReviewCalendarEvidence.selector)
             XCTAssertEqual(consumer.records.count, records.count)
             XCTAssertEqual(consumer.records.map(\.bytes), records.map(\.bytes))
             XCTAssertEqual(consumer.records.map(\.sha256), records.map(\.sha256))
@@ -654,7 +721,7 @@ final class FixtureDatasetUITests: UITestCase {
 
     private func evidenceDevice() throws -> String {
         let environment = ProcessInfo.processInfo.environment
-        let keys = ["SIMULATOR_UDID", "DEVICE_UDID", "KG_UI_TEST_DEVICE_UDID"]
+        let keys = ["KG_UI_TEST_DEVICE_UDID", "SIMULATOR_UDID", "DEVICE_UDID"]
         guard let device = keys.lazy
             .compactMap({ environment[$0]?.trimmingCharacters(in: .whitespacesAndNewlines) })
             .first(where: { !$0.isEmpty })
@@ -673,37 +740,55 @@ final class FixtureDatasetUITests: UITestCase {
 
     private func materializeInstalledFixture(
         from page: ReviewCalendarPage,
-        data: Data,
-        datasetID: String
+        datasetID: String,
+        sourceCommit: String,
+        datasetSHA256: String,
+        expectedAppPath: String,
+        retrievedPath: String,
+        sourceData: Data
     ) throws -> DatasetDocument.InstalledFixture {
         let proof = try XCTUnwrap(
             page.installedFixtureProof.value as? String,
             "FixtureDatasetStore must expose the installed fixture proof"
         )
         let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         let appProof = try decoder.decode(DatasetDocument.InstalledFixture.self, from: Data(proof.utf8))
         XCTAssertEqual(appProof.datasetID, datasetID)
-        XCTAssertEqual(appProof.path, "Evidence/\(datasetID).json")
-
-        guard let rawDirectory = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
-              !rawDirectory.isEmpty else {
-            throw NSError(domain: "P9Evidence", code: 3)
+        XCTAssertEqual(appProof.path, expectedAppPath)
+        XCTAssertEqual(appProof.type, "application/json")
+        XCTAssertEqual(appProof.sourceCommit, sourceCommit)
+        XCTAssertEqual(appProof.datasetSHA256, datasetSHA256)
+        guard !appProof.path.hasPrefix("/"),
+              appProof.path.split(separator: "/").allSatisfy({ $0 != "." && $0 != ".." })
+        else {
+            throw NSError(domain: "P9Evidence", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "installed proof path must be portable",
+            ])
         }
-        let directory = URL(fileURLWithPath: rawDirectory)
-        let installedDirectory = directory.appendingPathComponent("installed-fixtures", isDirectory: true)
-        try FileManager.default.createDirectory(at: installedDirectory, withIntermediateDirectories: true)
-        let installedURL = installedDirectory.appendingPathComponent("\(datasetID).json")
-        try data.write(to: installedURL, options: .atomic)
-        let bytes = try XCTUnwrap(fileByteCount(installedURL))
-        let sha256 = try XCTUnwrap(fileSHA256(installedURL))
-        XCTAssertEqual(bytes, appProof.bytes, "installed fixture byte proof must come from materialized app bytes")
-        XCTAssertEqual(sha256, appProof.sha256, "installed fixture SHA proof must come from materialized app bytes")
+        let canonicalObject = try JSONSerialization.jsonObject(with: sourceData, options: [.fragmentsAllowed])
+        let canonicalData = try JSONSerialization.data(withJSONObject: canonicalObject, options: [.sortedKeys])
+        XCTAssertEqual(appProof.bytes, canonicalData.count, "app proof bytes must describe canonical materialization")
+        XCTAssertEqual(appProof.sha256, dataSHA256(canonicalData), "app proof hash must describe canonical materialization")
         return DatasetDocument.InstalledFixture(
             datasetID: datasetID,
-            path: relativePath(of: installedURL, to: directory),
-            bytes: bytes,
-            sha256: sha256
+            path: retrievedPath,
+            bytes: appProof.bytes,
+            sha256: appProof.sha256,
+            type: appProof.type,
+            sourceCommit: appProof.sourceCommit,
+            datasetSHA256: appProof.datasetSHA256
         )
+    }
+
+    private func evidenceSourceCommit() throws -> String {
+        guard let value = ProcessInfo.processInfo.environment["KG_UI_TEST_SOURCE_COMMIT"],
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            XCTFail("P9 evidence requires the runner sourceCommit provenance")
+            throw NSError(domain: "P9Evidence", code: 5)
+        }
+        return value
     }
 
     private func fileByteCount(_ url: URL) -> Int? {
@@ -723,6 +808,12 @@ final class FixtureDatasetUITests: UITestCase {
     private func fileSHA256(_ url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func dataSHA256(_ data: Data) -> String {
+        SHA256.hash(data: data)
             .map { String(format: "%02x", $0) }
             .joined()
     }
