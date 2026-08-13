@@ -17,8 +17,13 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.example(id: "example-1").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
-        XCTAssertTrue(page.materialization(status: "ready").waitUntilValueContains(
-            "sense-1|example-1|dictionary.lookup.result|marketing_demo|d28b72ea22a689a77cdfb4979e14340a78a7af9e6a37c658429b72ac2ebbd25e|catalog_reader_epub|/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub|1690|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
+        let materialization = page.materialization(status: "ready")
+        XCTAssertTrue(materialization.waitUntilValueContains(
+            "sense-1|example-1|dictionary.lookup.result|marketing_demo|d28b72ea22a689a77cdfb4979e14340a78a7af9e6a37c658429b72ac2ebbd25e|catalog_reader_epub|",
+            timeout: 5
+        ))
+        XCTAssertTrue(materialization.waitUntilValueContains(
+            "|1690|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
             timeout: 5
         ))
         page.tapSense(id: "sense-1")
