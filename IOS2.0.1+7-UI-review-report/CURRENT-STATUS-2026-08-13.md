@@ -8,7 +8,7 @@
 
 原報告要求的是「重新思考並重構」而非局部修飾。P1–P15 表面上是 15 張圖，實際上是 5 個跨頁系統問題：資料／狀態模型、元件共用、互動時序、長內容／極端狀態與 visual hierarchy 必須一起收斂。這不是一次 UI polish；必須以 UI World 注入、狀態矩陣、Simulator/UI-test、證據契約與視覺迭代形成閉環。只修單頁 padding、顏色或單一 selector，無法達到報告標準。
 
-本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。目前 14 個 requirement 已有有效 PASS 證據；P3 是唯一 BLOCK，原因是 dependency/cache 無法完成 build，沒有執行到產品測試；P15 的 3 個 selectors 已在最新 Settings lifecycle 修正上重跑收斂。整合 branch 最新 affected unit regression 為 `11 passed / 0 failed`，但不把 unit PASS 升格成 P3 UI execution PASS。
+本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。需求證據層目前 14 個 requirement 已有有效 PASS 證據，P3 是唯一 requirement-level BLOCK，原因是 dependency/cache 無法完成 build，沒有執行到產品測試；P15 的 3 個 selectors 已在最新 Settings lifecycle 修正上重跑收斂。整合 branch 最新 affected unit regression 為 `11 passed / 0 failed`，但不把 unit PASS 升格成 P3 UI execution PASS。另以最終 clean integration HEAD `83f0d044c` 執行完整 36-gate：交付 verdict 仍為 BLOCK；這是 branch/Gate 層結果，不改寫上述 14/15 的既有需求證據。
 
 ## 原報告意圖與目前差距
 
@@ -54,6 +54,7 @@
 
 - **P1/P2**：舊問題不是字典卡片少一個欄位，而是 lookup、typed sense、provenance 與 materialization 沒有共同狀態模型；UI World 現在注入 rich payload，驗收固定 idle/loading/success/error/retry、選定 sense 與來源鏈。舊測試另曾把 runner 注入資料的 SHA 寫成舊常數，source `39ef0b8e` 改成由 runner bytes 計算，避免測試自相矛盾。
 - **P3**：`run_ui_evidence` 在 build preflight 無法解析 `GoogleSignIn` 與 `Minizip`，因此沒有 execution、沒有產品畫面 verdict。這是 dependency/cache infrastructure BLOCK，不是把舊 bundle 偷升格成 PASS。
+- **Fresh integration Gate（run_id=`83f0d044c193-13364-201231652442125`）**：36/36 gates 已執行；`ios-build`、`ios-build-catalyst` 與 12 個 UI-test scope 都因同一組 `GoogleSignIn`/`Minizip` module dependency resolution 失敗而 BLOCK；完整 unit scope 是 infrastructure `inconclusive`（`keychain-unavailable-osstatus-25291`）；ops pytest、backend pytest、design-system、docs conflict/verified、shell harness、baseline 與 backlog checks 均 PASS。Gate warnings 為既有 docs lint、slow UI pending、未測 shell/coverage，不是新的產品 PASS。
 - **P6/P7**：P6 首輪把 production normalized progress ID 與測試 ID 混用，後續又把 transient restore-warning 當成穩定終態；P7 則錯誤要求 Readium preload web view 數量與全域內容計數。修正為 typed progress state + provenance、等待 stable runtime state；移除受合法 Readium preload 影響的虛假全域假設，保留 content/loading/retry/error 轉換驗收。P6 source `c6ff48e0`、P7 source `e6630961` 的 fresh bundles 已 PASS。
 - **P11**：LazyVStack 的 viewport materialization 被誤當成 projection 不完整；修正驗收 oracle 後 `644` 筆 projection、facet union、搜尋與 CTA 均通過。靜態檢視仍看到 O(N) projection/sort 與 AX teardown 掃描，這是待 profiling 的風險，不足以宣稱 production performance 已證明。
 - **P15**：真正根因是 reset 偏好時 `setLanguage(.system)` 觸發 app root `.id(selection)` 重建，先摧毀 Settings navigation，再讓 locale 變更污染同一個 reset boundary 的 AX 文案。修正分三層：`rootRefreshID` 將一般語言刷新與 root identity 分離；Settings active 時把 reset 的 locale mutation 存成 `deferredSelection`，只持久化 default、保留當前 rendered locale；Settings 離場才一次 apply selection + root refresh。最後將測試 oracle 從 `isHittable` 改成語意正確的 `isEnabled == false`。最新 source `51ea71787` 的主流程、長內容與 reset counterexample 全部 PASS。
@@ -109,8 +110,8 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache uv run --python 3.13 \
 - 已通過：cluster validator `valid=true clusterCount=5 requirementCount=15 selectorCount=16`；run-many/matrix targeted tests `27 passed`；最新 affected unit regression `11 passed / 0 failed`；`bash -n ops/ios_test.sh`；`bash .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；`docs_lint --registry`（45 documents）；P1/P2/P4/P5/P6/P7/P8/P9/P10/P11/P12/P13/P14/P15 simulator evidence。P15 最新 batch source `51ea71787`，3 selectors 均 machine PASS、bundle contract PASS、contact sheet 已逐項視覺 attestation。
 - 平台：本輪是 iOS Simulator 驗證，不是 physical device；報告中的「實機操作」在此以 pinned simulator + exact XCTest + stable visual artifact 實現，不能誤報成真機 PASS。
 - 視覺審查：目前 attestation reviewer 是 `main-agent-visual-review`；沒有第二位獨立視覺 reviewer，因此這是已揭露的 assurance limitation，不升格為雙人審查。
-- P3 仍是唯一 BLOCK：dependency/cache preflight 失敗且 0 executions；需恢復 Xcode package resolution/cache 後，依同一 pinned device、dataset 與 exact selector 重跑。P11 的 static performance risk 同樣不是已證明的 performance PASS。
+- P3 仍是唯一 requirement-level BLOCK：dependency/cache preflight 失敗且 0 executions；需恢復 Xcode package resolution/cache 後，依同一 pinned device、dataset 與 exact selector 重跑。Fresh integration Gate 另外確認所有 UI-test scope 都在相同 build blocker fail-closed，完整 unit scope 則受 keychain OSStatus 25291 影響而 inconclusive。P11 的 static performance risk 同樣不是已證明的 performance PASS。
 
 ## 工作樹邊界
 
-本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`（HEAD `70edb37fe`）。尚未完成 close-wave：fresh Gate 的 P3 dependency/cache preflight 仍 fail-closed，故沒有 cutover local `main`、同步 `origin/main`、清理 worktree，亦未觸碰 `origin/prod`。這是目前與原方案「全部收斂」之間的唯一交付級阻塞；不能以舊 UI bundle、unit PASS 或 partial Gate 取代 P3 execution evidence。
+本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；整合 code baseline 為 `70edb37fe`，本狀態報告另有後續 docs-only 更新。尚未完成 close-wave：fresh Gate 的 P3 dependency/cache preflight 仍 fail-closed，且 unit infrastructure 不可用，故沒有 cutover local `main`、同步 `origin/main`、清理 worktree，亦未觸碰 `origin/prod`。這是目前與原方案「全部收斂」之間的唯一交付級阻塞；不能以舊 UI bundle、unit PASS 或 partial Gate 取代 P3 execution evidence。
