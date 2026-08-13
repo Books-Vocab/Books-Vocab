@@ -564,7 +564,7 @@ extension FixtureDatasetStoreTests {
           "assets": {
             "books": {
               "reader-book": {
-                "sourcePath": "/tmp/reader.epub",
+                "sourcePath": "ops/fixtures/assets/reader-real-book.epub",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "Books/reader.epub",

@@ -586,7 +586,44 @@ struct FixtureDatasetDocument: Decodable {
                 owner: "reader.\(fixtureID).bookAssetRef",
                 codingPath: codingPath
             )
+            guard let bookAsset = assets.asset(for: seed.bookAssetRef) else {
+                throw dataCorrupted(
+                    "UI World reader.\(fixtureID).bookAssetRef references missing asset \(seed.bookAssetRef)",
+                    codingPath: codingPath
+                )
+            }
+            try validateReaderSourcePath(
+                bookAsset.sourcePath,
+                owner: "reader.\(fixtureID).bookAssetRef",
+                codingPath: codingPath
+            )
         }
+    }
+
+    private static func validateReaderSourcePath(
+        _ sourcePath: String,
+        owner: String,
+        codingPath: [CodingKey]
+    ) throws {
+        let trimmed = sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.hasPrefix("/") else {
+            throw dataCorrupted(
+                "UI World \(owner) sourcePath must be repo-relative, not absolute: \(trimmed)",
+                codingPath: codingPath
+            )
+        }
+        let components = trimmed
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard !components.isEmpty,
+              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw dataCorrupted(
+                "UI World \(owner) sourcePath must be a safe repo-relative path: \(trimmed)",
+                codingPath: codingPath
+            )
+        }
+        // Decode validates only the lexical shape. Materialization must still
+        // resolve real paths and reject symlink escapes at the filesystem edge.
     }
 
     private static func validateBookshelfAssetReferences(
