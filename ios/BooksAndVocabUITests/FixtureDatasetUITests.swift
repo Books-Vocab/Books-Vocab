@@ -698,7 +698,11 @@ final class FixtureDatasetUITests: UITestCase {
         counterexampleCalendar.day(boundaryDays.utc).tapWhenReady()
         let counterexampleBoundaryCount = try assertPopulatedDay(
             counterexampleCalendar,
-            expectedCount: boundaryDays.utcCount,
+            // The app always renders the selected day in the canonical
+            // review timezone. ``boundaryDays.utc`` is the deliberately
+            // misleading UTC label; derive its expected count from the same
+            // local calendar projection the production UI uses.
+            expectedCount: try XCTUnwrap(counts.local[boundaryDays.utc]),
             label: "timezone-boundary-counterexample"
         )
         XCTAssertNotEqual(
