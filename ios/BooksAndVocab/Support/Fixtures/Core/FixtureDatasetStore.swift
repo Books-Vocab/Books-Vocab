@@ -594,7 +594,37 @@ enum FixtureDatasetStore {
     }
 
     private static var repositoryRootURL: URL {
-        URL(fileURLWithPath: #filePath)
+        // Xcode can compile this source with an `ios/` source-root prefix in
+        // `#filePath`, producing a misleading `<checkout>/ios/ios/...` path.
+        // Walk upward from the compiled source location and select the first
+        // directory that proves it is the repository root. The marker check
+        // keeps both normal source paths and that duplicated-prefix form
+        // anchored to the same checkout instead of silently resolving assets
+        // under `<checkout>/ios`.
+        var candidate = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .standardizedFileURL
+        let fileManager = FileManager.default
+        for _ in 0..<10 {
+            let hasIOSProject = fileManager.fileExists(
+                atPath: candidate.appendingPathComponent("ios/BooksAndVocab").path,
+                isDirectory: nil
+            )
+            let hasFixtureAssets = fileManager.fileExists(
+                atPath: candidate.appendingPathComponent("ops/fixtures/assets").path,
+                isDirectory: nil
+            )
+            if hasIOSProject && hasFixtureAssets {
+                return candidate
+            }
+            let parent = candidate.deletingLastPathComponent().standardizedFileURL
+            if parent == candidate { break }
+            candidate = parent
+        }
+        // Keep a deterministic failure location if a stripped test bundle or
+        // external build no longer has repository markers, while preserving
+        // the historical source-relative fallback for diagnostics.
+        return URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Core
             .deletingLastPathComponent() // Fixtures
             .deletingLastPathComponent() // Support
