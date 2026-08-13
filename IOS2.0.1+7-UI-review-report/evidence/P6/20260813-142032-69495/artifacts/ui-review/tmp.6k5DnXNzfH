@@ -1,0 +1,217 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /Users/chenliangyu/project/kg/.claude/worktrees/p6-p7-reader-runtime-state-20260813/.cache/ios-test-derived-data/32629ddae128fd8285b201b1c5f7f3dcb14936945be12cc2e9fe906a111a1f7f/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_70214.scoped.xctestrun -destination "platform=iOS Simulator,id=F27209F8-1464-410F-BC26-7372A522B921" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120 -resultBundlePath /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.5wegrZ/Test.xcresult "-only-testing:BooksAndVocabUITests/ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance"
+
+2026-08-13 22:20:46.610 xcodebuild[70718:36748722] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.5wegrZ/Test.xcresult
+
+2026-08-13 22:20:46.629 xcodebuild[70718:36748722] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 22:20:50.390 xcodebuild[70718:36748722] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 22:20:53.155 xcodebuild[70718:36748722] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 22:21:01.755985+0800 BooksAndVocabUITests-Runner[71762:36752027] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-08-13 22:21:03.644.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 22:21:03.646.
+Test Suite 'ReaderFlowUITests' started at 2026-08-13 22:21:03.646.
+Test Case '-[BooksAndVocabUITests.ReaderFlowUITests testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance]' started.
+    t =     0.00s Start Test at 2026-08-13 22:21:03.648
+    t =     0.06s Set Up
+    t =     0.07s Open com.Max0228.BooksBrowser
+    t =     0.07s     Launch com.Max0228.BooksBrowser
+2026-08-13 22:21:04.169 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 22:21:04.191 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[71762]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10a0ac310) and /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x109cc8398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     3.40s         Setting up automation session
+    t =     6.06s         Wait for com.Max0228.BooksBrowser to idle
+    t =    10.05s Checking `exists == 1 AND hittable == 1`
+    t =    10.06s     Checking existence of `"書庫" Button`
+    t =    10.29s     Find the "書庫" Button
+    t =    10.38s Tap "books.vertical" Button
+    t =    10.38s     Wait for com.Max0228.BooksBrowser to idle
+    t =    10.38s     Find the "books.vertical" Button
+    t =    10.44s     Check for interrupting elements affecting "books.vertical" Button
+    t =    10.50s     Synthesize event
+    t =    10.81s     Wait for com.Max0228.BooksBrowser to idle
+    t =    12.67s Checking `exists == 1`
+    t =    12.67s     Checking existence of `Any (First Match)`
+    t =    13.77s Checking `exists == 1 AND hittable == 1`
+    t =    13.77s     Checking existence of `Any (First Match)`
+    t =    13.94s     Find the Any (First Match)
+    t =    14.03s Tap "book.card.4F88707F-6060-4DDA-BC41-A3CA12ECF315" Button
+    t =    14.03s     Wait for com.Max0228.BooksBrowser to idle
+    t =    14.04s     Find the "book.card.4F88707F-6060-4DDA-BC41-A3CA12ECF315" Button
+    t =    14.12s     Check for interrupting elements affecting "book.card.4F88707F-6060-4DDA-BC41-A3CA12ECF315" Button
+    t =    14.21s     Synthesize event
+    t =    14.51s     Wait for com.Max0228.BooksBrowser to idle
+    t =    15.86s Checking `exists == 1`
+    t =    15.86s     Checking existence of `"reader.runtime.state" Other`
+    t =    16.02s Get number of matches for: Elements matching predicate '"reader.runtime.state" IN identifiers'
+    t =    16.04s Find the "reader.runtime.state" Other
+    t =    17.14s Checking `exists == 1`
+    t =    17.14s     Checking existence of `"reader.progress.unknown" Other`
+    t =    17.19s Get number of matches for: Elements matching predicate '"reader.progress.unknown" IN identifiers'
+    t =    17.22s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    17.42s Added attachment named 'Step 01-loaded'
+    t =    17.43s Terminate com.Max0228.BooksBrowser:72257
+    t =    18.48s Open com.Max0228.BooksBrowser
+    t =    18.48s     Launch com.Max0228.BooksBrowser
+2026-08-13 22:21:22.140 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 22:21:22.140 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    18.98s         Setting up automation session
+    t =    21.47s         Wait for com.Max0228.BooksBrowser to idle
+    t =    24.69s Checking `exists == 1 AND hittable == 1`
+    t =    24.69s     Checking existence of `"書庫" Button`
+    t =    24.94s     Find the "書庫" Button
+    t =    25.06s Tap "books.vertical" Button
+    t =    25.06s     Wait for com.Max0228.BooksBrowser to idle
+    t =    25.07s     Find the "books.vertical" Button
+    t =    25.13s     Check for interrupting elements affecting "books.vertical" Button
+    t =    25.20s     Synthesize event
+    t =    25.50s     Wait for com.Max0228.BooksBrowser to idle
+    t =    27.37s Checking `exists == 1`
+    t =    27.37s     Checking existence of `Any (First Match)`
+    t =    28.53s Checking `exists == 1 AND hittable == 1`
+    t =    28.53s     Checking existence of `Any (First Match)`
+    t =    28.63s     Find the Any (First Match)
+    t =    28.74s Tap "book.card.514E54B0-1F25-435B-9814-4722F83F692F" Button
+    t =    28.74s     Wait for com.Max0228.BooksBrowser to idle
+    t =    28.74s     Find the "book.card.514E54B0-1F25-435B-9814-4722F83F692F" Button
+    t =    28.85s     Check for interrupting elements affecting "book.card.514E54B0-1F25-435B-9814-4722F83F692F" Button
+    t =    28.94s     Synthesize event
+    t =    29.24s     Wait for com.Max0228.BooksBrowser to idle
+    t =    30.71s Checking `exists == 1`
+    t =    30.71s     Checking existence of `"reader.runtime.state" Other`
+    t =    30.82s Get number of matches for: Elements matching predicate '"reader.runtime.state" IN identifiers'
+    t =    30.85s Find the "reader.runtime.state" Other
+    t =    31.92s Checking `exists == 1`
+    t =    31.92s     Checking existence of `"reader.progress.zero" Other`
+    t =    31.96s Get number of matches for: Elements matching predicate '"reader.progress.zero" IN identifiers'
+    t =    31.98s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    32.17s Added attachment named 'Step 02-loaded'
+    t =    32.17s Terminate com.Max0228.BooksBrowser:72926
+    t =    33.22s Open com.Max0228.BooksBrowser
+    t =    33.22s     Launch com.Max0228.BooksBrowser
+2026-08-13 22:21:36.879 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 22:21:36.879 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    33.89s         Setting up automation session
+    t =    36.72s         Wait for com.Max0228.BooksBrowser to idle
+    t =    40.72s Checking `exists == 1 AND hittable == 1`
+    t =    40.72s     Checking existence of `"書庫" Button`
+    t =    40.99s     Find the "書庫" Button
+    t =    41.10s Tap "books.vertical" Button
+    t =    41.10s     Wait for com.Max0228.BooksBrowser to idle
+    t =    41.11s     Find the "books.vertical" Button
+    t =    41.18s     Check for interrupting elements affecting "books.vertical" Button
+    t =    41.25s     Synthesize event
+    t =    41.56s     Wait for com.Max0228.BooksBrowser to idle
+    t =    44.07s Checking `exists == 1`
+    t =    44.07s     Checking existence of `Any (First Match)`
+    t =    45.25s Checking `exists == 1 AND hittable == 1`
+    t =    45.25s     Checking existence of `Any (First Match)`
+    t =    45.33s     Find the Any (First Match)
+    t =    45.42s Tap "book.card.EFA682C7-9EF9-414F-8CB0-E0A33668453F" Button
+    t =    45.42s     Wait for com.Max0228.BooksBrowser to idle
+    t =    45.42s     Find the "book.card.EFA682C7-9EF9-414F-8CB0-E0A33668453F" Button
+    t =    45.59s     Check for interrupting elements affecting "book.card.EFA682C7-9EF9-414F-8CB0-E0A33668453F" Button
+    t =    45.68s     Synthesize event
+    t =    45.99s     Wait for com.Max0228.BooksBrowser to idle
+    t =    47.31s Checking `exists == 1`
+    t =    47.32s     Checking existence of `"reader.runtime.state" Other`
+    t =    47.42s Get number of matches for: Elements matching predicate '"reader.runtime.state" IN identifiers'
+    t =    47.45s Find the "reader.runtime.state" Other
+    t =    48.53s Checking `exists == 1`
+    t =    48.53s     Checking existence of `"reader.progress.middle" Other`
+    t =    48.57s Get number of matches for: Elements matching predicate '"reader.progress.middle" IN identifiers'
+    t =    48.59s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    48.77s Added attachment named 'Step 03-loaded'
+    t =    48.77s Terminate com.Max0228.BooksBrowser:73790
+    t =    49.85s Open com.Max0228.BooksBrowser
+    t =    49.85s     Launch com.Max0228.BooksBrowser
+2026-08-13 22:21:53.508 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 22:21:53.508 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    50.30s         Setting up automation session
+    t =    52.92s         Wait for com.Max0228.BooksBrowser to idle
+    t =    56.25s Checking `exists == 1 AND hittable == 1`
+    t =    56.26s     Checking existence of `"書庫" Button`
+    t =    56.83s     Find the "書庫" Button
+    t =    56.98s Tap "books.vertical" Button
+    t =    56.98s     Wait for com.Max0228.BooksBrowser to idle
+    t =    56.98s     Find the "books.vertical" Button
+    t =    57.06s     Check for interrupting elements affecting "books.vertical" Button
+    t =    57.11s     Synthesize event
+    t =    57.41s     Wait for com.Max0228.BooksBrowser to idle
+    t =    59.91s Checking `exists == 1`
+    t =    59.91s     Checking existence of `Any (First Match)`
+    t =    61.04s Checking `exists == 1 AND hittable == 1`
+    t =    61.04s     Checking existence of `Any (First Match)`
+    t =    61.24s     Find the Any (First Match)
+    t =    61.37s Tap "book.card.5FD20F2D-544A-4103-8287-DF264025D809" Button
+    t =    61.37s     Wait for com.Max0228.BooksBrowser to idle
+    t =    61.37s     Find the "book.card.5FD20F2D-544A-4103-8287-DF264025D809" Button
+    t =    61.47s     Check for interrupting elements affecting "book.card.5FD20F2D-544A-4103-8287-DF264025D809" Button
+    t =    61.57s     Synthesize event
+    t =    61.88s     Wait for com.Max0228.BooksBrowser to idle
+    t =    63.15s Checking `exists == 1`
+    t =    63.15s     Checking existence of `"reader.runtime.state" Other`
+    t =    63.18s Get number of matches for: Elements matching predicate '"reader.runtime.state" IN identifiers'
+    t =    63.20s Find the "reader.runtime.state" Other
+    t =    64.25s Checking `exists == 1`
+    t =    64.26s     Checking existence of `"reader.progress.complete" Other`
+    t =    64.31s Get number of matches for: Elements matching predicate '"reader.progress.complete" IN identifiers'
+    t =    64.34s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    64.53s Added attachment named 'Step 04-loaded'
+    t =    64.54s Terminate com.Max0228.BooksBrowser:74380
+    t =    65.61s Open com.Max0228.BooksBrowser
+    t =    65.61s     Launch com.Max0228.BooksBrowser
+2026-08-13 22:22:09.277 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 22:22:09.277 xcodebuild[70718:36748722] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    66.27s         Setting up automation session
+    t =    68.79s         Wait for com.Max0228.BooksBrowser to idle
+    t =    72.12s Checking `exists == 1 AND hittable == 1`
+    t =    72.12s     Checking existence of `"書庫" Button`
+    t =    72.33s     Find the "書庫" Button
+    t =    72.43s Tap "books.vertical" Button
+    t =    72.43s     Wait for com.Max0228.BooksBrowser to idle
+    t =    72.43s     Find the "books.vertical" Button
+    t =    72.50s     Check for interrupting elements affecting "books.vertical" Button
+    t =    72.56s     Synthesize event
+    t =    72.86s     Wait for com.Max0228.BooksBrowser to idle
+    t =    74.66s Checking `exists == 1`
+    t =    74.66s     Checking existence of `Any (First Match)`
+    t =    75.76s Checking `exists == 1 AND hittable == 1`
+    t =    75.77s     Checking existence of `Any (First Match)`
+    t =    75.82s     Find the Any (First Match)
+    t =    75.90s Tap "book.card.2FAE2005-7771-4591-817A-9D7B698F423B" Button
+    t =    75.90s     Wait for com.Max0228.BooksBrowser to idle
+    t =    75.90s     Find the "book.card.2FAE2005-7771-4591-817A-9D7B698F423B" Button
+    t =    75.97s     Check for interrupting elements affecting "book.card.2FAE2005-7771-4591-817A-9D7B698F423B" Button
+    t =    76.05s     Synthesize event
+    t =    76.35s     Wait for com.Max0228.BooksBrowser to idle
+    t =    77.65s Checking `exists == 1`
+    t =    77.65s     Checking existence of `"reader.runtime.state" Other`
+    t =    77.69s Get number of matches for: Elements matching predicate '"reader.runtime.state" IN identifiers'
+    t =    78.77s Checking `exists == 1 AND (value CONTAINS[c] "progress=zero" OR value CONTAINS[c] "progress=middle" OR value CONTAINS[c] "progress=complete")`
+    t =    78.77s     Checking existence of `"reader.runtime.state" Other`
+    t =    78.96s     Find the "reader.runtime.state" Other
+    t =    79.17s Find the "reader.runtime.state" Other
+    t =    79.31s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    79.47s Added attachment named 'Step 05-loaded'
+    t =    79.47s Terminate com.Max0228.BooksBrowser:74975
+    t =    80.57s Tear Down
+Test Case '-[BooksAndVocabUITests.ReaderFlowUITests testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance]' passed (80.800 seconds).
+Test Suite 'ReaderFlowUITests' passed at 2026-08-13 22:22:24.449.
+	 Executed 1 test, with 0 failures (0 unexpected) in 80.800 (80.803) seconds
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 22:22:24.450.
+	 Executed 1 test, with 0 failures (0 unexpected) in 80.800 (80.804) seconds
+Test Suite 'Selected tests' passed at 2026-08-13 22:22:24.450.
+	 Executed 1 test, with 0 failures (0 unexpected) in 80.800 (80.806) seconds
+2026-08-13 22:22:24.821 xcodebuild[70718:36748722] [MT] IDETestOperationsObserverDebug: 94.382 elapsed -- Testing started completed.
+2026-08-13 22:22:24.821 xcodebuild[70718:36748722] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-08-13 22:22:24.821 xcodebuild[70718:36748722] [MT] IDETestOperationsObserverDebug: 94.382 sec, +94.382 sec -- end
+
+Test session results, code coverage, and logs:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.5wegrZ/Test.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

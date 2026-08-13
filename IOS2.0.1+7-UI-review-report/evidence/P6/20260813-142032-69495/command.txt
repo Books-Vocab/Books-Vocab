@@ -1,0 +1,12 @@
+sourceWorktree=/Users/chenliangyu/project/kg/.claude/worktrees/p6-p7-reader-runtime-state-20260813
+helper=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh
+toolRoot=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812
+validator=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812/ops/uitest_evidence_contract.py
+toolResolution=helper-skill-repo
+branch=feat/p6-p7-reader-runtime-state-20260813
+sourceCommit=c6ff48e09cad88e29b772d7da997516bdb98cb3d
+dataset=marketing_demo
+datasetSHA256=1f4fd501bfb847330e7c22a896c85c12fa827e8bb25a0466498e781507985c44
+selector=--method ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance
+simulatorMode=device
+runner=./ops/ios_ops.sh test --ui --json --dataset marketing_demo --device F27209F8-1464-410F-BC26-7372A522B921 ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance 
