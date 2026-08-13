@@ -374,7 +374,9 @@ struct ReaderPage {
     /// paragraphs expose an exact-label staticText whose center is a
     /// deterministic word-tap target.
     private func contentTextQuery(_ text: String) -> XCUIElementQuery {
-        app.webViews.staticTexts.matching(identifier: text)
+        app.webViews.staticTexts
+            .matching(identifier: text)
+            .matching(NSPredicate(format: "hittable == true"))
     }
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
