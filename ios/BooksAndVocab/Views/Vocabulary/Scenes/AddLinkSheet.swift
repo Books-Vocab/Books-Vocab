@@ -407,7 +407,8 @@ struct AddLinkSheet: View {
            let selectedExampleID = materialization.selectedExampleID {
             Color.clear
                 .frame(width: 1, height: 1)
-                .accessibilityElement()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(L10n.string("addLink.dictionarySection"))
                 .accessibilityIdentifier(
                     "addLink.dictionary.materialization.\(materialization.status)"
                 )
