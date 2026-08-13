@@ -405,27 +405,26 @@ struct AddLinkSheet: View {
         if let materialization = coordinator.dictionaryMaterialization,
            let selectedSenseID = materialization.selectedSenseID,
            let selectedExampleID = materialization.selectedExampleID {
-            Color.clear
+            let payload = [
+                selectedSenseID,
+                selectedExampleID,
+                materialization.sourceFixtureID,
+                materialization.datasetID,
+                materialization.datasetSHA256,
+                materialization.sourceAssetID,
+                materialization.sourceAssetPath,
+                String(materialization.sourceAssetByteSize),
+                materialization.sourceAssetSHA256,
+            ].joined(separator: "|")
+            Rectangle()
+                .fill(.clear)
                 .frame(width: 1, height: 1)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(L10n.string("addLink.dictionarySection"))
+                .accessibilityElement()
+                .accessibilityLabel(Text(L10n.string("addLink.dictionarySection")))
                 .accessibilityIdentifier(
                     "addLink.dictionary.materialization.\(materialization.status)"
                 )
-                .accessibilityValue(
-                    [
-                        selectedSenseID,
-                        selectedExampleID,
-                        materialization.sourceFixtureID,
-                        materialization.datasetID,
-                        materialization.datasetSHA256,
-                        materialization.sourceAssetID,
-                        materialization.sourceAssetPath,
-                        String(materialization.sourceAssetByteSize),
-                        materialization.sourceAssetSHA256,
-                    ]
-                    .joined(separator: "|")
-                )
+                .accessibilityValue(Text(verbatim: payload))
         }
     }
 
