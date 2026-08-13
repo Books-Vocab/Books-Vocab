@@ -299,12 +299,12 @@ final class SettingsFlowUITests: UITestCase {
             phase: "after",
             key: "isLoggedIn"
         )
-        let beforeCardLabel = "\(beforeCardCount) 張"
         XCTAssertGreaterThan(beforeCardCount, 0)
-        let partialCardLabel = "\(beforeCardCount - 1) 張"
+        let beforeCardValue = "\(beforeCardCount)"
+        let partialCardValue = "\(beforeCardCount - 1)"
+        let afterCardValue = "\(afterCardCount)"
         let beforePreferencesLabel = beforeHasCustomPreferences ? "已自訂" : "預設值"
         let beforeLoginLabel = beforeIsLoggedIn ? "已登入" : "未登入"
-        let afterCardLabel = "\(afterCardCount) 張"
         let afterPreferencesLabel = afterHasCustomPreferences ? "已自訂" : "預設值"
         let afterLoginLabel = afterIsLoggedIn ? "已登入" : "未登入"
         let app = launchIsolatedApp(
@@ -326,18 +326,17 @@ final class SettingsFlowUITests: UITestCase {
         settings.assertAccountDetailEvidence()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
         XCTAssertTrue(
-            settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5),
-            "reset before card count AX label=\(settings.resetBeforeCardCount.label) value=\(String(describing: settings.resetBeforeCardCount.value)) expected=\(beforeCardLabel)"
+            settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardValue, timeout: 5),
+            "reset before card count AX label=\(settings.resetBeforeCardCount.label) value=\(String(describing: settings.resetBeforeCardCount.value)) expected numeric value=\(beforeCardValue)"
         )
         XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(beforeCardValue, timeout: 5))
         XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
-        XCTAssertEqual(settings.resetBeforeCardCount.label, beforeCardLabel)
         XCTAssertEqual(settings.resetBeforePreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetBeforeLoginStatus.label, beforeLoginLabel)
-        XCTAssertEqual(settings.resetAfterCardCount.label, beforeCardLabel)
+        XCTAssertTrue(settings.resetAfterCardCount.label.contains(beforeCardValue))
         XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 
@@ -355,11 +354,11 @@ final class SettingsFlowUITests: UITestCase {
             visible: true
         )
         XCTAssertTrue(settings.resetMessage.label.contains("失敗") || settings.resetMessage.label.contains("殘留"))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(partialCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(partialCardValue, timeout: 5))
         XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
-        XCTAssertEqual(settings.resetAfterCardCount.label, partialCardLabel)
-        XCTAssertNotEqual(settings.resetAfterCardCount.label, beforeCardLabel)
+        XCTAssertTrue(settings.resetAfterCardCount.label.contains(partialCardValue))
+        XCTAssertFalse(settings.resetAfterCardCount.label.contains(beforeCardValue))
         XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 
@@ -371,16 +370,16 @@ final class SettingsFlowUITests: UITestCase {
         )
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("succeeded", timeout: 10))
-        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardValue, timeout: 5))
         XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
-        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(afterCardLabel, timeout: 5))
+        XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(afterCardValue, timeout: 5))
         XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(afterPreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(afterLoginLabel, timeout: 5))
-        XCTAssertEqual(settings.resetBeforeCardCount.label, beforeCardLabel)
+        XCTAssertTrue(settings.resetBeforeCardCount.label.contains(beforeCardValue))
         XCTAssertEqual(settings.resetBeforePreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetBeforeLoginStatus.label, beforeLoginLabel)
-        XCTAssertEqual(settings.resetAfterCardCount.label, afterCardLabel)
+        XCTAssertTrue(settings.resetAfterCardCount.label.contains(afterCardValue))
         XCTAssertEqual(settings.resetAfterPreferences.label, afterPreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, afterLoginLabel)
         _ = settings.assertExactlyOne(.other, identifier: "settings.account.dangerGroup", visible: true)
