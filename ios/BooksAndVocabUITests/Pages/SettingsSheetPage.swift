@@ -83,7 +83,13 @@ struct SettingsSheetPage {
     }
 
     var syncSummaryButton: XCUIElement {
-        exact(.button, "settings.syncSummary")
+        let matching = app.descendants(matching: .any)
+            .matching(identifier: "settings.syncSummary")
+        precondition(
+            matching.count == 1,
+            "Expected exactly one settings sync summary element, found \(matching.count)"
+        )
+        return matching.element
     }
 
     var syncLifecycle: XCUIElement {
