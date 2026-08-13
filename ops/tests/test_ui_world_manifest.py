@@ -526,6 +526,23 @@ def test_review_calendar_evidence_mapping_rejects_missing_label(tmp_path: Path):
         validate_fixture_dataset_file(path, require_review_clock=True)
 
 
+@pytest.mark.parametrize(
+    ("unknown_key", "unknown_value"),
+    (("assetInodes", ["checkout-inode"]), ("inode", "checkout-inode")),
+)
+def test_review_calendar_evidence_mapping_rejects_nested_checkout_identity_key(
+    tmp_path: Path, unknown_key: str, unknown_value: object
+):
+    data = _marketing_demo()
+    row = data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]["required"][0]
+    row[unknown_key] = unknown_value
+    path = tmp_path / f"nested_{unknown_key}_review_evidence.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="evidence row keys"):
+        validate_fixture_dataset_file(path, require_review_clock=True)
+
+
 def test_review_calendar_evidence_mapping_has_no_checkout_identity_fields(tmp_path: Path):
     data = _marketing_demo()
     rows = data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]["required"]

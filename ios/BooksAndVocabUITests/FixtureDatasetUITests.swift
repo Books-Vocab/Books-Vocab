@@ -14,6 +14,39 @@
 import CryptoKit
 import XCTest
 
+private struct UITestAnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
+private func rejectUnknownUITestKeys(
+    in decoder: Decoder,
+    allowedKeys: Set<String>,
+    context: String
+) throws {
+    let rawContainer = try decoder.container(keyedBy: UITestAnyCodingKey.self)
+    let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+        .subtracting(allowedKeys)
+    guard unknownKeys.isEmpty else {
+        throw DecodingError.dataCorrupted(
+            .init(
+                codingPath: decoder.codingPath,
+                debugDescription: "\(context) contains unknown keys \(unknownKeys.sorted())"
+            )
+        )
+    }
+}
+
 final class FixtureDatasetUITests: UITestCase {
     private enum ReviewCalendarClockSelector {
         static let canonical = "reviewCalendar.clock.history_plan.anchor_day"
@@ -48,16 +81,77 @@ final class FixtureDatasetUITests: UITestCase {
             let anchorDay: String?
             let timeZone: String?
             let source: String?
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case now
+                case frozenEpoch
+                case anchorDay
+                case timeZone
+                case source
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test scenarioContext.reviewClock"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                now = try container.decodeIfPresent(String.self, forKey: .now)
+                frozenEpoch = try container.decodeIfPresent(Int.self, forKey: .frozenEpoch)
+                anchorDay = try container.decodeIfPresent(String.self, forKey: .anchorDay)
+                timeZone = try container.decodeIfPresent(String.self, forKey: .timeZone)
+                source = try container.decodeIfPresent(String.self, forKey: .source)
+            }
         }
         struct EvidenceAsset: Decodable {
             let fixtureID: String
             let stepLabel: String
             let index: Int
             let assetIDs: [String]
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case fixtureID
+                case stepLabel
+                case index
+                case assetIDs
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test reviewCalendar evidence row"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                fixtureID = try container.decode(String.self, forKey: .fixtureID)
+                stepLabel = try container.decode(String.self, forKey: .stepLabel)
+                index = try container.decode(Int.self, forKey: .index)
+                assetIDs = try container.decode([String].self, forKey: .assetIDs)
+            }
         }
         struct EvidenceGroups: Decodable {
             let required: [EvidenceAsset]
             let counterexamples: [EvidenceAsset]
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case required
+                case counterexamples
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test reviewCalendar evidence groups"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                required = try container.decode([EvidenceAsset].self, forKey: .required)
+                counterexamples = try container.decode(
+                    [EvidenceAsset].self,
+                    forKey: .counterexamples
+                )
+            }
         }
         struct GeneratedEvidence: Codable {
             let fixtureID: String
@@ -75,6 +169,82 @@ final class FixtureDatasetUITests: UITestCase {
             let device: String
             let group: String
             let installedFixture: InstalledFixture
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case fixtureID
+                case stepLabel
+                case manifestAssetID
+                case manifestPath
+                case assetID
+                case artifactPath
+                case bytes
+                case sha256
+                case type
+                case selector
+                case source
+                case datasetID
+                case device
+                case group
+                case installedFixture
+            }
+
+            init(
+                fixtureID: String,
+                stepLabel: String,
+                manifestAssetID: String,
+                manifestPath: String,
+                assetID: String,
+                artifactPath: String,
+                bytes: Int,
+                sha256: String,
+                type: String,
+                selector: String,
+                source: String,
+                datasetID: String,
+                device: String,
+                group: String,
+                installedFixture: InstalledFixture
+            ) {
+                self.fixtureID = fixtureID
+                self.stepLabel = stepLabel
+                self.manifestAssetID = manifestAssetID
+                self.manifestPath = manifestPath
+                self.assetID = assetID
+                self.artifactPath = artifactPath
+                self.bytes = bytes
+                self.sha256 = sha256
+                self.type = type
+                self.selector = selector
+                self.source = source
+                self.datasetID = datasetID
+                self.device = device
+                self.group = group
+                self.installedFixture = installedFixture
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test generated reviewCalendar evidence"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                fixtureID = try container.decode(String.self, forKey: .fixtureID)
+                stepLabel = try container.decode(String.self, forKey: .stepLabel)
+                manifestAssetID = try container.decode(String.self, forKey: .manifestAssetID)
+                manifestPath = try container.decode(String.self, forKey: .manifestPath)
+                assetID = try container.decode(String.self, forKey: .assetID)
+                artifactPath = try container.decode(String.self, forKey: .artifactPath)
+                bytes = try container.decode(Int.self, forKey: .bytes)
+                sha256 = try container.decode(String.self, forKey: .sha256)
+                type = try container.decode(String.self, forKey: .type)
+                selector = try container.decode(String.self, forKey: .selector)
+                source = try container.decode(String.self, forKey: .source)
+                datasetID = try container.decode(String.self, forKey: .datasetID)
+                device = try container.decode(String.self, forKey: .device)
+                group = try container.decode(String.self, forKey: .group)
+                installedFixture = try container.decode(InstalledFixture.self, forKey: .installedFixture)
+            }
         }
         struct InstalledFixture: Codable, Equatable {
             let datasetID: String
@@ -84,6 +254,50 @@ final class FixtureDatasetUITests: UITestCase {
             let type: String
             let sourceCommit: String
             let datasetSHA256: String
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case datasetID
+                case path
+                case bytes
+                case sha256
+                case type
+                case sourceCommit
+                case datasetSHA256
+            }
+
+            init(
+                datasetID: String,
+                path: String,
+                bytes: Int,
+                sha256: String,
+                type: String,
+                sourceCommit: String,
+                datasetSHA256: String
+            ) {
+                self.datasetID = datasetID
+                self.path = path
+                self.bytes = bytes
+                self.sha256 = sha256
+                self.type = type
+                self.sourceCommit = sourceCommit
+                self.datasetSHA256 = datasetSHA256
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test installed fixture proof"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                datasetID = try container.decode(String.self, forKey: .datasetID)
+                path = try container.decode(String.self, forKey: .path)
+                bytes = try container.decode(Int.self, forKey: .bytes)
+                sha256 = try container.decode(String.self, forKey: .sha256)
+                type = try container.decode(String.self, forKey: .type)
+                sourceCommit = try container.decode(String.self, forKey: .sourceCommit)
+                datasetSHA256 = try container.decode(String.self, forKey: .datasetSHA256)
+            }
         }
         struct GeneratedEvidenceFile: Codable {
             let schema: String
@@ -93,9 +307,67 @@ final class FixtureDatasetUITests: UITestCase {
             let device: String
             let selector: String
             let records: [GeneratedEvidence]
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case schema
+                case sourceCommit
+                case datasetID
+                case datasetSHA256
+                case device
+                case selector
+                case records
+            }
+
+            init(
+                schema: String,
+                sourceCommit: String,
+                datasetID: String,
+                datasetSHA256: String,
+                device: String,
+                selector: String,
+                records: [GeneratedEvidence]
+            ) {
+                self.schema = schema
+                self.sourceCommit = sourceCommit
+                self.datasetID = datasetID
+                self.datasetSHA256 = datasetSHA256
+                self.device = device
+                self.selector = selector
+                self.records = records
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test generated reviewCalendar evidence file"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                schema = try container.decode(String.self, forKey: .schema)
+                sourceCommit = try container.decode(String.self, forKey: .sourceCommit)
+                datasetID = try container.decode(String.self, forKey: .datasetID)
+                datasetSHA256 = try container.decode(String.self, forKey: .datasetSHA256)
+                device = try container.decode(String.self, forKey: .device)
+                selector = try container.decode(String.self, forKey: .selector)
+                records = try container.decode([GeneratedEvidence].self, forKey: .records)
+            }
         }
         struct SurfaceContracts: Decodable {
             let reviewCalendar: EvidenceGroups?
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case reviewCalendar
+            }
+
+            init(from decoder: Decoder) throws {
+                try rejectUnknownUITestKeys(
+                    in: decoder,
+                    allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+                    context: "UI test scenarioContext.surfaceContracts"
+                )
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                reviewCalendar = try container.decodeIfPresent(EvidenceGroups.self, forKey: .reviewCalendar)
+            }
         }
         struct ScenarioContext: Decodable {
             let reviewClock: ReviewClock?
@@ -112,6 +384,58 @@ final class FixtureDatasetUITests: UITestCase {
         let bookshelf: [String: Shelf]
         let scenarioContext: ScenarioContext?
         let vocabulary: [String: Vocabulary]
+    }
+
+    @MainActor
+    func testFixtureDatasetMirrorRejectsNestedP9UnknownKeys() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let encoded = environment["KG_FIXTURE_DATASET_DEFLATE_B64"]
+            ?? environment["KG_FIXTURE_DATASET_B64"]
+        guard let encoded, let compressedOrPlain = Data(base64Encoded: encoded) else {
+            XCTFail("missing UI World — run with --dataset marketing_demo")
+            return
+        }
+        let data: Data
+        if environment["KG_FIXTURE_DATASET_DEFLATE_B64"] != nil {
+            data = try (compressedOrPlain as NSData).decompressed(using: .zlib) as Data
+        } else {
+            data = compressedOrPlain
+        }
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertNoThrow(try decodeDataset(data))
+
+        for unknownKey in ["assetInodes", "inode"] {
+            var mutated = object
+            var scenarioContext = try XCTUnwrap(
+                mutated["scenarioContext"] as? [String: Any]
+            )
+            var surfaceContracts = try XCTUnwrap(
+                scenarioContext["surfaceContracts"] as? [String: Any]
+            )
+            var reviewCalendar = try XCTUnwrap(
+                surfaceContracts["reviewCalendar"] as? [String: Any]
+            )
+            var required = try XCTUnwrap(
+                reviewCalendar["required"] as? [[String: Any]]
+            )
+            var firstRequired = try XCTUnwrap(required.first)
+            firstRequired[unknownKey] = unknownKey == "inode"
+                ? "checkout-inode"
+                : ["checkout-inode"]
+            required[0] = firstRequired
+            reviewCalendar["required"] = required
+            surfaceContracts["reviewCalendar"] = reviewCalendar
+            scenarioContext["surfaceContracts"] = surfaceContracts
+            mutated["scenarioContext"] = scenarioContext
+
+            let mutatedData = try JSONSerialization.data(withJSONObject: mutated)
+            XCTAssertThrowsError(
+                try decodeDataset(mutatedData),
+                "mirror must reject nested (unknownKey)"
+            )
+        }
     }
 
     @MainActor
@@ -553,6 +877,12 @@ final class FixtureDatasetUITests: UITestCase {
             [],
             "required/counterexample asset IDs must be disjoint"
         )
+    }
+
+    private func decodeDataset(_ data: Data) throws -> DatasetDocument {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(DatasetDocument.self, from: data)
     }
 
     private func assertClockProvenance(in app: XCUIApplication) {

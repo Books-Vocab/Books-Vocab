@@ -6,6 +6,40 @@ import Testing
 @testable import BooksAndVocab
 
 extension FixtureDatasetStoreTests {
+    @Test func reviewCalendarEvidenceRejectsNestedCheckoutIdentityKeys() throws {
+        for unknownKey in ["assetInodes", "inode"] {
+            let value = unknownKey == "inode" ? "\"checkout-inode\"" : "[\"checkout-inode\"]"
+            // The app decoder must not silently erase checkout-local identity
+            // fields before the host exact-key validator sees the same world.
+            let dataset = """
+            {
+              "schema": "kg.fixture.dataset.v2",
+              "datasetID": "nested-review-evidence-unknown-key",
+              "scenarioContext": {
+                "surfaceContracts": {
+                  "reviewCalendar": {
+                    "required": [
+                      {
+                        "fixtureID": "calendar",
+                        "stepLabel": "calendar",
+                        "index": 0,
+                        "assetIDs": ["calendar-shot"],
+                        "\(unknownKey)": \(value)
+                      }
+                    ],
+                    "counterexamples": []
+                  }
+                }
+              }
+            }
+            """
+
+            #expect(throws: DecodingError.self) {
+                _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+            }
+        }
+    }
+
     @Test func readerSeedFailsWhenUnknownKeyIsPresent() throws {
         let dataset = """
         {

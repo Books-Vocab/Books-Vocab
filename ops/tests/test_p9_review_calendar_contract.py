@@ -228,6 +228,68 @@ def test_generated_evidence_metadata_uses_portable_v2_provenance() -> None:
     assert "installedFixture" in ui_test
 
 
+def test_p9_swift_decoders_reject_unknown_keys_at_nested_boundaries() -> None:
+    app_seed = _text(IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift")
+    ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
+
+    for declaration in (
+        "struct UIWorldSurfaceContractsSeed:",
+        "struct UIWorldReviewCalendarEvidenceGroupsSeed:",
+        "struct UIWorldReviewCalendarEvidenceSeed:",
+        "struct UIWorldInstalledFixtureProof:",
+    ):
+        assert declaration in app_seed
+        section = app_seed.split(declaration, 1)[1].split("\nstruct ", 1)[0]
+        assert "init(from decoder: Decoder) throws" in section, declaration
+        assert "rejectUnknownKeys" in section, declaration
+
+    assert "AnyCodingKey" in app_seed
+    assert "unknownKeys" in app_seed
+
+    for declaration in (
+        "struct ReviewClock: Decodable {",
+        "struct EvidenceAsset: Decodable {",
+        "struct EvidenceGroups: Decodable {",
+        "struct GeneratedEvidence: Codable {",
+        "struct InstalledFixture: Codable, Equatable {",
+        "struct GeneratedEvidenceFile: Codable {",
+    ):
+        assert declaration in ui_test
+        section = ui_test.split(declaration, 1)[1].split("\n        struct ", 1)[0]
+        assert "init(from decoder: Decoder) throws" in section, declaration
+        assert "rejectUnknownUITestKeys" in section, declaration
+
+    assert "UITestAnyCodingKey" in ui_test
+    assert "unknownKeys" in ui_test
+
+
+def test_malformed_ui_app_args_fail_closed_without_swallowing_decode_errors() -> None:
+    launch = _text(IOS / "BooksAndVocabUITests/Helpers/UITestAppLaunch.swift")
+    tests = _text(IOS / "BooksAndVocabUITests/BooksAndVocabUITests.swift")
+
+    assert "try? JSONDecoder().decode([String].self" not in launch
+    assert "decodeInheritedLaunchArguments" in launch
+    assert "preconditionFailure" in launch
+    assert "testMalformedInheritedLaunchArgumentsFailClosed" in tests
+
+
+def test_p9_evidence_cli_and_environment_surface_is_documented() -> None:
+    tech_index = _text(ROOT / "docs/reference/tech_index.md")
+
+    assert "`p9_review_calendar_evidence.py`" in tech_index
+    for surface in (
+        "validate",
+        "--workspace-root",
+        "--outer-verdict",
+        "KG_UI_TEST_APP_ARGS_JSON",
+        "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH",
+        "KG_UI_TEST_SOURCE_COMMIT",
+        "KG_UI_TEST_DATASET_SHA256",
+        "KG_UI_TEST_DEVICE_UDID",
+    ):
+        assert surface in tech_index
+
+
 def test_installed_fixture_proof_is_app_materialized_and_runner_read_only() -> None:
     ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
     store = _text(IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift")

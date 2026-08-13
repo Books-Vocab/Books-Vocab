@@ -37,6 +37,25 @@ final class BooksAndVocabUITests: UITestCase {
         }
     }
 
+    func testMalformedInheritedLaunchArgumentsFailClosed() throws {
+        XCTAssertEqual(
+            try UITestLaunchConfiguration.decodeInheritedLaunchArguments(from: nil),
+            []
+        )
+        XCTAssertThrowsError(
+            try UITestLaunchConfiguration.decodeInheritedLaunchArguments(from: "{")
+        )
+        XCTAssertThrowsError(
+            try UITestLaunchConfiguration.decodeInheritedLaunchArguments(from: "\"not-an-array\"")
+        )
+        XCTAssertEqual(
+            try UITestLaunchConfiguration.decodeInheritedLaunchArguments(
+                from: "[\"-appLaunchProfile\", \"standard\"]"
+            ),
+            ["-appLaunchProfile", "standard"]
+        )
+    }
+
     // MARK: - Launch & Shell
 
     @MainActor
