@@ -222,6 +222,27 @@ extension FixtureDatasetStoreTests {
         }
     }
 
+    @Test func installAsRejectsEmptyPathComponentsAtDecodeBoundary() throws {
+        for installAs in [
+            "",
+            "   ",
+            "Books//reader.epub",
+            "Books/reader.epub/",
+            "Books/./reader.epub",
+            "Books/../reader.epub",
+            "/Books/reader.epub",
+        ] {
+            let data = try Self.readerAssetDatasetData(
+                sourcePath: "ops/fixtures/assets/reader-real-book.epub",
+                installAs: installAs
+            )
+
+            #expect(throws: DecodingError.self) {
+                _ = try FixtureDatasetStore.decode(data)
+            }
+        }
+    }
+
     @Test @MainActor func destinationSymlinkEscapeIsRejectedBeforeCopy() throws {
         let source = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-ui-world-destination-source-\(UUID().uuidString).txt")

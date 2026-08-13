@@ -85,7 +85,25 @@ extension ReadiumNavigatorView.Coordinator {
                 AppLog.reader.debug("Attempting navigation to: \(String(describing: locator.href))")
                 let event = await bridge.navigate(requestID: requestID, locator: locator)
                 guard let self else { return }
-                if activeTOCRequestID == requestID {
+                if case .goAccepted = event {
+                    // go() only acknowledges dispatch. Keep the request token
+                    // alive until the navigator delegate reports the actual
+                    // locator, with a bounded callback deadline.
+                    activeTOCTimeoutTask?.cancel()
+                    activeTOCTimeoutTask = Task { @MainActor [weak self] in
+                        do {
+                            try await Task.sleep(
+                                nanoseconds: ReaderMetrics.tocNavigationTimeoutNanoseconds
+                            )
+                        } catch {
+                            return
+                        }
+                        guard let self, self.activeTOCRequestID == requestID else { return }
+                        self.activeTOCRequestID = nil
+                        self.activeTOCTimeoutTask = nil
+                        self.parent.onTOCNavigationEvent(.timedOut(requestID: requestID))
+                    }
+                } else if activeTOCRequestID == requestID {
                     activeTOCRequestID = nil
                 }
                 AppLog.reader.debug("Navigation result: \(String(describing: event))")

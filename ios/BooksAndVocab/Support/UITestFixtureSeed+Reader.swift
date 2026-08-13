@@ -106,7 +106,6 @@ extension UITestFixtureSeed {
     }
 
     private static func resolveReaderFixture(from seed: UIWorldReaderSeed) throws -> ReaderFixture {
-        _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.textAssetRef)
         let bookURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.bookAssetRef)
         // Compare normalized PATHS, not URLs: deletingLastPathComponent() always
         // yields a trailing slash while Book.localBooksDirectory caches the URL it

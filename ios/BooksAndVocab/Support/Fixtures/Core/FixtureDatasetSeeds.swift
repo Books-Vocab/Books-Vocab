@@ -1099,7 +1099,9 @@ struct UIWorldAsset: Codable, Equatable {
                 )
             )
         }
-        let components = trimmed.split(separator: "/").map(String.init)
+        let components = trimmed
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map(String.init)
         guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
             throw DecodingError.dataCorrupted(
                 .init(
