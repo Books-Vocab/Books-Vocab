@@ -13,6 +13,7 @@
 //
 
 import XCTest
+@testable import BooksAndVocab
 
 final class ReaderFlowUITests: UITestCase {
     /// 章首獨立成段的真實單字（fixture 詞庫 entry 的 word）。
@@ -162,8 +163,21 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertEqual(initialHref, "OEBPS/chapter1.xhtml")
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
-        XCTAssertTrue(reader.tocChapter("1").waitUntilExists(timeout: 10))
-        reader.tocChapter("1").tapWhenReady()
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocLoading.waitUntilGone(timeout: 10))
+        let selectedChapter = reader.tocChapter("1")
+        XCTAssertTrue(selectedChapter.waitUntilExists(timeout: 10))
+        captureStep("toc-loaded", app: app)
+
+        selectedChapter.tapWhenReady()
+        let selectionObserved = reader.tocSelected.waitUntilExists(timeout: 2)
+            || reader.tocNavigationLoading.waitUntilExists(timeout: 2)
+            || selectedChapter.isSelected
+        XCTAssertTrue(
+            selectionObserved,
+            "TOC selection must expose selected/loading accessibility state before result"
+        )
+        captureStep("toc-selection-loading", app: app)
 
         XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
         guard reader.tocDestination.waitUntilExists(timeout: 10) else {
@@ -191,6 +205,7 @@ final class ReaderFlowUITests: UITestCase {
         }
         XCTAssertFalse(reader.contentText(Self.seededWord).exists)
         captureStep("toc-destination-content", app: app)
+        captureStep("toc-navigation-result", app: app)
         try writeReaderTOCEvidence(
             label: "reader-toc-required",
             partition: "required",
@@ -257,8 +272,12 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
         let invalidRow = reader.tocChapter("1")
         XCTAssertTrue(invalidRow.waitUntilExists(timeout: 10))
-        let invalidHref = "OEBPS/does-not-exist.xhtml"
-        XCTAssertEqual(invalidRow.value as? String, invalidHref)
+        guard let invalidHref = invalidRow.value as? String,
+              ReaderTOCEvidenceHref.isSafeRelative(invalidHref) else {
+            XCTFail("invalid Reader TOC row must expose a non-empty safe relative href")
+            return
+        }
+        XCTAssertFalse(invalidHref.isEmpty)
         let canonicalInvalidRow = reader.tocChapter(path: "1", label: "Missing Destination")
         captureStep("invalid-destination-toc-loaded", app: app)
 

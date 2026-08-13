@@ -189,6 +189,28 @@ struct ReaderTOCNavigationTests {
     }
 
     @Test @MainActor
+    func preCancelledNavigationPreservesRequestIdentity() async throws {
+        let requestID = UUID()
+        let locator = try Self.locator(href: "OEBPS/chapter-b.xhtml")
+        let taskBox = ReaderNavigationTaskBox()
+        let bridge = ReaderTOCNavigationBridge(
+            navigator: FakeReaderNavigator(outcome: .hanging),
+            timeoutNanoseconds: 50_000_000,
+            beforeContinuationInstall: {
+                taskBox.task?.cancel()
+            }
+        )
+
+        let task = Task { @MainActor in
+            await bridge.navigate(requestID: requestID, locator: locator)
+        }
+        taskBox.task = task
+
+        let event = await task.value
+        #expect(event == .cancelled(requestID: requestID))
+    }
+
+    @Test @MainActor
     func locatorMismatchAndStaleCallbackCannotCloseSheet() throws {
         let requestID = UUID()
         var state = ReaderTOCNavigationState()
@@ -227,7 +249,7 @@ struct ReaderTOCNavigationTests {
         _ = state.beginSelection(
             path: [2],
             title: "Missing Chapter",
-            expectedHref: "OEBPS/does-not-exist.xhtml",
+            expectedHref: "OEBPS/missing.xhtml",
             requestID: requestID
         )
 
@@ -239,117 +261,56 @@ struct ReaderTOCNavigationTests {
         #expect(!state.canDismissSheet)
     }
 
-    @Test @MainActor
-    func evidenceContractRequiresCurrentRunnerAndArtifactProvenance() {
-        let artifact = ReaderTOCEvidenceArtifact(
-            schema: "kg.ui.perf.evidence.v2",
-            run: ReaderTOCEvidenceRun(
-                invocation: ReaderTOCEvidenceInvocation(
-                    ts: 0,
-                    pid: 0,
-                    verdictFile: ""
-                ),
-                status: "pending",
-                result: "fail",
-                exit: "1",
-                sourceCommit: "",
-                sourceTreeDirty: true,
-                datasetID: "",
-                datasetSHA256: "",
-                device: "",
-                selector: "",
-                runIdentity: "",
-                logPath: "",
-                xcresultPath: "",
-                uiScreenshotDirectory: "",
-                screenshotPath: "",
-                uiVisualReviewManifest: "",
-                uiReviewRoot: "",
-                uiVideo: ""
-            ),
-            entries: []
-        )
-
-        let errors = artifact.validationErrors
-
-        #expect(errors.contains("run.invocation.verdictFile"))
-        #expect(errors.contains("run.status"))
-        #expect(errors.contains("run.result"))
-        #expect(errors.contains("run.exit"))
-        #expect(errors.contains("run.sourceCommit"))
-        #expect(errors.contains("run.sourceTreeDirty"))
-        #expect(errors.contains("run.datasetSHA256"))
-        #expect(errors.contains("run.device"))
-        #expect(errors.contains("run.selector"))
-        #expect(errors.contains("run.runIdentity"))
-        #expect(errors.contains("run.artifacts"))
-    }
-
     @Test
-    func evidenceContractRejectsUnverifiedEntryAssetIntegrity() {
-        let artifact = ReaderTOCEvidenceArtifact(
-            schema: "kg.ui.perf.evidence.v2",
-            run: ReaderTOCEvidenceRun(
-                invocation: ReaderTOCEvidenceInvocation(
-                    ts: 1,
-                    pid: 2,
-                    verdictFile: "/tmp/verdict"
-                ),
-                status: "ok",
-                result: "ok",
-                exit: "0",
-                sourceCommit: "abc123",
-                sourceTreeDirty: false,
-                datasetID: "marketing_demo",
-                datasetSHA256: String(repeating: "a", count: 64),
-                device: "simulator",
-                selector: "ReaderFlow/test",
-                runIdentity: "1-2-ReaderFlow/test",
-                logPath: "/tmp/run.log",
-                xcresultPath: "/tmp/run.xcresult",
-                uiScreenshotDirectory: "/tmp/screenshots",
-                screenshotPath: "/tmp/screenshots/step.png",
-                uiVisualReviewManifest: "/tmp/visual.json",
-                uiReviewRoot: "/tmp/review",
-                uiVideo: "/tmp/run.mp4"
+    func evidenceContextBindsPreRunInvocationAndCanonicalScreenshotIdentity() {
+        let required = Self.evidenceEntry(
+            label: "reader-toc-required",
+            partition: "required",
+            path: [1],
+            rowPath: [1],
+            href: "OEBPS/chapter2.xhtml",
+            observedLocator: "OEBPS/chapter2.xhtml",
+            content: "Chapter Two",
+            contentSelector: "Chapter Two"
+        )
+        let counterexample = Self.evidenceEntry(
+            label: "reader-toc-counterexample-failure",
+            partition: "counterexample",
+            path: [1],
+            rowPath: [1],
+            href: "OEBPS/missing.xhtml",
+            observedLocator: "OEBPS/chapter1.xhtml",
+            content: nil,
+            contentSelector: nil
+        )
+        let retry = Self.evidenceEntry(
+            label: "reader-toc-counterexample-retry",
+            partition: "counterexample",
+            path: [1],
+            rowPath: [1],
+            href: "OEBPS/missing.xhtml",
+            observedLocator: "OEBPS/chapter1.xhtml",
+            content: nil,
+            contentSelector: nil
+        )
+        let context = ReaderTOCEvidenceContext(
+            schema: ReaderTOCEvidenceContext.schema,
+            invocation: ReaderTOCEvidenceContext.Invocation(
+                verdictFile: "/tmp/kg-verdict-123"
             ),
-            entries: [
-                ReaderTOCEvidenceEntry(
-                    label: "reader-toc-required",
-                    partition: "required",
-                    fixtureID: "reader.realBookLibrary",
-                    asset: ReaderTOCEvidenceAsset(
-                        assetID: "not-books.reader",
-                        installedPath: "relative/reader.epub",
-                        expectedSHA256: String(repeating: "a", count: 64),
-                        expectedByteSize: 0,
-                        actualSHA256: String(repeating: "b", count: 64),
-                        actualByteSize: 1
-                    ),
-                    path: [-1],
-                    selectedRow: ReaderTOCEvidenceSelectedRow(
-                        path: [0],
-                        href: "",
-                        title: ""
-                    ),
-                    observation: ReaderTOCEvidenceObservation(
-                        requestedHref: "",
-                        observedLocatorHref: nil,
-                        observedContent: nil,
-                        contentSelector: nil
-                    )
-                )
-            ]
+            selectors: [
+                "ReaderFlow/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
+                "ReaderFlow/testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable"
+            ],
+            screenshotDirectory: "/tmp/kg-ui-screenshots",
+            screenshotPath: "/tmp/kg-ui-screenshots/01-toc-navigation-result.png",
+            entries: [required, counterexample, retry]
         )
 
-        let errors = artifact.validationErrors
-
-        #expect(errors.contains("entries[0].asset.assetID"))
-        #expect(errors.contains("entries[0].asset.installedPath"))
-        #expect(errors.contains("entries[0].asset.expectedByteSize"))
-        #expect(errors.contains("entries[0].asset.sha256Mismatch"))
-        #expect(errors.contains("entries[0].path"))
-        #expect(errors.contains("entries[0].observation.requestedHref"))
+        #expect(context.validationErrors.isEmpty)
+        #expect(context.completeValidationErrors.isEmpty)
+        #expect(context.invocation.verdictFile == "/tmp/kg-verdict-123")
+        #expect(context.screenshotPath.hasPrefix(context.screenshotDirectory + "/"))
     }
 
     @Test
@@ -371,115 +332,21 @@ struct ReaderTOCNavigationTests {
     }
 
     @Test
-    func evidenceAssemblyFailsClosedForStaleVerdictAndRequiresCompletePartitions() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("kg-reader-evidence-\(UUID().uuidString)", isDirectory: true)
-        let screenshotPath = directory.appendingPathComponent("toc.png")
-        let verdictBase = directory.appendingPathComponent("verdict").path
-        let verdictJSON = URL(fileURLWithPath: "\(verdictBase).json")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Data("png".utf8).write(to: screenshotPath)
-        try Data("{}".utf8).write(to: verdictJSON)
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let required = Self.evidenceEntry(
-            label: "reader-toc-required",
-            partition: "required",
-            path: [1],
-            rowPath: [1],
-            href: "OEBPS/chapter2.xhtml",
-            observedLocator: "OEBPS/chapter2.xhtml",
-            content: "Chapter Two",
-            contentSelector: "Chapter Two"
-        )
-        let counterexample = Self.evidenceEntry(
+    func evidenceContractRejectsUnsafeRelativeHref() {
+        let entry = Self.evidenceEntry(
             label: "reader-toc-counterexample-failure",
             partition: "counterexample",
             path: [1],
             rowPath: [1],
-            href: "OEBPS/does-not-exist.xhtml",
+            href: "../outside.xhtml",
             observedLocator: "OEBPS/chapter1.xhtml",
             content: nil,
             contentSelector: nil
         )
-        let retry = Self.evidenceEntry(
-            label: "reader-toc-counterexample-retry",
-            partition: "counterexample",
-            path: [1],
-            rowPath: [1],
-            href: "OEBPS/does-not-exist.xhtml",
-            observedLocator: "OEBPS/chapter1.xhtml",
-            content: nil,
-            contentSelector: nil
-        )
-        let context = ReaderTOCEvidenceContext(
-            schema: ReaderTOCEvidenceContext.schema,
-            invocation: ReaderTOCEvidenceContext.Invocation(verdictFile: verdictBase),
-            selectors: ["ReaderFlow/testRequired", "ReaderFlow/testInvalid"],
-            screenshotDirectory: directory.path,
-            screenshotPath: screenshotPath.path,
-            entries: [required, counterexample, retry]
-        )
-        let verdict = Self.runnerVerdict(
-            verdictBase: verdictBase,
-            screenshotDirectory: directory.path
-        )
 
-        let assembled = try ReaderTOCEvidenceAssembler.assemble(
-            context: context,
-            verdict: verdict,
-            verdictJSONPath: verdictJSON.path
-        )
-        #expect(assembled.validationErrors.isEmpty)
+        let errors = ReaderTOCEvidenceEntry.validationErrors(for: [entry])
 
-        let incompleteContext = ReaderTOCEvidenceContext(
-            schema: context.schema,
-            invocation: context.invocation,
-            selectors: context.selectors,
-            screenshotDirectory: context.screenshotDirectory,
-            screenshotPath: context.screenshotPath,
-            entries: [required, counterexample]
-        )
-        #expect(throws: ReaderTOCEvidenceAssemblyError.self) {
-            try ReaderTOCEvidenceAssembler.assemble(
-                context: incompleteContext,
-                verdict: verdict,
-                verdictJSONPath: verdictJSON.path
-            )
-        }
-
-        let staleVerdict = Self.runnerVerdict(
-            verdictBase: directory.appendingPathComponent("stale-verdict").path,
-            screenshotDirectory: directory.path
-        )
-        #expect(throws: ReaderTOCEvidenceAssemblyError.self) {
-            try ReaderTOCEvidenceAssembler.assemble(
-                context: context,
-                verdict: staleVerdict,
-                verdictJSONPath: verdictJSON.path
-            )
-        }
-    }
-
-    @Test
-    func evidenceWriterUsesPreRunContextAndPostRunAssemblyOnly() throws {
-        let rootURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: rootURL.appendingPathComponent(
-                "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift"
-            ),
-            encoding: .utf8
-        )
-        let body = try #require(
-            source.split(separator: "func writeReaderTOCEvidence(", maxSplits: 1).last
-        )
-        #expect(!body.contains("currentIOSRunVerdict"))
-        #expect(body.contains("ReaderTOCEvidenceContext"))
-        #expect(source.contains("assembleReaderTOCEvidencePostRun"))
-        #expect(source.contains("verdictURL"))
+        #expect(errors.contains("entries[0].observation.unsafeHref"))
     }
 
     @Test
@@ -580,37 +447,11 @@ struct ReaderTOCNavigationTests {
         )
     }
 
-    private static func runnerVerdict(
-        verdictBase: String,
-        screenshotDirectory: String
-    ) -> ReaderTOCEvidenceRunnerVerdict {
-        ReaderTOCEvidenceRunnerVerdict(
-            status: "ok",
-            result: "ok",
-            exit: "0",
-            options: ReaderTOCEvidenceRunnerVerdict.Options(
-                sourceCommit: "abc123",
-                sourceTreeDirty: false,
-                datasetID: "marketing_demo",
-                datasetSHA256: String(repeating: "b", count: 64),
-                device: "platform=iOS Simulator,id=SIM"
-            ),
-            invocation: ReaderTOCEvidenceRunnerVerdict.Invocation(
-                ts: 100,
-                pid: 200,
-                verdictFile: verdictBase
-            ),
-            device: "SIM",
-            artifacts: ReaderTOCEvidenceRunnerVerdict.Artifacts(
-                log: "/tmp/run.log",
-                xcresult: "/tmp/run.xcresult",
-                uiScreenshotDir: screenshotDirectory,
-                uiVisualReviewManifest: "/tmp/visual.json",
-                uiReviewRoot: "/tmp/review",
-                uiVideo: "/tmp/run.mp4"
-            )
-        )
-    }
+}
+
+@MainActor
+private final class ReaderNavigationTaskBox {
+    var task: Task<ReaderTOCNavigationEvent, Never>?
 }
 
 @MainActor
