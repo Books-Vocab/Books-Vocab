@@ -39,7 +39,7 @@
 #   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
 #   KG_IOS_TEST_ALLOW_SHARED_SIM=1 ./ops/ios_test.sh ...         # explicit opt-out for single-machine debugging
 #   KG_IOS_TEST_LOG_IDLE_LIMIT=300 ./ops/ios_test.sh ...          # fail after 300s without log writes
-#   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=240 ./ops/ios_test.sh ... # bounded long UI evidence flow
+#   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=<seconds> ./ops/ios_test.sh --ui ... # bounded per-test timeout
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
