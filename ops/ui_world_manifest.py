@@ -1436,13 +1436,52 @@ def _validate_settings_sync_summary(
         if data_outcome != "partial":
             raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be partial for terminalError")
     elif lifecycle == "terminalSuccess":
+        if attempt < 1:
+            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for terminalSuccess")
+        if message is not None:
+            raise UIWorldManifestError(f"{label} {owner}.message must be null for terminalSuccess")
         if data_outcome != "complete":
             raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be complete for terminalSuccess")
     elif lifecycle == "retry":
         if attempt < 1:
             raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for retry")
-        if data_outcome == "complete":
-            raise UIWorldManifestError(f"{label} {owner}.dataOutcome cannot be complete during retry")
+        if message is not None:
+            raise UIWorldManifestError(f"{label} {owner}.message must be null during retry")
+        if data_outcome != "none":
+            raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be none during retry")
+
+    is_in_flight = lifecycle in {"syncing", "retry"}
+    if sync_obj["isSyncing"] != is_in_flight:
+        expected = "true" if is_in_flight else "false"
+        raise UIWorldManifestError(
+            f"{label} {owner}.isSyncing must be {expected} for lifecycle={lifecycle}"
+        )
+
+    if lifecycle == "idle":
+        if message is not None:
+            raise UIWorldManifestError(f"{label} {owner}.message must be null for idle")
+        if data_outcome != "none":
+            raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be none for idle")
+    elif lifecycle == "syncing":
+        if attempt < 1:
+            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for syncing")
+        if message is not None:
+            raise UIWorldManifestError(f"{label} {owner}.message must be null while syncing")
+        if data_outcome != "none":
+            raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be none while syncing")
+    elif lifecycle == "dismissed":
+        if attempt < 1:
+            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for dismissed")
+        if data_outcome == "none":
+            raise UIWorldManifestError(
+                f"{label} {owner}.dataOutcome must preserve a terminal outcome for dismissed"
+            )
+        if data_outcome == "complete" and message is not None:
+            raise UIWorldManifestError(f"{label} {owner}.message must be null for dismissed success")
+        if data_outcome == "partial" and (not isinstance(message, str) or not message.strip()):
+            raise UIWorldManifestError(
+                f"{label} {owner}.message is required for dismissed partial outcome"
+            )
 
 
 def _validate_settings_seed(seed: Mapping[str, Any], *, fixture_id: str, owner: str, label: str) -> None:

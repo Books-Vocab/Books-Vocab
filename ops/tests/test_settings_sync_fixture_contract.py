@@ -93,7 +93,7 @@ def test_canonical_settings_sync_fixture_is_materialized_with_provenance():
     [
         ("terminalSuccess", None, 1, "complete"),
         ("terminalError", "sync failed", 1, "partial"),
-        ("retry", None, 2, "partial"),
+        ("retry", None, 2, "none"),
     ],
 )
 def test_sync_lifecycle_payload_shapes_are_explicit(
@@ -107,6 +107,7 @@ def test_sync_lifecycle_payload_shapes_are_explicit(
     summary = data["settings"][CANONICAL_SETTINGS_ID]["syncSummary"]
     summary.update(
         lifecycle=lifecycle,
+        isSyncing=lifecycle in {"syncing", "retry"},
         message=message,
         attempt=attempt,
         dataOutcome=data_outcome,
@@ -114,6 +115,46 @@ def test_sync_lifecycle_payload_shapes_are_explicit(
     path = tmp_path / "contract.json"
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     assert manifest.validate_fixture_dataset_file(path) == "marketing_demo"
+
+
+@pytest.mark.parametrize(
+    ("lifecycle", "is_syncing", "message", "attempt", "data_outcome", "error"),
+    [
+        ("idle", True, None, 0, "none", "isSyncing must be false"),
+        ("syncing", False, None, 1, "none", "isSyncing must be true"),
+        ("syncing", True, None, 0, "none", "attempt must be >= 1"),
+        ("syncing", True, None, 1, "partial", "dataOutcome must be none"),
+        ("terminalSuccess", False, "stale error", 1, "complete", "message must be null"),
+        ("terminalSuccess", False, None, 0, "complete", "attempt must be >= 1"),
+        ("retry", True, "stale error", 2, "none", "message must be null"),
+        ("retry", True, None, 2, "partial", "dataOutcome must be none"),
+        ("dismissed", False, None, 1, "partial", "message is required"),
+        ("dismissed", False, None, 1, "none", "preserve a terminal outcome"),
+    ],
+)
+def test_validator_rejects_lifecycle_cross_field_contradictions(
+    tmp_path: Path,
+    lifecycle: str,
+    is_syncing: bool,
+    message: str | None,
+    attempt: int,
+    data_outcome: str,
+    error: str,
+):
+    data = _load(BASELINE)
+    summary = data["settings"][CANONICAL_SETTINGS_ID]["syncSummary"]
+    summary.update(
+        lifecycle=lifecycle,
+        isSyncing=is_syncing,
+        message=message,
+        attempt=attempt,
+        dataOutcome=data_outcome,
+    )
+    path = tmp_path / f"contradiction-{lifecycle}-{attempt}-{data_outcome}.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(manifest.UIWorldManifestError, match=error):
+        manifest.validate_fixture_dataset_file(path)
 
 
 def test_validator_rejects_stale_canonical_sync_shape(tmp_path: Path):
