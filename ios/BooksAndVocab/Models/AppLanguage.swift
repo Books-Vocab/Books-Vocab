@@ -99,6 +99,7 @@ final class AppLanguageStore: ObservableObject {
     @Published private(set) var rootRefreshID = UUID()
     private var hasDeferredRootRefresh = false
     private var isSettingsPresentationActive = false
+    private var deferredSelection: AppLanguage?
 
     private let defaults: UserDefaults
     private let cloud = CloudPreferencesSync.shared
@@ -122,8 +123,10 @@ final class AppLanguageStore: ObservableObject {
                   keys.contains(Keys.selectedLanguage),
                   let raw = self.cloud.string(forKey: Keys.selectedLanguage),
                   let value = AppLanguage(rawValue: raw),
-                  value != self.selection
+                  value != self.selection,
+                  value != self.deferredSelection
             else { return }
+            self.deferredSelection = nil
             self.selection = value
             self.hasDeferredRootRefresh = false
             self.rootRefreshID = UUID()
@@ -205,8 +208,8 @@ final class AppLanguageStore: ObservableObject {
     }
 
     func setLanguage(_ language: AppLanguage, preservingRootPresentation: Bool = false) {
-        guard selection != language else { return }
-        selection = language
+        let renderedSelection = deferredSelection ?? selection
+        guard renderedSelection != language else { return }
         defaults.set(language.rawValue, forKey: Keys.selectedLanguage)
         cloud.set(language.rawValue, forKey: Keys.selectedLanguage)
         // TipKit datastore caches rendered Text — without reset, already-shown tips
@@ -225,9 +228,12 @@ final class AppLanguageStore: ObservableObject {
         // Record the intent instead; the launch path drains it before configure.
         PendingTipsReset.mark(in: defaults)
         if preservingRootPresentation && isSettingsPresentationActive {
+            deferredSelection = language
             hasDeferredRootRefresh = true
         } else {
+            deferredSelection = nil
             hasDeferredRootRefresh = false
+            selection = language
             rootRefreshID = UUID()
         }
     }
@@ -245,7 +251,17 @@ final class AppLanguageStore: ObservableObject {
     func flushDeferredRootRefresh() {
         guard hasDeferredRootRefresh else { return }
         hasDeferredRootRefresh = false
+        if let deferredSelection {
+            self.deferredSelection = nil
+            selection = deferredSelection
+        }
         rootRefreshID = UUID()
+    }
+
+    /// A pending Settings reset is already persisted as the default while the
+    /// current presentation keeps rendering its old locale.
+    var isAtDefaultSelection: Bool {
+        (deferredSelection ?? selection) == .system
     }
 
     /// The concrete language to apply for bundle/font/format decisions.
