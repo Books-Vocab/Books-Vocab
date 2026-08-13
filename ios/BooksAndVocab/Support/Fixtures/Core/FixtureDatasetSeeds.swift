@@ -24,6 +24,24 @@ private func uiWorldRequireExactKeys(
     }
 }
 
+private func rejectUnknownKeys(
+    in decoder: Decoder,
+    allowedKeys: Set<String>,
+    context: String
+) throws {
+    let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+    let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+        .subtracting(allowedKeys)
+    guard unknownKeys.isEmpty else {
+        throw DecodingError.dataCorrupted(
+            .init(
+                codingPath: decoder.codingPath,
+                debugDescription: "\(context) contains unknown keys \(unknownKeys.sorted())"
+            )
+        )
+    }
+}
+
 private func uiWorldRequireNonEmpty(
     _ value: String,
     decoder: Decoder,
@@ -747,11 +765,59 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
 
 struct UIWorldSurfaceContractsSeed: Codable, Equatable {
     let reviewCalendar: UIWorldReviewCalendarEvidenceGroupsSeed?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case reviewCalendar
+    }
+
+    init(reviewCalendar: UIWorldReviewCalendarEvidenceGroupsSeed? = nil) {
+        self.reviewCalendar = reviewCalendar
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(
+            in: decoder,
+            allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+            context: "UI World scenarioContext.surfaceContracts"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reviewCalendar = try container.decodeIfPresent(
+            UIWorldReviewCalendarEvidenceGroupsSeed.self,
+            forKey: .reviewCalendar
+        )
+    }
 }
 
 struct UIWorldReviewCalendarEvidenceGroupsSeed: Codable, Equatable {
     let required: [UIWorldReviewCalendarEvidenceSeed]
     let counterexamples: [UIWorldReviewCalendarEvidenceSeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case required
+        case counterexamples
+    }
+
+    init(
+        required: [UIWorldReviewCalendarEvidenceSeed],
+        counterexamples: [UIWorldReviewCalendarEvidenceSeed]
+    ) {
+        self.required = required
+        self.counterexamples = counterexamples
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(
+            in: decoder,
+            allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+            context: "UI World reviewCalendar evidence groups"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        required = try container.decode([UIWorldReviewCalendarEvidenceSeed].self, forKey: .required)
+        counterexamples = try container.decode(
+            [UIWorldReviewCalendarEvidenceSeed].self,
+            forKey: .counterexamples
+        )
+    }
 }
 
 struct UIWorldReviewCalendarEvidenceSeed: Codable, Equatable {
@@ -759,6 +825,33 @@ struct UIWorldReviewCalendarEvidenceSeed: Codable, Equatable {
     let stepLabel: String
     let index: Int
     let assetIDs: [String]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case fixtureID
+        case stepLabel
+        case index
+        case assetIDs
+    }
+
+    init(fixtureID: String, stepLabel: String, index: Int, assetIDs: [String]) {
+        self.fixtureID = fixtureID
+        self.stepLabel = stepLabel
+        self.index = index
+        self.assetIDs = assetIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(
+            in: decoder,
+            allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+            context: "UI World reviewCalendar evidence row"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fixtureID = try container.decode(String.self, forKey: .fixtureID)
+        stepLabel = try container.decode(String.self, forKey: .stepLabel)
+        index = try container.decode(Int.self, forKey: .index)
+        assetIDs = try container.decode([String].self, forKey: .assetIDs)
+    }
 }
 
 struct UIWorldInstalledFixtureProof: Codable, Equatable {
@@ -769,6 +862,50 @@ struct UIWorldInstalledFixtureProof: Codable, Equatable {
     let type: String
     let sourceCommit: String
     let datasetSHA256: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case datasetID
+        case path
+        case bytes
+        case sha256
+        case type
+        case sourceCommit
+        case datasetSHA256
+    }
+
+    init(
+        datasetID: String,
+        path: String,
+        bytes: Int,
+        sha256: String,
+        type: String,
+        sourceCommit: String,
+        datasetSHA256: String
+    ) {
+        self.datasetID = datasetID
+        self.path = path
+        self.bytes = bytes
+        self.sha256 = sha256
+        self.type = type
+        self.sourceCommit = sourceCommit
+        self.datasetSHA256 = datasetSHA256
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(
+            in: decoder,
+            allowedKeys: Set(CodingKeys.allCases.map(\.rawValue)),
+            context: "UI World installed fixture proof"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        datasetID = try container.decode(String.self, forKey: .datasetID)
+        path = try container.decode(String.self, forKey: .path)
+        bytes = try container.decode(Int.self, forKey: .bytes)
+        sha256 = try container.decode(String.self, forKey: .sha256)
+        type = try container.decode(String.self, forKey: .type)
+        sourceCommit = try container.decode(String.self, forKey: .sourceCommit)
+        datasetSHA256 = try container.decode(String.self, forKey: .datasetSHA256)
+    }
 }
 
 /// Reader scenario passage. `activeWord` is the just-tapped word tied to the

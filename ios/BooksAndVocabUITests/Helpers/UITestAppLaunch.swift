@@ -53,6 +53,16 @@ enum UITestReaderProgressScenario: String, CaseIterable, Equatable {
         case .progressMiddle: return "middle"
         case .progressComplete: return "complete"
         case .progressRestoreFailure: return "restore-failure"
+enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
+    case missingUTF8
+    case invalidJSON(underlying: Error)
+
+    var description: String {
+        switch self {
+        case .missingUTF8:
+            return "KG_UI_TEST_APP_ARGS_JSON is not valid UTF-8"
+        case .invalidJSON(let underlying):
+            return "KG_UI_TEST_APP_ARGS_JSON must be a JSON array of strings: \(underlying)"
         }
     }
 }
@@ -187,14 +197,28 @@ struct UITestLaunchConfiguration {
         return environment
     }
 
-    private func inheritedLaunchArguments() -> [String] {
-        guard let raw = ProcessInfo.processInfo.environment[uiTestAppArgumentsEnvKey],
-              let data = raw.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String].self, from: data)
-        else {
+    static func decodeInheritedLaunchArguments(from raw: String?) throws -> [String] {
+        guard let raw else {
             return []
         }
-        return decoded
+        guard let data = raw.data(using: .utf8) else {
+            throw UITestLaunchArgumentsError.missingUTF8
+        }
+        do {
+            return try JSONDecoder().decode([String].self, from: data)
+        } catch {
+            throw UITestLaunchArgumentsError.invalidJSON(underlying: error)
+        }
+    }
+
+    private func inheritedLaunchArguments() -> [String] {
+        do {
+            return try Self.decodeInheritedLaunchArguments(
+                from: ProcessInfo.processInfo.environment[uiTestAppArgumentsEnvKey]
+            )
+        } catch {
+            preconditionFailure("\(error)")
+        }
     }
 }
 
