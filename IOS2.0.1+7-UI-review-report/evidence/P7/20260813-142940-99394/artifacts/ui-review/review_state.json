@@ -1,0 +1,36 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T14:31:29+00:00",
+      "assetIDs": [
+        "01-loading",
+        "02-retry",
+        "03-loaded",
+        "04-error",
+        "05-retry",
+        "06-loaded",
+        "07-error",
+        "08-retry",
+        "09-loaded",
+        "10-empty"
+      ],
+      "notes": "Visual review confirms loading, retry, error, empty, and loaded states remain legible and stable; state cards and retry controls do not overlap reader chrome.",
+      "visualChecks": [
+        "loading/retry/error/empty state surfaces are visible without clipping or overlap",
+        "loaded reader content remains legible with stable chrome and progress affordance"
+      ],
+      "manifestSHA256": "bfd82021ac6d328db485847b86742ca316bcc79c51d8ccb687cb25e34f0919eb",
+      "evidenceRootSHA256": "b55ba66b64139db4a91a9ba8836b1353f2682591c6aa588abdc7f0d17539018c",
+      "provenance": {
+        "sourceCommit": "e6630961f8f930040d9fcb5277133f043b1aaa1f",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "1f4fd501bfb847330e7c22a896c85c12fa827e8bb25a0466498e781507985c44",
+        "device": "F27209F8-1464-410F-BC26-7372A522B921",
+        "selector": "--method ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess"
+      }
+    }
+  ]
+}

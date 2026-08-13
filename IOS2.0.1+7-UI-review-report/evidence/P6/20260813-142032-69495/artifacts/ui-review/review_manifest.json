@@ -1,0 +1,99 @@
+{
+  "schema": "kg.visual-review.sheet.v1",
+  "source": "uitest",
+  "imageRoot": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.qS8fLi",
+  "inputManifest": null,
+  "contactSheet": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.qS8fLi/contact_sheet.png",
+  "render": {
+    "out": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.qS8fLi/contact_sheet.png",
+    "count": 5,
+    "cols": 3,
+    "rows": 2,
+    "width": 860,
+    "height": 1282
+  },
+  "items": [
+    {
+      "assetID": "01-loaded",
+      "relPath": "01-loaded.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 1,
+      "stateLabel": "loaded",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 95096,
+      "sha256": "f2014b221a237489c88c946d8aab56b063e34b3ad670bc45336a8a31706db94b"
+    },
+    {
+      "assetID": "02-loaded",
+      "relPath": "02-loaded.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 2,
+      "stateLabel": "loaded",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 91700,
+      "sha256": "f7639656fb643c2b52ad9a899e7a3732d36e18a3f218ee82f58ee9dc43cb762a"
+    },
+    {
+      "assetID": "03-loaded",
+      "relPath": "03-loaded.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 3,
+      "stateLabel": "loaded",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 92383,
+      "sha256": "ded7134aef2417e77514f335a815e3d12a6dd5822c9da5e5cd0fa20a486290bd"
+    },
+    {
+      "assetID": "04-loaded",
+      "relPath": "04-loaded.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 4,
+      "stateLabel": "loaded",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 92142,
+      "sha256": "2f27adc114dca80a9977f5a6e5c58be6d1393a9a05029a806de953709b9d758b"
+    },
+    {
+      "assetID": "05-loaded",
+      "relPath": "05-loaded.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 5,
+      "stateLabel": "loaded",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 404448,
+      "sha256": "750f270f03549726e6c5455de3e270b6596ce3c845f107b6ea04a12594ba1939"
+    }
+  ],
+  "provenance": {
+    "sourceCommit": "c6ff48e09cad88e29b772d7da997516bdb98cb3d",
+    "datasetID": "marketing_demo",
+    "datasetSHA256": "1f4fd501bfb847330e7c22a896c85c12fa827e8bb25a0466498e781507985c44",
+    "device": "F27209F8-1464-410F-BC26-7372A522B921",
+    "selector": "--method ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance"
+  }
+}
