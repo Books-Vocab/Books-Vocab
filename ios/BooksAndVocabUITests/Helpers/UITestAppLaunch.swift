@@ -24,6 +24,7 @@ enum UITestFixture: Equatable {
     case notebookReviewDeck
     case notebookReviewDeckVaried
     case dictionaryP1Rich
+    case dictionaryP2Senses
 
     var launchArgument: String {
         switch self {
@@ -59,6 +60,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:notebook:reviewDeckVaried"
         case .dictionaryP1Rich:
             return "-seedFixture:dictionary:ui-p1-dictionary-rich"
+        case .dictionaryP2Senses:
+            return "-seedFixture:dictionary:ui-p2-dictionary-senses"
         }
     }
 }

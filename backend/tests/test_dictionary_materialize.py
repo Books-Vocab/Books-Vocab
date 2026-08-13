@@ -51,6 +51,8 @@ def test_dictionary_materialize_reuses_learning_card_without_sidecar_or_demotion
 
     assert result.target_card.id == learning.id
     assert result.created_card is False and result.created_link is True
+    assert result.target_card.card_role == "learning"
+    assert result.dictionary_card is None
     assert cards.get(learning.id).card_role == "learning"
     assert cards.get_dictionary_entry(learning.id) is None
     assert graph.find_link_between(source.id, learning.id) is not None
@@ -312,6 +314,48 @@ def test_dictionary_saved_card_api_contract_and_rollout_read_availability(
         json=payload,
     )
     assert replay_without_quota.status_code == 200
+
+
+def test_dictionary_materialize_api_reuses_learning_card_without_dictionary_projection(
+    isolated_api, monkeypatch
+):
+    import kg.routers.dictionary as dictionary_router
+
+    entry = _lexical_entry()
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    service, cards, _graph, lexical, _judge = _dictionary_service(user_dir, entry=entry)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    learning = cards.add("invoke", "已學習的援引", notebook_id="default")
+    monkeypatch.setattr(
+        dictionary_router,
+        "_dictionary_card_service",
+        lambda _user, _settings, **_kwargs: service,
+    )
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    sense = lexical.entry.senses[0]
+    response = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "api-learning-reuse"},
+        json={
+            "sourceCardId": source.id,
+            "notebookId": "default",
+            "provider": lexical.entry.provider,
+            "entryKey": lexical.entry.entry_key,
+            "senseKey": sense.key,
+            "exampleKey": sense.examples[0].key,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["targetCard"]["id"] == learning.id
+    assert body["targetCard"]["cardRole"] == "learning"
+    assert body["dictionaryCard"] is None
+    assert cards.get_dictionary_entry(learning.id) is None
+
 
 def test_dictionary_materialize_api_requires_idempotency_key_and_rejects_hash_mismatch(
     isolated_api, monkeypatch

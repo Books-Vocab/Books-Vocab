@@ -50,6 +50,22 @@ enum FixtureDatasetStore {
         }
     }
 
+    /// Resolve the dictionary surface selected by a UI-test launch argument.
+    /// Existing callers without a dictionary seed keep the P1-compatible
+    /// default; a malformed explicit seed is never silently remapped.
+    static func activeDictionaryFixtureID(
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> UIWorldDictionaryFixtureID {
+        let prefix = "-seedFixture:dictionary:"
+        guard let rawID = arguments.first(where: { $0.hasPrefix(prefix) })?.dropFirst(prefix.count) else {
+            return .p1DictionaryRich
+        }
+        guard let fixtureID = UIWorldDictionaryFixtureID(rawValue: String(rawID)) else {
+            preconditionFailure("Unknown dictionary fixture ID: (rawID)")
+        }
+        return fixtureID
+    }
+
     static func settingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed? {
         guard case let .loaded(document, _) = loadState() else { return nil }
         return document.settings[fixtureID.rawValue]
@@ -364,10 +380,10 @@ enum FixtureDatasetStore {
         return seed
     }
 
-    /// Resolve the canonical dictionary source only through the matrix-facing
-    /// surface contract. A dictionary payload without its declared P1 surface
-    /// row is not a consumable fixture and must not silently become a fake
-    /// service response.
+    /// Resolve the canonical dictionary source only through a matrix-facing
+    /// required surface contract. A dictionary payload without its declared
+    /// P1/P2 row is not a consumable fixture and must not silently become a
+    /// fake service response.
     static func dictionarySurfaceContract(
         for fixtureID: UIWorldDictionaryFixtureID
     ) -> UIWorldSurfaceContractRowSeed? {
@@ -379,6 +395,20 @@ enum FixtureDatasetStore {
         return dictionaryContract.required.first {
             $0.fixtureID == fixtureID.rawValue &&
             $0.stepLabel == fixtureID.requiredStepLabel
+        }
+    }
+
+    static func dictionaryCounterexampleContract(
+        for fixtureID: UIWorldDictionaryCounterexampleID
+    ) -> UIWorldSurfaceContractRowSeed? {
+        guard case let .loaded(document, _) = loadState(),
+              let context = document.scenarioContext,
+              let dictionaryContract = context.surfaceContracts?["dictionary"] else {
+            return nil
+        }
+        return dictionaryContract.counterexamples.first {
+            $0.fixtureID == fixtureID.rawValue &&
+            $0.stepLabel == fixtureID.stepLabel
         }
     }
 

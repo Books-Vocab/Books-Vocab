@@ -103,18 +103,29 @@ def test_p1_dictionary_rich_fixture_is_emitted_across_canonical_artifacts():
     assert dictionary["materialization"]["sourceFixtureID"] == dictionary["lookup"]["result"]["fixtureID"]
 
     surface = contexts[0]["surfaceContracts"]["dictionary"]
-    assert [row["fixtureID"] for row in surface["required"]] == ["ui-p1-dictionary-rich"]
+    assert [row["fixtureID"] for row in surface["required"]] == [
+        "ui-p1-dictionary-rich",
+        "ui-p2-dictionary-senses",
+    ]
+    assert [row["stepLabel"] for row in surface["required"]] == [
+        "dictionary-rich",
+        "dictionary-senses",
+    ]
     assert [row["fixtureID"] for row in surface["counterexamples"]] == [
         "dictionary.lookup.partial",
         "dictionary.lookup.offline",
         "dictionary.lookup.error",
         "dictionary.lookup.retry",
+        "dictionary.p2.missing-example",
+        "dictionary.p2.materialize-error",
     ]
     assert [row["stepLabel"] for row in surface["counterexamples"]] == [
         "partial-counterexample",
         "offline-counterexample",
         "error-counterexample",
         "retry-counterexample",
+        "missing-example-counterexample",
+        "materialize-error-counterexample",
     ]
     assert surface["required"][0]["assetIDs"] == ["catalog_reader_epub"]
     assert surface["required"][0]["assetInodes"] == ["inode:catalog_reader_epub"]

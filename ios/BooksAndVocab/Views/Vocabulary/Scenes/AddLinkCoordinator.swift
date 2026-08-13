@@ -84,6 +84,8 @@ enum DictionaryMaterializePhase: Equatable {
 
 private enum DictionaryMaterializationError: Error {
     case projectionCardMismatch(expected: String, actual: String)
+    case projectionCardRoleMismatch(cardID: String, actualRole: String?)
+    case projectionRequiredForDictionaryCard(cardID: String)
     case projectionMissingGraphLink(linkID: String)
     case projectionGraphLinkMismatch(linkID: String)
     case projectionGraphLinkEndpointsMismatch(linkID: String)
@@ -398,28 +400,62 @@ final class AddLinkCoordinator {
                 request: request,
                 idempotencyKey: materializeKey
             )
-            let projection: KGDictionaryCardProjection
+            let projection: KGDictionaryCardProjection?
             if let dictionaryCard = response.dictionaryCard {
+                guard response.targetCard.cardRole == VocabularyCardRole.dictionary.rawValue else {
+                    throw DictionaryMaterializationError.projectionCardRoleMismatch(
+                        cardID: response.targetCard.id,
+                        actualRole: response.targetCard.cardRole
+                    )
+                }
+                guard dictionaryCard.card.cardRole == VocabularyCardRole.dictionary.rawValue else {
+                    throw DictionaryMaterializationError.projectionCardRoleMismatch(
+                        cardID: dictionaryCard.card.id,
+                        actualRole: dictionaryCard.card.cardRole
+                    )
+                }
                 projection = dictionaryCard
-            } else {
+            } else if response.targetCard.cardRole == VocabularyCardRole.learning.rawValue {
+                // A reused learning card deliberately has no dictionary
+                // sidecar. Its response is complete through targetCard+link;
+                // fetching the dictionary projection would turn a legal reuse
+                // into a false 404.
+                projection = nil
+            } else if response.targetCard.cardRole == VocabularyCardRole.dictionary.rawValue {
+                // Keep compatibility with older materialize responses that
+                // omitted dictionaryCard for an existing dictionary card, but
+                // validate the fetched projection through the same strict
+                // dictionary path below.
                 projection = try await service.fetchDictionaryCard(cardId: response.targetCard.id)
-            }
-            guard projection.card.id == response.targetCard.id else {
-                throw DictionaryMaterializationError.projectionCardMismatch(
-                    expected: response.targetCard.id,
-                    actual: projection.card.id
+            } else {
+                throw DictionaryMaterializationError.projectionRequiredForDictionaryCard(
+                    cardID: response.targetCard.id
                 )
             }
-            let matchingLinks = projection.links.filter { $0.id == response.link.id }
-            guard matchingLinks.count == 1 else {
-                throw DictionaryMaterializationError.projectionMissingGraphLink(
-                    linkID: response.link.id
-                )
-            }
-            guard matchingLinks[0] == response.link else {
-                throw DictionaryMaterializationError.projectionGraphLinkMismatch(
-                    linkID: response.link.id
-                )
+            if let projection {
+                guard projection.card.cardRole == VocabularyCardRole.dictionary.rawValue else {
+                    throw DictionaryMaterializationError.projectionCardRoleMismatch(
+                        cardID: projection.card.id,
+                        actualRole: projection.card.cardRole
+                    )
+                }
+                guard projection.card.id == response.targetCard.id else {
+                    throw DictionaryMaterializationError.projectionCardMismatch(
+                        expected: response.targetCard.id,
+                        actual: projection.card.id
+                    )
+                }
+                let matchingLinks = projection.links.filter { $0.id == response.link.id }
+                guard matchingLinks.count == 1 else {
+                    throw DictionaryMaterializationError.projectionMissingGraphLink(
+                        linkID: response.link.id
+                    )
+                }
+                guard matchingLinks[0] == response.link else {
+                    throw DictionaryMaterializationError.projectionGraphLinkMismatch(
+                        linkID: response.link.id
+                    )
+                }
             }
             guard response.link.fromId == request.sourceCardId,
                   response.link.toId == response.targetCard.id else {
@@ -434,9 +470,6 @@ final class AddLinkCoordinator {
             }
             let actor = BackgroundSyncActor(modelContainer: container)
             _ = try await actor.upsertDictionaryMaterialization(response)
-            if response.dictionaryCard == nil {
-                _ = try await actor.upsertDictionaryProjection(projection)
-            }
             Self.applyMaterializedLink(response, to: sourceEntry)
             try sourceContext.save()
             materializePhase = .succeeded

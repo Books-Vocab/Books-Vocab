@@ -180,7 +180,88 @@ struct DictionaryCardWireTests {
         #expect(projection.selectedSenseKey == "sense-1")
         #expect(projection.selectedExampleKey == "example-1")
         #expect(projection.promotionRetryable == false)
+        #expect(projection.readerHidden == false)
         #expect(projection.links.count == 1)
+    }
+
+    @Test("materialization projection rejects a root readerHidden mismatch")
+    func strictMaterializationProjectionRejectsReaderVisibilityMismatch() {
+        let linksStart = Self.backendProjection.range(of: "\"links\":")!.lowerBound
+        let rootReaderRange = Self.backendProjection.range(
+            of: "\"readerHidden\": false",
+            options: .backwards,
+            range: Self.backendProjection.startIndex..<linksStart
+        )!
+        var malformed = Self.backendProjection
+        malformed.replaceSubrange(rootReaderRange, with: "\"readerHidden\": true")
+        #expect(malformed != Self.backendProjection)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(malformed.utf8)
+            )
+        }
+    }
+
+    @Test("materialization projection rejects a nested card readerHidden mismatch")
+    func strictMaterializationProjectionRejectsNestedReaderVisibilityMismatch() {
+        let dictionaryStart = Self.backendProjection.range(of: "\"dictionary\":")!.upperBound
+        let nestedEntryStart = Self.backendProjection.range(
+            of: "\"entry\":",
+            range: dictionaryStart..<Self.backendProjection.endIndex
+        )!.lowerBound
+        let nestedReaderRange = Self.backendProjection.range(
+            of: "\"readerHidden\": false",
+            range: dictionaryStart..<nestedEntryStart
+        )!
+        var malformed = Self.backendProjection
+        malformed.replaceSubrange(nestedReaderRange, with: "\"readerHidden\": true")
+        #expect(malformed != Self.backendProjection)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(malformed.utf8)
+            )
+        }
+    }
+
+    @Test("materialization projection rejects readerHidden in the nested dictionary payload")
+    func strictMaterializationProjectionRejectsMisplacedReaderVisibility() throws {
+        var malformedObject = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(Self.backendProjection.utf8),
+                options: []
+            ) as? [String: Any]
+        )
+        var nestedDictionary = try #require(malformedObject["dictionary"] as? [String: Any])
+        nestedDictionary["readerHidden"] = false
+        malformedObject["dictionary"] = nestedDictionary
+        let malformedData = try JSONSerialization.data(withJSONObject: malformedObject, options: [.sortedKeys])
+        let decodedObject = try #require(
+            JSONSerialization.jsonObject(with: malformedData, options: []) as? [String: Any]
+        )
+        let decodedDictionary = try #require(decodedObject["dictionary"] as? [String: Any])
+        #expect(decodedDictionary["readerHidden"] as? Bool == false)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: malformedData
+            )
+        }
+    }
+
+    @Test("materialization projection rejects a learning card in the dictionary envelope")
+    func strictMaterializationProjectionRejectsLearningRole() {
+        let malformed = Self.backendProjection.replacingOccurrences(
+            of: "\"cardRole\": \"dictionary\"",
+            with: "\"cardRole\": \"learning\""
+        )
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(malformed.utf8)
+            )
+        }
     }
 
     @Test("strict materialization projection rejects the legacy flat wire")
