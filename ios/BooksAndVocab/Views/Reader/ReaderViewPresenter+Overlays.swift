@@ -78,7 +78,10 @@ extension ReaderViewPresenter {
             .transition(.readerPanelReveal)
     }
 
-    private var runtimeStateAccessibility: some View {
+    // ReaderViewPresenter.swift composes this cross-file extension view. Keep
+    // the member internal so Swift's `private` file-extension scope cannot
+    // make the production presenter unbuildable.
+    var runtimeStateAccessibility: some View {
         Color.clear
             .frame(width: 1, height: 1)
             .accessibilityElement(children: .ignore)
