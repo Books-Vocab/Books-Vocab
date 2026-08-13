@@ -14,7 +14,20 @@ struct AppEmptyStateStyle {
 struct AppEmptyStateAction {
     let title: String
     let systemImage: String?
+    let accessibilityIdentifier: String?
     let handler: () -> Void
+
+    init(
+        title: String,
+        systemImage: String?,
+        accessibilityIdentifier: String? = nil,
+        handler: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.handler = handler
+    }
 }
 
 struct AppEmptyStateContent: View {
@@ -62,13 +75,24 @@ struct AppEmptyStateContent: View {
             }
 
             if let action {
-                Button(action: action.handler) {
-                    Label(action.title, systemImage: action.systemImage ?? "arrow.right")
-                }
-                .buttonStyle(.appAction(.outline))
+                actionButton(action)
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func actionButton(_ action: AppEmptyStateAction) -> some View {
+        let button = Button(action: action.handler) {
+            Label(action.title, systemImage: action.systemImage ?? "arrow.right")
+        }
+        if let accessibilityIdentifier = action.accessibilityIdentifier {
+            button
+                .buttonStyle(.appAction(.outline))
+                .accessibilityIdentifier(accessibilityIdentifier)
+        } else {
+            button.buttonStyle(.appAction(.outline))
+        }
     }
 }
 

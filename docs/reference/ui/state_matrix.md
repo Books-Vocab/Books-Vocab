@@ -46,7 +46,14 @@ Scope: `ios/BooksAndVocab`
 | Publication loading | `isLoading == true` | reader loading overlay | 已覆蓋 |
 | Publication rendering progress | `loadingPhase` 變化 | loading overlay 文案切換 | 已覆蓋 |
 | Publication failed | `errorMessage != nil` | `ContentUnavailableView` | 已覆蓋 |
+| Reader progress unknown | `ReaderRuntimeState.progressState == .unknown`（nil / non-finite / 越界 locator 或尚未收到有效 location） | `reader.progress.unknown` badge +「閱讀進度未知」 | 已覆蓋 |
+| Reader progress zero / middle / complete | valid locator progression `0...1` 分類 | `reader.progress.zero|middle|complete` badge；numeric badge 只在有效 progression 存在時呈現 | 已覆蓋 |
+| Saved locator restore warning | saved locator decode 失敗 | `reader.progress.restore-failure` warning badge；不顯示 load error | 已覆蓋 |
+| Restore warning → first valid location | invalid saved locator 後首個 Readium locator progression finite 且在 `0...1` | warning 消失、badge 轉 numeric state、`Book.progression` 才更新 | 已覆蓋 |
+| Publication open error | loader throw / `loadingState == .failed` | `reader.error.<failure>` card + exact `reader.retry` CTA | 已覆蓋 |
+| Retry transition | retry CTA 觸發 runtime retry | error/retry 消失，loading overlay 出現，成功後 content + loaded | 已覆蓋 |
 | Reader ready | `publication != nil && errorMessage == nil` | Readium navigator | 已覆蓋 |
+| Reader empty | `publication == nil && errorMessage == nil && loadingState == .ready` | visible `reader.empty` card + exact `reader.retry` CTA | 已覆蓋 |
 | Paywall required | `!subscriptionManager.hasProAccess` | `SubscriptionPaywallSheet` | 已覆蓋 |
 
 ### Translation Panel State

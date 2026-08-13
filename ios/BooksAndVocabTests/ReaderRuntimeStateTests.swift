@@ -5,6 +5,7 @@
 
 import Foundation
 import Testing
+import ReadiumShared
 @testable import BooksAndVocab
 
 @MainActor
@@ -12,6 +13,10 @@ struct ReaderRuntimeStateTests {
 
     @Test func progressClassificationKeepsFiveRuntimeStatesDistinct() {
         #expect(ReaderProgressState.classify(progression: nil) == .unknown)
+        #expect(ReaderProgressState.classify(progression: .nan) == .unknown)
+        #expect(ReaderProgressState.classify(progression: .infinity) == .unknown)
+        #expect(ReaderProgressState.classify(progression: -0.01) == .unknown)
+        #expect(ReaderProgressState.classify(progression: 1.01) == .unknown)
         #expect(ReaderProgressState.classify(progression: 0) == .zero)
         #expect(ReaderProgressState.classify(progression: 0.42) == .middle(0.42))
         #expect(ReaderProgressState.classify(progression: 1) == .complete)
@@ -78,6 +83,88 @@ struct ReaderRuntimeStateTests {
         #expect(state.loadingState == .loading(.opening))
         #expect(state.errorMessage == nil)
         #expect(state.beginLoadAttempt() == .proceed)
+    }
+
+    @Test func invalidSavedLocatorUsesProductionRestoreTransition() throws {
+        let book = Book(title: "Reader", author: "Author", fileName: "reader.epub")
+        book.progression = 0.37
+        book.lastReadLocatorJSON = "not-a-locator"
+
+        // Use the production ReaderView restore entry point, not a fixture
+        // scenario. An invalid saved locator raises a warning while retaining
+        // the persisted progression until Readium emits a valid location.
+        var view = ReaderView(book: book)
+        view.prepareRestoreState()
+        #expect(view.readerState.progressState == .restoreFailure)
+        #expect(book.progression == 0.37)
+
+        view.readerState.runtime.recordLocationProgression(nil)
+        view.readerState.runtime.recordLocationProgression(.nan)
+        #expect(view.readerState.progressState == .restoreFailure)
+        #expect(book.progression == 0.37)
+
+        let validLocator = try #require(try? Locator(jsonString: """
+        {"href":"chapter1.html","type":"text/html","locations":{"totalProgression":0.74}}
+        """))
+        view.handleLocationChange(validLocator)
+        #expect(view.readerState.progressState == .middle(0.74))
+        #expect(book.progression == 0.74)
+    }
+
+    @Test func restoreFailureDoesNotLockReadiumLocationEvents() {
+        let selection = ReaderRuntimeFixtureAdapter.selection(scenario: .progressRestoreFailure)
+        let state = ReaderRuntimeState(selection: selection)
+
+        #expect(state.selection.locksProgress == false)
+        state.recordLocationProgression(0.74)
+
+        #expect(state.progressState == .middle(0.74))
+    }
+
+    @Test func unknownLocatorProgressionPreservesBookProgression() {
+        let book = Book(title: "Reader", author: "Author", fileName: "reader.epub")
+        book.progression = 0.37
+        let clock = ReaderRuntimeClock(now: { Date(timeIntervalSince1970: 123) })
+        let snapshot = ReaderProgressPersistenceSnapshot(
+            progression: ReaderProgressState.validProgression(nil),
+            clock: clock
+        )
+
+        snapshot.apply(to: book, locatorJSON: "valid-locator-json")
+
+        #expect(book.lastReadLocatorJSON == "valid-locator-json")
+        #expect(book.dateLastRead == Date(timeIntervalSince1970: 123))
+        #expect(book.progression == 0.37)
+    }
+
+    @Test func invalidLocatorProgressionPreservesBookProgressionThroughHandler() throws {
+        let book = Book(title: "Reader", author: "Author", fileName: "reader.epub")
+        book.progression = 0.37
+        var view = ReaderView(book: book)
+        let invalidLocator = try #require(try? Locator(jsonString: """
+        {"href":"chapter1.html","type":"text/html","locations":{"totalProgression":1.5}}
+        """))
+
+        view.handleLocationChange(invalidLocator)
+
+        #expect(view.readerState.progressState == .unknown)
+        #expect(book.progression == 0.37)
+    }
+
+    @Test func emptyRuntimeAttemptReachesProductionEmptyRoute() {
+        let state = ReaderRuntimeState(
+            selection: ReaderRuntimeFixtureAdapter.selection(scenario: .loadingEmpty)
+        )
+
+        #expect(state.beginLoadAttempt() == .empty)
+        #expect(state.loadingState == .ready)
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: false,
+                errorMessage: state.errorMessage,
+                loadingState: state.loadingState
+            ) == .empty
+        )
     }
 
     @Test func mainContentStateExposesLoadingErrorContentAndEmptyBranches() {

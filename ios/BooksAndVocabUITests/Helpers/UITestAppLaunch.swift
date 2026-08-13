@@ -16,6 +16,7 @@ enum UITestReaderRuntimeScenario: String, CaseIterable, Equatable {
     case loadingSlow = "loading-slow"
     case loadingMissing = "loading-missing"
     case loadingErrorRetry = "loading-error-retry"
+    case loadingEmpty = "loading-empty"
 }
 
 enum UITestFixture: Equatable {

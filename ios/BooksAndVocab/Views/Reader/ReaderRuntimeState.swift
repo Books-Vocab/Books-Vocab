@@ -14,10 +14,19 @@ enum ReaderProgressState: Equatable, Sendable {
 
     static func classify(progression: Double?, restoreFailed: Bool = false) -> Self {
         guard !restoreFailed else { return .restoreFailure }
-        guard let progression, progression.isFinite else { return .unknown }
+        guard let progression = validProgression(progression) else { return .unknown }
         if progression <= 0 { return .zero }
         if progression >= 1 { return .complete }
         return .middle(progression)
+    }
+
+    /// Readium's `totalProgression` is a normalized fraction. Missing,
+    /// non-finite, and out-of-range values are not new reading positions.
+    static func validProgression(_ progression: Double?) -> Double? {
+        guard let progression, progression.isFinite, (0...1).contains(progression) else {
+            return nil
+        }
+        return progression
     }
 
     var accessibilityIdentifier: String {
@@ -49,10 +58,11 @@ enum ReaderRuntimeScenario: String, CaseIterable, Equatable, Sendable {
     case loadingSlow = "loading-slow"
     case loadingMissing = "loading-missing"
     case loadingErrorRetry = "loading-error-retry"
+    case loadingEmpty = "loading-empty"
 
     var progressState: ReaderProgressState {
         switch self {
-        case .progressUnknown, .loadingSlow, .loadingMissing, .loadingErrorRetry:
+        case .progressUnknown, .loadingSlow, .loadingMissing, .loadingErrorRetry, .loadingEmpty:
             return .unknown
         case .progressZero: return .zero
         case .progressMiddle: return .middle(0.42)
@@ -66,6 +76,7 @@ enum ReaderRuntimeScenario: String, CaseIterable, Equatable, Sendable {
         case .loadingSlow: return .slow
         case .loadingMissing: return .missing
         case .loadingErrorRetry: return .errorRetry
+        case .loadingEmpty: return .empty
         default: return .normal
         }
     }
@@ -74,7 +85,7 @@ enum ReaderRuntimeScenario: String, CaseIterable, Equatable, Sendable {
         switch self {
         case .progressUnknown, .progressZero, .progressMiddle, .progressComplete, .progressRestoreFailure:
             return true
-        case .loadingSlow, .loadingMissing, .loadingErrorRetry:
+        case .loadingSlow, .loadingMissing, .loadingErrorRetry, .loadingEmpty:
             return false
         }
     }
@@ -85,6 +96,7 @@ enum ReaderLoadMode: Equatable, Sendable {
     case slow
     case missing
     case errorRetry
+    case empty
 }
 
 enum ReaderLoadingPhase: String, Equatable, Sendable {
@@ -97,6 +109,15 @@ enum ReaderLoadingFailure: Equatable, Sendable {
     case retryable
     case openFailed
     case restoreFailure
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .missing: return "missing"
+        case .retryable: return "retryable"
+        case .openFailed: return "open-failed"
+        case .restoreFailure: return "restore-failure"
+        }
+    }
 }
 
 enum ReaderLoadingState: Equatable, Sendable {
@@ -151,6 +172,7 @@ enum ReaderLoadAttempt: Equatable, Sendable {
     case proceed
     case holdSlow
     case failed(ReaderLoadingFailure)
+    case empty
 }
 
 struct ReaderFixtureDatasetProvenance: Equatable, Sendable {
@@ -170,12 +192,23 @@ struct ReaderRuntimeClock {
 
 @MainActor
 struct ReaderProgressPersistenceSnapshot: Equatable {
-    let progression: Double
+    let progression: Double?
     let dateLastRead: Date
 
-    init(progression: Double, clock: ReaderRuntimeClock) {
-        self.progression = progression
+    init(progression: Double?, clock: ReaderRuntimeClock) {
+        self.progression = ReaderProgressState.validProgression(progression)
         self.dateLastRead = clock.now()
+    }
+
+    /// Apply the production persistence policy: locator/date are independent
+    /// from progression, and an unknown progression never erases the existing
+    /// `Book.progression`.
+    func apply(to book: Book, locatorJSON: String) {
+        book.lastReadLocatorJSON = locatorJSON
+        book.dateLastRead = dateLastRead
+        if let progression {
+            book.progression = progression
+        }
     }
 }
 
@@ -202,7 +235,11 @@ struct ReaderRuntimeSelection: Equatable, Sendable {
     let provenance: ReaderRuntimeProvenance?
 
     var locksProgress: Bool {
-        scenario?.isProgressOverride == true
+        guard let scenario else { return false }
+        // Restore failure is a warning about the saved locator, not a fixture
+        // progress override. The first valid Readium location must be able to
+        // clear the warning and become the new source of truth.
+        return scenario != .progressRestoreFailure && scenario.isProgressOverride
     }
 
     var accessibilityValue: String {
@@ -219,6 +256,7 @@ private extension ReaderLoadMode {
         case .slow: return "slow"
         case .missing: return "missing"
         case .errorRetry: return "error-retry"
+        case .empty: return "empty"
         }
     }
 }
@@ -277,7 +315,9 @@ final class ReaderRuntimeState {
 
     var isLoading: Bool { loadingState.isLoading }
     var errorMessage: String? { failureMessage }
-    var totalProgression: Double { progressState.progression ?? 0 }
+    /// The only reader progress projection. Unknown and restore-failure are
+    /// intentionally nil; callers must not manufacture a zero.
+    var totalProgression: Double? { progressState.progression }
 
     var runtimeStateAccessibilityValue: String {
         let scenarioValue = selection.scenario?.rawValue ?? "production"
@@ -301,6 +341,7 @@ final class ReaderRuntimeState {
         switch selection.loadMode {
         case .slow where !slowLoadingReleased:
             loadingState = .loading(.slow)
+            PerfLog.reader.mark("reader.loading", "phase=slow")
             return .holdSlow
         case .missing where loadAttemptCount == 1:
             fail(.missing)
@@ -308,8 +349,13 @@ final class ReaderRuntimeState {
         case .errorRetry where loadAttemptCount == 1:
             fail(.retryable)
             return .failed(.retryable)
+        case .empty:
+            loadingState = .ready
+            PerfLog.reader.mark("reader.empty")
+            return .empty
         default:
             loadingState = .loading(.opening)
+            PerfLog.reader.mark("reader.loading", "phase=opening")
             return .proceed
         }
     }
@@ -327,17 +373,21 @@ final class ReaderRuntimeState {
         guard loadingState.isFailed else { return false }
         failureMessage = nil
         loadingState = .loading(.opening)
+        PerfLog.reader.mark("reader.retry")
         return true
     }
 
     func markReady() {
+        let transitioned = loadingState != .ready || failureMessage != nil
         failureMessage = nil
         loadingState = .ready
+        if transitioned { PerfLog.reader.mark("reader.loaded") }
     }
 
     func fail(_ failure: ReaderLoadingFailure, message: String? = nil) {
         failureMessage = message ?? defaultFailureMessage(for: failure)
         loadingState = .failed(failure)
+        PerfLog.reader.mark("reader.error", "failure=\(failure.accessibilityIdentifier)")
     }
 
     func markRestoreFailure() {
@@ -345,7 +395,9 @@ final class ReaderRuntimeState {
     }
 
     func recordLocationProgression(_ progression: Double?) {
-        guard !selection.locksProgress else { return }
+        guard !selection.locksProgress,
+              let progression = ReaderProgressState.validProgression(progression)
+        else { return }
         progressState = ReaderProgressState.classify(progression: progression)
     }
 
