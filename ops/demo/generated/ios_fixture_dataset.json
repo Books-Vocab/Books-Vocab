@@ -36037,9 +36037,6 @@
           ],
           "assetIDs": [
             "catalog_reader_epub"
-          ],
-          "assetInodes": [
-            "inode:catalog_reader_epub"
           ]
         },
         "counterexamples": {
@@ -36051,9 +36048,6 @@
           ],
           "assetIDs": [
             "catalog_reader_pdf"
-          ],
-          "assetInodes": [
-            "inode:catalog_reader_pdf"
           ]
         }
       }
@@ -36067,9 +36061,6 @@
             "index": 0,
             "assetIDs": [
               "explore_required"
-            ],
-            "assetInodes": [
-              "inode:explore_required"
             ]
           },
           {
@@ -36078,9 +36069,6 @@
             "index": 1,
             "assetIDs": [
               "explore_required"
-            ],
-            "assetInodes": [
-              "inode:explore_required"
             ]
           },
           {
@@ -36089,9 +36077,6 @@
             "index": 2,
             "assetIDs": [
               "explore_required_empty"
-            ],
-            "assetInodes": [
-              "inode:explore_required_empty"
             ]
           },
           {
@@ -36100,9 +36085,6 @@
             "index": 3,
             "assetIDs": [
               "explore_required"
-            ],
-            "assetInodes": [
-              "inode:explore_required"
             ]
           }
         ],
@@ -36113,9 +36095,6 @@
             "index": 4,
             "assetIDs": [
               "explore_counterexample_empty"
-            ],
-            "assetInodes": [
-              "inode:explore_counterexample_empty"
             ]
           },
           {
@@ -36124,9 +36103,6 @@
             "index": 5,
             "assetIDs": [
               "explore_counterexample_retry"
-            ],
-            "assetInodes": [
-              "inode:explore_counterexample_retry"
             ]
           }
         ]
@@ -36137,8 +36113,7 @@
             "fixtureID": "settings.clean-preferences",
             "stepLabel": "settings",
             "index": 0,
-            "assetIDs": [],
-            "assetInodes": []
+            "assetIDs": []
           }
         ],
         "counterexamples": [
@@ -36146,8 +36121,7 @@
             "fixtureID": "settings.reset-counterexample",
             "stepLabel": "reset-counterexample",
             "index": 1,
-            "assetIDs": [],
-            "assetInodes": []
+            "assetIDs": []
           }
         ]
       },
@@ -36159,70 +36133,48 @@
             "index": 0,
             "assetIDs": [
               "catalog_reader_epub"
-            ],
-            "assetInodes": [
-              "inode:catalog_reader_epub"
-            ]
-          },
+            ]                      },
           {
             "fixtureID": "ui-p2-dictionary-senses",
             "stepLabel": "dictionary-senses",
             "index": 1,
             "assetIDs": [
               "catalog_reader_epub"
-            ],
-            "assetInodes": [
-              "inode:catalog_reader_epub"
-            ]
-          }
+            ]                      }
         ],
         "counterexamples": [
           {
             "fixtureID": "dictionary.lookup.partial",
             "stepLabel": "partial-counterexample",
             "index": 2,
-            "assetIDs": [],
-            "assetInodes": []
-          },
+            "assetIDs": []                      },
           {
             "fixtureID": "dictionary.lookup.offline",
             "stepLabel": "offline-counterexample",
             "index": 3,
-            "assetIDs": [],
-            "assetInodes": []
-          },
+            "assetIDs": []                      },
           {
             "fixtureID": "dictionary.lookup.error",
             "stepLabel": "error-counterexample",
             "index": 4,
             "assetIDs": [
               "catalog_reader_pdf"
-            ],
-            "assetInodes": [
-              "inode:catalog_reader_pdf"
-            ]
-          },
+            ]                      },
           {
             "fixtureID": "dictionary.lookup.retry",
             "stepLabel": "retry-counterexample",
             "index": 5,
-            "assetIDs": [],
-            "assetInodes": []
-          },
+            "assetIDs": []                      },
           {
             "fixtureID": "dictionary.p2.missing-example",
             "stepLabel": "missing-example-counterexample",
             "index": 6,
-            "assetIDs": [],
-            "assetInodes": []
-          },
+            "assetIDs": []                      },
           {
             "fixtureID": "dictionary.p2.materialize-error",
             "stepLabel": "materialize-error-counterexample",
             "index": 7,
-            "assetIDs": [],
-            "assetInodes": []
-          }
+            "assetIDs": []                      }
         ]
       }
     },

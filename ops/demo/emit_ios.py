@@ -402,6 +402,7 @@ def _validate_scenario_context_field(
         got = sorted(mc) if isinstance(mc, dict) else type(mc).__name__
         raise ValueError(
             f"scenarioContext keys must be {sorted(SCENARIO_CONTEXT_KEYS)}, got {got}")
+    _reject_legacy_asset_inode_wire(mc)
     passage = mc["readerPassage"]
     if not isinstance(passage, dict) or set(passage) != set(spec_world.READER_PASSAGE_KEYS):
         got = sorted(passage) if isinstance(passage, dict) else type(passage).__name__
@@ -416,6 +417,18 @@ def _validate_scenario_context_field(
         raise ValueError(
             "scenarioContext.reviewClock must be a full clock dict with keys "
             f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
+
+
+def _reject_legacy_asset_inode_wire(value: Any, *, path: str = "scenarioContext") -> None:
+    """Reject the retired generic asset coverage key before baseline projection."""
+    if isinstance(value, dict):
+        if "assetInodes" in value:
+            raise ValueError(f"{path}.assetInodes is retired; use assetIDs and assets provenance")
+        for key, nested in value.items():
+            _reject_legacy_asset_inode_wire(nested, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            _reject_legacy_asset_inode_wire(nested, path=f"{path}[{index}]")
 
 
 def _validate_fixture_document(
