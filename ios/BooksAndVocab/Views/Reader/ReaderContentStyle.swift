@@ -105,13 +105,9 @@ enum ReaderContentStyleFactory {
 
 enum ReaderPresentationMetrics {
     enum Overlay {
-        static let loadingSpacing: CGFloat = 14
-        static let loadingHorizontalInset: CGFloat = 28
-        static let loadingVerticalInset: CGFloat = 20
         static let loadingMaxWidth: CGFloat = 320
         static let loadingOuterInset: CGFloat = 20
         static let progressBarWidth: CGFloat = 80
-        static let progressBarHeight: CGFloat = 3
         static let progressTextWidth: CGFloat = 30
         static let progressHorizontalInset: CGFloat = 16
         static let progressVerticalInset: CGFloat = 10

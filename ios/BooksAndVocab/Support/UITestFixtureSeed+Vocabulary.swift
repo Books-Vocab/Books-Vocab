@@ -36,7 +36,6 @@ extension UITestFixtureSeed {
             failFixtureSeed("Failed to seed vocabulary.\(id) fixture: \(error)")
         }
     }
-
     @MainActor
     private static func clearReviewCalendarFixtures(from context: ModelContext) throws {
         for record in try context.fetch(FetchDescriptor<ReviewRecord>()) {
