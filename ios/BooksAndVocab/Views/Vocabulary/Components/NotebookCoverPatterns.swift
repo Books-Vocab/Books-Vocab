@@ -379,30 +379,25 @@ struct NotebookCoverView: View {
     @ViewBuilder
     private func imageLayer(_ image: UIImage, size: CGSize) -> some View {
         let imageView = platformImage(image)
-#if DEBUG && targetEnvironment(simulator)
-        if let identifier = assetAccessibilityIdentifier {
-            imageView
-                .accessibilityElement(children: .ignore)
-                .accessibilityIdentifier(identifier)
-                .accessibilityLabel(assetAccessibilityLabel ?? name)
-                .accessibilityValue(assetAccessibilityValue ?? "")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size.width, height: size.height)
-                .clipped()
-        } else {
-            imageView
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size.width, height: size.height)
-                .clipped()
-        }
-#else
-        imageView
             .resizable()
             .aspectRatio(contentMode: .fill)
             .frame(width: size.width, height: size.height)
             .clipped()
+#if DEBUG && targetEnvironment(simulator)
+        if let identifier = assetAccessibilityIdentifier {
+            imageView
+                .accessibilityRepresentation {
+                    platformImage(image)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityIdentifier(identifier)
+                        .accessibilityLabel(assetAccessibilityLabel ?? name)
+                        .accessibilityValue(assetAccessibilityValue ?? "")
+                }
+        } else {
+            imageView
+        }
+#else
+        imageView
 #endif
     }
 
