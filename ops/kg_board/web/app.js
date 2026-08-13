@@ -222,16 +222,18 @@ function renderTree(){
   const viewport=treeViewport(tree,commits,refs);
   const visibleCommits=new Map(viewport.commits.map(row=>[row.sha,row]));
   const positions=new Map();
+  const branchLanes=new Map();
   viewport.refs.filter(ref=>ref.branch!=="main").forEach((ref,index)=>{
+    branchLanes.set(ref.branch,index+1);
     const anchor=viewport.branchAnchors.get(ref.branch);
     if(anchor&&visibleCommits.has(anchor)&&!positions.has(anchor))positions.set(anchor,{lane:index+1});
   });
   const main=commits.get(refs.find(ref=>ref.branch==="main")?.head);
   if(main)viewport.mainline.forEach(sha=>{if(visibleCommits.has(sha))positions.set(sha,{lane:0});});
   viewport.branchPaths.forEach((path,branch)=>{
-    const anchor=viewport.branchAnchors.get(branch),anchorPosition=anchor&&positions.get(anchor),lane=anchorPosition?.lane;
+    const lane=branchLanes.get(branch);
     if(lane===undefined)return;
-    path.forEach(sha=>{if(!positions.has(sha))positions.set(sha,{lane});});
+    path.forEach(sha=>{if(!viewport.mainlineWindow.includes(sha))positions.set(sha,{lane});});
   });
   [...visibleCommits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,viewport.refs.length+1))});});
   const windowRows=viewport.mainlineWindow.map(sha=>visibleCommits.get(sha)).filter(Boolean);
