@@ -892,6 +892,67 @@ def test_baseline_emission_requires_the_explicit_review_clock():
     assert clock["source"] == "history_plan.anchor_day"
 
 
+@pytest.mark.parametrize(
+    ("location", "unknown_key", "unknown_value"),
+    (
+        ("surfaceContracts", "extra", {}),
+        ("reviewCalendar", "extra", {}),
+        ("reviewCalendar", "assetInodes", {}),
+        ("row", "extra", "retired-wire-field"),
+        ("row", "assetInodes", ["checkout-inode"]),
+        ("row", "inode", "checkout-inode"),
+    ),
+)
+def test_emitter_rejects_unknown_review_calendar_nested_keys(
+    location: str, unknown_key: str, unknown_value: object
+):
+    document = emit_ios._build_fixture_document(sot.load_sot())
+    baseline = emit_ios._load_base_ui_world()
+    surface = document["scenarioContext"]["surfaceContracts"]
+    if location == "surfaceContracts":
+        surface[unknown_key] = unknown_value
+    elif location == "reviewCalendar":
+        surface["reviewCalendar"][unknown_key] = unknown_value
+    else:
+        surface["reviewCalendar"]["required"][0][unknown_key] = unknown_value
+
+    with pytest.raises(ValueError, match="surfaceContracts|reviewCalendar|keys"):
+        emit_ios._validate_fixture_document(document, baseline)
+
+
+@pytest.mark.parametrize(
+    ("location", "missing_key"),
+    (
+        ("surfaceContracts", "reviewCalendar"),
+        ("reviewCalendar", "required"),
+        ("reviewCalendar", "counterexamples"),
+        ("row", "assetIDs"),
+    ),
+)
+def test_emitter_rejects_missing_review_calendar_nested_keys(location: str, missing_key: str):
+    document = emit_ios._build_fixture_document(sot.load_sot())
+    baseline = emit_ios._load_base_ui_world()
+    surface = document["scenarioContext"]["surfaceContracts"]
+    if location == "surfaceContracts":
+        del surface[missing_key]
+    elif location == "reviewCalendar":
+        del surface["reviewCalendar"][missing_key]
+    else:
+        del surface["reviewCalendar"]["required"][0][missing_key]
+
+    with pytest.raises(ValueError, match="surfaceContracts|reviewCalendar|keys"):
+        emit_ios._validate_fixture_document(document, baseline)
+
+
+def test_emitter_rejects_missing_surface_contracts_for_canonical_review_clock():
+    document = emit_ios._build_fixture_document(sot.load_sot())
+    baseline = emit_ios._load_base_ui_world()
+    del document["scenarioContext"]["surfaceContracts"]
+
+    with pytest.raises(ValueError, match="surfaceContracts"):
+        emit_ios._validate_fixture_document(document, baseline)
+
+
 def test_word_detail_scenario_emitted_and_word_detail_stays_baseline(tmp_path):
     """emit 後：scenarioContext.wordDetail 為 spec-derived（entries[0]=hero）、
     baseline-kept 的 vocabulary.wordDetail（ephemeral/terse QA pin）仍 byte-equal

@@ -39,13 +39,17 @@ if str(_HERE) not in sys.path:
 
 import spec_world  # noqa: E402
 from review_calendar_clock import (  # noqa: E402
+    HISTORY_PLAN_SOURCE,
     canonicalize_review_history,
     clock_from_plan,
     load_history_plan,
     validate_review_history_hours,
 )
 from ui_world_manifest import (  # noqa: E402
+    REVIEW_CALENDAR_KEYS,
+    REVIEW_CALENDAR_ROW_KEYS,
     REVIEW_CLOCK_TIME_ZONE,  # noqa: F401 - retained as a Swift-facing module export
+    SURFACE_CONTRACTS_KEYS,
     UIWorldManifestError,
     build_p1_dictionary_surface_contract,
     validate_fixture_dataset_file,
@@ -397,6 +401,35 @@ def _validate_scenario_context_field(
         raise ValueError(
             f"scenarioContext keys must be {sorted(SCENARIO_CONTEXT_KEYS)}, got {got}")
     _reject_legacy_asset_inode_wire(mc)
+    if "surfaceContracts" in mc:
+        surface = mc["surfaceContracts"]
+        if not isinstance(surface, dict) or "reviewCalendar" not in surface:
+            got = sorted(surface) if isinstance(surface, dict) else type(surface).__name__
+            raise ValueError(
+                "scenarioContext.surfaceContracts.reviewCalendar is required, got "
+                f"{got}"
+            )
+        review_calendar = surface["reviewCalendar"]
+        if not isinstance(review_calendar, dict) or set(review_calendar) != set(REVIEW_CALENDAR_KEYS):
+            got = sorted(review_calendar) if isinstance(review_calendar, dict) else type(review_calendar).__name__
+            raise ValueError(
+                "scenarioContext.surfaceContracts.reviewCalendar keys must be "
+                f"{sorted(REVIEW_CALENDAR_KEYS)}, got {got}"
+            )
+        for group in sorted(REVIEW_CALENDAR_KEYS):
+            rows = review_calendar[group]
+            if not isinstance(rows, list):
+                raise ValueError(
+                    "scenarioContext.surfaceContracts.reviewCalendar."
+                    f"{group} must be a list"
+                )
+            for index, row in enumerate(rows):
+                if not isinstance(row, dict) or set(row) != set(REVIEW_CALENDAR_ROW_KEYS):
+                    got = sorted(row) if isinstance(row, dict) else type(row).__name__
+                    raise ValueError(
+                        "scenarioContext.surfaceContracts.reviewCalendar."
+                        f"{group}[{index}] keys must be {sorted(REVIEW_CALENDAR_ROW_KEYS)}, got {got}"
+                    )
     passage = mc["readerPassage"]
     if not isinstance(passage, dict) or set(passage) != set(spec_world.READER_PASSAGE_KEYS):
         got = sorted(passage) if isinstance(passage, dict) else type(passage).__name__
@@ -411,6 +444,9 @@ def _validate_scenario_context_field(
         raise ValueError(
             "scenarioContext.reviewClock must be a full clock dict with keys "
             f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
+    if clock.get("source") == HISTORY_PLAN_SOURCE and "surfaceContracts" not in mc:
+        raise ValueError(
+            "canonical review-clock emit requires scenarioContext.surfaceContracts")
 
 
 def _reject_legacy_asset_inode_wire(value: Any, *, path: str = "scenarioContext") -> None:

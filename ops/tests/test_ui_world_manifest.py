@@ -527,6 +527,73 @@ def test_review_calendar_evidence_mapping_rejects_missing_label(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
+    ("location", "unknown_key", "unknown_value"),
+    (
+        ("surfaceContracts", "extra", {}),
+        ("reviewCalendar", "extra", {}),
+        ("reviewCalendar", "assetInodes", {}),
+        ("row", "extra", "retired-wire-field"),
+    ),
+)
+def test_review_calendar_evidence_rejects_unknown_nested_object_keys(
+    tmp_path: Path, location: str, unknown_key: str, unknown_value: object
+):
+    data = _marketing_demo()
+    surface = data["scenarioContext"]["surfaceContracts"]
+    if location == "surfaceContracts":
+        surface[unknown_key] = unknown_value
+    elif location == "reviewCalendar":
+        surface["reviewCalendar"][unknown_key] = unknown_value
+    else:
+        surface["reviewCalendar"]["required"][0][unknown_key] = unknown_value
+    path = tmp_path / f"unknown_{location}_{unknown_key}.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="keys 不符合|evidence row keys"):
+        validate_fixture_dataset_file(path, require_review_clock=True)
+
+
+@pytest.mark.parametrize(
+    ("location", "missing_key"),
+    (
+        ("surfaceContracts", "reviewCalendar"),
+        ("reviewCalendar", "required"),
+        ("reviewCalendar", "counterexamples"),
+        ("row", "assetIDs"),
+    ),
+)
+def test_review_calendar_evidence_rejects_missing_nested_object_keys(
+    tmp_path: Path, location: str, missing_key: str
+):
+    data = _marketing_demo()
+    surface = data["scenarioContext"]["surfaceContracts"]
+    if location == "surfaceContracts":
+        del surface[missing_key]
+    elif location == "reviewCalendar":
+        del surface["reviewCalendar"][missing_key]
+    else:
+        del surface["reviewCalendar"]["required"][0][missing_key]
+    path = tmp_path / f"missing_{location}_{missing_key}.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="keys 不符合|evidence row keys"):
+        validate_fixture_dataset_file(path, require_review_clock=True)
+
+
+def test_review_calendar_evidence_rejects_malformed_nested_keys_when_clock_is_null(
+    tmp_path: Path,
+):
+    data = _marketing_demo()
+    data["scenarioContext"]["reviewClock"] = None
+    del data["scenarioContext"]["surfaceContracts"]["reviewCalendar"]["required"][0]["assetIDs"]
+    path = tmp_path / "null_clock_malformed_review_evidence.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="evidence row keys"):
+        validate_fixture_dataset_file(path)
+
+
+@pytest.mark.parametrize(
     ("unknown_key", "unknown_value"),
     (("assetInodes", ["checkout-inode"]), ("inode", "checkout-inode")),
 )

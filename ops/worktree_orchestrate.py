@@ -2173,6 +2173,8 @@ _IOS_TEST_INPUTS = frozenset({
     "ops/ios_test.sh",
     "ops/ios_coverage.py",
     "ops/ios_diagnostics.py",
+    "ops/ios_device_files.sh",
+    "ops/p9_review_calendar_evidence.py",
     "ops/ui_world_manifest.py",
     "ops/uitest_contact_sheet.py",
     "ops/lib/ios_test_discovery.sh",

@@ -13,7 +13,12 @@ extension UITestFixtureSeed {
             failFixtureSeed("Unknown vocabulary fixture ID: \(id)")
         }
 
-        let seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+        let seed: UIWorldVocabularySeed
+        if fixtureID == .reviewCalendarDense {
+            seed = FixtureDatasetStore.requireVocabularySeed(for: .reviewCalendarDense)
+        } else {
+            seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+        }
         let context = container.mainContext
         do {
             if fixtureID == .reviewCalendarDense {
