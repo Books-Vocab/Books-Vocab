@@ -34,14 +34,13 @@ struct OverviewPage {
     var calendar: XCUIElement { element(identifier: "calendar") }
     var forecast: XCUIElement { element(identifier: "overview.forecast") }
     var forecastCard: XCUIElement { element(identifier: "overview.forecast.card") }
-    var forecastChart: XCUIElement { element(identifier: "overview.forecast.chart") }
 
     func metric(_ name: String) -> XCUIElement {
         element(identifier: "overview.metric.\(name)")
     }
 
     private func forecastBucketQuery(_ dayKey: String) -> XCUIElementQuery {
-        forecastChart
+        forecastCard
             .descendants(matching: .any)
             .matching(identifier: "forecast.bucket.\(dayKey)")
     }
@@ -78,13 +77,12 @@ struct OverviewPage {
         for (identifier, element) in [
             ("overview.forecast", forecast),
             ("overview.forecast.card", forecastCard),
-            ("overview.forecast.chart", forecastChart),
         ] {
             XCTAssertEqual(elements(identifier: identifier).count, 1, "\(identifier) must be unique", file: file, line: line)
             element.assertExists(timeout: 10, file: file, line: line)
         }
 
-        let bucketQuery = forecastChart
+        let bucketQuery = forecastCard
             .descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "forecast.bucket."))
         XCTAssertGreaterThan(bucketQuery.count, 0, "forecast must expose at least one bucket", file: file, line: line)
@@ -104,7 +102,7 @@ struct OverviewPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        let buckets = forecastChart
+        let buckets = forecastCard
             .descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "forecast.bucket."))
             .allElementsBoundByIndex
