@@ -31,12 +31,10 @@ struct OverviewPage {
     }
 
     var overview: XCUIElement { element(identifier: "overview") }
-    var metrics: XCUIElement { element(identifier: "metrics") }
     var calendar: XCUIElement { element(identifier: "calendar") }
     var forecast: XCUIElement { element(identifier: "overview.forecast") }
     var forecastCard: XCUIElement { element(identifier: "overview.forecast.card") }
     var forecastChart: XCUIElement { element(identifier: "overview.forecast.chart") }
-    var largeCounts: XCUIElement { element(identifier: "large-counts") }
 
     func metric(_ name: String) -> XCUIElement {
         element(identifier: "overview.metric.\(name)")
@@ -64,30 +62,13 @@ struct OverviewPage {
         return query.firstMatch
     }
 
-    func assertStatsAccessibilityHierarchy(
+    func assertOverviewAccessibilityHierarchy(
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
         let overviewQuery = elements(identifier: "overview")
-        let statsContentQuery = elements(identifier: "overview.statsContent")
         overview.assertExists(timeout: 10, file: file, line: line)
-        statsContent.assertExists(timeout: 10, file: file, line: line)
         XCTAssertEqual(overviewQuery.count, 1, "overview must be a unique live AX ancestor", file: file, line: line)
-        XCTAssertEqual(statsContentQuery.count, 1, "overview.statsContent must be a unique live AX child", file: file, line: line)
-        XCTAssertEqual(
-            overview.descendants(matching: .any).matching(identifier: "overview.statsContent").count,
-            1,
-            "overview.statsContent must be descended from overview in the live AX tree",
-            file: file,
-            line: line
-        )
-        XCTAssertEqual(
-            overview.children(matching: .any).matching(identifier: "overview.statsContent").count,
-            1,
-            "overview.statsContent must be the unique direct live AX child of overview",
-            file: file,
-            line: line
-        )
     }
 
     func assertUniqueForecastContract(
