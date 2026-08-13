@@ -343,6 +343,9 @@ struct ReviewCalendarPresenter: View {
             )
         }
         .vocabCardBackground()
+        // Keep the card-level geometry receipt without collapsing the month
+        // header and day buttons into one accessibility element.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(ReviewCalendarAccessibility.runtimeGeometry)
     }
 
@@ -399,6 +402,9 @@ struct ReviewCalendarPresenter: View {
             }
         }
         .vocabCardBackground()
+        // The state receipt belongs to the detail card; its summary and rows
+        // remain independently addressable for UI World evidence.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(ReviewCalendarAccessibility.populatedDayDetail)
     }
 
