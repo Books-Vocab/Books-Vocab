@@ -18,8 +18,11 @@ struct SettingsReviewSection: View {
     /// makes iOS 26's Form leave the switch stale while the write is pending.
     /// The coordinator reconciles this draft with the authoritative store after
     /// the async push/rollback completes.
-    @State private var optimisticPauseState: Bool?
-    @State private var optimisticMode: ReviewSettingsMode?
+    // Keep the platform control bound to plain presentation state. Binding a
+    // Form control directly to the side-effecting store made iOS 26 retain the
+    // old accessibility value even though the model had already changed.
+    @State private var pauseDraft = false
+    @State private var modeDraft: ReviewSettingsMode = .relaxed
     @State private var pauseMutationID = 0
     @State private var modeMutationID = 0
 
@@ -40,6 +43,10 @@ struct SettingsReviewSection: View {
         .inlineNavigationBarTitle()
         .settingsDetailNavigationBackButton()
         .enableInjection()
+        .onAppear {
+            pauseDraft = reviewSettingsStore.settings.isProgressPaused
+            modeDraft = reviewSettingsStore.settings.mode
+        }
     }
 
     // MARK: - Pause Section
@@ -69,11 +76,11 @@ struct SettingsReviewSection: View {
 
     private var pauseBinding: Binding<Bool> {
         Binding(
-            get: { optimisticPauseState ?? reviewSettingsStore.settings.isProgressPaused },
+            get: { pauseDraft },
             set: { isPaused in
                 // Publish the presentation state before entering the persistence path.
                 // The coordinator still owns the authoritative store write/rollback.
-                optimisticPauseState = isPaused
+                pauseDraft = isPaused
                 pauseMutationID &+= 1
                 let mutationID = pauseMutationID
                 let snapshot = reviewSettingsStore.pauseClockSnapshot
@@ -87,7 +94,7 @@ struct SettingsReviewSection: View {
                 Task { @MainActor in
                     await onPauseChanged(isPaused, snapshot)
                     guard mutationID == pauseMutationID else { return }
-                    optimisticPauseState = reviewSettingsStore.settings.isProgressPaused
+                    pauseDraft = reviewSettingsStore.settings.isProgressPaused
                 }
             }
         )
@@ -133,9 +140,9 @@ struct SettingsReviewSection: View {
 
     private var modeBinding: Binding<ReviewSettingsMode> {
         Binding(
-            get: { optimisticMode ?? reviewSettingsStore.settings.mode },
+            get: { modeDraft },
             set: { mode in
-                optimisticMode = mode
+                modeDraft = mode
                 modeMutationID &+= 1
                 let mutationID = modeMutationID
                 let snapshot = reviewSettingsStore.reviewModeSnapshot
@@ -145,7 +152,7 @@ struct SettingsReviewSection: View {
                 Task { @MainActor in
                     await onModeChanged(updated, snapshot)
                     guard mutationID == modeMutationID else { return }
-                    optimisticMode = reviewSettingsStore.settings.mode
+                    modeDraft = reviewSettingsStore.settings.mode
                 }
             }
         )
