@@ -61,7 +61,10 @@ struct ReaderPage {
     }
 
     private var settingsPanelQuery: XCUIElementQuery {
-        app.otherElements.matching(identifier: "reader.settingsPanel")
+        // SwiftUI Form materializes the accessibility container as a
+        // CollectionView, even though the view intentionally exposes a stable
+        // identifier independent of that UIKit-backed element type.
+        app.collectionViews.matching(identifier: "reader.settingsPanel")
     }
 
     private var settingsButtonQuery: XCUIElementQuery {
