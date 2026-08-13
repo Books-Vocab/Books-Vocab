@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct SettingsSyncLifecycleRootCauseTests {
     @Test("canonical sync summary accepts terminal error provenance")
-    func canonicalSyncSummaryCarriesLifecycleMetadata() {
+    func canonicalSyncSummaryCarriesLifecycleMetadata() throws {
         let data = Data(#"""
         {
             "isConnected": true,
@@ -21,11 +21,47 @@ struct SettingsSyncLifecycleRootCauseTests {
         }
         """#.utf8)
 
-        let summary = try? JSONDecoder().decode(SettingsFixtureSeed.SyncSummary.self, from: data)
-        #expect(summary?.lifecycle == .terminalError)
-        #expect(summary?.message == "sync failed")
-        #expect(summary?.attempt == 1)
-        #expect(summary?.dataOutcome == .partial)
+        let summary = try JSONDecoder().decode(SettingsFixtureSeed.SyncSummary.self, from: data)
+        #expect(summary.lifecycle == .terminalError)
+        #expect(summary.message == "sync failed")
+        #expect(summary.attempt == 1)
+        #expect(summary.dataOutcome == .partial)
+    }
+
+    @Test("legacy sync summary without lifecycle metadata fails decoding")
+    func legacySyncSummaryMissingMetadataFailsClosed() {
+        let data = Data(#"""
+        {
+            "isConnected": true,
+            "isSyncing": false,
+            "summaryText": "Connected",
+            "lastSyncedText": null
+        }
+        """#.utf8)
+
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(SettingsFixtureSeed.SyncSummary.self, from: data)
+        }
+    }
+
+    @Test("fixture JSON serialization failure is typed and never replaced with an empty object")
+    func fixtureJSONSerializationFailureIsTyped() {
+        do {
+            _ = try SettingsSyncFixtureTransport.encodeJSONBody(
+                path: "/api/dictionary-cards",
+                object: ["error": Date()]
+            )
+            Issue.record("invalid fixture JSON object unexpectedly encoded")
+        } catch let error as SettingsSyncFixtureTransportError {
+            guard case let .jsonSerializationFailed(path, reason) = error else {
+                Issue.record("unexpected fixture transport error: \(error)")
+                return
+            }
+            #expect(path == "/api/dictionary-cards")
+            #expect(!reason.isEmpty)
+        } catch {
+            Issue.record("fixture JSON failure escaped as an untyped error: \(error)")
+        }
     }
 
     @Test("illegal lifecycle transitions throw instead of silently changing the state")
@@ -144,6 +180,24 @@ struct SettingsSyncLifecycleRootCauseTests {
         #expect(coordinator.syncLifecycle == .terminalError(message: L10n.string("同步失敗")))
         #expect(coordinator.syncProgress.phase == .failed)
         #expect(coordinator.syncDataOutcome == .partial)
+        #expect(coordinator.syncEvidence?.perfMarks == [
+            SettingsSyncPerfRecord(
+                label: "settings.sync.lifecycle.started",
+                detail: "attempt=1"
+            ),
+            SettingsSyncPerfRecord(
+                label: "settings.sync.lifecycle.saveResult",
+                detail: "attempt=1 result=failure"
+            ),
+            SettingsSyncPerfRecord(
+                label: "settings.sync.lifecycle.serviceResult",
+                detail: "attempt=1 result=saveFailure"
+            ),
+            SettingsSyncPerfRecord(
+                label: "settings.sync.lifecycle.terminal",
+                detail: "attempt=1 state=terminalError data=partial"
+            )
+        ])
     }
 
     private static func makeContainer() throws -> ModelContainer {

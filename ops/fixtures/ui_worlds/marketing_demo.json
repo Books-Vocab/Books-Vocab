@@ -459,7 +459,11 @@
         "isConnected": true,
         "isSyncing": false,
         "summaryText": "已連線 · 128 張",
-        "lastSyncedText": "上次同步 剛剛"
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "bookSync": {
         "text": "已同步",
@@ -588,7 +592,11 @@
         "isConnected": true,
         "isSyncing": false,
         "summaryText": "已連線 · 128 張",
-        "lastSyncedText": "上次同步 剛剛"
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "bookSync": {
         "text": "已同步",
@@ -670,7 +678,11 @@
         "isConnected": true,
         "isSyncing": false,
         "summaryText": "已連線 · 128 張",
-        "lastSyncedText": "上次同步 剛剛"
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "bookSync": {
         "text": "已同步",
@@ -752,7 +764,11 @@
         "isConnected": true,
         "isSyncing": false,
         "summaryText": "已連線 · 128 張",
-        "lastSyncedText": "上次同步 剛剛"
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "bookSync": {
         "text": "已同步",
@@ -822,7 +838,11 @@
         "isConnected": false,
         "isSyncing": false,
         "summaryText": "離線",
-        "lastSyncedText": null
+        "lastSyncedText": null,
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "about": {
         "version": "1.1.0 (42)",
@@ -889,7 +909,11 @@
         "isConnected": true,
         "isSyncing": false,
         "summaryText": "已連線 · 128 張",
-        "lastSyncedText": "上次同步 剛剛"
+        "lastSyncedText": "上次同步 剛剛",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "about": {
         "version": "1.1.0 (42)",
@@ -956,7 +980,11 @@
         "isConnected": true,
         "isSyncing": false,
         "summaryText": "已連線 · 128 張",
-        "lastSyncedText": "上次同步 10 分鐘前"
+        "lastSyncedText": "上次同步 10 分鐘前",
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "bookSync": {
         "text": "同步異常",
@@ -1090,7 +1118,11 @@
         "isConnected": false,
         "isSyncing": false,
         "summaryText": "離線",
-        "lastSyncedText": null
+        "lastSyncedText": null,
+        "lifecycle": "idle",
+        "message": null,
+        "attempt": 0,
+        "dataOutcome": "none"
       },
       "about": {
         "version": "1.1.0 (42)",

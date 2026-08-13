@@ -115,6 +115,14 @@ struct UITestFixtureSeedIsolationTests {
         Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self])
     }
 
+    private static func removeStoreArtifacts(at url: URL) throws {
+        for suffix in ["", "-shm", "-wal"] {
+            let artifact = URL(fileURLWithPath: url.path + suffix)
+            guard FileManager.default.fileExists(atPath: artifact.path) else { continue }
+            try FileManager.default.removeItem(at: artifact)
+        }
+    }
+
     @Test func fixtureSeedFailuresAreHardFailures() throws {
         let forbiddenSnippets = [
             "AppLog.app.warning(\"Unknown",
@@ -227,8 +235,10 @@ struct UITestFixtureSeedIsolationTests {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("seed-guard-\(UUID().uuidString).store")
         defer {
-            for suffix in ["", "-shm", "-wal"] {
-                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            do {
+                try Self.removeStoreArtifacts(at: url)
+            } catch {
+                Issue.record("P14 fixture cleanup failed for \(url.path): \(error)")
             }
         }
         let schema = makeSchema()
@@ -260,8 +270,10 @@ struct UITestFixtureSeedIsolationTests {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("seed-guard-mixed-\(UUID().uuidString).store")
         defer {
-            for suffix in ["", "-shm", "-wal"] {
-                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            do {
+                try Self.removeStoreArtifacts(at: url)
+            } catch {
+                Issue.record("P14 fixture cleanup failed for \(url.path): \(error)")
             }
         }
         // 拆分鏡像 app 真實形狀（vocab 三件組一個 store、Book 另一個）——

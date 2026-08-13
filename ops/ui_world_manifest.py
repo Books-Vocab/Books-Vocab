@@ -633,7 +633,6 @@ SETTINGS_REVIEW_KEYS = {
     "autoplaySoundEnabled",
 }
 SETTINGS_SYNC_SUMMARY_KEYS = {"isConnected", "isSyncing", "summaryText", "lastSyncedText"}
-SETTINGS_SYNC_CANONICAL_FIXTURE_ID = "sync_terminal_error_retry_success"
 SETTINGS_SYNC_METADATA_KEYS = {"lifecycle", "message", "attempt", "dataOutcome"}
 VALID_SETTINGS_SYNC_LIFECYCLES = {
     "idle",
@@ -1405,13 +1404,12 @@ def _validate_settings_review(seed: Mapping[str, Any], *, owner: str, label: str
 
 
 def _validate_settings_sync_summary(
-    seed: Mapping[str, Any], *, fixture_id: str, owner: str, label: str
+    seed: Mapping[str, Any], *, owner: str, label: str
 ) -> None:
     sync_obj = _require_mapping(seed, field=owner, label=label)
     base_keys = SETTINGS_SYNC_SUMMARY_KEYS
     metadata_keys = SETTINGS_SYNC_METADATA_KEYS
-    keys = set(sync_obj)
-    expected = base_keys | metadata_keys if fixture_id == SETTINGS_SYNC_CANONICAL_FIXTURE_ID else base_keys
+    expected = base_keys | metadata_keys
     _validate_exact_keys(sync_obj, expected=expected, owner=owner, label=label)
     _ensure_bool(sync_obj.get("isConnected"), field=f"{owner}.isConnected", label=label)
     _ensure_bool(sync_obj.get("isSyncing"), field=f"{owner}.isSyncing", label=label)
@@ -1419,13 +1417,6 @@ def _validate_settings_sync_summary(
     # Nullable: a device that has never synced (or is offline) has no
     # last-sync time, and the row omits the line rather than inventing one.
     _validate_nullable_string(sync_obj.get("lastSyncedText"), owner=f"{owner}.lastSyncedText", label=label)
-
-    present = metadata_keys & keys
-    if present and present != metadata_keys:
-        missing = sorted(metadata_keys - present)
-        raise UIWorldManifestError(f"{label} {owner} lifecycle metadata missing {missing}")
-    if not present:
-        return
 
     lifecycle = _ensure_string(sync_obj.get("lifecycle"), field=f"{owner}.lifecycle", label=label)
     if lifecycle not in VALID_SETTINGS_SYNC_LIFECYCLES:
@@ -1487,7 +1478,6 @@ def _validate_settings_seed(seed: Mapping[str, Any], *, fixture_id: str, owner: 
     if sync_summary is not None:
         _validate_settings_sync_summary(
             sync_summary,
-            fixture_id=fixture_id,
             owner=f"{owner}.syncSummary",
             label=label,
         )

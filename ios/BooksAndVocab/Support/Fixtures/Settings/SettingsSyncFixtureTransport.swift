@@ -30,6 +30,10 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
     }
 }
 
+enum SettingsSyncFixtureTransportError: Error, Equatable {
+    case jsonSerializationFailed(path: String, reason: String)
+}
+
 /// Deterministic HTTP responses for the canonical Settings lifecycle fixture.
 ///
 /// This is deliberately a transport, not a replacement `BackgroundSyncing`
@@ -69,8 +73,10 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
         case "/api/dictionary-cards":
             let attempt = currentVocabPull()
             guard attempt > 1 else {
-                let body = (try? JSONSerialization.data(withJSONObject: ["error": failureMessage]))
-                    ?? Data("{}".utf8)
+                let body = try Self.encodeJSONBody(
+                    path: path,
+                    object: ["error": failureMessage]
+                )
                 let result = response(
                     request,
                     statusCode: 429,
@@ -107,7 +113,22 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
                 body: Data(#"{"fraction":0.0,"reset_seconds":3600}"#.utf8)
             )
         default:
-            return response(request, statusCode: 404, body: Data("{}".utf8))
+            return response(
+                request,
+                statusCode: 404,
+                body: Data(#"{"error":"not_found"}"#.utf8)
+            )
+        }
+    }
+
+    static func encodeJSONBody(path: String, object: Any) throws -> Data {
+        do {
+            return try JSONSerialization.data(withJSONObject: object)
+        } catch {
+            throw SettingsSyncFixtureTransportError.jsonSerializationFailed(
+                path: path,
+                reason: error.localizedDescription
+            )
         }
     }
 

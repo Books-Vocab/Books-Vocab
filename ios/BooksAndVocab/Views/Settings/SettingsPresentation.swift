@@ -17,6 +17,15 @@ struct SettingsSyncTransportEvent: Equatable, Sendable {
     }
 }
 
+struct SettingsSyncPerfRecord: Equatable, Sendable {
+    let label: String
+    let detail: String
+
+    var marker: String {
+        "\(label){\(detail)}"
+    }
+}
+
 struct SettingsSyncLifecycleEvidence: Equatable {
     let lifecycle: String
     let attempt: Int
@@ -25,7 +34,7 @@ struct SettingsSyncLifecycleEvidence: Equatable {
     let readBackWords: [String]
     let transportEvents: [SettingsSyncTransportEvent]
     let dictionaryEvents: [SettingsSyncTransportEvent]
-    let perfMarks: [String]
+    let perfMarks: [SettingsSyncPerfRecord]
 
     /// DEBUG-only accessibility payload. Every field is produced by the real
     /// transport/model path; it is not a test-controlled phase or counter.
@@ -35,7 +44,9 @@ struct SettingsSyncLifecycleEvidence: Equatable {
         let dictionary = dictionaryEvents.isEmpty
             ? "-"
             : dictionaryEvents.map(\.marker).joined(separator: "|")
-        let perf = perfMarks.isEmpty ? "-" : perfMarks.joined(separator: ",")
+        let perf = perfMarks.isEmpty
+            ? "-"
+            : perfMarks.map(\.marker).joined(separator: "|")
         return [
             "schema=settings.sync.evidence.v1",
             "lifecycle=\(lifecycle)",

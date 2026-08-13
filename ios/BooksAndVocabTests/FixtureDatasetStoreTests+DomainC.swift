@@ -155,8 +155,16 @@ extension FixtureDatasetStoreTests {
         }
         """
 
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let expected = documents.appendingPathComponent(installAs)
         defer {
-            try? FileManager.default.removeItem(at: source)
+            for target in [assetRoot, expected.deletingLastPathComponent()] {
+                do {
+                    try Self.removeIfPresent(target)
+                } catch {
+                    Issue.record("P14 fixture cleanup failed for \(target.path): \(error)")
+                }
+            }
         }
 
         #expect(throws: (any Error).self) {
@@ -477,7 +485,13 @@ extension FixtureDatasetStoreTests {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("kg-books-guard-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer {
+            do {
+                try Self.removeIfPresent(root)
+            } catch {
+                Issue.record("P14 fixture cleanup failed for \(root.path): \(error)")
+            }
+        }
 
         // Mirrors Book.localBooksDirectory: compute first, create second, cache.
         let cachedBooksDirectory = root.appendingPathComponent("Books")
@@ -513,6 +527,11 @@ extension FixtureDatasetStoreTests {
                 "\(relative): Books/ containment guard must compare normalized paths"
             )
         }
+    }
+
+    private static func removeIfPresent(_ url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
     }
 
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
