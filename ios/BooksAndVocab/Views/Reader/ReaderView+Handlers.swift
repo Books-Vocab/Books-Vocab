@@ -7,6 +7,7 @@ extension ReaderView {
         if !readerState.isWebViewReady {
             withAnimation(AppMotion.contentFade) { readerState.isWebViewReady = true }
         }
+        readerState.runtime.markReady()
         currentLocator = locator
         readerState.runtime.recordLocationProgression(locator.locations.totalProgression)
         totalProgression = readerState.progressState.progression ?? 0
@@ -15,13 +16,17 @@ extension ReaderView {
         // 一併跳過，保留上次有效的 locator/progression 快照不致 JSON 與進度錯配。
         guard let json = ReaderProgressSaver.encodedLocatorJSON(locator) else { return }
         let progression = totalProgression
+        let snapshot = ReaderProgressPersistenceSnapshot(
+            progression: progression,
+            clock: readerState.clock
+        )
 
         // in-memory 寫入立即（panel 即時讀取），落盤經 debounce coalesce —— 對齊 PDF
         // 路徑的顯式 save，但避開每頁同步 I/O 卡頓。
         progressSaver.recordChange {
             book.lastReadLocatorJSON = json
-            book.dateLastRead = readerState.clock.now()
-            book.progression = progression
+            book.dateLastRead = snapshot.dateLastRead
+            book.progression = snapshot.progression
         } save: { [book, modelContext] in
             if modelContext.safeSave() {
                 BookManifestStore().writeBestEffort(book: book)

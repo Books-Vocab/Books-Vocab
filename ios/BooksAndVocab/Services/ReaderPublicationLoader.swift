@@ -37,11 +37,11 @@ struct ReaderPublicationLoader {
     init(
         readiumService: any ReadiumServing,
         downloadManager: ICloudDownloadManager,
-        clock: any ReaderLoadClock = SystemReaderLoadClock()
+        clock: (any ReaderLoadClock)? = nil
     ) {
         self.readiumService = readiumService
         self.downloadManager = downloadManager
-        self.clock = clock
+        self.clock = clock ?? SystemReaderLoadClock()
     }
 
     func loadPublication(

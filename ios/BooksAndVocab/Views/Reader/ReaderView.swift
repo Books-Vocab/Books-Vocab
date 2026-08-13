@@ -82,7 +82,12 @@ struct ReaderView: View {
             arguments: ProcessInfo.processInfo.arguments,
             dataset: FixtureDatasetStore.readerProvenance()
         ) ?? ReaderRuntimeFixtureAdapter.selection(scenario: nil, dataset: FixtureDatasetStore.readerProvenance())
-        self._readerState = State(initialValue: ReaderViewState(runtimeSelection: runtimeSelection))
+        self._readerState = State(
+            initialValue: ReaderViewState(
+                runtimeSelection: runtimeSelection,
+                initialProgression: book.progression
+            )
+        )
     }
 
     var body: some View {
@@ -339,7 +344,6 @@ struct ReaderView: View {
             }
             await MainActor.run {
                 publication = result.publication
-                readerState.runtime.markReady()
                 PerfLog.reader.mark("reader.opened", "title=\(book.title)")
                 handler.loadLookedUpWords(
                     from: allVocabulary,
