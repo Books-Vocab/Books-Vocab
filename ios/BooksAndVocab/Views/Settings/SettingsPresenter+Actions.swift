@@ -8,21 +8,33 @@ struct SettingsNavigationRow<Trailing: View>: View {
     let icon: String
     let label: String
     let action: () -> Void
+    let accessibilityIdentifier: String?
     let trailing: Trailing
 
     init(
         icon: String,
         label: String,
         action: @escaping () -> Void,
+        accessibilityIdentifier: String? = nil,
         @ViewBuilder trailing: () -> Trailing = { EmptyView() }
     ) {
         self.icon = icon
         self.label = label
         self.action = action
+        self.accessibilityIdentifier = accessibilityIdentifier
         self.trailing = trailing()
     }
 
+    @ViewBuilder
     var body: some View {
+        if let accessibilityIdentifier {
+            rowButton.accessibilityIdentifier(accessibilityIdentifier)
+        } else {
+            rowButton
+        }
+    }
+
+    private var rowButton: some View {
         Button(action: action) {
             AppKeyValueRow(icon: icon, label: label, style: .settings(appSkin)) {
                 HStack(spacing: 6) {

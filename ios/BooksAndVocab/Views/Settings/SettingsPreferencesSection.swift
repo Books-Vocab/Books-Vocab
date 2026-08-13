@@ -204,7 +204,8 @@ struct SettingsPreferencesSection: View {
         SettingsNavigationRow(
             icon: "rectangle.split.2x1",
             label: "複習卡片",
-            action: onShowReviewCardLayout
+            action: onShowReviewCardLayout,
+            accessibilityIdentifier: "settings.preferences.reviewCardLayoutRow"
         ) {
             SettingsStatusValue(
                 text: L10n.string(ReviewCardLayoutSummary.titleKey(for: reviewCardLayoutStore.profile)),
@@ -212,8 +213,6 @@ struct SettingsPreferencesSection: View {
             )
             .accessibilityIdentifier("settings.preferences.reviewCardLayoutValue")
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("settings.preferences.reviewCardLayoutRow")
     }
 
     private var readerSettingsRow: some View {
