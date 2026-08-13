@@ -616,7 +616,11 @@ main() {
   changed="$("$KG_GIT" -C "$KG_RECON_REPO" diff --name-only "${DEPLOYED_SHA}..origin/prod" -- . 2>/dev/null || true)"
 
   if [[ -z "$changed" ]]; then
-    log "已同版（deployed=$DEPLOYED_SHA == origin=${ORIGIN_SHA}），no-op。"
+    # launchd 拉起這支每 90 秒一次；把常態 no-op 寫進 StandardErrorPath 會形成
+    # 無界 log，最後變成「清掉又慢慢掉回危險線」的假性鋸齒。機讀 verdict 已足夠
+    # 表達這一輪無事可做；只有手動診斷才開 verbose，避免正常輪詢製造磁碟寫入。
+    [[ "${KG_RECON_VERBOSE_NOOP:-0}" == "1" ]] && \
+      log "已同版（deployed=$DEPLOYED_SHA == origin=${ORIGIN_SHA}），no-op。"
     emit_verdict "noop"; exit 0
   fi
 
