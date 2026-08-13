@@ -78,9 +78,7 @@ struct SettingsSheetPage {
     }
 
     var syncSummaryButton: XCUIElement {
-        app.descendants(matching: .button)
-            .matching(identifier: "settings.syncSummary")
-            .firstMatch
+        exact(.button, "settings.syncSummary")
     }
 
     var syncLifecycle: XCUIElement {

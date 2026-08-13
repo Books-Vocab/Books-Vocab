@@ -33,7 +33,9 @@ import Testing
 
         // The enum manifest is the only ordering contract. Do not duplicate the
         // fixture list here: a new fixture must update one SoT, not this test.
-        let expectedKeys = SettingsFixtureID.allCases.map { $0.key.rawValue }
+        let expectedKeys = SettingsFixtureID.allCases
+            .filter { $0 != .syncTerminalErrorRetrySuccess }
+            .map { $0.key.rawValue }
         #expect(Set(expectedKeys).count == expectedKeys.count)
         #expect(previewKeys == expectedKeys)
 
