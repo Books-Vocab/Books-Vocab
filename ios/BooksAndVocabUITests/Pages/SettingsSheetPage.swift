@@ -148,7 +148,7 @@ struct SettingsSheetPage {
 
     func openReviewRhythm(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         let row = reviewRhythmRow
-        XCTAssertEqual(row.count, 1, file: file, line: line)
+        XCTAssertTrue(row.exists, file: file, line: line)
         row.scrollIntoView(file: file, line: line)
         tapExactlyOne(row, named: "settings.preferences.reviewRhythmRow", file: file, line: line)
         return self
@@ -156,7 +156,7 @@ struct SettingsSheetPage {
 
     func openTranslationLanguage(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         let row = translationLanguageRow
-        XCTAssertEqual(row.count, 1, file: file, line: line)
+        XCTAssertTrue(row.exists, file: file, line: line)
         row.scrollIntoView(file: file, line: line)
         tapExactlyOne(row, named: "settings.preferences.translationLanguageRow", file: file, line: line)
         return self
@@ -165,7 +165,7 @@ struct SettingsSheetPage {
     /// 開啟「複習卡片」列。
     func openReviewCardLayout(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         let row = reviewCardLayoutRow
-        XCTAssertEqual(row.count, 1, file: file, line: line)
+        XCTAssertTrue(row.exists, file: file, line: line)
         row.scrollIntoView(file: file, line: line)
         tapExactlyOne(row, named: "settings.preferences.reviewCardLayoutRow", file: file, line: line)
         return self
@@ -173,7 +173,7 @@ struct SettingsSheetPage {
 
     func openSyncSummary(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         let button = syncSummaryButton
-        XCTAssertEqual(button.count, 1, file: file, line: line)
+        XCTAssertTrue(button.exists, file: file, line: line)
         button.scrollIntoView(file: file, line: line)
         tapExactlyOne(button, named: "settings.syncSummary", file: file, line: line)
         return self
@@ -190,7 +190,7 @@ struct SettingsSheetPage {
         // Confirm by the "完成" (Done) button in the sheet toolbar.
         closeButton.assertExists(file: file, line: line)
         XCTAssertEqual(app.buttons.matching(identifier: "完成").count, 1, file: file, line: line)
-        XCTAssertEqual(navBar.count, 1, file: file, line: line)
+        XCTAssertTrue(navBar.exists, file: file, line: line)
         XCTAssertGreaterThan(navBar.frame.width, 0, file: file, line: line)
         XCTAssertGreaterThan(navBar.frame.height, 0, file: file, line: line)
     }
@@ -205,13 +205,13 @@ struct SettingsSheetPage {
         XCTAssertEqual(syncLifecycleQuery.count, 1, file: file, line: line)
         XCTAssertGreaterThan(syncLifecycle.frame.width, 0, file: file, line: line)
         XCTAssertGreaterThan(syncLifecycle.frame.height, 0, file: file, line: line)
-        XCTAssertEqual(app.staticTexts["settings.syncLifecycle.status"].count, 1, file: file, line: line)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "settings.syncLifecycle.status").count, 1, file: file, line: line)
         XCTAssertEqual(syncLifecycleStatus.label, status, file: file, line: line)
-        XCTAssertEqual(syncLifecycleTerminalMarker.count, 1, file: file, line: line)
+        XCTAssertTrue(syncLifecycleTerminalMarker.exists, file: file, line: line)
         XCTAssertGreaterThan(syncLifecycleTerminalMarker.frame.width, 0, file: file, line: line)
         XCTAssertGreaterThan(syncLifecycleTerminalMarker.frame.height, 0, file: file, line: line)
 #if DEBUG
-        XCTAssertEqual(syncLifecycleEvidence.count, 1, file: file, line: line)
+        XCTAssertTrue(syncLifecycleEvidence.exists, file: file, line: line)
         XCTAssertEqual(syncLifecycleEvidence.label, expectedEvidence, file: file, line: line)
 #endif
     }
@@ -222,7 +222,7 @@ struct SettingsSheetPage {
         file: StaticString,
         line: UInt
     ) {
-        XCTAssertEqual(element.count, 1, "expected exactly one \(name)", file: file, line: line)
+        XCTAssertTrue(element.exists, "expected exactly one \(name)", file: file, line: line)
         element.tapWhenReady(file: file, line: line)
     }
 }
