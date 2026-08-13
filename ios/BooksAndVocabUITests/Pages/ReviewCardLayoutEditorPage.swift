@@ -21,7 +21,7 @@ struct ReviewCardLayoutEditorPage {
     var resetAllItem: XCUIElement { element("reviewCardLayout.reset.all") }
 
     /// Sheet-only confirmation button (absent on the pushed Settings route).
-    var doneButton: XCUIElement { element("reviewCardLayout.done") }
+    var doneButton: XCUIElement { compositeElement("reviewCardLayout.done") }
 
     // MARK: - Per-direction controls
 
