@@ -33,6 +33,18 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 .tree-mobile-commit{display:flex;align-items:flex-start;gap:9px;width:100%;min-height:44px;padding:9px 10px;border:1px solid var(--border-light);background:var(--surface);color:var(--ink);text-align:left}
 .tree-mobile-commit code{flex:0 0 auto;color:var(--green);font-size:11px}.tree-mobile-commit span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .tree-ticket{min-height:22px;padding:3px 7px}
+.tree-held-tickets{margin-top:12px}
+.tree-held-card{border:1px solid var(--border-light);background:var(--surface-alt);padding:12px}
+.tree-held-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:9px;color:var(--sub);font-size:12px}
+.tree-held-heading strong{color:var(--ink);font-size:13px}
+.tree-held-groups{display:grid;gap:8px}
+.tree-held-group{border:1px solid var(--border);background:var(--surface);padding:8px}
+.tree-held-branch{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;color:var(--sub);font-size:11px}
+.tree-held-branch code{overflow-wrap:anywhere;color:var(--green);font-size:10px}
+.tree-held-list{display:grid;gap:5px}
+.tree-held-ticket{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:start;gap:9px;width:100%;min-height:44px;padding:8px 9px;border:1px solid var(--border);background:var(--surface);color:var(--ink);text-align:left}
+.tree-held-ticket code{color:var(--green);font-size:10px;white-space:nowrap}.tree-held-ticket span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+.tree-held-ticket:hover,.tree-held-ticket:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.14);outline:none}
 .commit circle{r:14px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
 .tabs button{min-height:44px;padding-inline:14px}
 @media(max-width:860px){
