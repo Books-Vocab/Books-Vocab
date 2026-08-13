@@ -101,7 +101,12 @@ class UITestCase: XCTestCase {
         let safeName = name
             .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        let stepName = String(format: "%02d-%@", screenshotStepIndex, safeName.isEmpty ? "step" : safeName)
+        let stepName = String(
+            format: "%02d-%@-%@",
+            screenshotStepIndex,
+            nameForEvidenceArtifact,
+            safeName.isEmpty ? "step" : safeName
+        )
         add(XCTAttachment(screenshot: screenshot).named("Step \(stepName)"))
 
         guard let dir = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
@@ -112,12 +117,23 @@ class UITestCase: XCTestCase {
                 at: URL(fileURLWithPath: dir),
                 withIntermediateDirectories: true
             )
-            try screenshot.pngRepresentation.write(to: url)
+            guard !FileManager.default.fileExists(atPath: url.path) else {
+                XCTFail("UI evidence screenshot collision: \(url.path)")
+                return
+            }
+            try screenshot.pngRepresentation.write(to: url, options: .withoutOverwriting)
         } catch {
             XCTContext.runActivity(named: "Failed to write UI step screenshot") { activity in
                 activity.add(XCTAttachment(string: "\(url.path): \(error)").named("Screenshot Write Error"))
             }
         }
+    }
+
+    private var nameForEvidenceArtifact: String {
+        let safe = name
+            .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return safe.isEmpty ? String(describing: type(of: self)) : safe
     }
 
     func attachText(_ text: String, named name: String) {

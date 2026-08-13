@@ -79,6 +79,12 @@ def _bundle(tmp_path: Path):
         dataset_id="marketing_demo",
         dataset_sha256="dataset-sha",
         device="SIM-1",
+        video_identity={
+            "runID": "test-run-123",
+            "file": video.name,
+            "sha256": hashlib.sha256(b"mp4").hexdigest(),
+        },
+        expected_video_run_id="test-run-123",
         selector="VocabularyLibraryFlowUITests",
         variant="dataset:marketing_demo",
     )
@@ -118,8 +124,20 @@ def test_validate_bundle_rejects_missing_provenance(tmp_path):
 def test_validate_bundle_records_video_hash_after_same_size_change(tmp_path):
     mod, kwargs = _bundle(tmp_path)
     kwargs["video"].write_bytes(b"xyz")
+    kwargs["video_identity"]["sha256"] = hashlib.sha256(b"xyz").hexdigest()
     result = mod.validate_bundle(**kwargs)
     assert result["videoSha256"] == hashlib.sha256(b"xyz").hexdigest()
+
+
+def test_validate_bundle_rejects_video_from_a_different_run(tmp_path):
+    mod, kwargs = _bundle(tmp_path)
+    kwargs["video_identity"] = {
+        "runID": "other-run",
+        "file": "flow.mp4",
+        "sha256": hashlib.sha256(b"mp4").hexdigest(),
+    }
+    with pytest.raises(ValueError, match="video identity"):
+        mod.validate_bundle(**kwargs)
 
 
 def test_validate_bundle_rejects_html_without_review_root(tmp_path):

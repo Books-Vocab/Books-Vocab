@@ -524,6 +524,36 @@ BENCH_COUNT="$(wc -l <<<"$BENCH_HITS" | tr -d ' ')"
   && ok "tech_index --list / --launch-benchmark anchor 唯一" \
   || fail_t "tech_index --list / --launch-benchmark anchor 出現 ${BENCH_COUNT} 次（應 1）"
 
+# ── 22. UI evidence provenance + collision refusal wiring ───────────────────
+section "UI evidence provenance and collision refusal wiring"
+DIAGNOSTICS="$WORKSPACE/ios/BooksAndVocabUITests/Helpers/UITestDiagnostics.swift"
+grep -qF 'nameForEvidenceArtifact' "$DIAGNOSTICS" \
+  && ok "step screenshot filename 綁 test-case identity" \
+  || fail_t "step screenshot 未綁 test-case identity，多 method run 會互相覆寫"
+grep -qF '.withoutOverwriting' "$DIAGNOSTICS" \
+  && ok "step screenshot collision fail closed" \
+  || fail_t "step screenshot 仍可靜默覆寫既有 evidence"
+
+for flag in '--source-commit' '--dataset-id' '--dataset-sha256' '--provenance-device' '--selector' '--variant'; do
+  grep -qF -- "$flag" "$IOS_TEST" \
+    && ok "contact-sheet provenance 傳遞 $flag" \
+    || fail_t "contact-sheet provenance 缺 $flag"
+done
+grep -qF '${KG_UI_TEST_EXACT_SELECTOR:-$UI_TEST_FLOW_ID}' "$IOS_TEST" \
+  && ok "exact selector 優先於 flow fallback" \
+  || fail_t "manifest provenance 未接 exact selector"
+grep -qF '${BASHPID:-$$}' "$IOS_TEST" \
+  && ok "review root stem 含 process identity" \
+  || fail_t "review root 仍只有秒級 timestamp，可被平行 run 碰撞"
+grep -qF 'refusing to overwrite existing review root=' "$IOS_TEST" \
+  && ok "review root collision 明確拒絕" \
+  || fail_t "review root collision 仍可覆寫舊 evidence"
+if grep -qxF 'build_ui_test_review_page' "$IOS_TEST"; then
+  fail_t "UIreview 在 verdict final state 前被額外建立，第二次 publish 會撞自己的 root"
+else
+  ok "UIreview 只由 write_json_verdict 以 final result 建立"
+fi
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
