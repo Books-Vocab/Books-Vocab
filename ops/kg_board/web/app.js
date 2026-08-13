@@ -252,7 +252,8 @@ function renderTree(){
   ordered.forEach(row=>{const from=positions.get(row.sha);(row.parents||[]).forEach(parentSha=>{const to=positions.get(parentSha);if(to)edges.push(`<path class="edge" d="M ${x(from.lane)} ${from.y} C ${x(from.lane)} ${from.y+28}, ${x(to.lane)} ${to.y-28}, ${x(to.lane)} ${to.y}"/>`);});});
   const labelsByAnchor=new Map();
   viewport.refs.forEach(ref=>{
-    const anchor=ref.branch==="main"?viewport.branchSha:viewport.branchAnchors.get(ref.branch);
+    const branchPath=viewport.branchPaths.get(ref.branch)||[];
+    const anchor=ref.branch==="main"?viewport.branchSha:(branchPath[0]||viewport.branchAnchors.get(ref.branch));
     if(!anchor||!positions.has(anchor))return;
     if(!labelsByAnchor.has(anchor))labelsByAnchor.set(anchor,[]);labelsByAnchor.get(anchor).push(ref);
   });
