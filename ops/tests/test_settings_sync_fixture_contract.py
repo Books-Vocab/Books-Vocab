@@ -33,6 +33,27 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def test_fixture_asset_source_paths_are_repo_relative_and_inside_current_root():
+    data = _load(BASELINE)
+    for bucket in data["assets"].values():
+        for asset in bucket.values():
+            source_path = Path(asset["sourcePath"])
+            assert not source_path.is_absolute()
+            resolved = manifest._resolve_path(asset["sourcePath"])
+            assert resolved.is_relative_to(manifest.ROOT)
+
+
+@pytest.mark.parametrize("source_path", ["/tmp/outside-fixture.md", "../../outside-fixture.md"])
+def test_validator_rejects_absolute_or_escaping_asset_source_paths(tmp_path: Path, source_path: str):
+    data = _load(BASELINE)
+    data["assets"]["books"]["catalog_reader_epub"]["sourcePath"] = source_path
+    path = tmp_path / "unsafe-source-path.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(manifest.UIWorldManifestError, match="sourcePath.*相對|sourcePath.*outside"):
+        manifest.validate_fixture_dataset_file(path)
+
+
 def test_canonical_settings_sync_fixture_is_materialized_with_provenance():
     data = _load(BASELINE)
     seed = data["settings"][CANONICAL_SETTINGS_ID]

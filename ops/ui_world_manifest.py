@@ -719,7 +719,12 @@ def _ensure_str(raw: Any, *, field: str, label: str) -> str:
 
 
 def _resolve_path(
-    raw: str, *, field: str, label: str, require_repo_relative: bool = False
+    raw: str,
+    *,
+    field: str = "sourcePath",
+    label: str = "asset",
+    require_repo_relative: bool = False,
+    root: Path = ROOT,
 ) -> Path:
     """Resolve a checked-in asset from a canonical repo-relative locator."""
     path = Path(raw)
@@ -727,7 +732,7 @@ def _resolve_path(
         raise UIWorldManifestError(
             f"{label} {field} sourcePath escape repo root: {raw}"
         )
-    root = ROOT.resolve()
+    root = root.resolve()
     resolved = (root / path).resolve()
     if resolved != root and root not in resolved.parents:
         raise UIWorldManifestError(
