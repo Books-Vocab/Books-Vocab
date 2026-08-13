@@ -24,6 +24,12 @@ private struct SettingsResetIncompleteError: LocalizedError {
     }
 }
 
+private struct SettingsConfigurationPayloadError: LocalizedError {
+    var errorDescription: String? {
+        L10n.string("伺服器設定資料格式無法確認")
+    }
+}
+
 @MainActor protocol SettingsCoordinating: AnyObject, Observable {
     var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
@@ -31,6 +37,7 @@ private struct SettingsResetIncompleteError: LocalizedError {
     var showDeleteAccountConfirm: Bool { get set }
     var isDeletingAccount: Bool { get }
     var deleteAccountError: String? { get }
+    var configurationIssue: SettingsConfigurationIssue? { get }
     var resetLifecycle: SettingsResetLifecycle? { get }
     var translationSourceLang: TranslationLanguage { get set }
     var translationTargetLang: TranslationLanguage { get set }
@@ -66,6 +73,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     private(set) var syncEvidence: SettingsSyncLifecycleEvidence?
     var isManualLoggingIn = false
     var deleteAccountError: String?
+    var configurationIssue: SettingsConfigurationIssue? = nil
     var resetLifecycle: SettingsResetLifecycle?
     var manualLoginUserId = ""
     var debugLocalServerURL = ""
@@ -155,15 +163,27 @@ final class SettingsCoordinator: SettingsCoordinating {
         if authManager.isLoggedIn {
             do {
                 let config = try await kgService.fetchUserConfig()
-                applyServerTranslationConfig(config.translation)
-                applyServerReviewClock(config.review_clock)
-                applyServerReviewMode(config.review_mode)
-                applyServerAutoLink(config.auto_link)
+                guard applyServerTranslationConfig(config.translation),
+                      applyServerReviewClock(config.review_clock),
+                      applyServerReviewMode(config.review_mode),
+                      applyServerAutoLink(config.auto_link)
+                else {
+                    throw SettingsConfigurationPayloadError()
+                }
+                configurationIssue = nil
             } catch {
-                // Non-fatal: local + iCloud KV remain the fallback authority for
-                // translation / review_clock / review_mode config, so we log rather than report to Sentry.
+                // Keep the local/iCloud value visible, but make the unavailable
+                // server projection explicit instead of presenting a default as
+                // if the live fetch had succeeded.
+                configurationIssue = .init(
+                    surfaces: [.other, .translation],
+                    operation: .fetch,
+                    message: L10n.string("設定同步失敗，已保留目前本機值，請重試。")
+                )
                 AppLog.kg.warning("fetchUserConfig failed: \(error.localizedDescription)")
             }
+        } else {
+            configurationIssue = nil
         }
     }
 
@@ -179,40 +199,53 @@ final class SettingsCoordinator: SettingsCoordinating {
     ///   避免新 Apple 裝置覆蓋他裝置未傳播的 local write）。任一本機寫入後 iCloud KV
     ///   即跨裝置權威。
     /// - **Flag on (future)**: 比較 server `updated_at` 與本地，server 較新才整組套。
-    private func applyServerTranslationConfig(_ translation: KGTranslationConfig?) {
-        guard let translation else { return }
+    private func applyServerTranslationConfig(_ translation: KGTranslationConfig?) -> Bool {
+        guard let translation else { return true }
         _ = KGFeatureFlags.serverTranslationLwwEnabled  // keep wired for future LWW flip
 
         // Cold-start only（設計 A group LWW，對齊 vocab_ui / review_mode）：兩時戳皆 nil
         // ＝整組從未被本機 touch，且 server 帶真實 updated_at 才套。任一非 nil ＝已 touch
         // → 保留本機值（避免重套迴圈：套後本地時戳非 nil，下次 fetch 不再套）。
         guard TranslationLanguage.sourceUpdatedAt == nil,
-              TranslationLanguage.targetUpdatedAt == nil,
-              let ts = translation.updated_at,
-              let src = translation.source_lang, let srcLang = TranslationLanguage(rawValue: src),
-              let tgt = translation.target_lang, let tgtLang = TranslationLanguage(rawValue: tgt)
-        else { return }
+              TranslationLanguage.targetUpdatedAt == nil
+        else { return true }
+        guard let ts = translation.updated_at else { return true }
+        guard let src = translation.source_lang,
+              let srcLang = TranslationLanguage(rawValue: src),
+              let tgt = translation.target_lang,
+              let tgtLang = TranslationLanguage(rawValue: tgt)
+        else { return false }
 
         TranslationLanguage.applyServerColdStart(source: srcLang, target: tgtLang, updatedAt: ts)
         translationSourceLang = srcLang
         translationTargetLang = tgtLang
+        return true
     }
 
     /// Reconcile server pause-clock with local + iCloud KV (mirrors translation).
     /// Cold-start only: server wins ONLY when this device has never written the
     /// pause clock locally (`snapshot.updatedAt == nil`). After any local write,
     /// iCloud KV is the cross-device authority. Real LWW awaits the backend flag.
-    private func applyServerReviewClock(_ clock: KGReviewClockConfig?) {
-        guard let clock else { return }
+    private func applyServerReviewClock(_ clock: KGReviewClockConfig?) -> Bool {
+        guard let clock else { return true }
         let store = ReviewSettingsStore.shared
-        guard store.pauseClockSnapshot.updatedAt == nil else { return }
+        guard store.pauseClockSnapshot.updatedAt == nil else { return true }
         _ = KGFeatureFlags.serverReviewClockLwwEnabled  // keep wired for future LWW flip
-        let pausedAt = clock.paused_at.flatMap(AppDateFormatters.parseISO8601)
+        let pausedAt: Date?
+        if let rawPausedAt = clock.paused_at {
+            guard let parsedPausedAt = AppDateFormatters.parseISO8601(rawPausedAt) else {
+                return false
+            }
+            pausedAt = parsedPausedAt
+        } else {
+            pausedAt = nil
+        }
         store.applyServerPauseState(
             isPaused: clock.is_paused,
             pausedAt: clock.is_paused ? pausedAt : nil,
             updatedAt: clock.updated_at
         )
+        return true
     }
 
     /// Reconcile server review-mode with local + iCloud KV (mirrors pause clock).
@@ -220,14 +253,17 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// review mode locally (`snapshot.updatedAt == nil`). After any local write,
     /// iCloud KV is the cross-device authority. Real LWW awaits the backend flag.
     /// 後端 snake_case wire(`KGReviewModeConfig`)→ iOS `ReviewModeState` 的轉換在此。
-    private func applyServerReviewMode(_ mode: KGReviewModeConfig?) {
-        guard let mode else { return }
+    private func applyServerReviewMode(_ mode: KGReviewModeConfig?) -> Bool {
+        guard let mode else { return true }
         let store = ReviewSettingsStore.shared
-        guard store.reviewModeSnapshot.updatedAt == nil else { return }
+        guard store.reviewModeSnapshot.updatedAt == nil else { return true }
         _ = KGFeatureFlags.serverReviewModeLwwEnabled  // keep wired for future LWW flip
+        guard let reviewMode = ReviewSettingsMode(rawValue: mode.mode) else {
+            return false
+        }
         store.applyServerModeState(
             ReviewModeState(
-                mode: ReviewSettingsMode(rawValue: mode.mode) ?? .relaxed,
+                mode: reviewMode,
                 customInitialIntervalHours: mode.custom_initial_interval_hours,
                 customRememberedMultiplier: mode.custom_remembered_multiplier,
                 customForgotMultiplier: mode.custom_forgot_multiplier,
@@ -236,17 +272,19 @@ final class SettingsCoordinator: SettingsCoordinating {
                 updatedAt: mode.updated_at
             )
         )
+        return true
     }
 
     /// Reconcile server auto-link 開關與本地快取。與 translation / review_* 的
     /// cold-start-only 政策不同:auto_link 是新 group、無 iCloud KV 層與歷史包袱,
     /// 直接走真 LWW(store.applyServer 內比較 updated_at,server 較新才套)。
-    private func applyServerAutoLink(_ autoLink: KGAutoLinkConfig?) {
-        guard let autoLink else { return }
+    private func applyServerAutoLink(_ autoLink: KGAutoLinkConfig?) -> Bool {
+        guard let autoLink else { return true }
         AutoLinkSettingsStore.shared.applyServer(
             enabled: autoLink.enabled,
             updatedAt: autoLink.updated_at
         )
+        return true
     }
 
     /// 切換自動連結:樂觀寫本地,登入則 push 後端;push 失敗 rollback(含原時戳,
@@ -274,7 +312,12 @@ final class SettingsCoordinator: SettingsCoordinating {
             return true
         } catch {
             autoLinkStore.restore(enabled: prevEnabled, updatedAt: prevUpdatedAt)
-            reportConfigSaveFailure(error, label: "updateAutoLinkConfig", toastCoordinator: toastCoordinator)
+            reportConfigSaveFailure(
+                error,
+                label: "updateAutoLinkConfig",
+                surfaces: [.other],
+                toastCoordinator: toastCoordinator
+            )
             return false
         }
     }
@@ -313,7 +356,12 @@ final class SettingsCoordinator: SettingsCoordinating {
             return true
         } catch {
             reviewSettingsStore.restorePauseState(snapshot)
-            reportConfigSaveFailure(error, label: "updateReviewClockConfig", toastCoordinator: toastCoordinator)
+            reportConfigSaveFailure(
+                error,
+                label: "updateReviewClockConfig",
+                surfaces: [.other],
+                toastCoordinator: toastCoordinator
+            )
             return false
         }
     }
@@ -351,12 +399,27 @@ final class SettingsCoordinator: SettingsCoordinating {
             return true
         } catch {
             reviewSettingsStore.restoreModeState(snapshot)
-            reportConfigSaveFailure(error, label: "updateReviewModeConfig", toastCoordinator: toastCoordinator)
+            reportConfigSaveFailure(
+                error,
+                label: "updateReviewModeConfig",
+                surfaces: [.other],
+                toastCoordinator: toastCoordinator
+            )
             return false
         }
     }
 
-    private func reportConfigSaveFailure(_ error: Error, label: String, toastCoordinator: AppToastCoordinator) {
+    private func reportConfigSaveFailure(
+        _ error: Error,
+        label: String,
+        surfaces: Set<SettingsConfigurationIssue.Surface>,
+        toastCoordinator: AppToastCoordinator
+    ) {
+        configurationIssue = .init(
+            surfaces: surfaces,
+            operation: .save,
+            message: L10n.string("設定儲存失敗，已還原本機值，請重試。")
+        )
         toastCoordinator.error("設定儲存失敗".localized)
         AppLog.kg.error("\(label) failed: \(error.localizedDescription)")
     }
@@ -514,7 +577,12 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             translationSourceLang = prevSource
             translationTargetLang = prevTarget
-            reportConfigSaveFailure(error, label: "updateUserConfig (translation lang)", toastCoordinator: toastCoordinator)
+            reportConfigSaveFailure(
+                error,
+                label: "updateUserConfig (translation lang)",
+                surfaces: [.translation],
+                toastCoordinator: toastCoordinator
+            )
             return false
         }
     }

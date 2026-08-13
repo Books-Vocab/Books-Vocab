@@ -8,7 +8,9 @@ import SwiftData
 
 #if DEBUG
 private enum SettingsResetFailureInjector {
-    private static let consumedKey = "kg.ui.test.settings.reset.failure.consumed"
+    // Scope the once-token to this app process. A persistent fixed key made a
+    // later UI run skip the injector after an earlier run had consumed it.
+    private static let consumedKey = "kg.ui.test.settings.reset.\(ProcessInfo.processInfo.globallyUniqueString)"
 
     static func consumeIfRequested(reason: String) -> Bool {
         guard reason == "settings_reset_local_data",

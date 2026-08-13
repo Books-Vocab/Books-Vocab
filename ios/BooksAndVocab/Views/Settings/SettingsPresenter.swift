@@ -36,6 +36,10 @@ struct SettingsPresenter: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: AppShellMetrics.sectionSpacing) {
+                    if let configurationIssue = state.configurationIssue {
+                        settingsConfigurationIssue(configurationIssue)
+                    }
+
                     // Section 1: 帳號
                     accountSection
 
@@ -120,6 +124,16 @@ struct SettingsPresenter: View {
             }
         }
         .enableInjection()
+    }
+
+    private func settingsConfigurationIssue(_ issue: SettingsConfigurationIssue) -> some View {
+        AppStateMessageCard(
+            title: L10n.string("設定資料無法同步"),
+            systemImage: "exclamationmark.triangle",
+            description: issue.message
+        )
+        .accessibilityIdentifier("settings.configuration.error")
+        .accessibilityValue(issue.accessibilityValue)
     }
 
     // MARK: - Section 1: 帳號

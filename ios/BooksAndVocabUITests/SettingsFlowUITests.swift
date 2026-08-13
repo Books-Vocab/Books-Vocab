@@ -51,10 +51,6 @@ final class SettingsFlowUITests: UITestCase {
         let settings = try step("settings-opened", app: app) {
             let page = bookshelf.tapSettings()
             page.assertIsPresented()
-            XCTAssertTrue(
-                app.navigationBars.firstMatch.waitForExistence(timeout: 5),
-                "Settings sheet presented without a navigation bar"
-            )
             return page
         }
 
@@ -63,41 +59,33 @@ final class SettingsFlowUITests: UITestCase {
             assetID: try SettingsFixtureManifest.evidenceAssetID(for: "preferences_auto_sync_off"),
             app: app
         )
-        for group in [
-            settings.appearanceGroup,
-            settings.learningGroup,
-            settings.feedbackGroup,
-            settings.readerGroup,
+        for identifier in [
+            "settings.preferences.appearanceGroup",
+            "settings.preferences.learningGroup",
+            "settings.preferences.feedbackGroup",
+            "settings.preferences.readerGroup",
         ] {
-            XCTAssertTrue(group.waitUntilExists(timeout: 5), "Settings section group must expose a stable accessibility identifier")
+            _ = settings.assertExactlyOne(.other, identifier: identifier, visible: true)
         }
 
         // Guest gate: isolated auth session must start logged out. A logged-in
         // account card means this flow is not testing the guest surface — fail,
         // don't skip.
-        if settings.logoutButton.waitUntilExists(timeout: 1) {
+        settings.assertCount(.button, identifier: "settings.account.logoutButton", equals: 0)
+        if settings.count(.button, identifier: "settings.account.logoutButton") != 0 {
             captureStep("unexpected-logged-in-account", app: app)
             XCTFail("isolated auth session must start logged out; a logout button means the guest settings surface is not under test")
             return
         }
         try step("guest-account-state", app: app) {
-            XCTAssertTrue(
-                settings.googleLoginButton.waitUntilExists(timeout: 5),
-                "guest settings must offer the Google login CTA"
-            )
-            XCTAssertTrue(
-                settings.appleLoginButton.waitUntilExists(timeout: 2),
-                "guest settings must offer the Apple login CTA"
-            )
+            _ = settings.assertExactlyOne(.button, identifier: "settings.account.googleLoginButton", visible: true, hittable: true)
+            _ = settings.assertExactlyOne(.button, identifier: "settings.account.appleLoginButton", visible: true, hittable: true)
         }
 
         // Baseline summaries from the clean-preferences fixture.
-        guard settings.reviewRhythmValue.waitUntilExists(timeout: 5),
-              settings.translationLanguageValue.waitUntilExists(timeout: 5) else {
-            captureStep("no-preference-summaries", app: app)
-            XCTFail("settings home must expose 複習節奏 / 翻譯語言 summary values")
-            return
-        }
+        _ = settings.assertExactlyOne(.scrollView, identifier: "settings.home.scrollView", visible: true)
+        _ = settings.assertExactlyOne(.staticText, identifier: "settings.preferences.reviewRhythmValue", visible: true)
+        _ = settings.assertExactlyOne(.staticText, identifier: "settings.preferences.translationLanguageValue", visible: true)
         try step("baseline-preferences", app: app) {
             XCTAssertEqual(
                 settings.reviewRhythmValue.label, "寬鬆",
@@ -110,14 +98,11 @@ final class SettingsFlowUITests: UITestCase {
         }
 
         try step("feedback-preferences-toggle", app: app) {
-            guard settings.soundFeedbackToggle.waitUntilExists(timeout: 5),
-                  settings.hapticFeedbackToggle.waitUntilExists(timeout: 5) else {
-                captureStep("no-feedback-toggles", app: app)
-                XCTFail("settings home must expose sound and haptic feedback toggles")
-                return
-            }
+            settings.scrollHomeElementIntoView(settings.soundFeedbackToggle)
+            _ = settings.assertExactlyOne(.switch, identifier: "settings.preferences.soundFeedbackToggle", visible: true)
+            settings.scrollHomeElementIntoView(settings.hapticFeedbackToggle)
+            _ = settings.assertExactlyOne(.switch, identifier: "settings.preferences.hapticFeedbackToggle", visible: true)
 
-            settings.soundFeedbackToggle.scrollIntoView()
             XCTAssertTrue(settings.soundFeedbackToggle.waitUntilValueEquals("0", timeout: 3))
             settings.soundFeedbackToggle.tapWhenReady()
             XCTAssertTrue(settings.soundFeedbackToggle.waitUntilValueEquals("1", timeout: 3))
@@ -153,6 +138,7 @@ final class SettingsFlowUITests: UITestCase {
             "凍結複習時鐘",
             "the iOS accessibility control must retain the visible review-clock label"
         )
+        _ = settings.assertExactlyOne(.switch, identifier: "settings.review.pauseToggle", visible: true)
         XCTAssertTrue(
             settings.pauseReviewClockToggle.waitUntilValueEquals("0", timeout: 3),
             "clean fixture must start with the review clock running (toggle off), got \(String(describing: settings.pauseReviewClockToggle.value))"
@@ -164,11 +150,7 @@ final class SettingsFlowUITests: UITestCase {
                 "toggle must reflect ReviewSettingsStore.isProgressPaused after the async coordinator round-trip, not just the tap"
             )
         }
-        guard settings.reviewModeTile("intensive").waitUntilExists(timeout: 3) else {
-            captureStep("no-intensive-mode-tile", app: app)
-            XCTFail("複習模式 section must expose the intensive mode tile")
-            return
-        }
+        _ = settings.assertExactlyOne(.button, identifier: "settings.review.modeTile.intensive", visible: true, hittable: true)
         try step("mode-intensive-selected", app: app) {
             settings.reviewModeTile("intensive").tapWhenReady()
         }
@@ -191,13 +173,8 @@ final class SettingsFlowUITests: UITestCase {
             settings.openTranslationLanguage()
             XCTAssertTrue(app.waitForNavigationToSettle())
         }
-        guard settings.targetLanguageRow("ja").waitUntilExists(timeout: 5) else {
-            captureStep("no-target-language-row", app: app)
-            XCTFail("翻譯語言 section must expose the 日本語 target row")
-            return
-        }
+        _ = settings.assertExactlyOne(.button, identifier: "settings.translation.target.ja", visible: true, hittable: true)
         try step("target-japanese-selected", app: app) {
-            settings.targetLanguageRow("ja").scrollIntoView()
             settings.targetLanguageRow("ja").tapWhenReady()
         }
         try step("translation-back", app: app) {
@@ -252,29 +229,36 @@ final class SettingsFlowUITests: UITestCase {
 
         let settings = bookshelf.tapSettings()
         settings.assertIsPresented()
-        XCTAssertTrue(settings.logoutButton.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.conditionalSyncGroup.waitUntilExists(timeout: 5))
+        _ = settings.assertExactlyOne(.button, identifier: "settings.account.logoutButton", visible: true, hittable: true)
+        _ = settings.assertExactlyOne(.other, identifier: "settings.preferences.syncGroup", visible: true)
+        _ = settings.assertExactlyOne(.scrollView, identifier: "settings.home.scrollView", visible: true)
 
         settings.openAccountDetail()
         XCTAssertTrue(app.waitForNavigationToSettle())
-        XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
+        settings.assertAccountDetailEvidence()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
-        XCTAssertTrue(settings.accountScrollView.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.accountNameValue.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.accountEmailValue.waitUntilExists(timeout: 5))
 
-        for (element, expected) in [
-            (settings.accountNameValue, longDisplayName),
-            (settings.accountEmailValue, longEmail),
-        ] {
-            element.scrollIntoView()
-            XCTAssertEqual(element.label, expected, "long account value must remain fully visible")
-            XCTAssertTrue(
-                settings.accountScrollView.frame.intersects(element.frame),
-                "long account value must remain inside the scrollable account content"
-            )
-        }
+        XCTAssertGreaterThan(settings.accountScrollView.frame.width, 0)
+        XCTAssertGreaterThan(settings.accountScrollView.frame.height, 0)
+        XCTAssertEqual(settings.accountNameValue.elementType, .staticText)
+        XCTAssertEqual(settings.accountEmailValue.elementType, .staticText)
+        XCTAssertEqual(settings.accountNameValue.label, longDisplayName)
+        XCTAssertEqual(settings.accountEmailValue.label, longEmail)
+        XCTAssertTrue(settings.accountScrollView.frame.intersects(settings.accountNameValue.frame))
+
+        // A real gesture must move the production scroll content; a static
+        // frame/AX existence check is insufficient for the XXXL counterexample.
+        settings.assertAccountScrollMoves(probing: settings.accountNameValue)
+        XCTAssertEqual(settings.accountNameValue.label, longDisplayName)
+        settings.scrollAccountValueIntoView(settings.accountEmailValue)
+        XCTAssertEqual(settings.accountEmailValue.label, longEmail, "long account value must remain fully visible")
+        XCTAssertEqual(settings.accountEmailValue.elementType, .staticText)
+        XCTAssertFalse(settings.accountEmailValue.frame.isEmpty)
+        XCTAssertGreaterThan(settings.accountEmailValue.frame.height, 0)
+        XCTAssertTrue(
+            settings.accountScrollView.frame.intersects(settings.accountEmailValue.frame),
+            "long account value must remain inside the scrollable account content"
+        )
 
         captureStep(
             "long-content-counterexample",
@@ -333,15 +317,13 @@ final class SettingsFlowUITests: UITestCase {
 
         let settings = bookshelf.tapSettings()
         settings.assertIsPresented()
-        XCTAssertTrue(settings.logoutButton.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.conditionalSyncGroup.waitUntilExists(timeout: 5))
+        _ = settings.assertExactlyOne(.button, identifier: "settings.account.logoutButton", visible: true, hittable: true)
+        _ = settings.assertExactlyOne(.other, identifier: "settings.preferences.syncGroup", visible: true)
+        _ = settings.assertExactlyOne(.scrollView, identifier: "settings.home.scrollView", visible: true)
 
         settings.openAccountDetail()
         XCTAssertTrue(app.waitForNavigationToSettle())
-        XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.resetBeforeSnapshot.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.resetAfterSnapshot.waitUntilExists(timeout: 5))
+        settings.assertAccountDetailEvidence()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
         XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
         XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
@@ -356,15 +338,34 @@ final class SettingsFlowUITests: UITestCase {
         XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 
+        _ = settings.assertExactlyOne(
+            .button,
+            identifier: "settings.account.resetBoundary.resetButton",
+            visible: true,
+            hittable: true
+        )
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("failed", timeout: 10))
+        _ = settings.assertExactlyOne(
+            .staticText,
+            identifier: "settings.account.resetBoundary.message",
+            visible: true
+        )
+        XCTAssertTrue(settings.resetMessage.label.contains("失敗") || settings.resetMessage.label.contains("殘留"))
         XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(partialCardLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterPreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
         XCTAssertEqual(settings.resetAfterCardCount.label, partialCardLabel)
+        XCTAssertNotEqual(settings.resetAfterCardCount.label, beforeCardLabel)
         XCTAssertEqual(settings.resetAfterPreferences.label, beforePreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, beforeLoginLabel)
 
+        _ = settings.assertExactlyOne(
+            .button,
+            identifier: "settings.account.resetBoundary.resetButton",
+            visible: true,
+            hittable: true
+        )
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("succeeded", timeout: 10))
         XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
@@ -379,8 +380,16 @@ final class SettingsFlowUITests: UITestCase {
         XCTAssertEqual(settings.resetAfterCardCount.label, afterCardLabel)
         XCTAssertEqual(settings.resetAfterPreferences.label, afterPreferencesLabel)
         XCTAssertEqual(settings.resetAfterLoginStatus.label, afterLoginLabel)
-        XCTAssertTrue(settings.accountDangerGroup.waitUntilExists(timeout: 5))
-        XCTAssertTrue(settings.resetBoundary.waitUntilExists(timeout: 5))
+        _ = settings.assertExactlyOne(.other, identifier: "settings.account.dangerGroup", visible: true)
+        _ = settings.assertExactlyOne(.other, identifier: "settings.account.resetBoundary", visible: true)
+        _ = settings.assertExactlyOne(.staticText, identifier: "settings.account.resetBoundary.message", visible: true)
+        _ = settings.assertExactlyOne(
+            .button,
+            identifier: "settings.account.resetBoundary.resetButton",
+            visible: true,
+            hittable: false
+        )
+        XCTAssertFalse(settings.resetButton.isHittable, "completed reset must not expose a retry action")
         captureStep(
             "reset-counterexample",
             assetID: try SettingsFixtureManifest.evidenceAssetID(for: "reset_counterexample"),

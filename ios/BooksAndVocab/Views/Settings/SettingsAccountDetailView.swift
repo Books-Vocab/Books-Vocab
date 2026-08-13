@@ -48,6 +48,7 @@ struct SettingsAccountDetailView: View {
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle(L10n.string("帳號詳情"))
         .inlineNavigationBarTitle()
+        .settingsDetailNavigationBackButton()
         .enableInjection()
     }
 
@@ -159,6 +160,7 @@ struct SettingsAccountDetailView: View {
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.account.resetBoundary.message")
             } else {
                 Text(resetDescription(for: lifecycle.phase))
                     .font(appSkin.typography.caption)

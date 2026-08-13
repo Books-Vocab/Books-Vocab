@@ -8,6 +8,19 @@
 import Foundation
 import SwiftData
 
+#if DEBUG
+enum SettingsResetFailureInjectionError: LocalizedError {
+    case noResetVisibleCard
+
+    var errorDescription: String? {
+        switch self {
+        case .noResetVisibleCard:
+            return L10n.string("重設 failure injector 找不到可清理的本機單字")
+        }
+    }
+}
+#endif
+
 @ModelActor
 actor BackgroundSyncActor {
 
@@ -474,7 +487,7 @@ actor BackgroundSyncActor {
         })
         guard let entry = try modelContext.fetch(descriptor).first else {
             AppLog.sync.warning("Settings reset failure injection found no reset-visible vocabulary entry")
-            return
+            throw SettingsResetFailureInjectionError.noResetVisibleCard
         }
         modelContext.delete(entry)
         try modelContext.save()

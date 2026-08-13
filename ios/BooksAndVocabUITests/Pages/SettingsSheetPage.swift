@@ -12,63 +12,69 @@ struct SettingsSheetPage {
     }
 
     var homeScrollView: XCUIElement {
-        app.scrollViews["settings.home.scrollView"]
+        exact(.scrollView, "settings.home.scrollView")
+    }
+
+    private func exact(_ type: XCUIElement.ElementType, _ identifier: String) -> XCUIElement {
+        app.descendants(matching: type)
+            .matching(identifier: identifier)
+            .element
     }
 
     var closeButton: XCUIElement {
-        app.buttons["settings.dismissButton"]
+        exact(.button, "settings.dismissButton")
     }
 
     // MARK: - Home: account section (guest vs logged-in)
 
     var googleLoginButton: XCUIElement {
-        app.buttons["settings.account.googleLoginButton"]
+        exact(.button, "settings.account.googleLoginButton")
     }
 
     var appleLoginButton: XCUIElement {
-        app.buttons["settings.account.appleLoginButton"]
+        exact(.button, "settings.account.appleLoginButton")
     }
 
     var logoutButton: XCUIElement {
-        app.buttons["settings.account.logoutButton"]
+        exact(.button, "settings.account.logoutButton")
     }
 
     // MARK: - Home: preferences rows
 
     var reviewRhythmRow: XCUIElement {
-        app.buttons["settings.preferences.reviewRhythmRow"]
+        exact(.button, "settings.preferences.reviewRhythmRow")
     }
 
     /// Trailing summary of the 複習節奏 row (e.g. "寬鬆" / "已凍結 · 密集").
     var reviewRhythmValue: XCUIElement {
-        app.staticTexts["settings.preferences.reviewRhythmValue"]
+        exact(.staticText, "settings.preferences.reviewRhythmValue")
     }
 
     /// 複習卡片 row — card presentation, deliberately separate from 複習節奏.
     var reviewCardLayoutRow: XCUIElement {
-        app.buttons["settings.preferences.reviewCardLayoutRow"]
+        exact(.button, "settings.preferences.reviewCardLayoutRow")
     }
 
     /// Trailing summary of the 複習卡片 row ("預設" / "自訂").
     var reviewCardLayoutValue: XCUIElement {
-        app.staticTexts["settings.preferences.reviewCardLayoutValue"]
+        exact(.staticText, "settings.preferences.reviewCardLayoutValue")
     }
 
     var translationLanguageRow: XCUIElement {
-        app.buttons["settings.preferences.translationLanguageRow"]
+        exact(.button, "settings.preferences.translationLanguageRow")
     }
 
     /// Trailing summary of the 翻譯語言 row (e.g. "English → 繁體中文").
     var translationLanguageValue: XCUIElement {
-        app.staticTexts["settings.preferences.translationLanguageValue"]
+        exact(.staticText, "settings.preferences.translationLanguageValue")
     }
 
     var soundFeedbackToggle: XCUIElement {
-        app.switches["settings.preferences.soundFeedbackToggle"]
+        exact(.switch, "settings.preferences.soundFeedbackToggle")
     }
 
     var hapticFeedbackToggle: XCUIElement {
-        app.switches["settings.preferences.hapticFeedbackToggle"]
+        exact(.switch, "settings.preferences.hapticFeedbackToggle")
     }
 
     var syncSummaryButton: XCUIElement {
@@ -110,23 +116,23 @@ struct SettingsSheetPage {
     }
 
     var appearanceGroup: XCUIElement {
-        app.otherElements["settings.preferences.appearanceGroup"]
+        exact(.other, "settings.preferences.appearanceGroup")
     }
 
     var learningGroup: XCUIElement {
-        app.otherElements["settings.preferences.learningGroup"]
+        exact(.other, "settings.preferences.learningGroup")
     }
 
     var feedbackGroup: XCUIElement {
-        app.otherElements["settings.preferences.feedbackGroup"]
+        exact(.other, "settings.preferences.feedbackGroup")
     }
 
     var readerGroup: XCUIElement {
-        app.otherElements["settings.preferences.readerGroup"]
+        exact(.other, "settings.preferences.readerGroup")
     }
 
     var conditionalSyncGroup: XCUIElement {
-        app.otherElements["settings.preferences.syncGroup"]
+        exact(.other, "settings.preferences.syncGroup")
     }
 
     // MARK: - Account detail danger boundary
@@ -135,103 +141,99 @@ struct SettingsSheetPage {
     /// row's separate identity fingerprint remains available for account proof;
     /// this selector is the action target and never depends on localized text.
     var accountDetailRow: XCUIElement {
-        app.buttons["settings.account.accountDetailRow"]
+        exact(.button, "settings.account.accountDetailRow")
     }
 
     var accountDangerGroup: XCUIElement {
-        app.otherElements["settings.account.dangerGroup"]
+        exact(.other, "settings.account.dangerGroup")
     }
 
     var accountScrollView: XCUIElement {
-        app.scrollViews["settings.account.scrollView"]
+        exact(.scrollView, "settings.account.scrollView")
     }
 
     var accountNameValue: XCUIElement {
-        app.staticTexts["settings.account.info.name"]
+        exact(.staticText, "settings.account.info.name")
     }
 
     var accountEmailValue: XCUIElement {
-        app.staticTexts["settings.account.info.email"]
+        exact(.staticText, "settings.account.info.email")
     }
 
     var resetBoundary: XCUIElement {
-        app.otherElements["settings.account.resetBoundary"]
+        exact(.other, "settings.account.resetBoundary")
     }
 
     var resetBeforeSnapshot: XCUIElement {
-        app.otherElements["settings.account.resetBoundary.before"]
+        exact(.other, "settings.account.resetBoundary.before")
     }
 
     var resetAfterSnapshot: XCUIElement {
-        app.otherElements["settings.account.resetBoundary.after"]
+        exact(.other, "settings.account.resetBoundary.after")
     }
 
     var resetBeforeCardCount: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.before.localCardCount"]
+        exact(.staticText, "settings.account.resetBoundary.before.localCardCount")
     }
 
     var resetBeforePreferences: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.before.preferences"]
+        exact(.staticText, "settings.account.resetBoundary.before.preferences")
     }
 
     var resetBeforeLoginStatus: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.before.loginStatus"]
+        exact(.staticText, "settings.account.resetBoundary.before.loginStatus")
     }
 
     var resetAfterCardCount: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.after.localCardCount"]
+        exact(.staticText, "settings.account.resetBoundary.after.localCardCount")
     }
 
     var resetAfterPreferences: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.after.preferences"]
+        exact(.staticText, "settings.account.resetBoundary.after.preferences")
     }
 
     var resetAfterLoginStatus: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.after.loginStatus"]
+        exact(.staticText, "settings.account.resetBoundary.after.loginStatus")
     }
 
     var resetPhase: XCUIElement {
-        app.staticTexts["settings.account.resetBoundary.phase"]
+        exact(.staticText, "settings.account.resetBoundary.phase")
     }
 
     var resetButton: XCUIElement {
-        app.buttons["settings.account.resetBoundary.resetButton"]
+        exact(.button, "settings.account.resetBoundary.resetButton")
+    }
+
+    var resetMessage: XCUIElement {
+        exact(.staticText, "settings.account.resetBoundary.message")
     }
 
     // MARK: - Review rhythm section (pushed)
 
     var pauseReviewClockToggle: XCUIElement {
-        app.switches["settings.review.pauseToggle"]
+        exact(.switch, "settings.review.pauseToggle")
     }
 
     /// Mode tile inside the 複習節奏 section; `rawValue` ∈ relaxed / intensive / custom.
     func reviewModeTile(_ rawValue: String) -> XCUIElement {
-        app.buttons["settings.review.modeTile.\(rawValue)"]
+        exact(.button, "settings.review.modeTile.\(rawValue)")
     }
 
     // MARK: - Translation language section (pushed)
 
     /// Source-language row; `id` is `TranslationLanguage.rawValue` (e.g. "en", "ja").
     func sourceLanguageRow(_ id: String) -> XCUIElement {
-        app.buttons["settings.translation.source.\(id)"]
+        exact(.button, "settings.translation.source.\(id)")
     }
 
     /// Target-language row; `id` is `TranslationLanguage.rawValue` (e.g. "zh-Hant", "ja").
     func targetLanguageRow(_ id: String) -> XCUIElement {
-        app.buttons["settings.translation.target.\(id)"]
+        exact(.button, "settings.translation.target.\(id)")
     }
 
     /// Nav-bar back button of a pushed detail section.
     var backButton: XCUIElement {
-        let bars = app.navigationBars.allElementsBoundByIndex.filter { $0.exists }
-        let barsWithButtons = bars.filter { !$0.buttons.allElementsBoundByIndex.isEmpty }
-        precondition(!barsWithButtons.isEmpty, "Expected a settings navigation bar with a back button")
-        // XCTest reports the presented sheet's navigation bar before the
-        // underlying tab's bar. The last bar may therefore be the bookshelf
-        // chrome and its first button is `bookshelf.settingsButton`.
-        let buttons = barsWithButtons.first!.buttons.allElementsBoundByIndex
-        precondition(!buttons.isEmpty, "Expected the top settings navigation bar to expose a back button")
-        return buttons[0]
+        exact(.button, "settings.detail.backButton")
     }
 
     // MARK: - Actions
@@ -259,7 +261,7 @@ struct SettingsSheetPage {
 
     @discardableResult
     func openAccountDetail(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
-        accountDetailRow.scrollIntoView(file: file, line: line)
+        scrollHomeElementIntoView(accountDetailRow, file: file, line: line)
         accountDetailRow.tapWhenReady(file: file, line: line)
         return self
     }
@@ -280,10 +282,10 @@ struct SettingsSheetPage {
         return self
     }
 
-    private func scrollHomeElementIntoView(
+    func scrollHomeElementIntoView(
         _ element: XCUIElement,
-        file: StaticString,
-        line: UInt
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
     ) {
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
@@ -358,5 +360,126 @@ struct SettingsSheetPage {
     ) {
         XCTAssertTrue(element.exists, "expected exactly one \(name)", file: file, line: line)
         element.tapWhenReady(file: file, line: line)
+    }
+
+    @discardableResult
+    func assertExactlyOne(
+        _ type: XCUIElement.ElementType,
+        identifier: String,
+        visible: Bool = true,
+        hittable: Bool = false,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement {
+        let matches = app.descendants(matching: type).matching(identifier: identifier)
+        XCTAssertEqual(
+            matches.count,
+            1,
+            "Expected exactly one production \(type) with identifier \(identifier), got \(matches.count)",
+            file: file,
+            line: line
+        )
+        let element = matches.element
+        XCTAssertTrue(element.waitForExistence(timeout: 5), "Expected production element to exist: \(identifier)", file: file, line: line)
+        XCTAssertEqual(element.elementType, type, "Production element type drifted for \(identifier)", file: file, line: line)
+        if visible {
+            XCTAssertFalse(element.frame.isEmpty, "Production element has no visible geometry: \(identifier)", file: file, line: line)
+        }
+        if hittable {
+            XCTAssertTrue(element.isHittable, "Production element is not hittable: \(identifier)", file: file, line: line)
+        }
+        return element
+    }
+
+    func assertCount(
+        _ type: XCUIElement.ElementType,
+        identifier: String,
+        equals expected: Int,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let matches = app.descendants(matching: type).matching(identifier: identifier)
+        XCTAssertEqual(matches.count, expected, "Unexpected production element count for \(identifier)", file: file, line: line)
+    }
+
+    func count(_ type: XCUIElement.ElementType, identifier: String) -> Int {
+        app.descendants(matching: type).matching(identifier: identifier).count
+    }
+
+    func assertAccountDetailEvidence(
+        resetButtonHittable: Bool = false,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        for (type, identifier) in [
+            (XCUIElement.ElementType.button, "settings.detail.backButton"),
+            (XCUIElement.ElementType.scrollView, "settings.account.scrollView"),
+            (XCUIElement.ElementType.other, "settings.account.infoGroup"),
+            (XCUIElement.ElementType.other, "settings.account.dataManagementGroup"),
+            (XCUIElement.ElementType.other, "settings.account.dangerGroup"),
+            (XCUIElement.ElementType.other, "settings.account.resetBoundary"),
+            (XCUIElement.ElementType.other, "settings.account.resetBoundary.before"),
+            (XCUIElement.ElementType.other, "settings.account.resetBoundary.after"),
+            (XCUIElement.ElementType.staticText, "settings.account.resetBoundary.phase"),
+            (XCUIElement.ElementType.button, "settings.account.resetBoundary.resetButton"),
+            (XCUIElement.ElementType.staticText, "settings.account.info.name"),
+            (XCUIElement.ElementType.staticText, "settings.account.info.email"),
+        ] {
+            _ = assertExactlyOne(type, identifier: identifier, visible: true, file: file, line: line)
+        }
+        _ = assertExactlyOne(
+            .button,
+            identifier: "settings.account.resetBoundary.resetButton",
+            visible: true,
+            hittable: resetButtonHittable,
+            file: file,
+            line: line
+        )
+    }
+
+    func scrollAccountValueIntoView(
+        _ value: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if value.exists,
+               !value.frame.isEmpty,
+               accountScrollView.frame.intersects(value.frame),
+               value.isHittable {
+                return
+            }
+            accountScrollView.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTAssertTrue(
+            value.exists && !value.frame.isEmpty && accountScrollView.frame.intersects(value.frame),
+            "Account value did not become visible inside the production scroll view: \(value.identifier)",
+            file: file,
+            line: line
+        )
+    }
+
+    func assertAccountScrollMoves(
+        probing value: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let before = value.frame
+        accountScrollView.swipeUp()
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline && abs(value.frame.minY - before.minY) <= 1 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        let after = value.frame
+        XCTAssertGreaterThan(
+            abs(after.minY - before.minY),
+            1,
+            "The production account scroll view did not move long content",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(after.isEmpty, "Scrolled account value lost geometry", file: file, line: line)
     }
 }

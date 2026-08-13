@@ -190,3 +190,28 @@ struct SettingsStatusSummaryValue: View {
         .enableInjection()
     }
 }
+
+private struct SettingsDetailNavigationBackButtonModifier: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { dismiss() }) {
+                        Label(L10n.string("返回"), systemImage: "chevron.backward")
+                    }
+                    .accessibilityIdentifier("settings.detail.backButton")
+                }
+            }
+    }
+}
+
+extension View {
+    /// Give pushed Settings surfaces one production-owned, exact AX back
+    /// selector. XCTest must never infer it from toolbar child order.
+    func settingsDetailNavigationBackButton() -> some View {
+        modifier(SettingsDetailNavigationBackButtonModifier())
+    }
+}
