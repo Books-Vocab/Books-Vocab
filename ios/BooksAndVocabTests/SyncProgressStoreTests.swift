@@ -241,11 +241,43 @@ struct SyncProgressStoreTests {
     func progressPanelVisibilityTracksSyncAndDeclaredSteps() {
         let store = SyncProgressStore()
 
-        #expect(!SettingsSyncProgressPanel.isVisible(isSyncing: true, steps: store.steps))
+        #expect(!SettingsSyncProgressPanel.isVisible(
+            isSyncing: true,
+            phase: store.phase,
+            steps: store.steps
+        ))
 
         store.begin(stepIDs: [.push])
 
-        #expect(SettingsSyncProgressPanel.isVisible(isSyncing: true, steps: store.steps))
-        #expect(!SettingsSyncProgressPanel.isVisible(isSyncing: false, steps: store.steps))
+        #expect(SettingsSyncProgressPanel.isVisible(
+            isSyncing: true,
+            phase: store.phase,
+            steps: store.steps
+        ))
+        #expect(!SettingsSyncProgressPanel.isVisible(
+            isSyncing: false,
+            phase: store.phase,
+            steps: store.steps
+        ))
+
+        store.finish(.completed)
+        #expect(SettingsSyncProgressPanel.isVisible(
+            isSyncing: false,
+            phase: store.phase,
+            steps: store.steps
+        ))
+
+        store.reset()
+        #expect(!SettingsSyncProgressPanel.isVisible(
+            isSyncing: false,
+            phase: store.phase,
+            steps: store.steps
+        ))
+    }
+
+    @Test
+    func syncPhasesHaveStableValueEquality() {
+        #expect(SyncPhase.completed == .completed)
+        #expect(SyncPhase.failed != .ready)
     }
 }

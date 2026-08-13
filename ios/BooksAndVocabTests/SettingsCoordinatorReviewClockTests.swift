@@ -125,4 +125,29 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(result.isPaused == true)
         #expect(result.pausedAt == expected)
     }
+
+    /// Guest settings must complete the same optimistic local write path as a
+    /// signed-in user; only the remote push is skipped. This guards the state
+    /// contract consumed by the SettingsReviewSection binding.
+    @Test func guestUpdateReviewClockWritesLocalStateBeforeReturning() async {
+        let suite = "test.settings-coordinator.review-clock.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let store = ReviewSettingsStore(defaults: defaults, cloud: FakeCloudKVStore())
+        let auth = MockAuth()
+        auth.isLoggedIn = false
+
+        let result = await SettingsCoordinator().updateReviewClock(
+            isPaused: true,
+            reviewSettingsStore: store,
+            authManager: auth,
+            kgService: KGService(),
+            toastCoordinator: AppToastCoordinator()
+        )
+
+        #expect(result == true)
+        #expect(store.settings.isProgressPaused == true)
+        #expect(store.settings.progressPausedAt != nil)
+        #expect(defaults.bool(forKey: "review_settings_progress_paused") == true)
+    }
 }

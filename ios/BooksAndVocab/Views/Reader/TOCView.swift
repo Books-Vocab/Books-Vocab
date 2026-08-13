@@ -19,6 +19,7 @@ struct TOCView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var tocLinks: [ReadiumShared.Link] = []
     @State private var loadState: LoadState = .loading
+    @State private var loadRequestID = 0
 
     private var phaseAnimationKey: String {
         switch loadState {
@@ -59,14 +60,21 @@ struct TOCView: View {
                     Button(L10n.string("完成")) { dismiss() }
                 }
             }
-            .task { await loadTableOfContents() }
+            .task(id: loadRequestID) {
+                await loadTableOfContents(requestID: loadRequestID)
+            }
         }
         .enableInjection()
     }
 
-    private func loadTableOfContents() async {
-        do {
-            let toc = try await publication.tableOfContents().get()
+    private func loadTableOfContents(requestID: Int) async {
+        guard isCurrentLoad(requestID) else { return }
+        loadState = .loading
+        let result = await publication.tableOfContents()
+        guard isCurrentLoad(requestID) else { return }
+
+        switch result {
+        case .success(let toc):
             tocLinks = toc
             loadState = toc.isEmpty ? .empty : .loaded
             AppLog.reader.info("TOC loaded: \(toc.count) items")
@@ -76,24 +84,31 @@ struct TOCView: View {
             if toc.isEmpty {
                 AppLog.reader.warning("TOC is empty — this book may not have a table of contents")
             }
-        } catch {
+        case .failure(.cancelled):
+            // Readium reports cancellation as a ReadError result in some
+            // publication implementations, rather than throwing
+            // CancellationError. It is never a user-visible failure.
+            return
+        case .failure(let error):
             AppLog.reader.error("TOC load failed: \(error.localizedDescription)")
             loadState = .failed(error.localizedDescription)
         }
+    }
+
+    private func isCurrentLoad(_ requestID: Int) -> Bool {
+        !Task.isCancelled && requestID == loadRequestID
     }
 
     @ViewBuilder
     private func tocLoadingState(_ presentation: ReaderTOCPresentation) -> some View {
         VStack {
             Spacer()
-            AppStateMessageCard(
+            AppLoadingStateCard(
                 title: L10n.string("載入目錄中"),
                 systemImage: "text.book.closed",
-                description: L10n.string("正在整理這本書的章節結構。")
-            ) {
-                ProgressView()
-                    .controlSize(.small)
-            }
+                description: L10n.string("正在整理這本書的章節結構。"),
+                visualStyle: .app
+            )
             .frame(maxWidth: presentation.stateCardMaxWidth)
             .padding(.horizontal, presentation == .compact ? AppShellMetrics.pageHorizontalPadding : 0)
             Spacer()
@@ -111,12 +126,14 @@ struct TOCView: View {
                 } label: {
                     Text(link.title ?? L10n.string("目錄"))
                         .font(AppFonts.body())
-                        .lineLimit(1)
+                        .lineLimit(2)
                         .truncationMode(.tail)
                 }
+                .accessibilityIdentifier("reader.toc.item.\(index)")
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
     }
 
     @ViewBuilder
@@ -142,7 +159,13 @@ struct TOCView: View {
                 title: L10n.string("目錄載入失敗"),
                 systemImage: "exclamationmark.triangle.fill",
                 description: message
-            )
+            ) {
+                Button(L10n.string("重試")) {
+                    loadRequestID += 1
+                }
+                .buttonStyle(.appCompactAction(.primary))
+                .accessibilityIdentifier("reader.toc.retry")
+            }
             .frame(maxWidth: presentation.stateCardMaxWidth)
             .padding(.horizontal, presentation == .compact ? AppShellMetrics.pageHorizontalPadding : 0)
             Spacer()
@@ -162,14 +185,12 @@ struct TOCViewPreviewScene: View {
                 case .loading:
                     VStack {
                         Spacer()
-                        AppStateMessageCard(
+                        AppLoadingStateCard(
                             title: L10n.string("載入目錄中"),
                             systemImage: "text.book.closed",
-                            description: L10n.string("正在整理這本書的章節結構。")
-                        ) {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
+                            description: L10n.string("正在整理這本書的章節結構。"),
+                            visualStyle: .app
+                        )
                         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                         Spacer()
                     }
@@ -178,8 +199,12 @@ struct TOCViewPreviewScene: View {
                         ForEach(tocTitles.indices, id: \.self) { index in
                             Text(tocTitles[index])
                                 .font(AppFonts.body())
+                                .lineLimit(2)
+                                .truncationMode(.tail)
                         }
                     }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 case .empty:
                     VStack {
                         Spacer()

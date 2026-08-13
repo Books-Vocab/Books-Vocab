@@ -36,6 +36,14 @@ final class SettingsCoordinator: SettingsCoordinating {
     var observationTotalCount = 0
     var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
     var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
+    /// Bumps whenever the Settings surface crosses an auth identity boundary.
+    /// In-flight resync work is not structurally cancellable at the service
+    /// boundary, so its late events must be rejected by this generation too.
+    private var accountGeneration = 0
+    /// Owner token for the currently running resync. Account generation alone
+    /// protects identity changes; this token also prevents an older round's
+    /// defer from clearing the flag belonging to a newer round.
+    private var resyncRequestID = 0
     /// 這一輪同步的逐步進度。`isResyncing` 只回答「在不在跑」；這個回答「跑到哪」。
     /// 兩者並存而非取代：`isResyncing` 同時守著重入 guard 與按鈕 disabled。
     let syncProgress = SyncProgressStore()
@@ -48,6 +56,16 @@ final class SettingsCoordinator: SettingsCoordinating {
     func handleAppear() {
         iconBreathing = true
         refreshObservationPreview()
+    }
+
+    /// Clear transient UI owned by the previous auth identity before loading
+    /// the next one. Persistent preferences and server-backed settings are
+    /// reloaded by `loadData`; only the leaf sync presentation belongs here.
+    func resetForAccountBoundary() {
+        accountGeneration &+= 1
+        resyncRequestID &+= 1
+        isResyncing = false
+        syncProgress.reset()
     }
 
     func loadData(
@@ -382,8 +400,16 @@ final class SettingsCoordinator: SettingsCoordinating {
         // （UI 已以 syncSummary 擋登出，此處 defense-in-depth 並補上 demo 漏洞。）
         guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
         guard !isResyncing else { return }
+        let requestGeneration = accountGeneration
+        let requestUserID = authManager.userId
+        resyncRequestID &+= 1
+        let requestID = resyncRequestID
         isResyncing = true
-        defer { isResyncing = false }
+        defer {
+            if resyncRequestID == requestID {
+                isResyncing = false
+            }
+        }
 
         // 進度模型：宣告 backgroundSync 會跑的步驟 + 本函式自己收尾的那一列。
         // UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
@@ -395,12 +421,33 @@ final class SettingsCoordinator: SettingsCoordinating {
         // 但那是防線不是設計；`continuation.yield` 是 FIFO，讓「送出順序 = 套用
         // 順序」在正常路徑上就成立。
         let (events, continuation) = AsyncStream<SyncProgressEvent>.makeStream()
-        let pump = Task { @MainActor [syncProgress] in
-            for await event in events { syncProgress.apply(event) }
+        let pump = Task { @MainActor [weak self, syncProgress] in
+            for await event in events {
+                guard let self,
+                      self.isCurrentResync(
+                          generation: requestGeneration,
+                          requestID: requestID,
+                          userID: requestUserID,
+                          authManager: authManager
+                      ) else {
+                    break
+                }
+                syncProgress.apply(event)
+            }
         }
 
         let outcome = await kgService.backgroundSync(container: modelContext.container) { event in
             continuation.yield(event)
+        }
+        guard isCurrentResync(
+            generation: requestGeneration,
+            requestID: requestID,
+            userID: requestUserID,
+            authManager: authManager
+        ) else {
+            continuation.finish()
+            await pump.value
+            return
         }
         do {
             try modelContext.container.mainContext.save()
@@ -425,6 +472,13 @@ final class SettingsCoordinator: SettingsCoordinating {
         continuation.finish()
         await pump.value
 
+        guard isCurrentResync(
+            generation: requestGeneration,
+            requestID: requestID,
+            userID: requestUserID,
+            authManager: authManager
+        ) else { return }
+
         // 終態取自這一輪自己的回報，**不是** `lastBackgroundSyncError`。那是四個
         // trigger 共用的全域欄位，對「被別的 round 佔著 claim 所以什麼都沒做」與
         // 「跑到一半被取消」這兩條路徑，它會讓面板宣稱 100% 完成。
@@ -435,6 +489,20 @@ final class SettingsCoordinator: SettingsCoordinating {
         }
 
         refreshObservationPreview()
+    }
+
+    private func isCurrentResync(
+        generation: Int,
+        requestID: Int,
+        userID: String?,
+        authManager: any AuthManaging
+    ) -> Bool {
+        !Task.isCancelled &&
+            accountGeneration == generation &&
+            resyncRequestID == requestID &&
+            authManager.isLoggedIn &&
+            !authManager.isDemoMode &&
+            authManager.userId == userID
     }
 
     #if DEBUG

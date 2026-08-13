@@ -5,12 +5,11 @@ extension ReaderViewPresenter {
     var loadingOverlay: some View {
         state.paperColor.ignoresSafeArea()
             .overlay {
-                loadingOverlayContent(
-                    progressTint: appSkin.palette.primaryText,
-                    textFont: appSkin.typography.body.weight(.semibold),
-                    textColor: appSkin.palette.primaryText
+                AppLoadingStateCard(
+                    title: state.loadingPhase,
+                    systemImage: "book.closed",
+                    visualStyle: .vocab
                 )
-                .modifier(VocabLoadingOverlayChrome(appSkin: appSkin))
                 .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
                 .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
             }
@@ -19,13 +18,19 @@ extension ReaderViewPresenter {
     func underlineProgressOverlay(_ progress: Double) -> some View {
         VStack {
             AppSectionCard(style: .vocab(appSkin)) {
-                progressOverlayContent(
-                    progress: progress,
-                    trackColor: appSkin.palette.mutedFill,
-                    fillColor: appSkin.palette.accent,
-                    textFont: appSkin.typography.monoLabel,
-                    textColor: appSkin.palette.secondaryText
-                )
+                HStack(spacing: AppSpacing.s2) {
+                    AppLoadingProgressBar(progress: progress, tint: appSkin.palette.accent)
+                        .frame(width: ReaderPresentationMetrics.Overlay.progressBarWidth)
+
+                    Text("\(Int(min(max(progress, 0), 1) * 100))%")
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .accessibilityHidden(true)
+                        .frame(
+                            width: ReaderPresentationMetrics.Overlay.progressTextWidth,
+                            alignment: .trailing
+                        )
+                }
                 .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
                 .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
             }
@@ -66,65 +71,5 @@ extension ReaderViewPresenter {
             .transition(.readerPanelReveal)
     }
 
-    private func loadingOverlayContent(
-        progressTint: Color,
-        textFont: Font,
-        textColor: Color
-    ) -> some View {
-        VStack(spacing: ReaderPresentationMetrics.Overlay.loadingSpacing) {
-            ProgressView()
-                .tint(progressTint)
-            Text(state.loadingPhase)
-                .font(textFont)
-                .foregroundStyle(textColor)
-                .contentTransition(.numericText())
-                .animation(AppMotion.contentFade, value: state.loadingPhase)
-        }
-        .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingHorizontalInset)
-        .padding(.vertical, ReaderPresentationMetrics.Overlay.loadingVerticalInset)
-    }
-
-    private func progressOverlayContent(
-        progress: Double,
-        trackColor: Color,
-        fillColor: Color,
-        textFont: Font,
-        textColor: Color
-    ) -> some View {
-        HStack(spacing: 10) {
-            ZStack(alignment: .leading) {
-                AppRoundedRect(roundness: AppRoundness.pill)
-                    .fill(trackColor)
-                    .frame(
-                        width: ReaderPresentationMetrics.Overlay.progressBarWidth,
-                        height: ReaderPresentationMetrics.Overlay.progressBarHeight
-                    )
-                AppRoundedRect(roundness: AppRoundness.pill)
-                    .fill(fillColor)
-                    .frame(
-                        width: max(
-                            ReaderPresentationMetrics.Overlay.progressBarHeight,
-                            ReaderPresentationMetrics.Overlay.progressBarWidth * progress
-                        ),
-                        height: ReaderPresentationMetrics.Overlay.progressBarHeight
-                    )
-                    .animation(AppMotion.progressLinear, value: progress)
-            }
-            Text("\(Int(progress * 100))%")
-                .font(textFont)
-                .foregroundStyle(textColor)
-                .frame(width: ReaderPresentationMetrics.Overlay.progressTextWidth, alignment: .trailing)
-        }
-    }
-}
-
-private struct VocabLoadingOverlayChrome: ViewModifier {
-    let appSkin: AppSkin
-
-    func body(content: Content) -> some View {
-        AppSectionCard(style: .vocab(appSkin)) {
-            content
-        }
-    }
 }
 #endif

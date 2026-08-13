@@ -272,13 +272,12 @@ struct ExploreView: View {
     private var loadingState: some View {
         VStack {
             Spacer()
-            AppStateMessageCard(
+            AppLoadingStateCard(
                 title: L10n.string("explore.loading.title"),
                 systemImage: "arrow.triangle.2.circlepath",
-                description: L10n.string("explore.loading.description")
-            ) {
-                ProgressView().controlSize(.small)
-            }
+                description: L10n.string("explore.loading.description"),
+                visualStyle: .app
+            )
             .frame(maxWidth: 420)
             Spacer()
         }

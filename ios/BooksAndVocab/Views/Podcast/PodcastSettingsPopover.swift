@@ -82,7 +82,8 @@ struct PodcastSettingsPopover: View {
 
             VocabHighlightColorPresetPicker(
                 selection: highlightColorPresetBinding,
-                title: L10n.string("vocab.highlight.color.label")
+                title: L10n.string("vocab.highlight.color.label"),
+                accessibilityIdentifier: "podcast.settings.highlightColor"
             )
 
             Toggle(isOn: $wordFollowEnabled) {

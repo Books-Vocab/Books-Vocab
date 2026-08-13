@@ -48,6 +48,8 @@ enum UITestFixtureSeed {
                 seedShell(id, into: container)
             case "search":
                 seedSearch(id, into: container)
+            case "vocabulary":
+                seedVocabulary(id, into: container)
             case "reader":
                 seedReader(id, into: container)
             case "notebook":
@@ -85,8 +87,20 @@ enum UITestFixtureSeed {
     /// 2026-06-10 事故經另一儲存平面重演。與 settings/reader fixture 同款
     /// simulator gate；fixture 一律經此 helper，不得直呼 login。
     @MainActor
-    static func seedSignedInLoginFromWorld() {
+    @discardableResult
+    static func seedSignedInLoginFromWorld(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        auth: AuthManager? = nil
+    ) -> Bool {
         #if targetEnvironment(simulator)
+        guard AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: arguments) else {
+            if AppRuntimeOptions.isUITesting(arguments: arguments) {
+                preconditionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
+            }
+            AppLog.app.error("UITestFixtureSeed: refused auth.signedIn without -isolatedAuthSession — fake session would persist into the real store")
+            return false
+        }
+        let auth = auth ?? AuthManager.shared
         let seed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
         guard seed.isLoggedIn else {
             preconditionFailure("auth.signedIn fixture requires auth.signedIn.isLoggedIn = true")
@@ -95,7 +109,6 @@ enum UITestFixtureSeed {
         guard !userId.isEmpty else {
             preconditionFailure("auth.signedIn fixture requires non-empty userId")
         }
-        let auth = AuthManager.shared
         auth.displayName = seed.displayName ?? ""
         auth.userEmail = seed.email
         switch seed.keychainTokenState {
@@ -117,6 +130,7 @@ enum UITestFixtureSeed {
         case .absent:
             preconditionFailure("auth.signedIn cannot declare keychainTokenState=absent")
         }
+        return true
         #else
         AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
         preconditionFailure("auth.signedIn fixture is simulator-only")

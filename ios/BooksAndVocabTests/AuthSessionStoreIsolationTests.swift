@@ -163,4 +163,28 @@ struct AuthSessionStoreIsolationTests {
             await AuthManager.shared.waitForPendingLocalDataCleanup()
         }
     }
+
+    @Test func sharedSignedInSeedHelperWritesNothingWithoutIsolatedSession() {
+        let scratch = makeDefaults()
+        defer { scratch.purge() }
+        let defaults = scratch.defaults
+        let keychain = SpyKeychain()
+        let auth = AuthManager(
+            sessionStore: AuthSessionStore(defaults: defaults, keychain: keychain)
+        )
+
+        let didSeed = UITestFixtureSeed.seedSignedInLoginFromWorld(
+            arguments: Self.normalArgs,
+            auth: auth
+        )
+
+        #expect(!didSeed)
+        #expect(auth.userId == nil)
+        #expect(auth.token == nil)
+        #expect(!auth.isLoggedIn)
+        #expect(defaults.string(forKey: "KGUserId") == nil)
+        #expect(defaults.string(forKey: "KGDisplayName") == nil)
+        #expect(defaults.string(forKey: "KGUserEmail") == nil)
+        #expect(keychain.saved.isEmpty)
+    }
 }

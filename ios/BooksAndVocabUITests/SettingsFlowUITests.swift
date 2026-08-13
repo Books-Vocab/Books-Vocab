@@ -128,6 +128,11 @@ final class SettingsFlowUITests: UITestCase {
             XCTFail("複習節奏 section must expose the 凍結複習時鐘 toggle")
             return
         }
+        XCTAssertEqual(
+            settings.pauseReviewClockToggle.label,
+            "凍結複習時鐘",
+            "the iOS accessibility control must retain the visible review-clock label"
+        )
         XCTAssertTrue(
             settings.pauseReviewClockToggle.waitUntilValueEquals("0", timeout: 3),
             "clean fixture must start with the review clock running (toggle off), got \(String(describing: settings.pauseReviewClockToggle.value))"

@@ -427,7 +427,10 @@ struct FixtureDatasetDocument: Decodable {
                     codingPath: codingPath
                 )
             }
-            for record in seed.reviewHistory where !entryWords.contains(record.word) {
+            // Inherited seeds intentionally declare no local entries; their history is
+            // validated against the resolved base entries during materialization.
+            for record in seed.reviewHistory
+                where seed.baseFixture == nil && !entryWords.contains(record.word) {
                 throw dataCorrupted(
                     "vocabulary.\(fixtureID).reviewHistory.\(record.word) must reference an entry in the same seed",
                     codingPath: codingPath

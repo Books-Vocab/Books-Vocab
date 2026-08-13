@@ -105,13 +105,9 @@ enum ReaderContentStyleFactory {
 
 enum ReaderPresentationMetrics {
     enum Overlay {
-        static let loadingSpacing: CGFloat = 14
-        static let loadingHorizontalInset: CGFloat = 28
-        static let loadingVerticalInset: CGFloat = 20
         static let loadingMaxWidth: CGFloat = 320
         static let loadingOuterInset: CGFloat = 20
         static let progressBarWidth: CGFloat = 80
-        static let progressBarHeight: CGFloat = 3
         static let progressTextWidth: CGFloat = 30
         static let progressHorizontalInset: CGFloat = 16
         static let progressVerticalInset: CGFloat = 10
@@ -156,6 +152,24 @@ enum ReaderPresentationMetrics {
         static let wordSpacingRatio: CGFloat = 0.25
         static let paragraphSpacingRatio: CGFloat = 0.9
         static let contentInset: CGFloat = AppSpacing.s4
+        /// ReaderSettings uses the same discrete scale in its native Slider and
+        /// tick rail. Keeping the range here prevents the control and preview
+        /// from silently drifting apart.
+        static let lineHeightRange: ClosedRange<Double> = 1.0...2.5
+        static let lineHeightStep: Double = 0.1
+        static let lineHeightTickCount: Int = Int(
+            ((lineHeightRange.upperBound - lineHeightRange.lowerBound) / lineHeightStep).rounded()
+        ) + 1
+        static let lineHeightTickValues: [Double] = (0..<lineHeightTickCount).map {
+            let raw = lineHeightRange.lowerBound + (Double($0) * lineHeightStep)
+            return (raw * 10).rounded() / 10
+        }
+        /// The preview is a viewport, not an intrinsic card. A stable height
+        /// prevents every slider tick from moving the controls below it.
+        static let previewHeight: CGFloat = 164
+        /// Fade the prose at the viewport edges so clipped lines read as an
+        /// intentional continuation rather than a hard crop.
+        static let previewFadeEdgeFraction: CGFloat = 0.08
         static let bandOverhang: CGFloat = 2
         /// 色帶圓度：帶高 ≈ 字級 × 32% ≈ 6.4pt，短邊遠小於 30pt → pill。
         static let bandRoundness: CGFloat = AppRoundness.pill

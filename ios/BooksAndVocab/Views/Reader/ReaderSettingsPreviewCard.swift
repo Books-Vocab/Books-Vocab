@@ -26,6 +26,15 @@ import SwiftUI
 ///
 /// 頂層 struct、不 inline 進 presenter 的 body：Debug `-Onone` 下主執行緒 1MB
 /// stack 會被 inline 的 section tree 撐爆（見 `SettingsPresenter.swift` 檔頭）。
+struct ReaderSettingsPreviewLayoutContract: Equatable {
+    let viewportHeight: CGFloat
+    let fadeEdgeFraction: CGFloat
+
+    var fadeLocations: [CGFloat] {
+        [0, fadeEdgeFraction, 1 - fadeEdgeFraction, 1]
+    }
+}
+
 struct ReaderSettingsPreviewCard: View {
     @ObserveInjection private var inject
 
@@ -38,6 +47,13 @@ struct ReaderSettingsPreviewCard: View {
     let vocabHighlightPreferences: VocabHighlightPreferences
 
     private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+
+    /// The view and its source tests share this contract so a metric change
+    /// cannot silently leave the frame or fade mask wired to a different value.
+    static let layoutContract = ReaderSettingsPreviewLayoutContract(
+        viewportHeight: Metrics.previewHeight,
+        fadeEdgeFraction: Metrics.previewFadeEdgeFraction
+    )
 
     var body: some View {
         // 產 CSS 的同一個物件；下面色帶的每一個數都從它身上取。
@@ -53,6 +69,8 @@ struct ReaderSettingsPreviewCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Metrics.contentInset)
+        .frame(height: Self.layoutContract.viewportHeight, alignment: .topLeading)
+        .mask(previewFadeMask)
         .background {
             AppRoundedRect(roundness: Metrics.cardRoundness)
                 .fill(theme.paperColor)
@@ -91,6 +109,19 @@ struct ReaderSettingsPreviewCard: View {
     /// 詞距跟著字級縮放，否則放大字級時字會擠在一起。
     private var wordSpacing: CGFloat {
         resolvedFontSize * Metrics.wordSpacingRatio
+    }
+
+    private var previewFadeMask: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: Self.layoutContract.fadeLocations[0]),
+                .init(color: .black, location: Self.layoutContract.fadeLocations[1]),
+                .init(color: .black, location: Self.layoutContract.fadeLocations[2]),
+                .init(color: .clear, location: Self.layoutContract.fadeLocations[3])
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     // MARK: - 繪製

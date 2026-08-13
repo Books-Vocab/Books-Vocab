@@ -32,6 +32,14 @@ struct SettingsView: View {
         $0.isArchived == false
     }) var allEntries: [VocabularyEntry]
 
+    /// The boolean login flag is not enough here: a manual login can replace
+    /// account A with account B while both states remain `true`. The task must
+    /// restart for either logout or an account switch so transient sync UI is
+    /// never carried across an identity boundary.
+    private var settingsAccountTaskID: String {
+        "\(authManager.isLoggedIn ? "logged-in" : "logged-out"):\(authManager.userId ?? "none"):\(authManager.isDemoMode)"
+    }
+
     var body: some View {
 #if DEBUG
         let _ = RenderStormProbe.shared.tick("SettingsView")
@@ -76,7 +84,8 @@ struct SettingsView: View {
         // 在一輪同步裡會被寫幾十次，讓它只驅動「同步狀態」那一列底下的葉節點，
         // 不讓整個設定頁跟著重算（`PodcastProgressTicker` 的同一個模式）。
         .environment(\.syncProgressStore, coordinator.syncProgress)
-        .task(id: authManager.isLoggedIn) {
+        .task(id: settingsAccountTaskID) {
+            coordinator.resetForAccountBoundary()
             await coordinator.loadData(authManager: authManager, kgService: kgService)
             if authManager.isLoggedIn {
                 await subscriptionManager.loadProducts()

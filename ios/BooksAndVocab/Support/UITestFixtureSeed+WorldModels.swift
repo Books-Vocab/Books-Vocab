@@ -95,6 +95,20 @@ extension UITestFixtureSeed {
         let entries = seed.entries.map {
             makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
         }
+        let overridesByWord = Dictionary(
+            uniqueKeysWithValues: seed.entryOverrides.map { ($0.word, $0) }
+        )
+        for entry in entries {
+            guard let override = overridesByWord[entry.word] else { continue }
+            entry.cardRole = override.cardRole
+            entry.reviewEligible = override.reviewEligible
+            entry.reviewIntervalHours = override.reviewIntervalHours
+            entry.nextReviewAt = override.nextReviewAt
+            entry.lastReviewedAt = override.lastReviewedAt
+            entry.reviewCount = override.reviewCount
+            entry.reviewStreak = override.reviewStreak
+            entry.lastReviewFeedbackRaw = override.lastReviewFeedbackRaw
+        }
         for entry in entries {
             context.insert(entry)
         }

@@ -24,6 +24,20 @@ def _marketing_demo() -> dict:
     return json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(encoding="utf-8"))
 
 
+def _vocabulary_override(word: str, *, card_role: str = "learning", review_eligible: bool = True) -> dict:
+    return {
+        "word": word,
+        "cardRole": card_role,
+        "reviewEligible": review_eligible,
+        "reviewIntervalHours": 24,
+        "nextReviewAt": "2099-01-01T00:00:00Z",
+        "lastReviewedAt": None,
+        "reviewCount": 0,
+        "reviewStreak": 0,
+        "lastReviewFeedbackRaw": -1,
+    }
+
+
 def _swift_source(path: str) -> str:
     """Read a canonical Swift fixture declaration, including split siblings."""
     requested = ROOT / path
@@ -690,6 +704,125 @@ def test_validate_rejects_vocabulary_review_history_missing_entry_ref(tmp_path: 
 
     with pytest.raises(UIWorldManifestError, match=r"reviewHistory\[0\].missing-word must reference an entry"):
         validate_fixture_dataset_file(path)
+
+
+def test_validate_resolves_multi_level_vocabulary_inheritance(tmp_path: Path):
+    data = _marketing_demo()
+    base_words = [entry["word"] for entry in data["vocabulary"]["vocabListLong"]["entries"]]
+    data["vocabulary"]["vocabListEmpty"].update({
+        "baseFixture": "vocabListLong",
+        "entryOverrides": [_vocabulary_override(base_words[0])],
+    })
+    data["vocabulary"]["vocabListSingle"].update({
+        "baseFixture": "vocabListEmpty",
+        "entries": [],
+        "entryOverrides": [_vocabulary_override(base_words[1])],
+    })
+    path = tmp_path / "vocabulary_multi_level_inheritance.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert validate_fixture_dataset_file(path) == "marketing_demo"
+
+
+def test_validate_rejects_vocabulary_inheritance_cycle(tmp_path: Path):
+    data = _marketing_demo()
+    data["vocabulary"]["vocabListEmpty"]["baseFixture"] = "vocabListSingle"
+    data["vocabulary"]["vocabListSingle"].update({
+        "baseFixture": "vocabListEmpty",
+        "entries": [],
+    })
+    path = tmp_path / "vocabulary_inheritance_cycle.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"vocabulary inheritance cycle: .*vocabListEmpty.*vocabListSingle"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_reports_vocabulary_cycle_before_override_semantics(tmp_path: Path):
+    data = _marketing_demo()
+    malformed_override = _vocabulary_override("missing", card_role="malformed")
+    malformed_override.update({
+        "reviewIntervalHours": -1,
+        "nextReviewAt": "not-a-date",
+        "lastReviewedAt": "not-a-date",
+        "reviewCount": -1,
+        "reviewStreak": -1,
+    })
+    data["vocabulary"]["vocabListEmpty"].update({
+        "baseFixture": "vocabListSingle",
+        "entryOverrides": [
+            malformed_override,
+            _vocabulary_override("also-missing", card_role="dictionary", review_eligible=True),
+        ],
+    })
+    data["vocabulary"]["vocabListSingle"].update({
+        "baseFixture": "vocabListEmpty",
+        "entries": [],
+    })
+    path = tmp_path / "vocabulary_cycle_with_malformed_override.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"vocabulary inheritance cycle"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_inherited_override_missing_word(tmp_path: Path):
+    data = _marketing_demo()
+    data["vocabulary"]["vocabListEmpty"].update({
+        "baseFixture": "vocabListLong",
+        "entryOverrides": [_vocabulary_override("missing-from-resolved-base")],
+    })
+    path = tmp_path / "vocabulary_inherited_override_missing_word.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"entryOverrides\[0\]\.word must reference a word in the resolved base"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_duplicate_override_across_vocabulary_chain(tmp_path: Path):
+    data = _marketing_demo()
+    word = data["vocabulary"]["vocabListLong"]["entries"][0]["word"]
+    data["vocabulary"]["vocabListEmpty"].update({
+        "baseFixture": "vocabListLong",
+        "entryOverrides": [_vocabulary_override(word)],
+    })
+    data["vocabulary"]["vocabListSingle"].update({
+        "baseFixture": "vocabListEmpty",
+        "entries": [],
+        "entryOverrides": [_vocabulary_override(word)],
+    })
+    path = tmp_path / "vocabulary_duplicate_override_across_chain.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"must not override the same word twice across inheritance"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_dictionary_override_marked_review_eligible(tmp_path: Path):
+    data = _marketing_demo()
+    word = data["vocabulary"]["vocabListLong"]["entries"][0]["word"]
+    data["vocabulary"]["vocabListEmpty"].update({
+        "baseFixture": "vocabListLong",
+        "entryOverrides": [_vocabulary_override(word, card_role="dictionary", review_eligible=True)],
+    })
+    path = tmp_path / "vocabulary_dictionary_review_eligible.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"reviewEligible must be false for dictionary cards"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_allows_inherited_review_history_for_resolved_base_word(tmp_path: Path):
+    data = _marketing_demo()
+    word = data["vocabulary"]["vocabListLong"]["entries"][0]["word"]
+    data["vocabulary"]["vocabListEmpty"].update({
+        "baseFixture": "vocabListLong",
+        "reviewHistory": [{"word": word, "feedback": 1, "reviewedAt": "2026-01-01T00:00:00Z"}],
+    })
+    path = tmp_path / "vocabulary_inherited_review_history.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert validate_fixture_dataset_file(path) == "marketing_demo"
 
 
 def test_validate_rejects_review_deck_invalid_action_type(tmp_path: Path):

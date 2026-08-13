@@ -6,6 +6,25 @@ struct AppFilterChipBar<ID: Hashable>: View {
     let style: AppTabSelectorStyle
 
     var body: some View {
+        Group {
+            if style.usesSystemGlass {
+                GlassEffectContainer(spacing: AppSpacing.s2) {
+                    chipRow
+                }
+                .padding(AppSpacing.tinyGap)
+            } else {
+                chipRow
+                    .padding(AppSpacing.tinyGap)
+                    .background(
+                        AppRoundedRect(roundness: style.containerRoundness)
+                            .fill(style.containerBackground)
+                    )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chipRow: some View {
         HStack(spacing: AppSpacing.s2) {
             ForEach(options) { option in
                 let isSelected = selection.contains(option.id)
@@ -26,11 +45,6 @@ struct AppFilterChipBar<ID: Hashable>: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(AppSpacing.tinyGap)
-        .background(
-            AppRoundedRect(roundness: style.containerRoundness)
-                .fill(style.containerBackground)
-        )
     }
 }
 

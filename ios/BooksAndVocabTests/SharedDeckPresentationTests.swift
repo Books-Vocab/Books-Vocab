@@ -11,6 +11,25 @@ import Testing
 
 struct SharedDeckPresentationTests {
 
+    @Test func exploreLoadingStateUsesTheSharedAppLoadingSurface() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Views/Explore/ExploreView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try #require(source.range(of: "private var loadingState: some View"))
+        let end = try #require(source.range(
+            of: "private func stateScroll<Content: View>",
+            range: start.upperBound..<source.endIndex
+        ))
+        let loadingState = source[start.lowerBound..<end.lowerBound]
+
+        #expect(loadingState.contains("AppLoadingStateCard("))
+        #expect(loadingState.contains("visualStyle: .app"))
+        #expect(!loadingState.contains("AppStateMessageCard("))
+        #expect(!loadingState.contains("ProgressView"))
+    }
+
     @Test func explorePhase_keepsCachedDecksVisibleAsPartialWhenSyncFails() {
         #expect(
             ExplorePhase.resolve(
