@@ -22,7 +22,7 @@ final class ReaderSettingsUITests: UITestCase {
         bookCard.tapWhenReady()
 
         let reader = ReaderPage(app: app)
-        guard reader.waitForContent("Introduction", timeout: 45),
+        guard reader.waitForContent(ReaderPage.seededContentMarker, timeout: 45),
               let initialWebView = reader.webViewElement(timeout: 10)
         else {
             XCTFail("production Reader must render the real EPUB WebView before settings evidence")
@@ -92,7 +92,7 @@ final class ReaderSettingsUITests: UITestCase {
             return
         }
         reopenedBookCard.tapWhenReady()
-        guard reader.waitForContent("Introduction", timeout: 45),
+        guard reader.waitForContent(ReaderPage.seededContentMarker, timeout: 45),
               let reopenedWebView = reader.webViewElement(timeout: 10)
         else {
             XCTFail("reopened production Reader must recreate the real EPUB WebView")
@@ -149,7 +149,7 @@ final class ReaderSettingsUITests: UITestCase {
         bookCard.tapWhenReady()
 
         let reader = ReaderPage(app: app)
-        guard reader.waitForContent("Introduction", timeout: 45) else {
+        guard reader.waitForContent(ReaderPage.seededContentMarker, timeout: 45) else {
             XCTFail("production Reader must render the seeded book content")
             return
         }
@@ -202,7 +202,7 @@ final class ReaderSettingsUITests: UITestCase {
         bookCard.tapWhenReady()
 
         let reader = ReaderPage(app: app)
-        guard reader.waitForContent("Introduction", timeout: 45) else {
+        guard reader.waitForContent(ReaderPage.seededContentMarker, timeout: 45) else {
             XCTFail("production Reader must render the seeded book content")
             return
         }

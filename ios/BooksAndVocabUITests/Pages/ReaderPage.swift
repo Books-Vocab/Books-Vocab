@@ -5,6 +5,9 @@ import XCTest
 struct ReaderPage {
     let app: XCUIApplication
 
+    static let seededContentMarker =
+        "This UI World reader book is installed from a complete EPUB asset manifest entry."
+
     // MARK: - Chrome
 
     /// Reader hides the system navigation bar (ReaderView.swift), so the old
