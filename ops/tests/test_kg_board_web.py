@@ -283,6 +283,8 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert "firstBranchPoint" in js
     assert "treeViewport" in js
     assert "branchAnchors" in js
+    assert "ticketRefs" in js
+    assert "ticketRefs.forEach" in js
     assert "mainlineWindow" in js
     assert "branchRow" in js
     assert "compactLabel" in js
