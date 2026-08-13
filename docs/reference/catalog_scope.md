@@ -4,8 +4,9 @@ authority: SoT
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Debug/
+  - ios/BooksAndVocab/Support/Fixtures/Core/
   - ops/lib/ios_ops_catalog.sh
-verified_against: 57c2f2204
+verified_against: 105318f5d518
 -->
 # iOS Catalog：Agent UI 工作台（SoT）
 
@@ -15,6 +16,7 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 
 - **UI World 是結構化畫面狀態**：`kg.fixture.dataset.v2` 同時描述資料、登入、權益、preferences、SwiftData rows 與檔案資產。Catalog 不另造第二套假資料。
 - **Scenario 是可選入口**：新 UI 不必註冊；只有 agent 預期會反覆檢查、debug 或展示某個狀態時，才在 `Debug/Scenarios/` 加 scenario 並登錄到 `CatalogScene`。
+- **Explore fixture proof 是單一、可重放的 evidence contract**：`sharedDecks.fixtures.<id>.assetIDs` 必須恰有一個 asset。materializer 與 `ExploreFixtureAssetProof` 都走 manifest 安裝快照；找不到、驗證失敗或 image decode 失敗直接 fail-loud，不能以 optional snapshot、generic first 或 `EmptyView` 產生看似成功的證據。
 - **一個工具，沒有 gallery / 行銷模式**：沒有批次快照、覆蓋率、contact sheet、review desk、視覺回歸、App Store/網站宣傳圖生成或自動行銷流程。
 - **真實 compositor 取圖**：app 必須在 disposable iOS Simulator 的真 window 顯示，`capture` 再用 `simctl io screenshot` 擷取。禁止回到 `CALayer.render(in:)`；後者繞過系統 compositor，無法正確呈現 iOS 26 Liquid Glass、backdrop sampling、部分 WebKit/系統材質與陰影。
 
