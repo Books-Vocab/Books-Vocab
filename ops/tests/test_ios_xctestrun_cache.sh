@@ -96,6 +96,18 @@ if ios_xctestrun_cache_stage_env \
 else
   bad "overlay failed"
 fi
+if ios_xctestrun_cache_upsert_env_all_targets "$staged" KG_FIXTURE_ASSET_ROOT "$WORKTREE"; then
+  asset_root_0="$(/usr/libexec/PlistBuddy -c 'Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_ASSET_ROOT' "$staged")"
+  asset_root_1="$(/usr/libexec/PlistBuddy -c 'Print :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables:KG_FIXTURE_ASSET_ROOT' "$staged")"
+  kept_dataset_0="$(/usr/libexec/PlistBuddy -c 'Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64' "$staged")"
+  kept_dataset_1="$(/usr/libexec/PlistBuddy -c 'Print :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64' "$staged")"
+  [[ "$asset_root_0" == "$WORKTREE" && "$asset_root_1" == "$WORKTREE" \
+     && "$kept_dataset_0" == compressed && "$kept_dataset_1" == compressed ]] \
+    && ok "upsert adds evidence env without deleting dataset env" \
+    || bad "upsert did not preserve existing dataset env"
+else
+  bad "upsert failed"
+fi
 [[ -f "$base" ]] && ok "base xctestrun remains untouched" || bad "base xctestrun was modified"
 ios_xctestrun_cache_cleanup_scoped "$staged"
 [[ ! -e "$staged" ]] && ok "scoped cleanup removes only staged artifact" || bad "scoped cleanup left staged artifact"

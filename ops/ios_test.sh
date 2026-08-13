@@ -1073,42 +1073,28 @@ should_rebuild_after_test_without_building_failure() {
 # 不可經 command substitution 呼叫：cleanup trap 靠父 shell 的
 # STAGED_DATASET_XCTESTRUN 刪檔，subshell 賦值傳不回來（曾為死碼）。
 stage_fixture_dataset_xctestrun() {
-  local base_path="$1" staged_path="$2"
-  local dataset_staged_path="${staged_path%.scoped.xctestrun}.dataset.scoped.xctestrun"
-  if ! declare -F ios_xctestrun_cache_stage_env >/dev/null 2>&1; then
-    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
-  fi
-  if ! ios_xctestrun_cache_stage_env \
-    "$base_path" \
-    "$dataset_staged_path" \
-    KG_FIXTURE_DATASET_DEFLATE_B64 \
-    "$UI_FIXTURE_DATASET_DEFLATE_B64" \
-    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64,KG_FIXTURE_ASSET_ROOT; then
-    rm -f "$dataset_staged_path"
-    return 1
-  fi
-  if ! ios_xctestrun_cache_stage_env \
-    "$dataset_staged_path" \
-    "$staged_path" \
-    KG_FIXTURE_ASSET_ROOT \
-    "$PROJECT_ROOT" \
-    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64,KG_FIXTURE_ASSET_ROOT; then
-    rm -f "$dataset_staged_path"
-    return 1
-  fi
-  rm -f "$dataset_staged_path"
-}
-
-stage_fixture_asset_root_xctestrun() {
   if ! declare -F ios_xctestrun_cache_stage_env >/dev/null 2>&1; then
     source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
   fi
   ios_xctestrun_cache_stage_env \
     "$1" \
     "$2" \
-    KG_FIXTURE_ASSET_ROOT \
-    "$PROJECT_ROOT" \
-    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64,KG_FIXTURE_ASSET_ROOT
+    KG_FIXTURE_DATASET_DEFLATE_B64 \
+    "$UI_FIXTURE_DATASET_DEFLATE_B64" \
+    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
+}
+
+stage_ui_evidence_runner_environment() {
+  local staged_path="$1" source_commit device
+  [[ -n "$staged_path" && -f "$staged_path" ]] || return 1
+  source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  device="$(resolve_run_device_udid 2>/dev/null || true)"
+  [[ -n "$source_commit" && -n "${UI_TEST_SCREENSHOT_DIR:-}" && -n "$device" ]] || return 1
+  ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SOURCE_COMMIT "$source_commit" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_ID "$EVIDENCE_DATASET_ID" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_SHA256 "$EVIDENCE_DATASET_SHA256" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DEVICE_UDID "$device"
 }
 
 stage_ui_evidence_runner_environment() {
@@ -1217,13 +1203,7 @@ run_xcodebuild_test_without_building_once() {
     xctestrun_path="$STAGED_DATASET_XCTESTRUN"
     echo "[ios_test] fixture dataset staged: $(basename "$xctestrun_path") (KG_FIXTURE_DATASET_DEFLATE_B64 ← ${UI_FIXTURE_DATASET_FILE})"
   else
-    STAGED_DATASET_XCTESTRUN="${xctestrun_path%.xctestrun}_asset_root_$$.scoped.xctestrun"
-    if ! stage_fixture_asset_root_xctestrun "$xctestrun_path" "$STAGED_DATASET_XCTESTRUN"; then
-      echo "[ios_test] error: failed to stage fixture asset root into xctestrun" >&2
-      return 1
-    fi
-    xctestrun_path="$STAGED_DATASET_XCTESTRUN"
-    echo "[ios_test] fixture asset root staged: $(basename "$xctestrun_path") (KG_FIXTURE_ASSET_ROOT ← $PROJECT_ROOT)"
+    :
   fi
   acquire_test_device_lock
   start_ui_test_recording
