@@ -46,6 +46,36 @@ git status --short
 
 不要以 `simctl list` 中「剛好 booted」的裝置直接當乾淨環境；它可能正在被另一條 build/test 使用，或有帳號／系統 prompt。
 
+### 1.1 多日收斂與 agent 分工
+
+P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修補。每一波固定經過：
+
+1. 根因／方案審查：重新讀報告圖、現行程式、既有測試與 UI World，先寫出 confirmed、candidate、blocked。
+2. 單一 ownership 實作：每個 agent 只擁有一個 P 區或一個明確的 fixture／evidence 工具檔案集合；不得跨線改測試來掩蓋失敗。
+3. unit／projection／compile gate：先證明狀態機、資料投影與 round-trip，再開 Simulator。
+4. exact-selector runtime：一個 run 只對應一個 flow、dataset、variant、device 與 selector；失敗 run 保留，不借用上一輪綠燈。
+5. 視覺審查與反例：檢查 full steps、contact sheet、quick4、UIreview、video，以及 loading／empty／error／長資料／Dynamic Type／深色／極值。
+6. adversarial review 與 rework：獨立 reviewer 針對 false-green、語意漂移、父容器 AX identifier、fixture hardcode、截圖覆寫提出 BLOCK；修正後重跑同一 selector。
+7. 只有 machine contract 與人工 attestation 都通過，才用控制面記錄該列；下一波才能消費其證據。
+
+平行 agent 數量服從共享資源而不是反過來：read-only／source review／fixture schema 可以大量平行；Xcode build、Simulator lease、UI run 必須由 runner lock 排隊，且每個長命令要保留 heartbeat、PID、log、xcresult。禁止多個 worktree 同時對同一個 `--file` 做寬泛 UI run；若需要重跑，使用 exact `--method`。
+
+#### 長命令期間不得閒置
+
+協調者不能把整個 turn 只用在輪詢長命令。啟動 build／UI run 後，立即推進不競爭同一 Xcode／device lock 的工作：讀 stable failure bundle、定位第一個根因、審查 source diff、驗證 UI World／matrix、整理已完成 run 的視覺證據、準備下一個 exact selector，或跑非衝突的 static／unit gate。輪詢只保留 bounded heartbeat，並回報 elapsed／PID／alive／last log；不要用密集輪詢取代工作。
+
+若同一 runner lock 尚未釋放，不要為了假裝平行再排另一個會排隊的 Xcode 命令；改做 read-only／報告／contract 工作，或使用明確隔離且可取得的另一個 lease。長命令結束後，先讀 normalized verdict 與 machine contract，再把相同 selector 綁定到 visual review；任何失敗先做一個窄根因修正再重跑，不同時堆疊未驗證 patch。
+
+### 1.2 UI World 注入契約
+
+每個 requirement 的 `requiredFixtureIDs` 是可執行資料契約，不是測試註解。新增或修正 flow 時：
+
+- fixture 必須由 UI World／`FixtureDatasetStore` 注入，production code 不可為了截圖塞 hardcoded preview rows；test 開始時要能從 app log／AX 可觀察到 dataset identity。
+- rich dataset 至少覆蓋正常、空、載入、錯誤／重試、長文案、混合角色／狀態、邊界數值；每一個反例必須有獨立 state label 與 screenshot asset。
+- seed 的語意欄位要能驅動真實 projection，例如角色、review eligibility、due／unlearned、history、provider provenance、Reader preference、時計與 timezone；只改文字而不改狀態來源不算 injection。
+- UI test 斷言投影後的 rows、counts、CTA、selection、error recovery 與 round-trip；截圖只證明畫面，不取代行為斷言。
+- 修改 UI World schema、seed 或 validator 時，必須同時跑 recursive inheritance／override／cross-reference tests，防止 host validator 與 runtime 解析器各自接受不同資料。
+
 ### 2. 選擇驗證層
 
 - 行為回歸、非同步狀態、導航：用指定 test selector。

@@ -26,9 +26,17 @@ def _load():
 
 
 def _png(path: Path, width: int = 100, height: int = 200):
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    scanline = b"\x00" + b"\xff\x00\x00" * width
     path.write_bytes(
-        b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
-        + width.to_bytes(4, "big") + height.to_bytes(4, "big")
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(scanline * height))
+        + chunk(b"IEND", b"")
     )
 
 
@@ -108,7 +116,7 @@ def test_validate_bundle_rejects_tampered_step(tmp_path):
     mod, kwargs = _bundle(tmp_path)
     step = tmp_path / "steps" / "01-launch.png"
     step.write_bytes(step.read_bytes() + b"tampered")
-    with pytest.raises(ValueError, match="mismatch"):
+    with pytest.raises(ValueError, match="mismatch|trailing"):
         mod.validate_bundle(**kwargs)
 
 
