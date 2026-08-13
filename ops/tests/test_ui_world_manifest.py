@@ -79,6 +79,63 @@ def test_reader_invalid_destination_asset_is_declared_and_really_broken() -> Non
         assert any(f"OEBPS/{destination}" not in names for destination in destinations)
 
 
+def test_reader_evidence_asset_producer_uses_canonical_fixture_proof() -> None:
+    source = _swift_source("ios/BooksAndVocab/Views/Reader/ReaderView+Panels.swift")
+    evidence_source = _swift_source(
+        "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift"
+    )
+
+    assert "FixtureDatasetStore.readerAssetProof" in source
+    assert "Data(contentsOf: url)" not in source
+    assert "SHA256.hash(data: data)" not in source
+    assert "expectedSHA256" in evidence_source
+    assert "expectedByteSize" in evidence_source
+    assert "actualSHA256" in evidence_source
+    assert "actualByteSize" in evidence_source
+
+
+def test_invalid_reader_ui_flow_selects_canonical_missing_destination_row() -> None:
+    source = _swift_source("ios/BooksAndVocabUITests/ReaderFlowUITests.swift")
+    invalid_flow = source.split(
+        "func testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable()",
+        1,
+    )[1]
+
+    assert 'currentLocator.value as? String' in invalid_flow
+    assert '"OEBPS/chapter1.xhtml"' in invalid_flow
+    assert 'contentText("Introduction")' in invalid_flow
+    assert 'tocChapter(path: "1", label: "Missing Destination")' in invalid_flow
+    assert "evidenceAsset" in invalid_flow
+
+
+def test_manifest_path_resolver_rejects_parent_traversal() -> None:
+    with pytest.raises(UIWorldManifestError, match="escape repo root"):
+        MODULE._resolve_path(
+            "ops/fixtures/assets/../../../../outside-reader.epub",
+            field="sourcePath",
+            label="books.reader_real_book_epub",
+            require_repo_relative=True,
+        )
+
+
+def test_manifest_path_resolver_rejects_symlink_escape(tmp_path: Path) -> None:
+    outside = tmp_path / "outside-reader.epub"
+    outside.write_bytes(b"outside")
+    link = ROOT / "ops" / "fixtures" / "assets" / ".p3-reader-escape-link"
+    try:
+        link.symlink_to(outside)
+        with pytest.raises(UIWorldManifestError, match="escape repo root"):
+            MODULE._resolve_path(
+                "ops/fixtures/assets/.p3-reader-escape-link",
+                field="sourcePath",
+                label="books.reader_real_book_epub",
+                require_repo_relative=True,
+            )
+    finally:
+        if link.is_symlink() or link.exists():
+            link.unlink()
+
+
 def _swift_source(path: str) -> str:
     """Read a canonical Swift fixture declaration, including split siblings."""
     requested = ROOT / path
