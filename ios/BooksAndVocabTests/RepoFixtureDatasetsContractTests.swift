@@ -980,6 +980,8 @@ struct RepoFixtureDatasetsContractTests {
             "bookTitle",
             "entries",
             "reviewHistory",
+            "baseFixture",
+            "entryOverrides",
         ]
         let reviewDeckSeedKeys: Set<String> = [
             "notebookRemoteId",
