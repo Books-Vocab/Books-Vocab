@@ -1,0 +1,33 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T05:34:40+00:00",
+      "assetIDs": [
+        "01-explore-loading",
+        "02-explore-loaded",
+        "03-explore-empty",
+        "04-explore-retry",
+        "05-explore-empty-counterexample",
+        "06-explore-retry-counterexample"
+      ],
+      "notes": "P8 combined matrix 視覺審查：同一份 bundle 覆蓋 loading、loaded、empty、retry，以及 empty/retry counterexamples；畫面均保留探索標題、搜尋列與 tab chrome。loaded/retry 的 canonical cover 與 metadata 層級清楚；empty 明示尚無牌組；counterexample 使用不同標籤與牌組，未把不同資料形狀混成成功狀態。",
+      "visualChecks": [
+        "six-step state separation",
+        "catalog density and metadata",
+        "counterexample distinction"
+      ],
+      "manifestSHA256": "e244e1171a3056aca5d4c2e78c281bbb12164108493f7b8a9fe305819cbac601",
+      "evidenceRootSHA256": "3f856ddf412ab9a5e515133ff1a7ce63567dbfbac541b2a48bd73c7f3337ab5b",
+      "provenance": {
+        "sourceCommit": "b40305dcc2adcc074ec56a5d7506ce42c1afd6e5",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "85a69d09c62154657265c405e7ae662ca3658dd9a6ee4c36a315833f8e70c689",
+        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
+        "selector": "--method ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates"
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T10:10:46+00:00",
+      "assetIDs": [
+        "01-launch",
+        "02-large-text-counterexample.review-card-full-coaxed",
+        "03-small-viewport-counterexample.review-card-full-coaxed"
+      ],
+      "notes": "主線逐張檢視 P13：full front 長譯文與例句順序清楚、卡片貼合展開區；full back 以 top-anchored scroll 保留 difficulty/graph links/example/explanation/collocations，底部忘記/記得 toolbar 仍可操作；無中央 blank dead zone。",
+      "visualChecks": [
+        "full front content order",
+        "back scroll preserves optional fields",
+        "grading toolbar remains hittable",
+        "no blank dead zone"
+      ],
+      "manifestSHA256": "0ea5a2006c4fdafcc7347e5b6106ad67f4de0251472101de3ed1bd6ac40eaf28",
+      "evidenceRootSHA256": "d6e2b15d1b38f14c538f74a0bf0a9965b6c517f7ea458bd5116fca28c9fd1f72",
+      "provenance": {
+        "sourceCommit": "0d75e910d77dd59dfb3a30aad13344f9312fcb89",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "b3a21500e5a36147eff26f9dc5ff9a89b8011c0616e2ee3defebc25758704695",
+        "device": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+        "selector": "--method ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled"
+      }
+    }
+  ]
+}

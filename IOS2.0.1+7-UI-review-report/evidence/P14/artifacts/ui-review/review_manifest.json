@@ -1,0 +1,54 @@
+{
+  "schema": "kg.visual-review.sheet.v1",
+  "source": "uitest",
+  "imageRoot": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.fFWGQK",
+  "inputManifest": null,
+  "contactSheet": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.fFWGQK/contact_sheet.png",
+  "render": {
+    "out": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.fFWGQK/contact_sheet.png",
+    "count": 2,
+    "cols": 2,
+    "rows": 1,
+    "width": 584,
+    "height": 657
+  },
+  "items": [
+    {
+      "assetID": "01-terminal-error-real-service",
+      "relPath": "01-terminal-error-real-service.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 1,
+      "stateLabel": "terminal-error-real-service",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 412964,
+      "sha256": "9c357092a657ac720bec4f1e6da18f39f08d06adc41118c42b98c30b539fefd3"
+    },
+    {
+      "assetID": "02-retry-real-service",
+      "relPath": "02-retry-real-service.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 2,
+      "stateLabel": "retry-real-service",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 404013,
+      "sha256": "08c5c76e6750187792ffcfc359c1b7581ec5fde94953e490dbbb1b948817b04c"
+    }
+  ],
+  "provenance": {
+    "sourceCommit": "e36b22a4a584d9ca31931e9b704dcf65df55ae15",
+    "datasetID": "marketing_demo",
+    "datasetSHA256": "97baf2bb781a2f8023321bc2e3961929b5ae532c7b58aa4b9ee2d912aab2a1f7",
+    "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
+    "selector": "--method SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess"
+  }
+}

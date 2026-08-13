@@ -1,0 +1,344 @@
+{
+  "schema": "kg.ios.xcode.v1",
+  "generated_at": "2026-08-13T06:51:09Z",
+  "errors": [],
+  "sources": {
+    "xcode_version": {
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    },
+    "xcode_project_list": {
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    },
+    "xcode_destinations": {
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    },
+    "simctl_devices": {
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    }
+  },
+  "xcode": {
+    "version": "26.4",
+    "build": "17E192",
+    "developerDir": "/Applications/Xcode.app/Contents/Developer"
+  },
+  "project": {
+    "path": "/Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813/ios/BooksAndVocab.xcodeproj",
+    "scheme": "BooksAndVocab",
+    "list": {
+      "configurations": [
+        "Debug",
+        "Release"
+      ],
+      "name": "BooksAndVocab",
+      "schemes": [
+        "BooksAndVocab",
+        "BooksAndVocabUITests",
+        "BooksAndVocabUnitTests"
+      ],
+      "targets": [
+        "BooksAndVocab",
+        "BooksAndVocabTests",
+        "BooksAndVocabUITests"
+      ]
+    }
+  },
+  "destinations": {
+    "source": "xcodebuild -showdestinations",
+    "status": "ok",
+    "exitCode": 0,
+    "error": null,
+    "available": [
+      {
+        "platform": "macOS",
+        "arch": "arm64",
+        "variant": "Mac Catalyst",
+        "id": "00008132-001669963445801C",
+        "name": "My Mac"
+      },
+      {
+        "platform": "macOS",
+        "arch": "arm64",
+        "variant": "Designed for [iPad,iPhone]",
+        "id": "00008132-001669963445801C",
+        "name": "My Mac"
+      },
+      {
+        "platform": "iOS",
+        "arch": "arm64",
+        "id": "00008120-0014146001EB401E",
+        "name": "🍆"
+      },
+      {
+        "platform": "iOS",
+        "arch": "arm64",
+        "id": "00008103-000C69CC3E47C01E",
+        "name": "陳亮宇的iPad"
+      },
+      {
+        "platform": "iOS",
+        "arch": "arm64",
+        "id": "00008112-001C40E83A47A01E",
+        "name": "陳亮宇的iPad (2)"
+      },
+      {
+        "platform": "iOS",
+        "id": "dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder",
+        "name": "Any iOS Device"
+      },
+      {
+        "platform": "iOS Simulator",
+        "id": "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder",
+        "name": "Any iOS Simulator Device"
+      },
+      {
+        "platform": "macOS",
+        "variant": "Mac Catalyst",
+        "name": "Any Mac"
+      },
+      {
+        "platform": "iOS Simulator",
+        "arch": "arm64",
+        "id": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "OS": "26.4",
+        "name": "iPhone 17 Pro Max"
+      },
+      {
+        "platform": "iOS Simulator",
+        "arch": "arm64",
+        "id": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
+        "OS": "26.4",
+        "name": "kg-pool-1"
+      },
+      {
+        "platform": "iOS Simulator",
+        "arch": "arm64",
+        "id": "14A23ED5-8FA1-4C21-BD2A-990C81AC6259",
+        "OS": "26.4",
+        "name": "kg-pool-2"
+      },
+      {
+        "platform": "iOS Simulator",
+        "arch": "arm64",
+        "id": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+        "OS": "26.4",
+        "name": "kg-pool-3"
+      },
+      {
+        "platform": "iOS Simulator",
+        "arch": "arm64",
+        "id": "F27209F8-1464-410F-BC26-7372A522B921",
+        "OS": "26.4",
+        "name": "kg-pool-4"
+      },
+      {
+        "platform": "iOS Simulator",
+        "arch": "arm64",
+        "id": "1D7DAF60-2D66-4E5B-85EE-C1E1087D73A8",
+        "OS": "26.4",
+        "name": "kg-pool-5"
+      }
+    ],
+    "ineligible": []
+  },
+  "simulators": {
+    "source": "xcrun simctl list devices --json",
+    "status": "ok",
+    "exitCode": 0,
+    "error": null,
+    "summary": {
+      "total": 6,
+      "available": 6,
+      "booted": 5
+    },
+    "runtimes": [
+      {
+        "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-4",
+        "devices": [
+          {
+            "name": "iPhone 17 Pro Max",
+            "udid": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "state": "Booted",
+            "isAvailable": true,
+            "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+            "lastBootedAt": "2026-08-12T16:33:19Z"
+          },
+          {
+            "name": "kg-pool-1",
+            "udid": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
+            "state": "Booted",
+            "isAvailable": true,
+            "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+            "lastBootedAt": "2026-08-12T16:44:15Z"
+          },
+          {
+            "name": "kg-pool-2",
+            "udid": "14A23ED5-8FA1-4C21-BD2A-990C81AC6259",
+            "state": "Booted",
+            "isAvailable": true,
+            "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+            "lastBootedAt": "2026-08-12T18:37:16Z"
+          },
+          {
+            "name": "kg-pool-3",
+            "udid": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+            "state": "Booted",
+            "isAvailable": true,
+            "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+            "lastBootedAt": "2026-08-12T17:15:01Z"
+          },
+          {
+            "name": "kg-pool-4",
+            "udid": "F27209F8-1464-410F-BC26-7372A522B921",
+            "state": "Booted",
+            "isAvailable": true,
+            "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+            "lastBootedAt": "2026-08-13T05:38:13Z"
+          },
+          {
+            "name": "kg-pool-5",
+            "udid": "1D7DAF60-2D66-4E5B-85EE-C1E1087D73A8",
+            "state": "Shutdown",
+            "isAvailable": true,
+            "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+            "lastBootedAt": "2026-08-12T12:25:00Z"
+          }
+        ]
+      }
+    ]
+  }
+}
+{
+  "schema": "kg.ios.simulator.v1",
+  "generated_at": "2026-08-13T06:51:09Z",
+  "action": "status",
+  "status": "ok",
+  "device": {
+    "name": "iPhone 17 Pro Max",
+    "udid": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+    "state": "Booted",
+    "isAvailable": true,
+    "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+    "lastBootedAt": "2026-08-12T16:33:19Z"
+  },
+  "app": {
+    "bundleID": "com.Max0228.BooksBrowser",
+    "container": {
+      "data": "/Users/chenliangyu/Library/Developer/CoreSimulator/Devices/F068B3D8-9E0B-475B-85C3-97BC61748A8F/data/Containers/Data/Application/DD9B4EA3-3738-466F-A9E0-5EAB180BA458",
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    },
+    "process": {
+      "name": "BooksAndVocab",
+      "pid": null,
+      "status": "stopped",
+      "exitCode": 1,
+      "error": "command-failed"
+    }
+  },
+  "sources": {
+    "simctl_devices": {
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    },
+    "app_container": {
+      "status": "ok",
+      "exitCode": 0,
+      "error": null
+    },
+    "app_process": {
+      "status": "error",
+      "exitCode": 1,
+      "error": "command-failed"
+    }
+  },
+  "timings": {
+    "totalMs": 1176,
+    "simctlDevicesMs": 481,
+    "appContainerMs": 479,
+    "appProcessMs": 145
+  },
+  "errors": []
+}
+[ios_test] leased simulator udid=43FA3E1B-16F8-4144-B17D-53D5E4728FC6
+[ios_test] caller=feat/p4-p5-reader-settings-preview-20260813 scope=ui running 1 selector(s) (0=scheme all targets)...
+[ios_test] simulator ensure-booted — device="43FA3E1B-16F8-4144-B17D-53D5E4728FC6" (up to ~30s if cold-starting from scratch)...
+[ios][simulator] schema=kg.ios.simulator.v1 action=ensure-booted status=ok selector=43FA3E1B-16F8-4144-B17D-53D5E4728FC6 device=43FA3E1B-16F8-4144-B17D-53D5E4728FC6
+[ios][simulator] boot status=ok exitCode=0 wasAlreadyBooted=true waitedForBootstatus=true
+[ios][simulator] timings totalMs=730 resolveMs=540 bootMs=0 bootstatusMs=0
+[ios_test] caller=feat/p4-p5-reader-settings-preview-20260813 waiting for build lock...
+[ios_test] phase=lock-wait kind=build elapsed=15s pid=98920 alive=true holderPid=94789 holderAlive=true
+[ios_test] phase=lock-wait kind=build elapsed=30s pid=98920 alive=true holderPid=94789 holderAlive=true
+[ios_test] build lock acquired lockWaitMs=33517
+[ios_test][build-for-testing] ▸ 0 events 4s
+[ios_test][build-for-testing] ▸ 0 events 8s
+[ios_test][build-for-testing] ▸ 0 events 12s
+[ios_test][build-for-testing] ▸ 0 events 16s
+[ios_test][build-for-testing] ~ code-signing 20s
+[ios_test][build-for-testing] ~ code-signing 25s
+[ios_test][build-for-testing] ▸ 44 events (29s, no baseline yet) target=AppCheckCore
+[ios_test][build-for-testing] ▸ 106 events 33s
+[ios_test][build-for-testing] ▸ 238 events 37s
+[ios_test][build-for-testing] ▸ 332 events 41s
+[ios_test][build-for-testing] ▸ 389 events 45s
+[ios_test][build-for-testing] ▸ 536 events (49s, no baseline yet) target=ReadiumShared — DataResource.swift
+[ios_test][build-for-testing] ▸ 555 events 52s
+[ios_test][build-for-testing] ▸ 789 events 56s
+[ios_test][build-for-testing] ▸ 805 events 60s
+[ios_test][build-for-testing] ▸ 890 events 64s
+[ios_test][build-for-testing] ~ code-signing 68s
+[ios_test][build-for-testing] ~ code-signing 72s
+[ios_test][build-for-testing] ~ code-signing 77s
+[ios_test][build-for-testing] ~ code-signing 81s
+[ios_test][build-for-testing] ▸ 892 events (85s, no baseline yet) target=BooksAndVocab — ReadiumNavigatorJS+BaseStyle.swift
+[ios_test][build-for-testing] ▸ 1121 events 89s
+[ios_test][build-for-testing] ▸ 1198 events 93s
+[ios_test][build-for-testing] ~ code-signing 97s
+[ios_test][build-for-testing] ▸ 1328 events 100s
+[ios_test][build-for-testing] ~ code-signing 104s
+[ios_test][build-for-testing] ▸ 1479 events (108s, no baseline yet) target=BooksAndVocabUITests — NotebookReviewFlowUITests.swift
+[ios_test][build-for-testing] finished (109527ms, 1479 compile events, exit=0)
+[ios_test] fixture dataset staged: BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_98920.scoped.xctestrun (KG_FIXTURE_DATASET_DEFLATE_B64 ← /Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813/ops/fixtures/ui_worlds/marketing_demo.json)
+[ios_test] caller=feat/p4-p5-reader-settings-preview-20260813 waiting for device lock selector="43FA3E1B-16F8-4144-B17D-53D5E4728FC6"...
+[ios_test] device lock acquired deviceRunLockWaitMs=10
+[ios_test][ui-video] recording udid=43FA3E1B-16F8-4144-B17D-53D5E4728FC6 pid=5640 out=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_ui_steps.a4zJf0/run_recording.mp4
+[ios_test] xcodebuild pid=5643 mode=test-without-building uiLaunchProfile=ui-smoke xctestrun=/Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813/.cache/ios-test-derived-data/b641f09dd0bf451e87698543771672e2f985249a2555f93522c50a0a77a4293d/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_98920.scoped.xctestrun log=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/tmp.BQV8dwrpQR xcresult=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.jsQ7Fc/Test.xcresult
+[ios_test] ··· 157s
+[ios_test] ··· 161s
+[ios_test] ··· 165s
+[ios_test] ··· 169s
+Test Suite 'Selected tests' started at 2026-08-13 14:54:04.352.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 14:54:04.352.
+Test Suite 'ReaderSettingsUITests' started at 2026-08-13 14:54:04.353.
+Test Case '-[BooksAndVocabUITests.ReaderSettingsUITests testProductionReaderSettingsRoundTripAfterReaderReopen]' started.
+[ios_test] … still running (179s, pid=5643, log=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/tmp.BQV8dwrpQR, idle=0s) — last: Test Case '-[BooksAndVocabUITests.ReaderSettingsUITests testProductionReaderSettingsRoundTripAfterReaderReopen]' started.
+[ios_test] … still running (210s, pid=5643, log=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/tmp.BQV8dwrpQR, idle=1s) — last: Test Case '-[BooksAndVocabUITests.ReaderSettingsUITests testProductionReaderSettingsRoundTripAfterReaderReopen]' started.
+[ios_test][ui-video] saved /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_ui_steps.a4zJf0/run_recording.mp4
+Test Case '-[BooksAndVocabUITests.ReaderSettingsUITests testProductionReaderSettingsRoundTripAfterReaderReopen]' passed (51.899 seconds).
+Test Suite 'ReaderSettingsUITests' passed at 2026-08-13 14:54:56.252.
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 14:54:56.253.
+Test Suite 'Selected tests' passed at 2026-08-13 14:54:56.253.
+Test session results, code coverage, and logs:
+** TEST EXECUTE SUCCEEDED **
+[ios][issues] source=xcresult-test-results result=pass errors=0 warnings=0 swift6=0 storekit=0 spm=0 signing=0
+[ios][issues] xcresult=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.jsQ7Fc/Test.xcresult
+[ios][issues] log=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/tmp.BQV8dwrpQR
+[ios][tests] tests=1 passed=1 failed=0 skipped=0 expectedFailures=0
+[ios][test-timing] testBodyMs=51000 xcresultSessionMs=72972
+[ios_test][ui-steps] screenshots=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_ui_steps.a4zJf0 contactSheet=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_ui_steps.a4zJf0/contact_sheet.png
+[ios_test][ui-steps] quick4=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_ui_steps.a4zJf0/quick4_contact_sheet.png
+[ios_test][ui-video] archived /Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813/build/snapshots/uitest-videos/20260813-065459-ui.mp4
+[ios_test][ui-review] html=/Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813/build/snapshots/uitest-runs/20260813-065459-ui/UIreview.html
+
+[ios_test][ui-review] html=/Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813/build/snapshots/uitest-runs/20260813-065459-ui/UIreview.html
+[ios_test] timings cacheStatus=prepared uiLaunchProfile=ui-smoke deviceRunLockWaitMs=10 bootMs=907 buildForTestingMs=109527 testInvocationMs=75246 testBodyMs=51000 xcresultSessionMs=72972 xcresultHarnessOverheadMs=21972 appLaunchAverageMs=0 appLaunchSamples=0 invocationOverheadMs=2274 xcodebuildMs=184773 totalMs=224552
+[ios_test] ✓ all tests passed (1 executed, 224s) — feat/p4-p5-reader-settings-preview-20260813  log=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/tmp.BQV8dwrpQR  xcresult=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.jsQ7Fc/Test.xcresult  verdict=/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_verdict.1786603870-98906

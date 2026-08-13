@@ -1,0 +1,69 @@
+{
+  "schema": "kg.visual-review.sheet.v1",
+  "source": "uitest",
+  "imageRoot": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.CaNNr0",
+  "inputManifest": null,
+  "contactSheet": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.CaNNr0/contact_sheet.png",
+  "render": {
+    "out": "/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_ui_steps.CaNNr0/contact_sheet.png",
+    "count": 3,
+    "cols": 3,
+    "rows": 1,
+    "width": 860,
+    "height": 657
+  },
+  "items": [
+    {
+      "assetID": "01-launch",
+      "relPath": "01-launch.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 1,
+      "stateLabel": "launch",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 205176,
+      "sha256": "99798209e7f09cf42f126509e35ec15212be9b1e1b5313eb0a09650562bd6a76"
+    },
+    {
+      "assetID": "02-optional-sections-counterexample.review-card-compact-coaxed",
+      "relPath": "02-optional-sections-counterexample.review-card-compact-coaxed.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 2,
+      "stateLabel": "optional-sections-counterexample.review-card-compact-coaxed",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 160948,
+      "sha256": "1f30d91b9f838dc6bbdfca7c924c2a1b0e54b527650986d464a0a3d4bb1b2dca"
+    },
+    {
+      "assetID": "03-reset-all",
+      "relPath": "03-reset-all.png",
+      "surface": "UITest Step",
+      "lane": "ui-test",
+      "stateFacet": "step",
+      "stateFacetRank": 3,
+      "stateLabel": "reset-all",
+      "feature": "UITest",
+      "appearance": "light",
+      "width": 1320,
+      "height": 2868,
+      "byteSize": 299115,
+      "sha256": "bc484548e025ee07d956af2eb016d3c6c573ee5ca7eaed96264992bfe6856fde"
+    }
+  ],
+  "provenance": {
+    "sourceCommit": "a5eef902fc7077dcec7c029530473ea2786d30ed",
+    "datasetID": "marketing_demo",
+    "datasetSHA256": "b3a21500e5a36147eff26f9dc5ff9a89b8011c0616e2ee3defebc25758704695",
+    "device": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+    "selector": "--method ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T09:44:55+00:00",
+      "assetIDs": [
+        "01-launch",
+        "02-optional-sections-counterexample.review-card-compact-coaxed",
+        "03-reset-all"
+      ],
+      "notes": "主線逐張檢視 contact sheet 與中間 card screenshot：launch shell、compact optional-sections counterexample（coaxed front，必要欄位可讀且可評分）、reset-all settings home；無遮擋、無空白 dead zone、狀態可區分。",
+      "visualChecks": [
+        "compact front hierarchy",
+        "optional fields intentionally absent",
+        "settings summary/reset state"
+      ],
+      "manifestSHA256": "4777e04f99f8cd4c6c63b918e7044566e2ac5b9397f7df2584e9dc910d113266",
+      "evidenceRootSHA256": "98fdceaf42556d6b55dab9c86e765778056ff7da2b266760e1d367f5482ab792",
+      "provenance": {
+        "sourceCommit": "a5eef902fc7077dcec7c029530473ea2786d30ed",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "b3a21500e5a36147eff26f9dc5ff9a89b8011c0616e2ee3defebc25758704695",
+        "device": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+        "selector": "--method ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings"
+      }
+    }
+  ]
+}

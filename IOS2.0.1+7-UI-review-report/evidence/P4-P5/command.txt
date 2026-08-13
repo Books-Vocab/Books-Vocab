@@ -1,0 +1,12 @@
+sourceWorktree=/Users/chenliangyu/project/kg/.claude/worktrees/p4-p5-reader-settings-preview-20260813
+helper=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh
+toolRoot=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812
+validator=/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260812/ops/uitest_evidence_contract.py
+toolResolution=helper-skill-repo
+branch=feat/p4-p5-reader-settings-preview-20260813
+sourceCommit=f219d13804b0f5bf07c052486c380fcf726ed92b
+dataset=marketing_demo
+datasetSHA256=f3049eae67a88e84676001686caac94c4a543f91836e3e440f5963bba512bee7
+selector=--method ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen
+simulatorMode=explicit-lease
+runner=./ops/ios_ops.sh test --ui --json --dataset marketing_demo --lease ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen 
