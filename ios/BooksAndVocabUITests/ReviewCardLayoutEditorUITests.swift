@@ -51,7 +51,7 @@ private enum ReviewCardVisualEvidenceStep {
         fixture: .notebookReviewCardFullInfo,
         identity: .p13Production,
         face: .front,
-        presentation: .scroll,
+        presentation: .natural,
         geometry: .fullFront
     )
 }
