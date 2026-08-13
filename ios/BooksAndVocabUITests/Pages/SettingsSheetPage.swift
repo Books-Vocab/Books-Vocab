@@ -450,7 +450,14 @@ struct SettingsSheetPage {
                value.isHittable {
                 return
             }
-            accountScrollView.swipeUp()
+            let viewport = accountScrollView.frame
+            if value.exists, !value.frame.isEmpty, value.frame.minY < viewport.minY {
+                // The preceding probe may have moved the value above the
+                // viewport. A one-way swipe-up loop can never recover it.
+                accountScrollView.swipeDown()
+            } else {
+                accountScrollView.swipeUp()
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
         XCTAssertTrue(
