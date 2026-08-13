@@ -281,7 +281,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
-TEST_CACHE_ROOT="${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived-data}"
+# shellcheck source=lib/ios_test_cache_root.sh
+source "$SCRIPT_DIR/lib/ios_test_cache_root.sh"
+# Keep content-keyed test products at the git-common anchor so linked
+# worktrees share one bounded cache instead of retaining gigabytes each.
+TEST_CACHE_ROOT="$(kg_ios_test_cache_root "$PROJECT_ROOT")"
 UV_BIN="${UV_BIN:-}"
 if [[ -z "$UV_BIN" ]]; then
   if [[ -x "$HOME/.local/bin/uv" ]]; then
@@ -500,7 +504,8 @@ if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
     echo "[ios_test] error: dataset file not found: $UI_FIXTURE_DATASET_FILE" >&2
     exit 1
   fi
-  if ! "$UV_BIN" run --python 3.13 python "$PROJECT_ROOT/ops/ui_world_manifest.py" validate "$UI_FIXTURE_DATASET_FILE" --label "UITest UI World dataset" >/dev/null; then
+  if ! python_bin="$(kg_project_python_bin "$PROJECT_ROOT")" || \
+     ! "$python_bin" "$PROJECT_ROOT/ops/ui_world_manifest.py" validate "$UI_FIXTURE_DATASET_FILE" --label "UITest UI World dataset" >/dev/null; then
     exit 1
   fi
   EVIDENCE_DATASET_ID="$(jq -r '.datasetID // empty' "$UI_FIXTURE_DATASET_FILE")"

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --project backend python
+#!/usr/bin/env -S uv run --no-cache --no-project --python 3.13
 """Summarize actionable iOS xcodebuild diagnostics from a raw log.
 
 This is intentionally stdlib-only. It is used by shell ops scripts after

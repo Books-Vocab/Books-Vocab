@@ -41,6 +41,15 @@ if [[ -z "$UV_BIN" ]]; then
     UV_BIN="uv"
   fi
 fi
+
+# Keep this self-test from reading/writing the user's long-lived uv cache.  The
+# coverage probe invokes many isolated uv commands; its cache is disposable
+# evidence and must not become another unbounded project artifact.
+CI_UV_CACHE_DIR=""
+if [[ -z "${UV_CACHE_DIR:-}" ]]; then
+  CI_UV_CACHE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg-ops-ci-uv.XXXXXX")"
+  export UV_CACHE_DIR="$CI_UV_CACHE_DIR"
+fi
 GROUP_CHAIN_TOOL="$WORKSPACE/ops/tests/ops_group_chain.py"
 
 # 這些 group 在 linux runner 上只需要 workflow 明講會裝的東西：
@@ -108,6 +117,7 @@ LINUX_GROUPS=(
   ios-cache-evict
   ios-test-discovery
   userland-portability
+  disk-guard
   # ── IMP-0038：排除理由是「anchor 指向從未進 origin 的 pre-squash commit，只能從
   #    本地 dangling object 解析」。2026-08-06 收攏後 179 顆 commit 已 sync 到
   #    origin/main，且逐份實測全部 active doc 的 verified_against 都能從 origin/main
@@ -262,7 +272,13 @@ ok_if_clean "classification contains no stale entries"
 section "workflow action refs are immutable and non-empty"
 POLICY="$WORKSPACE/ops/workflow_dependency_policy.py"
 policy_fixture="$(mktemp -d "${TMPDIR:-/tmp}/kg-workflow-policy.XXXXXX")"
-trap 'rm -rf "$policy_fixture"' EXIT
+cleanup_coverage_tmp() {
+  rm -rf "$policy_fixture"
+  if [[ -n "$CI_UV_CACHE_DIR" ]]; then
+    rm -rf "$CI_UV_CACHE_DIR"
+  fi
+}
+trap cleanup_coverage_tmp EXIT
 
 make_policy_fixture() {
   local dir="$1" ref="$2"
@@ -280,7 +296,7 @@ make_policy_fixture() {
 }
 
 policy_run() {
-  uv run --no-project --python 3.13 python "$POLICY" \
+  "$UV_BIN" run --no-project --python 3.13 python "$POLICY" \
     --workflows-dir "$1" --json >"$1/result.json" 2>"$1/result.err"
 }
 
@@ -318,7 +334,7 @@ else
 fi
 
 section "repository workflow action refs are immutable"
-if uv run --no-project --python 3.13 python "$POLICY" \
+if "$UV_BIN" run --no-project --python 3.13 python "$POLICY" \
   --workflows-dir "$WORKSPACE/.github/workflows" --json; then
   ok "repository workflow action refs pass immutable-ref policy"
 else
