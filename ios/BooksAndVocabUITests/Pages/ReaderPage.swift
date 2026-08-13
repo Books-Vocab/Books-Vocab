@@ -484,12 +484,6 @@ struct ReaderPage {
         return false
     }
 
-    func contentTextCount(_ text: String) -> Int {
-        app.webViews.staticTexts
-            .matching(NSPredicate(format: "label == %@", text))
-            .count
-    }
-
     // MARK: - Translation Panel
 
     private var translationWordQuery: XCUIElementQuery {

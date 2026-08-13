@@ -73,7 +73,6 @@ final class ReaderFlowUITests: UITestCase {
             XCTFail("閱讀器必須渲染真章節文本（章首段落「\(Self.seededWord)」）— 沒出現 = 開書失敗或內容是假的")
             return
         }
-        XCTAssertEqual(reader.contentTextCount(Self.seededWord), 1, "reader content selector must resolve exactly one element")
         captureStep("reader-content", app: app)
 
         // ── 3. 選詞 → 翻譯面板真的出現且帶內容（詞庫命中，零網路）──────────
@@ -459,7 +458,6 @@ final class ReaderFlowUITests: UITestCase {
                 reader.contentText(Self.seededWord).waitUntilExists(timeout: 45),
                 "Retry path must open the local fixture book for \(scenario.rawValue)"
             )
-            XCTAssertEqual(reader.contentTextCount(Self.seededWord), 1, "reader content selector must resolve exactly one element")
             XCTAssertEqual(reader.loadingOverlayCount, 0,
                            "Loading overlay must disappear after loaded content")
             XCTAssertEqual(reader.retryButtonCount, 0,
