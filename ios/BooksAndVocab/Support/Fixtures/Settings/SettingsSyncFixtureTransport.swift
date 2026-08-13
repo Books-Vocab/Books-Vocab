@@ -115,14 +115,16 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
             )
             return response(request, statusCode: 200, body: body)
         case "/api/vocab/review-events":
+            // This read runs concurrently with the vocabulary pull. Its response
+            // can arrive before `nextVocabPull()` increments the round counter,
+            // so it is intentionally not added to the round-bound evidence ledger.
+            // The vocab and dictionary pull events below are the canonical,
+            // round-stable proof of this lifecycle.
             let result = response(
                 request,
                 statusCode: 200,
                 body: Data(#"{"entries":[],"cursor":null}"#.utf8)
             )
-            let round = currentVocabPull()
-            SettingsSyncFixtureEvidenceStore.shared.record(round: round, path: path, statusCode: 200)
-            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(round) path=\(path) status=200")
             return result
         case "/api/health":
             return response(
