@@ -249,7 +249,7 @@ def validate_manifest(
         _require(_require_non_empty_string(formal["path"], field="outer verdict P9 artifact path"), "outer verdict P9 artifact path missing")
         if manifest_path is not None:
             _require(
-                formal["path"] == str(manifest_path.resolve()),
+                Path(formal["path"]).resolve() == manifest_path.resolve(),
                 "outer verdict P9 artifact path drifted",
             )
         for field in ("sourceCommit", "datasetID", "datasetSHA256", "device", "selector"):
