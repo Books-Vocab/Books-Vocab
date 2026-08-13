@@ -67,6 +67,11 @@ struct SettingsReviewSection: View {
                 Text(L10n.string("凍結複習時鐘"))
                     .accessibilityHidden(true)
             }
+            .accessibilityIdentifier("settings.review.pauseToggle")
+            // iOS 26 Form's synthesized Switch accessibility value can lag one
+            // render behind its SwiftUI binding. Publish the same presentation
+            // state explicitly so UI tests observe the state users see.
+            .accessibilityValue(pauseDraft ? "1" : "0")
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
         } footer: {
