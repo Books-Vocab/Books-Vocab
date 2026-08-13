@@ -351,7 +351,15 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> XCUIElement? {
-        exactlyOne(webViewQuery, named: "production Reader WebView", timeout: timeout, file: file, line: line)
+        // Readium exposes one WebView per paginated spread. The seeded content
+        // marker and the production-reader assertions provide the uniqueness
+        // proof; requiring a single WebView would reject a valid multi-spread
+        // reader state.
+        guard webViewQuery.waitUntilAtLeastOne(timeout: timeout) else {
+            XCTFail("production Reader must expose at least one WebView", file: file, line: line)
+            return nil
+        }
+        return webViewQuery.element(boundBy: 0)
     }
 
     func settingsStateElement(
