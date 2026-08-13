@@ -104,6 +104,12 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// protects identity changes; this token also prevents an older round's
     /// defer from clearing the flag belonging to a newer round.
     private var resyncRequestID = 0
+    /// The Settings UI owns the foreground resync task so an account boundary
+    /// can cancel the old round instead of merely ignoring its final state.
+    /// A stale task must not keep polling for the shared sync lane and then
+    /// perform writes after the next account has appeared.
+    private var activeResyncTask: Task<Void, Never>?
+    private var activeResyncTaskID = 0
     /// 這一輪同步的逐步進度。生命週期由 `syncLifecycle` 單一擁有，避免
     /// 進行中狀態與終態不另外漂移成兩份真相。
     private var reviewClockMutation = SettingsMutationGeneration()
@@ -164,8 +170,30 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// the next one. Persistent preferences and server-backed settings are
     /// reloaded by `loadData`; only the leaf sync presentation belongs here.
     func resetForAccountBoundary() {
+        activeResyncTask?.cancel()
+        activeResyncTask = nil
+        activeResyncTaskID &+= 1
         accountGeneration &+= 1
         resyncRequestID &+= 1
+        // The generation/request tokens make any old async round stale; the
+        // presentation state must be reset as well, otherwise a stale
+        // `.syncing` lifecycle blocks the newly authenticated account at the
+        // `isInFlight` guard and the next resync can never start.
+        _ = syncLifecycle.reset()
+        syncAttempt = 0
+        syncDataOutcome = .none
+        syncMessage = nil
+        syncEvidence = nil
+#if DEBUG
+        if settingsSyncFixtureSummary != nil {
+            // The old fixture transport may still finish after this boundary.
+            // Drop its service and rotate the evidence session so late events
+            // cannot contaminate the newly authenticated account's proof.
+            settingsSyncService = nil
+            settingsSyncFixtureSummary = nil
+            _ = SettingsSyncFixtureEvidenceStore.shared.beginSession()
+        }
+#endif
         syncProgress.reset()
     }
 
@@ -646,6 +674,31 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: SettingsSyncService,
         modelContext: ModelContext
     ) async {
+        guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
+        guard activeResyncTask == nil, !syncLifecycle.isInFlight else { return }
+
+        activeResyncTaskID &+= 1
+        let taskID = activeResyncTaskID
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performResync(
+                authManager: authManager,
+                kgService: kgService,
+                modelContext: modelContext
+            )
+        }
+        activeResyncTask = task
+        await task.value
+        if activeResyncTaskID == taskID {
+            activeResyncTask = nil
+        }
+    }
+
+    private func performResync(
+        authManager: any AuthManaging,
+        kgService: SettingsSyncService,
+        modelContext: ModelContext
+    ) async {
         // 資格 gate：demo 模式 `isLoggedIn == true` 但無真 token，同步會踩 `unauthorized`
         // → 誤彈「登入已過期」。與 `ExplicitSync` / 自動同步同政策：登出 / demo 一律 no-op。
         // （UI 已以 syncSummary 擋登出，此處 defense-in-depth 並補上 demo 漏洞。）
@@ -705,7 +758,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             }
         }
 
-        let outcome = await activeSyncService.backgroundSync(container: modelContext.container) { event in
+        let outcome = await activeSyncService.backgroundSyncWhenAvailable(container: modelContext.container) { event in
             continuation.yield(event)
         }
         guard isCurrentResync(

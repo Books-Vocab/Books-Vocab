@@ -99,11 +99,15 @@ final class KGService: KGServing {
     /// 最近一次背景同步失敗訊息（UI 可觀測）
     var lastBackgroundSyncError: String?
 
-    /// Guard against concurrent backgroundSync calls (e.g. rapid foreground/background toggling)
+    /// Guard against concurrent backgroundSync calls (e.g. rapid foreground/background toggling).
+    /// This lane is process-wide because Settings can replace its DEBUG fixture
+    /// service at an account boundary while the previous instance is still
+    /// unwinding; an instance-local lock would allow both services to write
+    /// SwiftData concurrently.
     @ObservationIgnored
-    private let _backgroundSyncLock = NSLock()
+    private static let _backgroundSyncLock = NSLock()
     @ObservationIgnored
-    private var _isBackgroundSyncing = false
+    private static var _isBackgroundSyncing = false
 
     /// Serialises review-event pushes across the two entry points that reach
     /// them: `backgroundSync` (behind `claimBackgroundSync`) and
@@ -147,17 +151,42 @@ final class KGService: KGServing {
     /// Thread-safe check-and-set for background sync guard.
     /// Returns `true` if sync was successfully claimed (caller should proceed).
     func claimBackgroundSync() -> Bool {
-        _backgroundSyncLock.lock()
-        defer { _backgroundSyncLock.unlock() }
-        guard !_isBackgroundSyncing else { return false }
-        _isBackgroundSyncing = true
+        Self._backgroundSyncLock.lock()
+        defer { Self._backgroundSyncLock.unlock() }
+        guard !Self._isBackgroundSyncing else { return false }
+        Self._isBackgroundSyncing = true
         return true
     }
 
     func releaseBackgroundSync() {
-        _backgroundSyncLock.lock()
-        defer { _backgroundSyncLock.unlock() }
-        _isBackgroundSyncing = false
+        Self._backgroundSyncLock.lock()
+        defer { Self._backgroundSyncLock.unlock() }
+        Self._isBackgroundSyncing = false
+    }
+
+    /// Claim the shared background-sync lane without racing the currently
+    /// active trigger. Settings uses this at an account boundary: returning
+    /// `.didNotRun` there would leave the newly authenticated account with no
+    /// sync at all when the previous account's round is still unwinding.
+    func claimBackgroundSyncWhenAvailable() async -> Bool {
+        while !Task.isCancelled {
+            if claimBackgroundSync() {
+                // Cancellation can arrive between the loop condition and the
+                // lock acquisition. Never let that race turn a cancelled
+                // waiter into an owner that starts a real sync round.
+                if Task.isCancelled {
+                    releaseBackgroundSync()
+                    return false
+                }
+                return true
+            }
+            do {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            } catch {
+                return false
+            }
+        }
+        return false
     }
 
     // MARK: - Pull serialization

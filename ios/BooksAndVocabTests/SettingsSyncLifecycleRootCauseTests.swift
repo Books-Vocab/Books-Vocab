@@ -6,6 +6,37 @@ import Testing
 @Suite("Settings sync lifecycle root cause", .serialized)
 @MainActor
 struct SettingsSyncLifecycleRootCauseTests {
+    @Test("fixture evidence rejects events from a prior account session")
+    func fixtureEvidenceIsSessionScoped() {
+        let oldSession = SettingsSyncFixtureEvidenceStore.shared.beginSession()
+        SettingsSyncFixtureEvidenceStore.shared.record(
+            sessionID: oldSession,
+            round: 1,
+            path: "/api/vocab",
+            statusCode: 200
+        )
+
+        let newSession = SettingsSyncFixtureEvidenceStore.shared.beginSession()
+        SettingsSyncFixtureEvidenceStore.shared.record(
+            sessionID: oldSession,
+            round: 2,
+            path: "/api/vocab",
+            statusCode: 200
+        )
+        SettingsSyncFixtureEvidenceStore.shared.record(
+            sessionID: newSession,
+            round: 1,
+            path: "/api/vocab",
+            statusCode: 200
+        )
+
+        #expect(
+            SettingsSyncFixtureEvidenceStore.shared.snapshot() == [
+                SettingsSyncTransportEvent(round: 1, path: "/api/vocab", statusCode: 200)
+            ]
+        )
+    }
+
     @Test("canonical sync summary accepts terminal error provenance")
     func canonicalSyncSummaryCarriesLifecycleMetadata() throws {
         let data = Data(#"""

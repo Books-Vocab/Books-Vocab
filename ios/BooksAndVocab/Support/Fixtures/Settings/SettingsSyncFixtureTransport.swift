@@ -6,16 +6,25 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
 
     private let lock = NSLock()
     private var events: [SettingsSyncTransportEvent] = []
+    private var sessionID = 0
 
-    func reset() {
+    @discardableResult
+    func beginSession() -> Int {
         lock.lock()
         defer { lock.unlock() }
+        sessionID &+= 1
         events.removeAll(keepingCapacity: true)
+        return sessionID
     }
 
-    func record(round: Int, path: String, statusCode: Int) {
+    func reset() {
+        _ = beginSession()
+    }
+
+    func record(sessionID: Int, round: Int, path: String, statusCode: Int) {
         lock.lock()
         defer { lock.unlock() }
+        guard self.sessionID == sessionID else { return }
         events.append(SettingsSyncTransportEvent(round: round, path: path, statusCode: statusCode))
     }
 
@@ -41,6 +50,7 @@ enum SettingsSyncFixtureTransportError: Error, Equatable {
 /// which executes the ordinary push/pull/review pipeline and writes SwiftData.
 final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
     private let failureMessage: String
+    private let evidenceSessionID: Int
     private let lock = NSLock()
     private var vocabPullCount = 0
 
@@ -55,6 +65,7 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
             )
         }
         failureMessage = message
+        evidenceSessionID = SettingsSyncFixtureEvidenceStore.shared.beginSession()
     }
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
@@ -67,7 +78,7 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
                 statusCode: 200,
                 body: attempt == 1 ? Self.partialCards : Self.completeCards
             )
-            SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 200)
+            SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: attempt, path: path, statusCode: 200)
             PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
             return result
         case "/api/dictionary-cards":
@@ -82,12 +93,12 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
                     statusCode: 429,
                     body: body
                 )
-                SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 429)
+                SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: attempt, path: path, statusCode: 429)
                 PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=429")
                 return result
             }
             let result = response(request, statusCode: 200, body: Data("[]".utf8))
-            SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 200)
+            SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: attempt, path: path, statusCode: 200)
             PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
             return result
         case "/api/vocab/review":
@@ -161,6 +172,12 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
     }
 
     static func encodeJSONBody(path: String, object: Any) throws -> Data {
+        guard JSONSerialization.isValidJSONObject(object) else {
+            throw SettingsSyncFixtureTransportError.jsonSerializationFailed(
+                path: path,
+                reason: "object is not a valid JSON value"
+            )
+        }
         do {
             return try JSONSerialization.data(withJSONObject: object)
         } catch {
