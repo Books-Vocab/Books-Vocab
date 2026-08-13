@@ -481,10 +481,10 @@ struct TodayReviewPage {
         while Date() < deadline {
             if cardIsCanonical(cardIdentifier, identity: identity),
                cardMatchesGeometry(cardIdentifier, geometry: geometry),
-               exactlyOne(presentationIdentifier),
-               elements(for: alternatePresentationIdentifier).count == 0,
-               requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) }),
-               absentFieldIdentifiers.allSatisfy({ elements(for: $0).count == 0 }) {
+               scopedExactlyOne(cardIdentifier, presentationIdentifier),
+               scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0,
+               requiredFieldIdentifiers.allSatisfy({ scopedExactlyOne(cardIdentifier, $0) }),
+               absentFieldIdentifiers.allSatisfy({ scopedCount(cardIdentifier, $0) == 0 }) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -492,10 +492,10 @@ struct TodayReviewPage {
 
         return cardIsCanonical(cardIdentifier, identity: identity)
             && cardMatchesGeometry(cardIdentifier, geometry: geometry)
-            && exactlyOne(presentationIdentifier)
-            && elements(for: alternatePresentationIdentifier).count == 0
-            && requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) })
-            && absentFieldIdentifiers.allSatisfy({ elements(for: $0).count == 0 })
+            && scopedExactlyOne(cardIdentifier, presentationIdentifier)
+            && scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0
+            && requiredFieldIdentifiers.allSatisfy({ scopedExactlyOne(cardIdentifier, $0) })
+            && absentFieldIdentifiers.allSatisfy({ scopedCount(cardIdentifier, $0) == 0 })
     }
 
     private func cardIsCanonical(_ identifier: String, identity: CardIdentity) -> Bool {
@@ -533,9 +533,24 @@ struct TodayReviewPage {
             && bottomGap <= maximumBottomGap
     }
 
-    private func exactlyOne(_ identifier: String) -> Bool {
-        let matching = elements(for: identifier).allElementsBoundByIndex
+    /// The review deck intentionally keeps two non-interactive preview cards
+    /// mounted behind the interactive card. Their identifiers are valid but
+    /// must not participate in the active-card evidence contract.
+    private func scopedExactlyOne(_ cardIdentifier: String, _ identifier: String) -> Bool {
+        let matching = scopedElements(cardIdentifier, identifier).allElementsBoundByIndex
         return matching.count == 1 && matching[0].exists
+    }
+
+    private func scopedCount(_ cardIdentifier: String, _ identifier: String) -> Int {
+        scopedElements(cardIdentifier, identifier).allElementsBoundByIndex.count
+    }
+
+    private func scopedElements(_ cardIdentifier: String, _ identifier: String) -> XCUIElementQuery {
+        let cards = elements(for: cardIdentifier).allElementsBoundByIndex
+        guard cards.count == 1 else {
+            return app.descendants(matching: .any).matching(identifier: "__invalid-card-scope__")
+        }
+        return cards[0].descendants(matching: .any).matching(identifier: identifier)
     }
 
     private func elements(for identifier: String) -> XCUIElementQuery {
