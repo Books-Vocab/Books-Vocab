@@ -98,6 +98,13 @@ IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # DerivedData remains one shared, bounded cache anchored at the MAIN repo;
 # install provenance, not cache isolation, distinguishes its producer.
 DERIVED_DATA_ROOT="$(kg_ios_shared_derived_data_root "$PROJECT_ROOT")"
+# Catalyst is a separate platform product set.  Keeping it in the simulator/device
+# cache makes one Gate accumulate two full Xcode trees before the receipt is written.
+# The platform suffix also makes cleanup ownership explicit: Catalyst is a compile
+# gate artifact, not an install/test cache.
+if [[ "$CATALYST" == "1" ]]; then
+  DERIVED_DATA_ROOT="$DERIVED_DATA_ROOT/catalyst"
+fi
 
 if [[ ! -d "$XCODEPROJ" ]]; then
   echo "error: $XCODEPROJ not found" >&2
@@ -163,6 +170,10 @@ MONITOR_PID=""
 cleanup() {
   rm -f "$LOCK_FILE"
   [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null || true
+  if [[ "$CATALYST" == "1" && "${KG_IOS_CATALYST_KEEP_DERIVED_DATA:-0}" != "1" ]]; then
+    rm -rf "$DERIVED_DATA_ROOT" 2>/dev/null ||
+      echo "[ios_build] warning: catalyst cache cleanup failed root=$DERIVED_DATA_ROOT" >&2
+  fi
 }
 
 echo "[ios_build] caller=$CALLER waiting for lock..."
