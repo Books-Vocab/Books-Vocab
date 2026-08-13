@@ -374,13 +374,28 @@ struct ReaderPage {
     /// paragraphs expose an exact-label staticText whose center is a
     /// deterministic word-tap target.
     private func contentTextQuery(_ text: String) -> XCUIElementQuery {
-        app.webViews.staticTexts
-            .matching(identifier: text)
-            .matching(NSPredicate(format: "isHittable == true"))
+        app.webViews.staticTexts.matching(identifier: text)
     }
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
-        exactlyOne(contentTextQuery(text), named: "Reader content \(text)", timeout: timeout) != nil
+        let query = contentTextQuery(text)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let candidates = (0 ..< query.count).map { query.element(boundBy: $0) }
+            let hittable = candidates.filter(\.isHittable)
+            if hittable.count == 1 {
+                return true
+            }
+            if hittable.count > 1 {
+                XCTFail(
+                    "Reader content \(text) must resolve exactly one hittable element, observed \(hittable.count)"
+                )
+                return false
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        XCTFail("Reader content \(text) did not resolve exactly one hittable element")
+        return false
     }
 
     // MARK: - Translation Panel
