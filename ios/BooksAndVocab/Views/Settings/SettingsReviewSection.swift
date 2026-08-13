@@ -72,6 +72,15 @@ struct SettingsReviewSection: View {
             // render behind its SwiftUI binding. Publish the same presentation
             // state explicitly so UI tests observe the state users see.
             .accessibilityValue(pauseDraft ? "1" : "0")
+            // Form's UIKit bridge can consume the accessibility tap without
+            // invoking a SwiftUI Toggle Binding setter on iOS 26. Keep one
+            // explicit gesture at the view boundary; high priority prevents a
+            // second native toggle and still preserves the platform switch.
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    pauseBinding.wrappedValue.toggle()
+                }
+            )
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
         } footer: {
