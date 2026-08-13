@@ -120,6 +120,7 @@ FIXTURE_DOMAIN_IDS = {
         "syncPendingSingle",
         "vocabLinkedCards",
         "vocabListEmpty",
+        "vocabListFilterRich",
         "vocabListLong",
         "vocabListPopulated",
         "vocabListSingle",

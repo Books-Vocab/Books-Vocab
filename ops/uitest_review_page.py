@@ -16,6 +16,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from png_integrity import png_metadata
 from uitest_review_contract import REVIEW_HTML_NAME
 from uitest_review_ui import artifact_link, esc, image_modal_script, shell_css, status_badge
 from uitest_review_workspace import (
@@ -38,23 +39,6 @@ def link_or_copy(source: Path, target: Path) -> None:
         os.link(source, target)
     except OSError:
         shutil.copy2(source, target)
-
-
-def _png_metadata(path: Path) -> dict:
-    import struct
-
-    data = path.read_bytes()
-    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
-        raise ValueError(f"step artifact is not a PNG: {path}")
-    width, height = struct.unpack(">II", data[16:24])
-    if width <= 0 or height <= 0:
-        raise ValueError(f"step artifact has invalid dimensions: {path}")
-    return {
-        "width": width,
-        "height": height,
-        "byteSize": len(data),
-        "sha256": hashlib.sha256(data).hexdigest(),
-    }
 
 
 def load_manifest(path: Path, *, screenshot_dir: Path | None = None) -> dict:
@@ -99,7 +83,7 @@ def load_manifest(path: Path, *, screenshot_dir: Path | None = None) -> dict:
                     f"{seen_file_identity[identity]} and {rel}"
                 )
             seen_file_identity[identity] = rel
-            metadata = _png_metadata(artifact)
+            metadata = png_metadata(artifact)
             for key in ("width", "height", "byteSize", "sha256"):
                 expected = item.get(key)
                 if expected is None:

@@ -1,0 +1,178 @@
+{
+  "schema": "kg.ios.ui-review-matrix.v1",
+  "report": {
+    "directory": "IOS2.0.1+7-UI-review-report",
+    "images": [
+      "p1.PNG", "p2.PNG", "p3.PNG", "p4.PNG", "p5.PNG",
+      "p6.PNG", "p7.PNG", "p8.PNG", "p9.PNG", "p10.PNG",
+      "p11.PNG", "p12.PNG", "p13.PNG", "p14.PNG", "p15.PNG"
+    ]
+  },
+  "requirements": [
+    {
+      "id": "P1",
+      "reportImage": "p1.PNG",
+      "title": "Dictionary lookup before materializing a card",
+      "surface": "Reader dictionary/add-link flow",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"],
+      "requiredFixtureIDs": ["ui-p1-dictionary-rich"],
+      "acceptance": ["idle, loading, success, error and retry are distinct states", "selected sense/example can be materialized without losing provenance"],
+      "counterexamples": ["offline lookup error", "partial result with no selected sense"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["idle", "loading", "success", "retry"], "counterexampleSteps": ["error", "partial-result"], "visualChecks": ["result hierarchy", "error/retry affordance"], "blockers": ["rich dictionary UI World and end-to-end selector not yet implemented"]}
+    },
+    {
+      "id": "P2",
+      "reportImage": "p2.PNG",
+      "title": "Dictionary detail and card materialization",
+      "surface": "Dictionary detail presentation",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Presentation/DictionaryDetailPresentation.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift"],
+      "requiredFixtureIDs": ["ui-p2-dictionary-senses"],
+      "acceptance": ["all senses, examples, forms and source/license are readable", "materialize and failure states preserve the selected sense"],
+      "counterexamples": ["missing example", "provider payload decode failure"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["detail", "select-sense", "materialize"], "counterexampleSteps": ["missing-example", "materialize-error"], "visualChecks": ["long content", "provenance hierarchy"], "blockers": ["needs Simulator flow and source-owned fixture"]}
+    },
+    {
+      "id": "P3",
+      "reportImage": "p3.PNG",
+      "title": "Reader table of contents navigation",
+      "surface": "Reader TOC",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/TOCView.swift", "ios/BooksAndVocab/Views/Reader/ReaderView.swift"],
+      "requiredFixtureIDs": ["reader.realBookLibrary"],
+      "acceptance": ["TOC opens with real chapter data", "selecting a chapter closes the sheet only after navigation succeeds"],
+      "counterexamples": ["missing chapter destination", "navigation failure retains retryable state"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["reader", "toc-open", "chapter-select", "navigation-result"], "counterexampleSteps": ["navigation-failure", "missing-chapter"], "visualChecks": ["chapter hierarchy", "selection/loading state"], "blockers": ["TOC implementation agent still running"]}
+    },
+    {
+      "id": "P4",
+      "reportImage": "p4.PNG",
+      "title": "Reader settings appearance and highlight controls",
+      "surface": "Reader settings appearance",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift", "ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift"],
+      "requiredFixtureIDs": ["reader.realBookLibrary", "reader.settings.visual-baseline"],
+      "acceptance": ["each control has stable selector and round-trips through preferences", "Release hides developer hit-testing controls while DEBUG exposes an explicit diagnostic variant"],
+      "counterexamples": ["dark/sepia theme", "Dynamic Type accessibility3"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["settings-open", "change-theme", "change-highlight", "reset"], "counterexampleSteps": ["dark-theme", "dynamic-type"], "visualChecks": ["selected marker", "preview versus real Reader"], "blockers": ["Reader settings flow and deterministic preference overlay not yet implemented"]}
+    },
+    {
+      "id": "P5",
+      "reportImage": "p5.PNG",
+      "title": "Reader typography preview geometry",
+      "surface": "Reader settings typography/highlight preview",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift", "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"],
+      "requiredFixtureIDs": ["reader.realBookLibrary", "reader.settings.line-height-matrix"],
+      "acceptance": ["line-height changes preview and real EPUB monotonically", "highlight geometry does not diverge silently at extreme line heights"],
+      "counterexamples": ["line-height 1.0", "line-height 2.5"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["preview-1.0", "preview-1.2", "preview-2.5", "reader-real-content"], "counterexampleSteps": ["preview-1.0-counterexample", "preview-2.5-counterexample"], "visualChecks": ["line spacing", "highlight band height"], "blockers": ["needs real Reader side-by-side evidence"]}
+    },
+    {
+      "id": "P6",
+      "reportImage": "p6.PNG",
+      "title": "Reader progress and status state",
+      "surface": "Reader progress chrome",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderView.swift", "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"],
+      "requiredFixtureIDs": ["reader.realBookLibrary", "reader.progress-states"],
+      "acceptance": ["progress is derived from real document position", "loading, loaded and failure states cannot share the same stale progress"],
+      "counterexamples": ["zero-page/unknown length", "restore position failure"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["reader-load", "progress-zero", "progress-middle", "restore-failure"], "counterexampleSteps": ["progress-zero-counterexample", "restore-failure-counterexample"], "visualChecks": ["progress chrome", "failure recovery"], "blockers": ["state matrix and runtime proof pending"]}
+    },
+    {
+      "id": "P7",
+      "reportImage": "p7.PNG",
+      "title": "Reader loading and recovery",
+      "surface": "Reader loading/error shell",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderView.swift", "ios/BooksAndVocab/Views/Reader/ReaderViewState.swift"],
+      "requiredFixtureIDs": ["reader.loading", "reader.error-retry"],
+      "acceptance": ["loading does not expose stale document content", "retry transitions to a real loaded document or a named error"],
+      "counterexamples": ["missing EPUB asset", "slow asset installation"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["launch-loading", "loading", "error", "retry-success"], "counterexampleSteps": ["error-counterexample", "retry-success-counterexample"], "visualChecks": ["loading skeleton", "retry/error hierarchy"], "blockers": ["fixture and selector not yet implemented"]}
+    },
+    {
+      "id": "P8",
+      "reportImage": "p8.PNG",
+      "title": "Explore loading and content projection",
+      "surface": "Explore/shared deck catalog",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Explore/ExploreView.swift", "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"],
+      "requiredFixtureIDs": ["explore.loading", "explore.rich-catalog"],
+      "acceptance": ["loading, empty, loaded and error states are distinct", "catalog cards render from injected data, not hardcoded preview rows"],
+      "counterexamples": ["no network", "empty catalog with retry"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["explore-loading", "explore-loaded", "explore-empty", "explore-retry"], "counterexampleSteps": ["explore-empty-counterexample", "explore-retry-counterexample"], "visualChecks": ["loading transition", "catalog density"], "blockers": ["runtime evidence pending"]}
+    },
+    {
+      "id": "P9",
+      "reportImage": "p9.PNG",
+      "title": "Review calendar empty day",
+      "surface": "Review calendar",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift", "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"],
+      "requiredFixtureIDs": ["review.calendar-empty-day", "review.calendar-populated-day"],
+      "acceptance": ["empty day is explicit and not confused with loading", "selecting a populated/empty day updates the same calendar projection"],
+      "counterexamples": ["timezone boundary", "day with zero reviews between populated days"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["calendar", "empty-day", "populated-day", "timezone-boundary"], "counterexampleSteps": ["empty-day-counterexample", "timezone-boundary-counterexample"], "visualChecks": ["empty state", "selected day"], "blockers": ["calendar UI flow not yet bound to a rich UI World"]}
+    },
+    {
+      "id": "P10",
+      "reportImage": "p10.PNG",
+      "title": "Overview metrics, calendar and forecast",
+      "surface": "Overview dashboard",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift", "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift"],
+      "requiredFixtureIDs": ["overview.metrics-rich", "overview.zero-state"],
+      "acceptance": ["metrics/calendar/forecast share one review-clock projection", "zero and partial data states remain readable without fabricated values"],
+      "counterexamples": ["no review history", "large counts and long forecast text"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["overview", "metrics", "calendar", "forecast-zero"], "counterexampleSteps": ["forecast-zero-counterexample", "large-counts"], "visualChecks": ["number hierarchy", "zero-state copy"], "blockers": ["needs explicit UI World metrics seed and visual run"]}
+    },
+    {
+      "id": "P11",
+      "reportImage": "p11.PNG",
+      "title": "Vocabulary role/review query projection",
+      "surface": "Vocabulary library",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Presentation/VocabularyEntryPresentation.swift", "ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift"],
+      "requiredFixtureIDs": ["vocabListFilterRich", "p11.644.reviewMix", "role.mixed"],
+      "acceptance": ["role facets, review facets, visible rows and CTA use explicit query layers", "dictionary isolation, multi-select union, search, sort and CTA IDs are asserted in UI World"],
+      "counterexamples": ["learning plus dictionary mixed roles", "Dynamic Type accessibility3 with 644 rows"],
+      "verification": {"status": "in_progress", "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently", "datasetID": "marketing_demo", "runID": null, "evidenceRoot": null, "requiredSteps": ["all-scope-644-rows", "dictionary-scope", "learning-review", "search-within-projection", "cta"], "counterexampleSteps": ["mixed-role", "dynamic-type"], "visualChecks": ["two filter grids", "row/progress density", "CTA/sort hierarchy"], "blockers": ["new pill-grid source is compiling; clean Simulator run and visual attestation still required"]}
+    },
+    {
+      "id": "P12",
+      "reportImage": "p12.PNG",
+      "title": "Review card full information hierarchy",
+      "surface": "Review card answer content",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"],
+      "requiredFixtureIDs": ["notebookReviewDeckVaried", "review.card-full-info"],
+      "acceptance": ["full answer content is mounted in a readable hierarchy", "examples, explanation, collocations and graph links have independent visibility contracts"],
+      "counterexamples": ["long explanation", "missing optional sections"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["front", "flip", "full-answer", "optional-sections"], "counterexampleSteps": ["optional-sections-counterexample", "small-viewport-counterexample"], "visualChecks": ["answer hierarchy", "scroll/natural height"], "blockers": ["review card implementation agent still running"]}
+    },
+    {
+      "id": "P13",
+      "reportImage": "p13.PNG",
+      "title": "Review card compact/full layout regression",
+      "surface": "Review card answer layout",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"],
+      "requiredFixtureIDs": ["notebookReviewDeckVaried", "review.card-compact-counterexample"],
+      "acceptance": ["natural height and scroll presentation never create a centered blank region", "compact mode summarizes intentionally rather than hiding fields through greedy frame constraints"],
+      "counterexamples": ["small viewport", "large text with all optional fields"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["compact", "full", "small-viewport", "large-text"], "counterexampleSteps": ["small-viewport-counterexample", "large-text-counterexample"], "visualChecks": ["no blank dead zone", "content order"], "blockers": ["needs implementation plus clean visual evidence"]}
+    },
+    {
+      "id": "P14",
+      "reportImage": "p14.PNG",
+      "title": "Sync settings terminal lifecycle",
+      "surface": "Settings sync state",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift"],
+      "requiredFixtureIDs": ["sync.settings-terminal", "sync.settings-error-retry"],
+      "acceptance": ["sync terminal success/error is derived from one lifecycle state", "retry and dismiss do not leave stale progress or duplicate work"],
+      "counterexamples": ["partial failure", "retry after terminal error"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["idle", "syncing", "terminal-success", "terminal-error", "retry"], "counterexampleSteps": ["terminal-error-counterexample", "retry-counterexample"], "visualChecks": ["progress to terminal transition", "error action hierarchy"], "blockers": ["settings lifecycle implementation pending"]}
+    },
+    {
+      "id": "P15",
+      "reportImage": "p15.PNG",
+      "title": "Settings information architecture and grouping",
+      "surface": "Settings sections",
+      "sourceRefs": ["ios/BooksAndVocab/Views/Settings/SettingsView.swift", "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"],
+      "requiredFixtureIDs": ["settings.ia-long-content", "settings.clean-preferences"],
+      "acceptance": ["sections group by user intent with stable navigation/accessibility labels", "long content, reset and destructive actions remain discoverable without ambiguous duplicate rows"],
+      "counterexamples": ["long identity/email", "clean defaults versus persisted non-defaults"],
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["settings", "section-navigation", "long-content", "reset"], "counterexampleSteps": ["long-content-counterexample", "reset-counterexample"], "visualChecks": ["section grouping", "safe-area/scroll behavior"], "blockers": ["IA refactor and Simulator evidence pending"]}
+    }
+  ]
+}

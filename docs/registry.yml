@@ -950,6 +950,10 @@ documents:
       - ops/uitest_review_contract.py
       - ops/uitest_evidence_contract.py
       - ops/uitest_review_attest.py
+      - ops/fixtures/ios_ui_review_clusters.json
+      - ops/ios_ui_review_clusters.py
+      - ops/ios_ui_run_many.py
+      - ops/ios_ui_review_matrix.py
       - .claude/skills/ios-simulator-verification/
       - ops/plain_deadzone_lint.sh
       - .claude/skills/ios-simulator-verification/

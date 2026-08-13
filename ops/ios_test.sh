@@ -1591,17 +1591,30 @@ seen: set[str] = set()
 for test in json.loads(manifest.read_text(encoding="utf-8")):
     for attachment in test.get("attachments", []):
         name = attachment.get("suggestedHumanReadableName", "")
-        match = re.match(r"^Step ([0-9]{2}-.+)\.png$", name)
-        if not match:
-            continue
-        step_name = match.group(1)
+        # XCTest may append an attachment UUID before a semantic suffix and
+        # omit the final `.png` (for example, `Step 02-state_0_UUID.card`).
+        # Recover the original capture filename instead of silently dropping
+        # that step from the stable review bundle.
+        match = re.match(
+            r"^Step (?P<step>[0-9]{2}-.+?)(?:_0_[0-9A-F-]{36})(?P<suffix>\.[A-Za-z0-9._-]+)?$",
+            name,
+        )
+        if match:
+            step_name = match.group("step") + (match.group("suffix") or "")
+        else:
+            match = re.match(r"^Step ([0-9]{2}-.+)\.png$", name)
+            if not match:
+                continue
+            step_name = match.group(1)
+        if not step_name.endswith(".png"):
+            step_name += ".png"
         if step_name in seen:
             continue
         exported = attachment.get("exportedFileName", "")
         source_file = source / exported
         if not source_file.exists():
             continue
-        shutil.copyfile(source_file, target / f"{step_name}.png")
+        shutil.copyfile(source_file, target / step_name)
         seen.add(step_name)
 PY
   then
