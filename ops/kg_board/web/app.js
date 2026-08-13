@@ -76,6 +76,10 @@ function renderMetrics(){
     metric("歷史完成",board.counts.history.fixed+board.counts.history.wont_fix);
 }
 const TREE_VIEW_RADIUS = 10;
+const TREE_RADIUS_MIN = 5;
+const TREE_RADIUS_MAX = 30;
+const TREE_RADIUS_STEP = 5;
+let treeRadius = TREE_VIEW_RADIUS;
 function firstParentChain(sha,commits,limit=commits.size+1){
   const result=[],seen=new Set();let current=sha;
   while(current&&!seen.has(current)&&result.length<limit){
@@ -123,15 +127,15 @@ function firstBranchPoint(mainHead,commits){
   }
   return null;
 }
-function treeViewport(tree,commits,refs){
+function treeViewport(tree,commits,refs,radius=treeRadius){
   const mainRef=refs.find(ref=>ref.branch==="main"),mainHead=mainRef?.head;
   const mainline=firstParentChain(mainHead,commits);
-  const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(TREE_VIEW_RADIUS,Math.max(0,mainline.length-1))]||mainHead;
+  const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(radius,Math.max(0,mainline.length-1))]||mainHead;
   const branchIndex=Math.max(0,mainline.indexOf(branchSha));
-  // The useful inspection window starts at the first branch and looks ten
-  // commits toward its parents. Showing the newest mainline tail first made
-  // the branch point invisible below a long, low-signal wall of commits.
-  const mainlineWindow=mainline.slice(branchIndex,branchIndex+TREE_VIEW_RADIUS+1);
+  // The useful inspection window starts at the first branch and looks toward
+  // its parents. The radius is user-adjustable so the graph stays bounded
+  // without hiding branch heads or forcing the full mirror into the DOM.
+  const mainlineWindow=mainline.slice(branchIndex,branchIndex+radius+1);
   const visible=new Set(mainlineWindow);
   const visibleBranches=new Set(["main"]);
   const branchAnchors=new Map();
@@ -143,7 +147,7 @@ function treeViewport(tree,commits,refs){
     // Their full history remains lazy, but their recent divergent segment and
     // exact common ancestor are part of this tree projection.
     const path=pathToAnyTarget(ref.head,mainlineSet,commits);
-    const branchPath=path.length?path.slice(0,TREE_VIEW_RADIUS+1):[ref.head].filter(sha=>commits.has(sha));
+    const branchPath=path.length?path.slice(0,radius+1):[ref.head].filter(sha=>commits.has(sha));
     const anchor=path.at(-1)||branchPath.at(-1)||ref.head;
     if(anchor)branchPath.push(...(branchPath.at(-1)===anchor?[]:[anchor]));
     visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,branchPath);
@@ -155,7 +159,7 @@ function treeViewport(tree,commits,refs){
     const path=pathToAnyTarget(ref.head,mainlineSet,commits);
     // Every branch remains represented; only its recent divergent segment is
     // bounded. Fully converged history is not loaded into the initial view.
-    const branchPath=path.length?path.slice(0,TREE_VIEW_RADIUS+1):[ref.head].filter(sha=>commits.has(sha));
+    const branchPath=path.length?path.slice(0,radius+1):[ref.head].filter(sha=>commits.has(sha));
     const anchor=path.at(-1)||branchPath.at(-1)||ref.head;
     if(anchor)branchPath.push(...(branchPath.at(-1)===anchor?[]:[anchor]));
     visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,branchPath);
@@ -170,6 +174,12 @@ function treeViewport(tree,commits,refs){
     ticketRefs,
     mainline,mainlineWindow,branchSha,total:tree.commits.length,
   };
+}
+function renderTreeRadius(){
+  const input=document.getElementById("tree-radius");
+  const output=document.getElementById("tree-radius-value");
+  if(input){input.value=String(treeRadius);input.min=String(TREE_RADIUS_MIN);input.max=String(TREE_RADIUS_MAX);input.step=String(TREE_RADIUS_STEP);input.setAttribute("aria-valuetext",`${treeRadius} 個 commit`)}
+  if(output)output.textContent=`${treeRadius} 個 commit`;
 }
 function commitInspector(row,ref){
   const files=(row.files||[]).map(file=>`<li><code>${esc(file)}</code></li>`).join("")||"<li>沒有檔案統計</li>";
@@ -211,6 +221,7 @@ function renderHeldTickets(){
 function renderTree(){
   const mount=document.getElementById("git-tree");
   const mobile=document.getElementById("tree-mobile-list");
+  renderTreeRadius();
   if(!tree||!tree.commits?.length){
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
@@ -339,6 +350,13 @@ async function load(){
 }
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
+document.getElementById("tree-radius").addEventListener("input",event=>{
+  const next=Number(event.target.value);
+  treeRadius=Math.max(TREE_RADIUS_MIN,Math.min(TREE_RADIUS_MAX,Number.isFinite(next)?next:TREE_VIEW_RADIUS));
+  renderTreeRadius();
+  if(tree)renderTree();
+});
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
+renderTreeRadius();
 load().catch(showLoadError);
 setInterval(()=>load().catch(showLoadError),30000);

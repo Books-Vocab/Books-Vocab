@@ -20,6 +20,8 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 .ticket-title span{line-height:1.4}
 .ticket-meta{max-width:42%;white-space:normal}
 .tree-alert:empty{display:none}
+.tree-controls{display:grid;grid-template-columns:max-content minmax(140px,1fr) max-content;align-items:center;gap:10px;margin:10px 0 12px;padding:9px 10px;border:1px solid var(--border-light);background:var(--surface-alt)}
+.tree-controls label{color:var(--ink);font-size:12px;font-weight:600}.tree-controls input{width:100%;min-height:44px;accent-color:var(--green)}.tree-controls output{color:var(--sub);font:11px "JetBrains Mono",monospace;white-space:nowrap}
 .blocked-reason{padding:8px 10px;border-left:3px solid var(--warn);background:var(--surface-alt);color:var(--warn)}
 .blocked-chip{max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ticket-highlight{border-color:var(--green);box-shadow:0 0 0 3px rgba(36,115,78,.16)}
@@ -79,4 +81,5 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
   .ticket-body{padding-inline:12px}
   .ticket-body p{overflow-wrap:anywhere}
   .tree-mobile-list .tree-ticket{min-height:44px;min-width:44px}
+  .tree-controls{grid-template-columns:1fr auto;gap:4px 9px}.tree-controls input{grid-column:1/-1}
 }
