@@ -622,7 +622,6 @@ struct UIWorldSurfaceContractSeed: Codable, Equatable {
         let pairs: [(String, Set<String>, Set<String>)] = [
             ("fixtureID", Set(required.map(\.fixtureID)), Set(counterexamples.map(\.fixtureID))),
             ("stepLabel", Set(required.map(\.stepLabel)), Set(counterexamples.map(\.stepLabel))),
-            ("index", Set(required.map { String($0.index) }), Set(counterexamples.map { String($0.index) })),
             ("assetIDs", Set(required.flatMap(\.assetIDs)), Set(counterexamples.flatMap(\.assetIDs))),
         ]
         for (name, requiredValues, counterexampleValues) in pairs where !requiredValues.isDisjoint(with: counterexampleValues) {
@@ -642,11 +641,33 @@ struct UIWorldSurfaceContractSeed: Codable, Equatable {
         }
     }
 
-    func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
-        let assetTypes = assets.typeByID
-        for row in required + counterexamples {
-            guard Set(row.assetIDs).isSubset(of: Set(assetTypes.keys)) else {
-                throw uiWorldDataCorrupted(decoder, "surface contract assetIDs must resolve to manifest assets")
+    func validate(
+        assets: UIWorldAssetManifest,
+        decoder: Decoder,
+        enforceCrossGroupIndexDisjoint: Bool = true,
+        enforcePhysicalAssetResolution: Bool = true
+    ) throws {
+        let rows = required + counterexamples
+        var pairs: [(String, Set<String>, Set<String>)] = [
+            ("fixtureID", Set(required.map(\.fixtureID)), Set(counterexamples.map(\.fixtureID))),
+            ("stepLabel", Set(required.map(\.stepLabel)), Set(counterexamples.map(\.stepLabel))),
+            ("assetIDs", Set(required.flatMap(\.assetIDs)), Set(counterexamples.flatMap(\.assetIDs))),
+        ]
+        if enforceCrossGroupIndexDisjoint {
+            pairs.append(
+                ("index", Set(required.map { String($0.index) }), Set(counterexamples.map { String($0.index) }))
+            )
+        }
+        for (name, requiredValues, counterexampleValues) in pairs
+            where !requiredValues.isDisjoint(with: counterexampleValues) {
+            throw uiWorldDataCorrupted(decoder, "surface contract.\(name) required/counterexamples must be disjoint")
+        }
+        if enforcePhysicalAssetResolution {
+            let assetTypes = assets.typeByID
+            for row in rows {
+                guard Set(row.assetIDs).isSubset(of: Set(assetTypes.keys)) else {
+                    throw uiWorldDataCorrupted(decoder, "surface contract assetIDs must resolve to manifest assets")
+                }
             }
         }
     }
@@ -749,7 +770,16 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
 
         try dictionary.validate(assets: assets, decoder: decoder)
         for (surface, contract) in surfaceContracts {
-            try contract.validate(assets: assets, decoder: decoder)
+            // Review-calendar evidence uses portable logical proof IDs rather
+            // than physical asset-manifest IDs. The host validator owns its
+            // one-to-one evidence rules; only product surface contracts map
+            // assetIDs through the checked-in asset manifest here.
+            try contract.validate(
+                assets: assets,
+                decoder: decoder,
+                enforceCrossGroupIndexDisjoint: surface != "reviewCalendar",
+                enforcePhysicalAssetResolution: surface != "reviewCalendar"
+            )
             guard !surface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw uiWorldDataCorrupted(decoder, "surfaceContracts keys must be non-empty")
             }

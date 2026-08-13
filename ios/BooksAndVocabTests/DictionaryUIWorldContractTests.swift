@@ -18,33 +18,69 @@ struct DictionaryUIWorldContractTests {
         #expect(dictionary.lookup["result"]?.fixtureID == "dictionary.lookup.result")
         #expect(dictionary.lookup["error"]?.fixtureID == "dictionary.lookup.error")
 
-        let required = try #require(dictionary.coverage["required"])
-        let counterexamples = try #require(dictionary.coverage["counterexamples"])
-        #expect(Set(required.fixtureIDs).isDisjoint(with: counterexamples.fixtureIDs))
-        #expect(Set(required.stepLabels).isDisjoint(with: counterexamples.stepLabels))
-        #expect(Set(required.assetIDs).isDisjoint(with: counterexamples.assetIDs))
-        #expect(Set(required.assetInodes).isDisjoint(with: counterexamples.assetInodes))
+        let dictionaryCoverageRequired = try #require(dictionary.coverage["required"])
+        let dictionaryCoverageCounterexamples = try #require(dictionary.coverage["counterexamples"])
+        #expect(dictionaryCoverageRequired.fixtureIDs == [
+            "dictionary.lookup.result",
+            "dictionary.detail.senses",
+        ])
+        #expect(dictionaryCoverageCounterexamples.fixtureIDs == ["dictionary.lookup.error"])
+
+        // `scenarioContext.dictionary.coverage` describes the typed payload;
+        // the P1/P2 matrix is a separate surface contract. Keeping these
+        // assertions on the matrix prevents a payload-level lookup state from
+        // being mistaken for a user-facing counterexample row.
+        let surfaceContract = try #require(
+            marketing.scenarioContext?.surfaceContracts?["dictionary"]
+        )
+        #expect(
+            surfaceContract == generated.scenarioContext?.surfaceContracts?["dictionary"]
+        )
+        let required = surfaceContract.required
+        let counterexamples = surfaceContract.counterexamples
+        #expect(Set(required.map(\.fixtureID)).isDisjoint(with: counterexamples.map(\.fixtureID)))
+        #expect(Set(required.map(\.stepLabel)).isDisjoint(with: counterexamples.map(\.stepLabel)))
+        #expect(
+            Set(required.flatMap(\.assetIDs)).isDisjoint(with: counterexamples.flatMap(\.assetIDs))
+        )
 
         for coverage in [required, counterexamples] {
-            #expect(coverage.assetIDs.count == coverage.assetInodes.count)
-            for (assetID, inode) in zip(coverage.assetIDs, coverage.assetInodes) {
-                #expect(inode == "inode:\(assetID)")
+            for assetID in coverage.flatMap(\.assetIDs) {
                 #expect(marketing.assets.typeByID[assetID] != nil)
             }
         }
 
-        #expect(required.fixtureIDs.contains("dictionary.lookup.result"))
-        #expect(required.fixtureIDs.contains("dictionary.detail.senses"))
-        #expect(required.stepLabels == ["idle", "loading", "result", "partial", "offline", "error", "retry"])
-        #expect(counterexamples.fixtureIDs == [
+        #expect(required.map(\.fixtureID) == [
+            "ui-p1-dictionary-rich",
+            "ui-p2-dictionary-senses",
+        ])
+        #expect(required.map(\.stepLabel) == ["dictionary-rich", "dictionary-senses"])
+        #expect(required.map(\.index) == [0, 1])
+        #expect(required.map(\.assetIDs) == [["catalog_reader_epub"], ["catalog_reader_epub"]])
+        #expect(counterexamples.map(\.fixtureID) == [
+            "dictionary.lookup.partial",
+            "dictionary.lookup.offline",
             "dictionary.lookup.error",
+            "dictionary.lookup.retry",
             "dictionary.p2.missing-example",
             "dictionary.p2.materialize-error",
         ])
-        #expect(counterexamples.stepLabels == [
+        #expect(counterexamples.map(\.stepLabel) == [
+            "partial-counterexample",
+            "offline-counterexample",
             "error-counterexample",
+            "retry-counterexample",
             "missing-example-counterexample",
             "materialize-error-counterexample",
+        ])
+        #expect(counterexamples.map(\.index) == [2, 3, 4, 5, 6, 7])
+        #expect(counterexamples.map(\.assetIDs) == [
+            [],
+            [],
+            ["catalog_reader_pdf"],
+            [],
+            [],
+            [],
         ])
     }
 
