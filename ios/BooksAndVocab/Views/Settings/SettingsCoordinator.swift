@@ -30,6 +30,21 @@ private struct SettingsConfigurationPayloadError: LocalizedError {
     }
 }
 
+/// Monotonic guard for optimistic settings mutations. A late failure from an
+/// older request must not roll back a newer user intent.
+struct SettingsMutationGeneration: Equatable, Sendable {
+    private(set) var current = 0
+
+    mutating func begin() -> Int {
+        current &+= 1
+        return current
+    }
+
+    func accepts(_ token: Int) -> Bool {
+        token == current
+    }
+}
+
 @MainActor protocol SettingsCoordinating: AnyObject, Observable {
     var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
@@ -91,6 +106,8 @@ final class SettingsCoordinator: SettingsCoordinating {
     private var resyncRequestID = 0
     /// 這一輪同步的逐步進度。生命週期由 `syncLifecycle` 單一擁有，避免
     /// 進行中狀態與終態不另外漂移成兩份真相。
+    private var reviewClockMutation = SettingsMutationGeneration()
+    private var reviewModeMutation = SettingsMutationGeneration()
     let syncProgress = SyncProgressStore()
     private let resetStateStore: any SettingsResetStorePort
     private var settingsSyncService: SettingsSyncService?
@@ -333,6 +350,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
+        let mutation = reviewClockMutation.begin()
         let snapshot = previousSnapshot ?? reviewSettingsStore.pauseClockSnapshot
 
         if previousSnapshot == nil {
@@ -358,6 +376,10 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
+            guard reviewClockMutation.accepts(mutation) else {
+                AppLog.kg.debug("Ignoring stale review-clock failure")
+                return true
+            }
             reviewSettingsStore.restorePauseState(snapshot)
             reportConfigSaveFailure(
                 error,
@@ -381,6 +403,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
+        let mutation = reviewModeMutation.begin()
         let snapshot = previousSnapshot ?? reviewSettingsStore.reviewModeSnapshot
         if previousSnapshot == nil {
             reviewSettingsStore.update(newSettings)
@@ -404,6 +427,10 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
+            guard reviewModeMutation.accepts(mutation) else {
+                AppLog.kg.debug("Ignoring stale review-mode failure")
+                return true
+            }
             reviewSettingsStore.restoreModeState(snapshot)
             reportConfigSaveFailure(
                 error,
