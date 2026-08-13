@@ -46,59 +46,59 @@ struct ReaderPage {
     /// query through `exactlyOneElement` immediately before acting; this keeps
     /// compact/expanded transitions explicit and makes duplicate IDs fail fast.
     private var expandHeaderButtonQuery: XCUIElementQuery {
-        app.buttons["reader.header.expandButton"]
+        app.buttons.matching(identifier: "reader.header.expandButton")
     }
 
     private var backButtonQuery: XCUIElementQuery {
-        app.buttons["reader.header.backButton"]
+        app.buttons.matching(identifier: "reader.header.backButton")
     }
 
     private var translationPanelQuery: XCUIElementQuery {
-        app.otherElements["reader.translationPanel"]
+        app.otherElements.matching(identifier: "reader.translationPanel")
     }
 
     private var settingsPanelQuery: XCUIElementQuery {
-        app.otherElements["reader.settingsPanel"]
+        app.otherElements.matching(identifier: "reader.settingsPanel")
     }
 
     private var settingsButtonQuery: XCUIElementQuery {
-        app.buttons["reader.header.settingsButton"]
+        app.buttons.matching(identifier: "reader.header.settingsButton")
     }
 
     private var settingsDoneButtonQuery: XCUIElementQuery {
-        app.buttons["reader.settings.done"]
+        app.buttons.matching(identifier: "reader.settings.done")
     }
 
     private var settingsPreviewQuery: XCUIElementQuery {
-        app.otherElements["reader.settings.preview"]
+        app.otherElements.matching(identifier: "reader.settings.preview")
     }
 
     private var fontSizeStepperQuery: XCUIElementQuery {
-        app.steppers["reader.settings.fontSizeStepper"]
+        app.steppers.matching(identifier: "reader.settings.fontSizeStepper")
     }
 
     private var fontSizeIncrementQuery: XCUIElementQuery {
-        fontSizeStepperQuery.buttons["Increment"]
+        fontSizeStepperQuery.buttons.matching(identifier: "Increment")
     }
 
     private var lineHeightSliderQuery: XCUIElementQuery {
-        app.sliders["reader.settings.lineHeight"]
+        app.sliders.matching(identifier: "reader.settings.lineHeight")
     }
 
     private var themeOptionQuery: (String) -> XCUIElementQuery {
-        { theme in app.buttons["reader.settings.theme.\(theme)"] }
+        { theme in app.buttons.matching(identifier: "reader.settings.theme.\(theme)") }
     }
 
     private var resetMenuQuery: XCUIElementQuery {
-        app.buttons["reader.settings.resetMenu"]
+        app.buttons.matching(identifier: "reader.settings.resetMenu")
     }
 
     private var resetAllButtonQuery: XCUIElementQuery {
-        app.buttons["reader.settings.reset.all"]
+        app.buttons.matching(identifier: "reader.settings.reset.all")
     }
 
     private var progressBadgeQuery: XCUIElementQuery {
-        app.staticTexts["reader.header.progressBadge"]
+        app.staticTexts.matching(identifier: "reader.header.progressBadge")
     }
 
     var tableOfContentsButton: XCUIElement {
@@ -374,7 +374,7 @@ struct ReaderPage {
     /// paragraphs expose an exact-label staticText whose center is a
     /// deterministic word-tap target.
     private func contentTextQuery(_ text: String) -> XCUIElementQuery {
-        app.webViews.staticTexts[text]
+        app.webViews.staticTexts.matching(identifier: text)
     }
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
@@ -384,15 +384,15 @@ struct ReaderPage {
     // MARK: - Translation Panel
 
     private var translationWordQuery: XCUIElementQuery {
-        app.staticTexts["reader.translationPanel.word"]
+        app.staticTexts.matching(identifier: "reader.translationPanel.word")
     }
 
     private var translationTextQuery: XCUIElementQuery {
-        app.staticTexts["reader.translationPanel.translation"]
+        app.staticTexts.matching(identifier: "reader.translationPanel.translation")
     }
 
     private var translationDismissButtonQuery: XCUIElementQuery {
-        app.buttons["reader.translationPanel.dismissButton"]
+        app.buttons.matching(identifier: "reader.translationPanel.dismissButton")
     }
 
     func waitForTranslationPanel(timeout: TimeInterval = 5) -> Bool {
