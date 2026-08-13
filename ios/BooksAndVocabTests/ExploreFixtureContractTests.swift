@@ -113,18 +113,20 @@ struct ExploreFixtureContractTests {
             .deletingLastPathComponent() // fixtures
             .deletingLastPathComponent() // ops
             .deletingLastPathComponent() // repository root
-        let symlinkName = "p8-symlink-(UUID().uuidString)"
+        let symlinkName = "p8-symlink-\(UUID().uuidString)"
         let symlinkURL = repositoryURL
             .appendingPathComponent("ops/fixtures/ui_worlds")
             .appendingPathComponent(symlinkName)
         let outsideURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("p8-outside-(UUID().uuidString)")
+            .appendingPathComponent("p8-outside-\(UUID().uuidString)")
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: outsideURL)
         try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: outsideURL)
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: symlinkURL.path) == outsideURL.path)
         defer {
             try? FileManager.default.removeItem(at: symlinkURL)
             try? FileManager.default.removeItem(at: outsideURL)
         }
+        let expectedSourcePath = "ops/fixtures/ui_worlds/\(symlinkName)"
 
         var object = try #require(
             try JSONSerialization.jsonObject(
@@ -134,8 +136,9 @@ struct ExploreFixtureContractTests {
         var assets = try #require(object["assets"] as? [String: Any])
         var images = try #require(assets["images"] as? [String: Any])
         var asset = try #require(images["explore_required"] as? [String: Any])
-        asset["sourcePath"] = "ops/fixtures/ui_worlds/(symlinkName)"
-        asset["installAs"] = "ExploreContractTests/(UUID().uuidString)/symlink.png"
+        asset["sourcePath"] = "ops/fixtures/ui_worlds/\(symlinkName)"
+        asset["installAs"] = "ExploreContractTests/\(UUID().uuidString)/symlink.png"
+        #expect(asset["sourcePath"] as? String == expectedSourcePath)
         images["explore_required"] = asset
         assets["images"] = images
         object["assets"] = assets
@@ -147,6 +150,29 @@ struct ExploreFixtureContractTests {
             try FixtureDatasetStore.withTestingData(data) {
                 _ = try FixtureDatasetStore.requireInstalledAsset(ref: "images.explore_required")
             }
+        }
+    }
+
+    @Test(arguments: [0, 2])
+    func exploreFixtureContractRejectsNonSingletonEvidenceAssetCount(count: Int) throws {
+        var object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: Self.marketingDemoURL)
+            ) as? [String: Any]
+        )
+        var sharedDecks = try #require(object["sharedDecks"] as? [String: Any])
+        var fixtures = try #require(sharedDecks["fixtures"] as? [String: Any])
+        var loaded = try #require(fixtures["loaded"] as? [String: Any])
+        loaded["assetIDs"] = count == 0
+            ? []
+            : ["images.explore_required", "images.explore_required_empty"]
+        fixtures["loaded"] = loaded
+        sharedDecks["fixtures"] = fixtures
+        object["sharedDecks"] = sharedDecks
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.decode(data)
         }
     }
 
@@ -179,21 +205,22 @@ struct ExploreFixtureContractTests {
             let service = ExploreUIWorldCatalogService(fixtureID: .retry)
 
             let first = await service.syncAll(context: container.mainContext)
-            #expect(first == .listFetchFailed)
+            #expect(first == .failed(.listFetch))
             #expect(try container.mainContext.fetch(FetchDescriptor<SharedDeck>()).isEmpty)
 
             let second = await service.syncAll(context: container.mainContext)
             #expect(second == .completed(catalogCount: 1))
             let decks = try container.mainContext.fetch(FetchDescriptor<SharedDeck>())
             let deck = try #require(decks.first)
-            #expect(deck.coverAssetID == "images.explore_required")
-            #expect(
-                deck.coverImagePath.map { FileManager.default.fileExists(atPath: $0) } == .some(true)
+            let installedAsset = try FixtureDatasetStore.installedAssetSnapshot(
+                ref: "images.explore_required"
             )
-            #expect(deck.coverImageSHA256 == "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109")
-            #expect(deck.coverImageByteSize == 30129)
-            #expect(deck.coverImageContentType == "image/png")
-            #expect(deck.coverImageFileSystemInode ?? 0 > 0)
+            #expect(installedAsset.fileSystemInode > 0)
+            #expect(deck.coverAssetID == "images.explore_required")
+            #expect(deck.coverImagePath == installedAsset.url.path)
+            #expect(deck.coverImageSHA256 == installedAsset.sha256)
+            #expect(deck.coverImageByteSize == installedAsset.byteSize)
+            #expect(deck.coverImageContentType == installedAsset.contentType)
             let reloadedContext = ModelContext(container)
             let persistedDeck = try #require(
                 reloadedContext.fetch(FetchDescriptor<SharedDeck>()).first
@@ -215,7 +242,7 @@ struct ExploreFixtureContractTests {
             )
 
             let outcome = await service.syncAll(context: container.mainContext)
-            #expect(outcome == .listFetchFailed)
+            #expect(outcome == .failed(.listFetch))
             let deckCount = try container.mainContext.fetch(FetchDescriptor<SharedDeck>()).count
             #expect(
                 ExplorePhase.resolve(

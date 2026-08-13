@@ -43,6 +43,45 @@ enum ExplorePhase: Equatable {
     }
 }
 
+#if DEBUG && targetEnvironment(simulator)
+/// Deterministic UI World evidence node. Once a fixture is selected, every
+/// asset lookup/decode failure is a fixture contract failure, never an empty
+/// branch that lets a screenshot pass without its proof.
+private struct ExploreFixtureAssetProof: View {
+    let assetID: String
+
+    var body: some View {
+        let snapshot = Self.requireSnapshot(ref: assetID)
+        guard let image = UIImage(contentsOfFile: snapshot.url.path) else {
+            preconditionFailure(
+                "Explore fixture asset \(assetID) could not decode at \(snapshot.url.path)"
+            )
+        }
+        return Image(uiImage: image)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 48, height: 48)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(UIWorldExploreFixtureID.assetSelector(for: assetID))
+            .accessibilityLabel(assetID)
+            .accessibilityValue(
+                "sha256:\(snapshot.sha256); bytes:\(snapshot.byteSize); path:\(snapshot.url.path)"
+            )
+            .allowsHitTesting(false)
+    }
+
+    private static func requireSnapshot(ref: String) -> UIWorldInstalledAsset {
+        do {
+            return try FixtureDatasetStore.installedAssetSnapshot(ref: ref)
+        } catch {
+            preconditionFailure(
+                "Explore fixture asset \(ref) has no valid installed snapshot: \(error)"
+            )
+        }
+    }
+}
+#endif
+
 /// Explore 導航路由（value-based push；freeze 契約鏡射 PodcastNavRoute）。
 enum ExploreNavRoute: Hashable {
     case deck(deckId: String)
@@ -323,23 +362,8 @@ struct ExploreView: View {
     @ViewBuilder
     private var fixtureAssetProof: some View {
 #if DEBUG && targetEnvironment(simulator)
-        if let assetID = catalogPreview?.assetIDs.first {
-            if let snapshot = try? FixtureDatasetStore.installedAssetSnapshot(ref: assetID),
-               let image = UIImage(contentsOfFile: snapshot.url.path) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 48, height: 48)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityIdentifier(UIWorldExploreFixtureID.assetSelector(for: assetID))
-                    .accessibilityLabel(assetID)
-                    .accessibilityValue(
-                        "sha256:\(snapshot.sha256); bytes:\(snapshot.byteSize); path:\(snapshot.url.path)"
-                    )
-                    .allowsHitTesting(false)
-            } else {
-                EmptyView()
-            }
+        if let catalogPreview {
+            ExploreFixtureAssetProof(assetID: catalogPreview.evidenceAssetID)
         }
 #else
         EmptyView()
@@ -399,7 +423,7 @@ struct ExploreView: View {
         service = SharedDeckCatalogService(kgService: kgService)
 #endif
         let outcome = await service.syncAll(context: modelContext)
-        syncFailed = outcome == .listFetchFailed
+        syncFailed = outcome.failure != nil
         if syncFailed && showToastOnFailure {
             toastCoordinator.warning(L10n.string("explore.error.title"))
         }

@@ -1083,11 +1083,14 @@
 "explore.deck.a11y.downloads" = "下載 %@ 次";
 "explore.deck.a11y.rating" = "評分 %@，%@ 則評分";
 "explore.detail.sampleCards" = "範例卡片";
+"explore.detail.loadingDeck" = "正在載入牌組…";
 "explore.detail.loadingCards" = "正在載入卡片…";
 "explore.detail.noCards" = "沒有可預覽的卡片。";
 "explore.detail.cardsError" = "無法載入卡片";
 "explore.detail.missing.title" = "牌組無法使用";
 "explore.detail.missing.description" = "這個牌組可能已被移除。";
+"explore.detail.storageError.title" = "無法讀取牌組";
+"explore.detail.storageError.description" = "本機牌組資料讀取失敗，請重試。";
 /* Explore — 複製官方牌組到私人單字本（Phase 2c） */
 "explore.copy.cta" = "複製到我的單字本";
 "explore.copy.loginRequired" = "登入後即可複製到你的單字本";

@@ -10,28 +10,30 @@ import SwiftUI
 /// The successful path materializes through the production
 /// SharedDeckSummary -> SharedDeck projection. Auth comes from
 /// UI World auth.signedIn.
+@MainActor
 enum ExploreViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Explore View") {
             Scenario("Loading", layout: .fill) {
-                ExploreScene(fixture: .loading)
+                MainActor.assumeIsolated { ExploreScene(fixture: .loading) }
             }
             Scenario("Content / Populated", layout: .fill) {
-                ExploreScene(fixture: .populated)
+                MainActor.assumeIsolated { ExploreScene(fixture: .populated) }
             }
             Scenario("Empty", layout: .fill) {
-                ExploreScene(fixture: .empty)
+                MainActor.assumeIsolated { ExploreScene(fixture: .empty) }
             }
             Scenario("Error / Retry", layout: .fill) {
-                ExploreScene(fixture: .retry)
+                MainActor.assumeIsolated { ExploreScene(fixture: .retry) }
             }
             Scenario("Partial / Stale Cache", layout: .fill) {
-                ExploreScene(fixture: .partial)
+                MainActor.assumeIsolated { ExploreScene(fixture: .partial) }
             }
         }
     }
 }
 
+@MainActor
 private enum ExploreFixture: Equatable {
     case loading
     case populated
@@ -64,6 +66,7 @@ private enum ExploreFixture: Equatable {
     }
 }
 
+@MainActor
 private struct ExploreScene: View {
     let container: ModelContainer
     let auth: CatalogPreviewAuth

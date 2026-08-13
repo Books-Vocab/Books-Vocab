@@ -26,6 +26,7 @@ struct SharedDeckDetailView: View {
     let deckId: String
 
     @State private var deck: SharedDeck?
+    @State private var deckLoadState: DeckLoadState = .loading
     @State private var cardsState: CardsState = .loading
     @State private var copyController = SharedDeckCopyController()
     @State private var showCopySheet = false
@@ -64,15 +65,34 @@ struct SharedDeckDetailView: View {
         case error
     }
 
+    enum DeckLoadState: Equatable {
+        case loading
+        case loaded
+        case missing
+        case storageFailure
+
+        static func resolve(hasDeck: Bool, storageFailure: Bool) -> Self {
+            if storageFailure { return .storageFailure }
+            return hasDeck ? .loaded : .missing
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.s5) {
-                if let deck {
+                if case .loaded = deckLoadState, let deck {
                     header(deck)
                     copySection(deck)
                     sampleCardsSection
                 } else {
-                    missingDeckState
+                    switch deckLoadState {
+                    case .loading:
+                        deckLoadingState
+                    case .missing:
+                        missingDeckState
+                    case .storageFailure, .loaded:
+                        storageFailureState
+                    }
                 }
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -275,7 +295,7 @@ struct SharedDeckDetailView: View {
 #else
         let assetAccessibilityIdentifier: String? = nil
 #endif
-        NotebookCoverView(
+        return NotebookCoverView(
             color: NotebookPalette.color(for: deck.color),
             pattern: deck.coverPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
             source: ExploreDeckCoverEvidence.source(for: deck),
@@ -379,11 +399,55 @@ struct SharedDeckDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var deckLoadingState: some View {
+        VStack(spacing: AppSpacing.s4) {
+            Spacer(minLength: 80)
+            ProgressView()
+            Text(L10n.string("explore.detail.loadingDeck"))
+                .font(AppFonts.caption())
+                .foregroundStyle(appTheme.palette.tertiaryText)
+            Spacer(minLength: 80)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("explore.detail.loadingState")
+    }
+
+    private var storageFailureState: some View {
+        VStack(spacing: AppSpacing.s4) {
+            Spacer(minLength: 80)
+            AppStateMessageCard(
+                title: L10n.string("explore.detail.storageError.title"),
+                systemImage: "externaldrive.badge.exclamationmark",
+                description: L10n.string("explore.detail.storageError.description")
+            ) {
+                Button(L10n.string("explore.retry")) { Task { await load() } }
+                    .font(AppFonts.caption(weight: .medium))
+            }
+            .accessibilityIdentifier("explore.detail.storageError")
+            Spacer(minLength: 80)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     // MARK: - Load
 
     @MainActor
     private func load() async {
-        deck = fetchDeck()
+        deckLoadState = .loading
+        do {
+            let loadedDeck = try fetchDeck()
+            deck = loadedDeck
+            deckLoadState = DeckLoadState.resolve(
+                hasDeck: loadedDeck != nil,
+                storageFailure: false
+            )
+        } catch {
+            deck = nil
+            deckLoadState = .storageFailure
+            AppLog.kg.warning("[Explore] detail store fetch failed for \(deckId): \(error.localizedDescription)")
+            AppCrashReporting.record(error, context: "shareddeck.detail.storage.fetch")
+            return
+        }
         if let injectedCards {
             cardsState = injectedCards.isEmpty ? .empty : .loaded(injectedCards)
             return
@@ -415,12 +479,16 @@ struct SharedDeckDetailView: View {
         }
     }
 
-    private func fetchDeck() -> SharedDeck? {
+    private func fetchDeck() throws -> SharedDeck? {
         let target = deckId
         let descriptor = FetchDescriptor<SharedDeck>(
             predicate: #Predicate { $0.remoteId == target }
         )
-        return try? modelContext.fetch(descriptor).first
+        let matches = try modelContext.fetch(descriptor)
+        guard matches.count <= 1 else {
+            throw SharedDeckCatalogService.StorageFailure.fetch
+        }
+        return matches.isEmpty ? nil : matches[0]
     }
 }
 

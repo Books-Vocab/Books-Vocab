@@ -48,10 +48,10 @@ struct ExploreCatalogPreview: Equatable {
         return Self(fixtureID: fixtureID)
     }
 
-    var assetIDs: [String] {
+    var evidenceAssetID: String {
         FixtureDatasetStore.requireSharedDeckCatalogSeed()
             .fixture(for: fixtureID)
-            .assetIDs
+            .evidenceAssetID
     }
 }
 #endif

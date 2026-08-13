@@ -1100,11 +1100,14 @@
 "explore.deck.a11y.downloads" = "%@ downloads";
 "explore.deck.a11y.rating" = "rated %@, %@ ratings";
 "explore.detail.sampleCards" = "Sample cards";
+"explore.detail.loadingDeck" = "Loading deck…";
 "explore.detail.loadingCards" = "Loading cards…";
 "explore.detail.noCards" = "No preview cards available.";
 "explore.detail.cardsError" = "Couldn't load cards";
 "explore.detail.missing.title" = "Deck unavailable";
 "explore.detail.missing.description" = "This deck may have been removed.";
+"explore.detail.storageError.title" = "Couldn't load this deck";
+"explore.detail.storageError.description" = "The local deck data could not be read. Try again.";
 /* Explore — copy an official deck into a private notebook (Phase 2c) */
 "explore.copy.cta" = "Copy to My Notebook";
 "explore.copy.loginRequired" = "Sign in to copy this to your notebook";
