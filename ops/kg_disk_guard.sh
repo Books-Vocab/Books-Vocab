@@ -57,7 +57,10 @@ cache_roots() {
     "$WORKSPACE/.cache/ios-catalyst-derived-data"; do
     [[ -d "$root" ]] && printf '%s\n' "$root"
   done
-  if [[ -d "$WORKSPACE/.claude/worktrees" ]]; then
+  # Worktree DerivedData can be multi-GB and `du` may legitimately take minutes
+  # while xcodebuild owns it.  The recurring guard must stay cheap; an operator
+  # may opt in to the bounded max-depth sweep for a one-off audit.
+  if [[ "${KG_DISK_GUARD_SCAN_WORKTREES:-0}" == "1" && -d "$WORKSPACE/.claude/worktrees" ]]; then
     find "$WORKSPACE/.claude/worktrees" -maxdepth 4 -type d \
       \( -name ios-build-derived-data -o -name ios-test-derived-data -o -name ios-catalyst-derived-data \) \
       -print 2>/dev/null
