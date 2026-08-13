@@ -196,12 +196,17 @@ function renderTree(){
   });
   const labels=[...labelsByAnchor.entries()].map(([anchor,anchorRefs])=>{
     const pos=positions.get(anchor);
-    const labelTop=Math.max(18,pos.y-18-(anchorRefs.length-1)*20);
+    // Keep the ref row and its ticket buttons above the commit node.  A 22px
+    // foreignObject plus a 24px gap prevents multiple refs at one anchor from
+    // colliding with the node subject or with the next branch row.
+    const labelTop=Math.max(18,pos.y-50-(anchorRefs.length-1)*28);
     return anchorRefs.map((ref,index)=>{
       const refState=ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
-      const tickets=(ref.tickets||[]).slice(0,3).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
-      const rowY=labelTop+index*20;
-      return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${rowY}">${esc(compactLabel(ref.branch,24))} · ${esc(refState)}</text><foreignObject x="${x(pos.lane)+18}" y="${rowY+4}" width="190" height="22"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
+      const ticketList=ref.tickets||[];
+      const tickets=ticketList.slice(0,3).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
+      const more=ticketList.length>3?`<span class="tree-ticket-more">+${ticketList.length-3}</span>`:"";
+      const rowY=labelTop+index*28;
+      return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${rowY}">${esc(compactLabel(ref.branch,24))} · ${esc(refState)}</text><foreignObject x="${x(pos.lane)+18}" y="${rowY+4}" width="190" height="22"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}${more}</div></foreignObject></g>`;
     }).join("");
   }).join("");
   const nodes=ordered.map(row=>{
