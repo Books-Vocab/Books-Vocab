@@ -63,6 +63,9 @@ struct SettingsReviewSection: View {
                     isOn: pauseBinding,
                     accessibilityLabel: L10n.string("凍結複習時鐘")
                 )
+                .onChange(of: pauseDraft) { _, isPaused in
+                    persistPauseChange(isPaused)
+                }
             } label: {
                 Text(L10n.string("凍結複習時鐘"))
                     .accessibilityHidden(true)
