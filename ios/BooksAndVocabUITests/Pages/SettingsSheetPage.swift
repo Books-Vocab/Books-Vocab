@@ -11,6 +11,10 @@ struct SettingsSheetPage {
         return matching[0]
     }
 
+    var homeScrollView: XCUIElement {
+        app.scrollViews["settings.home.scrollView"]
+    }
+
     var closeButton: XCUIElement {
         app.buttons["完成"]
     }
@@ -68,7 +72,12 @@ struct SettingsSheetPage {
     }
 
     var syncSummaryButton: XCUIElement {
-        app.buttons["settings.syncSummary"]
+        // The production row combines its accessibility children, so XCTest
+        // may expose it as Other rather than Button. Resolve the stable ID
+        // independently of the concrete AX element type.
+        app.descendants(matching: .any)
+            .matching(identifier: "settings.syncSummary")
+            .firstMatch
     }
 
     var syncLifecycle: XCUIElement {
@@ -173,6 +182,14 @@ struct SettingsSheetPage {
 
     func openSyncSummary(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         let button = syncSummaryButton
+        let deadline = Date().addingTimeInterval(5)
+        while !button.exists && Date() < deadline {
+            if homeScrollView.exists {
+                homeScrollView.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+        }
         XCTAssertTrue(button.exists, file: file, line: line)
         button.scrollIntoView(file: file, line: line)
         tapExactlyOne(button, named: "settings.syncSummary", file: file, line: line)
