@@ -125,7 +125,7 @@ REVIEW_CALENDAR_REQUIRED_LABELS = (
 REVIEW_CALENDAR_COUNTEREXAMPLE_LABELS = (
     "empty-day-counterexample", "timezone-boundary-counterexample",
 )
-SURFACE_CONTRACTS_KEYS = {"reviewCalendar"}
+SURFACE_CONTRACTS_KEYS = {"dictionary", "explore", "reviewCalendar", "settings"}
 REVIEW_CALENDAR_KEYS = {"required", "counterexamples"}
 REVIEW_CALENDAR_ROW_KEYS = {"fixtureID", "stepLabel", "index", "assetIDs"}
 READER_PASSAGE_KEYS = {
@@ -759,7 +759,7 @@ def _resolve_path(
     path = Path(raw)
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         raise UIWorldManifestError(
-            f"{label} {field} sourcePath escape repo root: {raw}"
+            f"{label} {field} must be repo-relative and cannot escape repo root: {raw}"
         )
     root = root.resolve()
     resolved = (root / path).resolve()
@@ -3085,7 +3085,7 @@ def _validate_surface_contracts(
             extra = sorted(set(contract_map) - SURFACE_CONTRACT_KEYS)
             missing = sorted(SURFACE_CONTRACT_KEYS - set(contract_map))
             raise UIWorldManifestError(
-                f"{label} scenarioContext.surfaceContracts.{surface} keys 不符: "
+                f"{label} scenarioContext.surfaceContracts.{surface} keys 不符合: "
                 f"extra={extra} missing={missing}")
         rows_by_kind = {}
         for kind in sorted(SURFACE_CONTRACT_KEYS):
@@ -3184,8 +3184,11 @@ def _validate_review_calendar_evidence(
         label=label,
     )
     if "reviewCalendar" not in surface_map:
+        if not required:
+            return
         raise UIWorldManifestError(
-            f"{label} scenarioContext.surfaceContracts.reviewCalendar is required"
+            f"{label} scenarioContext.surfaceContracts keys 不符合: missing=['reviewCalendar']; "
+            "scenarioContext.surfaceContracts.reviewCalendar is required"
         )
     evidence = _require_mapping(
         surface_map["reviewCalendar"],
@@ -3619,6 +3622,10 @@ def _validate_scenario_context(
         now_dt = None
         zone = None
     elif keys == SCENARIO_CONTEXT_KEYS:
+        # Surface evidence is an independent boundary. Validate it before the
+        # clock so a malformed evidence row cannot be masked by a null/invalid
+        # clock in a counterexample fixture.
+        _validate_review_calendar_evidence(mc, label=label, required=False)
         if require_review_clock or require_review_history_alignment:
             now_dt, zone, anchor_date, source = _review_clock_instant(
                 mc["reviewClock"], label=label
@@ -3641,29 +3648,6 @@ def _validate_scenario_context(
 
     if canonical:
         assert now_dt is not None and zone is not None
-        for fixture_id, fixture in data["vocabulary"].items():
-            if not isinstance(fixture, Mapping) or "reviewHistory" not in fixture:
-                continue
-            history = _require_list(
-                fixture["reviewHistory"], field=f"vocabulary.{fixture_id}.reviewHistory", label=label)
-            for index, record in enumerate(history):
-                row = _require_mapping(
-                    record, field=f"vocabulary.{fixture_id}.reviewHistory[{index}]", label=label)
-                reviewed_text = _ensure_str(
-                    row.get("reviewedAt"),
-                    field=f"vocabulary.{fixture_id}.reviewHistory[{index}].reviewedAt", label=label)
-                try:
-                    reviewed_at = datetime.fromisoformat(reviewed_text.replace("Z", "+00:00"))
-                except ValueError as exc:
-                    raise UIWorldManifestError(
-                        f"{label} vocabulary.{fixture_id}.reviewHistory[{index}].reviewedAt is invalid") from exc
-                if reviewed_at.tzinfo is None:
-                    raise UIWorldManifestError(
-                        f"{label} vocabulary.{fixture_id}.reviewHistory[{index}].reviewedAt must include timezone")
-                if reviewed_at.astimezone(timezone.utc) > now_dt:
-                    raise UIWorldManifestError(
-                        f"{label} scenarioContext.reviewClock must not precede reviewHistory "
-                        f"vocabulary.{fixture_id}.reviewHistory[{index}]")
         _validate_dictionary_context(
             mc["dictionary"], label=label, asset_types=asset_types)
         contracts = _require_mapping(
@@ -3676,6 +3660,32 @@ def _validate_scenario_context(
         )
         _validate_explore_surface_projection(
             contracts["explore"], shared_decks=data["sharedDecks"], label=label)
+        # The non-strict clock contract mirrors the Swift decoder: every
+        # vocabulary history may contain older months, but no event may be
+        # later than the injected instant.  Month/day geometry belongs only to
+        # the explicit review-calendar alignment contract below.
+        if not require_review_history_alignment:
+            vocabulary = _require_mapping(data.get("vocabulary"), field="vocabulary", label=label)
+            for fixture_id, fixture in vocabulary.items():
+                if not isinstance(fixture, Mapping) or "reviewHistory" not in fixture:
+                    continue
+                history = _require_list(
+                    fixture["reviewHistory"], field=f"vocabulary.{fixture_id}.reviewHistory", label=label)
+                for index, record in enumerate(history):
+                    reviewed_at = _parse_iso8601(
+                        _require_mapping(
+                            record,
+                            field=f"vocabulary.{fixture_id}.reviewHistory[{index}]",
+                            label=label,
+                        ).get("reviewedAt"),
+                        owner=f"vocabulary.{fixture_id}.reviewHistory[{index}].reviewedAt",
+                        label=label,
+                    ).astimezone(timezone.utc)
+                    if reviewed_at > now_dt:
+                        raise UIWorldManifestError(
+                            f"{label} scenarioContext.reviewClock must not precede reviewHistory "
+                            f"vocabulary.{fixture_id}.reviewHistory[{index}]"
+                        )
         review_clock_source: str | None = source
         if require_review_history_alignment:
             _validate_review_clock_history_alignment(

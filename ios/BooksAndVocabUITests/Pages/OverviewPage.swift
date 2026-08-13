@@ -58,7 +58,7 @@ struct OverviewPage {
             file: file,
             line: line
         )
-        return query.firstMatch
+        return query.element
     }
 
     func assertOverviewAccessibilityHierarchy(

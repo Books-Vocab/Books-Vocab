@@ -48,7 +48,7 @@ UI World 注入面使用。這裡只塑造結構化資料，不負責任何圖�
   → 子集投影時 prune 指向子集外的 link；todayReview 卡不 prune（baseline 語意
   即容許 cross-seed 顯示 chips）。
 * 仍投影的 populated/dense fixtures 帶 consumer 端最低量斷言（vocabListPopulated
-  ≥4、vocabListLong ≥40、statsPopulated ≥8 卡/≥12 事件、reviewCalendarDense
+  ≥4、statsPopulated ≥8 卡/≥12 事件、reviewCalendarDense
   ≥70 事件、knowledgeGraphPopulated = primary 全 active（與 statsPopulated 對齊，
   全螢幕圖 = 縮圖放大版）、reviewDeck.phaseMulti ==3）：
   投影器不擋薄 spec（測試/沙盒 spec 合法），量不足時對應 scenario 會 fail-loud。
@@ -830,14 +830,12 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
     stats_history = _history_for(active, cap=_HISTORY_STATS_MAX)
     shell_history = _history_for(stats_cards, cap=_HISTORY_SHELL_MAX)
 
-    # content-pinned fixtures（wordDetail / wordEdit / searchVocabNotebook /
-    # kgVocabRow / vocabLinkedCards / archivedPopulated / archivedSingle /
-    # archivedLong）刻意不投影：catalog scenario 釘死特定內容/形狀，由 emit_ios
+    # content-pinned fixtures（含繼承基底 vocabListLong/filterRich）刻意不投影：
+    # catalog scenario 釘死特定內容/形狀，由 emit_ios
     # 保留 baseline（SoT 註解見 emit_ios.SPEC_BASELINE_KEPT_FIXTURES）。
     vocabulary = {
         "vocabListPopulated": _vocab_seed(primary, entries(active)),
         "vocabListSingle": _vocab_seed(primary, entries(active[:1])),
-        "vocabListLong": _vocab_seed(primary, entries(active[:_LIST_LONG_MAX])),
         "vocabListEmpty": _vocab_seed(primary, []),
         "vocabListSyncing": _vocab_seed(primary, syncing_entries),
         "syncPendingSingle": _vocab_seed(

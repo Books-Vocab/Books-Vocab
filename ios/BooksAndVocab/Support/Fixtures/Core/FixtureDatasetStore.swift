@@ -203,6 +203,11 @@ enum FixtureDatasetStore {
     }
 
     static func requireInstalledAsset(ref: String) throws -> UIWorldInstalledAsset {
+        _ = try requireInstalledAssetURL(ref: ref)
+        return try installedAssetSnapshot(ref: ref)
+    }
+
+    static func requireInstalledAssetURL(ref: String) throws -> URL {
         let asset = try requireAsset(ref: ref)
         let sourceURL = try validatedSourceURL(for: asset, ref: ref)
         let destination = try installURL(for: asset, ref: ref)
@@ -254,11 +259,7 @@ enum FixtureDatasetStore {
             ])
         }
         try validateInstalledAsset(destination, asset: asset, ref: ref)
-        return try installedAssetSnapshot(ref: ref)
-    }
-
-    static func requireInstalledAssetURL(ref: String) throws -> URL {
-        try requireInstalledAsset(ref: ref).url
+        return try installedAssetSnapshot(ref: ref).url
     }
 
     static func installedAssetSnapshot(ref: String) throws -> UIWorldInstalledAsset {

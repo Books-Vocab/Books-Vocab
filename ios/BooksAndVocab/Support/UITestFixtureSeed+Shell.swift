@@ -85,10 +85,21 @@ extension UITestFixtureSeed {
             failFixtureSeed("Unknown vocabulary fixture ID: \(id)")
         }
 
-        let seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+        let seed: UIWorldVocabularySeed
+        if fixtureID == .reviewCalendarDense {
+            seed = FixtureDatasetStore.requireVocabularySeed(for: .reviewCalendarDense)
+        } else {
+            seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
+        }
+        let context = container.mainContext
         do {
-            try clearVocabularyEntries(from: container.mainContext)
-            _ = try insertVocabularySeed(seed, into: container.mainContext)
+            if fixtureID == .reviewCalendarDense {
+                try clearReviewCalendarFixtures(from: context)
+                _ = try FixtureDatasetStore.materializeEvidenceFixture()
+            } else {
+                try clearVocabularyEntries(from: context)
+            }
+            _ = try insertVocabularySeed(seed, into: context)
             if !AuthManager.shared.isLoggedIn {
                 seedSignedInLoginFromWorld()
             }

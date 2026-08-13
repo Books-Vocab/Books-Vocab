@@ -404,7 +404,7 @@ struct RepoFixtureDatasetsContractTests {
             var vocabulary = try #require(topLevel["vocabulary"] as? [String: Any])
             var seed = try #require(vocabulary["reviewCalendarDense"] as? [String: Any])
             var history = try #require(seed["reviewHistory"] as? [[String: Any]])
-            history[0]["reviewedAt"] = "2026-06-16T00:00:00Z"
+            history[0]["reviewedAt"] = "2026-07-11T00:00:00Z"
             seed["reviewHistory"] = history
             vocabulary["reviewCalendarDense"] = seed
             topLevel["vocabulary"] = vocabulary
