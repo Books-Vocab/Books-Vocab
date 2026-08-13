@@ -300,6 +300,10 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert "分支與工作樹" in index
     assert "tree-mobile-list" in js
     assert "renderMobileTree" in js
+    assert "tree-held-tickets" in index
+    assert "renderHeldTickets" in js
+    assert "heldTicketGroups" in js
+    assert "目前認領中的票據" in js
     assert "看板資料讀取錯誤" in js
     assert "min-height:44px" in "".join(css.split())
     assert ".section-heading{flex-direction:column" in "".join(css.split())

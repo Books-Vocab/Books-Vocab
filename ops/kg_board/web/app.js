@@ -153,6 +153,28 @@ function commitInspector(row,ref){
     </dl>
     <ul class="file-list">${files}</ul>`;
 }
+function heldTicketGroups(){
+  const groups=new Map();
+  (board?.board||[]).filter(row=>row.held).forEach(row=>{
+    const branch=String(row.held?.branch||"未標定工作樹");
+    if(!groups.has(branch))groups.set(branch,[]);
+    groups.get(branch).push(row);
+  });
+  return [...groups.entries()];
+}
+function renderHeldTickets(){
+  const mount=document.getElementById("tree-held-tickets");if(!mount)return;
+  const groups=heldTicketGroups(),total=groups.reduce((count,[,rows])=>count+rows.length,0);
+  if(!total){mount.innerHTML="";return;}
+  mount.innerHTML=`<section class="tree-held-card" aria-labelledby="tree-held-title">
+    <div class="tree-held-heading"><strong id="tree-held-title">目前認領中的票據</strong><span>${total} 張 · ${groups.length} 條工作樹</span></div>
+    <div class="tree-held-groups">${groups.map(([branch,rows])=>`<div class="tree-held-group">
+      <div class="tree-held-branch"><code title="${esc(branch)}">${esc(compactLabel(branch,48))}</code><span>${rows.length} 張</span></div>
+      <div class="tree-held-list">${rows.map(row=>`<button type="button" class="tree-held-ticket" data-ticket-id="${esc(row.id)}"><code>${esc(row.id)}</code><span>${esc(row.brief||"尚未提供白話摘要")}</span></button>`).join("")}</div>
+    </div>`).join("")}</div>
+  </section>`;
+  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",()=>selectTicket(node.dataset.ticketId)));
+}
 function renderTree(){
   const mount=document.getElementById("git-tree");
   const mobile=document.getElementById("tree-mobile-list");
@@ -256,6 +278,7 @@ function render(){
   const visible=rows();
   document.getElementById("status").textContent=`${visible.length} 張票 · 唯讀`;
   document.getElementById("tickets").innerHTML=tab==="history"&&!history?"<p class=\"empty\">歷史資料載入中</p>":visible.length?visible.map(ticket).join(""):"<p class=\"empty\">這個篩選目前沒有票</p>";
+  renderHeldTickets();
   document.querySelectorAll("[data-ticket-details]").forEach(details=>details.addEventListener("toggle",()=>hydrateTicket(details)));
 }
 async function loadHistory(){
