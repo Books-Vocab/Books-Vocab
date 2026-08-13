@@ -47,6 +47,7 @@ struct SettingsReviewSection: View {
                 )
             } label: {
                 Text(L10n.string("凍結複習時鐘"))
+                    .accessibilityHidden(true)
             }
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
