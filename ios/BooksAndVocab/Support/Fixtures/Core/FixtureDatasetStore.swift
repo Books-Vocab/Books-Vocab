@@ -9,6 +9,12 @@ private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 // container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 enum FixtureDatasetStore {
+    enum RuntimeMaterializationError: Error, Equatable {
+        case unavailable(fixtureID: String)
+        case missingSourceAsset(assetID: String)
+        case invalidSourceAsset(ref: String, reason: String)
+    }
+
     enum Availability: Equatable {
         case absent
         case loaded
@@ -194,6 +200,8 @@ enum FixtureDatasetStore {
 
     private static func validatedSourceURL(for asset: UIWorldAsset, ref: String) throws -> URL {
         let url = URL(fileURLWithPath: asset.sourcePath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
         }
@@ -580,26 +588,76 @@ enum FixtureDatasetStore {
 
     static func dictionaryRuntimeMaterialization(
         for fixtureID: UIWorldDictionaryFixtureID
-    ) -> DictionaryMaterializationSnapshot? {
-        guard case let .loaded(document, _) = loadState(),
-              let dictionary = document.scenarioContext?.dictionary,
+    ) throws -> DictionaryMaterializationSnapshot {
+        guard case let .loaded(document, _) = loadState() else {
+            throw RuntimeMaterializationError.unavailable(fixtureID: fixtureID.rawValue)
+        }
+        guard let dictionary = document.scenarioContext?.dictionary,
               dictionarySurfaceContract(for: fixtureID) != nil,
-              let data = rawDatasetData() else { return nil }
-        let assetID = dictionary.coverage["required"]?.assetIDs.first
-        let asset = document.assets.refs.compactMap { ref -> UIWorldAsset? in
-            guard ref.split(separator: ".").last.map(String.init) == assetID else { return nil }
-            return document.assets.asset(for: ref)
-        }.first
-        return DictionaryMaterializationSnapshot(
-            status: dictionary.materialization.status,
-            selectedSenseID: dictionary.materialization.selectedSenseID,
-            selectedExampleID: dictionary.materialization.selectedExampleID,
-            sourceFixtureID: dictionary.materialization.sourceFixtureID,
-            datasetID: document.datasetID,
-            datasetSHA256: sha256Hex(for: data),
-            sourceAssetID: assetID,
-            sourceAssetSHA256: asset?.sha256
-        )
+              let data = rawDatasetData() else {
+            throw RuntimeMaterializationError.unavailable(fixtureID: fixtureID.rawValue)
+        }
+        guard !document.datasetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RuntimeMaterializationError.invalidSourceAsset(
+                ref: "dataset",
+                reason: "datasetID is empty"
+            )
+        }
+        guard let requiredCoverage = dictionary.coverage["required"],
+              requiredCoverage.assetIDs.count == 1,
+              let assetID = requiredCoverage.assetIDs.first,
+              let assetBucket = document.assets.typeByID[assetID],
+              let asset = document.assets.asset(for: "\(assetBucket).\(assetID)") else {
+            throw RuntimeMaterializationError.missingSourceAsset(
+                assetID: dictionary.coverage["required"]?.assetIDs.first ?? ""
+            )
+        }
+
+        let sourceRef = "\(assetBucket).\(assetID)"
+        let sourceURL: URL
+        do {
+            sourceURL = try validatedSourceURL(for: asset, ref: sourceRef)
+        } catch {
+            throw RuntimeMaterializationError.invalidSourceAsset(
+                ref: sourceRef,
+                reason: String(describing: error)
+            )
+        }
+        do {
+            let actualByteSize = try byteSize(for: sourceURL)
+            let actualSHA256 = try sha256Hex(for: sourceURL)
+            guard actualByteSize == asset.byteSize else {
+                throw RuntimeMaterializationError.invalidSourceAsset(
+                    ref: sourceRef,
+                    reason: "byteSize mismatch: expected \(asset.byteSize), got \(actualByteSize)"
+                )
+            }
+            guard actualSHA256 == asset.sha256 else {
+                throw RuntimeMaterializationError.invalidSourceAsset(
+                    ref: sourceRef,
+                    reason: "sha256 mismatch: expected \(asset.sha256), got \(actualSHA256)"
+                )
+            }
+            return DictionaryMaterializationSnapshot(
+                status: dictionary.materialization.status,
+                selectedSenseID: dictionary.materialization.selectedSenseID,
+                selectedExampleID: dictionary.materialization.selectedExampleID,
+                sourceFixtureID: dictionary.materialization.sourceFixtureID,
+                datasetID: document.datasetID,
+                datasetSHA256: sha256Hex(for: data),
+                sourceAssetID: assetID,
+                sourceAssetPath: sourceURL.path,
+                sourceAssetByteSize: actualByteSize,
+                sourceAssetSHA256: actualSHA256
+            )
+        } catch let error as RuntimeMaterializationError {
+            throw error
+        } catch {
+            throw RuntimeMaterializationError.invalidSourceAsset(
+                ref: sourceRef,
+                reason: String(describing: error)
+            )
+        }
     }
 
     private enum LoadState {

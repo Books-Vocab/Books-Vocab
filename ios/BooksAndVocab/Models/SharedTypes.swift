@@ -417,20 +417,24 @@ struct DictionaryMaterializationSnapshot: Codable, Equatable {
     let selectedSenseID: String?
     let selectedExampleID: String?
     let sourceFixtureID: String
-    let datasetID: String?
-    let datasetSHA256: String?
-    let sourceAssetID: String?
-    let sourceAssetSHA256: String?
+    let datasetID: String
+    let datasetSHA256: String
+    let sourceAssetID: String
+    let sourceAssetPath: String
+    let sourceAssetByteSize: Int
+    let sourceAssetSHA256: String
 
     init(
         status: String,
         selectedSenseID: String?,
         selectedExampleID: String?,
         sourceFixtureID: String,
-        datasetID: String? = nil,
-        datasetSHA256: String? = nil,
-        sourceAssetID: String? = nil,
-        sourceAssetSHA256: String? = nil
+        datasetID: String,
+        datasetSHA256: String,
+        sourceAssetID: String,
+        sourceAssetPath: String,
+        sourceAssetByteSize: Int,
+        sourceAssetSHA256: String
     ) {
         self.status = status
         self.selectedSenseID = selectedSenseID
@@ -439,6 +443,8 @@ struct DictionaryMaterializationSnapshot: Codable, Equatable {
         self.datasetID = datasetID
         self.datasetSHA256 = datasetSHA256
         self.sourceAssetID = sourceAssetID
+        self.sourceAssetPath = sourceAssetPath
+        self.sourceAssetByteSize = sourceAssetByteSize
         self.sourceAssetSHA256 = sourceAssetSHA256
     }
 }
@@ -553,6 +559,52 @@ struct KGDictionaryCardProjection: Decodable {
         let materializationStatus: String
         let promotionErrorCode: String?
         let promotionRetryable: Bool?
+    }
+}
+
+/// Strict envelope used by dictionary-link materialization responses. The
+/// broader card projection remains backward-compatible for read/promotion
+/// routes, but materialization must never turn a missing graph link into an
+/// empty projection.
+struct KGMaterializationCardProjection: Decodable {
+    let card: KGCard
+    let dictionaryEntry: LexicalEntry
+    let selectedSenseKey: String
+    let selectedExampleKey: String
+    let materializationStatus: String
+    let promotionErrorCode: String?
+    let promotionRetryable: Bool
+    let links: [KGGraphLink]
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        card = try values.decode(KGCard.self, forKey: .card)
+        dictionaryEntry = try values.decode(LexicalEntry.self, forKey: .dictionaryEntry)
+        selectedSenseKey = try values.decode(String.self, forKey: .selectedSenseKey)
+        selectedExampleKey = try values.decode(String.self, forKey: .selectedExampleKey)
+        materializationStatus = try values.decode(String.self, forKey: .materializationStatus)
+        promotionErrorCode = try values.decodeIfPresent(String.self, forKey: .promotionErrorCode)
+        promotionRetryable = try values.decode(Bool.self, forKey: .promotionRetryable)
+        links = try values.decode([KGGraphLink].self, forKey: .links)
+    }
+
+    var dictionaryProjection: KGDictionaryCardProjection {
+        KGDictionaryCardProjection(
+            card: card,
+            dictionaryEntry: dictionaryEntry,
+            selectedSenseKey: selectedSenseKey,
+            selectedExampleKey: selectedExampleKey,
+            materializationStatus: materializationStatus,
+            promotionErrorCode: promotionErrorCode,
+            promotionRetryable: promotionRetryable,
+            links: links
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case card, dictionaryEntry
+        case selectedSenseKey, selectedExampleKey, materializationStatus
+        case promotionErrorCode, promotionRetryable, links
     }
 }
 

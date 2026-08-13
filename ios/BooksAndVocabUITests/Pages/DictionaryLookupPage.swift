@@ -24,7 +24,7 @@ struct DictionaryLookupPage {
     }
 
     var searchField: XCUIElement {
-        app.textFields["addLink.dictionary.searchField"]
+        exactlyOne("addLink.dictionary.searchField", in: app.textFields)
     }
 
     var loadingState: XCUIElement { stateMarker(.loading) }
@@ -33,7 +33,12 @@ struct DictionaryLookupPage {
     var offlineState: XCUIElement { stateMarker(.offline) }
     var errorState: XCUIElement { stateMarker(.error) }
     var retryingState: XCUIElement { stateMarker(.retrying) }
-    var retryButton: XCUIElement { app.buttons["addLink.dictionary.retry"] }
+    var retryButton: XCUIElement {
+        exactlyOne("addLink.dictionary.retry", in: app.buttons)
+    }
+    var releaseRetryButton: XCUIElement {
+        exactlyOne("addLink.dictionary.releaseRetry", in: app.buttons)
+    }
     var result: XCUIElement { stateMarker(.result) }
     var provenance: XCUIElement { element("addLink.dictionary.provenance") }
 
@@ -98,6 +103,16 @@ struct DictionaryLookupPage {
         target.tapWhenReady(file: file, line: line)
     }
 
+    func releaseRetryRequest(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        assertUnique(
+            releaseRetryButton,
+            identifier: "addLink.dictionary.releaseRetry",
+            file: file,
+            line: line
+        )
+        releaseRetryButton.tapWhenReady(file: file, line: line)
+    }
+
     func assertRetryButton(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         let matches = app.buttons.matching(identifier: "addLink.dictionary.retry")
         XCTAssertEqual(matches.count, 1, "retry action selector must resolve exactly once", file: file, line: line)
@@ -126,9 +141,13 @@ struct DictionaryLookupPage {
     }
 
     private func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(identifier: identifier)
-            .element(boundBy: 0)
+        exactlyOne(identifier, in: app.descendants(matching: .any))
+    }
+
+    private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
+        let matches = query.matching(identifier: identifier)
+        XCTAssertEqual(matches.count, 1, "P1 selector must resolve exactly once: \(identifier)")
+        return matches.element
     }
 
     private func stateMarker(_ state: CanonicalLookupState) -> XCUIElement {

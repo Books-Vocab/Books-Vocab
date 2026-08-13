@@ -31,6 +31,40 @@ struct DictionaryMaterializeLinkResponse: Decodable {
     let createdCard: Bool
     let createdLink: Bool
     let replayed: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case targetCard, dictionaryCard, link, createdCard, createdLink, replayed
+    }
+
+    init(
+        targetCard: KGCard,
+        dictionaryCard: KGDictionaryCardProjection?,
+        link: KGGraphLink,
+        createdCard: Bool,
+        createdLink: Bool,
+        replayed: Bool
+    ) {
+        self.targetCard = targetCard
+        self.dictionaryCard = dictionaryCard
+        self.link = link
+        self.createdCard = createdCard
+        self.createdLink = createdLink
+        self.replayed = replayed
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        targetCard = try values.decode(KGCard.self, forKey: .targetCard)
+        let strictProjection = try values.decodeIfPresent(
+            KGMaterializationCardProjection.self,
+            forKey: .dictionaryCard
+        )
+        dictionaryCard = strictProjection?.dictionaryProjection
+        link = try values.decode(KGGraphLink.self, forKey: .link)
+        createdCard = try values.decode(Bool.self, forKey: .createdCard)
+        createdLink = try values.decode(Bool.self, forKey: .createdLink)
+        replayed = try values.decode(Bool.self, forKey: .replayed)
+    }
 }
 
 struct DictionaryPromotionResponse: Decodable, Equatable {
