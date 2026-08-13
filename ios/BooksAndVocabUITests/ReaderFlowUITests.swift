@@ -337,6 +337,8 @@ final class ReaderFlowUITests: UITestCase {
                 + "expected=reader.toc.missingDestination + reader.toc.retry + sheet-open",
             named: "Reader Invalid Destination Metrics"
         )
+    }
+
     @MainActor
     func testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance() throws {
         let scenarios: [UITestReaderProgressScenario] = [

@@ -6,6 +6,7 @@ private let uiTestLaunchProfileEnvKey = "KG_UI_TEST_LAUNCH_PROFILE"
 private let uiTestPerfLogEnvKey = "KG_PERF_LOG"
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
+private let fixtureAssetRootEnvKey = "KG_FIXTURE_ASSET_ROOT"
 private let p9ProofRelativePathEnvKey = "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH"
 private let uiTestSourceCommitEnvKey = "KG_UI_TEST_SOURCE_COMMIT"
 private let uiTestDatasetIDEnvKey = "KG_UI_TEST_DATASET_ID"
@@ -22,7 +23,6 @@ enum UITestReaderRuntimeScenario: String, CaseIterable, Equatable {
     case loadingMissing = "loading-missing"
     case loadingErrorRetry = "loading-error-retry"
     case loadingEmpty = "loading-empty"
-
 }
 
 /// Progress-only fixture scenarios. Loading/error scenarios intentionally live
@@ -53,6 +53,10 @@ enum UITestReaderProgressScenario: String, CaseIterable, Equatable {
         case .progressMiddle: return "middle"
         case .progressComplete: return "complete"
         case .progressRestoreFailure: return "restore-failure"
+        }
+    }
+}
+
 enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
     case missingUTF8
     case invalidJSON(underlying: Error)
@@ -66,7 +70,6 @@ enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
         }
     }
 }
-private let fixtureAssetRootEnvKey = "KG_FIXTURE_ASSET_ROOT"
 
 enum UITestFixture: Equatable {
     case raw(String)
@@ -190,18 +193,18 @@ struct UITestLaunchConfiguration {
         if let perfLog, !perfLog.isEmpty {
             environment[uiTestPerfLogEnvKey] = perfLog
         }
-        // ios_test.sh --dataset exports the dataset onto the runner process
-        // (deflate+base64 by default; plaintext base64 kept for compatibility);
-        // forward it into the app so the seeders' renderModel chain picks it
-        // up. An explicit per-test value always wins over the runner-wide one.
+
+        // ios_test.sh --dataset exports the dataset onto the runner process;
+        // forward it into the app. An explicit per-test value wins.
         for key in [fixtureDatasetDeflateEnvKey, fixtureDatasetEnvKey, fixtureAssetRootEnvKey] {
             if environment[key] == nil,
-               let dataset = ProcessInfo.processInfo.environment[key],
-               !dataset.isEmpty {
-                environment[key] = dataset
+               let value = ProcessInfo.processInfo.environment[key],
+               !value.isEmpty {
+                environment[key] = value
             }
         }
-        // P9 evidence provenance and the app-written proof destination are
+
+        // Evidence provenance and the app-written proof destination are
         // explicit launch inputs; no host-side fixture copy is allowed.
         for key in [
             p9ProofRelativePathEnvKey,
@@ -225,18 +228,6 @@ struct UITestLaunchConfiguration {
         }
         guard let data = raw.data(using: .utf8) else {
             throw UITestLaunchArgumentsError.missingUTF8
-    private func inheritedLaunchArguments() -> [String] {
-        guard let raw = ProcessInfo.processInfo.environment[uiTestAppArgumentsEnvKey] else {
-            return []
-        }
-        guard let data = raw.data(using: .utf8) else {
-            preconditionFailure("Invalid KG_UI_TEST_APP_ARGS_JSON: value is not UTF-8")
-    private func inheritedLaunchArguments() -> [String] {
-        guard let raw = ProcessInfo.processInfo.environment[uiTestAppArgumentsEnvKey] else {
-            return []
-        }
-        guard let data = raw.data(using: .utf8) else {
-            preconditionFailure("UI test inherited app arguments are not UTF-8")
         }
         do {
             return try JSONDecoder().decode([String].self, from: data)
@@ -252,8 +243,6 @@ struct UITestLaunchConfiguration {
             )
         } catch {
             preconditionFailure("\(error)")
-            preconditionFailure("Invalid KG_UI_TEST_APP_ARGS_JSON: \(error)")
-            preconditionFailure("UI test inherited app arguments are invalid JSON: \(error)")
         }
     }
 }

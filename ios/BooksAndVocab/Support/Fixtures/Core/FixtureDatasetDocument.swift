@@ -36,9 +36,9 @@ struct FixtureDatasetDocument: Decodable {
     let vocabulary: [String: UIWorldVocabularySeed]
     let reviewDeck: [String: UIWorldReviewDeckSeed]
     let syncPresenter: [String: UIWorldSyncPresenterSeed]
-    /// Explore catalog fixtures. This optional domain is backward-compatible
-    /// with existing worlds; Explore UI-test/preview paths require it.
-    let sharedDecks: UIWorldSharedDeckCatalogSeed?
+    /// Explore catalog fixtures are a required v2 domain. Canonical Explore
+    /// surface contracts are projections of this single top-level catalog.
+    let sharedDecks: UIWorldSharedDeckCatalogSeed
     /// Optional cross-domain state for scenarios that need one coherent clock
     /// or content projection. Ordinary UI Worlds may omit it entirely.
     let scenarioContext: UIWorldScenarioContextSeed?
@@ -105,7 +105,7 @@ struct FixtureDatasetDocument: Decodable {
         vocabulary: [String: UIWorldVocabularySeed] = [:],
         reviewDeck: [String: UIWorldReviewDeckSeed] = [:],
         syncPresenter: [String: UIWorldSyncPresenterSeed] = [:],
-        sharedDecks: UIWorldSharedDeckCatalogSeed? = nil,
+        sharedDecks: UIWorldSharedDeckCatalogSeed,
         scenarioContext: UIWorldScenarioContextSeed? = nil
     ) {
         self.schema = schema
