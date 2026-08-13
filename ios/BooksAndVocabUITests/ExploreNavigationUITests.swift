@@ -128,6 +128,15 @@ final class ExploreNavigationUITests: UITestCase {
         captureStep("explore-retry-counterexample", app: retryApp)
     }
 
+    /// Matrix evidence needs one stable bundle that covers the required states and
+    /// both counterexamples. Keep the focused tests above for targeted reruns, but
+    /// make the combined artifact explicit instead of merging bundles on the host.
+    @MainActor
+    func testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates() throws {
+        try testExploreRequiredStateFlowProducesSeparateEvidenceSteps()
+        try testExploreCounterexampleEvidenceUsesDistinctAssets()
+    }
+
     @MainActor
     func testExploreLoadedCardExposesLongEmojiAndRTLTitleAndAssetProof() throws {
         let app = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-a11y-content")
