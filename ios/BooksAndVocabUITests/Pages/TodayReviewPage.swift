@@ -483,7 +483,7 @@ struct TodayReviewPage {
                cardMatchesGeometry(cardIdentifier, geometry: geometry),
                scopedPresentationAnchor(cardIdentifier, presentationIdentifier),
                scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0,
-               requiredFieldIdentifiers.allSatisfy({ scopedExactlyOne(cardIdentifier, $0) }),
+               requiredFieldIdentifiers.allSatisfy({ scopedRequiredField(cardIdentifier, $0) }),
                absentFieldIdentifiers.allSatisfy({ scopedCount(cardIdentifier, $0) == 0 }) {
                 return true
             }
@@ -494,7 +494,7 @@ struct TodayReviewPage {
             && cardMatchesGeometry(cardIdentifier, geometry: geometry)
             && scopedPresentationAnchor(cardIdentifier, presentationIdentifier)
             && scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0
-            && requiredFieldIdentifiers.allSatisfy({ scopedExactlyOne(cardIdentifier, $0) })
+            && requiredFieldIdentifiers.allSatisfy({ scopedRequiredField(cardIdentifier, $0) })
             && absentFieldIdentifiers.allSatisfy({ scopedCount(cardIdentifier, $0) == 0 })
     }
 
@@ -539,6 +539,18 @@ struct TodayReviewPage {
     private func scopedExactlyOne(_ cardIdentifier: String, _ identifier: String) -> Bool {
         let matching = scopedElements(cardIdentifier, identifier).allElementsBoundByIndex
         return matching.count == 1 && matching[0].exists
+    }
+
+    /// Most fields are singleton anchors. Collocations are a real collection:
+    /// one accessibility identifier is published for each visible item, so the
+    /// readiness contract must prove at least one mounted item without
+    /// collapsing the collection into a fake singleton.
+    private func scopedRequiredField(_ cardIdentifier: String, _ identifier: String) -> Bool {
+        let matching = scopedElements(cardIdentifier, identifier).allElementsBoundByIndex
+        guard identifier.hasSuffix(".collocations") else {
+            return matching.count == 1 && matching[0].exists
+        }
+        return matching.contains { $0.exists && !$0.frame.isEmpty }
     }
 
     private func scopedPresentationAnchor(_ cardIdentifier: String, _ identifier: String) -> Bool {
