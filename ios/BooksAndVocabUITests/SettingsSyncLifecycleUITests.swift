@@ -15,6 +15,9 @@ final class SettingsSyncLifecycleUITests: UITestCase {
                 .entitlementsProAccess,
                 .settingsSyncTerminalErrorRetrySuccess
             ],
+            extraEnvironment: [
+                "KG_SETTINGS_SYNC_FIXTURE": "sync_terminal_error_retry_success"
+            ],
             perfLog: "settings-sync-lifecycle"
         )
         let settings = AppPage(app: app).goToBookshelf().tapSettings()

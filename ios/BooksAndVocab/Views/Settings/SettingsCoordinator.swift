@@ -654,9 +654,10 @@ final class SettingsCoordinator: SettingsCoordinating {
                 return settingsSyncService
             }
             fixtureID = activeFixtureID
-        } else if ProcessInfo.processInfo.arguments.contains(
-            "-seedFixture:settings:\(SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue)"
-        ) {
+        } else if ProcessInfo.processInfo.arguments.contains(where: {
+            $0.contains("-seedFixture:settings:\(SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue)")
+        }) || ProcessInfo.processInfo.environment["KG_SETTINGS_SYNC_FIXTURE"] ==
+            SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue {
             FixtureDatasetStore.activateSettingsFixture(.syncTerminalErrorRetrySuccess)
             fixtureID = .syncTerminalErrorRetrySuccess
         } else {
