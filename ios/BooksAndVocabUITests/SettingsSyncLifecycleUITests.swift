@@ -3,7 +3,11 @@ import XCTest
 final class SettingsSyncLifecycleUITests: UITestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
-        executionTimeAllowance = 120
+        // Settings is intentionally exercised through the production accessibility
+        // tree; on iOS 26.4 the full sheet query can take ~150s before the two
+        // sync rounds finish. Keep the allowance explicit and bounded rather than
+        // letting the runner classify a valid lifecycle as a hang.
+        executionTimeAllowance = 300
     }
 
     @MainActor
