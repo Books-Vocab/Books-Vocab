@@ -46,7 +46,7 @@ struct AppPage {
 
     @discardableResult
     func goToBookshelf(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
-        guard let tab = app.tabBars.buttons["書庫"].exactlyOneElement(
+        guard let tab = app.tabBars.buttons.matching(identifier: "書庫").exactlyOneElement(
             timeout: 5,
             named: "Bookshelf tab",
             file: file,
