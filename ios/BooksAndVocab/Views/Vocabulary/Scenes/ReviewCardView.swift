@@ -213,18 +213,28 @@ struct ReviewCardView: View {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
             }
                 .frame(height: drawnHeight, alignment: .top)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("todayReview.card.front.content.scroll")
+                .overlay(alignment: .topLeading) {
+                    reviewEvidenceAnchor("todayReview.card.front.content.scroll")
+                }
         } else {
             ViewThatFits(in: .vertical) {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("todayReview.card.front.content.natural")
+                    .overlay(alignment: .topLeading) {
+                        reviewEvidenceAnchor("todayReview.card.front.content.natural")
+                    }
                 ScrollView(.vertical) {
                     reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("todayReview.card.front.content.scroll")
+                .overlay(alignment: .topLeading) {
+                    reviewEvidenceAnchor("todayReview.card.front.content.scroll")
+                }
             }
             .frame(height: drawnHeight, alignment: .top)
         }
@@ -397,6 +407,17 @@ struct ReviewCardView: View {
         return "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);preset=\(preset.rawValue);layoutProfile=\(layoutProfile);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
     }
 
+    /// Stable machine-readable marker for the selected natural/scroll branch.
+    /// Visible fields remain real descendants; this marker only identifies the
+    /// presentation branch used by UI evidence.
+    private func reviewEvidenceAnchor(_ identifier: String) -> some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(identifier)
+            .accessibilityLabel("")
+    }
+
     func combinedAnswerContent(_ currentCard: ReviewCardContent, viewport: ReviewCardViewport) -> some View {
         let card = currentCard.card
         let _ = PerfLog.render.tick(
@@ -427,6 +448,9 @@ struct ReviewCardView: View {
                     .frame(maxWidth: .infinity, maxHeight: maxHeight, alignment: .topLeading)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("todayReview.card.back.content.natural")
+                    .overlay(alignment: .topLeading) {
+                        reviewEvidenceAnchor("todayReview.card.back.content.natural")
+                    }
             case .scroll:
                 ScrollView(.vertical) {
                     answerContent(currentCard, plan: plan, layout: layout)
@@ -435,6 +459,9 @@ struct ReviewCardView: View {
                 .frame(maxWidth: .infinity, maxHeight: maxHeight, alignment: .topLeading)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("todayReview.card.back.content.scroll")
+                .overlay(alignment: .topLeading) {
+                    reviewEvidenceAnchor("todayReview.card.back.content.scroll")
+                }
             }
         }
     }
