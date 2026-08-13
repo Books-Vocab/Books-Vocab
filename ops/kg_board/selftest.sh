@@ -74,9 +74,10 @@ import json, sys
 d = json.load(sys.stdin)
 assert d["schema"] == "kg.board.v3", d.get("schema")
 assert not {"dispatch", "blocked", "deferred", "rank", "pinned", "snoozed"}.intersection(d), "readonly payload 仍有重複或排序欄位"
-required = {"id", "brief", "detail", "severity", "stream", "held", "ready",
-            "scope", "plan", "fix_site", "acceptance",
-            }
+# `/api/board` is deliberately a compact read-only projection.  Grooming
+# internals stay behind the CLI; requiring them here creates a false red when
+# the data plane is healthy and the API contract is correctly redacted.
+required = {"id", "brief", "detail", "severity", "stream", "held", "ready"}
 assert all(set(row) == required for row in d["board"]), "board row 不是 compact v3"
 c = d["counts"]
 assert c["ready_definition"].startswith("KG CLI groomed clause"), c["ready_definition"]
