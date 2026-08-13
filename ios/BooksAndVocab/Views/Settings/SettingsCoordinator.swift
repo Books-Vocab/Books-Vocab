@@ -643,8 +643,8 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// production backend.
     @MainActor
     private func resolveSettingsSyncServiceIfNeeded() -> SettingsSyncService? {
-        guard settingsSyncService == nil,
-              FixtureDatasetStore.activeSettingsFixtureID == .syncTerminalErrorRetrySuccess,
+        guard FixtureDatasetStore.activeSettingsFixtureID == .syncTerminalErrorRetrySuccess,
+              settingsSyncFixtureSummary == nil,
               let fixtureID = FixtureDatasetStore.activeSettingsFixtureID else {
             return settingsSyncService
         }
