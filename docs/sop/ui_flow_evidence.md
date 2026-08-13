@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/Support/
   - ops/
   - .claude/skills/ios-simulator-verification/
-verified_against: f955b8f10
+verified_against: f955b8f1066c9928a3ea04bfe1828fc8aa6b84f5
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -105,7 +105,7 @@ P11 的 branch-local UI World／fixture／test mapping 為：`ops/fixtures/ui_wo
 - Today Review 是純本地 flow，fixture 免登入即可走完（notebook 卡片 + CTA + session）；仍設 `KG_UI_TEST_SERVER_URL` 指向不可達位址保持 hermetic（同 AuthFlow seam）。
 - **UI World seam**（`ios_test.sh --dataset <name>` / `--dataset-file <path>`，限 `--ui`）：把 `ops/fixtures/ui_worlds/<name>.json`（`kg.fixture.dataset.v2`）deflate 壓縮後 base64 注入 runner。UI World 是 Catalog 與 UITest 共用的結構化畫面狀態 SoT，同時描述資料、auth session、Keychain token state、entitlement、preferences、SwiftData rows 與 file-backed assets；完整 schema、跨引用與資產完整性由 `ops/ui_world_manifest.py validate` 和 app decoder 管理，不在本流程 SOP 重複。`--ui` 實際執行未帶 world 會被 runner 擋下；`--list` / cache action 不執行注入。
 - Host-side UI World 入口也 fail-fast：`ios_test.sh` 與 `catalog list|open` 都先跑 `ops/ui_world_manifest.py validate`；`ui_quality_gate.py` 與 `uitest_flow_matrix.py` 即使 dry-run 也會先驗 explicit dataset，invalid world 不會產生可執行命令。
-- UI World decode 階段會先驗跨引用：每個 top-level domain key 必須屬於 v2 schema，asset manifest 只能宣告已知 bucket 且每個 asset 只能宣告已知 property，每個 domain 內 key 必須是已知 fixture id，`preferences.userDefaults` / `preferences.ubiquitousKeyValueStore` key 必須非空，auth `keychainTokenState` 必須和登入/token/userId 狀態自洽，settings 的 `authFixtureRef` / nullable `entitlementsFixtureRef` 必須 resolve 到同一 world 的 `auth.*` / `entitlements.*` 且 UI auth/subscription state 對齊；Reader / Notebook / Vocabulary / ReviewDeck 的 notebook sync status、VocabularyEntry `syncStatus/actionType`、entry word uniqueness 與 `reviewHistory.word` 必須在同一 seed 內自洽；Runtime podcast series/download 只能指 `assets.audio.*` / `assets.subtitles.*`，Reader 只能指 `assets.text.*` / `assets.books.*`，Bookshelf 非空 `bookAssetRef` 只能指 `assets.books.*`；ref 不存在、bucket 不對、未知 top-level domain、未知 asset bucket/property、未知 fixture id、空 preference key、登入/Pro 狀態漂移或 SwiftData row 狀態不合法直接 `DecodingError`，不是 seed/install 時的 late failure。
+- UI World decode 階段會先驗跨引用：每個 top-level domain key 必須屬於 v2 schema，asset manifest 只能宣告已知 bucket 且每個 asset 只能宣告已知 property，每個 domain 內 key 必須是已知 fixture id，`preferences.userDefaults` / `preferences.ubiquitousKeyValueStore` key 必須非空，auth `keychainTokenState` 必須和登入/token/userId 狀態自洽，settings 的 `authFixtureRef` / nullable `entitlementsFixtureRef` 必須 resolve 到同一 world 的 `auth.*` / `entitlements.*` 且 UI auth/subscription state 對齊；Reader / Notebook / Vocabulary / ReviewDeck 的 notebook sync status、VocabularyEntry `syncStatus/actionType`、entry word uniqueness；direct vocabulary seed 的 `reviewHistory.word` 必須命中同 seed entries，inherited seed 則可命中 resolved/materialized base entries（materialization 後再驗）；Runtime podcast series/download 只能指 `assets.audio.*` / `assets.subtitles.*`，Reader 只能指 `assets.text.*` / `assets.books.*`，Bookshelf 非空 `bookAssetRef` 只能指 `assets.books.*`；ref 不存在、bucket 不對、未知 top-level domain、未知 asset bucket/property、未知 fixture id、空 preference key、登入/Pro 狀態漂移或 SwiftData row 狀態不合法直接 `DecodingError`，不是 seed/install 時的 late failure。
 
 ## 驗收（收斂層對抗驗證）
 

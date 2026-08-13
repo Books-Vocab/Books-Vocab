@@ -112,6 +112,78 @@ struct SettingsResyncConcurrencyTests {
 
     }
 
+    /// A deterministic service gate for exercising account-boundary races.
+    /// Each background-sync run announces its ordinal, then suspends until the
+    /// test releases that exact run. Progress can be emitted while suspended.
+    private final class SuspendedKGService: BackgroundSyncing, HealthChecking, QuotaServing,
+        @unchecked Sendable {
+        var lastBackgroundSyncError: String?
+
+        private let lock = NSLock()
+        private var nextRun = 0
+        private var startedRuns: Set<Int> = []
+        private var releasedRuns: Set<Int> = []
+        private var progressByRun: [Int: SyncProgressReporting] = [:]
+        private var startWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+        private var releaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+
+        func backgroundSync(container: ModelContainer) async {}
+
+        @discardableResult
+        func backgroundSync(
+            container: ModelContainer,
+            progress: SyncProgressReporting?
+        ) async -> SyncRoundOutcome {
+            let (run, startWaiter): (Int, CheckedContinuation<Void, Never>?) = lock.withLock {
+                nextRun += 1
+                let run = nextRun
+                startedRuns.insert(run)
+                if let progress { progressByRun[run] = progress }
+                return (run, startWaiters.removeValue(forKey: run))
+            }
+            startWaiter?.resume()
+
+            await withCheckedContinuation { continuation in
+                let wasReleased = lock.withLock {
+                    if releasedRuns.remove(run) != nil { return true }
+                    releaseWaiters[run] = continuation
+                    return false
+                }
+                if wasReleased { continuation.resume() }
+            }
+            _ = lock.withLock { progressByRun.removeValue(forKey: run) }
+            return .completed
+        }
+
+        func healthCheck() async {}
+        func fetchQuota() async {}
+
+        func waitUntilStarted(_ run: Int) async {
+            await withCheckedContinuation { continuation in
+                let alreadyStarted = lock.withLock {
+                    if startedRuns.contains(run) { return true }
+                    startWaiters[run] = continuation
+                    return false
+                }
+                if alreadyStarted { continuation.resume() }
+            }
+        }
+
+        func emit(_ event: SyncProgressEvent, from run: Int) {
+            let progress = lock.withLock { progressByRun[run] }
+            progress?(event)
+        }
+
+        func release(_ run: Int) {
+            let waiter = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                if let waiter = releaseWaiters.removeValue(forKey: run) { return waiter }
+                releasedRuns.insert(run)
+                return nil
+            }
+            waiter?.resume()
+        }
+    }
+
     private static func makeContainer() -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         return try! ModelContainer(
@@ -251,5 +323,96 @@ struct SettingsResyncConcurrencyTests {
 
         #expect(coordinator.syncProgress.phase == .ready)
         #expect(coordinator.syncProgress.steps.isEmpty)
+    }
+
+    @Test("帳號邊界清除上一帳號的同步終態")
+    func accountBoundaryResetsTransientProgress() async {
+        let coordinator = SettingsCoordinator()
+        let container = Self.makeContainer()
+
+        await coordinator.resync(
+            authManager: MockAuth(),
+            kgService: ProbeKGService(),
+            modelContext: container.mainContext
+        )
+        #expect(coordinator.syncProgress.phase == .completed)
+
+        coordinator.resetForAccountBoundary()
+
+        #expect(coordinator.syncProgress.phase == .ready)
+        #expect(coordinator.syncProgress.steps.isEmpty)
+        #expect(coordinator.syncProgress.fraction == 0)
+    }
+
+    @Test("帳號切換後拒收前一帳號晚到的同步事件")
+    func accountBoundaryRejectsLateEventsFromTheOldRound() async {
+        let coordinator = SettingsCoordinator()
+        let auth = MockAuth()
+        let service = SuspendedKGService()
+        let container = Self.makeContainer()
+
+        let oldRound = Task { @MainActor in
+            await coordinator.resync(
+                authManager: auth, kgService: service, modelContext: container.mainContext
+            )
+        }
+        await service.waitUntilStarted(1)
+
+        coordinator.resetForAccountBoundary()
+        service.emit(.started(.pull), from: 1)
+        service.emit(.finished(.pull, status: .done, detail: "late"), from: 1)
+        service.release(1)
+        await oldRound.value
+
+        #expect(coordinator.syncProgress.phase == .ready)
+        #expect(coordinator.syncProgress.steps.isEmpty,
+                "前一帳號晚到的事件不得污染新帳號的同步面板")
+    }
+
+    @Test("舊 round 的 defer 不得清除新 round 的 isResyncing")
+    func oldRoundCleanupDoesNotClearTheNewRoundFlag() async {
+        let coordinator = SettingsCoordinator()
+        let auth = MockAuth()
+        let service = SuspendedKGService()
+        let container = Self.makeContainer()
+
+        let oldRound = Task { @MainActor in
+            await coordinator.resync(
+                authManager: auth, kgService: service, modelContext: container.mainContext
+            )
+        }
+        await service.waitUntilStarted(1)
+        coordinator.resetForAccountBoundary()
+
+        let newRound = Task { @MainActor in
+            await coordinator.resync(
+                authManager: auth, kgService: service, modelContext: container.mainContext
+            )
+        }
+        await service.waitUntilStarted(2)
+        #expect(coordinator.isResyncing)
+
+        service.release(1)
+        await oldRound.value
+        #expect(coordinator.isResyncing,
+                "舊 round 的 defer 只能清自己的 owner token，不能清掉新 round")
+
+        service.release(2)
+        await newRound.value
+        #expect(!coordinator.isResyncing)
+    }
+
+    @Test("凍結時鐘列只暴露一個可操作的 VoiceOver 元素")
+    func pauseToggleUsesOneAccessibilityElement() throws {
+        let tests = URL(fileURLWithPath: #filePath)
+        let sourceURL = tests
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Settings/SettingsReviewSection.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let hiddenVisibleLabel = "Text(L10n.string(\"凍結複習時鐘\"))\n" +
+            "                    .accessibilityHidden(true)"
+        #expect(source.contains(hiddenVisibleLabel),
+                "可見文字必須從 AX tree 隱藏，讓已命名的 switch 成為唯一 focus")
     }
 }

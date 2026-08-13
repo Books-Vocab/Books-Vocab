@@ -61,6 +61,16 @@ enum AppMotion {
     static let panelState = standardSpring
     static let headerState = relaxedSpring
     static let phaseChange = emphasizedSpring
+    /// 同步完成/失敗的面板收尾：比一般 phase change 更明確地讓終態看得見，
+    /// 再由 `syncCompletionHold` 留出讀取時間。
+    static let syncCompletion = Animation.timingCurve(
+        0.22,
+        0.8,
+        0.26,
+        1.0,
+        duration: DesignTokens.Motion.Duration.indicator
+    )
+    static let syncCompletionHold: Duration = .milliseconds(700)
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
     static let chipSelect = Animation.easeOut(duration: DesignTokens.Motion.Duration.chip)

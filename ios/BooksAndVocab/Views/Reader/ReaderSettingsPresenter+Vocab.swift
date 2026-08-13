@@ -113,8 +113,7 @@ extension ReaderSettingsPresenter {
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
                         .monospacedDigit()
                 }
-                Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
-                    .accessibilityLabel(L10n.string("reader.settings.lineHeight"))
+                ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
             }
 
             Picker(selection: bindings.scrollMode) {
@@ -190,7 +189,8 @@ extension ReaderSettingsPresenter {
         Section {
             VocabHighlightColorPresetPicker(
                 selection: bindings.vocabHighlightColorPreset,
-                title: L10n.string("vocab.highlight.color.label")
+                title: L10n.string("vocab.highlight.color.label"),
+                accessibilityIdentifier: "reader.settings.highlightColor"
             )
 
             Picker(selection: underlineOpacitySelection) {
@@ -217,6 +217,33 @@ extension ReaderSettingsPresenter {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.debug"), icon: "ladybug")
         } footer: {
             SettingsSectionFooter(L10n.string("reader.settings.debug.footer"))
+        }
+    }
+}
+
+private struct ReaderSettingsLineHeightSlider: View {
+    @Binding var value: Double
+
+    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+
+    var body: some View {
+        VStack(spacing: AppSpacing.microGap) {
+            Slider(value: $value, in: Metrics.lineHeightRange, step: Metrics.lineHeightStep)
+                .accessibilityLabel(L10n.string("reader.settings.lineHeight"))
+
+            HStack(spacing: 0) {
+                ForEach(Metrics.lineHeightTickValues.indices, id: \.self) { index in
+                    Rectangle()
+                        .fill(.secondary.opacity(index.isMultiple(of: 5) ? 0.55 : 0.3))
+                        .frame(width: 1, height: index.isMultiple(of: 5) ? 6 : 4)
+
+                    if index < Metrics.lineHeightTickCount - 1 {
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.horizontal, AppSpacing.s2)
+            .accessibilityHidden(true)
         }
     }
 }

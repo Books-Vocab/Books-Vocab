@@ -1271,6 +1271,8 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case vocabListPopulated
     case vocabListSingle
     case vocabListSyncing
+    case p11ReviewMix = "p11.644.reviewMix"
+    case roleMixed = "role.mixed"
     case wordDetail
     case wordEdit
 }
@@ -1282,6 +1284,8 @@ struct UIWorldVocabularySeed: Codable, Equatable {
     let bookTitle: String
     let entries: [UIWorldVocabularyEntrySeed]
     let reviewHistory: [UIWorldReviewHistorySeed]
+    let baseFixture: String?
+    let entryOverrides: [UIWorldVocabularyEntryOverride]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case notebookRemoteId
@@ -1290,6 +1294,33 @@ struct UIWorldVocabularySeed: Codable, Equatable {
         case bookTitle
         case entries
         case reviewHistory
+        case baseFixture
+        case entryOverrides
+    }
+
+    private static let optionalCodingKeys: Set<String> = [
+        CodingKeys.baseFixture.rawValue,
+        CodingKeys.entryOverrides.rawValue,
+    ]
+
+    init(
+        notebookRemoteId: String,
+        notebookName: String,
+        notebookSyncStatus: Int,
+        bookTitle: String,
+        entries: [UIWorldVocabularyEntrySeed],
+        reviewHistory: [UIWorldReviewHistorySeed],
+        baseFixture: String? = nil,
+        entryOverrides: [UIWorldVocabularyEntryOverride] = []
+    ) {
+        self.notebookRemoteId = notebookRemoteId
+        self.notebookName = notebookName
+        self.notebookSyncStatus = notebookSyncStatus
+        self.bookTitle = bookTitle
+        self.entries = entries
+        self.reviewHistory = reviewHistory
+        self.baseFixture = baseFixture
+        self.entryOverrides = entryOverrides
     }
 
     init(from decoder: Decoder) throws {
@@ -1306,7 +1337,8 @@ struct UIWorldVocabularySeed: Codable, Equatable {
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        for key in CodingKeys.allCases where !container.contains(key) {
+        for key in CodingKeys.allCases
+            where !Self.optionalCodingKeys.contains(key.rawValue) && !container.contains(key) {
             throw DecodingError.keyNotFound(
                 key,
                 .init(
@@ -1321,6 +1353,70 @@ struct UIWorldVocabularySeed: Codable, Equatable {
         bookTitle = try container.decode(String.self, forKey: .bookTitle)
         entries = try container.decode([UIWorldVocabularyEntrySeed].self, forKey: .entries)
         reviewHistory = try container.decode([UIWorldReviewHistorySeed].self, forKey: .reviewHistory)
+        baseFixture = try container.decodeIfPresent(String.self, forKey: .baseFixture)
+        entryOverrides = try container.decodeIfPresent(
+            [UIWorldVocabularyEntryOverride].self,
+            forKey: .entryOverrides
+        ) ?? []
+    }
+}
+
+struct UIWorldVocabularyEntryOverride: Codable, Equatable {
+    let word: String
+    let cardRole: VocabularyCardRole
+    let reviewEligible: Bool
+    let reviewIntervalHours: Double
+    let nextReviewAt: Date
+    let lastReviewedAt: Date?
+    let reviewCount: Int
+    let reviewStreak: Int
+    let lastReviewFeedbackRaw: Int
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case word
+        case cardRole
+        case reviewEligible
+        case reviewIntervalHours
+        case nextReviewAt
+        case lastReviewedAt
+        case reviewCount
+        case reviewStreak
+        case lastReviewFeedbackRaw
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World vocabulary entry override contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World vocabulary entry override must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+
+        word = try container.decode(String.self, forKey: .word)
+        cardRole = try container.decode(VocabularyCardRole.self, forKey: .cardRole)
+        reviewEligible = try container.decode(Bool.self, forKey: .reviewEligible)
+        reviewIntervalHours = try container.decode(Double.self, forKey: .reviewIntervalHours)
+        nextReviewAt = try container.decode(Date.self, forKey: .nextReviewAt)
+        lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
+        reviewCount = try container.decode(Int.self, forKey: .reviewCount)
+        reviewStreak = try container.decode(Int.self, forKey: .reviewStreak)
+        lastReviewFeedbackRaw = try container.decode(Int.self, forKey: .lastReviewFeedbackRaw)
     }
 }
 

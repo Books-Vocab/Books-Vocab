@@ -92,6 +92,24 @@ struct ReaderPreviewStyleSourceTests {
         #expect(maximum > next)
     }
 
+    @Test func readerSettingsPreviewUsesAStableViewportAndSharedSliderScale() {
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightRange.lowerBound == 1.0)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightRange.upperBound == 2.5)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightStep == 0.1)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickCount == 16)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues == [
+            1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7,
+            1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5
+        ])
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues[0] == 1.0)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues[8] == 1.8)
+        #expect(ReaderPresentationMetrics.SettingsPreview.lineHeightTickValues[15] == 2.5)
+        let layout = ReaderSettingsPreviewCard.layoutContract
+        #expect(layout.viewportHeight == 164)
+        #expect(layout.fadeEdgeFraction == 0.08)
+        #expect(layout.fadeLocations == [0, 0.08, 0.92, 1])
+    }
+
     // MARK: - 字體
 
     /// `Font.custom` 拿到不存在的名字時**不會報錯**，只會靜靜退回系統字體 ——

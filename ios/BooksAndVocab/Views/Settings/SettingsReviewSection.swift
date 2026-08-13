@@ -9,6 +9,7 @@ import SwiftUI
 /// 這是「一致性優先」的直接後果，**不要**在 Section 內重新自繪把個性救回來。
 struct SettingsReviewSection: View {
     @ObserveInjection private var inject
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     /// 樂觀寫本地+iCloud + push 後端 + 失敗 rollback 全由 coordinator 一條龍處理。
@@ -33,10 +34,21 @@ struct SettingsReviewSection: View {
 
     private var pauseSection: some View {
         Section {
-            Toggle(isOn: pauseBinding) {
+            // Keep the visible label outside Toggle. On iOS 26, a labelled Toggle
+            // inside Form exposes a row proxy plus a nested Switch in AX; the
+            // identifier then lands on the non-actionable proxy and UITest taps
+            // never reach the binding. A labels-hidden switch gives the test and
+            // VoiceOver one stable control while retaining the native Form row.
+            HStack {
                 Text(L10n.string("凍結複習時鐘"))
+                    .accessibilityHidden(true)
+                Spacer(minLength: appSkin.spacing.inlineGap)
+                Toggle("", isOn: pauseBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .accessibilityLabel(L10n.string("凍結複習時鐘"))
+                    .accessibilityIdentifier("settings.review.pauseToggle")
             }
-            .accessibilityIdentifier("settings.review.pauseToggle")
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
         } footer: {
@@ -49,7 +61,7 @@ struct SettingsReviewSection: View {
             get: { reviewSettingsStore.settings.isProgressPaused },
             set: { isPaused in
                 // 樂觀更新 + push 後端 + 失敗 rollback 全交給 coordinator.updateReviewClock。
-                Task { await onPauseChanged(isPaused) }
+                Task { @MainActor in await onPauseChanged(isPaused) }
             }
         )
     }

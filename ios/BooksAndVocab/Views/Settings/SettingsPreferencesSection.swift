@@ -48,8 +48,9 @@ struct SettingsPreferencesSection: View {
                 reviewCardLayoutRow
             }
             .settingsCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings.preferences.generalGroup")
         }
-        .accessibilityIdentifier("settings.preferences.generalGroup")
     }
 
     private var readerPreferencesGroup: some View {
@@ -62,8 +63,9 @@ struct SettingsPreferencesSection: View {
                 readerSettingsRow
             }
             .settingsCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings.preferences.readerGroup")
         }
-        .accessibilityIdentifier("settings.preferences.readerGroup")
     }
 
     private var syncPreferencesGroup: some View {
@@ -87,8 +89,9 @@ struct SettingsPreferencesSection: View {
                 }
             }
             .settingsCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("settings.preferences.syncGroup")
         }
-        .accessibilityIdentifier("settings.preferences.syncGroup")
     }
 
     private var appearanceRow: some View {

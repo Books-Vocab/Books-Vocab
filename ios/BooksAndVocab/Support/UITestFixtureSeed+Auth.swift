@@ -28,28 +28,8 @@ extension UITestFixtureSeed {
 
     @MainActor
     private static func seedAuthSignedInSession() {
-        // 整段 simulator-gate（不只 login）：displayName/userEmail setter 也會
-        // 被 login() 持久化進真實 UserDefaults，真機上一併拒絕。
-        #if targetEnvironment(simulator)
-        // Seed guard：非 isolated session（如 unit-test host app、漏帶旗標的
-        // UI test）拒絕 seed —— 否則假 session 經真 AuthManager.login 落盤，
-        // 殘留給後續正常模式啟動的 host app 拿去打生產（2026-06-11 401 事故）。
-        guard AppRuntimeOptions.shouldUseIsolatedAuthSession() else {
-            // UI test 帶 -ui-testing 卻漏 -isolatedAuthSession = launch helper 用錯，
-            // 大聲失敗（否則 test 以訪客態繼續跑，下游 assert 難診斷）；
-            // unit-test host app（無 -ui-testing）則靜默拒絕即可。
-            if AppRuntimeOptions.isUITesting() {
-                preconditionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
-            }
-            AppLog.app.error("UITestFixtureSeed: refused auth.signedIn without -isolatedAuthSession — fake session would persist into the real store")
-            return
-        }
-        seedSignedInLoginFromWorld()
+        guard seedSignedInLoginFromWorld() else { return }
         AppLog.app.info("UI-test fixture seeded: auth.signedIn")
-        #else
-        AppLog.app.error("UITestFixtureSeed: refused auth.signedIn on physical device — would overwrite the real Keychain session")
-        preconditionFailure("auth.signedIn fixture is simulator-only")
-        #endif
     }
 
     @MainActor

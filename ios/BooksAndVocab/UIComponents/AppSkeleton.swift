@@ -6,6 +6,7 @@
 //  讓 list / card / row 在資料載入時有結構化骨架而非空白旋轉。
 //
 //  變體：
+//    - AppLoadingStateCard / AppLoadingProgressBar — 共用 loading/status surface
 //    - AppSkeletonLine — 單行 line / label 骨架
 //    - AppSkeletonCard — 卡片區塊骨架（標題+多行內文）
 //
@@ -15,6 +16,116 @@
 //
 
 import SwiftUI
+
+enum AppLoadingIndicator: Equatable {
+    case spinner
+    case progress(Double)
+
+    var normalizedProgress: Double? {
+        guard case .progress(let value) = self, value.isFinite else {
+            return self == .spinner ? nil : 0
+        }
+        return min(max(value, 0), 1)
+    }
+}
+
+/// Shared iOS 26 loading/status surface. Use the same card for reader overlays,
+/// catalog states, dictionary states and vocabulary scene states; only the skin
+/// and indicator differ. This keeps loading from becoming a collection of
+/// one-off cards with subtly different padding and motion.
+struct AppLoadingStateCard: View {
+    enum VisualStyle {
+        case app
+        case vocab
+    }
+
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.appSkin) private var appSkin
+
+    let title: String
+    let systemImage: String
+    let description: String?
+    let indicator: AppLoadingIndicator
+    let visualStyle: VisualStyle
+
+    init(
+        title: String,
+        systemImage: String,
+        description: String? = nil,
+        indicator: AppLoadingIndicator = .spinner,
+        visualStyle: VisualStyle = .app
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.indicator = indicator
+        self.visualStyle = visualStyle
+    }
+
+    var body: some View {
+        AppStateMessageCard(
+            title: title,
+            systemImage: systemImage,
+            description: description,
+            style: messageStyle
+        ) {
+            switch indicator {
+            case .spinner:
+                ProgressView()
+                    .controlSize(.small)
+            case .progress(let value):
+                AppLoadingProgressBar(
+                    progress: value,
+                    tint: messageAccent
+                )
+                .frame(width: 120)
+            }
+        }
+    }
+
+    private var messageStyle: AppStateMessageStyle {
+        switch visualStyle {
+        case .app: return .themed(appTheme)
+        case .vocab: return .vocab(appSkin)
+        }
+    }
+
+    private var messageAccent: Color {
+        switch visualStyle {
+        case .app: return appTheme.palette.accent
+        case .vocab: return appSkin.palette.accent
+        }
+    }
+}
+
+/// Native linear progress treatment shared by loading cards and transient
+/// reader/sync progress overlays. `ProgressView` owns the iOS 26 surface;
+/// callers only provide semantic tint and value.
+struct AppLoadingProgressBar: View {
+    let progress: Double
+    let tint: Color
+    let accessibilityLabel: String?
+
+    init(progress: Double, tint: Color, accessibilityLabel: String? = nil) {
+        self.progress = progress
+        self.tint = tint
+        self.accessibilityLabel = accessibilityLabel
+    }
+
+    var body: some View {
+        ProgressView(value: normalizedProgress)
+            .progressViewStyle(.linear)
+            .tint(tint)
+            .accessibilityElement()
+            .accessibilityLabel(Text(accessibilityLabel ?? L10n.string("載入進度")))
+            .accessibilityValue(Text(verbatim: "\(Int(normalizedProgress * 100))%"))
+            .animation(AppMotion.progressLinear, value: normalizedProgress)
+    }
+
+    private var normalizedProgress: Double {
+        AppLoadingIndicator.progress(progress).normalizedProgress ?? 0
+    }
+}
 
 struct AppSkeletonLine: View {
     @Environment(\.appTheme) private var appTheme
@@ -83,6 +194,27 @@ struct AppSkeletonCard: View {
             AppSkeletonLine()
             AppSkeletonCard()
             AppSkeletonCard(showAvatar: true)
+        }
+        .padding(AppSpacing.s5)
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
+#Preview("AppLoadingState") {
+    AppThemeContainer {
+        VStack(spacing: AppSpacing.s4) {
+            AppLoadingStateCard(
+                title: L10n.string("載入中"),
+                systemImage: "arrow.triangle.2.circlepath",
+                description: L10n.string("正在整理資料。"),
+                visualStyle: .app
+            )
+            AppLoadingStateCard(
+                title: L10n.string("同步中…"),
+                systemImage: "arrow.triangle.2.circlepath",
+                indicator: .progress(0.58),
+                visualStyle: .vocab
+            )
         }
         .padding(AppSpacing.s5)
     }

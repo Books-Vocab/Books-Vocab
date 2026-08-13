@@ -51,7 +51,7 @@ struct PipelineStep: Identifiable, Sendable {
     }
 }
 
-enum SyncPhase: Sendable {
+enum SyncPhase: Sendable, Equatable {
     case ready
     case running
     case completed

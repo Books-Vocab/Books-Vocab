@@ -21,13 +21,15 @@ struct SettingsSyncProgressPanel: View {
     let steps: [PipelineStep]
     let fraction: Double
 
-    /// The panel is mounted only after the coordinator has announced that a
-    /// round is syncing *and* the store has declared its step identity. Both
-    /// inputs belong to the visibility phase; observing only `isSyncing` lets
-    /// the first render miss the insertion transition when `begin` arrives on
-    /// the next observation pass.
-    static func isVisible(isSyncing: Bool, steps: [PipelineStep]) -> Bool {
-        isSyncing && !steps.isEmpty
+    /// The panel is mounted after a round declares its step identity and stays
+    /// mounted for a short terminal hold, so the completed/failed state is
+    /// readable after the coordinator releases `isSyncing`.
+    static func isVisible(
+        isSyncing: Bool,
+        phase: SyncPhase,
+        steps: [PipelineStep]
+    ) -> Bool {
+        !steps.isEmpty && (isSyncing || phase == .completed || phase == .failed)
     }
 
     var body: some View {
@@ -56,24 +58,12 @@ private struct SettingsSyncProgressBar: View {
     let fraction: Double
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                AppRoundedRect(roundness: AppRoundness.pill)
-                    .fill(appSkin.palette.accent.opacity(0.15))
-
-                AppRoundedRect(roundness: AppRoundness.pill)
-                    .fill(appSkin.palette.accent)
-                    .frame(width: geo.size.width * min(max(fraction, 0), 1))
-                    .animateSpring(fraction)
-            }
-        }
-        .frame(height: 3)
-        // `accessibilityElement()` 是必要的：GeometryReader 裡只有 Shape，沒有任何
-        // 可及性元素可以掛 value——少了這行，下面兩個修飾子等於寫在空氣上。
-        .accessibilityElement()
+        AppLoadingProgressBar(
+            progress: fraction,
+            tint: appSkin.palette.accent,
+            accessibilityLabel: L10n.string("同步進度")
+        )
         .accessibilityIdentifier("settings.syncProgress.bar")
-        .accessibilityLabel(Text(L10n.string("同步進度")))
-        .accessibilityValue(Text(verbatim: "\(Int(fraction * 100))%"))
     }
 }
 

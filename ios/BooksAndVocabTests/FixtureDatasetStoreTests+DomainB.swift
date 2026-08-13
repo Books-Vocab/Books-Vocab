@@ -404,7 +404,10 @@ extension FixtureDatasetStoreTests {
         """
 
         try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-            UITestFixtureSeed.seedSignedInLoginFromWorld()
+            _ = UITestFixtureSeed.seedSignedInLoginFromWorld(
+                arguments: ["BooksAndVocab", "-ui-testing", "-isolatedAuthSession"],
+                auth: auth
+            )
             #expect(auth.isLoggedIn == true)
             #expect(auth.userId == "locked-user")
             #expect(auth.token == nil)

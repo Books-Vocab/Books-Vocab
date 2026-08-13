@@ -31,6 +31,10 @@ struct AppTabSelectorStyle {
     let selectedOuterBorder: Color
     let unselectedOuterBorder: Color
     let containerBackground: Color
+    /// iOS 26 system glass is the material boundary for filter/tab controls.
+    /// Keep the flag on the shared style so every consumer makes the same
+    /// material decision instead of reintroducing a custom chip surface.
+    let usesSystemGlass: Bool
     /// 容器圓度。chip 本身恆為 `AppRoundness.pill`（見 `appChipLabel`），容器同樣走
     /// pill 即自動同心 —— 半徑由各自的 box 導出，容器高度只比 chip 多兩倍 padding，
     /// 兩者半徑差恰等於該 padding。舊版靠 `±2` / `+4` 手算補償，在相對圓角下已無必要。
@@ -54,7 +58,7 @@ func appChipLabel<ID: Hashable>(
     isSelected: Bool,
     style: AppTabSelectorStyle
 ) -> some View {
-    HStack(spacing: 6) {
+    let chip = HStack(spacing: 6) {
         if let systemImage = option.systemImage {
             Image(systemName: systemImage)
                 .font(style.iconFont)
@@ -79,31 +83,67 @@ func appChipLabel<ID: Hashable>(
                 .frame(minWidth: 26)
                 .padding(.horizontal, AppSkin.baseSpacing.compactChipHorizontalPadding)
                 .padding(.vertical, AppSpacing.microGap)
-                .background(
-                    AppRoundedRect(roundness: AppRoundness.pill)
-                        .fill(isSelected ? style.countSelectedFill : style.countUnselectedFill)
-                )
+                .foregroundStyle(isSelected ? style.textSelectedColor : style.textUnselectedColor)
+                .modifier(AppFilterCountSurface(
+                    isSelected: isSelected,
+                    style: style
+                ))
         }
     }
     .frame(maxWidth: .infinity)
     .padding(.horizontal, AppSpacing.s2)
     .padding(.vertical, AppSpacing.s2)
-    .background(
-        AppRoundedRect(roundness: AppRoundness.pill)
-            .fill(isSelected ? style.selectedBackground : style.unselectedBackground)
-    )
-    .overlay(
-        AppRoundedRect(roundness: AppRoundness.pill)
-            .stroke(isSelected ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
-    )
-    .overlay(
-        AppRoundedRect(roundness: AppRoundness.pill)
-        .stroke(
-            isSelected ? style.selectedOuterBorder : style.unselectedOuterBorder,
-            lineWidth: 0.8
+    if style.usesSystemGlass {
+        chip.glassEffect(
+            .regular
+                .tint(isSelected ? style.selectedBackground : nil)
+                .interactive(),
+            in: AppRoundedRect(roundness: AppRoundness.pill)
         )
-        .padding(-style.outerBorderInset)
-    )
+    } else {
+        chip
+            .background(
+                AppRoundedRect(roundness: AppRoundness.pill)
+                    .fill(isSelected ? style.selectedBackground : style.unselectedBackground)
+            )
+            .overlay(
+                AppRoundedRect(roundness: AppRoundness.pill)
+                    .stroke(isSelected ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
+            )
+            .overlay(
+                AppRoundedRect(roundness: AppRoundness.pill)
+                .stroke(
+                    isSelected ? style.selectedOuterBorder : style.unselectedOuterBorder,
+                    lineWidth: 0.8
+                )
+                .padding(-style.outerBorderInset)
+            )
+    }
+}
+
+private struct AppFilterCountSurface: ViewModifier {
+    let isSelected: Bool
+    let style: AppTabSelectorStyle
+
+    func body(content: Content) -> some View {
+        content.background(
+            AppRoundedRect(roundness: AppRoundness.pill)
+                .fill(isSelected ? style.countSelectedFill : style.countUnselectedFill)
+        )
+    }
+}
+
+extension View {
+    /// Shared material treatment for in-content filters that need multi-select,
+    /// counts or horizontal overflow and therefore cannot use segmented Picker.
+    func appFilterGlass(isSelected: Bool, tint: Color) -> some View {
+        glassEffect(
+            .regular
+                .tint(isSelected ? tint : nil)
+                .interactive(),
+            in: AppRoundedRect(roundness: AppRoundness.pill)
+        )
+    }
 }
 
 struct AppTabSelector<ID: Hashable>: View {
@@ -112,6 +152,25 @@ struct AppTabSelector<ID: Hashable>: View {
     let style: AppTabSelectorStyle
 
     var body: some View {
+        Group {
+            if style.usesSystemGlass {
+                GlassEffectContainer(spacing: AppSpacing.s2) {
+                    chipRow
+                }
+                .padding(AppSpacing.tinyGap)
+            } else {
+                chipRow
+                    .padding(AppSpacing.tinyGap)
+                    .background(
+                        AppRoundedRect(roundness: style.containerRoundness)
+                            .fill(style.containerBackground)
+                    )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chipRow: some View {
         HStack(spacing: AppSpacing.s2) {
             ForEach(options) { option in
                 let isSelected = selection == option.id
@@ -128,11 +187,6 @@ struct AppTabSelector<ID: Hashable>: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(AppSpacing.tinyGap)
-        .background(
-            AppRoundedRect(roundness: style.containerRoundness)
-                .fill(style.containerBackground)
-        )
     }
 }
 
@@ -155,6 +209,7 @@ extension AppTabSelectorStyle {
             selectedOuterBorder: theme.palette.cardBorder.opacity(0.45),
             unselectedOuterBorder: theme.palette.divider.opacity(0.45),
             containerBackground: theme.palette.pageBackground,
+            usesSystemGlass: true,
             containerRoundness: AppRoundness.pill,
             outerBorderInset: 3
         )
@@ -178,6 +233,7 @@ extension AppTabSelectorStyle {
             selectedOuterBorder: .clear,
             unselectedOuterBorder: .clear,
             containerBackground: skin.palette.stageBackground,
+            usesSystemGlass: true,
             containerRoundness: skin.roundness.pill,
             outerBorderInset: 0
         )

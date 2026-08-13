@@ -108,7 +108,9 @@ FIXTURE_DOMAIN_IDS = {
         "knowledgeGraphEmpty",
         "knowledgeGraphPopulated",
         "kgVocabRow",
+        "p11.644.reviewMix",
         "reviewCalendarDense",
+        "role.mixed",
         "searchVocabNotebook",
         "shellNavigation",
         "statsEmpty",
@@ -273,7 +275,27 @@ NOTEBOOK_ENTRY_KEYS = {
     "chapterTitle",
     *NOTEBOOK_ENTRY_OPTIONAL_REVIEW_KEYS,
 }
-VOCABULARY_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "bookTitle", "entries", "reviewHistory"}
+VOCABULARY_SEED_OPTIONAL_KEYS = {"baseFixture", "entryOverrides"}
+VOCABULARY_SEED_KEYS = {
+    "notebookRemoteId",
+    "notebookName",
+    "notebookSyncStatus",
+    "bookTitle",
+    "entries",
+    "reviewHistory",
+    *VOCABULARY_SEED_OPTIONAL_KEYS,
+}
+VOCABULARY_ENTRY_OVERRIDE_KEYS = {
+    "word",
+    "cardRole",
+    "reviewEligible",
+    "reviewIntervalHours",
+    "nextReviewAt",
+    "lastReviewedAt",
+    "reviewCount",
+    "reviewStreak",
+    "lastReviewFeedbackRaw",
+}
 REVIEW_DECK_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "entries"}
 REVIEW_HISTORY_KEYS = {"word", "feedback", "reviewedAt"}
 SYNC_PRESENTER_SEED_KEYS = {
@@ -567,6 +589,49 @@ def _validate_exact_keys(
     extra = sorted(keys - expected)
     if missing or extra:
         raise UIWorldManifestError(f"{label} {owner} keys 不符合 UI World v2: extra={extra} missing={missing}")
+
+
+def _resolve_vocabulary_chain(
+    fixture_id: str,
+    *,
+    bases: Mapping[str, str | None],
+    direct_words: Mapping[str, set[str]],
+    direct_overrides: Mapping[str, list[Mapping[str, Any]]],
+    resolved: dict[str, tuple[set[str], list[tuple[str, int, Mapping[str, Any]]]]],
+    label: str,
+    visiting: tuple[str, ...] = (),
+) -> tuple[set[str], list[tuple[str, int, Mapping[str, Any]]]]:
+    cached = resolved.get(fixture_id)
+    if cached is not None:
+        return cached
+    if fixture_id in visiting:
+        chain = " -> ".join((*visiting, fixture_id))
+        raise UIWorldManifestError(f"{label} vocabulary inheritance cycle: {chain}")
+
+    base_fixture = bases[fixture_id]
+    if base_fixture is None:
+        words = set(direct_words[fixture_id])
+        overrides: list[tuple[str, int, Mapping[str, Any]]] = []
+    else:
+        words, inherited_overrides = _resolve_vocabulary_chain(
+            base_fixture,
+            bases=bases,
+            direct_words=direct_words,
+            direct_overrides=direct_overrides,
+            resolved=resolved,
+            label=label,
+            visiting=(*visiting, fixture_id),
+        )
+        words = set(words)
+        overrides = list(inherited_overrides)
+
+    overrides.extend(
+        (fixture_id, index, override)
+        for index, override in enumerate(direct_overrides[fixture_id])
+    )
+    result = (words, overrides)
+    resolved[fixture_id] = result
+    return result
 
 
 def _validate_download_local_path(
@@ -1792,9 +1857,23 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
                     label=label,
                 )
 
-    for fixture_id, seed in _require_mapping(data.get("vocabulary"), field="vocabulary", label=label).items():
+    vocabulary_seeds = _require_mapping(data.get("vocabulary"), field="vocabulary", label=label)
+    vocabulary_bases: dict[str, str | None] = {}
+    vocabulary_words: dict[str, set[str]] = {}
+    vocabulary_overrides: dict[str, list[Mapping[str, Any]]] = {}
+    vocabulary_review_history: dict[str, list[tuple[int, str]]] = {}
+
+    # First validate every seed's local shape. Cross-seed semantics are checked
+    # only after the complete inheritance graph has been resolved below.
+    for fixture_id, seed in vocabulary_seeds.items():
         seed_obj = _require_mapping(seed, field=f"vocabulary.{fixture_id}", label=label)
-        _validate_exact_keys(seed_obj, expected=VOCABULARY_SEED_KEYS, owner=f"vocabulary.{fixture_id}", label=label)
+        _validate_exact_keys(
+            seed_obj,
+            expected=VOCABULARY_SEED_KEYS,
+            optional=VOCABULARY_SEED_OPTIONAL_KEYS,
+            owner=f"vocabulary.{fixture_id}",
+            label=label,
+        )
         _ensure_str(seed_obj.get("notebookRemoteId"), field=f"vocabulary.{fixture_id}.notebookRemoteId", label=label)
         _ensure_str(seed_obj.get("notebookName"), field=f"vocabulary.{fixture_id}.notebookName", label=label)
         _ensure_str(seed_obj.get("bookTitle"), field=f"vocabulary.{fixture_id}.bookTitle", label=label)
@@ -1812,6 +1891,60 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
         _validate_unique(entry_words, owner=f"vocabulary.{fixture_id}.entries.word", label=label)
         entry_word_set = set(entry_words)
         _validate_seed_graph_links(entry_objs, entry_word_set, owner_prefix=f"vocabulary.{fixture_id}", label=label)
+
+        base_fixture = seed_obj.get("baseFixture")
+        if base_fixture is not None:
+            base_fixture = _ensure_str(
+                base_fixture,
+                field=f"vocabulary.{fixture_id}.baseFixture",
+                label=label,
+            ).strip()
+            if base_fixture not in vocabulary_seeds:
+                raise UIWorldManifestError(
+                    f"{label} vocabulary.{fixture_id}.baseFixture references missing vocabulary.{base_fixture}"
+                )
+            if entry_objs:
+                raise UIWorldManifestError(
+                    f"{label} vocabulary.{fixture_id} inherited seeds must leave entries empty"
+                )
+        vocabulary_bases[fixture_id] = base_fixture
+        vocabulary_words[fixture_id] = entry_word_set
+
+        override_objs: list[Mapping[str, Any]] = []
+        for index, override in enumerate(
+            _require_list(
+                seed_obj.get("entryOverrides", []),
+                field=f"vocabulary.{fixture_id}.entryOverrides",
+                label=label,
+            )
+        ):
+            owner = f"vocabulary.{fixture_id}.entryOverrides[{index}]"
+            override_obj = _require_mapping(override, field=owner, label=label)
+            _validate_exact_keys(override_obj, expected=VOCABULARY_ENTRY_OVERRIDE_KEYS, owner=owner, label=label)
+            _ensure_str(override_obj.get("word"), field=f"{owner}.word", label=label).strip()
+            _ensure_string(override_obj.get("cardRole"), field=f"{owner}.cardRole", label=label)
+            _ensure_bool(override_obj.get("reviewEligible"), field=f"{owner}.reviewEligible", label=label)
+            _ensure_number(
+                override_obj.get("reviewIntervalHours"),
+                field=f"{owner}.reviewIntervalHours",
+                label=label,
+            )
+            next_review_at = override_obj.get("nextReviewAt")
+            if next_review_at is None or isinstance(next_review_at, bool) or not isinstance(
+                next_review_at, (str, int, float)
+            ):
+                raise UIWorldManifestError(
+                    f"{label} {owner}.nextReviewAt must be an ISO8601 string or epoch seconds"
+                )
+            last_reviewed_at = override_obj.get("lastReviewedAt")
+            if last_reviewed_at is not None:
+                _ensure_string(last_reviewed_at, field=f"{owner}.lastReviewedAt", label=label)
+            for field in ("reviewCount", "reviewStreak", "lastReviewFeedbackRaw"):
+                _ensure_int(override_obj.get(field), field=f"{owner}.{field}", label=label)
+            override_objs.append(override_obj)
+        vocabulary_overrides[fixture_id] = override_objs
+
+        history_words: list[tuple[int, str]] = []
         for index, record in enumerate(
             _require_list(seed_obj.get("reviewHistory"), field=f"vocabulary.{fixture_id}.reviewHistory", label=label)
         ):
@@ -1819,10 +1952,65 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
             owner = f"vocabulary.{fixture_id}.reviewHistory[{index}]"
             _validate_exact_keys(record_obj, expected=REVIEW_HISTORY_KEYS, owner=owner, label=label)
             word = _ensure_str(record_obj.get("word"), field=f"{owner}.word", label=label)
-            if word not in entry_word_set:
-                raise UIWorldManifestError(f"{label} {owner}.{word} must reference an entry in the same seed")
             _ensure_int(record_obj.get("feedback"), field=f"{owner}.feedback", label=label)
             _parse_iso8601(record_obj.get("reviewedAt"), owner=f"{owner}.reviewedAt", label=label)
+            history_words.append((index, word))
+        vocabulary_review_history[fixture_id] = history_words
+
+    resolved_vocabulary: dict[str, tuple[set[str], list[tuple[str, int, Mapping[str, Any]]]]] = {}
+    for fixture_id in vocabulary_seeds:
+        _resolve_vocabulary_chain(
+            fixture_id,
+            bases=vocabulary_bases,
+            direct_words=vocabulary_words,
+            direct_overrides=vocabulary_overrides,
+            resolved=resolved_vocabulary,
+            label=label,
+        )
+
+    for fixture_id in vocabulary_seeds:
+        resolved_words, resolved_overrides = resolved_vocabulary[fixture_id]
+        seen_override_words: set[str] = set()
+        for source_fixture, index, override_obj in resolved_overrides:
+            owner = f"vocabulary.{source_fixture}.entryOverrides[{index}]"
+            word = _ensure_str(override_obj.get("word"), field=f"{owner}.word", label=label).strip()
+            if word not in resolved_words:
+                raise UIWorldManifestError(
+                    f"{label} {owner}.word must reference a word in the resolved base"
+                )
+            if word in seen_override_words:
+                raise UIWorldManifestError(
+                    f"{label} vocabulary.{fixture_id}.entryOverrides.word "
+                    "must not override the same word twice across inheritance"
+                )
+            seen_override_words.add(word)
+            card_role = override_obj["cardRole"]
+            if card_role not in {"learning", "dictionary"}:
+                raise UIWorldManifestError(f"{label} {owner}.cardRole must be learning/dictionary")
+            review_eligible = override_obj["reviewEligible"]
+            if card_role == "dictionary" and review_eligible is True:
+                raise UIWorldManifestError(
+                    f"{label} {owner}.reviewEligible must be false for dictionary cards"
+                )
+            interval = override_obj["reviewIntervalHours"]
+            if interval < 0:
+                raise UIWorldManifestError(f"{label} {owner}.reviewIntervalHours must be non-negative")
+            _validate_required_fixture_date(
+                override_obj["nextReviewAt"], owner=f"{owner}.nextReviewAt", label=label
+            )
+            _validate_optional_iso8601(
+                override_obj["lastReviewedAt"], owner=f"{owner}.lastReviewedAt", label=label
+            )
+            for field in ("reviewCount", "reviewStreak"):
+                if override_obj[field] < 0:
+                    raise UIWorldManifestError(f"{label} {owner}.{field} must be non-negative")
+
+        for index, word in vocabulary_review_history[fixture_id]:
+            if word not in resolved_words:
+                owner = f"vocabulary.{fixture_id}.reviewHistory[{index}]"
+                raise UIWorldManifestError(
+                    f"{label} {owner}.{word} must reference an entry in the same seed"
+                )
 
     for fixture_id, seed in _require_mapping(data.get("reviewDeck"), field="reviewDeck", label=label).items():
         seed_obj = _require_mapping(seed, field=f"reviewDeck.{fixture_id}", label=label)

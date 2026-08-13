@@ -125,6 +125,7 @@ struct SettingsOtherSection: View {
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
         let progressPanelIsVisible = SettingsSyncProgressPanel.isVisible(
             isSyncing: summary.isSyncing,
+            phase: syncProgress.phase,
             steps: syncProgress.steps
         )
 
@@ -148,6 +149,21 @@ struct SettingsOtherSection: View {
         // `isSyncing` becomes true before `begin` publishes `steps`; observing
         // only the former makes insertion happen without a transition.
         .animation(AppMotion.phaseChange, value: progressPanelIsVisible)
+        .task(id: syncProgress.phase) {
+            guard syncProgress.phase == .completed || syncProgress.phase == .failed else { return }
+
+            do {
+                try await Task.sleep(for: AppMotion.syncCompletionHold)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled,
+                  syncProgress.phase == .completed || syncProgress.phase == .failed else { return }
+            withAnimation(AppMotion.syncCompletion) {
+                syncProgress.reset()
+            }
+        }
     }
 
     private func syncSummaryButton(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {

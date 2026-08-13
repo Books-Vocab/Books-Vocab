@@ -259,7 +259,134 @@ enum FixtureDatasetStore {
     /// Used by contract tests (and any tooling) to fail loudly on malformed
     /// UI World files.
     static func decode(_ data: Data) throws -> FixtureDatasetDocument {
-        try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
+        let document = try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
+        return try materializingVocabularyInheritance(in: document)
+    }
+
+    private static func materializingVocabularyInheritance(
+        in document: FixtureDatasetDocument
+    ) throws -> FixtureDatasetDocument {
+        var resolved: [String: UIWorldVocabularySeed] = [:]
+
+        func resolve(_ fixtureID: String, visiting: [String]) throws -> UIWorldVocabularySeed {
+            if let seed = resolved[fixtureID] { return seed }
+            guard !visiting.contains(fixtureID) else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: [],
+                        debugDescription: "UI World vocabulary inheritance cycle: \((visiting + [fixtureID]).joined(separator: " -> "))"
+                    )
+                )
+            }
+            guard let seed = document.vocabulary[fixtureID] else {
+                throw DecodingError.dataCorrupted(
+                    .init(codingPath: [], debugDescription: "UI World vocabulary inheritance is missing base fixture \(fixtureID)")
+                )
+            }
+
+            let base: UIWorldVocabularySeed?
+            if let baseFixture = seed.baseFixture {
+                guard UIWorldVocabularyFixtureID(rawValue: baseFixture) != nil else {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: [],
+                            debugDescription: "UI World vocabulary.\(fixtureID).baseFixture is unknown: \(baseFixture)"
+                        )
+                    )
+                }
+                guard seed.entries.isEmpty else {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: [],
+                            debugDescription: "UI World vocabulary.\(fixtureID) must not declare entries when baseFixture is present"
+                        )
+                    )
+                }
+                base = try resolve(baseFixture, visiting: visiting + [fixtureID])
+            } else {
+                base = nil
+            }
+
+            let entries = base?.entries ?? seed.entries
+            var overridesByWord = Dictionary(
+                uniqueKeysWithValues: (base?.entryOverrides ?? []).map { ($0.word, $0) }
+            )
+            var localOverrideWords: Set<String> = []
+            for override in seed.entryOverrides {
+                guard localOverrideWords.insert(override.word).inserted else {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: [],
+                            debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides duplicates word \(override.word)"
+                        )
+                    )
+                }
+                guard overridesByWord[override.word] == nil else {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: [],
+                            debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides duplicates inherited word \(override.word)"
+                        )
+                    )
+                }
+                overridesByWord[override.word] = override
+            }
+
+            let entryWords = Set(entries.map(\.word))
+            let missingWords = Set(overridesByWord.keys).subtracting(entryWords)
+            guard missingWords.isEmpty else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: [],
+                        debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides references missing words \(missingWords.sorted())"
+                    )
+                )
+            }
+            for record in seed.reviewHistory where !entryWords.contains(record.word) {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: [],
+                        debugDescription: "UI World vocabulary.\(fixtureID).reviewHistory.\(record.word) must reference a resolved entry"
+                    )
+                )
+            }
+
+            let materialized = UIWorldVocabularySeed(
+                notebookRemoteId: seed.notebookRemoteId,
+                notebookName: seed.notebookName,
+                notebookSyncStatus: seed.notebookSyncStatus,
+                bookTitle: seed.bookTitle,
+                entries: entries,
+                reviewHistory: seed.reviewHistory,
+                entryOverrides: entries.compactMap { overridesByWord[$0.word] }
+            )
+            resolved[fixtureID] = materialized
+            return materialized
+        }
+
+        for fixtureID in document.vocabulary.keys {
+            _ = try resolve(fixtureID, visiting: [])
+        }
+
+        return FixtureDatasetDocument(
+            schema: document.schema,
+            datasetID: document.datasetID,
+            assets: document.assets,
+            preferences: document.preferences,
+            auth: document.auth,
+            entitlements: document.entitlements,
+            settings: document.settings,
+            bookshelf: document.bookshelf,
+            todayReview: document.todayReview,
+            notebook: document.notebook,
+            podcast: document.podcast,
+            runtimePodcast: document.runtimePodcast,
+            reader: document.reader,
+            vocabulary: resolved,
+            reviewDeck: document.reviewDeck,
+            syncPresenter: document.syncPresenter,
+            scenarioContext: document.scenarioContext
+        )
     }
 
     static func requireDocument() -> FixtureDatasetDocument {
