@@ -51,6 +51,7 @@ final class ReaderSettingsUITests: UITestCase {
             XCTFail("production Reader settings sheet must expose exact panel, preview, and line-height controls")
             return
         }
+        captureStep("settings-open", app: app)
 
         let initialPreviewHeight = preview.frame.height
         XCTAssertGreaterThan(preview.frame.width, 0)
@@ -66,6 +67,7 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
         XCTAssertTrue(reader.selectTheme("dark"), "production theme option must be addressable")
         XCTAssertTrue(reader.themeIsSelected("dark"))
+        captureStep("settings-changed", app: app)
         XCTAssertTrue(reader.closeSettings(), "settings sheet must close through its production Done action")
 
         let expectedState = [
@@ -126,6 +128,7 @@ final class ReaderSettingsUITests: UITestCase {
             XCTFail("reopened Reader settings must expose the real preview")
             return
         }
+        captureStep("settings-reopened", app: app)
         XCTAssertEqual(reopenedPreview.frame.height, initialPreviewHeight, accuracy: 1)
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
         XCTAssertTrue(reader.themeIsSelected("dark"))
@@ -166,6 +169,18 @@ final class ReaderSettingsUITests: UITestCase {
             XCTFail("Reader settings preview must be visible before theme counterexamples")
             return
         }
+        let initialLineHeight = reader.lineHeightValue(timeout: 5)
+        XCTAssertEqual(initialLineHeight, 1.2, accuracy: 0.01)
+        captureStep("preview-1.2", app: app)
+
+        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0))
+        XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        captureStep("preview-1.0", app: app)
+
+        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 1))
+        XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
+        captureStep("preview-2.5", app: app)
+
         let viewportHeight = initialPreview.frame.height
 
         for theme in ["dark", "sepia"] {
