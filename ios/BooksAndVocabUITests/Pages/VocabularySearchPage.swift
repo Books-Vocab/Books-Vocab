@@ -37,8 +37,21 @@ struct VocabularySearchPage {
         app.descendants(matching: .any).matching(identifier: "vocab.filter.visibleCount").firstMatch
     }
 
-    var reviewStateMenu: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "vocab.filter.reviewState").firstMatch
+    var reviewCTA: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "vocab.reviewCTA").firstMatch
+    }
+
+    var sortMenu: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "vocab.sort").firstMatch
+    }
+
+    /// The report renders review states as direct multi-select pills, not a
+    /// hidden menu. This selector is retained as the "review controls exist"
+    /// probe used by the flow test.
+    var reviewStateControls: XCUIElement {
+        app.descendants(matching: .any)
+            .matching(identifier: "vocab.filter.reviewState.due")
+            .firstMatch
     }
 
     func scopeOption(
@@ -50,8 +63,7 @@ struct VocabularySearchPage {
         let byID = app.descendants(matching: .any)
             .matching(identifier: "vocab.filter.scope.\(rawValue)")
             .firstMatch
-        if byID.exists { return byID }
-        return app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", labelPrefix)).firstMatch
+        return byID
     }
 
     func reviewStateOption(
@@ -61,8 +73,7 @@ struct VocabularySearchPage {
         let byID = app.descendants(matching: .any)
             .matching(identifier: "vocab.filter.reviewState.\(rawValue)")
             .firstMatch
-        if byID.exists { return byID }
-        return app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", labelPrefix)).firstMatch
+        return byID
     }
 
     func selectScope(
@@ -74,10 +85,6 @@ struct VocabularySearchPage {
         scopeOption(rawValue, labelPrefix: labelPrefix).tapWhenReady(file: file, line: line)
     }
 
-    func openReviewStateMenu(file: StaticString = #filePath, line: UInt = UInt(#line)) {
-        reviewStateMenu.tapWhenReady(file: file, line: line)
-    }
-
     func selectReviewState(
         _ rawValue: String,
         labelPrefix: String,
@@ -85,6 +92,13 @@ struct VocabularySearchPage {
         line: UInt = UInt(#line)
     ) {
         reviewStateOption(rawValue, labelPrefix: labelPrefix).tapWhenReady(file: file, line: line)
+    }
+
+    func clearReviewStates(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        app.descendants(matching: .any)
+            .matching(identifier: "vocab.filter.reviewState.clear")
+            .firstMatch
+            .tapWhenReady(file: file, line: line)
     }
 
     /// Any rendered row that does NOT match `fragment` — used to prove the

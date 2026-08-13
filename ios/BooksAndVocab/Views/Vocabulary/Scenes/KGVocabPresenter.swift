@@ -103,10 +103,15 @@ struct KGVocabPresenter: View {
                 )
                 HStack(spacing: appSkin.spacing.inlineGap) {
                     Spacer()
-                    VocabSortPill(sortOption: Binding(
-                        get: { query.sort },
-                        set: { query.sort = $0 }
-                    ))
+                    VocabSortPill(
+                        options: query.contentScope == .dictionary
+                            ? KGVocabSortOption.dictionaryOptions
+                            : KGVocabSortOption.allCases,
+                        sortOption: Binding(
+                            get: { query.sort },
+                            set: { query.setSort($0) }
+                        )
+                    )
                     if let cta = state.reviewCTA {
                         VocabReviewCTAPill(
                             dueCount: cta.dueCount,

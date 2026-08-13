@@ -42,10 +42,15 @@ struct VocabFilterChipBar<ID: Hashable>: View {
     }
 }
 
-/// Semantic library controls for p11. The content scope is a native segmented
-/// Picker; progress is a single explicit menu with an "all" option. They share
-/// tokens, counts, and query state, but are not represented as interchangeable
-/// chips because their selection semantics are different.
+/// Semantic library controls for p11.
+///
+/// The report is not describing two unrelated menus. It shows one filter
+/// surface with two dimensions: a single content-role selection and a
+/// multi-select review-state selection. Both dimensions therefore use the
+/// same three-column pill grid, counts come from the same projection, and the
+/// query mutation remains explicit at the button boundary. A native Picker
+/// hid the interaction contract from UI tests and made the layout diverge
+/// from the report, so these controls are rendered as buttons.
 struct VocabLibraryFilterBar: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -55,101 +60,88 @@ struct VocabLibraryFilterBar: View {
     @Binding var query: VocabularyLibraryQuery
     let visibleCount: Int
 
-    private var selectedRoleTitle: String {
-        roleOptions.first(where: { $0.id == query.contentScope })?.title ?? query.contentScope.title
-    }
-
-    private var selectedReviewTitle: String {
-        if query.reviewStates.isEmpty { return L10n.string("全部狀態") }
-        guard query.reviewStates.count == 1,
-              let state = query.reviewStates.first else {
-            return L10n.format("已選 %@ 個狀態", "\(query.reviewStates.count)")
-        }
-        return reviewOptions.first(where: { $0.id == state })?.title ?? state.title
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
-            HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.inlineGap) {
-                Label(L10n.string("檢視範圍"), systemImage: "rectangle.stack")
-                    .font(appSkin.typography.caption.weight(.semibold))
-                    .foregroundStyle(appSkin.palette.secondaryText)
-
-                Spacer(minLength: 0)
-
-                Text(L10n.format("%@ 張", "\(visibleCount)"))
-                    .font(appSkin.typography.monoLabel)
-                    .monospacedDigit()
-                    .foregroundStyle(appSkin.palette.quaternaryText)
-                    .accessibilityIdentifier("vocab.filter.visibleCount")
-                    .accessibilityLabel(L10n.format("目前顯示 %@ 張", "\(visibleCount)"))
+            filterGrid(
+                options: roleOptions,
+                isSelected: { query.contentScope == $0 },
+                identifierPrefix: "vocab.filter.scope",
+                identifier: { $0.rawValue }
+            ) { option in
+                query.setContentScope(option)
             }
-
-            Picker(
-                L10n.string("內容範圍"),
-                selection: Binding(
-                    get: { query.contentScope },
-                    set: { query.setContentScope($0) }
-                )
-            ) {
-                ForEach(roleOptions) { option in
-                    Text(L10n.format("%@ · %@", option.title, "\(option.count ?? 0)"))
-                        .accessibilityIdentifier("vocab.filter.scope.\(option.id.rawValue)")
-                        .tag(option.id)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("vocab.filter.scope")
-            .accessibilityValue(L10n.format("目前為 %@", selectedRoleTitle))
 
             if query.contentScope != .dictionary {
-                Menu {
+                filterGrid(
+                    options: reviewOptions,
+                    isSelected: { query.reviewStates.contains($0) },
+                    identifierPrefix: "vocab.filter.reviewState",
+                    identifier: { $0.rawValue }
+                ) { option in
+                    query.toggleReviewState(option)
+                }
+
+                if !query.reviewStates.isEmpty {
                     Button {
                         query.setReviewState(nil)
                     } label: {
-                        Label(
-                            L10n.format("全部狀態 · %@", "\(reviewOptions.reduce(0) { $0 + ($1.count ?? 0) })"),
-                            systemImage: query.reviewStates.isEmpty ? "checkmark" : ""
-                        )
-                        .accessibilityIdentifier("vocab.filter.reviewState.all")
+                        Label(L10n.string("explore.noResults.clear"), systemImage: "xmark.circle")
                     }
-
-                    Divider()
-
-                    ForEach(reviewOptions) { option in
-                        Button {
-                            query.setReviewState(option.id)
-                        } label: {
-                            Label(
-                                L10n.format("%@ · %@", option.title, "\(option.count ?? 0)"),
-                                systemImage: query.reviewStates == [option.id] ? "checkmark" : ""
-                            )
-                            .accessibilityIdentifier("vocab.filter.reviewState.\(option.id.rawValue)")
-                        }
-                    }
-                } label: {
-                    HStack(spacing: appSkin.spacing.rowMicroGap) {
-                        Image(systemName: "checklist")
-                        Text(L10n.format("學習狀態：%@", selectedReviewTitle))
-                        Image(systemName: "chevron.down")
-                            .font(appSkin.typography.iconTiny)
-                    }
-                    .font(appSkin.typography.caption.weight(.medium))
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.secondaryText)
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
-                    .contentShape(Rectangle())
-                    .glassEffect(
-                        .regular.interactive(),
-                        in: AppRoundedRect(roundness: AppRoundness.control)
-                    )
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("vocab.filter.reviewState.clear")
                 }
-                .accessibilityIdentifier("vocab.filter.reviewState")
-                .accessibilityLabel(L10n.string("學習狀態篩選"))
-                .accessibilityValue(selectedReviewTitle)
             }
+
+            // Facet counts are scope-wide; this is the post-search visible-row
+            // count. Keeping it separate prevents a search from changing the
+            // counts rendered in the report-style pills.
+            Text(L10n.format("%@ 張", "\(visibleCount)"))
+                .font(appSkin.typography.monoLabel)
+                .monospacedDigit()
+                .foregroundStyle(appSkin.palette.quaternaryText)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityIdentifier("vocab.filter.visibleCount")
+                .accessibilityLabel(L10n.format("%@ 張", "\(visibleCount)"))
         }
         .enableInjection()
+    }
+
+    @ViewBuilder
+    private func filterGrid<ID: RawRepresentable & Hashable>(
+        options: [VocabTabOption<ID>],
+        isSelected: @escaping (ID) -> Bool,
+        identifierPrefix: String,
+        identifier: @escaping (ID) -> String,
+        action: @escaping (ID) -> Void
+    ) -> some View {
+        let columns = Array(
+            repeating: GridItem(.flexible(), spacing: appSkin.spacing.inlineGap),
+            count: 3
+        )
+        LazyVGrid(columns: columns, spacing: appSkin.spacing.inlineGap) {
+            ForEach(options) { option in
+                let selected = isSelected(option.id)
+                Button {
+                    withAnimation(AppMotion.chipSelect) {
+                        action(option.id)
+                    }
+                } label: {
+                    appChipLabel(
+                        option: option,
+                        isSelected: selected,
+                        style: .vocab(appSkin)
+                    )
+                }
+                .buttonStyle(.plain)
+                .appPointerHover()
+                .accessibilityIdentifier("\(identifierPrefix).\(identifier(option.id))")
+                .accessibilityLabel(appChipAccessibilityLabel(option: option))
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 

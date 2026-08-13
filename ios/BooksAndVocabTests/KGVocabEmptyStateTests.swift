@@ -61,5 +61,51 @@ struct KGVocabEmptyStateTests {
         let fallback = KGVocabEmptyState.description(hasNoEntries: false, searchText: "", filters: [])
         #expect(Set([empty, search, filter, fallback]).count == 4)
     }
+
+    // MARK: - Production resolver contract
+
+    @Test func resolve_distinguishesRoleScopeAndReviewFilter() {
+        let dictionary = KGVocabEmptyState.resolve(.init(
+            hasNoEntries: false,
+            hasEntriesInScope: false,
+            hasVisibleEntries: false,
+            contentScope: .dictionary,
+            searchText: "",
+            reviewStates: []
+        ))
+        #expect(dictionary.systemImage == "book.closed")
+
+        let learning = KGVocabEmptyState.resolve(.init(
+            hasNoEntries: false,
+            hasEntriesInScope: false,
+            hasVisibleEntries: false,
+            contentScope: .learning,
+            searchText: "",
+            reviewStates: []
+        ))
+        #expect(learning.systemImage == "character.book.closed")
+
+        let review = KGVocabEmptyState.resolve(.init(
+            hasNoEntries: false,
+            hasEntriesInScope: true,
+            hasVisibleEntries: false,
+            contentScope: .learning,
+            searchText: "",
+            reviewStates: [.due, .reviewed]
+        ))
+        #expect(review.systemImage == "line.3.horizontal.decrease.circle")
+    }
+
+    @Test func resolve_searchWinsOverRoleAndReviewState() {
+        let result = KGVocabEmptyState.resolve(.init(
+            hasNoEntries: false,
+            hasEntriesInScope: false,
+            hasVisibleEntries: false,
+            contentScope: .dictionary,
+            searchText: "missing",
+            reviewStates: [.due]
+        ))
+        #expect(result.systemImage == "magnifyingglass")
+    }
 }
 #endif

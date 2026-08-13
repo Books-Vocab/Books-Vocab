@@ -44,7 +44,7 @@ struct VocabularyLibraryQuery: Equatable {
         value.searchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if contentScope == .dictionary {
             value.reviewStates = []
-            if sort == .default {
+            if !KGVocabSortOption.dictionaryOptions.contains(sort) {
                 value.sort = .alphabetical
             }
         }
@@ -61,7 +61,26 @@ struct VocabularyLibraryQuery: Equatable {
         contentScope = scope
         if scope == .dictionary {
             reviewStates = []
-            if sort == .default { sort = .alphabetical }
+            if !KGVocabSortOption.dictionaryOptions.contains(sort) {
+                sort = .alphabetical
+            }
+        }
+    }
+
+    mutating func toggleReviewState(_ state: VocabularyReviewState) {
+        if reviewStates.contains(state) {
+            reviewStates.remove(state)
+        } else {
+            reviewStates.insert(state)
+        }
+    }
+
+    mutating func setSort(_ option: KGVocabSortOption) {
+        if contentScope == .dictionary,
+           !KGVocabSortOption.dictionaryOptions.contains(option) {
+            sort = .alphabetical
+        } else {
+            sort = option
         }
     }
 
@@ -137,9 +156,10 @@ enum VocabularyEntryPresentation {
         }
     }
 
-    /// Produces every value consumed by the library chrome from one normalized
-    /// query. This prevents counts, empty copy, visible rows, and review CTA from
-    /// drifting onto different subsets of the same notebook.
+    /// Produces one query contract with two explicit layers:
+    /// scope-wide facets/CTA (stable while searching) and visible rows (search /
+    /// review selection applied last). Naming the layers here prevents a future
+    /// caller from treating a scope-wide facet as if it were a visible-row count.
     static func project(
         _ entries: [VocabularyEntry],
         query: VocabularyLibraryQuery,
@@ -281,11 +301,14 @@ enum VocabularyEntryPresentation {
         case .default:
             return base.sorted { compareKnowledgeEntries($0, $1, now: now) }
         case .alphabetical:
-            return base.sorted {
-                $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
-            }
+            return base.sorted { compareWords($0, $1) }
         case .dateAdded:
-            return base.sorted { $0.effectiveDateAdded > $1.effectiveDateAdded }
+            return base.sorted { lhs, rhs in
+                if lhs.effectiveDateAdded != rhs.effectiveDateAdded {
+                    return lhs.effectiveDateAdded > rhs.effectiveDateAdded
+                }
+                return compareWords(lhs, rhs)
+            }
         case .difficulty:
             return base.sorted { lhs, rhs in
                 if lhs.reviewEligible != rhs.reviewEligible {
@@ -294,7 +317,7 @@ enum VocabularyEntryPresentation {
                 let lhsTier = tierPriority(lhs.difficultyTier)
                 let rhsTier = tierPriority(rhs.difficultyTier)
                 if lhsTier != rhsTier { return lhsTier < rhsTier }
-                return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+                return compareWords(lhs, rhs)
             }
         }
     }
@@ -336,7 +359,7 @@ enum VocabularyEntryPresentation {
             if lhs.effectiveDateAdded != rhs.effectiveDateAdded {
                 return lhs.effectiveDateAdded > rhs.effectiveDateAdded
             }
-            return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+            return compareWords(lhs, rhs)
         }
         if reviewPriority(lhs.reviewState(at: now)) != reviewPriority(rhs.reviewState(at: now)) {
             return reviewPriority(lhs.reviewState(at: now)) < reviewPriority(rhs.reviewState(at: now))
@@ -349,7 +372,19 @@ enum VocabularyEntryPresentation {
         if lhsTier != rhsTier {
             return lhsTier < rhsTier
         }
-        return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+        return compareWords(lhs, rhs)
+    }
+
+    /// Swift's `sorted` is not a stable-sort contract. Every sort branch must
+    /// therefore end at the persisted UUID after comparing the visible word,
+    /// otherwise two equal-looking cards can reorder between renders and make
+    /// both lazy-list identity and Simulator evidence nondeterministic.
+    private static func compareWords(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry) -> Bool {
+        let wordOrder = lhs.word.localizedCaseInsensitiveCompare(rhs.word)
+        if wordOrder != .orderedSame {
+            return wordOrder == .orderedAscending
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     private static func reviewPriority(_ state: VocabularyReviewState) -> Int {
