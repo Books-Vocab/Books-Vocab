@@ -325,7 +325,10 @@ final class SettingsFlowUITests: UITestCase {
         XCTAssertTrue(app.waitForNavigationToSettle())
         settings.assertAccountDetailEvidence()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("preReset", timeout: 5))
-        XCTAssertTrue(settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
+        XCTAssertTrue(
+            settings.resetBeforeCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5),
+            "reset before card count AX label=\(settings.resetBeforeCardCount.label) value=\(String(describing: settings.resetBeforeCardCount.value)) expected=\(beforeCardLabel)"
+        )
         XCTAssertTrue(settings.resetBeforePreferences.waitUntilLabelContains(beforePreferencesLabel, timeout: 5))
         XCTAssertTrue(settings.resetBeforeLoginStatus.waitUntilLabelContains(beforeLoginLabel, timeout: 5))
         XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(beforeCardLabel, timeout: 5))
