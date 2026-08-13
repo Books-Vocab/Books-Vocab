@@ -40,6 +40,7 @@
 #   KG_IOS_TEST_ALLOW_SHARED_SIM=1 ./ops/ios_test.sh ...         # explicit opt-out for single-machine debugging
 #   KG_IOS_TEST_LOG_IDLE_LIMIT=300 ./ops/ios_test.sh ...          # fail after 300s without log writes
 #   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=<seconds> ./ops/ios_test.sh --ui ... # bounded per-test timeout
+#   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=420 ./ops/ios_test.sh ... # raise XCTest max
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -67,9 +68,9 @@ if [[ ! "$LOG_IDLE_LIMIT" =~ ^[0-9]+$ ]]; then
   LOG_IDLE_LIMIT=0
 fi
 MAX_TEST_EXECUTION_TIME_ALLOWANCE="${KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE:-120}"
-if [[ ! "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" =~ ^[0-9]+$ ]] || (( MAX_TEST_EXECUTION_TIME_ALLOWANCE < 60 )); then
-  echo "[ios_test] warning: ignoring non-numeric/too-small KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=$MAX_TEST_EXECUTION_TIME_ALLOWANCE (using 120)" >&2
-  MAX_TEST_EXECUTION_TIME_ALLOWANCE=120
+if [[ ! "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" =~ ^[0-9]+$ || "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" -lt 60 ]]; then
+  echo "[ios_test] error: KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE must be an integer >= 60" >&2
+  exit 64
 fi
 LEASED_DEVICE=''                            # udid of an auto-leased simulator, released in cleanup
 LEASE_OWNER_TOKEN="kg-ios-test-$$-$(date +%s)-${RANDOM:-0}"
