@@ -234,8 +234,17 @@ struct AddLinkSheet: View {
                             title: L10n.string("addLink.dictionaryLoading"),
                             systemImage: "arrow.clockwise"
                         ) {
-                            ProgressView()
-                                .controlSize(.small)
+                            VStack(spacing: AppSpacing.microGap) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                if AppRuntimeOptions.shouldGateDictionaryRetry() {
+                                    Button(L10n.string("重試")) {
+                                        Task { await DictionaryRetryGate.shared.release() }
+                                    }
+                                    .buttonStyle(.vocabAction(.neutral))
+                                    .accessibilityIdentifier("addLink.dictionary.releaseRetry")
+                                }
+                            }
                         }
                         dictionaryAccessibilityMarker(
                             "addLink.dictionary.retrying",
@@ -393,7 +402,9 @@ struct AddLinkSheet: View {
         .accessibilityIdentifier("addLink.dictionary.provenance")
         .accessibilityValue("\(entry.provider)|\(entry.attributionText)")
 
-        if let materialization = coordinator.dictionaryMaterialization {
+        if let materialization = coordinator.dictionaryMaterialization,
+           let selectedSenseID = materialization.selectedSenseID,
+           let selectedExampleID = materialization.selectedExampleID {
             Color.clear
                 .frame(width: 1, height: 1)
                 .accessibilityElement()
@@ -402,15 +413,16 @@ struct AddLinkSheet: View {
                 )
                 .accessibilityValue(
                     [
-                        materialization.selectedSenseID,
-                        materialization.selectedExampleID,
+                        selectedSenseID,
+                        selectedExampleID,
                         materialization.sourceFixtureID,
                         materialization.datasetID,
                         materialization.datasetSHA256,
                         materialization.sourceAssetID,
+                        materialization.sourceAssetPath,
+                        String(materialization.sourceAssetByteSize),
                         materialization.sourceAssetSHA256,
                     ]
-                    .compactMap { $0 }
                     .joined(separator: "|")
                 )
         }

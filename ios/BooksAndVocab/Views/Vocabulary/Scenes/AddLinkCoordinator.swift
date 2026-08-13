@@ -85,7 +85,9 @@ enum DictionaryMaterializePhase: Equatable {
 private enum DictionaryMaterializationError: Error {
     case projectionCardMismatch(expected: String, actual: String)
     case projectionMissingGraphLink(linkID: String)
-    case missingSourceContext
+    case projectionGraphLinkMismatch(linkID: String)
+    case projectionGraphLinkEndpointsMismatch(linkID: String)
+    case projectionGraphLinkKindMismatch(linkID: String)
 }
 
 @Observable @MainActor
@@ -349,6 +351,11 @@ final class AddLinkCoordinator {
         using service: any DictionaryServing,
         container: ModelContainer
     ) async {
+        guard let sourceContext = sourceEntry.modelContext else {
+            materializePhase = .failed
+            materializeFailure = .malformed
+            return
+        }
         guard let sourceCardID = sourceEntry.kgCardId,
               let senseKey = selectedSenseKey,
               let exampleKey = selectedExampleKey else { return }
@@ -390,8 +397,25 @@ final class AddLinkCoordinator {
                     actual: projection.card.id
                 )
             }
-            guard projection.links.contains(where: { $0.id == response.link.id }) else {
+            let matchingLinks = projection.links.filter { $0.id == response.link.id }
+            guard matchingLinks.count == 1 else {
                 throw DictionaryMaterializationError.projectionMissingGraphLink(
+                    linkID: response.link.id
+                )
+            }
+            guard matchingLinks[0] == response.link else {
+                throw DictionaryMaterializationError.projectionGraphLinkMismatch(
+                    linkID: response.link.id
+                )
+            }
+            guard response.link.fromId == request.sourceCardId,
+                  response.link.toId == response.targetCard.id else {
+                throw DictionaryMaterializationError.projectionGraphLinkEndpointsMismatch(
+                    linkID: response.link.id
+                )
+            }
+            guard response.link.kind == "shares_usage" else {
+                throw DictionaryMaterializationError.projectionGraphLinkKindMismatch(
                     linkID: response.link.id
                 )
             }
@@ -401,9 +425,6 @@ final class AddLinkCoordinator {
                 _ = try await actor.upsertDictionaryProjection(projection)
             }
             Self.applyMaterializedLink(response, to: sourceEntry)
-            guard let sourceContext = sourceEntry.modelContext else {
-                throw DictionaryMaterializationError.missingSourceContext
-            }
             try sourceContext.save()
             materializePhase = .succeeded
             PerfLog.dictionary.mark(
@@ -510,10 +531,12 @@ final class AddLinkCoordinator {
         guard let materialization else { return "provenance=none" }
         return [
             "fixtureID=\(materialization.sourceFixtureID)",
-            "datasetID=\(materialization.datasetID ?? "none")",
-            "datasetSHA256=\(materialization.datasetSHA256 ?? "none")",
-            "sourceAssetID=\(materialization.sourceAssetID ?? "none")",
-            "sourceAssetSHA256=\(materialization.sourceAssetSHA256 ?? "none")",
+            "datasetID=\(materialization.datasetID)",
+            "datasetSHA256=\(materialization.datasetSHA256)",
+            "sourceAssetID=\(materialization.sourceAssetID)",
+            "sourceAssetPath=\(materialization.sourceAssetPath)",
+            "sourceAssetByteSize=\(materialization.sourceAssetByteSize)",
+            "sourceAssetSHA256=\(materialization.sourceAssetSHA256)",
         ].joined(separator: " ")
     }
 

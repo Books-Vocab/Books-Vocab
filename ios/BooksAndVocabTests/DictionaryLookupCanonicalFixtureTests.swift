@@ -35,6 +35,8 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(coordinator.dictionaryMaterialization?.datasetID == "marketing_demo")
         #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "986c04b5219bfa9c9a5f3922864f42034081cbd90939db4353de8160656e6bd0")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetID == "catalog_reader_epub")
+        #expect(coordinator.dictionaryMaterialization?.sourceAssetPath == "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub")
+        #expect(coordinator.dictionaryMaterialization?.sourceAssetByteSize == 1690)
         #expect(coordinator.dictionaryMaterialization?.sourceAssetSHA256 == "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de")
     }
 
@@ -138,6 +140,30 @@ struct DictionaryLookupCanonicalFixtureTests {
         }
     }
 
+    @Test("fixture service creation rejects invalid source path, byte size, or hash")
+    func fixtureServiceRejectsInvalidRuntimeProvenance() throws {
+        let original = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")
+        let json = String(decoding: original, as: UTF8.self)
+        let assetPath = "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub"
+        let assetHash = "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de"
+        let variants = [
+            json.replacingOccurrences(of: assetPath, with: "/definitely/missing/catalog-reader.epub"),
+            json.replacingOccurrences(of: "\"byteSize\": 1690", with: "\"byteSize\": 1691"),
+            json.replacingOccurrences(
+                of: assetHash,
+                with: String(repeating: "0", count: assetHash.count)
+            ),
+        ]
+
+        for variant in variants {
+            #expect(throws: FixtureDictionaryServing.FixtureError.self) {
+                try FixtureDatasetStore.withTestingData(Data(variant.utf8)) {
+                    try FixtureDictionaryServing.fromFixtureDatasetStore()
+                }
+            }
+        }
+    }
+
     @Test("materialization fails closed when the dictionary projection cannot be read back")
     func materializationFailsClosedWhenProjectionCannotBeReadBack() async throws {
         let base = try canonicalService()
@@ -169,6 +195,8 @@ struct DictionaryLookupCanonicalFixtureTests {
 
         #expect(coordinator.materializePhase == .failed)
         #expect(source.graphLinksByKind["shares_usage"] == nil)
+        let saved = try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
     }
 
     @Test("materialization fails closed when the projection omits the graph link")
@@ -202,6 +230,146 @@ struct DictionaryLookupCanonicalFixtureTests {
 
         #expect(coordinator.materializePhase == .failed)
         #expect(source.graphLinksByKind["shares_usage"] == nil)
+        let saved = try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
+    }
+
+    @Test("materialization rejects a same-ID projection link with wrong endpoints")
+    func materializationRejectsProjectionLinkWithWrongEndpoints() async throws {
+        let base = try canonicalService()
+        let service = MalformedProjectionDictionaryService(
+            base: base,
+            corruption: .projectionOnly(.endpoints)
+        )
+        let result = try await runMaterialization(
+            lookupService: base,
+            materializationService: service
+        )
+
+        #expect(result.coordinator.materializePhase == .failed)
+        #expect(result.source.graphLinksByKind.isEmpty)
+        let saved = try ModelContext(result.container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
+    }
+
+    @Test("materialization rejects a same-ID projection link with wrong kind")
+    func materializationRejectsProjectionLinkWithWrongKind() async throws {
+        let base = try canonicalService()
+        let service = MalformedProjectionDictionaryService(
+            base: base,
+            corruption: .projectionOnly(.kind)
+        )
+        let result = try await runMaterialization(
+            lookupService: base,
+            materializationService: service
+        )
+
+        #expect(result.coordinator.materializePhase == .failed)
+        #expect(result.source.graphLinksByKind.isEmpty)
+        let saved = try ModelContext(result.container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
+    }
+
+    @Test("materialization rejects equal wrong-endpoint links from response and projection")
+    func materializationRejectsEqualWrongEndpointLinks() async throws {
+        let base = try canonicalService()
+        let service = MalformedProjectionDictionaryService(
+            base: base,
+            corruption: .responseAndProjection(.endpoints)
+        )
+        let result = try await runMaterialization(
+            lookupService: base,
+            materializationService: service
+        )
+
+        #expect(result.coordinator.materializePhase == .failed)
+        #expect(result.source.graphLinksByKind.isEmpty)
+        let saved = try ModelContext(result.container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
+    }
+
+    @Test("materialization rejects equal wrong-kind links from response and projection")
+    func materializationRejectsEqualWrongKindLinks() async throws {
+        let base = try canonicalService()
+        let service = MalformedProjectionDictionaryService(
+            base: base,
+            corruption: .responseAndProjection(.kind)
+        )
+        let result = try await runMaterialization(
+            lookupService: base,
+            materializationService: service
+        )
+
+        #expect(result.coordinator.materializePhase == .failed)
+        #expect(result.source.graphLinksByKind.isEmpty)
+        let saved = try ModelContext(result.container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
+    }
+
+    @Test("detached source is rejected before request, target, or graph mutation")
+    func detachedSourceIsRejectedBeforeAnyMutation() async throws {
+        let base = try canonicalService()
+        let service = CountingMaterializationDictionaryService(base: base)
+        let coordinator = AddLinkCoordinator()
+        let detached = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        detached.kgCardId = "source-card"
+        detached.notebookId = "notebook"
+        let container = try Self.inMemoryContainer()
+
+        coordinator.submitSearch(query: "engraved", using: base)
+        try await settle { coordinator.lookupState.isSuccess }
+        guard case .success(_, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected canonical dictionary entry before detached-source regression")
+            return
+        }
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: detached,
+            entry: entry,
+            using: service,
+            container: container
+        )
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(await service.requests.isEmpty)
+        #expect(detached.graphLinksByKind.isEmpty)
+        #expect(try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>()).isEmpty)
+    }
+
+    private func runMaterialization(
+        lookupService: any DictionaryServing,
+        materializationService: any DictionaryServing
+    ) async throws -> (
+        coordinator: AddLinkCoordinator,
+        source: VocabularyEntry,
+        container: ModelContainer
+    ) {
+        let coordinator = AddLinkCoordinator()
+        let source = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        source.kgCardId = "source-card"
+        source.notebookId = "notebook"
+        let container = try Self.inMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
+
+        coordinator.submitSearch(query: "engraved", using: lookupService)
+        try await settle { coordinator.lookupState.isSuccess }
+        guard case .success(_, let entry?, _) = coordinator.lookupState else {
+            throw FixtureDictionaryServing.FixtureError.missingCanonicalDictionary
+        }
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source,
+            entry: entry,
+            using: materializationService,
+            container: container
+        )
+        return (coordinator, source, container)
     }
 
     private func canonicalService() throws -> FixtureDictionaryServing {
@@ -241,6 +409,119 @@ struct DictionaryLookupCanonicalFixtureTests {
             try await Task.sleep(for: .milliseconds(2))
         }
         Issue.record("timed out waiting for state transition")
+    }
+}
+
+private enum ProjectionLinkMutation: Sendable {
+    case endpoints
+    case kind
+}
+
+private enum ProjectionLinkCorruption: Sendable {
+    case projectionOnly(ProjectionLinkMutation)
+    case responseAndProjection(ProjectionLinkMutation)
+}
+
+private func corruptProjectionLink(
+    _ link: KGGraphLink,
+    mutation: ProjectionLinkMutation
+) -> KGGraphLink {
+    switch mutation {
+    case .endpoints:
+        return KGGraphLink(
+            id: link.id,
+            fromId: "wrong-source-card",
+            toId: "wrong-target-card",
+            kind: link.kind,
+            confidence: link.confidence,
+            reason: link.reason
+        )
+    case .kind:
+        return KGGraphLink(
+            id: link.id,
+            fromId: link.fromId,
+            toId: link.toId,
+            kind: "related",
+            confidence: link.confidence,
+            reason: link.reason
+        )
+    }
+}
+
+private actor MalformedProjectionDictionaryService: DictionaryServing {
+    let base: FixtureDictionaryServing
+    let corruption: ProjectionLinkCorruption
+
+    init(base: FixtureDictionaryServing, corruption: ProjectionLinkCorruption) {
+        self.base = base
+        self.corruption = corruption
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest,
+        idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        let response = try await base.materializeDictionaryLink(
+            request: request,
+            idempotencyKey: idempotencyKey
+        )
+        guard let projection = response.dictionaryCard else {
+            throw FixtureDictionaryServing.FixtureError.missingCanonicalDictionary
+        }
+        let mutation: ProjectionLinkMutation
+        let mutateResponse: Bool
+        switch corruption {
+        case .projectionOnly(let value):
+            mutation = value
+            mutateResponse = false
+        case .responseAndProjection(let value):
+            mutation = value
+            mutateResponse = true
+        }
+        let links = projection.links.map { link -> KGGraphLink in
+            guard link.id == response.link.id else { return link }
+            return corruptProjectionLink(link, mutation: mutation)
+        }
+        let malformedProjection = KGDictionaryCardProjection(
+            card: projection.card,
+            dictionaryEntry: projection.dictionaryEntry,
+            selectedSenseKey: projection.selectedSenseKey,
+            selectedExampleKey: projection.selectedExampleKey,
+            materializationStatus: projection.materializationStatus,
+            promotionErrorCode: projection.promotionErrorCode,
+            promotionRetryable: projection.promotionRetryable,
+            links: links
+        )
+        return DictionaryMaterializeLinkResponse(
+            targetCard: response.targetCard,
+            dictionaryCard: malformedProjection,
+            link: mutateResponse
+                ? corruptProjectionLink(response.link, mutation: mutation)
+                : response.link,
+            createdCard: response.createdCard,
+            createdLink: response.createdLink,
+            replayed: response.replayed
+        )
+    }
+}
+
+private actor CountingMaterializationDictionaryService: DictionaryServing {
+    let base: FixtureDictionaryServing
+    private(set) var requests: [DictionaryMaterializeLinkRequest] = []
+
+    init(base: FixtureDictionaryServing) {
+        self.base = base
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest,
+        idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        requests.append(request)
+        return try await base.materializeDictionaryLink(
+            request: request,
+            idempotencyKey: idempotencyKey
+        )
     }
 }
 

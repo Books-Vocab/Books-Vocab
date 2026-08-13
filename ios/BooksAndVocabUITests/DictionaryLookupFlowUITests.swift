@@ -18,7 +18,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
         XCTAssertTrue(page.materialization(status: "ready").waitUntilValueContains(
-            "sense-1|example-1|dictionary.lookup.result|marketing_demo|986c04b5219bfa9c9a5f3922864f42034081cbd90939db4353de8160656e6bd0|catalog_reader_epub|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
+            "sense-1|example-1|dictionary.lookup.result|marketing_demo|986c04b5219bfa9c9a5f3922864f42034081cbd90939db4353de8160656e6bd0|catalog_reader_epub|/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub|1690|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
             timeout: 5
         ))
         page.tapSense(id: "sense-1")
@@ -46,7 +46,10 @@ final class DictionaryLookupFlowUITests: UITestCase {
 
     @MainActor
     func testDictionaryPartialRetryAndRetryingSelectorsAreLive() throws {
-        let (app, page) = try openDictionarySheet(perfLog: "dictionary-partial-retry")
+        let (app, page) = try openDictionarySheet(
+            perfLog: "dictionary-partial-retry",
+            extraArgs: ["-dictionaryRetryGate"]
+        )
         page.search("partial")
         page.assertCanonicalState("partial")
         page.assertRetryButton()
@@ -55,6 +58,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         page.retryButton.tap()
         page.assertCanonicalState("retrying")
         captureStep("retrying", app: app)
+        page.releaseRetryRequest()
         page.assertCanonicalState("result")
     }
 
@@ -74,8 +78,12 @@ final class DictionaryLookupFlowUITests: UITestCase {
     }
 
     @MainActor
-    private func openDictionarySheet(perfLog: String) throws -> (XCUIApplication, DictionaryLookupPage) {
+    private func openDictionarySheet(
+        perfLog: String,
+        extraArgs: [String] = []
+    ) throws -> (XCUIApplication, DictionaryLookupPage) {
         let app = launchIsolatedApp(
+            extraArgs: extraArgs,
             fixtures: [.dictionaryP1Rich, .notebookReviewDeck],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: perfLog

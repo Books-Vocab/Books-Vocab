@@ -168,6 +168,20 @@ struct DictionaryCardWireTests {
         #expect(projection.card.reviewEligible == false)
     }
 
+    @Test("materialization projection rejects a missing links field")
+    func strictMaterializationProjectionRejectsMissingLinks() {
+        let malformed = Self.payload.replacingOccurrences(
+            of: #", "links": []"#,
+            with: ""
+        )
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(malformed.utf8)
+            )
+        }
+    }
+
     private static let payload = """
     {
       "card": {
@@ -192,7 +206,8 @@ struct DictionaryCardWireTests {
         "truncated": false
       },
       "selectedSenseKey": "sense-1", "selectedExampleKey": "example-1",
-      "materializationStatus": "active"
+      "materializationStatus": "active",
+      "promotionErrorCode": null, "promotionRetryable": false, "links": []
     }
     """
 }

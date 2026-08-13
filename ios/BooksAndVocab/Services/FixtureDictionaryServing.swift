@@ -1,5 +1,67 @@
 import Foundation
 
+/// Deterministic retry gate used by unit/UI fixtures. The app exposes release
+/// only behind an explicit UI-test launch argument; production fixture calls
+/// keep the normal immediate retry behavior.
+actor DictionaryRetryGate {
+    static let shared = DictionaryRetryGate()
+
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var activeWaitID: UUID?
+    private var cancelledWaitIDs: Set<UUID> = []
+    private var waiting = false
+
+    func waitForRelease() async {
+        let waitID = UUID()
+        await withTaskCancellationHandler(operation: {
+            await install(waitID: waitID)
+        }, onCancel: {
+            Task { await self.cancel(waitID: waitID) }
+        })
+    }
+
+    func release() {
+        guard let continuation else { return }
+        self.continuation = nil
+        activeWaitID = nil
+        waiting = false
+        continuation.resume()
+    }
+
+    func isWaiting() -> Bool {
+        waiting
+    }
+
+    private func install(waitID: UUID) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if Task.isCancelled || cancelledWaitIDs.remove(waitID) != nil {
+                continuation.resume()
+                return
+            }
+            self.continuation = continuation
+            activeWaitID = waitID
+            waiting = true
+        }
+        if activeWaitID == waitID {
+            activeWaitID = nil
+            continuation = nil
+            waiting = false
+        }
+    }
+
+    private func cancel(waitID: UUID) {
+        guard activeWaitID == waitID else {
+            cancelledWaitIDs.insert(waitID)
+            return
+        }
+        let continuation = self.continuation
+        self.continuation = nil
+        activeWaitID = nil
+        waiting = false
+        continuation?.resume()
+    }
+}
+
 /// Canonical dictionary adapter for UI World runs.
 ///
 /// The adapter is deliberately backed by `scenarioContext.dictionary`; it
@@ -17,13 +79,20 @@ actor FixtureDictionaryServing: DictionaryServing {
     private let entry: LexicalEntry
     private let hit: DictionarySearchHit
     private let materialization: DictionaryMaterializationSnapshot
+    private let retryGate: DictionaryRetryGate?
     private var attempts: [String: Int] = [:]
     private var pendingDetailFailures: [String: Int] = [:]
     private var pendingDetailFailureQuery: String?
     private(set) var materializationRequests: [DictionaryMaterializeLinkRequest] = []
 
-    init(dictionary: UIWorldDictionarySeed) {
+    init(
+        dictionary: UIWorldDictionarySeed,
+        materialization: DictionaryMaterializationSnapshot,
+        retryGate: DictionaryRetryGate?
+    ) {
         self.dictionary = dictionary
+        self.materialization = materialization
+        self.retryGate = retryGate
         let attribution = LexicalAttribution(
             provider: dictionary.provenance.provider,
             sourceURL: "",
@@ -71,23 +140,28 @@ actor FixtureDictionaryServing: DictionaryServing {
             hasExamples: !dictionary.examples.isEmpty,
             attribution: attribution
         )
-        self.materialization = FixtureDatasetStore.dictionaryRuntimeMaterialization(
-            for: .p1DictionaryRich
-        ) ?? DictionaryMaterializationSnapshot(
-            status: dictionary.materialization.status,
-            selectedSenseID: dictionary.materialization.selectedSenseID,
-            selectedExampleID: dictionary.materialization.selectedExampleID,
-            sourceFixtureID: dictionary.materialization.sourceFixtureID
-        )
     }
 
     static func fromFixtureDatasetStore(
-        fixtureID: UIWorldDictionaryFixtureID = .p1DictionaryRich
+        fixtureID: UIWorldDictionaryFixtureID = .p1DictionaryRich,
+        retryGate: DictionaryRetryGate? = AppRuntimeOptions.shouldGateDictionaryRetry()
+            ? DictionaryRetryGate.shared
+            : nil
     ) throws -> FixtureDictionaryServing {
         guard let dictionary = FixtureDatasetStore.dictionarySeed(for: fixtureID) else {
             throw FixtureError.missingCanonicalDictionary
         }
-        return FixtureDictionaryServing(dictionary: dictionary)
+        let materialization: DictionaryMaterializationSnapshot
+        do {
+            materialization = try FixtureDatasetStore.dictionaryRuntimeMaterialization(for: fixtureID)
+        } catch {
+            throw FixtureError.invalidDataset(String(describing: error))
+        }
+        return FixtureDictionaryServing(
+            dictionary: dictionary,
+            materialization: materialization,
+            retryGate: retryGate
+        )
     }
 
     func searchDictionary(
@@ -126,9 +200,15 @@ actor FixtureDictionaryServing: DictionaryServing {
         case .error:
             throw FixtureError.unavailable(fixtureID: stateSeed.fixtureID)
         case .retry:
-            if attempts[state.rawValue] == 1 {
+            if attempts[queryKey] == 1 {
                 throw KGError.offline
             }
+        }
+        if let retryGate,
+           attempts[queryKey, default: 0] > 1,
+           state.rawValue == UIWorldDictionaryLookupState.partial.rawValue
+                || state.rawValue == UIWorldDictionaryLookupState.retry.rawValue {
+            await retryGate.waitForRelease()
         }
         try Task.checkCancellation()
         if shouldFailDetail {

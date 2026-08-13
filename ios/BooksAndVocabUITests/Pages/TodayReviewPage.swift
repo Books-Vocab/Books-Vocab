@@ -89,9 +89,7 @@ struct TodayReviewPage {
     }
 
     func link(id: String) -> XCUIElement {
-        app.descendants(matching: .any)
-            .matching(identifier: "todayReview.card.link.\(id)")
-            .element(boundBy: 0)
+        exactlyOne("todayReview.card.link.\(id)", in: app.descendants(matching: .any))
     }
 
     func assertLink(
@@ -187,6 +185,12 @@ struct TodayReviewPage {
     // MARK: - Helpers
 
     private func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        exactlyOne(identifier, in: app.descendants(matching: .any))
+    }
+
+    private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
+        let matches = query.matching(identifier: identifier)
+        XCTAssertEqual(matches.count, 1, "P1 selector must resolve exactly once: \(identifier)")
+        return matches.element
     }
 }

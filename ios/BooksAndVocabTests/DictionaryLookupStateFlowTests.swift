@@ -75,6 +75,47 @@ struct DictionaryLookupStateFlowTests {
         try await settle { coordinator.lookupState.isSuccess }
     }
 
+    @Test("retry stays gated until the test continuation releases the canonical request")
+    func retryWaitsForTestControlledRelease() async throws {
+        let gate = DictionaryRetryGate()
+        let service = try canonicalService(retryGate: gate)
+        let coordinator = AddLinkCoordinator()
+
+        coordinator.submitSearch(query: "retry", using: service)
+        try await settle { coordinator.lookupState == .offline(query: "retry") }
+
+        coordinator.retrySearch(using: service)
+        #expect(coordinator.lookupState == .retry(query: "retry", attempt: 1))
+        try await settleUntilGateIsWaiting(gate)
+        #expect(coordinator.lookupState == .retry(query: "retry", attempt: 1))
+
+        await gate.release()
+        try await settle { coordinator.lookupState.isSuccess }
+    }
+
+    @Test("cancelling a gated retry cannot poison the newer generation")
+    func cancelledGatedRetryCannotWinNewerGeneration() async throws {
+        let gate = DictionaryRetryGate()
+        let service = try canonicalService(retryGate: gate)
+        let coordinator = AddLinkCoordinator()
+
+        coordinator.submitSearch(query: "retry", using: service)
+        try await settle { coordinator.lookupState == .offline(query: "retry") }
+        coordinator.retrySearch(using: service)
+        try await settleUntilGateIsWaiting(gate)
+
+        coordinator.submitSearch(query: "engraved", using: service)
+        try await settle { coordinator.lookupState.isSuccess }
+        await gate.release()
+
+        guard case .success(let query, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected the newer dictionary lookup to succeed")
+            return
+        }
+        #expect(query == "engraved")
+        #expect(entry.entryKey == "engraved")
+    }
+
     @Test("a cancelled loading fixture cannot win a newer lookup")
     func cancelledLoadingFixtureCannotWinNewerLookup() async throws {
         let service = try canonicalService()
@@ -124,15 +165,26 @@ struct DictionaryLookupStateFlowTests {
         #expect(coordinator.selectedMaterialization?.provenance.attributionText == "canonical dictionary fixture")
     }
 
-    private func canonicalService() throws -> FixtureDictionaryServing {
+    private func canonicalService(
+        retryGate: DictionaryRetryGate? = nil
+    ) throws -> FixtureDictionaryServing {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let data = try Data(contentsOf: root.appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json"))
         return try FixtureDatasetStore.withTestingData(data) {
-            try FixtureDictionaryServing.fromFixtureDatasetStore()
+            try FixtureDictionaryServing.fromFixtureDatasetStore(retryGate: retryGate)
         }
+    }
+
+    private func settleUntilGateIsWaiting(_ gate: DictionaryRetryGate) async throws {
+        for _ in 0..<200 {
+            if await gate.isWaiting() { return }
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        Issue.record("timed out waiting for retry continuation gate")
     }
 
     private func settle(
