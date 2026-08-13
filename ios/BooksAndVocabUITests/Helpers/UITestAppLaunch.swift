@@ -242,7 +242,7 @@ struct UITestLaunchConfiguration {
                 from: ProcessInfo.processInfo.environment[uiTestAppArgumentsEnvKey]
             )
         } catch {
-            preconditionFailure("\(error)")
+            preconditionFailure("Invalid KG_UI_TEST_APP_ARGS_JSON: \(error)")
         }
     }
 }
