@@ -21,6 +21,7 @@ final class ReaderFlowUITests: UITestCase {
     private static let seededTranslation = "引言"
     /// Required TOC fixture 的第二章正文；與第一章的 seededWord 必須不同。
     private static let secondChapterWord = "Chapter Two"
+    private static let invalidDestinationAssetSHA256 = "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f"
 
     private static let fixtureEnvironment: [String: String] = [
         // 詞庫命中路徑不需要網路；指向不可達位址確保任何意外請求
@@ -196,17 +197,32 @@ final class ReaderFlowUITests: UITestCase {
         reader.assertSingleWebView()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
         captureStep("invalid-destination-reader-open", app: app)
+        XCTAssertTrue(reader.currentLocator.waitUntilExists(timeout: 10))
+        XCTAssertEqual(
+            reader.currentLocator.value as? String,
+            "OEBPS/chapter1.xhtml"
+        )
+        XCTAssertTrue(reader.contentText("Introduction").waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.evidenceAsset.waitUntilExists(timeout: 10))
+        reader.assertFixtureAsset(
+            assetID: "books.reader_invalid_destination_epub",
+            fileName: "reader-invalid-destination.epub",
+            sha256: Self.invalidDestinationAssetSHA256,
+            byteSize: 17344
+        )
 
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
         XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
-        XCTAssertTrue(reader.tocChapter("1").waitUntilExists(timeout: 10))
+        let invalidRow = reader.tocChapter("1")
+        XCTAssertTrue(invalidRow.waitUntilExists(timeout: 10))
+        let canonicalInvalidRow = reader.tocChapter(path: "1", label: "Missing Destination")
         captureStep("invalid-destination-toc-loaded", app: app)
 
         // This is the actual Link produced by Readium from the invalid EPUB's
         // nav.xhtml. No command-line href, synthetic View link, or fake
         // navigator participates in this path.
-        reader.tocChapter("1").tapWhenReady()
+        canonicalInvalidRow.tapWhenReady()
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.tableOfContentsSheet.exists)

@@ -7,6 +7,7 @@ private enum ReaderTOCEvidenceWriterError: Error, CustomStringConvertible {
     case invalidRunnerVerdict(String)
     case missingAccessibilityObservation(String)
     case observationMismatch(String)
+    case assetIntegrityMismatch(String)
     case missingScreenshotBundle
     case invalidArtifact
 
@@ -20,6 +21,8 @@ private enum ReaderTOCEvidenceWriterError: Error, CustomStringConvertible {
             return "current Reader accessibility observation is missing \(identifier)"
         case .observationMismatch(let field):
             return "Reader observation does not match \(field)"
+        case .assetIntegrityMismatch(let field):
+            return "Reader evidence asset does not match canonical fixture \(field)"
         case .missingScreenshotBundle:
             return "current UI screenshot bundle is missing"
         case .invalidArtifact:
@@ -269,19 +272,39 @@ extension UITestCase {
     ) throws -> ReaderTOCEvidenceAsset {
         let descriptor = try readRequiredValue(app, identifier: "reader.evidence.asset")
         let parts = descriptor.split(separator: "|", omittingEmptySubsequences: false)
-        guard parts.count == 3,
-              let byteSize = Int(parts[2]),
+        guard parts.count == 6,
+              let expectedByteSize = Int(parts[3]),
+              let actualByteSize = Int(parts[5]),
               !parts[0].isEmpty,
-              parts[1].count == 64 else {
+              !parts[1].isEmpty,
+              parts[2].count == 64,
+              parts[4].count == 64 else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
                 "reader.evidence.asset"
             )
         }
+        guard String(parts[0]) == assetID else {
+            throw ReaderTOCEvidenceWriterError.assetIntegrityMismatch("assetID")
+        }
+        let installedURL = URL(fileURLWithPath: String(parts[1]))
+        let proof = try FixtureDatasetStore.readerAssetProof(
+            forInstalledFileName: installedURL.lastPathComponent
+        )
+        guard proof.assetID == assetID,
+              proof.installedPath == installedURL.path,
+              proof.expectedSHA256 == String(parts[2]),
+              proof.expectedByteSize == expectedByteSize,
+              proof.actualSHA256 == String(parts[4]),
+              proof.actualByteSize == actualByteSize else {
+            throw ReaderTOCEvidenceWriterError.assetIntegrityMismatch("manifest-or-installed-copy")
+        }
         return ReaderTOCEvidenceAsset(
             assetID: assetID,
-            installedPath: String(parts[0]),
-            sha256: String(parts[1]),
-            byteSize: byteSize
+            installedPath: proof.installedPath,
+            expectedSHA256: proof.expectedSHA256,
+            expectedByteSize: proof.expectedByteSize,
+            actualSHA256: proof.actualSHA256,
+            actualByteSize: proof.actualByteSize
         )
     }
 

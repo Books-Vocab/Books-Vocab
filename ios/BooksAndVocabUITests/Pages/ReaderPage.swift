@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 /// Page Object for the Reader (book reading) scene.
@@ -51,6 +52,43 @@ struct ReaderPage {
 
     func tocChapter(_ path: String) -> XCUIElement {
         tableOfContentsSheet.buttons["reader.toc.chapter.\(path)"]
+    }
+
+    func tocChapter(
+        path: String,
+        label: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement {
+        let row = tocChapter(path)
+        XCTAssertEqual(row.count, 1, file: file, line: line)
+        XCTAssertEqual(row.label, label, file: file, line: line)
+        return row
+    }
+
+    var evidenceAsset: XCUIElement {
+        app.staticTexts["reader.evidence.asset"]
+    }
+
+    func assertFixtureAsset(
+        assetID: String,
+        fileName: String,
+        sha256: String,
+        byteSize: Int,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertEqual(evidenceAsset.count, 1, file: file, line: line)
+        let parts = (evidenceAsset.value as? String ?? "")
+            .split(separator: "|", omittingEmptySubsequences: false)
+        XCTAssertEqual(parts.count, 6, file: file, line: line)
+        guard parts.count == 6 else { return }
+        XCTAssertEqual(String(parts[0]), assetID, file: file, line: line)
+        XCTAssertEqual(URL(fileURLWithPath: String(parts[1])).lastPathComponent, fileName, file: file, line: line)
+        XCTAssertEqual(String(parts[2]), sha256, file: file, line: line)
+        XCTAssertEqual(Int(parts[3]), byteSize, file: file, line: line)
+        XCTAssertEqual(String(parts[4]), sha256, file: file, line: line)
+        XCTAssertEqual(Int(parts[5]), byteSize, file: file, line: line)
     }
 
     var tocLoading: XCUIElement {

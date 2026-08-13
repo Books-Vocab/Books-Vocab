@@ -1,5 +1,4 @@
 #if os(iOS)
-import CryptoKit
 import Foundation
 import SwiftUI
 import ReadiumShared
@@ -107,14 +106,12 @@ extension ReaderView {
     @ViewBuilder
     private var readerTOCEvidenceAsset: some View {
         #if DEBUG
-        let url = Book.localBooksDirectory.appendingPathComponent(book.epubFileName)
-        if let data = try? Data(contentsOf: url) {
-            let digest = SHA256.hash(data: data)
-                .map { String(format: "%02x", $0) }
-                .joined()
-            Text("\(url.path)|\(digest)|\(data.count)")
+        if let proof = try? FixtureDatasetStore.readerAssetProof(
+            forInstalledFileName: book.epubFileName
+        ) {
+            Text(proof.accessibilityDescriptor)
                 .accessibilityIdentifier("reader.evidence.asset")
-                .accessibilityValue("\(url.path)|\(digest)|\(data.count)")
+                .accessibilityValue(proof.accessibilityDescriptor)
                 .opacity(0.01)
                 .allowsHitTesting(false)
         }
