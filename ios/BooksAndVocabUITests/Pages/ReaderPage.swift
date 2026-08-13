@@ -243,12 +243,12 @@ struct ReaderPage {
         app.otherElements.matching(identifier: "reader.runtime.state").count
     }
 
-    func progressState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {
-        app.otherElements["reader.progress.\(state.rawValue)"]
+    func progressState(_ state: UITestReaderProgressScenario) -> XCUIElement {
+        app.otherElements["reader.progress.\(state.progressAccessibilitySuffix)"]
     }
 
-    func progressStateCount(_ state: UITestReaderRuntimeScenario) -> Int {
-        app.otherElements.matching(identifier: "reader.progress.\(state.rawValue)").count
+    func progressStateCount(_ state: UITestReaderProgressScenario) -> Int {
+        app.otherElements.matching(identifier: "reader.progress.\(state.progressAccessibilitySuffix)").count
     }
 
     func loadingState(_ state: UITestReaderRuntimeScenario) -> XCUIElement {

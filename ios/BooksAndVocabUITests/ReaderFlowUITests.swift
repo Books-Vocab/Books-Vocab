@@ -341,7 +341,7 @@ final class ReaderFlowUITests: UITestCase {
         )
     @MainActor
     func testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance() throws {
-        let scenarios: [UITestReaderRuntimeScenario] = [
+        let scenarios: [UITestReaderProgressScenario] = [
             .progressUnknown,
             .progressZero,
             .progressMiddle,
@@ -351,7 +351,7 @@ final class ReaderFlowUITests: UITestCase {
 
         for scenario in scenarios {
             let app = launchIsolatedApp(
-                fixtures: [.authSignedIn, .readerRealBookLibrary, .readerRuntime(scenario)],
+                fixtures: [.authSignedIn, .readerRealBookLibrary, .readerRuntime(scenario.runtimeScenario)],
                 extraEnvironment: Self.fixtureEnvironment,
                 perfLog: "reader"
             )
