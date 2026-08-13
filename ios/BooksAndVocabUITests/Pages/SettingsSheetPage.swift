@@ -95,7 +95,10 @@ struct SettingsSheetPage {
         let bars = app.navigationBars.allElementsBoundByIndex.filter { $0.exists }
         let barsWithButtons = bars.filter { !$0.buttons.allElementsBoundByIndex.isEmpty }
         precondition(!barsWithButtons.isEmpty, "Expected a settings navigation bar with a back button")
-        let buttons = barsWithButtons.last!.buttons.allElementsBoundByIndex
+        // XCTest reports the presented sheet's navigation bar before the
+        // underlying tab's bar. The last bar may therefore be the bookshelf
+        // chrome and its first button is `bookshelf.settingsButton`.
+        let buttons = barsWithButtons.first!.buttons.allElementsBoundByIndex
         precondition(!buttons.isEmpty, "Expected the top settings navigation bar to expose a back button")
         return buttons[0]
     }
