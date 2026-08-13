@@ -65,6 +65,15 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 [[ -d "$cache/old" ]] && ok "active build protects cache" || bad "active build deletion"
 grep -q '"action":"deferred-active-build"' "$state" && ok "active build deferred" || bad "active build action"
 
+echo "── pressure-only: worktree cache sweep ──"
+root="$TMP/worktree"; cache="$root/.claude/worktrees/w1/.cache/ios-build-derived-data"; state="$TMP/worktree/state.json"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((8*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=1 \
+  "$SCRIPT" >/dev/null 2>&1
+[[ ! -d "$cache/old" ]] && ok "pressure sweeps old worktree cache" || bad "worktree cache not swept"
+
 echo "── repeated run: state remains bounded ──"
 for i in 1 2 3 4 5; do
   KG_DISK_GUARD_WORKSPACE="$TMP/high" KG_DISK_GUARD_STATE="$TMP/high/state.json" \
