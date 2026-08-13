@@ -100,6 +100,16 @@ worktree_cache_keys() {
   printf '%s' "$total"
 }
 
+worktree_cache_overflow_keys() {
+  local root count total=0
+  while IFS= read -r root; do
+    count="$(find "$root" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | wc -l | tr -d ' ')"
+    [[ "$count" =~ ^[0-9]+$ ]] || continue
+    (( count > WORKTREE_CACHE_KEEP )) && total=$((total + count - WORKTREE_CACHE_KEEP))
+  done < <(worktree_cache_roots)
+  printf '%s' "$total"
+}
+
 worktree_cache_kb() {
   local root count total=0 size
   # APFS free bytes is the authoritative size signal.  A recursive `du` over
@@ -250,19 +260,19 @@ evict_old_app_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" verdict="${10}" reason="${11}" action="${12}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" verdict="${11}" reason="${12}" action="${13}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"verdict":"%s","reason":"%s","action":"%s","at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
     "$(number "$active")" "$(number "$cache")" "$(number "$docker_cache")" "$(number "$docker_running")" \
-    "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$verdict" "$reason" "$action" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
+    "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$verdict" "$reason" "$action" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
 
 main() {
-  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys free_gib growth_gib docker_gib verdict reason action
+  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow free_gib growth_gib docker_gib verdict reason action
   acquire_guard_lock_nonblocking || {
     logger -t kg-disk-guard 'skipped=already-running' 2>/dev/null || true
     return 0
@@ -271,7 +281,7 @@ main() {
   growth=0; (( prev > free )) && growth=$((prev - free))
   active="$(active_build)"; cache="$(cache_kb)"
   docker_cache="$(docker_cache_kb)"; docker_running="$(docker_active)"
-  worktree_keys="$(worktree_cache_keys)"; worktree_cache="$(worktree_cache_kb)"
+  worktree_keys="$(worktree_cache_keys)"; worktree_overflow="$(worktree_cache_overflow_keys)"; worktree_cache="$(worktree_cache_kb)"
   free_gib=$((free / 1073741824)); growth_gib=$((growth / 1073741824))
   docker_gib=$((docker_cache / 1048576)); docker_warn_kb=$((DOCKER_WARN_GIB * 1048576)); verdict="ok"; reason="within-bounds"; action="none"
   if (( free_gib < CRIT_FREE_GIB )); then
@@ -282,7 +292,7 @@ main() {
     verdict="warning"; reason="rapid-growth"
   elif (( docker_cache >= docker_warn_kb )); then
     verdict="warning"; reason="docker-build-cache"
-  elif (( worktree_keys > WORKTREE_CACHE_KEEP )); then
+  elif (( worktree_overflow > 0 )); then
     verdict="warning"; reason="worktree-cache-overflow"
   fi
   if [[ "$verdict" != "ok" ]]; then
@@ -291,7 +301,7 @@ main() {
     elif [[ "$active" != "0" || "$docker_running" != "0" ]]; then
       action="deferred-process-observation"
     else
-      if (( worktree_keys > WORKTREE_CACHE_KEEP )); then
+      if (( worktree_overflow > 0 )); then
         if acquire_build_lock_nonblocking; then
           evict_worktree_caches; action="evict-worktree-cache"
         else
@@ -318,8 +328,8 @@ main() {
   # Known launchd logs are capped every tick, even while disk pressure is healthy.
   # Otherwise a quiet disk can still accumulate a multi-GB service log between alerts.
   trim_logs
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$verdict" "$reason" "$action"
-  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys action=$action" 2>/dev/null || true
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$verdict" "$reason" "$action"
+  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow action=$action" 2>/dev/null || true
 }
 
 main "$@"
