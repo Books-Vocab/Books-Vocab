@@ -42,6 +42,7 @@ struct ReaderTOCNavigationTests {
         #expect(state.phase == .loading)
         #expect(state.destinationHref == nil)
         #expect(!state.canDismissSheet)
+        #expect(state.accessibilityValue.contains("phase=loading"))
 
         state.apply(
             .locationDidChange(
@@ -52,6 +53,7 @@ struct ReaderTOCNavigationTests {
 
         #expect(state.phase == .success)
         #expect(state.destinationHref == "OEBPS/chapter-b.xhtml")
+        #expect(state.accessibilityValue.contains("phase=success"))
     }
 
     @Test @MainActor

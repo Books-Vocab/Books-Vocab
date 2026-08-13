@@ -62,6 +62,18 @@ struct TOCView: View {
                 .padding(.horizontal, presentation.horizontalPadding)
             }
             .accessibilityIdentifier("reader.toc.sheet")
+            .overlay(alignment: .topLeading) {
+                // A stable, non-visual receipt for the navigation state machine.
+                // Do not make the test depend on the lifetime of the loading
+                // spinner or selected-title overlay.
+                Rectangle()
+                    .fill(.clear)
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("reader.toc.navigation.state")
+                    .accessibilityValue(navigationState.accessibilityValue)
+                    .allowsHitTesting(false)
+            }
             .animatePhaseChange(phaseAnimationKey)
             .navigationTitle(L10n.string("目錄"))
             .navigationBarTitleDisplayMode(.inline)
