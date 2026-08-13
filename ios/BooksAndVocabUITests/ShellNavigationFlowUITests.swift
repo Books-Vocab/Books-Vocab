@@ -80,15 +80,18 @@ final class ShellNavigationFlowUITests: UITestCase {
             shell.assertNavigationChrome(on: "notebook")
         }
 
-        // ── 4. Overview: stats content must render from the seeded synced
+        // ── 4. Overview: a real metric leaf must render from the seeded synced
         //      vocab + review records (not the loading / empty / logged-out state).
         let overview = shell.goToOverview()
-        guard overview.statsContent.waitUntilExists(timeout: 10) else {
+        guard overview.overview.waitUntilExists(timeout: 10),
+              overview.metric("totalCards").waitUntilExists(timeout: 10) else {
             captureStep("no-overview-stats", app: app)
             XCTFail("overview tab should render real stats content from seeded synced entries + review records")
             return
         }
         try step("overview-content", app: app) {
+            overview.assertOverviewAccessibilityHierarchy()
+            overview.assertMetric("totalCards", value: (overview.metric("totalCards").value as? String) ?? "")
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected")
             shell.assertNavigationChrome(on: "overview")
         }
