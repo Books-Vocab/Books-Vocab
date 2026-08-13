@@ -308,6 +308,7 @@ REVIEW_CARD_EVIDENCE_FIXTURE_IDS = {
     "review.card-compact-counterexample",
 }
 REVIEW_CARD_VISUAL_ASSET_IDS = {
+    "compact-back-counterexample",
     "optional-sections-counterexample",
     "small-viewport-counterexample",
     "large-text-counterexample",
@@ -315,6 +316,68 @@ REVIEW_CARD_VISUAL_ASSET_IDS = {
 REVIEW_CARD_UI_FIXTURE_CASES = {
     "review.card-full-info": "notebookReviewCardFullInfo",
     "review.card-compact-counterexample": "notebookReviewCardCompactCounterexample",
+}
+REVIEW_CARD_CAPTURE_CONTRACTS = {
+    "optional-sections-counterexample": {
+        "swift_name": "optionalSectionsCounterexample",
+        "fixture": "notebookReviewCardCompactCounterexample",
+        "identity": "p12CompactCoaxedRecognition",
+        "card_id": "review-card-compact-coaxed",
+        "word": "coaxed",
+        "mode": "recognition",
+        "preset": "compact",
+        "translation_prefix": "說服、哄勸",
+        "minimum_translation_length": 180,
+        "effective_profile": "recognition:compact,production:compact",
+        "face": "front",
+        "presentation": "natural",
+        "geometry": "compactFront",
+    },
+    "compact-back-counterexample": {
+        "swift_name": "compactBackCounterexample",
+        "fixture": "notebookReviewCardCompactCounterexample",
+        "identity": "p12CompactCoaxedRecognition",
+        "card_id": "review-card-compact-coaxed",
+        "word": "coaxed",
+        "mode": "recognition",
+        "preset": "compact",
+        "translation_prefix": "說服、哄勸",
+        "minimum_translation_length": 180,
+        "effective_profile": "recognition:compact,production:compact",
+        "face": "back",
+        "presentation": "natural",
+        "geometry": "compactBack",
+    },
+    "large-text-counterexample": {
+        "swift_name": "largeTextCounterexample",
+        "fixture": "notebookReviewCardFullInfo",
+        "identity": "p13Production",
+        "card_id": "review-card-full-coaxed",
+        "word": "coaxed",
+        "mode": "production",
+        "preset": "standard",
+        "translation_prefix": "說服；以溫和、耐心",
+        "minimum_translation_length": 180,
+        "effective_profile": "recognition:standard,production:standard",
+        "face": "front",
+        "presentation": "scroll",
+        "geometry": "fullFront",
+    },
+    "small-viewport-counterexample": {
+        "swift_name": "smallViewportCounterexample",
+        "fixture": "notebookReviewCardFullInfo",
+        "identity": "p13Production",
+        "card_id": "review-card-full-coaxed",
+        "word": "coaxed",
+        "mode": "production",
+        "preset": "standard",
+        "translation_prefix": "說服；以溫和、耐心",
+        "minimum_translation_length": 180,
+        "effective_profile": "recognition:standard,production:standard",
+        "face": "back",
+        "presentation": "scroll",
+        "geometry": "fullBack",
+    },
 }
 
 
@@ -688,38 +751,80 @@ def test_review_card_evidence_fixtures_materialize_and_keep_asset_id_parity():
                 example.strip() for example in entry["reviewExamples"]
             ), fixture_id
 
-    full_info = repo["reviewDeck"]["review.card-full-info"]["entries"]
-    assert {entry["reviewMode"] for entry in full_info} >= {"recognition", "production"}
-    assert any(
-        entry["reviewMode"] == "recognition" and len(entry["translation"]) >= 180
-        for entry in full_info
-    )
-    assert any(
-        entry["reviewMode"] == "production" and len(entry["translation"]) >= 180
-        for entry in full_info
-    )
-    assert any(
-        any(len(example) >= 240 for example in entry["reviewExamples"])
-        for entry in full_info
-    )
-    assert any(len(entry["explanation"] or "") >= 240 for entry in full_info)
-    assert any(len(entry["collocations"] or []) >= 3 for entry in full_info)
-
-    compact = repo["reviewDeck"]["review.card-compact-counterexample"]["entries"]
-    assert any(len(entry["translation"]) >= 180 for entry in compact)
-    assert any(
-        any(len(example) >= 240 for example in entry["reviewExamples"])
-        for entry in compact
-    )
-    assert any(len(entry["explanation"] or "") >= 240 for entry in compact)
-
     visual_source = (ROOT / "ios" / "BooksAndVocabUITests" / "ReviewCardLayoutEditorUITests.swift").read_text(
         encoding="utf-8"
     )
-    actual_asset_ids = set(re.findall(r'static let \w+ = "([^"]+-counterexample)"', visual_source))
+    identity_source = (ROOT / "ios" / "BooksAndVocabUITests" / "Pages" / "TodayReviewPage.swift").read_text(
+        encoding="utf-8"
+    )
+    capture_blocks = dict(
+        re.findall(
+            r"static let (\w+) = ReviewCardVisualEvidenceCapture\(\s*(.*?)\n\s*\)",
+            visual_source,
+            flags=re.S,
+        )
+    )
+    actual_asset_ids = set(re.findall(r'assetID:\s*"([^"]+-counterexample)"', visual_source))
     assert actual_asset_ids == REVIEW_CARD_VISUAL_ASSET_IDS
-    for fixture_id, swift_case in REVIEW_CARD_UI_FIXTURE_CASES.items():
-        assert f"fixtures: [.{swift_case}]" in visual_source, fixture_id
+    assert set(capture_blocks) == {
+        contract["swift_name"] for contract in REVIEW_CARD_CAPTURE_CONTRACTS.values()
+    }
+    for asset_id, contract in REVIEW_CARD_CAPTURE_CONTRACTS.items():
+        block = capture_blocks[contract["swift_name"]]
+        assert f'assetID: "{asset_id}"' in block
+        assert f'fixture: .{contract["fixture"]}' in block
+        assert f'identity: .{contract["identity"]}' in block
+        assert f'face: .{contract["face"]}' in block
+        assert f'presentation: .{contract["presentation"]}' in block
+        assert f'geometry: .{contract["geometry"]}' in block
+        identity_block_match = re.search(
+            rf"static let {contract['identity']} = CardIdentity\((.*?)\n        \)",
+            identity_source,
+            flags=re.S,
+        )
+        assert identity_block_match, contract["identity"]
+        identity_block = identity_block_match.group(1)
+        assert f'cardID: "{contract["card_id"]}"' in identity_block
+        assert f'frontWord: "{contract["word"]}"' in identity_block
+        assert f'mode: .{contract["mode"]}' in identity_block
+        assert f'preset: .{contract["preset"]}' in identity_block
+        assert f'translationPrefix: "{contract["translation_prefix"]}"' in identity_block
+        assert f'minimumTranslationLength: {contract["minimum_translation_length"]}' in identity_block
+        assert f'effectiveLayoutProfile: "{contract["effective_profile"]}"' in identity_block
+
+        fixture_id = next(
+            fixture_id
+            for fixture_id, swift_case in REVIEW_CARD_UI_FIXTURE_CASES.items()
+            if swift_case == contract["fixture"]
+        )
+        repo_seed = repo["reviewDeck"][fixture_id]
+        generated_seed = generated["reviewDeck"][fixture_id]
+        assert repo_seed == generated_seed, f"generated drift for reviewDeck.{fixture_id}"
+        entries = [
+            entry
+            for entry in repo_seed["entries"]
+            if entry["kgCardId"] == contract["card_id"]
+        ]
+        assert len(entries) == 1, f"{asset_id} must have one canonical card entry"
+        entry = entries[0]
+        assert entry["word"] == contract["word"]
+        assert entry["reviewMode"] == contract["mode"]
+        assert entry["translation"].startswith(contract["translation_prefix"])
+        assert len(entry["translation"]) >= contract["minimum_translation_length"]
+        assert entry["difficultyTier"].strip()
+        assert entry["context"].strip()
+        assert entry["reviewExamples"] and all(
+            example.strip() for example in entry["reviewExamples"]
+        )
+
+    full_info = repo["reviewDeck"]["review.card-full-info"]["entries"]
+    assert {entry["reviewMode"] for entry in full_info} >= {"recognition", "production"}
+    assert any(any(len(example) >= 240 for example in entry["reviewExamples"]) for entry in full_info)
+    assert any(len(entry["explanation"] or "") >= 240 for entry in full_info)
+    assert any(len(entry["collocations"] or []) >= 3 for entry in full_info)
+    compact = repo["reviewDeck"]["review.card-compact-counterexample"]["entries"]
+    assert any(any(len(example) >= 240 for example in entry["reviewExamples"]) for entry in compact)
+    assert any(len(entry["explanation"] or "") >= 240 for entry in compact)
 
 
 @pytest.mark.parametrize(

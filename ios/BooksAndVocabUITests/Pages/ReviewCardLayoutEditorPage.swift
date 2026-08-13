@@ -18,7 +18,7 @@ struct ReviewCardLayoutEditorPage {
     // MARK: - Chrome
 
     var resetMenu: XCUIElement { element("reviewCardLayout.resetMenu") }
-    var resetAllItem: XCUIElement { app.buttons["reviewCardLayout.reset.all"] }
+    var resetAllItem: XCUIElement { element("reviewCardLayout.reset.all") }
 
     /// Sheet-only confirmation button (absent on the pushed Settings route).
     var doneButton: XCUIElement { element("reviewCardLayout.done") }
@@ -38,7 +38,10 @@ struct ReviewCardLayoutEditorPage {
     /// segmented picker 的一段。選中狀態是這一頁語言無關、可機器斷言的訊號 ——
     /// 預覽卡本身是 `interactive: false` 的展示品，內部不掛可查詢的錨點。
     func presetSegment(_ mode: String, index: Int) -> XCUIElement {
-        presetPicker(mode).buttons.element(boundBy: index)
+        let buttons = presetPicker(mode).buttons.allElementsBoundByIndex
+        precondition(buttons.count == 2, "Expected exactly two preset buttons for \(mode), found \(buttons.count)")
+        precondition(buttons.indices.contains(index), "Preset index \(index) is outside the two-option contract")
+        return buttons[index]
     }
 
     func isPresetSelected(_ mode: String, index: Int) -> Bool {
@@ -75,12 +78,25 @@ struct ReviewCardLayoutEditorPage {
     // MARK: - Waits
 
     func waitUntilVisible(timeout: TimeInterval = 8) -> Bool {
-        presetPicker("recognition").waitUntilExists(timeout: timeout)
+        let query = app.descendants(matching: .any).matching(identifier: "reviewCardLayout.preset.recognition")
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let matches = query.allElementsBoundByIndex
+            if matches.count == 1, matches[0].exists { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        let matches = query.allElementsBoundByIndex
+        return matches.count == 1 && matches[0].exists
     }
 
     // MARK: - Helpers
 
     private func element(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        let matching = app.descendants(matching: .any).matching(identifier: identifier).allElementsBoundByIndex
+        precondition(
+            matching.count == 1,
+            "Expected exactly one accessibility element for \(identifier), found \(matching.count)"
+        )
+        return matching[0]
     }
 }
