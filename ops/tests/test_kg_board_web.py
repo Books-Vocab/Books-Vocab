@@ -286,6 +286,7 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert "mainlineWindow" in js
     assert "branchRow" in js
     assert "compactLabel" in js
+    assert 'ref.live_state!=="unknown"' in js
     assert "第一個分支附近" in js
     assert "Maximum call stack" not in js
 

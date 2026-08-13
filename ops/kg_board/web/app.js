@@ -184,8 +184,9 @@ function renderTree(){
   const labels=viewport.refs.map(ref=>{
     const anchor=ref.branch==="main"?viewport.branchSha:viewport.branchAnchors.get(ref.branch);
     const pos=positions.get(anchor);if(!pos)return "";
+    const refState=ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
     const tickets=(ref.tickets||[]).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
-    return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(compactLabel(ref.branch,24))} · ${esc(ref.live_state||ref.status||"unknown")}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
+    return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(compactLabel(ref.branch,24))} · ${esc(refState)}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha||viewport.branchAnchors.get(item.branch)===row.sha);
