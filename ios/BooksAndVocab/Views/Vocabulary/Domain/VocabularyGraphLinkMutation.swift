@@ -17,7 +17,9 @@ struct VocabularyGraphLinkMutation {
         from source: VocabularyEntry,
         to target: VocabularyEntry
     ) -> PendingManualLink? {
-        guard source.kgCardId != nil, let targetCardId = target.kgCardId else { return nil }
+        guard source.modelContext != nil,
+              source.kgCardId != nil,
+              let targetCardId = target.kgCardId else { return nil }
 
         let allLinks = source.graphLinksByKind.values.flatMap { $0 }
         guard !allLinks.contains(where: { $0.cardId == targetCardId }) else { return nil }

@@ -27,6 +27,27 @@ struct DictionaryLookupStateFlowTests {
         coordinator.cancelSearch()
     }
 
+    @Test("legacy search phase is a projection of canonical lookup state")
+    func legacySearchPhaseCannotDriftFromLookupState() async throws {
+        let service = try canonicalService()
+        let coordinator = AddLinkCoordinator()
+
+        #expect(coordinator.searchPhase == .idle)
+        coordinator.submitSearch(query: "loading", using: service)
+        #expect(coordinator.lookupState == .loading(query: "loading"))
+        #expect(coordinator.searchPhase == .loading)
+
+        coordinator.cancelSearch()
+        #expect(coordinator.lookupState == .idle)
+        #expect(coordinator.searchPhase == .idle)
+
+        coordinator.submitSearch(query: "empty", using: service)
+        try await settle {
+            coordinator.lookupState == .success(query: "empty", entry: nil, cacheStatus: "fixture")
+        }
+        #expect(coordinator.searchPhase == .empty)
+    }
+
     @Test("detail failure preserves the canonical search hit as partial")
     func detailFailureIsPartial() async throws {
         let service = try canonicalService()

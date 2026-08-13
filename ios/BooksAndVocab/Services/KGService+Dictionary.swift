@@ -81,15 +81,38 @@ struct DictionaryCardProjectionPage: Decodable {
     enum CodingKeys: String, CodingKey { case cards, items, nextCursor, next_cursor }
 
     init(from decoder: Decoder) throws {
-        if let single = try? decoder.singleValueContainer(),
-           let cards = try? single.decode([KGDictionaryCardProjection].self) {
+        do {
+            let single = try decoder.singleValueContainer()
+            let cards = try single.decode([KGDictionaryCardProjection].self)
             self.cards = cards
             nextCursor = nil
             return
+        } catch {
+            // The read endpoint historically returned either a bare array or
+            // an envelope. Decode the alternate shape explicitly; malformed
+            // values still surface as a typed decoding error below.
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        cards = try values.decodeIfPresent([KGDictionaryCardProjection].self, forKey: .cards)
-            ?? values.decodeIfPresent([KGDictionaryCardProjection].self, forKey: .items) ?? []
+        guard values.contains(.cards) || values.contains(.items) else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "dictionary card page must declare cards or items"
+                )
+            )
+        }
+        guard let decodedCards = try values.decodeIfPresent(
+            [KGDictionaryCardProjection].self,
+            forKey: .cards
+        ) ?? values.decodeIfPresent([KGDictionaryCardProjection].self, forKey: .items) else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "dictionary card page cards/items must not be null"
+                )
+            )
+        }
+        cards = decodedCards
         nextCursor = try values.decodeIfPresent(String.self, forKey: .nextCursor)
             ?? values.decodeIfPresent(String.self, forKey: .next_cursor)
     }

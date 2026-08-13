@@ -168,16 +168,83 @@ struct DictionaryCardWireTests {
         #expect(projection.card.reviewEligible == false)
     }
 
+    @Test("materialization projection decodes the nested backend wire")
+    func strictMaterializationProjectionDecodesNestedBackendWire() throws {
+        let projection = try JSONDecoder().decode(
+            KGMaterializationCardProjection.self,
+            from: Data(Self.backendProjection.utf8)
+        )
+
+        #expect(projection.card.id == "card-1")
+        #expect(projection.dictionaryEntry.entryKey == "free_dictionary:en:lucid")
+        #expect(projection.selectedSenseKey == "sense-1")
+        #expect(projection.selectedExampleKey == "example-1")
+        #expect(projection.promotionRetryable == false)
+        #expect(projection.links.count == 1)
+    }
+
+    @Test("strict materialization projection rejects the legacy flat wire")
+    func strictMaterializationProjectionRejectsFlatWire() {
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(Self.payload.utf8)
+            )
+        }
+    }
+
     @Test("materialization projection rejects a missing links field")
     func strictMaterializationProjectionRejectsMissingLinks() {
-        let malformed = Self.payload.replacingOccurrences(
-            of: #", "links": []"#,
-            with: ""
+        let malformed = Self.backendProjection.replacingOccurrences(
+            of: "      \"readerHidden\": false,\n      \"links\": [{\"id\":\"link-1\",\"fromId\":\"source-1\",\"toId\":\"card-1\",\"kind\":\"shares_usage\",\"confidence\":0.9,\"reason\":\"dictionary\"}]",
+            with: "      \"readerHidden\": false"
         )
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(
                 KGMaterializationCardProjection.self,
                 from: Data(malformed.utf8)
+            )
+        }
+    }
+
+    @Test("materialization projection rejects a missing retry barrier")
+    func strictMaterializationProjectionRejectsMissingRetryBarrier() {
+        let malformed = Self.backendProjection.replacingOccurrences(
+            of: "        \"promotionErrorCode\": null,\n        \"promotionRetryable\": null",
+            with: "        \"promotionErrorCode\": null"
+        )
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(malformed.utf8)
+            )
+        }
+    }
+
+    @Test("materialization projection rejects root and nested card mismatch")
+    func strictMaterializationProjectionRejectsCardMismatch() {
+        let dictionaryStart = Self.backendProjection.range(of: "\"dictionary\"")!.lowerBound
+        let rootRange = Self.backendProjection.startIndex..<dictionaryStart
+        let malformed = Self.backendProjection.replacingOccurrences(
+            of: #""id": "card-1", "content": "lucid""#,
+            with: #""id": "card-root", "content": "lucid""#,
+            options: [],
+            range: rootRange
+        )
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                KGMaterializationCardProjection.self,
+                from: Data(malformed.utf8)
+            )
+        }
+    }
+
+    @Test("dictionary card page rejects an undeclared page shape")
+    func dictionaryCardPageRejectsUndeclaredShape() {
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(
+                DictionaryCardProjectionPage.self,
+                from: Data(#"{"nextCursor":null}"#.utf8)
             )
         }
     }
@@ -192,7 +259,7 @@ struct DictionaryCardWireTests {
       },
       "dictionaryEntry": {
         "provider": "free_dictionary", "dictionaryId": "wiktionary-en",
-        "entryKey": "free_dictionary:en:lucid", "schemaVersion": 1, "word": "lucid",
+        "entryKey": "free_dictionary:en:lucid", "schemaVersion": "1", "word": "lucid",
         "sourceLanguage": "en", "targetLanguage": "zh-Hant", "pronunciations": [],
         "senses": [{
           "id": "sense-1", "partOfSpeech": "adjective", "definition": "expressed clearly",
@@ -208,6 +275,53 @@ struct DictionaryCardWireTests {
       "selectedSenseKey": "sense-1", "selectedExampleKey": "example-1",
       "materializationStatus": "active",
       "promotionErrorCode": null, "promotionRetryable": false, "links": []
+    }
+    """
+
+    /// Captured from backend `MaterializeLinkResult.dictionaryCard`:
+    /// `DictionaryProjectionItem.card` is paired with the nested
+    /// `SavedDictionaryCard` under `dictionary`; it is not a flat
+    /// `dictionaryEntry` projection.
+    private static let backendProjection = """
+    {
+      "card": {
+        "id": "card-1", "content": "lucid", "meaning": "清晰的", "pos": "adjective",
+        "examples": ["A lucid answer."], "inflections": [], "notebookId": "default",
+        "cardRole": "dictionary", "reviewEligible": false, "readerHidden": false,
+        "promotionState": "active", "isDeleted": false, "isArchived": false,
+        "createdAt": "2026-08-05T00:00:00Z", "updatedAt": "2026-08-05T00:00:00Z"
+      },
+      "dictionary": {
+        "card": {
+          "id": "card-1", "content": "lucid", "meaning": "清晰的", "pos": "adjective",
+          "examples": ["A lucid answer."], "inflections": [], "notebookId": "default",
+          "cardRole": "dictionary", "reviewEligible": false, "readerHidden": false,
+          "promotionState": "active", "isDeleted": false, "isArchived": false,
+          "createdAt": "2026-08-05T00:00:00Z", "updatedAt": "2026-08-05T00:00:00Z"
+        },
+        "entry": {
+          "provider": "free_dictionary", "dictionary_id": "wiktionary-en",
+          "schema_version": "1", "entry_key": "free_dictionary:en:lucid", "word": "lucid",
+          "language": "en", "pronunciations": [], "forms": [],
+          "senses": [{
+            "key": "sense-1", "part_of_speech": "adjective", "definition": "expressed clearly",
+            "translations": ["清晰的"],
+            "examples": [{"key": "example-1", "text": "A lucid answer."}],
+            "synonyms": [], "antonyms": []
+          }],
+          "attribution": {
+            "provider": "free_dictionary", "source_url": "https://en.wiktionary.org/wiki/lucid",
+            "license_name": "CC BY-SA 4.0", "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+            "attribution_text": "Wiktionary via FreeDictionaryAPI"
+          },
+          "fetched_at": "2026-08-05T00:00:00Z", "truncated": false
+        },
+        "selectedSenseKey": "sense-1", "selectedExampleKey": "example-1",
+        "materializationStatus": "active", "promotionErrorCode": null,
+        "promotionRetryable": null
+      },
+      "readerHidden": false,
+      "links": [{"id":"link-1","fromId":"source-1","toId":"card-1","kind":"shares_usage","confidence":0.9,"reason":"dictionary"}]
     }
     """
 }

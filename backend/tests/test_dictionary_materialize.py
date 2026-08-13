@@ -225,7 +225,25 @@ def test_dictionary_saved_card_api_contract_and_rollout_read_availability(
     body = created.json()
     assert body["createdCard"] is True
     assert body["targetCard"]["cardRole"] == "dictionary"
-    assert body["dictionaryCard"]["dictionary"]["selectedExampleKey"] == sense.examples[0].key
+    dictionary_card = body["dictionaryCard"]
+    assert set(dictionary_card) == {"card", "dictionary", "readerHidden", "links"}
+    assert "dictionaryEntry" not in dictionary_card
+    saved_dictionary = dictionary_card["dictionary"]
+    assert {
+        "card",
+        "entry",
+        "selectedSenseKey",
+        "selectedExampleKey",
+        "materializationStatus",
+        "promotionErrorCode",
+        "promotionRetryable",
+    } == set(saved_dictionary)
+    assert saved_dictionary["card"]["id"] == dictionary_card["card"]["id"]
+    assert saved_dictionary["entry"]["entry_key"] == lexical.entry.entry_key
+    assert saved_dictionary["selectedExampleKey"] == sense.examples[0].key
+    assert saved_dictionary["promotionRetryable"] is None
+    assert dictionary_card["readerHidden"] is False
+    assert len(dictionary_card["links"]) == 1
     card_id = body["targetCard"]["id"]
 
     # Rollback flag only stops new materialization/search; saved reads and edits remain.

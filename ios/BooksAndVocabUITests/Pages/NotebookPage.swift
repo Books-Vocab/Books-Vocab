@@ -7,26 +7,31 @@ struct NotebookPage {
     // MARK: - Content
 
     var addButton: XCUIElement {
-        app.buttons["notebook.addButton"]
+        exactlyOne("notebook.addButton", in: app.buttons)
     }
 
     /// Notebook card: `accessibilityIdentifier = "notebook.card.<notebookId>"`
     func notebookCard(id: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "notebook.card.\(id)").firstMatch
+        exactlyOne(
+            "notebook.card.\(id)",
+            in: app.descendants(matching: .any)
+        )
     }
 
     var anyNotebookCard: XCUIElement {
-        app.descendants(matching: .any)
+        let matches = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "notebook.card."))
-            .firstMatch
+        XCTAssertEqual(matches.count, 1, "P1 notebook card selector must resolve exactly once")
+        return matches.element
     }
 
     /// Today-review CTA pill in the action bar. The due / unlearned / combined
     /// branches share one identifier — only one renders at a time.
     var reviewCTAButton: XCUIElement {
-        app.descendants(matching: .any)
-            .matching(identifier: "notebook.reviewCTA")
-            .firstMatch
+        exactlyOne(
+            "notebook.reviewCTA",
+            in: app.descendants(matching: .any)
+        )
     }
 
     // MARK: - Actions
@@ -47,5 +52,11 @@ struct NotebookPage {
 
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         addButton.assertExists(file: file, line: line)
+    }
+
+    private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
+        let matches = query.matching(identifier: identifier)
+        XCTAssertEqual(matches.count, 1, "P1 selector must resolve exactly once: \(identifier)")
+        return matches.element
     }
 }

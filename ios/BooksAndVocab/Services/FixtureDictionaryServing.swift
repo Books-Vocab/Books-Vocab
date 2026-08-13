@@ -89,7 +89,7 @@ actor FixtureDictionaryServing: DictionaryServing {
         dictionary: UIWorldDictionarySeed,
         materialization: DictionaryMaterializationSnapshot,
         retryGate: DictionaryRetryGate?
-    ) {
+    ) throws {
         self.dictionary = dictionary
         self.materialization = materialization
         self.retryGate = retryGate
@@ -100,16 +100,37 @@ actor FixtureDictionaryServing: DictionaryServing {
             licenseURL: "",
             attributionText: dictionary.provenance.sourceLabel
         )
-        let exampleByID = Dictionary(uniqueKeysWithValues: dictionary.examples.map { ($0.id, $0) })
-        let senses = dictionary.senses.map { sense in
-            LexicalSense(
-                id: sense.id,
-                partOfSpeech: sense.partOfSpeech,
-                definition: sense.gloss,
-                examples: sense.exampleIDs.compactMap { exampleID in
-                    guard let example = exampleByID[exampleID] else { return nil }
-                    return LexicalExample(id: example.id, text: example.text)
+        var exampleByID: [String: UIWorldDictionaryExampleSeed] = [:]
+        for example in dictionary.examples {
+            guard exampleByID.updateValue(example, forKey: example.id) == nil else {
+                throw FixtureError.invalidDataset(
+                    "dictionary example IDs must be unique: \(example.id)"
+                )
+            }
+        }
+        var senses: [LexicalSense] = []
+        for sense in dictionary.senses {
+            var examples: [LexicalExample] = []
+            for exampleID in sense.exampleIDs {
+                guard let example = exampleByID[exampleID] else {
+                    throw FixtureError.invalidDataset(
+                        "dictionary sense \(sense.id) references missing example \(exampleID)"
+                    )
                 }
+                guard example.senseID == sense.id else {
+                    throw FixtureError.invalidDataset(
+                        "dictionary example \(exampleID) belongs to \(example.senseID), not \(sense.id)"
+                    )
+                }
+                examples.append(LexicalExample(id: example.id, text: example.text))
+            }
+            senses.append(
+                LexicalSense(
+                    id: sense.id,
+                    partOfSpeech: sense.partOfSpeech,
+                    definition: sense.gloss,
+                    examples: examples
+                )
             )
         }
         self.entry = LexicalEntry(
@@ -157,7 +178,7 @@ actor FixtureDictionaryServing: DictionaryServing {
         } catch {
             throw FixtureError.invalidDataset(String(describing: error))
         }
-        return FixtureDictionaryServing(
+        return try FixtureDictionaryServing(
             dictionary: dictionary,
             materialization: materialization,
             retryGate: retryGate
@@ -246,7 +267,9 @@ actor FixtureDictionaryServing: DictionaryServing {
             throw FixtureError.missingCanonicalDictionary
         }
 
-        let example = sense.examples.first(where: { $0.id == request.exampleKey })!
+        guard let example = sense.examples.first(where: { $0.id == request.exampleKey }) else {
+            throw FixtureError.missingCanonicalDictionary
+        }
         let targetCardID = "fixture-dictionary-card"
         let link = KGGraphLink(
             id: "fixture-dictionary-link",
@@ -289,12 +312,31 @@ actor FixtureDictionaryServing: DictionaryServing {
                 "promotionState": "idle",
                 "linksByKind": [String: Any](),
             ],
-            "dictionaryEntry": try encodedDictionaryEntry(),
-            "selectedSenseKey": request.senseKey,
-            "selectedExampleKey": request.exampleKey,
-            "materializationStatus": "succeeded",
-            "promotionErrorCode": NSNull(),
-            "promotionRetryable": false,
+            "dictionary": [
+                "card": [
+                    "id": targetCardID,
+                    "content": entry.word,
+                    "meaning": sense.definition,
+                    "pos": sense.partOfSpeech ?? "",
+                    "note": entry.attributionText,
+                    "examples": [example.text],
+                    "mode": "recognition",
+                    "isDeleted": false,
+                    "isArchived": false,
+                    "notebookId": request.notebookId,
+                    "cardRole": "dictionary",
+                    "reviewEligible": false,
+                    "promotionState": "idle",
+                    "linksByKind": [String: Any](),
+                ],
+                "entry": try encodedDictionaryEntry(),
+                "selectedSenseKey": request.senseKey,
+                "selectedExampleKey": request.exampleKey,
+                "materializationStatus": "succeeded",
+                "promotionErrorCode": NSNull(),
+                "promotionRetryable": false,
+            ],
+            "readerHidden": false,
             "links": [try encodedGraphLink(link)]
         ])
         return DictionaryMaterializeLinkResponse(

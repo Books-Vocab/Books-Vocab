@@ -153,6 +153,10 @@ struct DictionaryLookupCanonicalFixtureTests {
                 of: assetHash,
                 with: String(repeating: "0", count: assetHash.count)
             ),
+            json.replacingOccurrences(
+                of: "\"exampleIDs\": [\n            \"example-1\"",
+                with: "\"exampleIDs\": [\n            \"missing-example\""
+            ),
         ]
 
         for variant in variants {
@@ -336,6 +340,30 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(await service.requests.isEmpty)
         #expect(detached.graphLinksByKind.isEmpty)
         #expect(try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>()).isEmpty)
+    }
+
+    @Test("detached source manual link is rejected before placeholder or request")
+    func detachedSourceManualLinkIsRejectedBeforeAnyMutation() async throws {
+        let coordinator = AddLinkCoordinator()
+        let detached = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        detached.kgCardId = "source-card"
+        detached.notebookId = "notebook"
+        let target = VocabularyEntry(
+            word: "target", translation: "target", context: "", bookTitle: "Book"
+        )
+        target.kgCardId = "target-card"
+        target.notebookId = "notebook"
+        let service = CountingGraphService()
+
+        await coordinator.linkExisting(target: target, sourceEntry: detached, using: service)
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(coordinator.materializeFailure == .malformed)
+        #expect(await service.requests.isEmpty)
+        #expect(detached.graphLinksByKind.isEmpty)
+        #expect(target.graphLinksByKind.isEmpty)
     }
 
     private func runMaterialization(
@@ -592,4 +620,25 @@ private actor MissingGraphLinkDictionaryService: DictionaryServing {
             replayed: response.replayed
         )
     }
+}
+
+private actor CountingGraphService: GraphServing {
+    private(set) var requests: [(fromID: String, toID: String, notebookID: String)] = []
+
+    func pullGraphLinks() async throws -> [KGGraphLink] { [] }
+
+    func createManualLink(
+        fromId: String,
+        toId: String,
+        notebookId: String
+    ) async throws -> KGGraphLink {
+        requests.append((fromId, toId, notebookId))
+        throw FixtureDictionaryServing.FixtureError.unavailable(fixtureID: "manual-link")
+    }
+
+    func deleteLink(linkId: String, notebookId: String) async throws {}
+
+    func hideLink(linkId: String, notebookId: String) async throws {}
+
+    func unhideLink(linkId: String, notebookId: String) async throws {}
 }

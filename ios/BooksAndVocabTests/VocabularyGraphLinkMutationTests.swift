@@ -1,13 +1,13 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
 @MainActor
 struct VocabularyGraphLinkMutationTests {
 
-    @Test func beginManualLink_insertsPlaceholderAndRejectsDuplicateTarget() {
-        let source = makeEntry(cardId: "from-card", word: "source")
-        let target = makeEntry(cardId: "to-card", word: "target")
+    @Test func beginManualLink_insertsPlaceholderAndRejectsDuplicateTarget() throws {
+        let (_, source, target) = try attachedEntries()
 
         let pending = VocabularyGraphLinkMutation.beginManualLink(from: source, to: target)
 
@@ -18,8 +18,7 @@ struct VocabularyGraphLinkMutationTests {
     }
 
     @Test func commitManualLink_replacesPlaceholderWithResolvedLink() throws {
-        let source = makeEntry(cardId: "from-card", word: "source")
-        let target = makeEntry(cardId: "to-card", word: "target")
+        let (_, source, target) = try attachedEntries()
         let pending = try #require(VocabularyGraphLinkMutation.beginManualLink(from: source, to: target))
 
         VocabularyGraphLinkMutation.commitManualLink(
@@ -45,12 +44,19 @@ struct VocabularyGraphLinkMutationTests {
     }
 
     @Test func rollbackManualLink_removesPlaceholder() throws {
-        let source = makeEntry(cardId: "from-card", word: "source")
-        let target = makeEntry(cardId: "to-card", word: "target")
+        let (_, source, target) = try attachedEntries()
         let pending = try #require(VocabularyGraphLinkMutation.beginManualLink(from: source, to: target))
 
         VocabularyGraphLinkMutation.rollbackManualLink(pending, on: source)
 
+        #expect(source.graphLinksByKind.isEmpty)
+    }
+
+    @Test func beginManualLink_rejectsDetachedSourceBeforePlaceholder() {
+        let source = makeEntry(cardId: "from-card", word: "source")
+        let target = makeEntry(cardId: "to-card", word: "target")
+
+        #expect(VocabularyGraphLinkMutation.beginManualLink(from: source, to: target) == nil)
         #expect(source.graphLinksByKind.isEmpty)
     }
 
@@ -113,5 +119,25 @@ struct VocabularyGraphLinkMutationTests {
         )
         entry.kgCardId = cardId
         return entry
+    }
+
+    private func attachedEntries() throws -> (
+        ModelContainer,
+        VocabularyEntry,
+        VocabularyEntry
+    ) {
+        let schema = Schema([VocabularyEntry.self, ReviewRecord.self])
+        let configuration = ModelConfiguration(
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        let source = makeEntry(cardId: "from-card", word: "source")
+        let target = makeEntry(cardId: "to-card", word: "target")
+        context.insert(source)
+        context.insert(target)
+        try context.save()
+        return (container, source, target)
     }
 }

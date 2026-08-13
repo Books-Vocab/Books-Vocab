@@ -10,36 +10,36 @@ struct AppPage {
     /// Located by L10n label because SwiftUI `.tabItem.accessibilityIdentifier`
     /// does not propagate to the underlying UIKit tab bar item.
     var bookshelfTab: XCUIElement {
-        app.tabBars.buttons["書庫"]
+        tab("書庫")
     }
 
     var podcastTab: XCUIElement {
-        app.tabBars.buttons["播客"]
+        tab("播客")
     }
 
     var notebookTab: XCUIElement {
         let identifier = app.tabBars.buttons["tab.notebooks"]
         if identifier.exists { return identifier }
-        return app.tabBars.buttons["單字本"]
+        return tab("單字本")
     }
 
     var overviewTab: XCUIElement {
-        app.tabBars.buttons["總覽"]
+        tab("總覽")
     }
 
     /// Explore（共享牌組庫）—— 第 5 個 tab（`KGFeatureFlags.exploreEnabled`，2026-08-05 起 Release 亦開）。
     var exploreTab: XCUIElement {
-        app.tabBars.buttons["探索"]
+        tab("探索")
     }
 
     // MARK: - Global Overlays
 
     var offlineBanner: XCUIElement {
-        app.staticTexts["offlineBanner.message"]
+        exactlyOne("offlineBanner.message", in: app.staticTexts)
     }
 
     var demoBanner: XCUIElement {
-        app.staticTexts["demoBanner.message"]
+        exactlyOne("demoBanner.message", in: app.staticTexts)
     }
 
     // MARK: - Navigation
@@ -97,16 +97,40 @@ struct AppPage {
         line: UInt = UInt(#line)
     ) {
         XCTAssertTrue(
-            app.tabBars.firstMatch.waitForExistence(timeout: 3),
+            app.tabBars.element.waitForExistence(timeout: 3),
             "Tab bar vanished after entering \(sectionName) — possible crash",
             file: file,
             line: line
         )
+        XCTAssertEqual(
+            app.tabBars.count,
+            1,
+            "P1 shell must expose exactly one tab bar on \(sectionName)",
+            file: file,
+            line: line
+        )
         XCTAssertTrue(
-            app.navigationBars.firstMatch.waitForExistence(timeout: 5),
+            app.navigationBars.element.waitForExistence(timeout: 5),
             "No navigation bar present on \(sectionName)",
             file: file,
             line: line
         )
+        XCTAssertEqual(
+            app.navigationBars.count,
+            1,
+            "P1 shell must expose exactly one navigation bar on \(sectionName)",
+            file: file,
+            line: line
+        )
+    }
+
+    private func tab(_ label: String) -> XCUIElement {
+        exactlyOne(label, in: app.tabBars.buttons)
+    }
+
+    private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
+        let matches = query.matching(identifier: identifier)
+        XCTAssertEqual(matches.count, 1, "P1 selector must resolve exactly once: \(identifier)")
+        return matches.element
     }
 }
