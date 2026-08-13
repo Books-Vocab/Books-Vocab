@@ -90,6 +90,30 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
             SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 200)
             PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
             return result
+        case "/api/vocab/review":
+            // `backgroundSync` always runs the two push legs before the pull. The
+            // marketing dataset contains local review state, so returning the
+            // generic 404 here would prevent the lifecycle fixture from ever
+            // reaching its dictionary retry path. This fixture does not need to
+            // mutate a remote server; it only needs to return the same accounting
+            // contract as the production PATCH endpoint.
+            let count = Self.entryCount(in: request)
+            let body = try Self.encodeJSONBody(
+                path: path,
+                object: ["updated": 0, "skipped": count]
+            )
+            return response(request, statusCode: 200, body: body)
+        case "/api/vocab/review-events" where request.httpMethod == "PATCH":
+            // Review-event pushes are idempotent. Account every submitted event as
+            // already known so the ordinary client acknowledges the batch and can
+            // proceed to the pull phase; the GET branch below remains the read-back
+            // contract for the subsequent pull.
+            let count = Self.entryCount(in: request)
+            let body = try Self.encodeJSONBody(
+                path: path,
+                object: ["inserted": 0, "skipped": count]
+            )
+            return response(request, statusCode: 200, body: body)
         case "/api/vocab/review-events":
             let result = response(
                 request,
@@ -119,6 +143,19 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
                 body: Data(#"{"error":"not_found"}"#.utf8)
             )
         }
+    }
+
+    private static func entryCount(in request: URLRequest) -> Int {
+        let body = request.httpBody
+            ?? URLProtocol.property(
+                forKey: KGService.requestBodyURLProtocolPropertyKey,
+                in: request
+            ) as? Data
+        guard let body,
+              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let entries = object["entries"] as? [Any]
+        else { return 0 }
+        return entries.count
     }
 
     static func encodeJSONBody(path: String, object: Any) throws -> Data {
