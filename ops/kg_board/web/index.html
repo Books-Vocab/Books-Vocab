@@ -26,10 +26,10 @@
         <span id="tree-state" class="status-chip">讀取中</span>
       </div>
       <p class="section-note">從第一個分支點回推的主線緩衝可調整；所有分支保留最近分叉段，已收斂歷史按需深入。桌面顯示關係圖，手機改用可點選清單。</p>
-      <div class="tree-controls" aria-label="樹視野大小">
-        <label for="tree-radius">樹視野大小</label>
-        <input id="tree-radius" type="range" min="5" max="30" step="5" value="10" aria-valuetext="10 個 commit">
-        <output id="tree-radius-value" for="tree-radius">10 個 commit</output>
+      <div class="tree-controls" aria-label="樹圖縮放">
+        <label for="tree-zoom">樹圖縮放</label>
+        <input id="tree-zoom" type="range" min="70" max="140" step="10" value="100" aria-valuetext="100%">
+        <output id="tree-zoom-value" for="tree-zoom">100%</output>
       </div>
       <div id="tree-alert" class="tree-alert" role="status"></div>
       <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
