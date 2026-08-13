@@ -184,6 +184,18 @@ fi
 trap cleanup EXIT
 LOCK_WAIT_MS=$(( $(ios_build_now_ms) - LOCK_WAIT_START_MS ))
 
+# A Catalyst compile does not consume the simulator/device products.  Drop the
+# sibling shared cache while the build lock is held; otherwise one gate retains a
+# multi-GB iOS tree while the next gate allocates a second multi-GB Catalyst tree.
+# ios_test.sh owns its own keyed cache and is unaffected by this cleanup.
+if [[ "$CATALYST" == "1" ]]; then
+  IOS_DERIVED_DATA_ROOT="$(kg_ios_shared_derived_data_root "$PROJECT_ROOT")"
+  if [[ "$IOS_DERIVED_DATA_ROOT" != "$PROJECT_ROOT" && -d "$IOS_DERIVED_DATA_ROOT" ]]; then
+    rm -rf "$IOS_DERIVED_DATA_ROOT" 2>/dev/null ||
+      echo "[ios_build] warning: sibling iOS cache cleanup failed root=$IOS_DERIVED_DATA_ROOT" >&2
+  fi
+fi
+
 echo "[ios_build] lock acquired by $CALLER (pid=$$) lockWaitMs=$LOCK_WAIT_MS — building..."
 echo "[ios_build] derivedDataRoot=$DERIVED_DATA_ROOT"
 START=$(date +%s)
