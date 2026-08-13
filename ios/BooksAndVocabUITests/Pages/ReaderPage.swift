@@ -376,7 +376,7 @@ struct ReaderPage {
     private func contentTextQuery(_ text: String) -> XCUIElementQuery {
         app.webViews.staticTexts
             .matching(identifier: text)
-            .matching(NSPredicate(format: "hittable == true"))
+            .matching(NSPredicate(format: "isHittable == true"))
     }
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
