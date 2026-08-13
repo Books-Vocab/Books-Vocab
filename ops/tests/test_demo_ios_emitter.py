@@ -152,6 +152,33 @@ def test_emit_ios_preserves_real_reader_toc_assets():
         assert "chapter-missing.xhtml" in archive.read("OEBPS/nav.xhtml").decode("utf-8")
 
 
+def test_emit_ios_rejects_reader_asset_symlink_escape(tmp_path: Path):
+    outside = tmp_path / "outside-reader.epub"
+    outside.write_bytes(b"outside")
+    link = ROOT / "ops" / "fixtures" / "assets" / ".p3-emitter-escape-link"
+    document = {
+        "assets": {
+            "books": {
+                "reader_real_book_epub": {"sourcePath": str(link.relative_to(ROOT))},
+                "reader_invalid_destination_epub": {
+                    "sourcePath": "ops/fixtures/assets/reader-invalid-destination.epub",
+                },
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {},
+        }
+    }
+    try:
+        link.symlink_to(outside)
+        with pytest.raises(ValueError, match="escapes repo root"):
+            emit_ios._normalize_asset_source_paths(document)
+    finally:
+        if link.is_symlink() or link.exists():
+            link.unlink()
+
+
 def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch):
     bundle = sot.load_sot()
     calls = []
