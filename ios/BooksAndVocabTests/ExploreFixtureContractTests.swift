@@ -49,17 +49,12 @@ struct ExploreFixtureContractTests {
         }
     }
 
-    @Test func assetResolutionRejectsStaleAbsoluteSourcePath() throws {
-        let relativeSourcePath = "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png"
-        let staleAbsoluteSourcePath = "/Users/chenliangyu/project/kg/\(relativeSourcePath)"
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // BooksAndVocabTests
-            .deletingLastPathComponent() // ios
-            .deletingLastPathComponent() // repository root
-            .appendingPathComponent(relativeSourcePath)
-        let sourceData = try Data(contentsOf: sourceURL)
-        let sha256 = try FixtureDatasetStore.sha256Hex(for: sourceURL)
-        let installAs = "ExploreContractTests/\(UUID().uuidString)/cover.png"
+    @Test(arguments: [
+        "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "ios/../BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "ios/./BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+    ])
+    func assetDecodeRejectsUnsafeSourcePath(sourcePath: String) throws {
 
         var object = try #require(
             try JSONSerialization.jsonObject(
@@ -69,20 +64,14 @@ struct ExploreFixtureContractTests {
         var assets = try #require(object["assets"] as? [String: Any])
         var images = try #require(assets["images"] as? [String: Any])
         var asset = try #require(images["explore_required"] as? [String: Any])
-        asset["sourcePath"] = staleAbsoluteSourcePath
-        asset["sha256"] = sha256
-        asset["byteSize"] = sourceData.count
-        asset["installAs"] = installAs
+        asset["sourcePath"] = sourcePath
         images["explore_required"] = asset
         assets["images"] = images
         object["assets"] = assets
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
 
-        let staleAsset = try #require(
-            try FixtureDatasetStore.decode(data).assets.asset(for: "images.explore_required")
-        )
         #expect(throws: (any Error).self) {
-            try FixtureDatasetStore.resolveSourceURL(for: staleAsset)
+            try FixtureDatasetStore.decode(data)
         }
     }
 
@@ -352,7 +341,7 @@ struct ExploreFixtureContractTests {
         )
         func imageAsset(_ name: String) -> [String: Any] {
             [
-                "sourcePath": "/tmp/\(name).png",
+                "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
                 "sha256": String(repeating: "a", count: 64),
                 "installAs": "Explore/\(name).png",
                 "byteSize": 1,

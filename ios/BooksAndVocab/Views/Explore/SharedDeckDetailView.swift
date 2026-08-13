@@ -273,12 +273,23 @@ struct SharedDeckDetailView: View {
         NotebookCoverView(
             color: NotebookPalette.color(for: deck.color),
             pattern: deck.coverPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
-            coverImagePath: nil,
+            coverImagePath: deck.coverImagePath,
             name: deck.title
         )
         .clipShape(AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness))
         .appElevation(.z0)
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("explore.detail.cover.\(deck.remoteId)")
+        .accessibilityLabel(deck.title)
+        .accessibilityValue(coverAccessibilityValue(for: deck))
+    }
+
+    private func coverAccessibilityValue(for deck: SharedDeck) -> String {
+        guard let sha256 = deck.coverImageSHA256,
+              let path = deck.coverImagePath else {
+            return "procedural"
+        }
+        return "sha256:\(sha256); path:\(path)"
     }
 
     @ViewBuilder

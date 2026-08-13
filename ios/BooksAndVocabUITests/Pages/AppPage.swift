@@ -104,6 +104,25 @@ struct AppPage {
         exploreElement(identifier: "explore.asset.\(assetID)")
     }
 
+    func exploreDetailCover(deckID: String) -> XCUIElement {
+        exploreElement(identifier: "explore.detail.cover.\(deckID)")
+    }
+
+    func assertExploreElementIsUnique(
+        identifier: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let query = app.descendants(matching: .any).matching(identifier: identifier)
+        XCTAssertEqual(
+            query.count,
+            1,
+            "Expected exactly one Explore element for \(identifier), got \(query.count)",
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Assertions
 
     func assertAllTabsVisible(file: StaticString = #filePath, line: UInt = UInt(#line)) {

@@ -13,9 +13,7 @@ extension FixtureDatasetStoreTests {
     }
 
     static var readerRealBookAssetPath: String {
-        repoRootURL
-            .appendingPathComponent("ops/fixtures/assets/reader-real-book.epub")
-            .path
+        "ops/fixtures/assets/reader-real-book.epub"
     }
 
     static var readerInvalidDestinationAssetPath: String {
@@ -72,7 +70,7 @@ extension FixtureDatasetStoreTests {
         ]
         for (assetID, name) in defaultImageAssets where images[assetID] == nil {
             images[assetID] = [
-                "sourcePath": "/tmp/\(name).png",
+                "sourcePath": "ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
                 "sha256": String(repeating: "a", count: 64),
                 "installAs": "FixtureDatasetStoreTests/\(name).png",
                 "byteSize": 1,
@@ -430,7 +428,7 @@ extension FixtureDatasetStoreTests {
           "assets": {
             "books": {
               "editorial_english_epub": {
-                "sourcePath": "/tmp/editorial.epub",
+                "sourcePath": "ops/fixtures/assets/reader-real-book.epub",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "Books/editorial-english.epub",

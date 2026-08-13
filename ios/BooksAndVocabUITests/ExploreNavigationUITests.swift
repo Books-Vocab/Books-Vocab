@@ -152,4 +152,22 @@ final class ExploreNavigationUITests: UITestCase {
         XCTAssertTrue(String(describing: asset.value).contains("ExploreAssets"))
         captureStep("explore-a11y-content", app: app)
     }
+
+    @MainActor
+    func testExploreDetailUsesProductionCoverAssetProjection() throws {
+        let app = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-detail")
+        let loaded = AppPage(app: app).goToExplore()
+        let deckID = "deck_official_gre_high_freq"
+
+        let card = loaded.exploreDeck(id: deckID)
+        XCTAssertTrue(card.waitUntilExists(timeout: 5))
+        card.tapWhenReady()
+
+        let detailCover = loaded.exploreDetailCover(deckID: deckID)
+        XCTAssertTrue(detailCover.waitUntilExists(timeout: 5))
+        loaded.assertExploreElementIsUnique(identifier: "explore.detail.cover.\(deckID)")
+        XCTAssertTrue(String(describing: detailCover.value).contains("sha256:"))
+        XCTAssertTrue(String(describing: detailCover.value).contains("ExploreAssets"))
+        captureStep("explore-detail-real-cover", app: app)
+    }
 }

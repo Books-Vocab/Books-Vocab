@@ -548,6 +548,13 @@ struct UIWorldSurfaceContractRowSeed: Codable, Equatable {
         case assetIDs
     }
 
+    init(fixtureID: String, stepLabel: String, index: Int, assetIDs: [String]) {
+        self.fixtureID = fixtureID
+        self.stepLabel = stepLabel
+        self.index = index
+        self.assetIDs = assetIDs
+    }
+
     init(from decoder: Decoder) throws {
         let raw = try decoder.container(keyedBy: AnyCodingKey.self)
         try uiWorldRequireExactKeys(raw, expected: ["fixtureID", "stepLabel", "index", "assetIDs"], decoder: decoder, label: "surface contract row")
@@ -573,6 +580,14 @@ struct UIWorldSurfaceContractSeed: Codable, Equatable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case required
         case counterexamples
+    }
+
+    init(
+        required: [UIWorldSurfaceContractRowSeed],
+        counterexamples: [UIWorldSurfaceContractRowSeed]
+    ) {
+        self.required = required
+        self.counterexamples = counterexamples
     }
 
     init(from decoder: Decoder) throws {
@@ -686,6 +701,7 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
     func validate(
         assets: UIWorldAssetManifest,
         vocabulary: [String: UIWorldVocabularySeed],
+        sharedDecks: UIWorldSharedDeckCatalogSeed,
         decoder: Decoder
     ) throws {
         guard readerPassage != nil, wordDetail != nil else {
@@ -718,6 +734,12 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
             guard !surface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw uiWorldDataCorrupted(decoder, "surfaceContracts keys must be non-empty")
             }
+        }
+        guard surfaceContracts["explore"] == sharedDecks.canonicalExploreSurfaceContract else {
+            throw uiWorldDataCorrupted(
+                decoder,
+                "scenarioContext.surfaceContracts.explore must be a projection of top-level sharedDecks; top-level sharedDecks is canonical"
+            )
         }
     }
 }
@@ -1002,11 +1024,29 @@ struct UIWorldAsset: Codable, Equatable {
     }
 
     private static func validateSourcePath(_ sourcePath: String, codingPath: [CodingKey]) throws {
-        guard !sourcePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmed = sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             throw DecodingError.dataCorrupted(
                 .init(
                     codingPath: codingPath,
                     debugDescription: "UI World asset sourcePath must be a non-empty path"
+                )
+            )
+        }
+        guard !trimmed.hasPrefix("/") else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset sourcePath must be repo-relative: \(trimmed)"
+                )
+            )
+        }
+        let components = trimmed.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset sourcePath contains an unsafe path component: \(trimmed)"
                 )
             )
         }

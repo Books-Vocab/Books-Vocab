@@ -573,7 +573,7 @@ extension FixtureDatasetStoreTests {
             },
             "audio": {
               "runtime-audio": {
-                "sourcePath": "/tmp/audio.m4a",
+                "sourcePath": "ops/fixtures/assets/runtime-audio.m4a",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "podcast-downloads/audio.m4a",
@@ -582,7 +582,7 @@ extension FixtureDatasetStoreTests {
             },
             "subtitles": {
               "runtime-subtitle": {
-                "sourcePath": "/tmp/audio.srt",
+                "sourcePath": "ops/fixtures/assets/runtime-audio.srt",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "podcast-subtitles/audio.srt",
@@ -591,7 +591,7 @@ extension FixtureDatasetStoreTests {
             },
             "text": {
               "reader-source": {
-                "sourcePath": "/tmp/source.md",
+                "sourcePath": "ops/fixtures/assets/fixture-reader.md",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "Books/sources/source.md",
