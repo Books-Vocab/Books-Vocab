@@ -56,7 +56,7 @@ struct KGCardLinkSummary: Codable, Identifiable, Equatable {
     }
 }
 
-struct KGCard: Decodable, Identifiable {
+struct KGCard: Decodable, Identifiable, Equatable {
     let id: String
     let content: String
     let meaning: String
@@ -341,15 +341,8 @@ struct LexicalEntry: Codable, Equatable, Identifiable {
             ?? values.decode(String.self, forKey: .dictionary_id)
         entryKey = try values.decodeIfPresent(String.self, forKey: .entryKey)
             ?? values.decode(String.self, forKey: .entry_key)
-        if let stringVersion = try? values.decode(String.self, forKey: .schemaVersion) {
-            schemaVersion = stringVersion
-        } else if let stringVersion = try? values.decode(String.self, forKey: .schema_version) {
-            schemaVersion = stringVersion
-        } else if let intVersion = try? values.decode(Int.self, forKey: .schemaVersion) {
-            schemaVersion = String(intVersion)
-        } else {
-            schemaVersion = "1"
-        }
+        schemaVersion = try values.decodeIfPresent(String.self, forKey: .schemaVersion)
+            ?? values.decode(String.self, forKey: .schema_version)
         word = try values.decode(String.self, forKey: .word)
         sourceLanguage = try values.decodeIfPresent(String.self, forKey: .sourceLanguage)
             ?? values.decodeIfPresent(String.self, forKey: .language) ?? "en"
@@ -563,9 +556,9 @@ struct KGDictionaryCardProjection: Decodable {
 }
 
 /// Strict envelope used by dictionary-link materialization responses. The
-/// broader card projection remains backward-compatible for read/promotion
-/// routes, but materialization must never turn a missing graph link into an
-/// empty projection.
+/// backend's `DictionaryProjectionItem` carries the saved dictionary payload
+/// under `dictionary`; materialization must not accept the older flat
+/// `dictionaryEntry` shape or silently default required fields.
 struct KGMaterializationCardProjection: Decodable {
     let card: KGCard
     let dictionaryEntry: LexicalEntry
@@ -577,14 +570,37 @@ struct KGMaterializationCardProjection: Decodable {
     let links: [KGGraphLink]
 
     init(from decoder: Decoder) throws {
+        let rawValues = try decoder.container(keyedBy: AnyCodingKey.self)
+        let envelopeKeys = Set(rawValues.allKeys.map(\.stringValue))
+        let expectedEnvelopeKeys: Set<String> = ["card", "dictionary", "readerHidden", "links"]
+        guard envelopeKeys == expectedEnvelopeKeys else {
+            let extra = envelopeKeys.subtracting(expectedEnvelopeKeys).sorted()
+            let missing = expectedEnvelopeKeys.filter { !envelopeKeys.contains($0) }.sorted()
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "strict materialization envelope keys mismatch; extra=\(extra), missing=\(missing)"
+                )
+            )
+        }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         card = try values.decode(KGCard.self, forKey: .card)
-        dictionaryEntry = try values.decode(LexicalEntry.self, forKey: .dictionaryEntry)
-        selectedSenseKey = try values.decode(String.self, forKey: .selectedSenseKey)
-        selectedExampleKey = try values.decode(String.self, forKey: .selectedExampleKey)
-        materializationStatus = try values.decode(String.self, forKey: .materializationStatus)
-        promotionErrorCode = try values.decodeIfPresent(String.self, forKey: .promotionErrorCode)
-        promotionRetryable = try values.decode(Bool.self, forKey: .promotionRetryable)
+        _ = try values.decode(Bool.self, forKey: .readerHidden)
+        let dictionary = try values.decode(StrictSavedDictionaryPayload.self, forKey: .dictionary)
+        guard dictionary.card == card else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "materialization card and nested dictionary card must match"
+                )
+            )
+        }
+        dictionaryEntry = dictionary.entry
+        selectedSenseKey = dictionary.selectedSenseKey
+        selectedExampleKey = dictionary.selectedExampleKey
+        materializationStatus = dictionary.materializationStatus
+        promotionErrorCode = dictionary.promotionErrorCode
+        promotionRetryable = dictionary.promotionRetryable ?? false
         links = try values.decode([KGGraphLink].self, forKey: .links)
     }
 
@@ -602,9 +618,51 @@ struct KGMaterializationCardProjection: Decodable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case card, dictionaryEntry
-        case selectedSenseKey, selectedExampleKey, materializationStatus
-        case promotionErrorCode, promotionRetryable, links
+        case card, dictionary, readerHidden, links
+    }
+
+    private struct StrictSavedDictionaryPayload: Decodable {
+        let card: KGCard
+        let entry: LexicalEntry
+        let selectedSenseKey: String
+        let selectedExampleKey: String
+        let materializationStatus: String
+        let promotionErrorCode: String?
+        let promotionRetryable: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case card, entry, selectedSenseKey, selectedExampleKey
+            case materializationStatus, promotionErrorCode, promotionRetryable
+        }
+
+        init(from decoder: Decoder) throws {
+            let rawValues = try decoder.container(keyedBy: AnyCodingKey.self)
+            let expectedKeys = [
+                "card", "entry", "selectedSenseKey", "selectedExampleKey",
+                "materializationStatus", "promotionErrorCode", "promotionRetryable",
+            ]
+            let actualKeys = Set(rawValues.allKeys.map(\.stringValue))
+            guard actualKeys == Set(expectedKeys) else {
+                let extra = actualKeys.subtracting(expectedKeys).sorted()
+                let missing = expectedKeys.filter { !actualKeys.contains($0) }
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "strict saved dictionary keys mismatch; extra=\(extra), missing=\(missing)"
+                    )
+                )
+            }
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            card = try values.decode(KGCard.self, forKey: .card)
+            entry = try values.decode(LexicalEntry.self, forKey: .entry)
+            selectedSenseKey = try values.decode(String.self, forKey: .selectedSenseKey)
+            selectedExampleKey = try values.decode(String.self, forKey: .selectedExampleKey)
+            materializationStatus = try values.decode(String.self, forKey: .materializationStatus)
+            // The backend emits null when no promotion job exists, but the
+            // key itself is part of the retry barrier and must be present.
+            promotionErrorCode = try values.decode(String?.self, forKey: .promotionErrorCode)
+            promotionRetryable = try values.decode(Bool?.self, forKey: .promotionRetryable)
+        }
     }
 }
 

@@ -92,7 +92,6 @@ private enum DictionaryMaterializationError: Error {
 
 @Observable @MainActor
 final class AddLinkCoordinator {
-    private(set) var searchPhase: DictionarySearchPhase = .idle
     private(set) var lookupState: DictionaryLookupState = .idle
     private(set) var materializePhase: DictionaryMaterializePhase = .idle
     private(set) var materializeFailure: DictionaryMaterializeFailure?
@@ -113,6 +112,24 @@ final class AddLinkCoordinator {
 
     var selectedMaterialization: DictionaryMaterializedSelection? {
         selectionState.materialization
+    }
+
+    /// Compatibility projection for older callers. `lookupState` is the only
+    /// authoritative lookup state; this value is derived and cannot drift.
+    var searchPhase: DictionarySearchPhase {
+        switch lookupState {
+        case .idle:
+            return .idle
+        case .loading, .retry:
+            return .loading
+        case .success(_, let entry, let cacheStatus):
+            guard let entry else { return .empty }
+            return .result(entry, cacheStatus: cacheStatus)
+        case .partial(_, _, let failure), .error(_, let failure):
+            return .failed(failure)
+        case .offline:
+            return .failed(.offline)
+        }
     }
 
     func lookupFailure(for state: DictionaryLookupState) -> DictionarySearchFailure {
@@ -167,7 +184,6 @@ final class AddLinkCoordinator {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             cancelSearch()
-            searchPhase = .idle
             lookupState = .idle
             return
         }
@@ -210,7 +226,6 @@ final class AddLinkCoordinator {
         let generation = searchGeneration
         lastQuery = query
         lookupState = state
-        searchPhase = .loading
         clearSelection()
         PerfLog.dictionary.mark(
             "dictionary.lookup.started",
@@ -234,7 +249,6 @@ final class AddLinkCoordinator {
                     self.lookupState = .success(
                         query: query, entry: nil, cacheStatus: search.cacheStatus
                     )
-                    searchPhase = .empty
                     return
                 }
                 self.lastHit = hit
@@ -251,7 +265,6 @@ final class AddLinkCoordinator {
                 self.lookupState = .success(
                     query: query, entry: detail.entry, cacheStatus: detail.cacheStatus
                 )
-                searchPhase = .result(detail.entry, cacheStatus: detail.cacheStatus)
                 PerfLog.dictionary.mark(
                     "dictionary.lookup.succeeded",
                     Self.provenanceDetail(detail.materialization)
@@ -276,7 +289,6 @@ final class AddLinkCoordinator {
                 } else {
                     self.lookupState = .error(query: query, failure: failure)
                 }
-                searchPhase = .failed(failure)
                 PerfLog.dictionary.mark(
                     "dictionary.lookup.failed",
                     "query=\(query) failure=\(String(describing: failure))"
@@ -289,15 +301,16 @@ final class AddLinkCoordinator {
         searchTask?.cancel()
         searchTask = nil
         searchGeneration += 1
-        if searchPhase == .loading {
-            searchPhase = .idle
+        switch lookupState {
+        case .loading, .retry:
             lookupState = .idle
+        default:
+            break
         }
     }
 
     func queryDidChange() {
         cancelSearch()
-        searchPhase = .idle
         lookupState = .idle
         clearSelection()
     }
@@ -458,8 +471,13 @@ final class AddLinkCoordinator {
     func linkExisting(
         target: VocabularyEntry,
         sourceEntry: VocabularyEntry,
-        using service: any KGServing
+        using service: any GraphServing
     ) async {
+        guard sourceEntry.modelContext != nil else {
+            materializePhase = .failed
+            materializeFailure = .malformed
+            return
+        }
         guard let sourceCardID = sourceEntry.kgCardId,
               let pending = VocabularyGraphLinkMutation.beginManualLink(
                 from: sourceEntry, to: target
