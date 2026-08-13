@@ -671,7 +671,6 @@ final class SettingsCoordinator: SettingsCoordinating {
             transport: SettingsSyncFixtureTransport(summary: summary),
             connectivityGate: FixedConnectivityGate(isConnected: summary.isConnected)
         )
-        SettingsSyncFixtureEvidenceStore.shared.reset()
         return settingsSyncService
     }
 #endif
