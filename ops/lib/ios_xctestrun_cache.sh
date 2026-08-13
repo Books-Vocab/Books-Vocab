@@ -123,6 +123,32 @@ ios_xctestrun_cache_stage_env() {
   return "$status"
 }
 
+# xcodebuild's process environment is not inherited by test-without-building's
+# XCTest runner. Evidence values that tests must attest independently therefore
+# need to be written into each target's TestingEnvironmentVariables in the
+# scoped xctestrun copy.
+ios_xctestrun_cache_upsert_env_all_targets() {
+  local plist_path="$1" key="$2" value="$3"
+  local env_root roots_file status=0
+  [[ -f "$plist_path" && -n "$key" ]] || return 1
+  roots_file="$(mktemp "${TMPDIR:-/tmp}/kg_xctestrun_env_roots.XXXXXX")" || return 1
+  if ! ios_xctestrun_cache_env_roots "$plist_path" >"$roots_file" || [[ ! -s "$roots_file" ]]; then
+    rm -f "$roots_file"
+    return 1
+  fi
+  while IFS= read -r env_root; do
+    [[ -n "$env_root" ]] || continue
+    /usr/libexec/PlistBuddy -c "Add $env_root dict" "$plist_path" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Delete $env_root:$key" "$plist_path" 2>/dev/null || true
+    if ! /usr/libexec/PlistBuddy -c "Add $env_root:$key string $value" "$plist_path"; then
+      status=1
+      break
+    fi
+  done <"$roots_file"
+  rm -f "$roots_file"
+  return "$status"
+}
+
 ios_xctestrun_cache_cleanup_scoped() {
   local staged_path="$1"
   [[ "$staged_path" == *.scoped.xctestrun ]] || return 64

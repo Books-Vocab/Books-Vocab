@@ -1075,7 +1075,11 @@ stage_fixture_dataset_xctestrun() {
     "$2" \
     KG_FIXTURE_DATASET_DEFLATE_B64 \
     "$UI_FIXTURE_DATASET_DEFLATE_B64" \
-    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
+    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64 \
+    && ios_xctestrun_cache_upsert_env_all_targets \
+      "$2" \
+      KG_UI_TEST_SOURCE_COMMIT \
+      "$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
 }
 
 xctestrun_target_env_roots() {
