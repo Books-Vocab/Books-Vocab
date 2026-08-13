@@ -266,16 +266,36 @@ final class ReaderFlowUITests: UITestCase {
         canonicalInvalidRow.tapWhenReady()
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
+        XCTAssertEqual(reader.tocMissingDestination.count, 1)
+        XCTAssertEqual(reader.tocRetry.count, 1)
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         XCTAssertFalse(reader.tocDone.isEnabled)
+        XCTAssertEqual(reader.currentLocator.value as? String, "OEBPS/chapter1.xhtml")
+        reader.assertContentAbsent(Self.secondChapterWord)
+        reader.assertFixtureAsset(
+            assetID: "books.reader_invalid_destination_epub",
+            fileName: "reader-invalid-destination.epub",
+            sha256: Self.invalidDestinationAssetSHA256,
+            byteSize: 17344
+        )
         captureStep("invalid-destination-missing", app: app)
 
         reader.tocRetry.tapWhenReady()
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
+        XCTAssertEqual(reader.tocMissingDestination.count, 1)
+        XCTAssertEqual(reader.tocRetry.count, 1)
         XCTAssertTrue(reader.tableOfContentsSheet.exists)
         XCTAssertFalse(reader.tocDone.isEnabled)
         reader.assertIsActive()
+        XCTAssertEqual(reader.currentLocator.value as? String, "OEBPS/chapter1.xhtml")
+        reader.assertContentAbsent(Self.secondChapterWord)
+        reader.assertFixtureAsset(
+            assetID: "books.reader_invalid_destination_epub",
+            fileName: "reader-invalid-destination.epub",
+            sha256: Self.invalidDestinationAssetSHA256,
+            byteSize: 17344
+        )
         captureStep("invalid-destination-retry-still-open", app: app)
         attachText(
             "fixture=reader.invalidDestinationLibrary\nasset=books.reader_invalid_destination_epub\n"

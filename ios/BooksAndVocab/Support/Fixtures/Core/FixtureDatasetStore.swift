@@ -156,14 +156,38 @@ enum FixtureDatasetStore {
         let asset = try requireAsset(ref: ref)
         let sourceURL = try validatedSourceURL(for: asset, ref: ref)
         let destination = try installURL(for: asset, ref: ref)
+        let documentsRoot = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .standardizedFileURL
+        // Resolve the destination before creating, deleting, or overwriting
+        // anything. A pre-existing symlink in an installAs parent (or at the
+        // destination itself) must never turn a fixture copy into an escape
+        // from the app Documents root.
+        try validateDestinationContainment(
+            destination,
+            in: documentsRoot,
+            ref: ref
+        )
         let fm = FileManager.default
         try fm.createDirectory(
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        // Re-check after directory creation as a bounded TOCTOU defense: the
+        // copy must still be inside the same real Documents root immediately
+        // before any existing destination is removed or replaced.
+        try validateDestinationContainment(
+            destination,
+            in: documentsRoot,
+            ref: ref
+        )
         if fm.fileExists(atPath: destination.path) {
             try fm.removeItem(at: destination)
         }
+        try validateDestinationContainment(
+            destination,
+            in: documentsRoot,
+            ref: ref
+        )
         try fm.copyItem(at: sourceURL, to: destination)
         let installedSize = try byteSize(for: destination)
         guard installedSize == asset.byteSize else {
@@ -354,6 +378,35 @@ enum FixtureDatasetStore {
         let rootPath = root.standardizedFileURL.path
         let candidatePath = candidate.standardizedFileURL.path
         return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
+    }
+
+    private static func validateDestinationContainment(
+        _ destination: URL,
+        in root: URL,
+        ref: String
+    ) throws {
+        let lexicalRoot = root.standardizedFileURL
+        let lexicalDestination = destination.standardizedFileURL
+        guard isContained(lexicalDestination, in: lexicalRoot) else {
+            throw CocoaError(.fileWriteNoPermission, userInfo: [
+                NSFilePathErrorKey: lexicalDestination.path,
+                NSLocalizedDescriptionKey: "UI World asset (ref) installAs escapes the app Documents root",
+            ])
+        }
+
+        let resolvedRoot = lexicalRoot.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedDestination = lexicalDestination.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedParent = lexicalDestination
+            .deletingLastPathComponent()
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        guard isContained(resolvedDestination, in: resolvedRoot),
+              isContained(resolvedParent, in: resolvedRoot) else {
+            throw CocoaError(.fileWriteNoPermission, userInfo: [
+                NSFilePathErrorKey: resolvedDestination.path,
+                NSLocalizedDescriptionKey: "UI World asset (ref) installAs escapes the app Documents root through a symlink",
+            ])
+        }
     }
 
     private static func installURL(for asset: UIWorldAsset, ref: String) throws -> URL {

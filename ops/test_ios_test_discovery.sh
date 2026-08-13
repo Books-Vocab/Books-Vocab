@@ -15,6 +15,8 @@
 #   4. Nested helper structs declared INSIDE a func body (indented) are NOT
 #      treated as containers and never appear in a -only-testing path.
 #   5. Files with no test container are skipped without emitting bogus flags.
+#   6. Top-level `extension ExistingSuite` files (including `Foo+Domain.swift`)
+#      resolve to the existing suite instead of silently producing zero tests.
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -321,6 +323,21 @@ if [[ -n "$SUITE_NAME" ]]; then
 else
   fail_t "找不到可用的真實 suite 名"
 fi
+
+# ── 12c. split-extension Swift Testing selector must be discoverable ─────────
+# FixtureDatasetStoreTests+DomainC.swift is intentionally a split extension;
+# treating the filename as the suite (or requiring a same-file struct) makes
+# -g and --file report zero before Xcode is ever reached.
+section "split-extension test discovery"
+SPLIT_METHOD="readerEPUBSourcePathRejectsUnsafeLocatorsAtDecodeBoundary"
+SPLIT_G_LIST="$($IOS_TEST --list -g "$SPLIT_METHOD" 2>/dev/null)" || SPLIT_G_LIST=""
+grep -qxF -- "-only-testing:BooksAndVocabTests/FixtureDatasetStoreTests/${SPLIT_METHOD}()" <<<"$SPLIT_G_LIST" \
+  && ok "-g discovers ${SPLIT_METHOD} from split extension" \
+  || fail_t "-g split extension discovery returned zero or wrong suite: $SPLIT_G_LIST"
+SPLIT_FILE_LIST="$($IOS_TEST --list --file FixtureDatasetStoreTests+DomainC 2>/dev/null)" || SPLIT_FILE_LIST=""
+grep -qxF -- "-only-testing:BooksAndVocabTests/FixtureDatasetStoreTests/${SPLIT_METHOD}()" <<<"$SPLIT_FILE_LIST" \
+  && ok "--file discovers tests from FixtureDatasetStoreTests+DomainC.swift" \
+  || fail_t "--file split extension discovery returned zero: $SPLIT_FILE_LIST"
 
 # ── 13. --ui 缺 dataset 錯誤必須列出可用 UI World 名單（IMP-0011 迴歸）──────
 section "--ui missing dataset lists available worlds"

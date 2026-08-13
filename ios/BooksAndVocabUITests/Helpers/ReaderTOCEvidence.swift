@@ -319,13 +319,21 @@ extension UITestCase {
                 "webView"
             )
         }
-        let content = webViews.element(boundBy: 0).staticTexts[selector]
+        guard let webView = webViews.allElementsBoundByIndex.first else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation("webView")
+        }
+        let content = webView.staticTexts[selector]
         guard content.count == 1 else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
                 "contentSelector:\(selector)"
             )
         }
-        return content.element(boundBy: 0).label
+        guard let element = content.allElementsBoundByIndex.first else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
+                "contentSelector:\(selector)"
+            )
+        }
+        return element.label
     }
 
     private static func readScopedValue(
@@ -337,9 +345,13 @@ extension UITestCase {
         guard roots.count == 1 else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(rootIdentifier)
         }
-        let elements = roots.element(boundBy: 0).staticTexts[identifier]
+        guard let root = roots.allElementsBoundByIndex.first else {
+            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(rootIdentifier)
+        }
+        let elements = root.staticTexts[identifier]
         guard elements.count == 1,
-              let value = elements.element(boundBy: 0).value as? String,
+              let element = elements.allElementsBoundByIndex.first,
+              let value = element.value as? String,
               !value.isEmpty else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(identifier)
         }
@@ -350,9 +362,12 @@ extension UITestCase {
         _ app: XCUIApplication,
         identifier: String
     ) throws -> String {
-        let elements = app.staticTexts[identifier]
+        let predicate = NSPredicate(format: "identifier == %@", identifier)
+        let elements = app.staticTexts.matching(predicate)
+        let element = app.staticTexts.element(matching: predicate)
         guard elements.count == 1,
-              let value = elements.element(boundBy: 0).value as? String,
+              element.exists,
+              let value = element.value as? String,
               !value.isEmpty else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(identifier)
         }
