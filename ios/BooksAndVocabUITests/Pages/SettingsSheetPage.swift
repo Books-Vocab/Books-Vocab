@@ -182,18 +182,42 @@ struct SettingsSheetPage {
 
     func openSyncSummary(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         let button = syncSummaryButton
+        scrollHomeElementIntoView(button, file: file, line: line)
+        tapExactlyOne(button, named: "settings.syncSummary", file: file, line: line)
+        return self
+    }
+
+    private func scrollHomeElementIntoView(
+        _ element: XCUIElement,
+        file: StaticString,
+        line: UInt
+    ) {
         let deadline = Date().addingTimeInterval(5)
-        while !button.exists && Date() < deadline {
+        while Date() < deadline {
+            if element.exists,
+               !element.frame.isEmpty,
+               homeScrollView.exists,
+               homeScrollView.frame.intersects(element.frame),
+               element.isHittable {
+                return
+            }
             if homeScrollView.exists {
-                homeScrollView.swipeUp()
+                if element.exists, element.frame.minY < homeScrollView.frame.minY {
+                    homeScrollView.swipeDown()
+                } else {
+                    homeScrollView.swipeUp()
+                }
             } else {
                 app.swipeUp()
             }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        XCTAssertTrue(button.exists, file: file, line: line)
-        button.scrollIntoView(file: file, line: line)
-        tapExactlyOne(button, named: "settings.syncSummary", file: file, line: line)
-        return self
+        XCTAssertTrue(
+            element.exists && !element.frame.isEmpty,
+            "Settings home element did not become visible: \(element.identifier)",
+            file: file,
+            line: line
+        )
     }
 
     func goBack(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
