@@ -372,17 +372,25 @@ def test_browser_writes_are_removed_while_mirror_keeps_bearer(monkeypatch):
     )._mirror_precondition() is None
 
 
-def test_mirror_git_tree_accepts_large_snapshot_without_widening_browser_writes():
+def test_mirror_git_tree_accepts_large_snapshot_without_widening_browser_writes(monkeypatch):
     payload = {"commits": [{"id": "c" * 64, "message": "m" * 256} for _ in range(9000)]}
     raw = json.dumps(payload).encode("utf-8")
     assert 1_000_000 < len(raw) < 16 * 1024 * 1024
 
-    mirror = _handler(
+    monkeypatch.setattr(server, "TOKEN", "mirror-secret")
+    monkeypatch.setattr(server, "_update_json", lambda *args: None)
+    mirror = _capturing_handler(
         "/api/mirror/git-tree",
-        {"Content-Length": str(len(raw))},
+        {
+            "Content-Length": str(len(raw)),
+            "Content-Type": "application/json",
+            "Authorization": "Bearer mirror-secret",
+        },
     )
     mirror.rfile = BytesIO(raw)
-    assert mirror._body(max_bytes=server.MIRROR_BODY_MAX_BYTES) == payload
+    mirror.do_POST()
+    assert mirror.response_code == 200
+    assert json.loads(mirror.wfile.getvalue())["stored"] == "git_tree"
 
     browser_write = _handler(
         "/api/priority",
