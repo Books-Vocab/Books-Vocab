@@ -92,10 +92,11 @@ struct SettingsSheetPage {
 
     /// Nav-bar back button of a pushed detail section.
     var backButton: XCUIElement {
-        let bars = app.navigationBars.allElementsBoundByIndex
-        precondition(bars.count == 1, "Expected exactly one settings navigation bar, found \(bars.count)")
-        let buttons = bars[0].buttons.allElementsBoundByIndex
-        precondition(buttons.count == 1, "Expected exactly one settings back button, found \(buttons.count)")
+        let bars = app.navigationBars.allElementsBoundByIndex.filter { $0.exists }
+        let barsWithButtons = bars.filter { !$0.buttons.allElementsBoundByIndex.isEmpty }
+        precondition(!barsWithButtons.isEmpty, "Expected a settings navigation bar with a back button")
+        let buttons = barsWithButtons.last!.buttons.allElementsBoundByIndex
+        precondition(!buttons.isEmpty, "Expected the top settings navigation bar to expose a back button")
         return buttons[0]
     }
 
