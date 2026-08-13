@@ -61,6 +61,7 @@ struct SettingsPresenter: View {
                 .padding(.bottom, AppShellMetrics.pageBottomPadding)
             }
             .background(appSkin.palette.pageBackground.ignoresSafeArea())
+            .accessibilityIdentifier("settings.home.scrollView")
             .navigationTitle("設定".localized)
             .inlineNavigationBarTitle()
             .toolbar {
