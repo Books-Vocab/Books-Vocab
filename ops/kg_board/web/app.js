@@ -276,9 +276,10 @@ function renderTree(){
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha||viewport.branchAnchors.get(item.branch)===row.sha);
     return `<g class="commit" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(compactLabel(row.subject,30))}</text></g>`;
   }).join("");
-  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="第一個分支附近的 Git 交付樹"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
+  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
-  document.getElementById("tree-state").textContent=tree.complete?`第一個分支附近 ${ordered.length} / 完整 ${viewport.total} · ${viewportLabel}`:`資料不完整 · 第一個分支附近 ${ordered.length}`;
+  const mainlineCount=windowRows.length;
+  document.getElementById("tree-state").textContent=tree.complete?`主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · 完整 ${viewport.total} · ${viewportLabel}`:`資料不完整 · 主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length}`;
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
   renderMobileTree(viewport,commits);
   mount.querySelectorAll(".commit").forEach(node=>{
@@ -295,7 +296,7 @@ function renderMobileTree(viewport,commits){
   const refs=viewport.refs||[];const rows=[];const seen=new Set();
   [...viewport.mainlineWindow,...viewport.branchAnchors.values()].forEach(sha=>{if(sha&&!seen.has(sha)&&commits.has(sha)){seen.add(sha);rows.push(commits.get(sha));}});
   const branches=refs.map(ref=>{const tickets=(ref.tickets||[]).slice(0,3).map(t=>`<button class="tree-ticket" data-ticket-id="${esc(t.id)}">${esc(t.id)}</button>`).join("");const more=(ref.tickets||[]).length>3?`<span class="tree-ticket-more">+${(ref.tickets||[]).length-3}</span>`:"";return `<span class="tree-mobile-branch"><strong>${esc(compactLabel(ref.branch,30))}</strong><span>${esc(ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown"))}</span>${tickets}${more}</span>`}).join("");
-  mount.innerHTML=`<div class="tree-mobile-summary"><strong>第一個分支附近</strong><span>${rows.length} 個 commit · ${refs.length} 條分支</span></div><div class="tree-mobile-branches">${branches}</div><ol class="tree-mobile-commits">${rows.map(row=>`<li><button class="tree-mobile-commit" data-sha="${esc(row.sha)}"><code>${esc(shortSha(row.sha))}</code><span>${esc(row.subject)}</span></button></li>`).join("")}</ol>`;
+  mount.innerHTML=`<div class="tree-mobile-summary"><strong>主線緩衝與所有分支</strong><span>${rows.length} 個 commit · ${refs.length} 條分支</span></div><div class="tree-mobile-branches">${branches}</div><ol class="tree-mobile-commits">${rows.map(row=>`<li><button class="tree-mobile-commit" data-sha="${esc(row.sha)}"><code>${esc(shortSha(row.sha))}</code><span>${esc(row.subject)}</span></button></li>`).join("")}</ol>`;
   mount.querySelectorAll(".tree-mobile-commit").forEach(node=>node.addEventListener("click",()=>commitInspector(commits.get(node.dataset.sha),null)));
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{event.stopPropagation();selectTicket(node.dataset.ticketId)}));
 }

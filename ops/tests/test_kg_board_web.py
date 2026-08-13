@@ -300,6 +300,7 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
 
     assert "交付進度看板" in index
     assert "分支與工作樹" in index
+    assert "所有分支保留最近分叉段" in index
     assert "tree-mobile-list" in js
     assert "renderMobileTree" in js
     assert "tree-held-tickets" in index
