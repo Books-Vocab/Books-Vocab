@@ -53,7 +53,7 @@ final class ExploreNavigationUITests: UITestCase {
         XCTAssertTrue(
             loaded.exploreAsset(assetID: "images.explore_required").waitUntilExists(timeout: 5)
         )
-        loaded.assertExploreElementIsUnique(identifier: "explore.asset.images.explore_required")
+        loaded.assertExploreImageIsUnique(identifier: "explore.asset.images.explore_required")
         captureStep("explore-loaded", app: loadedApp)
 
         let emptyApp = launchIsolatedApp(fixtures: [.explore("empty")], perfLog: "explore-empty")
@@ -74,7 +74,7 @@ final class ExploreNavigationUITests: UITestCase {
         XCTAssertTrue(
             retry.exploreAsset(assetID: "images.explore_required").waitUntilExists(timeout: 5)
         )
-        retry.assertExploreElementIsUnique(identifier: "explore.asset.images.explore_required")
+        retry.assertExploreImageIsUnique(identifier: "explore.asset.images.explore_required")
         captureStep("explore-retry", app: retryApp)
     }
 
@@ -104,7 +104,7 @@ final class ExploreNavigationUITests: UITestCase {
             empty.exploreAsset(assetID: "images.explore_counterexample_empty").waitUntilExists(timeout: 5)
         )
         empty.assertExploreElementIsUnique(identifier: "explore.emptyState")
-        empty.assertExploreElementIsUnique(identifier: "explore.asset.images.explore_counterexample_empty")
+        empty.assertExploreImageIsUnique(identifier: "explore.asset.images.explore_counterexample_empty")
         captureStep("explore-empty-counterexample", app: emptyApp)
 
         let retryApp = launchIsolatedApp(
@@ -124,7 +124,7 @@ final class ExploreNavigationUITests: UITestCase {
         )
         retry.assertExploreElementIsUnique(identifier: "explore.loadedState")
         retry.assertExploreElementIsUnique(identifier: "explore.deck.deck_counterexample_retry")
-        retry.assertExploreElementIsUnique(identifier: "explore.asset.images.explore_counterexample_retry")
+        retry.assertExploreImageIsUnique(identifier: "explore.asset.images.explore_counterexample_retry")
         captureStep("explore-retry-counterexample", app: retryApp)
     }
 
@@ -146,10 +146,16 @@ final class ExploreNavigationUITests: UITestCase {
 
         let asset = loaded.exploreAsset(assetID: "images.explore_required")
         XCTAssertTrue(asset.waitUntilExists(timeout: 5))
-        loaded.assertExploreElementIsUnique(identifier: "explore.asset.images.explore_required")
+        loaded.assertExploreImageIsUnique(identifier: "explore.asset.images.explore_required")
         XCTAssertEqual(asset.elementType, .image)
         XCTAssertTrue(String(describing: asset.value).contains("sha256:"))
+        XCTAssertTrue(String(describing: asset.value).contains("bytes:30129"))
         XCTAssertTrue(String(describing: asset.value).contains("ExploreAssets"))
+        XCTAssertEqual(
+            loaded.app.buttons.matching(identifier: "explore.asset.images.explore_required").count,
+            0,
+            "asset evidence selector must not resolve to the card/navigation button"
+        )
         captureStep("explore-a11y-content", app: app)
     }
 
@@ -165,8 +171,10 @@ final class ExploreNavigationUITests: UITestCase {
 
         let detailCover = loaded.exploreDetailCover(deckID: deckID)
         XCTAssertTrue(detailCover.waitUntilExists(timeout: 5))
-        loaded.assertExploreElementIsUnique(identifier: "explore.detail.cover.\(deckID)")
+        loaded.assertExploreImageIsUnique(identifier: "explore.detail.cover.\(deckID)")
+        XCTAssertEqual(detailCover.elementType, .image)
         XCTAssertTrue(String(describing: detailCover.value).contains("sha256:"))
+        XCTAssertTrue(String(describing: detailCover.value).contains("bytes:30129"))
         XCTAssertTrue(String(describing: detailCover.value).contains("ExploreAssets"))
         captureStep("explore-detail-real-cover", app: app)
     }

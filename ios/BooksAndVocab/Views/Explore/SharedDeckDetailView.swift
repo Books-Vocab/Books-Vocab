@@ -270,26 +270,22 @@ struct SharedDeckDetailView: View {
     }
 
     private func cover(_ deck: SharedDeck) -> some View {
+#if DEBUG && targetEnvironment(simulator)
+        let assetAccessibilityIdentifier: String? = "explore.detail.cover.\(deck.remoteId)"
+#else
+        let assetAccessibilityIdentifier: String? = nil
+#endif
         NotebookCoverView(
             color: NotebookPalette.color(for: deck.color),
             pattern: deck.coverPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
-            coverImagePath: deck.coverImagePath,
-            name: deck.title
+            source: ExploreDeckCoverEvidence.source(for: deck),
+            name: deck.title,
+            assetAccessibilityIdentifier: assetAccessibilityIdentifier,
+            assetAccessibilityLabel: deck.title,
+            assetAccessibilityValue: ExploreDeckCoverEvidence.accessibilityValue(for: deck)
         )
         .clipShape(AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness))
         .appElevation(.z0)
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("explore.detail.cover.\(deck.remoteId)")
-        .accessibilityLabel(deck.title)
-        .accessibilityValue(coverAccessibilityValue(for: deck))
-    }
-
-    private func coverAccessibilityValue(for deck: SharedDeck) -> String {
-        guard let sha256 = deck.coverImageSHA256,
-              let path = deck.coverImagePath else {
-            return "procedural"
-        }
-        return "sha256:\(sha256); path:\(path)"
     }
 
     @ViewBuilder

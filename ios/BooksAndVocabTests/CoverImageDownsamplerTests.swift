@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import CryptoKit
 import UIKit
 import ImageIO
 import Testing
@@ -188,6 +189,63 @@ struct CoverImageDownsamplerTests {
         ))
 
         #expect(first !== second)
+    }
+
+    @Test("canonical Notebook cover validates exact bytes and SHA before decoding")
+    func canonicalNotebookCoverRequiresExactProvenance() throws {
+        NotebookCoverImageCache.removeAll()
+        defer { NotebookCoverImageCache.removeAll() }
+
+        let png = makePNG(widthPx: 90, heightPx: 120)
+        let sha256 = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
+        let asset = NotebookCoverAsset(
+            path: "/tmp/canonical-cover.png",
+            sha256: sha256,
+            byteSize: png.count
+        )
+
+        let image = try #require(NotebookCoverImageCache.image(
+            for: asset,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2,
+            loadData: { _ in png }
+        ))
+        #expect(image.size.width > 0)
+
+        let wrongSize = NotebookCoverAsset(
+            path: asset.path,
+            sha256: sha256,
+            byteSize: png.count + 1
+        )
+        #expect(NotebookCoverImageCache.image(
+            for: wrongSize,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2,
+            loadData: { _ in png }
+        ) == nil)
+
+        let wrongHash = NotebookCoverAsset(
+            path: asset.path,
+            sha256: String(repeating: "0", count: 64),
+            byteSize: png.count
+        )
+        #expect(NotebookCoverImageCache.image(
+            for: wrongHash,
+            displaySize: CGSize(width: 45, height: 60),
+            scale: 2,
+            loadData: { _ in png }
+        ) == nil)
+
+        #expect(
+            NotebookCoverSource.shouldRenderProceduralPattern(
+                for: .canonicalAsset(asset), imageLoaded: false
+            ) == false
+        )
+        #expect(
+            NotebookCoverSource.shouldRenderProceduralPattern(
+                for: .localFile(path: asset.path), imageLoaded: false
+            ) == true
+        )
     }
 
     // MARK: - 存檔路徑（track-15）：downsampledJPEG（UIImage path）
