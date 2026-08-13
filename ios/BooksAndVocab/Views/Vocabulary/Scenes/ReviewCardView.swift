@@ -218,10 +218,12 @@ struct ReviewCardView: View {
             ViewThatFits(in: .vertical) {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("todayReview.card.front.content.natural")
                 ScrollView(.vertical) {
                     reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("todayReview.card.front.content.scroll")
             }
             .frame(height: drawnHeight, alignment: .top)
@@ -423,6 +425,7 @@ struct ReviewCardView: View {
                 answerContent(currentCard, plan: plan, layout: layout)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, maxHeight: maxHeight, alignment: .topLeading)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("todayReview.card.back.content.natural")
             case .scroll:
                 ScrollView(.vertical) {
@@ -430,6 +433,7 @@ struct ReviewCardView: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: maxHeight, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("todayReview.card.back.content.scroll")
             }
         }
