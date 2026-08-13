@@ -192,9 +192,9 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         )
         captureStep("launch", app: app)
 
-        let review = try startReview(app: app)
         let frontCapture = ReviewCardVisualEvidenceStep.largeTextCounterexample
         let backCapture = ReviewCardVisualEvidenceStep.smallViewportCounterexample
+        let review = try startReview(app: app, targetFrontWord: frontCapture.identity.frontWord)
         let editor = ReviewCardLayoutEditorPage(app: app)
 
         review.layoutEditorButton.tapWhenReady()
@@ -290,7 +290,10 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     // MARK: - Helpers
 
     @MainActor
-    private func startReview(app: XCUIApplication) throws -> TodayReviewPage {
+    private func startReview(
+        app: XCUIApplication,
+        targetFrontWord: String? = nil
+    ) throws -> TodayReviewPage {
         let notebook = AppPage(app: app).goToNotebooks()
         guard notebook.notebookCard(id: Self.notebookCardID).waitUntilExists(timeout: 10) else {
             captureStep("no-notebook-card", app: app)
@@ -307,6 +310,28 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             captureStep("review-not-started", app: app)
             XCTFail("複習 session 未啟動")
             throw ReviewCardLayoutEditorUITestError.preconditionFailed
+        }
+        if let targetFrontWord {
+            guard review.waitForUnique("todayReview.card.front", timeout: 10) else {
+                captureStep("review-card-not-mounted", app: app)
+                XCTFail("複習 session 已啟動但正面卡片未掛載")
+                throw ReviewCardLayoutEditorUITestError.preconditionFailed
+            }
+            var position = 1
+            while review.frontWord != targetFrontWord && position < 8 {
+                review.tapRemembered()
+                position += 1
+                guard review.waitForProgress("\(position) / ", timeout: 10) else {
+                    captureStep("target-card-not-reached", app: app)
+                    XCTFail("複習 queue 未能前進到 canonical card \(targetFrontWord)")
+                    throw ReviewCardLayoutEditorUITestError.preconditionFailed
+                }
+            }
+            guard review.frontWord == targetFrontWord else {
+                captureStep("target-card-not-found", app: app)
+                XCTFail("複習 queue 找不到 canonical card \(targetFrontWord)")
+                throw ReviewCardLayoutEditorUITestError.preconditionFailed
+            }
         }
         return review
     }
