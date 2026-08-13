@@ -1,0 +1,44 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T15:53:30+00:00",
+      "assetIDs": [
+        "01-launch",
+        "02-bookshelf-tab",
+        "03-settings-opened",
+        "04-required-settings",
+        "05-guest-account-state",
+        "06-baseline-preferences",
+        "07-feedback-preferences-toggle",
+        "08-review-rhythm-opened",
+        "09-section-navigation",
+        "10-freeze-clock-toggled",
+        "11-mode-intensive-selected",
+        "12-review-rhythm-back",
+        "13-review-summary-frozen-intensive",
+        "14-translation-opened",
+        "15-target-japanese-selected",
+        "16-translation-back",
+        "17-translation-summary-japanese",
+        "18-settings-dismissed"
+      ],
+      "notes": "P15 main preference flow：書庫→設定→帳號/偏好/翻譯/重設相關畫面保持一致，導航與控件未裁切或重疊。",
+      "visualChecks": [
+        "contact sheet 已檢查，主要內容、狀態、操作邊界可見且未裁切。",
+        "狀態轉換與長內容在同一可回溯 bundle 內呈現，未以單張畫面代替矩陣。"
+      ],
+      "manifestSHA256": "2085cdd49a1c181158bb2d84cc7865173559c711289751ff0f321f845a866907",
+      "evidenceRootSHA256": "7d7edfc1071d0e43518791585994f2ce103815cfcf7d58e3cb6b4ada4ca05294",
+      "provenance": {
+        "sourceCommit": "51ea717874f3844923c61de534f89336617e5849",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "3225e8017c3cb4d5839987708e7d04db39795d4524e9e8a3714c9845807504f7",
+        "device": "1D7DAF60-2D66-4E5B-85EE-C1E1087D73A8",
+        "selector": "--method SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges"
+      }
+    }
+  ]
+}

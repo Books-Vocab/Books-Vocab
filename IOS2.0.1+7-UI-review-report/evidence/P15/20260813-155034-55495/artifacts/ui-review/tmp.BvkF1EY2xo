@@ -1,0 +1,234 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /Users/chenliangyu/project/kg/.claude/worktrees/p15-settings-information-architecture-20260813/.cache/ios-test-derived-data/7769e19a2373535677c3e45ebe818239838040d362a62aa88f3f4ef1e2046117/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_55863.scoped.xctestrun -destination "platform=iOS Simulator,id=1D7DAF60-2D66-4E5B-85EE-C1E1087D73A8" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 420 -resultBundlePath /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.uN1s6f/Test.xcresult "-only-testing:BooksAndVocabUITests/SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors"
+
+2026-08-13 23:50:43.129 xcodebuild[56086:37583255] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.uN1s6f/Test.xcresult
+
+2026-08-13 23:50:43.157 xcodebuild[56086:37583255] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:50:44.327 xcodebuild[56086:37583255] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:50:45.475 xcodebuild[56086:37583255] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:50:46.596344+0800 BooksAndVocabUITests-Runner[56228:37583805] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-08-13 23:50:47.073.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 23:50:47.073.
+Test Suite 'SettingsFlowUITests' started at 2026-08-13 23:50:47.073.
+Test Case '-[BooksAndVocabUITests.SettingsFlowUITests testSettingsLongContentCounterexampleResolvesProductionSelectors]' started.
+    t =     0.00s Start Test at 2026-08-13 23:50:47.074
+    t =     0.02s Set Up
+    t =     0.03s Open com.Max0228.BooksBrowser
+    t =     0.03s     Launch com.Max0228.BooksBrowser
+2026-08-13 23:50:47.159 xcodebuild[56086:37583255] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 23:50:47.159 xcodebuild[56086:37583255] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.97s         Setting up automation session
+objc[56228]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1093f8310) and /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x109224398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     2.03s         Wait for com.Max0228.BooksBrowser to idle
+    t =     4.77s Checking `exists == 1 AND hittable == 1`
+    t =     4.77s     Checking existence of `"books.vertical" Button`
+    t =     4.90s     Capturing element debug description
+    t =     5.75s Checking `exists == 1 AND hittable == 1`
+    t =     5.75s     Checking existence of `"books.vertical" Button`
+    t =     5.81s     Find the "books.vertical" Button
+    t =     5.85s Tap "books.vertical" Button
+    t =     5.85s     Wait for com.Max0228.BooksBrowser to idle
+    t =     5.86s     Find the "books.vertical" Button
+    t =     5.89s     Check for interrupting elements affecting "books.vertical" Button
+    t =     5.91s     Synthesize event
+    t =     6.20s     Wait for com.Max0228.BooksBrowser to idle
+    t =     8.02s Checking `exists == 1`
+    t =     8.02s     Checking existence of `NavigationBar (First Match)`
+    t =     9.46s Checking `exists == 1 AND hittable == 1`
+    t =     9.46s     Checking existence of `"bookshelf.settingsButton" Button`
+    t =     9.52s     Find the "bookshelf.settingsButton" Button
+    t =     9.58s Tap "bookshelf.settingsButton" Button
+    t =     9.58s     Wait for com.Max0228.BooksBrowser to idle
+    t =     9.58s     Find the "bookshelf.settingsButton" Button
+    t =     9.60s     Check for interrupting elements affecting "bookshelf.settingsButton" Button
+    t =     9.63s     Synthesize event
+    t =     9.92s     Wait for com.Max0228.BooksBrowser to idle
+    t =    10.79s Get number of matches for: Elements matching predicate '"settings.dismissButton" IN identifiers'
+    t =    11.10s Waiting 5.0s for "settings.dismissButton" Button to exist
+    t =    12.14s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.dismissButton" Button`
+    t =    12.14s         Checking existence of `"settings.dismissButton" Button`
+    t =    12.49s Find the "settings.dismissButton" Button
+    t =    12.68s Find the "settings.dismissButton" Button
+    t =    12.80s Find the "settings.dismissButton" Button
+    t =    12.94s Get number of matches for: Elements matching predicate '"settings.account.logoutButton" IN identifiers'
+    t =    13.11s Waiting 5.0s for "settings.account.logoutButton" Button to exist
+    t =    14.15s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.logoutButton" Button`
+    t =    14.15s         Checking existence of `"settings.account.logoutButton" Button`
+    t =    14.49s Find the "settings.account.logoutButton" Button
+    t =    14.65s Find the "settings.account.logoutButton" Button
+    t =    14.76s Find the "settings.account.logoutButton" Button
+    t =    14.88s Get number of matches for: Elements matching predicate '"settings.preferences.syncGroup" IN identifiers'
+    t =    14.99s Waiting 5.0s for "settings.preferences.syncGroup" Other to exist
+    t =    16.03s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.syncGroup" Other`
+    t =    16.03s         Checking existence of `"settings.preferences.syncGroup" Other`
+    t =    16.19s Find the "settings.preferences.syncGroup" Other
+    t =    16.30s Find the "settings.preferences.syncGroup" Other
+    t =    16.42s Get number of matches for: Elements matching predicate '"settings.home.scrollView" IN identifiers'
+    t =    16.53s Waiting 5.0s for "settings.home.scrollView" ScrollView to exist
+    t =    17.58s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.home.scrollView" ScrollView`
+    t =    17.58s         Checking existence of `"settings.home.scrollView" ScrollView`
+    t =    17.93s Find the "settings.home.scrollView" ScrollView
+    t =    18.08s Find the "settings.home.scrollView" ScrollView
+    t =    18.19s Checking existence of `"settings.account.accountDetailRow" Button`
+    t =    18.30s Find the "settings.account.accountDetailRow" Button
+    t =    18.41s Find the "settings.home.scrollView" ScrollView
+    t =    18.52s Find the "settings.account.accountDetailRow" Button
+    t =    18.64s Find the "settings.account.accountDetailRow" Button
+    t =    19.81s Checking `exists == 1 AND hittable == 1`
+    t =    19.82s     Checking existence of `"settings.account.accountDetailRow" Button`
+    t =    19.98s     Find the "settings.account.accountDetailRow" Button
+    t =    20.10s Tap "settings.account.accountDetailRow" Button
+    t =    20.10s     Wait for com.Max0228.BooksBrowser to idle
+    t =    20.10s     Find the "settings.account.accountDetailRow" Button
+    t =    20.21s     Check for interrupting elements affecting "settings.account.accountDetailRow" Button
+    t =    20.28s     Synthesize event
+    t =    20.57s     Wait for com.Max0228.BooksBrowser to idle
+    t =    22.48s Checking `exists == 1`
+    t =    22.48s     Checking existence of `NavigationBar (First Match)`
+    t =    22.87s Get number of matches for: Elements matching predicate '"settings.detail.backButton" IN identifiers'
+    t =    23.06s Waiting 5.0s for "settings.detail.backButton" Button to exist
+    t =    24.11s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.detail.backButton" Button`
+    t =    24.12s         Checking existence of `"settings.detail.backButton" Button`
+    t =    24.24s Find the "settings.detail.backButton" Button
+    t =    24.31s Find the "settings.detail.backButton" Button
+    t =    24.38s Get number of matches for: Elements matching predicate '"settings.account.scrollView" IN identifiers'
+    t =    24.44s Waiting 5.0s for "settings.account.scrollView" ScrollView to exist
+    t =    25.48s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.scrollView" ScrollView`
+    t =    25.49s         Checking existence of `"settings.account.scrollView" ScrollView`
+    t =    25.67s Find the "settings.account.scrollView" ScrollView
+    t =    25.77s Find the "settings.account.scrollView" ScrollView
+    t =    25.85s Get number of matches for: Elements matching predicate '"settings.account.infoGroup" IN identifiers'
+    t =    25.91s Waiting 5.0s for "settings.account.infoGroup" Other to exist
+    t =    26.96s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.infoGroup" Other`
+    t =    26.97s         Checking existence of `"settings.account.infoGroup" Other`
+    t =    27.06s Find the "settings.account.infoGroup" Other
+    t =    27.13s Find the "settings.account.infoGroup" Other
+    t =    27.20s Get number of matches for: Elements matching predicate '"settings.account.dataManagementGroup" IN identifiers'
+    t =    27.27s Waiting 5.0s for "settings.account.dataManagementGroup" Other to exist
+    t =    28.32s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.dataManagementGroup" Other`
+    t =    28.32s         Checking existence of `"settings.account.dataManagementGroup" Other`
+    t =    28.43s Find the "settings.account.dataManagementGroup" Other
+    t =    28.50s Find the "settings.account.dataManagementGroup" Other
+    t =    28.57s Get number of matches for: Elements matching predicate '"settings.account.dangerGroup" IN identifiers'
+    t =    28.64s Waiting 5.0s for "settings.account.dangerGroup" Other to exist
+    t =    29.70s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.dangerGroup" Other`
+    t =    29.70s         Checking existence of `"settings.account.dangerGroup" Other`
+    t =    29.82s Find the "settings.account.dangerGroup" Other
+    t =    29.89s Find the "settings.account.dangerGroup" Other
+    t =    29.95s Get number of matches for: Elements matching predicate '"settings.account.resetBoundary" IN identifiers'
+    t =    30.02s Waiting 5.0s for "settings.account.resetBoundary" Other to exist
+    t =    31.05s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.resetBoundary" Other`
+    t =    31.05s         Checking existence of `"settings.account.resetBoundary" Other`
+    t =    31.18s Find the "settings.account.resetBoundary" Other
+    t =    31.27s Find the "settings.account.resetBoundary" Other
+    t =    31.34s Get number of matches for: Elements matching predicate '"settings.account.resetBoundary.before" IN identifiers'
+    t =    31.41s Waiting 5.0s for "settings.account.resetBoundary.before" Other to exist
+    t =    32.45s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.resetBoundary.before" Other`
+    t =    32.45s         Checking existence of `"settings.account.resetBoundary.before" Other`
+    t =    32.55s Find the "settings.account.resetBoundary.before" Other
+    t =    32.62s Find the "settings.account.resetBoundary.before" Other
+    t =    32.69s Get number of matches for: Elements matching predicate '"settings.account.resetBoundary.after" IN identifiers'
+    t =    32.75s Waiting 5.0s for "settings.account.resetBoundary.after" Other to exist
+    t =    33.80s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.resetBoundary.after" Other`
+    t =    33.81s         Checking existence of `"settings.account.resetBoundary.after" Other`
+    t =    34.00s Find the "settings.account.resetBoundary.after" Other
+    t =    34.10s Find the "settings.account.resetBoundary.after" Other
+    t =    34.17s Get number of matches for: Elements matching predicate '"settings.account.resetBoundary.phase" IN identifiers'
+    t =    34.24s Waiting 5.0s for "settings.account.resetBoundary.phase" StaticText to exist
+    t =    35.27s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.resetBoundary.phase" StaticText`
+    t =    35.27s         Checking existence of `"settings.account.resetBoundary.phase" StaticText`
+    t =    35.36s Find the "settings.account.resetBoundary.phase" StaticText
+    t =    35.43s Find the "settings.account.resetBoundary.phase" StaticText
+    t =    35.49s Get number of matches for: Elements matching predicate '"settings.account.resetBoundary.resetButton" IN identifiers'
+    t =    35.55s Waiting 5.0s for "settings.account.resetBoundary.resetButton" Button to exist
+    t =    36.58s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.resetBoundary.resetButton" Button`
+    t =    36.58s         Checking existence of `"settings.account.resetBoundary.resetButton" Button`
+    t =    36.69s Find the "settings.account.resetBoundary.resetButton" Button
+    t =    36.81s Find the "settings.account.resetBoundary.resetButton" Button
+    t =    36.90s Get number of matches for: Elements matching predicate '"settings.account.info.name" IN identifiers'
+    t =    36.97s Waiting 5.0s for "settings.account.info.name" StaticText to exist
+    t =    38.01s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.info.name" StaticText`
+    t =    38.02s         Checking existence of `"settings.account.info.name" StaticText`
+    t =    38.17s Find the "settings.account.info.name" StaticText
+    t =    38.32s Find the "settings.account.info.name" StaticText
+    t =    38.42s Get number of matches for: Elements matching predicate '"settings.account.info.email" IN identifiers'
+    t =    38.49s Waiting 5.0s for "settings.account.info.email" StaticText to exist
+    t =    39.53s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.info.email" StaticText`
+    t =    39.53s         Checking existence of `"settings.account.info.email" StaticText`
+    t =    39.62s Find the "settings.account.info.email" StaticText
+    t =    39.69s Find the "settings.account.info.email" StaticText
+    t =    39.76s Get number of matches for: Elements matching predicate '"settings.account.resetBoundary.resetButton" IN identifiers'
+    t =    39.82s Waiting 5.0s for "settings.account.resetBoundary.resetButton" Button to exist
+    t =    40.85s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.resetBoundary.resetButton" Button`
+    t =    40.85s         Checking existence of `"settings.account.resetBoundary.resetButton" Button`
+    t =    40.95s Find the "settings.account.resetBoundary.resetButton" Button
+    t =    41.02s Find the "settings.account.resetBoundary.resetButton" Button
+    t =    42.12s Checking `exists == 1 AND value == "preReset"`
+    t =    42.12s     Checking existence of `"settings.account.resetBoundary.phase" StaticText`
+    t =    42.31s     Find the "settings.account.resetBoundary.phase" StaticText
+    t =    42.40s Find the "settings.account.scrollView" ScrollView
+    t =    42.47s Find the "settings.account.scrollView" ScrollView
+    t =    42.54s Find the "settings.account.info.name" StaticText
+    t =    42.60s Find the "settings.account.info.email" StaticText
+    t =    42.66s Find the "settings.account.info.name" StaticText
+    t =    42.72s Find the "settings.account.info.email" StaticText
+    t =    42.79s Find the "settings.account.scrollView" ScrollView
+    t =    42.85s Find the "settings.account.info.name" StaticText
+    t =    42.91s Find the "settings.account.info.name" StaticText
+    t =    42.98s Swipe up "settings.account.scrollView" ScrollView
+    t =    42.98s     Wait for com.Max0228.BooksBrowser to idle
+    t =    42.98s     Find the "settings.account.scrollView" ScrollView
+    t =    43.04s     Check for interrupting elements affecting "settings.account.scrollView" ScrollView
+    t =    43.08s     Synthesize event
+    t =    43.52s     Wait for com.Max0228.BooksBrowser to idle
+    t =    44.40s Find the "settings.account.info.name" StaticText
+    t =    44.55s Find the "settings.account.info.name" StaticText
+    t =    44.67s Find the "settings.account.info.name" StaticText
+    t =    44.75s Checking existence of `"settings.account.info.email" StaticText`
+    t =    44.82s Find the "settings.account.info.email" StaticText
+    t =    44.88s Find the "settings.account.scrollView" ScrollView
+    t =    44.94s Find the "settings.account.info.email" StaticText
+    t =    45.01s Find the "settings.account.scrollView" ScrollView
+    t =    45.07s Checking existence of `"settings.account.info.email" StaticText`
+    t =    45.13s Find the "settings.account.info.email" StaticText
+    t =    45.19s Find the "settings.account.info.email" StaticText
+    t =    45.25s Swipe down "settings.account.scrollView" ScrollView
+    t =    45.25s     Wait for com.Max0228.BooksBrowser to idle
+    t =    45.37s     Find the "settings.account.scrollView" ScrollView
+    t =    45.45s     Check for interrupting elements affecting "settings.account.scrollView" ScrollView
+    t =    45.50s     Synthesize event
+    t =    45.94s     Wait for com.Max0228.BooksBrowser to idle
+    t =    46.61s Checking existence of `"settings.account.info.email" StaticText`
+    t =    46.73s Find the "settings.account.info.email" StaticText
+    t =    46.81s Find the "settings.account.scrollView" ScrollView
+    t =    46.88s Find the "settings.account.info.email" StaticText
+    t =    46.94s Find the "settings.account.info.email" StaticText
+    t =    47.01s Find the "settings.account.info.email" StaticText
+    t =    47.07s Find the "settings.account.info.email" StaticText
+    t =    47.13s Find the "settings.account.info.email" StaticText
+    t =    47.19s Find the "settings.account.info.email" StaticText
+    t =    47.25s Find the "settings.account.scrollView" ScrollView
+    t =    47.32s Find the "settings.account.info.email" StaticText
+    t =    47.38s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    47.52s Added attachment named 'Step 01-long-content-counterexample'
+    t =    47.52s Tear Down
+Test Case '-[BooksAndVocabUITests.SettingsFlowUITests testSettingsLongContentCounterexampleResolvesProductionSelectors]' passed (47.779 seconds).
+Test Suite 'SettingsFlowUITests' passed at 2026-08-13 23:51:34.853.
+	 Executed 1 test, with 0 failures (0 unexpected) in 47.779 (47.779) seconds
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 23:51:34.853.
+	 Executed 1 test, with 0 failures (0 unexpected) in 47.779 (47.780) seconds
+Test Suite 'Selected tests' passed at 2026-08-13 23:51:34.853.
+	 Executed 1 test, with 0 failures (0 unexpected) in 47.779 (47.780) seconds
+2026-08-13 23:51:35.184 xcodebuild[56086:37583255] [MT] IDETestOperationsObserverDebug: 50.845 elapsed -- Testing started completed.
+2026-08-13 23:51:35.184 xcodebuild[56086:37583255] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-08-13 23:51:35.184 xcodebuild[56086:37583255] [MT] IDETestOperationsObserverDebug: 50.845 sec, +50.845 sec -- end
+
+Test session results, code coverage, and logs:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.uN1s6f/Test.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

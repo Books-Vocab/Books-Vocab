@@ -1,0 +1,387 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /Users/chenliangyu/project/kg/.claude/worktrees/p15-settings-information-architecture-20260813/.cache/ios-test-derived-data/7769e19a2373535677c3e45ebe818239838040d362a62aa88f3f4ef1e2046117/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_51152.scoped.xctestrun -destination "platform=iOS Simulator,id=1D7DAF60-2D66-4E5B-85EE-C1E1087D73A8" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 420 -resultBundlePath /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.616ZnZ/Test.xcresult "-only-testing:BooksAndVocabUITests/SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges"
+
+2026-08-13 23:48:45.743 xcodebuild[51476:37569192] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.616ZnZ/Test.xcresult
+
+2026-08-13 23:48:45.806 xcodebuild[51476:37569192] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:48:46.946 xcodebuild[51476:37569192] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:48:48.166 xcodebuild[51476:37569192] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:48:49.279308+0800 BooksAndVocabUITests-Runner[51806:37571299] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-08-13 23:48:49.854.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 23:48:49.854.
+Test Suite 'SettingsFlowUITests' started at 2026-08-13 23:48:49.854.
+Test Case '-[BooksAndVocabUITests.SettingsFlowUITests testSettingsFlowAppliesRealPreferenceChanges]' started.
+    t =     0.00s Start Test at 2026-08-13 23:48:49.855
+    t =     0.02s Set Up
+    t =     0.02s Open com.Max0228.BooksBrowser
+    t =     0.03s     Launch com.Max0228.BooksBrowser
+2026-08-13 23:48:49.954 xcodebuild[51476:37569192] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 23:48:49.954 xcodebuild[51476:37569192] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =     0.91s         Setting up automation session
+objc[51806]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x106de0310) and /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x106c24398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     1.98s         Wait for com.Max0228.BooksBrowser to idle
+    t =     3.88s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =     4.05s Added attachment named 'Step 01-launch'
+    t =     5.12s Checking `exists == 1 AND hittable == 1`
+    t =     5.12s     Checking existence of `"books.vertical" Button`
+    t =     5.23s     Find the "books.vertical" Button
+    t =     5.28s Tap "books.vertical" Button
+    t =     5.28s     Wait for com.Max0228.BooksBrowser to idle
+    t =     5.28s     Find the "books.vertical" Button
+    t =     5.32s     Check for interrupting elements affecting "books.vertical" Button
+    t =     5.35s     Synthesize event
+    t =     5.63s     Wait for com.Max0228.BooksBrowser to idle
+    t =     7.47s Checking `exists == 1`
+    t =     7.47s     Checking existence of `NavigationBar (First Match)`
+    t =     7.85s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =     8.00s Added attachment named 'Step 02-bookshelf-tab'
+    t =     9.07s Checking `exists == 1 AND hittable == 1`
+    t =     9.07s     Checking existence of `"bookshelf.settingsButton" Button`
+    t =     9.10s     Find the "bookshelf.settingsButton" Button
+    t =     9.15s Tap "bookshelf.settingsButton" Button
+    t =     9.15s     Wait for com.Max0228.BooksBrowser to idle
+    t =     9.15s     Find the "bookshelf.settingsButton" Button
+    t =     9.18s     Check for interrupting elements affecting "bookshelf.settingsButton" Button
+    t =     9.21s     Synthesize event
+    t =     9.51s     Wait for com.Max0228.BooksBrowser to idle
+    t =    10.38s Get number of matches for: Elements matching predicate '"settings.dismissButton" IN identifiers'
+    t =    10.56s Waiting 5.0s for "settings.dismissButton" Button to exist
+    t =    11.63s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.dismissButton" Button`
+    t =    11.64s         Checking existence of `"settings.dismissButton" Button`
+    t =    11.77s Find the "settings.dismissButton" Button
+    t =    11.86s Find the "settings.dismissButton" Button
+    t =    11.96s Find the "settings.dismissButton" Button
+    t =    12.06s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    12.21s Added attachment named 'Step 03-settings-opened'
+    t =    12.21s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    12.38s Added attachment named 'Step 04-required-settings'
+    t =    12.38s Get number of matches for: Elements matching predicate '"settings.preferences.appearanceGroup" IN identifiers'
+    t =    12.57s Waiting 5.0s for "settings.preferences.appearanceGroup" Other to exist
+    t =    13.63s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.appearanceGroup" Other`
+    t =    13.63s         Checking existence of `"settings.preferences.appearanceGroup" Other`
+    t =    13.77s Find the "settings.preferences.appearanceGroup" Other
+    t =    13.86s Find the "settings.preferences.appearanceGroup" Other
+    t =    13.95s Get number of matches for: Elements matching predicate '"settings.preferences.learningGroup" IN identifiers'
+    t =    14.04s Waiting 5.0s for "settings.preferences.learningGroup" Other to exist
+    t =    15.12s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.learningGroup" Other`
+    t =    15.12s         Checking existence of `"settings.preferences.learningGroup" Other`
+    t =    15.38s Find the "settings.preferences.learningGroup" Other
+    t =    15.55s Find the "settings.preferences.learningGroup" Other
+    t =    15.65s Get number of matches for: Elements matching predicate '"settings.preferences.feedbackGroup" IN identifiers'
+    t =    15.74s Waiting 5.0s for "settings.preferences.feedbackGroup" Other to exist
+    t =    16.80s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.feedbackGroup" Other`
+    t =    16.80s         Checking existence of `"settings.preferences.feedbackGroup" Other`
+    t =    17.02s Find the "settings.preferences.feedbackGroup" Other
+    t =    17.17s Find the "settings.preferences.feedbackGroup" Other
+    t =    17.28s Get number of matches for: Elements matching predicate '"settings.preferences.readerGroup" IN identifiers'
+    t =    17.37s Waiting 5.0s for "settings.preferences.readerGroup" Other to exist
+    t =    18.42s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.readerGroup" Other`
+    t =    18.42s         Checking existence of `"settings.preferences.readerGroup" Other`
+    t =    18.65s Find the "settings.preferences.readerGroup" Other
+    t =    18.76s Find the "settings.preferences.readerGroup" Other
+    t =    18.85s Get number of matches for: Elements matching predicate '"settings.account.logoutButton" IN identifiers'
+    t =    18.94s Get number of matches for: Elements matching predicate '"settings.account.logoutButton" IN identifiers'
+    t =    19.03s Get number of matches for: Elements matching predicate '"settings.account.googleLoginButton" IN identifiers'
+    t =    19.11s Waiting 5.0s for "settings.account.googleLoginButton" Button to exist
+    t =    20.17s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.googleLoginButton" Button`
+    t =    20.18s         Checking existence of `"settings.account.googleLoginButton" Button`
+    t =    20.44s Find the "settings.account.googleLoginButton" Button
+    t =    20.70s Find the "settings.account.googleLoginButton" Button
+    t =    20.83s Find the "settings.account.googleLoginButton" Button
+    t =    20.93s Get number of matches for: Elements matching predicate '"settings.account.appleLoginButton" IN identifiers'
+    t =    21.02s Waiting 5.0s for "settings.account.appleLoginButton" Button to exist
+    t =    22.07s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.account.appleLoginButton" Button`
+    t =    22.08s         Checking existence of `"settings.account.appleLoginButton" Button`
+    t =    22.25s Find the "settings.account.appleLoginButton" Button
+    t =    22.35s Find the "settings.account.appleLoginButton" Button
+    t =    22.45s Find the "settings.account.appleLoginButton" Button
+    t =    22.54s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    22.67s Added attachment named 'Step 05-guest-account-state'
+    t =    22.68s Get number of matches for: Elements matching predicate '"settings.home.scrollView" IN identifiers'
+    t =    22.89s Waiting 5.0s for "settings.home.scrollView" ScrollView to exist
+    t =    23.96s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.home.scrollView" ScrollView`
+    t =    23.96s         Checking existence of `"settings.home.scrollView" ScrollView`
+    t =    24.08s Find the "settings.home.scrollView" ScrollView
+    t =    24.18s Find the "settings.home.scrollView" ScrollView
+    t =    24.26s Get number of matches for: Elements matching predicate '"settings.preferences.reviewRhythmValue" IN identifiers'
+    t =    24.35s Waiting 5.0s for "settings.preferences.reviewRhythmValue" StaticText to exist
+    t =    25.42s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.reviewRhythmValue" StaticText`
+    t =    25.42s         Checking existence of `"settings.preferences.reviewRhythmValue" StaticText`
+    t =    25.70s Find the "settings.preferences.reviewRhythmValue" StaticText
+    t =    25.84s Find the "settings.preferences.reviewRhythmValue" StaticText
+    t =    25.93s Get number of matches for: Elements matching predicate '"settings.preferences.translationLanguageValue" IN identifiers'
+    t =    26.03s Waiting 5.0s for "settings.preferences.translationLanguageValue" StaticText to exist
+    t =    27.07s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.translationLanguageValue" StaticText`
+    t =    27.07s         Checking existence of `"settings.preferences.translationLanguageValue" StaticText`
+    t =    27.38s Find the "settings.preferences.translationLanguageValue" StaticText
+    t =    27.61s Find the "settings.preferences.translationLanguageValue" StaticText
+    t =    27.75s Find the "settings.preferences.reviewRhythmValue" StaticText
+    t =    27.84s Find the "settings.preferences.translationLanguageValue" StaticText
+    t =    27.93s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    28.07s Added attachment named 'Step 06-baseline-preferences'
+    t =    28.07s Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    28.24s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    28.34s Find the "settings.home.scrollView" ScrollView
+    t =    28.43s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    28.52s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    28.61s Find the "settings.home.scrollView" ScrollView
+    t =    28.70s Swipe up "settings.home.scrollView" ScrollView
+    t =    28.70s     Wait for com.Max0228.BooksBrowser to idle
+    t =    28.70s     Find the "settings.home.scrollView" ScrollView
+    t =    28.79s     Check for interrupting elements affecting "settings.home.scrollView" ScrollView
+    t =    28.86s     Synthesize event
+    t =    29.41s     Wait for com.Max0228.BooksBrowser to idle
+    t =    31.31s Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    31.58s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    31.84s Find the "settings.home.scrollView" ScrollView
+    t =    31.99s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    32.09s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    32.22s Get number of matches for: Elements matching predicate '"settings.preferences.soundFeedbackToggle" IN identifiers'
+    t =    32.31s Waiting 5.0s for "settings.preferences.soundFeedbackToggle" Switch to exist
+    t =    33.37s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.soundFeedbackToggle" Switch`
+    t =    33.37s         Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    33.61s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    33.72s Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    33.82s Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    33.91s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    34.00s Find the "settings.home.scrollView" ScrollView
+    t =    34.09s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    34.18s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    34.31s Get number of matches for: Elements matching predicate '"settings.preferences.hapticFeedbackToggle" IN identifiers'
+    t =    34.40s Waiting 5.0s for "settings.preferences.hapticFeedbackToggle" Switch to exist
+    t =    35.46s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.preferences.hapticFeedbackToggle" Switch`
+    t =    35.46s         Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    35.58s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    35.67s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    36.81s Checking `exists == 1 AND value == "0"`
+    t =    36.81s     Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    36.93s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    38.07s Checking `exists == 1 AND hittable == 1`
+    t =    38.07s     Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    38.29s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    38.52s Tap "settings.preferences.soundFeedbackToggle" Switch
+    t =    38.52s     Wait for com.Max0228.BooksBrowser to idle
+    t =    38.52s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    38.64s     Check for interrupting elements affecting "settings.preferences.soundFeedbackToggle" Switch
+    t =    38.70s     Synthesize event
+    t =    39.01s     Wait for com.Max0228.BooksBrowser to idle
+    t =    41.37s Checking `exists == 1 AND value == "1"`
+    t =    41.37s     Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    41.64s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    42.92s Checking `exists == 1 AND hittable == 1`
+    t =    42.92s     Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    43.18s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    43.34s Tap "settings.preferences.soundFeedbackToggle" Switch
+    t =    43.34s     Wait for com.Max0228.BooksBrowser to idle
+    t =    43.34s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    43.45s     Check for interrupting elements affecting "settings.preferences.soundFeedbackToggle" Switch
+    t =    43.50s     Synthesize event
+    t =    43.82s     Wait for com.Max0228.BooksBrowser to idle
+    t =    46.17s Checking `exists == 1 AND value == "0"`
+    t =    46.17s     Checking existence of `"settings.preferences.soundFeedbackToggle" Switch`
+    t =    46.33s     Find the "settings.preferences.soundFeedbackToggle" Switch
+    t =    46.43s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    46.55s Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    47.72s Checking `exists == 1 AND value == "1"`
+    t =    47.72s     Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    47.99s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    49.21s Checking `exists == 1 AND hittable == 1`
+    t =    49.21s     Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    49.33s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    49.47s Tap "settings.preferences.hapticFeedbackToggle" Switch
+    t =    49.47s     Wait for com.Max0228.BooksBrowser to idle
+    t =    49.47s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    49.56s     Check for interrupting elements affecting "settings.preferences.hapticFeedbackToggle" Switch
+    t =    49.62s     Synthesize event
+    t =    49.93s     Wait for com.Max0228.BooksBrowser to idle
+    t =    52.27s Checking `exists == 1 AND value == "0"`
+    t =    52.27s     Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    52.52s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    53.67s Checking `exists == 1 AND hittable == 1`
+    t =    53.67s     Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    53.93s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    54.16s Tap "settings.preferences.hapticFeedbackToggle" Switch
+    t =    54.16s     Wait for com.Max0228.BooksBrowser to idle
+    t =    54.16s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    54.28s     Check for interrupting elements affecting "settings.preferences.hapticFeedbackToggle" Switch
+    t =    54.33s     Synthesize event
+    t =    54.64s     Wait for com.Max0228.BooksBrowser to idle
+    t =    57.00s Checking `exists == 1 AND value == "1"`
+    t =    57.00s     Checking existence of `"settings.preferences.hapticFeedbackToggle" Switch`
+    t =    57.25s     Find the "settings.preferences.hapticFeedbackToggle" Switch
+    t =    57.36s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    57.50s Added attachment named 'Step 07-feedback-preferences-toggle'
+    t =    57.50s Checking existence of `"settings.preferences.reviewRhythmRow" Button`
+    t =    57.63s Find the "settings.preferences.reviewRhythmRow" Button
+    t =    57.73s Find the "settings.home.scrollView" ScrollView
+    t =    57.82s Find the "settings.preferences.reviewRhythmRow" Button
+    t =    57.91s Find the "settings.preferences.reviewRhythmRow" Button
+    t =    59.01s Checking `exists == 1 AND hittable == 1`
+    t =    59.01s     Checking existence of `"settings.preferences.reviewRhythmRow" Button`
+    t =    59.29s     Find the "settings.preferences.reviewRhythmRow" Button
+    t =    59.44s Tap "settings.preferences.reviewRhythmRow" Button
+    t =    59.44s     Wait for com.Max0228.BooksBrowser to idle
+    t =    59.44s     Find the "settings.preferences.reviewRhythmRow" Button
+    t =    59.55s     Check for interrupting elements affecting "settings.preferences.reviewRhythmRow" Button
+    t =    59.61s     Synthesize event
+    t =    59.90s     Wait for com.Max0228.BooksBrowser to idle
+    t =    61.92s Checking `exists == 1`
+    t =    61.92s     Checking existence of `NavigationBar (First Match)`
+    t =    62.30s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    62.48s Added attachment named 'Step 08-review-rhythm-opened'
+    t =    62.48s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    62.61s Added attachment named 'Step 09-section-navigation'
+    t =    62.61s Get number of matches for: Elements matching predicate '"settings.review.pauseToggle" IN identifiers'
+    t =    62.71s Waiting 5.0s for "settings.review.pauseToggle" Switch to exist
+    t =    63.75s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.review.pauseToggle" Switch`
+    t =    63.76s         Checking existence of `"settings.review.pauseToggle" Switch`
+    t =    63.88s Find the "settings.review.pauseToggle" Switch
+    t =    63.97s Find the "settings.review.pauseToggle" Switch
+    t =    65.07s Checking `exists == 1 AND value == "0"`
+    t =    65.07s     Checking existence of `"settings.review.pauseToggle" Switch`
+    t =    65.21s     Find the "settings.review.pauseToggle" Switch
+    t =    66.33s Checking `exists == 1 AND hittable == 1`
+    t =    66.34s     Checking existence of `"settings.review.pauseToggle" Switch`
+    t =    66.47s     Find the "settings.review.pauseToggle" Switch
+    t =    66.59s Tap "settings.review.pauseToggle" Switch
+    t =    66.59s     Wait for com.Max0228.BooksBrowser to idle
+    t =    66.59s     Find the "settings.review.pauseToggle" Switch
+    t =    66.69s     Check for interrupting elements affecting "settings.review.pauseToggle" Switch
+    t =    66.73s     Synthesize event
+    t =    67.02s     Wait for com.Max0228.BooksBrowser to idle
+    t =    69.34s Checking `exists == 1 AND value == "1"`
+    t =    69.34s     Checking existence of `"settings.review.pauseToggle" Switch`
+    t =    69.48s     Find the "settings.review.pauseToggle" Switch
+    t =    69.58s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    69.72s Added attachment named 'Step 10-freeze-clock-toggled'
+    t =    69.72s Get number of matches for: Elements matching predicate '"settings.review.modeTile.intensive" IN identifiers'
+    t =    69.79s Waiting 5.0s for "settings.review.modeTile.intensive" Button to exist
+    t =    70.85s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.review.modeTile.intensive" Button`
+    t =    70.86s         Checking existence of `"settings.review.modeTile.intensive" Button`
+    t =    70.97s Find the "settings.review.modeTile.intensive" Button
+    t =    71.08s Find the "settings.review.modeTile.intensive" Button
+    t =    71.19s Find the "settings.review.modeTile.intensive" Button
+    t =    72.32s Checking `exists == 1 AND hittable == 1`
+    t =    72.32s     Checking existence of `"settings.review.modeTile.intensive" Button`
+    t =    72.46s     Find the "settings.review.modeTile.intensive" Button
+    t =    72.56s Tap "settings.review.modeTile.intensive" Button
+    t =    72.56s     Wait for com.Max0228.BooksBrowser to idle
+    t =    72.56s     Find the "settings.review.modeTile.intensive" Button
+    t =    72.67s     Check for interrupting elements affecting "settings.review.modeTile.intensive" Button
+    t =    72.72s     Synthesize event
+    t =    73.00s     Wait for com.Max0228.BooksBrowser to idle
+    t =    73.29s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    73.43s Added attachment named 'Step 11-mode-intensive-selected'
+    t =    74.45s Checking `exists == 1 AND hittable == 1`
+    t =    74.45s     Checking existence of `"settings.detail.backButton" Button`
+    t =    74.57s     Find the "settings.detail.backButton" Button
+    t =    74.64s Tap "settings.detail.backButton" Button
+    t =    74.64s     Wait for com.Max0228.BooksBrowser to idle
+    t =    74.64s     Find the "settings.detail.backButton" Button
+    t =    74.71s     Check for interrupting elements affecting "settings.detail.backButton" Button
+    t =    74.75s     Synthesize event
+    t =    75.04s     Wait for com.Max0228.BooksBrowser to idle
+    t =    76.85s Checking `exists == 1`
+    t =    76.85s     Checking existence of `NavigationBar (First Match)`
+    t =    77.23s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    77.47s Added attachment named 'Step 12-review-rhythm-back'
+    t =    78.51s Checking `exists == 1 AND label CONTAINS[c] "已凍結"`
+    t =    78.51s     Checking existence of `"settings.preferences.reviewRhythmValue" StaticText`
+    t =    78.78s     Find the "settings.preferences.reviewRhythmValue" StaticText
+    t =    79.04s Find the "settings.preferences.reviewRhythmValue" StaticText
+    t =    79.22s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    79.39s Added attachment named 'Step 13-review-summary-frozen-intensive'
+    t =    79.39s Checking existence of `"settings.preferences.translationLanguageRow" Button`
+    t =    79.53s Find the "settings.preferences.translationLanguageRow" Button
+    t =    79.63s Find the "settings.home.scrollView" ScrollView
+    t =    79.72s Find the "settings.preferences.translationLanguageRow" Button
+    t =    79.81s Find the "settings.preferences.translationLanguageRow" Button
+    t =    80.95s Checking `exists == 1 AND hittable == 1`
+    t =    80.95s     Checking existence of `"settings.preferences.translationLanguageRow" Button`
+    t =    81.14s     Find the "settings.preferences.translationLanguageRow" Button
+    t =    81.28s Tap "settings.preferences.translationLanguageRow" Button
+    t =    81.28s     Wait for com.Max0228.BooksBrowser to idle
+    t =    81.28s     Find the "settings.preferences.translationLanguageRow" Button
+    t =    81.39s     Check for interrupting elements affecting "settings.preferences.translationLanguageRow" Button
+    t =    81.44s     Synthesize event
+    t =    81.72s     Wait for com.Max0228.BooksBrowser to idle
+    t =    83.64s Checking `exists == 1`
+    t =    83.64s     Checking existence of `NavigationBar (First Match)`
+    t =    84.02s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    84.22s Added attachment named 'Step 14-translation-opened'
+    t =    84.22s Get number of matches for: Elements matching predicate '"settings.translation.target.ja" IN identifiers'
+    t =    84.35s Waiting 5.0s for "settings.translation.target.ja" Button to exist
+    t =    85.37s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.translation.target.ja" Button`
+    t =    85.37s         Checking existence of `"settings.translation.target.ja" Button`
+    t =    85.54s Find the "settings.translation.target.ja" Button
+    t =    85.64s Find the "settings.translation.target.ja" Button
+    t =    85.71s Find the "settings.translation.target.ja" Button
+    t =    86.82s Checking `exists == 1 AND hittable == 1`
+    t =    86.82s     Checking existence of `"settings.translation.target.ja" Button`
+    t =    87.00s     Find the "settings.translation.target.ja" Button
+    t =    87.09s Tap "settings.translation.target.ja" Button
+    t =    87.09s     Wait for com.Max0228.BooksBrowser to idle
+    t =    87.10s     Find the "settings.translation.target.ja" Button
+    t =    87.16s     Check for interrupting elements affecting "settings.translation.target.ja" Button
+    t =    87.21s     Synthesize event
+    t =    87.50s     Wait for com.Max0228.BooksBrowser to idle
+    t =    87.51s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    87.70s Added attachment named 'Step 15-target-japanese-selected'
+    t =    88.72s Checking `exists == 1 AND hittable == 1`
+    t =    88.72s     Checking existence of `"settings.detail.backButton" Button`
+    t =    88.88s     Find the "settings.detail.backButton" Button
+    t =    88.99s Tap "settings.detail.backButton" Button
+    t =    88.99s     Wait for com.Max0228.BooksBrowser to idle
+    t =    88.99s     Find the "settings.detail.backButton" Button
+    t =    89.05s     Check for interrupting elements affecting "settings.detail.backButton" Button
+    t =    89.10s     Synthesize event
+    t =    89.39s     Wait for com.Max0228.BooksBrowser to idle
+    t =    91.21s Checking `exists == 1`
+    t =    91.21s     Checking existence of `NavigationBar (First Match)`
+    t =    91.57s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    91.81s Added attachment named 'Step 16-translation-back'
+    t =    92.84s Checking `exists == 1 AND label CONTAINS[c] "日本語"`
+    t =    92.84s     Checking existence of `"settings.preferences.translationLanguageValue" StaticText`
+    t =    93.13s     Find the "settings.preferences.translationLanguageValue" StaticText
+    t =    93.29s Find the "settings.preferences.translationLanguageValue" StaticText
+    t =    93.40s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    93.53s Added attachment named 'Step 17-translation-summary-japanese'
+    t =    93.53s Find the "settings.preferences.reviewRhythmValue" StaticText
+    t =    93.65s Find the "settings.preferences.translationLanguageValue" StaticText
+    t =    93.74s Added attachment named 'Settings Flow State Transitions'
+    t =    94.77s Checking `exists == 1 AND hittable == 1`
+    t =    94.77s     Checking existence of `"settings.dismissButton" Button`
+    t =    95.04s     Find the "settings.dismissButton" Button
+    t =    95.16s Tap "settings.dismissButton" Button
+    t =    95.16s     Wait for com.Max0228.BooksBrowser to idle
+    t =    95.16s     Find the "settings.dismissButton" Button
+    t =    95.27s     Check for interrupting elements affecting "settings.dismissButton" Button
+    t =    95.33s     Synthesize event
+    t =    95.62s     Wait for com.Max0228.BooksBrowser to idle
+    t =    97.43s Checking `exists == 0`
+    t =    97.43s     Checking existence of `"settings.dismissButton" Button`
+    t =    98.53s Checking `exists == 1`
+    t =    98.54s     Checking existence of `"bookshelf.importButton" Button`
+    t =    98.61s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    98.73s Added attachment named 'Step 18-settings-dismissed'
+    t =    98.74s Tear Down
+Test Case '-[BooksAndVocabUITests.SettingsFlowUITests testSettingsFlowAppliesRealPreferenceChanges]' passed (99.018 seconds).
+Test Suite 'SettingsFlowUITests' passed at 2026-08-13 23:50:28.874.
+	 Executed 1 test, with 0 failures (0 unexpected) in 99.018 (99.020) seconds
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 23:50:28.875.
+	 Executed 1 test, with 0 failures (0 unexpected) in 99.018 (99.021) seconds
+Test Suite 'Selected tests' passed at 2026-08-13 23:50:28.876.
+	 Executed 1 test, with 0 failures (0 unexpected) in 99.018 (99.022) seconds
+2026-08-13 23:50:29.266 xcodebuild[51476:37569192] [MT] IDETestOperationsObserverDebug: 102.306 elapsed -- Testing started completed.
+2026-08-13 23:50:29.266 xcodebuild[51476:37569192] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-08-13 23:50:29.266 xcodebuild[51476:37569192] [MT] IDETestOperationsObserverDebug: 102.306 sec, +102.306 sec -- end
+
+Test session results, code coverage, and logs:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.616ZnZ/Test.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

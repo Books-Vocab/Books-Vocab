@@ -1,0 +1,27 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T15:53:30+00:00",
+      "assetIDs": [
+        "01-long-content-counterexample"
+      ],
+      "notes": "P15 long-content counterexample：超長名稱/email/帳號詳情與設定內容可讀，垂直滾動與底部操作未裁切或重疊。",
+      "visualChecks": [
+        "contact sheet 已檢查，主要內容、狀態、操作邊界可見且未裁切。",
+        "狀態轉換與長內容在同一可回溯 bundle 內呈現，未以單張畫面代替矩陣。"
+      ],
+      "manifestSHA256": "d6950d733f2dd8a0396ad12e1340869c8420f1f3ec642cd11f9769f4571b57a7",
+      "evidenceRootSHA256": "c0f526fc41af58f2f4e1cd859c41944cf0c608a1b8bd77175a87f45f7ec8fd88",
+      "provenance": {
+        "sourceCommit": "51ea717874f3844923c61de534f89336617e5849",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "3225e8017c3cb4d5839987708e7d04db39795d4524e9e8a3714c9845807504f7",
+        "device": "1D7DAF60-2D66-4E5B-85EE-C1E1087D73A8",
+        "selector": "--method SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors"
+      }
+    }
+  ]
+}

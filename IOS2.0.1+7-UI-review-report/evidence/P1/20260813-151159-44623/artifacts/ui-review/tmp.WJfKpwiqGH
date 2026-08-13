@@ -1,0 +1,197 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /Users/chenliangyu/project/kg/.claude/worktrees/p1-dictionary-lookup-state-20260813/.cache/ios-test-derived-data/0b9be23e3f62f72c9aa0686dbbeb916ba137f0eb11715d79031cc81a96aae0d8/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_45111.scoped.xctestrun -destination "platform=iOS Simulator,id=8B65DAD1-A260-43E5-99EA-6191CB11B33A" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120 -resultBundlePath /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.zZzXzp/Test.xcresult "-only-testing:BooksAndVocabUITests/DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization"
+
+2026-08-13 23:12:10.805 xcodebuild[45373:37264014] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.zZzXzp/Test.xcresult
+
+2026-08-13 23:12:10.862 xcodebuild[45373:37264014] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:12:12.639 xcodebuild[45373:37264014] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:12:14.251 xcodebuild[45373:37264014] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 23:12:16.263668+0800 BooksAndVocabUITests-Runner[45569:37264832] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-08-13 23:12:17.031.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 23:12:17.032.
+Test Suite 'DictionaryLookupFlowUITests' started at 2026-08-13 23:12:17.032.
+Test Case '-[BooksAndVocabUITests.DictionaryLookupFlowUITests testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization]' started.
+    t =     0.00s Start Test at 2026-08-13 23:12:17.032
+    t =     0.02s Set Up
+    t =     0.03s Open com.Max0228.BooksBrowser
+    t =     0.03s     Launch com.Max0228.BooksBrowser
+2026-08-13 23:12:17.315 xcodebuild[45373:37264014] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 23:12:17.315 xcodebuild[45373:37264014] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[45569]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1077fc310) and /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10661c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     1.82s         Setting up automation session
+    t =     3.92s         Wait for com.Max0228.BooksBrowser to idle
+    t =     6.46s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =     6.71s Added attachment named 'Step 01-launch'
+    t =     6.71s Get number of matches for: Elements matching predicate '"單字本" IN identifiers'
+    t =     7.86s Checking `exists == 1 AND hittable == 1`
+    t =     7.86s     Checking existence of `"單字本" Button`
+    t =     7.91s     Find the "單字本" Button
+    t =     7.96s Tap "character.book.closed" Button
+    t =     7.96s     Wait for com.Max0228.BooksBrowser to idle
+    t =     7.96s     Find the "character.book.closed" Button
+    t =     8.00s     Check for interrupting elements affecting "character.book.closed" Button
+    t =     8.03s     Synthesize event
+    t =     8.31s     Wait for com.Max0228.BooksBrowser to idle
+    t =    10.09s Get number of matches for: Elements matching predicate '"notebook.card.ui-review-notebook" IN identifiers'
+    t =    11.20s Checking `exists == 1`
+    t =    11.20s     Checking existence of `"notebook.card.ui-review-notebook" Any`
+    t =    11.26s Get number of matches for: Elements matching predicate '"notebook.reviewCTA" IN identifiers'
+    t =    12.36s Checking `exists == 1`
+    t =    12.36s     Checking existence of `"notebook.reviewCTA" Any`
+    t =    12.41s Get number of matches for: Elements matching predicate '"notebook.reviewCTA" IN identifiers'
+    t =    13.49s Checking `exists == 1 AND hittable == 1`
+    t =    13.49s     Checking existence of `"notebook.reviewCTA" Any`
+    t =    13.53s     Find the "notebook.reviewCTA" Any
+    t =    13.57s Tap "notebook.reviewCTA" Button
+    t =    13.57s     Wait for com.Max0228.BooksBrowser to idle
+    t =    13.57s     Find the "notebook.reviewCTA" Button
+    t =    13.61s     Check for interrupting elements affecting "notebook.reviewCTA" Button
+    t =    13.63s     Synthesize event
+    t =    13.93s     Wait for com.Max0228.BooksBrowser to idle
+    t =    14.03s Get number of matches for: Elements matching predicate '"todayReview.progressLabel" IN identifiers'
+    t =    15.15s Checking `exists == 1`
+    t =    15.15s     Checking existence of `"todayReview.progressLabel" Any`
+    t =    15.24s Get number of matches for: Elements matching predicate '"todayReview.card.front" IN identifiers'
+    t =    16.35s Checking `exists == 1 AND hittable == 1`
+    t =    16.35s     Checking existence of `"todayReview.card.front" Any`
+    t =    16.39s     Find the "todayReview.card.front" Any
+    t =    16.44s Tap "todayReview.card.front" Button
+    t =    16.44s     Wait for com.Max0228.BooksBrowser to idle
+    t =    16.44s     Find the "todayReview.card.front" Button
+    t =    16.49s     Check for interrupting elements affecting "todayReview.card.front" Button
+    t =    16.51s     Synthesize event
+    t =    16.80s     Wait for com.Max0228.BooksBrowser to idle
+    t =    16.81s Get number of matches for: Elements matching predicate '"todayReview.card.addLink" IN identifiers'
+    t =    17.91s Checking `exists == 1`
+    t =    17.91s     Checking existence of `"todayReview.card.addLink" Any`
+    t =    18.03s Get number of matches for: Elements matching predicate '"todayReview.card.addLink" IN identifiers'
+    t =    19.16s Checking `exists == 1 AND hittable == 1`
+    t =    19.16s     Checking existence of `"todayReview.card.addLink" Any`
+    t =    19.27s     Find the "todayReview.card.addLink" Any
+    t =    19.32s Tap "todayReview.card.addLink" Button
+    t =    19.32s     Wait for com.Max0228.BooksBrowser to idle
+    t =    19.32s     Find the "todayReview.card.addLink" Button
+    t =    19.37s     Check for interrupting elements affecting "todayReview.card.addLink" Button
+    t =    19.40s     Synthesize event
+    t =    19.69s     Wait for com.Max0228.BooksBrowser to idle
+    t =    19.78s Get number of matches for: Elements matching predicate '"addLink.dictionary.searchField" IN identifiers'
+    t =    20.95s Checking `exists == 1`
+    t =    20.95s     Checking existence of `"addLink.dictionary.searchField" TextField`
+    t =    21.03s Get number of matches for: Elements matching predicate '"addLink.dictionary.searchField" IN identifiers'
+    t =    22.16s Checking `exists == 1 AND hittable == 1`
+    t =    22.16s     Checking existence of `"addLink.dictionary.searchField" TextField`
+    t =    22.29s     Find the "addLink.dictionary.searchField" TextField
+    t =    22.39s Tap "addLink.dictionary.searchField" TextField
+    t =    22.39s     Wait for com.Max0228.BooksBrowser to idle
+    t =    22.39s     Find the "addLink.dictionary.searchField" TextField
+    t =    22.47s     Check for interrupting elements affecting "addLink.dictionary.searchField" TextField
+    t =    22.52s     Synthesize event
+    t =    22.80s     Wait for com.Max0228.BooksBrowser to idle
+    t =    23.15s Get number of matches for: Elements matching predicate '"addLink.dictionary.searchField" IN identifiers'
+    t =    23.26s Type 'engraved' into "addLink.dictionary.searchField" TextField
+    t =    23.26s     Wait for com.Max0228.BooksBrowser to idle
+    t =    24.09s     Find the "addLink.dictionary.searchField" TextField
+    t =    24.19s     Check for interrupting elements affecting "addLink.dictionary.searchField" TextField
+    t =    24.24s     Synthesize event
+    t =    24.58s     Wait for com.Max0228.BooksBrowser to idle
+    t =    24.58s Get number of matches for: Elements matching predicate '"addLink.dictionary.searchField" IN identifiers'
+    t =    24.67s Type '
+' into "addLink.dictionary.searchField" TextField
+    t =    24.67s     Wait for com.Max0228.BooksBrowser to idle
+    t =    24.68s     Find the "addLink.dictionary.searchField" TextField
+    t =    24.77s     Check for interrupting elements affecting "addLink.dictionary.searchField" TextField
+    t =    24.83s     Synthesize event
+    t =    25.05s     Wait for com.Max0228.BooksBrowser to idle
+    t =    26.88s Checking `exists == 1`
+    t =    26.88s     Checking existence of `"addLink.dictionary.result" Any`
+    t =    27.08s Get number of matches for: Elements matching predicate '"addLink.dictionary.result" IN identifiers'
+    t =    27.17s Find the "addLink.dictionary.result" Any
+    t =    27.35s Find the "addLink.dictionary.result" Other
+    t =    27.52s Find the "addLink.dictionary.result" Other
+    t =    27.68s Get number of matches for: Elements matching predicate '"addLink.sense.sense-1" IN identifiers'
+    t =    28.81s Checking `exists == 1`
+    t =    28.82s     Checking existence of `"addLink.sense.sense-1" Any`
+    t =    28.94s Get number of matches for: Elements matching predicate '"addLink.sense.sense-2" IN identifiers'
+    t =    30.06s Checking `exists == 1`
+    t =    30.06s     Checking existence of `"addLink.sense.sense-2" Any`
+    t =    30.18s Get number of matches for: Elements matching predicate '"addLink.example.example-1" IN identifiers'
+    t =    31.35s Checking `exists == 1`
+    t =    31.35s     Checking existence of `"addLink.example.example-1" Any`
+    t =    31.49s Get number of matches for: Elements matching predicate '"addLink.example.example-2" IN identifiers'
+    t =    32.70s Checking `exists == 1`
+    t =    32.70s     Checking existence of `"addLink.example.example-2" Any`
+    t =    32.85s Get number of matches for: Elements matching predicate '"addLink.dictionary.provenance" IN identifiers'
+    t =    33.98s Checking `exists == 1 AND label CONTAINS[c] "canonical dictionary fixture"`
+    t =    34.02s     Checking existence of `"addLink.dictionary.provenance" Any`
+    t =    34.27s     Find the "addLink.dictionary.provenance" Any
+    t =    34.36s Get number of matches for: Elements matching predicate '"addLink.dictionary.materialization.ready" IN identifiers'
+    t =    34.45s Find the "addLink.dictionary.materialization.ready" Any
+    t =    34.54s Find the "addLink.dictionary.materialization.ready" Other
+    t =    34.64s Get number of matches for: Elements matching predicate '"addLink.sense.sense-1" IN identifiers'
+    t =    34.74s Get number of matches for: Elements matching predicate '"addLink.sense.sense-1" IN identifiers'
+    t =    34.84s Find the "addLink.sense.sense-1" Any
+    t =    34.97s Find the "addLink.sense.sense-1" Button
+    t =    36.13s Checking `exists == 1 AND hittable == 1`
+    t =    36.13s     Checking existence of `"addLink.sense.sense-1" Button`
+    t =    36.36s     Find the "addLink.sense.sense-1" Button
+    t =    36.49s Tap "addLink.sense.sense-1" Button
+    t =    36.49s     Wait for com.Max0228.BooksBrowser to idle
+    t =    36.49s     Find the "addLink.sense.sense-1" Button
+    t =    36.58s     Check for interrupting elements affecting "addLink.sense.sense-1" Button
+    t =    36.70s     Synthesize event
+    t =    37.00s     Wait for com.Max0228.BooksBrowser to idle
+    t =    37.01s Get number of matches for: Elements matching predicate '"addLink.example.example-1" IN identifiers'
+    t =    37.10s Get number of matches for: Elements matching predicate '"addLink.example.example-1" IN identifiers'
+    t =    37.18s Find the "addLink.example.example-1" Any
+    t =    37.26s Find the "addLink.example.example-1" Button
+    t =    38.37s Checking `exists == 1 AND hittable == 1`
+    t =    38.38s     Checking existence of `"addLink.example.example-1" Button`
+    t =    38.50s     Find the "addLink.example.example-1" Button
+    t =    38.58s Tap "addLink.example.example-1" Button
+    t =    38.58s     Wait for com.Max0228.BooksBrowser to idle
+    t =    38.59s     Find the "addLink.example.example-1" Button
+    t =    38.66s     Check for interrupting elements affecting "addLink.example.example-1" Button
+    t =    38.71s     Synthesize event
+    t =    39.00s     Wait for com.Max0228.BooksBrowser to idle
+    t =    39.00s Get number of matches for: Elements matching predicate '"addLink.dictionary.materialize" IN identifiers'
+    t =    39.08s Get number of matches for: Elements matching predicate '"addLink.dictionary.materialize" IN identifiers'
+    t =    39.16s Find the "addLink.dictionary.materialize" Any
+    t =    39.23s Find the "addLink.dictionary.materialize" Button
+    t =    40.36s Checking `exists == 1 AND hittable == 1`
+    t =    40.36s     Checking existence of `"addLink.dictionary.materialize" Button`
+    t =    40.45s     Find the "addLink.dictionary.materialize" Button
+    t =    40.54s Tap "addLink.dictionary.materialize" Button
+    t =    40.54s     Wait for com.Max0228.BooksBrowser to idle
+    t =    40.54s     Find the "addLink.dictionary.materialize" Button
+    t =    40.62s     Check for interrupting elements affecting "addLink.dictionary.materialize" Button
+    t =    40.67s     Synthesize event
+    t =    40.95s     Wait for com.Max0228.BooksBrowser to idle
+    t =    41.06s Get number of matches for: Elements matching predicate '"todayReview.card.link.fixture-dictionary-card" IN identifiers'
+    t =    41.15s Get number of matches for: Elements matching predicate '"todayReview.card.link.fixture-dictionary-card" IN identifiers'
+    t =    42.28s Checking `exists == 1`
+    t =    42.29s     Checking existence of `"todayReview.card.link.fixture-dictionary-card" Any`
+    t =    42.40s Find the "todayReview.card.link.fixture-dictionary-card" Any
+    t =    42.47s Find the "todayReview.card.link.fixture-dictionary-card" Button
+    t =    42.52s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    42.66s Added attachment named 'Step 02-canonical-result'
+    t =    42.66s Tear Down
+Test Case '-[BooksAndVocabUITests.DictionaryLookupFlowUITests testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization]' passed (42.914 seconds).
+Test Suite 'DictionaryLookupFlowUITests' passed at 2026-08-13 23:12:59.948.
+	 Executed 1 test, with 0 failures (0 unexpected) in 42.914 (42.916) seconds
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 23:12:59.949.
+	 Executed 1 test, with 0 failures (0 unexpected) in 42.914 (42.917) seconds
+Test Suite 'Selected tests' passed at 2026-08-13 23:12:59.949.
+	 Executed 1 test, with 0 failures (0 unexpected) in 42.914 (42.918) seconds
+2026-08-13 23:13:00.357 xcodebuild[45373:37264014] [MT] IDETestOperationsObserverDebug: 47.701 elapsed -- Testing started completed.
+2026-08-13 23:13:00.358 xcodebuild[45373:37264014] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-08-13 23:13:00.358 xcodebuild[45373:37264014] [MT] IDETestOperationsObserverDebug: 47.701 sec, +47.701 sec -- end
+
+Test session results, code coverage, and logs:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.zZzXzp/Test.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

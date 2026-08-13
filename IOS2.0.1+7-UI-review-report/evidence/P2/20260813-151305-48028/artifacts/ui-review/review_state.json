@@ -1,0 +1,28 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T15:16:22+00:00",
+      "assetIDs": [
+        "01-launch",
+        "02-p2-senses-materialized"
+      ],
+      "notes": "主代理視覺複核：P2 typed senses surface 與 dictionary result 狀態可讀，內容區與底部操作列沒有裁切或重疊。",
+      "visualChecks": [
+        "內容與狀態可讀且無裁切/重疊",
+        "主要操作控件與結果區域穩定"
+      ],
+      "manifestSHA256": "550697197ec3e32be19ea88c82290c7327b2365aa47b2e95716c0c3984e475f7",
+      "evidenceRootSHA256": "73f5b9be3afcb7e8261da372a850d142078899226d0ea9470d06387b0c0aba41",
+      "provenance": {
+        "sourceCommit": "39ef0b8e933e34c86c3a819ac68233ee71ae9ae7",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "19152bf5e69c9817423661217e1b5b76de418928346b49021c4ae9173f7f4f47",
+        "device": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+        "selector": "--method DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector"
+      }
+    }
+  ]
+}

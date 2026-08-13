@@ -1,0 +1,40 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T14:38:13+00:00",
+      "assetIDs": [
+        "01-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-launch",
+        "02-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-notebook-ready",
+        "03-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-vocabulary-list-open",
+        "04-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-all-scope-644-rows",
+        "05-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-dynamic-type",
+        "06-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-cta",
+        "07-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-dictionary-scope",
+        "08-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-learning-review-menu-open",
+        "09-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-learning-review",
+        "10-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-reviewed-scope",
+        "11-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-search-within-projection",
+        "12-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-rich-projection-verified",
+        "13-VocabularyLibraryFlowUITests-testRichWorldProjectsRoleReviewSearchAndCTAConsistently-mixed-role"
+      ],
+      "notes": "Visual review confirms rich 644-item vocabulary world, role/review facets, search keyboard state, CTA, and mixed-role counterexample remain legible; cards and controls retain stable hierarchy without evidence of clipping.",
+      "visualChecks": [
+        "rich 644-item projection and facet controls remain legible without card/toolbar overlap",
+        "search keyboard, filtered results, CTA and mixed-role counterexample remain observable and recoverable"
+      ],
+      "manifestSHA256": "cdcf1cf579f79f8fa714e6dd395f6be78c19c7cd82d1a21c3fa80f712f62f22f",
+      "evidenceRootSHA256": "dfff17b166f23584e399b0b8d4d1c63b076fd4fa7386a6e3fd33b4d2ed18d648",
+      "provenance": {
+        "sourceCommit": "10cb1a0a506801b17776a7ceab9b49936a3ccff2",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "2f9be2904bf247d91fed60db4f53affd3bea497b3d3fc8378036e0c3c09e8715",
+        "device": "14A23ED5-8FA1-4C21-BD2A-990C81AC6259",
+        "selector": "--method VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
+        "variant": "dataset:marketing_demo+profile:ui-smoke"
+      }
+    }
+  ]
+}
