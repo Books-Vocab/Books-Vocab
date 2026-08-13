@@ -345,6 +345,8 @@ grep -q "pull" "$GITLOG" && bad "noop: git pull called" || ok "noop: git pull no
 # 在 noop 上斷言正是因為它是最容易被漏掉的那條：只在 deployed 路徑寫心跳的實作，會讓
 # 一台「活著但無事可做」的 reconciler 看起來跟停擺一模一樣。
 grep -q "^tick " "$STATE" 2>/dev/null && ok "noop: tick 心跳已寫入 state" || bad "noop: tick 心跳未寫入 state"
+noop_err="$(run_recon --once 2>&1 >/dev/null)"
+grep -q "已同版" <<<"$noop_err" && bad "noop: default 不應寫重複人讀 log" || ok "noop: default 不寫重複人讀 log"
 
 section "non-backend change (docs) → ff-only"
 new_scratch docs

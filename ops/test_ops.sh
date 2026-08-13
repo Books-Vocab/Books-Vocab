@@ -28,6 +28,7 @@ DEFAULT_TESTS=(
   devops
   deploy-smoke
   infra-health
+  disk-guard
   reconcile
   branch-audit
   exit-code-contract
@@ -113,6 +114,7 @@ run_one() {
       ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
+    disk-guard)         ./ops/tests/test_kg_disk_guard.sh ;;
     reconcile)          ./ops/tests/test_kg_reconcile.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
     exit-code-contract)
