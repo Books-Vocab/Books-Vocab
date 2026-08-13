@@ -48,7 +48,7 @@ struct TodayReviewPage {
         static let fullBack = CardGeometryContract(
             minimumWidth: 280,
             minimumHeight: 100,
-            expectedExpandZoneCount: 0,
+            expectedExpandZoneCount: 1,
             maximumBottomGap: nil
         )
     }
