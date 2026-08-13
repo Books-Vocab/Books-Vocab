@@ -33,23 +33,19 @@ struct ExploreFixtureContractTests {
         }
     }
 
-    @Test func exploreWireContractRejectsLegacySyntheticAssetToken() throws {
-        var object = try #require(
-            try JSONSerialization.jsonObject(
-                with: Data(contentsOf: Self.marketingDemoURL)
-            ) as? [String: Any]
-        )
-        var sharedDecks = try #require(object["sharedDecks"] as? [String: Any])
-        var fixtures = try #require(sharedDecks["fixtures"] as? [String: Any])
-        var loaded = try #require(fixtures["loaded"] as? [String: Any])
-        loaded["assetInodes"] = ["inode:explore_required"]
-        fixtures["loaded"] = loaded
-        sharedDecks["fixtures"] = fixtures
-        object["sharedDecks"] = sharedDecks
-        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-
-        #expect(throws: (any Error).self) {
-            try FixtureDatasetStore.decode(data)
+    @Test func checkedInFixtureArtifactsContainNoLegacyGenericAssetWire() throws {
+        let repositoryURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repository root
+        let urls = [
+            repositoryURL.appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json"),
+            repositoryURL.appendingPathComponent("ops/demo/generated/ios_fixture_dataset.json"),
+        ]
+        for url in urls {
+            let json = try String(contentsOf: url, encoding: .utf8)
+            #expect(!json.contains("\"assetInodes\""))
+            #expect(!json.contains("inode:"))
         }
     }
 

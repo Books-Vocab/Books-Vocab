@@ -49,24 +49,6 @@ private func uiWorldRequireUnique(
     }
 }
 
-/// Legacy manifest coverage values use the JSON key assetInodes, but the
-/// values are opaque coverage labels. They are never filesystem identity.
-private func uiWorldRequireAssetCoverageTokens(
-    _ values: [String],
-    decoder: Decoder,
-    label: String
-) throws {
-    let prefix = "inode:"
-    guard values.allSatisfy({
-        guard $0.hasPrefix(prefix) else { return false }
-        return !$0.dropFirst(prefix.count)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty
-    }) else {
-        throw uiWorldDataCorrupted(decoder, "\(label) must use non-empty coverage tokens")
-    }
-}
-
 private func uiWorldParseCanonicalDate(
     _ value: String,
     decoder: Decoder,
@@ -414,37 +396,26 @@ struct UIWorldAssetCoverageSeed: Codable, Equatable {
     let fixtureIDs: [String]
     let stepLabels: [String]
     let assetIDs: [String]
-    /// Compatibility wire key assetInodes. This is coverage metadata, not
-    /// the installed file's filesystem inode.
-    let assetCoverageTokens: [String]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case fixtureIDs
         case stepLabels
         case assetIDs
-        case assetCoverageTokens = "assetInodes"
     }
 
     init(from decoder: Decoder) throws {
         let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["fixtureIDs", "stepLabels", "assetIDs", "assetInodes"], decoder: decoder, label: "asset coverage")
+        try uiWorldRequireExactKeys(raw, expected: ["fixtureIDs", "stepLabels", "assetIDs"], decoder: decoder, label: "asset coverage")
         let container = try decoder.container(keyedBy: CodingKeys.self)
         fixtureIDs = try container.decode([String].self, forKey: .fixtureIDs)
         stepLabels = try container.decode([String].self, forKey: .stepLabels)
         assetIDs = try container.decode([String].self, forKey: .assetIDs)
-        assetCoverageTokens = try container.decode([String].self, forKey: .assetCoverageTokens)
         try uiWorldRequireUnique(fixtureIDs, decoder: decoder, label: "asset coverage.fixtureIDs")
         try uiWorldRequireUnique(stepLabels, decoder: decoder, label: "asset coverage.stepLabels")
         try uiWorldRequireUnique(assetIDs, decoder: decoder, label: "asset coverage.assetIDs")
-        try uiWorldRequireUnique(assetCoverageTokens, decoder: decoder, label: "asset coverage.assetCoverageTokens")
-        for value in fixtureIDs + stepLabels + assetIDs + assetCoverageTokens {
+        for value in fixtureIDs + stepLabels + assetIDs {
             _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "asset coverage value")
         }
-        try uiWorldRequireAssetCoverageTokens(
-            assetCoverageTokens,
-            decoder: decoder,
-            label: "asset coverage.assetCoverageTokens"
-        )
     }
 }
 
@@ -548,7 +519,6 @@ struct UIWorldDictionarySeed: Codable, Equatable {
             ("fixtureIDs", Set(required.fixtureIDs), Set(counterexamples.fixtureIDs)),
             ("stepLabels", Set(required.stepLabels), Set(counterexamples.stepLabels)),
             ("assetIDs", Set(required.assetIDs), Set(counterexamples.assetIDs)),
-            ("assetCoverageTokens", Set(required.assetCoverageTokens), Set(counterexamples.assetCoverageTokens)),
         ]
         for (name, requiredValues, counterexampleValues) in pairs where !requiredValues.isDisjoint(with: counterexampleValues) {
             throw uiWorldDataCorrupted(decoder, "\(label).\(name) required/counterexamples must be disjoint")
@@ -558,11 +528,8 @@ struct UIWorldDictionarySeed: Codable, Equatable {
     func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
         let assetTypes = assets.typeByID
         for (name, values) in coverage {
-            let expected = Set(values.assetIDs.map { "inode:\($0)" })
-            guard Set(values.assetIDs).isSubset(of: Set(assetTypes.keys)),
-                  Set(values.assetCoverageTokens) == expected,
-                  values.assetIDs.count == values.assetCoverageTokens.count else {
-                throw uiWorldDataCorrupted(decoder, "dictionary.coverage.\(name).assetIDs/assetCoverageTokens must be one-to-one")
+            guard Set(values.assetIDs).isSubset(of: Set(assetTypes.keys)) else {
+                throw uiWorldDataCorrupted(decoder, "dictionary.coverage.\(name).assetIDs must resolve to manifest assets")
             }
         }
     }
@@ -573,20 +540,17 @@ struct UIWorldSurfaceContractRowSeed: Codable, Equatable {
     let stepLabel: String
     let index: Int
     let assetIDs: [String]
-    /// Compatibility wire key assetInodes; opaque coverage labels only.
-    let assetCoverageTokens: [String]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case fixtureID
         case stepLabel
         case index
         case assetIDs
-        case assetCoverageTokens = "assetInodes"
     }
 
     init(from decoder: Decoder) throws {
         let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["fixtureID", "stepLabel", "index", "assetIDs", "assetInodes"], decoder: decoder, label: "surface contract row")
+        try uiWorldRequireExactKeys(raw, expected: ["fixtureID", "stepLabel", "index", "assetIDs"], decoder: decoder, label: "surface contract row")
         let container = try decoder.container(keyedBy: CodingKeys.self)
         fixtureID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .fixtureID), decoder: decoder, label: "surface contract.fixtureID")
         stepLabel = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .stepLabel), decoder: decoder, label: "surface contract.stepLabel")
@@ -595,20 +559,9 @@ struct UIWorldSurfaceContractRowSeed: Codable, Equatable {
             throw uiWorldDataCorrupted(decoder, "surface contract.index must be non-negative")
         }
         assetIDs = try container.decode([String].self, forKey: .assetIDs)
-        assetCoverageTokens = try container.decode([String].self, forKey: .assetCoverageTokens)
         try uiWorldRequireUnique(assetIDs, decoder: decoder, label: "surface contract.assetIDs")
-        try uiWorldRequireUnique(assetCoverageTokens, decoder: decoder, label: "surface contract.assetCoverageTokens")
         for value in assetIDs {
             _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "surface contract.assetIDs value")
-        }
-        try uiWorldRequireAssetCoverageTokens(
-            assetCoverageTokens,
-            decoder: decoder,
-            label: "surface contract.assetCoverageTokens"
-        )
-        guard Set(assetCoverageTokens) == Set(assetIDs.map { "inode:\($0)" }),
-              assetIDs.count == assetCoverageTokens.count else {
-            throw uiWorldDataCorrupted(decoder, "surface contract assetIDs/assetCoverageTokens must be one-to-one")
         }
     }
 }
@@ -638,7 +591,6 @@ struct UIWorldSurfaceContractSeed: Codable, Equatable {
             ("stepLabel", Set(required.map(\.stepLabel)), Set(counterexamples.map(\.stepLabel))),
             ("index", Set(required.map { String($0.index) }), Set(counterexamples.map { String($0.index) })),
             ("assetIDs", Set(required.flatMap(\.assetIDs)), Set(counterexamples.flatMap(\.assetIDs))),
-            ("assetCoverageTokens", Set(required.flatMap(\.assetCoverageTokens)), Set(counterexamples.flatMap(\.assetCoverageTokens))),
         ]
         for (name, requiredValues, counterexampleValues) in pairs where !requiredValues.isDisjoint(with: counterexampleValues) {
             throw uiWorldDataCorrupted(decoder, "surface contract.\(name) required/counterexamples must be disjoint")
@@ -660,11 +612,8 @@ struct UIWorldSurfaceContractSeed: Codable, Equatable {
     func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
         let assetTypes = assets.typeByID
         for row in required + counterexamples {
-            let expected = Set(row.assetIDs.map { "inode:\($0)" })
-            guard Set(row.assetIDs).isSubset(of: Set(assetTypes.keys)),
-                  Set(row.assetCoverageTokens) == expected,
-                  row.assetIDs.count == row.assetCoverageTokens.count else {
-                throw uiWorldDataCorrupted(decoder, "surface contract assetIDs/assetCoverageTokens must be one-to-one")
+            guard Set(row.assetIDs).isSubset(of: Set(assetTypes.keys)) else {
+                throw uiWorldDataCorrupted(decoder, "surface contract assetIDs must resolve to manifest assets")
             }
         }
     }

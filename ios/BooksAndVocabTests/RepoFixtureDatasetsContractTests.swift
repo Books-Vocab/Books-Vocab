@@ -282,7 +282,7 @@ struct RepoFixtureDatasetsContractTests {
         }
     }
 
-    @Test func canonicalSurfaceContractsRejectDuplicateRowsAndAssetMismatches() throws {
+    @Test func canonicalSurfaceContractsRejectDuplicateRowsAndUnknownAssets() throws {
         let duplicateRowData = try Self.encodedGeneratedDemo { topLevel in
             var context = try #require(topLevel["scenarioContext"] as? [String: Any])
             var contracts = try #require(context["surfaceContracts"] as? [String: Any])
@@ -298,19 +298,19 @@ struct RepoFixtureDatasetsContractTests {
             try FixtureDatasetStore.decode(duplicateRowData)
         }
 
-        let mismatchData = try Self.encodedGeneratedDemo { topLevel in
+        let unknownAssetData = try Self.encodedGeneratedDemo { topLevel in
             var context = try #require(topLevel["scenarioContext"] as? [String: Any])
             var contracts = try #require(context["surfaceContracts"] as? [String: Any])
             var explore = try #require(contracts["explore"] as? [String: Any])
             var required = try #require(explore["required"] as? [[String: Any]])
-            required[0]["assetInodes"] = ["inode:catalog_reader_pdf"]
+            required[0]["assetIDs"] = ["missing_asset"]
             explore["required"] = required
             contracts["explore"] = explore
             context["surfaceContracts"] = contracts
             topLevel["scenarioContext"] = context
         }
         #expect(throws: (any Error).self) {
-            try FixtureDatasetStore.decode(mismatchData)
+            try FixtureDatasetStore.decode(unknownAssetData)
         }
     }
 
@@ -341,14 +341,13 @@ struct RepoFixtureDatasetsContractTests {
         }
     }
 
-    @Test func canonicalSurfaceContractsRejectEmptyAssetValuesAndInodeTokens() throws {
+    @Test func canonicalSurfaceContractsRejectEmptyAndUnknownAssetValues() throws {
         let emptyAssetIDData = try Self.encodedGeneratedDemo { topLevel in
             var context = try #require(topLevel["scenarioContext"] as? [String: Any])
             var contracts = try #require(context["surfaceContracts"] as? [String: Any])
             var explore = try #require(contracts["explore"] as? [String: Any])
             var required = try #require(explore["required"] as? [[String: Any]])
             required[0]["assetIDs"] = [""]
-            required[0]["assetInodes"] = ["inode:"]
             explore["required"] = required
             contracts["explore"] = explore
             context["surfaceContracts"] = contracts
@@ -358,19 +357,19 @@ struct RepoFixtureDatasetsContractTests {
             try FixtureDatasetStore.decode(emptyAssetIDData)
         }
 
-        let emptyAssetInodeData = try Self.encodedGeneratedDemo { topLevel in
+        let unknownAssetData = try Self.encodedGeneratedDemo { topLevel in
             var context = try #require(topLevel["scenarioContext"] as? [String: Any])
             var contracts = try #require(context["surfaceContracts"] as? [String: Any])
             var explore = try #require(contracts["explore"] as? [String: Any])
             var required = try #require(explore["required"] as? [[String: Any]])
-            required[0]["assetInodes"] = ["inode:"]
+            required[0]["assetIDs"] = ["missing_asset"]
             explore["required"] = required
             contracts["explore"] = explore
             context["surfaceContracts"] = contracts
             topLevel["scenarioContext"] = context
         }
         #expect(throws: (any Error).self) {
-            try FixtureDatasetStore.decode(emptyAssetInodeData)
+            try FixtureDatasetStore.decode(unknownAssetData)
         }
     }
 
