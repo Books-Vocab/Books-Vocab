@@ -76,7 +76,67 @@ def test_reader_invalid_destination_asset_is_declared_and_really_broken() -> Non
         nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
         destinations = re.findall(r'href="([^"]+)"', nav)
         assert destinations
-        assert any(f"OEBPS/{destination}" not in names for destination in destinations)
+        missing_destinations = [
+            destination
+            for destination in destinations
+            if f"OEBPS/{destination}" not in names
+        ]
+        assert missing_destinations == ["chapter-missing.xhtml"]
+        assert destinations.count("chapter-missing.xhtml") == 1
+
+
+def test_fixture_store_preflights_destination_realpath_before_mutation() -> None:
+    source = _swift_source(
+        "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift"
+    )
+    install_source = source.split(
+        "static func requireInstalledAssetURL(ref: String)", 1
+    )[1].split("/// Returns proof", 1)[0]
+
+    assert "validateDestinationContainment" in install_source
+    preflight = install_source.index("validateDestinationContainment")
+    create = install_source.index("createDirectory")
+    remove = install_source.index("removeItem")
+    copy = install_source.index("copyItem")
+    assert preflight < create < remove < copy
+    assert "resolvingSymlinksInPath" in source
+
+
+def test_fixture_store_has_destination_symlink_escape_regression() -> None:
+    source = _swift_source(
+        "ios/BooksAndVocabTests/FixtureDatasetStoreTests+DomainC.swift"
+    )
+    assert "destinationSymlinkEscape" in source
+    assert "createSymbolicLink" in source
+    assert "requireInstalledAssetURL" in source
+
+
+def test_reader_evidence_selectors_require_exact_cardinality() -> None:
+    page = _swift_source("ios/BooksAndVocabUITests/Pages/ReaderPage.swift")
+    writer = _swift_source(
+        "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift"
+    )
+
+    for source in (page, writer):
+        assert ".firstMatch" not in source
+        assert "boundBy: 0" not in source
+    assert "element(matching:" in page
+    assert "element(matching:" in writer
+    assert page.count("count == 1") >= 2
+    assert writer.count("count == 1") >= 3
+
+
+def test_invalid_reader_flow_revalidates_negative_state_after_failure_and_retry() -> None:
+    source = _swift_source("ios/BooksAndVocabUITests/ReaderFlowUITests.swift")
+    invalid_flow = source.split(
+        "func testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable()", 1
+    )[1]
+
+    assert invalid_flow.count("assertFixtureAsset(") >= 3
+    assert invalid_flow.count('"OEBPS/chapter1.xhtml"') >= 3
+    assert "assertContentAbsent(Self.secondChapterWord)" in invalid_flow
+    assert "tocMissingDestination.count" in invalid_flow
+    assert "tocRetry.count" in invalid_flow
 
 
 def test_reader_evidence_asset_producer_uses_canonical_fixture_proof() -> None:

@@ -206,6 +206,8 @@ extension FixtureDatasetStoreTests {
             Self.readerRealBookAssetPath,
             "ops/fixtures/assets/../../../../reader-real-book.epub",
             "ops/fixtures/assets/./reader-real-book.epub",
+            "ops/fixtures/assets//reader-real-book.epub",
+            "ops/fixtures/assets/reader-real-book.epub/",
         ]
 
         for sourcePath in cases {
@@ -218,6 +220,71 @@ extension FixtureDatasetStoreTests {
                 _ = try FixtureDatasetStore.decode(data)
             }
         }
+    }
+
+    @Test @MainActor func destinationSymlinkEscapeIsRejectedBeforeCopy() throws {
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kg-ui-world-destination-source-\(UUID().uuidString).txt")
+        let outsideRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kg-ui-world-destination-outside-\(UUID().uuidString)", isDirectory: true)
+        let outsideFile = outsideRoot.appendingPathComponent("payload.txt")
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let symlinkComponent = "kg-p3-destination-symlink-\(UUID().uuidString)"
+        let symlink = documents.appendingPathComponent(symlinkComponent)
+        let installAs = "\(symlinkComponent)/payload.txt"
+        let sentinel = Data("outside sentinel".utf8)
+
+        try Data("source payload".utf8).write(to: source)
+        try FileManager.default.createDirectory(at: outsideRoot, withIntermediateDirectories: true)
+        try sentinel.write(to: outsideFile)
+        try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: outsideRoot)
+        defer {
+            try? FileManager.default.removeItem(at: symlink)
+            try? FileManager.default.removeItem(at: outsideRoot)
+            try? FileManager.default.removeItem(at: source)
+        }
+
+        let hash = try FixtureDatasetStore.sha256Hex(for: source)
+        let byteSize = try FixtureDatasetStore.byteSize(for: source)
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "destination-symlink-escape",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "payload": {
+                "sourcePath": "\(source.path)",
+                "sha256": "\(hash)",
+                "byteSize": \(byteSize),
+                "installAs": "\(installAs)",
+                "contentType": "text/plain; charset=utf-8"
+              }
+            },
+            "images": {}
+          }
+        }
+        """
+
+        // The destination points through a symlink outside Documents. The
+        // preflight must reject it before create/remove/copy can touch the
+        // outside sentinel.
+        // No implementation detail is trusted here: the observable contract
+        // is throw + unchanged outside bytes.
+        // Swift Testing cannot compare an arbitrary thrown CocoaError payload
+        // portably across Foundation versions, so keep the assertion typed.
+        // The source realpath guard remains covered by the test above.
+        //
+        // swiftlint:disable:next force_try
+        let data = try Self.completeV2DatasetData(dataset)
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.withTestingData(data) {
+                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+            }
+        }
+        #expect(try Data(contentsOf: outsideFile) == sentinel)
     }
 
     @Test func readerEPUBSourcePathRejectsSymlinkOutsideRepository() throws {

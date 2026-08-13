@@ -114,6 +114,18 @@ _discover_file() {
         pending_test = 0   # a new container boundary cancels any dangling arm
         next
       }
+      # A split test type is commonly extended across several files.  The
+      # extension member tests belong to the named XCTest/Swift Testing
+      # container just like members declared in its original struct/class;
+      # otherwise -g and --file silently discover zero selectors.
+      if (line ~ /^extension[ \t]+[A-Za-z0-9_]+/) {
+        name = line
+        sub(/^extension[ \t]+/, "", name)
+        sub(/[^A-Za-z0-9_].*$/, "", name)
+        container = name
+        pending_test = 0
+        next
+      }
       # Bare top-level @Suite line (attribute above the struct) — keep scanning;
       # the struct on the next line sets the container.
       if (line ~ /^@Suite([ \t]*\([^)]*\))?[ \t]*$/) next

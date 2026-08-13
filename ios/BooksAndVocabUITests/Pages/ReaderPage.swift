@@ -92,7 +92,16 @@ struct ReaderPage {
             return
         }
         XCTAssertEqual(String(parts[0]), assetID, file: file, line: line)
-        XCTAssertEqual(URL(fileURLWithPath: String(parts[1])).lastPathComponent, fileName, file: file, line: line)
+        let installedURL = URL(fileURLWithPath: String(parts[1]))
+        XCTAssertEqual(installedURL.lastPathComponent, fileName, file: file, line: line)
+        XCTAssertTrue(installedURL.path.hasPrefix("/"), file: file, line: line)
+        XCTAssertEqual(installedURL.deletingLastPathComponent().lastPathComponent, "Books", file: file, line: line)
+        XCTAssertEqual(
+            installedURL.path,
+            installedURL.deletingLastPathComponent().appendingPathComponent(fileName).path,
+            file: file,
+            line: line
+        )
         XCTAssertEqual(String(parts[2]), sha256, file: file, line: line)
         XCTAssertEqual(expectedByteSize, byteSize, file: file, line: line)
         XCTAssertEqual(String(parts[4]), sha256, file: file, line: line)
@@ -150,14 +159,40 @@ struct ReaderPage {
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {
-        app.webViews.element(boundBy: 0)
+        let matches = app.webViews
+        guard matches.count == 1,
+              let element = matches.allElementsBoundByIndex.first else {
+            XCTFail("Reader must expose exactly one Readium web view; found \(matches.count)")
+            return matches.element(matching: .any, identifier: "__missing_reader_webview__")
+        }
+        return element
     }
 
     /// A rendered text block inside the Readium WebView. Single-word
     /// paragraphs (e.g. a chapter heading line) expose an exact-label
     /// staticText whose center is a deterministic word-tap target.
     func contentText(_ text: String) -> XCUIElement {
-        webView.staticTexts[text].element(boundBy: 0)
+        let matches = webView.staticTexts[text]
+        guard matches.count == 1,
+              let element = matches.allElementsBoundByIndex.first else {
+            XCTFail("Reader content selector must resolve exactly once: \(text); found \(matches.count)")
+            return matches.element(matching: .any, identifier: "__missing_reader_content__")
+        }
+        return element
+    }
+
+    func assertContentAbsent(
+        _ text: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertEqual(
+            webView.staticTexts[text].count,
+            0,
+            "Reader content must remain absent: \(text)",
+            file: file,
+            line: line
+        )
     }
 
     func assertTOCScopedCounts(
