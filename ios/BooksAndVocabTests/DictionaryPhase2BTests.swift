@@ -59,6 +59,29 @@ struct DictionaryPhase2BTests {
         #expect(projection.emptyStateContext.roleFilter == .dictionary)
     }
 
+    @Test("review state menu keeps independent multi-selection and dictionary scope canonical")
+    func queryCanonicalState() {
+        var query = VocabularyLibraryQuery(
+            contentScope: .all,
+            reviewStates: [],
+            sort: .default
+        )
+        query.toggleReviewState(.unlearned)
+        query.toggleReviewState(.due)
+        #expect(query.reviewStates == [.unlearned, .due])
+        query.toggleReviewState(.unlearned)
+        #expect(query.reviewStates == [.due])
+
+        query.sort = .difficulty
+        query.setContentScope(.dictionary)
+        #expect(query.reviewStates.isEmpty)
+        #expect(query.sort == .alphabetical, "dictionary scope must canonicalize every learning-only sort")
+
+        query.setContentScope(.learning)
+        #expect(query.reviewStates.isEmpty, "dictionary transition must not restore a latent review filter")
+        #expect(query.sort == .alphabetical)
+    }
+
     @Test("role filter keeps mixed ordering semantics")
     func roleFilterAndRecentSort() {
         let learning = Self.entry("zebra", role: .learning, date: Date(timeIntervalSince1970: 10))
@@ -70,6 +93,22 @@ struct DictionaryPhase2BTests {
         #expect(VocabularyEntryPresentation.filterByRole(values, filter: .dictionary).map(\.word) == ["alpha"])
         #expect(VocabularyEntryPresentation.sortAndFilter(values, searchText: "", sortOption: .dateAdded, now: .now).map(\.word) == ["alpha", "zebra"])
         #expect(VocabularyEntryPresentation.sortAndFilter(values, searchText: "", sortOption: .default, now: .now).map(\.word) == ["zebra", "alpha"])
+    }
+
+    @Test("all sort modes use a deterministic UUID tie-breaker")
+    func sortTieBreakersAreDeterministic() {
+        let first = Self.entry("same", role: .learning, date: Date(timeIntervalSince1970: 10))
+        first.id = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let second = Self.entry("same", role: .learning, date: Date(timeIntervalSince1970: 10))
+        second.id = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        second.difficultyTier = first.difficultyTier
+
+        for option in KGVocabSortOption.allCases {
+            let sorted = VocabularyEntryPresentation.sortAndFilter(
+                [second, first], searchText: "", sortOption: option, now: .now
+            )
+            #expect(sorted.map(\.id) == [first.id, second.id], "sort=\(option.rawValue)")
+        }
     }
 
     @Test("dictionary row is secondary book-badged and has no due state")

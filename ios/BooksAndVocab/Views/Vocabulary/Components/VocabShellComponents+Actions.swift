@@ -126,45 +126,31 @@ struct VocabReviewCTAPill: View {
     let onStartMixed: () -> Void
 
     private var totalCount: Int { dueCount + unlearnedCount }
-    private var hasBothTypes: Bool { dueCount > 0 && unlearnedCount > 0 }
 
     var body: some View {
         Group {
-            if hasBothTypes {
-                Menu {
-                    Button {
-                        onStartMixed()
-                    } label: {
-                        Label(L10n.format("全部複習（%@）", "\(totalCount)"), systemImage: "rectangle.stack")
-                    }
-                    Divider()
-                    Button {
-                        onStartDue()
-                    } label: {
-                        Label(L10n.format("到期複習（%@）", "\(dueCount)"), systemImage: "clock.badge")
-                    }
-                    Button {
-                        onStartUnlearned()
-                    } label: {
-                        Label(L10n.format("未學複習（%@）", "\(unlearnedCount)"), systemImage: "sparkles")
-                    }
-                } label: { pillLabel(count: totalCount, systemImage: "play.fill") }
+            if totalCount > 0 {
+                Button(action: onStartMixed) {
+                    pillLabel(count: totalCount, systemImage: "play.fill")
+                }
+                .buttonStyle(.plain)
                 .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalCount)"))
-            } else if dueCount > 0 {
-                Button(action: onStartDue) {
-                    pillLabel(count: dueCount, systemImage: "clock.badge")
+                .contextMenu {
+                    if dueCount > 0 {
+                        Button(action: onStartDue) {
+                            Label(L10n.format("到期複習（%@）", "\(dueCount)"), systemImage: "clock.badge")
+                        }
+                    }
+                    if unlearnedCount > 0 {
+                        Button(action: onStartUnlearned) {
+                            Label(L10n.format("未學複習（%@）", "\(unlearnedCount)"), systemImage: "sparkles")
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(dueCount)"))
-            } else if unlearnedCount > 0 {
-                Button(action: onStartUnlearned) {
-                    pillLabel(count: unlearnedCount, systemImage: "sparkles")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(unlearnedCount)"))
             }
         }
         .enableInjection()
+        .accessibilityIdentifier("vocab.reviewCTA")
     }
 
     private func pillLabel(count: Int, systemImage: String) -> some View {
@@ -188,11 +174,20 @@ struct VocabReviewCTAPill: View {
 struct VocabSortPill: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    let options: [KGVocabSortOption]
     @Binding var sortOption: KGVocabSortOption
+
+    init(
+        options: [KGVocabSortOption] = KGVocabSortOption.allCases,
+        sortOption: Binding<KGVocabSortOption>
+    ) {
+        self.options = options
+        self._sortOption = sortOption
+    }
 
     var body: some View {
         Menu {
-            ForEach(KGVocabSortOption.allCases) { option in
+            ForEach(options) { option in
                 Button {
                     sortOption = option
                 } label: {
@@ -218,6 +213,7 @@ struct VocabSortPill: View {
         .appPointerHover()
         .accessibilityLabel(L10n.format("排序方式：%@", sortOption.label))
         .accessibilityHint(L10n.string("點兩下開啟排序選單"))
+        .accessibilityIdentifier("vocab.sort")
         .enableInjection()
     }
 }

@@ -18,7 +18,9 @@ struct AppPage {
     }
 
     var notebookTab: XCUIElement {
-        app.tabBars.buttons["單字本"]
+        let identifier = app.tabBars.buttons["tab.notebooks"]
+        if identifier.exists { return identifier }
+        return app.tabBars.buttons["單字本"]
     }
 
     var overviewTab: XCUIElement {
@@ -56,7 +58,13 @@ struct AppPage {
 
     @discardableResult
     func goToNotebooks(file: StaticString = #filePath, line: UInt = UInt(#line)) -> NotebookPage {
-        notebookTab.tapWhenReady(file: file, line: line)
+        XCTAssertTrue(
+            notebookTab.waitUntilHittable(timeout: 8),
+            "Notebook tab must be hittable before navigation: \(notebookTab.debugDescription)",
+            file: file,
+            line: line
+        )
+        notebookTab.tap()
         return NotebookPage(app: app)
     }
 

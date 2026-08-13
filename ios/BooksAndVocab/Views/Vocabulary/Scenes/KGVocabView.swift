@@ -53,11 +53,12 @@ struct KGVocabView: View {
         // Keep the legacy initializer surface for callers/scenarios, but store
         // the values as one query so every projection consumer sees the same
         // content scope, progress filter, and sort.
-        self._query = State(initialValue: VocabularyLibraryQuery(
+        let initialQuery = VocabularyLibraryQuery(
             contentScope: initialRoleFilter,
             reviewStates: initialReviewStates,
             sort: initialSort
-        ))
+        )
+        self._query = State(initialValue: initialQuery.normalized)
         let nbId = notebookId
         // Notebook-scoped knowledge list. The isArchived guard (inside the shared
         // predicate) keeps archived words out of the KG list and out of
@@ -86,6 +87,11 @@ struct KGVocabView: View {
         // change, with the freshly filtered result count from this body eval.
         .onChange(of: searchText) { _, newValue in
             query.searchText = newValue
+            // Search changes the visible ID set. Exit selection immediately
+            // instead of waiting for a later projection callback, so a stale
+            // selected UUID can never be archived from a different query.
+            selectionState.exit()
+            selectedRowID = nil
             PerfLog.search.mark("search.results.shown", "query=\(newValue) count=\(projection.visibleEntries.count)")
         }
         .animatePhaseChange(coordinator.isLoading)
@@ -131,7 +137,9 @@ struct KGVocabView: View {
                 count: projection.count(for: filter)
             )
         }
-        // Selection, empty state, and CTA all use the same visible projection.
+        // Selection and empty state use visible rows; the CTA deliberately uses
+        // the scope-wide review queue so search/facet narrowing cannot hide due
+        // work that remains actionable.
         let selectableIDs = VocabularyEntryPresentation.selectableIDs(in: projection.visibleEntries)
         let reviewCTA: KGVocabPresenter.State.ReviewCTA? = {
             guard let handler = onStartReview else { return nil }
