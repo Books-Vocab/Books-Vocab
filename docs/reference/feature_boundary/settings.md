@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: 18f37badc
+verified_against: 3bb37a6f7
 -->
 # Settings Feature Boundary
 
@@ -119,6 +119,8 @@ verified_against: 18f37badc
 - **步驟清單由服務宣告，UI 不猜**：`KGService.syncStepIDs()` + coordinator 自己收尾的 `.status` 一列。UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
 - **reporter 走 `AsyncStream` 而不是每事件一個 `Task { @MainActor in }`**：後者不保證順序，計數器會肉眼可見地彈回。store 內部的單調守衛是防線不是設計。
 - **終態取自 `backgroundSync` 回傳的 `SyncRoundOutcome`，不讀 `lastBackgroundSyncError`**：`.didNotRun` 直接 `reset()` 收合、不宣稱任何事（理由見 `docs/reference/tech_index.md` 的 `BackgroundSyncing` 條目）。
+- **顯式同步等待 shared lane**：Settings 使用 `backgroundSyncWhenAvailable`；普通 background trigger 忙碌時仍可 `.didNotRun`，但 Settings 不可把上一帳號的進行中 round 當成新帳號結果。
+- **帳號邊界先取消再重置**：`resetForAccountBoundary()` 取消 active resync task、旋轉 generation/request owner、清除暫態 lifecycle/progress；舊 round 的晚到事件、save 與終態更新均 fail-closed。DEBUG fixture evidence 另以 session token 隔離。
 - **`AppMotion`**：展開/收合共用一條 `phaseChange`（`lastSyncedText` 同時淡回來 = 一次過渡而非兩段接力），進場 transition 用 `statusRowReveal`——`docs/sop/ui-design.md` 把這兩個 token 指名給 Settings / Sync 且規定不混用。
 
 ## 現況判讀
