@@ -393,6 +393,17 @@ def test_git_fixture_asset_identity_is_path_hash_and_size_only():
             assert "inode" not in json.dumps(asset)
 
 
+@pytest.mark.parametrize("field", ["sourcePath", "sha256", "byteSize", "contentType"])
+def test_validate_rejects_missing_asset_provenance_field(tmp_path: Path, field: str):
+    data = _marketing_demo()
+    del data["assets"]["books"]["catalog_reader_epub"][field]
+    path = tmp_path / f"missing_asset_{field}.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"assets\.books\.catalog_reader_epub keys 不符合 UI World v2"):
+        validate_fixture_dataset_file(path)
+
+
 @pytest.mark.parametrize(
     "source_path",
     [
