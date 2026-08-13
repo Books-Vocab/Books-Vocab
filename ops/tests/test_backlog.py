@@ -265,6 +265,105 @@ def test_add_rejects_non_legacy_explicit_id(tmp_path):
     assert not store.exists() or not list(store.iterdir())
 
 
+def test_historical_dated_id_provenance_does_not_forgive_later_content_drift(
+    tmp_path,
+):
+    """A migration exemption freezes one exact old-id/current-content pair.
+
+    Merely exempting every ``historical=True`` write would create a permanent
+    tamper slot: a later source/detail edit could keep the old id and still
+    validate.  The stored digest makes the imported exception exact.
+    """
+    store = tmp_path / "backlog"
+    entry = BACKLOG.add_entry(
+        store,
+        entry_id="IMP-20260805-deadbe",
+        overwrite=True,
+        historical=True,
+        **_entry_kwargs(detail="payload carried by a historical dated id"),
+    )
+    expected_id = BACKLOG.make_entry_id(**{
+        field: entry[field] for field in BACKLOG.DIGEST_FIELDS
+    })
+
+    assert entry["historical_id_digest"] == expected_id
+    assert not any(
+        problem["kind"] == "id-content-drift"
+        for problem in BACKLOG.validate_store(store)
+    )
+
+    path = store / f"{entry['id']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["detail"] = "a later edit cannot reuse the migration exemption"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert any(
+        problem["kind"] == "id-content-drift"
+        and problem["id"] == entry["id"]
+        and problem["expected_id"] == BACKLOG.make_entry_id(**{
+            field: payload[field] for field in BACKLOG.DIGEST_FIELDS
+        })
+        for problem in BACKLOG.validate_store(store)
+    )
+
+
+@pytest.mark.parametrize(
+    "entry_id",
+    [
+        "NOT-A-BACKLOG-ID",
+        "APP-20260805-deadbe",
+        "IMP-19990101-deadbe",
+    ],
+    ids=["arbitrary-id", "cross-stream", "date-mismatch"],
+)
+def test_historical_overwrite_rejects_ids_outside_the_imported_row_identity(
+    tmp_path, entry_id
+):
+    store = tmp_path / "backlog"
+    fields = _entry_kwargs(detail="historical bypass must stay importer-shaped")
+
+    with pytest.raises(ValueError, match="explicit id"):
+        BACKLOG.add_entry(
+            store,
+            entry_id=entry_id,
+            overwrite=True,
+            historical=True,
+            **fields,
+        )
+
+    assert not store.exists() or not list(store.iterdir())
+    expected_id = BACKLOG.make_entry_id(**{
+        field: fields[field] for field in BACKLOG.DIGEST_FIELDS
+    })
+    planted = {
+        "schema": BACKLOG.SCHEMA,
+        "id": entry_id,
+        **fields,
+        "historical_id_digest": expected_id,
+    }
+    assert any(
+        problem["kind"] == "id-content-drift"
+        for problem in BACKLOG.validate_entry(planted, entry_id=entry_id)
+    ), "a forged provenance field bypassed validation"
+
+
+def test_overwrite_without_historical_cannot_preserve_a_mismatched_dated_id(
+    tmp_path,
+):
+    store = tmp_path / "backlog"
+
+    with pytest.raises(ValueError, match="explicit id"):
+        BACKLOG.add_entry(
+            store,
+            entry_id="IMP-20260805-deadbe",
+            overwrite=True,
+            historical=False,
+            **_entry_kwargs(detail="ordinary overwrite is not a migration capability"),
+        )
+
+    assert not store.exists() or not list(store.iterdir())
+
+
 # --------------------------------------------------------------------------
 # 4. the id inside the file cannot drift from the filename
 # --------------------------------------------------------------------------
