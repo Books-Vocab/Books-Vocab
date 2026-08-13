@@ -229,6 +229,7 @@ struct SettingsAccountDetailView: View {
                     text: cardCountText,
                     color: appSkin.palette.secondaryText
                 )
+                .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("\(identifier).localCardCount")
                 .accessibilityLabel(cardCountText)
                 .accessibilityValue(snapshot.localCardCountError ?? "")
@@ -239,6 +240,7 @@ struct SettingsAccountDetailView: View {
                     text: preferencesText,
                     color: appSkin.palette.secondaryText
                 )
+                .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("\(identifier).preferences")
                 .accessibilityLabel(preferencesText)
             }
@@ -248,6 +250,7 @@ struct SettingsAccountDetailView: View {
                     text: loginStatusText,
                     color: appSkin.palette.secondaryText
                 )
+                .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("\(identifier).loginStatus")
                 .accessibilityLabel(loginStatusText)
             }
