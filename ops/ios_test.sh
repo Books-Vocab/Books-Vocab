@@ -1075,11 +1075,20 @@ stage_fixture_dataset_xctestrun() {
     "$2" \
     KG_FIXTURE_DATASET_DEFLATE_B64 \
     "$UI_FIXTURE_DATASET_DEFLATE_B64" \
-    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64 \
-    && ios_xctestrun_cache_upsert_env_all_targets \
-      "$2" \
-      KG_UI_TEST_SOURCE_COMMIT \
-      "$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+    KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
+}
+
+stage_ui_evidence_runner_environment() {
+  local staged_path="$1" source_commit device
+  [[ -n "$staged_path" && -f "$staged_path" ]] || return 1
+  source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  device="$(resolve_run_device_udid 2>/dev/null || true)"
+  [[ -n "$source_commit" && -n "${UI_TEST_SCREENSHOT_DIR:-}" && -n "$device" ]] || return 1
+  ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SOURCE_COMMIT "$source_commit" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_ID "$EVIDENCE_DATASET_ID" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_SHA256 "$EVIDENCE_DATASET_SHA256" \
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DEVICE_UDID "$device"
 }
 
 xctestrun_target_env_roots() {
@@ -1177,6 +1186,20 @@ run_xcodebuild_test_without_building_once() {
   fi
   acquire_test_device_lock
   start_ui_test_recording
+  if [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]]; then
+    if [[ -z "${STAGED_DATASET_XCTESTRUN:-}" ]]; then
+      STAGED_DATASET_XCTESTRUN="${xctestrun_path%.xctestrun}_ui_$$.scoped.xctestrun"
+      if ! cp "$xctestrun_path" "$STAGED_DATASET_XCTESTRUN"; then
+        echo "[ios_test] error: failed to stage UI evidence xctestrun" >&2
+        return 1
+      fi
+      xctestrun_path="$STAGED_DATASET_XCTESTRUN"
+    fi
+    if ! stage_ui_evidence_runner_environment "$xctestrun_path"; then
+      echo "[ios_test] error: failed to stage UI evidence runner environment" >&2
+      return 1
+    fi
+  fi
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" \
   KG_UI_TEST_SCREENSHOT_DIR="$UI_TEST_SCREENSHOT_DIR" \
