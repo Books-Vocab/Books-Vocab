@@ -640,12 +640,26 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// fixture router activates the requested Settings fixture. Resolve the
     /// fixture service at the first real sync action as well as in `init`, so
     /// early view construction cannot silently route this evidence flow to the
-    /// production backend.
+    /// production backend. The launch-argument fallback closes the other half
+    /// of the startup race: if the view reaches the action before the router's
+    /// activation is observable, re-use the canonical fixture router here.
     @MainActor
     private func resolveSettingsSyncServiceIfNeeded() -> SettingsSyncService? {
-        guard FixtureDatasetStore.activeSettingsFixtureID == .syncTerminalErrorRetrySuccess,
-              settingsSyncFixtureSummary == nil,
-              let fixtureID = FixtureDatasetStore.activeSettingsFixtureID else {
+        guard settingsSyncFixtureSummary == nil else {
+            return settingsSyncService
+        }
+        let fixtureID: SettingsFixtureID
+        if let activeFixtureID = FixtureDatasetStore.activeSettingsFixtureID {
+            guard activeFixtureID == .syncTerminalErrorRetrySuccess else {
+                return settingsSyncService
+            }
+            fixtureID = activeFixtureID
+        } else if ProcessInfo.processInfo.arguments.contains(
+            "-seedFixture:settings:\(SettingsFixtureID.syncTerminalErrorRetrySuccess.rawValue)"
+        ) {
+            FixtureDatasetStore.activateSettingsFixture(.syncTerminalErrorRetrySuccess)
+            fixtureID = .syncTerminalErrorRetrySuccess
+        } else {
             return settingsSyncService
         }
         let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
