@@ -18,9 +18,9 @@ struct SettingsPresenter: View {
     /// pause review clock 切換(穿透給 SettingsReviewSection)。default no-op 讓
     /// preview / scenario 既有建構零改動,只 SettingsView 注入真實 push closure。
     // var(非 let):let-with-default 不會進 Swift memberwise init,SettingsView 無從注入。
-    var onPauseReviewClockChanged: (Bool) async -> Void = { _ in }
+    var onPauseReviewClockChanged: (Bool, PauseClockState) async -> Void = { _, _ in }
     /// mode / 自訂 SRS 參數變更(穿透給 SettingsReviewSection)。同 pause 用 var 以進 memberwise init。
-    var onReviewModeChanged: (ReviewSettings) async -> Void = { _ in }
+    var onReviewModeChanged: (ReviewSettings, ReviewModeState) async -> Void = { _, _ in }
     let manualLoginUserId: Binding<String>?
     let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions
