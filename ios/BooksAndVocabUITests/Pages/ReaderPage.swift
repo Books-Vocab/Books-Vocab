@@ -718,13 +718,24 @@ struct ReaderPage {
     }
 
     func themeIsSelected(_ theme: String, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
-        guard let option = exactlyOne(
-            themeOptionQuery(theme),
-            named: "Reader theme option \(theme)",
-            file: file,
-            line: line
-        ) else { return false }
-        return option.isSelected
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            if let option = exactlyOneIfPresent(
+                themeOptionQuery(theme),
+                named: "Reader theme option \(theme)",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ) {
+                return option.isSelected
+            }
+            // SwiftUI Form virtualizes rows; after a close/reopen the theme
+            // rows may not yet be in the accessibility tree at the top.
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        XCTFail("Reader theme option \(theme) did not materialize", file: file, line: line)
+        return false
     }
 
     // MARK: - Assertions
