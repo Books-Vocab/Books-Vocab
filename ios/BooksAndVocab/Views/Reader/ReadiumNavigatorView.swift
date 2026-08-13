@@ -13,6 +13,82 @@ import ReadiumStreamer
 import ReadiumNavigator
 import os
 
+/// Preference application is complete when Readium reports its resulting
+/// presentation. Keeping this as a small state machine makes the readiness
+/// contract deterministic and unit-testable without a wall-clock delay.
+struct ReaderPreferencesApplyState: Equatable {
+    private var nextGeneration: UInt = 0
+    private(set) var pendingGeneration: UInt?
+
+    var isApplying: Bool { pendingGeneration != nil }
+
+    mutating func begin() -> UInt {
+        nextGeneration &+= 1
+        pendingGeneration = nextGeneration
+        return nextGeneration
+    }
+
+    mutating func cancel(_ generation: UInt) {
+        guard pendingGeneration == generation else { return }
+        pendingGeneration = nil
+    }
+
+    @discardableResult
+    mutating func observeNavigatorPresentation() -> Bool {
+        guard pendingGeneration != nil else { return false }
+        pendingGeneration = nil
+        return true
+    }
+}
+
+/// Production accessibility receipt for the live EPUB navigator.
+///
+/// The settings are read from `EPUBNavigatorViewController.settings` after a
+/// Readium delegate event. The receipt is therefore distinct from the
+/// `ReaderSettings` request that caused the update.
+struct ReaderNavigatorSettingsReceipt: Equatable {
+    enum Phase: String {
+        case pending
+        case ready
+    }
+
+    enum Source: String {
+        case presentationDidChange
+        case locationDidChange
+    }
+
+    let navigatorID: UUID
+    let phase: Phase
+    let source: Source?
+    let settings: ReaderSettingsBridgeState?
+
+    static let pendingAccessibilityValue = "status=pending"
+
+    static func pending(navigatorID: UUID) -> Self {
+        .init(navigatorID: navigatorID, phase: .pending, source: nil, settings: nil)
+    }
+
+    static func ready(
+        navigatorID: UUID,
+        settings: ReaderSettingsBridgeState,
+        source: Source
+    ) -> Self {
+        .init(navigatorID: navigatorID, phase: .ready, source: source, settings: settings)
+    }
+
+    var accessibilityValue: String {
+        guard phase == .ready, let settings, let source else {
+            return Self.pendingAccessibilityValue + ";navigator=\(navigatorID.uuidString)"
+        }
+        return [
+            "status=\(phase.rawValue)",
+            "navigator=\(navigatorID.uuidString)",
+            "source=\(source.rawValue)",
+            settings.accessibilityValue
+        ].joined(separator: ";")
+    }
+}
+
 // MARK: - SwiftUI Representable
 
 struct ReadiumNavigatorView: UIViewControllerRepresentable {
@@ -27,6 +103,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     /// 當翻譯面板或其他覆蓋層開啟時設為 true，阻擋 WebView 接收觸控事件
     let isInteractionBlocked: Bool
     let onLocationChanged: (Locator) -> Void
+    let onNavigatorSettingsReceipt: (ReaderNavigatorSettingsReceipt) -> Void
     let onWordSelected: (String, String) -> Void
     let onPhraseSelected: (String, String) -> Void
     let onExplainSelected: (String, String) -> Void
@@ -175,6 +252,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         var isApplyingPreferences = false
         var activeTOCRequestID: UUID?
         var activeTOCTimeoutTask: Task<Void, Never>?
+        var preferencesApplyState = ReaderPreferencesApplyState()
+        let navigatorID = UUID()
+        var hasPublishedNavigatorSettingsReceipt = false
         let domExecutor = ReaderDOMExecutor()
 
         /// 記住 setupUserScripts 傳入的 controller，供 dismantle 時移除 handler 打斷 retain cycle
@@ -192,6 +272,15 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         // MARK: NavigatorDelegate
 
         func navigator(_ navigator: any Navigator, locationDidChange locator: Locator) {
+            // Initial configuration is supplied to the navigator initializer.
+            // If no preference command was needed, the first real location
+            // event is the readiness boundary for the initial receipt.
+            if
+                !hasPublishedNavigatorSettingsReceipt,
+                let epubNavigator = navigator as? EPUBNavigatorViewController
+            {
+                publishNavigatorSettingsReceipt(from: epubNavigator, source: .locationDidChange)
+            }
             parent.onLocationChanged(locator)
             if let requestID = activeTOCRequestID {
                 activeTOCRequestID = nil
@@ -207,7 +296,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
             // 翻頁後重新標記所有生字庫底線（設定調整期間跳過，避免卡頓）
             let words = parent.lookedUpWords
-            if !words.isEmpty && !isApplyingPreferences {
+            if !words.isEmpty && !preferencesApplyState.isApplying {
                 let validWords = filterValidWords(words, bookWords: parent.bookUniqueWords)
                 self.markVocabWords(validWords)
             }
@@ -218,6 +307,13 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
 
         // MARK: VisualNavigatorDelegate
+
+        func navigator(_ navigator: any VisualNavigator, presentationDidChange presentation: VisualNavigatorPresentation) {
+            _ = preferencesApplyState.observeNavigatorPresentation()
+            guard let epubNavigator = navigator as? EPUBNavigatorViewController else { return }
+            publishNavigatorSettingsReceipt(from: epubNavigator, source: .presentationDidChange)
+        }
+
         // 注意：不在 didTapAt 呼叫 handleTap，因為注入的 JS click listener 已處理
         // 若在此也呼叫 handleTap 會和 JS toggle 邏輯衝突
 
@@ -270,6 +366,27 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 let validWords = filterValidWords(words, bookWords: parent.bookUniqueWords)
                 self.markVocabWords(validWords)
             }
+        }
+
+        private func publishNavigatorSettingsReceipt(
+            from navigator: EPUBNavigatorViewController,
+            source: ReaderNavigatorSettingsReceipt.Source
+        ) {
+            guard
+                let settings = ReaderSettingsBridgeState(navigatorSettings: navigator.settings)
+            else {
+                AppLog.reader.error("Readium navigator settings receipt was unavailable")
+                return
+            }
+
+            hasPublishedNavigatorSettingsReceipt = true
+            parent.onNavigatorSettingsReceipt(
+                .ready(
+                    navigatorID: navigatorID,
+                    settings: settings,
+                    source: source
+                )
+            )
         }
     }
 }

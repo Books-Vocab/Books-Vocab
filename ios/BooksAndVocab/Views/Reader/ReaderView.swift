@@ -34,6 +34,10 @@ struct ReaderView: View {
     @State var publication: Publication?
     @State var readerState = ReaderViewState()
     @State var tocNavigationState = ReaderTOCNavigationState()
+    /// Readiness/settings receipt emitted by the live Readium navigator.
+    /// `nil` is intentionally exposed as a pending state until the navigator
+    /// reports its initial presentation.
+    @State var navigatorSettingsReceipt: ReaderNavigatorSettingsReceipt?
 
     // 翻譯 handler（封裝所有翻譯狀態與詞庫邏輯）
     @State var handler = ReaderTranslationHandler()
@@ -130,6 +134,7 @@ struct ReaderView: View {
             // dismiss / pop 時若 debounce 窗口未到期，flush 最後一次翻頁進度，
             // 避免 debounce 反而丟最後位置。
             progressSaver.flush()
+            navigatorSettingsReceipt = nil
         }
         .onChange(of: scenePhase) { _, newPhase in
             // 退背景時 flush debounced 進度，覆蓋正常退出路徑；僅前景強殺極端

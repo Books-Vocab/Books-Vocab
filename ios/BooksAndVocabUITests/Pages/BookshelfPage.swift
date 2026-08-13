@@ -30,17 +30,37 @@ struct BookshelfPage {
 
     // MARK: - Book Grid
 
-    /// Returns the first book card in the grid. Books are identified by
-    /// `accessibilityIdentifier = "book.card.<bookId>"`.
-    func bookCard(id: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "book.card.\(id)").firstMatch
-    }
-
-    /// Returns any book card (useful when exact IDs are unknown).
-    var anyBookCard: XCUIElement {
+    private var bookCardsQuery: XCUIElementQuery {
         app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "book.card."))
-            .firstMatch
+    }
+
+    /// Presence is enough for bookshelf-only state assertions; no element is
+    /// returned, so it cannot accidentally become an action shortcut.
+    @discardableResult
+    func waitForAnyBookCard(timeout: TimeInterval = 5) -> Bool {
+        bookCardsQuery.waitUntilAtLeastOne(timeout: timeout)
+    }
+
+    /// Legacy read-only probe retained for non-Reader bookshelf smoke flows.
+    /// P4/P5 Reader actions must use `exactlyOneBookCard` instead.
+    var anyBookCard: XCUIElement {
+        bookCardsQuery.firstMatch
+    }
+
+    /// Reader flows intentionally require the seeded library to contain one
+    /// deterministic book before tapping. This keeps fixture drift visible.
+    func exactlyOneBookCard(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        bookCardsQuery.exactlyOneElement(
+            timeout: timeout,
+            named: "book card",
+            file: file,
+            line: line
+        )
     }
 
     // MARK: - Actions
@@ -60,8 +80,8 @@ struct BookshelfPage {
     /// Tap the first available book card, if any.
     @discardableResult
     func tapFirstBook(file: StaticString = #filePath, line: UInt = UInt(#line)) -> ReaderPage? {
-        guard anyBookCard.waitForExistence(timeout: 5) else { return nil }
-        anyBookCard.tap()
+        guard let book = exactlyOneBookCard(file: file, line: line) else { return nil }
+        book.tapWhenReady(file: file, line: line)
         return ReaderPage(app: app)
     }
 

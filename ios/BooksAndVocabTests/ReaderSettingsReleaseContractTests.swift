@@ -16,18 +16,18 @@ struct ReaderSettingsReleaseContractTests {
 
     @Test func productionReaderBundleExcludesDebugDOMSurface() throws {
         let navigatorSource = try String(
-            contentsOf: sourceURL(named: "ReadiumNavigatorJS.swift"),
+            contentsOf: Self.sourceURL(named: "ReadiumNavigatorJS.swift"),
             encoding: .utf8
         )
         let debugSource = try String(
-            contentsOf: sourceURL(named: "ReadiumNavigatorJS+Debug.swift"),
+            contentsOf: Self.sourceURL(named: "ReadiumNavigatorJS+Debug.swift"),
             encoding: .utf8
         )
 
         #expect(navigatorSource.contains("#if DEBUG"))
         #expect(debugSource.contains("#if os(iOS) && DEBUG"))
 
-        let productionBundleSource = releaseProjection(of: navigatorSource + "\n" + debugSource)
+        let productionBundleSource = Self.releaseProjection(of: navigatorSource + "\n" + debugSource)
         #expect(
             !productionBundleSource.contains(Self.debugDOMAPI),
             "Release Reader injection must not contain the hit-testing DOM API"
@@ -38,11 +38,119 @@ struct ReaderSettingsReleaseContractTests {
         )
     }
 
+    @Test func preferenceApplyFinishesOnNavigatorReadinessEvent() {
+        var state = ReaderPreferencesApplyState()
+        let firstGeneration = state.begin()
+        #expect(state.isApplying)
+        let firstPresentationObserved = state.observeNavigatorPresentation()
+        #expect(firstPresentationObserved)
+        #expect(!state.isApplying)
+        let unrelatedPresentationObserved = state.observeNavigatorPresentation()
+        #expect(!unrelatedPresentationObserved, "an unrelated event must not create readiness")
+
+        let latestGeneration = state.begin()
+        state.cancel(firstGeneration)
+        #expect(state.isApplying, "an obsolete task must not cancel the latest preference apply")
+        let latestPresentationObserved = state.observeNavigatorPresentation()
+        #expect(latestPresentationObserved)
+        #expect(!state.isApplying)
+
+        _ = state.begin()
+        state.cancel(latestGeneration)
+        #expect(state.isApplying, "cancelling an obsolete generation must leave the current apply pending")
+    }
+
+    @Test func productionReaderEvidenceUsesStateContractWithoutZeroHeightColorHook() throws {
+        let panelSource = try String(
+            contentsOf: Self.sourceURL(named: "ReaderView+Panels.swift"),
+            encoding: .utf8
+        )
+
+        #expect(panelSource.contains("reader.webView.settingsState"))
+        #expect(panelSource.contains("navigatorSettingsReceipt"))
+        #expect(!panelSource.contains("viewConfiguration.settingsBridgeState"))
+        #expect(!panelSource.contains("Color.clear.frame(height: 0)"))
+        #expect(!panelSource.contains("Color.clear"))
+    }
+
+    @Test func productionStateReceiptUsesReadiumPresentationAndActualSettings() throws {
+        let navigatorSource = try String(
+            contentsOf: Self.sourceURL(named: "ReadiumNavigatorView.swift"),
+            encoding: .utf8
+        )
+
+        #expect(navigatorSource.contains("presentationDidChange"))
+        #expect(navigatorSource.contains("navigator.settings"))
+        #expect(navigatorSource.contains("onNavigatorSettingsReceipt"))
+        #expect(!navigatorSource.contains("Task.sleep"))
+    }
+
+    @Test func settingsBridgeStateMatchesActualNavigatorSettings() {
+        let state = ReaderSettingsBridgeState(
+            font: .mono,
+            fontScale: 1.25,
+            lineHeight: 2.1,
+            scrollMode: true,
+            theme: .dark
+        )
+
+        #expect(
+            state.accessibilityValue
+                == "font=Mono;fontSize=1.25;lineHeight=2.10;readingMode=scroll;theme=dark"
+        )
+    }
+
+    @Test func productionReaderReceiptCarriesReadinessAndNavigatorIdentity() {
+        let navigatorID = UUID(uuidString: "D8A8F3A7-6A9E-4D43-BE87-5F2A3C2E8C11")!
+        let state = ReaderNavigatorSettingsReceipt.ready(
+            navigatorID: navigatorID,
+            settings: ReaderSettingsBridgeState(
+                font: .serif,
+                fontScale: 1,
+                lineHeight: 1.4,
+                scrollMode: false,
+                theme: .light
+            ),
+            source: .presentationDidChange
+        )
+
+        #expect(state.accessibilityValue.contains("status=ready"))
+        #expect(state.accessibilityValue.contains("navigator=D8A8F3A7-6A9E-4D43-BE87-5F2A3C2E8C11"))
+        #expect(state.accessibilityValue.contains("lineHeight=1.40"))
+    }
+
+    @Test func readerPageNeverResolvesAnImplicitFirstMatch() throws {
+        let pageSource = try String(
+            contentsOf: Self.sourceURL(
+                relativeToProject: "BooksAndVocabUITests/Pages/ReaderPage.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(pageSource.contains("exactlyOneElement"))
+        #expect(!pageSource.contains("firstMatch"))
+    }
+
+    @Test func preferenceApplySourceContainsNoWallClockSleep() throws {
+        let commandSource = try String(
+            contentsOf: Self.sourceURL(named: "ReadiumNavigatorCoordinator+Commands.swift"),
+            encoding: .utf8
+        )
+        #expect(!commandSource.contains("Task.sleep"))
+    }
+
     private static func sourceURL(named name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("BooksAndVocab/Views/Reader/\(name)")
+    }
+
+    private static func sourceURL(relativeToProject path: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(path)
     }
 
     /// Static Release projection for the two Reader JS source files.  It keeps

@@ -93,6 +93,89 @@ extension XCUIElement {
     }
 }
 
+extension XCUIElementQuery {
+    /// Resolve an element only after the accessibility query has exactly one
+    /// match. `element(boundBy:)` is intentionally confined here: callers and
+    /// Page Objects must never act on an implicit first match.
+    @discardableResult
+    func exactlyOneElement(
+        timeout: TimeInterval = 5,
+        named name: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        var observedCount = 0
+
+        while Date() < deadline {
+            observedCount = count
+            if observedCount == 1 {
+                return element(boundBy: 0)
+            }
+            if observedCount > 1 {
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        XCTFail(
+            "Expected exactly one \(name), observed \(observedCount)",
+            file: file,
+            line: line
+        )
+        return nil
+    }
+
+    /// Optional-state counterpart for compact/expanded Reader chrome. Zero
+    /// matches is a valid state; a duplicate is still a contract failure.
+    func exactlyOneElementIfPresent(
+        timeout: TimeInterval = 0.5,
+        named name: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        var observedCount = 0
+
+        while Date() < deadline {
+            observedCount = count
+            if observedCount == 1 {
+                return element(boundBy: 0)
+            }
+            if observedCount > 1 {
+                XCTFail(
+                    "Expected at most one \(name), observed \(observedCount)",
+                    file: file,
+                    line: line
+                )
+                return nil
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return nil
+    }
+
+    @discardableResult
+    func waitUntilAtLeastOne(timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if count > 0 { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return count > 0
+    }
+
+    @discardableResult
+    func waitUntilEmpty(timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if count == 0 { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return count == 0
+    }
+}
+
 extension XCUIApplication {
     @discardableResult
     func waitForNavigationToSettle(timeout: TimeInterval = 5) -> Bool {

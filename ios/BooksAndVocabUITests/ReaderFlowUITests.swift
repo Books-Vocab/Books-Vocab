@@ -51,24 +51,24 @@ final class ReaderFlowUITests: UITestCase {
 
         // ── 1. 書架必須渲染 fixture 種的真書 ────────────────────────────────
         let bookshelf = AppPage(app: app).goToBookshelf()
-        guard bookshelf.anyBookCard.waitUntilExists(timeout: 10) else {
+        guard let bookCard = bookshelf.exactlyOneBookCard(timeout: 10) else {
             captureStep("no-book-card", app: app)
             XCTFail("reader fixture (realBookLibrary) 應種出一本真書；書架空 = fixture 沒跑或轉檔失敗")
             return
         }
         try step("bookshelf-book-card", app: app) {
             XCTAssertTrue(
-                bookshelf.anyBookCard.label.contains("Atomic Habits"),
-                "書卡 label 應含 fixture 書名，got: \(bookshelf.anyBookCard.label)"
+                bookCard.label.contains("Atomic Habits"),
+                "書卡 label 應含 fixture 書名，got: \(bookCard.label)"
             )
         }
 
         // ── 2. 開書 → Readium 真的渲染章節原文 ──────────────────────────────
         let reader = ReaderPage(app: app)
         try step("book-opened", app: app) {
-            bookshelf.anyBookCard.tapWhenReady()
+            bookCard.tapWhenReady()
         }
-        guard reader.contentText(Self.seededWord).waitUntilExists(timeout: 45) else {
+        guard reader.waitForContent(Self.seededWord, timeout: 45) else {
             captureStep("reader-content-missing", app: app)
             XCTFail("閱讀器必須渲染真章節文本（章首段落「\(Self.seededWord)」）— 沒出現 = 開書失敗或內容是假的")
             return
@@ -77,30 +77,26 @@ final class ReaderFlowUITests: UITestCase {
 
         // ── 3. 選詞 → 翻譯面板真的出現且帶內容（詞庫命中，零網路）──────────
         try step("word-tapped", app: app) {
-            reader.contentText(Self.seededWord).tapWhenReady()
+            XCTAssertTrue(reader.tapContentText(Self.seededWord))
         }
-        guard reader.translationPanel.waitUntilExists(timeout: 5) else {
+        guard reader.waitForTranslationPanel(timeout: 5) else {
             captureStep("no-translation-panel", app: app)
             XCTFail("點擊單字後翻譯面板必須出現 — 沒出現 = 選詞橋接或 overlay 壞了")
             return
         }
         XCTAssertTrue(
-            reader.translationWord.waitUntilLabelContains(Self.seededWord, timeout: 5),
-            "面板 headword 必須是被點的單字，got: \(reader.translationWord.exists ? reader.translationWord.label : "<missing>")"
+            reader.translationWordContains(Self.seededWord, timeout: 5),
+            "面板 headword 必須是被點的單字"
         )
         XCTAssertTrue(
-            reader.translationText.waitUntilLabelContains(Self.seededTranslation, timeout: 5),
-            "面板必須帶真翻譯內容（fixture 詞庫 entry），got: \(reader.translationText.exists ? reader.translationText.label : "<missing>")"
+            reader.translationTextContains(Self.seededTranslation, timeout: 5),
+            "面板必須帶真翻譯內容（fixture 詞庫 entry）"
         )
         captureStep("translation-shown", app: app)
 
         // ── 4. 關閉面板（真狀態收回）────────────────────────────────────────
         try step("translation-dismissed", app: app) {
-            reader.translationDismissButton.tapWhenReady()
-            XCTAssertTrue(
-                reader.translationPanel.waitUntilGone(timeout: 5),
-                "點 dismiss 後翻譯面板必須收回"
-            )
+            XCTAssertTrue(reader.dismissTranslation(), "點 dismiss 後翻譯面板必須收回")
         }
 
         // ── 5. 翻頁 → 進度徽章數值真前進 ────────────────────────────────────
@@ -110,7 +106,7 @@ final class ReaderFlowUITests: UITestCase {
             return
         }
         try step("page-turned", app: app) {
-            reader.webView.swipeLeft()
+            XCTAssertTrue(reader.swipeWebViewLeft())
             XCTAssertTrue(
                 reader.waitUntilProgressExceeds(initialProgress, timeout: 10),
                 """

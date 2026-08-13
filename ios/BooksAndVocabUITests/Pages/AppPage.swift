@@ -46,7 +46,13 @@ struct AppPage {
 
     @discardableResult
     func goToBookshelf(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
-        bookshelfTab.tapWhenReady(file: file, line: line)
+        guard let tab = app.tabBars.buttons["書庫"].exactlyOneElement(
+            timeout: 5,
+            named: "Bookshelf tab",
+            file: file,
+            line: line
+        ) else { return BookshelfPage(app: app) }
+        tab.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
     }
 

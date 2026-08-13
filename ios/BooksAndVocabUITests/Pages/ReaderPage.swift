@@ -20,73 +20,84 @@ struct ReaderPage {
         app.buttons["reader.header.expandButton"]
     }
 
-    var backButton: XCUIElement {
-        app.buttons["reader.header.backButton"]
-    }
-
-    var translationPanel: XCUIElement {
-        app.otherElements["reader.translationPanel"]
-    }
-
-    var settingsPanel: XCUIElement {
-        app.otherElements["reader.settingsPanel"]
-    }
-
-    var settingsButton: XCUIElement {
-        app.buttons["reader.header.settingsButton"]
-    }
-
-    var settingsDoneButton: XCUIElement {
-        app.buttons["reader.settings.done"]
-    }
-
-    var settingsPreview: XCUIElement {
-        app.otherElements["reader.settings.preview"]
-    }
-
-    var fontSizeStepper: XCUIElement {
-        app.steppers["reader.settings.fontSizeStepper"]
-    }
-
-    var lineHeightSlider: XCUIElement {
-        app.sliders["reader.settings.lineHeight"]
-    }
-
-    var readingModePicker: XCUIElement {
-        app.buttons["reader.settings.readingMode"]
-    }
-
-    var fontPicker: XCUIElement {
-        app.buttons["reader.settings.font"]
-    }
-
-    var themePicker: XCUIElement {
-        app.otherElements["reader.settings.theme"]
-    }
-
+    var backButton: XCUIElement { app.buttons["reader.header.backButton"] }
+    var translationPanel: XCUIElement { app.otherElements["reader.translationPanel"] }
+    var settingsPanel: XCUIElement { app.otherElements["reader.settingsPanel"] }
+    var settingsButton: XCUIElement { app.buttons["reader.header.settingsButton"] }
+    var settingsDoneButton: XCUIElement { app.buttons["reader.settings.done"] }
+    var settingsPreview: XCUIElement { app.otherElements["reader.settings.preview"] }
+    var fontSizeStepper: XCUIElement { app.steppers["reader.settings.fontSizeStepper"] }
+    var lineHeightSlider: XCUIElement { app.sliders["reader.settings.lineHeight"] }
+    var readingModePicker: XCUIElement { app.buttons["reader.settings.readingMode"] }
+    var fontPicker: XCUIElement { app.buttons["reader.settings.font"] }
+    var themePicker: XCUIElement { app.otherElements["reader.settings.theme"] }
     func themeOption(_ theme: String) -> XCUIElement {
         app.buttons["reader.settings.theme.\(theme)"]
     }
+    var highlightColorPicker: XCUIElement { app.otherElements["reader.settings.highlightColor"] }
+    var highlightOpacityPicker: XCUIElement { app.buttons["reader.settings.highlightOpacity"] }
+    var resetMenu: XCUIElement { app.buttons["reader.settings.resetMenu"] }
+    var resetAllButton: XCUIElement { app.buttons["reader.settings.reset.all"] }
+    var progressBadge: XCUIElement { app.staticTexts["reader.header.progressBadge"] }
 
-    var highlightColorPicker: XCUIElement {
-        app.otherElements["reader.settings.highlightColor"]
+    // MARK: - Query definitions
+
+    /// Reader hides the system navigation bar. Every Reader action resolves its
+    /// query through `exactlyOneElement` immediately before acting; this keeps
+    /// compact/expanded transitions explicit and makes duplicate IDs fail fast.
+    private var expandHeaderButtonQuery: XCUIElementQuery {
+        app.buttons["reader.header.expandButton"]
     }
 
-    var highlightOpacityPicker: XCUIElement {
-        app.buttons["reader.settings.highlightOpacity"]
+    private var backButtonQuery: XCUIElementQuery {
+        app.buttons["reader.header.backButton"]
     }
 
-    var resetMenu: XCUIElement {
+    private var translationPanelQuery: XCUIElementQuery {
+        app.otherElements["reader.translationPanel"]
+    }
+
+    private var settingsPanelQuery: XCUIElementQuery {
+        app.otherElements["reader.settingsPanel"]
+    }
+
+    private var settingsButtonQuery: XCUIElementQuery {
+        app.buttons["reader.header.settingsButton"]
+    }
+
+    private var settingsDoneButtonQuery: XCUIElementQuery {
+        app.buttons["reader.settings.done"]
+    }
+
+    private var settingsPreviewQuery: XCUIElementQuery {
+        app.otherElements["reader.settings.preview"]
+    }
+
+    private var fontSizeStepperQuery: XCUIElementQuery {
+        app.steppers["reader.settings.fontSizeStepper"]
+    }
+
+    private var fontSizeIncrementQuery: XCUIElementQuery {
+        fontSizeStepperQuery.buttons["Increment"]
+    }
+
+    private var lineHeightSliderQuery: XCUIElementQuery {
+        app.sliders["reader.settings.lineHeight"]
+    }
+
+    private var themeOptionQuery: (String) -> XCUIElementQuery {
+        { theme in app.buttons["reader.settings.theme.\(theme)"] }
+    }
+
+    private var resetMenuQuery: XCUIElementQuery {
         app.buttons["reader.settings.resetMenu"]
     }
 
-    var resetAllButton: XCUIElement {
+    private var resetAllButtonQuery: XCUIElementQuery {
         app.buttons["reader.settings.reset.all"]
     }
 
-    /// Compact header progress badge text (e.g. "12.3%"); only present once
-    /// `totalProgression > 0` and no overlay is shown.
-    var progressBadge: XCUIElement {
+    private var progressBadgeQuery: XCUIElementQuery {
         app.staticTexts["reader.header.progressBadge"]
     }
 
@@ -275,18 +286,147 @@ struct ReaderPage {
         XCTAssertEqual(app.webViews.count, 1, file: file, line: line)
     }
 
+    private var webViewQuery: XCUIElementQuery { app.webViews }
+
+    private var settingsStateQuery: XCUIElementQuery {
+        app.descendants(matching: .any)
+            .matching(identifier: "reader.webView.settingsState")
+    }
+
+    private func exactlyOne(
+        _ query: XCUIElementQuery,
+        named name: String,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        query.exactlyOneElement(timeout: timeout, named: name, file: file, line: line)
+    }
+
+    private func exactlyOneIfPresent(
+        _ query: XCUIElementQuery,
+        named name: String,
+        timeout: TimeInterval = 0.5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        query.exactlyOneElementIfPresent(timeout: timeout, named: name, file: file, line: line)
+    }
+
+    // MARK: - Exact element accessors
+
+    func settingsPanelElement(file: StaticString = #filePath, line: UInt = UInt(#line)) -> XCUIElement? {
+        exactlyOne(settingsPanelQuery, named: "Reader settings panel", file: file, line: line)
+    }
+
+    func settingsPreviewElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(settingsPreviewQuery, named: "Reader settings preview", timeout: timeout, file: file, line: line)
+    }
+
+    func settingsDoneButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(settingsDoneButtonQuery, named: "Reader settings done button", timeout: timeout, file: file, line: line)
+    }
+
+    func lineHeightSliderElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout, file: file, line: line)
+    }
+
+    func webViewElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(webViewQuery, named: "production Reader WebView", timeout: timeout, file: file, line: line)
+    }
+
+    func settingsStateElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(settingsStateQuery, named: "production Reader settings state", timeout: timeout, file: file, line: line)
+    }
+
+    func settingsStateValue(timeout: TimeInterval = 5) -> String? {
+        guard let state = exactlyOne(
+            settingsStateQuery,
+            named: "production Reader settings state",
+            timeout: timeout
+        ) else {
+            return nil
+        }
+        return String(describing: state.value ?? "")
+    }
+
+    /// A rendered text block inside the Readium WebView. Single-word
+    /// paragraphs expose an exact-label staticText whose center is a
+    /// deterministic word-tap target.
+    private func contentTextQuery(_ text: String) -> XCUIElementQuery {
+        app.webViews.staticTexts[text]
+    }
+
+    func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
+        exactlyOne(contentTextQuery(text), named: "Reader content \(text)", timeout: timeout) != nil
+    }
+
     // MARK: - Translation Panel
 
-    var translationWord: XCUIElement {
+    private var translationWordQuery: XCUIElementQuery {
         app.staticTexts["reader.translationPanel.word"]
     }
 
-    var translationText: XCUIElement {
+    private var translationTextQuery: XCUIElementQuery {
         app.staticTexts["reader.translationPanel.translation"]
     }
 
-    var translationDismissButton: XCUIElement {
+    private var translationDismissButtonQuery: XCUIElementQuery {
         app.buttons["reader.translationPanel.dismissButton"]
+    }
+
+    func waitForTranslationPanel(timeout: TimeInterval = 5) -> Bool {
+        exactlyOne(translationPanelQuery, named: "Reader translation panel", timeout: timeout) != nil
+    }
+
+    func translationWordContains(_ text: String, timeout: TimeInterval = 5) -> Bool {
+        guard let word = exactlyOne(translationWordQuery, named: "translation word", timeout: timeout) else {
+            return false
+        }
+        return word.waitUntilLabelContains(text, timeout: timeout)
+    }
+
+    func translationTextContains(_ text: String, timeout: TimeInterval = 5) -> Bool {
+        guard let translation = exactlyOne(translationTextQuery, named: "translation text", timeout: timeout) else {
+            return false
+        }
+        return translation.waitUntilLabelContains(text, timeout: timeout)
+    }
+
+    var translationWord: XCUIElement { app.staticTexts["reader.translationPanel.word"] }
+    var translationText: XCUIElement { app.staticTexts["reader.translationPanel.translation"] }
+    var translationDismissButton: XCUIElement { app.buttons["reader.translationPanel.dismissButton"] }
+
+    @discardableResult
+    func dismissTranslation(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard let dismiss = exactlyOne(
+            translationDismissButtonQuery,
+            named: "translation dismiss button",
+            file: file,
+            line: line
+        ) else { return false }
+        dismiss.tapWhenReady(file: file, line: line)
+        return translationPanelQuery.waitUntilEmpty(timeout: 5)
     }
 
     // MARK: - Progress
@@ -295,7 +435,10 @@ struct ReaderPage {
     /// Returns nil while the badge is absent (totalProgression == 0 or
     /// chrome hidden behind an overlay).
     func progressPercent() -> Double? {
-        guard progressBadge.exists else { return nil }
+        guard let progressBadge = exactlyOneIfPresent(
+            progressBadgeQuery,
+            named: "Reader progress badge"
+        ) else { return nil }
         let label = progressBadge.label
         return Double(label.replacingOccurrences(of: "%", with: ""))
     }
@@ -319,29 +462,77 @@ struct ReaderPage {
     @discardableResult
     func goBack(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
         // compact 狀態沒有返回鍵，得先展開。已展開時 expand 按鈕不存在，直接按返回。
-        if !backButton.exists, expandHeaderButton.waitForExistence(timeout: 5) {
-            expandHeaderButton.tapWhenReady(file: file, line: line)
+        if let backButton = exactlyOneIfPresent(
+            backButtonQuery,
+            named: "Reader back button",
+            file: file,
+            line: line
+        ) {
+            backButton.tapWhenReady(file: file, line: line)
+            return BookshelfPage(app: app)
         }
+
+        guard let expandButton = exactlyOne(
+            expandHeaderButtonQuery,
+            named: "Reader expand button",
+            timeout: 5,
+            file: file,
+            line: line
+        ) else { return BookshelfPage(app: app) }
+        expandButton.tapWhenReady(file: file, line: line)
+        guard let backButton = exactlyOne(
+            backButtonQuery,
+            named: "Reader back button after expand",
+            timeout: 5,
+            file: file,
+            line: line
+        ) else { return BookshelfPage(app: app) }
         backButton.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
     }
 
     @discardableResult
     func openSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> ReaderPage {
-        if !settingsButton.exists, expandHeaderButton.waitForExistence(timeout: 5) {
-            expandHeaderButton.tapWhenReady(file: file, line: line)
+        var settingsButton = exactlyOneIfPresent(
+            settingsButtonQuery,
+            named: "Reader settings button",
+            file: file,
+            line: line
+        )
+        if settingsButton == nil {
+            guard let expandButton = exactlyOne(
+                expandHeaderButtonQuery,
+                named: "Reader expand button",
+                timeout: 5,
+                file: file,
+                line: line
+            ) else { return self }
+            expandButton.tapWhenReady(file: file, line: line)
+            settingsButton = exactlyOne(
+                settingsButtonQuery,
+                named: "Reader settings button after expand",
+                timeout: 5,
+                file: file,
+                line: line
+            )
         }
+
+        guard let settingsButton else { return self }
         settingsButton.tapWhenReady(file: file, line: line)
-        settingsPanel.waitUntilExists(timeout: 5)
+        _ = exactlyOne(settingsPanelQuery, named: "Reader settings panel", timeout: 5, file: file, line: line)
         return self
     }
 
     @discardableResult
     func selectTheme(_ theme: String, timeout: TimeInterval = 8) -> Bool {
-        let option = themeOption(theme)
+        let optionQuery = themeOptionQuery(theme)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if option.exists && option.isHittable {
+            if let option = exactlyOneIfPresent(
+                optionQuery,
+                named: "Reader theme option \(theme)",
+                timeout: 0.25
+            ), option.isHittable {
                 option.tap()
                 return true
             }
@@ -361,23 +552,148 @@ struct ReaderPage {
 
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if settingsPreview.exists && settingsPreview.isHittable {
+            if let preview = exactlyOneIfPresent(
+                settingsPreviewQuery,
+                named: "Reader settings preview",
+                timeout: 0.25
+            ), preview.isHittable {
                 return true
             }
             app.swipeDown()
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
-        return settingsPreview.exists
+        return exactlyOneIfPresent(
+            settingsPreviewQuery,
+            named: "Reader settings preview",
+            timeout: 0.25
+        ) != nil
     }
 
-    func resetReaderSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+    @discardableResult
+    func resetReaderSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard let resetMenu = exactlyOne(
+            resetMenuQuery,
+            named: "Reader settings reset menu",
+            file: file,
+            line: line
+        ) else { return false }
         resetMenu.tapWhenReady(file: file, line: line)
+        guard let resetAllButton = exactlyOne(
+            resetAllButtonQuery,
+            named: "Reader settings reset action",
+            timeout: 5,
+            file: file,
+            line: line
+        ) else { return false }
         resetAllButton.tapWhenReady(file: file, line: line)
+        return true
     }
 
-    func lineHeightValue() -> Double? {
-        guard let raw = lineHeightSlider.value else { return nil }
+    @discardableResult
+    func incrementFontSize(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard exactlyOne(
+            fontSizeStepperQuery,
+            named: "Reader font-size stepper",
+            file: file,
+            line: line
+        ) != nil else { return false }
+        guard let increment = exactlyOne(
+            fontSizeIncrementQuery,
+            named: "Reader font-size increment button",
+            file: file,
+            line: line
+        ) else { return false }
+        increment.tapWhenReady(file: file, line: line)
+        return true
+    }
+
+    @discardableResult
+    func adjustLineHeight(
+        toNormalizedSliderPosition position: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        guard let slider = exactlyOne(
+            lineHeightSliderQuery,
+            named: "Reader line-height slider",
+            file: file,
+            line: line
+        ) else { return false }
+        slider.adjust(toNormalizedSliderPosition: position)
+        return true
+    }
+
+    func lineHeightValue(timeout: TimeInterval = 5) -> Double? {
+        guard let slider = exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout) else {
+            return nil
+        }
+        guard let raw = slider.value else { return nil }
         return Double(String(describing: raw))
+    }
+
+    @discardableResult
+    func waitForLineHeightValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
+        guard let slider = exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout) else {
+            return false
+        }
+        return slider.waitUntilValueEquals(value, timeout: timeout)
+    }
+
+    @discardableResult
+    func closeSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard let done = exactlyOne(
+            settingsDoneButtonQuery,
+            named: "Reader settings done button",
+            file: file,
+            line: line
+        ) else { return false }
+        done.tapWhenReady(file: file, line: line)
+        return settingsPanelQuery.waitUntilEmpty(timeout: 5)
+    }
+
+    @discardableResult
+    func tapContentText(_ text: String, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard let content = exactlyOne(
+            contentTextQuery(text),
+            named: "Reader content \(text)",
+            timeout: 5,
+            file: file,
+            line: line
+        ) else { return false }
+        content.tapWhenReady(file: file, line: line)
+        return true
+    }
+
+    @discardableResult
+    func swipeWebViewLeft(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard let webView = exactlyOne(webViewQuery, named: "production Reader WebView", file: file, line: line) else {
+            return false
+        }
+        webView.swipeLeft()
+        return true
+    }
+
+    func waitForSettingsStateContaining(_ fragments: [String], timeout: TimeInterval = 10) -> Bool {
+        guard let state = exactlyOne(settingsStateQuery, named: "production Reader settings state", timeout: timeout) else {
+            return false
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let value = String(describing: state.value ?? "")
+            if fragments.allSatisfy(value.contains) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
+    }
+
+    func themeIsSelected(_ theme: String, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard let option = exactlyOne(
+            themeOptionQuery(theme),
+            named: "Reader theme option \(theme)",
+            file: file,
+            line: line
+        ) else { return false }
+        return option.isSelected
     }
 
     // MARK: - Assertions
@@ -390,7 +706,13 @@ struct ReaderPage {
             NSPredicate(format: "identifier IN %@",
                         ["reader.header.expandButton", "reader.header.backButton"])
         )
-        guard chromeButtons.waitForExistence(timeout: 5) else {
+        guard exactlyOneIfPresent(
+            chromeButtons,
+            named: "Reader chrome button",
+            timeout: 5,
+            file: file,
+            line: line
+        ) != nil else {
             XCTFail("reader chrome not found. Accessibility tree:\n\(app.debugDescription)",
                     file: file, line: line)
             return
