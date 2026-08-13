@@ -127,7 +127,9 @@ run_one() {
         ops/tests/test_task_registry.py \
         ops/tests/test_worktree_campaign_reservation.py \
         ops/tests/test_worktree_handback_outcomes.py \
-        ops/tests/test_worktree_parent_integration.py &&
+        ops/tests/test_worktree_parent_integration.py \
+        ops/tests/test_worktree_integrate_status.py \
+        ops/tests/test_worktree_registry_queries.py &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_lock_wait.py &&
       ./ops/tests/test_worktree_registry.sh
@@ -149,9 +151,11 @@ run_one() {
     review-audit)       ./ops/tests/test_review_audit.sh ;;
     review-cycle)       ./ops/tests/test_review_cycle.sh ;;
     capability-matrix)
-      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
+      "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \
         ops/tests/test_capability_matrix.py \
-        ops/tests/test_compute_contract.py
+        ops/tests/test_compute_contract.py \
+        ops/tests/test_compute_dogfood.py \
+        ops/tests/test_compute_executor.py
       ;;
     ui-deadcode)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_deadcode.py &&
@@ -191,6 +195,8 @@ run_one() {
       ./ops/tests/test_docs_lint.sh
       ./ops/tests/test_docs_lint_generated_check.sh
       ./ops/tests/test_docs_lint_generated_diff.sh
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_constitution_lint.py
       ;;
     gen-ios-baseline)
       ./ops/tests/test_gen_ios_baseline.sh
@@ -209,6 +215,7 @@ run_one() {
     ios-ops)
       ./ops/test_ios_ops.sh &&
       ./ops/tests/test_ios_ops_release_heartbeat.sh &&
+      ./ops/tests/test_ios_xctestrun_cache.sh &&
       "$UV_BIN" run --project backend python -m pytest -q \
         ops/tests/test_ios_diagnostics.py \
         ops/tests/test_ios_coverage.py &&
@@ -256,7 +263,8 @@ run_one() {
         ops/tests/test_app_review_gate.py \
         ops/tests/test_app_review_evaluators.py \
         ops/tests/test_asc_reviewer_mirror.py \
-        ops/tests/test_provenance.py
+        ops/tests/test_provenance.py \
+        ops/tests/test_reviewer_evidence.py
       ;;
     demo-data)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
@@ -266,7 +274,9 @@ run_one() {
         ops/tests/test_apply_curation.py \
         ops/tests/test_ui_world_manifest.py \
         ops/tests/test_uitest_flow_matrix.py \
-        ops/tests/test_uitest_review_page.py
+        ops/tests/test_uitest_review_page.py \
+        ops/tests/test_uitest_evidence_contract.py \
+        ops/tests/test_uitest_review_attest.py
       ;;
     catalog-agent)
       ./ops/tests/test_catalog_agent_boundary.sh \
