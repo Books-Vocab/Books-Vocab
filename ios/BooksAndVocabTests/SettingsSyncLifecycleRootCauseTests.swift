@@ -64,6 +64,47 @@ struct SettingsSyncLifecycleRootCauseTests {
         }
     }
 
+    @Test("fixture accepts both real background-sync push legs")
+    func fixturePushEndpointsReturnAccounting() async throws {
+        let summary = try JSONDecoder().decode(
+            SettingsFixtureSeed.SyncSummary.self,
+            from: Data(#"""
+            {
+              "isConnected": true,
+              "isSyncing": false,
+              "summaryText": "Connected",
+              "lastSyncedText": null,
+              "lifecycle": "terminalError",
+              "message": "sync failed",
+              "attempt": 1,
+              "dataOutcome": "partial"
+            }
+            """#.utf8))
+        let transport = SettingsSyncFixtureTransport(summary: summary)
+
+        var stateRequest = URLRequest(url: URL(string: "https://settings-fixture.invalid/api/vocab/review")!)
+        stateRequest.httpMethod = "PATCH"
+        stateRequest.httpBody = Data(#"{"entries":[{"word":"residual"}]}"#.utf8)
+        let (stateData, stateResponse) = try await transport.data(for: stateRequest)
+        #expect((stateResponse as? HTTPURLResponse)?.statusCode == 200)
+        let stateAccounting = try #require(
+            try JSONSerialization.jsonObject(with: stateData) as? [String: Int]
+        )
+        #expect(stateAccounting["updated"] == 0)
+        #expect(stateAccounting["skipped"] == 1)
+
+        var eventRequest = URLRequest(url: URL(string: "https://settings-fixture.invalid/api/vocab/review-events")!)
+        eventRequest.httpMethod = "PATCH"
+        eventRequest.httpBody = Data(#"{"entries":[{},{}]}"#.utf8)
+        let (eventData, eventResponse) = try await transport.data(for: eventRequest)
+        #expect((eventResponse as? HTTPURLResponse)?.statusCode == 200)
+        let eventAccounting = try #require(
+            try JSONSerialization.jsonObject(with: eventData) as? [String: Int]
+        )
+        #expect(eventAccounting["inserted"] == 0)
+        #expect(eventAccounting["skipped"] == 2)
+    }
+
     @Test("illegal lifecycle transitions throw instead of silently changing the state")
     func illegalTransitionsAreObservable() {
         var lifecycle = SettingsSyncLifecycle.idle
