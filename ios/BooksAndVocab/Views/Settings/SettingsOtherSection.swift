@@ -230,7 +230,11 @@ struct SettingsOtherSection: View {
         }
         .buttonStyle(.plain)
         .disabled(summary.isSyncing)
-        .accessibilityElement(children: .combine)
+        // Keep the action node distinct from the enclosing sync-group card.
+        // `.combine` allowed the parent group's identifier to bleed onto the
+        // button in the iOS 26 accessibility tree, making the declared
+        // `settings.syncSummary` contract disappear at runtime.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.syncSummary")
     }
 

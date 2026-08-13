@@ -72,10 +72,7 @@ struct SettingsSheetPage {
     }
 
     var syncSummaryButton: XCUIElement {
-        // The production row combines its accessibility children, so XCTest
-        // may expose it as Other rather than Button. Resolve the stable ID
-        // independently of the concrete AX element type.
-        app.descendants(matching: .any)
+        app.descendants(matching: .button)
             .matching(identifier: "settings.syncSummary")
             .firstMatch
     }
