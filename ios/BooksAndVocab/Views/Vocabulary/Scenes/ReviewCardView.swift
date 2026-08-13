@@ -390,7 +390,9 @@ struct ReviewCardView: View {
     }
 
     private func evidenceIdentityValue(for card: CardPresentation) -> String {
-        "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
+        let preset = profile.preset(for: card.reviewMode)
+        let layoutProfile = "recognition:\(profile.recognition.rawValue),production:\(profile.production.rawValue)"
+        return "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);preset=\(preset.rawValue);layoutProfile=\(layoutProfile);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
     }
 
     func combinedAnswerContent(_ currentCard: ReviewCardContent, viewport: ReviewCardViewport) -> some View {

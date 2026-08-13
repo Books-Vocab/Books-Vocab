@@ -13,6 +13,46 @@ struct TodayReviewPage {
         case scroll
     }
 
+    enum CardFace: String {
+        case front
+        case back
+    }
+
+    struct CardGeometryContract: Equatable {
+        let minimumWidth: CGFloat
+        let minimumHeight: CGFloat
+        let expectedExpandZoneCount: Int
+        let maximumBottomGap: CGFloat?
+
+        static let compactFront = CardGeometryContract(
+            minimumWidth: 280,
+            minimumHeight: 100,
+            expectedExpandZoneCount: 1,
+            maximumBottomGap: 48
+        )
+
+        static let compactBack = CardGeometryContract(
+            minimumWidth: 280,
+            minimumHeight: 100,
+            expectedExpandZoneCount: 0,
+            maximumBottomGap: nil
+        )
+
+        static let fullFront = CardGeometryContract(
+            minimumWidth: 280,
+            minimumHeight: 100,
+            expectedExpandZoneCount: 1,
+            maximumBottomGap: 48
+        )
+
+        static let fullBack = CardGeometryContract(
+            minimumWidth: 280,
+            minimumHeight: 100,
+            expectedExpandZoneCount: 0,
+            maximumBottomGap: nil
+        )
+    }
+
     struct CardIdentity: Equatable {
         enum ReviewMode: String {
             case recognition
@@ -30,15 +70,7 @@ struct TodayReviewPage {
         let preset: LayoutPreset
         let translationPrefix: String
         let minimumTranslationLength: Int
-
-        static let p12ProbeRecognitionCompact = CardIdentity(
-            cardID: "probe-001",
-            frontWord: "probeword001",
-            mode: .recognition,
-            preset: .compact,
-            translationPrefix: "量測卡片 1",
-            minimumTranslationLength: 0
-        )
+        let effectiveLayoutProfile: String
 
         static let p12CompactCoaxedRecognition = CardIdentity(
             cardID: "review-card-compact-coaxed",
@@ -46,7 +78,8 @@ struct TodayReviewPage {
             mode: .recognition,
             preset: .compact,
             translationPrefix: "說服、哄勸",
-            minimumTranslationLength: 180
+            minimumTranslationLength: 180,
+            effectiveLayoutProfile: "recognition:compact,production:compact"
         )
 
         static let p13Production = CardIdentity(
@@ -55,7 +88,8 @@ struct TodayReviewPage {
             mode: .production,
             preset: .standard,
             translationPrefix: "說服；以溫和、耐心",
-            minimumTranslationLength: 180
+            minimumTranslationLength: 180,
+            effectiveLayoutProfile: "recognition:standard,production:standard"
         )
 
         var frontRequiredFields: [String] {
@@ -91,11 +125,28 @@ struct TodayReviewPage {
             guard values["cardID"] == cardID,
                   values["frontWord"] == frontWord,
                   values["mode"] == mode.rawValue,
+                  values["preset"] == preset.rawValue,
+                  values["layoutProfile"] == effectiveLayoutProfile,
                   let translationLength = values["translationLength"].flatMap(Int.init),
                   translationLength >= minimumTranslationLength else {
                 return false
             }
             return translationPrefix.isEmpty || values["translationPrefix"]?.hasPrefix(translationPrefix) == true
+        }
+    }
+
+    struct EvidenceReadinessContract: Equatable {
+        let face: CardFace
+        let identity: CardIdentity
+        let presentation: CardPresentation
+        let geometry: CardGeometryContract
+
+        var requiredFields: [String] {
+            face == .front ? identity.frontRequiredFields : identity.backRequiredFields
+        }
+
+        var absentFields: [String] {
+            face == .front ? identity.frontAbsentFields : identity.backAbsentFields
         }
     }
 
@@ -223,6 +274,26 @@ struct TodayReviewPage {
         XCTAssertGreaterThan(target.frame.height, 0, "projected link has no positive height: \(identifier)", file: file, line: line)
     }
 
+    func assertCardBackDoesNotExist(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        XCTAssertEqual(
+            elements(for: "todayReview.card.back").count,
+            0,
+            "Today Review back face must be absent before the capture flip",
+            file: file,
+            line: line
+        )
+    }
+
+    func assertAutoplayPlayingDoesNotExist(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        XCTAssertEqual(
+            elements(for: "todayReview.autoplay.playing").count,
+            0,
+            "Today Review autoplay playing state must be absent",
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Readers
 
     var progressText: String { progressLabel.label }
@@ -281,17 +352,43 @@ struct TodayReviewPage {
 
     // MARK: - Evidence readiness
 
-    /// Wait for the exact card/presentation state before taking a screenshot.
-    ///
-    /// Every query is re-evaluated because SwiftUI can publish a transient
-    /// accessibility tree while the fold is mounting. `firstMatch` remains the
-    /// accessor used by actions/readers, but it is never the cardinality contract.
+    /// Wait for the exact typed card/presentation/geometry state before taking a
+    /// screenshot. The face-specific selector is part of the contract: a back
+    /// capture is never certified by the front face.
+    @discardableResult
+    func waitForEvidenceReadiness(
+        _ contract: EvidenceReadinessContract,
+        timeout: TimeInterval = 8
+    ) -> Bool {
+        switch contract.face {
+        case .front:
+            return waitForFrontReadiness(
+                identity: contract.identity,
+                presentation: contract.presentation,
+                requiredFields: contract.requiredFields,
+                absentFields: contract.absentFields,
+                geometry: contract.geometry,
+                timeout: timeout
+            )
+        case .back:
+            return waitForBackReadiness(
+                identity: contract.identity,
+                presentation: contract.presentation,
+                requiredFields: contract.requiredFields,
+                absentFields: contract.absentFields,
+                geometry: contract.geometry,
+                timeout: timeout
+            )
+        }
+    }
+
     @discardableResult
     func waitForFrontReadiness(
         identity: CardIdentity,
         presentation: CardPresentation,
         requiredFields: [String],
         absentFields: [String],
+        geometry: CardGeometryContract,
         timeout: TimeInterval = 8
     ) -> Bool {
         waitForCardReadiness(
@@ -301,6 +398,7 @@ struct TodayReviewPage {
             alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.front.content"),
             requiredFieldIdentifiers: requiredFields.map { "todayReview.card.front.field.\($0)" },
             absentFieldIdentifiers: absentFields.map { "todayReview.card.front.field.\($0)" },
+            geometry: geometry,
             timeout: timeout
         )
     }
@@ -313,6 +411,7 @@ struct TodayReviewPage {
         presentation: CardPresentation,
         requiredFields: [String],
         absentFields: [String],
+        geometry: CardGeometryContract,
         timeout: TimeInterval = 8
     ) -> Bool {
         waitForCardReadiness(
@@ -322,22 +421,21 @@ struct TodayReviewPage {
             alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.back.content"),
             requiredFieldIdentifiers: requiredFields.map { "todayReview.card.back.field.\($0)" },
             absentFieldIdentifiers: absentFields.map { "todayReview.card.back.field.\($0)" },
+            geometry: geometry,
             timeout: timeout
         )
     }
 
     @discardableResult
-    func waitForCardIdentity(_ identity: CardIdentity, timeout: TimeInterval = 8) -> Bool {
+    func waitForUnique(_ identifier: String, timeout: TimeInterval = 8) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if cardIsCanonical("todayReview.card.front", identity: identity) { return true }
+            let matches = elements(for: identifier).allElementsBoundByIndex
+            if matches.count == 1, matches[0].exists { return true }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        return cardIsCanonical("todayReview.card.front", identity: identity)
-    }
-
-    func hasCardIdentity(_ identity: CardIdentity) -> Bool {
-        cardIsCanonical("todayReview.card.front", identity: identity)
+        let matches = elements(for: identifier).allElementsBoundByIndex
+        return matches.count == 1 && matches[0].exists
     }
 
     // MARK: - Waits
@@ -376,11 +474,13 @@ struct TodayReviewPage {
         alternatePresentationIdentifier: String,
         requiredFieldIdentifiers: [String],
         absentFieldIdentifiers: [String],
+        geometry: CardGeometryContract,
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if cardIsCanonical(cardIdentifier, identity: identity),
+               cardMatchesGeometry(cardIdentifier, geometry: geometry),
                exactlyOne(presentationIdentifier),
                elements(for: alternatePresentationIdentifier).count == 0,
                requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) }),
@@ -391,6 +491,7 @@ struct TodayReviewPage {
         }
 
         return cardIsCanonical(cardIdentifier, identity: identity)
+            && cardMatchesGeometry(cardIdentifier, geometry: geometry)
             && exactlyOne(presentationIdentifier)
             && elements(for: alternatePresentationIdentifier).count == 0
             && requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) })
@@ -398,17 +499,43 @@ struct TodayReviewPage {
     }
 
     private func cardIsCanonical(_ identifier: String, identity: CardIdentity) -> Bool {
-        let matching = elements(for: identifier)
+        let matching = elements(for: identifier).allElementsBoundByIndex
         guard matching.count == 1 else { return false }
-        let card = matching.firstMatch
-        let frame = card.frame
-        guard card.exists && frame.width > 0 && frame.height >= 100 else { return false }
+        let card = matching[0]
+        guard card.exists else { return false }
         return (card.value as? String).map(identity.matches) == true
     }
 
+    private func cardMatchesGeometry(_ identifier: String, geometry: CardGeometryContract) -> Bool {
+        let matching = elements(for: identifier).allElementsBoundByIndex
+        guard matching.count == 1 else { return false }
+        let card = matching[0]
+        let frame = card.frame
+        guard card.exists,
+              frame.width >= geometry.minimumWidth,
+              frame.height >= geometry.minimumHeight,
+              frame.minX.isFinite,
+              frame.minY.isFinite,
+              frame.maxX.isFinite,
+              frame.maxY.isFinite else {
+            return false
+        }
+        let expandMatches = elements(for: "todayReview.expandZone").allElementsBoundByIndex
+        guard expandMatches.count == geometry.expectedExpandZoneCount else { return false }
+        guard let maximumBottomGap = geometry.maximumBottomGap else { return true }
+        guard expandMatches.count == 1, expandMatches[0].exists else { return false }
+        let expandFrame = expandMatches[0].frame
+        let bottomGap = expandFrame.minY - frame.maxY
+        return expandFrame.minY.isFinite
+            && expandFrame.maxY.isFinite
+            && bottomGap.isFinite
+            && bottomGap >= 0
+            && bottomGap <= maximumBottomGap
+    }
+
     private func exactlyOne(_ identifier: String) -> Bool {
-        let matching = elements(for: identifier)
-        return matching.count == 1 && matching.firstMatch.exists
+        let matching = elements(for: identifier).allElementsBoundByIndex
+        return matching.count == 1 && matching[0].exists
     }
 
     private func elements(for identifier: String) -> XCUIElementQuery {

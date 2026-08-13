@@ -6,7 +6,9 @@ struct SettingsSheetPage {
 
     /// Settings is presented in a sheet with a NavigationStack; the nav bar title is "設定".
     var navBar: XCUIElement {
-        app.navigationBars.firstMatch
+        let matching = app.navigationBars.allElementsBoundByIndex
+        precondition(matching.count == 1, "Expected exactly one settings navigation bar, found \(matching.count)")
+        return matching[0]
     }
 
     var closeButton: XCUIElement {
@@ -90,7 +92,11 @@ struct SettingsSheetPage {
 
     /// Nav-bar back button of a pushed detail section.
     var backButton: XCUIElement {
-        app.navigationBars.firstMatch.buttons.element(boundBy: 0)
+        let bars = app.navigationBars.allElementsBoundByIndex
+        precondition(bars.count == 1, "Expected exactly one settings navigation bar, found \(bars.count)")
+        let buttons = bars[0].buttons.allElementsBoundByIndex
+        precondition(buttons.count == 1, "Expected exactly one settings back button, found \(buttons.count)")
+        return buttons[0]
     }
 
     // MARK: - Actions

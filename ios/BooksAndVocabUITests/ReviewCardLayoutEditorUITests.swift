@@ -1,10 +1,59 @@
 import XCTest
 
+private struct ReviewCardVisualEvidenceCapture {
+    let assetID: String
+    let fixture: UITestFixture
+    let identity: TodayReviewPage.CardIdentity
+    let face: TodayReviewPage.CardFace
+    let presentation: TodayReviewPage.CardPresentation
+    let geometry: TodayReviewPage.CardGeometryContract
+
+    var readiness: TodayReviewPage.EvidenceReadinessContract {
+        TodayReviewPage.EvidenceReadinessContract(
+            face: face,
+            identity: identity,
+            presentation: presentation,
+            geometry: geometry
+        )
+    }
+}
+
 private enum ReviewCardVisualEvidenceStep {
-    static let optionalSectionsCounterexample = "optional-sections-counterexample"
-    static let smallViewportCounterexample = "small-viewport-counterexample"
-    static let compactBackCounterexample = "compact-back-counterexample"
-    static let largeTextCounterexample = "large-text-counterexample"
+    static let optionalSectionsCounterexample = ReviewCardVisualEvidenceCapture(
+        assetID: "optional-sections-counterexample",
+        fixture: .notebookReviewCardCompactCounterexample,
+        identity: .p12CompactCoaxedRecognition,
+        face: .front,
+        presentation: .natural,
+        geometry: .compactFront
+    )
+
+    static let smallViewportCounterexample = ReviewCardVisualEvidenceCapture(
+        assetID: "small-viewport-counterexample",
+        fixture: .notebookReviewCardFullInfo,
+        identity: .p13Production,
+        face: .back,
+        presentation: .scroll,
+        geometry: .fullBack
+    )
+
+    static let compactBackCounterexample = ReviewCardVisualEvidenceCapture(
+        assetID: "compact-back-counterexample",
+        fixture: .notebookReviewCardCompactCounterexample,
+        identity: .p12CompactCoaxedRecognition,
+        face: .back,
+        presentation: .natural,
+        geometry: .compactBack
+    )
+
+    static let largeTextCounterexample = ReviewCardVisualEvidenceCapture(
+        assetID: "large-text-counterexample",
+        fixture: .notebookReviewCardFullInfo,
+        identity: .p13Production,
+        face: .front,
+        presentation: .scroll,
+        geometry: .fullFront
+    )
 }
 
 private enum ReviewCardLayoutEditorUITestError: Error {
@@ -35,23 +84,18 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     @MainActor
     func testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings() throws {
         let app = launchIsolatedApp(
-            fixtures: [.notebookReviewDeck],
+            fixtures: [ReviewCardVisualEvidenceStep.optionalSectionsCounterexample.fixture],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: "review"
         )
         captureStep("launch", app: app)
 
         let review = try startReview(app: app)
-        let identity = TodayReviewPage.CardIdentity.p12ProbeRecognitionCompact
-        guard review.waitForCardIdentity(identity) else {
-            captureStep("p12-wrong-canonical-card.\(identity.cardID)", app: app)
-            XCTFail("P12 必須固定到 canonical card \(identity.cardID)/\(identity.frontWord)/\(identity.mode.rawValue)")
-            return
-        }
+        let optionalCapture = ReviewCardVisualEvidenceStep.optionalSectionsCounterexample
         let editor = ReviewCardLayoutEditorPage(app: app)
 
         // ── 1. Toolbar entry opens the editor ──────────────────────────────────
-        XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 10))
+        XCTAssertTrue(review.waitForUnique("todayReview.card.front", timeout: 10))
         review.layoutEditorButton.tapWhenReady()
         guard editor.waitUntilVisible() else {
             captureStep("editor-did-not-open", app: app)
@@ -70,33 +114,19 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.done()
 
         // ── 2. Switching to 精簡 re-lays out the card behind the sheet ─────────
-        XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
+        XCTAssertTrue(review.waitForUnique("todayReview.card.front", timeout: 8))
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
         editor.selectPreset("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
+        editor.selectPreset("production", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
         XCTAssertTrue(
             editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
         )
         editor.done()
-        XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
-        // P12 required/counterexample state: optional sections are intentionally
-        // absent under compact, with a dedicated screenshot identity. Readiness
-        // proves the card itself and the explicit absence independently.
-        guard review.waitForFrontReadiness(
-            identity: identity,
-            presentation: .natural,
-            requiredFields: identity.frontRequiredFields,
-            absentFields: identity.frontAbsentFields,
-            timeout: 8
-        ) else {
-            captureStep("optional-sections-not-ready.\(identity.cardID)", app: app)
-            XCTFail("P12 optional evidence 必須等 canonical front、natural presentation 與 optional absence")
-            return
-        }
-        captureCanonicalStep(ReviewCardVisualEvidenceStep.optionalSectionsCounterexample, identity: identity, review: review, app: app)
+        guard captureCanonicalStep(optionalCapture, review: review, app: app) else { return }
 
         // Layout only: the card must still be on its front, still card 1.
-        review.cardBack.assertDoesNotExist()
+        review.assertCardBackDoesNotExist()
         XCTAssertTrue(review.waitForProgress("1 / "))
 
         // ── 3. Reopening keeps the edit ─────────────────────────────────────────
@@ -134,7 +164,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             "恢復全部預設後應回到正常版面"
         )
 
-        app.navigationBars.buttons.element(boundBy: 0).tapWhenReady()
+        settings.goBack()
         guard settings.reviewCardLayoutValue.waitUntilExists(timeout: 8) else {
             captureStep("no-summary-after-reset", app: app)
             XCTFail("返回設定首頁後必須看得到『複習卡片』摘要")
@@ -155,7 +185,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     @MainActor
     func testGradingToolbarStaysOperableWithEveryFieldEnabled() throws {
         let app = launchIsolatedApp(
-            fixtures: [.notebookReviewCardFullInfo],
+            fixtures: [ReviewCardVisualEvidenceStep.largeTextCounterexample.fixture],
             extraArgs: ["-reviewCardDynamicType", "accessibility3"],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: "review"
@@ -163,12 +193,8 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         captureStep("launch", app: app)
 
         let review = try startReview(app: app)
-        let identity = TodayReviewPage.CardIdentity.p13Production
-        guard review.waitForCardIdentity(identity) else {
-            captureStep("p13-wrong-canonical-card.\(identity.cardID)", app: app)
-            XCTFail("P13 必須固定到 canonical card \(identity.cardID)/\(identity.frontWord)/\(identity.mode.rawValue)")
-            return
-        }
+        let frontCapture = ReviewCardVisualEvidenceStep.largeTextCounterexample
+        let backCapture = ReviewCardVisualEvidenceStep.smallViewportCounterexample
         let editor = ReviewCardLayoutEditorPage(app: app)
 
         review.layoutEditorButton.tapWhenReady()
@@ -177,45 +203,19 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.selectPreset("production", index: ReviewCardLayoutEditorPage.PresetIndex.standard)
         editor.previewCard.assertExists()
         editor.done()
-        // P13 large-text counterexample: the full-content fixture gives the front
-        // a deliberately wrapping translation, distinct from the back screenshot.
-        guard review.waitForFrontReadiness(
-            identity: identity,
-            presentation: .scroll,
-            requiredFields: identity.frontRequiredFields,
-            absentFields: identity.frontAbsentFields,
-            timeout: 8
-        ) else {
-            captureStep("large-text-not-ready.\(identity.cardID)", app: app)
-            XCTFail("P13 正面 evidence 必須等 canonical card 與 scroll presentation mounted")
-            return
-        }
-        captureCanonicalStep(ReviewCardVisualEvidenceStep.largeTextCounterexample, identity: identity, review: review, app: app)
+        guard captureCanonicalStep(frontCapture, review: review, app: app) else { return }
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容正面下，底部評分按鈕必須仍可操作"
         )
 
         review.flipCard()
-        guard review.cardBack.waitUntilExists(timeout: 8) else {
-            captureStep("card-did-not-flip.\(identity.cardID)", app: app)
+        guard review.waitForUnique("todayReview.card.back", timeout: 8) else {
+            captureStep("\(backCapture.assetID).not-mounted", app: app)
             XCTFail("欄位全開後仍必須能翻面")
             return
         }
-        // P12/P13 small-viewport counterexample: every standard field remains
-        // addressable, with natural-vs-scroll presentation made explicit.
-        guard review.waitForBackReadiness(
-            identity: identity,
-            presentation: .scroll,
-            requiredFields: identity.backRequiredFields,
-            absentFields: identity.backAbsentFields,
-            timeout: 8
-        ) else {
-            captureStep("small-viewport-not-ready.\(identity.cardID)", app: app)
-            XCTFail("P13 背面 evidence 必須等 canonical card、scroll presentation 與 fields mounted")
-            return
-        }
-        captureCanonicalStep(ReviewCardVisualEvidenceStep.smallViewportCounterexample, identity: identity, review: review, app: app)
+        guard captureCanonicalStep(backCapture, review: review, app: app) else { return }
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容背面下，底部評分按鈕必須仍可操作"
@@ -229,7 +229,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     @MainActor
     func testCompactCounterexampleUsesCanonicalSeedAndHidesOnlyOptionalFields() throws {
         let app = launchIsolatedApp(
-            fixtures: [.notebookReviewCardCompactCounterexample],
+            fixtures: [ReviewCardVisualEvidenceStep.compactBackCounterexample.fixture],
             extraArgs: ["-reviewCardDynamicType", "accessibility3"],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: "review"
@@ -237,12 +237,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         captureStep("launch", app: app)
 
         let review = try startReview(app: app)
-        let identity = TodayReviewPage.CardIdentity.p12CompactCoaxedRecognition
-        guard review.waitForCardIdentity(identity) else {
-            captureStep("p12-wrong-canonical-card.\(identity.cardID)", app: app)
-            XCTFail("P12 compact 必須固定到 canonical card \(identity.cardID)/\(identity.frontWord)/\(identity.mode.rawValue)")
-            return
-        }
+        let compactBackCapture = ReviewCardVisualEvidenceStep.compactBackCounterexample
         let editor = ReviewCardLayoutEditorPage(app: app)
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
@@ -251,18 +246,12 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.done()
 
         review.flipCard()
-        guard review.waitForBackReadiness(
-            identity: identity,
-            presentation: .natural,
-            requiredFields: identity.backRequiredFields,
-            absentFields: identity.backAbsentFields,
-            timeout: 8
-        ) else {
-            captureStep("compact-back-not-ready.\(identity.cardID)", app: app)
-            XCTFail("P12 compact 背面 evidence 必須等 canonical card、natural presentation、required fields 與 optional absence")
+        guard review.waitForUnique("todayReview.card.back", timeout: 8) else {
+            captureStep("\(compactBackCapture.assetID).not-mounted", app: app)
+            XCTFail("P12 compact 背面 evidence 必須先掛載 back face")
             return
         }
-        captureCanonicalStep(ReviewCardVisualEvidenceStep.compactBackCounterexample, identity: identity, review: review, app: app)
+        guard captureCanonicalStep(compactBackCapture, review: review, app: app) else { return }
     }
 
     /// Autoplay must not keep flipping cards under the editor sheet, and the pause
@@ -280,7 +269,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         let editor = ReviewCardLayoutEditorPage(app: app)
 
         review.autoplayToggleButton.tapWhenReady()
-        guard review.autoplayPlayingButton.waitUntilExists(timeout: 8) else {
+        guard review.waitForUnique("todayReview.autoplay.playing", timeout: 8) else {
             captureStep("autoplay-did-not-start", app: app)
             XCTFail("點自動播放後必須進入播放中狀態")
             return
@@ -291,10 +280,10 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.done()
 
         XCTAssertTrue(
-            review.autoplayPausedButton.waitUntilExists(timeout: 8),
+            review.waitForUnique("todayReview.autoplay.paused", timeout: 8),
             "開啟 editor 必須暫停自動播放，且關閉後保持暫停"
         )
-        review.autoplayPlayingButton.assertDoesNotExist()
+        review.assertAutoplayPlayingDoesNotExist()
         captureStep("autoplay-paused", app: app)
     }
 
@@ -314,7 +303,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             throw ReviewCardLayoutEditorUITestError.preconditionFailed
         }
         let review = notebook.startReview()
-        guard review.progressLabel.waitUntilExists(timeout: 10) else {
+        guard review.waitForUnique("todayReview.progressLabel", timeout: 10) else {
             captureStep("review-not-started", app: app)
             XCTFail("複習 session 未啟動")
             throw ReviewCardLayoutEditorUITestError.preconditionFailed
@@ -323,16 +312,19 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
     }
 
     private func captureCanonicalStep(
-        _ step: String,
-        identity: TodayReviewPage.CardIdentity,
+        _ capture: ReviewCardVisualEvidenceCapture,
         review: TodayReviewPage,
         app: XCUIApplication
-    ) {
-        guard review.hasCardIdentity(identity) else {
-            captureStep("\(step).wrong-card.\(identity.cardID)", app: app)
-            XCTFail("screenshot provenance card identity changed before capture: \(identity.cardID)")
-            return
+    ) -> Bool {
+        guard review.waitForEvidenceReadiness(capture.readiness, timeout: 8) else {
+            captureStep("\(capture.assetID).not-ready.\(capture.identity.cardID)", app: app)
+            XCTFail(
+                "\(capture.assetID) readiness failed for \(capture.face.rawValue) "
+                    + "\(capture.identity.cardID)/\(capture.identity.frontWord)"
+            )
+            return false
         }
-        captureStep("\(step).\(identity.cardID)", app: app)
+        captureStep("\(capture.assetID).\(capture.identity.cardID)", app: app)
+        return true
     }
 }
