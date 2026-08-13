@@ -1433,8 +1433,10 @@ def _validate_settings_sync_summary(
             raise UIWorldManifestError(f"{label} {owner}.message is required for terminalError")
         if attempt < 1:
             raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for terminalError")
-        if data_outcome != "partial":
-            raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be partial for terminalError")
+        if data_outcome not in {"none", "partial"}:
+            raise UIWorldManifestError(
+                f"{label} {owner}.dataOutcome must be none or partial for terminalError"
+            )
     elif lifecycle == "terminalSuccess":
         if attempt < 1:
             raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for terminalSuccess")
@@ -1443,8 +1445,8 @@ def _validate_settings_sync_summary(
         if data_outcome != "complete":
             raise UIWorldManifestError(f"{label} {owner}.dataOutcome must be complete for terminalSuccess")
     elif lifecycle == "retry":
-        if attempt < 1:
-            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for retry")
+        if attempt < 2:
+            raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 2 for retry")
         if message is not None:
             raise UIWorldManifestError(f"{label} {owner}.message must be null during retry")
         if data_outcome != "none":
@@ -1472,15 +1474,11 @@ def _validate_settings_sync_summary(
     elif lifecycle == "dismissed":
         if attempt < 1:
             raise UIWorldManifestError(f"{label} {owner}.attempt must be >= 1 for dismissed")
-        if data_outcome == "none":
-            raise UIWorldManifestError(
-                f"{label} {owner}.dataOutcome must preserve a terminal outcome for dismissed"
-            )
         if data_outcome == "complete" and message is not None:
             raise UIWorldManifestError(f"{label} {owner}.message must be null for dismissed success")
-        if data_outcome == "partial" and (not isinstance(message, str) or not message.strip()):
+        if data_outcome in {"none", "partial"} and (not isinstance(message, str) or not message.strip()):
             raise UIWorldManifestError(
-                f"{label} {owner}.message is required for dismissed partial outcome"
+                f"{label} {owner}.message is required for dismissed non-success outcome"
             )
 
 

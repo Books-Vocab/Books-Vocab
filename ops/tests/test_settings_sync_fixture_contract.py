@@ -93,7 +93,11 @@ def test_canonical_settings_sync_fixture_is_materialized_with_provenance():
     [
         ("terminalSuccess", None, 1, "complete"),
         ("terminalError", "sync failed", 1, "partial"),
+        ("terminalError", "sync failed before pull", 1, "none"),
         ("retry", None, 2, "none"),
+        ("dismissed", None, 1, "complete"),
+        ("dismissed", "sync failed", 1, "partial"),
+        ("dismissed", "sync failed before pull", 1, "none"),
     ],
 )
 def test_sync_lifecycle_payload_shapes_are_explicit(
@@ -127,9 +131,11 @@ def test_sync_lifecycle_payload_shapes_are_explicit(
         ("terminalSuccess", False, "stale error", 1, "complete", "message must be null"),
         ("terminalSuccess", False, None, 0, "complete", "attempt must be >= 1"),
         ("retry", True, "stale error", 2, "none", "message must be null"),
+        ("retry", True, None, 1, "none", "attempt must be >= 2"),
         ("retry", True, None, 2, "partial", "dataOutcome must be none"),
+        ("dismissed", False, "stale error", 1, "complete", "message must be null"),
         ("dismissed", False, None, 1, "partial", "message is required"),
-        ("dismissed", False, None, 1, "none", "preserve a terminal outcome"),
+        ("dismissed", False, None, 1, "none", "message is required"),
     ],
 )
 def test_validator_rejects_lifecycle_cross_field_contradictions(
@@ -183,7 +189,7 @@ def test_validator_rejects_legacy_settings_sync_shape_without_metadata(tmp_path:
     ("field", "value", "error"),
     [
         ("lifecycle", "terminal-error", "lifecycle is invalid"),
-        ("dataOutcome", "none", "dataOutcome must be partial"),
+        ("dataOutcome", "complete", "dataOutcome must be none or partial"),
         ("attempt", 0, "attempt must be >= 1"),
     ],
 )

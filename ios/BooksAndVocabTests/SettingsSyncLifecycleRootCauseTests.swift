@@ -132,12 +132,12 @@ struct SettingsSyncLifecycleRootCauseTests {
         )
         let container = try Self.makeContainer()
 
-        let first = await service.backgroundSync(container: container)
+        let first = await service.backgroundSync(container: container, progress: nil)
         #expect(first == .failed)
         let residualAfterFailure = try container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
         #expect(residualAfterFailure.map(\.word) == ["residual"])
 
-        let second = await service.backgroundSync(container: container)
+        let second = await service.backgroundSync(container: container, progress: nil)
         #expect(second == .completed)
         let entriesAfterRetry = try container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
         #expect(entriesAfterRetry.map(\.word).sorted() == ["complete", "residual"])
