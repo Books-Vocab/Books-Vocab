@@ -151,6 +151,8 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
         coordinator.navigator = nil
         coordinator.contentOffsetObserver = nil
+        coordinator.activeTOCTimeoutTask?.cancel()
+        coordinator.activeTOCTimeoutTask = nil
     }
 
     func updateUIViewController(_ uiViewController: NavigatorHostViewController, context: Context) {
@@ -172,6 +174,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         var planner = BridgePlanner()
         var isApplyingPreferences = false
         var activeTOCRequestID: UUID?
+        var activeTOCTimeoutTask: Task<Void, Never>?
         let domExecutor = ReaderDOMExecutor()
 
         /// 記住 setupUserScripts 傳入的 controller，供 dismantle 時移除 handler 打斷 retain cycle
@@ -191,6 +194,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         func navigator(_ navigator: any Navigator, locationDidChange locator: Locator) {
             parent.onLocationChanged(locator)
             if let requestID = activeTOCRequestID {
+                activeTOCRequestID = nil
+                activeTOCTimeoutTask?.cancel()
+                activeTOCTimeoutTask = nil
                 parent.onTOCNavigationEvent(
                     .locationDidChange(
                         requestID: requestID,

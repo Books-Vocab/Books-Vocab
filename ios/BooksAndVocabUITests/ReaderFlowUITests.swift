@@ -191,20 +191,20 @@ final class ReaderFlowUITests: UITestCase {
         }
         XCTAssertFalse(reader.contentText(Self.seededWord).exists)
         captureStep("toc-destination-content", app: app)
-        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
-        reader.assertIsActive()
-        captureStep("toc-navigation-success", app: app)
         try writeReaderTOCEvidence(
             label: "reader-toc-required",
             partition: "required",
             fixtureID: "reader.realBookLibrary",
             assetID: "books.reader_real_book_epub",
-            path: [0],
+            path: [1],
             href: "OEBPS/chapter2.xhtml",
             locatorHref: finalHref,
             destinationSelector: "reader.toc.readerOverlay.destination",
             contentSelector: Self.secondChapterWord
         )
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
+        reader.assertIsActive()
+        captureStep("toc-navigation-success", app: app)
     }
 
     @MainActor
@@ -257,6 +257,8 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
         let invalidRow = reader.tocChapter("1")
         XCTAssertTrue(invalidRow.waitUntilExists(timeout: 10))
+        let invalidHref = "OEBPS/does-not-exist.xhtml"
+        XCTAssertEqual(invalidRow.value as? String, invalidHref)
         let canonicalInvalidRow = reader.tocChapter(path: "1", label: "Missing Destination")
         captureStep("invalid-destination-toc-loaded", app: app)
 
@@ -279,6 +281,15 @@ final class ReaderFlowUITests: UITestCase {
             byteSize: 17344
         )
         captureStep("invalid-destination-missing", app: app)
+        try writeReaderTOCEvidence(
+            label: "reader-toc-counterexample-failure",
+            partition: "counterexample",
+            fixtureID: "reader.invalidDestinationLibrary",
+            assetID: "books.reader_invalid_destination_epub",
+            path: [1],
+            href: invalidHref,
+            locatorHref: invalidInitialHref
+        )
 
         reader.tocRetry.tapWhenReady()
         XCTAssertTrue(reader.tocMissingDestination.waitUntilExists(timeout: 10))
@@ -297,6 +308,15 @@ final class ReaderFlowUITests: UITestCase {
             byteSize: 17344
         )
         captureStep("invalid-destination-retry-still-open", app: app)
+        try writeReaderTOCEvidence(
+            label: "reader-toc-counterexample-retry",
+            partition: "counterexample",
+            fixtureID: "reader.invalidDestinationLibrary",
+            assetID: "books.reader_invalid_destination_epub",
+            path: [1],
+            href: invalidHref,
+            locatorHref: invalidInitialHref
+        )
         attachText(
             "fixture=reader.invalidDestinationLibrary\nasset=books.reader_invalid_destination_epub\n"
                 + "expected=reader.toc.missingDestination + reader.toc.retry + sheet-open",

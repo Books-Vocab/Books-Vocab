@@ -150,6 +150,16 @@ struct UITestFixtureSeedIsolationTests {
         )
     }
 
+    @Test func readerSeedingDoesNotMaterializeUnusedTextAsset() throws {
+        let url = Self.supportDirectory.appendingPathComponent("UITestFixtureSeed+Reader.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+
+        #expect(
+            !source.contains("requireInstalledAssetURL(ref: seed.textAssetRef)"),
+            "reader fixture seeding must not depend on an external textAssetRef"
+        )
+    }
+
     @Test func entitlementFixtureRemainsAvailableToReleaseEquivalentSimulatorRuns() throws {
         let appSourceURL = Self.supportDirectory
             .deletingLastPathComponent() // BooksAndVocab

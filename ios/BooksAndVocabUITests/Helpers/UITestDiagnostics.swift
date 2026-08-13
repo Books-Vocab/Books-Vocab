@@ -2,11 +2,13 @@ import XCTest
 
 class UITestCase: XCTestCase {
     private(set) var currentApp: XCUIApplication?
+    private(set) var lastCapturedScreenshotPath: String?
     private var screenshotStepIndex = 0
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         screenshotStepIndex = 0
+        lastCapturedScreenshotPath = nil
     }
 
     override func tearDownWithError() throws {
@@ -112,6 +114,7 @@ class UITestCase: XCTestCase {
         guard let dir = ProcessInfo.processInfo.environment["KG_UI_TEST_SCREENSHOT_DIR"],
               !dir.isEmpty else { return }
         let url = URL(fileURLWithPath: dir).appendingPathComponent("\(stepName).png")
+        lastCapturedScreenshotPath = url.path
         do {
             try FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: dir),
