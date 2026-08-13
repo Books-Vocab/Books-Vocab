@@ -322,6 +322,7 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert ".metric:last-child{grid-column:1/-1}" in "".join(css.split())
     assert "-webkit-line-clamp:2" in "".join(css.split())
     assert "--sub:#68635b" in "".join(css.split())
+    assert ".tree-controls{display:none}" in "".join(css.split())
 
 
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
