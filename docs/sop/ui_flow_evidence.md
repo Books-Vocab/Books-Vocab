@@ -11,7 +11,7 @@ verified_against: f955b8f10
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
-> **Convergence boundary（此 docs worktree）**：本檔新增的單 flow helper、P1–P15 matrix、UI World fixture mapping 與 evidence attestation 內容，描述協調 worktree 內尚待 code convergence 的 branch-local surface。frontmatter 的 `verified_against` 僅核對目前 `origin/main` 的既有 baseline；不表示這些 branch-local paths 或 semantics 已存在於 `origin/main`。code convergence 後才可移除標記並重新錨定。
+> **Convergence boundary（此 docs worktree）**：P1–P15 matrix 與 UI World fixture mapping 仍描述協調 worktree 內尚待 code convergence 的 branch-local surface。frontmatter 的 `verified_against` 僅核對目前 `origin/main` 的既有 baseline；不表示這些 branch-local paths 或 semantics 已存在於 `origin/main`。code convergence 後才可移除標記並重新錨定。
 
 每條重要 UI flow 都必須能回答：**現在在哪個畫面、為什麼到這裡、是否真的觸發核心行為、是否有 log 證據**。「只跑過 test」不是 UI 結論；完成標準必含視覺證據。Podcast 是活樣板（`PodcastPlaybackPerfUITests.swift`），所有新 flow 照抄此模型。
 
@@ -26,7 +26,7 @@ verified_against: f955b8f10
 | 5 | **KG_PERF log marks** | `ios/BooksAndVocab/Services/PerfLog.swift` | 核心行為打低頻 domain mark（如 `play.started`/`pause`/`seek`）。新常數 **append** 到 PerfLog，勿改既有 mark 名。驗證：`./ops/ios_ops.sh logs --simulator --device <udid> --debug --since 5m --predicate 'process == "BooksAndVocab" AND eventMessage CONTAINS "KG_PERF"'`。 |
 | 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 由獨立的 `uitest_contact_sheet.py` 產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）+ standalone run `UIreview.html`，並同步更新常駐 `build/snapshots/uitest-runs/UIreview.html` workspace 導覽頁。沒有任何 run 時，workspace 仍會掃 `ios/BooksAndVocabUITests/*UITests.swift` 顯示 flow / test methods / run command，狀態為 `never-run`。收尾回報**必貼** quick4 / full sheet 或直接貼 `uiVisualReview.reviewHtml`，並親眼 Read 過。這是行為測試證據，不是 Catalog gallery。 |
 
-## Single-flow helper（branch-local；待 code convergence）
+## Single-flow helper
 
 單一 flow 的推薦入口是 `.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`。helper 將 source／dataset／device identity、selector、upstream verdict、runner log、xcresult 與視覺產物收進 `build/snapshots/uitest-evidence/<run>/` 的 stable bundle。runner 失敗或 JSON／artifact 不完整時仍保留 failure bundle，但只能標為 `fail`／`inconclusive`。
 
@@ -53,7 +53,7 @@ P11 的典型收斂順序是 exact selector `VocabularyLibraryFlowUITests/testRi
 
 P11 的 branch-local UI World／fixture／test mapping 為：`ops/fixtures/ui_worlds/marketing_demo.json` + `ios/BooksAndVocab/Support/UITestFixtureSeed+Vocabulary.swift`／`UITestFixtureSeed+WorldModels.swift` 提供資料世界；`ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift` 提供 exact runtime surface；`ops/ios_ui_review_matrix.py`、`ops/uitest_evidence_contract.py`、`ops/uitest_review_page.py`、`ops/uitest_review_attest.py` 與其 `ops/tests/test_*.py` 驗證、渲染及記錄證據。這份 mapping 只描述待 convergence 的協調 worktree，不是 origin/main 的完成宣稱。
 
-## Evidence integrity and human attestation（branch-local；待 code convergence）
+## Evidence integrity and human attestation
 
 `run_ui_evidence.sh` 會把 dataset realpath 限制在目前 worktree，將 selector 傳入 runner，並保存 per-run normalized/upstream verdict、log、xcresult 與視覺產物；細節以 skill reference contract 為準。`uitest_review_page.py`、`uitest_evidence_contract.py` 與 `uitest_review_attest.py` 的流程 owner 是本 SOP，`docs/reference/tech_index.md` 僅作 path lookup；不另在本檔建立第二份 schema SoT。
 
