@@ -1,6 +1,31 @@
 #if DEBUG
 import Foundation
 
+final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
+    static let shared = SettingsSyncFixtureEvidenceStore()
+
+    private let lock = NSLock()
+    private var events: [String] = []
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        events.removeAll(keepingCapacity: true)
+    }
+
+    func record(round: Int, path: String, statusCode: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        events.append("round=\(round),path=\(path),status=\(statusCode)")
+    }
+
+    func snapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return events
+    }
+}
+
 /// Deterministic HTTP responses for the canonical Settings lifecycle fixture.
 ///
 /// This is deliberately a transport, not a replacement `BackgroundSyncing`
@@ -29,29 +54,42 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
         switch path {
         case "/api/vocab":
             let attempt = nextVocabPull()
-            return response(
+            let result = response(
                 request,
                 statusCode: 200,
                 body: attempt == 1 ? Self.partialCards : Self.completeCards
             )
+            SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 200)
+            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
+            return result
         case "/api/dictionary-cards":
             let attempt = currentVocabPull()
             guard attempt > 1 else {
                 let body = (try? JSONSerialization.data(withJSONObject: ["error": failureMessage]))
                     ?? Data("{}".utf8)
-                return response(
+                let result = response(
                     request,
                     statusCode: 429,
                     body: body
                 )
+                SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 429)
+                PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=429")
+                return result
             }
-            return response(request, statusCode: 200, body: Data("[]".utf8))
+            let result = response(request, statusCode: 200, body: Data("[]".utf8))
+            SettingsSyncFixtureEvidenceStore.shared.record(round: attempt, path: path, statusCode: 200)
+            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
+            return result
         case "/api/vocab/review-events":
-            return response(
+            let result = response(
                 request,
                 statusCode: 200,
                 body: Data(#"{"entries":[],"cursor":null}"#.utf8)
             )
+            let round = currentVocabPull()
+            SettingsSyncFixtureEvidenceStore.shared.record(round: round, path: path, statusCode: 200)
+            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(round) path=\(path) status=200")
+            return result
         case "/api/health":
             return response(
                 request,

@@ -45,6 +45,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     private(set) var syncAttempt = 0
     private(set) var syncDataOutcome: SettingsSyncDataOutcome = .none
     private(set) var syncMessage: String?
+    private(set) var syncEvidence: SettingsSyncLifecycleEvidence?
     var isManualLoggingIn = false
     var deleteAccountError: String?
     var manualLoginUserId = ""
@@ -475,7 +476,13 @@ final class SettingsCoordinator: SettingsCoordinating {
         syncAttempt += 1
         syncDataOutcome = .none
         syncMessage = nil
-        PerfLog.sync.mark("settings.sync.lifecycle.started", "attempt=\(syncAttempt)")
+#if DEBUG
+        syncPerfMarks = []
+        if settingsSyncFixtureSummary != nil {
+            SettingsSyncFixtureEvidenceStore.shared.reset()
+        }
+#endif
+        markSync("settings.sync.lifecycle.started", "attempt=\(syncAttempt)")
 
         let activeSyncService = settingsSyncService ?? kgService
 
@@ -521,12 +528,12 @@ final class SettingsCoordinator: SettingsCoordinating {
         do {
             try syncPersistence.save(container: modelContext.container)
             saveSucceeded = true
-            PerfLog.sync.mark("settings.sync.lifecycle.saveResult", "attempt=\(syncAttempt) result=success")
+            markSync("settings.sync.lifecycle.saveResult", "attempt=\(syncAttempt) result=success")
         } catch {
             saveSucceeded = false
             syncMessage = L10n.string("同步失敗")
             AppLog.kg.error("resync mainContext save failed: \(error.localizedDescription)")
-            PerfLog.sync.mark("settings.sync.lifecycle.saveResult", "attempt=\(syncAttempt) result=failure")
+            markSync("settings.sync.lifecycle.saveResult", "attempt=\(syncAttempt) result=failure")
         }
 
         // 額度與連線檢查併發。兩者都是唯讀 GET、彼此無依賴，序列跑純粹是多一趟
@@ -568,17 +575,17 @@ final class SettingsCoordinator: SettingsCoordinating {
                 syncDataOutcome = .partial
                 syncMessage = L10n.string("同步失敗")
             }
-            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=completed")
+            markSync("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=completed")
         case .completed:
             syncDataOutcome = .partial
             syncProgress.finish(.failed)
             failSyncLifecycle(message: syncMessage ?? L10n.string("同步失敗"))
-            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=saveFailure")
+            markSync("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=saveFailure")
         case .failed:
             syncDataOutcome = dataOutcome(for: outcome)
             syncProgress.finish(.failed)
             failSyncLifecycle(message: syncMessage ?? syncFailureMessage())
-            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=failed")
+            markSync("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=failed")
         case .didNotRun:
             syncDataOutcome = .none
             syncProgress.reset()
@@ -588,13 +595,16 @@ final class SettingsCoordinator: SettingsCoordinating {
                 try? syncLifecycle.transition(.reset)
                 AppLog.kg.warning("Settings sync cancellation transition rejected: \(String(describing: error), privacy: .public)")
             }
-            PerfLog.sync.mark("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=didNotRun")
+            markSync("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=didNotRun")
         }
 
-        PerfLog.sync.mark(
+        markSync(
             "settings.sync.lifecycle.terminal",
             "attempt=\(syncAttempt) state=\(syncLifecycleName) data=\(syncDataOutcome.rawValue)"
         )
+#if DEBUG
+        syncEvidence = makeSyncEvidence(outcome: outcome, modelContext: modelContext)
+#endif
         refreshObservationPreview()
     }
 
@@ -611,6 +621,44 @@ final class SettingsCoordinator: SettingsCoordinating {
             !authManager.isDemoMode &&
             authManager.userId == userID
     }
+
+    private func markSync(_ label: StaticString, _ detail: String) {
+        PerfLog.sync.mark(label, detail)
+#if DEBUG
+        syncPerfMarks.append(label.description)
+#endif
+    }
+
+#if DEBUG
+    private var syncPerfMarks: [String] = []
+
+    private func makeSyncEvidence(
+        outcome: SyncRoundOutcome,
+        modelContext: ModelContext
+    ) -> SettingsSyncLifecycleEvidence {
+        let words: [String]
+        do {
+            words = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+                .map(\.word)
+                .sorted()
+        } catch {
+            preconditionFailure("Settings sync evidence read-back failed: \(error)")
+        }
+
+        let previousResidual = syncEvidence?.residualWords ?? []
+        let residualWords = outcome == .failed ? words : previousResidual
+        let readBackWords = syncDataOutcome == .complete ? words : []
+        return SettingsSyncLifecycleEvidence(
+            lifecycle: syncLifecycleName,
+            attempt: syncAttempt,
+            dataOutcome: syncDataOutcome,
+            residualWords: residualWords,
+            readBackWords: readBackWords,
+            transportEvents: SettingsSyncFixtureEvidenceStore.shared.snapshot(),
+            perfMarks: syncPerfMarks
+        )
+    }
+#endif
 
     private func failSyncLifecycle(message: String) {
         syncMessage = message

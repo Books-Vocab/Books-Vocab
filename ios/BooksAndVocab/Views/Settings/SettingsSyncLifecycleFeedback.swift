@@ -9,6 +9,9 @@ struct SettingsSyncLifecycleFeedback: View {
 
     let lifecycle: SettingsSyncLifecycle
     let actions: SettingsPresenterActions
+    let attempt: Int
+    let dataOutcome: SettingsSyncDataOutcome
+    let evidence: SettingsSyncLifecycleEvidence?
 
     var body: some View {
         switch lifecycle {
@@ -23,7 +26,10 @@ struct SettingsSyncLifecycleFeedback: View {
                 primaryAction: actions.dismissSyncStatus,
                 secondaryTitle: nil,
                 secondaryIdentifier: nil,
-                secondaryAction: nil
+                secondaryAction: nil,
+                attempt: attempt,
+                dataOutcome: dataOutcome,
+                evidence: evidence
             )
         case .terminalError(let message):
             feedback(
@@ -36,7 +42,10 @@ struct SettingsSyncLifecycleFeedback: View {
                 primaryAction: actions.retrySync,
                 secondaryTitle: L10n.string("關閉"),
                 secondaryIdentifier: "settings.syncLifecycle.dismissButton",
-                secondaryAction: actions.dismissSyncStatus
+                secondaryAction: actions.dismissSyncStatus,
+                attempt: attempt,
+                dataOutcome: dataOutcome,
+                evidence: evidence
             )
         case .idle, .syncing, .retry, .dismissed:
             EmptyView()
@@ -53,7 +62,10 @@ struct SettingsSyncLifecycleFeedback: View {
         primaryAction: @escaping () -> Void,
         secondaryTitle: String?,
         secondaryIdentifier: String?,
-        secondaryAction: (() -> Void)?
+        secondaryAction: (() -> Void)?,
+        attempt: Int,
+        dataOutcome: SettingsSyncDataOutcome,
+        evidence: SettingsSyncLifecycleEvidence?
     ) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.tinyGap) {
             HStack(spacing: appSkin.spacing.inlineGap) {
@@ -72,6 +84,22 @@ struct SettingsSyncLifecycleFeedback: View {
                     .lineLimit(3)
                     .accessibilityIdentifier("settings.syncLifecycle.message")
             }
+
+            Text("terminal=\(terminalName);attempt=\(attempt);dataOutcome=\(dataOutcome.rawValue)")
+                .font(appSkin.typography.caption)
+                .foregroundStyle(.clear)
+                .frame(width: 1, height: 1)
+                .accessibilityIdentifier("settings.syncLifecycle.terminalMarker")
+
+#if DEBUG
+            if let evidence {
+                // i18n-allow: machine-readable DEBUG UI evidence marker
+                Text(evidence.marker)
+                    .foregroundStyle(.clear)
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("settings.syncLifecycle.evidence")
+            }
+#endif
 
             HStack(spacing: appSkin.spacing.inlineGap) {
                 Button(primaryTitle, action: primaryAction)
@@ -92,5 +120,13 @@ struct SettingsSyncLifecycleFeedback: View {
         .transition(.statusRowReveal)
         .animation(AppMotion.feedbackPulse, value: lifecycle)
         .enableInjection()
+    }
+
+    private var terminalName: String {
+        switch lifecycle {
+        case .terminalSuccess: return "terminalSuccess"
+        case .terminalError: return "terminalError"
+        default: return "nonTerminal"
+        }
     }
 }

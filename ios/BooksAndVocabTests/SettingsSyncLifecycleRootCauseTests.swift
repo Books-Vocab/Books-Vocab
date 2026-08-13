@@ -92,7 +92,13 @@ struct SettingsSyncLifecycleRootCauseTests {
         #expect(Set(entriesAfterRetry.map(\.word)) == Set(["residual", "complete"]))
         let paths = await transport.snapshotPaths()
         #expect(paths.filter { $0 == "/api/vocab" }.count == 2)
-        #expect(paths.filter { $0 == "/api/dictionary-cards" }.count == 2)
+        // `snapshotPaths` records every transport exchange. The first service
+        // round receives `RetryPolicy.default.maxAttempts` 429 responses; the
+        // second round then makes one successful exchange.
+        #expect(
+            paths.filter { $0 == "/api/dictionary-cards" }.count
+                == RetryPolicy.default.maxAttempts + 1
+        )
     }
 
     @Test("main-context save failure is fail-closed")

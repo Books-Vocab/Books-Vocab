@@ -19,8 +19,9 @@ enum UITestFixtureSeed {
         // 產生路徑，仍以廉價保險封死。
         guard !container.configurations.isEmpty,
               container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
-            AppLog.app.error("UITestFixtureSeed: refused — container has persistent store(s); fixtures may only seed the ephemeral UI-testing container")
-            return
+            failFixtureSeed(
+                "UITestFixtureSeed: refused — container has persistent store(s); fixtures may only seed the ephemeral UI-testing container"
+            )
         }
 
         let readerRuntimeSelection = ReaderRuntimeFixtureAdapter.selection(
