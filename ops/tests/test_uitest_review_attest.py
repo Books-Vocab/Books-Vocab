@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -210,18 +211,26 @@ def test_validator_and_attester_share_canonical_bundle_digest(tmp_path):
     mod = _load()
     run = _run_root(tmp_path)
     import uitest_evidence_contract as contract
+    video = run / "uitest-videos" / "flow.mp4"
+    video_identity = {
+        "runID": run.name,
+        "file": video.name,
+        "sha256": hashlib.sha256(video.read_bytes()).hexdigest(),
+    }
 
     validated = contract.validate_bundle(
         screenshot_dir=run,
         manifest=run / "review_manifest.json",
         contact_sheet=run / "contact_sheet.png",
         quick4_sheet=run / "quick4_contact_sheet.png",
-        video=run / "uitest-videos" / "flow.mp4",
+        video=video,
         review_html=run / "UIreview.html",
         source_commit="abc",
         dataset_id="demo",
         dataset_sha256="sha",
         device="SIM",
+        video_identity=video_identity,
+        expected_video_run_id=run.name,
     )
     entry = mod.attest(
         run,
@@ -234,6 +243,7 @@ def test_validator_and_attester_share_canonical_bundle_digest(tmp_path):
 
     assert entry["bundleSHA256"] == validated["bundleSHA256"]
     assert entry["evidenceRootSHA256"] == validated["bundleSHA256"]
+    assert validated["videoIdentity"] == video_identity
     # review_state.json is intentionally outside the bundle to avoid a
     # digest that invalidates itself when the attestation is appended.
     assert mod.attestation_matches_current_bundle(run, entry) is True

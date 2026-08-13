@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Simulator Verification"
+  short_description: "Run isolated KG UI tests with stable evidence"
+  default_prompt: "Use $ios-simulator-verification to run an isolated KG Simulator UI test and return a reproducible evidence bundle."

@@ -205,6 +205,8 @@ def validate_bundle(
     dataset_id: str,
     dataset_sha256: str,
     device: str,
+    video_identity: dict[str, str],
+    expected_video_run_id: str,
     selector: str | None = None,
     variant: str | None = None,
 ) -> dict[str, Any]:
@@ -235,6 +237,28 @@ def validate_bundle(
     contact_metadata = png_metadata(contact_sheet)
     quick4_metadata = png_metadata(quick4_sheet)
     _require_file(video, "UITest video")
+    if not isinstance(video_identity, dict):
+        raise ValueError("video identity must be an object")
+    video_run_id = video_identity.get("runID")
+    video_file = video_identity.get("file")
+    video_sha256 = video_identity.get("sha256")
+    actual_video_sha256 = _sha256_file(video)
+    if not isinstance(video_run_id, str) or not video_run_id:
+        raise ValueError("video identity runID must be nonempty")
+    if not expected_video_run_id or video_run_id != expected_video_run_id:
+        raise ValueError(
+            "video identity runID mismatch: "
+            f"expected {expected_video_run_id!r}, actual {video_run_id!r}"
+        )
+    if video_file != video.name:
+        raise ValueError(
+            f"video identity file mismatch: expected {video.name!r}, actual {video_file!r}"
+        )
+    if video_sha256 != actual_video_sha256:
+        raise ValueError(
+            "video identity sha256 mismatch: "
+            f"expected {actual_video_sha256!r}, actual {video_sha256!r}"
+        )
     _require_file(review_html, "UIreview HTML")
     html_bytes = review_html.read_bytes()
     html = html_bytes.decode("utf-8", errors="replace")
@@ -263,7 +287,8 @@ def validate_bundle(
         "contactSheet": contact_metadata,
         "quick4Sheet": quick4_metadata,
         "videoByteSize": video.stat().st_size,
-        "videoSha256": _sha256_file(video),
+        "videoSha256": actual_video_sha256,
+        "videoIdentity": video_identity,
         "reviewHtmlSha256": hashlib.sha256(html_bytes).hexdigest(),
         "bundleSHA256": bundle_sha256,
         "provenance": provenance,
@@ -283,6 +308,10 @@ def main() -> int:
     parser.add_argument("--dataset-id", required=True)
     parser.add_argument("--dataset-sha256", required=True)
     parser.add_argument("--device", required=True)
+    parser.add_argument("--video-run-id", required=True)
+    parser.add_argument("--review-run-id", required=True)
+    parser.add_argument("--video-file", required=True)
+    parser.add_argument("--video-sha256", required=True)
     parser.add_argument("--selector")
     parser.add_argument("--variant")
     args = parser.parse_args()
@@ -298,6 +327,12 @@ def main() -> int:
             dataset_id=args.dataset_id,
             dataset_sha256=args.dataset_sha256,
             device=args.device,
+            video_identity={
+                "runID": args.video_run_id,
+                "file": args.video_file,
+                "sha256": args.video_sha256,
+            },
+            expected_video_run_id=args.review_run_id,
             selector=args.selector,
             variant=args.variant,
         )

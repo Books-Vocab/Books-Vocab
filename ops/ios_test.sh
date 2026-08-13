@@ -717,6 +717,9 @@ UI_TEST_CONTACT_SHEET=""
 UI_TEST_SCREENSHOT_MANIFEST=""
 UI_TEST_VIDEO=""
 UI_TEST_VIDEO_PID=""
+UI_TEST_VIDEO_FILE=""
+UI_TEST_VIDEO_SHA256=""
+UI_TEST_RUN_ID="${KG_IOS_TEST_RUN_ID:-$(date -u +%Y%m%d-%H%M%S)-${BASHPID:-$$}}"
 TEST_DEVICE_LOCK_HELD=0
 TEST_DEVICE_LOCK_FILE=""
 DEVICE_RUN_LOCK_WAIT_MS=0
@@ -1354,6 +1357,8 @@ prepare_ui_step_screenshot_dir() {
   UI_TEST_QUICK4_SHEET=""
   UI_TEST_SCREENSHOT_MANIFEST=""
   UI_TEST_VIDEO=""
+  UI_TEST_VIDEO_FILE=""
+  UI_TEST_VIDEO_SHA256=""
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
   UI_TEST_SCREENSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_steps.XXXXXX")"
 }
@@ -1422,32 +1427,37 @@ archive_ui_test_recording() {
   local archived
   if archived="$(uitest_video_archive "$UI_TEST_VIDEO" \
       "$PROJECT_ROOT/build/snapshots/uitest-videos" \
-      "$TEST_SCOPE" "$CALLER")" && [[ -n "$archived" ]]; then
+      "$TEST_SCOPE" "$CALLER" "" "$UI_TEST_RUN_ID")" && [[ -n "$archived" ]]; then
     UI_TEST_VIDEO="$archived"
     echo "[ios_test][ui-video] archived $archived"
   else
     echo "[ios_test][ui-video] warning: archive failed, keeping tmp path $UI_TEST_VIDEO" >&2
   fi
+  UI_TEST_VIDEO_FILE="$(basename "$UI_TEST_VIDEO")"
+  UI_TEST_VIDEO_SHA256="$(shasum -a 256 "$UI_TEST_VIDEO" | awk '{print $1}')"
 }
 
 build_ui_test_review_page() {
   local review_status="${1:-}"
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
 
-  local stem
-  if [[ -n "${UI_TEST_VIDEO:-}" ]]; then
-    stem="$(basename "$UI_TEST_VIDEO" .mp4)"
-  else
-    stem="$(date -u +%Y%m%d-%H%M%S)-$TEST_SCOPE"
-  fi
+  local stem fallback_input_dir=""
+  stem="$UI_TEST_RUN_ID"
+  mkdir -p "$PROJECT_ROOT/build/snapshots/uitest-runs"
   UI_TEST_REVIEW_ROOT="$PROJECT_ROOT/build/snapshots/uitest-runs/$stem"
-  mkdir -p "$UI_TEST_REVIEW_ROOT"
+  if ! mkdir "$UI_TEST_REVIEW_ROOT"; then
+    echo "[ios_test][ui-review] error: refusing to overwrite existing review root=$UI_TEST_REVIEW_ROOT" >&2
+    return 1
+  fi
 
   if [[ -z "${UI_TEST_SCREENSHOT_DIR:-}" || ! -d "$UI_TEST_SCREENSHOT_DIR" ]]; then
-    UI_TEST_SCREENSHOT_DIR="$UI_TEST_REVIEW_ROOT"
+    # Reserve the output root exclusively but keep generator inputs elsewhere:
+    # uitest_review_page intentionally refuses a non-empty output root.
+    fallback_input_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_review_input.XXXXXX")"
+    UI_TEST_SCREENSHOT_DIR="$fallback_input_dir"
   fi
   if [[ -z "${UI_TEST_SCREENSHOT_MANIFEST:-}" || ! -s "$UI_TEST_SCREENSHOT_MANIFEST" ]]; then
-    UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_REVIEW_ROOT/input_review_manifest.json"
+    UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_SCREENSHOT_DIR/input_review_manifest.json"
     jq -nc --arg flow "$UI_TEST_FLOW_ID" --arg variant "$UI_TEST_VARIANT_ID" \
       '{
         schema:"kg.visual-review.sheet.v1",
@@ -1478,9 +1488,16 @@ build_ui_test_review_page() {
   local payload
   if payload="$("${args[@]}" 2>/dev/null)" && [[ -n "$payload" ]]; then
     UI_TEST_REVIEW_HTML="$(printf '%s' "$payload" | jq -r '.html // empty' 2>/dev/null || true)"
+    if [[ -n "$fallback_input_dir" ]]; then
+      rm -rf "$fallback_input_dir"
+      UI_TEST_SCREENSHOT_DIR="$UI_TEST_REVIEW_ROOT"
+      UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_REVIEW_ROOT/review_manifest.json"
+    fi
     echo "[ios_test][ui-review] html=$UI_TEST_REVIEW_HTML"
   else
+    [[ -n "$fallback_input_dir" ]] && rm -rf "$fallback_input_dir"
     echo "[ios_test][ui-review] warning: failed to build standalone UIreview root=$UI_TEST_REVIEW_ROOT" >&2
+    rmdir "$UI_TEST_REVIEW_ROOT" 2>/dev/null || true
     UI_TEST_REVIEW_ROOT=""
     UI_TEST_REVIEW_HTML=""
   fi
@@ -1495,11 +1512,20 @@ build_ui_step_contact_sheet() {
 
   UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_SCREENSHOT_DIR/review_manifest.json"
   UI_TEST_CONTACT_SHEET="$UI_TEST_SCREENSHOT_DIR/contact_sheet.png"
+  local provenance_args=(
+    --source-commit "$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+    --dataset-id "$EVIDENCE_DATASET_ID"
+    --dataset-sha256 "$EVIDENCE_DATASET_SHA256"
+    --provenance-device "$(resolve_run_device_udid 2>/dev/null || true)"
+    --selector "${KG_UI_TEST_EXACT_SELECTOR:-$UI_TEST_FLOW_ID}"
+    --variant "$UI_TEST_VARIANT_ID"
+  )
   if "$SCRIPT_DIR/uitest_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
       --source uitest \
       --appearance light \
       --cols 3 \
       --cell-width 260 \
+      "${provenance_args[@]}" \
       --out "$UI_TEST_CONTACT_SHEET" \
       --manifest-out "$UI_TEST_SCREENSHOT_MANIFEST" \
       --json >/dev/null 2>&1; then
@@ -1520,6 +1546,7 @@ build_ui_step_contact_sheet() {
       --take evenly:4 \
       --cols 4 \
       --cell-width 380 \
+      "${provenance_args[@]}" \
       --out "$UI_TEST_QUICK4_SHEET" \
       --json >/dev/null 2>&1; then
     echo "[ios_test][ui-steps] quick4=$UI_TEST_QUICK4_SHEET"
@@ -1559,7 +1586,7 @@ seen: set[str] = set()
 for test in json.loads(manifest.read_text(encoding="utf-8")):
     for attachment in test.get("attachments", []):
         name = attachment.get("suggestedHumanReadableName", "")
-        match = re.match(r"Step ([0-9]{2}-[^_]+).*\.png$", name)
+        match = re.match(r"^Step ([0-9]{2}-.+)\.png$", name)
         if not match:
             continue
         step_name = match.group(1)
@@ -1914,6 +1941,9 @@ write_json_verdict() {
     --arg uiVisualReviewManifest "$UI_TEST_SCREENSHOT_MANIFEST" \
     --arg uiScreenshotDir "$UI_TEST_SCREENSHOT_DIR" \
     --arg uiVideo "$UI_TEST_VIDEO" \
+    --arg uiVideoRunID "$UI_TEST_RUN_ID" \
+    --arg uiVideoFile "$UI_TEST_VIDEO_FILE" \
+    --arg uiVideoSHA256 "$UI_TEST_VIDEO_SHA256" \
     --arg uiReviewRoot "$UI_TEST_REVIEW_ROOT" \
     --arg uiReviewHtml "$UI_TEST_REVIEW_HTML" \
     --arg device "$(resolve_run_device_udid 2>/dev/null || true)" \
@@ -2013,6 +2043,7 @@ write_json_verdict() {
         uiVisualReviewManifest:(if $uiVisualReviewManifest == "" then null else $uiVisualReviewManifest end),
         uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end),
         uiVideo:(if $uiVideo == "" then null else $uiVideo end),
+        uiVideoIdentity:(if $uiVideo == "" then null else {runID:$uiVideoRunID,file:$uiVideoFile,sha256:$uiVideoSHA256} end),
         uiReviewRoot:(if $uiReviewRoot == "" then null else $uiReviewRoot end),
         uiReviewHtml:(if $uiReviewHtml == "" then null else $uiReviewHtml end)
       }
@@ -2026,7 +2057,6 @@ write_json_verdict() {
 populate_timing_breakdown
 build_ui_step_contact_sheet
 archive_ui_test_recording
-build_ui_test_review_page
 populate_coverage_summary || true
 
 # Extract summary from xcresult if available

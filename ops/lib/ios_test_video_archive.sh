@@ -9,11 +9,11 @@
 # can't grow unbounded. The UITest review workspace reads index.json and mirrors
 # the recordings into each review root for the UIreview.html gallery.
 
-# uitest_video_archive <video_path> <dest_root> <scope> <caller> [timestamp]
+# uitest_video_archive <video_path> <dest_root> <scope> <caller> [timestamp] [run_id]
 # Echoes the archived path. Missing/empty recording is a silent no-op (the
 # recorder legitimately skips when no explicit simulator udid exists).
 uitest_video_archive() {
-  local video="$1" dest_root="$2" scope="$3" caller="$4" stamp="${5:-}"
+  local video="$1" dest_root="$2" scope="$3" caller="$4" stamp="${5:-}" run_id="${6:-}"
   local keep="${KG_UITEST_VIDEO_KEEP:-10}"
   # Guard the knob: 0 would prune the file we just archived while still
   # echoing its path, and a non-numeric value would poison the jq slice.
@@ -22,41 +22,81 @@ uitest_video_archive() {
   [[ -s "$video" ]] || return 0
   [[ -n "$stamp" ]] || stamp="$(date -u +%Y%m%d-%H%M%S)"
   mkdir -p "$dest_root" || return 1
+  [[ -w "$dest_root" ]] || return 1
+  [[ -z "$run_id" || "$run_id" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
 
-  local base="$stamp-$scope" name suffix=1
+  # One archive lock makes the filename reservation, move, and index publish a
+  # transaction. shlock reclaims stale PID locks and uses an atomic link(2).
+  local archive_lock="$dest_root/.archive.lock" lock_attempt=0
+  until shlock -f "$archive_lock" -p "$$"; do
+    lock_attempt=$((lock_attempt + 1))
+    if [[ "$lock_attempt" -ge 3000 ]]; then
+      echo "[ios_test][ui-video] error: archive lock timeout root=$dest_root" >&2
+      return 1
+    fi
+    if ((lock_attempt % 500 == 0)); then
+      echo "[ios_test][ui-video] waiting archive lock root=$dest_root attempts=$lock_attempt" >&2
+    fi
+    sleep 0.01
+  done
+
+  local base="${run_id:-$stamp-$scope}" name suffix=1 reservation
   name="$base.mp4"
-  while [[ -e "$dest_root/$name" ]]; do
+  while true; do
+    reservation="$dest_root/.$name.reserve"
+    if mkdir "$reservation" 2>/dev/null; then
+      if [[ ! -e "$dest_root/$name" ]]; then
+        break
+      fi
+      rmdir "$reservation"
+    elif [[ ! -e "$reservation" ]]; then
+      rm -f "$archive_lock"
+      return 1
+    fi
     suffix=$((suffix + 1))
     name="$base-$suffix.mp4"
   done
   # The function body runs inside an if-condition command substitution, so
   # set -e is suppressed: a failed mv must return explicitly or the caller
   # would log "archived <path>" for a file that does not exist.
-  mv "$video" "$dest_root/$name" || return 1
+  if ! mv -n "$video" "$dest_root/$name" || [[ -e "$video" ]]; then
+    rmdir "$reservation"
+    rm -f "$archive_lock"
+    return 1
+  fi
+  rmdir "$reservation"
 
-  local size recorded_at index="$dest_root/index.json" tmp_index
+  local size sha256 recorded_at index="$dest_root/index.json" tmp_index next_index
   size="$(wc -c <"$dest_root/$name" | tr -d ' ')"
+  sha256="$(shasum -a 256 "$dest_root/$name" | awk '{print $1}')"
   recorded_at="$(printf '%s' "$stamp" | sed -E 's/^([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$/\1-\2-\3T\4:\5:\6Z/')"
   [[ -s "$index" ]] || printf '{"schema":"kg.ios.uitest-videos.v1","videos":[]}\n' >"$index"
-  tmp_index="$(mktemp)"
+  tmp_index="$(mktemp "$dest_root/.index-with-pruned.XXXXXX")"
+  next_index="$(mktemp "$dest_root/.index-next.XXXXXX")"
   if jq \
       --arg file "$name" \
+      --arg runID "$run_id" \
+      --arg sha256 "$sha256" \
       --arg recordedAtUtc "$recorded_at" \
       --arg scope "$scope" \
       --arg caller "$caller" \
       --argjson sizeBytes "$size" \
       --argjson keep "$keep" \
-      '.videos = ([{file:$file, recordedAtUtc:$recordedAtUtc, scope:$scope, caller:$caller, sizeBytes:$sizeBytes}] + .videos)
+      '.videos = ([{file:$file, runID:(if $runID == "" then null else $runID end), sha256:$sha256, recordedAtUtc:$recordedAtUtc, scope:$scope, caller:$caller, sizeBytes:$sizeBytes}] + .videos)
        | {schema:"kg.ios.uitest-videos.v1", pruned:(.videos[$keep:] | map(.file)), videos:.videos[:$keep]}' \
       "$index" >"$tmp_index"; then
     local pruned_file
     while IFS= read -r pruned_file; do
       [[ -n "$pruned_file" ]] && rm -f "$dest_root/$pruned_file"
     done < <(jq -r '.pruned[]?' "$tmp_index")
-    jq 'del(.pruned)' "$tmp_index" >"$index"
+    if jq 'del(.pruned)' "$tmp_index" >"$next_index"; then
+      mv -f "$next_index" "$index"
+    else
+      echo "[ios_test][ui-video] warning: failed to publish $index" >&2
+    fi
   else
     echo "[ios_test][ui-video] warning: failed to update $index" >&2
   fi
-  rm -f "$tmp_index"
+  rm -f "$tmp_index" "$next_index" "$archive_lock"
   printf '%s\n' "$dest_root/$name"
 }

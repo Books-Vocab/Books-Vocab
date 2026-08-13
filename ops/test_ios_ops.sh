@@ -427,11 +427,12 @@ IOS_TEST_VIDEO_ARCHIVE_LIB="$WORKSPACE/ops/lib/ios_test_video_archive.sh"
 bash -n "$IOS_TEST_VIDEO_ARCHIVE_LIB" 2>/dev/null && ok "ios_test_video_archive.sh syntax" || fail_t "ios_test_video_archive.sh syntax"
 grep -q 'source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test sources video archive lib" || fail_t "ios_test does not source video archive lib"
-# Archive must run after the recording is finalized (post contact sheet), and
-# standalone UIreview must be generated after archive so it links the stable
-# video path. Both must finish before any verdict write.
-awk '/^build_ui_step_contact_sheet$/{cs=NR} /^archive_ui_test_recording$/{ar=NR} /^build_ui_test_review_page$/{rv=NR} /write_json_verdict "/{if (!v) v=NR} END{exit (cs && ar && rv && v && cs<ar && ar<rv && rv<v) ? 0 : 1}' "$WORKSPACE/ops/ios_test.sh" \
-  && ok "ios_test archives recording and builds UIreview before verdict writes" || fail_t "UIreview/archive calls missing or misordered"
+# Archive must run after the recording is finalized (post contact sheet) and
+# before a verdict branch. UIreview is built inside write_json_verdict so every
+# terminal branch gets exactly one collision-checked review root.
+awk '/^build_ui_step_contact_sheet$/{cs=NR} /^archive_ui_test_recording$/{ar=NR} /write_json_verdict "/{if (!v) v=NR} END{exit (cs && ar && v && cs<ar && ar<v) ? 0 : 1}' "$WORKSPACE/ops/ios_test.sh" \
+  && sed -n '/^write_json_verdict()/,/^}/p' "$WORKSPACE/ops/ios_test.sh" | awk '/build_ui_test_review_page/{rv=NR} /jq -nc/{if (!j) j=NR} END{exit (rv && j && rv<j) ? 0 : 1}' \
+  && ok "ios_test archives recording before verdict and builds UIreview inside verdict" || fail_t "UIreview/archive calls missing or misordered"
 va_tmp="$(mktemp -d)"
 va_dest="$va_tmp/uitest-videos"
 printf 'fake-mp4-bytes' >"$va_tmp/run_recording.mp4"
@@ -455,6 +456,69 @@ jq -e '(.videos|length)==2 and .videos[0].file=="20260611-130000-all.mp4" and .v
 va_noop="$(bash -lc 'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "'"$va_tmp"'/missing.mp4" "'"$va_tmp"'/never-created" ui test-caller 20260611-140000')" || fail_t "archive no-op should return 0"
 [[ -z "$va_noop" && ! -e "$va_tmp/never-created" ]] \
   && ok "archive is a no-op for missing/empty recordings" || fail_t "archive no-op created artifacts: '$va_noop'"
+
+# Same-second runs are normal under parallel UI verification. All workers start
+# behind one barrier so this exercises the candidate-name reservation itself,
+# not merely 24 sequential calls that happen to share a timestamp.
+va_race="$va_tmp/race"
+va_race_dest="$va_race/uitest-videos"
+mkdir -p "$va_race/sources" "$va_race/results"
+for worker in $(seq 1 24); do
+  printf 'video-%02d' "$worker" >"$va_race/sources/$worker.mp4"
+  (
+    while [[ ! -e "$va_race/go" ]]; do sleep 0.01; done
+    KG_UITEST_VIDEO_KEEP=24 bash -lc \
+      'source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"; uitest_video_archive "$1" "$2" ui race-caller 20260611-150000' \
+      _ "$va_race/sources/$worker.mp4" "$va_race_dest" \
+      >"$va_race/results/$worker.out" 2>"$va_race/results/$worker.err"
+    printf '%s\n' "$?" >"$va_race/results/$worker.rc"
+  ) &
+done
+: >"$va_race/go"
+wait
+va_race_files="$(find "$va_race_dest" -maxdepth 1 -type f -name '*.mp4' | wc -l | tr -d ' ')"
+va_race_unique="$(find "$va_race_dest" -maxdepth 1 -type f -name '*.mp4' -exec basename {} \; | sort -u | wc -l | tr -d ' ')"
+va_race_sources="$(find "$va_race/sources" -maxdepth 1 -type f -name '*.mp4' | wc -l | tr -d ' ')"
+va_race_failures="$(awk '$0 != 0 { count += 1 } END { print count + 0 }' "$va_race"/results/*.rc)"
+if [[ "$va_race_files" == 24 && "$va_race_unique" == 24 && "$va_race_sources" == 0 && "$va_race_failures" == 0 ]] \
+  && jq -e '(.videos | length) == 24 and ([.videos[].file] | unique | length) == 24' "$va_race_dest/index.json" >/dev/null; then
+  ok "24-way same-timestamp archive keeps 24 unique videos and index identities"
+else
+  fail_t "24-way archive race lost/clobbered evidence: files=$va_race_files unique=$va_race_unique sources=$va_race_sources failures=$va_race_failures"
+fi
+
+# A failed exclusive reservation must not consume the source or replace an
+# existing archive. The mkdir shim fails only reservation-directory creation.
+va_blocked="$va_tmp/blocked"
+mkdir -p "$va_blocked/dest"
+printf 'existing-video' >"$va_blocked/dest/20260611-160000-ui.mp4"
+printf 'unmoved-source' >"$va_blocked/source.mp4"
+set +e
+bash -lc '
+  mkdir() {
+    if [[ "${*: -1}" == *.reserve ]]; then return 1; fi
+    command mkdir "$@"
+  }
+  source "'"$IOS_TEST_VIDEO_ARCHIVE_LIB"'"
+  uitest_video_archive "$1" "$2" ui blocked-caller 20260611-160000
+' \
+  _ "$va_blocked/source.mp4" "$va_blocked/dest" >/dev/null 2>&1
+va_blocked_rc=$?
+set -e
+[[ "$va_blocked_rc" -ne 0 && -s "$va_blocked/source.mp4" && "$(cat "$va_blocked/dest/20260611-160000-ui.mp4")" == existing-video ]] \
+  && ok "archive reservation failure preserves source and existing video" \
+  || fail_t "archive reservation failure consumed source or clobbered destination (rc=$va_blocked_rc)"
+
+# The standalone review root must use one stable run identity even when a video
+# exists, and the directory creation itself must be the exclusive operation.
+review_body="$(sed -n '/^build_ui_test_review_page()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+grep -qF 'stem="$UI_TEST_RUN_ID"' <<<"$review_body" \
+  && ok "video-backed review root uses stable run identity" \
+  || fail_t "video-backed review root still derives identity from video basename"
+grep -qF 'if ! mkdir "$UI_TEST_REVIEW_ROOT"' <<<"$review_body" \
+  && ! grep -qF '[[ -e "$UI_TEST_REVIEW_ROOT" ]]' <<<"$review_body" \
+  && ok "review root uses exclusive mkdir collision refusal" \
+  || fail_t "review root creation still has check-then-mkdir collision window"
 rm -rf "$va_tmp"
 
 section "Doctor release readiness surface"
@@ -657,7 +721,7 @@ mkdir -p "${TMPDIR:-/tmp}/ui-steps"
 : > "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4"
 mkdir -p "${TMPDIR:-/tmp}/ui-review"
 : > "${TMPDIR:-/tmp}/ui-review/UIreview.html"
-jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg quick4 "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png" --arg manifest "${TMPDIR:-/tmp}/ui-steps/review_manifest.json" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" --arg video "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4" --arg reviewRoot "${TMPDIR:-/tmp}/ui-review" --arg reviewHtml "${TMPDIR:-/tmp}/ui-review/UIreview.html" --arg device "STUB-UDID-1234" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",device:$device,options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiQuick4Sheet:$quick4,uiVisualReviewManifest:$manifest,uiScreenshotDir:$screenshotDir,uiVideo:$video,uiReviewRoot:$reviewRoot,uiReviewHtml:$reviewHtml}}' >"$json"
+jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg quick4 "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png" --arg manifest "${TMPDIR:-/tmp}/ui-steps/review_manifest.json" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" --arg video "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4" --arg reviewRoot "${TMPDIR:-/tmp}/ui-review" --arg reviewHtml "${TMPDIR:-/tmp}/ui-review/UIreview.html" --arg device "STUB-UDID-1234" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",device:$device,options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiQuick4Sheet:$quick4,uiVisualReviewManifest:$manifest,uiScreenshotDir:$screenshotDir,uiVideo:$video,uiVideoIdentity:{runID:"stub-run-123",file:"run_recording.mp4",sha256:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},uiReviewRoot:$reviewRoot,uiReviewHtml:$reviewHtml}}' >"$json"
 cp -f "$verdict" "$latest"
 cp -f "$json" "$latest.json"
 # RACE FIXTURE: concurrent session clobbers the latest pointer after our run.
@@ -694,6 +758,8 @@ echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and
   && ok "test --json emits machine-readable run report" || fail_t "test --json invalid: $test_direct_json"
 echo "$test_direct_json" | jq -e '.uiVisualReview.contactSheet==.artifacts.uiContactSheet and .uiVisualReview.contactSheetExists==true and .uiVisualReview.quick4Sheet==.artifacts.uiQuick4Sheet and .uiVisualReview.quick4SheetExists==true and .uiVisualReview.visualReviewManifest==.artifacts.uiVisualReviewManifest and .uiVisualReview.visualReviewManifestExists==true and .uiVisualReview.screenshotDir==.artifacts.uiScreenshotDir and .uiVisualReview.video==.artifacts.uiVideo and .uiVisualReview.videoExists==true and .uiVisualReview.reviewRoot==.artifacts.uiReviewRoot and .uiVisualReview.reviewRootExists==true and .uiVisualReview.reviewHtml==.artifacts.uiReviewHtml and .uiVisualReview.reviewHtmlExists==true' >/dev/null \
   && ok "test --json exposes uiVisualReview block" || fail_t "test --json missing uiVisualReview block: $test_direct_json"
+echo "$test_direct_json" | jq -e '.artifacts.uiVideoIdentity=={runID:"stub-run-123",file:"run_recording.mp4",sha256:"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"} and .uiVisualReview.videoIdentity==.artifacts.uiVideoIdentity' >/dev/null \
+  && ok "test --json preserves stable video identity" || fail_t "test --json dropped or rewrote video identity: $test_direct_json"
 grep -q 'test stub stdout' "$delegate_tmp/test_stderr" \
   && ok "test --json redirects delegate stdout to stderr" || fail_t "test --json missing delegate output forwarding"
 test_cache_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --cache-status --json)"
@@ -1087,6 +1153,9 @@ bash -c '
   UI_TEST_VIDEO=""
   UI_TEST_REVIEW_ROOT=""
   UI_TEST_REVIEW_HTML=""
+  UI_TEST_RUN_ID="fixture-run-$$"
+  EVIDENCE_DATASET_ID="fixture-dataset"
+  EVIDENCE_DATASET_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
   UI_TEST_FLOW_ID="PodcastPlaybackPerfUITests"
   UI_TEST_VARIANT_ID="profile:ui-smoke"
   FILE_PATH="ios/BooksAndVocabUITests/PodcastPlaybackPerfUITests.swift"
@@ -1131,6 +1200,7 @@ bash -c '
   UI_TEST_VIDEO=""
   UI_TEST_REVIEW_ROOT=""
   UI_TEST_REVIEW_HTML=""
+  UI_TEST_RUN_ID="empty-fixture-run-$$"
   UI_TEST_FLOW_ID="BooksAndVocabUITests"
   UI_TEST_VARIANT_ID="profile:ui-smoke"
   FILE_PATH="ios/BooksAndVocabUITests/BooksAndVocabUITests.swift"
@@ -1141,14 +1211,14 @@ bash -c '
   resolve_run_device_udid() { printf "STUB-UDID-EMPTY"; }
   build_ui_test_review_page ok
 ' >"$ui_empty_tmp/snippet.log" 2>&1 || true
-ui_empty_index="$ui_empty_tmp/project/build/snapshots/uitest-runs/index.json"
-ui_empty_html="$ui_empty_tmp/project/build/snapshots/uitest-runs/UIreview.html"
-if [[ -s "$ui_empty_index" && -s "$ui_empty_html" ]] \
-  && jq -e '.schema=="kg.ios.uitest-review-workspace.v1" and .summary.totalRuns==1 and .summary.okRuns==1 and .runs[0].flowId=="BooksAndVocabUITests" and .runs[0].stepCount==0 and (.runs[0].artifacts.log|endswith("/test.log")) and (.runs[0].lastRunAt|length > 0)' "$ui_empty_index" >/dev/null; then
-  ok "ios_test builds UITest workspace entry even when no step screenshots exist"
+ui_empty_runs_root="$ui_empty_tmp/project/build/snapshots/uitest-runs"
+if grep -qF '[ios_test][ui-review] warning: failed to build standalone UIreview' "$ui_empty_tmp/snippet.log" \
+  && [[ ! -e "$ui_empty_runs_root/empty-fixture-run-"* ]] \
+  && [[ ! -e "$ui_empty_runs_root/index.json" && ! -e "$ui_empty_runs_root/UIreview.html" ]]; then
+  ok "ios_test rejects empty visual review without publishing a ghost run"
   rm -rf "$ui_empty_tmp"
 else
-  fail_t "ios_test empty visual review fallback missing in $ui_empty_tmp: $(tail -5 "$ui_empty_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
+  fail_t "ios_test empty visual review did not fail closed in $ui_empty_tmp: $(tail -5 "$ui_empty_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
 fi
 ios_test_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
