@@ -2,8 +2,9 @@
 import Foundation
 import SwiftData
 
-/// Bridges the existing fixture system into the live SwiftData container for UI tests.
-/// Triggered by launch arguments when `-ui-testing` is active.
+/// Bridges the canonical UI World fixture document into the live SwiftData
+/// container used by simulator UI tests. Physical-device fixture writes are
+/// rejected by the container and asset helpers.
 enum UITestFixtureSeedValidationError: Error, Equatable {
     case persistentContainer
 }
@@ -16,11 +17,6 @@ enum UITestFixtureSeed {
     static func injectIfNeeded(into container: ModelContainer, arguments: [String]) {
         guard AppRuntimeOptions.isUITesting(arguments: arguments) else { return }
 
-        // 資料安全防線（2026-06-10 事故）：fixture 會 wipe+seed VocabularyEntry。
-        // 在真機上對真實 on-disk store 動手 = 清掉使用者整個本地單字庫，
-        // 故只允許全 in-memory 容器（bootstrap 在 -ui-testing 下必須提供）。
-        // !isEmpty：空配置容器 allSatisfy 恆真（fail-open），雖經查無實際
-        // 產生路徑，仍以廉價保險封死。
         do {
             try validateContainerForFixtureSeeding(container)
         } catch {
@@ -63,8 +59,6 @@ enum UITestFixtureSeed {
                 seedSettings(id, into: container)
             case "shell":
                 seedShell(id, into: container)
-            case "vocabulary":
-                seedVocabulary(id, into: container)
             case "search":
                 seedSearch(id, into: container)
             case "vocabulary":
@@ -75,27 +69,29 @@ enum UITestFixtureSeed {
                 seedNotebook(id, into: container)
             case "dictionary":
                 seedDictionary(id)
-#if DEBUG
 #if DEBUG && targetEnvironment(simulator)
             case "explore":
                 seedExplore(id, into: container)
 #endif
-            case "vocabulary":
-                seedVocabulary(id, into: container)
             case "entitlements":
                 guard id == "pro" || id == "free" else {
                     failFixtureSeed("Unknown entitlements fixture ID: \(id)")
                 }
-                break
             default:
                 failFixtureSeed("Unknown UI-test fixture domain: \(domain)")
             }
         }
     }
 
-    /// Dictionary data is already canonical scenarioContext content. The
-    /// launch seed only resolves the declared surface row; it never writes a
-    /// synthetic dictionary response into SwiftData.
+    static func validateContainerForFixtureSeeding(_ container: ModelContainer) throws {
+        guard !container.configurations.isEmpty,
+              container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
+            throw UITestFixtureSeedValidationError.persistentContainer
+        }
+    }
+
+    /// Dictionary content is canonical scenarioContext data; the seed only
+    /// verifies that the declared fixture resolves to the injected dataset.
     private static func seedDictionary(_ id: String) {
         guard let fixtureID = UIWorldDictionaryFixtureID(rawValue: id) else {
             failFixtureSeed("Unknown dictionary fixture ID: \(id)")
@@ -108,11 +104,6 @@ enum UITestFixtureSeed {
             )
         }
         AppLog.app.info("UITestFixtureSeed: resolved canonical dictionary fixture \(fixtureID.rawValue)")
-    static func validateContainerForFixtureSeeding(_ container: ModelContainer) throws {
-        guard !container.configurations.isEmpty,
-              container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
-            throw UITestFixtureSeedValidationError.persistentContainer
-        }
     }
 
     static func failFixtureSeed(_ message: String) -> Never {
@@ -124,25 +115,23 @@ enum UITestFixtureSeed {
     private static func applyPreferencesFromWorld() {
         let document = FixtureDatasetStore.requireDocument()
         guard !document.preferences.isEmpty else { return }
-        #if targetEnvironment(simulator)
+#if targetEnvironment(simulator)
         document.preferences.apply()
-        #else
+#else
         preconditionFailure("UI World preferences are simulator-only; refusing to overwrite real UserDefaults/iCloud KVS on device")
-        #endif
+#endif
     }
 
-    /// 非容器寫入面的 auth 防線：`AuthManager.login` 經 AuthSessionStore 直寫
-    /// 真實 UserDefaults + Keychain。真機上跑 signedIn 類 fixture 會用假 token
-    /// 蓋掉使用者真 session——下次正常啟動 401 → 自動 logout + clearLocalData，
-    /// 2026-06-10 事故經另一儲存平面重演。與 settings/reader fixture 同款
-    /// simulator gate；fixture 一律經此 helper，不得直呼 login。
+    /// The no-label overload is used by auth/podcast/search fixtures and keeps
+    /// the isolated-session guard required by the real UserDefaults/Keychain
+    /// safety contract.
     @MainActor
     @discardableResult
     static func seedSignedInLoginFromWorld(
         arguments: [String] = ProcessInfo.processInfo.arguments,
         auth: AuthManager? = nil
     ) -> Bool {
-        #if targetEnvironment(simulator)
+#if targetEnvironment(simulator)
         guard AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: arguments) else {
             if AppRuntimeOptions.isUITesting(arguments: arguments) {
                 preconditionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
@@ -150,17 +139,35 @@ enum UITestFixtureSeed {
             AppLog.app.error("UITestFixtureSeed: refused auth.signedIn without -isolatedAuthSession — fake session would persist into the real store")
             return false
         }
-        let auth = auth ?? AuthManager.shared
-        let seed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
+        applyAuthSeed(.signedIn, auth: auth ?? AuthManager.shared)
+        return true
+#else
+        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
+        preconditionFailure("auth.signedIn fixture is simulator-only")
+#endif
+    }
+
+    /// Settings fixtures may select a distinct auth seed, while still running
+    /// inside the already-isolated simulator UI-test session.
+    @MainActor
     static func seedSignedInLoginFromWorld(using fixtureID: UIWorldAuthFixtureID = .signedIn) {
-        #if targetEnvironment(simulator)
+#if targetEnvironment(simulator)
+        applyAuthSeed(fixtureID, auth: AuthManager.shared)
+#else
+        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
+        preconditionFailure("auth.signedIn fixture is simulator-only")
+#endif
+    }
+
+    @MainActor
+    private static func applyAuthSeed(_ fixtureID: UIWorldAuthFixtureID, auth: AuthManager) {
         let seed = FixtureDatasetStore.requireAuthSeed(for: fixtureID)
         guard seed.isLoggedIn else {
             preconditionFailure("\(fixtureID.rawValue) fixture requires a logged-in auth seed")
         }
         let userId = seed.userId ?? ""
         guard !userId.isEmpty else {
-            preconditionFailure("auth.signedIn fixture requires non-empty userId")
+            preconditionFailure("\(fixtureID.rawValue) fixture requires non-empty userId")
         }
         auth.displayName = seed.displayName ?? ""
         auth.userEmail = seed.email
@@ -168,7 +175,7 @@ enum UITestFixtureSeed {
         case .available:
             let token = seed.token ?? ""
             guard !token.isEmpty else {
-                preconditionFailure("auth.signedIn keychainTokenState=available requires non-empty token")
+                preconditionFailure("\(fixtureID.rawValue) keychainTokenState=available requires non-empty token")
             }
             auth.login(userId: userId, token: token)
         case .readFailed:
@@ -181,13 +188,8 @@ enum UITestFixtureSeed {
                 keychainReadFailed: true
             ))
         case .absent:
-            preconditionFailure("auth.signedIn cannot declare keychainTokenState=absent")
+            preconditionFailure("\(fixtureID.rawValue) cannot declare keychainTokenState=absent")
         }
-        return true
-        #else
-        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
-        preconditionFailure("auth.signedIn fixture is simulator-only")
-        #endif
     }
 }
 #endif

@@ -1817,10 +1817,10 @@ def test_cli_prints_dataset_id_for_valid_world():
 
 def _canonical_review_clock():
     return {
-        "now": "2026-06-15T23:59:59Z",
+        "now": "2026-07-10T23:59:59Z",
         "timeZone": "UTC",
-        "frozenEpoch": 1781567999,
-        "anchorDay": "2026-06-15",
+        "frozenEpoch": 1783727999,
+        "anchorDay": "2026-07-10",
         "source": "history_plan.anchor_day",
     }
 
@@ -2240,7 +2240,7 @@ def test_validate_rejects_review_clock_history_day_mismatch(tmp_path: Path):
     data = _marketing_demo()
     data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
     data["vocabulary"]["reviewCalendarDense"]["reviewHistory"][0]["reviewedAt"] = (
-        "2026-06-16T00:00:00Z"
+        "2026-07-11T00:00:00Z"
     )
     path = tmp_path / "review_clock_history_mismatch.json"
     path.write_text(json.dumps(data), encoding="utf-8")

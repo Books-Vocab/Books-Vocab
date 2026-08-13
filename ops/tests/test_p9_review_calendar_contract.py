@@ -132,7 +132,9 @@ def test_p9_fixture_schema_keeps_exact_nested_review_calendar_keys() -> None:
     surface = fixture["scenarioContext"]["surfaceContracts"]
     review_calendar = surface["reviewCalendar"]
 
-    assert set(surface) == {"reviewCalendar"}
+    # P1/P8/P15 add their own canonical surface contracts alongside P9;
+    # this test owns only the nested review-calendar shape.
+    assert "reviewCalendar" in surface
     assert set(review_calendar) == {"required", "counterexamples"}
     for group in ("required", "counterexamples"):
         assert review_calendar[group]

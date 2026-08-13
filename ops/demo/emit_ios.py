@@ -144,6 +144,11 @@ SPEC_BASELINE_KEPT_FIXTURES = (
     # KGVocabRowScenarios.swift: entries.count == KGVocabRowFixture.allCases.count
     # 且 index-addressed（每列對應固定 row state）
     ("vocabulary", "kgVocabRow"),
+    # Vocabulary filter is an inherited catalog fixture whose base
+    # `vocabListLong` is itself content-pinned; keeping both prevents a spec
+    # projection from invalidating its knowledge-word overrides.
+    ("vocabulary", "vocabListLong"),
+    ("vocabulary", "vocabListFilterRich"),
     # VocabScenarios.swift(VocabManifestEntries): 恰 6 entries、index-addressed
     ("vocabulary", "vocabLinkedCards"),
     # ArchivedVocabScenarios.swift: populated ≥5 / single ==1 / long ≥40 條
@@ -415,6 +420,12 @@ def _validate_scenario_context_field(
                 "scenarioContext.surfaceContracts.reviewCalendar is required, got "
                 f"{got}"
             )
+        unknown = sorted(set(surface) - SURFACE_CONTRACTS_KEYS)
+        if unknown:
+            raise ValueError(
+                "scenarioContext.surfaceContracts keys must be canonical; "
+                f"unknown={unknown}"
+            )
         review_calendar = surface["reviewCalendar"]
         if not isinstance(review_calendar, dict) or set(review_calendar) != set(REVIEW_CALENDAR_KEYS):
             got = sorted(review_calendar) if isinstance(review_calendar, dict) else type(review_calendar).__name__
@@ -606,7 +617,17 @@ def _canonicalize_review_history(document: dict[str, Any], plan: Mapping[str, An
             raise ValueError(f"generated UI World vocabulary.{fixture_id}.reviewHistory is missing")
         normalized = canonicalize_review_history(history, plan)
         if fixture_id == "reviewCalendarDense":
-            normalized = append_review_calendar_boundary_event(normalized, plan)
+            boundary = plan["review_calendar_boundary_event"]
+            entry_words = {
+                entry.get("word")
+                for entry in seed.get("entries", [])
+                if isinstance(entry, dict)
+            }
+            # The named boundary event belongs to the canonical marketing
+            # fixture. Generic specs have their own vocabulary universe; do
+            # not inject a foreign word into an otherwise self-contained seed.
+            if boundary.get("word") in entry_words:
+                normalized = append_review_calendar_boundary_event(normalized, plan)
         seed["reviewHistory"] = normalized
         try:
             validate_review_history_hours(

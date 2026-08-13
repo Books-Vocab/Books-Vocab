@@ -7,37 +7,10 @@ extension UITestFixtureSeed {
         UIWorldVocabularyFixtureID(rawValue: id)
     }
 
+    /// Review Calendar uses a whole-world reset so prior fixture rows cannot
+    /// leak into the populated-day buckets under test.
     @MainActor
-    static func seedVocabulary(_ id: String, into container: ModelContainer) {
-        guard let fixtureID = vocabularyFixtureID(for: id) else {
-            failFixtureSeed("Unknown vocabulary fixture ID: \(id)")
-        }
-
-        let seed: UIWorldVocabularySeed
-        if fixtureID == .reviewCalendarDense {
-            seed = FixtureDatasetStore.requireVocabularySeed(for: .reviewCalendarDense)
-        } else {
-            seed = FixtureDatasetStore.requireVocabularySeed(for: fixtureID)
-        }
-        let context = container.mainContext
-        do {
-            if fixtureID == .reviewCalendarDense {
-                try clearReviewCalendarFixtures(from: context)
-            }
-            let entries = try insertVocabularySeed(seed, into: context)
-            _ = try FixtureDatasetStore.materializeEvidenceFixture()
-            if !AuthManager.shared.isLoggedIn {
-                seedSignedInLoginFromWorld()
-            }
-            AppLog.app.info(
-                "UI-test fixture seeded: vocabulary.\(id) (\(entries.count) entries, \(seed.entryOverrides.count) overlays)"
-            )
-        } catch {
-            failFixtureSeed("Failed to seed vocabulary.\(id) fixture: \(error)")
-        }
-    }
-    @MainActor
-    private static func clearReviewCalendarFixtures(from context: ModelContext) throws {
+    static func clearReviewCalendarFixtures(from context: ModelContext) throws {
         for record in try context.fetch(FetchDescriptor<ReviewRecord>()) {
             context.delete(record)
         }

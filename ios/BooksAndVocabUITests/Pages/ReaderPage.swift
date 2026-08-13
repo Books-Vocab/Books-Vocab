@@ -434,7 +434,7 @@ struct ReaderPage {
             XCTFail("production Reader must expose at least one WebView", file: file, line: line)
             return nil
         }
-        return webViewQuery.element(boundBy: 0)
+        return webViewQuery.element
     }
 
     func settingsStateElement(
@@ -553,7 +553,7 @@ struct ReaderPage {
         UITestWaits.wait(
             for: NSPredicate { [app] _, _ in
                 let badges = app.staticTexts.matching(identifier: "reader.header.progressBadge")
-                let badge = badges.element(boundBy: 0)
+                let badge = badges.element
                 guard badges.count == 1,
                       badge.exists,
                       let value = Double(badge.label.replacingOccurrences(of: "%", with: ""))
