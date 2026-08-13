@@ -7,13 +7,24 @@ enum SettingsSyncDataOutcome: String, Codable, Equatable {
     case complete
 }
 
+struct SettingsSyncTransportEvent: Equatable, Sendable {
+    let round: Int
+    let path: String
+    let statusCode: Int
+
+    var marker: String {
+        "round=\(round),path=\(path),status=\(statusCode)"
+    }
+}
+
 struct SettingsSyncLifecycleEvidence: Equatable {
     let lifecycle: String
     let attempt: Int
     let dataOutcome: SettingsSyncDataOutcome
     let residualWords: [String]
     let readBackWords: [String]
-    let transportEvents: [String]
+    let transportEvents: [SettingsSyncTransportEvent]
+    let dictionaryEvents: [SettingsSyncTransportEvent]
     let perfMarks: [String]
 
     /// DEBUG-only accessibility payload. Every field is produced by the real
@@ -21,7 +32,9 @@ struct SettingsSyncLifecycleEvidence: Equatable {
     var marker: String {
         let residual = residualWords.isEmpty ? "-" : residualWords.joined(separator: ",")
         let readBack = readBackWords.isEmpty ? "-" : readBackWords.joined(separator: ",")
-        let transport = transportEvents.isEmpty ? "-" : transportEvents.joined(separator: "|")
+        let dictionary = dictionaryEvents.isEmpty
+            ? "-"
+            : dictionaryEvents.map(\.marker).joined(separator: "|")
         let perf = perfMarks.isEmpty ? "-" : perfMarks.joined(separator: ",")
         return [
             "schema=settings.sync.evidence.v1",
@@ -32,7 +45,7 @@ struct SettingsSyncLifecycleEvidence: Equatable {
             "residualWords=\(residual)",
             "readBackCount=\(readBackWords.count)",
             "readBackWords=\(readBack)",
-            "transportEvents=\(transport)",
+            "dictionaryEvents=\(dictionary)",
             "perfMarks=\(perf)"
         ].joined(separator: ";")
     }
@@ -108,39 +121,67 @@ enum SettingsSyncLifecycle: Equatable {
         return next
     }
 
-    @discardableResult
     mutating func begin() -> Bool {
-        (try? transition(.begin)) != nil
+        do {
+            try transition(.begin)
+            return true
+        } catch {
+            return false
+        }
     }
 
-    @discardableResult
     mutating func retry() -> Bool {
-        (try? transition(.retry)) != nil
+        do {
+            try transition(.retry)
+            return true
+        } catch {
+            return false
+        }
     }
 
-    @discardableResult
     mutating func succeed() -> Bool {
-        (try? transition(.succeed)) != nil
+        do {
+            try transition(.succeed)
+            return true
+        } catch {
+            return false
+        }
     }
 
-    @discardableResult
     mutating func fail(message: String) -> Bool {
-        (try? transition(.fail(message: message))) != nil
+        do {
+            try transition(.fail(message: message))
+            return true
+        } catch {
+            return false
+        }
     }
 
-    @discardableResult
     mutating func cancel() -> Bool {
-        (try? transition(.cancel)) != nil
+        do {
+            try transition(.cancel)
+            return true
+        } catch {
+            return false
+        }
     }
 
-    @discardableResult
     mutating func dismiss() -> Bool {
-        (try? transition(.dismiss)) != nil
+        do {
+            try transition(.dismiss)
+            return true
+        } catch {
+            return false
+        }
     }
 
-    @discardableResult
     mutating func reset() -> Bool {
-        (try? transition(.reset)) != nil
+        do {
+            try transition(.reset)
+            return true
+        } catch {
+            return false
+        }
     }
 }
 

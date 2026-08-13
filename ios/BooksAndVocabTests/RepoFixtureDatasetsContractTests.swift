@@ -975,6 +975,7 @@ struct RepoFixtureDatasetsContractTests {
     private func expectValidAssetManifest(document: FixtureDatasetDocument, dataset: String) throws {
         for ref in document.assets.refs {
             let asset = try #require(document.assets.asset(for: ref), "\(dataset): asset \(ref) must resolve")
+            #expect(!asset.sourcePath.hasPrefix("/"), "\(dataset): asset \(ref) sourcePath must be repo-relative")
             let url = try FixtureDatasetStore.resolveSourceURL(for: asset)
             #expect(asset.byteSize > 0, "\(dataset): asset \(ref) byteSize must be positive")
             expectAssetInstallPath(asset, ref: ref, dataset: dataset)

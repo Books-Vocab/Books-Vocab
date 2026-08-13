@@ -66,6 +66,7 @@ enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
         }
     }
 }
+private let fixtureAssetRootEnvKey = "KG_FIXTURE_ASSET_ROOT"
 
 enum UITestFixture: Equatable {
     case raw(String)
@@ -187,7 +188,7 @@ struct UITestLaunchConfiguration {
         // (deflate+base64 by default; plaintext base64 kept for compatibility);
         // forward it into the app so the seeders' renderModel chain picks it
         // up. An explicit per-test value always wins over the runner-wide one.
-        for key in [fixtureDatasetDeflateEnvKey, fixtureDatasetEnvKey] {
+        for key in [fixtureDatasetDeflateEnvKey, fixtureDatasetEnvKey, fixtureAssetRootEnvKey] {
             if environment[key] == nil,
                let dataset = ProcessInfo.processInfo.environment[key],
                !dataset.isEmpty {

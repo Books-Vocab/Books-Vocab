@@ -159,7 +159,7 @@ extension KGService {
                 )
                 switch error.code {
                 case .timedOut, .networkConnectionLost:
-                    if !NetworkMonitor.shared.isConnected { throw KGError.networkError(underlying: error) }
+                    if !connectivityGate.isConnected { throw KGError.networkError(underlying: error) }
                     if attempt < retryPolicy.maxAttempts { continue }
                 default:
                     throw KGError.networkError(underlying: error)

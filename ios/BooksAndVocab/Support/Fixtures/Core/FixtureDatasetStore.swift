@@ -1,8 +1,11 @@
 import Foundation
 import CryptoKit
+import AVFoundation
+import AVFAudio
 import UniformTypeIdentifiers
 
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
+private let fixtureAssetRootEnvKey = "KG_FIXTURE_ASSET_ROOT"
 // base64(raw DEFLATE(JSON)) — preferred injection key. Plaintext base64 of a
 // multi-MB UI World overflows the ~1MB posix_spawn env block and the app then
 // silently sees *no* dataset; compressing keeps large worlds under the limit.
@@ -44,6 +47,7 @@ struct UIWorldInstalledAsset: Equatable {
 
 enum FixtureDatasetStore {
     @TaskLocal static var testingOverrideData: Data?
+    @TaskLocal static var testingAssetRoot: URL?
 
     private typealias PreparedEvidenceFixtureProof = (
         proof: UIWorldInstalledFixtureProof,
@@ -74,6 +78,18 @@ enum FixtureDatasetStore {
 
     static func withTestingData<T>(_ data: Data?, perform: () async throws -> T) async rethrows -> T {
         try await $testingOverrideData.withValue(data) {
+            try await perform()
+        }
+    }
+
+    static func withTestingAssetRoot<T>(_ root: URL?, perform: () throws -> T) rethrows -> T {
+        try $testingAssetRoot.withValue(root?.standardizedFileURL) {
+            try perform()
+        }
+    }
+
+    static func withTestingAssetRoot<T>(_ root: URL?, perform: () async throws -> T) async rethrows -> T {
+        try await $testingAssetRoot.withValue(root?.standardizedFileURL) {
             try await perform()
         }
     }
@@ -237,6 +253,7 @@ enum FixtureDatasetStore {
                 NSLocalizedDescriptionKey: "UI World installed asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(installedHash)",
             ])
         }
+        try validateInstalledAsset(destination, asset: asset, ref: ref)
         return try installedAssetSnapshot(ref: ref)
     }
 
@@ -484,7 +501,7 @@ enum FixtureDatasetStore {
     /// that compiled this app. Installed filesystem identity is observed only
     /// after copying and is never used to resolve a checked-in fixture.
     static func resolveSourceURL(for asset: UIWorldAsset) throws -> URL {
-        let root = repositoryRootURL.standardizedFileURL
+        let root = try assetRootURL().standardizedFileURL
         let rawPath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawPath.isEmpty else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
@@ -570,6 +587,101 @@ enum FixtureDatasetStore {
         }
     }
 
+    private static func assetRootURL() throws -> URL {
+        let rawRoot = testingAssetRoot?.path
+            ?? ProcessInfo.processInfo.environment[fixtureAssetRootEnvKey]
+        let root: URL
+        if let rawRoot, !rawRoot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            root = URL(fileURLWithPath: rawRoot, isDirectory: true).standardizedFileURL
+        } else {
+            root = repositoryRootURL.standardizedFileURL
+        }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [
+                NSFilePathErrorKey: root.path,
+                NSLocalizedDescriptionKey: "UI World asset root does not exist: \(root.path)",
+            ])
+        }
+        return root
+    }
+
+    private static func validateInstalledAsset(_ url: URL, asset: UIWorldAsset, ref: String) throws {
+        let declaredType = asset.contentType.split(separator: ";", maxSplits: 1).first.map(String.init) ?? asset.contentType
+        guard declaredType == "audio/mpeg" || declaredType == "audio/mp4" else { return }
+
+        let extensionName = url.pathExtension.lowercased()
+        let expectedExtension = declaredType == "audio/mpeg" ? "mp3" : "m4a"
+        guard extensionName == expectedExtension,
+              let type = UTType(filenameExtension: extensionName),
+              type.preferredMIMEType == declaredType else {
+            throw assetFormatError(
+                ref: ref,
+                url: url,
+                reason: "extension/UTType mismatch for declared \(declaredType)"
+            )
+        }
+
+        let data = try Data(contentsOf: url)
+        guard audioContainerType(for: data) == declaredType else {
+            throw assetFormatError(ref: ref, url: url, reason: "magic/container mismatch")
+        }
+
+        let avAsset = AVURLAsset(url: url)
+        guard avAsset.isPlayable else {
+            throw assetFormatError(ref: ref, url: url, reason: "AVFoundation reports the installed asset is not playable")
+        }
+        do {
+            _ = try AVAudioFile(forReading: url)
+        } catch {
+            throw assetFormatError(
+                ref: ref,
+                url: url,
+                reason: "AVAudioFile could not read the installed asset: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func assetFormatError(ref: String, url: URL, reason: String) -> CocoaError {
+        CocoaError(.fileReadCorruptFile, userInfo: [
+            NSFilePathErrorKey: url.path,
+            NSLocalizedDescriptionKey: "UI World installed audio asset \(ref) is invalid: \(reason)",
+        ])
+    }
+
+    private static func audioContainerType(for data: Data) -> String? {
+        if data.count >= 8,
+           data[4] == 0x66, data[5] == 0x74, data[6] == 0x79, data[7] == 0x70 {
+            return "audio/mp4"
+        }
+
+        var offset = 0
+        if data.count >= 10,
+           data[0] == 0x49, data[1] == 0x44, data[2] == 0x33 {
+            let tagSize = (Int(data[6] & 0x7F) << 21)
+                | (Int(data[7] & 0x7F) << 14)
+                | (Int(data[8] & 0x7F) << 7)
+                | Int(data[9] & 0x7F)
+            offset = 10 + tagSize + ((data[5] & 0x10) != 0 ? 10 : 0)
+        }
+
+        let upperBound = max(offset, data.count - 2)
+        for index in offset..<upperBound {
+            guard index + 2 < data.count else { break }
+            let first = data[index]
+            let second = data[index + 1]
+            let third = data[index + 2]
+            guard first == 0xFF, second & 0xE0 == 0xE0 else { continue }
+            let version = (second >> 3) & 0x03
+            let layer = (second >> 1) & 0x03
+            let bitrateIndex = (third >> 4) & 0x0F
+            let sampleRateIndex = (third >> 2) & 0x03
+            if version != 0x01, layer == 0x01, bitrateIndex != 0x00, bitrateIndex != 0x0F, sampleRateIndex != 0x03 {
+                return "audio/mpeg"
+            }
+        }
+        return nil
+        }
     private static func installURL(for asset: UIWorldAsset, ref: String) throws -> URL {
         let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !installAs.hasPrefix("/") else {

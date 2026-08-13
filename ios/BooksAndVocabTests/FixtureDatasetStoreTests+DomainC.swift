@@ -119,6 +119,53 @@ extension FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func assetInstallPlanResolvesFromInjectedRootOutsideProcessCWD() throws {
+        let assetRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kg-ui-world-asset-root-\(UUID().uuidString)", isDirectory: true)
+        let relativeSourcePath = "fixture-payload-\(UUID().uuidString).txt"
+        let source = assetRoot.appendingPathComponent(relativeSourcePath)
+        try FileManager.default.createDirectory(at: assetRoot, withIntermediateDirectories: true)
+        try Data("asset payload".utf8).write(to: source)
+        #expect(
+            !FileManager.default.fileExists(atPath: relativeSourcePath),
+            "the relative asset must not be discoverable from the process CWD"
+        )
+        let hash = try FixtureDatasetStore.sha256Hex(for: source)
+        let byteSize = try FixtureDatasetStore.byteSize(for: source)
+        let installAs = "UITestAssets/\(UUID().uuidString)/payload.txt"
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "test-asset-install-plan",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "payload": {
+                "sourcePath": "\(relativeSourcePath)",
+                "sha256": "\(hash)",
+                "byteSize": \(byteSize),
+                "installAs": "\(installAs)",
+                "contentType": "text/plain; charset=utf-8"
+              }
+            },
+            "images": {}
+          }
+        }
+        """
+
+        defer {
+            try? FileManager.default.removeItem(at: source)
+        }
+
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+            }
+        }
+    }
+
     @Test @MainActor func assetInstallPlanRejectsAbsoluteSourcePath() throws {
         let source = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-ui-world-asset-source-\(UUID().uuidString).txt")
@@ -129,7 +176,7 @@ extension FixtureDatasetStoreTests {
         let dataset = """
         {
           "schema": "kg.fixture.dataset.v2",
-          "datasetID": "test-asset-install-plan",
+          "datasetID": "test-asset-install-plan-absolute",
           "assets": {
             "books": {},
             "audio": {},
@@ -148,9 +195,7 @@ extension FixtureDatasetStoreTests {
         }
         """
 
-        defer {
-            try? FileManager.default.removeItem(at: source)
-        }
+        defer { try? FileManager.default.removeItem(at: source) }
 
         #expect(throws: (any Error).self) {
             try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {

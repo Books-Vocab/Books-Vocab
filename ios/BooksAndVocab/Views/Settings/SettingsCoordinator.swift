@@ -88,10 +88,18 @@ final class SettingsCoordinator: SettingsCoordinating {
                 preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare syncSummary")
             }
             resolvedFixtureSummary = summary
-            resolvedService = KGService(transport: SettingsSyncFixtureTransport(summary: summary))
+            resolvedService = KGService(
+                transport: SettingsSyncFixtureTransport(summary: summary),
+                connectivityGate: FixedConnectivityGate(isConnected: summary.isConnected)
+            )
         }
         self.settingsSyncService = resolvedService
         self.settingsSyncFixtureSummary = resolvedFixtureSummary
+#if DEBUG
+        if resolvedFixtureSummary != nil {
+            SettingsSyncFixtureEvidenceStore.shared.reset()
+        }
+#endif
 #else
         self.settingsSyncService = settingsSyncService
 #endif
@@ -441,7 +449,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         do {
             try syncLifecycle.transition(.dismiss)
         } catch {
-            AppLog.kg.warning("Settings sync dismiss rejected: \(String(describing: error), privacy: .public)")
+            recordTransitionFailure(action: "dismiss", error: error)
         }
     }
 
@@ -469,7 +477,8 @@ final class SettingsCoordinator: SettingsCoordinating {
         do {
             try syncLifecycle.transition(action)
         } catch {
-            AppLog.kg.error("Settings sync transition rejected: \(String(describing: error), privacy: .public)")
+            recordTransitionFailure(action: "\(action)", error: error)
+            refreshObservationPreview()
             return
         }
 
@@ -478,9 +487,6 @@ final class SettingsCoordinator: SettingsCoordinating {
         syncMessage = nil
 #if DEBUG
         syncPerfMarks = []
-        if settingsSyncFixtureSummary != nil {
-            SettingsSyncFixtureEvidenceStore.shared.reset()
-        }
 #endif
         markSync("settings.sync.lifecycle.started", "attempt=\(syncAttempt)")
 
@@ -570,10 +576,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             do {
                 try syncLifecycle.transition(.succeed)
             } catch {
-                AppLog.kg.error("Settings sync success transition rejected: \(String(describing: error), privacy: .public)")
-                syncProgress.finish(.failed)
-                syncDataOutcome = .partial
-                syncMessage = L10n.string("同步失敗")
+                recordTransitionFailure(action: "succeed", error: error)
             }
             markSync("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=completed")
         case .completed:
@@ -592,8 +595,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             do {
                 try syncLifecycle.transition(.cancel)
             } catch {
-                try? syncLifecycle.transition(.reset)
-                AppLog.kg.warning("Settings sync cancellation transition rejected: \(String(describing: error), privacy: .public)")
+                recordTransitionFailure(action: "cancel", error: error)
             }
             markSync("settings.sync.lifecycle.serviceResult", "attempt=\(syncAttempt) result=didNotRun")
         }
@@ -655,6 +657,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             residualWords: residualWords,
             readBackWords: readBackWords,
             transportEvents: SettingsSyncFixtureEvidenceStore.shared.snapshot(),
+            dictionaryEvents: SettingsSyncFixtureEvidenceStore.shared.snapshotDictionaryEvents(),
             perfMarks: syncPerfMarks
         )
     }
@@ -665,8 +668,28 @@ final class SettingsCoordinator: SettingsCoordinating {
         do {
             try syncLifecycle.transition(.fail(message: message))
         } catch {
-            AppLog.kg.error("Settings sync failure transition rejected: \(String(describing: error), privacy: .public)")
+            recordTransitionFailure(action: "fail", error: error)
         }
+    }
+
+    private func recordTransitionFailure(action: String, error: Error) {
+        let message = L10n.string("同步失敗")
+        syncMessage = message
+        syncDataOutcome = .partial
+        syncProgress.finish(.failed)
+        if !syncLifecycle.isTerminal {
+            // The state machine rejected the recovery transition. Keep the
+            // production boundary fail-closed so a rejected transition cannot
+            // leave the presenter claiming an in-flight or successful round.
+            syncLifecycle = .terminalError(message: message)
+        }
+        AppLog.kg.error(
+            "Settings sync transition rejected action=\(action): \(String(describing: error), privacy: .public)"
+        )
+        markSync(
+            "settings.sync.lifecycle.transitionFailure",
+            "action=\(action) error=\(String(describing: error))"
+        )
     }
 
     private func dataOutcome(for outcome: SyncRoundOutcome) -> SettingsSyncDataOutcome {

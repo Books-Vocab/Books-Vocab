@@ -513,7 +513,7 @@ extension KGService {
         await sessionInvalidator.waitForPendingLocalDataCleanup()
 
         // 離線時跳過整個背景同步，不產生無意義的錯誤日誌
-        guard NetworkMonitor.shared.isConnected else {
+        guard connectivityGate.isConnected else {
             AppLog.kg.info("backgroundSync skipped: offline")
             lastBackgroundSyncError = L10n.string("目前沒有網路連線，背景同步已跳過")
             return .didNotRun
@@ -747,7 +747,7 @@ extension KGService {
     }
 
     func pushReviewQuietly(container: ModelContainer) async {
-        guard NetworkMonitor.shared.isConnected else {
+        guard connectivityGate.isConnected else {
             AppLog.kg.info("pushReviewQuietly skipped: offline")
             return
         }

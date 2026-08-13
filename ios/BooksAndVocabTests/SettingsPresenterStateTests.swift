@@ -7,20 +7,27 @@ struct SettingsPresenterStateTests {
         var lifecycle = SettingsSyncLifecycle.idle
 
         #expect(lifecycle == .idle)
-        lifecycle.begin()
+        #expect(lifecycle.begin())
         #expect(lifecycle == .syncing)
 
-        lifecycle.fail(message: L10n.string("同步失敗"))
+        #expect(lifecycle.fail(message: L10n.string("同步失敗")))
         #expect(lifecycle == .terminalError(message: L10n.string("同步失敗")))
 
-        lifecycle.retry()
+        #expect(lifecycle.retry())
         #expect(lifecycle == .retry)
-        lifecycle.succeed()
+        #expect(lifecycle.succeed())
         #expect(lifecycle == .terminalSuccess)
 
-        lifecycle.dismiss()
+        #expect(lifecycle.dismiss())
         #expect(lifecycle == .dismissed)
-        lifecycle.reset()
+        #expect(lifecycle.reset())
+        #expect(lifecycle == .idle)
+    }
+
+    @Test func failedBoolTransitionIsObservableAndLeavesStateUnchanged() {
+        var lifecycle = SettingsSyncLifecycle.idle
+
+        #expect(!lifecycle.succeed())
         #expect(lifecycle == .idle)
     }
 

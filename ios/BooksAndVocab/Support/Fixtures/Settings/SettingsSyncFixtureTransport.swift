@@ -5,7 +5,7 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
     static let shared = SettingsSyncFixtureEvidenceStore()
 
     private let lock = NSLock()
-    private var events: [String] = []
+    private var events: [SettingsSyncTransportEvent] = []
 
     func reset() {
         lock.lock()
@@ -16,13 +16,17 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
     func record(round: Int, path: String, statusCode: Int) {
         lock.lock()
         defer { lock.unlock() }
-        events.append("round=\(round),path=\(path),status=\(statusCode)")
+        events.append(SettingsSyncTransportEvent(round: round, path: path, statusCode: statusCode))
     }
 
-    func snapshot() -> [String] {
+    func snapshot() -> [SettingsSyncTransportEvent] {
         lock.lock()
         defer { lock.unlock() }
         return events
+    }
+
+    func snapshotDictionaryEvents() -> [SettingsSyncTransportEvent] {
+        snapshot().filter { $0.path == "/api/dictionary-cards" }
     }
 }
 

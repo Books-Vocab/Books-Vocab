@@ -806,6 +806,53 @@ def _validate_reader_toc_epub(path: Path, *, asset_id: str, label: str) -> None:
         ) from exc
 
 
+def _audio_container_type(path: Path) -> str | None:
+    """Return the container proven by bytes, not by the filename."""
+    data = path.read_bytes()
+    if len(data) >= 8 and data[4:8] == b"ftyp":
+        return "audio/mp4"
+
+    offset = 0
+    if data.startswith(b"ID3") and len(data) >= 10:
+        # ID3v2 stores its tag length as four sync-safe bytes.  Skip the tag
+        # (and optional footer) before looking for an MPEG Layer III frame.
+        tag_size = sum(
+            (data[6 + index] & 0x7F) << (7 * (3 - index))
+            for index in range(4)
+        )
+        offset = 10 + tag_size + (10 if data[5] & 0x10 else 0)
+
+    for index in range(offset, max(offset, len(data) - 3)):
+        first, second, third = data[index:index + 3]
+        if first != 0xFF or second & 0xE0 != 0xE0:
+            continue
+        version = (second >> 3) & 0x03
+        layer = (second >> 1) & 0x03
+        bitrate_index = (third >> 4) & 0x0F
+        sample_rate_index = (third >> 2) & 0x03
+        if version != 0x01 and layer == 0x01 and bitrate_index not in {0x00, 0x0F} and sample_rate_index != 0x03:
+            return "audio/mpeg"
+    return None
+
+
+def _validate_audio_asset_format(
+    source_path: Path,
+    *,
+    install_as: str,
+    content_type: str,
+    label: str,
+) -> None:
+    if content_type not in {"audio/mpeg", "audio/mp4"}:
+        return
+    actual_type = _audio_container_type(source_path)
+    expected_extension = ".mp3" if content_type == "audio/mpeg" else ".m4a"
+    if Path(install_as).suffix.lower() != expected_extension or actual_type != content_type:
+        raise UIWorldManifestError(
+            f"{label} audio format mismatch: declared {content_type}{expected_extension}, "
+            f"actual container={actual_type or 'unknown'} source={source_path}"
+        )
+
+
 def _validate_install_as(value: str, *, field: str, label: str) -> None:
     path = Path(value)
     parts = path.parts
@@ -2458,6 +2505,12 @@ def validate_fixture_dataset_file(
                 READER_TOC_INVALID_DESTINATION_ASSET,
             }:
                 _validate_reader_toc_epub(source_path, asset_id=asset_id, label=label)
+            _validate_audio_asset_format(
+                source_path,
+                install_as=install_as,
+                content_type=content_type,
+                label=f"{label} {asset_label}",
+            )
     _validate_shared_decks(data, label=label, asset_types=asset_types)
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)

@@ -8,6 +8,24 @@
 import Foundation
 import SwiftData
 
+protocol KGConnectivityGating: Sendable {
+    var isConnected: Bool { get }
+}
+
+struct NetworkMonitorConnectivityGate: KGConnectivityGating {
+    let monitor: NetworkMonitor
+
+    init(monitor: NetworkMonitor = .shared) {
+        self.monitor = monitor
+    }
+
+    var isConnected: Bool { monitor.isConnected }
+}
+
+struct FixedConnectivityGate: KGConnectivityGating {
+    let isConnected: Bool
+}
+
 /// Manages communication with the Knowledge Graph API server
 @Observable
 final class KGService: KGServing, LocalDataClearing {
@@ -64,6 +82,9 @@ final class KGService: KGServing, LocalDataClearing {
     #endif
     @ObservationIgnored
     let transport: any KGHTTPTransport
+
+    @ObservationIgnored
+    let connectivityGate: any KGConnectivityGating
 
     var serverURL: String {
         get { Self.getServerURL() }
@@ -252,19 +273,21 @@ final class KGService: KGServing, LocalDataClearing {
         sessionInvalidator: any SessionInvalidating = MainActor.assumeIsolated({ AuthManager.shared }),
         userConfigClient: any KGUserConfigRemoteHandling = KGUserConfigClient(),
         urlSession: URLSession = sharedURLSession,
-        transport: (any KGHTTPTransport)? = nil
+        transport: (any KGHTTPTransport)? = nil,
+        connectivityGate: any KGConnectivityGating = NetworkMonitorConnectivityGate()
     ) {
         self.authSession = authSession
         self.sessionInvalidator = sessionInvalidator
         self.userConfigClient = userConfigClient
         self.urlSession = urlSession
         self.transport = transport ?? URLSessionKGHTTPTransport(session: urlSession)
+        self.connectivityGate = connectivityGate
     }
 
     // MARK: - Auth Helper
 
     func currentAuthToken() async throws -> String {
-        guard NetworkMonitor.shared.isConnected else {
+        guard connectivityGate.isConnected else {
             throw KGError.offline
         }
         guard let token = await authSession.token else {
