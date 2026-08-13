@@ -20,46 +20,26 @@ final class SettingsSyncLifecycleUITests: UITestCase {
         let settings = AppPage(app: app).goToBookshelf().tapSettings()
         settings.assertIsPresented()
 
-        settings.syncSummaryButton.scrollIntoView()
-        XCTAssertEqual(settings.app.buttons.matching(identifier: "settings.syncSummary").count, 1)
-        XCTAssertGreaterThan(settings.syncSummaryButton.frame.width, 0)
-        XCTAssertGreaterThan(settings.syncSummaryButton.frame.height, 0)
-        settings.syncSummaryButton.tapWhenReady()
+        settings.openSyncSummary()
         settings.assertTerminalFeedback(
             status: "同步失敗",
-            markerContains: [
-                "schema=settings.sync.evidence.v1",
-                "lifecycle=terminalError",
-                "attempt=1",
-                "dataOutcome=partial",
-                "residualWords=residual",
-                "readBackWords=-",
-                "round=1,path=/api/dictionary-cards,status=429",
-                "settings.sync.lifecycle.serviceResult"
-            ]
+            expectedEvidence: "schema=settings.sync.evidence.v1;lifecycle=terminalError;attempt=1;dataOutcome=partial;residualCount=1;residualWords=residual;readBackCount=0;readBackWords=-;dictionaryEvents=round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429;perfMarks=settings.sync.lifecycle.started,settings.sync.lifecycle.saveResult,settings.sync.lifecycle.serviceResult,settings.sync.lifecycle.terminal"
         )
         XCTAssertEqual(settings.retrySyncButton.count, 1)
         XCTAssertEqual(settings.syncLifecycleMessage.count, 1)
         captureStep("terminal-error-real-service", app: app)
 
+        XCTAssertEqual(settings.retrySyncButton.count, 1)
         settings.retrySyncButton.tapWhenReady()
         settings.assertTerminalFeedback(
             status: "同步完成",
-            markerContains: [
-                "schema=settings.sync.evidence.v1",
-                "lifecycle=terminalSuccess",
-                "attempt=2",
-                "dataOutcome=complete",
-                "residualWords=residual",
-                "readBackWords=complete,residual",
-                "round=2,path=/api/vocab,status=200",
-                "settings.sync.lifecycle.serviceResult"
-            ]
+            expectedEvidence: "schema=settings.sync.evidence.v1;lifecycle=terminalSuccess;attempt=2;dataOutcome=complete;residualCount=1;residualWords=residual;readBackCount=2;readBackWords=complete,residual;dictionaryEvents=round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=2,path=/api/dictionary-cards,status=200;perfMarks=settings.sync.lifecycle.started,settings.sync.lifecycle.saveResult,settings.sync.lifecycle.serviceResult,settings.sync.lifecycle.terminal"
         )
         XCTAssertEqual(settings.retrySyncButton.count, 0)
         XCTAssertEqual(settings.dismissSyncStatusButton.count, 1)
         captureStep("retry-real-service", app: app)
 
+        XCTAssertEqual(settings.dismissSyncStatusButton.count, 1)
         settings.dismissSyncStatusButton.tapWhenReady()
         XCTAssertEqual(settings.syncLifecycleQuery.count, 0)
     }

@@ -4,6 +4,10 @@ import SwiftData
 
 /// Bridges the existing fixture system into the live SwiftData container for UI tests.
 /// Triggered by launch arguments when `-ui-testing` is active.
+enum UITestFixtureSeedValidationError: Error, Equatable {
+    case persistentContainer
+}
+
 @MainActor
 enum UITestFixtureSeed {
     static var statsProjectionClock: StatsProjectionClock?
@@ -17,8 +21,9 @@ enum UITestFixtureSeed {
         // 故只允許全 in-memory 容器（bootstrap 在 -ui-testing 下必須提供）。
         // !isEmpty：空配置容器 allSatisfy 恆真（fail-open），雖經查無實際
         // 產生路徑，仍以廉價保險封死。
-        guard !container.configurations.isEmpty,
-              container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
+        do {
+            try validateContainerForFixtureSeeding(container)
+        } catch {
             failFixtureSeed(
                 "UITestFixtureSeed: refused — container has persistent store(s); fixtures may only seed the ephemeral UI-testing container"
             )
@@ -103,6 +108,11 @@ enum UITestFixtureSeed {
             )
         }
         AppLog.app.info("UITestFixtureSeed: resolved canonical dictionary fixture \(fixtureID.rawValue)")
+    static func validateContainerForFixtureSeeding(_ container: ModelContainer) throws {
+        guard !container.configurations.isEmpty,
+              container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
+            throw UITestFixtureSeedValidationError.persistentContainer
+        }
     }
 
     static func failFixtureSeed(_ message: String) -> Never {

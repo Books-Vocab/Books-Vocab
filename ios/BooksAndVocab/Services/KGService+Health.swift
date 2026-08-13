@@ -9,7 +9,7 @@ import Foundation
 
 extension KGService {
     func healthCheck() async {
-        guard NetworkMonitor.shared.isConnected else {
+        guard connectivityGate.isConnected else {
             isConnected = false
             return
         }
@@ -49,7 +49,7 @@ extension KGService {
     }
 
     func fetchQuota() async {
-        guard NetworkMonitor.shared.isConnected, await authSession.isLoggedIn else { return }
+        guard connectivityGate.isConnected, await authSession.isLoggedIn else { return }
         do {
             let (data, httpResponse) = try await authenticatedRequest(path: "api/user/quota")
             guard httpResponse.statusCode == 200 else { return }

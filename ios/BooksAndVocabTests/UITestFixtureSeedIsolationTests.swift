@@ -244,8 +244,8 @@ struct UITestFixtureSeedIsolationTests {
         container.mainContext.insert(real)
         try container.mainContext.save()
 
-        try FixtureDatasetStore.withTestingData(Self.reviewProbeWorldData) {
-            UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        #expect(throws: UITestFixtureSeedValidationError.persistentContainer) {
+            try UITestFixtureSeed.validateContainerForFixtureSeeding(container)
         }
 
         let words = try container.mainContext
@@ -280,8 +280,8 @@ struct UITestFixtureSeedIsolationTests {
             configurations: memoryConfig, diskConfig
         )
 
-        try FixtureDatasetStore.withTestingData(Self.reviewProbeWorldData) {
-            UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        #expect(throws: UITestFixtureSeedValidationError.persistentContainer) {
+            try UITestFixtureSeed.validateContainerForFixtureSeeding(container)
         }
 
         let count = try container.mainContext.fetchCount(FetchDescriptor<VocabularyEntry>())

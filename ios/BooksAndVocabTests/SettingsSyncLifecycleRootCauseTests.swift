@@ -50,7 +50,6 @@ struct SettingsSyncLifecycleRootCauseTests {
 
     @Test("real backgroundSync preserves a partial pull and succeeds on the next service call")
     func realServiceFailureThenRetryReadsSwiftDataResidual() async throws {
-        try #require(NetworkMonitor.shared.isConnected)
         let defaults = UserDefaults.standard
         let defaultKeys = [
             KGService.SyncKeys.incrementalBoundary,
@@ -73,11 +72,27 @@ struct SettingsSyncLifecycleRootCauseTests {
         }
         defaults.removeObject(forKey: KGService.SyncKeys.incrementalBoundary)
         defaults.removeObject(forKey: KGService.SyncKeys.payloadVersion)
-        let transport = ScriptedSyncTransport()
+        let summary = try JSONDecoder().decode(
+            SettingsFixtureSeed.SyncSummary.self,
+            from: Data(#"""
+            {
+              "isConnected": true,
+              "isSyncing": false,
+              "summaryText": "Connected",
+              "lastSyncedText": null,
+              "lifecycle": "terminalError",
+              "message": "sync failed",
+              "attempt": 1,
+              "dataOutcome": "partial"
+            }
+            """#.utf8))
+        SettingsSyncFixtureEvidenceStore.shared.reset()
+        let transport = SettingsSyncFixtureTransport(summary: summary)
         let service = KGService(
             authSession: TestAuthSession(),
             sessionInvalidator: TestSessionInvalidator(),
-            transport: transport
+            transport: transport,
+            connectivityGate: FixedConnectivityGate(isConnected: true)
         )
         let container = try Self.makeContainer()
 
@@ -89,15 +104,24 @@ struct SettingsSyncLifecycleRootCauseTests {
         let second = await service.backgroundSync(container: container)
         #expect(second == .completed)
         let entriesAfterRetry = try container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
-        #expect(Set(entriesAfterRetry.map(\.word)) == Set(["residual", "complete"]))
-        let paths = await transport.snapshotPaths()
-        #expect(paths.filter { $0 == "/api/vocab" }.count == 2)
-        // `snapshotPaths` records every transport exchange. The first service
-        // round receives `RetryPolicy.default.maxAttempts` 429 responses; the
-        // second round then makes one successful exchange.
+        #expect(entriesAfterRetry.map(\.word).sorted() == ["complete", "residual"])
+        let expectedDictionaryLedger = Array(
+            repeating: SettingsSyncTransportEvent(
+                round: 1,
+                path: "/api/dictionary-cards",
+                statusCode: 429
+            ),
+            count: 3
+        ) + [
+            SettingsSyncTransportEvent(
+                round: 2,
+                path: "/api/dictionary-cards",
+                statusCode: 200
+            )
+        ]
         #expect(
-            paths.filter { $0 == "/api/dictionary-cards" }.count
-                == RetryPolicy.default.maxAttempts + 1
+            SettingsSyncFixtureEvidenceStore.shared.snapshotDictionaryEvents()
+                == expectedDictionaryLedger
         )
     }
 
@@ -187,90 +211,4 @@ struct SettingsSyncLifecycleRootCauseTests {
         func fetchQuota() async {}
     }
 
-    private actor PathStore {
-        var paths: [String] = []
-
-        func append(_ path: String) {
-            paths.append(path)
-        }
-    }
-
-    private final class ScriptedSyncTransport: KGHTTPTransport, @unchecked Sendable {
-        let store = PathStore()
-        private let lock = NSLock()
-        private var vocabPullCount = 0
-
-        func snapshotPaths() async -> [String] {
-            await store.paths
-        }
-
-        func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-            let path = request.url?.path ?? ""
-            await store.append(path)
-            switch path {
-            case "/api/vocab":
-                let attempt = nextVocabPull()
-                let body = attempt == 1 ? Self.partialCards : Self.completeCards
-                return Self.response(for: request, statusCode: 200, body: body)
-            case "/api/dictionary-cards":
-                let statusCode = currentVocabPull() == 1 ? 429 : 200
-                let body = statusCode == 200 ? Data("[]".utf8) : Data("{}".utf8)
-                return Self.response(for: request, statusCode: statusCode, body: body)
-            case "/api/vocab/review-events":
-                return Self.response(
-                    for: request,
-                    statusCode: 200,
-                    body: Data(#"{"entries":[],"cursor":null}"#.utf8)
-                )
-            default:
-                return Self.response(for: request, statusCode: 404, body: Data("{}".utf8))
-            }
-        }
-
-        private func nextVocabPull() -> Int {
-            lock.lock()
-            defer { lock.unlock() }
-            vocabPullCount += 1
-            return vocabPullCount
-        }
-
-        private func currentVocabPull() -> Int {
-            lock.lock()
-            defer { lock.unlock() }
-            return vocabPullCount
-        }
-
-        private static func response(
-            for request: URLRequest,
-            statusCode: Int,
-            body: Data
-        ) -> (Data, URLResponse) {
-            let url = request.url ?? URL(string: "https://settings-test.invalid")!
-            let headers = statusCode == 429
-                ? ["Content-Type": "application/json", "Retry-After": "0"]
-                : ["Content-Type": "application/json"]
-            return (
-                body,
-                HTTPURLResponse(
-                    url: url,
-                    statusCode: statusCode,
-                    httpVersion: nil,
-                    headerFields: headers
-                )!
-            )
-        }
-
-        private static let partialCards = Data(#"""
-            [
-            {"id":"settings-residual","content":"residual","meaning":"residual","examples":["residual"],"mode":"recognition","isDeleted":false,"isArchived":false}
-            ]
-            """#.utf8)
-
-        private static let completeCards = Data(#"""
-            [
-            {"id":"settings-residual","content":"residual","meaning":"residual","examples":["residual"],"mode":"recognition","isDeleted":false,"isArchived":false},
-            {"id":"settings-complete","content":"complete","meaning":"complete","examples":["complete"],"mode":"recognition","isDeleted":false,"isArchived":false}
-            ]
-            """#.utf8)
-    }
 }

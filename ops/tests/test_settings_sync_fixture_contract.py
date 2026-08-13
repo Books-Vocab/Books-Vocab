@@ -43,6 +43,28 @@ def test_fixture_asset_source_paths_are_repo_relative_and_inside_current_root():
             assert resolved.is_relative_to(manifest.ROOT)
 
 
+def test_audio_assets_declare_their_actual_mpeg_container():
+    data = _load(BASELINE)
+
+    for asset in data["assets"]["audio"].values():
+        assert asset["installAs"].endswith(".mp3")
+        assert asset["contentType"] == "audio/mpeg"
+        source_path = manifest._resolve_path(asset["sourcePath"])
+        assert manifest._audio_container_type(source_path) == "audio/mpeg"
+
+
+def test_validator_rejects_mp3_bytes_declared_as_m4a(tmp_path: Path):
+    data = _load(BASELINE)
+    asset = data["assets"]["audio"]["atomic_habits_ep1_flash_playable"]
+    asset["installAs"] = "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a"
+    asset["contentType"] = "audio/mp4"
+    path = tmp_path / "mp3-as-m4a.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(manifest.UIWorldManifestError, match="audio format mismatch.*audio/mpeg"):
+        manifest.validate_fixture_dataset_file(path)
+
+
 @pytest.mark.parametrize("source_path", ["/tmp/outside-fixture.md", "../../outside-fixture.md"])
 def test_validator_rejects_absolute_or_escaping_asset_source_paths(tmp_path: Path, source_path: str):
     data = _load(BASELINE)
