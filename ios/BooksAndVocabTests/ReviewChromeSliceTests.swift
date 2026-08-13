@@ -39,6 +39,7 @@ struct ReviewChromeSliceTests {
         isExpanded: true,
         bookTitle: "Moby-Dick",
         totalProgression: 0.562,
+        progressState: .middle(0.562),
         titleMaxWidth: 160
     )
 

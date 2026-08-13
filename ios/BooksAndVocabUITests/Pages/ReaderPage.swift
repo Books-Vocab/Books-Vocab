@@ -309,10 +309,6 @@ struct ReaderPage {
         return element
     }
 
-    var webViewCount: Int {
-        app.webViews.count
-    }
-
     /// A rendered text block inside the Readium WebView. Single-word
     /// paragraphs (e.g. a chapter heading line) expose an exact-label
     /// staticText whose center is a deterministic word-tap target.
