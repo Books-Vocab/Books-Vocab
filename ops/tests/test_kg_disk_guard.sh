@@ -6,6 +6,10 @@ SCRIPT="$ROOT/ops/kg_disk_guard.sh"
 TMP="$(mktemp -d -t kg_disk_guard_test_XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0
+# Each fixture is a serial one-shot; bypass the host-level singleton lock so
+# the test suite does not depend on launchd/shlock state from another run.
+export KG_DISK_GUARD_GUARD_LOCK_HELD=1
+export KG_DISK_GUARD_BUILD_LOCK_HELD=1
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
@@ -84,6 +88,33 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=1 \
   "$SCRIPT" >/dev/null 2>&1
 [[ ! -d "$cache/old" ]] && ok "pressure sweeps old worktree cache" || bad "worktree cache not swept"
+
+echo "── healthy: worktree cache key cap ──"
+root="$TMP/worktree-overflow"; cache="$root/.claude/worktrees/w1/.cache/ios-test-derived-data"; state="$TMP/worktree-overflow/state.json"
+mkdir -p "$cache"
+for key in a b c d e; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
+touch -m -t 202001010000.00 "$cache"/*
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_WORKTREE_CACHE_KEEP=3 KG_DISK_GUARD_WORKTREE_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+[[ "$key_count" -eq 3 ]] && ok "healthy guard caps worktree cache keys" || bad "worktree cache key cap: $key_count"
+grep -q '"reason":"worktree-cache-overflow"' "$state" && ok "worktree overflow recorded" || bad "worktree overflow missing"
+grep -q '"worktree_cache_keys":5' "$state" && ok "worktree key count recorded" || bad "worktree key count missing"
+
+echo "── active: worktree overflow defers ──"
+root="$TMP/worktree-active"; cache="$root/.claude/worktrees/w1/.cache/ios-test-derived-data"; state="$TMP/worktree-active/state.json"
+mkdir -p "$cache"
+for key in a b c d e; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
+touch -m -t 202001010000.00 "$cache"/*
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=1 \
+  KG_DISK_GUARD_WORKTREE_CACHE_KEEP=3 KG_DISK_GUARD_WORKTREE_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+[[ "$key_count" -eq 5 ]] && ok "active build preserves worktree cache" || bad "active worktree cache changed: $key_count"
+grep -q '"action":"deferred-active-build"' "$state" && ok "active worktree cleanup deferred" || bad "active worktree defer missing"
 
 echo "── repeated run: state remains bounded ──"
 for i in 1 2 3 4 5; do
