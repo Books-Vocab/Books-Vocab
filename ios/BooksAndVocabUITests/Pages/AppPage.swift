@@ -123,6 +123,21 @@ struct AppPage {
         )
     }
 
+    func assertExploreImageIsUnique(
+        identifier: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let query = app.images.matching(identifier: identifier)
+        XCTAssertEqual(
+            query.count,
+            1,
+            "Expected exactly one Explore detail image for \(identifier), got \(query.count)",
+            file: file,
+            line: line
+        )
+    }
+
     func assertExploreElementIsUnique(
         identifier: String,
         file: StaticString = #filePath,
