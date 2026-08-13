@@ -99,6 +99,7 @@ struct SettingsOtherSection: View {
             }
             .settingsCard()
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.other.syncGroup")
     }
 
