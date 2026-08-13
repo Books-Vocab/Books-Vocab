@@ -134,7 +134,14 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             XCTAssertTrue(page.reviewStateOption("reviewed", labelPrefix: "已複習").label.contains("127"))
             page.clearSearch()
             XCTAssertTrue(page.visibleCount.label.contains("644"))
-            XCTAssertTrue(page.row(word: "p11-review-word-015").waitUntilExists(timeout: 5))
+            // Clearing a query restores the full projection without resetting
+            // LazyVStack's scroll position. Assert the projection count and a
+            // materialized non-query row instead of assuming row 015 is in the
+            // current viewport.
+            XCTAssertTrue(
+                page.anyRowNotContaining("p11-review-word-001").waitUntilExists(timeout: 5),
+                "clearing search must materialize a row outside the previous query"
+            )
         }
 
         let mixedApp = launchIsolatedApp(
