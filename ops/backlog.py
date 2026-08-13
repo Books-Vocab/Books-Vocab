@@ -437,6 +437,32 @@ def make_entry_id(*, stream: str, date: str, source: str, detail: str) -> str:
 # that must never disagree with `make_entry_id` is the list of what it hashes.
 DIGEST_FIELDS = tuple(inspect.signature(make_entry_id).parameters)
 
+# Migration-only provenance for a dated historical id whose original digest
+# predates the current content-derived-id contract.  Storing the digest of the
+# imported payload makes the exception exact: validation can distinguish the
+# historical pair from a later edit trying to reuse the same id.
+HISTORICAL_ID_DIGEST = "historical_id_digest"
+IDENTITY_AUDIT_FIELDS = (HISTORICAL_ID_DIGEST,)
+
+
+def _matches_imported_historical_identity(
+    *, entry_id: object, stream: object, date: object
+) -> bool:
+    """Whether a dated id could have come from the legacy IMP importer.
+
+    The legacy 8-column parser deliberately skips APP rows.  Its only dated
+    ids therefore have the modern IMP shape and repeat the row's stream/date;
+    accepting anything wider would turn ``historical=True`` into an arbitrary
+    identity bypass rather than a migration exception.
+    """
+    return (
+        isinstance(entry_id, str)
+        and isinstance(date, str)
+        and stream == "IMP"
+        and _MODERN_ENTRY_ID_RE.fullmatch(entry_id) is not None
+        and entry_id.startswith(f"IMP-{date.replace('-', '')}-")
+    )
+
 
 def entry_path(store: Path, entry_id: str) -> Path:
     return Path(store) / f"{entry_id}.json"
@@ -1197,12 +1223,32 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
         expected_id = make_entry_id(**{
             field: payload[field] for field in DIGEST_FIELDS
         })
-        if payload_id != expected_id:
+        historical_digest = payload.get(HISTORICAL_ID_DIGEST)
+        historical_identity_matches = _matches_imported_historical_identity(
+            entry_id=payload_id,
+            stream=payload.get("stream"),
+            date=payload.get("date"),
+        )
+        if payload_id != expected_id and (
+            historical_digest != expected_id or not historical_identity_matches
+        ):
             problems.append({
                 "kind": "id-content-drift",
                 "id": payload_id,
                 "expected_id": expected_id,
             })
+        elif payload_id == expected_id and historical_digest is not None:
+            problems.append({
+                "kind": "stale-historical-id-digest",
+                "id": payload_id,
+                "historical_id_digest": historical_digest,
+            })
+    elif payload.get(HISTORICAL_ID_DIGEST) is not None:
+        problems.append({
+            "kind": "stale-historical-id-digest",
+            "id": payload_id,
+            "historical_id_digest": payload.get(HISTORICAL_ID_DIGEST),
+        })
 
     problems.extend(_check_vocabulary(payload))
 
@@ -1580,8 +1626,21 @@ def add_entry(
     derived_id = make_entry_id(**{
         field: payload[field] for field in DIGEST_FIELDS
     })
+    historical_id_mismatch = (
+        entry_id is not None
+        and not _LEGACY_ENTRY_ID_RE.fullmatch(entry_id)
+        and entry_id != derived_id
+    )
+    historical_identity_matches = _matches_imported_historical_identity(
+        entry_id=entry_id,
+        stream=payload["stream"],
+        date=payload["date"],
+    )
     if entry_id is not None and not _LEGACY_ENTRY_ID_RE.fullmatch(entry_id):
-        if not overwrite or entry_id != derived_id:
+        if not overwrite or (
+            historical_id_mismatch
+            and not (historical and historical_identity_matches)
+        ):
             raise ValueError(
                 "explicit id is reserved for migration of legacy IMP-#### entries; "
                 "new IDs are derived from stream/date/source/detail"
@@ -1590,6 +1649,12 @@ def add_entry(
     payload["id"] = entry_id or derived_id
     if not _SAFE_ID_RE.match(payload["id"]):
         raise ValueError(f"unusable entry id (must be a bare filename): {payload['id']!r}")
+    if historical_id_mismatch:
+        payload[HISTORICAL_ID_DIGEST] = derived_id
+    else:
+        # A rerun carries every non-table field forward.  Drop obsolete
+        # provenance if a corrected historical row now matches its digest.
+        payload.pop(HISTORICAL_ID_DIGEST, None)
 
     # Creation does not owe TRACEABILITY. `import` exists to represent HISTORY,
     # and history is full of `fixed` rows whose landing commit was never written
@@ -1733,7 +1798,7 @@ def _splice_before(fields: tuple[str, ...], anchor: str,
 SHOW_FIELD_ORDER = (
     _splice_before(REQUIRED_FIELDS, "detail", BRIEF_FIELDS)
     + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + AUDIT_FIELDS + TRACE_FIELDS
-    + RELATION_FIELDS + CONTRACT_FIELDS
+    + RELATION_FIELDS + CONTRACT_FIELDS + IDENTITY_AUDIT_FIELDS
 )
 
 # Digest fields the `update` parser still accepts — solely so that reaching for
@@ -2878,7 +2943,7 @@ def import_legacy(text: str, store: Path) -> dict:
         carried_extra = {k: v for k, v in carried.items() if k not in legacy_owned}
 
         try:
-            add_entry(
+            entry = add_entry(
                 store,
                 overwrite=True,
                 extra=carried_extra,
@@ -2904,6 +2969,12 @@ def import_legacy(text: str, store: Path) -> dict:
             # store, which is worse than a complete store plus a problem list.
             problems.append({"kind": "rejected-row", "id": row["id"], "error": str(exc)})
             continue
+        if HISTORICAL_ID_DIGEST in entry:
+            problems.append({
+                "kind": "historical-id-preserved",
+                "id": entry["id"],
+                "derived_id": entry[HISTORICAL_ID_DIGEST],
+            })
         imported += 1
 
     return {"imported": imported, "problems": problems}

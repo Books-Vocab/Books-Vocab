@@ -585,8 +585,48 @@ def test_real_ledger_import_still_works_even_though_render_does_not(tmp_path):
 
     assert orig_problems == [], f"the historical ledger stopped parsing: {orig_problems}"
     assert original, "parsed zero rows from the real ledger — the probe is broken"
-    stored = {e["id"] for e in BACKLOG.list_entries(store)}
-    assert {r["id"] for r in original} <= stored
+    rejected = [p for p in result["problems"] if p["kind"] == "rejected-row"]
+    assert rejected == [], f"historical rows were parsed but not imported: {rejected}"
+    assert result["imported"] == len(original)
+    preserved = {
+        problem["id"]: problem["derived_id"]
+        for problem in result["problems"]
+        if problem["kind"] == "historical-id-preserved"
+    }
+    assert set(preserved) == {
+        "IMP-20260805-0fc07a",
+        "IMP-20260805-29edd7",
+        "IMP-20260805-348496",
+        "IMP-20260805-45759f",
+        "IMP-20260805-c7178a",
+        "IMP-20260805-dd35f8",
+        "IMP-20260806-e4988a",
+    }
+
+    stored = {entry["id"]: entry for entry in BACKLOG.list_entries(store)}
+    assert set(stored) == {row["id"] for row in original}
+    for row in original:
+        entry = stored[row["id"]]
+        expected = dict(row)
+        expected["status"] = BACKLOG.RETIRED_STATUSES.get(
+            row["status"], row["status"]
+        )
+        assert {
+            field: entry[field] for field in BACKLOG.LEGACY_COLUMNS
+        } == expected, f"legacy payload changed while importing {row['id']}"
+
+        derived_id = BACKLOG.make_entry_id(
+            stream="IMP",
+            date=row["date"],
+            source=row["source"],
+            detail=row["detail"],
+        )
+        if row["id"] == derived_id or row["id"].removeprefix("IMP-").isdigit():
+            assert "historical_id_digest" not in entry
+            assert row["id"] not in preserved
+        else:
+            assert entry["historical_id_digest"] == derived_id
+            assert preserved[row["id"]] == derived_id
 
 
 @pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")
