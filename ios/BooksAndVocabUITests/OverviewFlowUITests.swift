@@ -117,7 +117,7 @@ final class OverviewFlowUITests: UITestCase {
     @MainActor
     func testOverviewStatsRenderFromSeededReviewHistory() throws {
         let app = launchIsolatedApp(
-            fixtures: [.shellNavigation],
+            fixtures: [.vocabulary("statsPopulated")],
             perfLog: "overview"
         )
         captureStep("launch", app: app)
@@ -128,14 +128,29 @@ final class OverviewFlowUITests: UITestCase {
             XCTAssertTrue(app.waitForNavigationToSettle())
             return page
         }
-        try step("stats-content", app: app) {
+        try step("metrics", app: app) {
             overview.assertIsActive()
             overview.assertStatsAccessibilityHierarchy()
             XCTAssertTrue(
                 overview.statsContent.waitUntilExists(timeout: 10),
-                "shell navigation fixture must render overview.statsContent from seeded review records"
+                "statsPopulated fixture must render overview.statsContent from seeded review records"
             )
+            overview.metrics.assertExists(timeout: 10)
+            overview.assertMetric("totalCards", value: "8")
+            overview.assertMetric("reviewedToday", value: "2")
+            overview.assertMetric("dueToday", value: "0")
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected")
+        }
+
+        try step("calendar", app: app) {
+            overview.calendar.assertExists(timeout: 10)
+        }
+
+        try step("forecast-zero", app: app) {
+            overview.assertUniqueForecastContract()
+            let bucket = overview.forecastBucket("2026-06-02")
+            bucket.assertExists(timeout: 10)
+            XCTAssertTrue((bucket.value as? String)?.contains("8") == true)
         }
 
         try step("notebook-detour", app: app) {
@@ -151,6 +166,49 @@ final class OverviewFlowUITests: UITestCase {
                 "overview stats content should survive a tab detour"
             )
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected on re-entry")
+        }
+
+        let counterexampleExpected = try Self.vocabListLongProjection()
+        let counterexampleApp = launchIsolatedApp(
+            extraArgs: [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL",
+            ],
+            fixtures: [.vocabulary("vocabListLong")],
+            perfLog: "overview-counterexamples"
+        )
+        captureStep("large-text-counterexample", app: counterexampleApp)
+        attachText(
+            "fixture=marketing_demo.vocabListLong\n"
+                + "clock=\(counterexampleExpected.clockNow.ISO8601Format())\n"
+                + "clockSource=UITestFixtureSeed.makeStatsProjectionClock\n"
+                + "clockRule=UTC noon on day after canonical earliest nextReviewAt\n"
+                + "dateFallback=none",
+            named: "Overview Clock Provenance"
+        )
+        let counterexampleOverview = try step("large-counts", app: counterexampleApp) {
+            let page = AppPage(app: counterexampleApp).goToOverview()
+            XCTAssertTrue(counterexampleApp.waitForNavigationToSettle())
+            return page
+        }
+        try step("large-counts-projection", app: counterexampleApp) {
+            counterexampleOverview.assertStatsAccessibilityHierarchy()
+            counterexampleOverview.metrics.assertExists(timeout: 10)
+            counterexampleOverview.assertMetric("totalCards", value: String(counterexampleExpected.totalCards))
+            counterexampleOverview.assertMetric("reviewedToday", value: String(counterexampleExpected.reviewedToday))
+            counterexampleOverview.assertMetric("dueToday", value: String(counterexampleExpected.dueToday))
+            counterexampleOverview.calendar.assertExists(timeout: 10)
+            XCTAssertEqual(
+                counterexampleOverview.calendar.value as? String,
+                counterexampleExpected.activityIsEmpty ? "0" : "populated"
+            )
+            counterexampleOverview.assertUniqueForecastContract()
+            counterexampleOverview.assertForecastContainsCount(String(counterexampleExpected.dueToday))
+            counterexampleOverview.largeCounts.assertExists(timeout: 10)
+            XCTAssertEqual(
+                counterexampleOverview.largeCounts.value as? String,
+                String(counterexampleExpected.totalCards)
+            )
         }
     }
 
