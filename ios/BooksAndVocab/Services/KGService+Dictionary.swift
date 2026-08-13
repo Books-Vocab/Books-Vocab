@@ -225,6 +225,13 @@ extension KGService {
 
     #if DEBUG
     private func fixtureDictionaryServiceIfAvailable() throws -> FixtureDictionaryServing? {
+        // An explicitly injected fixture is the authoritative DEBUG seam for
+        // unit tests and isolated callers. It must not be hidden by the
+        // ambient UI World TaskLocal, which may not cross a coordinator's
+        // child task boundary even though the service injection is valid.
+        if let fixtureDictionaryService {
+            return fixtureDictionaryService
+        }
         let fixtureID = FixtureDatasetStore.activeDictionaryFixtureID()
         switch FixtureDatasetStore.availability {
         case .absent:
@@ -238,9 +245,6 @@ extension KGService {
             throw FixtureDictionaryServing.FixtureError.invalidDataset(reason)
         case .loaded:
             break
-        }
-        if let fixtureDictionaryService {
-            return fixtureDictionaryService
         }
         let service = try FixtureDictionaryServing.fromFixtureDatasetStore(fixtureID: fixtureID)
         fixtureDictionaryService = service

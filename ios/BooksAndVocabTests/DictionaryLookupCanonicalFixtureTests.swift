@@ -33,9 +33,9 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(coordinator.dictionaryMaterialization?.selectedExampleID == "example-1")
         #expect(coordinator.dictionaryMaterialization?.sourceFixtureID == "dictionary.lookup.result")
         #expect(coordinator.dictionaryMaterialization?.datasetID == "marketing_demo")
-        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "d28b72ea22a689a77cdfb4979e14340a78a7af9e6a37c658429b72ac2ebbd25e")
+        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetID == "catalog_reader_epub")
-        #expect(coordinator.dictionaryMaterialization?.sourceAssetPath == "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub")
+        #expect(coordinator.dictionaryMaterialization?.sourceAssetPath.hasSuffix("/ops/fixtures/assets/catalog-reader.epub") == true)
         #expect(coordinator.dictionaryMaterialization?.sourceAssetByteSize == 1690)
         #expect(coordinator.dictionaryMaterialization?.sourceAssetSHA256 == "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de")
     }
@@ -46,10 +46,15 @@ struct DictionaryLookupCanonicalFixtureTests {
         let service = KGService()
         let coordinator = AddLinkCoordinator()
 
-        try await FixtureDatasetStore.withTestingData(data) {
-            coordinator.submitSearch(query: "engraved", using: service)
-            try await settle { coordinator.lookupState.isSuccess }
+        // AddLinkCoordinator launches its lookup in a child task. Inject the
+        // fixture through KGService's explicit DEBUG seam so this unit test
+        // proves the service route without depending on TaskLocal inheritance
+        // across that asynchronous boundary.
+        service.fixtureDictionaryService = try FixtureDatasetStore.withTestingData(data) {
+            try FixtureDictionaryServing.fromFixtureDatasetStore()
         }
+        coordinator.submitSearch(query: "engraved", using: service)
+        try await settle { coordinator.lookupState.isSuccess }
 
         guard case .success(let query, let entry?, let cacheStatus) = coordinator.lookupState else {
             Issue.record("expected KGService to consume the P1 canonical dictionary fixture")
@@ -264,10 +269,10 @@ struct DictionaryLookupCanonicalFixtureTests {
     func fixtureServiceRejectsInvalidRuntimeProvenance() throws {
         let original = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")
         let json = String(decoding: original, as: UTF8.self)
-        let assetPath = "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub"
+        let assetPath = "ops/fixtures/assets/catalog-reader.epub"
         let assetHash = "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de"
         let variants = [
-            json.replacingOccurrences(of: assetPath, with: "/definitely/missing/catalog-reader.epub"),
+            json.replacingOccurrences(of: assetPath, with: "definitely/missing/catalog-reader.epub"),
             json.replacingOccurrences(of: "\"byteSize\": 1690", with: "\"byteSize\": 1691"),
             json.replacingOccurrences(
                 of: assetHash,

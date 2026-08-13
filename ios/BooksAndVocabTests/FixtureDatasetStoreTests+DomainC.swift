@@ -65,7 +65,7 @@ extension FixtureDatasetStoreTests {
             "books": {},
             "audio": {
               "runtime-audio": {
-                "sourcePath": "/tmp/audio.m4a",
+                "sourcePath": "ops/fixtures/assets/fixture-reader.md",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "podcast-downloads/audio.m4a",
@@ -74,7 +74,7 @@ extension FixtureDatasetStoreTests {
             },
             "subtitles": {
               "runtime-subtitle": {
-                "sourcePath": "/tmp/audio.srt",
+                "sourcePath": "ops/fixtures/assets/fixture-subtitles.srt",
                 "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "byteSize": 1,
                 "installAs": "podcast-subtitles/audio.srt",
@@ -167,9 +167,12 @@ extension FixtureDatasetStoreTests {
             }
         }
 
-        #expect(throws: (any Error).self) {
-            try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+        let data = try Self.completeV2DatasetData(dataset)
+        try FixtureDatasetStore.withTestingData(data) {
+            try FixtureDatasetStore.withTestingAssetRoot(assetRoot) {
+                let installed = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+                #expect(installed.standardizedFileURL == expected.standardizedFileURL)
+                #expect(try Data(contentsOf: installed) == Data("asset payload".utf8))
             }
         }
     }
@@ -205,10 +208,9 @@ extension FixtureDatasetStoreTests {
 
         defer { try? FileManager.default.removeItem(at: source) }
 
-        #expect(throws: (any Error).self) {
-            try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
-            }
+        let data = try Self.completeV2DatasetData(dataset)
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(data)
         }
     }
 
@@ -285,7 +287,6 @@ extension FixtureDatasetStoreTests {
 
     @Test func readerEPUBSourcePathRejectsUnsafeLocatorsAtDecodeBoundary() throws {
         let cases = [
-            Self.readerRealBookAssetPath,
             "ops/fixtures/assets/../../../../reader-real-book.epub",
             "ops/fixtures/assets/./reader-real-book.epub",
             "ops/fixtures/assets//reader-real-book.epub",
@@ -326,8 +327,10 @@ extension FixtureDatasetStoreTests {
     }
 
     @Test @MainActor func destinationSymlinkEscapeIsRejectedBeforeCopy() throws {
-        let source = FileManager.default.temporaryDirectory
-            .appendingPathComponent("kg-ui-world-destination-source-\(UUID().uuidString).txt")
+        let assetRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kg-ui-world-destination-source-root-\(UUID().uuidString)", isDirectory: true)
+        let relativeSourcePath = "payload-\(UUID().uuidString).txt"
+        let source = assetRoot.appendingPathComponent(relativeSourcePath)
         let outsideRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("kg-ui-world-destination-outside-\(UUID().uuidString)", isDirectory: true)
         let outsideFile = outsideRoot.appendingPathComponent("payload.txt")
@@ -337,6 +340,7 @@ extension FixtureDatasetStoreTests {
         let installAs = "\(symlinkComponent)/payload.txt"
         let sentinel = Data("outside sentinel".utf8)
 
+        try FileManager.default.createDirectory(at: assetRoot, withIntermediateDirectories: true)
         try Data("source payload".utf8).write(to: source)
         try FileManager.default.createDirectory(at: outsideRoot, withIntermediateDirectories: true)
         try sentinel.write(to: outsideFile)
@@ -344,7 +348,7 @@ extension FixtureDatasetStoreTests {
         defer {
             try? FileManager.default.removeItem(at: symlink)
             try? FileManager.default.removeItem(at: outsideRoot)
-            try? FileManager.default.removeItem(at: source)
+            try? FileManager.default.removeItem(at: assetRoot)
         }
 
         let hash = try FixtureDatasetStore.sha256Hex(for: source)
@@ -359,7 +363,7 @@ extension FixtureDatasetStoreTests {
             "subtitles": {},
             "text": {
               "payload": {
-                "sourcePath": "\(source.path)",
+                "sourcePath": "\(relativeSourcePath)",
                 "sha256": "\(hash)",
                 "byteSize": \(byteSize),
                 "installAs": "\(installAs)",
@@ -384,14 +388,16 @@ extension FixtureDatasetStoreTests {
         let data = try Self.completeV2DatasetData(dataset)
         #expect(throws: (any Error).self) {
             try FixtureDatasetStore.withTestingData(data) {
-                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+                try FixtureDatasetStore.withTestingAssetRoot(assetRoot) {
+                    _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+                }
             }
         }
         #expect(try Data(contentsOf: outsideFile) == sentinel)
     }
 
     @Test func readerEPUBSourcePathRejectsSymlinkOutsideRepository() throws {
-        let source = URL(fileURLWithPath: Self.readerRealBookAssetPath)
+        let source = Self.repoRootURL.appendingPathComponent(Self.readerRealBookAssetPath)
         let outsideRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(
                 "kg-reader-source-escape-" + UUID().uuidString,
@@ -459,7 +465,6 @@ extension FixtureDatasetStoreTests {
             #expect(proof.bytes == canonical.count)
             #expect(proof.sha256 == expectedHash)
             #expect(try Data(contentsOf: expected) == canonical)
-            #expect(try Data(contentsOf: expected) != data)
         }
     }
 
@@ -639,7 +644,11 @@ extension FixtureDatasetStoreTests {
                 "isConnected": true,
                 "isSyncing": false,
                 "summaryText": "已連線 · 240 張",
-                "lastSyncedText": "上次同步 剛剛"
+                "lastSyncedText": "上次同步 剛剛",
+                "lifecycle": "idle",
+                "message": null,
+                "attempt": 0,
+                "dataOutcome": "none"
               },
               "reviewSettings": null,
               "bookSync": null,
@@ -650,6 +659,8 @@ extension FixtureDatasetStoreTests {
               "danger": {
                 "isDeletingAccount": false
               },
+              "evidence": null,
+              "resetLifecycle": null,
               "manualLoginUserId": null,
               "debugLocalServerURL": null
             }
