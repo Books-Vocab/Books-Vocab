@@ -101,23 +101,23 @@ struct AppPage {
     }
 
     func exploreAsset(assetID: String) -> XCUIElement {
-        app.images["explore.asset.\(assetID)"]
+        app.otherElements["explore.asset.\(assetID)"]
     }
 
     func exploreDetailCover(deckID: String) -> XCUIElement {
         app.images["explore.detail.cover.\(deckID)"]
     }
 
-    func assertExploreImageIsUnique(
+    func assertExploreAssetIsUnique(
         identifier: String,
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        let query = app.images.matching(identifier: identifier)
+        let query = app.otherElements.matching(identifier: identifier)
         XCTAssertEqual(
             query.count,
             1,
-            "Expected exactly one Explore image for \(identifier), got \(query.count)",
+            "Expected exactly one Explore asset projection for \(identifier), got \(query.count)",
             file: file,
             line: line
         )

@@ -386,13 +386,10 @@ struct NotebookCoverView: View {
 #if DEBUG && targetEnvironment(simulator)
         if let identifier = assetAccessibilityIdentifier {
             imageView
-                .accessibilityRepresentation {
-                    platformImage(image)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityIdentifier(identifier)
-                        .accessibilityLabel(assetAccessibilityLabel ?? name)
-                        .accessibilityValue(assetAccessibilityValue ?? "")
-                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier(identifier)
+                .accessibilityLabel(assetAccessibilityLabel ?? name)
+                .accessibilityValue(assetAccessibilityValue ?? "")
         } else {
             imageView
         }
