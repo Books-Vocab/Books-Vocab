@@ -101,36 +101,41 @@ struct StatsPresenter: View {
         VocabSceneShell(phase: currentPhase) {
             if let summary {
                 VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(spacing: appSkin.spacing.sectionGap) {
-                            graphEntrySection
-                            metricsSection(summary)
-                            heatmapSection(summary)
-                            forecastSection(summary)
-                            totalsFooter(summary)
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            VStack(spacing: appSkin.spacing.sectionGap) {
+                                graphEntrySection
+                                metricsSection(summary)
+                                heatmapSection(summary)
+                                forecastSection(summary)
+                                totalsFooter(summary)
+                            }
+                            .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                            .padding(.top, appSkin.metrics.pageTopInset)
+                            .padding(.bottom, appSkin.metrics.pageBottomInset)
                         }
-                        .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
-                        .padding(.top, appSkin.metrics.pageTopInset)
-                        .padding(.bottom, appSkin.metrics.pageBottomInset)
-                    }
-                    .vocabCanvasBackground()
-                    .accessibilityElement(children: .contain)
-                    // UI-test hook: only reachable in the `.content` phase
-                    // (VocabSceneShell renders this closure for `.content` only),
-                    // so its existence proves the stats dashboard truly rendered
-                    // from a non-empty summary — not loading / empty / logged-out.
-                    .accessibilityIdentifier("overview.statsContent")
-                    .opacity(contentReady ? 1 : 0)
-                    .scaleEffect(contentReady ? 1 : 0.98)
-                    .onAppear {
+                        .vocabCanvasBackground()
+                        .opacity(contentReady ? 1 : 0)
+                        .scaleEffect(contentReady ? 1 : 0.98)
+                        .onAppear {
 #if KG_RUN_CATALOG_SNAPSHOTS
-                        contentReady = true
-#else
-                        withAnimation(AppMotion.contentReveal) {
                             contentReady = true
-                        }
+#else
+                            withAnimation(AppMotion.contentReveal) {
+                                contentReady = true
+                            }
 #endif
+                        }
                     }
+                    // UI-test hook: attach the proof to a stable SwiftUI
+                    // wrapper, not directly to ScrollView. On iOS 26 a
+                    // ScrollView can flatten its accessibility node while its
+                    // content is still visible, making a selector-only
+                    // contract falsely fail. This group is rendered only in
+                    // `.content`, so its existence proves the stats dashboard
+                    // truly has a non-empty summary.
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("overview.statsContent")
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("overview")
