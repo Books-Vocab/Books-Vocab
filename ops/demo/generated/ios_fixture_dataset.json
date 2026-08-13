@@ -152,6 +152,14 @@
       "podcast.wordFollowEnabled": true,
       "podcast.autoPauseOnLookup": true,
       "podcast.subtitleSize": "large",
+      "reader_settings_font": "Mono",
+      "reader_settings_fontSize": 1.25,
+      "reader_settings_lineHeight": 2.1,
+      "reader_settings_scrollMode": true,
+      "reader_settings_showHitTestingDebug": false,
+      "reader_settings_underlineOpacity": 0.6,
+      "vocab_highlight_colorPreset": "rose",
+      "vocab_highlight_opacity": 0.6,
       "review_settings_progress_paused_at": 1783677599
     },
     "ubiquitousKeyValueStore": {
@@ -167,6 +175,13 @@
       "review_settings_mode_updated_at": 1781424000,
       "review_settings_progress_paused": true,
       "review_settings_progress_updated_at": 1783677599,
+      "reader_settings_font": "Mono",
+      "reader_settings_fontSize": 1.25,
+      "reader_settings_lineHeight": 2.1,
+      "reader_settings_scrollMode": true,
+      "reader_settings_underlineOpacity": 0.6,
+      "vocab_highlight_colorPreset": "rose",
+      "vocab_highlight_opacity": 0.6,
       "review_settings_progress_paused_at": 1783677599
     }
   },
@@ -37730,6 +37745,149 @@
           "isExcludedFromReader": false
         }
       ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
+    },
+    "vocabListFilterRich": {
+      "baseFixture": "vocabListLong",
+      "entryOverrides": [
+        {
+          "word": "knowledge-word-01",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1
+        },
+        {
+          "word": "knowledge-word-02",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2020-01-01T00:00:00Z",
+          "lastReviewedAt": "2019-12-31T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 0
+        },
+        {
+          "word": "knowledge-word-03",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 72,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 5,
+          "reviewStreak": 4,
+          "lastReviewFeedbackRaw": 1
+        },
+        {
+          "word": "knowledge-word-04",
+          "cardRole": "dictionary",
+          "reviewEligible": false,
+          "reviewIntervalHours": 0,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1
+        },
+        {
+          "word": "knowledge-word-05",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2020-01-01T00:00:00Z",
+          "lastReviewedAt": "2019-12-31T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": 0
+        },
+        {
+          "word": "knowledge-word-06",
+          "cardRole": "dictionary",
+          "reviewEligible": false,
+          "reviewIntervalHours": 0,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1
+        },
+        {
+          "word": "knowledge-word-07",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1
+        },
+        {
+          "word": "knowledge-word-08",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 48,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 4,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1
+        },
+        {
+          "word": "knowledge-word-09",
+          "cardRole": "dictionary",
+          "reviewEligible": false,
+          "reviewIntervalHours": 0,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1
+        },
+        {
+          "word": "knowledge-word-10",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2020-01-01T00:00:00Z",
+          "lastReviewedAt": "2019-12-31T00:00:00Z",
+          "reviewCount": 6,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 0
+        },
+        {
+          "word": "knowledge-word-11",
+          "cardRole": "learning",
+          "reviewEligible": true,
+          "reviewIntervalHours": 96,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 7,
+          "reviewStreak": 6,
+          "lastReviewFeedbackRaw": 1
+        },
+        {
+          "word": "knowledge-word-12",
+          "cardRole": "dictionary",
+          "reviewEligible": false,
+          "reviewIntervalHours": 0,
+          "nextReviewAt": "2099-01-01T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1
+        }
+      ],
+      "notebookRemoteId": "ui-vocab-list-filter-rich-notebook",
+      "notebookName": "Vocabulary Filter Rich",
+      "bookTitle": "Vocabulary Filter Manual",
+      "entries": [],
       "reviewHistory": [],
       "notebookSyncStatus": 1
     },

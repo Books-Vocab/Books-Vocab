@@ -44,7 +44,8 @@ def test_emit_ios_matches_committed_generated_fixture_dataset():
 def test_emit_ios_carries_canonical_shared_decks_from_baseline():
     bundle = sot.load_sot()
     baseline = emit_ios._load_base_ui_world()
-    [(_, fresh_bytes)] = emit_ios._artifacts(bundle)
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+    fresh_bytes = dict(emit_ios._artifacts(bundle))[generated_path]
     generated = json.loads(fresh_bytes)
 
     assert set(baseline["sharedDecks"]) == {"fixtures", "decks"}
@@ -140,10 +141,13 @@ def test_p1_dictionary_rich_fixture_is_emitted_across_canonical_artifacts():
         "materialize-error-counterexample",
     ]
     assert surface["required"][0]["assetIDs"] == ["catalog_reader_epub"]
-    assert surface["required"][0]["assetInodes"] == ["inode:catalog_reader_epub"]
+    assert "assetInodes" not in surface["required"][0]
+
+
 def test_emit_ios_preserves_real_reader_toc_assets():
     bundle = sot.load_sot()
-    [(_, fresh_bytes)] = emit_ios._artifacts(bundle)
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+    fresh_bytes = dict(emit_ios._artifacts(bundle))[generated_path]
     document = json.loads(fresh_bytes)
     books = document["assets"]["books"]
 
@@ -156,10 +160,10 @@ def test_emit_ios_preserves_real_reader_toc_assets():
         assert path.stat().st_size == asset["byteSize"]
         assert path.is_relative_to(ROOT)
 
-    with zipfile.ZipFile(valid["sourcePath"]) as archive:
+    with zipfile.ZipFile(ROOT / valid["sourcePath"]) as archive:
         assert "OEBPS/chapter1.xhtml" in archive.namelist()
         assert "OEBPS/chapter2.xhtml" in archive.namelist()
-    with zipfile.ZipFile(invalid["sourcePath"]) as archive:
+    with zipfile.ZipFile(ROOT / invalid["sourcePath"]) as archive:
         assert "chapter-missing.xhtml" in archive.read("OEBPS/nav.xhtml").decode("utf-8")
 
 
@@ -188,6 +192,19 @@ def test_emit_ios_rejects_reader_asset_symlink_escape(tmp_path: Path):
     finally:
         if link.is_symlink() or link.exists():
             link.unlink()
+def test_emit_ios_keeps_asset_sources_portable_to_current_checkout():
+    """The emitter must preserve repo-relative sources for any checkout root."""
+    bundle = sot.load_sot()
+    artifacts = dict(emit_ios._artifacts(bundle))
+    generated_path = ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"
+    document = json.loads(artifacts[generated_path])
+    current_root = emit_ios._REPO_ROOT.resolve()
+
+    for domain in document["assets"].values():
+        for asset in domain.values():
+            source = Path(asset["sourcePath"])
+            assert not source.is_absolute()
+            assert (current_root / source).resolve().is_relative_to(current_root)
 
 
 def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch):
