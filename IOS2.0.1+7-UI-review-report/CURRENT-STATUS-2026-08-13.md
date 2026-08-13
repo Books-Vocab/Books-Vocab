@@ -2,7 +2,7 @@
 
 日期：2026-08-13  
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前工作樹與 simulator evidence bundle  
-工作樹：`feat/ios-ui-review-report-complete-20260813`；目前整合 HEAD：`70edb37fe`；dirty=`false`
+工作樹：`feat/ios-ui-review-report-complete-20260813`；目前整合 code baseline：`70edb37fe`；dirty=`false`
 
 ## 結論
 
