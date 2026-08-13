@@ -73,9 +73,13 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     init(
         settingsSyncService: SettingsSyncService? = nil,
-        syncPersistence: any SettingsSyncPersisting = ModelContextSettingsSyncPersistence()
+        syncPersistence: (any SettingsSyncPersisting)? = nil
     ) {
-        self.syncPersistence = syncPersistence
+        // A default argument is evaluated before entering this @MainActor
+        // initializer. Constructing the @MainActor persistence adapter there
+        // is therefore a compile-time isolation violation. Resolve the default
+        // after entering the actor instead of weakening the adapter's isolation.
+        self.syncPersistence = syncPersistence ?? ModelContextSettingsSyncPersistence()
 
 #if DEBUG
         var resolvedService = settingsSyncService
@@ -717,7 +721,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             return fixtureMessage
         }
         #endif
-        syncProgress.steps.first(where: { $0.status == .error && !$0.detail.isEmpty })?.detail
+        return syncProgress.steps.first(where: { $0.status == .error && !$0.detail.isEmpty })?.detail
             ?? L10n.string("同步失敗")
     }
 
