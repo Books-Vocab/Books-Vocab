@@ -19,6 +19,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ops.demo.ui_world_seed import shape_history
+from ops.p9_review_calendar_evidence import (
+    EVIDENCE_SCHEMA,
+    make_record,
+    validate_manifest_file,
+)
 from ops.review_calendar_clock import clock_from_plan
 
 IOS = ROOT / "ios"
@@ -377,6 +382,81 @@ def test_ios_test_fails_closed_when_p9_outer_contract_rejects_sidecar() -> None:
         1,
     )[1].split("\n  fi", 1)[0]
     assert "return 1" in validation_block
+
+
+def test_p9_outer_path_contract_resolves_macos_private_var_alias(tmp_path: Path) -> None:
+    """The outer verdict may retain /var while the validator sees /private/var."""
+    workspace = tmp_path / "evidence"
+    workspace.mkdir()
+    screenshot = workspace / "01-calendar.png"
+    screenshot.write_bytes(
+        bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000d49444154789c6360f8cfc0000000040001ff8944890000000049454e44ae426082"
+        )
+    )
+    fixture = workspace / "installed-fixture.json"
+    fixture.write_text(
+        json.dumps({"schema": "kg.fixture.dataset.v2", "datasetID": "marketing_demo"}),
+        encoding="utf-8",
+    )
+    source_commit = "a" * 40
+    dataset_sha = "b" * 64
+    device = "43FA3E1B-16F8-4144-B17D-53D5E4728FC6"
+    selector = "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors"
+    record = make_record(
+        fixture_id="review-calendar.calendar",
+        step_label="calendar",
+        manifest_asset_id="review-calendar.calendar",
+        manifest_path="scenarioContext.surfaceContracts.reviewCalendar.required[0]",
+        asset_id="01-calendar",
+        artifact_path=screenshot,
+        selector=selector,
+        source="ios/BooksAndVocabUITests/FixtureDatasetUITests.swift",
+        dataset_id="marketing_demo",
+        device=device,
+        group="required",
+        installed_fixture_path=fixture,
+        workspace_root=workspace,
+        source_commit=source_commit,
+        dataset_sha256=dataset_sha,
+    )
+    manifest = {
+        "schema": EVIDENCE_SCHEMA,
+        "sourceCommit": source_commit,
+        "datasetID": "marketing_demo",
+        "datasetSHA256": dataset_sha,
+        "device": device,
+        "selector": selector,
+        "records": [record],
+    }
+    manifest_path = workspace / "p9_review_calendar_review_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    alias_root = tmp_path / "private-var-alias"
+    alias_root.symlink_to(workspace, target_is_directory=True)
+    alias_path = alias_root / manifest_path.name
+    outer_verdict = {
+        "artifacts": {
+            "p9ReviewCalendarEvidence": {
+                "schema": EVIDENCE_SCHEMA,
+                "path": str(alias_path),
+                "sourceCommit": source_commit,
+                "datasetID": "marketing_demo",
+                "datasetSHA256": dataset_sha,
+                "device": device,
+                "selector": selector,
+                "recordCount": 1,
+            }
+        }
+    }
+
+    validated = validate_manifest_file(
+        manifest_path,
+        workspace_root=workspace,
+        outer_verdict=outer_verdict,
+    )
+
+    assert validated["count"] == 1
 
 
 def test_overview_page_requires_exactly_one_selector_match() -> None:
