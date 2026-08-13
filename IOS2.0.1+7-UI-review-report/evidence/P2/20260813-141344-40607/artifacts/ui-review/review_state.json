@@ -1,0 +1,28 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T14:21:42+00:00",
+      "assetIDs": [
+        "01-launch",
+        "02-p2-senses-materialized"
+      ],
+      "notes": "P2 fresh simulator contact sheet visually reviewed: seeded dictionary/sense surface is present, result card and typed sense content are legible, no unexpected overlay or clipping.",
+      "visualChecks": [
+        "dictionary result card is visible and not clipped",
+        "typed sense content is legible and spatially separated from controls"
+      ],
+      "manifestSHA256": "12119b6184a365f31c882d90003e897428c6bdfd0b28fd6528d7936c9ff32f11",
+      "evidenceRootSHA256": "41b5d9d0a53fbdb69050f0c4810f9f01ec29feba5666e71bf0212312d65dec03",
+      "provenance": {
+        "sourceCommit": "da6277f97b3c0122a9457fbf25d21ad5751e9d09",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "19152bf5e69c9817423661217e1b5b76de418928346b49021c4ae9173f7f4f47",
+        "device": "8B65DAD1-A260-43E5-99EA-6191CB11B33A",
+        "selector": "--method DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector"
+      }
+    }
+  ]
+}
