@@ -1,0 +1,207 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /Users/chenliangyu/project/kg/.claude/worktrees/p8-explore-ui-report-20260813/.cache/ios-test-derived-data/8c2ffec3009c230524fce0502aa6cf405e05de230b72c8b09c5cb679d8e86efe/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_18215.scoped.xctestrun -destination "platform=iOS Simulator,id=43FA3E1B-16F8-4144-B17D-53D5E4728FC6" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120 -resultBundlePath /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.pU931A/Test.xcresult "-only-testing:BooksAndVocabUITests/ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates"
+
+2026-08-13 13:32:39.153 xcodebuild[21811:30322424] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.pU931A/Test.xcresult
+
+2026-08-13 13:32:39.169 xcodebuild[21811:30322424] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 13:32:41.426 xcodebuild[21811:30322424] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 13:32:42.582 xcodebuild[21811:30322424] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 13:32:44.591203+0800 BooksAndVocabUITests-Runner[22114:30323328] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-08-13 13:32:46.065.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 13:32:46.065.
+Test Suite 'ExploreNavigationUITests' started at 2026-08-13 13:32:46.065.
+Test Case '-[BooksAndVocabUITests.ExploreNavigationUITests testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates]' started.
+    t =     0.00s Start Test at 2026-08-13 13:32:46.066
+    t =     0.02s Set Up
+    t =     0.03s Open com.Max0228.BooksBrowser
+    t =     0.03s     Launch com.Max0228.BooksBrowser
+2026-08-13 13:32:46.290 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 13:32:46.290 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[22114]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10b7d8310) and /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10a634398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     1.24s         Setting up automation session
+    t =     2.65s         Wait for com.Max0228.BooksBrowser to idle
+    t =     6.04s Checking `exists == 1 AND hittable == 1`
+    t =     6.04s     Checking existence of `"探索" Button`
+    t =     6.23s     Find the "探索" Button
+    t =     6.28s Tap "探索" Button
+    t =     6.28s     Wait for com.Max0228.BooksBrowser to idle
+    t =     6.28s     Find the "探索" Button
+    t =     6.32s     Check for interrupting elements affecting "探索" Button
+    t =     6.36s     Synthesize event
+    t =     6.65s     Wait for com.Max0228.BooksBrowser to idle
+    t =     9.24s Checking `exists == 1`
+    t =     9.24s     Checking existence of `"explore.loadingState" Any`
+    t =     9.29s Get number of matches for: Elements matching predicate '"explore.loadingState" IN identifiers'
+    t =     9.32s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =     9.42s Added attachment named 'Step 01-explore-loading'
+    t =     9.42s Open com.Max0228.BooksBrowser
+    t =     9.42s     Launch com.Max0228.BooksBrowser
+    t =     9.42s         Terminate com.Max0228.BooksBrowser:22234
+2026-08-13 13:32:56.564 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 13:32:56.564 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    10.71s         Setting up automation session
+    t =    11.83s         Wait for com.Max0228.BooksBrowser to idle
+    t =    14.58s Checking `exists == 1 AND hittable == 1`
+    t =    14.58s     Checking existence of `"探索" Button`
+    t =    14.74s     Find the "探索" Button
+    t =    14.78s Tap "探索" Button
+    t =    14.78s     Wait for com.Max0228.BooksBrowser to idle
+    t =    14.79s     Find the "探索" Button
+    t =    14.82s     Check for interrupting elements affecting "探索" Button
+    t =    14.85s     Synthesize event
+    t =    15.13s     Wait for com.Max0228.BooksBrowser to idle
+    t =    18.15s Checking `exists == 1`
+    t =    18.15s     Checking existence of `"explore.loadedState" Any`
+    t =    19.29s Checking `exists == 1`
+    t =    19.29s     Checking existence of `"explore.deck.deck_official_gre_high_freq" Any`
+    t =    19.33s Get number of matches for: Elements matching predicate '"explore.loadedState" IN identifiers'
+    t =    19.35s Get number of matches for: Elements matching predicate '"explore.deck.deck_official_gre_high_freq" IN identifiers'
+    t =    20.42s Checking `exists == 1`
+    t =    20.42s     Checking existence of `"explore.asset.images.explore_required" Other`
+    t =    20.46s Get number of matches for: Elements matching predicate '"explore.asset.images.explore_required" IN identifiers'
+    t =    20.49s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    20.59s Added attachment named 'Step 02-explore-loaded'
+    t =    20.59s Open com.Max0228.BooksBrowser
+    t =    20.59s     Launch com.Max0228.BooksBrowser
+    t =    20.59s         Terminate com.Max0228.BooksBrowser:22617
+2026-08-13 13:33:07.702 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 13:33:07.702 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    21.85s         Setting up automation session
+    t =    22.86s         Wait for com.Max0228.BooksBrowser to idle
+    t =    25.55s Checking `exists == 1 AND hittable == 1`
+    t =    25.55s     Checking existence of `"探索" Button`
+    t =    25.70s     Find the "探索" Button
+    t =    25.75s Tap "探索" Button
+    t =    25.75s     Wait for com.Max0228.BooksBrowser to idle
+    t =    25.75s     Find the "探索" Button
+    t =    25.79s     Check for interrupting elements affecting "探索" Button
+    t =    25.81s     Synthesize event
+    t =    26.10s     Wait for com.Max0228.BooksBrowser to idle
+    t =    29.14s Checking `exists == 1`
+    t =    29.14s     Checking existence of `"explore.emptyState" Any`
+    t =    29.21s Get number of matches for: Elements matching predicate '"explore.emptyState" IN identifiers'
+    t =    29.24s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    29.35s Added attachment named 'Step 03-explore-empty'
+    t =    29.35s Open com.Max0228.BooksBrowser
+    t =    29.35s     Launch com.Max0228.BooksBrowser
+    t =    29.35s         Terminate com.Max0228.BooksBrowser:22932
+2026-08-13 13:33:16.474 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 13:33:16.474 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    30.62s         Setting up automation session
+    t =    31.72s         Wait for com.Max0228.BooksBrowser to idle
+    t =    34.42s Checking `exists == 1 AND hittable == 1`
+    t =    34.42s     Checking existence of `"探索" Button`
+    t =    34.57s     Find the "探索" Button
+    t =    34.61s Tap "探索" Button
+    t =    34.61s     Wait for com.Max0228.BooksBrowser to idle
+    t =    34.61s     Find the "探索" Button
+    t =    34.65s     Check for interrupting elements affecting "探索" Button
+    t =    34.68s     Synthesize event
+    t =    34.97s     Wait for com.Max0228.BooksBrowser to idle
+    t =    37.24s Checking `exists == 1`
+    t =    37.24s     Checking existence of `"explore.errorState" Any`
+    t =    38.34s Checking `exists == 1`
+    t =    38.34s     Checking existence of `"explore.retryButton" Any`
+    t =    38.37s Get number of matches for: Elements matching predicate '"explore.errorState" IN identifiers'
+    t =    38.40s Get number of matches for: Elements matching predicate '"explore.retryButton" IN identifiers'
+    t =    39.49s Checking `exists == 1 AND hittable == 1`
+    t =    39.49s     Checking existence of `"explore.retryButton" Any`
+    t =    39.54s     Find the "explore.retryButton" Any
+    t =    39.59s Tap "explore.retryButton" Button
+    t =    39.59s     Wait for com.Max0228.BooksBrowser to idle
+    t =    39.59s     Find the "explore.retryButton" Button
+    t =    39.63s     Check for interrupting elements affecting "explore.retryButton" Button
+    t =    39.65s     Synthesize event
+    t =    39.93s     Wait for com.Max0228.BooksBrowser to idle
+    t =    41.14s Checking `exists == 1`
+    t =    41.14s     Checking existence of `"explore.loadedState" Any`
+    t =    41.23s Get number of matches for: Elements matching predicate '"explore.loadedState" IN identifiers'
+    t =    42.34s Checking `exists == 1`
+    t =    42.34s     Checking existence of `"explore.asset.images.explore_required" Other`
+    t =    42.43s Get number of matches for: Elements matching predicate '"explore.asset.images.explore_required" IN identifiers'
+    t =    42.49s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    42.62s Added attachment named 'Step 04-explore-retry'
+    t =    42.62s Open com.Max0228.BooksBrowser
+    t =    42.62s     Launch com.Max0228.BooksBrowser
+    t =    42.62s         Terminate com.Max0228.BooksBrowser:23181
+2026-08-13 13:33:29.740 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 13:33:29.740 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    43.89s         Setting up automation session
+    t =    44.98s         Wait for com.Max0228.BooksBrowser to idle
+    t =    47.70s Checking `exists == 1 AND hittable == 1`
+    t =    47.70s     Checking existence of `"探索" Button`
+    t =    47.82s     Find the "探索" Button
+    t =    47.87s Tap "探索" Button
+    t =    47.87s     Wait for com.Max0228.BooksBrowser to idle
+    t =    47.87s     Find the "探索" Button
+    t =    47.90s     Check for interrupting elements affecting "探索" Button
+    t =    47.92s     Synthesize event
+    t =    48.20s     Wait for com.Max0228.BooksBrowser to idle
+    t =    50.65s Checking `exists == 1`
+    t =    50.65s     Checking existence of `"explore.emptyState" Any`
+    t =    51.79s Checking `exists == 1`
+    t =    51.79s     Checking existence of `"explore.asset.images.explore_counterexample_empty" Other`
+    t =    51.84s Get number of matches for: Elements matching predicate '"explore.emptyState" IN identifiers'
+    t =    51.87s Get number of matches for: Elements matching predicate '"explore.asset.images.explore_counterexample_empty" IN identifiers'
+    t =    51.91s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    52.01s Added attachment named 'Step 05-explore-empty-counterexample'
+    t =    52.01s Open com.Max0228.BooksBrowser
+    t =    52.01s     Launch com.Max0228.BooksBrowser
+    t =    52.01s         Terminate com.Max0228.BooksBrowser:23623
+2026-08-13 13:33:39.172 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 13:33:39.172 xcodebuild[21811:30322424] [MT] IDELaunchParametersSnapshot: no debugger version
+    t =    53.32s         Setting up automation session
+    t =    54.45s         Wait for com.Max0228.BooksBrowser to idle
+    t =    57.20s Checking `exists == 1 AND hittable == 1`
+    t =    57.20s     Checking existence of `"探索" Button`
+    t =    57.31s     Find the "探索" Button
+    t =    57.35s Tap "探索" Button
+    t =    57.35s     Wait for com.Max0228.BooksBrowser to idle
+    t =    57.35s     Find the "探索" Button
+    t =    57.38s     Check for interrupting elements affecting "探索" Button
+    t =    57.41s     Synthesize event
+    t =    57.69s     Wait for com.Max0228.BooksBrowser to idle
+    t =    59.87s Checking `exists == 1`
+    t =    59.87s     Checking existence of `"explore.errorState" Any`
+    t =    59.94s Get number of matches for: Elements matching predicate '"explore.errorState" IN identifiers'
+    t =    61.00s Checking `exists == 1 AND hittable == 1`
+    t =    61.00s     Checking existence of `"explore.retryButton" Any`
+    t =    61.07s     Find the "explore.retryButton" Any
+    t =    61.12s Tap "explore.retryButton" Button
+    t =    61.12s     Wait for com.Max0228.BooksBrowser to idle
+    t =    61.12s     Find the "explore.retryButton" Button
+    t =    61.15s     Check for interrupting elements affecting "explore.retryButton" Button
+    t =    61.17s     Synthesize event
+    t =    61.45s     Wait for com.Max0228.BooksBrowser to idle
+    t =    62.64s Checking `exists == 1`
+    t =    62.64s     Checking existence of `"explore.loadedState" Any`
+    t =    63.74s Checking `exists == 1`
+    t =    63.74s     Checking existence of `"explore.deck.deck_counterexample_retry" Any`
+    t =    64.82s Checking `exists == 1`
+    t =    64.82s     Checking existence of `"explore.asset.images.explore_counterexample_retry" Other`
+    t =    64.90s Get number of matches for: Elements matching predicate '"explore.loadedState" IN identifiers'
+    t =    64.95s Get number of matches for: Elements matching predicate '"explore.deck.deck_counterexample_retry" IN identifiers'
+    t =    65.00s Get number of matches for: Elements matching predicate '"explore.asset.images.explore_counterexample_retry" IN identifiers'
+    t =    65.04s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    65.15s Added attachment named 'Step 06-explore-retry-counterexample'
+    t =    65.15s Tear Down
+Test Case '-[BooksAndVocabUITests.ExploreNavigationUITests testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates]' passed (65.444 seconds).
+Test Suite 'ExploreNavigationUITests' passed at 2026-08-13 13:33:51.511.
+	 Executed 1 test, with 0 failures (0 unexpected) in 65.444 (65.446) seconds
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 13:33:51.512.
+	 Executed 1 test, with 0 failures (0 unexpected) in 65.444 (65.447) seconds
+Test Suite 'Selected tests' passed at 2026-08-13 13:33:51.513.
+	 Executed 1 test, with 0 failures (0 unexpected) in 65.444 (65.448) seconds
+2026-08-13 13:33:51.862 xcodebuild[21811:30322424] [MT] IDETestOperationsObserverDebug: 70.425 elapsed -- Testing started completed.
+2026-08-13 13:33:51.862 xcodebuild[21811:30322424] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-08-13 13:33:51.862 xcodebuild[21811:30322424] [MT] IDETestOperationsObserverDebug: 70.425 sec, +70.425 sec -- end
+
+Test session results, code coverage, and logs:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.pU931A/Test.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

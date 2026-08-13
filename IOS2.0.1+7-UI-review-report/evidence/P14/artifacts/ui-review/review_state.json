@@ -1,0 +1,27 @@
+{
+  "schema": "kg.ui.review-state.v2",
+  "entries": [
+    {
+      "reviewer": "main-agent-visual-review",
+      "status": "pass",
+      "observedAt": "2026-08-13T12:22:43+00:00",
+      "assetIDs": [
+        "01-terminal-error-real-service",
+        "02-retry-real-service"
+      ],
+      "notes": "Quick4/contact sheet manually inspected; both required states are visually distinct, readable, and structurally coherent.",
+      "visualChecks": [
+        "Settings sheet hierarchy, sync terminal error and retry-success states, readable controls, no clipping or overlay"
+      ],
+      "manifestSHA256": "30a082682d9b04fc2198b3afefe69cc984b7434b9d014d873e1f838f17f11816",
+      "evidenceRootSHA256": "eb5e42818982209f1202b72605c0e46d209aaec4506cfcd0873fe36dea6a6175",
+      "provenance": {
+        "sourceCommit": "e36b22a4a584d9ca31931e9b704dcf65df55ae15",
+        "datasetID": "marketing_demo",
+        "datasetSHA256": "97baf2bb781a2f8023321bc2e3961929b5ae532c7b58aa4b9ee2d912aab2a1f7",
+        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
+        "selector": "--method SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess"
+      }
+    }
+  ]
+}

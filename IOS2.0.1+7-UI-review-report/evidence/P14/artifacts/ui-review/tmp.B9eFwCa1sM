@@ -1,0 +1,153 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /Users/chenliangyu/project/kg/.claude/worktrees/p14-settings-sync-lifecycle-20260813/.cache/ios-test-derived-data/f6e5ddfb491deb22bb8c1ad06c5fc34d77b35b3746e4fa762aa0405502bc35ac/Build/Products/BooksAndVocabUITests_BooksAndVocabUITests_iphonesimulator26.4-arm64_dataset_61789.scoped.xctestrun -destination "platform=iOS Simulator,id=43FA3E1B-16F8-4144-B17D-53D5E4728FC6" -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120 -resultBundlePath /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T//kg_ios_test_result.oHv14Q/Test.xcresult "-only-testing:BooksAndVocabUITests/SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess"
+
+2026-08-13 20:20:49.281 xcodebuild[66045:35585882] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.oHv14Q/Test.xcresult
+
+2026-08-13 20:20:49.285 xcodebuild[66045:35585882] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 20:20:51.081 xcodebuild[66045:35585882] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 20:20:52.543 xcodebuild[66045:35585882] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-08-13 20:20:55.086697+0800 BooksAndVocabUITests-Runner[66314:35586987] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-08-13 20:20:56.479.
+Test Suite 'BooksAndVocabUITests.xctest' started at 2026-08-13 20:20:56.479.
+Test Suite 'SettingsSyncLifecycleUITests' started at 2026-08-13 20:20:56.479.
+Test Case '-[BooksAndVocabUITests.SettingsSyncLifecycleUITests testSettingsSyncTerminalErrorRetriesToSuccess]' started.
+    t =     0.00s Start Test at 2026-08-13 20:20:56.480
+    t =     0.03s Set Up
+    t =     0.03s Open com.Max0228.BooksBrowser
+    t =     0.03s     Launch com.Max0228.BooksBrowser
+2026-08-13 20:20:56.744 xcodebuild[66045:35585882] [MT] IDELaunchParametersSnapshot: The operation couldn’t be completed. (DebuggerLLDB.DebuggerVersionStore.StoreError error 0.)
+2026-08-13 20:20:56.744 xcodebuild[66045:35585882] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[66314]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x10b4a8310) and /Library/Developer/CoreSimulator/Volumes/iOS_23E244/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.4.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10b264398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =     1.69s         Setting up automation session
+    t =     3.57s         Wait for com.Max0228.BooksBrowser to idle
+    t =     7.68s Checking `exists == 1 AND hittable == 1`
+    t =     7.68s     Checking existence of `"書庫" Button`
+    t =     7.86s     Find the "書庫" Button
+    t =     7.91s Tap "書庫" Button
+    t =     7.91s     Wait for com.Max0228.BooksBrowser to idle
+    t =     7.91s     Find the "書庫" Button
+    t =     7.95s     Check for interrupting elements affecting "書庫" Button
+    t =     7.98s     Synthesize event
+    t =     8.28s     Wait for com.Max0228.BooksBrowser to idle
+    t =    10.82s Checking `exists == 1 AND hittable == 1`
+    t =    10.82s     Checking existence of `"bookshelf.settingsButton" Button`
+    t =    10.85s     Find the "bookshelf.settingsButton" Button
+    t =    10.89s Tap "bookshelf.settingsButton" Button
+    t =    10.89s     Wait for com.Max0228.BooksBrowser to idle
+    t =    10.89s     Find the "bookshelf.settingsButton" Button
+    t =    10.92s     Check for interrupting elements affecting "bookshelf.settingsButton" Button
+    t =    10.95s     Synthesize event
+    t =    11.25s     Wait for com.Max0228.BooksBrowser to idle
+    t =    13.48s Checking `exists == 1`
+    t =    13.49s     Checking existence of `"完成" Button`
+    t =    13.76s Get number of matches for: Elements matching predicate '"完成" IN identifiers'
+    t =    13.92s Checking existence of `"設定" NavigationBar`
+    t =    14.04s Find the "設定" NavigationBar
+    t =    14.15s Find the "設定" NavigationBar
+    t =    14.26s Checking existence of `"settings.syncSummary" Button`
+    t =    14.34s Find the "settings.syncSummary" Button
+    t =    14.42s Checking existence of `"settings.home.scrollView" ScrollView`
+    t =    14.54s Find the "settings.home.scrollView" ScrollView
+    t =    14.65s Find the "settings.syncSummary" Button
+    t =    14.73s Checking existence of `"settings.home.scrollView" ScrollView`
+    t =    14.84s Checking existence of `"settings.syncSummary" Button`
+    t =    14.91s Find the "settings.syncSummary" Button
+    t =    14.99s Find the "settings.home.scrollView" ScrollView
+    t =    15.13s Swipe up "settings.home.scrollView" ScrollView
+    t =    15.13s     Wait for com.Max0228.BooksBrowser to idle
+    t =    15.13s     Find the "settings.home.scrollView" ScrollView
+    t =    15.25s     Check for interrupting elements affecting "settings.home.scrollView" ScrollView
+    t =    15.31s     Synthesize event
+    t =    15.74s     Wait for com.Max0228.BooksBrowser to idle
+    t =    18.01s Checking existence of `"settings.syncSummary" Button`
+    t =    18.13s Find the "settings.syncSummary" Button
+    t =    18.23s Checking existence of `"settings.home.scrollView" ScrollView`
+    t =    18.38s Find the "settings.home.scrollView" ScrollView
+    t =    18.49s Find the "settings.syncSummary" Button
+    t =    18.57s Find the "settings.syncSummary" Button
+    t =    18.66s Checking existence of `"settings.syncSummary" Button`
+    t =    19.80s Checking `exists == 1 AND hittable == 1`
+    t =    19.80s     Checking existence of `"settings.syncSummary" Button`
+    t =    19.88s     Find the "settings.syncSummary" Button
+    t =    19.98s Tap "settings.syncSummary" Button
+    t =    19.98s     Wait for com.Max0228.BooksBrowser to idle
+    t =    19.98s     Find the "settings.syncSummary" Button
+    t =    20.06s     Check for interrupting elements affecting "settings.syncSummary" Button
+    t =    20.16s     Synthesize event
+    t =    20.45s     Wait for com.Max0228.BooksBrowser to idle
+    t =    20.47s Waiting 5.0s for "settings.syncLifecycle" Other to exist
+    t =    21.54s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.syncLifecycle" Other`
+    t =    21.54s         Checking existence of `"settings.syncLifecycle" Other`
+    t =    21.87s Get number of matches for: Elements matching predicate '"settings.syncLifecycle" IN identifiers'
+    t =    22.14s Find the "settings.syncLifecycle" Other
+    t =    22.31s Find the "settings.syncLifecycle" Other
+    t =    22.43s Get number of matches for: Elements matching predicate '"settings.syncLifecycle.status" IN identifiers'
+    t =    22.55s Find the "settings.syncLifecycle.status" StaticText
+    t =    22.67s Checking existence of `"settings.syncLifecycle.terminalMarker" StaticText`
+    t =    22.79s Find the "settings.syncLifecycle.terminalMarker" StaticText
+    t =    22.91s Find the "settings.syncLifecycle.terminalMarker" StaticText
+    t =    23.03s Checking existence of `"settings.syncLifecycle.evidence" StaticText`
+    t =    23.15s Find the "settings.syncLifecycle.evidence" StaticText
+    t =    23.27s Checking existence of `"settings.syncLifecycle.retryButton" Button`
+    t =    23.38s Checking existence of `"settings.syncLifecycle.message" StaticText`
+    t =    23.50s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    23.66s Added attachment named 'Step 01-terminal-error-real-service'
+    t =    23.67s Checking existence of `"settings.syncLifecycle.retryButton" Button`
+    t =    24.85s Checking `exists == 1 AND hittable == 1`
+    t =    24.85s     Checking existence of `"settings.syncLifecycle.retryButton" Button`
+    t =    25.00s     Find the "settings.syncLifecycle.retryButton" Button
+    t =    25.13s Tap "settings.syncLifecycle.retryButton" Button
+    t =    25.13s     Wait for com.Max0228.BooksBrowser to idle
+    t =    25.13s     Find the "settings.syncLifecycle.retryButton" Button
+    t =    25.25s     Check for interrupting elements affecting "settings.syncLifecycle.retryButton" Button
+    t =    25.32s     Synthesize event
+    t =    25.61s     Wait for com.Max0228.BooksBrowser to idle
+    t =    25.62s Waiting 5.0s for "settings.syncLifecycle" Other to exist
+    t =    26.68s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.syncLifecycle" Other`
+    t =    26.69s         Checking existence of `"settings.syncLifecycle" Other`
+    t =    26.85s Get number of matches for: Elements matching predicate '"settings.syncLifecycle" IN identifiers'
+    t =    26.97s Find the "settings.syncLifecycle" Other
+    t =    27.09s Find the "settings.syncLifecycle" Other
+    t =    27.21s Get number of matches for: Elements matching predicate '"settings.syncLifecycle.status" IN identifiers'
+    t =    27.33s Find the "settings.syncLifecycle.status" StaticText
+    t =    27.45s Checking existence of `"settings.syncLifecycle.terminalMarker" StaticText`
+    t =    27.57s Find the "settings.syncLifecycle.terminalMarker" StaticText
+    t =    27.69s Find the "settings.syncLifecycle.terminalMarker" StaticText
+    t =    27.81s Checking existence of `"settings.syncLifecycle.evidence" StaticText`
+    t =    27.93s Find the "settings.syncLifecycle.evidence" StaticText
+    t =    28.05s Checking existence of `"settings.syncLifecycle.retryButton" Button`
+    t =    28.16s Checking existence of `"settings.syncLifecycle.dismissButton" Button`
+    t =    28.27s Find the Target Application 'com.Max0228.BooksBrowser'
+    t =    28.43s Added attachment named 'Step 02-retry-real-service'
+    t =    28.43s Checking existence of `"settings.syncLifecycle.dismissButton" Button`
+    t =    29.60s Checking `exists == 1 AND hittable == 1`
+    t =    29.60s     Checking existence of `"settings.syncLifecycle.dismissButton" Button`
+    t =    29.79s     Find the "settings.syncLifecycle.dismissButton" Button
+    t =    29.93s Tap "settings.syncLifecycle.dismissButton" Button
+    t =    29.93s     Wait for com.Max0228.BooksBrowser to idle
+    t =    29.93s     Find the "settings.syncLifecycle.dismissButton" Button
+    t =    30.05s     Check for interrupting elements affecting "settings.syncLifecycle.dismissButton" Button
+    t =    30.12s     Synthesize event
+    t =    30.41s     Wait for com.Max0228.BooksBrowser to idle
+    t =    30.42s Get number of matches for: Elements matching predicate '"settings.syncLifecycle" IN identifiers'
+    t =    30.72s Tear Down
+Test Case '-[BooksAndVocabUITests.SettingsSyncLifecycleUITests testSettingsSyncTerminalErrorRetriesToSuccess]' passed (30.976 seconds).
+Test Suite 'SettingsSyncLifecycleUITests' passed at 2026-08-13 20:21:27.456.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.976 (30.977) seconds
+Test Suite 'BooksAndVocabUITests.xctest' passed at 2026-08-13 20:21:27.457.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.976 (30.978) seconds
+Test Suite 'Selected tests' passed at 2026-08-13 20:21:27.458.
+	 Executed 1 test, with 0 failures (0 unexpected) in 30.976 (30.979) seconds
+2026-08-13 20:21:27.778 xcodebuild[66045:35585882] [MT] IDETestOperationsObserverDebug: 36.672 elapsed -- Testing started completed.
+2026-08-13 20:21:27.778 xcodebuild[66045:35585882] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-08-13 20:21:27.778 xcodebuild[66045:35585882] [MT] IDETestOperationsObserverDebug: 36.672 sec, +36.672 sec -- end
+
+Test session results, code coverage, and logs:
+	/var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/kg_ios_test_result.oHv14Q/Test.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
