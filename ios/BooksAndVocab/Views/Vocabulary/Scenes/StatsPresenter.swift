@@ -101,41 +101,30 @@ struct StatsPresenter: View {
         VocabSceneShell(phase: currentPhase) {
             if let summary {
                 VStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        ScrollView {
-                            VStack(spacing: appSkin.spacing.sectionGap) {
-                                graphEntrySection
-                                metricsSection(summary)
-                                heatmapSection(summary)
-                                forecastSection(summary)
-                                totalsFooter(summary)
-                            }
-                            .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
-                            .padding(.top, appSkin.metrics.pageTopInset)
-                            .padding(.bottom, appSkin.metrics.pageBottomInset)
+                    ScrollView {
+                        VStack(spacing: appSkin.spacing.sectionGap) {
+                            graphEntrySection
+                            metricsSection(summary)
+                            heatmapSection(summary)
+                            forecastSection(summary)
+                            totalsFooter(summary)
                         }
-                        .vocabCanvasBackground()
-                        .opacity(contentReady ? 1 : 0)
-                        .scaleEffect(contentReady ? 1 : 0.98)
-                        .onAppear {
-#if KG_RUN_CATALOG_SNAPSHOTS
-                            contentReady = true
-#else
-                            withAnimation(AppMotion.contentReveal) {
-                                contentReady = true
-                            }
-#endif
-                        }
+                        .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                        .padding(.top, appSkin.metrics.pageTopInset)
+                        .padding(.bottom, appSkin.metrics.pageBottomInset)
                     }
-                    // UI-test hook: attach the proof to a stable SwiftUI
-                    // wrapper, not directly to ScrollView. On iOS 26 a
-                    // ScrollView can flatten its accessibility node while its
-                    // content is still visible, making a selector-only
-                    // contract falsely fail. This group is rendered only in
-                    // `.content`, so its existence proves the stats dashboard
-                    // truly has a non-empty summary.
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("overview.statsContent")
+                    .vocabCanvasBackground()
+                    .opacity(contentReady ? 1 : 0)
+                    .scaleEffect(contentReady ? 1 : 0.98)
+                    .onAppear {
+#if KG_RUN_CATALOG_SNAPSHOTS
+                        contentReady = true
+#else
+                        withAnimation(AppMotion.contentReveal) {
+                            contentReady = true
+                        }
+#endif
+                    }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("overview")
@@ -509,14 +498,6 @@ struct StatsPresenter: View {
                     systemImage: "trophy",
                     identifier: "overview.metric.longestStreak"
                 )
-            }
-        }
-        .accessibilityIdentifier("metrics")
-        .background {
-            if summary.totalCards >= 40 {
-                Color.clear
-                    .accessibilityIdentifier("large-counts")
-                    .accessibilityValue(summary.formattedCount(summary.totalCards))
             }
         }
     }

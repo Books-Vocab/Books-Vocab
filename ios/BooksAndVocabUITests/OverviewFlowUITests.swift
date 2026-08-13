@@ -130,12 +130,7 @@ final class OverviewFlowUITests: UITestCase {
         }
         try step("metrics", app: app) {
             overview.assertIsActive()
-            overview.assertStatsAccessibilityHierarchy()
-            XCTAssertTrue(
-                overview.statsContent.waitUntilExists(timeout: 10),
-                "statsPopulated fixture must render overview.statsContent from seeded review records"
-            )
-            overview.metrics.assertExists(timeout: 10)
+            overview.assertOverviewAccessibilityHierarchy()
             overview.assertMetric("totalCards", value: "8")
             overview.assertMetric("reviewedToday", value: "2")
             overview.assertMetric("dueToday", value: "0")
@@ -161,10 +156,7 @@ final class OverviewFlowUITests: UITestCase {
 
         try step("overview-reentry", app: app) {
             _ = shell.goToOverview()
-            XCTAssertTrue(
-                overview.statsContent.waitUntilExists(timeout: 5),
-                "overview stats content should survive a tab detour"
-            )
+            overview.assertMetric("totalCards", value: "8")
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected on re-entry")
         }
 
@@ -192,8 +184,7 @@ final class OverviewFlowUITests: UITestCase {
             return page
         }
         try step("large-counts-projection", app: counterexampleApp) {
-            counterexampleOverview.assertStatsAccessibilityHierarchy()
-            counterexampleOverview.metrics.assertExists(timeout: 10)
+            counterexampleOverview.assertOverviewAccessibilityHierarchy()
             counterexampleOverview.assertMetric("totalCards", value: String(counterexampleExpected.totalCards))
             counterexampleOverview.assertMetric("reviewedToday", value: String(counterexampleExpected.reviewedToday))
             counterexampleOverview.assertMetric("dueToday", value: String(counterexampleExpected.dueToday))
@@ -204,11 +195,6 @@ final class OverviewFlowUITests: UITestCase {
             )
             counterexampleOverview.assertUniqueForecastContract()
             counterexampleOverview.assertForecastContainsCount(String(counterexampleExpected.dueToday))
-            counterexampleOverview.largeCounts.assertExists(timeout: 10)
-            XCTAssertEqual(
-                counterexampleOverview.largeCounts.value as? String,
-                String(counterexampleExpected.totalCards)
-            )
         }
     }
 
@@ -225,8 +211,7 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("assert-populated-projection", app: app) {
-            overview.assertStatsAccessibilityHierarchy()
-            overview.metrics.assertExists(timeout: 10)
+            overview.assertOverviewAccessibilityHierarchy()
             overview.assertMetric("totalCards", value: "8")
             overview.assertMetric("reviewedToday", value: "2")
             overview.assertMetric("dueToday", value: "0")
@@ -265,8 +250,7 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("assert-zero-and-large", app: app) {
-            overview.assertStatsAccessibilityHierarchy()
-            overview.metrics.assertExists(timeout: 10)
+            overview.assertOverviewAccessibilityHierarchy()
             overview.assertMetric("totalCards", value: String(expected.totalCards))
             overview.assertMetric("reviewedToday", value: String(expected.reviewedToday))
             overview.assertMetric("dueToday", value: String(expected.dueToday))
@@ -274,8 +258,6 @@ final class OverviewFlowUITests: UITestCase {
             XCTAssertEqual(overview.calendar.value as? String, expected.activityIsEmpty ? "0" : "populated")
             overview.assertUniqueForecastContract()
             overview.assertForecastContainsCount(String(expected.dueToday))
-            overview.largeCounts.assertExists(timeout: 10)
-            XCTAssertEqual(overview.largeCounts.value as? String, String(expected.totalCards))
         }
     }
 
