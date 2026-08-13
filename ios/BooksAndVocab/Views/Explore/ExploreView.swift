@@ -212,6 +212,7 @@ struct ExploreView: View {
                         onRetry: { Task { await refreshCatalog() } }
                     )
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("explore.partialState")
                 }
                 filterBar
@@ -223,6 +224,9 @@ struct ExploreView: View {
         #if !targetEnvironment(macCatalyst)
         .refreshable { await refreshCatalog() }
         #endif
+        // Keep the state marker on one semantic container; without `.contain`
+        // SwiftUI propagates the identifier onto every rendered child.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("explore.loadedState")
     }
 
@@ -318,6 +322,7 @@ struct ExploreView: View {
                 fixtureAssetProof
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("explore.emptyState")
     }
 
@@ -356,6 +361,7 @@ struct ExploreView: View {
                 fixtureAssetProof
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("explore.errorState")
     }
 
@@ -383,6 +389,7 @@ struct ExploreView: View {
             Spacer()
         }
         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("explore.loadingState")
     }
 
