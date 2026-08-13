@@ -81,5 +81,5 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
   .ticket-body{padding-inline:12px}
   .ticket-body p{overflow-wrap:anywhere}
   .tree-mobile-list .tree-ticket{min-height:44px;min-width:44px}
-  .tree-controls{grid-template-columns:1fr auto;gap:4px 9px}.tree-controls input{grid-column:1/-1}
+  .tree-controls{display:none}
 }
