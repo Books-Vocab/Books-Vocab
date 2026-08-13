@@ -151,7 +151,12 @@ struct DictionaryLookupPage {
     }
 
     private func stateMarker(_ state: CanonicalLookupState) -> XCUIElement {
-        element("addLink.dictionary.\(state.accessibilitySuffix)")
+        // SwiftUI/List mounts the result marker asynchronously. Resolve a
+        // first match now, wait for it to mount, then assert cardinality in
+        // `assertCanonicalState`; an eager count here races the AX update.
+        app.descendants(matching: .any)
+            .matching(identifier: "addLink.dictionary.\(state.accessibilitySuffix)")
+            .firstMatch
     }
 
     private func assertUnique(
