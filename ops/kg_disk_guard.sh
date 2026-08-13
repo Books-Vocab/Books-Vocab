@@ -135,13 +135,18 @@ trim_logs() {
 }
 
 evict_keyed_caches() {
-  local root
+  local root old_scan="${KG_DISK_GUARD_SCAN_WORKTREES:-0}"
   export KG_IOS_CACHE_KEEP="$KEEP"
   export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$MIN_AGE_HOURS"
   export KG_IOS_CACHE_EVICT_DRY_RUN="$DRY_RUN"
+  # Pressure is the only time we pay for worktree discovery.  active_build was
+  # checked before this function, so an in-flight xcodebuild never gets scanned
+  # or deleted; healthy periodic ticks remain cheap and fixed-root only.
+  export KG_DISK_GUARD_SCAN_WORKTREES=1
   while IFS= read -r root; do
     kg_ios_cache_evict "$root" "" || true
   done < <(cache_roots)
+  export KG_DISK_GUARD_SCAN_WORKTREES="$old_scan"
 }
 
 evict_old_app_derived_data() {
