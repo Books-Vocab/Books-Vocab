@@ -21,11 +21,11 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(materialization.waitUntilValueContains(
             "sense-1|example-1|dictionary.lookup.result|marketing_demo|d28b72ea22a689a77cdfb4979e14340a78a7af9e6a37c658429b72ac2ebbd25e|catalog_reader_epub|",
             timeout: 5
-        ))
+        ), "materialization AX value did not contain the typed provenance prefix: \(String(describing: materialization.value))")
         XCTAssertTrue(materialization.waitUntilValueContains(
             "|1690|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
             timeout: 5
-        ))
+        ), "materialization AX value did not contain the asset integrity suffix: \(String(describing: materialization.value))")
         page.tapSense(id: "sense-1")
         page.tapExample(id: "example-1")
         page.tapMaterialize()
