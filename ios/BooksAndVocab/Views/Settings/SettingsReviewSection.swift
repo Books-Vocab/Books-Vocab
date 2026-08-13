@@ -336,43 +336,6 @@ struct SettingsReviewSection: View {
     }
 }
 
-private struct NativeSettingsPauseSwitch: UIViewRepresentable {
-    @Binding var isOn: Bool
-    let accessibilityLabel: String
-
-    final class Coordinator: NSObject {
-        var binding: Binding<Bool>
-
-        init(binding: Binding<Bool>) {
-            self.binding = binding
-        }
-
-        @objc func valueChanged(_ sender: UISwitch) {
-            binding.wrappedValue = sender.isOn
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(binding: $isOn)
-    }
-
-    func makeUIView(context: Context) -> UISwitch {
-        let control = UISwitch()
-        control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
-        control.accessibilityLabel = accessibilityLabel
-        control.accessibilityIdentifier = "settings.review.pauseToggle"
-        return control
-    }
-
-    func updateUIView(_ uiView: UISwitch, context: Context) {
-        if uiView.isOn != isOn {
-            uiView.setOn(isOn, animated: false)
-        }
-        uiView.accessibilityLabel = accessibilityLabel
-        uiView.accessibilityIdentifier = "settings.review.pauseToggle"
-    }
-}
-
 private extension Double {
     func rounded(toDecimalPlaces places: Int) -> Double {
         let factor = pow(10.0, Double(places))
