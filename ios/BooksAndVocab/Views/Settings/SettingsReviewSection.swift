@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 複習節奏 — 三個設定頁共用的**原生**心智模型（見 APP-20260808-240a94 / f0770b）：
 /// 容器 = `Form`，分組 = `Section` + `SettingsSectionHeader` / `SettingsSectionFooter`，
@@ -34,20 +35,18 @@ struct SettingsReviewSection: View {
 
     private var pauseSection: some View {
         Section {
-            // Keep the visible label outside Toggle. On iOS 26, a labelled Toggle
-            // inside Form exposes a row proxy plus a nested Switch in AX; the
-            // identifier then lands on the non-actionable proxy and UITest taps
-            // never reach the binding. A labels-hidden switch gives the test and
-            // VoiceOver one stable control while retaining the native Form row.
-            HStack {
+            // Form wraps SwiftUI.Toggle in a full-row AX proxy and a nested
+            // switch on iOS 26. The proxy receives the identifier and XCTest's
+            // tap, while the real switch remains a child without that id. Keep
+            // the Form row, but expose one UIKit-native UISwitch directly so
+            // the identifier and action share the same accessibility element.
+            LabeledContent {
+                NativeSettingsPauseSwitch(
+                    isOn: pauseBinding,
+                    accessibilityLabel: L10n.string("凍結複習時鐘")
+                )
+            } label: {
                 Text(L10n.string("凍結複習時鐘"))
-                    .accessibilityHidden(true)
-                Spacer(minLength: appSkin.spacing.inlineGap)
-                Toggle("", isOn: pauseBinding)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .accessibilityLabel(L10n.string("凍結複習時鐘"))
-                    .accessibilityIdentifier("settings.review.pauseToggle")
             }
         } header: {
             SettingsSectionHeader(title: L10n.string("暫停進度"), icon: "pause.circle")
@@ -239,6 +238,43 @@ struct SettingsReviewSection: View {
         let newValue = (updated[keyPath: keyPath] + delta).rounded(toDecimalPlaces: 10)
         updated[keyPath: keyPath] = Swift.min(max, Swift.max(min, newValue))
         Task { await onModeChanged(updated) }
+    }
+}
+
+private struct NativeSettingsPauseSwitch: UIViewRepresentable {
+    @Binding var isOn: Bool
+    let accessibilityLabel: String
+
+    final class Coordinator: NSObject {
+        var binding: Binding<Bool>
+
+        init(binding: Binding<Bool>) {
+            self.binding = binding
+        }
+
+        @objc func valueChanged(_ sender: UISwitch) {
+            binding.wrappedValue = sender.isOn
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(binding: $isOn)
+    }
+
+    func makeUIView(context: Context) -> UISwitch {
+        let control = UISwitch()
+        control.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
+        control.accessibilityLabel = accessibilityLabel
+        control.accessibilityIdentifier = "settings.review.pauseToggle"
+        return control
+    }
+
+    func updateUIView(_ uiView: UISwitch, context: Context) {
+        if uiView.isOn != isOn {
+            uiView.setOn(isOn, animated: false)
+        }
+        uiView.accessibilityLabel = accessibilityLabel
+        uiView.accessibilityIdentifier = "settings.review.pauseToggle"
     }
 }
 
