@@ -12,6 +12,16 @@ struct SettingsReviewSection: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
+    /// Form controls need a presentation value that can publish in the same
+    /// event turn as the tap. The store update also persists UserDefaults and
+    /// iCloud KVS; using that side-effecting path as the only Binding source
+    /// makes iOS 26's Form leave the switch stale while the write is pending.
+    /// The coordinator reconciles this draft with the authoritative store after
+    /// the async push/rollback completes.
+    @State private var optimisticPauseState: Bool?
+    @State private var optimisticMode: ReviewSettingsMode?
+    @State private var pauseMutationID = 0
+    @State private var modeMutationID = 0
 
     /// 樂觀寫本地+iCloud + push 後端 + 失敗 rollback 全由 coordinator 一條龍處理。
     /// preview / 無 network 場景用 no-op default。
@@ -59,11 +69,13 @@ struct SettingsReviewSection: View {
 
     private var pauseBinding: Binding<Bool> {
         Binding(
-            get: { reviewSettingsStore.settings.isProgressPaused },
+            get: { optimisticPauseState ?? reviewSettingsStore.settings.isProgressPaused },
             set: { isPaused in
-                // Binding setter must publish the optimistic local state synchronously;
-                // an async-only setter leaves iOS 26 Form controls visibly stale until
-                // the next render pass. The coordinator still owns remote push/rollback.
+                // Publish the presentation state before entering the persistence path.
+                // The coordinator still owns the authoritative store write/rollback.
+                optimisticPauseState = isPaused
+                pauseMutationID &+= 1
+                let mutationID = pauseMutationID
                 let snapshot = reviewSettingsStore.pauseClockSnapshot
                 var updated = reviewSettingsStore.settings
                 if isPaused {
@@ -72,7 +84,11 @@ struct SettingsReviewSection: View {
                     updated.resumeProgress()
                 }
                 reviewSettingsStore.update(updated)
-                Task { await onPauseChanged(isPaused, snapshot) }
+                Task { @MainActor in
+                    await onPauseChanged(isPaused, snapshot)
+                    guard mutationID == pauseMutationID else { return }
+                    optimisticPauseState = reviewSettingsStore.settings.isProgressPaused
+                }
             }
         )
     }
@@ -117,13 +133,20 @@ struct SettingsReviewSection: View {
 
     private var modeBinding: Binding<ReviewSettingsMode> {
         Binding(
-            get: { reviewSettingsStore.settings.mode },
+            get: { optimisticMode ?? reviewSettingsStore.settings.mode },
             set: { mode in
+                optimisticMode = mode
+                modeMutationID &+= 1
+                let mutationID = modeMutationID
                 let snapshot = reviewSettingsStore.reviewModeSnapshot
                 var updated = reviewSettingsStore.settings
                 updated.mode = mode
                 reviewSettingsStore.update(updated)
-                Task { await onModeChanged(updated, snapshot) }
+                Task { @MainActor in
+                    await onModeChanged(updated, snapshot)
+                    guard mutationID == modeMutationID else { return }
+                    optimisticMode = reviewSettingsStore.settings.mode
+                }
             }
         )
     }
