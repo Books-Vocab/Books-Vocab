@@ -61,7 +61,7 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
     private var hasCustomPreferences: Bool {
         let review = ReviewSettingsStore.shared.settings
         let defaults = ReviewSettings.default
-        return AppLanguageStore.shared.selection != .system
+        return !AppLanguageStore.shared.isAtDefaultSelection
             || AppAppearanceStore.shared.selection != .system
             || TranslationLanguage.currentSource != .en
             || TranslationLanguage.currentTarget != .zhHant
