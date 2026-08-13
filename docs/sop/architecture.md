@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: f25fd2ed6
+verified_against: 3bb37a6f7
 -->
 # Books & Vocab Architecture (Offline-First & Multi-User)
 
@@ -233,6 +233,7 @@ Operational observability：
 > **注意：執行緒安全 & 帳號隔離**
 > - 所有與後端同步並寫入 SwiftData 的操作，都會使用獨立的背景 `ModelContext` 來執行，避免 UI 卡頓
 > - 帳號切換時，`AuthManager.logout()` 會自動呼叫 `clearLocalData()` 清除**app-account-scoped** 的 SwiftData（vocab / review / notebook / podcast series·episode·progress），確保隔離
+> - Settings 顯式同步在帳號邊界會取消 active resync task、拒收舊 generation 的晚到事件與 save；若既有底層 round 尚未結束，新的 Settings round 等待 process-wide sync lane，不與舊 service instance 併發寫入
 > - **例外：`Book` 刻意不清**。書庫綁 Apple ID（`CloudStore` CloudKit + per-Apple-ID 檔案）而非 app 帳號；清 Book 行只會讓重登後書架空白（檔案仍在、冷啟動 reconciler 又補回），故 `clearUserData` 排除 Book。登入轉換另呼叫 `AppOrphanBookRecovery.run` 即時補建被清空的列（2026-06-10）
 
 ---
