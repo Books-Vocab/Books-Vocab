@@ -15,9 +15,9 @@ struct SettingsReviewSection: View {
 
     /// 樂觀寫本地+iCloud + push 後端 + 失敗 rollback 全由 coordinator 一條龍處理。
     /// preview / 無 network 場景用 no-op default。
-    var onPauseChanged: (Bool) async -> Void = { _ in }
+    var onPauseChanged: (Bool, PauseClockState) async -> Void = { _, _ in }
     /// mode / 自訂 SRS 參數變更:同樣交 coordinator 一條龍(樂觀+push+rollback)。
-    var onModeChanged: (ReviewSettings) async -> Void = { _ in }
+    var onModeChanged: (ReviewSettings, ReviewModeState) async -> Void = { _, _ in }
 
     var body: some View {
         Form {
@@ -61,8 +61,18 @@ struct SettingsReviewSection: View {
         Binding(
             get: { reviewSettingsStore.settings.isProgressPaused },
             set: { isPaused in
-                // 樂觀更新 + push 後端 + 失敗 rollback 全交給 coordinator.updateReviewClock。
-                Task { @MainActor in await onPauseChanged(isPaused) }
+                // Binding setter must publish the optimistic local state synchronously;
+                // an async-only setter leaves iOS 26 Form controls visibly stale until
+                // the next render pass. The coordinator still owns remote push/rollback.
+                let snapshot = reviewSettingsStore.pauseClockSnapshot
+                var updated = reviewSettingsStore.settings
+                if isPaused {
+                    updated.pauseProgress()
+                } else {
+                    updated.resumeProgress()
+                }
+                reviewSettingsStore.update(updated)
+                Task { await onPauseChanged(isPaused, snapshot) }
             }
         )
     }
@@ -109,9 +119,11 @@ struct SettingsReviewSection: View {
         Binding(
             get: { reviewSettingsStore.settings.mode },
             set: { mode in
+                let snapshot = reviewSettingsStore.reviewModeSnapshot
                 var updated = reviewSettingsStore.settings
                 updated.mode = mode
-                Task { await onModeChanged(updated) }
+                reviewSettingsStore.update(updated)
+                Task { await onModeChanged(updated, snapshot) }
             }
         )
     }
@@ -236,10 +248,12 @@ struct SettingsReviewSection: View {
     }
 
     private func adjustParam(_ keyPath: WritableKeyPath<ReviewSettings, Double>, by delta: Double, min: Double, max: Double) {
+        let snapshot = reviewSettingsStore.reviewModeSnapshot
         var updated = reviewSettingsStore.settings
         let newValue = (updated[keyPath: keyPath] + delta).rounded(toDecimalPlaces: 10)
         updated[keyPath: keyPath] = Swift.min(max, Swift.max(min, newValue))
-        Task { await onModeChanged(updated) }
+        reviewSettingsStore.update(updated)
+        Task { await onModeChanged(updated, snapshot) }
     }
 }
 

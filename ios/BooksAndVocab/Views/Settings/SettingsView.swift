@@ -58,18 +58,20 @@ struct SettingsView: View {
                     toastCoordinator: toastCoordinator
                 )
             },
-            onPauseReviewClockChanged: { isPaused in
+            onPauseReviewClockChanged: { isPaused, previousSnapshot in
                 await coordinator.updateReviewClock(
                     isPaused: isPaused,
+                    previousSnapshot: previousSnapshot,
                     reviewSettingsStore: reviewSettingsStore,
                     authManager: authManager,
                     kgService: kgService,
                     toastCoordinator: toastCoordinator
                 )
             },
-            onReviewModeChanged: { newSettings in
+            onReviewModeChanged: { newSettings, previousSnapshot in
                 await coordinator.updateReviewMode(
                     newSettings,
+                    previousSnapshot: previousSnapshot,
                     reviewSettingsStore: reviewSettingsStore,
                     authManager: authManager,
                     kgService: kgService,

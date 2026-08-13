@@ -327,16 +327,19 @@ final class SettingsCoordinator: SettingsCoordinating {
     @discardableResult
     func updateReviewClock(
         isPaused: Bool,
+        previousSnapshot: PauseClockState? = nil,
         reviewSettingsStore: ReviewSettingsStore,
         authManager: any AuthManaging,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
-        let snapshot = reviewSettingsStore.pauseClockSnapshot   // 寫之前快照,rollback 用
+        let snapshot = previousSnapshot ?? reviewSettingsStore.pauseClockSnapshot
 
-        var s = reviewSettingsStore.settings
-        if isPaused { s.pauseProgress() } else { s.resumeProgress() }
-        reviewSettingsStore.update(s)
+        if previousSnapshot == nil {
+            var s = reviewSettingsStore.settings
+            if isPaused { s.pauseProgress() } else { s.resumeProgress() }
+            reviewSettingsStore.update(s)
+        }
         // Semantic perf mark: the optimistic local write is the moment the pause
         // state becomes effective for the UI (backend push is best-effort after).
         PerfLog.settings.mark("reviewClock.pause", "isPaused=\(isPaused)")
@@ -372,13 +375,16 @@ final class SettingsCoordinator: SettingsCoordinating {
     @discardableResult
     func updateReviewMode(
         _ newSettings: ReviewSettings,
+        previousSnapshot: ReviewModeState? = nil,
         reviewSettingsStore: ReviewSettingsStore,
         authManager: any AuthManaging,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
-        let snapshot = reviewSettingsStore.reviewModeSnapshot   // 寫之前快照,rollback 用
-        reviewSettingsStore.update(newSettings)
+        let snapshot = previousSnapshot ?? reviewSettingsStore.reviewModeSnapshot
+        if previousSnapshot == nil {
+            reviewSettingsStore.update(newSettings)
+        }
         PerfLog.settings.mark("reviewMode.changed", "mode=\(newSettings.mode.rawValue)")
 
         guard authManager.isLoggedIn else { return true }
