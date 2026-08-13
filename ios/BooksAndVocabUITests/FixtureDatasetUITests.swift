@@ -552,12 +552,12 @@ final class FixtureDatasetUITests: UITestCase {
         let anchorMonth = monthKey(for: anchorDay)
         let previousMonth = monthKey(for: anchorDay, offset: -1)
         let counts = dayCounts(in: history, timeZoneIdentifier: clock.timeZone!)
-        let emptyDay = try XCTUnwrap(
+        let emptyDayKey = try XCTUnwrap(
             emptyDay(in: previousMonth, occupied: Set(counts.local.keys)),
             "dense fixture must expose an empty day in the previous month"
         )
         let emptyCounterexampleDay = try XCTUnwrap(
-            emptyDay(in: previousMonth, occupied: Set(counts.local.keys), excluding: [emptyDay]),
+            emptyDay(in: previousMonth, occupied: Set(counts.local.keys), excluding: [emptyDayKey]),
             "dense fixture must expose a second empty day for the counterexample"
         )
         let populatedMonth = counts.local.keys
@@ -607,12 +607,12 @@ final class FixtureDatasetUITests: UITestCase {
         // All navigation and day keys are derived from the injected anchor and
         // decoded history; no localized labels or wall-clock dates are used.
         moveCalendar(calendar, from: anchorMonth, to: previousMonth)
-        guard calendar.day(emptyDay).waitUntilExists(timeout: 5) else {
+        guard calendar.day(emptyDayKey).waitUntilExists(timeout: 5) else {
             captureStep("empty-day", app: app)
             XCTFail("dense calendar fixture must expose an empty selectable day")
             return
         }
-        calendar.day(emptyDay).tapWhenReady()
+        calendar.day(emptyDayKey).tapWhenReady()
         guard calendar.emptyDayDetail.waitUntilExists(timeout: 5) else {
             captureStep("empty-day", app: app)
             XCTFail("empty-day selection must render the empty detail state")
@@ -630,7 +630,7 @@ final class FixtureDatasetUITests: UITestCase {
             return
         }
         calendar.day(populatedDay).tapWhenReady()
-        assertPopulatedDay(
+        try assertPopulatedDay(
             calendar,
             expectedCount: try XCTUnwrap(counts.local[populatedDay]),
             label: "populated-day"
@@ -886,8 +886,10 @@ final class FixtureDatasetUITests: UITestCase {
     }
 
     private func assertClockProvenance(in app: XCUIApplication) {
-        let canonical = app.descendants(matching: .any)[ReviewCalendarClockSelector.canonical]
-        let live = app.descendants(matching: .any)[ReviewCalendarClockSelector.live]
+        let canonical = app.descendants(matching: .any)
+            .matching(identifier: ReviewCalendarClockSelector.canonical)
+        let live = app.descendants(matching: .any)
+            .matching(identifier: ReviewCalendarClockSelector.live)
         XCTAssertEqual(canonical.count, 1, "UI World must expose canonical history-plan clock provenance")
         XCTAssertEqual(live.count, 0, "UI World must not expose live Date() clock provenance")
     }
