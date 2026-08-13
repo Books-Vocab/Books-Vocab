@@ -1,4 +1,47 @@
 import SwiftUI
+import CryptoKit
+
+struct NotebookCoverAsset: Equatable {
+    let path: String
+    let sha256: String
+    let byteSize: Int
+
+    var hasValidMetadata: Bool {
+        !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && byteSize > 0
+            && sha256.count == 64
+            && sha256.allSatisfy { $0.isHexDigit }
+    }
+
+    var accessibilityValue: String {
+        "sha256:\(sha256); bytes:\(byteSize); path:\(path)"
+    }
+}
+
+enum NotebookCoverSource: Equatable {
+    case procedural
+    /// Existing user-local notebook/podcast cover behavior. A missing local
+    /// file may still use the caller's procedural pattern.
+    case localFile(path: String)
+    /// Canonical UI World / installed asset. Any provenance or decode failure
+    /// is fail-closed and must never use the procedural pattern.
+    case canonicalAsset(NotebookCoverAsset)
+    case invalidCanonicalAsset
+
+    static func shouldRenderProceduralPattern(
+        for source: NotebookCoverSource,
+        imageLoaded: Bool
+    ) -> Bool {
+        switch source {
+        case .procedural:
+            return true
+        case .localFile:
+            return !imageLoaded
+        case .canonicalAsset, .invalidCanonicalAsset:
+            return false
+        }
+    }
+}
 
 enum NotebookCoverImageCache {
     private static let cache: NSCache<NSString, UIImage> = {
@@ -14,12 +57,52 @@ enum NotebookCoverImageCache {
         scale: CGFloat,
         loadData: (String) -> Data? = { path in try? Data(contentsOf: URL(fileURLWithPath: path)) }
     ) -> UIImage? {
+        image(
+            path: path,
+            displaySize: displaySize,
+            scale: scale,
+            cacheDiscriminator: nil,
+            loadData: loadData
+        )
+    }
+
+    static func image(
+        for asset: NotebookCoverAsset,
+        displaySize: CGSize,
+        scale: CGFloat,
+        loadData: (String) -> Data? = { path in try? Data(contentsOf: URL(fileURLWithPath: path)) }
+    ) -> UIImage? {
+        guard asset.hasValidMetadata else { return nil }
+        return image(
+            path: asset.path,
+            displaySize: displaySize,
+            scale: scale,
+            cacheDiscriminator: "sha256:\(asset.sha256);bytes:\(asset.byteSize);file:\(fileSignature(path: asset.path))",
+            loadData: { path in
+                guard let data = loadData(path),
+                      data.count == asset.byteSize,
+                      sha256Hex(for: data) == asset.sha256 else {
+                    return nil
+                }
+                return data
+            }
+        )
+    }
+
+    private static func image(
+        path: String,
+        displaySize: CGSize,
+        scale: CGFloat,
+        cacheDiscriminator: String?,
+        loadData: (String) -> Data?
+    ) -> UIImage? {
         let maxDimensionPoints = max(displaySize.width, displaySize.height)
         guard maxDimensionPoints.isFinite, maxDimensionPoints > 0, scale.isFinite, scale > 0 else {
             return nil
         }
         let pixelBound = max(1, Int((maxDimensionPoints * scale).rounded(.up)))
-        let key = "\(path)#\(pixelBound)#\(fileSignature(path: path))" as NSString
+        let identity = cacheDiscriminator ?? fileSignature(path: path)
+        let key = "\(path)#\(pixelBound)#\(identity)" as NSString
         if let cached = cache.object(forKey: key) {
             return cached
         }
@@ -34,6 +117,10 @@ enum NotebookCoverImageCache {
         let pixels = Int((image.size.width * image.scale * image.size.height * image.scale).rounded(.up))
         cache.setObject(image, forKey: key, cost: max(1, pixels * 4))
         return image
+    }
+
+    private static func sha256Hex(for data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     static func removeAll() {
@@ -188,27 +275,81 @@ struct NotebookCoverView: View {
     @Environment(\.displayScale) private var displayScale
     let color: Color
     let pattern: NotebookCoverPattern?
-    let coverImagePath: String?
+    let source: NotebookCoverSource
     let name: String
     /// 是否在 cover 中央渲染白色 name text。預設 true 保留既有行為(Bookshelf / Podcast /
     /// EditSheet preview / #Preview 等 5 處 callsite zero-touch);NotebookCard 在
     /// 套 editorial overlay 時傳 false,避免雙層 name 疊字。
     var showsName: Bool = true
+    var assetAccessibilityIdentifier: String? = nil
+    var assetAccessibilityLabel: String? = nil
+    var assetAccessibilityValue: String? = nil
+
+    init(
+        color: Color,
+        pattern: NotebookCoverPattern?,
+        coverImagePath: String?,
+        name: String,
+        showsName: Bool = true
+    ) {
+        self.init(
+            color: color,
+            pattern: pattern,
+            source: coverImagePath.map(NotebookCoverSource.localFile) ?? .procedural,
+            name: name,
+            showsName: showsName
+        )
+    }
+
+    init(
+        color: Color,
+        pattern: NotebookCoverPattern?,
+        source: NotebookCoverSource,
+        name: String,
+        showsName: Bool = true,
+        assetAccessibilityIdentifier: String? = nil,
+        assetAccessibilityLabel: String? = nil,
+        assetAccessibilityValue: String? = nil
+    ) {
+        self.color = color
+        self.pattern = pattern
+        self.source = source
+        self.name = name
+        self.showsName = showsName
+        self.assetAccessibilityIdentifier = assetAccessibilityIdentifier
+        self.assetAccessibilityLabel = assetAccessibilityLabel
+        self.assetAccessibilityValue = assetAccessibilityValue
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 color
 
-                if let imagePath = coverImagePath,
-                   let coverImage = loadImage(from: imagePath, displaySize: geo.size) {
-                    platformImage(coverImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
-                } else if let pattern {
-                    pattern.patternOverlay(size: geo.size)
+                switch source {
+                case .canonicalAsset(let asset):
+                    let coverImage = loadImage(for: asset, displaySize: geo.size)
+                    if let coverImage {
+                        imageLayer(coverImage, size: geo.size)
+                    } else if NotebookCoverSource.shouldRenderProceduralPattern(for: source, imageLoaded: false),
+                              let pattern {
+                        pattern.patternOverlay(size: geo.size)
+                    }
+                case .localFile(let path):
+                    let coverImage = loadImage(from: path, displaySize: geo.size)
+                    if let coverImage {
+                        imageLayer(coverImage, size: geo.size)
+                    } else if NotebookCoverSource.shouldRenderProceduralPattern(for: source, imageLoaded: false),
+                              let pattern {
+                        pattern.patternOverlay(size: geo.size)
+                    }
+                case .procedural:
+                    if NotebookCoverSource.shouldRenderProceduralPattern(for: source, imageLoaded: false),
+                       let pattern {
+                        pattern.patternOverlay(size: geo.size)
+                    }
+                case .invalidCanonicalAsset:
+                    EmptyView()
                 }
 
                 if showsName {
@@ -230,6 +371,33 @@ struct NotebookCoverView: View {
     private func loadImage(from path: String, displaySize: CGSize) -> UIImage? {
         NotebookCoverImageCache.image(path: path, displaySize: displaySize, scale: displayScale)
     }
+
+    private func loadImage(for asset: NotebookCoverAsset, displaySize: CGSize) -> UIImage? {
+        NotebookCoverImageCache.image(for: asset, displaySize: displaySize, scale: displayScale)
+    }
+
+    @ViewBuilder
+    private func imageLayer(_ image: UIImage, size: CGSize) -> some View {
+        let imageView = platformImage(image)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: size.width, height: size.height)
+            .clipped()
+#if DEBUG && targetEnvironment(simulator)
+        if let identifier = assetAccessibilityIdentifier {
+            imageView
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier(identifier)
+                .accessibilityLabel(assetAccessibilityLabel ?? name)
+                .accessibilityValue(assetAccessibilityValue ?? "")
+        } else {
+            imageView
+        }
+#else
+        imageView
+#endif
+    }
+
     private func platformImage(_ image: UIImage) -> Image {
         Image(uiImage: image)
     }

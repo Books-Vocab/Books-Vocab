@@ -107,6 +107,68 @@ struct ExploreFixtureContractTests {
         try? FileManager.default.removeItem(at: installed.url)
     }
 
+    @Test func assetMaterializationRejectsSymlinkOutsideCheckout() throws {
+        let repositoryURL = Self.marketingDemoURL
+            .deletingLastPathComponent() // ui_worlds
+            .deletingLastPathComponent() // fixtures
+            .deletingLastPathComponent() // ops
+            .deletingLastPathComponent() // repository root
+        let symlinkName = "p8-symlink-(UUID().uuidString)"
+        let symlinkURL = repositoryURL
+            .appendingPathComponent("ops/fixtures/ui_worlds")
+            .appendingPathComponent(symlinkName)
+        let outsideURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("p8-outside-(UUID().uuidString)")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: outsideURL)
+        try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: outsideURL)
+        defer {
+            try? FileManager.default.removeItem(at: symlinkURL)
+            try? FileManager.default.removeItem(at: outsideURL)
+        }
+
+        var object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: Self.marketingDemoURL)
+            ) as? [String: Any]
+        )
+        var assets = try #require(object["assets"] as? [String: Any])
+        var images = try #require(assets["images"] as? [String: Any])
+        var asset = try #require(images["explore_required"] as? [String: Any])
+        asset["sourcePath"] = "ops/fixtures/ui_worlds/(symlinkName)"
+        asset["installAs"] = "ExploreContractTests/(UUID().uuidString)/symlink.png"
+        images["explore_required"] = asset
+        assets["images"] = images
+        object["assets"] = assets
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+        let decoded = try FixtureDatasetStore.decode(data)
+        #expect(decoded.assets.asset(for: "images.explore_required")?.sourcePath == asset["sourcePath"] as? String)
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.withTestingData(data) {
+                _ = try FixtureDatasetStore.requireInstalledAsset(ref: "images.explore_required")
+            }
+        }
+    }
+
+    @Test func incompleteSharedDeckCanonicalCoverProjectionFailsClosed() {
+        let deck = SharedDeck(remoteId: "deck-p8", title: "P8")
+        deck.coverAssetID = "images.explore_required"
+        deck.coverImagePath = "/tmp/p8-cover.png"
+        deck.coverImageSHA256 = String(repeating: "a", count: 64)
+
+        #expect(ExploreDeckCoverEvidence.source(for: deck) == .invalidCanonicalAsset)
+
+        deck.coverImageByteSize = 1
+        #expect(
+            ExploreDeckCoverEvidence.source(for: deck)
+                == .canonicalAsset(.init(
+                    path: "/tmp/p8-cover.png",
+                    sha256: String(repeating: "a", count: 64),
+                    byteSize: 1
+                ))
+        )
+    }
+
     @Test @MainActor func exploreFixtureServiceFailsThenProjectsRetryThroughProductionService() async throws {
         let data = try Data(contentsOf: Self.marketingDemoURL)
         try await FixtureDatasetStore.withTestingData(data) {

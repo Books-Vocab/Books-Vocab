@@ -334,7 +334,7 @@ struct ExploreView: View {
                     .accessibilityIdentifier(UIWorldExploreFixtureID.assetSelector(for: assetID))
                     .accessibilityLabel(assetID)
                     .accessibilityValue(
-                        "sha256:\(snapshot.sha256); path:\(snapshot.url.path)"
+                        "sha256:\(snapshot.sha256); bytes:\(snapshot.byteSize); path:\(snapshot.url.path)"
                     )
                     .allowsHitTesting(false)
             } else {

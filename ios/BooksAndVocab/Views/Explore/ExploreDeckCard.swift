@@ -3,9 +3,9 @@
 //  ExploreDeckCard.swift
 //  Books & Vocab
 //
-//  Explore 目錄卡片 —— 復用 NotebookCoverView（canonical asset 或 procedural
-//  fallback）+ 官方徽章 + metadata。鏡射 PodcastSeriesCard 的視覺契約（cover z0、無
-//  border、hover lift）。
+//  Explore 目錄卡片 —— Release remote summaries without an installed canonical
+//  asset stay procedural; DEBUG UI World loaded fixtures use strict canonical
+//  assets for evidence. + official badge + metadata.
 //
 
 import SwiftUI
@@ -29,25 +29,24 @@ struct ExploreDeckCard: View {
             metadata
         }
         .appHoverLift()
-        // 整卡單一 a11y element：title + 官方 + 卡片數 + 下載 + 評分 收成一句。
-        .accessibilityElement(children: .ignore)
+        // Keep the card summary and the rendered cover image as separate
+        // accessibility projections. Evidence must not be attached to this
+        // children-ignore/navigation button projection.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(assetAccessibilityValue ?? "")
         .accessibilityAddTraits(.isButton)
-#if DEBUG && targetEnvironment(simulator)
-        .modifier(ExploreAssetAccessibilityModifier(identifier: assetAccessibilityIdentifier))
-#endif
         .enableInjection()
     }
 
     private var coverView: some View {
-        // deck 標題是使用者/策展資料（i18n 覆蓋外）→ 交給 cover 渲染，靠 lineLimit +
-        // 截斷做 render-safety；procedural cover 對 emoji/RTL/長字皆穩定。
         NotebookCoverView(
             color: coverColor,
             pattern: deck.coverPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
-            coverImagePath: deck.coverImagePath,
-            name: deck.title
+            source: ExploreDeckCoverEvidence.source(for: deck),
+            name: deck.title,
+            assetAccessibilityIdentifier: assetAccessibilityIdentifier,
+            assetAccessibilityLabel: deck.title,
+            assetAccessibilityValue: ExploreDeckCoverEvidence.accessibilityValue(for: deck)
         )
         .aspectRatio(2/3, contentMode: .fill)
         .frame(height: coverHeight)
@@ -106,24 +105,30 @@ struct ExploreDeckCard: View {
         return parts.joined(separator: L10n.string("，"))
     }
 
-    private var assetAccessibilityValue: String? {
-        guard let sha256 = deck.coverImageSHA256 else { return nil }
-        return "sha256:\(sha256); path:\(deck.coverImagePath ?? "")"
-    }
 }
 
-#if DEBUG && targetEnvironment(simulator)
-private struct ExploreAssetAccessibilityModifier: ViewModifier {
-    let identifier: String?
+enum ExploreDeckCoverEvidence {
+    static func source(for deck: SharedDeck) -> NotebookCoverSource {
+        let hasCanonicalProjection = deck.coverAssetID != nil
+            || deck.coverImagePath != nil
+            || deck.coverImageSHA256 != nil
+            || deck.coverImageByteSize != nil
+            || deck.coverImageContentType != nil
 
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let identifier {
-            content.accessibilityIdentifier(identifier)
-        } else {
-            content
+        guard hasCanonicalProjection else { return .procedural }
+        guard let path = deck.coverImagePath,
+              let sha256 = deck.coverImageSHA256,
+              let byteSize = deck.coverImageByteSize else {
+            return .invalidCanonicalAsset
         }
+        let asset = NotebookCoverAsset(path: path, sha256: sha256, byteSize: byteSize)
+        guard asset.hasValidMetadata else { return .invalidCanonicalAsset }
+        return .canonicalAsset(asset)
+    }
+
+    static func accessibilityValue(for deck: SharedDeck) -> String? {
+        guard case let .canonicalAsset(asset) = source(for: deck) else { return nil }
+        return asset.accessibilityValue
     }
 }
-#endif
 #endif
