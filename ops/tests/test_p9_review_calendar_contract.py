@@ -372,6 +372,7 @@ def test_ios_test_publishes_and_validates_p9_sidecar_as_formal_artifact() -> Non
     assert "sourceCommit" in ios_test
     assert "retrieve_p9_installed_fixture_proof" in ios_test
     assert "ios_device_files.sh" in ios_test
+    assert 'pull "Documents/Evidence/$EVIDENCE_DATASET_ID.json"' in ios_test
 
 
 def test_ios_test_fails_closed_when_p9_outer_contract_rejects_sidecar() -> None:

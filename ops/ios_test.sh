@@ -1953,7 +1953,7 @@ retrieve_p9_installed_fixture_proof() {
   }
   local destination="$UI_TEST_SCREENSHOT_DIR/installed-fixtures/$EVIDENCE_DATASET_ID.json"
   mkdir -p "$(dirname "$destination")"
-  local pull_args=(pull "Evidence/$EVIDENCE_DATASET_ID.json" "$destination" --device "$device" --app "com.Max0228.BooksBrowser")
+  local pull_args=(pull "Documents/Evidence/$EVIDENCE_DATASET_ID.json" "$destination" --device "$device" --app "com.Max0228.BooksBrowser")
   if [[ "$(ios_test_sdk_suffix)" == "iphonesimulator" ]]; then
     pull_args+=(--simulator)
   fi
