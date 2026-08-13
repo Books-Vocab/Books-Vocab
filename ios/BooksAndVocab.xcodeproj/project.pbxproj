@@ -200,6 +200,14 @@
 			);
 			name = BooksAndVocabUITests;
 			packageProductDependencies = (
+				AA000004READIUM04 /* ReadiumShared */,
+				AA000005READIUM05 /* ReadiumStreamer */,
+				AA000006READIUM06 /* ReadiumNavigator */,
+				AA000009READIUM09 /* ReadiumAdapterGCDWebServer */,
+				E9D331AE2F521D2D00D4355C /* GoogleSignIn */,
+				E9D331B02F521D2D00D4355C /* GoogleSignInSwift */,
+				E97244EF2FC09DCA0038B2FA /* Playbook */,
+				E97244F32FC09DCA0038B2FA /* PlaybookUI */,
 			);
 			productName = BooksAndVocabUITests;
 			productReference = E9EC4E2B2F4DD27200C3FFB6 /* BooksAndVocabUITests.xctest */;

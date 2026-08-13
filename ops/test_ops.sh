@@ -218,6 +218,7 @@ run_one() {
       ./ops/test_ios_ops.sh &&
       ./ops/tests/test_ios_ops_release_heartbeat.sh &&
       ./ops/tests/test_ios_xctestrun_cache.sh &&
+      ./ops/tests/test_ios_ui_test_package_dependencies.sh &&
       "$UV_BIN" run --project backend python -m pytest -q \
         ops/tests/test_ios_diagnostics.py \
         ops/tests/test_ios_coverage.py &&
