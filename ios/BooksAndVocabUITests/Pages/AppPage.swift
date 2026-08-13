@@ -6,30 +6,36 @@ struct AppPage {
 
     // MARK: - Tab Bar
 
-    /// Tab order: 書庫 → 播客 → 單字本 → 統計
-    /// Located by L10n label because SwiftUI `.tabItem.accessibilityIdentifier`
-    /// does not propagate to the underlying UIKit tab bar item.
+    /// Tab order: bookshelf → podcasts → notebooks → overview → explore.
+    /// Tab labels are localized, so page objects must use the system-image
+    /// identifier exposed by the native tab bar rather than a translated title.
+    private func tab(_ identifier: String, fallbackLabel: String) -> XCUIElement {
+        let identified = app.tabBars.buttons[identifier]
+        if identified.exists {
+            return identified
+        }
+        return exactlyOne(fallbackLabel, in: app.tabBars.buttons)
+    }
+
     var bookshelfTab: XCUIElement {
-        tab("書庫")
+        tab("tab.bookshelf", fallbackLabel: "書庫")
     }
 
     var podcastTab: XCUIElement {
-        tab("播客")
+        tab("tab.podcasts", fallbackLabel: "播客")
     }
 
     var notebookTab: XCUIElement {
-        let identifier = app.tabBars.buttons["tab.notebooks"]
-        if identifier.exists { return identifier }
-        return tab("單字本")
+        tab("tab.notebooks", fallbackLabel: "單字本")
     }
 
     var overviewTab: XCUIElement {
-        tab("總覽")
+        tab("tab.overview", fallbackLabel: "總覽")
     }
 
     /// Explore（共享牌組庫）—— 第 5 個 tab（`KGFeatureFlags.exploreEnabled`，2026-08-05 起 Release 亦開）。
     var exploreTab: XCUIElement {
-        tab("探索")
+        tab("tab.explore", fallbackLabel: "探索")
     }
 
     // MARK: - Global Overlays
@@ -46,13 +52,7 @@ struct AppPage {
 
     @discardableResult
     func goToBookshelf(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
-        guard let tab = app.tabBars.buttons.matching(identifier: "書庫").exactlyOneElement(
-            timeout: 5,
-            named: "Bookshelf tab",
-            file: file,
-            line: line
-        ) else { return BookshelfPage(app: app) }
-        tab.tapWhenReady(file: file, line: line)
+        bookshelfTab.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
     }
 
@@ -195,10 +195,6 @@ struct AppPage {
             file: file,
             line: line
         )
-    }
-
-    private func tab(_ label: String) -> XCUIElement {
-        exactlyOne(label, in: app.tabBars.buttons)
     }
 
     private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
