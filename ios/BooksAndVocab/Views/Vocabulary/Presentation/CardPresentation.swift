@@ -25,6 +25,7 @@ struct CardLinkGroupPresentation: Identifiable {
 }
 
 struct CardPresentation {
+    let kgCardId: String?
     let word: String
     let translation: String
     let partOfSpeech: String?
@@ -44,6 +45,7 @@ struct CardPresentation {
     let document: CardDocument
 
     init(entry: VocabularyEntry, linkOrdering: [String] = Self.defaultLinkOrdering) {
+        kgCardId = entry.kgCardId
         word = entry.word
         translation = entry.translation
         partOfSpeech = entry.partOfSpeech

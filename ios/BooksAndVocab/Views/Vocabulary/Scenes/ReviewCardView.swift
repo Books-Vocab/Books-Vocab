@@ -189,6 +189,7 @@ struct ReviewCardView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(interactive ? "todayReview.card.front" : "")
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
+            .accessibilityValue(evidenceIdentityValue(for: card))
             .accessibilityHint(showsAnswer || !interactive ? "" : "點一下翻轉卡片".localized)
             .accessibilityAction {
                 guard !showsAnswer, interactive else { return }
@@ -371,6 +372,7 @@ struct ReviewCardView: View {
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("todayReview.card.back")
                         .accessibilityLabel(L10n.format("翻譯：%@", answerText))
+                        .accessibilityValue(evidenceIdentityValue(for: card))
                 } else {
                     let _ = PerfLog.review.mark("back.stub", "w=\(card.word)")
                     Color.clear
@@ -385,6 +387,10 @@ struct ReviewCardView: View {
             )
             .offset(y: -TodayReviewMetrics.chevronButtonSize / 2)
         }
+    }
+
+    private func evidenceIdentityValue(for card: CardPresentation) -> String {
+        "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
     }
 
     func combinedAnswerContent(_ currentCard: ReviewCardContent, viewport: ReviewCardViewport) -> some View {

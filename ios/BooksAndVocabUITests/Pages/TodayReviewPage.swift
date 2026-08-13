@@ -13,6 +13,92 @@ struct TodayReviewPage {
         case scroll
     }
 
+    struct CardIdentity: Equatable {
+        enum ReviewMode: String {
+            case recognition
+            case production
+        }
+
+        enum LayoutPreset: String {
+            case standard
+            case compact
+        }
+
+        let cardID: String
+        let frontWord: String
+        let mode: ReviewMode
+        let preset: LayoutPreset
+        let translationPrefix: String
+        let minimumTranslationLength: Int
+
+        static let p12ProbeRecognitionCompact = CardIdentity(
+            cardID: "probe-001",
+            frontWord: "probeword001",
+            mode: .recognition,
+            preset: .compact,
+            translationPrefix: "量測卡片 1",
+            minimumTranslationLength: 0
+        )
+
+        static let p12CompactCoaxedRecognition = CardIdentity(
+            cardID: "review-card-compact-coaxed",
+            frontWord: "coaxed",
+            mode: .recognition,
+            preset: .compact,
+            translationPrefix: "說服、哄勸",
+            minimumTranslationLength: 180
+        )
+
+        static let p13Production = CardIdentity(
+            cardID: "review-card-full-coaxed",
+            frontWord: "coaxed",
+            mode: .production,
+            preset: .standard,
+            translationPrefix: "說服；以溫和、耐心",
+            minimumTranslationLength: 180
+        )
+
+        var frontRequiredFields: [String] {
+            switch (mode, preset) {
+            case (.production, .standard): ["partOfSpeech", "example"]
+            case (.recognition, .standard), (.recognition, .compact), (.production, .compact): ["partOfSpeech"]
+            }
+        }
+
+        var frontAbsentFields: [String] {
+            switch preset {
+            case .standard where mode == .production: ["explanation", "collocations"]
+            case .standard, .compact: ["example", "explanation", "collocations"]
+            }
+        }
+
+        var backRequiredFields: [String] {
+            preset == .standard
+                ? ["difficultyTier", "graphLinks", "example", "explanation", "collocations"]
+                : ["difficultyTier", "graphLinks"]
+        }
+
+        var backAbsentFields: [String] {
+            preset == .standard ? [] : ["example", "explanation", "collocations"]
+        }
+
+        func matches(_ accessibilityValue: String) -> Bool {
+            let values = Dictionary(uniqueKeysWithValues: accessibilityValue.split(separator: ";").compactMap { part -> (String, String)? in
+                let pieces = part.split(separator: "=", maxSplits: 1).map(String.init)
+                guard pieces.count == 2 else { return nil }
+                return (pieces[0], pieces[1])
+            })
+            guard values["cardID"] == cardID,
+                  values["frontWord"] == frontWord,
+                  values["mode"] == mode.rawValue,
+                  let translationLength = values["translationLength"].flatMap(Int.init),
+                  translationLength >= minimumTranslationLength else {
+                return false
+            }
+            return translationPrefix.isEmpty || values["translationPrefix"]?.hasPrefix(translationPrefix) == true
+        }
+    }
+
     // MARK: - Chrome
 
     /// "k / N" progress capsule in the top bar — the queue-position truth.
@@ -202,13 +288,15 @@ struct TodayReviewPage {
     /// accessor used by actions/readers, but it is never the cardinality contract.
     @discardableResult
     func waitForFrontReadiness(
+        identity: CardIdentity,
         presentation: CardPresentation,
-        requiredFields: [String] = [],
-        absentFields: [String] = [],
+        requiredFields: [String],
+        absentFields: [String],
         timeout: TimeInterval = 8
     ) -> Bool {
         waitForCardReadiness(
             cardIdentifier: "todayReview.card.front",
+            identity: identity,
             presentationIdentifier: presentation.identifier(for: "todayReview.card.front.content"),
             alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.front.content"),
             requiredFieldIdentifiers: requiredFields.map { "todayReview.card.front.field.\($0)" },
@@ -221,19 +309,35 @@ struct TodayReviewPage {
     /// requested field are uniquely addressable before evidence capture.
     @discardableResult
     func waitForBackReadiness(
+        identity: CardIdentity,
         presentation: CardPresentation,
         requiredFields: [String],
-        absentFields: [String] = [],
+        absentFields: [String],
         timeout: TimeInterval = 8
     ) -> Bool {
         waitForCardReadiness(
             cardIdentifier: "todayReview.card.back",
+            identity: identity,
             presentationIdentifier: presentation.identifier(for: "todayReview.card.back.content"),
             alternatePresentationIdentifier: presentation.alternate.identifier(for: "todayReview.card.back.content"),
             requiredFieldIdentifiers: requiredFields.map { "todayReview.card.back.field.\($0)" },
             absentFieldIdentifiers: absentFields.map { "todayReview.card.back.field.\($0)" },
             timeout: timeout
         )
+    }
+
+    @discardableResult
+    func waitForCardIdentity(_ identity: CardIdentity, timeout: TimeInterval = 8) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cardIsCanonical("todayReview.card.front", identity: identity) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return cardIsCanonical("todayReview.card.front", identity: identity)
+    }
+
+    func hasCardIdentity(_ identity: CardIdentity) -> Bool {
+        cardIsCanonical("todayReview.card.front", identity: identity)
     }
 
     // MARK: - Waits
@@ -267,6 +371,7 @@ struct TodayReviewPage {
 
     private func waitForCardReadiness(
         cardIdentifier: String,
+        identity: CardIdentity,
         presentationIdentifier: String,
         alternatePresentationIdentifier: String,
         requiredFieldIdentifiers: [String],
@@ -275,7 +380,7 @@ struct TodayReviewPage {
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if cardIsCanonical(cardIdentifier),
+            if cardIsCanonical(cardIdentifier, identity: identity),
                exactlyOne(presentationIdentifier),
                elements(for: alternatePresentationIdentifier).count == 0,
                requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) }),
@@ -285,19 +390,20 @@ struct TodayReviewPage {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
 
-        return cardIsCanonical(cardIdentifier)
+        return cardIsCanonical(cardIdentifier, identity: identity)
             && exactlyOne(presentationIdentifier)
             && elements(for: alternatePresentationIdentifier).count == 0
             && requiredFieldIdentifiers.allSatisfy({ exactlyOne($0) })
             && absentFieldIdentifiers.allSatisfy({ elements(for: $0).count == 0 })
     }
 
-    private func cardIsCanonical(_ identifier: String) -> Bool {
+    private func cardIsCanonical(_ identifier: String, identity: CardIdentity) -> Bool {
         let matching = elements(for: identifier)
         guard matching.count == 1 else { return false }
         let card = matching.firstMatch
         let frame = card.frame
-        return card.exists && frame.width > 0 && frame.height >= 100
+        guard card.exists && frame.width > 0 && frame.height >= 100 else { return false }
+        return (card.value as? String).map(identity.matches) == true
     }
 
     private func exactlyOne(_ identifier: String) -> Bool {

@@ -215,6 +215,12 @@ struct UITestLaunchConfiguration {
         }
         guard let data = raw.data(using: .utf8) else {
             throw UITestLaunchArgumentsError.missingUTF8
+    private func inheritedLaunchArguments() -> [String] {
+        guard let raw = ProcessInfo.processInfo.environment[uiTestAppArgumentsEnvKey] else {
+            return []
+        }
+        guard let data = raw.data(using: .utf8) else {
+            preconditionFailure("Invalid KG_UI_TEST_APP_ARGS_JSON: value is not UTF-8")
         }
         do {
             return try JSONDecoder().decode([String].self, from: data)
@@ -230,6 +236,7 @@ struct UITestLaunchConfiguration {
             )
         } catch {
             preconditionFailure("\(error)")
+            preconditionFailure("Invalid KG_UI_TEST_APP_ARGS_JSON: \(error)")
         }
     }
 }
