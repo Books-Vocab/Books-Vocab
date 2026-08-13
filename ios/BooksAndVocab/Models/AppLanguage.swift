@@ -98,6 +98,7 @@ final class AppLanguageStore: ObservableObject {
     /// without destroying an active Settings navigation transaction.
     @Published private(set) var rootRefreshID = UUID()
     private var hasDeferredRootRefresh = false
+    private var isSettingsPresentationActive = false
 
     private let defaults: UserDefaults
     private let cloud = CloudPreferencesSync.shared
@@ -124,6 +125,7 @@ final class AppLanguageStore: ObservableObject {
                   value != self.selection
             else { return }
             self.selection = value
+            self.hasDeferredRootRefresh = false
             self.rootRefreshID = UUID()
             // 語言有兩條寫入 `selection` 的路徑：Settings UI 走 `setLanguage(_:)`，
             // 跨裝置 KVS 變更走這裡。TipKit 的 reset 旗標本來只長在前者上，所以在
@@ -222,10 +224,20 @@ final class AppLanguageStore: ObservableObject {
         // turned every language switch into a trap (APP-20260806-498c25).
         // Record the intent instead; the launch path drains it before configure.
         PendingTipsReset.mark(in: defaults)
-        if preservingRootPresentation {
+        if preservingRootPresentation && isSettingsPresentationActive {
             hasDeferredRootRefresh = true
         } else {
+            hasDeferredRootRefresh = false
             rootRefreshID = UUID()
+        }
+    }
+
+    /// Keep the reset language refresh deferred only while Settings can still
+    /// render its terminal lifecycle state.
+    func setSettingsPresentationActive(_ isActive: Bool) {
+        isSettingsPresentationActive = isActive
+        if !isActive {
+            flushDeferredRootRefresh()
         }
     }
 
