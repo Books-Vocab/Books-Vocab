@@ -30,9 +30,9 @@ private enum ReaderTOCEvidenceWriterError: Error, CustomStringConvertible {
 
 extension UITestCase {
     /// Records only identity/context and observations available during the UI
-    /// body. It deliberately never opens the runner's final verdict JSON.
-    /// `assembleReaderTOCEvidencePostRun` is the post-run boundary that binds
-    /// this context to the completed runner verdict.
+    /// body. It deliberately never opens the runner's final verdict JSON. The
+    /// canonical `ios_test.sh` UI bundle retains this XCTest attachment,
+    /// screenshot directory, xcresult, and invocation verdict path together.
     func writeReaderTOCEvidence(
         label: String,
         partition: String,
@@ -46,6 +46,9 @@ extension UITestCase {
     ) throws {
         guard !label.isEmpty, !fixtureID.isEmpty, !assetID.isEmpty, !href.isEmpty else {
             throw ReaderTOCEvidenceWriterError.invalidContext("entry identity")
+        }
+        guard ReaderTOCEvidenceHref.isSafeRelative(href) else {
+            throw ReaderTOCEvidenceWriterError.invalidContext("unsafe href")
         }
         let environment = ProcessInfo.processInfo.environment
         guard let verdictFile = Self.preRunVerdictFile(from: environment) else {
@@ -130,7 +133,9 @@ extension UITestCase {
         }
         context.screenshotPath = screenshotPath
         context.entries.append(entry)
-        let errors = context.validationErrors
+        let errors = context.entries.count >= 3
+            ? context.completeValidationErrors
+            : context.validationErrors
         guard errors.isEmpty else {
             throw ReaderTOCEvidenceWriterError.invalidContext(errors.joined(separator: ","))
         }
@@ -153,35 +158,6 @@ extension UITestCase {
         )
     }
 
-    /// Post-run entrypoint for the runner/receipt layer. It is intentionally
-    /// separate from the test-body writer so a stale or not-yet-written final
-    /// verdict can never be mistaken for current evidence.
-    static func assembleReaderTOCEvidencePostRun(
-        contextURL: URL,
-        verdictURL: URL,
-        outputURL: URL
-    ) throws {
-        let context = try JSONDecoder().decode(
-            ReaderTOCEvidenceContext.self,
-            from: Data(contentsOf: contextURL)
-        )
-        let verdict = try JSONDecoder().decode(
-            ReaderTOCEvidenceRunnerVerdict.self,
-            from: Data(contentsOf: verdictURL)
-        )
-        let artifact = try ReaderTOCEvidenceAssembler.assemble(
-            context: context,
-            verdict: verdict,
-            verdictJSONPath: verdictURL.path
-        )
-        let encoded = try JSONEncoder.readerTOCEvidence.encode(artifact)
-        try FileManager.default.createDirectory(
-            at: outputURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try encoded.write(to: outputURL, options: .atomic)
-    }
-
     private static func preRunVerdictFile(
         from environment: [String: String]
     ) -> String? {
@@ -201,6 +177,9 @@ extension UITestCase {
         path: [Int],
         expectedHref: String
     ) throws -> ReaderTOCEvidenceSelectedRow {
+        guard ReaderTOCEvidenceHref.isSafeRelative(expectedHref) else {
+            throw ReaderTOCEvidenceWriterError.invalidContext("unsafe selected row href")
+        }
         let pathID = path.map(String.init).joined(separator: ".")
         let identifier = "reader.toc.chapter.\(pathID)"
         let rows = app.buttons[identifier]
@@ -212,7 +191,7 @@ extension UITestCase {
               !value.isEmpty else {
             throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(identifier)
         }
-        guard value == expectedHref else {
+        guard ReaderTOCEvidenceHref.isSafeRelative(value), value == expectedHref else {
             throw ReaderTOCEvidenceWriterError.observationMismatch("selectedRow.href")
         }
         return ReaderTOCEvidenceSelectedRow(
