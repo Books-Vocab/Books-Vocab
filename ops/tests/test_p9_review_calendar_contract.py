@@ -93,6 +93,7 @@ def test_history_plan_geometry_matches_production_timezone_and_real_day_buckets(
     assert plan["render_utc_offset_hours"] == [production_offset]
 
     lo, hi = plan["event_utc_hours"]
+    boundary = plan["review_calendar_boundary_event"]
     assert lo >= max(0, -production_offset)
     assert hi <= min(23, 23 - production_offset)
 
@@ -106,10 +107,16 @@ def test_history_plan_geometry_matches_production_timezone_and_real_day_buckets(
 
     assert buckets.get(anchor.isoformat(), 0) > 0
     # The [10,23] UTC window is the exact same-local-day intersection for the
-    # production -10 offset. A UTC/local date boundary is proved by the
-    # dedicated screenshot evidence contract, not fabricated in review data.
+    # production -10 offset. One explicit plan-owned event crosses the
+    # boundary so the UI evidence can prove UTC/local-day conversion.
+    boundary_matches = [
+        event for event in history
+        if all(event.get(key) == value for key, value in boundary.items())
+    ]
+    assert boundary_matches == [boundary]
     assert all(
-        datetime.fromisoformat(event["reviewedAt"].replace("Z", "+00:00")).date()
+        event == boundary
+        or datetime.fromisoformat(event["reviewedAt"].replace("Z", "+00:00")).date()
         == datetime.fromisoformat(event["reviewedAt"].replace("Z", "+00:00")).astimezone(zone).date()
         for event in history
     )
@@ -164,10 +171,17 @@ def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lo
             event_hours.append(instant.hour)
             local_day = instant.astimezone(zone).date().isoformat()
             day_counts[local_day] = day_counts.get(local_day, 0) + 1
-        assert all(lo <= hour <= hi for hour in event_hours), (
+        boundary = plan["review_calendar_boundary_event"]
+        assert all(
+            event == boundary or lo <= event_hours[index] <= hi
+            for index, event in enumerate(history)
+        ), (
             f"{path}: reviewHistory UTC hours escaped history_plan window "
             f"[{lo},{hi}]: {sorted(set(event_hours))}"
         )
+        assert [event for event in history if all(
+            event.get(key) == value for key, value in boundary.items()
+        )] == [boundary]
         current = 0
         cursor = anchor
         while day_counts.get(cursor.isoformat(), 0) > 0:
