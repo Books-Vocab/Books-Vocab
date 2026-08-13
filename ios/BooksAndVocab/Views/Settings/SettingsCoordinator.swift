@@ -627,12 +627,12 @@ final class SettingsCoordinator: SettingsCoordinating {
     private func markSync(_ label: StaticString, _ detail: String) {
         PerfLog.sync.mark(label, detail)
 #if DEBUG
-        syncPerfMarks.append(label.description)
+        syncPerfMarks.append(SettingsSyncPerfRecord(label: label.description, detail: detail))
 #endif
     }
 
 #if DEBUG
-    private var syncPerfMarks: [String] = []
+    private var syncPerfMarks: [SettingsSyncPerfRecord] = []
 
     private func makeSyncEvidence(
         outcome: SyncRoundOutcome,

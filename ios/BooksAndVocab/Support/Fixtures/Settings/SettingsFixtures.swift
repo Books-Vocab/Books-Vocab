@@ -289,13 +289,13 @@ struct SettingsFixtureSeed: Codable {
         /// that every field is explicit, so a new presenter field cannot drift
         /// out of the fixture surface unnoticed.
         let lastSyncedText: String?
-        /// Lifecycle provenance for the canonical terminal-error → retry flow.
-        /// Optional for backward compatibility with the frozen v2 worlds; the
-        /// canonical fixture must provide all four metadata fields together.
-        let lifecycle: SettingsSyncFixtureLifecycle?
+        /// Lifecycle provenance is required for every settings sync summary.
+        /// Legacy base-only seeds must fail decoding instead of being adapted
+        /// into an invented idle/zero/no-data state.
+        let lifecycle: SettingsSyncFixtureLifecycle
         let message: String?
-        let attempt: Int?
-        let dataOutcome: SettingsSyncDataOutcome?
+        let attempt: Int
+        let dataOutcome: SettingsSyncDataOutcome
 
         enum CodingKeys: String, CodingKey, CaseIterable {
             case isConnected
@@ -315,33 +315,18 @@ struct SettingsFixtureSeed: Codable {
                 context: "UI World settings syncSummary"
             )
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            for key in [CodingKeys.isConnected, .isSyncing, .summaryText, .lastSyncedText]
-                where !container.contains(key) {
-                throw DecodingError.keyNotFound(
-                    key,
-                    DecodingError.Context(
-                        codingPath: container.codingPath,
-                        debugDescription: "UI World settings syncSummary must explicitly declare \(key.rawValue)"
-                    )
-                )
-            }
+            try SettingsFixtureSeed.requireAllKeys(
+                in: container,
+                context: "UI World settings syncSummary"
+            )
             isConnected = try container.decode(Bool.self, forKey: .isConnected)
             isSyncing = try container.decode(Bool.self, forKey: .isSyncing)
             summaryText = try container.decode(String.self, forKey: .summaryText)
             lastSyncedText = try container.decodeIfPresent(String.self, forKey: .lastSyncedText)
-            lifecycle = try container.decodeIfPresent(SettingsSyncFixtureLifecycle.self, forKey: .lifecycle)
+            lifecycle = try container.decode(SettingsSyncFixtureLifecycle.self, forKey: .lifecycle)
             message = try container.decodeIfPresent(String.self, forKey: .message)
-            attempt = try container.decodeIfPresent(Int.self, forKey: .attempt)
-            dataOutcome = try container.decodeIfPresent(SettingsSyncDataOutcome.self, forKey: .dataOutcome)
-
-            let metadata = [lifecycle != nil, message != nil, attempt != nil, dataOutcome != nil]
-            guard metadata.allSatisfy({ $0 }) || metadata.allSatisfy({ !$0 }) else {
-                throw DecodingError.dataCorruptedError(
-                    forKey: .lifecycle,
-                    in: container,
-                    debugDescription: "UI World settings syncSummary lifecycle metadata must be all present or all absent"
-                )
-            }
+            attempt = try container.decode(Int.self, forKey: .attempt)
+            dataOutcome = try container.decode(SettingsSyncDataOutcome.self, forKey: .dataOutcome)
         }
     }
 
@@ -667,23 +652,24 @@ private enum SettingsFixtureAdapter {
         from seed: SettingsFixtureSeed.SyncSummary
     ) -> SettingsPresenterState.SyncSummaryState {
         let lifecycle: SettingsSyncLifecycle
-        if let fixtureLifecycle = seed.lifecycle {
-            switch fixtureLifecycle {
-            case .idle:
-                lifecycle = .idle
-            case .syncing:
-                lifecycle = .syncing
-            case .terminalSuccess:
-                lifecycle = .terminalSuccess
-            case .terminalError:
-                lifecycle = .terminalError(message: seed.message ?? L10n.string("同步失敗"))
-            case .retry:
-                lifecycle = .retry
-            case .dismissed:
-                lifecycle = .dismissed
+        switch seed.lifecycle {
+        case .idle:
+            lifecycle = .idle
+        case .syncing:
+            lifecycle = .syncing
+        case .terminalSuccess:
+            lifecycle = .terminalSuccess
+        case .terminalError:
+            guard let message = seed.message, !message.isEmpty else {
+                preconditionFailure(
+                    "UI World settings syncSummary terminalError must declare a non-empty message"
+                )
             }
-        } else {
-            lifecycle = seed.isSyncing ? .syncing : .idle
+            lifecycle = .terminalError(message: message)
+        case .retry:
+            lifecycle = .retry
+        case .dismissed:
+            lifecycle = .dismissed
         }
 
         return .init(
@@ -691,8 +677,8 @@ private enum SettingsFixtureAdapter {
             lifecycle: lifecycle,
             summaryText: seed.summaryText,
             lastSyncedText: seed.lastSyncedText,
-            attempt: seed.attempt ?? 0,
-            dataOutcome: seed.dataOutcome ?? .none,
+            attempt: seed.attempt,
+            dataOutcome: seed.dataOutcome,
             message: seed.message
         )
     }

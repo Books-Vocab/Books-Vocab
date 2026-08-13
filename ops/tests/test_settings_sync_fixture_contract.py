@@ -126,6 +126,18 @@ def test_validator_rejects_stale_canonical_sync_shape(tmp_path: Path):
         manifest.validate_fixture_dataset_file(path)
 
 
+def test_validator_rejects_legacy_settings_sync_shape_without_metadata(tmp_path: Path):
+    data = _load(BASELINE)
+    summary = data["settings"]["subscribed_active"]["syncSummary"]
+    for key in ("lifecycle", "message", "attempt", "dataOutcome"):
+        del summary[key]
+    path = tmp_path / "legacy-missing-metadata.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(manifest.UIWorldManifestError, match="attempt"):
+        manifest.validate_fixture_dataset_file(path)
+
+
 @pytest.mark.parametrize(
     ("field", "value", "error"),
     [
