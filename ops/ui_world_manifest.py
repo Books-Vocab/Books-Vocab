@@ -125,6 +125,9 @@ REVIEW_CALENDAR_REQUIRED_LABELS = (
 REVIEW_CALENDAR_COUNTEREXAMPLE_LABELS = (
     "empty-day-counterexample", "timezone-boundary-counterexample",
 )
+SURFACE_CONTRACTS_KEYS = {"reviewCalendar"}
+REVIEW_CALENDAR_KEYS = {"required", "counterexamples"}
+REVIEW_CALENDAR_ROW_KEYS = {"fixtureID", "stepLabel", "index", "assetIDs"}
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
@@ -2900,26 +2903,30 @@ def _validate_review_calendar_evidence(
     scenario_context: Mapping[str, Any], *, label: str, required: bool
 ) -> None:
     """Validate the portable logical asset mapping as a one-to-one map."""
-    surface = scenario_context.get("surfaceContracts")
-    if surface is None:
+    if "surfaceContracts" not in scenario_context:
         if required:
             raise UIWorldManifestError(
                 f"{label} scenarioContext.surfaceContracts.reviewCalendar is required"
             )
         return
     surface_map = _require_mapping(
-        surface, field="scenarioContext.surfaceContracts", label=label
+        scenario_context["surfaceContracts"],
+        field="scenarioContext.surfaceContracts",
+        label=label,
     )
-    review_calendar = surface_map.get("reviewCalendar")
-    if review_calendar is None:
-        if required:
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.surfaceContracts.reviewCalendar is required"
-            )
-        return
+    if "reviewCalendar" not in surface_map:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.surfaceContracts.reviewCalendar is required"
+        )
     evidence = _require_mapping(
-        review_calendar,
+        surface_map["reviewCalendar"],
         field="scenarioContext.surfaceContracts.reviewCalendar",
+        label=label,
+    )
+    _validate_exact_keys(
+        evidence,
+        expected=REVIEW_CALENDAR_KEYS,
+        owner="scenarioContext.surfaceContracts.reviewCalendar",
         label=label,
     )
     expected_groups = {
@@ -2941,11 +2948,10 @@ def _validate_review_calendar_evidence(
                 field=f"scenarioContext.surfaceContracts.reviewCalendar.{group}[{index}]",
                 label=label,
             )
-            required_keys = {"fixtureID", "stepLabel", "index", "assetIDs"}
-            if set(row_map) != required_keys:
+            if set(row_map) != REVIEW_CALENDAR_ROW_KEYS:
                 raise UIWorldManifestError(
                     f"{label} {group} evidence row keys must be "
-                    f"{sorted(required_keys)}"
+                    f"{sorted(REVIEW_CALENDAR_ROW_KEYS)}"
                 )
             step_label = _ensure_str(
                 row_map.get("stepLabel"),
@@ -3401,6 +3407,7 @@ def _validate_scenario_context(
         )
         _validate_explore_surface_projection(
             contracts["explore"], shared_decks=data["sharedDecks"], label=label)
+        review_clock_source: str | None = source
         if require_review_history_alignment:
             _validate_review_clock_history_alignment(
                 data,
@@ -3410,11 +3417,13 @@ def _validate_scenario_context(
                 source=source,
                 label=label,
             )
-        _validate_review_calendar_evidence(
-            mc,
-            label=label,
-            required=require_review_clock and source == REVIEW_CLOCK_SOURCE,
-        )
+    else:
+        review_clock_source = None
+    _validate_review_calendar_evidence(
+        mc,
+        label=label,
+        required=require_review_clock and review_clock_source == REVIEW_CLOCK_SOURCE,
+    )
 
     passage = _require_mapping(mc["readerPassage"], field="scenarioContext.readerPassage", label=label)
     pk = set(passage)

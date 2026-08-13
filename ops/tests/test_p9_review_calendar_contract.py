@@ -115,6 +115,21 @@ def test_history_plan_geometry_matches_production_timezone_and_real_day_buckets(
     )
 
 
+def test_p9_fixture_schema_keeps_exact_nested_review_calendar_keys() -> None:
+    fixture = _json(ROOT / "ops/fixtures/ui_worlds/marketing_demo.json")
+    surface = fixture["scenarioContext"]["surfaceContracts"]
+    review_calendar = surface["reviewCalendar"]
+
+    assert set(surface) == {"reviewCalendar"}
+    assert set(review_calendar) == {"required", "counterexamples"}
+    for group in ("required", "counterexamples"):
+        assert review_calendar[group]
+        assert all(
+            set(row) == {"fixtureID", "stepLabel", "index", "assetIDs"}
+            for row in review_calendar[group]
+        )
+
+
 def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lockstep() -> None:
     """The plan and shaped spec, not a stale JSON snapshot, own P9 geometry."""
     plan = _json(ROOT / "ops/demo/ui_world_seed/history_plan.json")
