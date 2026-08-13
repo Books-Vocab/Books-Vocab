@@ -45,9 +45,8 @@ struct ReaderView: View {
     // 觸發導航
     @State var navigateToLocator: (locator: Locator, id: UUID)? = nil
 
-    // 進度
+    // Readium current location
     @State var currentLocator: Locator?
-    @State var totalProgression: Double = 0
 
     // 閱讀殼層狀態：集中 header / overlay / blocker 的控制面
     @State var chromeState = ReaderChromeState()
@@ -291,7 +290,7 @@ struct ReaderView: View {
             loadingPhase: readerState.loadingPhase,
             underlineProgress: readerState.underlineProgress,
             chrome: chromeState,
-            totalProgression: readerState.progressState.progression ?? totalProgression,
+            totalProgression: readerState.runtime.totalProgression,
             bookTitle: book.title,
             progressState: readerState.progressState,
             loadingState: readerState.loadingState,
@@ -304,6 +303,7 @@ struct ReaderView: View {
 
     /// 從錯誤狀態回到 loading 並重新呼叫 `loadPublication()`。
     /// 在 error overlay 上的「重試載入」按鈕觸發。
+    @MainActor
     func retryLoadPublication() {
         _ = readerState.runtime.retry()
         readerState.resetLoadingPhase()
@@ -314,6 +314,7 @@ struct ReaderView: View {
         retryLoadTask = Task { await loadPublication() }
     }
 
+    @MainActor
     private func resolveSlowLoading() {
         guard readerState.runtime.releaseSlowLoading() else { return }
         readerState.resetLoadingPhase()
@@ -322,12 +323,16 @@ struct ReaderView: View {
         retryLoadTask = Task { await loadPublication() }
     }
 
+    @MainActor
     private func loadPublication() async {
         switch readerState.runtime.beginLoadAttempt() {
         case .holdSlow:
             readerState.isWebViewReady = false
             return
         case .failed:
+            readerState.isWebViewReady = true
+            return
+        case .empty:
             readerState.isWebViewReady = true
             return
         case .proceed:
@@ -344,6 +349,7 @@ struct ReaderView: View {
             }
             await MainActor.run {
                 publication = result.publication
+                readerState.runtime.markReady()
                 PerfLog.reader.mark("reader.opened", "title=\(book.title)")
                 handler.loadLookedUpWords(
                     from: allVocabulary,

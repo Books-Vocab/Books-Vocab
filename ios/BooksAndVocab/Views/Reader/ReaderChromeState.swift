@@ -31,7 +31,7 @@ struct ReaderViewPresenterState {
     let loadingPhase: String
     let underlineProgress: Double?
     let chrome: ReaderChromeState
-    let totalProgression: Double
+    let totalProgression: Double?
     let bookTitle: String
     let progressState: ReaderProgressState
     let loadingState: ReaderLoadingState
@@ -44,7 +44,7 @@ struct ReaderViewPresenterState {
         loadingPhase: String,
         underlineProgress: Double?,
         chrome: ReaderChromeState,
-        totalProgression: Double,
+        totalProgression: Double?,
         bookTitle: String,
         progressState: ReaderProgressState? = nil,
         loadingState: ReaderLoadingState? = nil,
@@ -59,6 +59,7 @@ struct ReaderViewPresenterState {
         self.totalProgression = totalProgression
         self.bookTitle = bookTitle
         let resolvedProgressState = progressState ?? {
+            guard let totalProgression else { return .unknown }
             if !isWebViewReady, totalProgression == 0 { return .unknown }
             return ReaderProgressState.classify(progression: totalProgression)
         }()

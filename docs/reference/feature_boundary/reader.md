@@ -36,6 +36,7 @@ verified_against: 18f37badc
 |------|------|
 | `ReaderViewState.swift` | `@Observable final class ReaderViewState`，UI 狀態容器 |
 | `ReaderChromeState.swift` | `HeaderState` + `ReaderChromeOverlay` + `ReaderChromeState` + `ReaderViewPresenterState` |
+| `ReaderRuntimeState.swift` | Reader runtime 的唯一進度/載入狀態來源；進度明確區分 `unknown` / `zero` / `middle` / `complete` / `restoreFailure`，並承接 deterministic loading fixture state |
 
 ### Domain Layer（業務邏輯）
 
@@ -63,6 +64,8 @@ verified_against: 18f37badc
 | `ReadiumNavigatorCoordinator+Messages.swift` | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
+| `ReaderPublicationLoader.swift` | MainActor-isolated publication/iCloud loader；injected load clock 只控制 iCloud polling，不改變 Readium location 的 production progress source |
+| `ReaderProgressSaver.swift` | Locator/date debounce persistence；只接受 finite、`0...1` progression，unknown/restore failure 不覆蓋既有 `Book.progression` |
 | `ReaderJSEval.swift` | `enum ReaderJSEval`，fire-and-forget `evaluateJavaScript` 結果可觀測性：`classify` 純分流（`.ok` / `.spreadNotLoaded` benign / `.failed`）+ `log` 落 `AppLog.reader`，預期 race 降 debug、真異常升 error |
 | `ReaderContentStyle.swift` | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` + `ReaderOverlayPanelPlacement` + `ReaderPanelChromeStyle` + `ReaderTOCPresentation` + `ReaderNotebookPickerPresentation` |
 | `VocabHighlightPreferences.swift` | `VocabHighlightColorPreset` + `VocabHighlightPreferences`；Reader / Podcast 共用詞庫 highlight 顏色 preset、opacity、band fraction。`ReaderSettings` 持久化 `vocab_highlight_colorPreset` / `vocab_highlight_opacity`，並保留舊 `reader_settings_underlineOpacity` fallback。 |
@@ -115,6 +118,9 @@ Reader（與 Podcast 字幕）的高亮集合**只由三個條件決定**：未 
 ## State 邊界
 
 - `ReaderViewState`：Reader 畫面 UI 狀態，不外洩到 Vocabulary / Settings
+- `ReaderRuntimeState`：Reader progress 的唯一 source of truth；`ReaderView` 不再持有 duplicated mutable `totalProgression`。Readium locator 的 progression 僅在 finite 且位於 `0...1` 時更新 `Book.progression`；nil、非 finite、越界與 restore failure 都保留既有值。
+- restore seam：`ReaderView.prepareRestoreState()` 對 invalid saved locator 只投影 `.restoreFailure` warning，不把它變成 loading error，也不以 `locksProgress` 遮蔽後續 Readium location event；首個有效 locator 會明確由 `.restoreFailure` 轉成對應 numeric state。
+- loading seam：`ReaderRuntimeState` 驅動 loading / error / retry / loaded / empty route；`ReaderPublicationLoader` 的 clock 只控制 iCloud wait polling，不能替代 runtime state 或 locator progression。
 - `ReaderChromeState` / `ReaderViewPresenterState`：chrome overlay 狀態，僅 ReaderViewPresenter 使用
 - `ReaderTranslationHandler`：翻譯/詞彙互動狀態，由 ReaderView 持有，不共用給其他 feature
 - `ReaderVocabularyContext`：詞彙查找上下文，透過 handler 傳遞，不直接暴露到 Container 外

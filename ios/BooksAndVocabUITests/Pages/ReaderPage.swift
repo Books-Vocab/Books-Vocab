@@ -271,6 +271,28 @@ struct ReaderPage {
         return app.otherElements.matching(identifier: "reader.error.\(failure)").count
     }
 
+    var emptyState: XCUIElement {
+        app.otherElements["reader.empty"]
+    }
+
+    var emptyStateCount: Int {
+        app.otherElements.matching(identifier: "reader.empty").count
+    }
+
+    var retryButton: XCUIElement {
+        app.buttons["reader.retry"]
+    }
+
+    var retryButtonCount: Int {
+        app.buttons.matching(identifier: "reader.retry").count
+    }
+
+    var loadingOverlayCount: Int {
+        app.otherElements.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "reader.loading.")
+        ).count
+    }
+
     var slowLoadingResolveButton: XCUIElement {
         app.buttons["reader.loading.resolve"]
     }

@@ -352,7 +352,8 @@ final class ReaderFlowUITests: UITestCase {
         for scenario in scenarios {
             let app = launchIsolatedApp(
                 fixtures: [.authSignedIn, .readerRealBookLibrary, .readerRuntime(scenario)],
-                extraEnvironment: Self.fixtureEnvironment
+                extraEnvironment: Self.fixtureEnvironment,
+                perfLog: "reader"
             )
             let bookshelf = AppPage(app: app).goToBookshelf()
             XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
@@ -370,34 +371,66 @@ final class ReaderFlowUITests: UITestCase {
             let provenance = String(describing: reader.runtimeState.value ?? reader.runtimeState.label)
             XCTAssertTrue(provenance.contains("dataset=marketing_demo"), provenance)
             XCTAssertTrue(provenance.contains("scenario=\(scenario.rawValue)"), provenance)
+            captureStep("loaded", app: app)
             app.terminate()
         }
     }
 
     @MainActor
     func testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess() throws {
-        for scenario in [UITestReaderRuntimeScenario.loadingSlow, .loadingMissing, .loadingErrorRetry] {
+        for scenario in [
+            UITestReaderRuntimeScenario.loadingSlow,
+            .loadingMissing,
+            .loadingErrorRetry,
+            .loadingEmpty
+        ] {
             let app = launchIsolatedApp(
                 fixtures: [.authSignedIn, .readerRealBookLibrary, .readerRuntime(scenario)],
-                extraEnvironment: Self.fixtureEnvironment
+                extraEnvironment: Self.fixtureEnvironment,
+                perfLog: "reader"
             )
             let bookshelf = AppPage(app: app).goToBookshelf()
             XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
             bookshelf.anyBookCard.tapWhenReady()
 
             let reader = ReaderPage(app: app)
+            if scenario == .loadingEmpty {
+                XCTAssertTrue(reader.emptyState.waitUntilExists(timeout: 10),
+                               "Empty route must render a visible reader.empty card")
+                XCTAssertEqual(reader.emptyStateCount, 1,
+                               "Reader empty selector must resolve exactly one visible card")
+                XCTAssertEqual(reader.retryButtonCount, 1,
+                               "Reader empty route must expose exactly one retry CTA")
+                captureStep("empty", app: app)
+                app.terminate()
+                continue
+            }
+
             if scenario == .loadingSlow {
                 XCTAssertTrue(reader.loadingState(scenario).waitUntilExists(timeout: 10))
                 XCTAssertEqual(reader.loadingStateCount(scenario), 1,
                                "Reader loading selector must resolve exactly one element: \(scenario.rawValue)")
+                captureStep("loading", app: app)
                 reader.slowLoadingResolveButton.tapWhenReady()
+                XCTAssertTrue(reader.loadingState(scenario).waitUntilGone(timeout: 10),
+                               "Resolved slow-loading overlay must disappear")
+                captureStep("retry", app: app)
             } else {
                 let error = reader.errorState(scenario)
                 XCTAssertTrue(error.waitUntilExists(timeout: 10))
                 XCTAssertEqual(reader.errorStateCount(scenario), 1,
                                "Reader error selector must resolve exactly one element: \(scenario.rawValue)")
-                XCTAssertEqual(error.buttons.count, 1, "Reader retry selector must resolve exactly one button")
-                error.buttons.element(boundBy: 0).tapWhenReady()
+                XCTAssertEqual(reader.retryButtonCount, 1,
+                               "Reader retry selector must resolve exactly one button")
+                captureStep("error", app: app)
+                reader.retryButton.tapWhenReady()
+                XCTAssertTrue(error.waitUntilGone(timeout: 10),
+                              "Error card must disappear after retry")
+                XCTAssertEqual(reader.errorStateCount(scenario), 0,
+                               "Error selector must be absent after retry")
+                XCTAssertEqual(reader.retryButtonCount, 0,
+                               "Retry CTA must disappear after retry starts")
+                captureStep("retry", app: app)
             }
 
             XCTAssertTrue(
@@ -406,6 +439,11 @@ final class ReaderFlowUITests: UITestCase {
             )
             XCTAssertEqual(reader.webViewCount, 1, "reader webView selector must resolve exactly one element")
             XCTAssertEqual(reader.contentTextCount(Self.seededWord), 1, "reader content selector must resolve exactly one element")
+            XCTAssertEqual(reader.loadingOverlayCount, 0,
+                           "Loading overlay must disappear after loaded content")
+            XCTAssertEqual(reader.retryButtonCount, 0,
+                           "Retry CTA must remain absent after loaded content")
+            captureStep("loaded", app: app)
             app.terminate()
         }
     }

@@ -7,7 +7,7 @@ import SwiftUI
 struct ReaderTopChromeModel: Equatable {
     var isExpanded: Bool
     var bookTitle: String
-    var totalProgression: Double
+    var totalProgression: Double?
     var progressState: ReaderProgressState
     var titleMaxWidth: CGFloat
 }
@@ -179,7 +179,8 @@ struct ReaderTopChrome: View, Equatable {
     private var progressText: String? {
         switch model.progressState {
         case .zero, .middle, .complete:
-            return String(format: "%.1f%%", model.totalProgression * 100)
+            guard let progression = model.totalProgression else { return nil }
+            return String(format: "%.1f%%", progression * 100)
         case .unknown, .restoreFailure:
             return nil
         }

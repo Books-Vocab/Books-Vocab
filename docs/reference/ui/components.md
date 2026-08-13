@@ -49,6 +49,7 @@ Scope: `ios/BooksAndVocab`
 - `AppSectionFooter`
 - `AppEmptyStateContent`
 - `AppEmptyStateCard`
+- `AppEmptyStateAction` — optional `accessibilityIdentifier` lets a caller expose an exact visible CTA selector without changing the shared empty-state visual pattern; semantic IDs remain owned by the feature surface.
 - `AppStateMessageContent`
 - `AppStateMessageCard`
 - `AppTabSelector`

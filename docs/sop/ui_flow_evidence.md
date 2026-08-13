@@ -24,6 +24,18 @@ verified_against: 2cf93a387
 | 5 | **KG_PERF log marks** | `ios/BooksAndVocab/Services/PerfLog.swift` | 核心行為打低頻 domain mark（如 `play.started`/`pause`/`seek`）。新常數 **append** 到 PerfLog，勿改既有 mark 名。驗證：`./ops/ios_ops.sh logs --simulator --device <udid> --debug --since 5m --predicate 'process == "BooksAndVocab" AND eventMessage CONTAINS "KG_PERF"'`。 |
 | 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 由獨立的 `uitest_contact_sheet.py` 產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）+ standalone run `UIreview.html`，並同步更新常駐 `build/snapshots/uitest-runs/UIreview.html` workspace 導覽頁。沒有任何 run 時，workspace 仍會掃 `ios/BooksAndVocabUITests/*UITests.swift` 顯示 flow / test methods / run command，狀態為 `never-run`。收尾回報**必貼** quick4 / full sheet 或直接貼 `uiVisualReview.reviewHtml`，並親眼 Read 過。這是行為測試證據，不是 Catalog gallery。 |
 
+### Reader P6/P7 runtime evidence contract
+
+Reader runtime/loading flows must launch with perfLog: reader so the app emits [KG_PERF][reader] marks. The production state transitions are evidenced by visible selectors, not hidden probes:
+
+- reader.loading.opening / reader.loading.slow → captureStep(loading)
+- reader.error.missing / reader.error.retryable + exact reader.retry → captureStep(error), then assert error and retry disappear after tapping
+- retry transition → assert loading/content transition, then captureStep(retry)
+- loaded Readium content → exact web view/content selector, loading/error/retry absent, captureStep(loaded)
+- empty route → visible reader.empty card with exact reader.retry, captureStep(empty); do not use a hidden element as empty-state evidence
+
+The production marks are reader.loading, reader.error, reader.retry, reader.loaded, and reader.empty; the injected clock controls only iCloud wait polling and is not a substitute for these runtime/UI assertions.
+
 ## 執行契約
 
 推薦使用 repo 內的 `ios-simulator-verification` helper 收斂單一 flow 的證據：

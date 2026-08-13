@@ -115,6 +115,7 @@ extension ReaderView {
                     action: AppEmptyStateAction(
                         title: L10n.string("重試載入"),
                         systemImage: "arrow.clockwise",
+                        accessibilityIdentifier: "reader.retry",
                         handler: { retryLoadPublication() }
                     )
                 )
@@ -198,6 +199,7 @@ extension ReaderView {
                     action: AppEmptyStateAction(
                         title: L10n.string("重試載入"),
                         systemImage: "arrow.clockwise",
+                        accessibilityIdentifier: "reader.retry",
                         handler: { retryLoadPublication() }
                     )
                 )

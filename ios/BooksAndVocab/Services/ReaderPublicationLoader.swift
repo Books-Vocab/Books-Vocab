@@ -34,6 +34,7 @@ struct ReaderPublicationLoader {
     let downloadManager: ICloudDownloadManager
     let clock: any ReaderLoadClock
 
+    @MainActor
     init(
         readiumService: any ReadiumServing,
         downloadManager: ICloudDownloadManager,
