@@ -52,7 +52,7 @@ verified_against: f955b8f1066c9928a3ea04bfe1828fc8aa6b84f5
 - **State matrix error states**: notebook list / podcast list / bookshelf / translation settings / today review failure feedback
 - **Sentry crash reporting**: opt-in via Info.plist `SentryDSN` + auth scrubbing + frame locals dropped + breadcrumb across services + `KGService` iOS HTTP breadcrumb
 
-## KG 懸賞板（`ops/kg_board`）
+## KG 交付工作台（`ops/kg_board`）
 
 - **Admin 唯讀工作流觀測面**：桌面版以 Admin 導航、指標、Git/worktree DAG 與雙欄票卡呈現；手機版收斂為單欄、可橫向瀏覽的 tree 與折疊票卡。上方 Git tree 顯示所有 mirror 提供的 refs/worktrees 與所有可達 commit，節點 hover/focus/click 顯示 author、時間、parents、diff stats、檔案與 branch；下方票卡預設折疊，只顯示白話摘要，展開後查看 scope/plan/fix site/acceptance。`/api/board`、`/api/history`、`/api/git-tree` 全為唯讀；排序、釘選、延後與 `/api/priority` browser write surface 已移除。主機 mirror 仍以 Bearer 寫入 claims、sync-state、git-tree，長期 token 不進頁面；tree incomplete/stale 時 UI 必須明示資料不完整或不新鮮。
 
