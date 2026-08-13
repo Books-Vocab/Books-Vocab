@@ -99,11 +99,6 @@ final class SettingsCoordinator: SettingsCoordinating {
         }
         self.settingsSyncService = resolvedService
         self.settingsSyncFixtureSummary = resolvedFixtureSummary
-#if DEBUG
-        if resolvedFixtureSummary != nil {
-            SettingsSyncFixtureEvidenceStore.shared.reset()
-        }
-#endif
 #else
         self.settingsSyncService = settingsSyncService
 #endif
