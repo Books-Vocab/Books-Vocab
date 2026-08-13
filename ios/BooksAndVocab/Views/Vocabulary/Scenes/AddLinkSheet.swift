@@ -384,6 +384,8 @@ struct AddLinkSheet: View {
             Text(entry.attributionText)
                 .lineLimit(2)
                 .truncationMode(.tail)
+                .accessibilityIdentifier("addLink.dictionary.provenance")
+                .accessibilityValue("\(entry.provider)|\(entry.attributionText)")
             if let sourceURL = URL(string: entry.sourceUrl) {
                 Link(L10n.string("addLink.openSource"), destination: sourceURL)
             }
@@ -399,8 +401,6 @@ struct AddLinkSheet: View {
         }
         .font(appSkin.typography.caption)
         .foregroundStyle(appSkin.palette.tertiaryText)
-        .accessibilityIdentifier("addLink.dictionary.provenance")
-        .accessibilityValue("\(entry.provider)|\(entry.attributionText)")
 
         if let materialization = coordinator.dictionaryMaterialization,
            let selectedSenseID = materialization.selectedSenseID,
