@@ -40,6 +40,7 @@ if str(_HERE) not in sys.path:
 import spec_world  # noqa: E402
 from review_calendar_clock import (  # noqa: E402
     HISTORY_PLAN_SOURCE,
+    append_review_calendar_boundary_event,
     canonicalize_review_history,
     clock_from_plan,
     load_history_plan,
@@ -587,7 +588,7 @@ def _validate_fixture_json_bytes(
 
 
 def _canonicalize_review_history(document: dict[str, Any], plan: Mapping[str, Any]) -> None:
-    """Apply the plan-owned event-hour boundary to every stats history seed."""
+    """Apply canonical history geometry and the named calendar boundary event."""
     vocabulary = document.get("vocabulary")
     if not isinstance(vocabulary, dict):
         raise ValueError("generated UI World vocabulary domain is missing")
@@ -598,7 +599,10 @@ def _canonicalize_review_history(document: dict[str, Any], plan: Mapping[str, An
         history = seed.get("reviewHistory")
         if not isinstance(history, list):
             raise ValueError(f"generated UI World vocabulary.{fixture_id}.reviewHistory is missing")
-        seed["reviewHistory"] = canonicalize_review_history(history, plan)
+        normalized = canonicalize_review_history(history, plan)
+        if fixture_id == "reviewCalendarDense":
+            normalized = append_review_calendar_boundary_event(normalized, plan)
+        seed["reviewHistory"] = normalized
         try:
             validate_review_history_hours(
                 seed["reviewHistory"], plan, label=f"vocabulary.{fixture_id}.reviewHistory"
@@ -615,6 +619,7 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     baseline_content = _json_bytes(baseline)
     document = _build_fixture_document(sot)
     plan = load_history_plan()
+    _canonicalize_review_history(document, plan)
     try:
         for fixture_id in REVIEW_CLOCK_HISTORY_FIXTURES:
             seed = document["vocabulary"][fixture_id]

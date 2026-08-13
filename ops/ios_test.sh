@@ -39,6 +39,7 @@
 #   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
 #   KG_IOS_TEST_ALLOW_SHARED_SIM=1 ./ops/ios_test.sh ...         # explicit opt-out for single-machine debugging
 #   KG_IOS_TEST_LOG_IDLE_LIMIT=300 ./ops/ios_test.sh ...          # fail after 300s without log writes
+#   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=240 ./ops/ios_test.sh ... # bounded long UI evidence flow
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -64,6 +65,11 @@ LOG_IDLE_LIMIT="${KG_IOS_TEST_LOG_IDLE_LIMIT:-0}"  # 0 disables the stalled-log 
 if [[ ! "$LOG_IDLE_LIMIT" =~ ^[0-9]+$ ]]; then
   echo "[ios_test] warning: ignoring non-numeric KG_IOS_TEST_LOG_IDLE_LIMIT=$LOG_IDLE_LIMIT (using 0)" >&2
   LOG_IDLE_LIMIT=0
+fi
+MAX_TEST_EXECUTION_TIME_ALLOWANCE="${KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE:-120}"
+if [[ ! "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" =~ ^[0-9]+$ ]] || (( MAX_TEST_EXECUTION_TIME_ALLOWANCE < 60 )); then
+  echo "[ios_test] warning: ignoring non-numeric/too-small KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=$MAX_TEST_EXECUTION_TIME_ALLOWANCE (using 120)" >&2
+  MAX_TEST_EXECUTION_TIME_ALLOWANCE=120
 fi
 LEASED_DEVICE=''                            # udid of an auto-leased simulator, released in cleanup
 LEASE_OWNER_TOKEN="kg-ios-test-$$-$(date +%s)-${RANDOM:-0}"
@@ -1214,7 +1220,7 @@ run_xcodebuild_test_without_building_once() {
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
-    -maximum-test-execution-time-allowance 120 \
+    -maximum-test-execution-time-allowance "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" \
     -resultBundlePath "$RESULT_BUNDLE" \
     ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
     >"$TMPOUT" 2>&1 &
@@ -1331,7 +1337,7 @@ rebuild_test_cache() {
     -parallel-testing-enabled NO \
     -test-timeouts-enabled YES \
     -default-test-execution-time-allowance 60 \
-    -maximum-test-execution-time-allowance 120 \
+    -maximum-test-execution-time-allowance "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" \
     -derivedDataPath "$DERIVED_DATA_ROOT" \
     -resultBundlePath "$build_result_bundle" \
     >"$build_log" 2>&1

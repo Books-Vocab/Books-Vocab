@@ -20,6 +20,7 @@ PLAN_SCHEMA = "kg.history_plan.v1"
 HISTORY_PLAN_SOURCE = "history_plan.anchor_day"
 LEGACY_SPEC_HISTORY_SOURCE = "legacy.spec.last_reviewed_at"
 UTC = timezone.utc
+REVIEW_CALENDAR_BOUNDARY_FIELD = "review_calendar_boundary_event"
 
 
 class ReviewClockPlanError(ValueError):
@@ -53,6 +54,87 @@ def _event_window(plan: Mapping[str, Any]) -> tuple[int, int]:
             f"history plan event_utc_hours must be within [0,23]: [{lo},{hi}]"
         )
     return lo, hi
+
+
+def review_calendar_boundary_event(
+    plan: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the one explicit UTC/local-date boundary event owned by the plan.
+
+    Ordinary history events remain inside ``event_utc_hours``. This named
+    exception exists solely to make the calendar's UTC/local-day conversion
+    observable in UI evidence; it is not a license for arbitrary out-of-window
+    timestamps.
+    """
+    active_plan = plan if plan is not None else load_history_plan()
+    raw = active_plan.get(REVIEW_CALENDAR_BOUNDARY_FIELD)
+    if not isinstance(raw, Mapping):
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD} must be an object"
+        )
+    if set(raw) != {"word", "feedback", "reviewedAt"}:
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD} keys must be "
+            "['feedback', 'reviewedAt', 'word']"
+        )
+    word = raw.get("word")
+    feedback = raw.get("feedback")
+    if not isinstance(word, str) or not word.strip():
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD}.word must be non-empty"
+        )
+    if isinstance(feedback, bool) or not isinstance(feedback, int):
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD}.feedback must be an integer"
+        )
+    instant = _parse_utc_timestamp(
+        raw.get("reviewedAt"),
+        label=f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD}.reviewedAt",
+    )
+    hour_lo, hour_hi = _event_window(active_plan)
+    try:
+        time_zone = ZoneInfo(str(active_plan["review_clock_time_zone"]))
+    except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError) as exc:
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD} timezone/anchor is invalid"
+        ) from exc
+    if instant.date() == instant.astimezone(time_zone).date():
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD} must cross a UTC/local date boundary"
+        )
+    if hour_lo <= instant.hour <= hour_hi:
+        raise ReviewClockPlanError(
+            f"history plan {REVIEW_CALENDAR_BOUNDARY_FIELD} must be outside "
+            f"event_utc_hours [{hour_lo},{hour_hi}]"
+        )
+    return {
+        "word": word,
+        "feedback": feedback,
+        "reviewedAt": instant.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def is_review_calendar_boundary_event(
+    event: Mapping[str, Any],
+    plan: Mapping[str, Any] | None = None,
+) -> bool:
+    """Whether an emitted event is exactly the plan-owned calendar exception."""
+    boundary = review_calendar_boundary_event(plan)
+    return all(event.get(key) == value for key, value in boundary.items())
+
+
+def append_review_calendar_boundary_event(
+    events: Sequence[Mapping[str, Any]],
+    plan: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Append the canonical boundary event once, preserving existing history."""
+    active_plan = plan if plan is not None else load_history_plan()
+    boundary = review_calendar_boundary_event(active_plan)
+    normalized = [dict(event) for event in events]
+    if any(is_review_calendar_boundary_event(event, active_plan) for event in normalized):
+        return normalized
+    normalized.append(boundary)
+    return normalized
 
 
 def _same_local_day_candidates(
@@ -107,6 +189,11 @@ def canonicalize_review_history(
         if not isinstance(event, Mapping):
             raise ReviewClockPlanError(f"review history event[{index}] must be an object")
         instant = _parse_utc_timestamp(event.get("reviewedAt"), label=f"review history event[{index}].reviewedAt")
+        if is_review_calendar_boundary_event(event, active_plan):
+            item = dict(event)
+            item["reviewedAt"] = review_calendar_boundary_event(active_plan)["reviewedAt"]
+            normalized.append(item)
+            continue
         local_day = instant.astimezone(time_zone).date()
         candidates = _same_local_day_candidates(
             local_day,
@@ -144,6 +231,8 @@ def validate_review_history_hours(
     hour_lo, hour_hi = _event_window(active_plan)
     for index, event in enumerate(events):
         instant = _parse_utc_timestamp(event.get("reviewedAt"), label=f"{label}[{index}].reviewedAt")
+        if is_review_calendar_boundary_event(event, active_plan):
+            continue
         if not hour_lo <= instant.hour <= hour_hi:
             raise ReviewClockPlanError(
                 f"{label}[{index}] UTC hour {instant.hour} escapes "
