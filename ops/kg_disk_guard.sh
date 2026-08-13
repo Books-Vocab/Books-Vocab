@@ -41,12 +41,19 @@ free_bytes() {
   fi
 }
 
+process_snapshot() {
+  [[ "${KG_DISK_GUARD_PROCESS_PROBE_FAIL:-0}" == "1" ]] && return 1
+  ps ax 2>/dev/null
+}
+
 active_build() {
   if [[ -n "${KG_DISK_GUARD_ACTIVE_BUILD:-}" ]]; then
     [[ "$KG_DISK_GUARD_ACTIVE_BUILD" == "1" ]] && printf '1' || printf '0'
     return
   fi
-  ps ax 2>/dev/null | grep -E '[x]codebuild|[i]os_(test|build|ops)\.sh|[u]i_quality_gate\.sh' >/dev/null 2>&1 && printf '1' || printf '0'
+  local snapshot
+  snapshot="$(process_snapshot)" || { printf '2'; return; }
+  grep -E '[x]codebuild|[i]os_(test|build|ops)\.sh|[u]i_quality_gate\.sh' <<<"$snapshot" >/dev/null 2>&1 && printf '1' || printf '0'
 }
 
 cache_roots() {
@@ -99,7 +106,9 @@ docker_active() {
   if [[ -n "${KG_DISK_GUARD_DOCKER_ACTIVE:-}" ]]; then
     [[ "$KG_DISK_GUARD_DOCKER_ACTIVE" == "1" ]] && printf '1' || printf '0'; return
   fi
-  ps ax 2>/dev/null | grep -E '[d]ocker (build|builder|compose build)|[b]uildx build' >/dev/null 2>&1 && printf '1' || printf '0'
+  local snapshot
+  snapshot="$(process_snapshot)" || { printf '2'; return; }
+  grep -E '[d]ocker (build|builder|compose build)|[b]uildx build' <<<"$snapshot" >/dev/null 2>&1 && printf '1' || printf '0'
 }
 
 prune_docker_cache() {
@@ -202,6 +211,8 @@ main() {
   if [[ "$verdict" != "ok" ]]; then
     if [[ "$active" == "1" || "$docker_running" == "1" ]]; then
       action="deferred-active-build"
+    elif [[ "$active" != "0" || "$docker_running" != "0" ]]; then
+      action="deferred-process-observation"
     else
       evict_keyed_caches; action="evict-old-ios-cache"
       if (( docker_cache >= docker_warn_kb )); then

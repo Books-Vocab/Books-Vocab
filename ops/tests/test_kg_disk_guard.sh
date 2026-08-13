@@ -65,6 +65,17 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 [[ -d "$cache/old" ]] && ok "active build protects cache" || bad "active build deletion"
 grep -q '"action":"deferred-active-build"' "$state" && ok "active build deferred" || bad "active build action"
 
+echo "── process probe failure: fail closed ──"
+root="$TMP/probe-fail"; cache="$root/.cache/ios-build-derived-data"; state="$TMP/probe-fail/state.json"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((8*1073741824)) KG_DISK_GUARD_PROCESS_PROBE_FAIL=1 \
+  KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=1 \
+  "$SCRIPT" >/dev/null 2>&1
+[[ -d "$cache/old" ]] && ok "unknown process state preserves cache" || bad "probe failure deleted cache"
+grep -q '"active_build":2' "$state" && ok "unknown process state recorded" || bad "unknown process state missing"
+grep -q '"action":"deferred-process-observation"' "$state" && ok "probe failure deferred" || bad "probe failure action"
+
 echo "── pressure-only: worktree cache sweep ──"
 root="$TMP/worktree"; cache="$root/.claude/worktrees/w1/.cache/ios-build-derived-data"; state="$TMP/worktree/state.json"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
