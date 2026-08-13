@@ -481,7 +481,7 @@ struct TodayReviewPage {
         while Date() < deadline {
             if cardIsCanonical(cardIdentifier, identity: identity),
                cardMatchesGeometry(cardIdentifier, geometry: geometry),
-               scopedExactlyOne(cardIdentifier, presentationIdentifier),
+               scopedPresentationAnchor(cardIdentifier, presentationIdentifier),
                scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0,
                requiredFieldIdentifiers.allSatisfy({ scopedExactlyOne(cardIdentifier, $0) }),
                absentFieldIdentifiers.allSatisfy({ scopedCount(cardIdentifier, $0) == 0 }) {
@@ -492,7 +492,7 @@ struct TodayReviewPage {
 
         return cardIsCanonical(cardIdentifier, identity: identity)
             && cardMatchesGeometry(cardIdentifier, geometry: geometry)
-            && scopedExactlyOne(cardIdentifier, presentationIdentifier)
+            && scopedPresentationAnchor(cardIdentifier, presentationIdentifier)
             && scopedCount(cardIdentifier, alternatePresentationIdentifier) == 0
             && requiredFieldIdentifiers.allSatisfy({ scopedExactlyOne(cardIdentifier, $0) })
             && absentFieldIdentifiers.allSatisfy({ scopedCount(cardIdentifier, $0) == 0 })
@@ -539,6 +539,13 @@ struct TodayReviewPage {
     private func scopedExactlyOne(_ cardIdentifier: String, _ identifier: String) -> Bool {
         let matching = scopedElements(cardIdentifier, identifier).allElementsBoundByIndex
         return matching.count == 1 && matching[0].exists
+    }
+
+    private func scopedPresentationAnchor(_ cardIdentifier: String, _ identifier: String) -> Bool {
+        let anchors = scopedElements(cardIdentifier, identifier).allElementsBoundByIndex.filter { element in
+            element.exists && element.frame.width <= 1.5 && element.frame.height <= 1.5
+        }
+        return anchors.count == 1
     }
 
     private func scopedCount(_ cardIdentifier: String, _ identifier: String) -> Int {
