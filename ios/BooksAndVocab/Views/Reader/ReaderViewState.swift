@@ -233,8 +233,10 @@ struct ReaderTOCEvidenceRun: Codable, Equatable {
 struct ReaderTOCEvidenceAsset: Codable, Equatable {
     let assetID: String
     let installedPath: String
-    let sha256: String
-    let byteSize: Int
+    let expectedSHA256: String
+    let expectedByteSize: Int
+    let actualSHA256: String
+    let actualByteSize: Int
 }
 
 struct ReaderTOCEvidenceObservation: Codable, Equatable {
@@ -276,6 +278,36 @@ struct ReaderTOCEvidenceArtifact: Codable, Equatable {
             || run.uiReviewRoot.isEmpty
             || run.uiVideo.isEmpty {
             errors.append("run.artifacts")
+        }
+        for (index, entry) in entries.enumerated() {
+            let prefix = "entries[\(index)]"
+            if entry.label.isEmpty { errors.append("\(prefix).label") }
+            if entry.partition.isEmpty { errors.append("\(prefix).partition") }
+            if entry.fixtureID.isEmpty { errors.append("\(prefix).fixtureID") }
+            if !entry.asset.assetID.hasPrefix("books.") { errors.append("\(prefix).asset.assetID") }
+            if entry.asset.installedPath.isEmpty || !entry.asset.installedPath.hasPrefix("/") {
+                errors.append("\(prefix).asset.installedPath")
+            }
+            if entry.asset.expectedSHA256.count != 64 { errors.append("\(prefix).asset.expectedSHA256") }
+            if entry.asset.actualSHA256.count != 64 { errors.append("\(prefix).asset.actualSHA256") }
+            if !entry.asset.expectedSHA256.allSatisfy(\.isHexDigit) {
+                errors.append("\(prefix).asset.expectedSHA256")
+            }
+            if !entry.asset.actualSHA256.allSatisfy(\.isHexDigit) {
+                errors.append("\(prefix).asset.actualSHA256")
+            }
+            if entry.asset.expectedByteSize <= 0 { errors.append("\(prefix).asset.expectedByteSize") }
+            if entry.asset.actualByteSize <= 0 { errors.append("\(prefix).asset.actualByteSize") }
+            if entry.asset.expectedSHA256 != entry.asset.actualSHA256 {
+                errors.append("\(prefix).asset.sha256Mismatch")
+            }
+            if entry.asset.expectedByteSize != entry.asset.actualByteSize {
+                errors.append("\(prefix).asset.byteSizeMismatch")
+            }
+            if entry.path.contains(where: { $0 < 0 }) { errors.append("\(prefix).path") }
+            if entry.observation.requestedHref.isEmpty {
+                errors.append("\(prefix).observation.requestedHref")
+            }
         }
         return errors
     }

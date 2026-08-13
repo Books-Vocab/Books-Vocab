@@ -8,6 +8,27 @@ private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 // Apple `.zlib` decompression expects a raw DEFLATE stream (no zlib/gzip
 // container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
 private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
+
+struct FixtureInstalledAssetProof: Equatable {
+    let assetID: String
+    let installedPath: String
+    let expectedSHA256: String
+    let expectedByteSize: Int
+    let actualSHA256: String
+    let actualByteSize: Int
+
+    var accessibilityDescriptor: String {
+        [
+            assetID,
+            installedPath,
+            expectedSHA256,
+            String(expectedByteSize),
+            actualSHA256,
+            String(actualByteSize),
+        ].joined(separator: "|")
+    }
+}
+
 enum FixtureDatasetStore {
     @TaskLocal static var testingOverrideData: Data?
 
@@ -159,6 +180,80 @@ enum FixtureDatasetStore {
             ])
         }
         return destination
+    }
+
+    /// Returns proof for the one canonical Reader asset matching the installed
+    /// file name. This is verification only: it never trusts a caller-supplied
+    /// asset ID or a digest calculated by the evidence producer.
+    static func readerAssetProof(forInstalledFileName fileName: String) throws -> FixtureInstalledAssetProof {
+        let trimmedFileName = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedFileName.isEmpty,
+              URL(fileURLWithPath: trimmedFileName).lastPathComponent == trimmedFileName,
+              !trimmedFileName.contains("/") else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "Reader evidence file name is not a single safe path component: \(fileName)",
+            ])
+        }
+        guard case let .loaded(document, _) = loadState() else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "Reader evidence requires a valid UI World dataset for \(trimmedFileName)",
+            ])
+        }
+        let matches = document.reader.values.filter { $0.bookFileName == trimmedFileName }
+        guard matches.count == 1, let seed = matches.first else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "Reader evidence file name must resolve to exactly one reader fixture asset: \(trimmedFileName)",
+            ])
+        }
+        let ref = seed.bookAssetRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ref.hasPrefix("books."), !ref.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "Reader fixture \(trimmedFileName) has an invalid book asset ref: \(seed.bookAssetRef)",
+            ])
+        }
+        guard let asset = document.assets.asset(for: ref) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "Reader evidence asset ref is absent from the UI World manifest: \(ref)",
+            ])
+        }
+        let installedURL = try installURL(for: asset, ref: ref).standardizedFileURL
+        let booksURL = Book.localBooksDirectory.standardizedFileURL
+        guard installedURL.lastPathComponent == trimmedFileName,
+              installedURL.deletingLastPathComponent().path == booksURL.path else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "Reader evidence asset \(ref) does not install the expected file \(trimmedFileName) directly under Books/",
+            ])
+        }
+        guard FileManager.default.fileExists(atPath: installedURL.path) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: installedURL.path])
+        }
+        let resolvedBooksURL = booksURL.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedInstalledURL = installedURL.resolvingSymlinksInPath().standardizedFileURL
+        guard resolvedBooksURL.path == booksURL.path,
+              resolvedInstalledURL.deletingLastPathComponent().path == resolvedBooksURL.path,
+              resolvedInstalledURL.lastPathComponent == trimmedFileName else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: installedURL.path,
+                NSLocalizedDescriptionKey: "Reader evidence asset \(ref) escapes the canonical Books/ directory through a symlink",
+            ])
+        }
+        let actualByteSize = try byteSize(for: installedURL)
+        let actualSHA256 = try sha256Hex(for: installedURL)
+        guard actualByteSize == asset.byteSize,
+              actualSHA256 == asset.sha256 else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: installedURL.path,
+                NSLocalizedDescriptionKey: "Reader evidence asset \(ref) installed copy does not match manifest metadata",
+            ])
+        }
+        return FixtureInstalledAssetProof(
+            assetID: ref,
+            installedPath: installedURL.path,
+            expectedSHA256: asset.sha256,
+            expectedByteSize: asset.byteSize,
+            actualSHA256: actualSHA256,
+            actualByteSize: actualByteSize
+        )
     }
 
     private static func requireAsset(ref: String) throws -> UIWorldAsset {

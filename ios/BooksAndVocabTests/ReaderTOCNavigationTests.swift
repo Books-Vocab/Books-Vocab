@@ -190,6 +190,60 @@ struct ReaderTOCNavigationTests {
     }
 
     @Test
+    func evidenceContractRejectsUnverifiedEntryAssetIntegrity() {
+        let artifact = ReaderTOCEvidenceArtifact(
+            schema: "kg.ui.perf.evidence.v2",
+            run: ReaderTOCEvidenceRun(
+                verdictPath: "/tmp/verdict.json",
+                sourceCommit: "abc123",
+                sourceTreeDirty: false,
+                datasetID: "marketing_demo",
+                datasetSHA256: String(repeating: "a", count: 64),
+                device: "simulator",
+                selector: "ReaderFlow/test",
+                runIdentity: "1-2-ReaderFlow/test",
+                logPath: "/tmp/run.log",
+                xcresultPath: "/tmp/run.xcresult",
+                uiScreenshotDirectory: "/tmp/screenshots",
+                uiVisualReviewManifest: "/tmp/visual.json",
+                uiReviewRoot: "/tmp/review",
+                uiVideo: "/tmp/run.mp4"
+            ),
+            entries: [
+                ReaderTOCEvidenceEntry(
+                    label: "reader-toc-required",
+                    partition: "required",
+                    fixtureID: "reader.realBookLibrary",
+                    asset: ReaderTOCEvidenceAsset(
+                        assetID: "not-books.reader",
+                        installedPath: "relative/reader.epub",
+                        expectedSHA256: String(repeating: "a", count: 64),
+                        expectedByteSize: 0,
+                        actualSHA256: String(repeating: "b", count: 64),
+                        actualByteSize: 1
+                    ),
+                    path: [-1],
+                    observation: ReaderTOCEvidenceObservation(
+                        requestedHref: "",
+                        observedLocatorHref: nil,
+                        observedContent: nil,
+                        contentSelector: nil
+                    )
+                )
+            ]
+        )
+
+        let errors = artifact.validationErrors
+
+        #expect(errors.contains("entries[0].asset.assetID"))
+        #expect(errors.contains("entries[0].asset.installedPath"))
+        #expect(errors.contains("entries[0].asset.expectedByteSize"))
+        #expect(errors.contains("entries[0].asset.sha256Mismatch"))
+        #expect(errors.contains("entries[0].path"))
+        #expect(errors.contains("entries[0].observation.requestedHref"))
+    }
+
+    @Test
     func tocHierarchyKeepsStableNestedPaths() {
         let links = [
             Link(
