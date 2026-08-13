@@ -73,6 +73,20 @@ enum StatsPresentation {
         )
     }
 
+    static func buildSummary(
+        from entries: [VocabularyEntry],
+        reviewRecords: [ReviewRecord],
+        forecastDays: Int = 14,
+        clock: StatsProjectionClock
+    ) -> Summary {
+        project(
+            entries: entries,
+            reviewRecords: reviewRecords,
+            forecastDays: forecastDays,
+            clock: clock
+        )
+    }
+
     static func project(
         entries: [VocabularyEntry],
         reviewRecords: [ReviewRecord],
