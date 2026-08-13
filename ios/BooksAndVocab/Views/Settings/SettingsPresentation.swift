@@ -41,9 +41,14 @@ struct SettingsSyncLifecycleEvidence: Equatable {
     var marker: String {
         let residual = residualWords.isEmpty ? "-" : residualWords.joined(separator: ",")
         let readBack = readBackWords.isEmpty ? "-" : readBackWords.joined(separator: ",")
-        let transport = transportEvents.isEmpty
+        let stableTransportEvents = transportEvents.sorted { lhs, rhs in
+            if lhs.round != rhs.round { return lhs.round < rhs.round }
+            if lhs.path != rhs.path { return lhs.path < rhs.path }
+            return lhs.statusCode < rhs.statusCode
+        }
+        let transport = stableTransportEvents.isEmpty
             ? "-"
-            : transportEvents.map(\.marker).joined(separator: "|")
+            : stableTransportEvents.map(\.marker).joined(separator: "|")
         let dictionary = dictionaryEvents.isEmpty
             ? "-"
             : dictionaryEvents.map(\.marker).joined(separator: "|")
