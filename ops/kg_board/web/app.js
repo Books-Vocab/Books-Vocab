@@ -3,6 +3,7 @@ const tabs=[...document.querySelectorAll('[data-tab]')];
 let board=null,history=null,tree=null,tab="now",query="";
 const esc=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const shortSha=sha=>String(sha||"").slice(0,9);
+const compactLabel=(value,max=32)=>{const text=String(value||"");return text.length>max?`${text.slice(0,max-1)}…`:text};
 
 function metric(label,value){return `<div class="metric"><b>${esc(value)}</b><span>${esc(label)}</span></div>`}
 function setTrust(freshness){
@@ -184,11 +185,11 @@ function renderTree(){
     const anchor=ref.branch==="main"?viewport.branchSha:viewport.branchAnchors.get(ref.branch);
     const pos=positions.get(anchor);if(!pos)return "";
     const tickets=(ref.tickets||[]).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
-    return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(ref.branch)} · ${esc(ref.live_state||ref.status||"unknown")}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
+    return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${pos.y-16}">${esc(compactLabel(ref.branch,24))} · ${esc(ref.live_state||ref.status||"unknown")}</text><foreignObject x="${x(pos.lane)+18}" y="${pos.y-9}" width="190" height="30"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}</div></foreignObject></g>`;
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha||viewport.branchAnchors.get(item.branch)===row.sha);
-    return `<g class="commit" tabindex="0" role="button" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(row.subject)}</text></g>`;
+    return `<g class="commit" tabindex="0" role="button" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(compactLabel(row.subject,34))}</text></g>`;
   }).join("");
   mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="所有可達 commit 的 Git graph"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
