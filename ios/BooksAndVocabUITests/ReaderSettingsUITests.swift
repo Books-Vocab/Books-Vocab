@@ -169,7 +169,10 @@ final class ReaderSettingsUITests: UITestCase {
             XCTFail("Reader settings preview must be visible before theme counterexamples")
             return
         }
-        let initialLineHeight = reader.lineHeightValue(timeout: 5)
+        guard let initialLineHeight = reader.lineHeightValue(timeout: 5) else {
+            XCTFail("Reader preview must expose its initial numeric line-height value")
+            return
+        }
         XCTAssertEqual(initialLineHeight, 1.2, accuracy: 0.01)
         captureStep("preview-1.2", app: app)
 
