@@ -139,6 +139,7 @@ enum UITestFixtureSeed {
         auth: AuthManager? = nil
     ) -> Bool {
 #if targetEnvironment(simulator)
+        #if targetEnvironment(simulator)
         guard AppRuntimeOptions.shouldUseIsolatedAuthSession(arguments: arguments) else {
             if AppRuntimeOptions.isUITesting(arguments: arguments) {
                 preconditionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
@@ -170,6 +171,8 @@ enum UITestFixtureSeed {
     @MainActor
     private static func applyAuthSeed(_ fixtureID: UIWorldAuthFixtureID, auth: AuthManager) {
         let seed = FixtureDatasetStore.requireAuthSeed(for: fixtureID)
+        let auth = auth ?? AuthManager.shared
+        let seed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
         guard seed.isLoggedIn else {
             preconditionFailure("\(fixtureID.rawValue) fixture requires a logged-in auth seed")
         }
@@ -198,6 +201,11 @@ enum UITestFixtureSeed {
         case .absent:
             preconditionFailure("\(fixtureID.rawValue) cannot declare keychainTokenState=absent")
         }
+        return true
+        #else
+        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
+        preconditionFailure("auth.signedIn fixture is simulator-only")
+        #endif
     }
 #endif
 }
