@@ -25,6 +25,8 @@ on:
       - 'lab/podcast/start.sh'
       - 'scripts/ios_token_lint.sh'
       - '.claude/skills/app-debug/find-polluter.sh'
+      - '.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh'
+      - '.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh'
       - '.github/workflows/ops-suite.yml'
   pull_request:
     paths: *ops_paths

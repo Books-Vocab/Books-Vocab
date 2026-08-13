@@ -10,9 +10,9 @@ trap 'rm -rf "$tmp"' EXIT
 # shellcheck source=../lib/ios_ops_core.sh
 source "$ROOT/ops/lib/ios_ops_core.sh"
 
-KG_IOS_OPS_HEARTBEAT_INTERVAL=0.02 \
+KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
   ios_ops_stream_capture release-fixture \
-    python3 -c 'import sys,time; time.sleep(0.08); print("{\"status\":\"pass\"}")' \
+    bash -c 'sleep 2; printf '\''{"status":"pass"}\n'\''' _ \
     "$secret" >"$tmp/stdout" 2>"$tmp/stderr"
 
 jq -e '.status == "pass"' "$tmp/stdout" >/dev/null
@@ -39,9 +39,9 @@ printf '{"verdict":{"status":"pass","blockCount":0},"blocks":[]}\n' >"$fixture/a
 
 KG_IOS_OPS_FIXTURE=1 \
 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
-KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DELAY=0.08 \
+KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DELAY=0.3 \
 KG_IOS_OPS_RELEASE_SOURCE_SECRET_FIXTURE="$secret" \
-KG_IOS_OPS_HEARTBEAT_INTERVAL=0.02 \
+KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
   bash "$ROOT/ops/ios_ops.sh" workflow release --json \
   >"$tmp/workflow.json" 2>"$tmp/workflow.stderr"
 
@@ -76,10 +76,13 @@ rm "$fixture/project-settings.rc"
 
 printf '0.2\n' >"$fixture/asc-versions.delay"
 KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
-KG_IOS_OPS_ASC_TIMEOUT_SECONDS=0.05 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.02 \
+KG_IOS_OPS_ASC_TIMEOUT_SECONDS=0.05 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
   bash "$ROOT/ops/ios_ops.sh" workflow release --json \
   >"$tmp/timeout.json" 2>"$tmp/timeout.stderr"
 jq -e '.schema == "kg.ios.workflow.v1" and any(.steps[]; .key == "asc-review" and .status == "warn")' "$tmp/timeout.json" >/dev/null
-grep -q 'source=workflow-asc-versions phase=done .* rc=124' "$tmp/timeout.stderr"
+if ! grep -q 'source=workflow-asc-versions phase=done .* rc=124' "$tmp/timeout.stderr"; then
+  sed "s/$secret/[REDACTED]/g" "$tmp/timeout.stderr" >&2
+  exit 1
+fi
 
 echo "ios ops release heartbeat contract: PASS"
