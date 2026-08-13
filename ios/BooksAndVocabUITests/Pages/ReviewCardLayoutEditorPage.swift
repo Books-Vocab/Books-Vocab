@@ -31,9 +31,11 @@ struct ReviewCardLayoutEditorPage {
     }
 
     /// 辨識方向的即時預覽卡（一張真的複習卡，翻開的樣子）。
-    var previewCard: XCUIElement { element("reviewCardLayout.preview") }
+    var previewCard: XCUIElement { compositeElement("reviewCardLayout.preview") }
 
-    var productionPreviewCard: XCUIElement { element("reviewCardLayout.preview.production") }
+    var productionPreviewCard: XCUIElement {
+        compositeElement("reviewCardLayout.preview.production")
+    }
 
     /// segmented picker 的一段。選中狀態是這一頁語言無關、可機器斷言的訊號 ——
     /// 預覽卡本身是 `interactive: false` 的展示品，內部不掛可查詢的錨點。
@@ -98,5 +100,27 @@ struct ReviewCardLayoutEditorPage {
             "Expected exactly one accessibility element for \(identifier), found \(matching.count)"
         )
         return matching[0]
+    }
+
+    /// SwiftUI accessibility identifiers on a non-interactive composite card
+    /// can be inherited by its descendants. Select the visible composite root
+    /// by geometry instead of silently accepting an arbitrary first match.
+    private func compositeElement(_ identifier: String) -> XCUIElement {
+        let matching = app.descendants(matching: .any)
+            .matching(identifier: identifier)
+            .allElementsBoundByIndex
+        precondition(!matching.isEmpty, "Expected at least one accessibility element for \(identifier)")
+        let ranked = matching.sorted { lhs, rhs in
+            let lhsArea = lhs.frame.width * lhs.frame.height
+            let rhsArea = rhs.frame.width * rhs.frame.height
+            if lhsArea == rhsArea { return lhs.frame.minY < rhs.frame.minY }
+            return lhsArea > rhsArea
+        }
+        let root = ranked[0]
+        precondition(
+            root.frame.width > 0 && root.frame.height > 0,
+            "Expected visible composite accessibility root for \(identifier)"
+        )
+        return root
     }
 }
