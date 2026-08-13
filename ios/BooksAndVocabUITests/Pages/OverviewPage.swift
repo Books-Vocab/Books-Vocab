@@ -10,13 +10,16 @@ struct OverviewPage {
     /// synced entries + review records is non-empty — i.e. real content phase,
     /// not loading / empty / logged-out.
     var statsContent: XCUIElement {
-        exactlyOne(app.descendants(matching: .any)["overview.statsContent"], "overview.statsContent")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "overview.statsContent"),
+            "overview.statsContent"
+        )
     }
 
     /// Calendar entry point. This deliberately uses the stable identifier
     /// rather than the localized section title.
     var reviewCalendarButton: XCUIElement {
-        exactlyOne(app.buttons["reviewCalendar.open"], "reviewCalendar.open")
+        exactlyOne(app.buttons.matching(identifier: "reviewCalendar.open"), "reviewCalendar.open")
     }
 
     // MARK: - Assertions
@@ -34,47 +37,62 @@ struct ReviewCalendarPage {
     let app: XCUIApplication
 
     var monthHeader: XCUIElement {
-        exactlyOne(app.staticTexts["reviewCalendar.monthHeader"], "reviewCalendar.monthHeader")
+        exactlyOne(app.staticTexts.matching(identifier: "reviewCalendar.monthHeader"), "reviewCalendar.monthHeader")
     }
 
     var previousMonthButton: XCUIElement {
-        exactlyOne(app.buttons["reviewCalendar.previousMonth"], "reviewCalendar.previousMonth")
+        exactlyOne(app.buttons.matching(identifier: "reviewCalendar.previousMonth"), "reviewCalendar.previousMonth")
     }
 
     var nextMonthButton: XCUIElement {
-        exactlyOne(app.buttons["reviewCalendar.nextMonth"], "reviewCalendar.nextMonth")
+        exactlyOne(app.buttons.matching(identifier: "reviewCalendar.nextMonth"), "reviewCalendar.nextMonth")
     }
 
     var selectedDay: XCUIElement {
-        exactlyOne(app.buttons["reviewCalendar.selectedDay"], "reviewCalendar.selectedDay")
+        exactlyOne(app.buttons.matching(identifier: "reviewCalendar.selectedDay"), "reviewCalendar.selectedDay")
     }
 
     var emptyDayDetail: XCUIElement {
-        exactlyOne(app.descendants(matching: .any)["reviewCalendar.emptyDayDetail"], "reviewCalendar.emptyDayDetail")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.emptyDayDetail"),
+            "reviewCalendar.emptyDayDetail"
+        )
     }
 
     var emptyDaySummary: XCUIElement {
-        exactlyOne(app.staticTexts["reviewCalendar.emptyDaySummary"], "reviewCalendar.emptyDaySummary")
+        exactlyOne(app.staticTexts.matching(identifier: "reviewCalendar.emptyDaySummary"), "reviewCalendar.emptyDaySummary")
     }
 
     var populatedDayDetail: XCUIElement {
-        exactlyOne(app.descendants(matching: .any)["reviewCalendar.populatedDayDetail"], "reviewCalendar.populatedDayDetail")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.populatedDayDetail"),
+            "reviewCalendar.populatedDayDetail"
+        )
     }
 
     var populatedDaySummary: XCUIElement {
-        exactlyOne(app.staticTexts["reviewCalendar.populatedDaySummary"], "reviewCalendar.populatedDaySummary")
+        exactlyOne(app.staticTexts.matching(identifier: "reviewCalendar.populatedDaySummary"), "reviewCalendar.populatedDaySummary")
     }
 
     var installedFixtureProof: XCUIElement {
-        exactlyOne(app.descendants(matching: .any)["reviewCalendar.installedFixture"], "reviewCalendar.installedFixture")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.installedFixture"),
+            "reviewCalendar.installedFixture"
+        )
     }
 
     var runtimeGeometry: XCUIElement {
-        exactlyOne(app.descendants(matching: .any)["reviewCalendar.runtimeGeometry"], "reviewCalendar.runtimeGeometry")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.runtimeGeometry"),
+            "reviewCalendar.runtimeGeometry"
+        )
     }
 
     func day(_ key: String) -> XCUIElement {
-        exactlyOne(app.buttons["reviewCalendar.day.\(key)"], "reviewCalendar.day.\(key)")
+        exactlyOne(
+            app.buttons.matching(identifier: "reviewCalendar.day.\(key)"),
+            "reviewCalendar.day.\(key)"
+        )
     }
 }
 
