@@ -297,4 +297,31 @@ private struct ReaderSettingsLineHeightSlider: View {
         }
     }
 }
+
+private struct ReaderSettingsLineHeightSlider: View {
+    @Binding var value: Double
+
+    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+
+    var body: some View {
+        VStack(spacing: AppSpacing.microGap) {
+            Slider(value: $value, in: Metrics.lineHeightRange, step: Metrics.lineHeightStep)
+                .accessibilityLabel(L10n.string("reader.settings.lineHeight"))
+
+            HStack(spacing: 0) {
+                ForEach(Metrics.lineHeightTickValues.indices, id: \.self) { index in
+                    Rectangle()
+                        .fill(.secondary.opacity(index.isMultiple(of: 5) ? 0.55 : 0.3))
+                        .frame(width: 1, height: index.isMultiple(of: 5) ? 6 : 4)
+
+                    if index < Metrics.lineHeightTickCount - 1 {
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.horizontal, AppSpacing.s2)
+            .accessibilityHidden(true)
+        }
+    }
+}
 #endif

@@ -21,7 +21,6 @@ struct TOCView: View {
     @State private var tocLinks: [ReadiumShared.Link] = []
     @State private var loadState: LoadState = .loading
     @State private var loadRequestID = 0
-
     private var tocItems: [ReaderTOCItem] {
         ReaderTOCHierarchy.flatten(tocLinks)
     }
