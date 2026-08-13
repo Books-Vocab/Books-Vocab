@@ -47,6 +47,7 @@ enum SettingsFixtureID: String, CaseIterable {
         .longContentCounterexample,
         .resetCounterexample,
         .pricingUnavailable,
+        .syncTerminalErrorRetrySuccess,
         .debugBackendLocal,
     ]
 

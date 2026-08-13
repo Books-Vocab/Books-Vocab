@@ -30,14 +30,13 @@ struct SharedDeckPresentationTests {
         #expect(!loadingState.contains("ProgressView"))
     }
 
-    @Test func exploreCatalogPreview_retriesIntoLoadedPhaseWithoutSync() {
+    @Test func exploreCatalogPreviewUsesRetryFixtureWithoutDuplicatingPhaseState() {
         let preview = ExploreCatalogPreview(
-            initialPhase: .error,
-            retryPhase: .loaded
+            fixtureID: .retry
         )
 
-        #expect(preview.initialPhase == .error)
-        #expect(preview.retryPhase == .loaded)
+        #expect(preview.fixtureID == .retry)
+        #expect(preview.initialCacheFixtureID == nil)
     }
 
 #if DEBUG && targetEnvironment(simulator)
