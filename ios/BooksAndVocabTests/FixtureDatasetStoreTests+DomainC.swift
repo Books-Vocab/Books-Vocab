@@ -201,26 +201,21 @@ extension FixtureDatasetStoreTests {
         }
     }
 
-    @Test func readerEPUBSourcePathRejectsAbsoluteAndTraversalLocators() throws {
+    @Test func readerEPUBSourcePathRejectsUnsafeLocatorsAtDecodeBoundary() throws {
         let cases = [
             Self.readerRealBookAssetPath,
             "ops/fixtures/assets/../../../../reader-real-book.epub",
+            "ops/fixtures/assets/./reader-real-book.epub",
         ]
 
         for sourcePath in cases {
-            let installAs = "Books/reader-source-path-" + UUID().uuidString + ".epub"
             let data = try Self.readerAssetDatasetData(
                 sourcePath: sourcePath,
-                installAs: installAs
+                installAs: "Books/reader-source-path-" + UUID().uuidString + ".epub"
             )
-            let installed = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent(installAs)
-            defer { try? FileManager.default.removeItem(at: installed) }
 
-            #expect(throws: (any Error).self) {
-                try FixtureDatasetStore.withTestingData(data) {
-                    _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "books.reader-book")
-                }
+            #expect(throws: DecodingError.self) {
+                _ = try FixtureDatasetStore.decode(data)
             }
         }
     }
