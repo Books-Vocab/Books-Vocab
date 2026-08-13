@@ -241,9 +241,9 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'class="admin-nav"' in index
     assert 'id="git-tree"' in index and 'id="commit-inspector"' in index
     assert '<details>' not in index  # cards are data-driven and collapsed by default
-    assert '<title>KG 交付工作台 · 唯讀觀測</title>' in index
-    assert '<a class="brand" href="/">KG 交付工作台</a>' in index
-    assert '票、認領與交付進度' in index
+    assert '<title>交付進度看板 · 唯讀觀測</title>' in index
+    assert '<a class="brand" href="/">交付進度看板</a>' in index
+    assert '票面、工作樹與資料新鮮度' in index
     assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "ungroomed", "all", "history")] == [True] * 6
     assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理"))
     assert "歷史完成" in index
@@ -289,6 +289,23 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert 'ref.live_state!=="unknown"' in js
     assert "第一個分支附近" in js
     assert "Maximum call stack" not in js
+
+
+def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "交付進度看板" in index
+    assert "分支與工作樹" in index
+    assert "tree-mobile-list" in js
+    assert "renderMobileTree" in js
+    assert "看板資料讀取錯誤" in js
+    assert "min-height:44px" in "".join(css.split())
+    assert ".section-heading{flex-direction:column" in "".join(css.split())
+    assert ".metric:last-child{grid-column:1/-1}" in "".join(css.split())
+    assert "-webkit-line-clamp:2" in "".join(css.split())
+    assert "--sub:#68635b" in "".join(css.split())
 
 
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):

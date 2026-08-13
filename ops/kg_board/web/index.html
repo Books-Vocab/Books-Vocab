@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="kg-app-revision" content="{{APP_REVISION}}">
-  <title>KG 交付工作台 · 唯讀觀測</title>
+  <title>交付進度看板 · 唯讀觀測</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
   <header class="admin-nav">
-    <a class="brand" href="/">KG 交付工作台</a>
-    <span class="nav-caption">票、認領與交付進度</span>
+    <a class="brand" href="/">交付進度看板</a>
+    <span class="nav-caption">票面、工作樹與資料新鮮度</span>
     <span id="trust-state" class="trust-badge">同步確認中</span>
     <span id="trust-detail" class="trust-detail"></span>
   </header>
@@ -21,13 +21,14 @@
       <div class="section-heading">
         <div>
           <span class="eyebrow">LIVE WORKFLOW</span>
-          <h1 id="tree-title">Git / Worktree Tree</h1>
+          <h1 id="tree-title">分支與工作樹</h1>
         </div>
         <span id="tree-state" class="status-chip">讀取中</span>
       </div>
-      <p class="section-note">以第一個分支節點為中心顯示約十個 commit；圖形可左右滑動，點擊票節點可定位下方詳情。</p>
+      <p class="section-note">從第一個分支點開始看約十個 commit；桌面顯示關係圖，手機改用可點選清單。</p>
       <div id="tree-alert" class="tree-alert" role="status"></div>
       <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
+      <div id="tree-mobile-list" class="tree-mobile-list" aria-label="分支與 commit 清單"></div>
       <aside id="commit-inspector" class="commit-inspector" aria-live="polite">
         <span class="eyebrow">COMMIT INSPECTOR</span>
         <p>將游標移到 commit 或 branch 節點查看詳細資料。</p>
@@ -38,7 +39,7 @@
       <div class="section-heading">
         <div>
           <span class="eyebrow">DELIVERY QUEUE</span>
-          <h2 id="backlog-title">票面</h2>
+        <h2 id="backlog-title">待處理票據</h2>
         </div>
         <span id="status" role="status"></span>
       </div>

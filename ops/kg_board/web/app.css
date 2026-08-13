@@ -1,4 +1,4 @@
-:root{--bg:#f8f7f4;--surface:#fcfbfa;--surface-alt:#f3f0ea;--border:#dbd6cd;--border-light:#e8e4db;--ink:#2a2520;--sub:#7a756c;--accent:#2a2520;--green:#24734e;--warn:#9a641a;--bad:#ae3b31;--radius:3px;--shadow:0 8px 24px rgba(42,37,32,.08)}
+:root{--bg:#f8f7f4;--surface:#fcfbfa;--surface-alt:#f3f0ea;--border:#dbd6cd;--border-light:#e8e4db;--ink:#2a2520;--sub:#68635b;--accent:#2a2520;--green:#24734e;--warn:#9a641a;--bad:#ae3b31;--radius:3px;--shadow:0 8px 24px rgba(42,37,32,.08)}
 *{box-sizing:border-box;min-width:0}
 html,body{margin:0;max-width:100%;overflow-x:hidden;background:var(--bg);color:var(--ink);font:14px/1.65,"Noto Sans TC",system-ui,-apple-system,sans-serif}
 button,input{font:inherit}button{cursor:pointer}
@@ -12,3 +12,59 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 @media(max-width:860px){main{padding:14px}.metrics{grid-template-columns:repeat(3,minmax(120px,1fr))}.tickets{grid-template-columns:1fr}.admin-nav{gap:9px;padding:0 14px}.nav-caption{display:none}.trust-detail{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 @media(max-width:520px){.admin-nav{flex-wrap:wrap;padding:10px 12px}.trust-badge{margin-left:auto}.trust-detail{width:100%;order:3;max-width:none}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.metric{padding:10px}.metric b{font-size:19px}.tree-panel,.backlog-panel{padding:12px;margin-bottom:12px}.section-heading h1,.section-heading h2{font-size:17px}.ticket summary{display:block}.ticket-meta{justify-content:flex-start;margin-top:7px}.detail-grid{grid-template-columns:74px 1fr}.git-tree{min-height:190px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+/* Responsive board contract: readable first, graph second.  The graph is a
+   desktop visualisation; phones get the same bounded data as a linear list. */
+.tree-mobile-list{display:none}
+.section-heading h1,.section-heading h2,.ticket-title span,.commit-inspector h3{overflow-wrap:anywhere}
+.ticket-title span{line-height:1.4}
+.ticket-meta{max-width:42%;white-space:normal}
+.tree-alert:empty{display:none}
+.blocked-reason{padding:8px 10px;border-left:3px solid var(--warn);background:var(--surface-alt);color:var(--warn)}
+.blocked-chip{max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ticket-highlight{border-color:var(--green);box-shadow:0 0 0 3px rgba(36,115,78,.16)}
+.tree-mobile-summary{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;color:var(--sub);font-size:12px}
+.tree-mobile-summary strong{color:var(--ink)}
+.tree-mobile-branches{display:grid;gap:6px;margin-bottom:10px}
+.tree-mobile-branch{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border-light);background:var(--surface);color:var(--sub);font-size:11px}
+.tree-mobile-branch strong{color:var(--ink);overflow-wrap:anywhere}
+.tree-ticket-more{min-height:22px;display:inline-flex;align-items:center;padding:3px 7px;color:var(--sub);font:11px "JetBrains Mono",monospace}
+.tree-mobile-commits{display:grid;gap:5px;margin:0;padding:0;list-style:none}
+.tree-mobile-commit{display:flex;align-items:flex-start;gap:9px;width:100%;min-height:44px;padding:9px 10px;border:1px solid var(--border-light);background:var(--surface);color:var(--ink);text-align:left}
+.tree-mobile-commit code{flex:0 0 auto;color:var(--green);font-size:11px}.tree-mobile-commit span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+.tree-ticket{min-height:22px;padding:3px 7px}
+.commit circle{r:14px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
+.tabs button{min-height:44px;padding-inline:14px}
+@media(max-width:860px){
+  .section-heading{align-items:stretch}
+  .section-heading .status-chip{align-self:flex-start;max-width:100%;overflow-wrap:anywhere}
+  .ticket-meta{max-width:100%}
+}
+@media(max-width:520px){
+  .admin-nav{align-items:flex-start;row-gap:6px}
+  .brand{font-size:13px;letter-spacing:.08em}
+  .trust-badge{margin-left:auto}
+  .trust-detail{order:3;width:100%;max-width:none;white-space:normal;overflow-wrap:anywhere}
+  main{padding:10px}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .metric:last-child{grid-column:1/-1}
+  .metric{min-height:66px;padding:10px}
+  .tree-panel,.backlog-panel{padding:10px;border-radius:6px}
+  .section-heading{flex-direction:column;gap:7px}
+  .section-heading h1,.section-heading h2{font-size:18px}
+  .section-heading .status-chip{font-size:11px}
+  .git-tree{display:none}
+  .tree-mobile-list{display:block;border:1px solid var(--border-light);background:var(--surface-alt);padding:9px}
+  .commit-inspector{margin-top:10px;padding:10px}
+  .detail-grid{grid-template-columns:70px 1fr;gap:4px 8px}
+  .tabs{gap:6px;margin-inline:-2px;padding-bottom:8px}
+  .tabs button{flex:0 0 auto;min-height:44px}
+  .ticket summary{display:block;min-height:92px;padding:12px}
+  .ticket-title{display:block}
+  .ticket-title code{display:block;margin-bottom:5px}
+  .ticket-title span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .ticket-meta{justify-content:flex-start;margin-top:9px;gap:6px}
+  .ticket-body{padding-inline:12px}
+  .ticket-body p{overflow-wrap:anywhere}
+  .tree-mobile-list .tree-ticket{min-height:44px;min-width:44px}
+}
