@@ -19,8 +19,10 @@ final class ReaderFlowUITests: UITestCase {
     private static let seededWord = "Introduction"
     /// UI World 種入詞庫的真翻譯 — 斷言「翻譯 UI 帶內容」的內容本體。
     private static let seededTranslation = "引言"
-    /// Required TOC fixture 的第二章正文；與第一章的 seededWord 必須不同。
-    private static let secondChapterWord = "Chapter Two"
+    /// Required TOC fixture 的第二章完整正文 accessibility marker。Readium
+    /// 暴露段落節點，而不是把章首標題拆成可查詢的單字節點。
+    private static let secondChapterContent =
+        "Chapter Two begins with a different question: what can be repeated when motivation is quiet?"
     private static let invalidDestinationAssetSHA256 = "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f"
 
     private static let fixtureEnvironment: [String: String] = [
@@ -145,8 +147,8 @@ final class ReaderFlowUITests: UITestCase {
 
         let reader = ReaderPage(app: app)
         bookshelf.anyBookCard.tapWhenReady()
-        reader.assertSingleWebView()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        reader.assertSingleWebView()
         guard reader.currentLocator.waitUntilExists(timeout: 10) else {
             XCTFail("valid Reader fixture 必須暴露初始 locator")
             return
@@ -158,20 +160,18 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertEqual(initialHref, "OEBPS/chapter1.xhtml")
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
-        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.waitUntilTableOfContentsSheetExists(timeout: 10))
         XCTAssertTrue(reader.tocLoading.waitUntilGone(timeout: 10))
         let selectedChapter = reader.tocChapter("1")
         XCTAssertTrue(selectedChapter.waitUntilExists(timeout: 10))
         captureStep("toc-loaded", app: app)
 
         selectedChapter.tapWhenReady()
-        let selectionObserved = reader.tocSelected.waitUntilExists(timeout: 2)
-            || reader.tocNavigationLoading.waitUntilExists(timeout: 2)
-            || selectedChapter.isSelected
         XCTAssertTrue(
-            selectionObserved,
-            "TOC selection must expose selected/loading accessibility state before result"
+            reader.tocNavigationStateReceipt.waitUntilValueContains("phase=loading", timeout: 2),
+            "TOC selection must expose phase=loading before result"
         )
+        XCTAssertTrue(reader.isTableOfContentsSheetPresent)
         captureStep("toc-selection-loading", app: app)
 
         XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
@@ -194,7 +194,7 @@ final class ReaderFlowUITests: UITestCase {
         }
         XCTAssertEqual(finalHref, "OEBPS/chapter2.xhtml")
         XCTAssertNotEqual(initialHref, finalHref)
-        guard reader.contentText(Self.secondChapterWord).waitUntilExists(timeout: 10) else {
+        guard reader.contentText(Self.secondChapterContent).waitUntilExists(timeout: 10) else {
             XCTFail("valid Reader TOC destination 必須暴露 Chapter Two 內容")
             return
         }
@@ -210,9 +210,9 @@ final class ReaderFlowUITests: UITestCase {
             href: "OEBPS/chapter2.xhtml",
             locatorHref: finalHref,
             destinationSelector: "reader.toc.readerOverlay.destination",
-            contentSelector: Self.secondChapterWord
+            contentSelector: Self.secondChapterContent
         )
-        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
+        XCTAssertTrue(reader.waitUntilTableOfContentsSheetGone(timeout: 10))
         reader.assertIsActive()
         captureStep("toc-navigation-success", app: app)
     }
@@ -235,8 +235,8 @@ final class ReaderFlowUITests: UITestCase {
 
         let reader = ReaderPage(app: app)
         bookshelf.anyBookCard.tapWhenReady()
-        reader.assertSingleWebView()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        reader.assertSingleWebView()
         captureStep("invalid-destination-reader-open", app: app)
         guard reader.currentLocator.waitUntilExists(timeout: 10) else {
             XCTFail("invalid Reader fixture 必須暴露初始 locator")
@@ -264,7 +264,7 @@ final class ReaderFlowUITests: UITestCase {
 
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
-        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.waitUntilTableOfContentsSheetExists(timeout: 10))
         let invalidRow = reader.tocChapter("1")
         XCTAssertTrue(invalidRow.waitUntilExists(timeout: 10))
         guard let invalidHref = invalidRow.value as? String,
@@ -284,10 +284,10 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
         XCTAssertEqual(reader.tocMissingDestinationCount, 1)
         XCTAssertEqual(reader.tocRetryCount, 1)
-        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        XCTAssertTrue(reader.isTableOfContentsSheetPresent)
         XCTAssertFalse(reader.tocDone.isEnabled)
         XCTAssertEqual(reader.currentLocator.value as? String, "OEBPS/chapter1.xhtml")
-        reader.assertContentAbsent(Self.secondChapterWord)
+        reader.assertContentAbsent(Self.secondChapterContent)
         reader.assertFixtureAsset(
             assetID: "books.reader_invalid_destination_epub",
             fileName: "reader-invalid-destination.epub",
@@ -310,11 +310,11 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.tocRetry.waitUntilExists(timeout: 10))
         XCTAssertEqual(reader.tocMissingDestinationCount, 1)
         XCTAssertEqual(reader.tocRetryCount, 1)
-        XCTAssertTrue(reader.tableOfContentsSheet.exists)
+        XCTAssertTrue(reader.isTableOfContentsSheetPresent)
         XCTAssertFalse(reader.tocDone.isEnabled)
         reader.assertIsActive()
         XCTAssertEqual(reader.currentLocator.value as? String, "OEBPS/chapter1.xhtml")
-        reader.assertContentAbsent(Self.secondChapterWord)
+        reader.assertContentAbsent(Self.secondChapterContent)
         reader.assertFixtureAsset(
             assetID: "books.reader_invalid_destination_epub",
             fileName: "reader-invalid-destination.epub",

@@ -218,6 +218,25 @@ struct ReaderTOCNavigationState: Equatable {
         phase == .failure || phase == .missingDestination
     }
 
+    /// Stable, machine-readable accessibility receipt for the TOC navigation
+    /// state machine. The visual loading/success affordances are intentionally
+    /// transient; this receipt lets UI automation attest the transition even
+    /// when a local EPUB resolves within one render cycle.
+    var accessibilityValue: String {
+        let phaseValue: String
+        switch phase {
+        case .idle: phaseValue = "idle"
+        case .loading: phaseValue = "loading"
+        case .success: phaseValue = "success"
+        case .failure: phaseValue = "failure"
+        case .missingDestination: phaseValue = "missingDestination"
+        }
+        let selected = selectedTitle ?? ""
+        let expected = expectedLocatorHref ?? ""
+        let destination = destinationHref ?? ""
+        return "phase=\(phaseValue);selected=\(selected);expected=\(expected);destination=\(destination)"
+    }
+
     @discardableResult
     mutating func beginSelection(
         path: [Int],

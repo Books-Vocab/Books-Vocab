@@ -59,6 +59,7 @@ struct ReaderView: View {
     /// 否則 retry 載入中途 dismiss 仍會 fire-and-forget 寫回已棄置的 handler。
     @State private var retryLoadTask: Task<Void, Never>?
     @State private var tocNavigationTask: Task<Void, Never>?
+    @State private var tocNavigationDismissTask: Task<Void, Never>?
 
     @Environment(\.authManager) var authManager
     @Environment(\.toastCoordinator) var toastCoordinator
@@ -142,6 +143,7 @@ struct ReaderView: View {
             // 在此一併取消其 in-flight extractUniqueWords，避免寫回已棄置的 handler。
             retryLoadTask?.cancel()
             tocNavigationTask?.cancel()
+            tocNavigationDismissTask?.cancel()
             // dismiss / pop 時若 debounce 窗口未到期，flush 最後一次翻頁進度，
             // 避免 debounce 反而丟最後位置。
             progressSaver.flush()
@@ -225,6 +227,7 @@ struct ReaderView: View {
 
     private func handleTOCSelection(_ item: ReaderTOCItem, in publication: Publication) {
         tocNavigationTask?.cancel()
+        tocNavigationDismissTask?.cancel()
         let requestID = tocNavigationState.beginSelection(
             path: item.path,
             title: item.title,
@@ -251,7 +254,22 @@ struct ReaderView: View {
         let wasLoading = tocNavigationState.phase == .loading
         tocNavigationState.apply(event)
         if wasLoading && tocNavigationState.phase == .success {
-            readerState.showTableOfContents = false
+            // A local EPUB can resolve immediately. Keep the success state
+            // observable for a bounded render window, then dismiss only after
+            // the state machine has already reached success. Failure and
+            // missing-destination paths remain open and retryable.
+            tocNavigationDismissTask?.cancel()
+            tocNavigationDismissTask = Task { @MainActor in
+                do {
+                    try await Task.sleep(
+                        nanoseconds: ReaderMetrics.tocNavigationMinimumLoadingNanoseconds
+                    )
+                } catch {
+                    return
+                }
+                guard tocNavigationState.phase == .success else { return }
+                readerState.showTableOfContents = false
+            }
         }
     }
 

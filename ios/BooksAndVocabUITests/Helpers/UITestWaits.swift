@@ -16,6 +16,40 @@ enum UITestWaits {
         }
         return result == .completed
     }
+
+    /// Wait for an accessibility identifier to disappear without materializing
+    /// an XCUIElement. XCTest can throw a snapshot error when a transient
+    /// sheet's last element has already been removed; the app hierarchy debug
+    /// description remains queryable and is the fail-closed absence source.
+    @discardableResult
+    static func waitUntilAccessibilityIdentifierGone(
+        _ identifier: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let marker = "identifier: '\(identifier)'"
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !app.debugDescription.contains(marker) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return !app.debugDescription.contains(marker)
+    }
+
+    @discardableResult
+    static func waitUntilAccessibilityIdentifierPresent(
+        _ identifier: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let marker = "identifier: '\(identifier)'"
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.debugDescription.contains(marker) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return app.debugDescription.contains(marker)
+    }
 }
 
 extension XCUIElement {

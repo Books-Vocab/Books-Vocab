@@ -112,7 +112,33 @@ struct ReaderPage {
     }
 
     var tableOfContentsSheet: XCUIElement {
-        app.otherElements["reader.toc.sheet"]
+        // NavigationStack/List may materialize this SwiftUI accessibility
+        // container as CollectionView on the simulator. This concrete query
+        // keeps the appearance wait contract valid while avoiding the previous
+        // wrong `Other` type.
+        app.collectionViews["reader.toc.sheet"]
+    }
+
+    var isTableOfContentsSheetPresent: Bool {
+        app.debugDescription.contains("identifier: 'reader.toc.sheet'")
+    }
+
+    @discardableResult
+    func waitUntilTableOfContentsSheetExists(timeout: TimeInterval = 5) -> Bool {
+        UITestWaits.waitUntilAccessibilityIdentifierPresent(
+            "reader.toc.sheet",
+            in: app,
+            timeout: timeout
+        )
+    }
+
+    @discardableResult
+    func waitUntilTableOfContentsSheetGone(timeout: TimeInterval = 5) -> Bool {
+        UITestWaits.waitUntilAccessibilityIdentifierGone(
+            "reader.toc.sheet",
+            in: app,
+            timeout: timeout
+        )
     }
 
     var tocHierarchy: XCUIElement {
@@ -120,7 +146,7 @@ struct ReaderPage {
     }
 
     func tocChapter(_ path: String) -> XCUIElement {
-        tableOfContentsSheet.buttons["reader.toc.chapter.\(path)"]
+        app.buttons["reader.toc.chapter.\(path)"]
     }
 
     func tocChapter(
@@ -131,7 +157,7 @@ struct ReaderPage {
     ) -> XCUIElement {
         let row = tocChapter(path)
         XCTAssertEqual(
-            tableOfContentsSheet.buttons.matching(identifier: "reader.toc.chapter.\(path)").count,
+            app.buttons.matching(identifier: "reader.toc.chapter.\(path)").count,
             1,
             file: file,
             line: line
@@ -195,48 +221,48 @@ struct ReaderPage {
         app.activityIndicators["reader.toc.navigation.loading"]
     }
 
+    var tocNavigationStateReceipt: XCUIElement {
+        app.descendants(matching: .any)["reader.toc.navigation.state"]
+    }
+
     var tocSelected: XCUIElement {
-        tableOfContentsSheet.staticTexts["reader.toc.selected"]
+        app.staticTexts["reader.toc.selected"]
     }
 
     var tocSuccess: XCUIElement {
-        tableOfContentsSheet.staticTexts["reader.toc.sheet.result.success"]
+        app.staticTexts["reader.toc.sheet.result.success"]
     }
 
     var tocReaderOverlaySuccess: XCUIElement {
-        app.otherElements["reader.toc.readerOverlay"].staticTexts[
-            "reader.toc.readerOverlay.result.success"
-        ]
+        app.staticTexts["reader.toc.readerOverlay.result.success"]
     }
 
     var tocDestination: XCUIElement {
-        app.otherElements["reader.toc.readerOverlay"].staticTexts[
-            "reader.toc.readerOverlay.destination"
-        ]
+        app.staticTexts["reader.toc.readerOverlay.destination"]
     }
 
     var tocError: XCUIElement {
-        tableOfContentsSheet.staticTexts["reader.toc.error"]
+        app.staticTexts["reader.toc.error"]
     }
 
     var tocMissingDestination: XCUIElement {
-        tableOfContentsSheet.staticTexts["reader.toc.missingDestination"]
+        app.staticTexts["reader.toc.missingDestination"]
     }
 
     var tocMissingDestinationCount: Int {
-        tableOfContentsSheet.staticTexts.matching(identifier: "reader.toc.missingDestination").count
+        app.staticTexts.matching(identifier: "reader.toc.missingDestination").count
     }
 
     var tocRetry: XCUIElement {
-        tableOfContentsSheet.buttons["reader.toc.retry"]
+        app.buttons["reader.toc.retry"]
     }
 
     var tocRetryCount: Int {
-        tableOfContentsSheet.buttons.matching(identifier: "reader.toc.retry").count
+        app.buttons.matching(identifier: "reader.toc.retry").count
     }
 
     var tocDone: XCUIElement {
-        tableOfContentsSheet.buttons["reader.toc.done"]
+        app.descendants(matching: .any)["reader.toc.done"]
     }
 
     var currentLocator: XCUIElement {
@@ -308,26 +334,20 @@ struct ReaderPage {
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {
-        let matches = app.webViews
-        guard matches.count == 1,
-              let element = matches.allElementsBoundByIndex.first else {
-            XCTFail("Reader must expose exactly one Readium web view; found \(matches.count)")
-            return matches.element(matching: .any, identifier: "__missing_reader_webview__")
-        }
-        return element
+        // A query property must stay side-effect free: callers need to be able
+        // to wait for the web view before asserting cardinality. Failing here
+        // makes `webView.waitUntilExists` impossible during Readium startup.
+        app.webViews.element(boundBy: 0)
     }
 
     /// A rendered text block inside the Readium WebView. Single-word
     /// paragraphs (e.g. a chapter heading line) expose an exact-label
     /// staticText whose center is a deterministic word-tap target.
     func contentText(_ text: String) -> XCUIElement {
-        let matches = webView.staticTexts.matching(identifier: text)
-        guard matches.count == 1,
-              let element = matches.allElementsBoundByIndex.first else {
-            XCTFail("Reader content selector must resolve exactly once: \(text); found \(matches.count)")
-            return matches.element(boundBy: 0)
-        }
-        return element
+        // Keep this query side-effect free: Readium may replace the WebView's
+        // accessibility subtree after a locator change. Callers can wait for
+        // the text to materialize before asserting its cardinality.
+        app.webViews.staticTexts[text]
     }
 
     func assertContentAbsent(
@@ -349,22 +369,19 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) {
         XCTAssertEqual(
-            app.otherElements.matching(identifier: "reader.toc.sheet").count,
+            app.descendants(matching: .any).matching(identifier: "reader.toc.sheet").count,
             1,
             file: file,
             line: line
         )
         XCTAssertEqual(
-            tableOfContentsSheet.staticTexts.matching(identifier: "reader.toc.sheet.result.success").count,
+            app.staticTexts.matching(identifier: "reader.toc.sheet.result.success").count,
             1,
             file: file,
             line: line
         )
         XCTAssertEqual(
-            app.otherElements
-                .matching(identifier: "reader.toc.readerOverlay")
-                .staticTexts
-                .matching(identifier: "reader.toc.readerOverlay.destination")
+            app.staticTexts.matching(identifier: "reader.toc.readerOverlay.destination")
                 .count,
             1,
             file: file,
@@ -376,7 +393,14 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        XCTAssertEqual(app.webViews.count, 1, file: file, line: line)
+        let count = app.webViews.count
+        XCTAssertEqual(
+            count,
+            1,
+            "Reader must expose exactly one Readium web view; found \(count)",
+            file: file,
+            line: line
+        )
     }
 
     private var webViewQuery: XCUIElementQuery { app.webViews }

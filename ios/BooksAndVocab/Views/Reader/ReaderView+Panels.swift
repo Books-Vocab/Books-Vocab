@@ -143,6 +143,7 @@ extension ReaderView {
                     .accessibilityIdentifier("reader.toc.readerOverlay.destination")
                     .accessibilityValue(destinationHref)
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("reader.toc.readerOverlay")
             .padding(AppSpacing.s3)
             .background(.thinMaterial)
