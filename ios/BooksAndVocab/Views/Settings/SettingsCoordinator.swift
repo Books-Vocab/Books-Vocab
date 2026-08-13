@@ -65,10 +65,10 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// 這一輪同步的逐步進度。生命週期由 `syncLifecycle` 單一擁有，避免
     /// 進行中狀態與終態不另外漂移成兩份真相。
     let syncProgress = SyncProgressStore()
-    private let settingsSyncService: SettingsSyncService?
+    private var settingsSyncService: SettingsSyncService?
     private let syncPersistence: any SettingsSyncPersisting
 #if DEBUG
-    private let settingsSyncFixtureSummary: SettingsFixtureSeed.SyncSummary?
+    private var settingsSyncFixtureSummary: SettingsFixtureSeed.SyncSummary?
 #endif
 
     init(
@@ -494,7 +494,7 @@ final class SettingsCoordinator: SettingsCoordinating {
 #endif
         markSync("settings.sync.lifecycle.started", "attempt=\(syncAttempt)")
 
-        let activeSyncService = settingsSyncService ?? kgService
+        let activeSyncService = resolveSettingsSyncServiceIfNeeded() ?? kgService
 
         // 進度模型：宣告 backgroundSync 會跑的步驟 + 本函式自己收尾的那一列。
         // UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
@@ -634,6 +634,33 @@ final class SettingsCoordinator: SettingsCoordinating {
         syncPerfMarks.append(SettingsSyncPerfRecord(label: label.description, detail: detail))
 #endif
     }
+
+#if DEBUG
+    /// `SettingsView` can materialize its `@State` before the app's launch
+    /// fixture router activates the requested Settings fixture. Resolve the
+    /// fixture service at the first real sync action as well as in `init`, so
+    /// early view construction cannot silently route this evidence flow to the
+    /// production backend.
+    @MainActor
+    private func resolveSettingsSyncServiceIfNeeded() -> SettingsSyncService? {
+        guard settingsSyncService == nil,
+              FixtureDatasetStore.activeSettingsFixtureID == .syncTerminalErrorRetrySuccess,
+              let fixtureID = FixtureDatasetStore.activeSettingsFixtureID else {
+            return settingsSyncService
+        }
+        let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
+        guard let summary = seed.syncSummary else {
+            preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare syncSummary")
+        }
+        settingsSyncFixtureSummary = summary
+        settingsSyncService = KGService(
+            transport: SettingsSyncFixtureTransport(summary: summary),
+            connectivityGate: FixedConnectivityGate(isConnected: summary.isConnected)
+        )
+        SettingsSyncFixtureEvidenceStore.shared.reset()
+        return settingsSyncService
+    }
+#endif
 
 #if DEBUG
     private var syncPerfMarks: [SettingsSyncPerfRecord] = []
