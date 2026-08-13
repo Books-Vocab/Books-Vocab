@@ -71,6 +71,11 @@ RELEASE_DIR = Path(__file__).resolve().parent
 RELEASE_ROOT = RELEASE_DIR.parents[1]
 WEB_DIR = RELEASE_DIR / "web"
 GZIP_MIN_BYTES = 1024
+MAX_BODY_BYTES = 1_000_000
+# The git-tree mirror is a complete immutable snapshot (currently ~3 MiB for
+# this repository). Keep the browser/write surface at the conservative default;
+# only the authenticated machine-to-machine mirror routes get bounded headroom.
+MIRROR_BODY_MAX_BYTES = 16 * 1024 * 1024
 QVALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 
 
@@ -975,9 +980,9 @@ class Handler(BaseHTTPRequestHandler):
             return "missing or bad bearer token"
         return None
 
-    def _body(self) -> dict:
+    def _body(self, *, max_bytes: int = MAX_BODY_BYTES) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0 or length > 1_000_000:
+        if length <= 0 or length > max_bytes:
             raise ValueError("empty or oversized body")
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
@@ -1017,7 +1022,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
+        mirror_path = path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree")
+        if mirror_path:
             problem = self._mirror_precondition()
         else:
             self._json(404, {"error": f"no such path: {path}"})
@@ -1026,7 +1032,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(401 if "bearer" in problem else 403, {"error": problem})
             return
         try:
-            body = self._body()
+            body = self._body(max_bytes=MIRROR_BODY_MAX_BYTES if mirror_path else MAX_BODY_BYTES)
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"error": f"bad body: {exc}"})
             return

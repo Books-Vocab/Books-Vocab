@@ -372,6 +372,27 @@ def test_browser_writes_are_removed_while_mirror_keeps_bearer(monkeypatch):
     )._mirror_precondition() is None
 
 
+def test_mirror_git_tree_accepts_large_snapshot_without_widening_browser_writes():
+    payload = {"commits": [{"id": "c" * 64, "message": "m" * 256} for _ in range(9000)]}
+    raw = json.dumps(payload).encode("utf-8")
+    assert 1_000_000 < len(raw) < 16 * 1024 * 1024
+
+    mirror = _handler(
+        "/api/mirror/git-tree",
+        {"Content-Length": str(len(raw))},
+    )
+    mirror.rfile = BytesIO(raw)
+    assert mirror._body(max_bytes=server.MIRROR_BODY_MAX_BYTES) == payload
+
+    browser_write = _handler(
+        "/api/priority",
+        {"Content-Length": str(len(raw))},
+    )
+    browser_write.rfile = BytesIO(raw)
+    with pytest.raises(ValueError, match="oversized"):
+        browser_write._body()
+
+
 def test_projection_exposes_decision_counts_and_blocked_rows():
     entries = [
         _ticket("NOW"),
