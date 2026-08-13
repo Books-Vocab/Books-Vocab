@@ -251,6 +251,7 @@ extension FixtureDatasetStoreTests {
             .appendingPathComponent(installAs)
         defer { try? FileManager.default.removeItem(at: installed) }
 
+        _ = try FixtureDatasetStore.decode(data)
         #expect(throws: (any Error).self) {
             try FixtureDatasetStore.withTestingData(data) {
                 _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "books.reader-book")
