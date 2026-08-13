@@ -41,6 +41,9 @@ struct SettingsSyncLifecycleEvidence: Equatable {
     var marker: String {
         let residual = residualWords.isEmpty ? "-" : residualWords.joined(separator: ",")
         let readBack = readBackWords.isEmpty ? "-" : readBackWords.joined(separator: ",")
+        let transport = transportEvents.isEmpty
+            ? "-"
+            : transportEvents.map(\.marker).joined(separator: "|")
         let dictionary = dictionaryEvents.isEmpty
             ? "-"
             : dictionaryEvents.map(\.marker).joined(separator: "|")
@@ -56,6 +59,7 @@ struct SettingsSyncLifecycleEvidence: Equatable {
             "residualWords=\(residual)",
             "readBackCount=\(readBackWords.count)",
             "readBackWords=\(readBack)",
+            "transportEvents=\(transport)",
             "dictionaryEvents=\(dictionary)",
             "perfMarks=\(perf)"
         ].joined(separator: ";")
