@@ -225,7 +225,11 @@ run_one() {
       ;;
     ios-run-verdict)    ./ops/tests/test_ios_run_verdict.sh ;;
     ios-device-lock)    ./ops/tests/test_ios_device_lock_verdict.sh ;;
-    ios-cache-evict)    ./ops/tests/test_ios_cache_evict.sh ;;
+    ios-cache-evict)
+      ./ops/tests/test_ios_cache_evict.sh &&
+      ./ops/tests/test_ios_test_cache_root.sh &&
+      ./ops/tests/test_ios_build_cache_lifecycle.sh
+      ;;
     review-probe)       ./ops/tests/test_review_probe.sh ;;
     review-flip-probe)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_review_flip_probe_report.py

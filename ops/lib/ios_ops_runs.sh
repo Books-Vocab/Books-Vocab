@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ios_ops_runs.sh — sourceable build/test report commands for ios_ops.sh.
 
+# shellcheck source=project_python.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project_python.sh"
+
 emit_run_verdict_json() {
   local kind="$1" file="$2"
   # JSON verdict always lives at "<text verdict>.json" — derive it from the
@@ -209,7 +212,7 @@ empty_run_diagnostics_json() {
 
 emit_run_diagnostics_json() {
   local kind="$1" run_json="$2"
-  local log_path xcresult_path log_exists xcresult_exists diag_json err
+  local log_path xcresult_path log_exists xcresult_exists diag_json err diag_cache cleanup_diag_cache
   local -a diag_args
   log_path="$(jq -r '.artifacts.log // empty' <<<"$run_json")"
   xcresult_path="$(jq -r '.artifacts.xcresult // empty' <<<"$run_json")"
@@ -221,19 +224,42 @@ emit_run_diagnostics_json() {
     return
   fi
 
-  diag_args=("$SCRIPT_DIR/ios_diagnostics.py" "--kind" "$kind" "--json" "--limit" "20")
+  # The diagnostics adapter is stdlib-only. Prefer the repo's uv-managed
+  # interpreter directly; invoking its uv shebang would start uv's resolver on
+  # every read-only report and reintroduce global-cache/dynamic-store failures.
+  if diag_python="$(kg_project_python_bin "$ROOT")"; then
+    diag_args=("$diag_python" "$SCRIPT_DIR/ios_diagnostics.py")
+  else
+    diag_args=("$SCRIPT_DIR/ios_diagnostics.py")
+  fi
+  diag_args+=("--kind" "$kind" "--json" "--limit" "20")
   [[ "$xcresult_exists" == "true" ]] && diag_args+=("--xcresult" "$xcresult_path")
   [[ "$log_exists" == "true" ]] && diag_args+=("--log" "$log_path")
 
+  # ios_diagnostics.py is stdlib-only but its uv shebang still needs a runtime
+  # cache. Never make a read-only report command depend on the user's long-lived
+  # global cache: protected/stale entries can both fail the report and grow
+  # indefinitely. A caller may provide a managed cache explicitly; otherwise
+  # each report gets a disposable cache and removes it on every return path.
+  cleanup_diag_cache=0
+  if [[ -n "${KG_IOS_DIAGNOSTICS_CACHE_DIR:-}" ]]; then
+    diag_cache="$KG_IOS_DIAGNOSTICS_CACHE_DIR"
+    mkdir -p "$diag_cache"
+  else
+    diag_cache="$(mktemp -d "${TMPDIR:-/tmp}/kg-ios-diagnostics-XXXXXX")"
+    cleanup_diag_cache=1
+  fi
   err="$(mktemp)"
-  if diag_json="$("${diag_args[@]}" 2>"$err")" && jq -e . >/dev/null 2>&1 <<<"$diag_json"; then
+  if diag_json="$(UV_CACHE_DIR="$diag_cache" "${diag_args[@]}" 2>"$err")" && jq -e . >/dev/null 2>&1 <<<"$diag_json"; then
     rm -f "$err"
+    if (( cleanup_diag_cache == 1 )); then rm -rf "$diag_cache"; fi
     jq -c . <<<"$diag_json"
     return
   fi
 
   empty_run_diagnostics_json "unavailable" "$(cat "$err")"
   rm -f "$err"
+  if (( cleanup_diag_cache == 1 )); then rm -rf "$diag_cache"; fi
 }
 
 emit_run_report_json() {

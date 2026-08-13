@@ -13,6 +13,9 @@
 # for external workflows, but repo tooling must produce the deflate form only —
 # setting both keys is a fail-loud error in the app.
 
+# shellcheck source=project_python.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project_python.sh"
+
 kg_fixture_dataset_env_uv_bin() {
   if [[ -n "${UV_BIN:-}" ]]; then
     printf '%s\n' "$UV_BIN"
@@ -31,7 +34,18 @@ kg_fixture_dataset_deflate_b64() {
   local dataset_path="$1"
   [[ -n "$dataset_path" ]] || return 0
   [[ -f "$dataset_path" ]] || return 1
-  "$(kg_fixture_dataset_env_uv_bin)" run --python 3.13 python - "$dataset_path" <<'PY'
+  local project_root python_bin uv_bin uv_cache
+  project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  if [[ -x "$project_root/backend/.venv/bin/python" ]]; then
+    python_bin="$project_root/backend/.venv/bin/python"
+  else
+    uv_bin="$(kg_fixture_dataset_env_uv_bin)"
+    uv_cache="$(mktemp -d "${TMPDIR:-/tmp}/kg-python-find-XXXXXX")"
+    python_bin="$(UV_CACHE_DIR="$uv_cache" "$uv_bin" python find 3.13 2>/dev/null || true)"
+    rm -rf "$uv_cache"
+    [[ -x "$python_bin" ]] || return 1
+  fi
+  "$python_bin" - "$dataset_path" <<'PY'
 import base64
 import sys
 import zlib
