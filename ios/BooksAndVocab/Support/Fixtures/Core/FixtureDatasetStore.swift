@@ -268,6 +268,19 @@ enum FixtureDatasetStore {
 
     private static func validatedSourceURL(for asset: UIWorldAsset, ref: String) throws -> URL {
         let sourcePath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requiresRepoRelativePath = isReaderBookAsset(ref: ref)
+        guard !sourcePath.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: sourcePath,
+                NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath must not be empty",
+            ])
+        }
+        guard !requiresRepoRelativePath || !sourcePath.hasPrefix("/") else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: sourcePath,
+                NSLocalizedDescriptionKey: "Reader asset \(ref) sourcePath must be repo-relative, not absolute",
+            ])
+        }
         let url: URL
         if sourcePath.hasPrefix("/") {
             url = URL(fileURLWithPath: sourcePath)
@@ -275,7 +288,7 @@ enum FixtureDatasetStore {
             // Checked-in UI World assets use repo-relative locators. Resolve
             // them from this source file's checkout so a child worktree can
             // materialize the same fixture without embedding its path.
-            let components = sourcePath.split(separator: "/").map(String.init)
+            let components = sourcePath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
             guard !components.isEmpty,
                   components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
                 throw CocoaError(.fileReadCorruptFile, userInfo: [
@@ -283,21 +296,34 @@ enum FixtureDatasetStore {
                     NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath must be a safe repo-relative path",
                 ])
             }
-            let repoRoot = URL(fileURLWithPath: #filePath)
+            let checkoutRoot = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent() // Core
                 .deletingLastPathComponent() // Fixtures
                 .deletingLastPathComponent() // Support
                 .deletingLastPathComponent() // BooksAndVocab
                 .deletingLastPathComponent() // ios
-            let resolved = repoRoot.appendingPathComponent(sourcePath).standardizedFileURL
-            let rootPath = repoRoot.standardizedFileURL.path
-            guard resolved.path.hasPrefix(rootPath + "/") else {
+            let lexicalRoot = checkoutRoot.standardizedFileURL
+            let lexicalCandidate = lexicalRoot
+                .appendingPathComponent(sourcePath)
+                .standardizedFileURL
+            guard isContained(lexicalCandidate, in: lexicalRoot) else {
                 throw CocoaError(.fileReadCorruptFile, userInfo: [
-                    NSFilePathErrorKey: resolved.path,
+                    NSFilePathErrorKey: lexicalCandidate.path,
                     NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath escapes the repository root",
                 ])
             }
-            url = resolved
+            guard FileManager.default.fileExists(atPath: lexicalCandidate.path) else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: lexicalCandidate.path])
+            }
+            let resolvedRoot = lexicalRoot.resolvingSymlinksInPath().standardizedFileURL
+            let resolvedCandidate = lexicalCandidate.resolvingSymlinksInPath().standardizedFileURL
+            guard isContained(resolvedCandidate, in: resolvedRoot) else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [
+                    NSFilePathErrorKey: resolvedCandidate.path,
+                    NSLocalizedDescriptionKey: "UI World asset \(ref) sourcePath escapes the repository root through a symlink",
+                ])
+            }
+            url = resolvedCandidate
         }
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
@@ -317,6 +343,17 @@ enum FixtureDatasetStore {
             ])
         }
         return url
+    }
+
+    private static func isReaderBookAsset(ref: String) -> Bool {
+        guard case let .loaded(document, _) = loadState() else { return false }
+        return document.reader.values.contains { $0.bookAssetRef == ref }
+    }
+
+    private static func isContained(_ candidate: URL, in root: URL) -> Bool {
+        let rootPath = root.standardizedFileURL.path
+        let candidatePath = candidate.standardizedFileURL.path
+        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 
     private static func installURL(for asset: UIWorldAsset, ref: String) throws -> URL {

@@ -103,7 +103,11 @@ final class ReaderFlowUITests: UITestCase {
         }
 
         // ── 5. 翻頁 → 進度徽章數值真前進 ────────────────────────────────────
-        let initialProgress = reader.progressPercent() ?? 0
+        guard let initialProgress = reader.progressPercent() else {
+            captureStep("progress-before-missing", app: app)
+            XCTFail("翻頁前 header 進度徽章必須存在且可解析")
+            return
+        }
         try step("page-turned", app: app) {
             reader.webView.swipeLeft()
             XCTAssertTrue(
@@ -115,6 +119,11 @@ final class ReaderFlowUITests: UITestCase {
                 """
             )
         }
+        guard let progressAfter = reader.progressPercent() else {
+            captureStep("progress-after-missing", app: app)
+            XCTFail("翻頁後 header 進度徽章必須存在且可解析")
+            return
+        }
         attachText(
             """
             fixtureDataset=marketing_demo
@@ -122,7 +131,7 @@ final class ReaderFlowUITests: UITestCase {
             seededWord=\(Self.seededWord)
             seededTranslation=\(Self.seededTranslation)
             progressBefore=\(initialProgress)
-            progressAfter=\(reader.progressPercent().map(String.init(describing:)) ?? "<missing>")
+            progressAfter=\(progressAfter)
             """,
             named: "Reader Flow Metrics"
         )
@@ -142,8 +151,14 @@ final class ReaderFlowUITests: UITestCase {
         bookshelf.anyBookCard.tapWhenReady()
         reader.assertSingleWebView()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
-        XCTAssertTrue(reader.currentLocator.waitUntilExists(timeout: 10))
-        let initialHref = reader.currentLocator.value as? String
+        guard reader.currentLocator.waitUntilExists(timeout: 10) else {
+            XCTFail("valid Reader fixture 必須暴露初始 locator")
+            return
+        }
+        guard let initialHref = reader.currentLocator.value as? String else {
+            XCTFail("valid Reader fixture 初始 locator 必須是非空字串")
+            return
+        }
         XCTAssertEqual(initialHref, "OEBPS/chapter1.xhtml")
         reader.expandHeaderButton.tapWhenReady()
         reader.tableOfContentsButton.tapWhenReady()
@@ -151,13 +166,29 @@ final class ReaderFlowUITests: UITestCase {
         reader.tocChapter("1").tapWhenReady()
 
         XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
-        XCTAssertTrue(reader.tocDestination.waitUntilExists(timeout: 10))
-        XCTAssertEqual(reader.tocDestination.value as? String, "OEBPS/chapter2.xhtml")
-        XCTAssertTrue(reader.currentLocator.waitUntilExists(timeout: 10))
-        let finalHref = reader.currentLocator.value as? String
+        guard reader.tocDestination.waitUntilExists(timeout: 10) else {
+            XCTFail("valid Reader TOC navigation 必須暴露 destination locator")
+            return
+        }
+        guard let destinationHref = reader.tocDestination.value as? String else {
+            XCTFail("valid Reader TOC destination locator 必須是非空字串")
+            return
+        }
+        XCTAssertEqual(destinationHref, "OEBPS/chapter2.xhtml")
+        guard reader.currentLocator.waitUntilExists(timeout: 10) else {
+            XCTFail("valid Reader 翻頁後必須暴露 current locator")
+            return
+        }
+        guard let finalHref = reader.currentLocator.value as? String else {
+            XCTFail("valid Reader 翻頁後 locator 必須是非空字串")
+            return
+        }
         XCTAssertEqual(finalHref, "OEBPS/chapter2.xhtml")
         XCTAssertNotEqual(initialHref, finalHref)
-        XCTAssertTrue(reader.contentText(Self.secondChapterWord).waitUntilExists(timeout: 10))
+        guard reader.contentText(Self.secondChapterWord).waitUntilExists(timeout: 10) else {
+            XCTFail("valid Reader TOC destination 必須暴露 Chapter Two 內容")
+            return
+        }
         XCTAssertFalse(reader.contentText(Self.seededWord).exists)
         captureStep("toc-destination-content", app: app)
         XCTAssertTrue(reader.tableOfContentsSheet.waitUntilGone(timeout: 10))
@@ -197,13 +228,23 @@ final class ReaderFlowUITests: UITestCase {
         reader.assertSingleWebView()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
         captureStep("invalid-destination-reader-open", app: app)
-        XCTAssertTrue(reader.currentLocator.waitUntilExists(timeout: 10))
-        XCTAssertEqual(
-            reader.currentLocator.value as? String,
-            "OEBPS/chapter1.xhtml"
-        )
-        XCTAssertTrue(reader.contentText("Introduction").waitUntilExists(timeout: 10))
-        XCTAssertTrue(reader.evidenceAsset.waitUntilExists(timeout: 10))
+        guard reader.currentLocator.waitUntilExists(timeout: 10) else {
+            XCTFail("invalid Reader fixture 必須暴露初始 locator")
+            return
+        }
+        guard let invalidInitialHref = reader.currentLocator.value as? String else {
+            XCTFail("invalid Reader fixture 初始 locator 必須是非空字串")
+            return
+        }
+        XCTAssertEqual(invalidInitialHref, "OEBPS/chapter1.xhtml")
+        guard reader.contentText("Introduction").waitUntilExists(timeout: 10) else {
+            XCTFail("invalid Reader fixture 必須暴露 Introduction 內容")
+            return
+        }
+        guard reader.evidenceAsset.waitUntilExists(timeout: 10) else {
+            XCTFail("invalid Reader fixture 必須暴露 asset integrity proof")
+            return
+        }
         reader.assertFixtureAsset(
             assetID: "books.reader_invalid_destination_epub",
             fileName: "reader-invalid-destination.epub",

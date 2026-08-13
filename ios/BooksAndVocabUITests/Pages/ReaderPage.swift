@@ -8,7 +8,7 @@ struct ReaderPage {
     // MARK: - Chrome
 
     /// Reader hides the system navigation bar (ReaderView.swift), so the old
-    /// `app.navigationBars.buttons.firstMatch` could never resolve — the bar is
+    /// A navigation-bar button query could never resolve — the bar is
     /// not in the hierarchy at all. Anchored to the chrome's own identifiers.
     ///
     /// The reader opens in the COMPACT chrome state (`ReaderChromeState.header`
@@ -79,16 +79,24 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) {
         XCTAssertEqual(evidenceAsset.count, 1, file: file, line: line)
-        let parts = (evidenceAsset.value as? String ?? "")
+        guard let descriptor = evidenceAsset.value as? String, !descriptor.isEmpty else {
+            XCTFail("reader.evidence.asset must expose a non-empty proof descriptor", file: file, line: line)
+            return
+        }
+        let parts = descriptor
             .split(separator: "|", omittingEmptySubsequences: false)
         XCTAssertEqual(parts.count, 6, file: file, line: line)
         guard parts.count == 6 else { return }
+        guard let expectedByteSize = Int(parts[3]), let actualByteSize = Int(parts[5]) else {
+            XCTFail("reader.evidence.asset proof byte sizes must be integers", file: file, line: line)
+            return
+        }
         XCTAssertEqual(String(parts[0]), assetID, file: file, line: line)
         XCTAssertEqual(URL(fileURLWithPath: String(parts[1])).lastPathComponent, fileName, file: file, line: line)
         XCTAssertEqual(String(parts[2]), sha256, file: file, line: line)
-        XCTAssertEqual(Int(parts[3]), byteSize, file: file, line: line)
+        XCTAssertEqual(expectedByteSize, byteSize, file: file, line: line)
         XCTAssertEqual(String(parts[4]), sha256, file: file, line: line)
-        XCTAssertEqual(Int(parts[5]), byteSize, file: file, line: line)
+        XCTAssertEqual(actualByteSize, byteSize, file: file, line: line)
     }
 
     var tocLoading: XCUIElement {

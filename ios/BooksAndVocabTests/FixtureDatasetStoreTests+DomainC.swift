@@ -176,14 +176,14 @@ extension FixtureDatasetStoreTests {
             let contracts = [
                 (
                     ref: "books.reader_real_book_epub",
-                    source: Self.readerRealBookAssetPath,
+                    sourcePath: "ops/fixtures/assets/reader-real-book.epub",
                     fileName: "reader-real-book-contract.epub",
                     sha256: "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
                     byteSize: 18653
                 ),
                 (
                     ref: "books.reader_invalid_destination_epub",
-                    source: Self.readerInvalidDestinationAssetPath,
+                    sourcePath: "ops/fixtures/assets/reader-invalid-destination.epub",
                     fileName: "reader-invalid-destination-contract.epub",
                     sha256: "89864813d0f197efe8f680287579d5a338f7611cdb88f2cf42ce8ea38cacc68f",
                     byteSize: 17344
@@ -192,11 +192,73 @@ extension FixtureDatasetStoreTests {
 
             for contract in contracts {
                 let installed = try FixtureDatasetStore.requireInstalledAssetURL(ref: contract.ref)
-                let source = URL(fileURLWithPath: contract.source)
+                let source = Self.repoRootURL.appendingPathComponent(contract.sourcePath)
                 #expect(installed.lastPathComponent == contract.fileName)
                 #expect(try FixtureDatasetStore.byteSize(for: installed) == contract.byteSize)
                 #expect(try FixtureDatasetStore.sha256Hex(for: installed) == contract.sha256)
                 #expect(try Data(contentsOf: installed) == Data(contentsOf: source))
+            }
+        }
+    }
+
+    @Test func readerEPUBSourcePathRejectsAbsoluteAndTraversalLocators() throws {
+        let cases = [
+            Self.readerRealBookAssetPath,
+            "ops/fixtures/assets/../../../../reader-real-book.epub",
+        ]
+
+        for sourcePath in cases {
+            let installAs = "Books/reader-source-path-" + UUID().uuidString + ".epub"
+            let data = try Self.readerAssetDatasetData(
+                sourcePath: sourcePath,
+                installAs: installAs
+            )
+            let installed = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent(installAs)
+            defer { try? FileManager.default.removeItem(at: installed) }
+
+            #expect(throws: (any Error).self) {
+                try FixtureDatasetStore.withTestingData(data) {
+                    _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "books.reader-book")
+                }
+            }
+        }
+    }
+
+    @Test func readerEPUBSourcePathRejectsSymlinkOutsideRepository() throws {
+        let source = URL(fileURLWithPath: Self.readerRealBookAssetPath)
+        let outsideRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(
+                "kg-reader-source-escape-" + UUID().uuidString,
+                isDirectory: true
+            )
+        let outside = outsideRoot.appendingPathComponent("reader-real-book.epub")
+        let symlinkName = ".p3-reader-source-escape-" + UUID().uuidString + ".epub"
+        let symlink = Self.repoRootURL
+            .appendingPathComponent("ops/fixtures/assets/" + symlinkName)
+        try FileManager.default.createDirectory(at: outsideRoot, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: source, to: outside)
+        try FileManager.default.createSymbolicLink(
+            at: symlink,
+            withDestinationURL: outside
+        )
+        defer {
+            try? FileManager.default.removeItem(at: symlink)
+            try? FileManager.default.removeItem(at: outsideRoot)
+        }
+
+        let installAs = "Books/reader-symlink-" + UUID().uuidString + ".epub"
+        let data = try Self.readerAssetDatasetData(
+            sourcePath: "ops/fixtures/assets/" + symlinkName,
+            installAs: installAs
+        )
+        let installed = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(installAs)
+        defer { try? FileManager.default.removeItem(at: installed) }
+
+        #expect(throws: (any Error).self) {
+            try FixtureDatasetStore.withTestingData(data) {
+                _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: "books.reader-book")
             }
         }
     }

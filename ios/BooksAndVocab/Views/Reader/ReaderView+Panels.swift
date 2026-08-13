@@ -106,16 +106,23 @@ extension ReaderView {
     @ViewBuilder
     private var readerTOCEvidenceAsset: some View {
         #if DEBUG
-        if let proof = try? FixtureDatasetStore.readerAssetProof(
-            forInstalledFileName: book.epubFileName
-        ) {
-            Text(proof.accessibilityDescriptor)
-                .accessibilityIdentifier("reader.evidence.asset")
-                .accessibilityValue(proof.accessibilityDescriptor)
-                .opacity(0.01)
-                .allowsHitTesting(false)
-        }
+        let proof = readerTOCEvidenceAssetProof()
+        Text(proof.accessibilityDescriptor)
+            .accessibilityIdentifier("reader.evidence.asset")
+            .accessibilityValue(proof.accessibilityDescriptor)
+            .opacity(0.01)
+            .allowsHitTesting(false)
         #endif
+    }
+
+    private func readerTOCEvidenceAssetProof() -> FixtureInstalledAssetProof {
+        do {
+            return try FixtureDatasetStore.readerAssetProof(
+                forInstalledFileName: book.epubFileName
+            )
+        } catch {
+            fatalError("Reader evidence asset proof unavailable: \(error)")
+        }
     }
 
     func readerErrorState(_ error: String) -> some View {
