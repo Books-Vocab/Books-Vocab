@@ -223,27 +223,33 @@ struct SettingsAccountDetailView: View {
                 .padding(.top, appSkin.spacing.rowMicroGap)
 
             AppKeyValueRow(icon: "square.stack.3d.up", label: L10n.string("本機單字"), style: .settings(appSkin)) {
+                let cardCountText = snapshot.localCardCount.map { L10n.format("%@ 張", "\($0)") }
+                    ?? L10n.string("無法讀取")
                 SettingsStatusValue(
-                    text: snapshot.localCardCount.map { L10n.format("%@ 張", "\($0)") }
-                        ?? L10n.string("無法讀取"),
+                    text: cardCountText,
                     color: appSkin.palette.secondaryText
                 )
                 .accessibilityIdentifier("\(identifier).localCardCount")
+                .accessibilityLabel(cardCountText)
                 .accessibilityValue(snapshot.localCardCountError ?? "")
             }
             AppKeyValueRow(icon: "slider.horizontal.3", label: L10n.string("設定偏好"), style: .settings(appSkin)) {
+                let preferencesText = snapshot.hasCustomPreferences ? L10n.string("已自訂") : L10n.string("預設值")
                 SettingsStatusValue(
-                    text: snapshot.hasCustomPreferences ? L10n.string("已自訂") : L10n.string("預設值"),
+                    text: preferencesText,
                     color: appSkin.palette.secondaryText
                 )
                 .accessibilityIdentifier("\(identifier).preferences")
+                .accessibilityLabel(preferencesText)
             }
             AppKeyValueRow(icon: "person.crop.circle", label: L10n.string("登入狀態"), style: .settings(appSkin)) {
+                let loginStatusText = snapshot.isLoggedIn ? L10n.string("已登入") : L10n.string("未登入")
                 SettingsStatusValue(
-                    text: snapshot.isLoggedIn ? L10n.string("已登入") : L10n.string("未登入"),
+                    text: loginStatusText,
                     color: appSkin.palette.secondaryText
                 )
                 .accessibilityIdentifier("\(identifier).loginStatus")
+                .accessibilityLabel(loginStatusText)
             }
         }
         .accessibilityElement(children: .contain)
