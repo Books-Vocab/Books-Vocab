@@ -561,6 +561,7 @@ struct KGDictionaryCardProjection: Decodable {
 /// `dictionaryEntry` shape or silently default required fields.
 struct KGMaterializationCardProjection: Decodable {
     let card: KGCard
+    let readerHidden: Bool
     let dictionaryEntry: LexicalEntry
     let selectedSenseKey: String
     let selectedExampleKey: String
@@ -585,13 +586,29 @@ struct KGMaterializationCardProjection: Decodable {
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         card = try values.decode(KGCard.self, forKey: .card)
-        _ = try values.decode(Bool.self, forKey: .readerHidden)
+        readerHidden = try values.decode(Bool.self, forKey: .readerHidden)
+        guard let cardReaderHidden = card.readerHidden, cardReaderHidden == readerHidden else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "materialization readerHidden must match the root card"
+                )
+            )
+        }
         let dictionary = try values.decode(StrictSavedDictionaryPayload.self, forKey: .dictionary)
         guard dictionary.card == card else {
             throw DecodingError.dataCorrupted(
                 .init(
                     codingPath: decoder.codingPath,
                     debugDescription: "materialization card and nested dictionary card must match"
+                )
+            )
+        }
+        guard card.cardRole == VocabularyCardRole.dictionary.rawValue else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "materialization dictionary envelope requires cardRole=dictionary"
                 )
             )
         }

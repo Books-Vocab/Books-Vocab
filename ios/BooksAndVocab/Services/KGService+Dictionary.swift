@@ -225,7 +225,7 @@ extension KGService {
 
     #if DEBUG
     private func fixtureDictionaryServiceIfAvailable() throws -> FixtureDictionaryServing? {
-        let fixtureID = UIWorldDictionaryFixtureID.p1DictionaryRich
+        let fixtureID = FixtureDatasetStore.activeDictionaryFixtureID()
         switch FixtureDatasetStore.availability {
         case .absent:
             guard !FixtureDatasetStore.isFixtureDriven else {
@@ -294,7 +294,7 @@ extension KGService {
             )
         }
         #endif
-        try await authenticatedDecode(
+        return try await authenticatedDecode(
             DictionaryMaterializeLinkResponse.self,
             path: "api/graph/links/from-dictionary",
             method: "POST",

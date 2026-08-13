@@ -240,11 +240,28 @@ struct FixtureReviewClockSeed: Codable, Equatable {
 
 enum UIWorldDictionaryFixtureID: String, CaseIterable {
     case p1DictionaryRich = "ui-p1-dictionary-rich"
+    case p2DictionarySenses = "ui-p2-dictionary-senses"
 
     var requiredStepLabel: String {
         switch self {
         case .p1DictionaryRich:
             return "dictionary-rich"
+        case .p2DictionarySenses:
+            return "dictionary-senses"
+        }
+    }
+}
+
+enum UIWorldDictionaryCounterexampleID: String, CaseIterable {
+    case p2MissingExample = "dictionary.p2.missing-example"
+    case p2MaterializeError = "dictionary.p2.materialize-error"
+
+    var stepLabel: String {
+        switch self {
+        case .p2MissingExample:
+            return "missing-example-counterexample"
+        case .p2MaterializeError:
+            return "materialize-error-counterexample"
         }
     }
 }

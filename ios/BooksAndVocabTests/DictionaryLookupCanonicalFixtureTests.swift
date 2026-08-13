@@ -3,7 +3,7 @@ import SwiftData
 import Testing
 @testable import BooksAndVocab
 
-@Suite("P1 canonical dictionary lookup", .serialized)
+@Suite("P1/P2 canonical dictionary lookup", .serialized)
 @MainActor
 struct DictionaryLookupCanonicalFixtureTests {
     @Test("lookup consumes canonical senses, provenance, and materialization")
@@ -33,7 +33,7 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(coordinator.dictionaryMaterialization?.selectedExampleID == "example-1")
         #expect(coordinator.dictionaryMaterialization?.sourceFixtureID == "dictionary.lookup.result")
         #expect(coordinator.dictionaryMaterialization?.datasetID == "marketing_demo")
-        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "986c04b5219bfa9c9a5f3922864f42034081cbd90939db4353de8160656e6bd0")
+        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "d28b72ea22a689a77cdfb4979e14340a78a7af9e6a37c658429b72ac2ebbd25e")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetID == "catalog_reader_epub")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetPath == "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetByteSize == 1690)
@@ -72,9 +72,9 @@ struct DictionaryLookupCanonicalFixtureTests {
         source.kgCardId = "source-card"
         source.notebookId = "notebook"
         let container = try Self.inMemoryContainer()
-        let context = ModelContext(container)
-        context.insert(source)
-        try context.save()
+        let insertContext = ModelContext(container)
+        insertContext.insert(source)
+        try insertContext.save()
 
         coordinator.submitSearch(query: "engraved", using: service)
         try await settle { coordinator.lookupState.isSuccess }
@@ -92,8 +92,8 @@ struct DictionaryLookupCanonicalFixtureTests {
 
         #expect(coordinator.materializePhase == .succeeded)
         #expect(await service.materializationRequests.count == 1)
-        let context = ModelContext(container)
-        let saved = try context.fetch(FetchDescriptor<VocabularyEntry>())
+        let savedContext = ModelContext(container)
+        let saved = try savedContext.fetch(FetchDescriptor<VocabularyEntry>())
         let sourceAfterMaterialization = try #require(saved.first(where: { $0.kgCardId == "source-card" }))
         #expect(sourceAfterMaterialization.graphLinksByKind["shares_usage"]?.count == 1)
         #expect(sourceAfterMaterialization.graphLinksByKind["shares_usage"]?.first?.cardId == "fixture-dictionary-card")
@@ -104,6 +104,53 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(dictionaryCard.dictionarySelectedExampleKey == "example-1")
         #expect(dictionaryCard.graphLinksByKind["shares_usage"]?.count == 1)
         #expect(dictionaryCard.graphLinksByKind["shares_usage"]?.first?.cardId == "source-card")
+    }
+
+    @Test("learning-card reuse accepts a nil dictionary projection without a dictionary-card fetch")
+    func learningCardReuseDoesNotFetchDictionaryProjection() async throws {
+        let base = try canonicalService()
+        let service = LearningReuseDictionaryService(base: base)
+        let coordinator = AddLinkCoordinator()
+        let source = VocabularyEntry(
+            word: "source", translation: "source", context: "", bookTitle: "Book"
+        )
+        source.kgCardId = "source-card"
+        source.notebookId = "notebook"
+        let existingLearning = VocabularyEntry(
+            word: "engraved", translation: "already learned", context: "", bookTitle: "Book"
+        )
+        existingLearning.kgCardId = LearningReuseDictionaryService.learningCardID
+        existingLearning.notebookId = "notebook"
+        existingLearning.cardRole = .learning
+        existingLearning.reviewEligible = true
+        existingLearning.markSynced()
+        let container = try Self.inMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(source)
+        context.insert(existingLearning)
+        try context.save()
+
+        coordinator.submitSearch(query: "engraved", using: base)
+        try await settle { coordinator.lookupState.isSuccess }
+        guard case .success(_, let entry?, _) = coordinator.lookupState else {
+            Issue.record("expected canonical dictionary entry before learning-card reuse")
+            return
+        }
+
+        await coordinator.materializeSelectedExample(
+            sourceEntry: source,
+            entry: entry,
+            using: service,
+            container: container
+        )
+
+        #expect(coordinator.materializePhase == .succeeded)
+        #expect(await service.fetchCount == 0)
+        #expect(source.graphLinksByKind["shares_usage"]?.first?.cardId == existingLearning.kgCardId)
+        let saved = try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>())
+        let reused = try #require(saved.first(where: { $0.kgCardId == existingLearning.kgCardId }))
+        #expect(reused.cardRole == .learning)
+        #expect(reused.dictionaryPayloadJSON == nil)
     }
 
     @Test("invalid fixture-driven dictionary lookup fails closed instead of using network")
@@ -138,6 +185,79 @@ struct DictionaryLookupCanonicalFixtureTests {
                 Issue.record("unexpected error for absent fixture: \(error)")
             }
         }
+    }
+
+    @Test("an unregistered fixture query fails closed instead of falling back to result")
+    func unknownFixtureQueryFailsClosed() async throws {
+        let service = try canonicalService()
+
+        do {
+            _ = try await service.searchDictionary(
+                query: "typo-state",
+                sourceLanguage: "en",
+                targetLanguage: "zh-Hant"
+            )
+            Issue.record("an unregistered fixture query must not fall back to result")
+        } catch let error as FixtureDictionaryServing.FixtureError {
+            guard case .unknownQuery(let query) = error else {
+                Issue.record("expected unknownQuery, got \(error)")
+                return
+            }
+            #expect(query == "typo-state")
+        } catch {
+            Issue.record("unexpected fixture query error: \(error)")
+        }
+    }
+
+    @Test("P2 missing-example counterexample rejects the source before lookup")
+    func p2MissingExampleCounterexampleFailsClosed() throws {
+        let original = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")
+        var root = try #require(
+            JSONSerialization.jsonObject(with: original, options: []) as? [String: Any]
+        )
+        var context = try #require(root["scenarioContext"] as? [String: Any])
+        var dictionary = try #require(context["dictionary"] as? [String: Any])
+        var examples = try #require(dictionary["examples"] as? [[String: Any]])
+        examples.removeAll { $0["id"] as? String == "example-1" }
+        dictionary["examples"] = examples
+        context["dictionary"] = dictionary
+        root["scenarioContext"] = context
+        let malformed = try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+
+        let counterexample = try #require(
+            FixtureDatasetStore.withTestingData(original) {
+                FixtureDatasetStore.dictionaryCounterexampleContract(for: .p2MissingExample)
+            }
+        )
+        #expect(counterexample.fixtureID == "dictionary.p2.missing-example")
+        #expect(throws: FixtureDictionaryServing.FixtureError.self) {
+            try FixtureDatasetStore.withTestingData(malformed) {
+                try FixtureDictionaryServing.fromFixtureDatasetStore(
+                    fixtureID: .p2DictionarySenses
+                )
+            }
+        }
+    }
+
+    @Test("P2 materialize-error counterexample rejects a missing projection")
+    func p2MaterializeErrorCounterexampleFailsClosed() async throws {
+        let data = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")
+        let counterexample = try #require(
+            FixtureDatasetStore.withTestingData(data) {
+                FixtureDatasetStore.dictionaryCounterexampleContract(for: .p2MaterializeError)
+            }
+        )
+        #expect(counterexample.fixtureID == "dictionary.p2.materialize-error")
+
+        let base = try canonicalService()
+        let result = try await runMaterialization(
+            lookupService: base,
+            materializationService: MissingProjectionDictionaryService(base: base)
+        )
+        #expect(result.coordinator.materializePhase == .failed)
+        #expect(result.source.graphLinksByKind["shares_usage"] == nil)
+        let saved = try ModelContext(result.container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(saved.first(where: { $0.kgCardId == "fixture-dictionary-card" }) == nil)
     }
 
     @Test("fixture service creation rejects invalid source path, byte size, or hash")
@@ -618,6 +738,98 @@ private actor MissingGraphLinkDictionaryService: DictionaryServing {
             createdCard: response.createdCard,
             createdLink: response.createdLink,
             replayed: response.replayed
+        )
+    }
+}
+
+private actor LearningReuseDictionaryService: DictionaryServing {
+    static let learningCardID = "fixture-learning-card"
+
+    let base: FixtureDictionaryServing
+    private(set) var fetchCount = 0
+
+    init(base: FixtureDictionaryServing) {
+        self.base = base
+    }
+
+    func searchDictionary(
+        query: String,
+        sourceLanguage: String,
+        targetLanguage: String
+    ) async throws -> DictionarySearchResponse {
+        try await base.searchDictionary(
+            query: query,
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage
+        )
+    }
+
+    func fetchDictionaryEntry(
+        provider: String,
+        entryKey: String,
+        targetLanguage: String
+    ) async throws -> DictionaryEntryResponse {
+        try await base.fetchDictionaryEntry(
+            provider: provider,
+            entryKey: entryKey,
+            targetLanguage: targetLanguage
+        )
+    }
+
+    func materializeDictionaryLink(
+        request: DictionaryMaterializeLinkRequest,
+        idempotencyKey: String
+    ) async throws -> DictionaryMaterializeLinkResponse {
+        let response = try await base.materializeDictionaryLink(
+            request: request,
+            idempotencyKey: idempotencyKey
+        )
+        let targetCard = try Self.learningCard(notebookID: request.notebookId)
+        let link = KGGraphLink(
+            id: response.link.id,
+            fromId: response.link.fromId,
+            toId: targetCard.id,
+            kind: response.link.kind,
+            confidence: response.link.confidence,
+            reason: response.link.reason
+        )
+        return DictionaryMaterializeLinkResponse(
+            targetCard: targetCard,
+            dictionaryCard: nil,
+            link: link,
+            createdCard: false,
+            createdLink: response.createdLink,
+            replayed: response.replayed
+        )
+    }
+
+    func fetchDictionaryCard(cardId: String) async throws -> KGDictionaryCardProjection {
+        fetchCount += 1
+        throw FixtureDictionaryServing.FixtureError.unavailable(fixtureID: cardId)
+    }
+
+    private static func learningCard(notebookID: String) throws -> KGCard {
+        try JSONDecoder().decode(
+            KGCard.self,
+            from: Data(
+                """
+                {
+                  "id": "\(learningCardID)",
+                  "content": "engraved",
+                  "meaning": "already learned",
+                  "pos": "verb",
+                  "examples": ["The artist engraved the glass."],
+                  "mode": "recognition",
+                  "isDeleted": false,
+                  "isArchived": false,
+                  "notebookId": "\(notebookID)",
+                  "cardRole": "learning",
+                  "reviewEligible": true,
+                  "readerHidden": false,
+                  "promotionState": "idle"
+                }
+                """.utf8
+            )
         )
     }
 }

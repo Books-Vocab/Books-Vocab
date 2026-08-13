@@ -71,6 +71,7 @@ actor DictionaryRetryGate {
 actor FixtureDictionaryServing: DictionaryServing {
     enum FixtureError: Error, Equatable {
         case unavailable(fixtureID: String)
+        case unknownQuery(query: String)
         case missingCanonicalDictionary
         case invalidDataset(String)
     }
@@ -190,8 +191,8 @@ actor FixtureDictionaryServing: DictionaryServing {
         sourceLanguage: String,
         targetLanguage: String
     ) async throws -> DictionarySearchResponse {
-        let state = state(for: query)
         let queryKey = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let state = try state(for: queryKey)
         if pendingDetailFailureQuery != nil, pendingDetailFailureQuery != queryKey {
             pendingDetailFailures.removeAll()
             pendingDetailFailureQuery = nil
@@ -292,6 +293,7 @@ actor FixtureDictionaryServing: DictionaryServing {
             "notebookId": request.notebookId,
             "cardRole": "dictionary",
             "reviewEligible": false,
+            "readerHidden": false,
             "promotionState": "idle",
             "linksByKind": [String: Any]()
         ])
@@ -309,6 +311,7 @@ actor FixtureDictionaryServing: DictionaryServing {
                 "notebookId": request.notebookId,
                 "cardRole": "dictionary",
                 "reviewEligible": false,
+                "readerHidden": false,
                 "promotionState": "idle",
                 "linksByKind": [String: Any](),
             ],
@@ -326,6 +329,7 @@ actor FixtureDictionaryServing: DictionaryServing {
                     "notebookId": request.notebookId,
                     "cardRole": "dictionary",
                     "reviewEligible": false,
+                    "readerHidden": false,
                     "promotionState": "idle",
                     "linksByKind": [String: Any](),
                 ],
@@ -361,10 +365,26 @@ actor FixtureDictionaryServing: DictionaryServing {
         try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: object))
     }
 
-    private func state(for query: String) -> UIWorldDictionaryLookupState {
+    private func state(for query: String) throws -> UIWorldDictionaryLookupState {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard let state = UIWorldDictionaryLookupState(rawValue: normalized), dictionary.lookup[normalized] != nil else {
+        // `empty` is an explicit legacy fixture selector for an empty result;
+        // it is not a lookup state and therefore must not be generalized into
+        // a fallback for arbitrary typos.
+        if normalized == "empty" {
+            guard dictionary.lookup[UIWorldDictionaryLookupState.result.rawValue] != nil else {
+                throw FixtureError.missingCanonicalDictionary
+            }
             return .result
+        }
+        if normalized == entry.word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            guard dictionary.lookup[UIWorldDictionaryLookupState.result.rawValue] != nil else {
+                throw FixtureError.missingCanonicalDictionary
+            }
+            return .result
+        }
+        guard let state = UIWorldDictionaryLookupState(rawValue: normalized),
+              dictionary.lookup[normalized] != nil else {
+            throw FixtureError.unknownQuery(query: normalized)
         }
         return state
     }

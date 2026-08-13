@@ -61,7 +61,13 @@ SURFACE_CONTRACT_ROW_KEYS = {
 P1_DICTIONARY_SURFACE = "dictionary"
 P1_DICTIONARY_REQUIRED_FIXTURE_ID = "ui-p1-dictionary-rich"
 P1_DICTIONARY_REQUIRED_STEP_LABEL = "dictionary-rich"
+P2_DICTIONARY_REQUIRED_FIXTURE_ID = "ui-p2-dictionary-senses"
+P2_DICTIONARY_REQUIRED_STEP_LABEL = "dictionary-senses"
 P1_DICTIONARY_COUNTEREXAMPLE_STATES = ("partial", "offline", "error", "retry")
+P2_DICTIONARY_COUNTEREXAMPLES = (
+    ("dictionary.p2.missing-example", "missing-example-counterexample"),
+    ("dictionary.p2.materialize-error", "materialize-error-counterexample"),
+)
 REQUIRED_SURFACE_CONTRACTS = {"explore", "settings", P1_DICTIONARY_SURFACE}
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
@@ -72,12 +78,12 @@ READER_PASSAGE_KEYS = {
 def build_p1_dictionary_surface_contract(
     dictionary: Mapping[str, Any],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Project the P1 dictionary matrix row from the canonical dictionary seed.
+    """Project the P1/P2 dictionary matrix from the canonical dictionary seed.
 
-    The dictionary payload remains the single source for lookup fixture IDs and
-    asset identity.  This surface contract adds the matrix-facing fixture ID
-    and its partial/offline/error/retry counterexamples without introducing a
-    second dictionary schema or duplicating hit/sense/example data.
+    P2 deliberately reuses this same canonical dictionary source, but owns a
+    distinct required fixture row and distinct counterexample rows.  The
+    surface contract therefore proves matrix coverage without making P2 a
+    P1 string assertion or introducing a second dictionary schema.
     """
     try:
         lookup = dictionary["lookup"]
@@ -94,7 +100,7 @@ def build_p1_dictionary_surface_contract(
         ) from exc
 
     counterexamples = []
-    for index, state in enumerate(P1_DICTIONARY_COUNTEREXAMPLE_STATES, start=1):
+    for index, state in enumerate(P1_DICTIONARY_COUNTEREXAMPLE_STATES, start=2):
         try:
             lookup_row = lookup[state]
             fixture_id = lookup_row["fixtureID"]
@@ -120,9 +126,28 @@ def build_p1_dictionary_surface_contract(
                 "index": 0,
                 "assetIDs": required_assets,
                 "assetInodes": required_inodes,
-            }
+            },
+            {
+                "fixtureID": P2_DICTIONARY_REQUIRED_FIXTURE_ID,
+                "stepLabel": P2_DICTIONARY_REQUIRED_STEP_LABEL,
+                "index": 1,
+                "assetIDs": required_assets,
+                "assetInodes": required_inodes,
+            },
         ],
-        "counterexamples": counterexamples,
+        "counterexamples": counterexamples + [
+            {
+                "fixtureID": fixture_id,
+                "stepLabel": step_label,
+                "index": index,
+                "assetIDs": [],
+                "assetInodes": [],
+            }
+            for index, (fixture_id, step_label) in enumerate(
+                P2_DICTIONARY_COUNTEREXAMPLES,
+                start=len(counterexamples) + 2,
+            )
+        ],
     }
 
 
