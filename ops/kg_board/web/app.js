@@ -168,7 +168,12 @@ function renderTree(){
   [...visibleCommits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,viewport.refs.length+1))});});
   const windowRows=viewport.mainlineWindow.map(sha=>visibleCommits.get(sha)).filter(Boolean);
   const anchorRows=[...new Set(viewport.branchAnchors.values())].map(sha=>visibleCommits.get(sha)).filter(Boolean);
-  const ordered=[...anchorRows,...windowRows.filter(row=>!anchorRows.includes(row))];
+  const branchRow=visibleCommits.get(viewport.branchSha);
+  const ordered=[
+    ...(branchRow?[branchRow]:[]),
+    ...anchorRows.filter(row=>row!==branchRow),
+    ...windowRows.filter(row=>row!==branchRow&&!anchorRows.includes(row)),
+  ];
   const width=Math.max(520,(Math.max(0,...[...positions.values()].map(pos=>pos.lane))+1)*210);
   const height=Math.max(220,ordered.length*72+70);
   const x=lane=>70+lane*190,y=index=>55+index*72;
