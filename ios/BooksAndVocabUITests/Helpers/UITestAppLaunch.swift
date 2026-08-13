@@ -23,6 +23,39 @@ enum UITestReaderRuntimeScenario: String, CaseIterable, Equatable {
     case loadingMissing = "loading-missing"
     case loadingErrorRetry = "loading-error-retry"
     case loadingEmpty = "loading-empty"
+
+}
+
+/// Progress-only fixture scenarios. Loading/error scenarios intentionally live
+/// in `UITestReaderRuntimeScenario` but are not accepted by progress selectors.
+enum UITestReaderProgressScenario: String, CaseIterable, Equatable {
+    case progressUnknown = "progress-unknown"
+    case progressZero = "progress-zero"
+    case progressMiddle = "progress-middle"
+    case progressComplete = "progress-complete"
+    case progressRestoreFailure = "progress-restore-failure"
+
+    var runtimeScenario: UITestReaderRuntimeScenario {
+        switch self {
+        case .progressUnknown: return .progressUnknown
+        case .progressZero: return .progressZero
+        case .progressMiddle: return .progressMiddle
+        case .progressComplete: return .progressComplete
+        case .progressRestoreFailure: return .progressRestoreFailure
+        }
+    }
+
+    /// The fixture scenario name and rendered badge name are intentionally
+    /// different: the app exposes the normalized production progress state.
+    var progressAccessibilitySuffix: String {
+        switch self {
+        case .progressUnknown: return "unknown"
+        case .progressZero: return "zero"
+        case .progressMiddle: return "middle"
+        case .progressComplete: return "complete"
+        case .progressRestoreFailure: return "restore-failure"
+        }
+    }
 }
 
 /// Progress-only fixture scenarios. Loading/error scenarios intentionally live
