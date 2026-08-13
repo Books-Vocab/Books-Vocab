@@ -570,7 +570,9 @@ final class FixtureDatasetUITests: UITestCase {
             emptyDay(in: emptyMonth, occupied: occupiedDays, excluding: [emptyDayKey]),
             "dense fixture must expose a second distinct empty day"
         )
-        let populatedMonth = [previousMonth] + stride(from: -2, through: -12, by: -1).map { monthKey(for: anchorDay, offset: $0) }
+        let monthCandidates = [previousMonth]
+            + Array(stride(from: -2, through: -12, by: -1)).map { monthKey(for: anchorDay, offset: $0) }
+        let populatedMonth = monthCandidates
             .first { mostPopulatedDay(in: $0, counts: counts.local) != nil }
             ?? monthKey(for: boundaryDays.local)
         let populatedDay = try XCTUnwrap(
