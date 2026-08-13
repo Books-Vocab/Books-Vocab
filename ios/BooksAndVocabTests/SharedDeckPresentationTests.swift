@@ -184,4 +184,15 @@ struct SharedDeckPresentationTests {
         // server 新增未知分類 → 原樣顯示（不漏 L10n key）。
         #expect(SharedDeckFormat.categoryDisplayName("brand_new_category") == "brand_new_category")
     }
+
+    @Test func detail_storage_failure_is_not_missing_state() {
+        #expect(
+            SharedDeckDetailView.DeckLoadState.resolve(hasDeck: false, storageFailure: true)
+                == .storageFailure
+        )
+        #expect(
+            SharedDeckDetailView.DeckLoadState.resolve(hasDeck: false, storageFailure: false)
+                == .missing
+        )
+    }
 }

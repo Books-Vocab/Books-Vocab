@@ -375,9 +375,8 @@ enum FixtureDatasetStore {
                 NSLocalizedDescriptionKey: "UI World asset sourcePath must not be empty",
             ])
         }
-        let rawURL = URL(fileURLWithPath: rawPath)
         let components = rawPath.split(separator: "/").map(String.init)
-        guard !rawURL.path.hasPrefix("/"),
+        guard !rawPath.hasPrefix("/"),
               components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
             throw CocoaError(.fileReadNoPermission, userInfo: [
                 NSFilePathErrorKey: rawPath,

@@ -1068,11 +1068,14 @@
 "explore.deck.a11y.downloads" = "下载 %@ 次";
 "explore.deck.a11y.rating" = "评分 %@，%@ 条评价";
 "explore.detail.sampleCards" = "示例卡片";
+"explore.detail.loadingDeck" = "正在加载卡组…";
 "explore.detail.loadingCards" = "正在加载卡片…";
 "explore.detail.noCards" = "没有可预览的卡片。";
 "explore.detail.cardsError" = "无法加载卡片";
 "explore.detail.missing.title" = "卡组不可用";
 "explore.detail.missing.description" = "此卡组可能已被移除。";
+"explore.detail.storageError.title" = "无法读取卡组";
+"explore.detail.storageError.description" = "本地卡组数据读取失败，请重试。";
 /* Explore — 复制官方卡组到私人单词本（Phase 2c） */
 "explore.copy.cta" = "复制到我的单词本";
 "explore.copy.loginRequired" = "登录后即可复制到你的单词本";

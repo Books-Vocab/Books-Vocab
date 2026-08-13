@@ -94,7 +94,7 @@ enum ExploreFixtureMaterializer {
             } else {
                 installedAsset = nil
             }
-            SharedDeckCatalogService.upsertDeck(
+            try SharedDeckCatalogService.upsertDeck(
                 summary: seed.productionSummary,
                 sortOrder: sortOrder,
                 context: context,
@@ -168,7 +168,7 @@ final class ExploreUIWorldCatalogService: SharedDeckCatalogServicing {
             }
         case .error:
             guard requestCount > 1, fixture.retryPhase == .loaded else {
-                return .listFetchFailed
+                return .failed(.listFetch)
             }
             do {
                 try ExploreFixtureMaterializer.materialize(fixtureID, into: context)

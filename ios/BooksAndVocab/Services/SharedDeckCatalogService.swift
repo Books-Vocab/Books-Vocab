@@ -147,6 +147,17 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
 
     // MARK: - Sync outcome
 
+    enum StorageFailure: Error, Equatable {
+        case fetch
+        case reconcile
+        case save
+    }
+
+    enum SyncFailure: Equatable {
+        case listFetch
+        case storage(StorageFailure)
+    }
+
     enum SyncOutcome: Equatable {
         /// `catalogCount` = 本輪自 server 收齊的牌組數（**server 權威**）。刻意由此
         /// 回傳而非讓 caller 讀 `@Query`：`applyCatalog` + `save()` 到 `@Query`
@@ -154,21 +165,32 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
         /// **同步前**的值——冷啟動時系統性地是 0，正好是 telemetry 最需要準確的場景。
         case completed(catalogCount: Int)
         case cancelled
-        case listFetchFailed
+        case failed(SyncFailure)
+
+        var failure: SyncFailure? {
+            guard case .failed(let failure) = self else { return nil }
+            return failure
+        }
+    }
+
+    struct StorageOperations {
+        let upsert: @MainActor (SharedDeckSummary, Int, UIWorldInstalledAsset?) throws -> Void
+        let reconcile: @MainActor ([SharedDeckSummary]) throws -> Void
+        let save: @MainActor () throws -> Void
+        let rollback: @MainActor () -> Void
     }
 
     /// Full sync: page through the ENTIRE recency-sorted catalog (following the
     /// keyset cursor), upsert every deck into SwiftData, then reconcile orphans
-    /// **against the complete set**. Only the list fetch is fatal (an explicit
-    /// refresh no-op); everything else stays swallowed. Mirrors
-    /// `PodcastSyncService.syncAll`.
+    /// **against the complete set**. List and SwiftData failures are explicit
+    /// outcomes; a failed transaction never posts the successful-sync event.
     ///
     /// Paging correctness is load-bearing: `reconcileLocalState` tombstones any
     /// local deck absent from the reconciled set, so reconcile MUST see the union
     /// of every page. A single-page fetch (the pre-Phase-2b bug) tombstoned every
     /// official deck past page 1 once the central catalog exceeded one page.
     /// Non-authoritative outcomes skip reconcile via TWO symmetric guards: a page
-    /// fetch that throws mid-pagination aborts the whole pass (`.listFetchFailed`,
+    /// fetch that throws mid-pagination aborts the whole pass (`.failed(.listFetch)`,
     /// no upsert, no reconcile); a pagination that stops abnormally (empty page
     /// with a live cursor, or the `maxPages` cap) returns `truncated == true`, so
     /// `applyCatalog` upserts what it fetched but skips reconcile. Either way a
@@ -189,17 +211,67 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
         } catch {
             AppLog.kg.warning("[SharedDeckSync] list fetch failed: \(error.localizedDescription)")
             AppCrashReporting.record(error, context: "shareddeck.sync.list")
-            return .listFetchFailed
+            return .failed(.listFetch)
         }
-        Self.applyCatalog(collected, context: context)
+        return Self.persistCatalog(collected, storage: Self.liveStorage(context: context))
+    }
+
+    @MainActor
+    private static func liveStorage(context: ModelContext) -> StorageOperations {
+        StorageOperations(
+            upsert: { summary, sortOrder, installedAsset in
+                try Self.upsertDeck(
+                    summary: summary,
+                    sortOrder: sortOrder,
+                    context: context,
+                    installedAsset: installedAsset
+                )
+            },
+            reconcile: { summaries in
+                try Self.reconcileLocalState(serverSummaries: summaries, context: context)
+            },
+            save: {
+                try context.save()
+            },
+            rollback: {
+                context.rollback()
+            }
+        )
+    }
+
+    /// Finish the storage half of a sync through the same path used by live
+    /// SwiftData. The small operation seam lets unit tests force each storage
+    /// failure without pretending that a runtime store error is success.
+    @MainActor
+    static func persistCatalog(
+        _ collection: CatalogPageCollection,
+        storage: StorageOperations
+    ) -> SyncOutcome {
         do {
-            try context.save()
+            _ = try applyCatalog(collection, storage: storage)
+        } catch let failure as StorageFailure {
+            AppLog.kg.warning("[SharedDeckSync] storage \(failure) failed")
+            storage.rollback()
+            return .failed(.storage(failure))
+        } catch {
+            // `applyCatalog` classifies live fetch/reconcile errors. Keep this
+            // defensive branch typed too if a future storage adapter escapes
+            // that contract.
+            AppLog.kg.warning("[SharedDeckSync] catalog storage failed: \(error.localizedDescription)")
+            AppCrashReporting.record(error, context: "shareddeck.sync.storage")
+            storage.rollback()
+            return .failed(.storage(.fetch))
+        }
+        do {
+            try storage.save()
         } catch {
             AppLog.kg.warning("[SharedDeckSync] context save failed: \(error.localizedDescription)")
             AppCrashReporting.record(error, context: "shareddeck.sync.save")
+            storage.rollback()
+            return .failed(.storage(.save))
         }
         NotificationCenter.default.post(name: .sharedDeckCatalogDidSync, object: nil)
-        return .completed(catalogCount: collected.summaries.count)
+        return .completed(catalogCount: collection.summaries.count)
     }
 
     /// The union of decks paged from the browse catalog, plus whether pagination
@@ -224,15 +296,37 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
     /// decks past the truncation point.
     @MainActor
     @discardableResult
-    static func applyCatalog(_ collection: CatalogPageCollection, context: ModelContext) -> Bool {
+    static func applyCatalog(_ collection: CatalogPageCollection, context: ModelContext) throws -> Bool {
+        try applyCatalog(collection, storage: liveStorage(context: context))
+    }
+
+    @MainActor
+    @discardableResult
+    static func applyCatalog(_ collection: CatalogPageCollection, storage: StorageOperations) throws -> Bool {
         for (index, summary) in collection.summaries.enumerated() {
-            upsertDeck(summary: summary, sortOrder: index, context: context)
+            do {
+                try storage.upsert(summary, index, nil)
+            } catch let failure as StorageFailure {
+                throw failure
+            } catch {
+                AppLog.kg.warning("[SharedDeckSync] deck fetch failed during upsert: \(error.localizedDescription)")
+                AppCrashReporting.record(error, context: "shareddeck.sync.fetch")
+                throw StorageFailure.fetch
+            }
         }
         guard !collection.truncated else {
             AppLog.kg.warning("[SharedDeckSync] pagination truncated — non-authoritative partial set, skipping reconcile (avoid tombstoning decks past truncation)")
             return false
         }
-        reconcileLocalState(serverSummaries: collection.summaries, context: context)
+        do {
+            try storage.reconcile(collection.summaries)
+        } catch let failure as StorageFailure {
+            throw failure
+        } catch {
+            AppLog.kg.warning("[SharedDeckSync] deck fetch failed during reconcile: \(error.localizedDescription)")
+            AppCrashReporting.record(error, context: "shareddeck.sync.reconcile")
+            throw StorageFailure.reconcile
+        }
         return true
     }
 
@@ -280,14 +374,14 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
         sortOrder: Int,
         context: ModelContext,
         installedAsset: UIWorldInstalledAsset? = nil
-    ) {
+    ) throws {
         let deckId = summary.deckId
         let descriptor = FetchDescriptor<SharedDeck>(
             predicate: #Predicate { $0.remoteId == deckId }
         )
-        let existing = try? context.fetch(descriptor)
+        let existing = try context.fetch(descriptor)
         let deck: SharedDeck
-        if let found = existing?.first {
+        if let found = existing.first {
             deck = found
         } else {
             deck = SharedDeck(remoteId: summary.deckId, title: summary.title)
@@ -328,13 +422,13 @@ final class SharedDeckCatalogService: SharedDeckCatalogServicing {
     /// momentary empty 200 must never mass-delete the whole local catalog (symmetric
     /// to `PodcastSyncService.reconcileLocalState`'s guard).
     @MainActor
-    static func reconcileLocalState(serverSummaries: [SharedDeckSummary], context: ModelContext) {
+    static func reconcileLocalState(serverSummaries: [SharedDeckSummary], context: ModelContext) throws {
         guard !serverSummaries.isEmpty else {
             AppLog.kg.warning("[SharedDeckSync] empty server deck list — skip tombstone (avoid mass-delete on transient empty 200)")
             return
         }
         let serverIds = Set(serverSummaries.map(\.deckId))
-        let allDecks = (try? context.fetch(FetchDescriptor<SharedDeck>())) ?? []
+        let allDecks = try context.fetch(FetchDescriptor<SharedDeck>())
         for deck in allDecks {
             let onServer = serverIds.contains(deck.remoteId)
             if onServer && deck.isSoftDeleted {

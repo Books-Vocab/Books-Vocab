@@ -38,7 +38,7 @@ struct SharedDeckCatalogServiceTests {
     @Test func upsert_inserts_new_deck() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1", title: "GRE"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1", title: "GRE"), sortOrder: 0, context: ctx)
         try ctx.save()
         let all = try decks(ctx)
         #expect(all.count == 1)
@@ -51,8 +51,8 @@ struct SharedDeckCatalogServiceTests {
     @Test func upsert_is_idempotent_by_remoteId() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1", title: "Old"), sortOrder: 0, context: ctx)
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1", title: "New"), sortOrder: 3, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1", title: "Old"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1", title: "New"), sortOrder: 3, context: ctx)
         try ctx.save()
         let all = try decks(ctx)
         #expect(all.count == 1)                     // 同 remoteId → in-place update，不重複插入
@@ -64,7 +64,7 @@ struct SharedDeckCatalogServiceTests {
         let container = try makeContainer()
         let ctx = container.mainContext
         let s = SharedDeckSummary(deckId: "d1", title: "T", updatedAt: "2026-07-01T00:00:00Z")
-        SharedDeckCatalogService.upsertDeck(summary: s, sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: s, sortOrder: 0, context: ctx)
         try ctx.save()
         #expect(try decks(ctx).first?.updatedAt != nil)
     }
@@ -74,12 +74,12 @@ struct SharedDeckCatalogServiceTests {
     @Test func reconcile_empty_server_list_does_not_tombstone() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
-        SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
         try ctx.save()
 
         // 空 200（短暫 hiccup）→ 絕不整片 tombstone。
-        SharedDeckCatalogService.reconcileLocalState(serverSummaries: [], context: ctx)
+        try SharedDeckCatalogService.reconcileLocalState(serverSummaries: [], context: ctx)
         try ctx.save()
 
         let live = try decks(ctx).filter { !$0.isSoftDeleted }
@@ -91,12 +91,12 @@ struct SharedDeckCatalogServiceTests {
     @Test func reconcile_tombstones_deck_missing_from_server() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
-        SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
         try ctx.save()
 
         // 伺服器只回 d1 → d2 被 tombstone。
-        SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("d1")], context: ctx)
+        try SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("d1")], context: ctx)
         try ctx.save()
 
         let byId = Dictionary(uniqueKeysWithValues: try decks(ctx).map { ($0.remoteId, $0) })
@@ -107,15 +107,15 @@ struct SharedDeckCatalogServiceTests {
     @Test func reconcile_resurrects_tombstoned_deck_back_on_server() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
         try ctx.save()
         // 先 tombstone d1（伺服器回別的 deck）。
-        SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("other")], context: ctx)
+        try SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("other")], context: ctx)
         try ctx.save()
         #expect(try decks(ctx).first { $0.remoteId == "d1" }?.isSoftDeleted == true)
 
         // d1 重新出現 → 復活。
-        SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("d1")], context: ctx)
+        try SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("d1")], context: ctx)
         try ctx.save()
         #expect(try decks(ctx).first { $0.remoteId == "d1" }?.isSoftDeleted == false)
     }
@@ -123,12 +123,12 @@ struct SharedDeckCatalogServiceTests {
     @Test func upsert_resurrects_tombstoned_deck() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
         try ctx.save()
-        SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("other")], context: ctx)
+        try SharedDeckCatalogService.reconcileLocalState(serverSummaries: [summary("other")], context: ctx)
         try ctx.save()
         // 直接 upsert d1 也應清 tombstone。
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
         try ctx.save()
         #expect(try decks(ctx).first { $0.remoteId == "d1" }?.isSoftDeleted == false)
     }
@@ -231,12 +231,12 @@ struct SharedDeckCatalogServiceTests {
     @Test func applyCatalog_drained_reconciles_and_tombstones_absent_deck() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
-        SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
         try ctx.save()
 
         // Authoritative (not truncated) set that omits d2 → d2 must tombstone.
-        let ran = SharedDeckCatalogService.applyCatalog(
+        let ran = try SharedDeckCatalogService.applyCatalog(
             .init(summaries: [summary("d1")], truncated: false), context: ctx
         )
         try ctx.save()
@@ -249,14 +249,14 @@ struct SharedDeckCatalogServiceTests {
     @Test func applyCatalog_truncated_skips_reconcile_and_keeps_absent_deck() throws {
         let container = try makeContainer()
         let ctx = container.mainContext
-        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
-        SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        try SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
         try ctx.save()
 
         // Truncated set omitting d2: reconcile MUST be skipped so d2 survives.
         // This is the nit-1 fix — the cap-hit / empty-page break paths used to
         // feed this partial union to reconcile and tombstone d2.
-        let ran = SharedDeckCatalogService.applyCatalog(
+        let ran = try SharedDeckCatalogService.applyCatalog(
             .init(summaries: [summary("d1")], truncated: true), context: ctx
         )
         try ctx.save()
@@ -266,6 +266,77 @@ struct SharedDeckCatalogServiceTests {
         #expect(byId["d2"]?.isSoftDeleted == false, "truncated set must not tombstone decks past the truncation point")
         // The fetched deck is still upserted so the user sees what we did get.
         #expect(byId["d1"]?.isSoftDeleted == false)
+    }
+
+    @Test func persistCatalog_surfaces_upsert_fetch_failure_and_rolls_back() {
+        var reconcileCalled = false
+        var saveCalled = false
+        var rollbackCalled = false
+        let storage = SharedDeckCatalogService.StorageOperations(
+            upsert: { _, _, _ in throw URLError(.dataNotAllowed) },
+            reconcile: { _ in reconcileCalled = true },
+            save: { saveCalled = true },
+            rollback: { rollbackCalled = true }
+        )
+
+        let outcome = SharedDeckCatalogService.persistCatalog(
+            .init(summaries: [summary("d1")], truncated: false),
+            storage: storage
+        )
+
+        #expect(outcome == .failed(.storage(.fetch)))
+        #expect(!reconcileCalled)
+        #expect(!saveCalled)
+        #expect(rollbackCalled)
+    }
+
+    @Test func persistCatalog_surfaces_reconcile_fetch_failure_and_rolls_back() {
+        var saveCalled = false
+        var rollbackCalled = false
+        let storage = SharedDeckCatalogService.StorageOperations(
+            upsert: { _, _, _ in },
+            reconcile: { _ in throw URLError(.dataNotAllowed) },
+            save: { saveCalled = true },
+            rollback: { rollbackCalled = true }
+        )
+
+        let outcome = SharedDeckCatalogService.persistCatalog(
+            .init(summaries: [summary("d1")], truncated: false),
+            storage: storage
+        )
+
+        #expect(outcome == .failed(.storage(.reconcile)))
+        #expect(!saveCalled)
+        #expect(rollbackCalled)
+    }
+
+    @Test func persistCatalog_surfaces_save_failure_without_success_notification() {
+        var rollbackCalled = false
+        var successNotificationCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .sharedDeckCatalogDidSync,
+            object: nil,
+            queue: .main
+        ) { _ in
+            successNotificationCount += 1
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        let storage = SharedDeckCatalogService.StorageOperations(
+            upsert: { _, _, _ in },
+            reconcile: { _ in },
+            save: { throw URLError(.dataNotAllowed) },
+            rollback: { rollbackCalled = true }
+        )
+
+        let outcome = SharedDeckCatalogService.persistCatalog(
+            .init(summaries: [summary("d1")], truncated: false),
+            storage: storage
+        )
+
+        #expect(outcome == .failed(.storage(.save)))
+        #expect(rollbackCalled)
+        #expect(successNotificationCount == 0)
     }
 
     @Test func collectAllPages_propagates_mid_pagination_fetch_error() async {
@@ -298,7 +369,7 @@ struct SharedDeckCatalogServiceTests {
             }
         }
         #expect(collected.truncated == false)   // drained → authoritative → reconcile runs
-        SharedDeckCatalogService.applyCatalog(collected, context: ctx)
+        try SharedDeckCatalogService.applyCatalog(collected, context: ctx)
         try ctx.save()
 
         let all = try decks(ctx)

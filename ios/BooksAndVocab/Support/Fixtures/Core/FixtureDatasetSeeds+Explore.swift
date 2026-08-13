@@ -102,6 +102,28 @@ struct UIWorldExploreFixtureSeed: Codable, Equatable {
         deckIDs = try container.decode([String].self, forKey: .deckIDs)
         assetIDs = try container.decode([String].self, forKey: .assetIDs)
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(label, forKey: .label)
+        try container.encode(phase, forKey: .phase)
+        // Encode nil explicitly: the decoder intentionally requires every
+        // contract key to be present, including a null retryPhase.
+        try container.encode(retryPhase, forKey: .retryPhase)
+        try container.encode(deckIDs, forKey: .deckIDs)
+        try container.encode(assetIDs, forKey: .assetIDs)
+    }
+
+    /// Explore's visual proof is a single deterministic evidence node. The
+    /// catalog validator makes this a contract rather than a best-effort choice.
+    var evidenceAssetID: String {
+        guard assetIDs.count == 1 else {
+            preconditionFailure(
+                "sharedDecks fixture \(label) must expose exactly one evidence asset"
+            )
+        }
+        return assetIDs[0]
+    }
 }
 
 struct UIWorldSharedDeckSeed: Codable, Equatable {
@@ -380,9 +402,9 @@ struct UIWorldSharedDeckCatalogSeed: Codable, Equatable {
                     "sharedDecks fixture \(id.rawValue) must use label \(id.label), got \(fixture.label)"
                 )
             }
-            guard !fixture.assetIDs.isEmpty, Set(fixture.assetIDs).count == fixture.assetIDs.count else {
+            guard fixture.assetIDs.count == 1 else {
                 throw UIWorldSharedDeckCatalogContractError.invalid(
-                    "sharedDecks fixture \(id.rawValue) must have unique non-empty assetIDs"
+                    "sharedDecks fixture \(id.rawValue) must have exactly one evidence assetID"
                 )
             }
             guard Set(fixture.deckIDs).count == fixture.deckIDs.count else {

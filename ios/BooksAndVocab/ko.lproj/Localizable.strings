@@ -1068,11 +1068,14 @@
 "explore.deck.a11y.downloads" = "다운로드 %@회";
 "explore.deck.a11y.rating" = "평점 %@, 평가 %@개";
 "explore.detail.sampleCards" = "샘플 카드";
+"explore.detail.loadingDeck" = "덱 불러오는 중…";
 "explore.detail.loadingCards" = "카드 불러오는 중…";
 "explore.detail.noCards" = "미리 볼 카드가 없습니다.";
 "explore.detail.cardsError" = "카드를 불러올 수 없습니다";
 "explore.detail.missing.title" = "덱을 사용할 수 없습니다";
 "explore.detail.missing.description" = "이 덱은 삭제되었을 수 있습니다.";
+"explore.detail.storageError.title" = "덱을 불러올 수 없습니다";
+"explore.detail.storageError.description" = "로컬 덱 데이터를 읽을 수 없습니다. 다시 시도해 주세요.";
 /* Explore — 공식 덱을 개인 단어장으로 복사 (Phase 2c) */
 "explore.copy.cta" = "내 단어장에 복사";
 "explore.copy.loginRequired" = "로그인하면 단어장에 복사할 수 있습니다";

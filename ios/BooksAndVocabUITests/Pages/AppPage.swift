@@ -101,15 +101,11 @@ struct AppPage {
     }
 
     func exploreAsset(assetID: String) -> XCUIElement {
-        app.images
-            .matching(identifier: "explore.asset.\(assetID)")
-            .element(boundBy: 0)
+        app.images["explore.asset.\(assetID)"]
     }
 
     func exploreDetailCover(deckID: String) -> XCUIElement {
-        app.images
-            .matching(identifier: "explore.detail.cover.\(deckID)")
-            .element(boundBy: 0)
+        app.images["explore.detail.cover.\(deckID)"]
     }
 
     func assertExploreImageIsUnique(
