@@ -94,6 +94,35 @@ def test_reader_evidence_asset_producer_uses_canonical_fixture_proof() -> None:
     assert "actualByteSize" in evidence_source
 
 
+def test_reader_evidence_asset_producer_fails_closed_on_missing_proof() -> None:
+    source = _swift_source("ios/BooksAndVocab/Views/Reader/ReaderView+Panels.swift")
+    producer = source.split("private var readerTOCEvidenceAsset", 1)[1].split(
+        "func readerErrorState", 1
+    )[0]
+
+    assert "readerAssetProof" in producer
+    assert "try?" not in producer
+    assert "catch" in producer
+    assert "fatalError(" in producer or "preconditionFailure(" in producer
+
+
+def test_reader_evidence_ui_has_no_silent_skip_or_fallback_contracts() -> None:
+    flow = _swift_source("ios/BooksAndVocabUITests/ReaderFlowUITests.swift")
+    page = _swift_source("ios/BooksAndVocabUITests/Pages/ReaderPage.swift")
+    writer = _swift_source("ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift")
+
+    for source in (flow, page, writer):
+        assert "XCTSkip" not in source
+        assert ".firstMatch" not in source
+        assert "try?" not in source
+    assert "let initialProgress = reader.progressPercent() ?? 0" not in flow
+    assert 'progressAfter=\\(reader.progressPercent().map(String.init(describing:)) ?? "<missing>")' not in flow
+    assert "as? String ?? \"\"" not in page
+    assert "guard let initialHref = reader.currentLocator.value as? String else" in flow
+    assert "guard let finalHref = reader.currentLocator.value as? String else" in flow
+    assert "guard let invalidInitialHref = reader.currentLocator.value as? String else" in flow
+
+
 def test_invalid_reader_ui_flow_selects_canonical_missing_destination_row() -> None:
     source = _swift_source("ios/BooksAndVocabUITests/ReaderFlowUITests.swift")
     invalid_flow = source.split(

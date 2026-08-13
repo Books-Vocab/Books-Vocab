@@ -485,6 +485,42 @@ extension FixtureDatasetStoreTests {
         """
     }
 
+    static func readerAssetDatasetData(sourcePath: String, installAs: String) throws -> Data {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "reader-source-path-contract",
+          "assets": {
+            "books": {
+              "reader-book": {
+                "sourcePath": "\(sourcePath)",
+                "sha256": "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
+                "byteSize": 18653,
+                "installAs": "\(installAs)",
+                "contentType": "application/epub+zip"
+              }
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "reader-source": {
+                "sourcePath": "ops/fixtures/assets/reader-real-book.epub",
+                "sha256": "ee786150bbe89660e9aa35cd66e490734d94f5a2415267ed84a64dbb3a5d036c",
+                "byteSize": 18653,
+                "installAs": "Reader/reader-source.txt",
+                "contentType": "text/plain; charset=utf-8"
+              }
+            },
+            "images": {}
+          },
+          "reader": {
+            "realBookLibrary": \(Self.readerSeedJSON())
+          }
+        }
+        """
+        return try completeV2DatasetData(dataset)
+    }
+
     static func todayReviewCardJSON(
         extraCardFields: String = "",
         extraLinkFields: String = ""
