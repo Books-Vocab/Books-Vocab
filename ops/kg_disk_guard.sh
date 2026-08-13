@@ -9,7 +9,7 @@ STATE_FILE="${KG_DISK_GUARD_STATE:-$HOME/Library/Application Support/KG/disk_gua
 WARN_FREE_GIB="${KG_DISK_GUARD_WARN_FREE_GIB:-20}"
 CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-10}"
 GROWTH_WARN_GIB="${KG_DISK_GUARD_GROWTH_WARN_GIB:-5}"
-DOCKER_WARN_GIB="${KG_DISK_GUARD_DOCKER_WARN_GIB:-3}"
+DOCKER_WARN_GIB="${KG_DISK_GUARD_DOCKER_WARN_GIB:-2}"
 DOCKER_PRUNE_UNTIL="${KG_DISK_GUARD_DOCKER_PRUNE_UNTIL:-168h}"
 KEEP="${KG_DISK_GUARD_CACHE_KEEP:-3}"
 MIN_AGE_HOURS="${KG_DISK_GUARD_CACHE_MIN_AGE_HOURS:-6}"
@@ -184,14 +184,14 @@ main() {
   active="$(active_build)"; cache="$(cache_kb)"
   docker_cache="$(docker_cache_kb)"; docker_running="$(docker_active)"
   free_gib=$((free / 1073741824)); growth_gib=$((growth / 1073741824))
-  docker_gib=$((docker_cache / 1048576)); verdict="ok"; reason="within-bounds"; action="none"
+  docker_gib=$((docker_cache / 1048576)); docker_warn_kb=$((DOCKER_WARN_GIB * 1048576)); verdict="ok"; reason="within-bounds"; action="none"
   if (( free_gib < CRIT_FREE_GIB )); then
     verdict="critical"; reason="free-below-critical"
   elif (( free_gib < WARN_FREE_GIB )); then
     verdict="warning"; reason="free-below-warning"
   elif (( growth_gib >= GROWTH_WARN_GIB )); then
     verdict="warning"; reason="rapid-growth"
-  elif (( docker_gib >= DOCKER_WARN_GIB )); then
+  elif (( docker_cache >= docker_warn_kb )); then
     verdict="warning"; reason="docker-build-cache"
   fi
   if [[ "$verdict" != "ok" ]]; then
@@ -199,7 +199,7 @@ main() {
       action="deferred-active-build"
     else
       evict_keyed_caches; action="evict-old-ios-cache"
-      if (( docker_gib >= DOCKER_WARN_GIB )); then
+      if (( docker_cache >= docker_warn_kb )); then
         prune_docker_cache; action="evict-old-ios-cache-and-docker-build-cache"
       fi
       if (( free_gib < CRIT_FREE_GIB )); then
@@ -207,7 +207,9 @@ main() {
       fi
     fi
   fi
-  if [[ "$verdict" != "ok" || "$docker_gib" -ge "$DOCKER_WARN_GIB" ]]; then trim_logs; fi
+  # Known launchd logs are capped every tick, even while disk pressure is healthy.
+  # Otherwise a quiet disk can still accumulate a multi-GB service log between alerts.
+  trim_logs
   write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$verdict" "$reason" "$action"
   logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache action=$action" 2>/dev/null || true
 }

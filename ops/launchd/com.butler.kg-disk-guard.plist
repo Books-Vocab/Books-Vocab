@@ -17,7 +17,7 @@
     <key>KG_DISK_GUARD_WARN_FREE_GIB</key><string>20</string>
     <key>KG_DISK_GUARD_CRIT_FREE_GIB</key><string>10</string>
     <key>KG_DISK_GUARD_GROWTH_WARN_GIB</key><string>5</string>
-    <key>KG_DISK_GUARD_DOCKER_WARN_GIB</key><string>3</string>
+    <key>KG_DISK_GUARD_DOCKER_WARN_GIB</key><string>2</string>
     <key>KG_DISK_GUARD_LOG_FILES</key>
     <string>/Users/chenliangyu/Library/Logs/kg_reconcile.out.log:/Users/chenliangyu/Library/Logs/kg_reconcile.err.log:/Users/chenliangyu/Library/Logs/kg-board.err.log</string>
     <key>KG_DISK_GUARD_LOG_MAX_KB</key><string>2048</string>
