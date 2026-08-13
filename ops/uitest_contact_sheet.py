@@ -27,6 +27,7 @@ artifact metadata including selected items and an absolute image path.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import tempfile
@@ -243,6 +244,24 @@ def read_png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", header[16:24])
 
 
+def read_png_metadata(path: Path) -> dict:
+    """Return content-bound PNG metadata; reject placeholders and malformed files."""
+    import struct
+
+    data = path.read_bytes()
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError(f"not a PNG: {path}")
+    width, height = struct.unpack(">II", data[16:24])
+    if width <= 0 or height <= 0:
+        raise ValueError(f"PNG has invalid dimensions {width}x{height}: {path}")
+    return {
+        "width": width,
+        "height": height,
+        "byteSize": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
 def render_contact_sheet(items, root, out_path, *, cols=3, cell_w=320,
                          label_h=44, gap=16, pad=24, bg=(245, 244, 240),
                          crop_region=None, cell_h=None):
@@ -327,6 +346,7 @@ def build_ui_step_manifest(root: Path) -> dict:
         rank, label = _ui_step_label(path)
         if rank == 1_000_000:
             rank = fallback_rank
+        metadata = read_png_metadata(path)
         items.append({
             "assetID": path.stem,
             "relPath": path.name,
@@ -337,8 +357,7 @@ def build_ui_step_manifest(root: Path) -> dict:
             "stateLabel": label,
             "feature": "UITest",
             "appearance": "light",
-            "width": read_png_size(path)[0],
-            "height": read_png_size(path)[1],
+            **metadata,
         })
     return {"schema": "kg.visual-review.manifest.v1", "source": "uitest", "items": items}
 
@@ -353,7 +372,7 @@ def build_images_manifest(paths: list[Path], root: Path | None = None) -> Source
     for rank, path in enumerate(sorted(paths), start=1):
         rel = path.relative_to(root) if path.is_relative_to(root) else Path(path.name)
         label = path.stem
-        width, height = read_png_size(path)
+        metadata = read_png_metadata(path)
         items.append({
             "assetID": path.stem,
             "relPath": rel.as_posix(),
@@ -364,8 +383,7 @@ def build_images_manifest(paths: list[Path], root: Path | None = None) -> Source
             "stateLabel": label,
             "feature": "Images",
             "appearance": "light",
-            "width": width,
-            "height": height,
+            **metadata,
         })
     return SourceBundle(
         manifest={"schema": "kg.visual-review.manifest.v1", "source": "images", "items": items},
@@ -404,7 +422,15 @@ def _resolve_source(root, source="auto"):
     raise SystemExit(f"could not resolve visual source: {root}")
 
 
-def write_selected_manifest(path: Path, *, source: SourceBundle, out: Path, info: dict, items: list[dict]):
+def write_selected_manifest(
+    path: Path,
+    *,
+    source: SourceBundle,
+    out: Path,
+    info: dict,
+    items: list[dict],
+    provenance: dict | None = None,
+):
     payload = {
         "schema": "kg.visual-review.sheet.v1",
         "source": source.source_kind,
@@ -414,6 +440,8 @@ def write_selected_manifest(path: Path, *, source: SourceBundle, out: Path, info
         "render": info,
         "items": items,
     }
+    if provenance:
+        payload["provenance"] = provenance
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return payload
@@ -446,6 +474,12 @@ def main():
     ap.add_argument("--out", type=Path)
     ap.add_argument("--manifest-out", nargs="?", const="auto",
                     help="write selected visual-review manifest JSON (path or 'auto')")
+    ap.add_argument("--source-commit")
+    ap.add_argument("--dataset-id")
+    ap.add_argument("--dataset-sha256")
+    ap.add_argument("--provenance-device")
+    ap.add_argument("--selector")
+    ap.add_argument("--variant")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -467,6 +501,24 @@ def main():
     items = apply_take(items, args.take)
     if not items:
         raise SystemExit("no items match the filter")
+    provenance_values = {
+        "sourceCommit": args.source_commit,
+        "datasetID": args.dataset_id,
+        "datasetSHA256": args.dataset_sha256,
+        "device": args.provenance_device,
+        "selector": args.selector,
+        "variant": args.variant,
+    }
+    provenance = {key: value for key, value in provenance_values.items() if value}
+    if provenance:
+        manifest = dict(manifest)
+        manifest["provenance"] = provenance
+        source = SourceBundle(
+            manifest=manifest,
+            image_root=source.image_root,
+            source_kind=source.source_kind,
+            manifest_path=source.manifest_path,
+        )
     out = args.out or Path(tempfile.gettempdir()) / f"{source.source_kind}_contact_sheet.png"
     info = render_contact_sheet(items, img_root, out, cols=args.cols,
                                 cell_w=cell_w, crop_region=args.zoom,
@@ -479,7 +531,12 @@ def main():
             else Path(args.manifest_out)
         )
         manifest_payload = write_selected_manifest(
-            manifest_path, source=source, out=out, info=info, items=items
+            manifest_path,
+            source=source,
+            out=out,
+            info=info,
+            items=items,
+            provenance=provenance or None,
         )
     if args.json:
         payload = {
