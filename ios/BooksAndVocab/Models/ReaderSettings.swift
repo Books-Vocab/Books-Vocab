@@ -135,6 +135,76 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
     }
 }
 
+/// Reader settings observed from the live Readium navigator.
+///
+/// This is deliberately built from `EPUBSettings`, not from `ReaderSettings`:
+/// the latter is the requested value, while this type is the value Readium
+/// accepted after `submitPreferences`.
+struct ReaderSettingsBridgeState: Equatable {
+    let font: ReaderFont
+    let fontScale: Double
+    let lineHeight: Double
+    let scrollMode: Bool
+    let theme: ReaderTheme
+
+    init(
+        font: ReaderFont,
+        fontScale: Double,
+        lineHeight: Double,
+        scrollMode: Bool,
+        theme: ReaderTheme
+    ) {
+        self.font = font
+        self.fontScale = fontScale
+        self.lineHeight = lineHeight
+        self.scrollMode = scrollMode
+        self.theme = theme
+    }
+
+    init?(navigatorSettings: EPUBSettings) {
+        guard
+            let fontFamily = navigatorSettings.fontFamily,
+            let font = ReaderFont.allCases.first(where: { $0.family.rawValue == fontFamily.rawValue }),
+            let lineHeight = navigatorSettings.lineHeight
+        else {
+            return nil
+        }
+
+        let theme: ReaderTheme
+        switch navigatorSettings.theme.rawValue {
+        case "light": theme = .light
+        case "sepia": theme = .sepia
+        case "dark": theme = .dark
+        default: return nil
+        }
+
+        self.init(
+            font: font,
+            fontScale: navigatorSettings.fontSize,
+            lineHeight: lineHeight,
+            scrollMode: navigatorSettings.scroll,
+            theme: theme
+        )
+    }
+
+    /// Machine-readable by design: the localized accessibility label explains
+    /// the element, while this value is a stable state receipt for UI tests.
+    var accessibilityValue: String {
+        let readingMode = scrollMode ? "scroll" : "paged"
+        return [
+            "font=\(font.rawValue)",
+            "fontSize=\(Self.decimal(fontScale))",
+            "lineHeight=\(Self.decimal(lineHeight))",
+            "readingMode=\(readingMode)",
+            "theme=\(theme.rawValue.lowercased())"
+        ].joined(separator: ";")
+    }
+
+    private static func decimal(_ value: Double) -> String {
+        String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+}
+
 struct ReaderViewConfiguration: Equatable {
     let paperColor: SwiftUI.Color
     let epubPreferences: EPUBPreferences

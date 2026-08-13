@@ -110,11 +110,15 @@ extension ReadiumNavigatorView.Coordinator {
                 parent.onTOCNavigationEvent(event)
             }
         case .applyPreferences(let preferences):
-            isApplyingPreferences = true
-            Task { @MainActor in
-                host.epubNavigator?.submitPreferences(preferences)
-                try? await Task.sleep(for: .seconds(ReaderMetrics.applyPreferencesSettleDelay))
-                self.isApplyingPreferences = false
+            let generation = preferencesApplyState.begin()
+            Task { @MainActor [weak self, weak host] in
+                guard let self, let navigator = host?.epubNavigator else {
+                    self?.preferencesApplyState.cancel(generation)
+                    return
+                }
+                self.hasPublishedNavigatorSettingsReceipt = false
+                self.parent.onNavigatorSettingsReceipt(.pending(navigatorID: self.navigatorID))
+                navigator.submitPreferences(preferences)
             }
         }
     }

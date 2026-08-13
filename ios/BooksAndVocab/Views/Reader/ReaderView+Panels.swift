@@ -39,6 +39,9 @@ extension ReaderView {
                 navigateToLocator: navigateToLocator,
                 isInteractionBlocked: chromeState.blocksReaderInteraction,
                 onLocationChanged: handleLocationChange,
+                onNavigatorSettingsReceipt: { receipt in
+                    navigatorSettingsReceipt = receipt
+                },
                 onWordSelected: handleWordSelected,
                 onPhraseSelected: handlePhraseSelected,
                 onExplainSelected: { text, context in
@@ -60,9 +63,16 @@ extension ReaderView {
                 readerTOCEvidenceAsset
             }
             .ignoresSafeArea(edges: [.horizontal, .bottom])
-            .safeAreaInset(edge: .top) {
-                Color.clear.frame(height: 0)
-            }
+            // Keep the real navigator geometry untouched. This accessibility
+            // container is the production state receipt for close/reopen UI
+            // evidence; it is not a zero-size visual/layout probe.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("reader.webView.settingsState")
+            .accessibilityLabel(L10n.string("reader.settings.webView.state"))
+            .accessibilityValue(
+                navigatorSettingsReceipt?.accessibilityValue
+                    ?? ReaderNavigatorSettingsReceipt.pendingAccessibilityValue
+            )
         } else if let error = readerState.errorMessage {
             readerErrorState(error)
         }

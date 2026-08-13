@@ -7,54 +7,132 @@ final class ReaderSettingsUITests: UITestCase {
     }
 
     @MainActor
-    func testReaderSettingsWorldOverlayRoundTripsThroughPreviewAndReaderLocalReset() throws {
+    func testProductionReaderSettingsRoundTripAfterReaderReopen() throws {
         let app = launchIsolatedApp(
             fixtures: [.readerRealBookLibrary],
-            perfLog: "reader-settings"
+            perfLog: "reader-settings-production-roundtrip"
         )
         captureStep("launch", app: app)
 
         let bookshelf = AppPage(app: app).goToBookshelf()
-        guard bookshelf.anyBookCard.waitUntilExists(timeout: 10) else {
-            XCTFail("Reader UI World must materialize a book before settings can be opened")
+        guard let bookCard = bookshelf.exactlyOneBookCard(timeout: 10) else {
+            XCTFail("Reader UI World must materialize exactly one book before settings can be opened")
             return
         }
-        bookshelf.anyBookCard.tapWhenReady()
+        bookCard.tapWhenReady()
 
         let reader = ReaderPage(app: app)
-        guard reader.contentText("Introduction").waitUntilExists(timeout: 45) else {
-            XCTFail("Reader UI World must render the seeded book content")
+        guard reader.waitForContent("Introduction", timeout: 45),
+              let initialWebView = reader.webViewElement(timeout: 10)
+        else {
+            XCTFail("production Reader must render the real EPUB WebView before settings evidence")
             return
         }
+        let initialWebViewSize = initialWebView.frame.size
+        XCTAssertGreaterThan(initialWebViewSize.width, 0)
+        XCTAssertGreaterThan(initialWebViewSize.height, 0)
+
+        guard reader.waitForSettingsStateContaining(["status=ready"], timeout: 45),
+              let initialState = reader.settingsStateValue(timeout: 5),
+              let initialNavigatorID = stateField("navigator", in: initialState),
+              let initialFont = stateField("font", in: initialState),
+              let initialFontSize = stateField("fontSize", in: initialState),
+              let initialReadingMode = stateField("readingMode", in: initialState)
+        else {
+            XCTFail("production Reader must publish a complete initial Readium settings receipt")
+            return
+        }
+
         reader.openSettings()
-
-        XCTAssertTrue(reader.settingsPreview.waitUntilExists(timeout: 5))
-        XCTAssertTrue(reader.lineHeightSlider.waitUntilExists(timeout: 5))
-        guard let initialLineHeight = reader.lineHeightValue() else {
-            XCTFail("line-height slider must expose a numeric accessibility value")
+        guard let preview = reader.settingsPreviewElement(timeout: 10),
+              let panel = reader.settingsPanelElement(),
+              reader.lineHeightSliderElement(timeout: 5) != nil
+        else {
+            XCTFail("production Reader settings sheet must expose exact panel, preview, and line-height controls")
             return
         }
-        XCTAssertEqual(initialLineHeight, 2.1, accuracy: 0.05)
 
-        let previewHeight = reader.settingsPreview.frame.height
-        reader.lineHeightSlider.adjust(toNormalizedSliderPosition: 0)
+        let initialPreviewHeight = preview.frame.height
+        XCTAssertGreaterThan(preview.frame.width, 0)
+        XCTAssertEqual(initialPreviewHeight, 164, accuracy: 1)
+        XCTAssertTrue(panel.frame.contains(preview.frame), "preview must remain inside the settings sheet geometry")
+
+        // Mutate real persisted Reader settings, not the DEBUG preview harness.
+        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0))
+        XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        XCTAssertTrue(reader.selectTheme("dark"), "production theme option must be addressable")
+        XCTAssertTrue(reader.themeIsSelected("dark"))
+        XCTAssertTrue(reader.closeSettings(), "settings sheet must close through its production Done action")
+
+        let expectedState = [
+            "status=ready",
+            "source=presentationDidChange",
+            "font=\(initialFont)",
+            "fontSize=\(initialFontSize)",
+            "lineHeight=1.00",
+            "readingMode=\(initialReadingMode)",
+            "theme=dark"
+        ]
         XCTAssertTrue(
-            reader.lineHeightSlider.waitUntilValueEquals("1", timeout: 3),
-            "line-height slider must expose the lower contract bound"
+            reader.waitForSettingsStateContaining(expectedState),
+            "closed production Reader must expose the applied settings bridge state"
         )
-        XCTAssertEqual(
-            reader.settingsPreview.frame.height,
-            previewHeight,
-            accuracy: 1,
-            "preview viewport height must not move when line-height changes"
+        guard let changedState = reader.settingsStateValue(timeout: 5),
+              let changedNavigatorID = stateField("navigator", in: changedState)
+        else {
+            XCTFail("closed production Reader must expose a parseable navigator receipt")
+            return
+        }
+        XCTAssertEqual(changedNavigatorID, initialNavigatorID)
+
+        // Dismantle the real Reader/WebView, then open the same book again.
+        let reopenedBookshelf = reader.goBack()
+        guard let reopenedBookCard = reopenedBookshelf.exactlyOneBookCard(timeout: 10) else {
+            XCTFail("Reader close must return to a deterministic one-card bookshelf")
+            return
+        }
+        reopenedBookCard.tapWhenReady()
+        guard reader.waitForContent("Introduction", timeout: 45),
+              let reopenedWebView = reader.webViewElement(timeout: 10)
+        else {
+            XCTFail("reopened production Reader must recreate the real EPUB WebView")
+            return
+        }
+
+        XCTAssertEqual(reopenedWebView.frame.size.width, initialWebViewSize.width, accuracy: 1)
+        XCTAssertEqual(reopenedWebView.frame.size.height, initialWebViewSize.height, accuracy: 1)
+        XCTAssertTrue(
+            reader.waitForSettingsStateContaining(expectedState),
+            "reopened production WebView must receive the persisted settings/theme/line-spacing state"
+        )
+        guard let reopenedState = reader.settingsStateValue(timeout: 5),
+              let reopenedNavigatorID = stateField("navigator", in: reopenedState)
+        else {
+            XCTFail("reopened production Reader must expose a parseable navigator receipt")
+            return
+        }
+        XCTAssertNotEqual(
+            reopenedNavigatorID,
+            changedNavigatorID,
+            "close/reopen must publish a new live Readium navigator identity"
         )
 
-        reader.resetReaderSettings()
-        XCTAssertTrue(
-            reader.lineHeightSlider.waitUntilValueEquals("1.4", timeout: 3),
-            "Reader-local reset must restore the Reader default line-height"
-        )
-        XCTAssertTrue(reader.settingsPreview.exists)
+        reader.openSettings()
+        guard let reopenedPreview = reader.settingsPreviewElement(timeout: 10) else {
+            XCTFail("reopened Reader settings must expose the real preview")
+            return
+        }
+        XCTAssertEqual(reopenedPreview.frame.height, initialPreviewHeight, accuracy: 1)
+        XCTAssertEqual(reopenedPreview.frame.height, 164, accuracy: 1)
+        XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        XCTAssertTrue(reader.themeIsSelected("dark"))
+    }
+
+    private func stateField(_ key: String, in value: String) -> String? {
+        value
+            .split(separator: ";")
+            .first(where: { $0.hasPrefix("\(key)=") })
+            .map { String($0.dropFirst(key.count + 1)) }
     }
 
     @MainActor
@@ -64,48 +142,50 @@ final class ReaderSettingsUITests: UITestCase {
             perfLog: "reader-settings-themes"
         )
         let bookshelf = AppPage(app: app).goToBookshelf()
-        guard bookshelf.anyBookCard.waitUntilExists(timeout: 10) else {
-            XCTFail("Reader UI World must materialize a book before settings can be opened")
+        guard let bookCard = bookshelf.exactlyOneBookCard(timeout: 10) else {
+            XCTFail("Reader UI World must materialize exactly one book before settings can be opened")
             return
         }
-        bookshelf.anyBookCard.tapWhenReady()
+        bookCard.tapWhenReady()
 
         let reader = ReaderPage(app: app)
-        guard reader.contentText("Introduction").waitUntilExists(timeout: 45) else {
-            XCTFail("Reader UI World must render the seeded book content")
+        guard reader.waitForContent("Introduction", timeout: 45) else {
+            XCTFail("production Reader must render the seeded book content")
             return
         }
+        XCTAssertTrue(
+            reader.waitForSettingsStateContaining(["status=ready"], timeout: 45),
+            "Dynamic Type Reader must expose the live navigator state receipt in AX"
+        )
         reader.openSettings()
 
-        guard reader.settingsPreview.waitUntilExists(timeout: 5),
-              reader.showPreview()
-        else {
+        guard reader.showPreview(), let initialPreview = reader.settingsPreviewElement(timeout: 5) else {
             XCTFail("Reader settings preview must be visible before theme counterexamples")
             return
         }
-        let viewportHeight = reader.settingsPreview.frame.height
+        let viewportHeight = initialPreview.frame.height
 
         for theme in ["dark", "sepia"] {
-            guard reader.selectTheme(theme) else {
-                XCTFail("Reader theme option must expose a hittable stable selector: \(theme)")
-                return
-            }
-            guard reader.showPreview() else {
-                XCTFail("Reader preview must remain reachable after selecting theme: \(theme)")
+            guard reader.selectTheme(theme), reader.showPreview(),
+                  let preview = reader.settingsPreviewElement(timeout: 5)
+            else {
+                XCTFail("Reader theme option must remain reachable: \(theme)")
                 return
             }
             captureStep("\(theme)-theme", app: app)
             XCTAssertEqual(
-                reader.settingsPreview.frame.height,
+                preview.frame.height,
                 viewportHeight,
                 accuracy: 1,
                 "\(theme) preview must keep the bounded viewport geometry"
             )
+            XCTAssertGreaterThan(preview.frame.width, 0)
+            XCTAssertFalse(preview.label.isEmpty, "theme preview must retain its accessibility contract")
         }
     }
 
     @MainActor
-    func testReaderPreviewKeepsViewportUnderAccessibilityDynamicType() throws {
+    func testReaderSettingsDynamicTypeHasGeometryAndAccessibilityAssertions() throws {
         let app = launchIsolatedApp(
             extraArgs: [
                 "-UIPreferredContentSizeCategory",
@@ -115,39 +195,56 @@ final class ReaderSettingsUITests: UITestCase {
             perfLog: "reader-settings-dynamic-type"
         )
         let bookshelf = AppPage(app: app).goToBookshelf()
-        guard bookshelf.anyBookCard.waitUntilExists(timeout: 10) else {
-            XCTFail("Reader UI World must materialize a book before settings can be opened")
+        guard let bookCard = bookshelf.exactlyOneBookCard(timeout: 10) else {
+            XCTFail("Reader UI World must materialize exactly one book before settings can be opened")
             return
         }
-        bookshelf.anyBookCard.tapWhenReady()
+        bookCard.tapWhenReady()
 
         let reader = ReaderPage(app: app)
-        guard reader.contentText("Introduction").waitUntilExists(timeout: 45) else {
-            XCTFail("Reader UI World must render the seeded book content")
+        guard reader.waitForContent("Introduction", timeout: 45) else {
+            XCTFail("production Reader must render the seeded book content")
             return
         }
         reader.openSettings()
 
-        guard reader.settingsPreview.waitUntilExists(timeout: 5),
-              reader.lineHeightSlider.waitUntilExists(timeout: 5),
-              reader.settingsDoneButton.waitUntilExists(timeout: 5)
+        guard let panel = reader.settingsPanelElement(),
+              let preview = reader.settingsPreviewElement(timeout: 10),
+              let slider = reader.lineHeightSliderElement(timeout: 10),
+              let done = reader.settingsDoneButtonElement(timeout: 10)
         else {
-            XCTFail("Reader settings selectors must remain reachable at Accessibility Dynamic Type")
+            XCTFail("Accessibility Dynamic Type must expose exact Reader settings controls")
             return
         }
-        guard reader.showPreview() else {
-            XCTFail("Reader preview must remain reachable at Accessibility Dynamic Type")
-            return
-        }
-        captureStep("dynamic-type", app: app)
-        let viewportHeight = reader.settingsPreview.frame.height
 
-        reader.lineHeightSlider.adjust(toNormalizedSliderPosition: 1)
+        let appFrame = app.frame
+        XCTAssertGreaterThan(panel.frame.width, 0)
+        XCTAssertGreaterThan(panel.frame.height, 0)
+        XCTAssertGreaterThan(preview.frame.width, 0)
+        XCTAssertEqual(preview.frame.height, 164, accuracy: 1)
+        XCTAssertGreaterThan(slider.frame.width, 100)
+        XCTAssertGreaterThan(done.frame.height, 30)
+        XCTAssertTrue(done.isHittable)
+        XCTAssertTrue(appFrame.contains(done.frame), "Done must remain within the app viewport at accessibility size")
+        XCTAssertFalse(preview.frame.intersects(done.frame), "preview and Done must not overlap at accessibility size")
+
+        XCTAssertFalse(preview.label.isEmpty, "preview must expose a localized accessibility label")
+        XCTAssertFalse(slider.label.isEmpty, "line-height control must expose a localized accessibility label")
+        XCTAssertNotNil(slider.value, "line-height control must expose its actual numeric value")
+        XCTAssertFalse(done.label.isEmpty, "Done must expose a localized accessibility label")
+        XCTAssertTrue(reader.showPreview())
+
+        let viewportHeight = preview.frame.height
+        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 1))
+        guard let resizedPreview = reader.settingsPreviewElement(timeout: 5) else {
+            XCTFail("preview must remain in the accessibility tree after line-height change")
+            return
+        }
         XCTAssertEqual(
-            reader.settingsPreview.frame.height,
+            resizedPreview.frame.height,
             viewportHeight,
             accuracy: 1,
-            "Dynamic Type must not make line-height changes resize the preview viewport"
+            "Dynamic Type must not make line-height changes resize the fixed preview viewport"
         )
     }
 }
