@@ -85,7 +85,12 @@ extension UITestFixtureSeed {
         seedSignedInLoginFromWorld(using: authFixtureID(for: settingsSeed))
         applySettingsPreferences(settingsSeed.preferences)
 
-        let context = ModelContext(container)
+        // Settings reads reset snapshots from the app environment's main context.
+        // Seed through that same context so the reset boundary observes the
+        // canonical cards immediately after the fixture save; a separate
+        // ModelContext(container) can leave the UI projection at zero on the
+        // in-memory UI-test store.
+        let context = container.mainContext
         do {
             try clearVocabularyEntries(from: context)
             let vocabularySeed = FixtureDatasetStore.requireVocabularySeed(for: .vocabListPopulated)

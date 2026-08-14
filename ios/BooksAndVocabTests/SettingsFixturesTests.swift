@@ -411,6 +411,17 @@ import Testing
         #expect(after == 1)
     }
 
+    @Test func p15ResetFixtureSharesTheApplicationMainContext() throws {
+        let seedSourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Support/UITestFixtureSeed+Settings.swift")
+        let seedSource = try String(contentsOf: seedSourceURL, encoding: .utf8)
+
+        #expect(seedSource.contains("let context = container.mainContext"))
+        #expect(!seedSource.contains("let context = ModelContext(container)"))
+    }
+
     @Test func p15EvidenceContractBindsRequiredAndCounterexampleAssetsOneToOne() throws {
         let expected: [(fixtureID: String, label: String, assetID: String, stepLabel: String)] = [
             ("preferences_auto_sync_off", "required-settings", "settings-required", "required-settings"),
