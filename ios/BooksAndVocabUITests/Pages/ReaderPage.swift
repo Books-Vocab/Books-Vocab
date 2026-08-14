@@ -409,7 +409,10 @@ struct ReaderPage {
     private var webViewQuery: XCUIElementQuery { app.webViews }
 
     private var settingsStateQuery: XCUIElementQuery {
-        app.descendants(matching: .any)
+        // The production receipt is an `Other` accessibility container. Query
+        // its concrete type so iOS 26 WebKit's legacy/modern AX projections
+        // cannot duplicate the same receipt in a broad `.any` query.
+        app.otherElements
             .matching(identifier: "reader.webView.settingsState")
     }
 
