@@ -199,8 +199,6 @@ final class ReaderFlowUITests: UITestCase {
             return
         }
         XCTAssertFalse(reader.contentText(Self.seededWord).exists)
-        captureStep("toc-destination-content", app: app)
-        captureStep("toc-navigation-result", app: app)
         try writeReaderTOCEvidence(
             label: "reader-toc-required",
             partition: "required",
@@ -212,6 +210,11 @@ final class ReaderFlowUITests: UITestCase {
             destinationSelector: "reader.toc.readerOverlay.destination",
             contentSelector: Self.secondChapterContent
         )
+        // Readium can rebuild the WebKit AX subtree as a screenshot is taken;
+        // persist the machine evidence while the just-asserted content node is
+        // live, then capture the visual artifacts as a separate side effect.
+        captureStep("toc-destination-content", app: app)
+        captureStep("toc-navigation-result", app: app)
         XCTAssertTrue(reader.waitUntilTableOfContentsSheetGone(timeout: 10))
         reader.assertIsActive()
         captureStep("toc-navigation-success", app: app)
