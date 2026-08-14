@@ -1086,17 +1086,18 @@ stage_fixture_dataset_xctestrun() {
 }
 
 stage_ui_evidence_runner_environment() {
-  local staged_path="$1" source_commit device
+  local staged_path="$1" source_commit device verdict_file
   [[ -n "$staged_path" && -f "$staged_path" ]] || return 1
   source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
   device="$(resolve_run_device_udid 2>/dev/null || true)"
-  [[ -n "$source_commit" && -n "${UI_TEST_SCREENSHOT_DIR:-}" && -n "$device" ]] || return 1
+  verdict_file="${KG_IOS_VERDICT_FILE:-${VERDICT_FILE:-}}"
+  [[ -n "$source_commit" && -n "${UI_TEST_SCREENSHOT_DIR:-}" && -n "$device" && -n "$verdict_file" ]] || return 1
   ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SOURCE_COMMIT "$source_commit" \
     && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR" \
     && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_ID "$EVIDENCE_DATASET_ID" \
     && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_SHA256 "$EVIDENCE_DATASET_SHA256" \
     && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DEVICE_UDID "$device" \
-    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_IOS_VERDICT_FILE "$VERDICT_FILE"
+    && ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_IOS_VERDICT_FILE "$verdict_file"
 }
 
 xctestrun_target_env_roots() {

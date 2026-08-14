@@ -1121,7 +1121,8 @@ grep -q 'KG_UI_TEST_SCREENSHOT_DIR' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'uitest_contact_sheet.py' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test captures UI step screenshots into a contact sheet" || fail_t "ios_test missing UI step contact sheet capture"
 [[ "$(grep -c '^stage_ui_evidence_runner_environment()' "$WORKSPACE/ops/ios_test.sh")" -eq 1 ]] \
-  && grep -q 'KG_IOS_VERDICT_FILE "\$VERDICT_FILE"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'verdict_file="\${KG_IOS_VERDICT_FILE:-\${VERDICT_FILE:-}}"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'KG_IOS_VERDICT_FILE "\$verdict_file"' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test injects the pinned verdict path into UI test runners" \
   || fail_t "ios_test UI evidence runner cannot bind its pre-run verdict context"
 grep -q 'xcresulttool' "$WORKSPACE/ops/ios_test.sh" \
