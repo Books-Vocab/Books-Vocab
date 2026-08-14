@@ -83,6 +83,7 @@ struct SettingsPresenter: View {
             }
             .navigationDestination(isPresented: $showReviewCardLayout) {
                 ReviewCardLayoutEditor()
+                    .settingsDetailNavigationBackButton()
             }
             // 與複習卡片同一種入口：push 一個沒有自己 chrome 的頁面。閱讀偏好
             // 存在使用者層級的 ReaderSettings（環境預設 `.shared`），不綁任何

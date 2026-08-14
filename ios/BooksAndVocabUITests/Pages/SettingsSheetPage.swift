@@ -4,9 +4,14 @@ import XCTest
 struct SettingsSheetPage {
     let app: XCUIApplication
 
-    /// Settings is presented in a sheet with a NavigationStack; the nav bar title is "設定".
+    /// Settings is presented in a sheet with a NavigationStack. The underlying
+    /// Bookshelf navigation bar remains in the application-wide AX tree, so
+    /// scope this query through the sheet-owned Done button instead of counting
+    /// every navigation bar in the app.
     var navBar: XCUIElement {
-        let matching = app.navigationBars.allElementsBoundByIndex
+        let matching = app.navigationBars
+            .containing(.button, identifier: "settings.dismissButton")
+            .allElementsBoundByIndex
         precondition(matching.count == 1, "Expected exactly one settings navigation bar, found \(matching.count)")
         return matching[0]
     }
