@@ -805,9 +805,10 @@ struct ReaderPage {
             )
         } else if position >= 0.99 {
             return adjustEndpointSlider(
-                // Same iOS 26 edge-hit seam at the upper bound.  0.999 is
-                // still quantized by the 0.1 step to the exact 2.5 value.
-                to: 0.999,
+                // Same iOS 26 edge-hit seam at the upper bound.  0.98 stays
+                // off the coordinate that XCTest rounds to 1.00 while the
+                // 0.1 step still quantizes it to the exact 2.5 value.
+                to: 0.98,
                 interiorPositions: [0.95, 0.85, 0.75],
                 expectedValue: "2.5"
             )
