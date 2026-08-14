@@ -120,6 +120,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     private let syncPersistence: any SettingsSyncPersisting
 #if DEBUG
     private var settingsSyncFixtureSummary: SettingsFixtureSeed.SyncSummary?
+    private var settingsSyncFixtureEvidenceSessionID: Int? = nil
 #endif
 
     init(
@@ -145,10 +146,12 @@ final class SettingsCoordinator: SettingsCoordinating {
                 preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare syncSummary")
             }
             resolvedFixtureSummary = summary
+            let transport = SettingsSyncFixtureTransport(summary: summary)
             resolvedService = KGService(
-                transport: SettingsSyncFixtureTransport(summary: summary),
+                transport: transport,
                 connectivityGate: FixedConnectivityGate(isConnected: summary.isConnected)
             )
+            settingsSyncFixtureEvidenceSessionID = transport.evidenceSessionID
         }
         self.settingsSyncService = resolvedService
         self.settingsSyncFixtureSummary = resolvedFixtureSummary
@@ -187,11 +190,12 @@ final class SettingsCoordinator: SettingsCoordinating {
 #if DEBUG
         if settingsSyncFixtureSummary != nil {
             // The old fixture transport may still finish after this boundary.
-            // Drop its service and rotate the evidence session so late events
-            // cannot contaminate the newly authenticated account's proof.
+            // Drop its service and forget its evidence session so late events
+            // cannot contaminate the newly authenticated account's proof. The
+            // store is session-partitioned; do not globally clear it here.
             settingsSyncService = nil
             settingsSyncFixtureSummary = nil
-            _ = SettingsSyncFixtureEvidenceStore.shared.beginSession()
+            settingsSyncFixtureEvidenceSessionID = nil
         }
 #endif
         syncProgress.reset()
@@ -905,10 +909,12 @@ final class SettingsCoordinator: SettingsCoordinating {
             preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare syncSummary")
         }
         settingsSyncFixtureSummary = summary
+        let transport = SettingsSyncFixtureTransport(summary: summary)
         settingsSyncService = KGService(
-            transport: SettingsSyncFixtureTransport(summary: summary),
+            transport: transport,
             connectivityGate: FixedConnectivityGate(isConnected: summary.isConnected)
         )
+        settingsSyncFixtureEvidenceSessionID = transport.evidenceSessionID
         return settingsSyncService
     }
 #endif
@@ -932,14 +938,20 @@ final class SettingsCoordinator: SettingsCoordinating {
         let previousResidual = syncEvidence?.residualWords ?? []
         let residualWords = outcome == .failed ? words : previousResidual
         let readBackWords = syncDataOutcome == .complete ? words : []
+        let transportEvents = settingsSyncFixtureEvidenceSessionID.map {
+            SettingsSyncFixtureEvidenceStore.shared.snapshot(sessionID: $0)
+        } ?? []
+        let dictionaryEvents = settingsSyncFixtureEvidenceSessionID.map {
+            SettingsSyncFixtureEvidenceStore.shared.snapshotDictionaryEvents(sessionID: $0)
+        } ?? []
         return SettingsSyncLifecycleEvidence(
             lifecycle: syncLifecycleName,
             attempt: syncAttempt,
             dataOutcome: syncDataOutcome,
             residualWords: residualWords,
             readBackWords: readBackWords,
-            transportEvents: SettingsSyncFixtureEvidenceStore.shared.snapshot(),
-            dictionaryEvents: SettingsSyncFixtureEvidenceStore.shared.snapshotDictionaryEvents(),
+            transportEvents: transportEvents,
+            dictionaryEvents: dictionaryEvents,
             perfMarks: syncPerfMarks
         )
     }
