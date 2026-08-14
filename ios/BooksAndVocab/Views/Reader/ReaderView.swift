@@ -373,10 +373,11 @@ struct ReaderView: View {
             await MainActor.run {
                 publication = result.publication
                 if book.lastReadLocatorJSON != nil, initialLocator == nil {
-                    restoreFallbackLocator = result.publication.readingOrder.first.flatMap { link in
+                    restoreFallbackLocator = result.publication.readingOrder.compactMap { link in
                         guard let mediaType = link.mediaType else { return nil }
                         return Locator(href: link.url(), mediaType: mediaType)
-                    }
+                    }.first
+                    readerState.runtime.markRestoreFailure()
                 }
                 readerState.runtime.markReady()
                 PerfLog.reader.mark("reader.opened", "title=\(book.title)")

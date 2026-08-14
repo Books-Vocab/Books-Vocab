@@ -18,7 +18,16 @@ extension ReaderView {
     var initialLocator: Locator? {
         guard let json = book.lastReadLocatorJSON else { return nil }
         do {
-            return try Locator(jsonString: json)
+            let locator = try Locator(jsonString: json)
+            guard let publication else { return locator }
+            let readingOrderHrefs = Set(publication.readingOrder.map { $0.url().string })
+            guard readingOrderHrefs.contains(locator.href.string) else {
+                AppLog.reader.error(
+                    "Saved locator is outside the loaded publication reading order: \(locator.href.string, privacy: .public)"
+                )
+                return restoreFallbackLocator
+            }
+            return locator
         } catch {
             AppLog.reader.error("Failed to restore saved locator: \(error.localizedDescription, privacy: .public)")
             return restoreFallbackLocator
@@ -68,6 +77,12 @@ extension ReaderView {
                 onMarkingProgress: handleMarkingProgress,
                 onTOCNavigationEvent: handleTOCNavigationEvent
             )
+            // A persisted locator can fail to decode only after the
+            // publication has loaded. The recovery locator is therefore a
+            // real state transition, not merely a changed representable input:
+            // rebuild the navigator so Readium receives it in its initializer
+            // instead of retaining the first nil `initialLocation`.
+            .id(restoreFallbackLocator?.href.string ?? "reader.navigator.default")
             .overlay(alignment: .bottom) {
                 tocNavigationSuccessOverlay
             }

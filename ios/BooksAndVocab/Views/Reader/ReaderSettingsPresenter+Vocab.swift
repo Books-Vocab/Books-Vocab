@@ -413,7 +413,12 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             slider.setValue(Float(nextValue), animated: false)
             slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
             pendingValue = nextValue
-            if !slider.isTracking, !isInteracting {
+            // XCTest's `adjust(toNormalizedSliderPosition:)` can deliver a
+            // valueChanged event after tracking has ended without delivering a
+            // matching touch-up event. `isTracking` is the UIKit source of
+            // truth for that boundary; do not let a stale touchDown flag
+            // strand the endpoint value in `pendingValue`.
+            if !slider.isTracking {
                 commitPendingValue(slider)
             }
         }
