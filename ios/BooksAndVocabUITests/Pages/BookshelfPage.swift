@@ -73,7 +73,12 @@ struct BookshelfPage {
 
     @discardableResult
     func tapSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> SettingsSheetPage {
-        settingsButton.tapWhenReady(file: file, line: line)
+        // A fixture may apply its localized preferences after the root tab is
+        // mounted, causing SwiftUI to rebuild the NavigationStack toolbar.
+        // Keep this action bounded but allow that AX projection to settle;
+        // the selector remains the production identifier and never falls back
+        // to a coordinate or a localized title.
+        settingsButton.tapWhenReady(timeout: 15, file: file, line: line)
         return SettingsSheetPage(app: app)
     }
 
