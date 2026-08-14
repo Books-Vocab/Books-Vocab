@@ -37,6 +37,11 @@ class UITestCase: XCTestCase {
         )
         currentApp = app
         app.launch()
+        // A previous Simulator run may leave a system document picker in the
+        // foreground. `launch()` can still expose the app's background AX tree
+        // while every app control remains non-hittable; explicitly activate
+        // the test application before resolving any selectors.
+        app.activate()
         return app
     }
 
