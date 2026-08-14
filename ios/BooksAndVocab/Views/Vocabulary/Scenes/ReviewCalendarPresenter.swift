@@ -391,6 +391,10 @@ struct ReviewCalendarPresenter: View {
                     systemImage: "calendar.badge.exclamationmark",
                     description: "這天沒有複習紀錄".localized
                 )
+                // Keep the empty-state receipt on the card container. Without
+                // containment, SwiftUI projects the same identifier onto the
+                // image and text descendants, making the state non-unique.
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier(ReviewCalendarAccessibility.emptyDayDetail)
             } else {
                 populatedDayDetailSection
