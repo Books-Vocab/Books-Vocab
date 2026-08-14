@@ -719,13 +719,30 @@ struct ReaderPage {
     }
 
     @discardableResult
-    func selectHighlightColor(_ color: String) -> Bool {
-        guard highlightColorPicker.waitUntilHittable(timeout: 5) else { return false }
-        highlightColorPicker.tap()
+    func selectHighlightColor(_ color: String, timeout: TimeInterval = 8) -> Bool {
         let option = app.buttons["reader.settings.highlightColor.\(color)"]
-        guard option.waitUntilHittable(timeout: 5) else { return false }
-        option.tap()
-        return true
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if option.exists, option.isHittable {
+                option.tap()
+                return true
+            }
+
+            let pickerIsActionable = highlightColorPicker.exists
+                && highlightColorPicker.isHittable
+                && !highlightColorPicker.frame.isEmpty
+                && highlightColorPicker.frame.intersects(app.frame)
+            if pickerIsActionable {
+                highlightColorPicker.tap()
+            } else {
+                // ColorPicker is below the preview on the production Form.
+                // Reveal it with the real scroll container; never derive a
+                // coordinate from a clipped or invalid AX frame.
+                scrollSettingsPanel(towardTop: false)
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return option.exists && option.isHittable
     }
 
     @discardableResult

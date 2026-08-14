@@ -9,7 +9,10 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         XCUIDevice.shared.orientation = .portrait
-        executionTimeAllowance = 120
+        // The canonical 644-row UI World is intentionally a large-data
+        // acceptance path; its measured cold launch and AX queries exceed the
+        // generic smoke allowance. The allowance belongs to XCTest itself.
+        executionTimeAllowance = 360
     }
 
     func testP11LaunchSelectorsAreBoundToCanonicalWorlds() {
