@@ -62,6 +62,12 @@ helper 會將 source root 與 tool root 分開：dataset、HEAD/dirty、runner �
 
 `artifacts/ui-evidence-contract.json` 必須把每張 step PNG、contact/quick4 sheet、video 與 `UIreview.html` 綁定目前 bytes：除 `stepSha256` 外，還要有 `videoSha256` 與 `reviewHtmlSha256`；manifest 的 `relPath` 解析若逃出 stable screenshot root（含 symlink escape）即 fail-closed。
 
+### Simulator 錄影的穩定性契約
+
+UI scope 若帶明確 Simulator UDID，producer 會在 XCTest 前啟動 `simctl io <udid> recordVideo`，並以 `/tmp/kg-ios-ui-video.lock` 序列化同一 host 上的 recorder。啟動前必須觀察到 `Recording started`；若 host recorder 已被其他 run 佔用、啟動失敗或無法在 bounded window 內確認，該 run 立即 fail-closed，不把「測試綠但沒有影片」當成視覺完成。測試結束後由同一 cleanup path 送出 `SIGINT`、bounded finalize、驗證非空 MP4、計算 SHA-256，再把影片歸檔到 stable evidence bundle；lock 只有在 finalize path 結束後釋放。這使多 worktree／多 UI run 不會互相覆寫或誤認另一條 run 的影片。
+
+因此可接受的 UI verdict 必須同時滿足：`status=result=ok`、`executed>0`、explicit device identity、step/contact/quick4/`UIreview.html`/video 均存在且非空、video hash 與 contract 一致。沒有影片的舊 run 只能保留為歷史診斷，不得回填成新的 visual PASS。
+
 ```bash
 ./ops/ios_ops.sh test --ui --file <Flow>UITests.swift --lease --json   # 一律 --lease（pool 預設 3 台，KG_IOS_SIM_POOL_SIZE 可調）
 ```
