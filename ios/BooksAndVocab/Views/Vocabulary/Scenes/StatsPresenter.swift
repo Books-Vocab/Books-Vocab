@@ -215,7 +215,13 @@ struct StatsPresenter: View {
                 systemImage: "chart.bar"
             )
         }
-        if StatsScenePhase.resolve(hasSummary: true, isEmpty: isSummaryEmpty(summary)) == .empty {
+        // An unfiltered account with no cards still owns the Overview surface:
+        // render zero-valued metrics, calendar, and forecast so the user can
+        // understand the destination and its next action. Reserve the page-
+        // level empty state for a filtered projection with no matches; that is
+        // the only case where the whole Overview surface is intentionally
+        // replaced by a filter-recovery message.
+        if filter.isFiltered && isSummaryEmpty(summary) {
             let title = filter.isFiltered
                 ? L10n.string("目前沒有符合篩選條件的單字")
                 : StatsCopy.emptyTitle
