@@ -775,22 +775,12 @@ struct ReaderPage {
             line: line
         ) else { return false }
         if position >= 0.99 {
-            // On iOS 26, a normalized endpoint action can synthesize an event
-            // without moving a SwiftUI Slider when its thumb is at the lower
-            // bound. Reproduce the physical gesture instead: grab the thumb
-            // just inside the lower bound and drag it to the upper bound.
-            let lowerBound = slider.coordinate(
-                withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)
-            )
-            let upperBound = slider.coordinate(
-                withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)
-            )
-            lowerBound.press(
-                forDuration: 0.2,
-                thenDragTo: upperBound,
-                withVelocity: .default,
-                thenHoldForDuration: 0.1
-            )
+            // On iOS 26, XCTest's exact endpoint action can synthesize an
+            // event without moving a SwiftUI Slider when its thumb is at the
+            // lower bound. First move to a bounded interior value, then issue
+            // the endpoint action from a live, non-edge thumb position.
+            slider.adjust(toNormalizedSliderPosition: 0.95)
+            slider.adjust(toNormalizedSliderPosition: position)
         } else {
             slider.adjust(toNormalizedSliderPosition: position)
         }
