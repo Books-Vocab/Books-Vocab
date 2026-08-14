@@ -436,13 +436,12 @@ extension UITestCase {
         while Date() < deadline {
             if webViews.count == 1 {
                 // Readium exposes rendered paragraphs through the app-level
-                // WebKit query as identifier-backed static texts. Keep this
-                // aligned with ReaderPage.contentText(_:) while retaining the
-                // bounded wait for the WebKit accessibility subtree to settle.
-                let content = app.webViews.staticTexts.matching(identifier: selector)
-                if content.count == 1,
-                   let element = content.allElementsBoundByIndex.first {
-                    return element.label
+                // WebKit query's exact element subscript. Keep this aligned
+                // with ReaderPage.contentText(_:) while retaining the bounded
+                // wait for the WebKit accessibility subtree to settle.
+                let content = app.webViews.staticTexts[selector]
+                if content.exists {
+                    return content.label
                 }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
