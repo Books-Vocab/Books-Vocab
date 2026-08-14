@@ -67,7 +67,10 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
         XCTAssertTrue(reader.selectTheme("dark"), "production theme option must be addressable")
         XCTAssertTrue(reader.themeIsSelected("dark"))
+        XCTAssertTrue(reader.selectHighlightColor("blue"), "production highlight color option must be addressable")
         captureStep("settings-changed", app: app)
+        captureStep("change-theme", app: app)
+        captureStep("change-highlight", app: app)
         XCTAssertTrue(reader.closeSettings(), "settings sheet must close through its production Done action")
 
         let expectedState = [
@@ -132,6 +135,8 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertEqual(reopenedPreview.frame.height, initialPreviewHeight, accuracy: 1)
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
         XCTAssertTrue(reader.themeIsSelected("dark"))
+        XCTAssertTrue(reader.resetReaderSettings(), "Reader settings must expose the production reset action")
+        captureStep("reset", app: app)
     }
 
     private func stateField(_ key: String, in value: String) -> String? {
@@ -183,10 +188,16 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0))
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
         captureStep("preview-1.0", app: app)
+        captureStep("preview-1.0-counterexample", app: app)
+
+        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0.1333))
+        XCTAssertTrue(reader.waitForLineHeightValue("1.2", timeout: 5))
+        captureStep("preview-1.2", app: app)
 
         XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 1))
         XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
         captureStep("preview-2.5", app: app)
+        captureStep("preview-2.5-counterexample", app: app)
 
         let viewportHeight = initialPreview.frame.height
 
@@ -207,6 +218,9 @@ final class ReaderSettingsUITests: UITestCase {
             XCTAssertGreaterThan(preview.frame.width, 0)
             XCTAssertFalse(preview.label.isEmpty, "theme preview must retain its accessibility contract")
         }
+        XCTAssertTrue(reader.closeSettings(), "Reader settings must close through the production Done action")
+        XCTAssertTrue(reader.waitForContent(ReaderPage.seededContentMarker, timeout: 10))
+        captureStep("reader-real-content", app: app)
     }
 
     @MainActor
@@ -252,6 +266,7 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(done.isHittable)
         XCTAssertTrue(appFrame.contains(done.frame), "Done must remain within the app viewport at accessibility size")
         XCTAssertFalse(preview.frame.intersects(done.frame), "preview and Done must not overlap at accessibility size")
+        captureStep("dynamic-type", app: app)
 
         XCTAssertFalse(preview.label.isEmpty, "preview must expose a localized accessibility label")
         XCTAssertFalse(slider.label.isEmpty, "line-height control must expose a localized accessibility label")

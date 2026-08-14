@@ -90,6 +90,10 @@ struct SettingsSheetPage {
         app.otherElements["settings.syncLifecycle"]
     }
 
+    var syncProgress: XCUIElement {
+        app.otherElements["settings.syncProgress"]
+    }
+
     var syncLifecycleQuery: XCUIElementQuery {
         app.otherElements.matching(identifier: "settings.syncLifecycle")
     }

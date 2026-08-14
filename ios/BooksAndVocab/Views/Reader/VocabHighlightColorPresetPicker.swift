@@ -35,6 +35,11 @@ struct VocabHighlightColorPresetPicker: View {
                                 .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                         }
                 }
+                .modifier(
+                    OptionalAccessibilityIdentifier(
+                        id: accessibilityIdentifier.map { "\($0).\(preset.rawValue)" }
+                    )
+                )
                 .tag(preset)
             }
         }

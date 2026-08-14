@@ -426,6 +426,15 @@ struct AddLinkSheet: View {
                 )
                 .accessibilityValue(Text(verbatim: payload))
         }
+        if coordinator.materializePhase == .failed {
+            Rectangle()
+                .fill(.clear)
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityLabel(Text(L10n.string("addLink.dictionarySection")))
+                .accessibilityIdentifier("addLink.dictionary.materialization.failed")
+                .accessibilityValue(Text(verbatim: "dictionary.p2.materialize-error"))
+        }
     }
 
     private func failureMessage(_ failure: DictionarySearchFailure) -> String {

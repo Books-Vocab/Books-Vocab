@@ -89,9 +89,10 @@ private struct OverviewFixtureProjection {
                   ) {
             clockNow = noonAfterDueDate
         } else {
-            throw NSError(domain: "OverviewFixtureProjection", code: 5, userInfo: [
-                NSLocalizedDescriptionKey: "\(fixtureID) has no derivable review clock",
-            ])
+            // statsEmpty is intentionally empty. Match StatsViewTime.emptySeedFallback
+            // instead of consulting the host clock, so the zero-state capture is
+            // tied to the same deterministic production contract.
+            clockNow = ISO8601DateFormatter().date(from: "2026-06-01T12:00:00Z") ?? .distantPast
         }
 
         func dayKey(_ date: Date) -> String {
@@ -148,7 +149,7 @@ final class OverviewFlowUITests: UITestCase {
         captureStep("launch", app: app)
 
         let shell = AppPage(app: app)
-        let overview = try step("overview-tab", app: app) {
+        let overview = try step("overview", app: app) {
             let page = shell.goToOverview()
             XCTAssertTrue(app.waitForNavigationToSettle())
             return page
@@ -287,6 +288,32 @@ final class OverviewFlowUITests: UITestCase {
             XCTAssertEqual(overview.calendar.value as? String, expected.activityIsEmpty ? "0" : "populated")
             overview.assertUniqueForecastContract()
             overview.assertForecastContainsCount(String(expected.dueToday))
+        }
+    }
+
+    @MainActor
+    func testOverviewEmptyForecastCounterexampleIsVisible() throws {
+        let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsEmpty")
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("statsEmpty")],
+            perfLog: "overview-empty-forecast"
+        )
+        let overview = try step("overview-empty", app: app) {
+            let page = AppPage(app: app).goToOverview()
+            XCTAssertTrue(app.waitForNavigationToSettle())
+            return page
+        }
+
+        try step("forecast-zero-counterexample", app: app) {
+            overview.assertOverviewAccessibilityHierarchy()
+            overview.assertMetric("totalCards", value: "0")
+            overview.assertMetric("reviewedToday", value: "0")
+            overview.assertMetric("dueToday", value: "0")
+            overview.calendar.assertExists(timeout: 10)
+            overview.assertUniqueForecastContract()
+            let bucket = overview.forecastBucket(expected.forecastDayKey)
+            bucket.assertExists(timeout: 10)
+            XCTAssertTrue((bucket.value as? String)?.contains("0") == true)
         }
     }
 

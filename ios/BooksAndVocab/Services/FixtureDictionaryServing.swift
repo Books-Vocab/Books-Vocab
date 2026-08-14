@@ -84,6 +84,7 @@ actor FixtureDictionaryServing: DictionaryServing {
     private var attempts: [String: Int] = [:]
     private var pendingDetailFailures: [String: Int] = [:]
     private var pendingDetailFailureQuery: String?
+    private var activeQuery: String?
     private(set) var materializationRequests: [DictionaryMaterializeLinkRequest] = []
 
     init(
@@ -193,6 +194,7 @@ actor FixtureDictionaryServing: DictionaryServing {
     ) async throws -> DictionarySearchResponse {
         let queryKey = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let state = try state(for: queryKey)
+        activeQuery = queryKey
         if pendingDetailFailureQuery != nil, pendingDetailFailureQuery != queryKey {
             pendingDetailFailures.removeAll()
             pendingDetailFailureQuery = nil
@@ -249,8 +251,40 @@ actor FixtureDictionaryServing: DictionaryServing {
             pendingDetailFailures[entryKey, default: 0] -= 1
             throw KGError.offline
         }
+        let responseEntry: LexicalEntry
+        if activeQuery == "missing-example" {
+            responseEntry = LexicalEntry(
+                provider: entry.provider,
+                dictionaryId: entry.dictionaryId,
+                entryKey: entry.entryKey,
+                schemaVersion: entry.schemaVersion,
+                word: entry.word,
+                sourceLanguage: entry.sourceLanguage,
+                targetLanguage: entry.targetLanguage,
+                pronunciations: entry.pronunciations,
+                senses: entry.senses.map { sense in
+                    sense.id == "sense-2"
+                        ? LexicalSense(
+                            id: sense.id,
+                            partOfSpeech: sense.partOfSpeech,
+                            definition: sense.definition,
+                            examples: []
+                        )
+                        : sense
+                },
+                forms: entry.forms,
+                sourceUrl: entry.sourceUrl,
+                licenseName: entry.licenseName,
+                licenseUrl: entry.licenseUrl,
+                attributionText: entry.attributionText,
+                fetchedAt: entry.fetchedAt,
+                truncated: entry.truncated
+            )
+        } else {
+            responseEntry = entry
+        }
         return DictionaryEntryResponse(
-            entry: entry,
+            entry: responseEntry,
             cacheStatus: "fixture",
             materialization: materialization
         )
@@ -261,6 +295,9 @@ actor FixtureDictionaryServing: DictionaryServing {
         idempotencyKey: String
     ) async throws -> DictionaryMaterializeLinkResponse {
         materializationRequests.append(request)
+        if activeQuery == "materialize-error" {
+            throw FixtureError.unavailable(fixtureID: "dictionary.p2.materialize-error")
+        }
         guard request.provider == entry.provider,
               request.entryKey == entry.entryKey,
               let sense = entry.senses.first(where: { $0.id == request.senseKey }),
@@ -367,6 +404,12 @@ actor FixtureDictionaryServing: DictionaryServing {
 
     private func state(for query: String) throws -> UIWorldDictionaryLookupState {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized == "missing-example" || normalized == "materialize-error" {
+            guard dictionary.lookup[UIWorldDictionaryLookupState.result.rawValue] != nil else {
+                throw FixtureError.missingCanonicalDictionary
+            }
+            return .result
+        }
         // `empty` is an explicit legacy fixture selector for an empty result;
         // it is not a lookup state and therefore must not be generalized into
         // a fallback for arbitrary typos.
