@@ -1248,6 +1248,17 @@ grep -q 'BooksAndVocabUITests' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'deviceRunLockWaitMs:' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'acquire_test_device_lock' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test records per-device execution lock timing" || fail_t "ios_test missing per-device execution lock timing"
+grep -q 'UI_TEST_VIDEO_LOCK_FILE="/tmp/kg-ios-ui-video.lock"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q "kg_ios_wait_for_shlock \"\[ios_test\]\" \"ui-video\"" "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test serializes the host-level Simulator video recorder" \
+  || fail_t "ios_test missing host-level video recorder lock"
+grep -q "grep -q 'Recording started'" "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'recording started udid=' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test fail-closes before UI execution unless video recording starts" \
+  || fail_t "ios_test does not verify video recorder startup"
+grep -q 'stop_ui_test_recording || true' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test cleanup finalizes and releases video recording" \
+  || fail_t "ios_test cleanup does not finalize video recording"
 ios_test_isolation_required="$(
   PROJECT_ROOT="/tmp/.codex/worktrees/91de/kg" \
   DESTINATION="platform=iOS Simulator,name=iPhone 17 Pro Max" \

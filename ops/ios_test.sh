@@ -731,6 +731,10 @@ UI_TEST_CONTACT_SHEET=""
 UI_TEST_SCREENSHOT_MANIFEST=""
 UI_TEST_VIDEO=""
 UI_TEST_VIDEO_PID=""
+UI_TEST_VIDEO_LOG=""
+UI_TEST_VIDEO_STARTED=0
+UI_TEST_VIDEO_LOCK_HELD=0
+UI_TEST_VIDEO_LOCK_FILE=""
 UI_TEST_VIDEO_FILE=""
 UI_TEST_VIDEO_SHA256=""
 UI_TEST_RUN_ID="${KG_IOS_TEST_RUN_ID:-$(date -u +%Y%m%d-%H%M%S)-${BASHPID:-$$}}"
@@ -754,8 +758,8 @@ cleanup() {
   if [[ -n "${CURRENT_XCODE_PID:-}" ]] && kill -0 "$CURRENT_XCODE_PID" 2>/dev/null; then
     kill "$CURRENT_XCODE_PID" 2>/dev/null || true
   fi
-  if [[ -n "${UI_TEST_VIDEO_PID:-}" ]] && kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null; then
-    kill -INT "$UI_TEST_VIDEO_PID" 2>/dev/null || true
+  if [[ -n "${UI_TEST_VIDEO_PID:-}" || "${UI_TEST_VIDEO_LOCK_HELD:-0}" -eq 1 ]]; then
+    stop_ui_test_recording || true
   fi
   release_test_device_lock
   release_build_lock   # ownership-guarded; only removes the lock if we still hold it
@@ -1436,15 +1440,39 @@ start_ui_test_recording() {
     echo "[ios_test][ui-video] skip: no explicit simulator udid (use --lease or --device <udid>)"
     return 0
   fi
+  UI_TEST_VIDEO_LOCK_FILE="/tmp/kg-ios-ui-video.lock"
+  if ! kg_ios_wait_for_shlock "[ios_test]" "ui-video" "$UI_TEST_VIDEO_LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep; then
+    kg_ios_lock_timeout_die "[ios_test]" "ui-video" "host-recorder" "$TIMEOUT"
+  fi
+  UI_TEST_VIDEO_LOCK_HELD=1
   UI_TEST_VIDEO="$UI_TEST_SCREENSHOT_DIR/run_recording.mp4"
-  xcrun simctl io "$udid" recordVideo --codec h264 --force "$UI_TEST_VIDEO" >/dev/null 2>&1 &
+  UI_TEST_VIDEO_LOG="$UI_TEST_SCREENSHOT_DIR/recording.log"
+  UI_TEST_VIDEO_STARTED=0
+  xcrun simctl io "$udid" recordVideo --codec h264 --force "$UI_TEST_VIDEO" >"$UI_TEST_VIDEO_LOG" 2>&1 &
   UI_TEST_VIDEO_PID=$!
-  echo "[ios_test][ui-video] recording udid=$udid pid=$UI_TEST_VIDEO_PID out=$UI_TEST_VIDEO"
+  local waited=0
+  while [[ "$waited" -lt 100 ]]; do
+    if grep -q 'Recording started' "$UI_TEST_VIDEO_LOG" 2>/dev/null; then
+      UI_TEST_VIDEO_STARTED=1
+      break
+    fi
+    if ! kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if [[ "$UI_TEST_VIDEO_STARTED" -ne 1 ]]; then
+    echo "[ios_test][ui-video] error: recorder did not start udid=$udid pid=$UI_TEST_VIDEO_PID" >&2
+    cat "$UI_TEST_VIDEO_LOG" >&2 || true
+    stop_ui_test_recording || true
+    return 1
+  fi
+  echo "[ios_test][ui-video] recording started udid=$udid pid=$UI_TEST_VIDEO_PID out=$UI_TEST_VIDEO log=$UI_TEST_VIDEO_LOG"
 }
 
 stop_ui_test_recording() {
-  [[ -n "${UI_TEST_VIDEO_PID:-}" ]] || return 0
-  if kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null; then
+  if [[ -n "${UI_TEST_VIDEO_PID:-}" ]] && kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null; then
     # simctl finalizes the mp4 container on SIGINT; give it a bounded window
     # before escalating, else a wedged recorder would hang the verdict path.
     kill -INT "$UI_TEST_VIDEO_PID" 2>/dev/null || true
@@ -1455,7 +1483,9 @@ stop_ui_test_recording() {
     done
     kill -0 "$UI_TEST_VIDEO_PID" 2>/dev/null && kill -9 "$UI_TEST_VIDEO_PID" 2>/dev/null || true
   fi
-  wait "$UI_TEST_VIDEO_PID" 2>/dev/null || true
+  if [[ -n "${UI_TEST_VIDEO_PID:-}" ]]; then
+    wait "$UI_TEST_VIDEO_PID" 2>/dev/null || true
+  fi
   UI_TEST_VIDEO_PID=""
   if [[ -n "${UI_TEST_VIDEO:-}" && -s "${UI_TEST_VIDEO:-}" ]]; then
     echo "[ios_test][ui-video] saved $UI_TEST_VIDEO"
@@ -1464,6 +1494,11 @@ stop_ui_test_recording() {
       echo "[ios_test][ui-video] warning: recording missing or empty out=$UI_TEST_VIDEO" >&2
     fi
     UI_TEST_VIDEO=""
+  fi
+  UI_TEST_VIDEO_STARTED=0
+  if [[ "${UI_TEST_VIDEO_LOCK_HELD:-0}" -eq 1 ]]; then
+    [[ "$(cat "$UI_TEST_VIDEO_LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$UI_TEST_VIDEO_LOCK_FILE"
+    UI_TEST_VIDEO_LOCK_HELD=0
   fi
 }
 
