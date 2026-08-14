@@ -432,20 +432,21 @@ extension UITestCase {
     ) throws -> String? {
         guard let selector, !selector.isEmpty else { return nil }
         let webViews = app.webViews
-        guard webViews.count == 1 else {
-            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation("webView")
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if webViews.count == 1 {
+                let webView = webViews.element(boundBy: 0)
+                let content = webView.staticTexts.matching(identifier: selector)
+                if content.count == 1,
+                   let element = content.allElementsBoundByIndex.first {
+                    return element.label
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        guard let webView = webViews.allElementsBoundByIndex.first else {
-            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation("webView")
-        }
-        let content = webView.staticTexts.matching(identifier: selector)
-        guard content.count == 1,
-              let element = content.allElementsBoundByIndex.first else {
-            throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
-                "contentSelector:\(selector)"
-            )
-        }
-        return element.label
+        throw ReaderTOCEvidenceWriterError.missingAccessibilityObservation(
+            "contentSelector:\(selector)"
+        )
     }
 
     private static func readScopedValue(
