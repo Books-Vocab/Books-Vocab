@@ -288,6 +288,7 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         slider.isContinuous = true
         slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
         slider.accessibilityIdentifier = "reader.settings.lineHeight"
+        slider.accessibilityValue = Self.accessibilityValue(for: value)
         slider.addTarget(
             context.coordinator,
             action: #selector(Coordinator.valueChanged(_:)),
@@ -303,6 +304,7 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         if abs(slider.value - nextValue) > 0.0001 {
             slider.setValue(nextValue, animated: false)
         }
+        slider.accessibilityValue = Self.accessibilityValue(for: value)
     }
 
     private static func quantized(_ rawValue: Double) -> Double {
@@ -312,6 +314,14 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         )
         let ticks = ((clamped - Metrics.lineHeightRange.lowerBound) / Metrics.lineHeightStep).rounded()
         return Metrics.lineHeightRange.lowerBound + (ticks * Metrics.lineHeightStep)
+    }
+
+    private static func accessibilityValue(for rawValue: Double) -> String {
+        String(
+            format: "%.1f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            quantized(rawValue)
+        )
     }
 
     final class Coordinator: NSObject {
@@ -329,7 +339,16 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
                 step: Metrics.lineHeightStep
             )
             slider.setValue(Float(nextValue), animated: false)
+            slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
             parent.value = nextValue
+        }
+
+        private static func accessibilityValue(for value: Double) -> String {
+            String(
+                format: "%.1f",
+                locale: Locale(identifier: "en_US_POSIX"),
+                value
+            )
         }
 
         private static func quantized(
