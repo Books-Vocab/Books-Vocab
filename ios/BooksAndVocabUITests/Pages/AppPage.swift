@@ -9,33 +9,41 @@ struct AppPage {
     /// Tab order: bookshelf → podcasts → notebooks → overview → explore.
     /// Tab labels are localized, so page objects must use the system-image
     /// identifier exposed by the native tab bar rather than a translated title.
-    private func tab(_ identifier: String, fallbackLabel: String) -> XCUIElement {
+    private func tab(
+        _ identifier: String,
+        systemImage: String,
+        fallbackLabel: String
+    ) -> XCUIElement {
         let identified = app.tabBars.buttons[identifier]
         if identified.exists {
             return identified
+        }
+        let imageIdentified = app.tabBars.buttons[systemImage]
+        if imageIdentified.exists {
+            return imageIdentified
         }
         return exactlyOne(fallbackLabel, in: app.tabBars.buttons)
     }
 
     var bookshelfTab: XCUIElement {
-        tab("tab.bookshelf", fallbackLabel: "書庫")
+        tab("tab.bookshelf", systemImage: "books.vertical", fallbackLabel: "書庫")
     }
 
     var podcastTab: XCUIElement {
-        tab("tab.podcasts", fallbackLabel: "播客")
+        tab("tab.podcasts", systemImage: "waveform", fallbackLabel: "播客")
     }
 
     var notebookTab: XCUIElement {
-        tab("tab.notebooks", fallbackLabel: "單字本")
+        tab("tab.notebooks", systemImage: "character.book.closed", fallbackLabel: "單字本")
     }
 
     var overviewTab: XCUIElement {
-        tab("tab.overview", fallbackLabel: "總覽")
+        tab("tab.overview", systemImage: "chart.bar", fallbackLabel: "總覽")
     }
 
     /// Explore（共享牌組庫）—— 第 5 個 tab（`KGFeatureFlags.exploreEnabled`，2026-08-05 起 Release 亦開）。
     var exploreTab: XCUIElement {
-        tab("tab.explore", fallbackLabel: "探索")
+        tab("tab.explore", systemImage: "sparkles", fallbackLabel: "探索")
     }
 
     // MARK: - Global Overlays
