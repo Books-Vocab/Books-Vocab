@@ -37,7 +37,11 @@ struct ReaderPage {
     func themeOption(_ theme: String) -> XCUIElement {
         app.buttons["reader.settings.theme.\(theme)"]
     }
-    var highlightColorPicker: XCUIElement { app.otherElements["reader.settings.highlightColor"] }
+    var highlightColorPicker: XCUIElement {
+        app.descendants(matching: .any)
+            .matching(identifier: "reader.settings.highlightColor")
+            .element(boundBy: 0)
+    }
     var highlightOpacityPicker: XCUIElement { app.buttons["reader.settings.highlightOpacity"] }
     var resetMenu: XCUIElement { app.buttons["reader.settings.resetMenu"] }
     var resetAllButton: XCUIElement { app.buttons["reader.settings.reset.all"] }
