@@ -138,18 +138,19 @@ extension XCUIElementQuery {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> XCUIElement? {
-        let deadline = Date().addingTimeInterval(timeout)
-        var observedCount = 0
+        let candidate = element(boundBy: 0)
+        guard candidate.waitForExistence(timeout: timeout) else {
+            XCTFail(
+                "Expected exactly one \(name), observed 0",
+                file: file,
+                line: line
+            )
+            return nil
+        }
 
-        while Date() < deadline {
-            observedCount = count
-            if observedCount == 1 {
-                return element(boundBy: 0)
-            }
-            if observedCount > 1 {
-                break
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        let observedCount = count
+        if observedCount == 1 {
+            return candidate
         }
 
         XCTFail(
@@ -168,25 +169,21 @@ extension XCUIElementQuery {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> XCUIElement? {
-        let deadline = Date().addingTimeInterval(timeout)
-        var observedCount = 0
-
-        while Date() < deadline {
-            observedCount = count
-            if observedCount == 1 {
-                return element(boundBy: 0)
-            }
-            if observedCount > 1 {
-                XCTFail(
-                    "Expected at most one \(name), observed \(observedCount)",
-                    file: file,
-                    line: line
-                )
-                return nil
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        let candidate = element(boundBy: 0)
+        guard candidate.waitForExistence(timeout: timeout) else {
+            return nil
         }
-        return nil
+
+        let observedCount = count
+        guard observedCount == 1 else {
+            XCTFail(
+                "Expected at most one \(name), observed \(observedCount)",
+                file: file,
+                line: line
+            )
+            return nil
+        }
+        return candidate
     }
 
     @discardableResult
