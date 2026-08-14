@@ -516,7 +516,10 @@ struct ReaderPage {
     /// paragraphs expose an exact-label staticText whose center is a
     /// deterministic word-tap target.
     private func contentTextQuery(_ text: String) -> XCUIElementQuery {
-        app.webViews.staticTexts.matching(identifier: text)
+        // Readium/WebKit publishes several WebView AX projections for the same
+        // navigator. Scope the lookup to the representative projection instead
+        // of asking XCTest to scan every static text in every projection.
+        webView.staticTexts.matching(identifier: text)
     }
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
