@@ -14,13 +14,23 @@ struct AppPage {
         systemImage: String,
         fallbackLabel: String
     ) -> XCUIElement {
-        let identified = app.tabBars.buttons[identifier]
-        if identified.exists {
-            return identified
-        }
-        let imageIdentified = app.tabBars.buttons[systemImage]
+        // SwiftUI may publish the `.accessibilityIdentifier` attached to the
+        // tab content as an `Other` sibling instead of as the `Button` under
+        // `tabBars` (notably when the fixture selects a different app
+        // language). Resolve the production system-image button from the full
+        // AX tree first; do not let the localized tab title become the main
+        // navigation contract.
+        let imageIdentified = app.descendants(matching: .any)
+            .matching(identifier: systemImage)
+            .firstMatch
         if imageIdentified.exists {
             return imageIdentified
+        }
+        let identified = app.descendants(matching: .any)
+            .matching(identifier: identifier)
+            .firstMatch
+        if identified.exists {
+            return identified
         }
         return exactlyOne(fallbackLabel, in: app.tabBars.buttons)
     }
