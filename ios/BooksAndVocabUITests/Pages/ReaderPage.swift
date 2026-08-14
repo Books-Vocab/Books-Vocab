@@ -861,6 +861,34 @@ struct ReaderPage {
                 return true
             }
         }
+
+        // When the iOS 26 bridge quantizes every normalized reposition to the
+        // adjacent tick, converge from the value AX actually reports.  The
+        // discrete swipe direction is chosen anew after every tick, so an
+        // overshoot is corrected instead of being treated as success.
+        for _ in 0..<8 {
+            guard let slider = exactlyOne(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 2,
+                file: file,
+                line: line
+            ), let rawValue = slider.value,
+            let currentValue = Double(String(describing: rawValue)) else { continue }
+            if abs(currentValue - numericValue) < 0.01 {
+                return true
+            }
+            let before = String(describing: rawValue)
+            if currentValue > numericValue {
+                slider.swipeLeft()
+            } else {
+                slider.swipeRight()
+            }
+            guard waitForSliderValueChange(from: before, timeout: 4) else { continue }
+            if waitForSliderValueEquals(expectedValue, timeout: 2) {
+                return true
+            }
+        }
         return false
     }
 
