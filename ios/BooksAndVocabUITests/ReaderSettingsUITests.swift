@@ -217,10 +217,17 @@ final class ReaderSettingsUITests: UITestCase {
             "Reader settings state must observe the committed 2.5 slider endpoint"
         )
         reader.openSettings()
-        XCTAssertNotNil(reader.settingsPreviewElement(timeout: 5))
+        guard let reopenedPreview = reader.settingsPreviewElement(timeout: 5) else {
+            XCTFail("Reader settings must recreate its preview after the endpoint commit")
+            return
+        }
         XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
 
-        let viewportHeight = initialPreview.frame.height
+        // Compare theme variants within the same reopened Form surface. The
+        // AX node is the Form row/container (not the inner fixed viewport),
+        // so its outer height may legitimately change after reopening with a
+        // different line-height value.
+        let viewportHeight = reopenedPreview.frame.height
 
         for theme in ["dark", "sepia"] {
             guard reader.selectTheme(theme), reader.showPreview(),
