@@ -35,8 +35,9 @@ private struct OverviewFixtureProjection {
     let dueToday: Int
     let activityIsEmpty: Bool
     let clockNow: Date
+    let forecastDayKey: String
 
-    static func vocabListLongFromRunner() throws -> Self {
+    static func fromRunner(fixtureID: String) throws -> Self {
         let environment = ProcessInfo.processInfo.environment
         let data: Data
         if let deflateB64 = environment["KG_FIXTURE_DATASET_DEFLATE_B64"], !deflateB64.isEmpty {
@@ -62,24 +63,34 @@ private struct OverviewFixtureProjection {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let document = try decoder.decode(Dataset.self, from: data)
-        guard let seed = document.vocabulary["vocabListLong"] else {
+        guard let seed = document.vocabulary[fixtureID] else {
             throw NSError(domain: "OverviewFixtureProjection", code: 4, userInfo: [
-                NSLocalizedDescriptionKey: "vocabListLong is missing from the injected UI World",
+                NSLocalizedDescriptionKey: "\(fixtureID) is missing from the injected UI World",
             ])
         }
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
-        guard let earliestDueDate = seed.entries.compactMap(\.nextReviewAt).min(),
-              let dayAfterDueDate = calendar.date(byAdding: .day, value: 1, to: earliestDueDate),
-              let clockNow = calendar.date(
-                  bySettingHour: 12,
-                  minute: 0,
-                  second: 0,
-                  of: dayAfterDueDate
-              ) else {
+        let clockNow: Date
+        if let latestReviewedAt = seed.reviewHistory.map(\.reviewedAt).max() {
+            // This mirrors UITestFixtureSeed.makeStatsProjectionClock: a
+            // review-bearing fixture is anchored to its latest review, not to
+            // the host clock. This keeps assertions bound to the injected
+            // world while allowing the fixture to grow beyond the old 8-card
+            // hand-written sample.
+            clockNow = latestReviewedAt
+        } else if let earliestDueDate = seed.entries.compactMap(\.nextReviewAt).min(),
+                  let dayAfterDueDate = calendar.date(byAdding: .day, value: 1, to: earliestDueDate),
+                  let noonAfterDueDate = calendar.date(
+                      bySettingHour: 12,
+                      minute: 0,
+                      second: 0,
+                      of: dayAfterDueDate
+                  ) {
+            clockNow = noonAfterDueDate
+        } else {
             throw NSError(domain: "OverviewFixtureProjection", code: 5, userInfo: [
-                NSLocalizedDescriptionKey: "vocabListLong has no derivable due-date clock",
+                NSLocalizedDescriptionKey: "\(fixtureID) has no derivable review clock",
             ])
         }
 
@@ -108,8 +119,13 @@ private struct OverviewFixtureProjection {
             reviewedToday: reviewedToday,
             dueToday: dueToday,
             activityIsEmpty: seed.reviewHistory.isEmpty,
-            clockNow: clockNow
+            clockNow: clockNow,
+            forecastDayKey: todayKey
         )
+    }
+
+    static func vocabListLongFromRunner() throws -> Self {
+        try fromRunner(fixtureID: "vocabListLong")
     }
 }
 
@@ -129,11 +145,12 @@ final class OverviewFlowUITests: UITestCase {
             return page
         }
         try step("metrics", app: app) {
+            let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
             overview.assertIsActive()
             overview.assertOverviewAccessibilityHierarchy()
-            overview.assertMetric("totalCards", value: "8")
-            overview.assertMetric("reviewedToday", value: "2")
-            overview.assertMetric("dueToday", value: "0")
+            overview.assertMetric("totalCards", value: String(expected.totalCards))
+            overview.assertMetric("reviewedToday", value: String(expected.reviewedToday))
+            overview.assertMetric("dueToday", value: String(expected.dueToday))
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected")
         }
 
@@ -142,10 +159,11 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("forecast-zero", app: app) {
+            let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
             overview.assertUniqueForecastContract()
-            let bucket = overview.forecastBucket("2026-06-02")
+            let bucket = overview.forecastBucket(expected.forecastDayKey)
             bucket.assertExists(timeout: 10)
-            XCTAssertTrue((bucket.value as? String)?.contains("8") == true)
+            XCTAssertTrue((bucket.value as? String)?.contains(String(expected.dueToday)) == true)
         }
 
         try step("notebook-detour", app: app) {
@@ -155,8 +173,9 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("overview-reentry", app: app) {
+            let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
             _ = shell.goToOverview()
-            overview.assertMetric("totalCards", value: "8")
+            overview.assertMetric("totalCards", value: String(expected.totalCards))
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected on re-entry")
         }
 
@@ -200,6 +219,7 @@ final class OverviewFlowUITests: UITestCase {
 
     @MainActor
     func testOverviewStatsSelectorsExposePopulatedMetricsCalendarAndForecast() throws {
+        let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
         let app = launchIsolatedApp(
             fixtures: [.vocabulary("statsPopulated")],
             perfLog: "overview-populated"
@@ -212,14 +232,14 @@ final class OverviewFlowUITests: UITestCase {
 
         try step("assert-populated-projection", app: app) {
             overview.assertOverviewAccessibilityHierarchy()
-            overview.assertMetric("totalCards", value: "8")
-            overview.assertMetric("reviewedToday", value: "2")
-            overview.assertMetric("dueToday", value: "0")
+            overview.assertMetric("totalCards", value: String(expected.totalCards))
+            overview.assertMetric("reviewedToday", value: String(expected.reviewedToday))
+            overview.assertMetric("dueToday", value: String(expected.dueToday))
             overview.calendar.assertExists(timeout: 10)
             overview.assertUniqueForecastContract()
-            let bucket = overview.forecastBucket("2026-06-02")
+            let bucket = overview.forecastBucket(expected.forecastDayKey)
             bucket.assertExists(timeout: 10)
-            XCTAssertTrue((bucket.value as? String)?.contains("8") == true)
+            XCTAssertTrue((bucket.value as? String)?.contains(String(expected.dueToday)) == true)
         }
     }
 

@@ -362,9 +362,15 @@ final class FixtureDatasetUITests: UITestCase {
             }
         }
         struct SurfaceContracts: Decodable {
+            let dictionary: EvidenceGroups?
+            let explore: EvidenceGroups?
+            let settings: EvidenceGroups?
             let reviewCalendar: EvidenceGroups?
 
             enum CodingKeys: String, CodingKey, CaseIterable {
+                case dictionary
+                case explore
+                case settings
                 case reviewCalendar
             }
 
@@ -375,6 +381,9 @@ final class FixtureDatasetUITests: UITestCase {
                     context: "UI test scenarioContext.surfaceContracts"
                 )
                 let container = try decoder.container(keyedBy: CodingKeys.self)
+                dictionary = try container.decodeIfPresent(EvidenceGroups.self, forKey: .dictionary)
+                explore = try container.decodeIfPresent(EvidenceGroups.self, forKey: .explore)
+                settings = try container.decodeIfPresent(EvidenceGroups.self, forKey: .settings)
                 reviewCalendar = try container.decodeIfPresent(EvidenceGroups.self, forKey: .reviewCalendar)
             }
         }
