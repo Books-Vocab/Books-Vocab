@@ -91,6 +91,10 @@ final class ReaderFlowUITests: UITestCase {
             XCTFail("點擊單字後翻譯面板必須出現 — 沒出現 = 選詞橋接或 overlay 壞了")
             return
         }
+        attachText(
+            "translationPanelWordLabel=\(reader.translationWord.label)",
+            named: "Reader Translation Panel Headword AX"
+        )
         XCTAssertTrue(
             reader.translationWordContains(Self.seededWord, timeout: 5),
             "面板 headword 必須是被點的單字"
