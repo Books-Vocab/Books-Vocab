@@ -294,7 +294,13 @@ struct StatsPresenter: View {
                     graphEntryHeader(nodeCount: 0, showsChevron: false)
                         .padding(appSkin.metrics.cardBlockPadding)
                     graphErrorBody
-                        .aspectRatio(1, contentMode: .fit)
+                        // An error state is an inline recovery affordance, not
+                        // a square graph canvas. Keeping the old aspect-ratio
+                        // reservation made an empty Overview spend a full
+                        // viewport on blank space and pushed the zero forecast
+                        // below the materialized accessibility region.
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 164)
                 }
             }
         } else {
@@ -345,7 +351,7 @@ struct StatsPresenter: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
         .padding(appSkin.metrics.cardBlockPadding)
     }
 
