@@ -32,7 +32,11 @@ struct DictionaryLookupPage {
     var releaseLoadingButton: XCUIElement {
         exactlyOne("addLink.dictionary.releaseLoading", in: app.buttons)
     }
-    var emptyState: XCUIElement { element("addLink.dictionary.empty") }
+    var emptyState: XCUIElement {
+        app.descendants(matching: .any)
+            .matching(identifier: "addLink.dictionary.empty")
+            .firstMatch
+    }
     var partialState: XCUIElement { stateMarker(.partial) }
     var offlineState: XCUIElement { stateMarker(.offline) }
     var errorState: XCUIElement { stateMarker(.error) }
@@ -127,6 +131,33 @@ struct DictionaryLookupPage {
 
     func releaseLoading(file: StaticString = #filePath, line: UInt = UInt(#line)) {
         releaseLoadingButton.tapWhenReady(file: file, line: line)
+    }
+
+    func assertEmptyState(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        XCTAssertTrue(
+            emptyState.waitUntilExists(timeout: 10),
+            "dictionary empty state marker did not mount",
+            file: file,
+            line: line
+        )
+        let matches = app.descendants(matching: .any)
+            .matching(identifier: "addLink.dictionary.empty")
+        XCTAssertEqual(
+            matches.count,
+            1,
+            "canonical selector must resolve exactly once: addLink.dictionary.empty",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(emptyState.frame.width, 0, "empty state selector has no positive width", file: file, line: line)
+        XCTAssertGreaterThan(emptyState.frame.height, 0, "empty state selector has no positive height", file: file, line: line)
+        XCTAssertEqual(
+            emptyState.value as? String,
+            UIWorldDictionaryLookupState.result.fixtureID,
+            "empty state AX marker must identify the result fixture",
+            file: file,
+            line: line
+        )
     }
 
     @discardableResult
