@@ -788,47 +788,31 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) -> Bool {
         guard revealLineHeightSlider(timeout: 8, file: file, line: line) else { return false }
+        guard let slider = exactlyOne(
+            lineHeightSliderQuery,
+            named: "Reader line-height slider",
+            timeout: 2,
+            file: file,
+            line: line
+        ) else { return false }
+
+        let previousValue = String(describing: slider.value ?? "")
+        slider.adjust(toNormalizedSliderPosition: position)
+        let expected: String?
         if position <= 0.01 {
-            return adjustEndpointSlider(
-                // iOS 26's XCTest slider bridge can drop the exact 0.0
-                // coordinate after a SwiftUI Form re-layout.  The control's
-                // 0.1 step quantizes this interior coordinate to the same
-                // semantic lower bound (1.0) without relying on the edge hit.
-                to: 0.001,
-                interiorPositions: [0.05, 0.15, 0.25],
-                expectedValue: "1"
-            )
+            expected = "1.0"
         } else if position >= 0.99 {
-            return adjustEndpointSlider(
-                // Same iOS 26 edge-hit seam at the upper bound.  0.98 stays
-                // off the coordinate that XCTest rounds to 1.00 while the
-                // 0.1 step still quantizes it to the exact 2.5 value.
-                to: 0.98,
-                interiorPositions: [0.95, 0.85, 0.75],
-                expectedValue: "2.5"
-            )
+            expected = "2.5"
         } else {
-            // The same iOS 26 bridge can swallow a non-endpoint event after
-            // an endpoint gesture.  Treat an intermediate adjustment as a
-            // state transition too: re-query the exact Slider, issue the
-            // semantic action, and require AX to report movement before
-            // returning success.
-            for _ in 0..<3 {
-                guard let slider = exactlyOne(
-                    lineHeightSliderQuery,
-                    named: "Reader line-height slider",
-                    timeout: 2,
-                    file: file,
-                    line: line
-                ) else { continue }
-                let before = String(describing: slider.value ?? "")
-                slider.adjust(toNormalizedSliderPosition: position)
-                if waitForSliderValueChange(from: before, timeout: 4) {
-                    return true
-                }
-            }
-            return false
+            expected = nil
         }
+        if let expected {
+            return waitForSliderValueEquals(expected, timeout: 8)
+        }
+        return waitForSliderValueChange(
+            from: previousValue,
+            timeout: 8
+        )
     }
 
     @discardableResult
@@ -857,153 +841,11 @@ struct ReaderPage {
                 line: line
             ) else { continue }
             slider.adjust(toNormalizedSliderPosition: candidate)
-            if waitForSliderValueEquals(expectedValue, timeout: 2) {
-                return true
-            }
-        }
-
-        if let slider = exactlyOne(
-            lineHeightSliderQuery,
-            named: "Reader line-height slider",
-            timeout: 2,
-            file: file,
-            line: line
-        ), let rawValue = slider.value,
-        let currentValue = Double(String(describing: rawValue)) {
-            let currentPosition = min(max((currentValue - 1.0) / 1.5, 0.01), 0.99)
-            let source = slider.coordinate(
-                withNormalizedOffset: CGVector(dx: currentPosition, dy: 0.5)
-            )
-            for candidate in candidates {
-                let target = slider.coordinate(
-                    withNormalizedOffset: CGVector(dx: candidate, dy: 0.5)
-                )
-                source.press(
-                    forDuration: 0.1,
-                    thenDragTo: target,
-                    withVelocity: .fast,
-                    thenHoldForDuration: 0.1
-                )
-                if waitForSliderValueEquals(expectedValue, timeout: 2) {
-                    return true
-                }
-            }
-        }
-
-        // When the iOS 26 bridge quantizes every normalized reposition to the
-        // adjacent tick, converge from the value AX actually reports.  The
-        // discrete swipe direction is chosen anew after every tick, so an
-        // overshoot is corrected instead of being treated as success.
-        for _ in 0..<4 {
-            guard let slider = exactlyOne(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
-                timeout: 2,
-                file: file,
-                line: line
-            ), let rawValue = slider.value,
-            let currentValue = Double(String(describing: rawValue)) else { continue }
-            if abs(currentValue - numericValue) < 0.01 {
-                return true
-            }
-            let before = String(describing: rawValue)
-            if currentValue > numericValue {
-                slider.swipeLeft()
-            } else {
-                slider.swipeRight()
-            }
-            guard waitForSliderValueChange(from: before, timeout: 2) else { continue }
-            if waitForSliderValueEquals(expectedValue, timeout: 1) {
+            if waitForSliderValueEquals(expectedValue, timeout: 3) {
                 return true
             }
         }
         return false
-    }
-
-    private func adjustEndpointSlider(
-        to endpoint: CGFloat,
-        interiorPositions: [CGFloat],
-        expectedValue: String
-    ) -> Bool {
-        // iOS 26 can accept the endpoint event but leave the SwiftUI binding at
-        // a stale value after the settings Form has moved. Retry only through
-        // semantic XCTest Slider actions; each attempt requires AX movement at
-        // the interior and the exact target value after the endpoint action.
-        for interior in interiorPositions {
-            guard let interiorSlider = exactlyOne(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
-                timeout: 2
-            ) else { continue }
-            let before = String(describing: interiorSlider.value ?? "")
-            interiorSlider.adjust(toNormalizedSliderPosition: interior)
-            guard waitForSliderValueChange(from: before, timeout: 4) else {
-                continue
-            }
-            guard let endpointSlider = exactlyOne(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
-                timeout: 2
-            ) else { continue }
-            endpointSlider.adjust(toNormalizedSliderPosition: endpoint)
-            if waitForSliderValueEquals(expectedValue, timeout: 4) {
-                return true
-            }
-        }
-
-        // On iOS 26, a SwiftUI Slider can expose the edge thumb correctly but
-        // lose the final coordinate event after a Form re-layout.  A fresh
-        // exact-selector swipe is the OS-supported gesture fallback for that
-        // seam.  Re-query on every attempt because the Form may rebuild the
-        // accessibility node after the previous gesture.
-        for _ in 0..<4 {
-            guard let edgeSlider = exactlyOne(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
-                timeout: 1
-            ) else { break }
-            if endpoint <= 0.5 {
-                edgeSlider.swipeLeft()
-            } else {
-                edgeSlider.swipeRight()
-            }
-            if waitForSliderValueEquals(expectedValue, timeout: 2) {
-                return true
-            }
-        }
-
-        // If the semantic XCTest action was swallowed by the iOS 26 SwiftUI
-        // bridge, perform the same exact-selector operation as a thumb drag.
-        // Starting from the value reported by AX avoids a blind coordinate
-        // guess; the target remains one quantized tick inside the edge.
-        guard let slider = exactlyOne(
-            lineHeightSliderQuery,
-            named: "Reader line-height slider",
-            timeout: 2
-        ), let rawValue = slider.value, let currentValue = Double(String(describing: rawValue)) else {
-            return false
-        }
-        let normalizedCurrent = min(
-            max((currentValue - 1.0) / 1.5, 0.02),
-            0.98
-        )
-        // The track's thumb inset makes 0.02 quantize to the first visible
-        // 0.1 tick (1.1) on the lower edge. Use the actual track edge for the
-        // lower bound; the upper edge remains safely inside at 0.98.
-        let normalizedTarget = endpoint <= 0.5 ? 0.0 : 0.98
-        let source = slider.coordinate(
-            withNormalizedOffset: CGVector(dx: normalizedCurrent, dy: 0.5)
-        )
-        let target = slider.coordinate(
-            withNormalizedOffset: CGVector(dx: normalizedTarget, dy: 0.5)
-        )
-        source.press(
-            forDuration: 0.1,
-            thenDragTo: target,
-            withVelocity: .fast,
-            thenHoldForDuration: 0.1
-        )
-        return waitForSliderValueEquals(expectedValue, timeout: 5)
     }
 
     private func revealLineHeightSlider(
@@ -1114,17 +956,18 @@ struct ReaderPage {
 
     @discardableResult
     func waitForLineHeightValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
-        guard let slider = exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout) else {
-            return false
-        }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let current = slider.value, sliderValue(current, equals: value) {
+            if let slider = exactlyOneIfPresent(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 0.25
+            ), let current = slider.value, sliderValue(current, equals: value) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        return slider.value.map { sliderValue($0, equals: value) } == true
+        return false
     }
 
     @discardableResult
