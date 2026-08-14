@@ -209,7 +209,10 @@ struct ReviewCalendarPage {
     }
 
     var emptyDaySummary: XCUIElement {
-        exactlyOne(app.staticTexts.matching(identifier: "reviewCalendar.emptyDaySummary"), "reviewCalendar.emptyDaySummary")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.emptyDaySummary"),
+            "reviewCalendar.emptyDaySummary"
+        )
     }
 
     var populatedDayDetail: XCUIElement {
@@ -220,7 +223,10 @@ struct ReviewCalendarPage {
     }
 
     var populatedDaySummary: XCUIElement {
-        exactlyOne(app.staticTexts.matching(identifier: "reviewCalendar.populatedDaySummary"), "reviewCalendar.populatedDaySummary")
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reviewCalendar.populatedDaySummary"),
+            "reviewCalendar.populatedDaySummary"
+        )
     }
 
     var installedFixtureProof: XCUIElement {
@@ -251,6 +257,8 @@ private func exactlyOne(
     file: StaticString = #filePath,
     line: UInt = UInt(#line)
 ) -> XCUIElement {
+    let element = query.element(boundBy: 0)
+    _ = element.waitUntilExists(timeout: 5)
     XCTAssertEqual(
         query.count,
         1,
@@ -258,5 +266,5 @@ private func exactlyOne(
         file: file,
         line: line
     )
-    return query.element(boundBy: 0)
+    return element
 }
