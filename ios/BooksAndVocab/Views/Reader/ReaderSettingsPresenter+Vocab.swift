@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import UIKit
 
 // MARK: - Native Settings Form
 
@@ -250,9 +251,7 @@ private struct ReaderSettingsLineHeightSlider: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.microGap) {
-            Slider(value: $value, in: Metrics.lineHeightRange, step: Metrics.lineHeightStep)
-                .accessibilityLabel(L10n.string("reader.settings.lineHeight"))
-                .accessibilityIdentifier("reader.settings.lineHeight")
+            NativeReaderLineHeightSlider(value: $value)
 
             HStack(spacing: 0) {
                 ForEach(Metrics.lineHeightTickValues.indices, id: \.self) { index in
@@ -267,6 +266,80 @@ private struct ReaderSettingsLineHeightSlider: View {
             }
             .padding(.horizontal, AppSpacing.s2)
             .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct NativeReaderLineHeightSlider: UIViewRepresentable {
+    @Binding var value: Double
+
+    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UISlider {
+        let slider = UISlider(
+            frame: .zero
+        )
+        slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
+        slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
+        slider.isContinuous = true
+        slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
+        slider.accessibilityIdentifier = "reader.settings.lineHeight"
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:)),
+            for: .valueChanged
+        )
+        slider.value = Float(Self.quantized(value))
+        return slider
+    }
+
+    func updateUIView(_ slider: UISlider, context: Context) {
+        context.coordinator.parent = self
+        let nextValue = Float(Self.quantized(value))
+        if abs(slider.value - nextValue) > 0.0001 {
+            slider.setValue(nextValue, animated: false)
+        }
+    }
+
+    private static func quantized(_ rawValue: Double) -> Double {
+        let clamped = min(
+            max(rawValue, Metrics.lineHeightRange.lowerBound),
+            Metrics.lineHeightRange.upperBound
+        )
+        let ticks = ((clamped - Metrics.lineHeightRange.lowerBound) / Metrics.lineHeightStep).rounded()
+        return Metrics.lineHeightRange.lowerBound + (ticks * Metrics.lineHeightStep)
+    }
+
+    final class Coordinator: NSObject {
+        var parent: NativeReaderLineHeightSlider
+
+        init(parent: NativeReaderLineHeightSlider) {
+            self.parent = parent
+        }
+
+        @objc
+        func valueChanged(_ slider: UISlider) {
+            let nextValue = Self.quantized(
+                Double(slider.value),
+                range: Metrics.lineHeightRange,
+                step: Metrics.lineHeightStep
+            )
+            slider.setValue(Float(nextValue), animated: false)
+            parent.value = nextValue
+        }
+
+        private static func quantized(
+            _ rawValue: Double,
+            range: ClosedRange<Double>,
+            step: Double
+        ) -> Double {
+            let clamped = min(max(rawValue, range.lowerBound), range.upperBound)
+            let ticks = ((clamped - range.lowerBound) / step).rounded()
+            return range.lowerBound + (ticks * step)
         }
     }
 }
