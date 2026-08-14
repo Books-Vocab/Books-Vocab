@@ -139,16 +139,25 @@ struct AddLinkSheet: View {
                     .accessibilityValue(Text(verbatim: UIWorldDictionaryLookupState.idle.fixtureID))
 
                 case .loading:
-                    ZStack(alignment: .topLeading) {
-                        AppLoadingStateCard(
-                            title: L10n.string("addLink.dictionaryLoading"),
-                            systemImage: "magnifyingglass",
-                            visualStyle: .vocab
-                        )
-                        dictionaryAccessibilityMarker(
-                            "addLink.dictionary.loading",
-                            fixtureID: .loading
-                        )
+                    VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                        ZStack(alignment: .topLeading) {
+                            AppLoadingStateCard(
+                                title: L10n.string("addLink.dictionaryLoading"),
+                                systemImage: "magnifyingglass",
+                                visualStyle: .vocab
+                            )
+                            dictionaryAccessibilityMarker(
+                                "addLink.dictionary.loading",
+                                fixtureID: .loading
+                            )
+                        }
+                        if AppRuntimeOptions.shouldGateDictionaryLoading() {
+                            Button(L10n.string("繼續載入")) {
+                                Task { await DictionaryRetryGate.shared.release() }
+                            }
+                            .buttonStyle(.vocabAction(.neutral))
+                            .accessibilityIdentifier("addLink.dictionary.releaseLoading")
+                        }
                     }
                     .listRowBackground(Color.clear)
 

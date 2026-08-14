@@ -61,13 +61,17 @@ final class DictionaryLookupFlowUITests: UITestCase {
 
     @MainActor
     func testDictionaryLoadingAndEmptySelectorsAreLive() throws {
-        let (app, page) = try openDictionarySheet(perfLog: "dictionary-loading-empty")
+        let (app, page) = try openDictionarySheet(
+            perfLog: "dictionary-loading-empty",
+            extraArgs: ["-dictionaryLoadingGate"]
+        )
         page.enterQuery("loading")
         page.assertCanonicalState("idle")
         captureStep("idle", app: app)
         page.submitQuery()
         page.assertCanonicalState("loading")
         captureStep("loading", app: app)
+        page.releaseLoading()
         page.assertCanonicalState("result")
 
         // A fresh sheet keeps the query transition deterministic and avoids
