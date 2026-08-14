@@ -813,15 +813,27 @@ struct ReaderPage {
                 expectedValue: "2.5"
             )
         } else {
-            guard let slider = exactlyOne(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
-                file: file,
-                line: line
-            ) else { return false }
-            slider.adjust(toNormalizedSliderPosition: position)
+            // The same iOS 26 bridge can swallow a non-endpoint event after
+            // an endpoint gesture.  Treat an intermediate adjustment as a
+            // state transition too: re-query the exact Slider, issue the
+            // semantic action, and require AX to report movement before
+            // returning success.
+            for _ in 0..<3 {
+                guard let slider = exactlyOne(
+                    lineHeightSliderQuery,
+                    named: "Reader line-height slider",
+                    timeout: 2,
+                    file: file,
+                    line: line
+                ) else { continue }
+                let before = String(describing: slider.value ?? "")
+                slider.adjust(toNormalizedSliderPosition: position)
+                if waitForSliderValueChange(from: before, timeout: 4) {
+                    return true
+                }
+            }
+            return false
         }
-        return true
     }
 
     private func adjustEndpointSlider(
