@@ -54,7 +54,8 @@ extension ReaderView {
             if let publication {
             ReadiumNavigatorView(
                 publication: publication,
-                initialLocator: initialLocator,
+                initialLocator: restoreFallbackLocator == nil ? initialLocator : nil,
+                recoveryLocator: restoreFallbackLocator,
                 lookedUpWords: handler.lookedUpWords,
                 bookUniqueWords: handler.bookUniqueWords,
                 viewConfiguration: viewConfiguration,

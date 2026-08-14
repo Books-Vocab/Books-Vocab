@@ -29,6 +29,14 @@ final class NavigatorHostViewController: UIViewController {
     var onPhraseSelected: ((String, String) -> Void)?
     var onExplainSelected: ((String, String) -> Void)?
     weak var epubNavigator: EPUBNavigatorViewController?
+    var onFirstAppearance: (() -> Void)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        let callback = onFirstAppearance
+        onFirstAppearance = nil
+        callback?()
+    }
 
     @objc func aiSearch() {
         performActiveSelectionAction(label: "aiSearch", logPrefix: "AI Search", callback: onPhraseSelected)

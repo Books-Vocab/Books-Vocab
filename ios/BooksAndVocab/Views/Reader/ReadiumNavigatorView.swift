@@ -94,6 +94,11 @@ struct ReaderNavigatorSettingsReceipt: Equatable {
 struct ReadiumNavigatorView: UIViewControllerRepresentable {
     let publication: Publication
     let initialLocator: Locator?
+    /// Recovery locators are applied after the host appears. Readium 2 can
+    /// retain an invalid restore loading state when the same locator is passed
+    /// during construction; an explicit `go(to:)` after appearance produces
+    /// the real location event that closes that state.
+    let recoveryLocator: Locator?
     let lookedUpWords: [String]
     let bookUniqueWords: Set<String>?
     let viewConfiguration: ReaderViewConfiguration
@@ -182,7 +187,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
             navigator = try EPUBNavigatorViewController(
                 publication: publication,
-                initialLocation: initialLocator,
+                initialLocation: recoveryLocator == nil ? initialLocator : nil,
                 config: .init(
                     preferences: viewConfiguration.epubPreferences,
                     defaults: EPUBDefaults(
@@ -206,6 +211,18 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         navigator.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         host.view.addSubview(navigator.view)
         navigator.didMove(toParent: host)
+
+        if let recoveryLocator {
+            host.onFirstAppearance = { [weak navigator] in
+                Task { @MainActor in
+                    guard let navigator else { return }
+                    let accepted = await navigator.go(to: recoveryLocator)
+                    AppLog.reader.debug(
+                        "Reader restore fallback navigation accepted=\(String(describing: accepted), privacy: .public) href=\(recoveryLocator.href.string, privacy: .public)"
+                    )
+                }
+            }
+        }
 
         // 將 UIKit 層背景設為紙色，避免 iOS 26 glass effect 取樣到
         // WKWebView 的原生深色背景（系統深色模式時 CSS 層與 UIKit 層不一致）
