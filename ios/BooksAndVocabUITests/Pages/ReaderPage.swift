@@ -830,7 +830,7 @@ struct ReaderPage {
             ) else { continue }
             let before = String(describing: interiorSlider.value ?? "")
             interiorSlider.adjust(toNormalizedSliderPosition: interior)
-            guard waitForSliderValueChange(interiorSlider, from: before, timeout: 2) else {
+            guard waitForSliderValueChange(from: before, timeout: 4) else {
                 continue
             }
             guard let endpointSlider = exactlyOne(
@@ -839,7 +839,7 @@ struct ReaderPage {
                 timeout: 2
             ) else { continue }
             endpointSlider.adjust(toNormalizedSliderPosition: endpoint)
-            if waitForSliderValueEquals(endpointSlider, expectedValue, timeout: 2) {
+            if waitForSliderValueEquals(expectedValue, timeout: 4) {
                 return true
             }
         }
@@ -847,35 +847,47 @@ struct ReaderPage {
     }
 
     private func waitForSliderValueChange(
-        _ slider: XCUIElement,
         from previousValue: String,
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let currentValue = String(describing: slider.value ?? "")
-            if currentValue != previousValue, currentValue != "nil" {
+            let matches = lineHeightSliderQuery.allElementsBoundByIndex
+            guard matches.count == 1,
+                  let value = matches[0].value else {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                continue
+            }
+            let currentValue = String(describing: value)
+            if currentValue != previousValue {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        let currentValue = String(describing: slider.value ?? "")
-        return currentValue != previousValue && currentValue != "nil"
+        let matches = lineHeightSliderQuery.allElementsBoundByIndex
+        guard matches.count == 1,
+              let value = matches[0].value else { return false }
+        return String(describing: value) != previousValue
     }
 
     private func waitForSliderValueEquals(
-        _ slider: XCUIElement,
         _ expectedValue: String,
         timeout: TimeInterval
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if String(describing: slider.value ?? "") == expectedValue {
+            let matches = lineHeightSliderQuery.allElementsBoundByIndex
+            if matches.count == 1,
+               let value = matches[0].value,
+               String(describing: value) == expectedValue {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        return String(describing: slider.value ?? "") == expectedValue
+        let matches = lineHeightSliderQuery.allElementsBoundByIndex
+        guard matches.count == 1,
+              let value = matches[0].value else { return false }
+        return String(describing: value) == expectedValue
     }
 
     func lineHeightValue(timeout: TimeInterval = 5) -> Double? {
