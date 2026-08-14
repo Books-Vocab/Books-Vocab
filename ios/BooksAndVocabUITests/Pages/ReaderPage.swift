@@ -721,7 +721,7 @@ struct ReaderPage {
         // `isHittable` is true even when a Form row is only partially exposed.
         // Move the scroll view to its canonical top position before sampling
         // geometry; otherwise the first frame can be a clipped intersection.
-        scrollSettingsPanel(direction: .down)
+        scrollSettingsPanel(towardTop: true)
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
 
         let deadline = Date().addingTimeInterval(timeout)
@@ -733,7 +733,7 @@ struct ReaderPage {
             ), preview.isHittable {
                 return true
             }
-            scrollSettingsPanel(direction: .down)
+            scrollSettingsPanel(towardTop: true)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return exactlyOneIfPresent(
@@ -933,36 +933,30 @@ struct ReaderPage {
             ), slider.isHittable, !slider.frame.isEmpty {
                 return true
             }
-            scrollSettingsPanel(direction: .up)
+            scrollSettingsPanel(towardTop: false)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return false
     }
 
     private func scrollSettingsPanel(
-        direction: XCUIElement.SwipeDirection
+        towardTop: Bool
     ) {
         if let panel = exactlyOneIfPresent(
             settingsPanelQuery,
             named: "Reader settings panel",
             timeout: 0.25
         ), panel.isHittable {
-            switch direction {
-            case .up:
+            if towardTop {
                 panel.swipeUp()
-            case .down:
+            } else {
                 panel.swipeDown()
-            default:
-                break
             }
         } else {
-            switch direction {
-            case .up:
+            if towardTop {
                 app.swipeUp()
-            case .down:
+            } else {
                 app.swipeDown()
-            default:
-                break
             }
         }
     }
