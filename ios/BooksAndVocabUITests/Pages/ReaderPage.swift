@@ -768,31 +768,67 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> Bool {
-        guard let slider = exactlyOne(
+        guard exactlyOne(
             lineHeightSliderQuery,
             named: "Reader line-height slider",
             file: file,
             line: line
-        ) else { return false }
-        let before = String(describing: slider.value ?? "")
+        ) != nil else { return false }
         if position <= 0.01 {
-            // On iOS 26, XCTest's exact lower endpoint action can synthesize
-            // an event without moving a SwiftUI Slider. First move to a
-            // bounded interior value and wait for AX propagation, then issue
-            // the endpoint action from a live, non-edge thumb position.
-            slider.adjust(toNormalizedSliderPosition: 0.05)
-            _ = waitForSliderValueChange(slider, from: before, timeout: 2)
-            slider.adjust(toNormalizedSliderPosition: position)
+            return adjustEndpointSlider(
+                to: position,
+                interiorPositions: [0.05, 0.15, 0.25],
+                expectedValue: "1"
+            )
         } else if position >= 0.99 {
-            // The upper endpoint has the same iOS 26 XCTest seam when the
-            // thumb starts at the lower bound.
-            slider.adjust(toNormalizedSliderPosition: 0.95)
-            _ = waitForSliderValueChange(slider, from: before, timeout: 2)
-            slider.adjust(toNormalizedSliderPosition: position)
+            return adjustEndpointSlider(
+                to: position,
+                interiorPositions: [0.95, 0.85, 0.75],
+                expectedValue: "2.5"
+            )
         } else {
+            guard let slider = exactlyOne(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                file: file,
+                line: line
+            ) else { return false }
             slider.adjust(toNormalizedSliderPosition: position)
         }
         return true
+    }
+
+    private func adjustEndpointSlider(
+        to endpoint: CGFloat,
+        interiorPositions: [CGFloat],
+        expectedValue: String
+    ) -> Bool {
+        // iOS 26 can accept the endpoint event but leave the SwiftUI binding at
+        // a stale value after the settings Form has moved. Retry only through
+        // semantic XCTest Slider actions; each attempt requires AX movement at
+        // the interior and the exact target value after the endpoint action.
+        for interior in interiorPositions {
+            guard let interiorSlider = exactlyOne(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 2
+            ) else { continue }
+            let before = String(describing: interiorSlider.value ?? "")
+            interiorSlider.adjust(toNormalizedSliderPosition: interior)
+            guard waitForSliderValueChange(interiorSlider, from: before, timeout: 2) else {
+                continue
+            }
+            guard let endpointSlider = exactlyOne(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 2
+            ) else { continue }
+            endpointSlider.adjust(toNormalizedSliderPosition: endpoint)
+            if waitForSliderValueEquals(endpointSlider, expectedValue, timeout: 2) {
+                return true
+            }
+        }
+        return false
     }
 
     private func waitForSliderValueChange(
@@ -810,6 +846,21 @@ struct ReaderPage {
         }
         let currentValue = String(describing: slider.value ?? "")
         return currentValue != previousValue && currentValue != "nil"
+    }
+
+    private func waitForSliderValueEquals(
+        _ slider: XCUIElement,
+        _ expectedValue: String,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if String(describing: slider.value ?? "") == expectedValue {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return String(describing: slider.value ?? "") == expectedValue
     }
 
     func lineHeightValue(timeout: TimeInterval = 5) -> Double? {
