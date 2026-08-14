@@ -2,7 +2,7 @@
 
 日期：2026-08-14（重驗證更新）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前工作樹與 simulator evidence bundle  
-工作樹：`feat/ios-ui-review-report-complete-20260813`；本輪目前 app／UITest clean HEAD：`8694fa4e8`；dirty=`false`；final current-head batch 尚未執行
+工作樹：`feat/ios-ui-review-report-complete-20260813`；本輪目前 app／UITest clean HEAD：`3ecddd84b`；dirty=`false`；final current-head batch 尚未執行
 
 ## 結論
 
