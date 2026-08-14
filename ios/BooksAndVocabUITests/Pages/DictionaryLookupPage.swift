@@ -89,6 +89,22 @@ struct DictionaryLookupPage {
         element("addLink.example.\(id)")
     }
 
+    func assertExampleAbsent(
+        id: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let identifier = "addLink.example.\(id)"
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        XCTAssertEqual(
+            matches.count,
+            0,
+            "counterexample must omit selector: \(identifier)",
+            file: file,
+            line: line
+        )
+    }
+
     func materialization(status: String) -> XCUIElement {
         app.descendants(matching: .any)
             .matching(identifier: "addLink.dictionary.materialization.\(status)")
