@@ -28,6 +28,18 @@ private struct OverviewFixtureProjection {
         }
 
         let vocabulary: [String: Vocabulary]
+
+        struct ScenarioContext: Decodable {
+            struct ReviewClock: Decodable {
+                let frozenEpoch: Int
+                let anchorDay: String
+                let timeZone: String
+            }
+
+            let reviewClock: ReviewClock
+        }
+
+        let scenarioContext: ScenarioContext?
     }
 
     let totalCards: Int
@@ -69,31 +81,20 @@ private struct OverviewFixtureProjection {
             ])
         }
 
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
-        let clockNow: Date
-        if let latestReviewedAt = seed.reviewHistory.map(\.reviewedAt).max() {
-            // This mirrors UITestFixtureSeed.makeStatsProjectionClock: a
-            // review-bearing fixture is anchored to its latest review, not to
-            // the host clock. This keeps assertions bound to the injected
-            // world while allowing the fixture to grow beyond the old 8-card
-            // hand-written sample.
-            clockNow = latestReviewedAt
-        } else if let earliestDueDate = seed.entries.compactMap(\.nextReviewAt).min(),
-                  let dayAfterDueDate = calendar.date(byAdding: .day, value: 1, to: earliestDueDate),
-                  let noonAfterDueDate = calendar.date(
-                      bySettingHour: 12,
-                      minute: 0,
-                      second: 0,
-                      of: dayAfterDueDate
-                  ) {
-            clockNow = noonAfterDueDate
-        } else {
-            // statsEmpty is intentionally empty. Match StatsViewTime.emptySeedFallback
-            // instead of consulting the host clock, so the zero-state capture is
-            // tied to the same deterministic production contract.
-            clockNow = ISO8601DateFormatter().date(from: "2026-06-01T12:00:00Z") ?? .distantPast
+        guard let reviewClock = document.scenarioContext?.reviewClock,
+              let timeZone = TimeZone(identifier: reviewClock.timeZone)
+        else {
+            throw NSError(domain: "OverviewFixtureProjection", code: 5, userInfo: [
+                NSLocalizedDescriptionKey: "marketing_demo.scenarioContext.reviewClock is missing",
+            ])
         }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        // OverviewTab and every child projection consume the canonical
+        // scenarioContext clock. Decode the same frozen epoch here for both
+        // populated and empty vocabulary seeds; fixture-local latest-review
+        // heuristics would diverge from the production composition boundary.
+        let clockNow = Date(timeIntervalSince1970: TimeInterval(reviewClock.frozenEpoch))
 
         func dayKey(_ date: Date) -> String {
             let components = calendar.dateComponents([.year, .month, .day], from: date)
