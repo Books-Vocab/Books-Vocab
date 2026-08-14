@@ -217,11 +217,14 @@ final class ReaderSettingsUITests: UITestCase {
             "Reader settings state must observe the committed 2.5 slider endpoint"
         )
         reader.openSettings()
+        XCTAssertTrue(
+            reader.waitForLineHeightValue("2.5", timeout: 5),
+            "reopened Reader settings must settle the committed slider endpoint"
+        )
         guard let reopenedPreview = reader.settingsPreviewElement(timeout: 5) else {
             XCTFail("Reader settings must recreate its preview after the endpoint commit")
             return
         }
-        XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
 
         // Compare theme variants within the same reopened Form surface. The
         // AX node is the Form row/container (not the inner fixed viewport),
