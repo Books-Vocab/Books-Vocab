@@ -605,9 +605,10 @@ final class FixtureDatasetUITests: UITestCase {
             perfLog: "review-calendar"
         )
         let overview = AppPage(app: app).goToOverview()
-        guard overview.statsContent.waitUntilExists(timeout: 10) else {
+        overview.assertOverviewAccessibilityHierarchy()
+        guard overview.reviewCalendarButton.waitUntilExists(timeout: 10) else {
             captureStep("calendar", app: app)
-            XCTFail("overview content must render before opening Review Calendar")
+            XCTFail("overview calendar entry point must render before opening Review Calendar")
             return
         }
         overview.reviewCalendarButton.tapWhenReady()
