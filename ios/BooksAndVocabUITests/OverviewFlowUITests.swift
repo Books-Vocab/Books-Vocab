@@ -130,6 +130,15 @@ private struct OverviewFixtureProjection {
 }
 
 final class OverviewFlowUITests: UITestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // This suite launches both the populated and large-text counterexample
+        // worlds and captures ten evidence steps. Keep the allowance explicit;
+        // XCTest's 60-second default otherwise kills a test that has already
+        // reached its final passing assertion.
+        executionTimeAllowance = 180
+    }
+
     @MainActor
     func testOverviewStatsRenderFromSeededReviewHistory() throws {
         let app = launchIsolatedApp(
