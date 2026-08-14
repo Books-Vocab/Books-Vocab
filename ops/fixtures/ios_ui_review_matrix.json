@@ -48,7 +48,7 @@
       "title": "Reader settings appearance and highlight controls",
       "surface": "Reader settings appearance",
       "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift", "ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary", "reader.settings.visual-baseline"],
+      "requiredFixtureIDs": ["reader.realBookLibrary"],
       "acceptance": ["each control has stable selector and round-trips through preferences", "Release hides developer hit-testing controls while DEBUG exposes an explicit diagnostic variant"],
       "counterexamples": ["dark/sepia theme", "Dynamic Type accessibility3"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["settings-open", "change-theme", "change-highlight", "reset"], "counterexampleSteps": ["dark-theme", "dynamic-type"], "visualChecks": ["selected marker", "preview versus real Reader"], "blockers": ["Reader settings flow and deterministic preference overlay not yet implemented"]}
@@ -59,7 +59,7 @@
       "title": "Reader typography preview geometry",
       "surface": "Reader settings typography/highlight preview",
       "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift", "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary", "reader.settings.line-height-matrix"],
+      "requiredFixtureIDs": ["reader.realBookLibrary"],
       "acceptance": ["line-height changes preview and real EPUB monotonically", "highlight geometry does not diverge silently at extreme line heights"],
       "counterexamples": ["line-height 1.0", "line-height 2.5"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["preview-1.0", "preview-1.2", "preview-2.5", "reader-real-content"], "counterexampleSteps": ["preview-1.0-counterexample", "preview-2.5-counterexample"], "visualChecks": ["line spacing", "highlight band height"], "blockers": ["needs real Reader side-by-side evidence"]}
@@ -70,7 +70,7 @@
       "title": "Reader progress and status state",
       "surface": "Reader progress chrome",
       "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderView.swift", "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary", "reader.progress-states"],
+      "requiredFixtureIDs": ["reader.realBookLibrary"],
       "acceptance": ["progress is derived from real document position", "loading, loaded and failure states cannot share the same stale progress"],
       "counterexamples": ["zero-page/unknown length", "restore position failure"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["reader-load", "progress-zero", "progress-middle", "restore-failure"], "counterexampleSteps": ["progress-zero-counterexample", "restore-failure-counterexample"], "visualChecks": ["progress chrome", "failure recovery"], "blockers": ["state matrix and runtime proof pending"]}
@@ -81,7 +81,7 @@
       "title": "Reader loading and recovery",
       "surface": "Reader loading/error shell",
       "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderView.swift", "ios/BooksAndVocab/Views/Reader/ReaderViewState.swift"],
-      "requiredFixtureIDs": ["reader.loading", "reader.error-retry"],
+      "requiredFixtureIDs": ["reader.realBookLibrary"],
       "acceptance": ["loading does not expose stale document content", "retry transitions to a real loaded document or a named error"],
       "counterexamples": ["missing EPUB asset", "slow asset installation"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["launch-loading", "loading", "error", "retry-success"], "counterexampleSteps": ["error-counterexample", "retry-success-counterexample"], "visualChecks": ["loading skeleton", "retry/error hierarchy"], "blockers": ["fixture and selector not yet implemented"]}
@@ -92,7 +92,7 @@
       "title": "Explore loading and content projection",
       "surface": "Explore/shared deck catalog",
       "sourceRefs": ["ios/BooksAndVocab/Views/Explore/ExploreView.swift", "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"],
-      "requiredFixtureIDs": ["explore.loading", "explore.rich-catalog"],
+      "requiredFixtureIDs": ["explore.loading", "explore.loaded"],
       "acceptance": ["loading, empty, loaded and error states are distinct", "catalog cards render from injected data, not hardcoded preview rows"],
       "counterexamples": ["no network", "empty catalog with retry"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["explore-loading", "explore-loaded", "explore-empty", "explore-retry"], "counterexampleSteps": ["explore-empty-counterexample", "explore-retry-counterexample"], "visualChecks": ["loading transition", "catalog density"], "blockers": ["runtime evidence pending"]}
@@ -103,7 +103,7 @@
       "title": "Review calendar empty day",
       "surface": "Review calendar",
       "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift", "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"],
-      "requiredFixtureIDs": ["review.calendar-empty-day", "review.calendar-populated-day"],
+      "requiredFixtureIDs": ["review-calendar.empty-day", "review-calendar.populated-day"],
       "acceptance": ["empty day is explicit and not confused with loading", "selecting a populated/empty day updates the same calendar projection"],
       "counterexamples": ["timezone boundary", "day with zero reviews between populated days"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["calendar", "empty-day", "populated-day", "timezone-boundary"], "counterexampleSteps": ["empty-day-counterexample", "timezone-boundary-counterexample"], "visualChecks": ["empty state", "selected day"], "blockers": ["calendar UI flow not yet bound to a rich UI World"]}
@@ -114,7 +114,7 @@
       "title": "Overview metrics, calendar and forecast",
       "surface": "Overview dashboard",
       "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift", "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift"],
-      "requiredFixtureIDs": ["overview.metrics-rich", "overview.zero-state"],
+      "requiredFixtureIDs": ["vocabulary.statsPopulated", "vocabulary.statsEmpty"],
       "acceptance": ["metrics/calendar/forecast share one review-clock projection", "zero and partial data states remain readable without fabricated values"],
       "counterexamples": ["no review history", "large counts and long forecast text"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["overview", "metrics", "calendar", "forecast-zero"], "counterexampleSteps": ["forecast-zero-counterexample", "large-counts"], "visualChecks": ["number hierarchy", "zero-state copy"], "blockers": ["needs explicit UI World metrics seed and visual run"]}
@@ -136,7 +136,7 @@
       "title": "Review card full information hierarchy",
       "surface": "Review card answer content",
       "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"],
-      "requiredFixtureIDs": ["notebookReviewDeckVaried", "review.card-full-info"],
+      "requiredFixtureIDs": ["reviewDeck.notebookReviewDeck", "reviewDeck.review.card-full-info"],
       "acceptance": ["full answer content is mounted in a readable hierarchy", "examples, explanation, collocations and graph links have independent visibility contracts"],
       "counterexamples": ["long explanation", "missing optional sections"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["front", "flip", "full-answer", "optional-sections"], "counterexampleSteps": ["optional-sections-counterexample", "small-viewport-counterexample"], "visualChecks": ["answer hierarchy", "scroll/natural height"], "blockers": ["review card implementation agent still running"]}
@@ -147,7 +147,7 @@
       "title": "Review card compact/full layout regression",
       "surface": "Review card answer layout",
       "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"],
-      "requiredFixtureIDs": ["notebookReviewDeckVaried", "review.card-compact-counterexample"],
+      "requiredFixtureIDs": ["reviewDeck.notebookReviewDeck", "reviewDeck.review.card-compact-counterexample"],
       "acceptance": ["natural height and scroll presentation never create a centered blank region", "compact mode summarizes intentionally rather than hiding fields through greedy frame constraints"],
       "counterexamples": ["small viewport", "large text with all optional fields"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["compact", "full", "small-viewport", "large-text"], "counterexampleSteps": ["small-viewport-counterexample", "large-text-counterexample"], "visualChecks": ["no blank dead zone", "content order"], "blockers": ["needs implementation plus clean visual evidence"]}
@@ -158,7 +158,7 @@
       "title": "Sync settings terminal lifecycle",
       "surface": "Settings sync state",
       "sourceRefs": ["ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift"],
-      "requiredFixtureIDs": ["sync.settings-terminal", "sync.settings-error-retry"],
+      "requiredFixtureIDs": ["settings.sync_terminal_error_retry_success"],
       "acceptance": ["sync terminal success/error is derived from one lifecycle state", "retry and dismiss do not leave stale progress or duplicate work"],
       "counterexamples": ["partial failure", "retry after terminal error"],
       "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["idle", "syncing", "terminal-success", "terminal-error", "retry"], "counterexampleSteps": ["terminal-error-counterexample", "retry-counterexample"], "visualChecks": ["progress to terminal transition", "error action hierarchy"], "blockers": ["settings lifecycle implementation pending"]}

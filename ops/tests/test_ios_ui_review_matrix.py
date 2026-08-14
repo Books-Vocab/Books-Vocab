@@ -77,6 +77,19 @@ def test_fixture_gate_can_scope_one_requirement() -> None:
     assert result["fixtureGaps"] == {}
 
 
+@pytest.mark.parametrize("requirement_id", ["P1", "P2", "P8", "P9"])
+def test_fixture_gate_accepts_canonical_scenario_contract_ids(requirement_id: str) -> None:
+    result = MODULE.validate_matrix(
+        MODULE.load_matrix(MATRIX),
+        root=ROOT,
+        dataset_id="marketing_demo",
+        requirement_id=requirement_id,
+        require_fixtures=True,
+    )
+
+    assert result["fixtureGaps"] == {}
+
+
 def test_fixture_gate_rejects_unknown_requirement_scope() -> None:
     with pytest.raises(MODULE.UIReviewMatrixError, match="requirement id"):
         MODULE.validate_matrix(

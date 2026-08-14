@@ -144,6 +144,52 @@ def _fixture_ids_for_dataset(*, root: Path, dataset_id: str) -> set[str]:
         for fixture_id in raw_fixtures:
             fixture_ids.add(fixture_id)
             fixture_ids.add(f"{domain}.{fixture_id}")
+
+    # Canonical cross-domain evidence is declared under scenarioContext rather
+    # than a seed domain.  These rows are still fixture contracts: dictionary
+    # rows are consumed by FixtureDatasetStore and surface-contract rows are
+    # the portable state/asset mapping used by the UI evidence flows.  Keep
+    # both the declared ID and a qualified surface alias so matrix authors do
+    # not have to guess which namespace a contract uses.
+    scenario_context = dataset.get("scenarioContext")
+    if isinstance(scenario_context, dict):
+        dictionary = scenario_context.get("dictionary")
+        if isinstance(dictionary, dict):
+            lookup = dictionary.get("lookup")
+            if isinstance(lookup, dict):
+                for row in lookup.values():
+                    if isinstance(row, dict) and isinstance(row.get("fixtureID"), str):
+                        fixture_ids.add(row["fixtureID"])
+                        fixture_ids.add(f"dictionary.{row['fixtureID']}")
+            coverage = dictionary.get("coverage")
+            if isinstance(coverage, dict):
+                for group in coverage.values():
+                    if not isinstance(group, dict):
+                        continue
+                    raw_ids = group.get("fixtureIDs")
+                    if not isinstance(raw_ids, list):
+                        continue
+                    for fixture_id in raw_ids:
+                        if isinstance(fixture_id, str):
+                            fixture_ids.add(fixture_id)
+                            fixture_ids.add(f"dictionary.{fixture_id}")
+
+        contracts = scenario_context.get("surfaceContracts")
+        if isinstance(contracts, dict):
+            for surface, contract in contracts.items():
+                if not isinstance(contract, dict):
+                    continue
+                rows = []
+                for group in ("required", "counterexamples"):
+                    raw_rows = contract.get(group)
+                    if isinstance(raw_rows, list):
+                        rows.extend(raw_rows)
+                for row in rows:
+                    if not isinstance(row, dict) or not isinstance(row.get("fixtureID"), str):
+                        continue
+                    fixture_id = row["fixtureID"]
+                    fixture_ids.add(fixture_id)
+                    fixture_ids.add(f"{surface}.{fixture_id}")
     return fixture_ids
 
 
