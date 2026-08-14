@@ -303,7 +303,11 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.showPreview())
 
         let viewportHeight = preview.frame.height
-        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 1))
+        // At iOS 26.4 accessibility Dynamic Type, XCTest's normalized-slider
+        // endpoint injection does not reliably deliver the native UISlider
+        // release event. Use the production semantic tick action instead; the
+        // regular-size endpoint contract remains covered above.
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "2.5"))
         guard let resizedPreview = reader.settingsPreviewElement(timeout: 5) else {
             XCTFail("preview must remain in the accessibility tree after line-height change")
             return
