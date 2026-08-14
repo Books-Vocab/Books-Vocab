@@ -168,8 +168,8 @@ final class ReaderFlowUITests: UITestCase {
 
         selectedChapter.tapWhenReady()
         XCTAssertTrue(
-            reader.tocNavigationStateReceipt.waitUntilValueContains("phase=loading", timeout: 2),
-            "TOC selection must expose phase=loading before result"
+            reader.tocNavigationLoading.waitUntilExists(timeout: 2),
+            "TOC selection must expose a loading indicator before result"
         )
         XCTAssertTrue(reader.isTableOfContentsSheetPresent)
         captureStep("toc-selection-loading", app: app)

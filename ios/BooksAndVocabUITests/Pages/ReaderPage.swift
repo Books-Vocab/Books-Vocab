@@ -218,7 +218,10 @@ struct ReaderPage {
     }
 
     var tocNavigationLoading: XCUIElement {
-        app.activityIndicators["reader.toc.navigation.loading"]
+        // SwiftUI's ProgressView may materialize as an Other rather than an
+        // ActivityIndicator on the simulator. The identifier is the contract;
+        // do not couple the Page Object to UIKit's bridged element type.
+        app.descendants(matching: .any)["reader.toc.navigation.loading"]
     }
 
     var tocNavigationStateReceipt: XCUIElement {
