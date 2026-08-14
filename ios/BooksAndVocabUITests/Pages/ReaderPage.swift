@@ -774,7 +774,18 @@ struct ReaderPage {
             file: file,
             line: line
         ) else { return false }
-        slider.adjust(toNormalizedSliderPosition: position)
+        if position >= 0.99 {
+            // On iOS 26, XCTest's normalized drag from the exact lower bound
+            // can synthesize an event without moving a SwiftUI Slider. Tap a
+            // bounded interior point near the upper endpoint instead; the
+            // native Slider still snaps to its declared 0.1 step and the
+            // caller must verify the resulting accessibility value.
+            slider.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)
+            ).tap()
+        } else {
+            slider.adjust(toNormalizedSliderPosition: position)
+        }
         return true
     }
 
