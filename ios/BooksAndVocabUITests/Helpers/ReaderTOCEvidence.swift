@@ -246,14 +246,17 @@ extension UITestCase {
             throw ReaderTOCEvidenceWriterError.missingScreenshot
         }
         let app = try XCTUnwrap(currentApp)
+        // Readium may rebuild the WebKit AX subtree after any subsequent
+        // cross-surface query. Capture the already-asserted content first;
+        // the remaining proof reads are independent native SwiftUI markers.
+        let observedContent = try Self.readContent(
+            app,
+            selector: contentSelector
+        )
         let asset = try Self.readInstalledAsset(from: app, assetID: assetID)
         let observedLocator = try Self.readRequiredValue(
             app,
             identifier: "reader.currentLocator"
-        )
-        let observedContent = try Self.readContent(
-            app,
-            selector: contentSelector
         )
         let selectedRow = try Self.readSelectedRow(
             app,
