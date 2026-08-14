@@ -136,6 +136,7 @@ struct AddLinkSheet: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .accessibilityIdentifier("addLink.dictionary.idle")
+                    .accessibilityValue(Text(verbatim: UIWorldDictionaryLookupState.idle.fixtureID))
 
                 case .loading:
                     ZStack(alignment: .topLeading) {
