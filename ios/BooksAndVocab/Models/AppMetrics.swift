@@ -70,7 +70,10 @@ enum AppMotion {
         1.0,
         duration: DesignTokens.Motion.Duration.indicator
     )
-    static let syncCompletionHold: Duration = .milliseconds(700)
+    // Keep terminal sync feedback readable even when a retry hits the local
+    // fixture/cache path and completes within a single run-loop turn. The
+    // panel is a user-facing result, not a transient spinner.
+    static let syncCompletionHold: Duration = .milliseconds(1500)
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
     static let chipSelect = Animation.easeOut(duration: DesignTokens.Motion.Duration.chip)
