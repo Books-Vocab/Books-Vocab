@@ -30,7 +30,9 @@ struct ReaderPage {
     var settingsDoneButton: XCUIElement { app.buttons["reader.settings.done"] }
     var settingsPreview: XCUIElement { app.otherElements["reader.settings.preview"] }
     var fontSizeStepper: XCUIElement { app.steppers["reader.settings.fontSizeStepper"] }
-    var lineHeightStepper: XCUIElement { app.steppers["reader.settings.lineHeightStepper"] }
+    var lineHeightIncrementButton: XCUIElement {
+        app.buttons["reader.settings.lineHeight.increment"]
+    }
     var lineHeightSlider: XCUIElement { app.sliders["reader.settings.lineHeight"] }
     var readingModePicker: XCUIElement { app.buttons["reader.settings.readingMode"] }
     var fontPicker: XCUIElement { app.buttons["reader.settings.font"] }
@@ -92,16 +94,12 @@ struct ReaderPage {
         fontSizeStepperQuery.buttons.matching(identifier: "Increment")
     }
 
-    private var lineHeightStepperQuery: XCUIElementQuery {
-        app.steppers.matching(identifier: "reader.settings.lineHeightStepper")
-    }
-
     private var lineHeightIncrementQuery: XCUIElementQuery {
-        lineHeightStepperQuery.buttons.matching(identifier: "Increment")
+        app.buttons.matching(identifier: "reader.settings.lineHeight.increment")
     }
 
     private var lineHeightDecrementQuery: XCUIElementQuery {
-        lineHeightStepperQuery.buttons.matching(identifier: "Decrement")
+        app.buttons.matching(identifier: "reader.settings.lineHeight.decrement")
     }
 
     private var lineHeightSliderQuery: XCUIElementQuery {
@@ -836,14 +834,7 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) -> Bool {
         guard let numericValue = Double(expectedValue) else { return false }
-        guard let currentValue = lineHeightValue(timeout: 5),
-              let stepper = exactlyOne(
-                  lineHeightStepperQuery,
-                  named: "Reader line-height stepper",
-                  timeout: 5,
-                  file: file,
-                  line: line
-              ) else { return false }
+        guard let currentValue = lineHeightValue(timeout: 5) else { return false }
 
         let delta = Int(((numericValue - currentValue) / 0.1).rounded())
         guard delta != 0 else { return true }
@@ -857,7 +848,6 @@ struct ReaderPage {
         ) else { return false }
 
         for _ in 0..<abs(delta) {
-            guard stepper.isHittable else { return false }
             button.tapWhenReady(timeout: 5, file: file, line: line)
         }
         return waitForLineHeightValue(expectedValue, timeout: 5)

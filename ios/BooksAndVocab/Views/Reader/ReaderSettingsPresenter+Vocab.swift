@@ -112,17 +112,28 @@ extension ReaderSettingsPresenter {
             }
             .accessibilityIdentifier("reader.settings.fontSizeStepper")
 
-            Stepper(
-                value: bindings.lineHeight,
-                in: ReaderPresentationMetrics.SettingsPreview.lineHeightRange,
-                step: ReaderPresentationMetrics.SettingsPreview.lineHeightStep
-            ) {
+            HStack(spacing: AppSpacing.s2) {
                 LabeledContent(L10n.string("reader.settings.lineHeight")) {
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
                         .monospacedDigit()
                 }
+                Spacer(minLength: AppSpacing.s2)
+                lineHeightTickButton(
+                    systemName: "minus",
+                    identifier: "reader.settings.lineHeight.decrement",
+                    disabled: bindings.lineHeight.wrappedValue <= ReaderPresentationMetrics.SettingsPreview.lineHeightRange.lowerBound
+                ) {
+                    changeLineHeight(by: -ReaderPresentationMetrics.SettingsPreview.lineHeightStep)
+                }
+                lineHeightTickButton(
+                    systemName: "plus",
+                    identifier: "reader.settings.lineHeight.increment",
+                    disabled: bindings.lineHeight.wrappedValue >= ReaderPresentationMetrics.SettingsPreview.lineHeightRange.upperBound
+                ) {
+                    changeLineHeight(by: ReaderPresentationMetrics.SettingsPreview.lineHeightStep)
+                }
             }
-            .accessibilityIdentifier("reader.settings.lineHeightStepper")
+            .accessibilityIdentifier("reader.settings.lineHeightTicks")
 
             ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
 
@@ -137,6 +148,32 @@ extension ReaderSettingsPresenter {
         } header: {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.typography"), icon: "textformat.size")
         }
+    }
+
+    private func lineHeightTickButton(
+        systemName: String,
+        identifier: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(disabled)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func changeLineHeight(by delta: Double) {
+        let metrics = ReaderPresentationMetrics.SettingsPreview.self
+        let rawValue = bindings.lineHeight.wrappedValue + delta
+        let ticks = ((rawValue - metrics.lineHeightRange.lowerBound) / metrics.lineHeightStep).rounded()
+        let quantized = metrics.lineHeightRange.lowerBound + (ticks * metrics.lineHeightStep)
+        bindings.lineHeight.wrappedValue = min(
+            max(quantized, metrics.lineHeightRange.lowerBound),
+            metrics.lineHeightRange.upperBound
+        )
     }
 
     // MARK: Appearance
