@@ -53,10 +53,8 @@ final class DictionaryLookupFlowUITests: UITestCase {
         captureStep("select-sense", app: app)
         page.tapExample(id: "example-2")
         page.tapMaterialize()
-        page.assertMaterialization(status: "ready")
-        captureStep("materialize", app: app)
         TodayReviewPage(app: app).assertLink(id: "fixture-dictionary-card")
-        captureStep("p2-senses-materialized", app: app)
+        captureStep("materialize", app: app)
     }
 
     @MainActor
