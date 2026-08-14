@@ -660,17 +660,23 @@ struct ReviewCardView: View {
     /// only place the review card can create its first link, which is why the
     /// section is always *available* even though its content is empty.
     private var addLinkPrompt: some View {
-        Button(action: { actions.addLink?() }) {
-            HStack(spacing: appSkin.spacing.inlineGap) {
-                Image(systemName: "plus")
-                    .font(appSkin.typography.iconTiny)
-                Text("新增連結".localized)
-                    .font(appSkin.typography.caption)
+        HStack(spacing: 0) {
+            Button(action: { actions.addLink?() }) {
+                HStack(spacing: appSkin.spacing.inlineGap) {
+                    Image(systemName: "plus")
+                        .font(appSkin.typography.iconTiny)
+                    Text("新增連結".localized)
+                        .font(appSkin.typography.caption)
+                }
+                .foregroundStyle(appSkin.palette.tertiaryText)
             }
-            .foregroundStyle(appSkin.palette.tertiaryText)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("todayReview.card.addLink")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("todayReview.card.addLink")
+        // The field wrapper receives `todayReview.card.back.field.graphLinks`
+        // from the caller. Keep it as a real AX container so the child action
+        // remains independently addressable as `todayReview.card.addLink`.
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Render Plan / Adaptive Layout
