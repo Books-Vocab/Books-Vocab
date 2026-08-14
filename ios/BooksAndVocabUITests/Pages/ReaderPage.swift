@@ -854,7 +854,36 @@ struct ReaderPage {
                 return true
             }
         }
-        return false
+
+        // If the semantic XCTest action was swallowed by the iOS 26 SwiftUI
+        // bridge, perform the same exact-selector operation as a thumb drag.
+        // Starting from the value reported by AX avoids a blind coordinate
+        // guess; the target remains one quantized tick inside the edge.
+        guard let slider = exactlyOne(
+            lineHeightSliderQuery,
+            named: "Reader line-height slider",
+            timeout: 2
+        ), let rawValue = slider.value, let currentValue = Double(String(describing: rawValue)) else {
+            return false
+        }
+        let normalizedCurrent = min(
+            max((currentValue - 1.0) / 1.5, 0.02),
+            0.98
+        )
+        let normalizedTarget = endpoint <= 0.5 ? 0.02 : 0.98
+        let source = slider.coordinate(
+            withNormalizedOffset: CGVector(dx: normalizedCurrent, dy: 0.5)
+        )
+        let target = slider.coordinate(
+            withNormalizedOffset: CGVector(dx: normalizedTarget, dy: 0.5)
+        )
+        source.press(
+            forDuration: 0.1,
+            thenDragTo: target,
+            withVelocity: .fast,
+            thenHoldForDuration: 0.1
+        )
+        return waitForSliderValueEquals(expectedValue, timeout: 5)
     }
 
     private func waitForSliderValueChange(
