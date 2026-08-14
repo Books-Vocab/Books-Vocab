@@ -120,9 +120,16 @@ class UITestCase: XCTestCase {
         namePrefix: String = "UITest Failure"
     ) {
         add(XCTAttachment(screenshot: app.screenshot()).named("\(namePrefix) Screenshot"))
-        add(XCTAttachment(string: app.debugDescription).named("\(namePrefix) Debug Description"))
+        // Do not request app.debugDescription here.  On iOS 26, the Reader's
+        // Readium/WebKit accessibility tree can be enormous; requesting the
+        // complete remote snapshot after a failure can keep xcodebuild alive
+        // for minutes and hide the original assertion.  The failure screenshot
+        // and the bounded summaries below are the stable evidence contract.
+        add(XCTAttachment(
+            string: "Full accessibility-tree dump intentionally omitted; use the failure screenshot and focused query output."
+        ).named("\(namePrefix) Diagnostics Policy"))
         add(XCTAttachment(string: currentTabSummary(in: app)).named("\(namePrefix) Current Tab"))
-        add(XCTAttachment(string: visibleElementSummary(in: app)).named("\(namePrefix) Visible Elements"))
+        add(XCTAttachment(string: boundedElementSummary(in: app)).named("\(namePrefix) Visible Elements"))
     }
 
     func captureStep(
@@ -184,24 +191,35 @@ class UITestCase: XCTestCase {
     func currentTabSummary(in app: XCUIApplication) -> String {
         // 用 Selected accessibility trait 判定；iOS 26.4 sim 上觀察到
         // button.value 不帶 "selected"/"1" 字串，嗅探 value 會誤報 <no selected tab>。
-        let selected = app.tabBars.buttons.allElementsBoundByIndex.first(where: \.isSelected)
-        return selected?.label ?? "<no selected tab>"
+        for index in 0..<6 {
+            let candidate = app.tabBars.buttons.element(boundBy: index)
+            guard candidate.exists else { break }
+            if candidate.isSelected { return candidate.label }
+        }
+        return "<no selected tab>"
     }
 
-    private func visibleElementSummary(in app: XCUIApplication, limit: Int = 24) -> String {
-        let visible = app.descendants(matching: .any).allElementsBoundByIndex
-            .filter { $0.exists && !$0.frame.isEmpty && !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .prefix(limit)
-
-        if visible.isEmpty {
-            return "<no visible labelled elements>"
+    private func boundedElementSummary(in app: XCUIApplication) -> String {
+        // Query only small, high-signal collections.  In particular, never
+        // enumerate descendants(matching: .any), which includes the full
+        // Readium document tree on a failed Reader test.
+        let candidates: [(String, XCUIElementQuery)] = [
+            ("buttons", app.buttons),
+            ("textFields", app.textFields),
+            ("sliders", app.sliders),
+            ("tabBarButtons", app.tabBars.buttons),
+        ]
+        let lines = candidates.flatMap { kind, query in
+            (0..<6).compactMap { index -> String? in
+                let element = query.element(boundBy: index)
+                guard element.exists else { return nil }
+                let label = element.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                let identifier = element.identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !label.isEmpty || !identifier.isEmpty else { return nil }
+                return "\(kind) | \(identifier.isEmpty ? "-" : identifier) | \(label.isEmpty ? "-" : label)"
+            }
         }
-
-        return visible.enumerated().map { index, element in
-            let id = element.identifier.isEmpty ? "-" : element.identifier
-            let label = element.label.replacingOccurrences(of: "\n", with: " ")
-            return "\(index + 1). \(element.elementType.summaryName) | \(id) | \(label)"
-        }.joined(separator: "\n")
+        return lines.isEmpty ? "<no bounded labelled controls>" : lines.joined(separator: "\n")
     }
 }
 

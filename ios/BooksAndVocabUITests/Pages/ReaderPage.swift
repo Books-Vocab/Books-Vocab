@@ -899,22 +899,12 @@ struct ReaderPage {
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let matches = lineHeightSliderQuery.allElementsBoundByIndex
-            guard matches.count == 1,
-                  let value = matches[0].value else {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-                continue
-            }
-            let currentValue = String(describing: value)
-            if currentValue != previousValue {
+            if let currentValue = currentLineHeightSliderValue(), currentValue != previousValue {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        let matches = lineHeightSliderQuery.allElementsBoundByIndex
-        guard matches.count == 1,
-              let value = matches[0].value else { return false }
-        return String(describing: value) != previousValue
+        return currentLineHeightSliderValue().map { $0 != previousValue } ?? false
     }
 
     private func waitForSliderValueEquals(
@@ -923,18 +913,25 @@ struct ReaderPage {
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let matches = lineHeightSliderQuery.allElementsBoundByIndex
-            if matches.count == 1,
-               let value = matches[0].value,
+            if let value = currentLineHeightSliderValue(),
                sliderValue(value, equals: expectedValue) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        let matches = lineHeightSliderQuery.allElementsBoundByIndex
-        guard matches.count == 1,
-              let value = matches[0].value else { return false }
+        guard let value = currentLineHeightSliderValue() else { return false }
         return sliderValue(value, equals: expectedValue)
+    }
+
+    private func currentLineHeightSliderValue() -> String? {
+        guard let slider = exactlyOneIfPresent(
+            lineHeightSliderQuery,
+            named: "Reader line-height slider",
+            timeout: 0.25
+        ), let value = slider.value else {
+            return nil
+        }
+        return String(describing: value)
     }
 
     private func sliderValue(_ value: Any, equals expected: String) -> Bool {
