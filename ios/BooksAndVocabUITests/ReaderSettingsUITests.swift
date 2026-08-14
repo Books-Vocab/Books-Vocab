@@ -194,10 +194,31 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.waitForLineHeightValue("1.2", timeout: 5))
         captureStep("preview-1.2", app: app)
 
+        // The native slider/tick control must commit its release value into
+        // the production Reader bridge, not merely expose a transient AX
+        // value. Re-open the settings surface afterwards so the following
+        // endpoint/theme evidence still exercises the same live Reader.
+        XCTAssertTrue(reader.closeSettings(), "Reader settings must commit the semantic line-height change")
+        XCTAssertTrue(
+            reader.waitForSettingsStateContaining(["lineHeight=1.20"], timeout: 10),
+            "Reader settings state must observe the committed 1.2 line-height value"
+        )
+        reader.openSettings()
+        XCTAssertNotNil(reader.settingsPreviewElement(timeout: 5))
+
         XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 1))
         XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
         captureStep("preview-2.5", app: app)
         captureStep("preview-2.5-counterexample", app: app)
+
+        XCTAssertTrue(reader.closeSettings(), "Reader settings must commit the native slider endpoint")
+        XCTAssertTrue(
+            reader.waitForSettingsStateContaining(["lineHeight=2.50"], timeout: 10),
+            "Reader settings state must observe the committed 2.5 slider endpoint"
+        )
+        reader.openSettings()
+        XCTAssertNotNil(reader.settingsPreviewElement(timeout: 5))
+        XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
 
         let viewportHeight = initialPreview.frame.height
 
