@@ -153,7 +153,7 @@ struct DictionaryLookupPage {
         XCTAssertGreaterThan(emptyState.frame.height, 0, "empty state selector has no positive height", file: file, line: line)
         XCTAssertEqual(
             emptyState.value as? String,
-            UIWorldDictionaryLookupState.result.fixtureID,
+            "dictionary.lookup.result",
             "empty state AX marker must identify the result fixture",
             file: file,
             line: line
