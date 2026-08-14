@@ -51,7 +51,12 @@ private enum ReviewCardVisualEvidenceStep {
         fixture: .notebookReviewCardFullInfo,
         identity: .p13Production,
         face: .front,
-        presentation: .scroll,
+        // Standard production fronts intentionally use the natural branch:
+        // the core translation is capped to three lines and the adaptive
+        // solver reserves scrolling for an overfull card. A merge previously
+        // changed this to `.scroll`, making a valid production AX tree fail
+        // readiness before the toolbar assertion ran.
+        presentation: .natural,
         geometry: .fullFront
     )
 }
