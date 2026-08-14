@@ -586,6 +586,10 @@ struct ReviewCardView: View {
                         level: layout.policy(for: .field(field)).measurementLevel
                     )
                 }
+                // Keep the field selector as a container. Without explicit AX
+                // containment, SwiftUI may promote the wrapper identifier onto
+                // its child Button and erase `todayReview.card.link.<cardID>`.
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("todayReview.card.back.field.\(field.rawValue)")
         }
     }
