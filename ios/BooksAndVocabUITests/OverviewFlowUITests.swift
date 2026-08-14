@@ -170,6 +170,7 @@ final class OverviewFlowUITests: UITestCase {
 
         try step("forecast-zero", app: app) {
             let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
+            overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
             let bucket = overview.forecastBucket(expected.forecastDayKey)
             bucket.assertExists(timeout: 10)
@@ -310,6 +311,7 @@ final class OverviewFlowUITests: UITestCase {
             overview.assertMetric("reviewedToday", value: "0")
             overview.assertMetric("dueToday", value: "0")
             overview.calendar.assertExists(timeout: 10)
+            overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
             let bucket = overview.forecastBucket(expected.forecastDayKey)
             bucket.assertExists(timeout: 10)

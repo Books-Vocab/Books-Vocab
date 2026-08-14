@@ -66,6 +66,50 @@ struct OverviewPage {
         )
     }
 
+    /// Materialize a forecast bucket inside the production Overview
+    /// ScrollView before asserting its value. The chart is below the graph,
+    /// metrics, and calendar on compact screens; querying an offscreen SwiftUI
+    /// child can legitimately return zero until the real scroll position brings
+    /// it into the accessibility snapshot.
+    func scrollToForecastBucket(
+        _ dayKey: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let query = app.descendants(matching: .any)
+            .matching(identifier: "forecast.bucket.\(dayKey)")
+        let scrollView = app.scrollViews.matching(identifier: "overview").element(boundBy: 0)
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if query.count == 1 {
+                let bucket = query.element(boundBy: 0)
+                if bucket.exists,
+                   !bucket.frame.isEmpty,
+                   scrollView.exists,
+                   scrollView.frame.intersects(bucket.frame),
+                   bucket.isHittable {
+                    return
+                }
+            }
+            if scrollView.exists {
+                scrollView.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        }
+
+        XCTAssertEqual(query.count, 1, "forecast.bucket.\(dayKey) must materialize after scrolling", file: file, line: line)
+        XCTAssertTrue(
+            query.element(boundBy: 0).exists && query.element(boundBy: 0).isHittable,
+            "forecast.bucket.\(dayKey) must be hittable after scrolling the production Overview ScrollView",
+            file: file,
+            line: line
+        )
+    }
+
     var overview: XCUIElement { element(identifier: "overview") }
     var calendar: XCUIElement { element(identifier: "calendar") }
     var forecast: XCUIElement { element(identifier: "overview.forecast") }
