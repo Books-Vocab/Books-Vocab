@@ -18,7 +18,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.example(id: "example-1").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
-        let materialization = page.materialization(status: "ready")
+        let materialization = page.assertMaterialization(status: "ready")
         let datasetSHA256 = try DictionaryFixtureManifest.datasetSHA256()
         XCTAssertTrue(materialization.waitUntilValueContains(
             "sense-1|example-1|dictionary.lookup.result|marketing_demo|\(datasetSHA256)|catalog_reader_epub|",
@@ -53,7 +53,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         captureStep("select-sense", app: app)
         page.tapExample(id: "example-2")
         page.tapMaterialize()
-        XCTAssertTrue(page.materialization(status: "ready").waitUntilExists(timeout: 5))
+        page.assertMaterialization(status: "ready")
         captureStep("materialize", app: app)
         TodayReviewPage(app: app).assertLink(id: "fixture-dictionary-card")
         captureStep("p2-senses-materialized", app: app)
