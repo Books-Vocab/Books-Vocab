@@ -78,7 +78,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         // relying on XCTest's text-selection behavior across iOS versions.
         let (emptyApp, emptyPage) = try openDictionarySheet(perfLog: "dictionary-empty")
         emptyPage.search("empty")
-        XCTAssertTrue(emptyPage.emptyState.waitUntilExists(timeout: 10))
+        emptyPage.assertEmptyState()
         captureStep("empty", app: emptyApp)
     }
 
