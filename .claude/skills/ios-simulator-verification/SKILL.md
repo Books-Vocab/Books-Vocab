@@ -22,6 +22,8 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。
 - `build/snapshots/uitest-runs/index.json` 是 append-only history；同一 flow/variant 的新 run 只更新 cockpit 的 latest status，不得刪除舊的 fail／inconclusive record。
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
+- 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300 秒）；`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
+- 零步驟的 fixture decoder、manifest schema、projection unit test 不是視覺證據；它們應直接走 unit／focused test，不能用 evidence helper 產生空 screenshot bundle，也不能把「沒有 UI step」記成 visual pass。真正的 UI evidence 必須有至少一個使用者可見狀態與對應 interaction/assertion。
 - iOS 26 SwiftUI `Slider` 的 lower-bound endpoint 是已知的 XCTest edge case：從 `1.0` 直接呼叫 `adjust(toNormalizedSliderPosition: 1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（例如 `0.95`），再調到 endpoint，且呼叫端仍要等待預期 AX `value`；不可把 tap／coordinate drag 當成未驗證 fallback。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
 - 每個 helper run 都會保存 `build/snapshots/uitest-evidence/<run>/verdict.json`、`upstream-verdict.json`、command、runner log；upstream 有提供的 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 也會複製到同一 bundle。runner 失敗或 verdict 不合約時仍讀這個 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
 
@@ -121,6 +123,8 @@ P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修�
 ```
 
 `--lease` 由 runner 負責 pool claim、boot、execution lock 與 release；不要自己 erase／刪除 simulator data 來「修」測試污染。`--build-lock-timeout` 只控制底層 build/device lock 等待，不是 XCTest 的 test timeout；XCTest timeout 由 `ios_test.sh` 的 runner 契約管理。
+
+單一 helper invocation 不接受 `--output-dir`：它會自行建立不可覆寫的 stable bundle。需要一次 build、跑多個 exact selectors 並集中輸出到指定目錄時，才由 `ops/ios_ui_run_many.py run --output-dir ... --summary-out ...` 編排；每個 selector 仍必須產生獨立 bundle，不能用混合 `--file` 截圖替代。
 
 ### 3.1 視覺證據機器 gate
 
