@@ -2,13 +2,13 @@
 
 日期：2026-08-14（重驗證更新）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前工作樹與 simulator evidence bundle  
-工作樹：`feat/ios-ui-review-report-complete-20260813`；本報告提交前 app／UITest 驗證 baseline：`d5f62e7f8`；dirty=`false`
+工作樹：`feat/ios-ui-review-report-complete-20260813`；本輪目前 app／UITest clean HEAD：`8694fa4e8`；dirty=`false`；final current-head batch 尚未執行
 
 ## 結論
 
 原報告要求的是「重新思考並重構」而非局部修飾。P1–P15 表面上是 15 張圖，實際上是 5 個跨頁系統問題：資料／狀態模型、元件共用、互動時序、長內容／極端狀態與 visual hierarchy 必須一起收斂。這不是一次 UI polish；必須以 UI World 注入、狀態矩陣、Simulator/UI-test、證據契約與視覺迭代形成閉環。只修單頁 padding、顏色或單一 selector，無法達到報告標準。
 
-本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。目前最重要的差距已被實際暴露並修掉：P1/P2 先後發現 auth fixture 缺失、Page Object 過早做 cardinality 斷言、以及 graphLinks wrapper 吞掉子連結 AX identifier；最新 `ac9d8d5cd` 的 P1/P2 已在 pinned Simulator 上 machine PASS、contract PASS、視覺 attestation PASS。P3 的 package graph／cache BLOCK 也已解除，歷史失敗仍保留作診斷。Reader P4/P5 又完成一次根因收斂：Readium WebKit 的重複 AX projection 已隔離，P5 的 UI World baseline 固定為 canonical `2.1`，iOS 26 lower-bound Slider endpoint 則固化為 `0.95 → 1.0` staged adjustment 並以 AX value 驗證；P4/P5 在 `d5f62e7f8` 的 pinned Simulator fresh bundle 均 machine／contract／visual PASS。報告提交後仍會以新 HEAD 執行 final current-head batch，結果以 `final-head-batch-v8-summary.json` 為最後判定。這裡的 PASS 仍明確限定為 Simulator／UI World／exact XCTest 證據，不升格為 physical device 或 production release。
+本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。目前最重要的差距已被實際暴露並修掉：P1/P2 先後發現 auth fixture 缺失、Page Object 過早做 cardinality 斷言、以及 graphLinks wrapper 吞掉子連結 AX identifier；最新 `ac9d8d5cd` 的 P1/P2 已在 pinned Simulator 上 machine PASS、contract PASS、視覺 attestation PASS。P3 的 package graph／cache BLOCK 也已解除，歷史失敗仍保留作診斷。Reader P4/P5 又完成一次根因收斂：Readium WebKit 的重複 AX projection 已隔離，P5 的 UI World baseline 固定為 canonical `2.1`，iOS 26 lower-bound Slider endpoint 則固化為 `0.95 → 1.0` staged adjustment 並以 AX value 驗證；P4/P5 在 `d5f62e7f8` 的 pinned Simulator fresh bundle 均 machine／contract／visual PASS。P9 又完成一輪從 auth、stale selector、父容器 AX shadowing、viewport readiness、空狀態 containment 到 AX materialization race 的根因收斂，`8694fa4e8` 的 fresh P9 已 machine／contract／visual PASS。報告更新後仍會以最新 HEAD 執行 `final-head-batch-v9`，結果以 `final-head-batch-v9-summary.json` 為最後判定。這裡的 PASS 仍明確限定為 Simulator／UI World／exact XCTest 證據，不升格為 physical device 或 production release。
 
 ## 原報告意圖與目前差距
 
@@ -16,9 +16,9 @@
 |---|---|---|---|---|
 | Dictionary P1–P2 | 詞典不可用、結果／詞義／來源不完整；需重做資料狀態與 typed surface，不是加一個按鈕 | explicit lookup state、canonical senses、provenance/materialization fixture、穩定 selector 已落地；`ac9d8d5cd` 的 P1/P2 fresh bundles 均 machine／contract／visual PASS | 功能 blocker 已清除；仍是 simulator-only，且只有一位視覺 reviewer；final current-head batch 尚未執行 | PASS（範圍受限） |
 | Reader Runtime P3–P7 | TOC 成功邊界、settings round-trip、P5 fixed-height/drag/scale、progress/loading/retry 狀態需同一 runtime 模型 | P3 success + invalid-destination counterexample、P4/P5、P6/P7 均有 contract-valid evidence；P4/P5 已在 `d5f62e7f8` 重跑並完成視覺 attestation；P5 endpoint 已用 staged XCTest action 固化 | final current-head batch 仍需重跑 P3/P4/P5/P6/P7；P3 初輪 package/cache failure 只保留為歷史診斷 | 既有 evidence PASS／final pending |
-| Explore/Overview P8–P10 | loading/empty/retry/counterexample、calendar shared components、Overview 需整體重設資訊層次 | P8/P9/P10 契約與視覺 evidence 均 PASS | 無目前已知功能 blocker；仍是 simulator-only / main-agent visual review | PASS（範圍受限） |
+| Explore/Overview P8–P10 | loading/empty/retry/counterexample、calendar shared components、Overview 需整體重設資訊層次 | P8 已有既有 evidence；P9 已在 `8694fa4e8` 重新完成 6 steps；P10 動態 projection 與 timeout allowance 已修正 | P8/P10 及 final current-head batch 尚待同一最新 HEAD 重跑 | P9 PASS（範圍受限）／其餘 final pending |
 | Vocabulary/Review Card P11–P13 | P11 role/review/search/CTA 需有完整資料世界；P12/P13 需消除留白、資訊隱藏與 toolbar 失控 | P11 rich world、facet union、CTA、dynamic type、counterexample PASS；P12/P13 PASS | P11 的 O(N) projection/AX scan 只完成靜態風險審查，未宣稱 production perf PASS | PASS（P11 perf 限制） |
-| Settings/Sync P14–P15 | sync/error/retry 動畫與 settings IA 要可觀察、可回復；不可用 optimistic UI 假裝成功 | P14 PASS；P15 以 deferred locale mutation、root refresh boundary、native binding、intent/rollback 分離完成 3-selector batch | 無目前已知功能 blocker；仍是 simulator-only / 單一視覺 reviewer | PASS（範圍受限） |
+| Settings/Sync P14–P15 | sync/error/retry 動畫與 settings IA 要可觀察、可回復；不可用 optimistic UI 假裝成功 | P14 已以 session-scoped transport ledger 完成 fresh evidence；P15 以 deferred locale mutation、root refresh boundary、native binding、intent/rollback 分離完成 3-selector batch | P14/P15 仍須在 final current-head batch 重新綁定；仍是 simulator-only / 單一視覺 reviewer | 既有 targeted PASS／final pending |
 
 ## P1–P15 evidence 狀態
 
@@ -35,12 +35,12 @@
 | P6 | `ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance` | `c6ff48e0` hand-back | PASS；`evidence/P6/20260813-142032-69495` |
 | P7 | `ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess` | `e6630961` hand-back | PASS；`evidence/P7/20260813-142940-99394` |
 | P8 | `ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates` | child bundle | PASS；contract valid，6 steps visual pass |
-| P9 | `FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors` | child bundle | PASS；contract valid，6 steps visual pass |
-| P10 | `OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory` | child bundle | PASS；contract valid，10 steps visual pass |
+| P9 | `FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors` | `8694fa4e8` | PASS；fresh bundle `build/snapshots/uitest-evidence/20260814-044312-76504-30610`；6 steps、machine/contract PASS、contact/quick4/UIreview/video 檢查、`codex/pass` attestation；300 秒 XCTest allowance |
+| P10 | `OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory` | `1f5359ec4` | PASS；fresh bundle `build/snapshots/uitest-evidence/20260814-033236-72441-28187`；10 steps visual attested；另一本 selector 與 final current-head batch pending |
 | P11 | `VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently` | parent `10cb1a0` | PASS；`evidence/P11/20260813-143617-16438`；首輪 rc=1 根因已確認並修正 |
 | P12 | `ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings` | child bundle | PASS；contract valid，3 steps visual pass |
-| P13 | `ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled` | child bundle | PASS；contract valid，3 steps visual pass |
-| P14 | `SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess` | `e36b22a` hand-back | PASS；contract valid，2 steps visual pass |
+| P13 | `ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled` | `ffbd15324` | PASS；fresh bundle `build/snapshots/uitest-evidence/20260814-035646-39139-25148`；3 steps、natural front/scroll back、contract + visual attestation |
+| P14 | `SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess` | `8d4ada5ff` | PASS；fresh bundle `build/snapshots/uitest-evidence/20260814-035046-25459-3678`；2 steps、session-scoped event ledger、contract + visual attestation |
 | P15 | `SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges` | `51ea7178` hand-back | PASS；最新 batch，完成視覺 attestation |
 | P15 | `SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors` | `51ea7178` hand-back | PASS；最新 batch，完成視覺 attestation |
 | P15 | `SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary` | `51ea7178` hand-back | PASS；`evidence/P15/20260813-154622-45782`，完成視覺 attestation |
@@ -68,6 +68,18 @@
 
 修正 commit `790efe069` 保留 `visibleCount=644` 的完整 projection 判斷，改以「已 materialize 且不含前一個 query 的 row」驗證 query 清除，不修改 production UI。這是對驗收假設的最小根因修正，不是放寬產品行為。
 
+## P9 第七輪重構收斂：calendar 不是單一 selector 問題
+
+P9 的七輪 fresh run 保留了完整 failure chain，最後不是把 assertion 改寬，而是依 runtime 證據逐層修正：
+
+1. required fixture 原先缺 `.authSignedIn`，Overview 被 login gate 擋住；後來又發現 Page Object 依賴已移除的 `overview.statsContent`，改成 production `overview` hierarchy + dynamic metrics contract。
+2. `reviewCalendar.open` 先在 source 存在但 runtime AX 為 0；根因是 `calendar` 父 `VStack` 的 identifier shadowing 子 Button，production 加 `.accessibilityElement(children: .contain)` 後 selector 才唯一。
+3. selector 唯一後仍不可點，因日曆 header 在 Overview ScrollView viewport 外；Page Object 改成只對 production `overview` scroll view 做 bounded up/down scroll，直到 exact selector `exists ∧ hittable`，不使用座標點擊。
+4. 空日卡的父 identifier 曾傳播到 Image/Text 造成 3 個 `emptyDayDetail`；修正 containment。現行視覺仍是報告中的空狀態卡，0 計數以 1×1 semantic receipt 暴露，不新增可見數字。
+5. SwiftUI AX materialize 期間 summary 可能先以 `Other` 出現而非 `StaticText`，Page Object 改 any-descendant + wait-before-cardinality；完整雙 launch/6 steps 的 XCTest allowance 固定 300 秒。
+
+最終 P9 bundle `20260814-044312-76504-30610` 的 source=`8694fa4e8`、dataset SHA=`609f35f3…6abfced`、Simulator=`F068B3D8-9E0B-475B-85C3-97BC61748A8F`，machine/contract/visual 均 PASS；這是 targeted current evidence，仍不代替 final-head batch。
+
 ## 已確認的根因與尚未能宣稱的部分
 
 - **P1/P2**：舊問題不是字典卡片少一個欄位，而是 lookup、typed sense、provenance、materialization 與 review graph projection 沒有共同狀態模型；UI World 現在注入 rich payload，驗收固定 idle/loading/success/error/retry、選定 sense、來源鏈與 materialize 後的 graph link。`ac9d8d5cd` 已完成 P1/P2 fresh machine／contract／visual PASS；其中 AX containment 修正的是 production view tree，不是測試繞過。
@@ -94,8 +106,8 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache \
   --helper .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
   --methods-file <exact-runs.json> \
   --device <pinned-simulator-udid> \
-  --output-dir build/snapshots/uitest-evidence/final-head-batch-v8 \
-  --summary-out build/snapshots/uitest-evidence/final-head-batch-v8-summary.json
+  --output-dir build/snapshots/uitest-evidence/final-head-batch-v9 \
+  --summary-out build/snapshots/uitest-evidence/final-head-batch-v9-summary.json
 
 # 3. 每個 bundle 必須先完成主流程 verdict + evidence contract，
 #    再逐張檢視 contact sheet / screenshot，最後才寫 visual attestation。
@@ -126,11 +138,11 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache uv run --python 3.13 \
 
 ## 驗證與偏離
 
-- 已通過：cluster validator `valid=true clusterCount=5 requirementCount=15 selectorCount=16`；run-many/matrix targeted tests `27 passed`；最新 affected unit regression `11 passed / 0 failed`；`./ops/test_ios_ops.sh` `362 passed / 0 failed`；`bash -n ops/ios_test.sh`；`bash .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；`docs_lint --registry`（45 documents）；P1/P2 source `ac9d8d5cd` fresh Simulator evidence（machine PASS、contract PASS、contact sheet 視覺檢查、reviewer=`codex` attestation）；P3 success 與 invalid-destination counterexample 的既有 fresh evidence 均 machine PASS、video hash 綁定、full/quick4/UIreview/video 完成視覺 attestation；P4/P5 source `d5f62e7f8` fresh Simulator evidence（P4 4 steps、P5 5 steps、machine／contract／visual PASS）。報告提交後的 P1–P15 final current-head verdict 必須讀 `final-head-batch-v8-summary.json`，不可用舊 source bundle 代替。
+- 已通過：cluster validator `valid=true clusterCount=5 requirementCount=15 selectorCount=16`；run-many/matrix targeted tests `27 passed`；最新 affected unit regression `11 passed / 0 failed`；`./ops/test_ios_ops.sh` `362 passed / 0 failed`；`bash -n ops/ios_test.sh`；`bash .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；`docs_lint --registry`（45 documents）；P1/P2 source `ac9d8d5cd` fresh Simulator evidence（machine PASS、contract PASS、contact sheet 視覺檢查、reviewer=`codex` attestation）；P3 success 與 invalid-destination counterexample 的既有 fresh evidence 均 machine PASS、video hash 綁定、full/quick4/UIreview/video 完成視覺 attestation；P4/P5 source `d5f62e7f8` fresh Simulator evidence（P4 4 steps、P5 5 steps、machine／contract／visual PASS）；P9 source `8694fa4e8` fresh Simulator evidence（6 steps、machine／contract／visual PASS、`codex` attestation）；skill/SOP helper regression PASS。報告提交後的 P1–P15 final current-head verdict 必須讀 `final-head-batch-v9-summary.json`，不可用舊 source bundle 代替。
 - 平台：本輪是 iOS Simulator 驗證，不是 physical device；報告中的「實機操作」在此以 pinned simulator + exact XCTest + stable visual artifact 實現，不能誤報成真機 PASS。
-- 視覺審查：目前 attestation reviewer 是 `main-agent-visual-review`；沒有第二位獨立視覺 reviewer，因此這是已揭露的 assurance limitation，不升格為雙人審查。
+- 視覺審查：目前 attestation reviewer 是 `codex`；沒有第二位獨立視覺 reviewer，因此這是已揭露的 assurance limitation，不升格為雙人審查。
 - P3 的歷史 dependency/cache BLOCK 已解除；目前仍需由 final HEAD fresh Gate 確認整合層結果。完整 unit scope若再次出現 keychain OSStatus 25291，應標為 infrastructure inconclusive，不得改寫已成功的 UI／product verdict。P11 的 static performance risk 同樣不是已證明的 performance PASS；各 cluster 的視覺 attestation 仍由單一主線 reviewer 完成，沒有第二位獨立 reviewer。
 
 ## 工作樹邊界
 
-本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；P1/P2 已在 `ac9d8d5cd`、P4/P5 已在 `d5f62e7f8` clean source 完成 fresh Simulator evidence。本狀態報告提交後仍須執行 `final-head-batch-v8`、fresh Gate，再由 worktree-flow 完成 cutover local `main`、同步 `origin/main`、清理 scoped worktree/branch；不觸碰 `origin/prod`。歷史 failure bundle、keychain infrastructure inconclusive 與 P11 perf risk 都會保留，不用 partial PASS 蓋掉它們。
+本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；P1/P2 已在 `ac9d8d5cd`、P4/P5 已在 `d5f62e7f8`、P9 已在 `8694fa4e8` clean source 完成 fresh Simulator evidence。本狀態報告提交後仍須執行 `final-head-batch-v9`、fresh Gate，再由 worktree-flow 完成 cutover local `main`、同步 `origin/main`、清理 scoped worktree/branch；不觸碰 `origin/prod`。歷史 failure bundle、keychain infrastructure inconclusive 與 P11 perf risk 都會保留，不用 partial PASS 蓋掉它們。
