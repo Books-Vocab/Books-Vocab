@@ -521,23 +521,21 @@ struct ReaderPage {
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
         let query = contentTextQuery(text)
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let candidates = (0 ..< query.count).map { query.element(boundBy: $0) }
-            let hittable = candidates.filter(\.isHittable)
-            if hittable.count == 1 {
-                return true
-            }
-            if hittable.count > 1 {
-                XCTFail(
-                    "Reader content \(text) must resolve exactly one hittable element, observed \(hittable.count)"
-                )
-                return false
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        let candidate = query.element(boundBy: 0)
+        guard candidate.waitForExistence(timeout: timeout) else {
+            XCTFail("Reader content \(text) did not materialize within \(timeout)s")
+            return false
         }
-        XCTFail("Reader content \(text) did not resolve exactly one hittable element")
-        return false
+        let count = query.count
+        guard count == 1 else {
+            XCTFail("Reader content \(text) must resolve exactly one element, observed \(count)")
+            return false
+        }
+        guard candidate.isHittable, !candidate.frame.isEmpty else {
+            XCTFail("Reader content \(text) materialized but is not hittable")
+            return false
+        }
+        return true
     }
 
     // MARK: - Translation Panel
@@ -1053,13 +1051,16 @@ struct ReaderPage {
     }
 
     func waitForSettingsStateContaining(_ fragments: [String], timeout: TimeInterval = 10) -> Bool {
-        guard let state = exactlyOne(settingsStateQuery, named: "production Reader settings state", timeout: timeout) else {
-            return false
-        }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let value = String(describing: state.value ?? "")
-            if fragments.allSatisfy(value.contains) { return true }
+            if let state = exactlyOneIfPresent(
+                settingsStateQuery,
+                named: "production Reader settings state",
+                timeout: 0.25
+            ) {
+                let value = String(describing: state.value ?? "")
+                if fragments.allSatisfy(value.contains) { return true }
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
         return false
