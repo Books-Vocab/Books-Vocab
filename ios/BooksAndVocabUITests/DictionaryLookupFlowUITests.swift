@@ -123,7 +123,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
         page.search("missing-example")
         page.assertCanonicalState("result")
         page.tapSense(id: "sense-2")
-        XCTAssertFalse(page.example(id: "example-2").exists)
+        page.assertExampleAbsent(id: "example-2")
         captureStep("missing-example-counterexample", app: app)
     }
 
