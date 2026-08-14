@@ -243,8 +243,8 @@ struct ReaderViewConfiguration: Equatable {
 final class ReaderSettings {
     static let shared = ReaderSettings()
 
-    private let defaults = UserDefaults.standard
-    private let cloud = CloudPreferencesSync.shared
+    private let defaults: UserDefaults
+    private let cloud: CloudKeyValueStore
     private let kFont = "reader_settings_font"
     private let kFontSize = "reader_settings_fontSize"
     private let kLineHeight = "reader_settings_lineHeight"
@@ -253,7 +253,8 @@ final class ReaderSettings {
     private let kVocabHighlightOpacity = "vocab_highlight_opacity"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
     private let kScrollMode = "reader_settings_scrollMode"
-    private var cloudObserver: NSObjectProtocol?
+    private var cloudObserver: NSObjectProtocol? = nil
+    private var isLoadingPersistedValues = false
 
     // MARK: - 出廠預設
     //
@@ -268,6 +269,7 @@ final class ReaderSettings {
 
     var font: ReaderFont = ReaderSettings.defaultFont {
         didSet {
+            guard !isLoadingPersistedValues else { return }
             defaults.set(font.rawValue, forKey: kFont)
             cloud.set(font.rawValue, forKey: kFont)
         }
@@ -275,6 +277,7 @@ final class ReaderSettings {
 
     var fontSize: Double = ReaderSettings.defaultFontSize {
         didSet {
+            guard !isLoadingPersistedValues else { return }
             defaults.set(fontSize, forKey: kFontSize)
             cloud.set(fontSize, forKey: kFontSize)
         }
@@ -282,6 +285,7 @@ final class ReaderSettings {
 
     var lineHeight: Double = ReaderSettings.defaultLineHeight {
         didSet {
+            guard !isLoadingPersistedValues else { return }
             defaults.set(lineHeight, forKey: kLineHeight)
             cloud.set(lineHeight, forKey: kLineHeight)
         }
@@ -291,6 +295,7 @@ final class ReaderSettings {
     /// （CloudPreferencesSync 僅 String/Double，Bool 走 0.0/1.0）。
     var scrollMode: Bool = ReaderSettings.defaultScrollMode {
         didSet {
+            guard !isLoadingPersistedValues else { return }
             defaults.set(scrollMode, forKey: kScrollMode)
             cloud.set(scrollMode ? 1.0 : 0.0, forKey: kScrollMode)
         }
@@ -304,6 +309,7 @@ final class ReaderSettings {
 
     var underlineOpacity: Double = VocabHighlightPreferences.defaultOpacity {
         didSet {
+            guard !isLoadingPersistedValues else { return }
             defaults.set(underlineOpacity, forKey: kUnderlineOpacity)
             defaults.set(underlineOpacity, forKey: kVocabHighlightOpacity)
             cloud.set(underlineOpacity, forKey: kUnderlineOpacity)
@@ -313,6 +319,7 @@ final class ReaderSettings {
 
     var vocabHighlightColorPreset: VocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset {
         didSet {
+            guard !isLoadingPersistedValues else { return }
             defaults.set(vocabHighlightColorPreset.rawValue, forKey: kVocabHighlightColorPreset)
             cloud.set(vocabHighlightColorPreset.rawValue, forKey: kVocabHighlightColorPreset)
         }
@@ -337,10 +344,40 @@ final class ReaderSettings {
     }
 
     var showHitTestingDebug: Bool = ReaderSettings.defaultShowHitTestingDebug {
-        didSet { defaults.set(showHitTestingDebug, forKey: kShowHitTestingDebug) }
+        didSet {
+            guard !isLoadingPersistedValues else { return }
+            defaults.set(showHitTestingDebug, forKey: kShowHitTestingDebug)
+        }
     }
 
-    private init() {
+    convenience init() {
+        self.init(defaults: .standard, cloud: CloudPreferencesSync.shared)
+    }
+
+    init(defaults: UserDefaults, cloud: CloudKeyValueStore = CloudPreferencesSync.shared) {
+        self.defaults = defaults
+        self.cloud = cloud
+        reloadFromPersistence()
+
+        cloudObserver = NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleCloudChange(notification)
+        }
+    }
+
+    /// Re-hydrate the live observable instance from both persistence layers.
+    ///
+    /// UI World applies its overlay during app bootstrap. A global instance may
+    /// already have been initialized by SwiftUI before that overlay is written;
+    /// changing UserDefaults/KVS alone then leaves the bound controls stale.
+    /// This explicit reload is also useful for deterministic simulator fixtures.
+    func reloadFromPersistence() {
+        isLoadingPersistedValues = true
+        defer { isLoadingPersistedValues = false }
+
         // 優先從 iCloud KVS 讀取，fallback 到 UserDefaults
         if let raw = cloud.string(forKey: kFont) ?? defaults.string(forKey: kFont),
            let value = ReaderFont.decode(raw) {
@@ -395,14 +432,6 @@ final class ReaderSettings {
         }
 
         self.showHitTestingDebug = defaults.bool(forKey: kShowHitTestingDebug)
-
-        cloudObserver = NotificationCenter.default.addObserver(
-            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: NSUbiquitousKeyValueStore.default,
-            queue: .main
-        ) { [weak self] notification in
-            self?.handleCloudChange(notification)
-        }
     }
 
     deinit {

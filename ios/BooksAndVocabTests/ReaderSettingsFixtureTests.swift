@@ -32,6 +32,25 @@ struct ReaderSettingsFixtureTests {
         }
     }
 
+    @Test func liveReaderSettingsCanReloadAnOverlayWrittenAfterInitialization() {
+        let defaults = UserDefaults(suiteName: "test.reader-settings.\(UUID().uuidString)")!
+        let cloud = ReaderSettingsFixtureCloudStore()
+        defaults.set(1.5, forKey: "reader_settings_lineHeight")
+        cloud.set(1.5, forKey: "reader_settings_lineHeight")
+
+        let settings = ReaderSettings(defaults: defaults, cloud: cloud)
+        #expect(settings.lineHeight == 1.5)
+
+        // UI World overlays can arrive after the global instance was already
+        // hydrated. Persistence alone must not leave the live SwiftUI binding
+        // on the previous value.
+        defaults.set(2.1, forKey: "reader_settings_lineHeight")
+        cloud.set(2.1, forKey: "reader_settings_lineHeight")
+        settings.reloadFromPersistence()
+
+        #expect(settings.lineHeight == 2.1)
+    }
+
     private static var marketingDemoData: Data {
         get throws {
             let url = URL(fileURLWithPath: #filePath)
@@ -42,5 +61,15 @@ struct ReaderSettingsFixtureTests {
             return try Data(contentsOf: url)
         }
     }
+}
+
+private final class ReaderSettingsFixtureCloudStore: CloudKeyValueStore {
+    private var doubles: [String: Double] = [:]
+    private var strings: [String: String] = [:]
+
+    func double(forKey key: String) -> Double? { doubles[key] }
+    func set(_ value: Double, forKey key: String) { doubles[key] = value }
+    func string(forKey key: String) -> String? { strings[key] }
+    func set(_ value: String, forKey key: String) { strings[key] = value }
 }
 #endif

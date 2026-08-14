@@ -117,6 +117,10 @@ enum UITestFixtureSeed {
         guard !document.preferences.isEmpty else { return }
 #if targetEnvironment(simulator)
         document.preferences.apply()
+        // The overlay can be written after SwiftUI has already initialized
+        // ReaderSettings.shared. Rehydrate the live observable instance so
+        // controls and the real Readium reader consume the same UI World.
+        ReaderSettings.shared.reloadFromPersistence()
 #else
         preconditionFailure("UI World preferences are simulator-only; refusing to overwrite real UserDefaults/iCloud KVS on device")
 #endif
