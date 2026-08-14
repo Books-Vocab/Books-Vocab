@@ -133,7 +133,11 @@ final class ExploreNavigationUITests: UITestCase {
     /// make the combined artifact explicit instead of merging bundles on the host.
     @MainActor
     func testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates() throws {
-        executionTimeAllowance = 120
+        // This evidence selector intentionally launches six isolated apps and
+        // serializes six visual states into one immutable bundle. The default
+        // one-minute allowance and the old 120s cap terminate during AX/video
+        // attachment work even when every product assertion is green.
+        executionTimeAllowance = 300
         try testExploreRequiredStateFlowProducesSeparateEvidenceSteps()
         try testExploreCounterexampleEvidenceUsesDistinctAssets()
     }
