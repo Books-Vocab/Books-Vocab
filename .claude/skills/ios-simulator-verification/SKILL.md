@@ -24,7 +24,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
 - 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300 秒）；`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
 - 零步驟的 fixture decoder、manifest schema、projection unit test 不是視覺證據；它們應直接走 unit／focused test，不能用 evidence helper 產生空 screenshot bundle，也不能把「沒有 UI step」記成 visual pass。真正的 UI evidence 必須有至少一個使用者可見狀態與對應 interaction/assertion。
-- iOS 26 SwiftUI `Slider` 的 lower-bound endpoint 是已知的 XCTest edge case：從 `1.0` 直接呼叫 `adjust(toNormalizedSliderPosition: 1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（例如 `0.95`），再調到 endpoint，且呼叫端仍要等待預期 AX `value`；不可把 tap／coordinate drag 當成未驗證 fallback。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
+- iOS 26 SwiftUI `Slider` 的 endpoint 是已知的 XCTest edge case：從任一端直接呼叫 `adjust(toNormalizedSliderPosition: 0|1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（下端 `0.05`、上端 `0.95`），等待 AX `value` 確實改變，再調到 endpoint，且呼叫端仍要等待預期 AX `value`；不可把 tap／coordinate drag 當成未驗證 fallback。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
 - 每個 helper run 都會保存 `build/snapshots/uitest-evidence/<run>/verdict.json`、`upstream-verdict.json`、command、runner log；upstream 有提供的 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 也會複製到同一 bundle。runner 失敗或 verdict 不合約時仍讀這個 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
 
 ## 標準流程
@@ -197,7 +197,7 @@ raw: <log> <xcresult>
 - 找不到 accessibility identifier：先檢查父容器 `.accessibilityIdentifier` 是否覆蓋子節點；不要先改 selector。
 - Page Object 的 query property 必須無副作用：不得在 getter 內用 `count`／`XCTFail` 阻止後續 `waitUntilExists`；startup、Readium WebView、SwiftUI transient sheet 先等待 materialize，再對已存在節點做唯一性與 scope assertion。SwiftUI 父容器要保留子 selector 時，明確使用 `.accessibilityElement(children: .contain)`。
 - tap 後值沒有改：沿 binding setter → async Task → coordinator → store → view projection 驗證；assert store round-trip，而非只依賴原生 Toggle 的瞬時值。
-- SwiftUI Slider 在 lower bound 直接跳 endpoint：先確認不是產品 binding／store 根因；若 interior action 可動而 exact endpoint 不動，將 endpoint action 封裝在 Page Object 內做 `0.95 → 1.0` staged adjustment，並對最終 AX value 加 bounded wait。不要改成只點軌道、只拖座標，或把預期值改成目前洩漏的值。
+- SwiftUI Slider 在任一端直接跳 endpoint：先確認不是產品 binding／store 根因；若 interior action 可動而 exact endpoint 不動，將 endpoint action 封裝在 Page Object 內做下端 `0.05 → 0.0`、上端 `0.95 → 1.0` staged adjustment，並對 interior 與最終 AX value 都加 bounded wait。不要改成只點軌道、只拖座標，或把預期值改成目前洩漏的值。
 - UI test 突然超時且第一個 assertion 很晚才出現：檢查 AX query 是否在錯誤頁／prompt 上反覆重試、裝置是否被另一 run 佔用、以及 `deviceRunLockWaitMs`。
 - UI screenshot 有 Apple 帳號驗證、登入、權限或鍵盤遮罩：這是環境污染證據，不能當 UI pass。
 - `build.db database is locked`：先視為共用 build lock／另一 worktree 的基礎設施問題，讀 runner heartbeat 和 lock wait；不要刪 DerivedData 或改測試。

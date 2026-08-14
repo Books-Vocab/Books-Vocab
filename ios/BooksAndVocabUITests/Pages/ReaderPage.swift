@@ -774,17 +774,42 @@ struct ReaderPage {
             file: file,
             line: line
         ) else { return false }
-        if position >= 0.99 {
-            // On iOS 26, XCTest's exact endpoint action can synthesize an
-            // event without moving a SwiftUI Slider when its thumb is at the
-            // lower bound. First move to a bounded interior value, then issue
+        let before = String(describing: slider.value ?? "")
+        if position <= 0.01 {
+            // On iOS 26, XCTest's exact lower endpoint action can synthesize
+            // an event without moving a SwiftUI Slider. First move to a
+            // bounded interior value and wait for AX propagation, then issue
             // the endpoint action from a live, non-edge thumb position.
+            slider.adjust(toNormalizedSliderPosition: 0.05)
+            _ = waitForSliderValueChange(slider, from: before, timeout: 2)
+            slider.adjust(toNormalizedSliderPosition: position)
+        } else if position >= 0.99 {
+            // The upper endpoint has the same iOS 26 XCTest seam when the
+            // thumb starts at the lower bound.
             slider.adjust(toNormalizedSliderPosition: 0.95)
+            _ = waitForSliderValueChange(slider, from: before, timeout: 2)
             slider.adjust(toNormalizedSliderPosition: position)
         } else {
             slider.adjust(toNormalizedSliderPosition: position)
         }
         return true
+    }
+
+    private func waitForSliderValueChange(
+        _ slider: XCUIElement,
+        from previousValue: String,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let currentValue = String(describing: slider.value ?? "")
+            if currentValue != previousValue, currentValue != "nil" {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        let currentValue = String(describing: slider.value ?? "")
+        return currentValue != previousValue && currentValue != "nil"
     }
 
     func lineHeightValue(timeout: TimeInterval = 5) -> Double? {
