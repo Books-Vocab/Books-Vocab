@@ -611,6 +611,7 @@ final class FixtureDatasetUITests: UITestCase {
             XCTFail("overview calendar entry point must render before opening Review Calendar")
             return
         }
+        overview.scrollToReviewCalendarButton()
         overview.reviewCalendarButton.tapWhenReady()
         let calendar = ReviewCalendarPage(app: app)
         guard calendar.monthHeader.waitUntilExists(timeout: 10) else {
@@ -693,6 +694,7 @@ final class FixtureDatasetUITests: UITestCase {
             perfLog: "review-calendar-counterexamples"
         )
         let counterexampleOverview = AppPage(app: counterexampleApp).goToOverview()
+        counterexampleOverview.scrollToReviewCalendarButton()
         counterexampleOverview.reviewCalendarButton.tapWhenReady()
         let counterexampleCalendar = ReviewCalendarPage(app: counterexampleApp)
         assertClockProvenance(in: counterexampleApp)

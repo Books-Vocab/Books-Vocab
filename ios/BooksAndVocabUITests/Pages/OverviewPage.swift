@@ -14,20 +14,56 @@ struct OverviewPage {
 
     // MARK: - Content
 
-    /// Rendered stats dashboard (only present when the summary computed from
-    /// synced entries + review records is non-empty — i.e. real content phase,
-    /// not loading / empty / logged-out.
-    var statsContent: XCUIElement {
-        exactlyOne(
-            app.descendants(matching: .any).matching(identifier: "overview.statsContent"),
-            "overview.statsContent"
-        )
-    }
-
     /// Calendar entry point. This deliberately uses the stable identifier
     /// rather than the localized section title.
     var reviewCalendarButton: XCUIElement {
         exactlyOne(app.buttons.matching(identifier: "reviewCalendar.open"), "reviewCalendar.open")
+    }
+
+    /// Move the real Overview ScrollView until the calendar opener is both
+    /// visible and hittable. The opener is below the first viewport in the
+    /// production layout; existence alone is therefore not an actionable
+    /// readiness condition.
+    func scrollToReviewCalendarButton(
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let query = app.buttons.matching(identifier: "reviewCalendar.open")
+        let scrollView = app.scrollViews.matching(identifier: "overview").element(boundBy: 0)
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if query.count == 1 {
+                let button = query.element(boundBy: 0)
+                if button.exists,
+                   !button.frame.isEmpty,
+                   scrollView.exists,
+                   scrollView.frame.intersects(button.frame),
+                   button.isHittable {
+                    return
+                }
+
+                if scrollView.exists, !button.frame.isEmpty, button.frame.minY < scrollView.frame.minY {
+                    scrollView.swipeDown()
+                } else if scrollView.exists {
+                    scrollView.swipeUp()
+                } else {
+                    app.swipeUp()
+                }
+            } else {
+                app.swipeUp()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        }
+
+        XCTAssertEqual(query.count, 1, "reviewCalendar.open must remain unique after scrolling", file: file, line: line)
+        XCTAssertTrue(
+            query.element(boundBy: 0).exists && query.element(boundBy: 0).isHittable,
+            "reviewCalendar.open must be hittable after scrolling the production Overview ScrollView",
+            file: file,
+            line: line
+        )
     }
 
     var overview: XCUIElement { element(identifier: "overview") }
