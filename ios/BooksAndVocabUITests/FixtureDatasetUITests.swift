@@ -53,8 +53,11 @@ final class FixtureDatasetUITests: UITestCase {
         // Calendar evidence captures four states and derives month navigation
         // from the injected clock/history. Keep the allowance above XCTest's
         // default one-minute limit so a valid full flow is not killed after
-        // the final screenshot.
-        executionTimeAllowance = 150
+        // the final screenshot. The flow intentionally launches the app twice
+        // and captures six states; XCTest's default/short allowance can kill
+        // it during AX attachment serialization rather than report a product
+        // failure.
+        executionTimeAllowance = 300
     }
 
     private enum ReviewCalendarClockSelector {
