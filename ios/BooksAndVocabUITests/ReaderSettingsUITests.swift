@@ -173,8 +173,12 @@ final class ReaderSettingsUITests: UITestCase {
             XCTFail("Reader preview must expose its initial numeric line-height value")
             return
         }
-        XCTAssertEqual(initialLineHeight, 1.2, accuracy: 0.01)
-        captureStep("preview-1.2", app: app)
+        // The canonical UI World explicitly seeds 2.1 in both UserDefaults and
+        // iCloud KVS. Keep this assertion bound to that fixture contract; a
+        // different value would make the test silently validate leaked
+        // simulator state instead of the injected Reader world.
+        XCTAssertEqual(initialLineHeight, 2.1, accuracy: 0.01)
+        captureStep("preview-2.1", app: app)
 
         XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0))
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
