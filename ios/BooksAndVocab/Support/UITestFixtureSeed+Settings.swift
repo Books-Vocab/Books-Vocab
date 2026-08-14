@@ -112,12 +112,6 @@ extension UITestFixtureSeed {
                 context.insert(makeVocabularyEntry(from: entrySeed, notebookId: vocabularySeed.notebookRemoteId))
             }
             try context.save()
-            let visibleCount = try context.fetchCount(FetchDescriptor<VocabularyEntry>(predicate: #Predicate {
-                $0.syncStatus == 1 &&
-                $0.actionType != "delete" &&
-                $0.isArchived == false
-            }))
-            NSLog("KG_DIAG settings.reset seed visibleCount=%d", visibleCount)
         } catch {
             failFixtureSeed("UITestFixtureSeed: settings.\(fixtureID.rawValue) could not seed canonical local cards: \(error.localizedDescription)")
         }
