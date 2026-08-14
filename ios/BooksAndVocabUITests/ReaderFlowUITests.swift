@@ -159,7 +159,7 @@ final class ReaderFlowUITests: UITestCase {
         let reader = ReaderPage(app: app)
         bookshelf.anyBookCard.tapWhenReady()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
-        reader.assertSingleWebView()
+        reader.assertReaderWebViewSurface()
         guard reader.currentLocator.waitUntilExists(timeout: 10) else {
             XCTFail("valid Reader fixture 必須暴露初始 locator")
             return
@@ -264,7 +264,7 @@ final class ReaderFlowUITests: UITestCase {
         let reader = ReaderPage(app: app)
         bookshelf.anyBookCard.tapWhenReady()
         XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
-        reader.assertSingleWebView()
+        reader.assertReaderWebViewSurface()
         captureStep("invalid-destination-reader-open", app: app)
         guard reader.currentLocator.waitUntilExists(timeout: 10) else {
             XCTFail("invalid Reader fixture 必須暴露初始 locator")

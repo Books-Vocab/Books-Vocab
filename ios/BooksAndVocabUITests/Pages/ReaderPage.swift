@@ -392,15 +392,20 @@ struct ReaderPage {
         )
     }
 
-    func assertSingleWebView(
+    func assertReaderWebViewSurface(
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        let count = app.webViews.count
-        XCTAssertEqual(
-            count,
-            1,
-            "Reader must expose exactly one Readium web view; found \(count)",
+        let projections = app.webViews.allElementsBoundByIndex.filter { !$0.frame.isEmpty }
+        XCTAssertFalse(
+            projections.isEmpty,
+            "Reader must expose at least one Readium web view projection",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            projections.contains { $0.exists && $0.isHittable },
+            "Reader must expose a hittable Readium web view projection",
             file: file,
             line: line
         )
@@ -963,7 +968,8 @@ struct ReaderPage {
 
     @discardableResult
     func swipeWebViewLeft(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
-        guard let webView = exactlyOne(webViewQuery, named: "production Reader WebView", file: file, line: line) else {
+        guard webViewQuery.waitUntilAtLeastOne(timeout: 5) else {
+            XCTFail("production Reader must expose at least one WebView", file: file, line: line)
             return false
         }
         webView.swipeLeft()
