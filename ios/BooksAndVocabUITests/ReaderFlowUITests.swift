@@ -17,6 +17,9 @@ import XCTest
 final class ReaderFlowUITests: UITestCase {
     /// 章首獨立成段的真實單字（fixture 詞庫 entry 的 word）。
     private static let seededWord = "Introduction"
+    /// EPUB 同時把章名、正文與 TOC anchor 暴露成同名 AX label；這個
+    /// 真實正文段落才是唯一且可點擊的 seeded-word context。
+    private static let seededContent = "Introduction — My Story"
     /// UI World 種入詞庫的真翻譯 — 斷言「翻譯 UI 帶內容」的內容本體。
     private static let seededTranslation = "引言"
     /// Required TOC fixture 的第二章完整正文 accessibility marker。Readium
@@ -69,9 +72,9 @@ final class ReaderFlowUITests: UITestCase {
         try step("book-opened", app: app) {
             bookCard.tapWhenReady()
         }
-        guard reader.waitForContent(Self.seededWord, timeout: 45) else {
+        guard reader.waitForContent(Self.seededContent, timeout: 45) else {
             captureStep("reader-content-missing", app: app)
-            XCTFail("閱讀器必須渲染真章節文本（章首段落「\(Self.seededWord)」）— 沒出現 = 開書失敗或內容是假的")
+            XCTFail("閱讀器必須渲染真章節文本（唯一正文段落「\(Self.seededContent)」）— 沒出現 = 開書失敗或內容是假的")
             return
         }
         captureStep("reader-content", app: app)
@@ -80,7 +83,7 @@ final class ReaderFlowUITests: UITestCase {
 
         // ── 3. 選詞 → 翻譯面板真的出現且帶內容（詞庫命中，零網路）──────────
         try step("word-tapped", app: app) {
-            XCTAssertTrue(reader.tapContentText(Self.seededWord))
+            XCTAssertTrue(reader.tapContentText(Self.seededContent))
         }
         guard reader.waitForTranslationPanel(timeout: 5) else {
             captureStep("no-translation-panel", app: app)
@@ -129,6 +132,7 @@ final class ReaderFlowUITests: UITestCase {
             fixtureDataset=marketing_demo
             readerFixture=realBookLibrary
             seededWord=\(Self.seededWord)
+            seededContent=\(Self.seededContent)
             seededTranslation=\(Self.seededTranslation)
             progressBefore=\(initialProgress)
             progressAfter=\(progressAfter)
