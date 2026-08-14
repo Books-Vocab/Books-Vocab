@@ -326,9 +326,18 @@ struct SettingsSheetPage {
     // MARK: - Assertions
 
     func assertIsPresented(file: StaticString = #filePath, line: UInt = UInt(#line)) {
-        // Confirm by the "完成" (Done) button in the sheet toolbar.
-        closeButton.assertExists(file: file, line: line)
-        XCTAssertEqual(app.buttons.matching(identifier: "完成").count, 1, file: file, line: line)
+        // Confirm through the production identifier, not a localized toolbar
+        // label. UI World scenarios intentionally exercise multiple app
+        // languages (including English), while this navigation contract is
+        // language-independent.
+        _ = assertExactlyOne(
+            .button,
+            identifier: "settings.dismissButton",
+            visible: true,
+            hittable: true,
+            file: file,
+            line: line
+        )
         XCTAssertTrue(navBar.exists, file: file, line: line)
         XCTAssertGreaterThan(navBar.frame.width, 0, file: file, line: line)
         XCTAssertGreaterThan(navBar.frame.height, 0, file: file, line: line)
