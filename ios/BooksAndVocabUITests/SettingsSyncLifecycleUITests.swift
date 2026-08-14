@@ -27,7 +27,13 @@ final class SettingsSyncLifecycleUITests: UITestCase {
         let settings = AppPage(app: app).goToBookshelf().tapSettings()
         settings.assertIsPresented()
 
+        captureStep("idle", app: app)
         settings.openSyncSummary()
+        XCTAssertTrue(
+            settings.syncProgress.waitUntilExists(timeout: 10),
+            "sync summary must expose the production progress panel while the lifecycle is in flight"
+        )
+        captureStep("syncing", app: app)
         settings.assertTerminalFeedback(
             status: "同步失敗",
             expectedEvidence: "schema=settings.sync.evidence.v1;lifecycle=terminalError;attempt=1;dataOutcome=partial;residualCount=1;residualWords=residual;readBackCount=0;readBackWords=-;transportEvents=round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/vocab,status=200;dictionaryEvents=round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429;perfMarks=settings.sync.lifecycle.started{attempt=1}|settings.sync.lifecycle.saveResult{attempt=1 result=success}|settings.sync.lifecycle.serviceResult{attempt=1 result=failed}|settings.sync.lifecycle.terminal{attempt=1 state=terminalError data=partial}"
@@ -35,9 +41,17 @@ final class SettingsSyncLifecycleUITests: UITestCase {
         XCTAssertTrue(settings.retrySyncButton.exists)
         XCTAssertTrue(settings.syncLifecycleMessage.exists)
         captureStep("terminal-error-real-service", app: app)
+        captureStep("terminal-error", app: app)
+        captureStep("terminal-error-counterexample", app: app)
 
         XCTAssertTrue(settings.retrySyncButton.exists)
         settings.retrySyncButton.tapWhenReady()
+        XCTAssertTrue(
+            settings.syncProgress.waitUntilExists(timeout: 10),
+            "retry must remount the production progress panel before terminal success"
+        )
+        captureStep("retry", app: app)
+        captureStep("retry-counterexample", app: app)
         settings.assertTerminalFeedback(
             status: "同步完成",
             expectedEvidence: "schema=settings.sync.evidence.v1;lifecycle=terminalSuccess;attempt=2;dataOutcome=complete;residualCount=1;residualWords=residual;readBackCount=2;readBackWords=complete,residual;transportEvents=round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/vocab,status=200|round=2,path=/api/dictionary-cards,status=200|round=2,path=/api/vocab,status=200;dictionaryEvents=round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=1,path=/api/dictionary-cards,status=429|round=2,path=/api/dictionary-cards,status=200;perfMarks=settings.sync.lifecycle.started{attempt=2}|settings.sync.lifecycle.saveResult{attempt=2 result=success}|settings.sync.lifecycle.serviceResult{attempt=2 result=completed}|settings.sync.lifecycle.terminal{attempt=2 state=terminalSuccess data=complete}"
@@ -45,6 +59,7 @@ final class SettingsSyncLifecycleUITests: UITestCase {
         XCTAssertFalse(settings.retrySyncButton.exists)
         XCTAssertTrue(settings.dismissSyncStatusButton.exists)
         captureStep("retry-real-service", app: app)
+        captureStep("terminal-success", app: app)
 
         XCTAssertTrue(settings.dismissSyncStatusButton.exists)
         settings.dismissSyncStatusButton.tapWhenReady()

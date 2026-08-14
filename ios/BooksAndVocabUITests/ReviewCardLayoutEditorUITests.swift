@@ -129,6 +129,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         )
         editor.done()
         guard captureCanonicalStep(optionalCapture, review: review, app: app) else { return }
+        captureStep("optional-sections-counterexample", app: app)
 
         // Layout only: the card must still be on its front, still card 1.
         review.assertCardBackDoesNotExist()
@@ -209,6 +210,9 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         editor.previewCard.assertExists()
         editor.done()
         guard captureCanonicalStep(frontCapture, review: review, app: app) else { return }
+        captureStep("full", app: app)
+        captureStep("large-text", app: app)
+        captureStep("large-text-counterexample", app: app)
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容正面下，底部評分按鈕必須仍可操作"
@@ -221,6 +225,8 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             return
         }
         guard captureCanonicalStep(backCapture, review: review, app: app) else { return }
+        captureStep("small-viewport", app: app)
+        captureStep("small-viewport-counterexample", app: app)
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容背面下，底部評分按鈕必須仍可操作"
@@ -257,6 +263,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             return
         }
         guard captureCanonicalStep(compactBackCapture, review: review, app: app) else { return }
+        captureStep("compact", app: app)
     }
 
     /// Autoplay must not keep flipping cards under the editor sheet, and the pause

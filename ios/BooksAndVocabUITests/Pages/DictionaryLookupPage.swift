@@ -8,6 +8,7 @@ struct DictionaryLookupPage {
     let app: XCUIApplication
 
     private enum CanonicalLookupState: String {
+        case idle
         case loading
         case result
         case partial
@@ -123,10 +124,26 @@ struct DictionaryLookupPage {
 
     @discardableResult
     func search(_ query: String, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
+        enterQuery(query, file: file, line: line)
+        submitQuery(file: file, line: line)
+        return self
+    }
+
+    @discardableResult
+    func enterQuery(_ query: String, file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         searchField.tapWhenReady(file: file, line: line)
         searchField.typeText(query)
+        return self
+    }
+
+    @discardableResult
+    func submitQuery(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
         searchField.typeText("\n")
         return self
+    }
+
+    var materializationFailure: XCUIElement {
+        element("addLink.dictionary.materialization.failed")
     }
 
     @discardableResult

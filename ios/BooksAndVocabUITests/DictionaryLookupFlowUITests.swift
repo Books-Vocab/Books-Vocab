@@ -28,6 +28,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
             "|1690|4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
             timeout: 5
         ), "materialization AX value did not contain the asset integrity suffix: \(String(describing: materialization.value))")
+        captureStep("success", app: app)
         page.tapSense(id: "sense-1")
         page.tapExample(id: "example-1")
         page.tapMaterialize()
@@ -47,9 +48,13 @@ final class DictionaryLookupFlowUITests: UITestCase {
         XCTAssertTrue(page.sense(id: "sense-1").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.sense(id: "sense-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
+        captureStep("detail", app: app)
         page.tapSense(id: "sense-2")
+        captureStep("select-sense", app: app)
         page.tapExample(id: "example-2")
         page.tapMaterialize()
+        XCTAssertTrue(page.materialization(status: "ready").waitUntilExists(timeout: 5))
+        captureStep("materialize", app: app)
         TodayReviewPage(app: app).assertLink(id: "fixture-dictionary-card")
         captureStep("p2-senses-materialized", app: app)
     }
@@ -57,7 +62,10 @@ final class DictionaryLookupFlowUITests: UITestCase {
     @MainActor
     func testDictionaryLoadingAndEmptySelectorsAreLive() throws {
         let (app, page) = try openDictionarySheet(perfLog: "dictionary-loading-empty")
-        page.search("loading")
+        page.enterQuery("loading")
+        page.assertCanonicalState("idle")
+        captureStep("idle", app: app)
+        page.submitQuery()
         page.assertCanonicalState("loading")
         captureStep("loading", app: app)
         page.assertCanonicalState("result")
@@ -79,10 +87,11 @@ final class DictionaryLookupFlowUITests: UITestCase {
         page.search("partial")
         page.assertCanonicalState("partial")
         page.assertRetryButton()
-        captureStep("partial", app: app)
+        captureStep("partial-result", app: app)
 
         page.retryButton.tap()
         page.assertCanonicalState("retrying")
+        captureStep("retry", app: app)
         captureStep("retrying", app: app)
         page.releaseRetryRequest()
         page.assertCanonicalState("result")
@@ -101,6 +110,35 @@ final class DictionaryLookupFlowUITests: UITestCase {
         errorPage.assertCanonicalState("error")
         errorPage.assertRetryButton()
         captureStep("error", app: errorApp)
+    }
+
+    @MainActor
+    func testP2DictionaryMissingExampleCounterexampleIsVisible() throws {
+        let (app, page) = try openDictionarySheet(
+            fixture: .dictionaryP2Senses,
+            perfLog: "dictionary-p2-missing-example"
+        )
+        page.search("missing-example")
+        page.assertCanonicalState("result")
+        page.tapSense(id: "sense-2")
+        XCTAssertFalse(page.example(id: "example-2").exists)
+        captureStep("missing-example-counterexample", app: app)
+    }
+
+    @MainActor
+    func testP2DictionaryMaterializationErrorPreservesSelection() throws {
+        let (app, page) = try openDictionarySheet(
+            fixture: .dictionaryP2Senses,
+            perfLog: "dictionary-p2-materialize-error"
+        )
+        page.search("materialize-error")
+        page.assertCanonicalState("result")
+        page.tapSense(id: "sense-2")
+        page.tapExample(id: "example-2")
+        page.tapMaterialize()
+        XCTAssertTrue(page.materializationFailure.waitUntilExists(timeout: 10))
+        XCTAssertTrue(page.materializationFailure.value as? String == "dictionary.p2.materialize-error")
+        captureStep("materialize-error-counterexample", app: app)
     }
 
     @MainActor

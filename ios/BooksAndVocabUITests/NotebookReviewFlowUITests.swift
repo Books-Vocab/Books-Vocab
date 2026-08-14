@@ -78,6 +78,7 @@ final class NotebookReviewFlowUITests: UITestCase {
             review.cardFront.assertExists()
             XCTAssertFalse(review.cardBack.exists, "翻卡前背面內容不得已掛載（應為 stub）")
         }
+        captureStep("front", app: app)
 
         // ── 4. Flip: back content mounts AND pairs with the front word ──────
         let firstWord = review.frontWord
@@ -100,6 +101,9 @@ final class NotebookReviewFlowUITests: UITestCase {
                 "背面譯文必須與正面單字同卡配對（期望含「\(expectedTranslation)」）"
             )
         }
+        captureStep("flip", app: app)
+        captureStep("full-answer", app: app)
+        captureStep("optional-sections", app: app)
 
         // ── 5. Grade remembered: the queue really advances ──────────────────
         review.tapRemembered()

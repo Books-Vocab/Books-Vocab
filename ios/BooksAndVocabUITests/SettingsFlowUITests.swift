@@ -229,6 +229,7 @@ final class SettingsFlowUITests: UITestCase {
 
         let settings = bookshelf.tapSettings()
         settings.assertIsPresented()
+        captureStep("settings", app: app)
         _ = settings.assertExactlyOne(.button, identifier: "settings.account.logoutButton", visible: true, hittable: true)
         _ = settings.assertExactlyOne(.other, identifier: "settings.preferences.syncGroup", visible: true)
         _ = settings.assertExactlyOne(.scrollView, identifier: "settings.home.scrollView", visible: true)
@@ -259,6 +260,8 @@ final class SettingsFlowUITests: UITestCase {
             settings.accountScrollView.frame.intersects(settings.accountEmailValue.frame),
             "long account value must remain inside the scrollable account content"
         )
+
+        captureStep("long-content", app: app)
 
         captureStep(
             "long-content-counterexample",
@@ -346,6 +349,7 @@ final class SettingsFlowUITests: UITestCase {
             visible: true,
             hittable: true
         )
+        captureStep("reset", app: app)
         settings.resetButton.tapWhenReady()
         XCTAssertTrue(settings.resetPhase.waitUntilValueEquals("failed", timeout: 10))
         _ = settings.assertExactlyOne(

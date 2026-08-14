@@ -698,6 +698,16 @@ struct ReaderPage {
     }
 
     @discardableResult
+    func selectHighlightColor(_ color: String) -> Bool {
+        guard highlightColorPicker.waitUntilHittable(timeout: 5) else { return false }
+        highlightColorPicker.tap()
+        let option = app.buttons["reader.settings.highlightColor.\(color)"]
+        guard option.waitUntilHittable(timeout: 5) else { return false }
+        option.tap()
+        return true
+    }
+
+    @discardableResult
     func showPreview(timeout: TimeInterval = 8) -> Bool {
         // `isHittable` is true even when a Form row is only partially exposed.
         // Move the scroll view to its canonical top position before sampling

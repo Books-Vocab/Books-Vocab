@@ -75,6 +75,8 @@ final class ReaderFlowUITests: UITestCase {
             return
         }
         captureStep("reader-content", app: app)
+        captureStep("reader", app: app)
+        captureStep("reader-load", app: app)
 
         // ── 3. 選詞 → 翻譯面板真的出現且帶內容（詞庫命中，零網路）──────────
         try step("word-tapped", app: app) {
@@ -168,6 +170,7 @@ final class ReaderFlowUITests: UITestCase {
         let selectedRowHref = try XCTUnwrap(selectedChapter.value as? String)
         XCTAssertEqual(selectedRowHref, "OEBPS/chapter2.xhtml")
         captureStep("toc-loaded", app: app)
+        captureStep("toc-open", app: app)
 
         selectedChapter.tapWhenReady()
         // The iOS 26.4 AX bridge may fold SwiftUI ProgressView/Text children
@@ -175,6 +178,7 @@ final class ReaderFlowUITests: UITestCase {
         // contract is the sheet parent: a selection must not dismiss before
         // the production state machine reports success.
         XCTAssertTrue(reader.isTableOfContentsSheetPresent)
+        captureStep("chapter-select", app: app)
         captureStep("toc-selection-loading", app: app)
 
         XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
@@ -310,6 +314,7 @@ final class ReaderFlowUITests: UITestCase {
             byteSize: 17344
         )
         captureStep("invalid-destination-missing", app: app)
+        captureStep("missing-chapter", app: app)
         try writeReaderTOCEvidence(
             label: "reader-toc-counterexample-failure",
             partition: "counterexample",
@@ -337,6 +342,7 @@ final class ReaderFlowUITests: UITestCase {
             byteSize: 17344
         )
         captureStep("invalid-destination-retry-still-open", app: app)
+        captureStep("navigation-failure", app: app)
         try writeReaderTOCEvidence(
             label: "reader-toc-counterexample-retry",
             partition: "counterexample",
@@ -377,6 +383,7 @@ final class ReaderFlowUITests: UITestCase {
             XCTAssertTrue(reader.runtimeState.waitUntilExists(timeout: 5))
             XCTAssertEqual(reader.runtimeStateCount, 1, "Reader runtime state selector must resolve exactly one element")
             if scenario == .progressRestoreFailure {
+                captureStep("restore-failure-counterexample", app: app)
                 XCTAssertTrue(
                     UITestWaits.wait(
                         for: NSPredicate(
@@ -407,6 +414,18 @@ final class ReaderFlowUITests: UITestCase {
                 )
                 XCTAssertEqual(reader.progressStateCount(scenario), 1,
                                "Reader progress state selector must resolve exactly one element: \(scenario.rawValue)")
+            }
+            switch scenario {
+            case .progressUnknown:
+                captureStep("progress-zero-counterexample", app: app)
+            case .progressZero:
+                captureStep("progress-zero", app: app)
+            case .progressMiddle:
+                captureStep("progress-middle", app: app)
+            case .progressComplete:
+                captureStep("progress-complete", app: app)
+            case .progressRestoreFailure:
+                captureStep("restore-failure", app: app)
             }
             captureStep("loaded", app: app)
             app.terminate()
@@ -448,6 +467,7 @@ final class ReaderFlowUITests: UITestCase {
                 XCTAssertEqual(reader.loadingStateCount(scenario), 1,
                                "Reader loading selector must resolve exactly one element: \(scenario.rawValue)")
                 captureStep("loading", app: app)
+                captureStep("launch-loading", app: app)
                 reader.slowLoadingResolveButton.tapWhenReady()
                 XCTAssertTrue(reader.loadingState(scenario).waitUntilGone(timeout: 10),
                                "Resolved slow-loading overlay must disappear")
@@ -459,7 +479,14 @@ final class ReaderFlowUITests: UITestCase {
                                "Reader error selector must resolve exactly one element: \(scenario.rawValue)")
                 XCTAssertEqual(reader.retryButtonCount, 1,
                                "Reader retry selector must resolve exactly one button")
-                captureStep("error", app: app)
+                if scenario == .loadingMissing {
+                    captureStep("error", app: app)
+                } else {
+                    captureStep("error-variant", app: app)
+                }
+                if scenario == .loadingMissing {
+                    captureStep("error-counterexample", app: app)
+                }
                 reader.retryButton.tapWhenReady()
                 XCTAssertTrue(error.waitUntilGone(timeout: 10),
                               "Error card must disappear after retry")
@@ -468,6 +495,9 @@ final class ReaderFlowUITests: UITestCase {
                 XCTAssertEqual(reader.retryButtonCount, 0,
                                "Retry CTA must disappear after retry starts")
                 captureStep("retry", app: app)
+                if scenario == .loadingMissing {
+                    captureStep("retry-success-counterexample", app: app)
+                }
             }
 
             XCTAssertTrue(
@@ -479,6 +509,9 @@ final class ReaderFlowUITests: UITestCase {
             XCTAssertEqual(reader.retryButtonCount, 0,
                            "Retry CTA must remain absent after loaded content")
             captureStep("loaded", app: app)
+            if scenario == .loadingErrorRetry {
+                captureStep("retry-success", app: app)
+            }
             app.terminate()
         }
     }
