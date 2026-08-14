@@ -47,11 +47,12 @@ enum ReaderMetrics {
     static let applyPreferencesSettleDelay: TimeInterval = 0.8
     /// TOC 導覽的 Readium go() 上限；超時保持 sheet 可重試。
     static let tocNavigationTimeoutNanoseconds: UInt64 = 5_000_000_000
-    /// Keep the TOC loading state observable for one render window before the
-    /// sheet dismisses. Readium can resolve a local fixture synchronously;
-    /// without this floor, the success-only dismissal contract is visually
-    /// unobservable and UI automation cannot attest the intermediate state.
-    static let tocNavigationMinimumLoadingNanoseconds: UInt64 = 350_000_000
+    /// Keep the TOC loading state observable for a full accessibility/render
+    /// window before the sheet dismisses. Readium can resolve a local EPUB
+    /// synchronously, while the first stable AX snapshot may arrive about
+    /// 1.5s after the tap; a sub-second floor makes the success-only dismissal
+    /// contract visually unobservable and impossible to attest reliably.
+    static let tocNavigationMinimumLoadingNanoseconds: UInt64 = 2_000_000_000
     /// 生字標記去抖動視窗
     static let markVocabDebounceDuration: TimeInterval = 0.8
     /// 首次標記完成後底線消退前的停留
