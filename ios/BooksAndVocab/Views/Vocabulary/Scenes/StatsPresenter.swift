@@ -565,6 +565,10 @@ struct StatsPresenter: View {
             }
             .buttonStyle(.liftable)
         }
+        // Keep the section's projection separate from its actionable opener.
+        // Without containment, SwiftUI propagates `calendar` to descendants
+        // and shadows `reviewCalendar.open` in the runtime AX tree.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("calendar")
         .accessibilityValue(summary.activity.values.reduce(0, +) == 0 ? "0" : "populated")
     }
