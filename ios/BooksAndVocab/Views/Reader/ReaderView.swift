@@ -47,6 +47,11 @@ struct ReaderView: View {
 
     // Readium current location
     @State var currentLocator: Locator?
+    /// Invalid persisted locators must not be passed to Readium as `nil`.
+    /// The first reading-order resource becomes a real recovery destination
+    /// after publication loading, and the navigator's location event remains
+    /// the source of truth for the recovered progression.
+    @State var restoreFallbackLocator: Locator?
 
     // 閱讀殼層狀態：集中 header / overlay / blocker 的控制面
     @State var chromeState = ReaderChromeState()
@@ -367,6 +372,12 @@ struct ReaderView: View {
             }
             await MainActor.run {
                 publication = result.publication
+                if book.lastReadLocatorJSON != nil, initialLocator == nil {
+                    restoreFallbackLocator = result.publication.readingOrder.first.flatMap { link in
+                        guard let mediaType = link.mediaType else { return nil }
+                        return Locator(href: link.url(), mediaType: mediaType)
+                    }
+                }
                 readerState.runtime.markReady()
                 PerfLog.reader.mark("reader.opened", "title=\(book.title)")
                 handler.loadLookedUpWords(

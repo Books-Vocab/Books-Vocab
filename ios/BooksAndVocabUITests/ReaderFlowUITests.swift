@@ -39,7 +39,12 @@ final class ReaderFlowUITests: UITestCase {
         try super.setUpWithError()
         // 開書（Readium openPublication + 首次 highlight）+ 選詞 + 翻頁，
         // 超過 harness 預設 60s allowance。
-        executionTimeAllowance = 120
+        // The progress matrix opens five isolated real-EPUB readers; on a
+        // cold iOS 26.4 simulator the Readium WebKit teardown/restart cycle
+        // legitimately exceeds two minutes. Keep the allowance above the
+        // measured full-flow envelope so a product assertion is not followed
+        // by a harness timeout that hides its evidence.
+        executionTimeAllowance = 300
     }
 
     @MainActor
