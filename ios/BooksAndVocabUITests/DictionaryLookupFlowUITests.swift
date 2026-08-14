@@ -111,7 +111,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
     ) throws -> (XCUIApplication, DictionaryLookupPage) {
         let app = launchIsolatedApp(
             extraArgs: extraArgs,
-            fixtures: [fixture, .notebookReviewDeck],
+            fixtures: [.authSignedIn, fixture, .notebookReviewDeck],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"],
             perfLog: perfLog
         )
