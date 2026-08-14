@@ -285,7 +285,10 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         )
         slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
         slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        slider.isContinuous = true
+        // Line height is a discrete 0.1-tick control. Commit only on release so
+        // a drag does not stream every intermediate value through the Reader's
+        // WebView and keep XCTest waiting for the app to become idle.
+        slider.isContinuous = false
         slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
         slider.accessibilityIdentifier = "reader.settings.lineHeight"
         slider.accessibilityValue = Self.accessibilityValue(for: value)
