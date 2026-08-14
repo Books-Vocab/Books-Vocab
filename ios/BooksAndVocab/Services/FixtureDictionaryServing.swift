@@ -81,6 +81,7 @@ actor FixtureDictionaryServing: DictionaryServing {
     private let hit: DictionarySearchHit
     private let materialization: DictionaryMaterializationSnapshot
     private let retryGate: DictionaryRetryGate?
+    private let loadingGate: DictionaryRetryGate?
     private var attempts: [String: Int] = [:]
     private var pendingDetailFailures: [String: Int] = [:]
     private var pendingDetailFailureQuery: String?
@@ -90,11 +91,13 @@ actor FixtureDictionaryServing: DictionaryServing {
     init(
         dictionary: UIWorldDictionarySeed,
         materialization: DictionaryMaterializationSnapshot,
-        retryGate: DictionaryRetryGate?
+        retryGate: DictionaryRetryGate?,
+        loadingGate: DictionaryRetryGate? = nil
     ) throws {
         self.dictionary = dictionary
         self.materialization = materialization
         self.retryGate = retryGate
+        self.loadingGate = loadingGate
         let attribution = LexicalAttribution(
             provider: dictionary.provenance.provider,
             sourceURL: "",
@@ -169,6 +172,9 @@ actor FixtureDictionaryServing: DictionaryServing {
         fixtureID: UIWorldDictionaryFixtureID = .p1DictionaryRich,
         retryGate: DictionaryRetryGate? = AppRuntimeOptions.shouldGateDictionaryRetry()
             ? DictionaryRetryGate.shared
+            : nil,
+        loadingGate: DictionaryRetryGate? = AppRuntimeOptions.shouldGateDictionaryLoading()
+            ? DictionaryRetryGate.shared
             : nil
     ) throws -> FixtureDictionaryServing {
         guard let dictionary = FixtureDatasetStore.dictionarySeed(for: fixtureID) else {
@@ -183,7 +189,8 @@ actor FixtureDictionaryServing: DictionaryServing {
         return try FixtureDictionaryServing(
             dictionary: dictionary,
             materialization: materialization,
-            retryGate: retryGate
+            retryGate: retryGate,
+            loadingGate: loadingGate
         )
     }
 
@@ -209,9 +216,14 @@ actor FixtureDictionaryServing: DictionaryServing {
         case .idle:
             return response(hits: [])
         case .loading:
-            // Keep the canonical loading fixture observable through the UI
-            // harness's submit/event and first accessibility snapshot costs.
-            try await Task.sleep(for: .milliseconds(250))
+            if let loadingGate {
+                // UI evidence must observe the real loading state before the
+                // async response resolves; a gate removes AX snapshot timing
+                // from this contract instead of racing a fixed sleep.
+                await loadingGate.waitForRelease()
+            } else {
+                try await Task.sleep(for: .milliseconds(250))
+            }
         case .result:
             if query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "empty" {
                 return response(hits: [])

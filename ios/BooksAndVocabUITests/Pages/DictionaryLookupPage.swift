@@ -29,6 +29,9 @@ struct DictionaryLookupPage {
     }
 
     var loadingState: XCUIElement { stateMarker(.loading) }
+    var releaseLoadingButton: XCUIElement {
+        exactlyOne("addLink.dictionary.releaseLoading", in: app.buttons)
+    }
     var emptyState: XCUIElement { element("addLink.dictionary.empty") }
     var partialState: XCUIElement { stateMarker(.partial) }
     var offlineState: XCUIElement { stateMarker(.offline) }
@@ -120,6 +123,10 @@ struct DictionaryLookupPage {
         XCTAssertTrue(retryButton.waitUntilHittable(timeout: 5), "retry action must be live and hittable", file: file, line: line)
         XCTAssertGreaterThan(retryButton.frame.width, 0, "retry action has no positive width", file: file, line: line)
         XCTAssertGreaterThan(retryButton.frame.height, 0, "retry action has no positive height", file: file, line: line)
+    }
+
+    func releaseLoading(file: StaticString = #filePath, line: UInt = UInt(#line)) {
+        releaseLoadingButton.tapWhenReady(file: file, line: line)
     }
 
     @discardableResult
