@@ -112,13 +112,19 @@ extension ReaderSettingsPresenter {
             }
             .accessibilityIdentifier("reader.settings.fontSizeStepper")
 
-            VStack(alignment: .leading, spacing: AppSpacing.s1) {
+            Stepper(
+                value: bindings.lineHeight,
+                in: ReaderPresentationMetrics.SettingsPreview.lineHeightRange,
+                step: ReaderPresentationMetrics.SettingsPreview.lineHeightStep
+            ) {
                 LabeledContent(L10n.string("reader.settings.lineHeight")) {
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
                         .monospacedDigit()
                 }
-                ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
             }
+            .accessibilityIdentifier("reader.settings.lineHeightStepper")
+
+            ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
 
             Picker(selection: bindings.scrollMode) {
                 Text(L10n.string("reader.settings.readingMode.paged")).tag(false)

@@ -30,6 +30,7 @@ struct ReaderPage {
     var settingsDoneButton: XCUIElement { app.buttons["reader.settings.done"] }
     var settingsPreview: XCUIElement { app.otherElements["reader.settings.preview"] }
     var fontSizeStepper: XCUIElement { app.steppers["reader.settings.fontSizeStepper"] }
+    var lineHeightStepper: XCUIElement { app.steppers["reader.settings.lineHeightStepper"] }
     var lineHeightSlider: XCUIElement { app.sliders["reader.settings.lineHeight"] }
     var readingModePicker: XCUIElement { app.buttons["reader.settings.readingMode"] }
     var fontPicker: XCUIElement { app.buttons["reader.settings.font"] }
@@ -89,6 +90,18 @@ struct ReaderPage {
 
     private var fontSizeIncrementQuery: XCUIElementQuery {
         fontSizeStepperQuery.buttons.matching(identifier: "Increment")
+    }
+
+    private var lineHeightStepperQuery: XCUIElementQuery {
+        app.steppers.matching(identifier: "reader.settings.lineHeightStepper")
+    }
+
+    private var lineHeightIncrementQuery: XCUIElementQuery {
+        lineHeightStepperQuery.buttons.matching(identifier: "Increment")
+    }
+
+    private var lineHeightDecrementQuery: XCUIElementQuery {
+        lineHeightStepperQuery.buttons.matching(identifier: "Decrement")
     }
 
     private var lineHeightSliderQuery: XCUIElementQuery {
@@ -823,30 +836,31 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) -> Bool {
         guard let numericValue = Double(expectedValue) else { return false }
-        let normalized = (numericValue - 1.0) / 1.5
-        let candidates = [
-            normalized,
-            normalized - 0.04,
-            normalized + 0.04,
-            normalized - 0.08,
-            normalized + 0.08
-        ].map { min(max($0, 0.01), 0.99) }
+        guard let currentValue = lineHeightValue(timeout: 5),
+              let stepper = exactlyOne(
+                  lineHeightStepperQuery,
+                  named: "Reader line-height stepper",
+                  timeout: 5,
+                  file: file,
+                  line: line
+              ) else { return false }
 
-        guard revealLineHeightSlider(timeout: 8, file: file, line: line) else { return false }
-        for candidate in candidates {
-            guard let slider = exactlyOne(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
-                timeout: 2,
-                file: file,
-                line: line
-            ) else { continue }
-            slider.adjust(toNormalizedSliderPosition: candidate)
-            if waitForSliderValueEquals(expectedValue, timeout: 3) {
-                return true
-            }
+        let delta = Int(((numericValue - currentValue) / 0.1).rounded())
+        guard delta != 0 else { return true }
+        let buttonQuery = delta > 0 ? lineHeightIncrementQuery : lineHeightDecrementQuery
+        guard let button = exactlyOne(
+            buttonQuery,
+            named: delta > 0 ? "Reader line-height increment" : "Reader line-height decrement",
+            timeout: 5,
+            file: file,
+            line: line
+        ) else { return false }
+
+        for _ in 0..<abs(delta) {
+            guard stepper.isHittable else { return false }
+            button.tapWhenReady(timeout: 5, file: file, line: line)
         }
-        return false
+        return waitForLineHeightValue(expectedValue, timeout: 5)
     }
 
     private func revealLineHeightSlider(
