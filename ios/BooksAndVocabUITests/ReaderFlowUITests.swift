@@ -17,9 +17,10 @@ import XCTest
 final class ReaderFlowUITests: UITestCase {
     /// 章首獨立成段的真實單字（fixture 詞庫 entry 的 word）。
     private static let seededWord = "Introduction"
-    /// EPUB 同時把章名、正文與 TOC anchor 暴露成同名 AX label；這個
-    /// 真實正文段落才是唯一且可點擊的 seeded-word context。
-    private static let seededContent = "Introduction — My Story"
+    /// iOS 26.4 的 Readium AX bridge 會把正文的「Introduction — My Story」
+    /// 拆成兩個 StaticText；這個後半片段在真實正文中唯一且可點擊，仍位於
+    /// seeded-word context 內，避免用固定 index 假裝 selector 穩定。
+    private static let seededContent = "— My Story"
     /// UI World 種入詞庫的真翻譯 — 斷言「翻譯 UI 帶內容」的內容本體。
     private static let seededTranslation = "引言"
     /// Required TOC fixture 的第二章完整正文 accessibility marker。Readium
