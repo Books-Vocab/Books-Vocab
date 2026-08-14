@@ -386,11 +386,20 @@ struct ReviewCalendarPresenter: View {
     private var dayDetailSection: some View {
         Group {
             if case .empty = ReviewCalendarPresentation.dayState(for: selectedDayRecords) {
-                VocabStateMessageCard(
-                    title: dayDisplayTitle,
-                    systemImage: "calendar.badge.exclamationmark",
-                    description: "這天沒有複習紀錄".localized
-                )
+                ZStack(alignment: .topLeading) {
+                    VocabStateMessageCard(
+                        title: dayDisplayTitle,
+                        systemImage: "calendar.badge.exclamationmark",
+                        description: "這天沒有複習紀錄".localized
+                    )
+                    // The zero count is a semantic state receipt, not a
+                    // second visible label. Keep it queryable for UI World
+                    // evidence without changing the empty-state composition.
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityIdentifier(ReviewCalendarAccessibility.emptyDaySummary)
+                        .accessibilityValue("0")
+                }
                 // Keep the empty-state receipt on the card container. Without
                 // containment, SwiftUI projects the same identifier onto the
                 // image and text descendants, making the state non-unique.
