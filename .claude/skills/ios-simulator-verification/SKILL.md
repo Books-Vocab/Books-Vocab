@@ -19,7 +19,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - helper 只在 clean source、`status=result=ok`、`exit=0`、`executed>0`、source/dataset/device identity 全相符，且五類視覺 artifact 真實存在時回 `0`；不能以 process exit 或可解析 JSON 代替 verdict。
 - 任何 UI test 若會在 test body 寫入 evidence context，必須由 `ios_ops.sh test --ui --json`／本 skill helper 執行；producer 會把同一個 pinned `KG_IOS_VERDICT_FILE` 注入 scoped `.xctestrun`，讓 runner 與 host 讀到同一份 invocation verdict。缺少這個 binding 必須 fail-closed，不能在 test 內自行猜 latest verdict。
 - 視覺 artifact 還必須通過 `ops/uitest_evidence_contract.py validate`：manifest 至少一個真實 step、每個 PNG 有尺寸／byteSize／SHA-256 且與檔案一致，contact/quick4/video/UIreview 非空，並帶同一個 source commit、UI World ID/hash、Simulator UDID provenance。只有路徑存在不算 evidence。
-- 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。
+- 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。單一 requirement 可以由多個 exact selector bundle 組成 evidence union，但每個 bundle 都要獨立通過 machine contract、source/dataset/device provenance 與全步驟 visual attestation；`record-many` 只接受 union 中每個 logical required/counterexample state 恰好一次且 asset 不重疊的結果。
 - `build/snapshots/uitest-runs/index.json` 是 append-only history；同一 flow/variant 的新 run 只更新 cockpit 的 latest status，不得刪除舊的 fail／inconclusive record。
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
 - 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300 秒）；`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
