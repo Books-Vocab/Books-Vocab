@@ -3,7 +3,10 @@ import XCTest
 final class ReaderSettingsUITests: UITestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
-        executionTimeAllowance = 150
+        // Reader settings evidence opens a real Readium EPUB repeatedly and
+        // includes dark/sepia viewport counterexamples. Keep the allowance
+        // on the XCTest case, where it actually governs the test body.
+        executionTimeAllowance = 360
     }
 
     @MainActor

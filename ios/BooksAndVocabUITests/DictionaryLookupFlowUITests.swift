@@ -4,7 +4,10 @@ import XCTest
 final class DictionaryLookupFlowUITests: UITestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
-        executionTimeAllowance = 120
+        // This selector exercises idle, loading, result, and empty states in
+        // separate isolated launches. The XCTest allowance must cover the
+        // measured cold-launch cost; the xcodebuild max alone is insufficient.
+        executionTimeAllowance = 300
     }
 
     @MainActor

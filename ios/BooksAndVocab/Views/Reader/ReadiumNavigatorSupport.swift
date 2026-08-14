@@ -29,13 +29,25 @@ final class NavigatorHostViewController: UIViewController {
     var onPhraseSelected: ((String, String) -> Void)?
     var onExplainSelected: ((String, String) -> Void)?
     weak var epubNavigator: EPUBNavigatorViewController?
-    var onFirstAppearance: (() -> Void)?
+    private var hasAppeared = false
+    var onFirstAppearance: (() -> Void)? {
+        didSet { invokeAppearanceCallbackIfReady() }
+    }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        let callback = onFirstAppearance
+        hasAppeared = true
+        invokeAppearanceCallbackIfReady()
+    }
+
+    private func invokeAppearanceCallbackIfReady() {
+        guard hasAppeared, let callback = onFirstAppearance else { return }
         onFirstAppearance = nil
-        callback?()
+        // A callback assigned after UIKit's first appearance can otherwise
+        // race the Readium child before its WebView has entered the hierarchy.
+        // Defer one main-queue turn so both assignment orders share the same
+        // post-appearance contract.
+        DispatchQueue.main.async(execute: callback)
     }
 
     @objc func aiSearch() {

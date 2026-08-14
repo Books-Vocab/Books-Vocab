@@ -216,10 +216,18 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             host.onFirstAppearance = { [weak navigator] in
                 Task { @MainActor in
                     guard let navigator else { return }
-                    let accepted = await navigator.go(to: recoveryLocator)
-                    AppLog.reader.debug(
-                        "Reader restore fallback navigation accepted=\(String(describing: accepted), privacy: .public) href=\(recoveryLocator.href.string, privacy: .public)"
-                    )
+                    // Readium may report the navigator as appeared before its
+                    // WebView is ready to accept a location command. Retry a
+                    // bounded number of times; a single fire-and-forget go()
+                    // made restore recovery timing-dependent on iOS 26.4.
+                    for attempt in 1...8 {
+                        let accepted = await navigator.go(to: recoveryLocator)
+                        AppLog.reader.debug(
+                            "Reader restore fallback navigation attempt=\(attempt, privacy: .public) accepted=\(String(describing: accepted), privacy: .public) href=\(recoveryLocator.href.string, privacy: .public)"
+                        )
+                        if accepted == true { return }
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                    }
                 }
             }
         }
