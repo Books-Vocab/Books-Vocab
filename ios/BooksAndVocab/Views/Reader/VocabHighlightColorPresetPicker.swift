@@ -22,28 +22,37 @@ struct VocabHighlightColorPresetPicker: View {
         self.accessibilityIdentifier = accessibilityIdentifier
     }
     var body: some View {
-        Picker(title, selection: $selection) {
+        Menu {
             ForEach(VocabHighlightColorPreset.allCases) { preset in
-                Label {
+                Button {
+                    selection = preset
+                } label: {
                     Text(L10n.string(preset.titleKey))
-                } icon: {
-                    Circle()
-                        .fill(preset.swiftUIColor(for: colorScheme))
-                        .frame(width: 18, height: 18)
-                        .overlay {
-                            Circle()
-                                .stroke(appSkin.palette.cardBorder, lineWidth: 1)
-                        }
                 }
                 .modifier(
                     OptionalAccessibilityIdentifier(
                         id: accessibilityIdentifier.map { "\($0).\(preset.rawValue)" }
                     )
                 )
-                .tag(preset)
+            }
+        } label: {
+            HStack(spacing: AppSpacing.s2) {
+                Text(title)
+                Spacer(minLength: AppSpacing.s2)
+                Circle()
+                    .fill(selection.swiftUIColor(for: colorScheme))
+                    .frame(width: 18, height: 18)
+                    .overlay {
+                        Circle()
+                            .stroke(appSkin.palette.cardBorder, lineWidth: 1)
+                    }
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(appSkin.typography.iconSmall)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .accessibilityHidden(true)
             }
         }
-        .pickerStyle(.palette)
+        .buttonStyle(.borderless)
         .modifier(OptionalAccessibilityIdentifier(id: accessibilityIdentifier))
         .enableInjection()
     }
