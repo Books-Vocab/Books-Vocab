@@ -285,10 +285,10 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         )
         slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
         slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        // Let UIKit/XCTest complete interior drags reliably on iOS 26, but
-        // commit the SwiftUI binding only on release. This keeps the Reader's
-        // WebView from receiving every intermediate 0.1 tick while preserving
-        // a real native slider interaction for both users and UI tests.
+        // Let UIKit/XCTest complete interior drags reliably on iOS 26. The
+        // coordinator coalesces the valueChanged stream into one quiet-window
+        // commit, so the Reader's WebView does not receive every intermediate
+        // 0.1 tick while the final value remains a real native interaction.
         slider.isContinuous = true
         slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
         slider.accessibilityIdentifier = "reader.settings.lineHeight"
@@ -352,6 +352,7 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             slider.setValue(Float(nextValue), animated: false)
             slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
             pendingValue = nextValue
+            scheduleQuietCommit()
         }
 
         @objc
@@ -363,9 +364,31 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
                 step: Metrics.lineHeightStep
             )
             pendingValue = nil
+            quietCommit?.cancel()
+            quietCommit = nil
+            quietCommitToken = nil
         }
 
         private var pendingValue: Double?
+        private var quietCommit: DispatchWorkItem?
+        private var quietCommitToken: UUID?
+
+        private func scheduleQuietCommit() {
+            quietCommit?.cancel()
+            let token = UUID()
+            quietCommitToken = token
+            let work = DispatchWorkItem { [weak self] in
+                guard let self,
+                      self.quietCommitToken == token,
+                      let pendingValue = self.pendingValue else { return }
+                self.parent.value = pendingValue
+                self.pendingValue = nil
+                self.quietCommit = nil
+                self.quietCommitToken = nil
+            }
+            quietCommit = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        }
 
         private static func accessibilityValue(for value: Double) -> String {
             String(
