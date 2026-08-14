@@ -265,7 +265,7 @@ struct ReaderPage {
     }
 
     var tocDone: XCUIElement {
-        app.descendants(matching: .any)["reader.toc.done"]
+        app.buttons["reader.toc.done"]
     }
 
     var currentLocator: XCUIElement {
