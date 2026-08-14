@@ -721,7 +721,7 @@ struct ReaderPage {
         // `isHittable` is true even when a Form row is only partially exposed.
         // Move the scroll view to its canonical top position before sampling
         // geometry; otherwise the first frame can be a clipped intersection.
-        app.swipeDown()
+        scrollSettingsPanel(direction: .down)
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
 
         let deadline = Date().addingTimeInterval(timeout)
@@ -733,7 +733,7 @@ struct ReaderPage {
             ), preview.isHittable {
                 return true
             }
-            app.swipeDown()
+            scrollSettingsPanel(direction: .down)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return exactlyOneIfPresent(
@@ -787,12 +787,7 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> Bool {
-        guard exactlyOne(
-            lineHeightSliderQuery,
-            named: "Reader line-height slider",
-            file: file,
-            line: line
-        ) != nil else { return false }
+        guard revealLineHeightSlider(timeout: 8, file: file, line: line) else { return false }
         if position <= 0.01 {
             return adjustEndpointSlider(
                 // iOS 26's XCTest slider bridge can drop the exact 0.0
@@ -920,6 +915,56 @@ struct ReaderPage {
             thenHoldForDuration: 0.1
         )
         return waitForSliderValueEquals(expectedValue, timeout: 5)
+    }
+
+    private func revealLineHeightSlider(
+        timeout: TimeInterval,
+        file: StaticString,
+        line: UInt
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let slider = exactlyOneIfPresent(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ), slider.isHittable, !slider.frame.isEmpty {
+                return true
+            }
+            scrollSettingsPanel(direction: .up)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
+    }
+
+    private func scrollSettingsPanel(
+        direction: XCUIElement.SwipeDirection
+    ) {
+        if let panel = exactlyOneIfPresent(
+            settingsPanelQuery,
+            named: "Reader settings panel",
+            timeout: 0.25
+        ), panel.isHittable {
+            switch direction {
+            case .up:
+                panel.swipeUp()
+            case .down:
+                panel.swipeDown()
+            default:
+                break
+            }
+        } else {
+            switch direction {
+            case .up:
+                app.swipeUp()
+            case .down:
+                app.swipeDown()
+            default:
+                break
+            }
+        }
     }
 
     private func waitForSliderValueChange(
