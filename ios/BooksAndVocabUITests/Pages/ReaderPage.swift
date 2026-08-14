@@ -855,6 +855,27 @@ struct ReaderPage {
             }
         }
 
+        // On iOS 26, a SwiftUI Slider can expose the edge thumb correctly but
+        // lose the final coordinate event after a Form re-layout.  A fresh
+        // exact-selector swipe is the OS-supported gesture fallback for that
+        // seam.  Re-query on every attempt because the Form may rebuild the
+        // accessibility node after the previous gesture.
+        for _ in 0..<4 {
+            guard let edgeSlider = exactlyOne(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 1
+            ) else { break }
+            if endpoint <= 0.5 {
+                edgeSlider.swipeLeft()
+            } else {
+                edgeSlider.swipeRight()
+            }
+            if waitForSliderValueEquals(expectedValue, timeout: 2) {
+                return true
+            }
+        }
+
         // If the semantic XCTest action was swallowed by the iOS 26 SwiftUI
         // bridge, perform the same exact-selector operation as a thumb drag.
         // Starting from the value reported by AX avoids a blind coordinate
