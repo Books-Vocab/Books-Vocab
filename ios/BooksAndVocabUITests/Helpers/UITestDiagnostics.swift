@@ -49,7 +49,28 @@ class UITestCase: XCTestCase {
         // system presentation is settling; explicitly activate the test
         // application before resolving any selectors.
         app.activate()
+        dismissStaleDocumentPicker(in: app)
         return app
+    }
+
+    private func dismissStaleDocumentPicker(in app: XCUIApplication) {
+        let pickerMarker = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "DOC.")
+        ).firstMatch
+        guard pickerMarker.waitUntilExists(timeout: 2) else { return }
+
+        let cancelButton = app.buttons.matching(
+            NSPredicate(format: "label == %@ OR label == %@", "Cancel", "取消")
+        ).firstMatch
+        guard cancelButton.waitUntilExists(timeout: 2) else {
+            XCTFail("stale document picker exposed DOC.* controls but no localized cancel button")
+            return
+        }
+        cancelButton.tapWhenReady(timeout: 5)
+        XCTAssertTrue(
+            pickerMarker.waitUntilGone(timeout: 5),
+            "stale document picker remained after semantic cancellation"
+        )
     }
 
     @discardableResult
