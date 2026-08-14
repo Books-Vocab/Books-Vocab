@@ -329,10 +329,10 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         )
         slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
         slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        // Let UIKit/XCTest complete interior drags reliably on iOS 26. The
-        // coordinator coalesces the valueChanged stream into one quiet-window
-        // commit, so the Reader's WebView does not receive every intermediate
-        // 0.1 tick while the final value remains a real native interaction.
+        // Keep the native control continuous for UIKit/XCTest interaction, but
+        // commit only on release/cancel. Intermediate ticks stay local to the
+        // control and cannot stream stale or partially-applied settings into
+        // the Reader WebView.
         slider.isContinuous = true
         slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
         slider.accessibilityIdentifier = "reader.settings.lineHeight"
@@ -341,6 +341,11 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             context.coordinator,
             action: #selector(Coordinator.valueChanged(_:)),
             for: .valueChanged
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.beginInteraction(_:)),
+            for: .touchDown
         )
         for event in [UIControl.Event.touchUpInside, .touchUpOutside, .touchCancel] {
             slider.addTarget(
@@ -355,6 +360,11 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
 
     func updateUIView(_ slider: UISlider, context: Context) {
         context.coordinator.parent = self
+        // SwiftUI may redraw the representable while UIKit is still tracking
+        // a drag. Do not let the last committed Binding value overwrite the
+        // native control or its pending release value mid-interaction.
+        guard !context.coordinator.isInteracting,
+              context.coordinator.pendingValue == nil else { return }
         let nextValue = Float(Self.quantized(value))
         if abs(slider.value - nextValue) > 0.0001 {
             slider.setValue(nextValue, animated: false)
@@ -381,9 +391,16 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
 
     final class Coordinator: NSObject {
         var parent: NativeReaderLineHeightSlider
+        private(set) var isInteracting = false
+        private(set) var pendingValue: Double?
 
         init(parent: NativeReaderLineHeightSlider) {
             self.parent = parent
+        }
+
+        @objc
+        func beginInteraction(_ slider: UISlider) {
+            isInteracting = true
         }
 
         @objc
@@ -396,7 +413,6 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             slider.setValue(Float(nextValue), animated: false)
             slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
             pendingValue = nextValue
-            scheduleQuietCommit()
         }
 
         @objc
@@ -408,30 +424,7 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
                 step: Metrics.lineHeightStep
             )
             pendingValue = nil
-            quietCommit?.cancel()
-            quietCommit = nil
-            quietCommitToken = nil
-        }
-
-        private var pendingValue: Double?
-        private var quietCommit: DispatchWorkItem?
-        private var quietCommitToken: UUID?
-
-        private func scheduleQuietCommit() {
-            quietCommit?.cancel()
-            let token = UUID()
-            quietCommitToken = token
-            let work = DispatchWorkItem { [weak self] in
-                guard let self,
-                      self.quietCommitToken == token,
-                      let pendingValue = self.pendingValue else { return }
-                self.parent.value = pendingValue
-                self.pendingValue = nil
-                self.quietCommit = nil
-                self.quietCommitToken = nil
-            }
-            quietCommit = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+            isInteracting = false
         }
 
         private static func accessibilityValue(for value: Double) -> String {
