@@ -164,6 +164,9 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(reader.tocLoading.waitUntilGone(timeout: 10))
         let selectedChapter = reader.tocChapter("1")
         XCTAssertTrue(selectedChapter.waitUntilExists(timeout: 10))
+        let selectedRowTitle = selectedChapter.label
+        let selectedRowHref = try XCTUnwrap(selectedChapter.value as? String)
+        XCTAssertEqual(selectedRowHref, "OEBPS/chapter2.xhtml")
         captureStep("toc-loaded", app: app)
 
         selectedChapter.tapWhenReady()
@@ -212,7 +215,12 @@ final class ReaderFlowUITests: UITestCase {
             locatorHref: finalHref,
             destinationSelector: "reader.toc.readerOverlay.destination",
             contentSelector: Self.secondChapterContent,
-            observedContent: observedContent
+            observedContent: observedContent,
+            selectedRowObservation: ReaderTOCEvidenceSelectedRow(
+                path: [1],
+                href: selectedRowHref,
+                title: selectedRowTitle
+            )
         )
         // Readium can rebuild the WebKit AX subtree as a screenshot is taken;
         // persist the machine evidence while the just-asserted content node is

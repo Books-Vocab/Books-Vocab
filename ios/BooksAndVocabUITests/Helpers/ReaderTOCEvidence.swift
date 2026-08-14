@@ -227,7 +227,8 @@ extension UITestCase {
         locatorHref: String?,
         destinationSelector: String? = nil,
         contentSelector: String? = nil,
-        observedContent: String? = nil
+        observedContent: String? = nil,
+        selectedRowObservation: ReaderTOCEvidenceSelectedRow? = nil
     ) throws {
         guard !label.isEmpty, !fixtureID.isEmpty, !assetID.isEmpty, !href.isEmpty else {
             throw ReaderTOCEvidenceWriterError.invalidContext("entry identity")
@@ -265,11 +266,21 @@ extension UITestCase {
             app,
             identifier: "reader.currentLocator"
         )
-        let selectedRow = try Self.readSelectedRow(
-            app,
-            path: path,
-            expectedHref: href
-        )
+        let selectedRow: ReaderTOCEvidenceSelectedRow
+        if let selectedRowObservation {
+            guard selectedRowObservation.path == path,
+                  selectedRowObservation.href == href,
+                  !selectedRowObservation.title.isEmpty else {
+                throw ReaderTOCEvidenceWriterError.observationMismatch("selectedRow")
+            }
+            selectedRow = selectedRowObservation
+        } else {
+            selectedRow = try Self.readSelectedRow(
+                app,
+                path: path,
+                expectedHref: href
+            )
+        }
         if let locatorHref, locatorHref != observedLocator {
             throw ReaderTOCEvidenceWriterError.observationMismatch("locatorHref")
         }
