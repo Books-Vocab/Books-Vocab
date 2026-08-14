@@ -157,6 +157,21 @@ struct BooksAndVocabApp: App {
                 .environment(\.kgService, kgService)
                 .environment(\.subscriptionManager, subscriptionManager)
                 .environment(\.locale, appLanguage.locale)
+                #if os(iOS)
+                // UI World vocabulary fixtures derive a deterministic clock
+                // from their canonical seed. Keep the production default
+                // unchanged when no fixture selected one, but carry the
+                // fixture clock through the real view environment so Overview,
+                // heatmap, calendar, and forecast project the same day.
+                .environment(
+                    \.statsProjectionClock,
+                    UITestFixtureSeed.statsProjectionClock
+                        ?? StatsProjectionClock(
+                            now: Date(timeIntervalSince1970: 0),
+                            calendar: Calendar(identifier: .gregorian)
+                        )
+                )
+                #endif
                 // Why: L10n.string(_:) 是 non-reactive function;絕大多數 view 不訂閱
                 // AppLanguageStore,切 selection 後 UI 中英混雜直到 navigation/redraw。
                 // rootRefreshID 讓所有 L10n.string 重新計算；Settings 的 account-local
