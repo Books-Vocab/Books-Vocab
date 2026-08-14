@@ -29,6 +29,7 @@ final class LiveSettingsResetStore: SettingsResetStorePort {
                 $0.isArchived == false
             })
             let localCardCount = try modelContext.fetch(descriptor).count
+            NSLog("KG_DIAG settings.reset snapshot visibleCount=%d", localCardCount)
             return .init(
                 localCardCount: localCardCount,
                 hasCustomPreferences: hasCustomPreferences,

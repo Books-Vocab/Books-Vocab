@@ -72,7 +72,12 @@ extension SettingsView {
     }
 
     var resetBeforeSnapshot: SettingsResetLifecycle.Snapshot {
-        coordinator.readResetSnapshot(authManager: authManager, modelContext: modelContext)
+        let snapshot = coordinator.readResetSnapshot(authManager: authManager, modelContext: modelContext)
+        NSLog(
+            "KG_DIAG settings.reset projection visibleCount=%d",
+            snapshot.localCardCount ?? -1
+        )
+        return snapshot
     }
 
     var presenterState: SettingsPresenterState {
