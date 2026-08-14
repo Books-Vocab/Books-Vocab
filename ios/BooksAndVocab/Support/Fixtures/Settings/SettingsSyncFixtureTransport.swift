@@ -5,7 +5,7 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
     static let shared = SettingsSyncFixtureEvidenceStore()
 
     private let lock = NSLock()
-    private var events: [SettingsSyncTransportEvent] = []
+    private var eventsBySession: [Int: [SettingsSyncTransportEvent]] = [:]
     private var sessionID = 0
 
     @discardableResult
@@ -13,7 +13,19 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         sessionID &+= 1
-        events.removeAll(keepingCapacity: true)
+        eventsBySession[sessionID] = []
+        // SwiftUI can materialize short-lived coordinators while a sheet is
+        // being rebuilt. Keep a bounded history so their transports cannot
+        // erase the evidence owned by the coordinator that is actually
+        // executing the sync round.
+        if eventsBySession.count > 16 {
+            let staleIDs = eventsBySession.keys
+                .sorted()
+                .dropLast(16)
+            for staleID in staleIDs {
+                eventsBySession.removeValue(forKey: staleID)
+            }
+        }
         return sessionID
     }
 
@@ -24,18 +36,34 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
     func record(sessionID: Int, round: Int, path: String, statusCode: Int) {
         lock.lock()
         defer { lock.unlock() }
-        guard self.sessionID == sessionID else { return }
-        events.append(SettingsSyncTransportEvent(round: round, path: path, statusCode: statusCode))
+        guard eventsBySession[sessionID] != nil else { return }
+        eventsBySession[sessionID, default: []].append(
+            SettingsSyncTransportEvent(round: round, path: path, statusCode: statusCode)
+        )
     }
 
     func snapshot() -> [SettingsSyncTransportEvent] {
+        snapshot(sessionID: currentSessionID())
+    }
+
+    func snapshot(sessionID: Int) -> [SettingsSyncTransportEvent] {
         lock.lock()
         defer { lock.unlock() }
-        return events
+        return eventsBySession[sessionID] ?? []
     }
 
     func snapshotDictionaryEvents() -> [SettingsSyncTransportEvent] {
         snapshot().filter { $0.path == "/api/dictionary-cards" }
+    }
+
+    func snapshotDictionaryEvents(sessionID: Int) -> [SettingsSyncTransportEvent] {
+        snapshot(sessionID: sessionID).filter { $0.path == "/api/dictionary-cards" }
+    }
+
+    private func currentSessionID() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return sessionID
     }
 }
 
@@ -50,7 +78,7 @@ enum SettingsSyncFixtureTransportError: Error, Equatable {
 /// which executes the ordinary push/pull/review pipeline and writes SwiftData.
 final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
     private let failureMessage: String
-    private let evidenceSessionID: Int
+    let evidenceSessionID: Int
     private let lock = NSLock()
     private var vocabPullCount = 0
 

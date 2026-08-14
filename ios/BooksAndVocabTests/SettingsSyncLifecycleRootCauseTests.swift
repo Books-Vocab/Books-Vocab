@@ -35,6 +35,17 @@ struct SettingsSyncLifecycleRootCauseTests {
                 SettingsSyncTransportEvent(round: 1, path: "/api/vocab", statusCode: 200)
             ]
         )
+
+        // A later coordinator/transport may be materialized by SwiftUI before
+        // the live coordinator executes. Its session allocation must not erase
+        // the live session's already-recorded events.
+        _ = SettingsSyncFixtureEvidenceStore.shared.beginSession()
+        #expect(SettingsSyncFixtureEvidenceStore.shared.snapshot().isEmpty)
+        #expect(
+            SettingsSyncFixtureEvidenceStore.shared.snapshot(sessionID: newSession) == [
+                SettingsSyncTransportEvent(round: 1, path: "/api/vocab", statusCode: 200)
+            ]
+        )
     }
 
     @Test("canonical sync summary accepts terminal error provenance")
