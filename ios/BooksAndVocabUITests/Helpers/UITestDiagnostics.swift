@@ -36,11 +36,18 @@ class UITestCase: XCTestCase {
             perfLog: perfLog
         )
         currentApp = app
+        // A prior file-importer interaction can leave iOS 26's Files
+        // document-picker process in front of the target app.  In that state
+        // XCTest can still query the target app's background AX tree, but no
+        // target control is hittable; `app.activate()` alone does not dismiss
+        // the system presentation.  Terminate only this exact system app so
+        // the launch seam remains hermetic without touching other Simulator
+        // state or using coordinate-based dismissal.
+        XCUIApplication(bundleIdentifier: "com.apple.DocumentsApp").terminate()
         app.launch()
-        // A previous Simulator run may leave a system document picker in the
-        // foreground. `launch()` can still expose the app's background AX tree
-        // while every app control remains non-hittable; explicitly activate
-        // the test application before resolving any selectors.
+        // `launch()` can still expose the app's background AX tree while a
+        // system presentation is settling; explicitly activate the test
+        // application before resolving any selectors.
         app.activate()
         return app
     }
