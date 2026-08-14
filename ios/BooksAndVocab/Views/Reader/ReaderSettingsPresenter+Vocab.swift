@@ -285,10 +285,11 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         )
         slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
         slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        // Line height is a discrete 0.1-tick control. Commit only on release so
-        // a drag does not stream every intermediate value through the Reader's
-        // WebView and keep XCTest waiting for the app to become idle.
-        slider.isContinuous = false
+        // Let UIKit/XCTest complete interior drags reliably on iOS 26, but
+        // commit the SwiftUI binding only on release. This keeps the Reader's
+        // WebView from receiving every intermediate 0.1 tick while preserving
+        // a real native slider interaction for both users and UI tests.
+        slider.isContinuous = true
         slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
         slider.accessibilityIdentifier = "reader.settings.lineHeight"
         slider.accessibilityValue = Self.accessibilityValue(for: value)
@@ -297,6 +298,13 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             action: #selector(Coordinator.valueChanged(_:)),
             for: .valueChanged
         )
+        for event in [UIControl.Event.touchUpInside, .touchUpOutside, .touchCancel] {
+            slider.addTarget(
+                context.coordinator,
+                action: #selector(Coordinator.commitValue(_:)),
+                for: event
+            )
+        }
         slider.value = Float(Self.quantized(value))
         return slider
     }
@@ -343,8 +351,21 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             )
             slider.setValue(Float(nextValue), animated: false)
             slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
-            parent.value = nextValue
+            pendingValue = nextValue
         }
+
+        @objc
+        func commitValue(_ slider: UISlider) {
+            valueChanged(slider)
+            parent.value = pendingValue ?? Self.quantized(
+                Double(slider.value),
+                range: Metrics.lineHeightRange,
+                step: Metrics.lineHeightStep
+            )
+            pendingValue = nil
+        }
+
+        private var pendingValue: Double?
 
         private static func accessibilityValue(for value: Double) -> String {
             String(
