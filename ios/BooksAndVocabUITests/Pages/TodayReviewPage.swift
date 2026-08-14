@@ -546,7 +546,17 @@ struct TodayReviewPage {
             return false
         }
         let expandMatches = elements(for: "todayReview.expandZone").allElementsBoundByIndex
-        guard expandMatches.count == geometry.expectedExpandZoneCount else { return false }
+        if geometry.expectedExpandZoneCount == 0 {
+            // iOS 26 may retain a zero-height, accessibility-hidden SwiftUI
+            // node in the AX snapshot while the front-only affordance is gone.
+            // The product contract is absence of an actionable/visible zone,
+            // not destruction of the stable node during a transition.
+            guard expandMatches.allSatisfy({
+                !$0.isHittable && $0.frame.height <= 1
+            }) else { return false }
+        } else {
+            guard expandMatches.count == geometry.expectedExpandZoneCount else { return false }
+        }
         guard let maximumBottomGap = geometry.maximumBottomGap else { return true }
         guard expandMatches.count == 1, expandMatches[0].exists else { return false }
         let expandFrame = expandMatches[0].frame
