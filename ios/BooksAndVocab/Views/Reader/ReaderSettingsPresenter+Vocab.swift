@@ -329,10 +329,10 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
         )
         slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
         slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        // Keep the native control continuous for UIKit/XCTest interaction, but
-        // commit only on release/cancel. Intermediate ticks stay local to the
-        // control and cannot stream stale or partially-applied settings into
-        // the Reader WebView.
+        // Keep the native control continuous for UIKit/XCTest interaction.
+        // Real drags commit only on release/cancel; a non-tracking XCTest
+        // value injection is committed immediately because it has no later
+        // touch-up event to close the interaction.
         slider.isContinuous = true
         slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
         slider.accessibilityIdentifier = "reader.settings.lineHeight"
@@ -413,11 +413,18 @@ private struct NativeReaderLineHeightSlider: UIViewRepresentable {
             slider.setValue(Float(nextValue), animated: false)
             slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
             pendingValue = nextValue
+            if !slider.isTracking, !isInteracting {
+                commitPendingValue(slider)
+            }
         }
 
         @objc
         func commitValue(_ slider: UISlider) {
             valueChanged(slider)
+            commitPendingValue(slider)
+        }
+
+        private func commitPendingValue(_ slider: UISlider) {
             parent.value = pendingValue ?? Self.quantized(
                 Double(slider.value),
                 range: Metrics.lineHeightRange,
