@@ -600,7 +600,7 @@ final class FixtureDatasetUITests: UITestCase {
 
         var generatedEvidence: [DatasetDocument.GeneratedEvidence] = []
         let app = launchIsolatedApp(
-            fixtures: [.reviewCalendarDense],
+            fixtures: [.authSignedIn, .reviewCalendarDense],
             extraEnvironment: evidenceLaunchEnvironment,
             perfLog: "review-calendar"
         )
@@ -687,7 +687,7 @@ final class FixtureDatasetUITests: UITestCase {
         // screenshots cannot alias the required-state evidence.
         app.terminate()
         let counterexampleApp = launchIsolatedApp(
-            fixtures: [.reviewCalendarDense],
+            fixtures: [.authSignedIn, .reviewCalendarDense],
             extraEnvironment: evidenceLaunchEnvironment,
             perfLog: "review-calendar-counterexamples"
         )
