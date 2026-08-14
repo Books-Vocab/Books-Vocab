@@ -436,7 +436,13 @@ extension UITestCase {
         while Date() < deadline {
             if webViews.count == 1 {
                 let webView = webViews.element(boundBy: 0)
-                let content = webView.staticTexts.matching(identifier: selector)
+                // Readium exposes rendered paragraphs as accessibility labels,
+                // not identifier values. Keep this exact-label query aligned
+                // with ReaderPage.contentText(_:) while retaining the bounded
+                // wait for the WebKit accessibility subtree to settle.
+                let content = webView.staticTexts.matching(
+                    NSPredicate(format: "label == %@", selector)
+                )
                 if content.count == 1,
                    let element = content.allElementsBoundByIndex.first {
                     return element.label
