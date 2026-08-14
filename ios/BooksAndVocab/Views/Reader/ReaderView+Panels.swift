@@ -21,7 +21,7 @@ extension ReaderView {
             return try Locator(jsonString: json)
         } catch {
             AppLog.reader.error("Failed to restore saved locator: \(error.localizedDescription, privacy: .public)")
-            return nil
+            return restoreFallbackLocator
         }
     }
 

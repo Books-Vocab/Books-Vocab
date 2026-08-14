@@ -147,7 +147,9 @@ struct ReaderRuntimeStateTests {
 
         view.handleLocationChange(invalidLocator)
 
-        #expect(view.readerState.progressState == .unknown)
+        // An invalid Readium progression is ignored; it must not erase the
+        // last known valid persisted progress from the runtime projection.
+        #expect(view.readerState.progressState == .middle(0.37))
         #expect(book.progression == 0.37)
     }
 
