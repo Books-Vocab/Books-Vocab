@@ -263,6 +263,7 @@ def _evidence_provenance(
     dataset_id: str,
     run_id: str,
     repository_root: Path | None = None,
+    validate_steps: bool = True,
 ) -> dict[str, Any]:
     """Require one complete, already-attested stable run before recording verified.
 
@@ -433,50 +434,16 @@ def _evidence_provenance(
     )
     if len(items) != len(set(items)):
         raise UIReviewMatrixError("visual review manifest assetIDs must be unique")
-    required_steps = _unique_non_empty_strings(
-        _mapping(requirement.get("verification"), owner=f"{requirement.get('id')}.verification").get(
-            "requiredSteps"
-        ),
-        owner=f"{requirement.get('id')}.verification.requiredSteps",
-        minimum=2,
-    )
     state_labels = [
         str(item.get("stateLabel"))
         for item in manifest.get("items", [])
         if isinstance(item, dict) and item.get("stateLabel")
     ]
-    matched_steps: dict[str, list[int]] = {
-        step: [index for index, label in enumerate(state_labels) if label == step]
-        for step in required_steps
-    }
-    missing_steps = [step for step, indexes in matched_steps.items() if not indexes]
-    if missing_steps:
-        raise UIReviewMatrixError(f"visual manifest does not cover required steps: {missing_steps}")
-    duplicate_steps = [step for step, indexes in matched_steps.items() if len(indexes) != 1]
-    if duplicate_steps:
-        raise UIReviewMatrixError(f"required visual steps must map one-to-one to assets: {duplicate_steps}")
-    matched_asset_indexes = [indexes[0] for indexes in matched_steps.values()]
-    if len(set(matched_asset_indexes)) != len(matched_asset_indexes):
-        raise UIReviewMatrixError("required visual steps must map to distinct assets")
-    counterexample_steps = _unique_non_empty_strings(
-        _mapping(requirement.get("verification"), owner=f"{requirement.get('id')}.verification").get(
-            "counterexampleSteps"
-        ),
-        owner=f"{requirement.get('id')}.verification.counterexampleSteps",
-    )
-    missing_counterexamples = [
-        step for step in counterexample_steps if state_labels.count(step) != 1
-    ]
-    if missing_counterexamples:
-        raise UIReviewMatrixError(
-            f"visual manifest does not contain one distinct asset for counterexamples: {missing_counterexamples}"
-        )
-    counterexample_asset_indexes = {
-        index for step in counterexample_steps for index, label in enumerate(state_labels) if label == step
-    }
-    if set(matched_asset_indexes) & counterexample_asset_indexes:
-        raise UIReviewMatrixError(
-            "required visual steps and counterexamples must use disjoint assets"
+    if validate_steps:
+        _validate_state_coverage(
+            requirement=requirement,
+            state_labels=state_labels,
+            owner="visual manifest",
         )
     visual_checks = _non_empty_strings(
         _mapping(requirement.get("verification"), owner=f"{requirement.get('id')}.verification").get(
@@ -536,6 +503,161 @@ def _evidence_provenance(
         "manifestSHA256": manifest_sha256,
     }
     return provenance
+
+
+def _state_label_matches(label: str, step: str, aliases: list[str]) -> bool:
+    """Match a logical state to an exact capture label or run-many prefix.
+
+    The evidence manifest prefixes capture names with the XCTest selector.  A
+    requirement may explicitly declare aliases when the product state is
+    stable but an older test uses a different capture name.  Arbitrary
+    substring matching is deliberately forbidden.
+    """
+    for candidate in [step, *aliases]:
+        if label == candidate or label.endswith(f"-{candidate}"):
+            return True
+    return False
+
+
+def _state_aliases(requirement: dict[str, Any]) -> dict[str, list[str]]:
+    raw = _mapping(
+        _mapping(requirement.get("verification"), owner=f"{requirement.get('id')}.verification").get(
+            "stateAliases", {}
+        ),
+        owner=f"{requirement.get('id')}.verification.stateAliases",
+    )
+    aliases: dict[str, list[str]] = {}
+    for step, values in raw.items():
+        aliases[step] = _unique_non_empty_strings(
+            values,
+            owner=f"{requirement.get('id')}.verification.stateAliases.{step}",
+        )
+    return aliases
+
+
+def _validate_state_coverage(
+    *,
+    requirement: dict[str, Any],
+    state_labels: list[str],
+    owner: str,
+) -> None:
+    verification = _mapping(requirement.get("verification"), owner=f"{requirement.get('id')}.verification")
+    required_steps = _unique_non_empty_strings(
+        verification.get("requiredSteps"),
+        owner=f"{requirement.get('id')}.verification.requiredSteps",
+        minimum=2,
+    )
+    counterexample_steps = _unique_non_empty_strings(
+        verification.get("counterexampleSteps"),
+        owner=f"{requirement.get('id')}.verification.counterexampleSteps",
+    )
+    aliases = _state_aliases(requirement)
+
+    def matches(step: str) -> list[int]:
+        return [
+            index
+            for index, label in enumerate(state_labels)
+            if _state_label_matches(label, step, aliases.get(step, []))
+        ]
+
+    required_matches = {step: matches(step) for step in required_steps}
+    missing = [step for step, indexes in required_matches.items() if not indexes]
+    duplicate = [step for step, indexes in required_matches.items() if len(indexes) != 1]
+    if missing:
+        raise UIReviewMatrixError(f"{owner} does not cover required steps: {missing}")
+    if duplicate:
+        raise UIReviewMatrixError(f"{owner} required visual steps must map one-to-one to assets: {duplicate}")
+    required_assets = [indexes[0] for indexes in required_matches.values()]
+    if len(set(required_assets)) != len(required_assets):
+        raise UIReviewMatrixError(f"{owner} required visual steps must map to distinct assets")
+
+    counterexample_matches = {step: matches(step) for step in counterexample_steps}
+    counterexample_missing_or_duplicate = [
+        step for step, indexes in counterexample_matches.items() if len(indexes) != 1
+    ]
+    if counterexample_missing_or_duplicate:
+        raise UIReviewMatrixError(
+            f"{owner} does not contain one distinct asset for counterexamples: "
+            f"{counterexample_missing_or_duplicate}"
+        )
+    counterexample_assets = {indexes[0] for indexes in counterexample_matches.values()}
+    if set(required_assets) & counterexample_assets:
+        raise UIReviewMatrixError(
+            f"{owner} required visual steps and counterexamples must use disjoint assets"
+        )
+
+
+def _manifest_state_labels(evidence_root: Path) -> list[str]:
+    manifest = _load_json(
+        evidence_root / "artifacts" / "ui-review" / "review_manifest.json",
+        owner="visual review manifest",
+    )
+    labels = [
+        str(item.get("stateLabel"))
+        for item in manifest.get("items", [])
+        if isinstance(item, dict) and item.get("stateLabel")
+    ]
+    if not labels:
+        raise UIReviewMatrixError("visual review manifest has no state labels")
+    return labels
+
+
+def _validate_aggregate_state_coverage(
+    *,
+    requirement: dict[str, Any],
+    bundles: list[dict[str, Any]],
+) -> None:
+    """Validate required/counterexample states across a selector union.
+
+    Each bundle is still fully validated independently.  This second gate
+    only unions state labels for one requirement, so P4/P5/P15 can use their
+    intentionally separate success and counterexample selectors without
+    weakening one-to-one asset or counterexample coverage.
+    """
+    verification = _mapping(requirement.get("verification"), owner=f"{requirement.get('id')}.verification")
+    required_steps = _unique_non_empty_strings(
+        verification.get("requiredSteps"),
+        owner=f"{requirement.get('id')}.verification.requiredSteps",
+        minimum=2,
+    )
+    counterexample_steps = _unique_non_empty_strings(
+        verification.get("counterexampleSteps"),
+        owner=f"{requirement.get('id')}.verification.counterexampleSteps",
+    )
+    aliases = _state_aliases(requirement)
+    occurrences: list[tuple[str, int, str]] = []
+    for bundle in bundles:
+        for item_index, label in enumerate(bundle["stateLabels"]):
+            occurrences.append((bundle["runID"], item_index, label))
+
+    def matches(step: str) -> list[tuple[str, int, str]]:
+        return [
+            occurrence
+            for occurrence in occurrences
+            if _state_label_matches(occurrence[2], step, aliases.get(step, []))
+        ]
+
+    missing_required = [step for step in required_steps if not matches(step)]
+    duplicate_required = [step for step in required_steps if len(matches(step)) != 1]
+    missing_counterexamples = [
+        step for step in counterexample_steps if len(matches(step)) != 1
+    ]
+    if missing_required or duplicate_required or missing_counterexamples:
+        details = {
+            "missingRequired": missing_required,
+            "duplicateRequired": duplicate_required,
+            "counterexampleCoverage": missing_counterexamples,
+        }
+        raise UIReviewMatrixError(
+            f"aggregate visual coverage incomplete for {requirement.get('id')}: {details}"
+        )
+    required_occurrences = {matches(step)[0][:2] for step in required_steps}
+    counterexample_occurrences = {matches(step)[0][:2] for step in counterexample_steps}
+    if required_occurrences & counterexample_occurrences:
+        raise UIReviewMatrixError(
+            f"aggregate visual coverage reuses an asset for required/counterexample state "
+            f"in {requirement.get('id')}"
+        )
 
 
 def record_requirement(
@@ -672,7 +794,7 @@ def record_many(
     executions = summary.get("executions")
     if not isinstance(executions, list) or not executions:
         raise UIReviewMatrixError("run-many summary has no executions")
-    recorded: list[dict[str, Any]] = []
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for index, execution in enumerate(executions):
         execution = _mapping(execution, owner=f"executions[{index}]")
         if execution.get("status") != "passed_unattested":
@@ -684,17 +806,115 @@ def record_many(
         for requirement_id in requirement_ids:
             if not isinstance(requirement_id, str):
                 raise UIReviewMatrixError(f"executions[{index}] has invalid requirementID")
-            _, verification = record_requirement(
-                data,
-                requirement_id=requirement_id,
-                status="verified",
-                root=root,
-                selector=execution.get("selector"),
-                dataset_id=execution.get("datasetID"),
-                run_id=Path(str(execution.get("bundleRoot"))).name,
-                evidence_root=execution.get("bundleRoot"),
+            requirement = next(
+                (
+                    value
+                    for value in data.get("requirements", [])
+                    if isinstance(value, dict) and value.get("id") == requirement_id
+                ),
+                None,
             )
-            recorded.append({"requirementID": requirement_id, "verification": verification})
+            if requirement is None:
+                raise UIReviewMatrixError(f"missing requirement {requirement_id}")
+            selector = _canonical_selector(
+                execution.get("selector"), owner=f"executions[{index}].selector"
+            )
+            dataset_id = _non_empty_string(
+                execution.get("datasetID"), owner=f"executions[{index}].datasetID"
+            )
+            bundle_root_value = _non_empty_string(
+                execution.get("bundleRoot"), owner=f"executions[{index}].bundleRoot"
+            )
+            run_id = Path(bundle_root_value).name
+            stable_root, stored_root = _resolve_rooted_path(
+                bundle_root_value,
+                root=root,
+                owner=f"executions[{index}].bundleRoot",
+            )
+            _require_fixture_ids(requirement, root=root, dataset_id=dataset_id)
+            provenance = _evidence_provenance(
+                stable_root,
+                requirement=requirement,
+                selector=selector,
+                dataset_id=dataset_id,
+                run_id=run_id,
+                repository_root=root,
+                validate_steps=False,
+            )
+            grouped.setdefault(requirement_id, []).append(
+                {
+                    "selector": selector,
+                    "datasetID": dataset_id,
+                    "runID": run_id,
+                    "evidenceRoot": stored_root,
+                    "stateLabels": _manifest_state_labels(stable_root),
+                    **provenance,
+                }
+            )
+
+    recorded: list[dict[str, Any]] = []
+    requirements = {
+        value.get("id"): value
+        for value in data.get("requirements", [])
+        if isinstance(value, dict) and value.get("id")
+    }
+    for requirement_id, bundles in grouped.items():
+        requirement = requirements[requirement_id]
+        if len({(bundle["selector"], bundle["runID"]) for bundle in bundles}) != len(bundles):
+            raise UIReviewMatrixError(
+                f"record-many cannot use duplicate selector/runID bundles for {requirement_id}"
+            )
+        _validate_aggregate_state_coverage(requirement=requirement, bundles=bundles)
+        verification = _mapping(
+            requirement.get("verification"), owner=f"{requirement_id}.verification"
+        )
+        primary = bundles[0]
+        verification.update(
+            {
+                "status": "verified",
+                "selector": primary["selector"],
+                "datasetID": primary["datasetID"],
+                "runID": primary["runID"],
+                "evidenceRoot": primary["evidenceRoot"],
+                "sourceCommit": primary["sourceCommit"],
+                "datasetSHA256": primary["datasetSHA256"],
+                "device": primary["device"],
+                "manifestSHA256": primary["manifestSHA256"],
+                "evidenceBundles": [
+                    {
+                        key: bundle[key]
+                        for key in (
+                            "selector",
+                            "datasetID",
+                            "runID",
+                            "evidenceRoot",
+                            "sourceCommit",
+                            "datasetSHA256",
+                            "device",
+                            "manifestSHA256",
+                        )
+                    }
+                    for bundle in bundles
+                ],
+                "blockers": [],
+            }
+        )
+        history = verification.setdefault("history", [])
+        if not isinstance(history, list):
+            raise UIReviewMatrixError(f"{requirement_id}.verification.history must be a list")
+        history.append(
+            {
+                "recordedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "status": "verified",
+                "selector": primary["selector"],
+                "datasetID": primary["datasetID"],
+                "runID": primary["runID"],
+                "evidenceRoot": primary["evidenceRoot"],
+                "evidenceBundleCount": len(bundles),
+                "blockers": [],
+            }
+        )
+        recorded.append({"requirementID": requirement_id, "verification": verification})
     return recorded
 
 
@@ -814,29 +1034,102 @@ def validate_matrix(
                     )
             if verification.get("blockers") not in (None, []):
                 raise UIReviewMatrixError(f"{owner}.verification.blockers must be empty when verified")
-            stable_root, _ = _resolve_rooted_path(
-                verification["evidenceRoot"],
-                root=root,
-                owner=f"{owner}.verification.evidenceRoot",
-            )
             _require_fixture_ids(
                 requirement,
                 root=root,
                 dataset_id=verification["datasetID"],
             )
-            fresh_provenance = _evidence_provenance(
-                stable_root,
-                requirement=requirement,
-                selector=verification["selector"],
-                dataset_id=verification["datasetID"],
-                run_id=verification["runID"],
-                repository_root=root,
-            )
-            for provenance_key, fresh_value in fresh_provenance.items():
-                if verification.get(provenance_key) != fresh_value:
+            raw_bundles = verification.get("evidenceBundles")
+            if raw_bundles is None:
+                raw_bundles = [
+                    {
+                        "selector": verification["selector"],
+                        "datasetID": verification["datasetID"],
+                        "runID": verification["runID"],
+                        "evidenceRoot": verification["evidenceRoot"],
+                        "sourceCommit": verification["sourceCommit"],
+                        "datasetSHA256": verification["datasetSHA256"],
+                        "device": verification["device"],
+                        "manifestSHA256": verification["manifestSHA256"],
+                    }
+                ]
+            if not isinstance(raw_bundles, list) or not raw_bundles:
+                raise UIReviewMatrixError(
+                    f"{owner}.verification.evidenceBundles must be a non-empty list"
+                )
+            fresh_bundles: list[dict[str, Any]] = []
+            for bundle_index, raw_bundle in enumerate(raw_bundles):
+                bundle = _mapping(
+                    raw_bundle,
+                    owner=f"{owner}.verification.evidenceBundles[{bundle_index}]",
+                )
+                bundle_selector = _canonical_selector(
+                    bundle.get("selector"),
+                    owner=f"{owner}.verification.evidenceBundles[{bundle_index}].selector",
+                )
+                bundle_dataset_id = _non_empty_string(
+                    bundle.get("datasetID"),
+                    owner=f"{owner}.verification.evidenceBundles[{bundle_index}].datasetID",
+                )
+                bundle_run_id = _non_empty_string(
+                    bundle.get("runID"),
+                    owner=f"{owner}.verification.evidenceBundles[{bundle_index}].runID",
+                )
+                bundle_evidence_root = _non_empty_string(
+                    bundle.get("evidenceRoot"),
+                    owner=f"{owner}.verification.evidenceBundles[{bundle_index}].evidenceRoot",
+                )
+                bundle_root, stored_bundle_root = _resolve_rooted_path(
+                    bundle_evidence_root,
+                    root=root,
+                    owner=f"{owner}.verification.evidenceBundles[{bundle_index}].evidenceRoot",
+                )
+                if bundle_dataset_id != verification["datasetID"]:
                     raise UIReviewMatrixError(
-                        f"{owner}.verification.{provenance_key} does not match current evidence"
+                        f"{owner}.verification evidence bundle datasetID differs from primary"
                     )
+                fresh_provenance = _evidence_provenance(
+                    bundle_root,
+                    requirement=requirement,
+                    selector=bundle_selector,
+                    dataset_id=bundle_dataset_id,
+                    run_id=bundle_run_id,
+                    repository_root=root,
+                    validate_steps=False,
+                )
+                for provenance_key, fresh_value in fresh_provenance.items():
+                    if bundle.get(provenance_key) != fresh_value:
+                        raise UIReviewMatrixError(
+                            f"{owner}.verification.evidenceBundles[{bundle_index}]."
+                            f"{provenance_key} does not match current evidence"
+                        )
+                fresh_bundles.append(
+                    {
+                        "selector": bundle_selector,
+                        "datasetID": bundle_dataset_id,
+                        "runID": bundle_run_id,
+                        "evidenceRoot": stored_bundle_root,
+                        "stateLabels": _manifest_state_labels(bundle_root),
+                        **fresh_provenance,
+                    }
+                )
+            primary = fresh_bundles[0]
+            for key in (
+                "selector",
+                "datasetID",
+                "runID",
+                "evidenceRoot",
+                "sourceCommit",
+                "datasetSHA256",
+                "device",
+                "manifestSHA256",
+            ):
+                expected = primary[key]
+                if verification.get(key) != expected:
+                    raise UIReviewMatrixError(
+                        f"{owner}.verification.{key} does not match primary evidence bundle"
+                    )
+            _validate_aggregate_state_coverage(requirement=requirement, bundles=fresh_bundles)
         history = verification.get("history")
         if history is not None and not isinstance(history, list):
             raise UIReviewMatrixError(f"{owner}.verification.history must be a list")

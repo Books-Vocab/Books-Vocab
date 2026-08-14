@@ -116,6 +116,44 @@ def test_matrix_rejects_duplicate_required_or_counterexample_labels() -> None:
     with pytest.raises(MODULE.UIReviewMatrixError, match="must not contain duplicate labels"):
         MODULE.validate_matrix(data, root=ROOT)
 
+
+def test_aggregate_coverage_unions_distinct_selector_bundles() -> None:
+    requirement = {
+        "id": "P4",
+        "verification": {
+            "requiredSteps": ["open", "change"],
+            "counterexampleSteps": ["dark"],
+            "stateAliases": {"change": ["changed"]},
+        },
+    }
+
+    MODULE._validate_aggregate_state_coverage(
+        requirement=requirement,
+        bundles=[
+            {"runID": "run-a", "stateLabels": ["selector-open"]},
+            {"runID": "run-b", "stateLabels": ["selector-changed", "selector-dark"]},
+        ],
+    )
+
+
+def test_aggregate_coverage_reports_all_missing_states_without_partial_write() -> None:
+    requirement = {
+        "id": "P4",
+        "verification": {
+            "requiredSteps": ["open", "change"],
+            "counterexampleSteps": ["dark", "dynamic"],
+        },
+    }
+
+    with pytest.raises(MODULE.UIReviewMatrixError, match="dynamic") as error:
+        MODULE._validate_aggregate_state_coverage(
+            requirement=requirement,
+            bundles=[
+                {"runID": "run-a", "stateLabels": ["selector-open", "selector-dark"]},
+            ],
+        )
+    assert "change" in str(error.value)
+
     data = MODULE.load_matrix(MATRIX)
     p3 = next(item for item in data["requirements"] if item["id"] == "P3")
     p3["verification"]["counterexampleSteps"].append("missing-chapter")
