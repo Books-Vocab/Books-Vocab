@@ -471,15 +471,17 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> XCUIElement? {
-        // Readium exposes one WebView per paginated spread. The seeded content
-        // marker and the production-reader assertions provide the uniqueness
-        // proof; requiring a single WebView would reject a valid multi-spread
-        // reader state.
+        // Readium exposes one logical navigator through multiple WebKit AX
+        // projections (ReadiumNavigator.WebView, WebView, WKContentView), all
+        // sharing the same frame. This accessor is geometry-only, so presence
+        // plus the bounded representative used by `webView` is the correct
+        // contract; content and action selectors still use their own exact
+        // typed queries.
         guard webViewQuery.waitUntilAtLeastOne(timeout: timeout) else {
             XCTFail("production Reader must expose at least one WebView", file: file, line: line)
             return nil
         }
-        return webViewQuery.element
+        return webView
     }
 
     func settingsStateElement(
