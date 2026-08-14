@@ -194,10 +194,13 @@ final class ReaderFlowUITests: UITestCase {
         }
         XCTAssertEqual(finalHref, "OEBPS/chapter2.xhtml")
         XCTAssertNotEqual(initialHref, finalHref)
-        guard reader.contentText(Self.secondChapterContent).waitUntilExists(timeout: 10) else {
+        let destinationContent = reader.contentText(Self.secondChapterContent)
+        guard destinationContent.waitUntilExists(timeout: 10) else {
             XCTFail("valid Reader TOC destination 必須暴露 Chapter Two 內容")
             return
         }
+        let observedContent = destinationContent.label
+        XCTAssertEqual(observedContent, Self.secondChapterContent)
         XCTAssertFalse(reader.contentText(Self.seededWord).exists)
         try writeReaderTOCEvidence(
             label: "reader-toc-required",
@@ -208,7 +211,8 @@ final class ReaderFlowUITests: UITestCase {
             href: "OEBPS/chapter2.xhtml",
             locatorHref: finalHref,
             destinationSelector: "reader.toc.readerOverlay.destination",
-            contentSelector: Self.secondChapterContent
+            contentSelector: Self.secondChapterContent,
+            observedContent: observedContent
         )
         // Readium can rebuild the WebKit AX subtree as a screenshot is taken;
         // persist the machine evidence while the just-asserted content node is

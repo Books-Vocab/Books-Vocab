@@ -226,7 +226,8 @@ extension UITestCase {
         href: String,
         locatorHref: String?,
         destinationSelector: String? = nil,
-        contentSelector: String? = nil
+        contentSelector: String? = nil,
+        observedContent: String? = nil
     ) throws {
         guard !label.isEmpty, !fixtureID.isEmpty, !assetID.isEmpty, !href.isEmpty else {
             throw ReaderTOCEvidenceWriterError.invalidContext("entry identity")
@@ -247,12 +248,18 @@ extension UITestCase {
         }
         let app = try XCTUnwrap(currentApp)
         // Readium may rebuild the WebKit AX subtree after any subsequent
-        // cross-surface query. Capture the already-asserted content first;
-        // the remaining proof reads are independent native SwiftUI markers.
-        let observedContent = try Self.readContent(
-            app,
-            selector: contentSelector
-        )
+        // cross-surface query. Prefer the exact content observation captured
+        // by the Page Object immediately after its assertion; only legacy
+        // callers without an observation use the bounded fallback reader.
+        let contentObservation: String?
+        if let observedContent {
+            contentObservation = observedContent
+        } else {
+            contentObservation = try Self.readContent(
+                app,
+                selector: contentSelector
+            )
+        }
         let asset = try Self.readInstalledAsset(from: app, assetID: assetID)
         let observedLocator = try Self.readRequiredValue(
             app,
@@ -289,7 +296,7 @@ extension UITestCase {
             observation: ReaderTOCEvidenceObservation(
                 requestedHref: href,
                 observedLocatorHref: observedLocator,
-                observedContent: observedContent,
+                observedContent: contentObservation,
                 contentSelector: contentSelector
             )
         )
