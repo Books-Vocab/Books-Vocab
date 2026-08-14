@@ -914,6 +914,53 @@ struct ReaderPage {
         return true
     }
 
+    /// Tap a duplicated reader word by its unique same-line context instead of
+    /// relying on the AX bridge's element order. Readium may expose a chapter
+    /// title, TOC anchor, and body word with the same identifier; the context
+    /// node is the semantic anchor and the nearest hittable word is the target.
+    @discardableResult
+    func tapContentText(
+        _ text: String,
+        nearestTo contextText: String,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        guard let context = exactlyOne(
+            contentTextQuery(contextText),
+            named: "Reader content context \(contextText)",
+            timeout: timeout,
+            file: file,
+            line: line
+        ) else { return false }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let candidates = contentTextQuery(text).allElementsBoundByIndex.filter {
+                $0.exists && $0.isHittable && !$0.frame.isEmpty
+            }
+            guard context.exists, context.isHittable, !context.frame.isEmpty else {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                continue
+            }
+
+            if let target = candidates.min(by: {
+                abs($0.frame.midY - context.frame.midY) < abs($1.frame.midY - context.frame.midY)
+            }) {
+                target.tapWhenReady(file: file, line: line)
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        XCTFail(
+            "Reader content \(text) did not resolve to a hittable node near context \(contextText)",
+            file: file,
+            line: line
+        )
+        return false
+    }
+
     @discardableResult
     func swipeWebViewLeft(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
         guard let webView = exactlyOne(webViewQuery, named: "production Reader WebView", file: file, line: line) else {

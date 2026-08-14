@@ -84,7 +84,7 @@ final class ReaderFlowUITests: UITestCase {
 
         // ── 3. 選詞 → 翻譯面板真的出現且帶內容（詞庫命中，零網路）──────────
         try step("word-tapped", app: app) {
-            XCTAssertTrue(reader.tapContentText(Self.seededContent))
+            XCTAssertTrue(reader.tapContentText(Self.seededWord, nearestTo: Self.seededContent))
         }
         guard reader.waitForTranslationPanel(timeout: 5) else {
             captureStep("no-translation-panel", app: app)
