@@ -16,6 +16,12 @@ extension UITestFixtureSeed {
 
         switch fixtureID {
         case .syncTerminalErrorRetrySuccess:
+            let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
+            // This lifecycle must run as the canonical settings account, not
+            // whichever auth fixture happened to precede it on the launch
+            // line. In particular, auth.signedIn is the demo account and
+            // SettingsCoordinator intentionally refuses sync in demo mode.
+            seedSignedInLoginFromWorld(using: authFixtureID(for: seed))
             FixtureDatasetStore.activateSettingsFixture(fixtureID)
             AppLog.app.info("UI-test fixture selected: settings.\(id, privacy: .public)")
         case .longContentCounterexample:
