@@ -870,7 +870,10 @@ struct ReaderPage {
             max((currentValue - 1.0) / 1.5, 0.02),
             0.98
         )
-        let normalizedTarget = endpoint <= 0.5 ? 0.02 : 0.98
+        // The track's thumb inset makes 0.02 quantize to the first visible
+        // 0.1 tick (1.1) on the lower edge. Use the actual track edge for the
+        // lower bound; the upper edge remains safely inside at 0.98.
+        let normalizedTarget = endpoint <= 0.5 ? 0.0 : 0.98
         let source = slider.coordinate(
             withNormalizedOffset: CGVector(dx: normalizedCurrent, dy: 0.5)
         )
