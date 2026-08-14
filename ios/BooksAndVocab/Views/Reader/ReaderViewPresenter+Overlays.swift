@@ -19,6 +19,8 @@ extension ReaderViewPresenter {
                 }
                 .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
                 .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("reader.loading.\(state.loadingState.accessibilityIdentifier)")
             }
     }
 
