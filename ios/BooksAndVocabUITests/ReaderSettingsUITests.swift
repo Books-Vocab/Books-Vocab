@@ -190,7 +190,7 @@ final class ReaderSettingsUITests: UITestCase {
         captureStep("preview-1.0", app: app)
         captureStep("preview-1.0-counterexample", app: app)
 
-        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0.1333))
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "1.2"))
         XCTAssertTrue(reader.waitForLineHeightValue("1.2", timeout: 5))
         captureStep("preview-1.2", app: app)
 

@@ -831,6 +831,39 @@ struct ReaderPage {
         }
     }
 
+    @discardableResult
+    func adjustLineHeight(
+        toValue expectedValue: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        guard let numericValue = Double(expectedValue) else { return false }
+        let normalized = (numericValue - 1.0) / 1.5
+        let candidates = [
+            normalized,
+            normalized - 0.04,
+            normalized + 0.04,
+            normalized - 0.08,
+            normalized + 0.08
+        ].map { min(max($0, 0.01), 0.99) }
+
+        guard revealLineHeightSlider(timeout: 8, file: file, line: line) else { return false }
+        for candidate in candidates {
+            guard let slider = exactlyOne(
+                lineHeightSliderQuery,
+                named: "Reader line-height slider",
+                timeout: 2,
+                file: file,
+                line: line
+            ) else { continue }
+            slider.adjust(toNormalizedSliderPosition: candidate)
+            if waitForSliderValueEquals(expectedValue, timeout: 4) {
+                return true
+            }
+        }
+        return false
+    }
+
     private func adjustEndpointSlider(
         to endpoint: CGFloat,
         interiorPositions: [CGFloat],
