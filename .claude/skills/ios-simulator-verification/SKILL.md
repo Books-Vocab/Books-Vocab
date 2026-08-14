@@ -17,6 +17,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - UI test 一律帶 `--dataset` 或 `--dataset-file`；沒有 UI World 就停止，不用真 backend 或任意舊 simulator 狀態代替。
 - 平行／agent 執行預設用 `--lease`。helper 的 `--device` 只接受 canonical UDID，不接受名稱；被 Apple ID、系統設定對話框或其他 worktree 佔用的裝置不可作證據。
 - helper 只在 clean source、`status=result=ok`、`exit=0`、`executed>0`、source/dataset/device identity 全相符，且五類視覺 artifact 真實存在時回 `0`；不能以 process exit 或可解析 JSON 代替 verdict。
+- 任何 UI test 若會在 test body 寫入 evidence context，必須由 `ios_ops.sh test --ui --json`／本 skill helper 執行；producer 會把同一個 pinned `KG_IOS_VERDICT_FILE` 注入 scoped `.xctestrun`，讓 runner 與 host 讀到同一份 invocation verdict。缺少這個 binding 必須 fail-closed，不能在 test 內自行猜 latest verdict。
 - 視覺 artifact 還必須通過 `ops/uitest_evidence_contract.py validate`：manifest 至少一個真實 step、每個 PNG 有尺寸／byteSize／SHA-256 且與檔案一致，contact/quick4/video/UIreview 非空，並帶同一個 source commit、UI World ID/hash、Simulator UDID provenance。只有路徑存在不算 evidence。
 - 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。
 - `build/snapshots/uitest-runs/index.json` 是 append-only history；同一 flow/variant 的新 run 只更新 cockpit 的 latest status，不得刪除舊的 fail／inconclusive record。
@@ -189,6 +190,7 @@ raw: <log> <xcresult>
 ## 失敗診斷捷徑
 
 - 找不到 accessibility identifier：先檢查父容器 `.accessibilityIdentifier` 是否覆蓋子節點；不要先改 selector。
+- Page Object 的 query property 必須無副作用：不得在 getter 內用 `count`／`XCTFail` 阻止後續 `waitUntilExists`；startup、Readium WebView、SwiftUI transient sheet 先等待 materialize，再對已存在節點做唯一性與 scope assertion。SwiftUI 父容器要保留子 selector 時，明確使用 `.accessibilityElement(children: .contain)`。
 - tap 後值沒有改：沿 binding setter → async Task → coordinator → store → view projection 驗證；assert store round-trip，而非只依賴原生 Toggle 的瞬時值。
 - UI test 突然超時且第一個 assertion 很晚才出現：檢查 AX query 是否在錯誤頁／prompt 上反覆重試、裝置是否被另一 run 佔用、以及 `deviceRunLockWaitMs`。
 - UI screenshot 有 Apple 帳號驗證、登入、權限或鍵盤遮罩：這是環境污染證據，不能當 UI pass。
