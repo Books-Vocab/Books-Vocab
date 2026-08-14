@@ -197,14 +197,14 @@ struct TodayReviewPage {
     /// Front fold surface (the tappable word side). Exists for the whole
     /// session; flipping is asserted via `cardBack` appearing, not via this.
     var cardFront: XCUIElement {
-        element("todayReview.card.front")
+        queryElement("todayReview.card.front")
     }
 
     /// Mounted back content. Only exists while the answer is revealed — the
     /// folded state holds a zero-cost stub without this identifier, so
     /// `cardBack.exists` is a REAL flip-state signal.
     var cardBack: XCUIElement {
-        element("todayReview.card.back")
+        queryElement("todayReview.card.back")
     }
 
     var frontNaturalContent: XCUIElement {
@@ -603,6 +603,14 @@ struct TodayReviewPage {
 
     private func element(_ identifier: String) -> XCUIElement {
         exactlyOne(identifier, in: app.descendants(matching: .any))
+    }
+
+    /// Query-only card accessors are required for negative-state assertions:
+    /// before reveal, `todayReview.card.back` legitimately resolves to zero
+    /// elements. Exact-one checks belong in readiness/action assertions, not
+    /// in a getter that callers use to prove absence.
+    private func queryElement(_ identifier: String) -> XCUIElement {
+        elements(for: identifier).element(boundBy: 0)
     }
 
     private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
