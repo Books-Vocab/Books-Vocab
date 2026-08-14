@@ -90,7 +90,30 @@ struct DictionaryLookupPage {
     }
 
     func materialization(status: String) -> XCUIElement {
-        element("addLink.dictionary.materialization.\(status)")
+        app.descendants(matching: .any)
+            .matching(identifier: "addLink.dictionary.materialization.\(status)")
+            .firstMatch
+    }
+
+    @discardableResult
+    func assertMaterialization(
+        status: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement {
+        let identifier = "addLink.dictionary.materialization.\(status)"
+        let marker = materialization(status: status)
+        XCTAssertTrue(
+            marker.waitUntilExists(timeout: 10),
+            "dictionary materialization marker did not mount: \(identifier)",
+            file: file,
+            line: line
+        )
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        XCTAssertEqual(matches.count, 1, "canonical selector must resolve exactly once: \(identifier)", file: file, line: line)
+        XCTAssertGreaterThan(marker.frame.width, 0, "materialization selector has no positive width: \(identifier)", file: file, line: line)
+        XCTAssertGreaterThan(marker.frame.height, 0, "materialization selector has no positive height: \(identifier)", file: file, line: line)
+        return marker
     }
 
     func tapSense(id: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
