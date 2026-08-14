@@ -551,6 +551,7 @@ struct StatsPresenter: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(ReviewCalendarAccessibility.open)
 
             Button { showCalendar = true } label: {
                 VocabCard {
