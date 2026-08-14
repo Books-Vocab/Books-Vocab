@@ -253,7 +253,27 @@ struct TodayReviewPage {
 
     /// Add-link entry point on the current card's graph-link section.
     var addLinkButton: XCUIElement {
-        element("todayReview.card.addLink")
+        // This element is mounted only after the reveal transition. Keep the
+        // getter side-effect-free so callers can wait for the real UI state
+        // before asserting singleton cardinality.
+        app.descendants(matching: .any)
+            .matching(identifier: "todayReview.card.addLink")
+            .element
+    }
+
+    func assertAddLinkButtonIsUnique(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "todayReview.card.addLink")
+                .count,
+            1,
+            "Today Review add-link selector must resolve exactly once",
+            file: file,
+            line: line
+        )
     }
 
     func link(id: String) -> XCUIElement {

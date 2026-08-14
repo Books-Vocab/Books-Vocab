@@ -141,6 +141,7 @@ final class DictionaryLookupFlowUITests: UITestCase {
             XCTFail("review card did not expose add-link action")
             throw NSError(domain: "DictionaryLookupFlowUITests", code: 4)
         }
+        review.assertAddLinkButtonIsUnique()
         review.addLinkButton.tapWhenReady()
 
         let page = DictionaryLookupPage(app: app).waitForSheet()
