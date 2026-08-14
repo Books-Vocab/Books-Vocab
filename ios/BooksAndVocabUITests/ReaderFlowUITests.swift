@@ -411,6 +411,19 @@ final class ReaderFlowUITests: UITestCase {
                     ),
                     "Restore-failure scenario must converge to a valid Readium progress state"
                 )
+                XCTAssertTrue(
+                    reader.currentLocator.waitUntilExists(timeout: 45),
+                    "Restore-failure scenario must publish the recovered Readium locator"
+                )
+                XCTAssertEqual(
+                    reader.currentLocator.value as? String,
+                    "OEBPS/chapter1.xhtml",
+                    "Restore-failure scenario must recover to the first real reading-order resource"
+                )
+                XCTAssertTrue(
+                    reader.contentText("Introduction").waitUntilExists(timeout: 45),
+                    "Restore-failure scenario must render real EPUB content after recovery"
+                )
             }
             let provenance = String(describing: reader.runtimeState.value ?? reader.runtimeState.label)
             XCTAssertTrue(provenance.contains("dataset=marketing_demo"), provenance)
