@@ -133,6 +133,7 @@ extension ReaderSettingsPresenter {
                     changeLineHeight(by: ReaderPresentationMetrics.SettingsPreview.lineHeightStep)
                 }
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("reader.settings.lineHeightTicks")
 
             ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
