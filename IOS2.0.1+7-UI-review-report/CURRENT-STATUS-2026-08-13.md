@@ -2,31 +2,37 @@
 
 日期：2026-08-14（重驗證更新）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前工作樹與 simulator evidence bundle  
-工作樹：`feat/ios-ui-review-report-complete-20260813`；產品 code fix baseline：`6d00945e1`；目前 evidence HEAD：`9e229239b`（僅新增本狀態報告）；v13 因報告中途修改而 dirty fail-closed，v14 已完成但 P4 在完整序列中失敗，v15 isolated P4 已通過。
+工作樹：`feat/ios-ui-review-report-complete-20260813`；目前 evidence HEAD：`4c872d3e2c70abcf005cc0041671f0af9e7a7b3f`；Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。v13 dirty fail-closed、v14/v16 sequence failure、v17/v18 修正後證據均保留。
 
 ## 結論
 
 原報告要求的是「重新思考並重構」而非局部修飾。P1–P15 表面上是 15 張圖，實際上是 5 個跨頁系統問題：資料／狀態模型、元件共用、互動時序、長內容／極端狀態與 visual hierarchy 必須一起收斂。這不是一次 UI polish；必須以 UI World 注入、狀態矩陣、Simulator/UI-test、證據契約與視覺迭代形成閉環。只修單頁 padding、顏色或單一 selector，無法達到報告標準。
 
-本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。目前最重要的差距已被實際暴露並修掉：P1/P2 先後發現 auth fixture 缺失、Page Object 過早做 cardinality 斷言、以及 graphLinks wrapper 吞掉子連結 AX identifier；P1/P2 targeted bundle 已 machine／contract／視覺 PASS，但仍不能冒充完整狀態矩陣。P3 的 package graph／cache BLOCK 也已解除，歷史失敗仍保留作診斷。
+本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。最新 `final-head-batch-v19` 的 19/19 executions 全部 machine/contract PASS，且 19/19 bundle 已完成全 steps 人工視覺 attestation；但 `record-many` 仍依 exact state union fail-closed，不能把 selector-level PASS 冒充 P1–P15 完整矩陣。P1/P2 的 auth、cardinality、graphLinks AX 結構問題，以及 P3 package graph/cache BLOCK 均已實際修掉，歷史失敗仍保留作診斷。
 
-Reader P4/P5 的最新根因收斂是 iOS 26 XCTest Slider lower-bound seam：上一批 `v11` 在同一個 P4/P5 selector 於 `0→1` 端點失敗，並非產品 binding 失效；`6d00945e1` 將兩端都固化為 interior staging（lower `0.05→0.0`、upper `0.95→1.0`）並等待 AX value 變更。`v12` 在該最新 HEAD 重新跑 P4/P5，2/2 machine／contract／visual PASS。P9 仍保留從 auth、stale selector、父容器 AX shadowing、viewport readiness、空狀態 containment 到 AX materialization race 的完整根因鏈；P10 populated metrics/calendar/forecast 與 P15 English reset 也完成 targeted clean evidence。
+Reader P4/P5 有兩層已收斂根因。第一層是 P3→P4 連續行程中 UI World overlay 只改 persistence，已初始化的 `ReaderSettings.shared` 沒有 reload，造成 P4 讀到舊 line-height；`05e74c94b` 加入 injectable stores、`reloadFromPersistence()` 與 fixture overlay 後 reload，unit 2/2 PASS，v17 P3→P4 2/2 PASS。第二層是 iOS 26 XCTest Slider endpoint seam：`4c872d3e2` 將 lower/upper 都固化為有限次 semantic interior staging（`0.05/0.15/0.25` 與 `0.95/0.85/0.75`），每次先等 AX interior value 變更，再確認 endpoint exact value；v18 P5 與 v19 P5 均 PASS。P9 仍保留從 auth、stale selector、父容器 AX shadowing、viewport readiness、空狀態 containment 到 AX materialization race 的完整根因鏈；P10 populated metrics/calendar/forecast 與 P15 English reset 也完成 current-head evidence。
 
-最新完整 batch 的可核對狀態是：`v11` 綁定 `ecf6c72ae`、19 executions 中 17 machine/contract PASS，2 個失敗都集中在上述 Slider lower-bound seam；`v13` 曾綁定 `6d00945e1` 啟動，但因本報告在執行期間落地造成 source tree dirty，整批被 fail-closed 作廢，不代表產品失敗或成功。乾淨 HEAD 的 `v14` 綁定 `9e229239b`，18/19 selector machine/contract PASS，唯一失敗是 P4 `waitForLineHeightValue("1")`，只產出 launch/settings-open；同一 HEAD 的 isolated `v15` P4 以 4 steps machine/contract/visual PASS。這證明 P4 目前是完整序列中的順序敏感／間歇性穩定性問題，而不是已經可以宣稱完全收斂。`record-many` 已按 fail-closed 契約拒絕 v14；另有狀態矩陣缺口，因此目前不寫入 final matrix。這裡的 PASS 仍明確限定為 Simulator／UI World／exact XCTest 證據，不升格為 physical device 或 production release。
+最新完整 batch 的可核對狀態是：`v11` 的 2 個 Slider failure、`v13` 的 dirty fail-closed、`v14` 的 P4 sequence failure、`v16` 的 P3→P4 stale preference failure 都保留；`v17` 修正後 P3→P4 2/2 PASS，`v18` P5 endpoint retry 5/5 PASS，`v19` 綁定目前 HEAD 且 19/19 machine/contract PASS、19/19 visual attestation PASS。`record-many` 先後以工具拒絕 unattended / 不完整 state union；目前最後一次拒絕具體指出 P1 缺少 `idle/loading/success/retry/error/partial-result` 的 exact union，其他 P2/P4/P6/P7/P10/P12/P13/P14 也仍有同類缺口。這裡的 PASS 仍明確限定為 pinned Simulator／UI World／exact XCTest／視覺 bundle 證據，不升格為 physical device 或 production release。
 
 ## 原報告意圖與目前差距
 
 | Cluster | 報告真正要求 | 目前已完成 | 尚差 | 狀態 |
 |---|---|---|---|---|
-| Dictionary P1–P2 | 詞典不可用、結果／詞義／來源不完整；需重做資料狀態與 typed surface，不是加一個按鈕 | explicit lookup state、canonical senses、provenance/materialization fixture、穩定 selector 已落地；targeted bundles machine／contract／visual PASS | selector-level 證據尚未覆蓋 idle/loading/error/retry 與所有 counterexample state；仍是 simulator-only、單一 reviewer | targeted PASS／matrix pending |
-| Reader Runtime P3–P7 | TOC 成功邊界、settings round-trip、P5 fixed-height/drag/scale、progress/loading/retry 狀態需同一 runtime 模型 | P3 success + invalid-destination counterexample、P5、P6/P7 均有 v14 contract-valid evidence；P4 isolated `v15` 4/4 machine/contract/visual PASS | P4 在 v14 完整序列中仍有 line-height assertion failure；P3/P4/P5/P6/P7 的 full state union 尚未收斂 | focused/targeted PASS；stability/matrix pending |
-| Explore/Overview P8–P10 | loading/empty/retry/counterexample、calendar shared components、Overview 需整體重設資訊層次 | P8 已有 evidence；P9 已在 `8694fa4e8` 完成 6 steps；P10 primary 與 populated metrics/calendar/forecast 第二 selector 均 targeted PASS | P8/P9/P10 需綁定 `6d00945e1`，且 aggregate 尚缺 Overview/forecast-zero 等必要 state 的 exact union | targeted PASS／matrix pending |
-| Vocabulary/Review Card P11–P13 | P11 role/review/search/CTA 需有完整資料世界；P12/P13 需消除留白、資訊隱藏與 toolbar 失控 | P11 rich world、facet union、CTA、dynamic type、counterexample targeted PASS；P12/P13 有 contract-valid targeted bundles | P11 的 O(N) projection/AX scan 只完成靜態風險審查；P12/P13 的 state labels 尚未與 matrix required/counterexample exact union 完成對齊 | targeted PASS／matrix pending |
-| Settings/Sync P14–P15 | sync/error/retry 動畫與 settings IA 要可觀察、可回復；不可用 optimistic UI 假裝成功 | P14 已以 session-scoped transport ledger 完成 fresh evidence；P15 main/long/reset 三個 selector 均已 targeted PASS，且 reset 以 English locale 驗證 stable dismiss ID、before/failed/succeeded boundary | P14/P15 需綁定最新 HEAD；P14 尚缺 idle/syncing/terminal-success 的完整 aggregate union；仍是 simulator-only / 單一 reviewer | targeted PASS／matrix pending |
+| Dictionary P1–P2 | 詞典不可用、結果／詞義／來源不完整；需重做資料狀態與 typed surface，不是加一個按鈕 | v19 P1/P2 current-head bundles machine／contract／visual PASS；canonical result、typed senses、provenance/materialization 均可重現 | P1/P2 selector-level 仍未覆蓋矩陣要求的全部 idle/loading/retry/error/partial、missing-example/materialize-error；仍是 simulator-only、單一 reviewer | current selector PASS／matrix pending |
+| Reader Runtime P3–P7 | TOC 成功邊界、settings round-trip、P5 fixed-height/drag/scale、progress/loading/retry 狀態需同一 runtime 模型 | v17 P3→P4 sequence、v19 P3/P4/P5/P6/P7 current-head bundles 全部 machine／contract／visual PASS；P4 stale singleton 與 P5 endpoint seam 已修正 | P6/P7 的 repeated state labels、P4 change-highlight/reset、以及 P3–P7 完整 required/counterexample union 尚未收斂 | current selector PASS／matrix pending |
+| Explore/Overview P8–P10 | loading/empty/retry/counterexample、calendar shared components、Overview 需整體重設資訊層次 | v19 P8/P9/P10 兩 selector 均 current-head machine／contract／visual PASS；P9 6 steps、P10 populated metrics 207/18/8、26/41 可重現 | P10 forecast-zero/counterexample 與其他語意 state 尚未完成 aggregate exact union | current selector PASS／matrix pending |
+| Vocabulary/Review Card P11–P13 | P11 role/review/search/CTA 需有完整資料世界；P12/P13 需消除留白、資訊隱藏與 toolbar 失控 | v19 P11/P12/P13 current-head bundles machine／contract／visual PASS；P11 644 rows/facet/CTA、P13 natural front/scroll back 可重現 | P12/P13 實際 capture labels 與矩陣 required/counterexample 語意尚未完全對齊；P11 O(N) projection/AX scan 仍只完成靜態風險審查 | current selector PASS／matrix pending |
+| Settings/Sync P14–P15 | sync/error/retry 動畫與 settings IA 要可觀察、可回復；不可用 optimistic UI 假裝成功 | v19 P14/P15 current-head bundles machine／contract／visual PASS；P14 session-scoped ledger、P15 main/long/reset 與 English reset boundary 均可重現 | P14 idle/syncing/terminal-success exact union 尚未留下；P15 selector-level 已完整但仍未通過全矩陣聚合；仍是 simulator-only / 單一 reviewer | current selector PASS／matrix pending |
 
 ## P1–P15 selector-level evidence（非完整矩陣 verdict）
 
 「PASS」只代表該 selector 有契約有效、source HEAD 可追溯且完成視覺 attestation 的 bundle；它不代表該 requirement 的 required/counterexample state 已完整覆蓋。程式已提交但尚未取證者不升格為 PASS。下表的既有 bundle 是 selector-level 歷史／targeted 證據，不等於報告提交後的 final current-head verdict。
+
+### Final current-head v19
+
+`final-head-batch-v19-summary.json` 綁定 source=`4c872d3e2c70abcf005cc0041671f0af9e7a7b3f`、clean tree、同一 Simulator、同一 `marketing_demo` SHA。19/19 selector executions 均 `exit=0`、machine contract valid；19/19 published bundles 均已用 `--all-steps` 完成視覺 attestation，包含 P3 success/invalid、P4/P5 sequence/preview、P10 第二 selector、P15 long/reset 三個 counterexample。這是目前最完整的 selector-level current-head 證據，但不是完整矩陣 verdict。
+
+主要 bundle 根目錄：`build/snapshots/uitest-evidence/final-head-batch-v19-bundles/`；summary：`build/snapshots/uitest-evidence/final-head-batch-v19-summary.json`。每個 bundle 的 `review_manifest.json`、`review_state.json`、`ui-evidence-contract.json`、contact sheet、quick4、UIreview HTML、XCTest result 與影片均保留。
 
 | ID | Selector | 程式／交接 | Evidence 狀態 |
 |---|---|---|---|
@@ -59,8 +65,21 @@ Reader P4/P5 的最新根因收斂是 iOS 26 XCTest Slider lower-bound seam：�
 | `final-head-batch-v13` | `6d00945e1` | 因報告在執行期間修改造成 source tree dirty，19-selector batch fail-closed 作廢 | 不作產品 verdict |
 | `final-head-batch-v14` | `9e229239b` | 19 executions；18 machine/contract PASS；P4 在完整序列於 `ReaderSettingsUITests.swift:67` 失敗；其餘成功 bundles 已完成具名 visual attestation | batch failed；不能 record-many |
 | `reader-settings-p4-v15` | `9e229239b` | P4 isolated 1/1 machine/contract PASS；4 steps 已完成具名 visual attestation | 證明可重現 focused PASS，但不能清除 v14 的 sequence-stability blocker |
+| `p3-p4-sequence-v17` | `05e74c94b` | P3→P4 連續行程 2/2 machine/contract/visual PASS；證明 UI World overlay 後 live ReaderSettings 已同步 | 修正 stale singleton 根因；不能代替 P1–P15 矩陣 |
+| `reader-settings-endpoint-v18` | `4c872d3e2` | P5 independent 5 steps machine/contract/visual PASS；2.1→1.0→2.5、dark/sepia viewport | 修正 iOS 26 endpoint timing seam；不能代替矩陣 |
+| `final-head-batch-v19` | `4c872d3e2` | 19/19 machine/contract PASS；19/19 full-step visual attestation PASS；clean source/dataset/device/video provenance | selector-level final；`record-many` 仍因 exact state union 缺口拒絕寫入 |
 
-目前 matrix 的 fail-closed 意義很重要：P1/P2 的 targeted selector 已能展示 canonical result/materialization，但尚未留下 idle/loading/error/retry、missing-example 等全部要求資產；P4/P5 的 focused bundle 已證明端點與 theme/preview 視覺，但 P4 的 change-theme/change-highlight/reset 與 P5 的 exact counterexample labels 仍需 aggregate 對齊；P6/P7/P10/P14 亦有同類「selector 有畫面、狀態矩陣尚未完備」差距。P12/P13 則主要是實際 step label 與矩陣語意仍未完成明確 aliases／額外 capture。這些是目前報告與實作的真實差距，不用 PASS 字樣掩蓋。
+目前 matrix 的 fail-closed 意義很重要：v19 不是失敗，而是成功地把「selector 可跑」與「requirement state 完整」分開。`record-many` 已實際拒絕 P1 的 missing/duplicate exact state coverage；其餘 P2/P4/P6/P7/P10/P12/P13/P14 也仍需補足或明確定義 state aliases／額外 capture。這些是目前報告與實作的真實差距，不用 PASS 字樣掩蓋，也不能拿舊 HEAD bundle 混入最新 HEAD。
+
+## v16–v19 新增的順序穩定性根因
+
+1. **P3→P4 stale persistence**：P3 在同一 process sequence 先透過 UI World overlay 寫入 Reader preferences；`ReaderSettings.shared` 已在 app 啟動時初始化，後續只更新 UserDefaults/iCloud KVS，SwiftUI live object 仍保留舊值，故 P4 開 settings 讀到 `1.5` 而非 fixture 的 `2.1`。這不是測試順序偶然性，也不是把 assertion 改寬即可接受的問題。
+2. **修法**：`ReaderSettings` 改成可注入 defaults/cloud stores，新增 `reloadFromPersistence()` 與 loading guard，`UITestFixtureSeed.applyPreferencesFromWorld()` 在 overlay 完成後 reload live singleton；unit `ReaderSettingsFixtureTests` 2/2 PASS。v17 同一 P3→P4 sequence 2/2 PASS，P4 initial/changed/reopened 均顯示正確狀態。
+3. **P5 第二個 seam**：preview 在 Form swipe 後使用 iOS 26 SwiftUI Slider 的 endpoint API，直接 `0` 偶爾回傳但 AX value 停在 `1.5`；coordinate drag 曾出現長時間無輸出，故不納入 fallback。`4c872d3e2` 改為有限候選 interior staging + bounded AX wait + endpoint exact wait，仍只走 semantic Slider API。v18 與 v19 P5 均以 5 steps PASS。
+
+## P15 reset counterexample 最終狀態
+
+English `reset_counterexample` 的資料 seed、live snapshot、projection 都是 reset 前 3 cards；失敗根因是 `SettingsSheetPage.assertIsPresented()` 以繁中 `完成` 做 cardinality 斷言，English UI 實際是 `Done`，測試在 account detail 之前中止。修正為 production-stable `settings.dismissButton` 後，v19 current-head reset bundle 視覺上確認 account detail、3 cards → injected failure boundary → 0 cards；不是把 0 當成空資料，也不是刪除 assertion。
 
 ## P1/P2 這一輪重新審查發現的根因與修正
 
@@ -124,9 +143,9 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache \
   --helper .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
   --methods-file <exact-runs.json> \
   --device <pinned-simulator-udid> \
-  --output-dir build/snapshots/uitest-evidence/final-head-batch-v14 \
-  --publish-root build/snapshots/uitest-evidence/final-head-batch-v14-bundles \
-  --summary-out build/snapshots/uitest-evidence/final-head-batch-v14-summary.json
+  --output-dir build/snapshots/uitest-evidence/final-head-batch-v19 \
+  --publish-root build/snapshots/uitest-evidence/final-head-batch-v19-bundles \
+  --summary-out build/snapshots/uitest-evidence/final-head-batch-v19-summary.json
 
 # 3. 每個 bundle 必須先完成主流程 verdict + evidence contract，
 #    再逐張檢視 contact sheet / screenshot，最後才寫 visual attestation。
@@ -154,17 +173,17 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache uv run --python 3.13 \
 - `ops/ios_ui_run_many.py`：build-once/run-many、精確 selector、stable bundle、source HEAD preflight、heartbeat、continue-on-failure、summary。
 - `ops/ios_ui_review_matrix.py record-many`：契約與視覺 attestation 完成後的 atomic bulk recording；支援同一 requirement 的多 bundle exact state union，拒絕缺漏、重複與共用 asset。
 - `.claude/skills/ios-simulator-verification/SKILL.md`：已固化 simulator/UI-test/evidence contract、visual attestation、cluster batch、長命令不閒置與 fail-closed handoff。
-- `.claude/skills/ios-simulator-verification/SKILL.md`：另固化 iOS 26 SwiftUI Slider 兩端 endpoint 的 lower `0.05→0.0`、upper `0.95→1.0` staged action、AX value 驗證與 coordinate-drag inconclusive 分類。
+- `.claude/skills/ios-simulator-verification/SKILL.md`：另固化 iOS 26 SwiftUI Slider 兩端 endpoint 的有限候選 lower `0.05/0.15/0.25→0.0`、upper `0.95/0.85/0.75→1.0` staged action、AX value 驗證與 coordinate-drag inconclusive 分類。
 - `ops/ios_ui_run_many.py` + `ops/ios_ui_review_matrix.py`：將「一次 selector PASS」與「完整 requirement state coverage」拆開；這個差異正是本輪抓到的主要假綠來源。
 - `docs/sop/ui_flow_evidence.md`、`docs/reference/tech_index.md`、`docs/registry.yml`：已同步控制面入口；`docs_lint --registry` PASS（45 documents）。
 
 ## 驗證與偏離
 
-- 已通過：cluster validator `valid=true clusterCount=5 requirementCount=15 selectorCount=16`；run-many/matrix tests `27 passed`；最新 affected unit regression `11 passed / 0 failed`；`./ops/test_ios_ops.sh` `362 passed / 0 failed`；`bash -n ops/ios_test.sh`；`bash .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；`docs_lint --registry`（45 documents）；P1/P2 v14 targeted Simulator evidence（machine PASS、contract PASS、contact sheet 視覺檢查、reviewer=`codex` attestation）；P3 success 與 invalid-destination counterexample 的 v14 fresh evidence均 machine PASS、video hash 綁定、full/quick4/UIreview/video 完成視覺 attestation；P4 isolated v15 source `9e229239b` 4 steps machine／contract／visual PASS；P5 v14 source `9e229239b` 5 steps machine／contract／visual PASS；P6–P15 v14 成功 bundles 均完成 source/dataset/device 綁定與具名 visual attestation；P9 230 秒 execution、P15 English reset boundary 均保留；skill/SOP helper regression PASS。`final-head-batch-v11` 已明確記錄 17/19 PASS + 2 個 Slider seam failure；`final-head-batch-v13` 因報告中途修改而 fail-closed 作廢；`final-head-batch-v14` 為 18/19 PASS、P4 sequence failure；`reader-settings-p4-v15` 為 isolated 1/1 PASS。因 v14 summary failed、且 state union 仍有缺口，`record-many` 明確拒絕，尚未寫入 final matrix。
+- 已通過：cluster validator `valid=true clusterCount=5 requirementCount=15 selectorCount=16`；run-many/matrix tests `27 passed`；最新 affected unit regression `11 passed / 0 failed`；`./ops/test_ios_ops.sh` `362 passed / 0 failed`；`bash -n ops/ios_test.sh`；`bash .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；`docs_lint --registry`（45 documents）；v19 19/19 current-head Simulator executions machine／contract PASS；v19 19/19 bundle full-step visual attestation PASS；P3→P4 v17 sequence 2/2 PASS；P5 v18 independent 5 steps PASS；P15 English reset v19 PASS。`final-head-batch-v11` 已明確記錄 17/19 PASS + 2 個 Slider seam failure；`final-head-batch-v13` 因報告中途修改而 fail-closed 作廢；`final-head-batch-v14` 為 18/19 PASS、P4 sequence failure；`p3-p4-sequence-v16` 捕捉到 stale live singleton；`record-many` 仍依 exact state union 正確拒絕，尚未寫入 final matrix。
 - 平台：本輪是 iOS Simulator 驗證，不是 physical device；報告中的「實機操作」在此以 pinned simulator + exact XCTest + stable visual artifact 實現，不能誤報成真機 PASS。
 - 視覺審查：目前 attestation reviewer 是 `codex`；沒有第二位獨立視覺 reviewer，因此這是已揭露的 assurance limitation，不升格為雙人審查。
-- P3 的歷史 dependency/cache BLOCK 已解除；目前仍需由 final HEAD fresh Gate 確認整合層結果。完整 unit scope若再次出現 keychain OSStatus 25291，應標為 infrastructure inconclusive，不得改寫已成功的 UI／product verdict。P11 的 static performance risk 同樣不是已證明的 performance PASS；各 cluster 的視覺 attestation 仍由單一主線 reviewer 完成，沒有第二位獨立 reviewer。更重要的是，v14 的 P4 sequence failure 與 P1–P15 required/counterexample exact union 都是未完成事項；isolated P4 PASS 不能代替完整序列穩定性，selector PASS 也不能代替未覆蓋狀態。
+- P3 的歷史 dependency/cache BLOCK 已解除；目前未取得 delivery-loop 授權，因此沒有 cutover local `main`、同步 `origin/main` 或碰 `origin/prod`。完整 unit scope若再次出現 keychain OSStatus 25291，應標為 infrastructure inconclusive，不得改寫已成功的 UI／product verdict。P11 的 static performance risk 同樣不是已證明的 performance PASS；各 cluster 的視覺 attestation 仍由單一主線 reviewer 完成，沒有第二位獨立 reviewer。v17/v18 已清除 P4 sequence 與 Slider endpoint blocker，但 P1–P15 required/counterexample exact union 仍未完成；selector PASS 不能代替未覆蓋狀態。
 
 ## 工作樹邊界
 
-本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；P1/P2、P5–P15 已在 `9e229239b` 有 v14 success/attested evidence，P4 另有 v15 isolated success，但 v14 full sequence failure 必須保留。本狀態報告提交後仍須完成 P4 sequence-stability rerun、fresh Gate、P1–P15 aggregate state union；只有取得明示 delivery-loop 授權後，才由 worktree-flow 做 cutover local `main`、同步 `origin/main`、清理 scoped worktree/branch；目前不觸碰 local `main`、`origin/main` 或 `origin/prod`。歷史 failure bundle、v13 dirty fail-closed、v14 P4 failure、keychain infrastructure inconclusive、P11 perf risk 與 matrix state gaps 都會保留，不用 partial PASS 蓋掉它們。
+本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；目前 HEAD `4c872d3e2` 已有 v19 current-head selector evidence 與 v17/v18 sequence/endpoint evidence。尚未取得明示 delivery-loop 授權，因此不觸碰 local `main`、`origin/main` 或 `origin/prod`。歷史 failure bundle、v13 dirty fail-closed、v14/v16 sequence failure、keychain infrastructure inconclusive、P11 perf risk 與 matrix state gaps 都會保留，不用 partial PASS 蓋掉它們。
