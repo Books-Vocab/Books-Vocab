@@ -795,13 +795,19 @@ struct ReaderPage {
         ) != nil else { return false }
         if position <= 0.01 {
             return adjustEndpointSlider(
-                to: position,
+                // iOS 26's XCTest slider bridge can drop the exact 0.0
+                // coordinate after a SwiftUI Form re-layout.  The control's
+                // 0.1 step quantizes this interior coordinate to the same
+                // semantic lower bound (1.0) without relying on the edge hit.
+                to: 0.001,
                 interiorPositions: [0.05, 0.15, 0.25],
                 expectedValue: "1"
             )
         } else if position >= 0.99 {
             return adjustEndpointSlider(
-                to: position,
+                // Same iOS 26 edge-hit seam at the upper bound.  0.999 is
+                // still quantized by the 0.1 step to the exact 2.5 value.
+                to: 0.999,
                 interiorPositions: [0.95, 0.85, 0.75],
                 expectedValue: "2.5"
             )
