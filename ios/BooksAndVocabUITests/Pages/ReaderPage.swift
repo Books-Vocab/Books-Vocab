@@ -857,8 +857,36 @@ struct ReaderPage {
                 line: line
             ) else { continue }
             slider.adjust(toNormalizedSliderPosition: candidate)
-            if waitForSliderValueEquals(expectedValue, timeout: 4) {
+            if waitForSliderValueEquals(expectedValue, timeout: 2) {
                 return true
+            }
+        }
+
+        if let slider = exactlyOne(
+            lineHeightSliderQuery,
+            named: "Reader line-height slider",
+            timeout: 2,
+            file: file,
+            line: line
+        ), let rawValue = slider.value,
+        let currentValue = Double(String(describing: rawValue)) {
+            let currentPosition = min(max((currentValue - 1.0) / 1.5, 0.01), 0.99)
+            let source = slider.coordinate(
+                withNormalizedOffset: CGVector(dx: currentPosition, dy: 0.5)
+            )
+            for candidate in candidates {
+                let target = slider.coordinate(
+                    withNormalizedOffset: CGVector(dx: candidate, dy: 0.5)
+                )
+                source.press(
+                    forDuration: 0.1,
+                    thenDragTo: target,
+                    withVelocity: .fast,
+                    thenHoldForDuration: 0.1
+                )
+                if waitForSliderValueEquals(expectedValue, timeout: 2) {
+                    return true
+                }
             }
         }
 
@@ -866,7 +894,7 @@ struct ReaderPage {
         // adjacent tick, converge from the value AX actually reports.  The
         // discrete swipe direction is chosen anew after every tick, so an
         // overshoot is corrected instead of being treated as success.
-        for _ in 0..<8 {
+        for _ in 0..<4 {
             guard let slider = exactlyOne(
                 lineHeightSliderQuery,
                 named: "Reader line-height slider",
@@ -884,8 +912,8 @@ struct ReaderPage {
             } else {
                 slider.swipeRight()
             }
-            guard waitForSliderValueChange(from: before, timeout: 4) else { continue }
-            if waitForSliderValueEquals(expectedValue, timeout: 2) {
+            guard waitForSliderValueChange(from: before, timeout: 2) else { continue }
+            if waitForSliderValueEquals(expectedValue, timeout: 1) {
                 return true
             }
         }
