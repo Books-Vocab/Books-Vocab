@@ -277,7 +277,12 @@ struct TodayReviewPage {
     }
 
     func link(id: String) -> XCUIElement {
-        exactlyOne("todayReview.card.link.\(id)", in: app.descendants(matching: .any))
+        // Materialization dismisses the sheet and rebuilds the card cache in
+        // the same main-actor turn. Keep this query pure so the assertion can
+        // wait for the projected link before checking singleton cardinality.
+        app.descendants(matching: .any)
+            .matching(identifier: "todayReview.card.link.\(id)")
+            .element
     }
 
     func assertLink(
@@ -287,9 +292,9 @@ struct TodayReviewPage {
     ) {
         let identifier = "todayReview.card.link.\(id)"
         let matches = app.descendants(matching: .any).matching(identifier: identifier)
-        XCTAssertEqual(matches.count, 1, "projected link selector must resolve exactly once: \(identifier)", file: file, line: line)
         let target = link(id: id)
         XCTAssertTrue(target.waitUntilExists(timeout: 10), "projected link did not mount: \(identifier)", file: file, line: line)
+        XCTAssertEqual(matches.count, 1, "projected link selector must resolve exactly once: \(identifier)", file: file, line: line)
         XCTAssertGreaterThan(target.frame.width, 0, "projected link has no positive width: \(identifier)", file: file, line: line)
         XCTAssertGreaterThan(target.frame.height, 0, "projected link has no positive height: \(identifier)", file: file, line: line)
     }
