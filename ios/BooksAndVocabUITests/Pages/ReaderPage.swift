@@ -879,7 +879,7 @@ struct ReaderPage {
             let matches = lineHeightSliderQuery.allElementsBoundByIndex
             if matches.count == 1,
                let value = matches[0].value,
-               String(describing: value) == expectedValue {
+               sliderValue(value, equals: expectedValue) {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
@@ -887,7 +887,17 @@ struct ReaderPage {
         let matches = lineHeightSliderQuery.allElementsBoundByIndex
         guard matches.count == 1,
               let value = matches[0].value else { return false }
-        return String(describing: value) == expectedValue
+        return sliderValue(value, equals: expectedValue)
+    }
+
+    private func sliderValue(_ value: Any, equals expected: String) -> Bool {
+        let rendered = String(describing: value)
+        if rendered == expected { return true }
+        guard let actualNumber = Double(rendered),
+              let expectedNumber = Double(expected) else {
+            return false
+        }
+        return abs(actualNumber - expectedNumber) < 0.001
     }
 
     func lineHeightValue(timeout: TimeInterval = 5) -> Double? {
@@ -903,7 +913,14 @@ struct ReaderPage {
         guard let slider = exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout) else {
             return false
         }
-        return slider.waitUntilValueEquals(value, timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let current = slider.value, sliderValue(current, equals: value) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return slider.value.map { sliderValue($0, equals: value) } == true
     }
 
     @discardableResult
