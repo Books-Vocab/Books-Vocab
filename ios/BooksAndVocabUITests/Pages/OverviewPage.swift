@@ -102,7 +102,18 @@ struct OverviewPage {
         line: UInt = UInt(#line)
     ) {
         let overviewQuery = elements(identifier: "overview")
-        overview.assertExists(timeout: 10, file: file, line: line)
+        // Do not call the exact-one page getter before the container has been
+        // materialized. SwiftUI can publish the Overview identifier between
+        // accessibility snapshots; waiting on the query-bound element keeps
+        // this readiness check side-effect free and lets cardinality be
+        // asserted against the fresh query afterwards.
+        let overviewElement = overviewQuery.element(boundBy: 0)
+        XCTAssertTrue(
+            overviewElement.waitForExistence(timeout: 10),
+            "overview must materialize before hierarchy assertions",
+            file: file,
+            line: line
+        )
         XCTAssertEqual(overviewQuery.count, 1, "overview must be a unique live AX ancestor", file: file, line: line)
     }
 
