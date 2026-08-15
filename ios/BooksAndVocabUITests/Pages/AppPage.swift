@@ -14,23 +14,33 @@ struct AppPage {
         systemImage: String,
         fallbackLabel: String
     ) -> XCUIElement {
+        // The identifier on the TabView content is exposed as an `Other`
+        // sibling on iOS 26.4. Prefer the identifier attached to the actual
+        // tab-item Label so isSelected describes the production tab button,
+        // not its SF Symbols child.
+        let tabButton = app.tabBars.buttons
+            .matching(identifier: "\(identifier).button")
+            .firstMatch
+        if tabButton.exists {
+            return tabButton
+        }
         // SwiftUI may publish the `.accessibilityIdentifier` attached to the
         // tab content as an `Other` sibling instead of as the `Button` under
         // `tabBars` (notably when the fixture selects a different app
         // language). Resolve the production system-image button from the full
         // AX tree first; do not let the localized tab title become the main
         // navigation contract.
-        let imageIdentified = app.descendants(matching: .any)
-            .matching(identifier: systemImage)
-            .firstMatch
-        if imageIdentified.exists {
-            return imageIdentified
-        }
         let identified = app.descendants(matching: .any)
             .matching(identifier: identifier)
             .firstMatch
         if identified.exists {
             return identified
+        }
+        let imageIdentified = app.descendants(matching: .any)
+            .matching(identifier: systemImage)
+            .firstMatch
+        if imageIdentified.exists {
+            return imageIdentified
         }
         return exactlyOne(fallbackLabel, in: app.tabBars.buttons)
     }

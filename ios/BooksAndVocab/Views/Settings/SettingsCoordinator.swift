@@ -741,6 +741,13 @@ final class SettingsCoordinator: SettingsCoordinating {
         // UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
         syncProgress.begin(stepIDs: KGService.syncStepIDs() + [.status])
 
+        // A fixture-backed retry can complete before SwiftUI renders the
+        // intermediate `.running` state. Yield once and hold the declared
+        // progress contract for a bounded frame so the progress panel is an
+        // observable production state rather than a coalesced state mutation.
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(200))
+
         // reporter 走 AsyncStream 而不是每個事件開一個 `Task { @MainActor in }`。
         // 後者**不保證順序**——事件從多條併行的腿發出，各自排進 MainActor 佇列後
         // 到達順序就散了，計數器會肉眼可見地彈回。store 內部雖有單調守衛擋著，

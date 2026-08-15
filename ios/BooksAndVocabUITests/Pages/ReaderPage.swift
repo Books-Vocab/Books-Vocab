@@ -725,7 +725,9 @@ struct ReaderPage {
         while Date() < deadline {
             if option.exists, option.isHittable {
                 option.tap()
-                return true
+                return waitForSettingsDoneButtonActionable(
+                    timeout: min(3, max(0, deadline.timeIntervalSinceNow))
+                )
             }
 
             let pickerIsActionable = highlightColorPicker.exists
@@ -741,8 +743,34 @@ struct ReaderPage {
                 scrollSettingsPanel(towardTop: false)
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+            // The production ColorPicker presents a transient menu. A tap is
+            // not a completed action until that menu has dismissed and the
+            // semantic Done control is actionable again; otherwise the next
+            // step races the overlay and reports a false selector failure.
+            if option.exists, option.isHittable {
+                option.tap()
+                return waitForSettingsDoneButtonActionable(
+                    timeout: min(3, max(0, deadline.timeIntervalSinceNow))
+                )
+            }
         }
         return option.exists && option.isHittable
+    }
+
+    private func waitForSettingsDoneButtonActionable(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let done = exactlyOneIfPresent(
+                settingsDoneButtonQuery,
+                named: "Reader settings done button",
+                timeout: 0.25
+            ), done.isHittable, !done.frame.isEmpty, done.frame.intersects(app.frame) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
     }
 
     @discardableResult
