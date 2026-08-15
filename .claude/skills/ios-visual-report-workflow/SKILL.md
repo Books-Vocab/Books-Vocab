@@ -99,6 +99,8 @@ the expected post-`record-many` handoff: preserve the evidence's original
 `sourceCommit`, and report both the evidence source and matrix receipt HEAD. Any
 code/test/docs drift, dirty tree, non-ancestor source, or provenance rewrite is
 still fail-closed and requires re-running evidence at the new exact source HEAD.
+If Git HEAD, ancestry, or cleanliness cannot be established, validation rejects
+the bundle; a non-Git or partially observable root is never treated as clean.
 
 Update the existing report directory only after the matrix receipt is valid. Keep historical batches explicitly labelled historical; current status must link the current matrix, batch summary, evidence root, Gate receipt, review receipt, and docs lint output. Do not create a parallel manual status ledger.
 
