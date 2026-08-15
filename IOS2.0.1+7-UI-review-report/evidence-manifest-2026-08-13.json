@@ -38,9 +38,9 @@
     "stateRecording": "record-many --strict-complete"
   },
   "finalBatch": {
-    "id": "final-head-batch-v37",
-    "summary": "build/snapshots/uitest-evidence/final-head-batch-v37-summary.json",
-    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v37-bundles/",
+    "id": "final-head-batch-v43",
+    "summary": "build/snapshots/uitest-evidence/final-head-batch-v43-summary.json",
+    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/",
     "requiredPerSelector": [
       "machine verdict",
       "source/dataset/device provenance",
@@ -55,6 +55,11 @@
     "matrixWriteAuthority": "ops/fixtures/ios_ui_review_matrix.json only"
   },
   "historicalBatches": [
+    {
+      "id": "repair-head-v42",
+      "sourceCommit": "088e9c1863cf0b83285b74f7564b2450467f859f",
+      "status": "pre-final P10 focused repair; both exact selectors machine and all-steps visual PASS; not matrix evidence"
+    },
     {
       "id": "final-head-batch-v36",
       "sourceCommit": "2716598b522eae3cefb548db5039c8e77c80e67c",

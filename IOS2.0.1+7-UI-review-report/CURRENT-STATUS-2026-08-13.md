@@ -2,16 +2,16 @@
 
 日期：2026-08-15（final evidence 前的 canonical freeze）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前 canonical worktree 與 pinned Simulator evidence。
-canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`。exact source HEAD 只由 final summary 與每個 bundle 的 machine provenance 提供；本檔不重複自指的 Git SHA。v36 已標記 abandoned；final batch 預定為 `final-head-batch-v37`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
+canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`。exact source HEAD 只由 final summary 與每個 bundle 的 machine provenance 提供；本檔不重複自指的 Git SHA。v36 已標記 abandoned；P10 focused repair v42 已通過 machine/visual，但 final batch 預定為 `final-head-batch-v43`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
 
 ## 2026-08-15 canonical freeze（本段為唯一 current contract）
 
 本輪不新增 worktree、branch、ticket、cluster 或 scope；只在既有 integration worktree 收斂。source/test/docs 已在 evidence 前固定；此檔與 `evidence-manifest-2026-08-13.json` 在 final batch 完成後不得再修改，避免把 post-evidence 報告編輯誤認成 source receipt。v34（source=`d3f2d0e32199a9f13d7c8e6eace32bbe773217be`、matrix receipt=`f6edc9d52`）降格為歷史證據，不能證明目前 canonical HEAD。
 
-唯一 current evidence contract：以凍結 HEAD 執行 `final-head-batch-v37`，28 個 unique exact selectors 共用一次 build-for-testing；每個 selector 必須有 machine contract、source/dataset/device provenance、stable screenshots/contact sheet/quick4/UIreview/video、逐步 visual attestation。之後 `record-many --strict-complete` 才能寫入 matrix receipt；selector PASS 不等於 requirement state union PASS。current verdict 的唯一真相是：
+唯一 current evidence contract：以凍結 HEAD 執行 `final-head-batch-v43`，run-plan 的 31 executions 對應 28 個 unique exact methods，共用一次 build-for-testing；每個 execution 必須有 machine contract、source/dataset/device provenance、stable screenshots/contact sheet/quick4/UIreview/video、逐步 visual attestation。之後 `record-many --strict-complete` 才能寫入 matrix receipt；selector PASS 不等於 requirement state union PASS。current verdict 的唯一真相是：
 
-- summary：`build/snapshots/uitest-evidence/final-head-batch-v37-summary.json`
-- bundles：`build/snapshots/uitest-evidence/final-head-batch-v37-bundles/`
+- summary：`build/snapshots/uitest-evidence/final-head-batch-v43-summary.json`
+- bundles：`build/snapshots/uitest-evidence/final-head-batch-v43-bundles/`
 - matrix：`ops/fixtures/ios_ui_review_matrix.json`（只允許這個 tracked receipt path 在 evidence 後變動）
 - cluster contract：`ops/fixtures/ios_ui_review_clusters.json`
 - workflow／docs lint／Gate／review receipt：以 final hand-back receipt 與 orchestrator state 內相同 exact HEAD 為準；任何與該 HEAD 不一致的舊 receipt 均為歷史診斷。
@@ -22,7 +22,7 @@ canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-re
 
 原報告要求的是「重新思考並重構」而非局部修飾。P1–P15 表面上是 15 張圖，實際上是 5 個跨頁系統問題：資料／狀態模型、元件共用、互動時序、長內容／極端狀態與 visual hierarchy 必須一起收斂。這不是一次 UI polish；必須以 UI World 注入、狀態矩陣、Simulator/UI-test、證據契約與視覺迭代形成閉環。只修單頁 padding、顏色或單一 selector，無法達到報告標準。
 
-本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個精確 XCTest selectors；採 build-once/run-many、每 selector 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。最新 `final-head-batch-v19` 的 19/19 executions 全部 machine/contract PASS，且 19/19 bundle 已完成全 steps 人工視覺 attestation；但 `record-many` 仍依 exact state union fail-closed，不能把 selector-level PASS 冒充 P1–P15 完整矩陣。P1/P2 的 auth、cardinality、graphLinks AX 結構問題，以及 P3 package graph/cache BLOCK 均已實際修掉，歷史失敗仍保留作診斷。
+本輪已把報告轉成可執行控制面：5 clusters、15 requirements、16 個 selector bindings；final run-plan 展開 31 executions／28 個 unique exact methods。採 build-once/run-many、每 execution 一個 stable evidence bundle、單一 batch source HEAD、契約驗證與視覺 attestation 分離。控制面驗證：`valid=true clusterCount=5 requirementCount=15 selectorCount=16`。P10 focused v42 綁定 `088e9c1863cf0b83285b74f7564b2450467f859f`，populated 與 empty forecast counterexample 均 machine PASS、all-steps visual attestation PASS；但它不是 P1–P15 final batch，也沒有寫 matrix。`record-many` 仍依 exact state union fail-closed，不能把 selector-level PASS 冒充完整矩陣。P1/P2 的 auth、cardinality、graphLinks AX 結構問題，以及 P3 package graph/cache BLOCK 均已實際修掉，歷史失敗仍保留作診斷。
 
 Reader P4/P5 有兩層已收斂根因。第一層是 P3→P4 連續行程中 UI World overlay 只改 persistence，已初始化的 `ReaderSettings.shared` 沒有 reload，造成 P4 讀到舊 line-height；`05e74c94b` 加入 injectable stores、`reloadFromPersistence()` 與 fixture overlay 後 reload，unit 2/2 PASS，v17 P3→P4 2/2 PASS。第二層是 iOS 26 XCTest Slider endpoint seam：`4c872d3e2` 將 lower/upper 都固化為有限次 semantic interior staging（`0.05/0.15/0.25` 與 `0.95/0.85/0.75`），每次先等 AX interior value 變更，再確認 endpoint exact value；v18 P5 與 v19 P5 均 PASS。P9 仍保留從 auth、stale selector、父容器 AX shadowing、viewport readiness、空狀態 containment 到 AX materialization race 的完整根因鏈；P10 populated metrics/calendar/forecast 與 P15 English reset 也完成 current-head evidence。
 
@@ -157,9 +157,9 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache \
   --helper .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
   --methods-file <exact-runs.json> \
   --device <pinned-simulator-udid> \
-  --output-dir build/snapshots/uitest-evidence/final-head-batch-v37 \
-  --publish-root build/snapshots/uitest-evidence/final-head-batch-v37-bundles \
-  --summary-out build/snapshots/uitest-evidence/final-head-batch-v37-summary.json
+  --output-dir build/snapshots/uitest-evidence/final-head-batch-v43 \
+  --publish-root build/snapshots/uitest-evidence/final-head-batch-v43-bundles \
+  --summary-out build/snapshots/uitest-evidence/final-head-batch-v43-summary.json
 
 # 3. 每個 bundle 必須先完成主流程 verdict + evidence contract，
 #    再逐張檢視 contact sheet / screenshot，最後才寫 visual attestation。
@@ -200,4 +200,4 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache uv run --python 3.13 \
 
 ## 工作樹邊界（final convergence 以前的歷史 receipt）
 
-本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；目前 HEAD `4c872d3e2` 已有 v19 current-head selector evidence 與 v17/v18 sequence/endpoint evidence。尚未取得明示 delivery-loop 授權，因此不觸碰 local `main`、`origin/main` 或 `origin/prod`。歷史 failure bundle、v13 dirty fail-closed、v14/v16 sequence failure、keychain infrastructure inconclusive、P11 perf risk 與 matrix state gaps 都會保留，不用 partial PASS 蓋掉它們。
+本輪 child 已完成 commit + registry hand-back，並已 fan-in 至目前 integration branch `feat/ios-ui-review-report-complete-20260813`；本次 final freeze HEAD 為 `088e9c1863cf0b83285b74f7564b2450467f859f`，已包含 P10 forecast AX containment 修正與 v42 focused evidence。尚未取得明示 delivery-loop 授權，因此不觸碰 local `main`、`origin/main` 或 `origin/prod`。歷史 failure bundle、v13 dirty fail-closed、v14/v16 sequence failure、keychain infrastructure inconclusive、P11 perf risk 與 matrix state gaps 都會保留，不用 partial PASS 蓋掉它們。
