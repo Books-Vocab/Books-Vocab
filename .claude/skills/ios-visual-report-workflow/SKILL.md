@@ -92,7 +92,13 @@ uv run --python 3.13 python ops/ios_ui_review_matrix.py validate \
   ops/fixtures/ios_ui_review_matrix.json --root . --strict-complete
 ```
 
-If validation says the evidence source commit differs from `HEAD`, stop. Re-run evidence at the current exact HEAD; never edit provenance to match. If a later docs-only commit changes HEAD, the evidence is stale until refreshed.
+If validation says the evidence source commit differs from `HEAD`, stop unless the
+current HEAD is a descendant whose only committed tree difference is the tracked
+matrix receipt `ops/fixtures/ios_ui_review_matrix.json`. This receipt-only case is
+the expected post-`record-many` handoff: preserve the evidence's original
+`sourceCommit`, and report both the evidence source and matrix receipt HEAD. Any
+code/test/docs drift, dirty tree, non-ancestor source, or provenance rewrite is
+still fail-closed and requires re-running evidence at the new exact source HEAD.
 
 Update the existing report directory only after the matrix receipt is valid. Keep historical batches explicitly labelled historical; current status must link the current matrix, batch summary, evidence root, Gate receipt, review receipt, and docs lint output. Do not create a parallel manual status ledger.
 
