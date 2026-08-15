@@ -474,7 +474,8 @@ struct DictionaryPhase2ATests {
         return KGService(
             authSession: DictionaryTestAuthSession(),
             sessionInvalidator: DictionaryTestSessionInvalidator(),
-            urlSession: URLSession(configuration: configuration)
+            urlSession: URLSession(configuration: configuration),
+            connectivityGate: FixedConnectivityGate(isConnected: true)
         )
     }
 
