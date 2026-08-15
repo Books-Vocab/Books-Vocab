@@ -73,8 +73,6 @@ enum UITestFixtureSeed {
             case "explore":
                 seedExplore(id, into: container)
 #endif
-            case "vocabulary":
-                seedVocabulary(id, into: container)
             case "entitlements":
                 guard id == "pro" || id == "free" else {
                     failFixtureSeed("Unknown entitlements fixture ID: \(id)")
