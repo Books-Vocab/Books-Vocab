@@ -76,35 +76,57 @@ extension ReadiumNavigatorView.Coordinator {
     func apply(_ command: NavigatorCommand, in host: NavigatorHostViewController) {
         switch command {
         case .navigate(let locator, let requestID):
-            activeTOCRequestID = requestID
+            activeTOCNavigationTask?.cancel()
+            activeTOCTimeoutTask?.cancel()
+            activeTOCTimeoutTask = nil
+            tocNavigationGate.begin(requestID, expectedLocatorHref: locator.href.string)
             let bridge = ReaderTOCNavigationBridge(
                 navigator: ReadiumNavigatorDriver(navigator: navigator),
                 timeoutNanoseconds: ReaderMetrics.tocNavigationTimeoutNanoseconds
             )
-            Task { @MainActor [weak self] in
+            activeTOCNavigationTask = Task { @MainActor [weak self] in
                 AppLog.reader.debug("Attempting navigation to: \(String(describing: locator.href))")
                 let event = await bridge.navigate(requestID: requestID, locator: locator)
                 guard let self else { return }
+                guard self.tocNavigationGate.isCurrent(requestID) else { return }
                 if case .goAccepted = event {
                     // go() only acknowledges dispatch. Keep the request token
                     // alive until the navigator delegate reports the actual
                     // locator, with a bounded callback deadline.
+                    self.activeTOCNavigationTask = nil
                     beginTOCTimeout(for: requestID)
-                } else if activeTOCRequestID == requestID {
-                    activeTOCRequestID = nil
+                } else {
+                    guard self.tocNavigationGate.finish(requestID) else { return }
+                    self.activeTOCNavigationTask = nil
                 }
                 AppLog.reader.debug("Navigation result: \(String(describing: event))")
                 parent.onTOCNavigationEvent(event)
             }
         case .applyPreferences(let preferences):
             let generation = preferencesApplyState.begin()
-            Task { @MainActor [weak self, weak host] in
-                guard let self, let navigator = host?.epubNavigator else {
-                    self?.preferencesApplyState.cancel(generation)
+            preferencesApplyTask?.cancel()
+            let navigatorGeneration = navigatorLifecycleGate.generation
+            preferencesApplyTask = Task { @MainActor [weak self, weak host] in
+                guard let self else { return }
+                guard
+                    let navigator = host?.epubNavigator,
+                    !Task.isCancelled,
+                    self.preferencesApplyState.pendingGeneration == generation,
+                    self.acceptsNavigator(navigator, generation: navigatorGeneration)
+                else {
+                    self.preferencesApplyState.cancel(generation)
                     return
                 }
                 self.hasPublishedNavigatorSettingsReceipt = false
                 self.parent.onNavigatorSettingsReceipt(.pending(navigatorID: self.navigatorID))
+                guard
+                    !Task.isCancelled,
+                    self.preferencesApplyState.pendingGeneration == generation,
+                    self.acceptsNavigator(navigator, generation: navigatorGeneration)
+                else {
+                    self.preferencesApplyState.cancel(generation)
+                    return
+                }
                 navigator.submitPreferences(preferences)
             }
         }

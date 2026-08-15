@@ -60,6 +60,16 @@ struct ReaderSettingsReleaseContractTests {
         #expect(state.isApplying, "cancelling an obsolete generation must leave the current apply pending")
     }
 
+    @Test func preferenceApplyCanBeInvalidatedWithNavigatorTeardown() {
+        var state = ReaderPreferencesApplyState()
+        _ = state.begin()
+        #expect(state.isApplying)
+
+        state.invalidate()
+
+        #expect(!state.isApplying)
+    }
+
     @Test func productionReaderEvidenceUsesStateContractWithoutZeroHeightColorHook() throws {
         let panelSource = try String(
             contentsOf: Self.sourceURL(named: "ReaderView+Panels.swift"),

@@ -168,9 +168,9 @@ enum ReaderMainContentState: Equatable, Sendable {
         errorMessage: String?,
         loadingState: ReaderLoadingState
     ) -> Self {
-        if hasPublication { return .content }
-        if errorMessage != nil { return .error }
+        if errorMessage != nil || loadingState.isFailed { return .error }
         if loadingState.isLoading { return .loading }
+        if hasPublication { return .content }
         return .empty
     }
 }
@@ -326,10 +326,35 @@ final class ReaderRuntimeState {
     /// intentionally nil; callers must not manufacture a zero.
     var totalProgression: Double? { progressState.progression }
 
+    /// Progress from the previous publication is not a valid loading/error
+    /// receipt. Keep restore failure visible as a warning, but hide ordinary
+    /// progress until the current publication is ready.
+    var visibleProgressState: ReaderProgressState {
+        visibleProgressState(hasPublication: true)
+    }
+
+    func visibleProgressState(hasPublication: Bool) -> ReaderProgressState {
+        guard hasPublication, loadingState == .ready else {
+            return progressState == .restoreFailure ? .restoreFailure : .unknown
+        }
+        return progressState
+    }
+
+    var visibleTotalProgression: Double? { visibleProgressState.progression }
+
+    func visibleTotalProgression(hasPublication: Bool) -> Double? {
+        visibleProgressState(hasPublication: hasPublication).progression
+    }
+
     var runtimeStateAccessibilityValue: String {
+        runtimeStateAccessibilityValue(hasPublication: true)
+    }
+
+    func runtimeStateAccessibilityValue(hasPublication: Bool) -> String {
         let scenarioValue = selection.scenario?.rawValue ?? "production"
         let provenanceValue = selection.provenance?.accessibilityValue ?? "dataset=none;source=production"
-        return "scenario=\(scenarioValue);progress=\(progressState.accessibilityIdentifier);loading=\(selection.loadMode.accessibilityIdentifier);\(provenanceValue);state=\(loadingState.accessibilityIdentifier)"
+        let visibleProgress = visibleProgressState(hasPublication: hasPublication)
+        return "scenario=\(scenarioValue);progress=\(visibleProgress.accessibilityIdentifier);loading=\(selection.loadMode.accessibilityIdentifier);\(provenanceValue);state=\(loadingState.accessibilityIdentifier)"
     }
 
     var loadingPhase: String {

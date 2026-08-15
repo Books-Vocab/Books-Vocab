@@ -33,6 +33,10 @@ struct ReaderPreferencesApplyState: Equatable {
         pendingGeneration = nil
     }
 
+    mutating func invalidate() {
+        pendingGeneration = nil
+    }
+
     @discardableResult
     mutating func observeNavigatorPresentation() -> Bool {
         guard pendingGeneration != nil else { return false }
@@ -202,8 +206,8 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             return host
         }
 
+        context.coordinator.activateNavigator(navigator)
         navigator.delegate = context.coordinator
-        context.coordinator.navigator = navigator
         host.epubNavigator = navigator
 
         host.addChild(navigator)
@@ -234,6 +238,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     }
 
     static func dismantleUIViewController(_ uiViewController: NavigatorHostViewController, coordinator: Coordinator) {
+        coordinator.deactivateNavigator()
         // 移除 WKUserContentController 對 Coordinator 的強引用，打斷 retain cycle
         if let controller = coordinator.registeredContentController {
             for name in Coordinator.registeredHandlerNames {
@@ -241,10 +246,12 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             }
             coordinator.registeredContentController = nil
         }
-        coordinator.navigator = nil
         coordinator.contentOffsetObserver = nil
+        coordinator.activeTOCNavigationTask?.cancel()
+        coordinator.activeTOCNavigationTask = nil
         coordinator.activeTOCTimeoutTask?.cancel()
         coordinator.activeTOCTimeoutTask = nil
+        coordinator.tocNavigationGate.invalidate()
         coordinator.recoveryTask?.cancel()
         coordinator.recoveryTask = nil
         coordinator.pendingRecoveryLocator = nil
@@ -266,14 +273,19 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     class Coordinator: NSObject, EPUBNavigatorDelegate {
         var parent: ReadiumNavigatorView
         weak var navigator: EPUBNavigatorViewController?
+        private(set) var navigatorLifecycleGate = ReaderNavigatorLifecycleGate()
         var planner = BridgePlanner()
         var isApplyingPreferences = false
-        var activeTOCRequestID: UUID?
+        var tocNavigationGate = ReaderTOCNavigationRequestGate()
+        var activeTOCRequestID: UUID? { tocNavigationGate.activeRequestID }
+        var activeTOCNavigationTask: Task<Void, Never>?
         var activeTOCTimeoutTask: Task<Void, Never>?
         var pendingRecoveryLocator: Locator?
         var recoveryAttemptCount = 0
         var recoveryTask: Task<Void, Never>?
+        var activeRecoveryTaskID: UUID?
         var preferencesApplyState = ReaderPreferencesApplyState()
+        var preferencesApplyTask: Task<Void, Never>?
         let navigatorID = UUID()
         var hasPublishedNavigatorSettingsReceipt = false
         let domExecutor = ReaderDOMExecutor()
@@ -290,11 +302,45 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             self.parent = parent
         }
 
+        func activateNavigator(_ navigator: EPUBNavigatorViewController) {
+            preferencesApplyTask?.cancel()
+            preferencesApplyTask = nil
+            recoveryTask?.cancel()
+            recoveryTask = nil
+            activeRecoveryTaskID = nil
+            preferencesApplyState.invalidate()
+            _ = navigatorLifecycleGate.activate()
+            self.navigator = navigator
+            hasPublishedNavigatorSettingsReceipt = false
+        }
+
+        func deactivateNavigator() {
+            preferencesApplyTask?.cancel()
+            preferencesApplyTask = nil
+            preferencesApplyState.invalidate()
+            recoveryTask?.cancel()
+            recoveryTask = nil
+            activeRecoveryTaskID = nil
+            navigatorLifecycleGate.deactivate()
+            navigator?.delegate = nil
+            navigator = nil
+            hasPublishedNavigatorSettingsReceipt = false
+        }
+
+        func acceptsNavigator(_ candidate: any Navigator, generation: UInt) -> Bool {
+            guard navigatorLifecycleGate.accepts(generation),
+                  let current = navigator,
+                  let candidate = candidate as? EPUBNavigatorViewController
+            else { return false }
+            return candidate === current
+        }
+
         private static let maxRecoveryAttempts = 8
 
         func prepareRecovery(to locator: Locator) {
             recoveryTask?.cancel()
             recoveryTask = nil
+            activeRecoveryTaskID = nil
             pendingRecoveryLocator = locator
             recoveryAttemptCount = 0
         }
@@ -303,14 +349,24 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             guard recoveryTask == nil,
                   let locator = pendingRecoveryLocator,
                   let navigator else { return }
+            let callbackGeneration = navigatorLifecycleGate.generation
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
 
             recoveryAttemptCount += 1
             let attempt = recoveryAttemptCount
+            let recoveryTaskID = UUID()
+            activeRecoveryTaskID = recoveryTaskID
             recoveryTask = Task { @MainActor [weak self] in
+                guard !Task.isCancelled else { return }
                 let accepted = await navigator.go(to: locator)
                 guard let self else { return }
+                guard
+                    !Task.isCancelled,
+                    self.activeRecoveryTaskID == recoveryTaskID,
+                    self.acceptsNavigator(navigator, generation: callbackGeneration)
+                else { return }
+                self.activeRecoveryTaskID = nil
                 self.recoveryTask = nil
-                guard !Task.isCancelled else { return }
                 AppLog.reader.debug(
                     "Reader restore fallback navigation attempt=\(attempt, privacy: .public) accepted=\(String(describing: accepted), privacy: .public) href=\(locator.href.string, privacy: .public)"
                 )
@@ -330,6 +386,8 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         // MARK: NavigatorDelegate
 
         func navigator(_ navigator: any Navigator, locationDidChange locator: Locator) {
+            let callbackGeneration = navigatorLifecycleGate.generation
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             // Initial configuration is supplied to the navigator initializer.
             // If no preference command was needed, the first real location
             // event is the readiness boundary for the initial receipt.
@@ -339,10 +397,22 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             {
                 publishNavigatorSettingsReceipt(from: epubNavigator, source: .locationDidChange)
             }
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
+            let matchingTOCRequestID = activeTOCRequestID.flatMap { requestID in
+                tocNavigationGate.matchesCurrent(requestID, locatorHref: locator.href.string)
+                    ? requestID
+                    : nil
+            }
             parent.onLocationChanged(locator)
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             triggerRecoveryNavigation()
-            if let requestID = activeTOCRequestID {
-                activeTOCRequestID = nil
+            if let requestID = matchingTOCRequestID,
+               tocNavigationGate.finish(
+                   requestID,
+                   ifMatchingLocatorHref: locator.href.string
+               ) {
+                activeTOCNavigationTask?.cancel()
+                activeTOCNavigationTask = nil
                 activeTOCTimeoutTask?.cancel()
                 activeTOCTimeoutTask = nil
                 parent.onTOCNavigationEvent(
@@ -352,6 +422,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                     )
                 )
             }
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
 
             // 翻頁後重新標記所有生字庫底線（設定調整期間跳過，避免卡頓）
             let words = parent.lookedUpWords
@@ -362,15 +433,20 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
 
         func navigator(_ navigator: any Navigator, presentError error: NavigatorError) {
+            let callbackGeneration = navigatorLifecycleGate.generation
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             AppLog.reader.error("Navigator error: \(String(describing: error))")
         }
 
         // MARK: VisualNavigatorDelegate
 
         func navigator(_ navigator: any VisualNavigator, presentationDidChange presentation: VisualNavigatorPresentation) {
+            let callbackGeneration = navigatorLifecycleGate.generation
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             _ = preferencesApplyState.observeNavigatorPresentation()
             guard let epubNavigator = navigator as? EPUBNavigatorViewController else { return }
             publishNavigatorSettingsReceipt(from: epubNavigator, source: .presentationDidChange)
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             triggerRecoveryNavigation()
         }
 
@@ -394,6 +470,8 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         // MARK: EPUBNavigatorDelegate — JS 注入
 
         func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts userContentController: WKUserContentController) {
+            let callbackGeneration = navigatorLifecycleGate.generation
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             registeredContentController = userContentController
             for name in Self.registeredHandlerNames {
                 userContentController.add(self, name: name)
@@ -419,7 +497,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             userContentController.addUserScript(script)
             AppLog.reader.info("User scripts injected")
             PerfLog.reader.mark("userScriptsInjected")
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
             triggerRecoveryNavigation()
+            guard acceptsNavigator(navigator, generation: callbackGeneration) else { return }
 
             // Scripts 注入後重新標記所有生字（修復初始載入的 race condition）
             let words = parent.lookedUpWords

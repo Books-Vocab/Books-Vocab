@@ -318,11 +318,13 @@ struct ReaderView: View {
             loadingPhase: readerState.loadingPhase,
             underlineProgress: readerState.underlineProgress,
             chrome: chromeState,
-            totalProgression: readerState.runtime.totalProgression,
+            totalProgression: readerState.runtime.visibleTotalProgression(hasPublication: publication != nil),
             bookTitle: book.title,
-            progressState: readerState.progressState,
+            progressState: readerState.runtime.visibleProgressState(hasPublication: publication != nil),
             loadingState: readerState.loadingState,
-            runtimeStateAccessibilityValue: readerState.runtime.runtimeStateAccessibilityValue,
+            runtimeStateAccessibilityValue: readerState.runtime.runtimeStateAccessibilityValue(
+                hasPublication: publication != nil
+            ),
             canResolveSlowLoading: readerState.runtime.selection.loadMode == .slow && readerState.loadingState == .loading(.slow)
         )
     }
@@ -337,10 +339,12 @@ struct ReaderView: View {
         readerState.resetLoadingPhase()
         readerState.isWebViewReady = false
         publicationLoadCoordinator.cancelAndInvalidate()
+        publication = nil
+        restoreFallbackLocator = nil
+        currentLocator = nil
         // 持 handle：retry 為非結構化 Task，需 onDisappear 顯式取消（見 retryLoadTask 宣告）。
         // 重入先取消舊 retry，避免連點時舊 in-flight 載入洩漏（與 onDisappear 對稱）。
         retryLoadTask?.cancel()
-        publicationLoadCoordinator.cancelAndInvalidate()
         retryLoadTask = Task { await loadPublication() }
     }
 
