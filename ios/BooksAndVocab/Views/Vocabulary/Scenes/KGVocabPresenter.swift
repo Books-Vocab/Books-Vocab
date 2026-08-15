@@ -208,6 +208,7 @@ struct KGVocabPresenter: View {
             await onRefresh?()
         }
         .animateSpring(state.banner == nil)
+        .accessibilityIdentifier("vocab.list.scroll")
         } // end outer VStack
         .enableInjection()
     }

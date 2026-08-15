@@ -24,6 +24,19 @@ struct AppPage {
         if tabButton.exists {
             return tabButton
         }
+        // On iOS 26.4 SwiftUI can expose the SF Symbol as the hittable
+        // descendant while the identifier on the TabView content is exposed
+        // as an `Other` sibling. The action-owning tab Button is the stable
+        // semantic target; never tap the image child itself.
+        let tabBarButtons = app.tabBars.buttons.allElementsBoundByIndex
+        if let parentButton = tabBarButtons.first(where: { button in
+            button.descendants(matching: .any)
+                .matching(identifier: systemImage)
+                .firstMatch
+                .exists
+        }) {
+            return parentButton
+        }
         // SwiftUI may publish the `.accessibilityIdentifier` attached to the
         // tab content as an `Other` sibling instead of as the `Button` under
         // `tabBars` (notably when the fixture selects a different app
@@ -33,13 +46,13 @@ struct AppPage {
         let identified = app.descendants(matching: .any)
             .matching(identifier: identifier)
             .firstMatch
-        if identified.exists {
+        if identified.exists, identified.elementType == .button {
             return identified
         }
         let imageIdentified = app.descendants(matching: .any)
             .matching(identifier: systemImage)
             .firstMatch
-        if imageIdentified.exists {
+        if imageIdentified.exists, imageIdentified.elementType == .button {
             return imageIdentified
         }
         return exactlyOne(fallbackLabel, in: app.tabBars.buttons)

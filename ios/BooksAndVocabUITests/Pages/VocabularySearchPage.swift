@@ -33,6 +33,39 @@ struct VocabularySearchPage {
             .firstMatch
     }
 
+    /// The production list is a LazyVStack. After a facet or query changes,
+    /// SwiftUI may preserve the previous content offset while the new
+    /// projection is already reflected by `visibleCount`. Bring the semantic
+    /// scroll container back toward its top until the requested row is
+    /// actually materialized; this never uses coordinates or a localized
+    /// label.
+    @discardableResult
+    func waitForRowMaterialized(
+        word: String,
+        timeout: TimeInterval = 12,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        let target = row(word: word)
+        let scrollView = app.scrollViews["vocab.list.scroll"]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if target.exists { return true }
+            if scrollView.exists {
+                scrollView.swipeDown()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        let materialized = target.exists
+        XCTAssertTrue(
+            materialized,
+            "Vocabulary row must materialize after semantic projection: \(word)",
+            file: file,
+            line: line
+        )
+        return materialized
+    }
+
     var visibleCount: XCUIElement {
         app.descendants(matching: .any).matching(identifier: "vocab.filter.visibleCount").firstMatch
     }

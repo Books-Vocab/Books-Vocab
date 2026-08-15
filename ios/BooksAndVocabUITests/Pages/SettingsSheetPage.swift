@@ -334,6 +334,13 @@ struct SettingsSheetPage {
         // label. UI World scenarios intentionally exercise multiple app
         // languages (including English), while this navigation contract is
         // language-independent.
+        let dismissButton = app.buttons["settings.dismissButton"]
+        XCTAssertTrue(
+            dismissButton.waitUntilHittable(timeout: 15),
+            "Settings dismiss button must materialize and become hittable before cardinality is asserted",
+            file: file,
+            line: line
+        )
         _ = assertExactlyOne(
             .button,
             identifier: "settings.dismissButton",
