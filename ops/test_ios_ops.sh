@@ -1213,6 +1213,7 @@ bash -c '
   mkdir -p "$PROJECT_ROOT"
   : > "$TMPOUT"
   eval "$(sed -n "/^build_ui_test_review_page()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  artifact_temp_dir() { mktemp -d "${TMPDIR:-/tmp}/kg-ios-test-artifact.XXXXXX"; }
   resolve_run_device_udid() { printf "STUB-UDID-EMPTY"; }
   build_ui_test_review_page ok
 ' >"$ui_empty_tmp/snippet.log" 2>&1 || true

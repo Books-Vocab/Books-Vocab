@@ -10,14 +10,15 @@
 
 import XCTest
 
-final class NotebookSmokeUITests: XCTestCase {
+final class NotebookSmokeUITests: UITestCase {
     override func setUpWithError() throws {
+        try super.setUpWithError()
         continueAfterFailure = false
     }
 
     @MainActor
     func testNotebookTabIsVisibleWithChrome() throws {
-        let app = makeConfiguredApp(
+        let app = launchIsolatedApp(
             fixtures: [.authSignedIn],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"]
         )
@@ -34,7 +35,7 @@ final class NotebookSmokeUITests: XCTestCase {
 
     @MainActor
     func testNotebookAddButtonIsHittable() throws {
-        let app = makeConfiguredApp(
+        let app = launchIsolatedApp(
             fixtures: [.authSignedIn],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"]
         )
