@@ -3,9 +3,21 @@
   "report": {
     "directory": "IOS2.0.1+7-UI-review-report",
     "images": [
-      "p1.PNG", "p2.PNG", "p3.PNG", "p4.PNG", "p5.PNG",
-      "p6.PNG", "p7.PNG", "p8.PNG", "p9.PNG", "p10.PNG",
-      "p11.PNG", "p12.PNG", "p13.PNG", "p14.PNG", "p15.PNG"
+      "p1.PNG",
+      "p2.PNG",
+      "p3.PNG",
+      "p4.PNG",
+      "p5.PNG",
+      "p6.PNG",
+      "p7.PNG",
+      "p8.PNG",
+      "p9.PNG",
+      "p10.PNG",
+      "p11.PNG",
+      "p12.PNG",
+      "p13.PNG",
+      "p14.PNG",
+      "p15.PNG"
     ]
   },
   "requirements": [
@@ -14,165 +26,1244 @@
       "reportImage": "p1.PNG",
       "title": "Dictionary lookup before materializing a card",
       "surface": "Reader dictionary/add-link flow",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"],
-      "requiredFixtureIDs": ["ui-p1-dictionary-rich"],
-      "acceptance": ["idle, loading, success, error and retry are distinct states", "selected sense/example can be materialized without losing provenance"],
-      "counterexamples": ["offline lookup error", "partial result with no selected sense"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["idle", "loading", "success", "retry"], "counterexampleSteps": ["error", "partial-result"], "visualChecks": ["result hierarchy", "error/retry affordance"], "blockers": ["rich dictionary UI World and end-to-end selector not yet implemented"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
+      ],
+      "requiredFixtureIDs": [
+        "ui-p1-dictionary-rich"
+      ],
+      "acceptance": [
+        "idle, loading, success, error and retry are distinct states",
+        "selected sense/example can be materialized without losing provenance"
+      ],
+      "counterexamples": [
+        "offline lookup error",
+        "partial result with no selected sense"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-043516-75240-22553",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
+        "requiredSteps": [
+          "idle",
+          "loading",
+          "success",
+          "retry"
+        ],
+        "counterexampleSteps": [
+          "error",
+          "partial-result"
+        ],
+        "visualChecks": [
+          "result hierarchy",
+          "error/retry affordance"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "380993d1fc8ef621840e55eb9c8ad5e02e5652d93a00cb6329f3f6edeb728e13",
+        "evidenceBundles": [
+          {
+            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-043516-75240-22553",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "380993d1fc8ef621840e55eb9c8ad5e02e5652d93a00cb6329f3f6edeb728e13"
+          },
+          {
+            "selector": "DictionaryLookupFlowUITests/testDictionaryLoadingAndEmptySelectorsAreLive",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-043628-78294-16853",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043628-78294-16853",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "0f1618865338bb003df1d325d1ad5c35f762dcb14b5329e851fa06162171b0a7"
+          },
+          {
+            "selector": "DictionaryLookupFlowUITests/testDictionaryPartialRetryAndRetryingSelectorsAreLive",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-043752-81525-31934",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043752-81525-31934",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "71a6b73417e445dfba192302595f4a2b6747b17398fa88b2e9fe69215a370757"
+          },
+          {
+            "selector": "DictionaryLookupFlowUITests/testDictionaryOfflineAndErrorSelectorsExposeRetry",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-043849-84121-25247",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043849-84121-25247",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "edda7d4f3bd2f11297aa66bb673cf7b0aa8eb950d357df5aa210a0d8f39025f6"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-043516-75240-22553",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
+            "evidenceBundleCount": 4,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P2",
       "reportImage": "p2.PNG",
       "title": "Dictionary detail and card materialization",
       "surface": "Dictionary detail presentation",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Presentation/DictionaryDetailPresentation.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift"],
-      "requiredFixtureIDs": ["ui-p2-dictionary-senses"],
-      "acceptance": ["all senses, examples, forms and source/license are readable", "materialize and failure states preserve the selected sense"],
-      "counterexamples": ["missing example", "provider payload decode failure"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["detail", "select-sense", "materialize"], "counterexampleSteps": ["missing-example", "materialize-error"], "stateAliases": {"missing-example": ["missing-example-counterexample"], "materialize-error": ["materialize-error-counterexample"]}, "visualChecks": ["long content", "provenance hierarchy"], "blockers": ["needs Simulator flow and source-owned fixture"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Presentation/DictionaryDetailPresentation.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift"
+      ],
+      "requiredFixtureIDs": [
+        "ui-p2-dictionary-senses"
+      ],
+      "acceptance": [
+        "all senses, examples, forms and source/license are readable",
+        "materialize and failure states preserve the selected sense"
+      ],
+      "counterexamples": [
+        "missing example",
+        "provider payload decode failure"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-044013-87414-2960",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
+        "requiredSteps": [
+          "detail",
+          "select-sense",
+          "materialize"
+        ],
+        "counterexampleSteps": [
+          "missing-example",
+          "materialize-error"
+        ],
+        "stateAliases": {
+          "missing-example": [
+            "missing-example-counterexample"
+          ],
+          "materialize-error": [
+            "materialize-error-counterexample"
+          ]
+        },
+        "visualChecks": [
+          "long content",
+          "provenance hierarchy"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "95fa1d083494bbaa48eb2f8905a3a0b085ed480bac0bb8fdc0c7f26e9649d0a9",
+        "evidenceBundles": [
+          {
+            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044013-87414-2960",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "95fa1d083494bbaa48eb2f8905a3a0b085ed480bac0bb8fdc0c7f26e9649d0a9"
+          },
+          {
+            "selector": "DictionaryLookupFlowUITests/testP2DictionaryMissingExampleCounterexampleIsVisible",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044115-90440-12764",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044115-90440-12764",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "539234a84586d534a49cb68cb5b2c0afac8e93528dcd5edcef82a529b0658325"
+          },
+          {
+            "selector": "DictionaryLookupFlowUITests/testP2DictionaryMaterializationErrorPreservesSelection",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044206-92676-19570",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044206-92676-19570",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "a16ccc5cc45756629ce2c0577f36a3e2ee9679e0b0ea90764b8a2f5b6bee3163"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044013-87414-2960",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P3",
       "reportImage": "p3.PNG",
       "title": "Reader table of contents navigation",
       "surface": "Reader TOC",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/TOCView.swift", "ios/BooksAndVocab/Views/Reader/ReaderView.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary"],
-      "acceptance": ["TOC opens with real chapter data", "selecting a chapter closes the sheet only after navigation succeeds"],
-      "counterexamples": ["missing chapter destination", "navigation failure retains retryable state"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["reader", "toc-open", "chapter-select", "navigation-result"], "counterexampleSteps": ["navigation-failure", "missing-chapter"], "visualChecks": ["chapter hierarchy", "selection/loading state"], "blockers": ["TOC implementation agent still running"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Reader/TOCView.swift",
+        "ios/BooksAndVocab/Views/Reader/ReaderView.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reader.realBookLibrary"
+      ],
+      "acceptance": [
+        "TOC opens with real chapter data",
+        "selecting a chapter closes the sheet only after navigation succeeds"
+      ],
+      "counterexamples": [
+        "missing chapter destination",
+        "navigation failure retains retryable state"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-044303-95346-29664",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+        "requiredSteps": [
+          "reader",
+          "toc-open",
+          "chapter-select",
+          "navigation-result"
+        ],
+        "counterexampleSteps": [
+          "navigation-failure",
+          "missing-chapter"
+        ],
+        "visualChecks": [
+          "chapter hierarchy",
+          "selection/loading state"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd",
+        "evidenceBundles": [
+          {
+            "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044303-95346-29664",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd"
+          },
+          {
+            "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044358-97728-23151",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044358-97728-23151",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "79f1cc1e7cacbf83e84098add14b5744ed84a4c5a9bad1624c604b6455dddc47"
+          },
+          {
+            "selector": "ReaderFlowUITests/testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044456-265-24624",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044456-265-24624",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "7755b692dcb57413b4642c6b90555d8a09821499fc9823b776417f9c5aed7ade"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044303-95346-29664",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P4",
       "reportImage": "p4.PNG",
       "title": "Reader settings appearance and highlight controls",
       "surface": "Reader settings appearance",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift", "ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary"],
-      "acceptance": ["each control has stable selector and round-trips through preferences", "Release hides developer hit-testing controls while DEBUG exposes an explicit diagnostic variant"],
-      "counterexamples": ["dark/sepia theme", "Dynamic Type accessibility3"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["settings-open", "change-theme", "change-highlight", "reset"], "counterexampleSteps": ["dark-theme", "dynamic-type"], "visualChecks": ["selected marker", "preview versus real Reader"], "blockers": ["Reader settings flow and deterministic preference overlay not yet implemented"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter+Vocab.swift",
+        "ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reader.realBookLibrary"
+      ],
+      "acceptance": [
+        "each control has stable selector and round-trips through preferences",
+        "Release hides developer hit-testing controls while DEBUG exposes an explicit diagnostic variant"
+      ],
+      "counterexamples": [
+        "dark/sepia theme",
+        "Dynamic Type accessibility3"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-044557-3418-10205",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
+        "requiredSteps": [
+          "settings-open",
+          "change-theme",
+          "change-highlight",
+          "reset"
+        ],
+        "counterexampleSteps": [
+          "dark-theme",
+          "dynamic-type"
+        ],
+        "visualChecks": [
+          "selected marker",
+          "preview versus real Reader"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "25b5662deff9ecf2236a02d56e592178442901080c3b7dceee75a4b1bacd5e74",
+        "evidenceBundles": [
+          {
+            "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044557-3418-10205",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "25b5662deff9ecf2236a02d56e592178442901080c3b7dceee75a4b1bacd5e74"
+          },
+          {
+            "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044844-9396-16183",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "c3f3434fd671ad123cee62b93e414d7ef64c298bb47d190f45200d4a6496b06e"
+          },
+          {
+            "selector": "ReaderSettingsUITests/testReaderSettingsDynamicTypeHasGeometryAndAccessibilityAssertions",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045133-15587-6058",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045133-15587-6058",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "7d8973895283f43b5a1ddcc7cae38c6f29ac63f26a068ad2fa9441490f038003"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044557-3418-10205",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P5",
       "reportImage": "p5.PNG",
       "title": "Reader typography preview geometry",
       "surface": "Reader settings typography/highlight preview",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift", "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary"],
-      "acceptance": ["line-height changes preview and real EPUB monotonically", "highlight geometry does not diverge silently at extreme line heights"],
-      "counterexamples": ["line-height 1.0", "line-height 2.5"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["preview-1.0", "preview-1.2", "preview-2.5", "reader-real-content"], "counterexampleSteps": ["preview-1.0-counterexample", "preview-2.5-counterexample"], "visualChecks": ["line spacing", "highlight band height"], "blockers": ["needs real Reader side-by-side evidence"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Reader/ReaderSettingsPreviewCard.swift",
+        "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reader.realBookLibrary"
+      ],
+      "acceptance": [
+        "line-height changes preview and real EPUB monotonically",
+        "highlight geometry does not diverge silently at extreme line heights"
+      ],
+      "counterexamples": [
+        "line-height 1.0",
+        "line-height 2.5"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-044844-9396-16183",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+        "requiredSteps": [
+          "preview-1.0",
+          "preview-1.2",
+          "preview-2.5",
+          "reader-real-content"
+        ],
+        "counterexampleSteps": [
+          "preview-1.0-counterexample",
+          "preview-2.5-counterexample"
+        ],
+        "visualChecks": [
+          "line spacing",
+          "highlight band height"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "c3f3434fd671ad123cee62b93e414d7ef64c298bb47d190f45200d4a6496b06e",
+        "evidenceBundles": [
+          {
+            "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044844-9396-16183",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "c3f3434fd671ad123cee62b93e414d7ef64c298bb47d190f45200d4a6496b06e"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044844-9396-16183",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P6",
       "reportImage": "p6.PNG",
       "title": "Reader progress and status state",
       "surface": "Reader progress chrome",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderView.swift", "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary"],
-      "acceptance": ["progress is derived from real document position", "loading, loaded and failure states cannot share the same stale progress"],
-      "counterexamples": ["zero-page/unknown length", "restore position failure"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["reader-load", "progress-zero", "progress-middle", "restore-failure"], "counterexampleSteps": ["progress-zero-counterexample", "restore-failure-counterexample"], "visualChecks": ["progress chrome", "failure recovery"], "blockers": ["state matrix and runtime proof pending"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Reader/ReaderView.swift",
+        "ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reader.realBookLibrary"
+      ],
+      "acceptance": [
+        "progress is derived from real document position",
+        "loading, loaded and failure states cannot share the same stale progress"
+      ],
+      "counterexamples": [
+        "zero-page/unknown length",
+        "restore position failure"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-044303-95346-29664",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+        "requiredSteps": [
+          "reader-load",
+          "progress-zero",
+          "progress-middle",
+          "restore-failure"
+        ],
+        "counterexampleSteps": [
+          "progress-zero-counterexample",
+          "restore-failure-counterexample"
+        ],
+        "visualChecks": [
+          "progress chrome",
+          "failure recovery"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd",
+        "evidenceBundles": [
+          {
+            "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044303-95346-29664",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd"
+          },
+          {
+            "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045247-18716-3025",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045247-18716-3025",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "810396c16f3d9b4ab3b385002385bcb4c2ebe36fafa9542b0dea3e35b6a8e57e"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-044303-95346-29664",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "evidenceBundleCount": 2,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P7",
       "reportImage": "p7.PNG",
       "title": "Reader loading and recovery",
       "surface": "Reader loading/error shell",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Reader/ReaderView.swift", "ios/BooksAndVocab/Views/Reader/ReaderViewState.swift"],
-      "requiredFixtureIDs": ["reader.realBookLibrary"],
-      "acceptance": ["loading does not expose stale document content", "retry transitions to a real loaded document or a named error"],
-      "counterexamples": ["missing EPUB asset", "slow asset installation"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["launch-loading", "error", "retry-success"], "counterexampleSteps": ["error-counterexample", "retry-success-counterexample"], "visualChecks": ["loading skeleton", "retry/error hierarchy"], "blockers": ["fixture and selector not yet implemented"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Reader/ReaderView.swift",
+        "ios/BooksAndVocab/Views/Reader/ReaderViewState.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reader.realBookLibrary"
+      ],
+      "acceptance": [
+        "loading does not expose stale document content",
+        "retry transitions to a real loaded document or a named error"
+      ],
+      "counterexamples": [
+        "missing EPUB asset",
+        "slow asset installation"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-045448-23380-30577",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
+        "requiredSteps": [
+          "launch-loading",
+          "error",
+          "retry-success"
+        ],
+        "counterexampleSteps": [
+          "error-counterexample",
+          "retry-success-counterexample"
+        ],
+        "visualChecks": [
+          "loading skeleton",
+          "retry/error hierarchy"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "57e327a393aba1400343f16f9e6196395a6c1945298c5b35e7ee8a1174355e1d",
+        "evidenceBundles": [
+          {
+            "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045448-23380-30577",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "57e327a393aba1400343f16f9e6196395a6c1945298c5b35e7ee8a1174355e1d"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045448-23380-30577",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P8",
       "reportImage": "p8.PNG",
       "title": "Explore loading and content projection",
       "surface": "Explore/shared deck catalog",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Explore/ExploreView.swift", "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"],
-      "requiredFixtureIDs": ["explore.loading", "explore.loaded"],
-      "acceptance": ["loading, empty, loaded and error states are distinct", "catalog cards render from injected data, not hardcoded preview rows"],
-      "counterexamples": ["no network", "empty catalog with retry"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["explore-loading", "explore-loaded", "explore-empty", "explore-retry"], "counterexampleSteps": ["explore-empty-counterexample", "explore-retry-counterexample"], "visualChecks": ["loading transition", "catalog density"], "blockers": ["runtime evidence pending"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Explore/ExploreView.swift",
+        "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"
+      ],
+      "requiredFixtureIDs": [
+        "explore.loading",
+        "explore.loaded"
+      ],
+      "acceptance": [
+        "loading, empty, loaded and error states are distinct",
+        "catalog cards render from injected data, not hardcoded preview rows"
+      ],
+      "counterexamples": [
+        "no network",
+        "empty catalog with retry"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-045629-26990-28956",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
+        "requiredSteps": [
+          "explore-loading",
+          "explore-loaded",
+          "explore-empty",
+          "explore-retry"
+        ],
+        "counterexampleSteps": [
+          "explore-empty-counterexample",
+          "explore-retry-counterexample"
+        ],
+        "visualChecks": [
+          "loading transition",
+          "catalog density"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "e61f3c62f0287cd3f8dcdb74ae297065f56544321f53197e912c7810bfe07620",
+        "evidenceBundles": [
+          {
+            "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045629-26990-28956",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "e61f3c62f0287cd3f8dcdb74ae297065f56544321f53197e912c7810bfe07620"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045629-26990-28956",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P9",
       "reportImage": "p9.PNG",
       "title": "Review calendar empty day",
       "surface": "Review calendar",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift", "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"],
-      "requiredFixtureIDs": ["review-calendar.empty-day", "review-calendar.populated-day"],
-      "acceptance": ["empty day is explicit and not confused with loading", "selecting a populated/empty day updates the same calendar projection"],
-      "counterexamples": ["timezone boundary", "day with zero reviews between populated days"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["calendar", "empty-day", "populated-day", "timezone-boundary"], "counterexampleSteps": ["empty-day-counterexample", "timezone-boundary-counterexample"], "visualChecks": ["empty state", "selected day"], "blockers": ["calendar UI flow not yet bound to a rich UI World"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"
+      ],
+      "requiredFixtureIDs": [
+        "review-calendar.empty-day",
+        "review-calendar.populated-day"
+      ],
+      "acceptance": [
+        "empty day is explicit and not confused with loading",
+        "selecting a populated/empty day updates the same calendar projection"
+      ],
+      "counterexamples": [
+        "timezone boundary",
+        "day with zero reviews between populated days"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-045849-32251-24610",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
+        "requiredSteps": [
+          "calendar",
+          "empty-day",
+          "populated-day",
+          "timezone-boundary"
+        ],
+        "counterexampleSteps": [
+          "empty-day-counterexample",
+          "timezone-boundary-counterexample"
+        ],
+        "visualChecks": [
+          "empty state",
+          "selected day"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "92a716c9a87b80a028afa280fba5796d27796862410c4f873d060a75bc8742f6",
+        "evidenceBundles": [
+          {
+            "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045849-32251-24610",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "92a716c9a87b80a028afa280fba5796d27796862410c4f873d060a75bc8742f6"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-045849-32251-24610",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P10",
       "reportImage": "p10.PNG",
       "title": "Overview metrics, calendar and forecast",
       "surface": "Overview dashboard",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift", "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift"],
-      "requiredFixtureIDs": ["vocabulary.statsPopulated", "vocabulary.statsEmpty"],
-      "acceptance": ["metrics/calendar/forecast share one review-clock projection", "zero and partial data states remain readable without fabricated values"],
-      "counterexamples": ["no review history", "large counts and long forecast text"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["overview", "metrics", "calendar", "forecast-zero"], "counterexampleSteps": ["forecast-zero-counterexample", "large-counts"], "visualChecks": ["number hierarchy", "zero-state copy"], "blockers": ["needs explicit UI World metrics seed and visual run"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift"
+      ],
+      "requiredFixtureIDs": [
+        "vocabulary.statsPopulated",
+        "vocabulary.statsEmpty"
+      ],
+      "acceptance": [
+        "metrics/calendar/forecast share one review-clock projection",
+        "zero and partial data states remain readable without fabricated values"
+      ],
+      "counterexamples": [
+        "no review history",
+        "large counts and long forecast text"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-050250-40693-4879",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
+        "requiredSteps": [
+          "overview",
+          "metrics",
+          "calendar",
+          "forecast-zero"
+        ],
+        "counterexampleSteps": [
+          "forecast-zero-counterexample",
+          "large-counts"
+        ],
+        "visualChecks": [
+          "number hierarchy",
+          "zero-state copy"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "6c491166454fe4d1d79612334cb405a8d70a5e666c82f574fb77aafd818d56b9",
+        "evidenceBundles": [
+          {
+            "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050250-40693-4879",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "6c491166454fe4d1d79612334cb405a8d70a5e666c82f574fb77aafd818d56b9"
+          },
+          {
+            "selector": "OverviewFlowUITests/testOverviewEmptyForecastCounterexampleIsVisible",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050423-44373-31425",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050423-44373-31425",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "026c6ac50c5e7dba7943d233ebd91dc75dfc60145e5b087c1b8000c15bcecefa"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050250-40693-4879",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
+            "evidenceBundleCount": 2,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P11",
       "reportImage": "p11.PNG",
       "title": "Vocabulary role/review query projection",
       "surface": "Vocabulary library",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Presentation/VocabularyEntryPresentation.swift", "ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift"],
-      "requiredFixtureIDs": ["vocabListFilterRich", "p11.644.reviewMix", "role.mixed"],
-      "acceptance": ["role facets, review facets, visible rows and CTA use explicit query layers", "dictionary isolation, multi-select union, search, sort and CTA IDs are asserted in UI World"],
-      "counterexamples": ["learning plus dictionary mixed roles", "Dynamic Type accessibility3 with 644 rows"],
-      "verification": {"status": "in_progress", "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently", "datasetID": "marketing_demo", "runID": null, "evidenceRoot": null, "requiredSteps": ["all-scope-644-rows", "dictionary-scope", "learning-review", "search-within-projection", "cta"], "counterexampleSteps": ["mixed-role", "dynamic-type"], "visualChecks": ["two filter grids", "row/progress density", "CTA/sort hierarchy"], "blockers": ["new pill-grid source is compiling; clean Simulator run and visual attestation still required"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Presentation/VocabularyEntryPresentation.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift"
+      ],
+      "requiredFixtureIDs": [
+        "vocabListFilterRich",
+        "p11.644.reviewMix",
+        "role.mixed"
+      ],
+      "acceptance": [
+        "role facets, review facets, visible rows and CTA use explicit query layers",
+        "dictionary isolation, multi-select union, search, sort and CTA IDs are asserted in UI World"
+      ],
+      "counterexamples": [
+        "learning plus dictionary mixed roles",
+        "Dynamic Type accessibility3 with 644 rows"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-050508-46330-23442",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
+        "requiredSteps": [
+          "all-scope-644-rows",
+          "dictionary-scope",
+          "learning-review",
+          "search-within-projection",
+          "cta"
+        ],
+        "counterexampleSteps": [
+          "mixed-role",
+          "dynamic-type"
+        ],
+        "visualChecks": [
+          "two filter grids",
+          "row/progress density",
+          "CTA/sort hierarchy"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "30c530bb0a0dc296cf43994250e41cde07fea484c212ea576f67872677916aeb",
+        "evidenceBundles": [
+          {
+            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050508-46330-23442",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "30c530bb0a0dc296cf43994250e41cde07fea484c212ea576f67872677916aeb"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050508-46330-23442",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P12",
       "reportImage": "p12.PNG",
       "title": "Review card full information hierarchy",
       "surface": "Review card answer content",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"],
-      "requiredFixtureIDs": ["reviewDeck.notebookReviewDeck", "reviewDeck.review.card-full-info"],
-      "acceptance": ["full answer content is mounted in a readable hierarchy", "examples, explanation, collocations and graph links have independent visibility contracts"],
-      "counterexamples": ["long explanation", "missing optional sections"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["front", "flip", "full-answer", "optional-sections"], "counterexampleSteps": ["optional-sections-counterexample", "small-viewport-counterexample"], "visualChecks": ["answer hierarchy", "scroll/natural height"], "blockers": ["review card implementation agent still running"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reviewDeck.notebookReviewDeck",
+        "reviewDeck.review.card-full-info"
+      ],
+      "acceptance": [
+        "full answer content is mounted in a readable hierarchy",
+        "examples, explanation, collocations and graph links have independent visibility contracts"
+      ],
+      "counterexamples": [
+        "long explanation",
+        "missing optional sections"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-050651-50322-32434",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
+        "requiredSteps": [
+          "front",
+          "flip",
+          "full-answer",
+          "optional-sections"
+        ],
+        "counterexampleSteps": [
+          "optional-sections-counterexample",
+          "small-viewport-counterexample"
+        ],
+        "visualChecks": [
+          "answer hierarchy",
+          "scroll/natural height"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "8f18ca1ecf855602890a04865e70717d06195d0cbe58c023f7e35f4635bc44e2",
+        "evidenceBundles": [
+          {
+            "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050651-50322-32434",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "8f18ca1ecf855602890a04865e70717d06195d0cbe58c023f7e35f4635bc44e2"
+          },
+          {
+            "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050742-52723-32281",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050742-52723-32281",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "1f71d32e74a588a886ae11c3b0849d9674c9a96955aaaee365a30b1f99688652"
+          },
+          {
+            "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050922-56593-16799",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "d7ef13cfba0aece9c797f55a0bd09b73e768b8231f77786f7b5d31bc8258779e"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050651-50322-32434",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P13",
       "reportImage": "p13.PNG",
       "title": "Review card compact/full layout regression",
       "surface": "Review card answer layout",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"],
-      "requiredFixtureIDs": ["reviewDeck.notebookReviewDeck", "reviewDeck.review.card-compact-counterexample"],
-      "acceptance": ["natural height and scroll presentation never create a centered blank region", "compact mode summarizes intentionally rather than hiding fields through greedy frame constraints"],
-      "counterexamples": ["small viewport", "large text with all optional fields"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["compact", "full", "small-viewport", "large-text"], "counterexampleSteps": ["small-viewport-counterexample", "large-text-counterexample"], "visualChecks": ["no blank dead zone", "content order"], "blockers": ["needs implementation plus clean visual evidence"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardView.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift"
+      ],
+      "requiredFixtureIDs": [
+        "reviewDeck.notebookReviewDeck",
+        "reviewDeck.review.card-compact-counterexample"
+      ],
+      "acceptance": [
+        "natural height and scroll presentation never create a centered blank region",
+        "compact mode summarizes intentionally rather than hiding fields through greedy frame constraints"
+      ],
+      "counterexamples": [
+        "small viewport",
+        "large text with all optional fields"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-050922-56593-16799",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+        "requiredSteps": [
+          "compact",
+          "full",
+          "small-viewport",
+          "large-text"
+        ],
+        "counterexampleSteps": [
+          "small-viewport-counterexample",
+          "large-text-counterexample"
+        ],
+        "visualChecks": [
+          "no blank dead zone",
+          "content order"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "d7ef13cfba0aece9c797f55a0bd09b73e768b8231f77786f7b5d31bc8258779e",
+        "evidenceBundles": [
+          {
+            "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050922-56593-16799",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "d7ef13cfba0aece9c797f55a0bd09b73e768b8231f77786f7b5d31bc8258779e"
+          },
+          {
+            "selector": "ReviewCardLayoutEditorUITests/testCompactCounterexampleUsesCanonicalSeedAndHidesOnlyOptionalFields",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051021-59038-24341",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051021-59038-24341",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "c828b6de2d5b0d5b29ae0664e190c257633866004f4aafb632915ba4fb8207ee"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-050922-56593-16799",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+            "evidenceBundleCount": 2,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P14",
       "reportImage": "p14.PNG",
       "title": "Sync settings terminal lifecycle",
       "surface": "Settings sync state",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift", "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift"],
-      "requiredFixtureIDs": ["settings.sync_terminal_error_retry_success"],
-      "acceptance": ["sync terminal success/error is derived from one lifecycle state", "retry and dismiss do not leave stale progress or duplicate work"],
-      "counterexamples": ["partial failure", "retry after terminal error"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["idle", "syncing", "terminal-success", "terminal-error", "retry"], "counterexampleSteps": ["terminal-error-counterexample", "retry-counterexample"], "visualChecks": ["progress to terminal transition", "error action hierarchy"], "blockers": ["settings lifecycle implementation pending"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift"
+      ],
+      "requiredFixtureIDs": [
+        "settings.sync_terminal_error_retry_success"
+      ],
+      "acceptance": [
+        "sync terminal success/error is derived from one lifecycle state",
+        "retry and dismiss do not leave stale progress or duplicate work"
+      ],
+      "counterexamples": [
+        "partial failure",
+        "retry after terminal error"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-051110-61220-5706",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
+        "requiredSteps": [
+          "idle",
+          "syncing",
+          "terminal-success",
+          "terminal-error",
+          "retry"
+        ],
+        "counterexampleSteps": [
+          "terminal-error-counterexample",
+          "retry-counterexample"
+        ],
+        "visualChecks": [
+          "progress to terminal transition",
+          "error action hierarchy"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "2e7e12c375123e1d52654c5bf07bdbc9af7223c2ecbdad1eb130fc7e0e78e1f9",
+        "evidenceBundles": [
+          {
+            "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051110-61220-5706",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "2e7e12c375123e1d52654c5bf07bdbc9af7223c2ecbdad1eb130fc7e0e78e1f9"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051110-61220-5706",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          }
+        ]
+      }
     },
     {
       "id": "P15",
       "reportImage": "p15.PNG",
       "title": "Settings information architecture and grouping",
       "surface": "Settings sections",
-      "sourceRefs": ["ios/BooksAndVocab/Views/Settings/SettingsView.swift", "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"],
-      "requiredFixtureIDs": ["settings.preferences_auto_sync_off", "settings.long_content_counterexample", "settings.reset_counterexample"],
-      "acceptance": ["sections group by user intent with stable navigation/accessibility labels", "long content, reset and destructive actions remain discoverable without ambiguous duplicate rows"],
-      "counterexamples": ["long identity/email", "clean defaults versus persisted non-defaults"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["settings", "section-navigation", "long-content", "reset"], "counterexampleSteps": ["long-content-counterexample", "reset-counterexample"], "visualChecks": ["section grouping", "safe-area/scroll behavior"], "blockers": ["IA refactor and Simulator evidence pending"]}
+      "sourceRefs": [
+        "ios/BooksAndVocab/Views/Settings/SettingsView.swift",
+        "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"
+      ],
+      "requiredFixtureIDs": [
+        "settings.preferences_auto_sync_off",
+        "settings.long_content_counterexample",
+        "settings.reset_counterexample"
+      ],
+      "acceptance": [
+        "sections group by user intent with stable navigation/accessibility labels",
+        "long content, reset and destructive actions remain discoverable without ambiguous duplicate rows"
+      ],
+      "counterexamples": [
+        "long identity/email",
+        "clean defaults versus persisted non-defaults"
+      ],
+      "verification": {
+        "status": "verified",
+        "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
+        "datasetID": "marketing_demo",
+        "runID": "20260815-051208-63983-8898",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
+        "requiredSteps": [
+          "settings",
+          "section-navigation",
+          "long-content",
+          "reset"
+        ],
+        "counterexampleSteps": [
+          "long-content-counterexample",
+          "reset-counterexample"
+        ],
+        "visualChecks": [
+          "section grouping",
+          "safe-area/scroll behavior"
+        ],
+        "blockers": [],
+        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+        "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+        "manifestSHA256": "c88746047ec36f4f9d9934dae053867b67bec353f6016233b7f8c3bc2845a8e3",
+        "evidenceBundles": [
+          {
+            "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051208-63983-8898",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "c88746047ec36f4f9d9934dae053867b67bec353f6016233b7f8c3bc2845a8e3"
+          },
+          {
+            "selector": "SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051413-68743-415",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051413-68743-415",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "fb80cddf3d2dc420638947c50c46b23532d4c8c97220b2390630eeca41202970"
+          },
+          {
+            "selector": "SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051525-71577-9909",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051525-71577-9909",
+            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
+            "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+            "manifestSHA256": "7498ccc31bd03e6ba2b84bce3526c2515e1c7b8c1ad73c1e2b4fff4403b6fcd3"
+          }
+        ],
+        "history": [
+          {
+            "recordedAt": "2026-08-15T05:18:26+00:00",
+            "status": "verified",
+            "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-051208-63983-8898",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          }
+        ]
+      }
     }
   ]
 }
