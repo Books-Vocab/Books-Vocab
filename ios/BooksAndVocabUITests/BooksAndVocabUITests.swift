@@ -68,7 +68,7 @@ final class BooksAndVocabUITests: UITestCase {
 
     @MainActor
     func testTabNavigationCyclesThroughAllSections() throws {
-        let app = launchApp()
+        let app = launchIsolatedApp(fixtures: [.authSignedIn, .podcastPlayablePreview])
 
         let shell = AppPage(app: app)
 
@@ -137,7 +137,7 @@ final class BooksAndVocabUITests: UITestCase {
 
     @MainActor
     func testNotebookTabShowsAddButton() throws {
-        let app = launchApp()
+        let app = launchIsolatedApp(fixtures: [.authSignedIn])
 
         let notebooks = AppPage(app: app).goToNotebooks()
         notebooks.assertIsActive()

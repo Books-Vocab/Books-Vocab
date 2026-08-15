@@ -67,7 +67,11 @@ if [[ ! "$LOG_IDLE_LIMIT" =~ ^[0-9]+$ ]]; then
   echo "[ios_test] warning: ignoring non-numeric KG_IOS_TEST_LOG_IDLE_LIMIT=$LOG_IDLE_LIMIT (using 0)" >&2
   LOG_IDLE_LIMIT=0
 fi
-MAX_TEST_EXECUTION_TIME_ALLOWANCE="${KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE:-120}"
+# UI evidence runs include real Readium/WebKit startup and deliberate
+# counterexample transitions. The old 120s cap overrode XCTest case allowances
+# of 300–360s and classified valid flows as timeouts. Keep the ceiling bounded,
+# while allowing the case-level allowance to express the actual flow budget.
+MAX_TEST_EXECUTION_TIME_ALLOWANCE="${KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE:-420}"
 if [[ ! "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" =~ ^[0-9]+$ || "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" -lt 60 ]]; then
   echo "[ios_test] error: KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE must be an integer >= 60" >&2
   exit 64
