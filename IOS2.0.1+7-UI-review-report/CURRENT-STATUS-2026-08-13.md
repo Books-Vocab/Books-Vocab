@@ -6,7 +6,7 @@ canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-re
 
 ## 2026-08-15 收斂更新（權威 current status）
 
-本輪只做收斂，沒有新增 worktree、branch、ticket、cluster 或 scope。canonical 仍使用既有 integration worktree；沒有另開 workaround tree。已用 ancestry、patch-id、tree equality 與正式 worktree-flow resolve 判定已落 main 的六棵 landed/duplicate tree，不重複 cherry-pick；其 commits 仍可由 main 回溯。`debug/p3-toc-reader-20260812` 保持原狀並列為 `DIRTY-DO-NOT-TOUCH`，沒有修改、清理或刪除。
+本輪只做收斂，沒有新增 worktree、branch、ticket、cluster 或 scope。canonical 仍使用既有 integration worktree；沒有另開 workaround tree。已用 ancestry、patch-id、tree equality 與正式 worktree-flow resolve 判定已落 main 的 landed/duplicate tree，不重複 cherry-pick：先前六棵，加上本輪再正式 resolve 的 `fix-legacy-import-gate-final-r2`、`imp-4bd1ef-gate-duration-telemetry`、`root-imp-4bd1ef-final`、`ui-evidence-tooling-recovery` 四棵，共十棵；其 commits 仍可由 main 回溯。`root-imp-4bd1ef-20260813-f955` 因仍持有未落地的 P11 source edge 保留，沒有強拆。`debug/p3-toc-reader-20260812` 保持原狀並列為 `DIRTY-DO-NOT-TOUCH`，沒有修改、清理或刪除。
 
 v34 是目前唯一完整的 P1–P15 fresh Simulator evidence batch：build-once/run-many，28/28 exact XCTest execution exit 0，28/28 machine/contract pass，28/28 stable bundle 完成 `--all-steps` 視覺 attestation；所有 bundle、manifest、影片與 matrix record 均綁定 source HEAD `d3f2d0e32199a9f13d7c8e6eace32bbe773217be`、Simulator `F068B3D8-9E0B-475B-85C3-97BC61748A8F` 與 UI World SHA `609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。目視檢查未見明顯重疊、裁切或主要控制項遺失；這仍是 pinned Simulator evidence，不是 physical device PASS。
 
