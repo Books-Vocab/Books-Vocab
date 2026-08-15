@@ -9,7 +9,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 
 用這個 skill 把「畫面看起來對」拆成可追溯的證據鏈：source tree → UI World → 指定 Simulator → test verdict → 視覺產物。它適用於 KG repo 的 `ios/`、`ops/ios_ops.sh`、`ios/BooksAndVocabUITests/` 與 `ops/fixtures/ui_worlds/`。
 
-它驗證的是 Simulator 與 UI test，不等同真機、TestFlight、App Store 或 production release 證據；那些流程另走 `docs/sop/ios.md` 與 release skill。
+它驗證的是 Simulator 與 UI test，不等同真機、TestFlight、App Store 或 production release 證據；那些流程另走 `docs/sop/ios.md` 與 release skill。真機驗證沿用同一個 selector／UI World／artifact 契約，但必須額外記錄 physical UDID、OS、簽署與 trust 狀態、連線方式、app binary identity，並明確標示「真機」；Simulator bundle 不得升格為真機證據。本 skill 沒有替真機簽署、Provisioning、Trust 或 USB/Wi-Fi 穩定性建立捷徑。
 
 ## 不變量
 
@@ -22,9 +22,9 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。單一 requirement 可以由多個 exact selector bundle 組成 evidence union，但每個 bundle 都要獨立通過 machine contract、source/dataset/device provenance 與全步驟 visual attestation；`record-many` 只接受 union 中每個 logical required/counterexample state 恰好一次且 asset 不重疊的結果。
 - `build/snapshots/uitest-runs/index.json` 是 append-only history；同一 flow/variant 的新 run 只更新 cockpit 的 latest status，不得刪除舊的 fail／inconclusive record。
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
-- 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300 秒）；`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
+- 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300／360 秒），並以「test body 實測時間 + 啟動／artifact／teardown headroom」推導，不得只把全域上限調大。`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance；v25 已證明 test body 通過後仍可能被 120／180 秒 class allowance 殺掉。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
 - 零步驟的 fixture decoder、manifest schema、projection unit test 不是視覺證據；它們應直接走 unit／focused test，不能用 evidence helper 產生空 screenshot bundle，也不能把「沒有 UI step」記成 visual pass。真正的 UI evidence 必須有至少一個使用者可見狀態與對應 interaction/assertion。
-- iOS 26 SwiftUI `Slider` 的 endpoint 是已知的 XCTest edge case：從任一端直接呼叫 `adjust(toNormalizedSliderPosition: 0|1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（下端 `0.05/0.15/0.25`、上端 `0.95/0.85/0.75`），每次等待 AX `value` 確實改變，再調到 endpoint 並等待精確目標值；有限次 staged retry 仍只用語意 Slider API，不可把 tap／coordinate drag 當成未驗證 fallback。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
+- iOS 26 production Reader 的 line-height control 是 UIKit `UISlider` bridge 加語意 tick／step controls；endpoint 是已知的 XCTest edge case：從任一端直接呼叫 `adjust(toNormalizedSliderPosition: 0|1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（下端 `0.05/0.15/0.25`、上端 `0.95/0.85/0.75`），每次等待 AX `value` 確實改變，再調到 endpoint 並等待精確目標值；有限次 staged retry 仍只用語意 Slider API，不可把 tap／coordinate drag 當成未驗證 fallback。Dynamic Type／line-height 若使用語意 `toValue("2.5")`，必須同時斷言實際 AX value／畫面結果。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
 - 每個 helper run 都會保存 `build/snapshots/uitest-evidence/<run>/verdict.json`、`upstream-verdict.json`、command、runner log；upstream 有提供的 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 也會複製到同一 bundle。runner 失敗或 verdict 不合約時仍讀這個 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
 
 ## 標準流程
@@ -68,7 +68,7 @@ P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修�
 
 協調者不能把整個 turn 只用在輪詢長命令。啟動 build／UI run 後，立即推進不競爭同一 Xcode／device lock 的工作：讀 stable failure bundle、定位第一個根因、審查 source diff、驗證 UI World／matrix、整理已完成 run 的視覺證據、準備下一個 exact selector，或跑非衝突的 static／unit gate。輪詢只保留 bounded heartbeat，並回報 elapsed／PID／alive／last log；不要用密集輪詢取代工作。
 
-若同一 runner lock 尚未釋放，不要為了假裝平行再排另一個會排隊的 Xcode 命令；改做 read-only／報告／contract 工作，或使用明確隔離且可取得的另一個 lease。長命令結束後，先讀 normalized verdict 與 machine contract，再把相同 selector 綁定到 visual review；任何失敗先做一個窄根因修正再重跑，不同時堆疊未驗證 patch。
+若同一 runner lock 尚未釋放，不要為了假裝平行再排另一個會排隊的 Xcode 命令；改做 read-only／報告／contract 工作，或使用明確隔離且可取得的另一個 lease。每個外層 command 都要有明確的 lock-wait deadline、idle-log deadline 與總 elapsed 上限；超過 deadline 先保存 PID、lock owner、stderr、xcresult 與 normalized verdict，再把該 run 分類為 inconclusive，不能無限重試或讓使用者只看見「還在跑」。長命令結束後，先讀 normalized verdict 與 machine contract，再把相同 selector 綁定到 visual review；任何失敗先做一個窄根因修正再重跑，不同時堆疊未驗證 patch。
 
 ### 1.2 UI World 注入契約
 
@@ -79,6 +79,8 @@ P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修�
 - seed 的語意欄位要能驅動真實 projection，例如角色、review eligibility、due／unlearned、history、provider provenance、Reader preference、時計與 timezone；只改文字而不改狀態來源不算 injection。
 - UI test 斷言投影後的 rows、counts、CTA、selection、error recovery 與 round-trip；截圖只證明畫面，不取代行為斷言。
 - 修改 UI World schema、seed 或 validator 時，必須同時跑 recursive inheritance／override／cross-reference tests，防止 host validator 與 runtime 解析器各自接受不同資料。
+
+每一個 dataset run 都要留下「已被 app 消費」的可觀察證據，例如 `fixtureDataUsed=true`、dataset ID／SHA、projection log 或可斷言的 seeded state；只有 host 端載入成功不能算 runtime consumption。若目前 runtime 沒有通用 consumed marker，必須在報告中明示限制，不能用資料檔存在推論 app 已使用該資料。
 
 ### 2. 選擇驗證層
 
@@ -192,6 +194,19 @@ visual: <UIreview.html/contact sheet/video paths and inspection result>
 raw: <log> <xcresult>
 ```
 
+### 5.2 最終化與真機邊界
+
+最終 consumer 只讀每個 stable bundle 的 normalized `verdict.json`，不讀 workspace badge、上游暫存路徑或「最新一個」未綁定的 artifact。每一個 logical state 必須以唯一 tuple 對齊：`source commit + clean-tree result + UI World/dataset ID+SHA + device UDID/OS + exact selector + variant`。禁止把舊 HEAD、不同 dataset、不同 device 或尚未 attestation 的 bundle 混進同一個 aggregate。
+
+一批要能寫入矩陣，必須同時滿足：
+
+- 最終 batch 沒有 missing、duplicate、unknown、timeout、fail 或 source/dataset/device drift；
+- 每個 bundle 的 machine evidence contract 與最新全 steps visual attestation 都是 pass；
+- `fixtureDataUsed=true` 或等價 runtime receipt 能對應到同一 dataset SHA；沒有 consumed marker 的 state 只能標 provenance-limited；
+- `record-many` 在人工複核完成後執行，並再次以 exact required/counterexample state union 驗證，失敗就保留 pending，不以 selector-level pass 代替 requirement pass。
+
+真機 run 另須記錄 physical device class、UDID、OS、簽署／trust、連線與 app build identity，且不得把 Simulator lease、Simulator fixture data 或系統 prompt 證據誤標成真機。若本輪沒有真機，最終結論必須寫「Simulator-only」，並列出真機尚未執行；這不是阻止 Simulator 收斂的理由，而是證據層級的明確邊界。
+
 ## 失敗診斷捷徑
 
 - 找不到 accessibility identifier：先檢查父容器 `.accessibilityIdentifier` 是否覆蓋子節點；不要先改 selector。
@@ -207,4 +222,4 @@ raw: <log> <xcresult>
 
 ## 收尾
 
-完成 code／test 修改後，依 worktree-flow 停在：最小充分驗證 → commit → `./ops/worktree_registry.py hand-back --json`。不要在 child 自行 integrate、cutover、resolve、sync 或 deploy。回報中把每個 PDF／UI requirement 對應到 source、unit、UI behavior、visual artifact；沒有 live／pixel／physical evidence 就明確標出缺口。
+完成 code／test 修改後，依 worktree-flow 停在：最小充分驗證 → commit → `./ops/worktree_registry.py hand-back --json`。只有取得 Delivery Team Integrator 的明示授權，才可進行 fresh Gate、`close-wave --commit --sync`、local `main`／`origin/main` 收斂；deploy／`origin/prod` 仍是另一個明示意圖。回報中把每個 PDF／UI requirement 對應到 source、unit、UI behavior、visual artifact；沒有 live／pixel／physical evidence 就明確標出缺口。任務若要求矩陣結案，必須在最後一次視覺 attestation 後才跑 `record-many`，並保留其 accept/reject output。
