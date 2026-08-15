@@ -274,6 +274,7 @@ struct TOCView: View {
 }
 
 struct TOCViewPreviewScene: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let loadState: TOCView.LoadState
     let tocTitles: [String]
@@ -333,6 +334,7 @@ struct TOCViewPreviewScene: View {
             .navigationTitle(L10n.string("目錄"))
             .navigationBarTitleDisplayMode(.inline)
         }
+        .enableInjection()
     }
 }
 

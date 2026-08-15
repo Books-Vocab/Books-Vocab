@@ -356,6 +356,7 @@ struct BookshelfView: View {
 }
 
 struct BookshelfLoadingOverlay: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let message: String
     let progress: Double?
@@ -382,6 +383,7 @@ struct BookshelfLoadingOverlay: View {
             .frame(maxWidth: 360)
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
         }
+        .enableInjection()
     }
 }
 
