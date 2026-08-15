@@ -177,6 +177,18 @@ def test_reader_evidence_selectors_require_exact_cardinality() -> None:
     assert writer.count("count == 1") >= 3
 
 
+def test_reader_webview_evidence_uses_stable_surface_not_exists_predicate() -> None:
+    page = _swift_source("ios/BooksAndVocabUITests/Pages/ReaderPage.swift")
+    writer = _swift_source(
+        "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift"
+    )
+
+    assert 'NSPredicate(format: "exists == true")' not in page
+    assert 'if webViews.count == 1' not in writer
+    for source in (page, writer):
+        assert 'reader.webView.settingsState' in source
+
+
 def test_invalid_reader_flow_revalidates_negative_state_after_failure_and_retry() -> None:
     source = _swift_source("ios/BooksAndVocabUITests/ReaderFlowUITests.swift")
     invalid_flow = source.split(

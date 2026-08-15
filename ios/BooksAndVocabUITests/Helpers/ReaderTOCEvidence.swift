@@ -452,18 +452,16 @@ extension UITestCase {
         selector: String?
     ) throws -> String? {
         guard let selector, !selector.isEmpty else { return nil }
-        let webViews = app.webViews
+        let readerSurface = app.otherElements["reader.webView.settingsState"]
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
-            if webViews.count == 1 {
-                // Readium exposes rendered paragraphs through the app-level
-                // WebKit query's exact element subscript. Keep this aligned
-                // with ReaderPage.contentText(_:) while retaining the bounded
-                // wait for the WebKit accessibility subtree to settle.
-                let content = app.webViews.staticTexts[selector]
-                if content.exists {
-                    return content.label
-                }
+            // Readium exposes multiple WebKit projections. Scope the content
+            // observation to the production surface container instead of
+            // assuming a projection count or order.
+            let contentQuery = readerSurface.staticTexts.matching(identifier: selector)
+            if readerSurface.exists, contentQuery.count == 1 {
+                let content = readerSurface.staticTexts[selector]
+                if content.exists { return content.label }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
