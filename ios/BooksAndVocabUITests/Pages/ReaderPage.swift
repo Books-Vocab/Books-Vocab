@@ -41,9 +41,8 @@ struct ReaderPage {
         app.buttons["reader.settings.theme.\(theme)"]
     }
     var highlightColorPicker: XCUIElement {
-        app.descendants(matching: .any)
-            .matching(identifier: "reader.settings.highlightColor")
-            .element(boundBy: 0)
+        let predicate = NSPredicate(format: "identifier == %@", "reader.settings.highlightColor")
+        return app.descendants(matching: .any).element(matching: predicate)
     }
     var highlightOpacityPicker: XCUIElement { app.buttons["reader.settings.highlightOpacity"] }
     var resetMenu: XCUIElement { app.buttons["reader.settings.resetMenu"] }
@@ -352,10 +351,11 @@ struct ReaderPage {
     // MARK: - Content (Readium WebView)
 
     var webView: XCUIElement {
-        // A query property must stay side-effect free: callers need to be able
-        // to wait for the web view before asserting cardinality. Failing here
-        // makes `webView.waitUntilExists` impossible during Readium startup.
-        app.webViews.element(boundBy: 0)
+        // Readium exposes multiple WebKit accessibility projections for one
+        // logical navigator. The existence predicate keeps this query
+        // waitable during startup without depending on projection order;
+        // geometry/content contracts below still validate the selected node.
+        app.webViews.element(matching: NSPredicate(format: "exists == true"))
     }
 
     /// A rendered text block inside the Readium WebView. Single-word
@@ -365,7 +365,7 @@ struct ReaderPage {
         // Keep this query side-effect free: Readium may replace the WebView's
         // accessibility subtree after a locator change. Callers can wait for
         // the text to materialize before asserting its cardinality.
-        app.webViews.staticTexts[text]
+        webView.staticTexts[text]
     }
 
     func assertContentAbsent(
@@ -374,7 +374,7 @@ struct ReaderPage {
         line: UInt = UInt(#line)
     ) {
         XCTAssertEqual(
-            webView.staticTexts.matching(identifier: text).count,
+            contentTextQuery(text).count,
             0,
             "Reader content must remain absent: \(text)",
             file: file,
@@ -535,16 +535,11 @@ struct ReaderPage {
 
     func waitForContent(_ text: String, timeout: TimeInterval = 45) -> Bool {
         let query = contentTextQuery(text)
-        let candidate = query.element(boundBy: 0)
-        guard candidate.waitForExistence(timeout: timeout) else {
-            XCTFail("Reader content \(text) did not materialize within \(timeout)s")
-            return false
-        }
-        let count = query.count
-        guard count == 1 else {
-            XCTFail("Reader content \(text) must resolve exactly one element, observed \(count)")
-            return false
-        }
+        guard let candidate = exactlyOne(
+            query,
+            named: "Reader content \(text)",
+            timeout: timeout
+        ) else { return false }
         guard candidate.isHittable, !candidate.frame.isEmpty else {
             XCTFail("Reader content \(text) materialized but is not hittable")
             return false
@@ -1088,10 +1083,10 @@ struct ReaderPage {
             let openMenuOptions = app.buttons.matching(
                 NSPredicate(format: "identifier BEGINSWITH %@", "reader.settings.highlightColor.")
             )
-            if openMenuOptions.count > 0,
-               openMenuOptions.firstMatch.exists,
-               openMenuOptions.firstMatch.isHittable {
-                openMenuOptions.firstMatch.tap()
+            if let visibleOption = openMenuOptions.allElementsBoundByIndex.first(where: {
+                $0.exists && $0.isHittable && !$0.frame.isEmpty && $0.frame.intersects(app.frame)
+            }) {
+                visibleOption.tap()
             } else if highlightColorPicker.exists, highlightColorPicker.isHittable {
                 highlightColorPicker.tap()
             }

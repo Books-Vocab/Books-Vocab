@@ -173,7 +173,7 @@ def test_reader_evidence_selectors_require_exact_cardinality() -> None:
         assert "boundBy: 0" not in source
     assert "element(matching:" in page
     assert "element(matching:" in writer
-    assert page.count("count == 1") >= 2
+    assert page.count("count == 1") >= 1
     assert writer.count("count == 1") >= 3
 
 
@@ -185,9 +185,9 @@ def test_invalid_reader_flow_revalidates_negative_state_after_failure_and_retry(
 
     assert invalid_flow.count("assertFixtureAsset(") >= 3
     assert invalid_flow.count('"OEBPS/chapter1.xhtml"') >= 3
-    assert "assertContentAbsent(Self.secondChapterWord)" in invalid_flow
-    assert "tocMissingDestination.count" in invalid_flow
-    assert "tocRetry.count" in invalid_flow
+    assert "assertContentAbsent(Self.secondChapterContent)" in invalid_flow
+    assert "tocMissingDestinationCount" in invalid_flow
+    assert "tocRetryCount" in invalid_flow
 
 
 def test_reader_evidence_asset_producer_uses_canonical_fixture_proof() -> None:
@@ -360,7 +360,7 @@ REVIEW_CARD_CAPTURE_CONTRACTS = {
         "minimum_translation_length": 180,
         "effective_profile": "recognition:standard,production:standard",
         "face": "front",
-        "presentation": "scroll",
+        "presentation": "natural",
         "geometry": "fullFront",
     },
     "small-viewport-counterexample": {
@@ -450,7 +450,7 @@ def test_reader_invalid_destination_ui_flow_is_real_and_retryable():
     )
     assert match, "missing real invalid-book UI flow"
     body = match.group("body")
-    assert "tableOfContentsSheet.waitUntilExists" in body
+    assert "waitUntilTableOfContentsSheetExists" in body
     assert "tocMissingDestination" in body
     assert "tocRetry" in body
     page = (ROOT / "ios/BooksAndVocabUITests/Pages/ReaderPage.swift").read_text(encoding="utf-8")

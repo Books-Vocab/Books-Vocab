@@ -62,7 +62,12 @@ def test_ui_calendar_uses_the_canonical_dense_seed_and_proves_clock_provenance()
     assert "-seedFixture:vocabulary:reviewCalendarDense" in launch_source
     assert 'case "vocabulary"' in seed_source
     assert "FixtureDatasetStore.requireVocabularySeed(for: .reviewCalendarDense)" in seed_files
-    assert ui_test.count("fixtures: [.reviewCalendarDense]") == 2
+    assert len(
+        re.findall(
+            r"fixtures:\s*\[\.authSignedIn,\s*\.reviewCalendarDense\]",
+            ui_test,
+        )
+    ) == 2
     assert "fixtures: [.shellNavigation]" not in ui_test
     assert "reviewCalendar.clock.history_plan.anchor_day" in ui_test
     assert "reviewCalendar.clock.live" in ui_test
