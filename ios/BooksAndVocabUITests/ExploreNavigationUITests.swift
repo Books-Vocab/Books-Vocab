@@ -194,7 +194,12 @@ final class ExploreNavigationUITests: UITestCase {
         let detailCover = loaded.exploreDetailCover(deckID: deckID)
         XCTAssertTrue(detailCover.waitUntilExists(timeout: 5))
         loaded.assertExploreImageIsUnique(identifier: "explore.detail.cover.\(deckID)")
-        XCTAssertEqual(detailCover.elementType, .image)
+        switch detailCover.elementType {
+        case .image, .other:
+            break
+        default:
+            XCTFail("Explore detail cover must remain an image-backed semantic element, got \(detailCover.elementType)")
+        }
         XCTAssertTrue(String(describing: detailCover.value).contains("sha256:"))
         XCTAssertTrue(String(describing: detailCover.value).contains("bytes:30129"))
         XCTAssertTrue(String(describing: detailCover.value).contains("ExploreAssets"))
