@@ -81,7 +81,7 @@ struct AddLinkSheet: View {
                 dismiss()
             }
         }
-        .onDisappear { coordinator.cancelSearch() }
+        .onDisappear { coordinator.cancel() }
         .enableInjection()
     }
 
@@ -352,14 +352,12 @@ struct AddLinkSheet: View {
 
                 if coordinator.selectedExampleKey != nil {
                     Button {
-                        Task {
-                            await coordinator.materializeSelectedExample(
-                                sourceEntry: sourceEntry,
-                                entry: entry,
-                                using: kgService,
-                                container: modelContext.container
-                            )
-                        }
+                        coordinator.startMaterializeSelectedExample(
+                            sourceEntry: sourceEntry,
+                            entry: entry,
+                            using: kgService,
+                            container: modelContext.container
+                        )
                     } label: {
                         if coordinator.materializePhase == .running {
                             ProgressView()
@@ -478,13 +476,11 @@ struct AddLinkSheet: View {
             searchError = L10n.string("此單字尚未同步，無法建立連結")
             return
         }
-        Task {
-            await coordinator.linkExisting(
-                target: entry,
-                sourceEntry: sourceEntry,
-                using: kgService
-            )
-        }
+        coordinator.startLinkExisting(
+            target: entry,
+            sourceEntry: sourceEntry,
+            using: kgService
+        )
     }
 
     private var searchField: some View {

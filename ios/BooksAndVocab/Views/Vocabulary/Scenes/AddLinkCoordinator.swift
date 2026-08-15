@@ -82,6 +82,30 @@ enum DictionaryMaterializePhase: Equatable {
     case failed
 }
 
+enum AddLinkActionError: Equatable {
+    case missingSourceCard
+    case missingSense
+    case missingExample
+    case missingTargetCard
+    case duplicateLink
+    case missingLink
+    case invalidLink
+    case invalidProjection
+    case materializationFailed
+    case projectionRefreshFailed
+    case existingLinkFailed
+}
+
+enum AddLinkActionPhase: Equatable {
+    case idle
+    case materializing
+    case refreshingProjection
+    case linking
+    case succeeded
+    case cancelled
+    case failed
+}
+
 private enum DictionaryMaterializationError: Error {
     case projectionCardMismatch(expected: String, actual: String)
     case projectionCardRoleMismatch(cardID: String, actualRole: String?)
@@ -92,11 +116,17 @@ private enum DictionaryMaterializationError: Error {
     case projectionGraphLinkKindMismatch(linkID: String)
 }
 
+private enum AddLinkActionControlError: Error {
+    case projectionRefreshFailed
+}
+
 @Observable @MainActor
 final class AddLinkCoordinator {
     private(set) var lookupState: DictionaryLookupState = .idle
     private(set) var materializePhase: DictionaryMaterializePhase = .idle
     private(set) var materializeFailure: DictionaryMaterializeFailure?
+    private(set) var actionPhase: AddLinkActionPhase = .idle
+    private(set) var actionError: AddLinkActionError?
     private(set) var selectionState: DictionarySelectionState = .unavailable
     private(set) var selectedSenseKey: String?
     private(set) var selectedExampleKey: String?
@@ -104,6 +134,8 @@ final class AddLinkCoordinator {
 
     private var searchGeneration = 0
     private var searchTask: Task<Void, Never>?
+    private var actionGeneration = 0
+    private var actionTask: Task<Void, Never>?
     private var materializeKey: String?
     private var materializeRequest: DictionaryMaterializeLinkRequest?
     private var lastQuery: String?
@@ -224,6 +256,7 @@ final class AddLinkCoordinator {
         state: DictionaryLookupState
     ) {
         searchTask?.cancel()
+        cancelAction()
         searchGeneration += 1
         let generation = searchGeneration
         lastQuery = query
@@ -313,11 +346,13 @@ final class AddLinkCoordinator {
 
     func queryDidChange() {
         cancelSearch()
+        cancelAction()
         lookupState = .idle
         clearSelection()
     }
 
     func select(senseKey: String, exampleKey: String) {
+        cancelAction()
         selectedSenseKey = senseKey
         selectedExampleKey = exampleKey
         guard let entry = lastEntry,
@@ -341,6 +376,8 @@ final class AddLinkCoordinator {
         )
         materializePhase = .idle
         materializeFailure = nil
+        actionPhase = .idle
+        actionError = nil
         materializeKey = nil
         materializeRequest = nil
     }
@@ -356,6 +393,8 @@ final class AddLinkCoordinator {
         selectionState = .unavailable
         materializePhase = .idle
         materializeFailure = nil
+        actionPhase = .idle
+        actionError = nil
         materializeKey = nil
         materializeRequest = nil
     }
@@ -366,14 +405,27 @@ final class AddLinkCoordinator {
         using service: any DictionaryServing,
         container: ModelContainer
     ) async {
+        let generation = beginAction(.materializing)
         guard let sourceContext = sourceEntry.modelContext else {
-            materializePhase = .failed
-            materializeFailure = .malformed
+            failAction(.missingSourceCard, generation: generation)
             return
         }
-        guard let sourceCardID = sourceEntry.kgCardId,
-              let senseKey = selectedSenseKey,
-              let exampleKey = selectedExampleKey else { return }
+        guard let sourceCardID = sourceEntry.kgCardId, !sourceCardID.isEmpty else {
+            failAction(.missingSourceCard, generation: generation)
+            return
+        }
+        guard let senseKey = selectedSenseKey,
+              !senseKey.isEmpty,
+              let sense = entry.senses.first(where: { $0.id == senseKey }) else {
+            failAction(.missingSense, generation: generation)
+            return
+        }
+        guard let exampleKey = selectedExampleKey,
+              !exampleKey.isEmpty,
+              sense.examples.contains(where: { $0.id == exampleKey }) else {
+            failAction(.missingExample, generation: generation)
+            return
+        }
 
         let request = DictionaryMaterializeLinkRequest(
             sourceCardId: sourceCardID,
@@ -389,7 +441,6 @@ final class AddLinkCoordinator {
         }
         guard let materializeKey else { return }
 
-        materializePhase = .running
         materializeFailure = nil
         PerfLog.dictionary.mark(
             "dictionary.materialization.started",
@@ -400,6 +451,22 @@ final class AddLinkCoordinator {
                 request: request,
                 idempotencyKey: materializeKey
             )
+            try Task.checkCancellation()
+            guard isCurrentAction(generation) else { return }
+            guard !response.targetCard.id.isEmpty else {
+                failAction(.missingTargetCard, generation: generation)
+                return
+            }
+            guard !response.link.id.isEmpty else {
+                failAction(.missingLink, generation: generation)
+                return
+            }
+            guard response.link.fromId == request.sourceCardId,
+                  response.link.toId == response.targetCard.id,
+                  response.link.kind == "shares_usage" else {
+                failAction(.invalidLink, generation: generation)
+                return
+            }
             let projection: KGDictionaryCardProjection?
             if let dictionaryCard = response.dictionaryCard {
                 guard response.targetCard.cardRole == VocabularyCardRole.dictionary.rawValue else {
@@ -426,7 +493,14 @@ final class AddLinkCoordinator {
                 // omitted dictionaryCard for an existing dictionary card, but
                 // validate the fetched projection through the same strict
                 // dictionary path below.
-                projection = try await service.fetchDictionaryCard(cardId: response.targetCard.id)
+                actionPhase = .refreshingProjection
+                do {
+                    projection = try await service.fetchDictionaryCard(cardId: response.targetCard.id)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    throw AddLinkActionControlError.projectionRefreshFailed
+                }
             } else {
                 throw DictionaryMaterializationError.projectionRequiredForDictionaryCard(
                     cardID: response.targetCard.id
@@ -469,10 +543,15 @@ final class AddLinkCoordinator {
                 )
             }
             let actor = BackgroundSyncActor(modelContainer: container)
+            try Task.checkCancellation()
             _ = try await actor.upsertDictionaryMaterialization(response)
+            try Task.checkCancellation()
+            guard isCurrentAction(generation) else { return }
             Self.applyMaterializedLink(response, to: sourceEntry)
             try sourceContext.save()
             materializePhase = .succeeded
+            actionPhase = .succeeded
+            actionError = nil
             PerfLog.dictionary.mark(
                 "dictionary.materialization.succeeded",
                 Self.provenanceDetail(dictionaryMaterialization)
@@ -480,11 +559,14 @@ final class AddLinkCoordinator {
             self.materializeKey = nil
             materializeRequest = nil
         } catch is CancellationError {
-            materializePhase = .idle
+            cancelCurrentAction(generation)
+        } catch AddLinkActionControlError.projectionRefreshFailed {
+            failAction(.projectionRefreshFailed, generation: generation)
+            materializeFailure = .malformed
         } catch let error as DictionaryMaterializationError {
             // A materialization without a read-back projection/link is not a
             // successful graph mutation, even when the POST itself succeeded.
-            materializePhase = .failed
+            failAction(.invalidProjection, generation: generation)
             materializeFailure = .malformed
             PerfLog.dictionary.mark(
                 "dictionary.materialization.failed",
@@ -492,7 +574,7 @@ final class AddLinkCoordinator {
             )
         } catch {
             // Keep the idempotency key so explicit Retry converges the saga.
-            materializePhase = .failed
+            failAction(.materializationFailed, generation: generation)
             materializeFailure = Self.classifyMaterialize(error)
             PerfLog.dictionary.mark(
                 "dictionary.materialization.failed",
@@ -506,33 +588,148 @@ final class AddLinkCoordinator {
         sourceEntry: VocabularyEntry,
         using service: any GraphServing
     ) async {
+        let generation = beginAction(.linking)
         guard sourceEntry.modelContext != nil else {
-            materializePhase = .failed
-            materializeFailure = .malformed
+            failAction(.missingSourceCard, generation: generation)
             return
         }
-        guard let sourceCardID = sourceEntry.kgCardId,
-              let pending = VocabularyGraphLinkMutation.beginManualLink(
-                from: sourceEntry, to: target
-              ) else { return }
-        materializePhase = .running
-        materializeFailure = nil
+        guard let sourceCardID = sourceEntry.kgCardId, !sourceCardID.isEmpty else {
+            failAction(.missingSourceCard, generation: generation)
+            return
+        }
+        guard let targetCardID = target.kgCardId, !targetCardID.isEmpty else {
+            failAction(.missingTargetCard, generation: generation)
+            return
+        }
+        let alreadyLinked = sourceEntry.graphLinksByKind.values
+            .flatMap { $0 }
+            .contains { $0.cardId == targetCardID }
+        guard !alreadyLinked else {
+            failAction(.duplicateLink, generation: generation)
+            return
+        }
+        guard let pending = VocabularyGraphLinkMutation.beginManualLink(
+            from: sourceEntry, to: target
+        ) else {
+            failAction(.existingLinkFailed, generation: generation)
+            return
+        }
         do {
             let link = try await service.createManualLink(
                 fromId: sourceCardID,
                 toId: pending.targetCardId,
                 notebookId: sourceEntry.notebookId
             )
+            try Task.checkCancellation()
+            guard isCurrentAction(generation) else {
+                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
+                return
+            }
+            guard !link.id.isEmpty else {
+                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
+                failAction(.missingLink, generation: generation)
+                return
+            }
+            guard link.fromId == sourceCardID, link.toId == targetCardID else {
+                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
+                failAction(.invalidLink, generation: generation)
+                return
+            }
             VocabularyGraphLinkMutation.commitManualLink(pending, result: link, on: sourceEntry)
             materializePhase = .succeeded
+            actionPhase = .succeeded
+            actionError = nil
         } catch is CancellationError {
             VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
-            materializePhase = .idle
+            cancelCurrentAction(generation)
         } catch {
             VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
-            materializePhase = .failed
+            failAction(.existingLinkFailed, generation: generation)
             materializeFailure = Self.classifyMaterialize(error)
         }
+    }
+
+    func startMaterializeSelectedExample(
+        sourceEntry: VocabularyEntry,
+        entry: LexicalEntry,
+        using service: any DictionaryServing,
+        container: ModelContainer
+    ) {
+        cancelAction()
+        actionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.materializeSelectedExample(
+                sourceEntry: sourceEntry,
+                entry: entry,
+                using: service,
+                container: container
+            )
+            if self.actionTask != nil {
+                self.actionTask = nil
+            }
+        }
+    }
+
+    func startLinkExisting(
+        target: VocabularyEntry,
+        sourceEntry: VocabularyEntry,
+        using service: any GraphServing
+    ) {
+        cancelAction()
+        actionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.linkExisting(target: target, sourceEntry: sourceEntry, using: service)
+            if self.actionTask != nil {
+                self.actionTask = nil
+            }
+        }
+    }
+
+    func cancelAction() {
+        let wasRunning = materializePhase == .running
+            || actionPhase == .materializing
+            || actionPhase == .refreshingProjection
+            || actionPhase == .linking
+        actionGeneration += 1
+        actionTask?.cancel()
+        actionTask = nil
+        guard wasRunning else { return }
+        materializePhase = .idle
+        actionPhase = .cancelled
+        actionError = nil
+    }
+
+    func cancel() {
+        cancelSearch()
+        cancelAction()
+    }
+
+    private func beginAction(_ phase: AddLinkActionPhase) -> Int {
+        actionGeneration += 1
+        actionPhase = phase
+        actionError = nil
+        materializePhase = .running
+        materializeFailure = nil
+        return actionGeneration
+    }
+
+    private func isCurrentAction(_ generation: Int) -> Bool {
+        generation == actionGeneration && !Task.isCancelled
+    }
+
+    private func cancelCurrentAction(_ generation: Int) {
+        guard generation == actionGeneration else { return }
+        materializePhase = .idle
+        actionPhase = .cancelled
+        actionError = nil
+    }
+
+    private func failAction(_ error: AddLinkActionError, generation: Int) {
+        guard generation == actionGeneration else { return }
+        materializePhase = .failed
+        materializeFailure = .malformed
+        actionPhase = .failed
+        actionError = error
     }
 
     private func clearSelection() {
@@ -545,6 +742,8 @@ final class AddLinkCoordinator {
         lastEntry = nil
         lastCacheStatus = ""
         materializePhase = .idle
+        actionPhase = .idle
+        actionError = nil
         materializeKey = nil
         materializeRequest = nil
     }
