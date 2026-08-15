@@ -256,7 +256,7 @@ def _git_source_commit_matches_current_or_matrix_receipt(
     source_commit = source_commit.strip()
     current_head = _git_head(root)
     if current_head is None:
-        return True
+        return False
     if source_commit == current_head:
         return True
 
@@ -344,12 +344,12 @@ def _evidence_provenance(
         raise UIReviewMatrixError("verified requires normalized verdict executed > 0")
     if verdict.get("options", {}).get("sourceTreeDirty") is not False:
         raise UIReviewMatrixError("verified requires a clean sourceTreeDirty=false run")
-    if repository_root is not None and (repository_root / ".git").exists():
-        source_tree_dirty = _git_source_tree_dirty(repository_root)
-        if source_tree_dirty is None:
-            raise UIReviewMatrixError("cannot determine current source tree cleanliness")
-        if source_tree_dirty:
-            raise UIReviewMatrixError("verified revalidation requires the current source tree to be clean")
+    repository_for_provenance = repository_root or evidence_root.parents[3]
+    source_tree_dirty = _git_source_tree_dirty(repository_for_provenance)
+    if source_tree_dirty is None:
+        raise UIReviewMatrixError("cannot determine current source tree cleanliness")
+    if source_tree_dirty:
+        raise UIReviewMatrixError("verified revalidation requires the current source tree to be clean")
     helper = _mapping(verdict.get("helper"), owner="verdict.helper")
     if _canonical_selector(helper.get("selector"), owner="verdict.helper.selector") != _canonical_selector(
         selector, owner="matrix selector"
@@ -372,7 +372,6 @@ def _evidence_provenance(
     if verdict.get("runId") != run_id:
         raise UIReviewMatrixError("runID does not match normalized verdict")
 
-    repository_for_provenance = repository_root or evidence_root.parents[3]
     if not _git_source_commit_matches_current_or_matrix_receipt(
         repository_for_provenance,
         options.get("sourceCommit"),
