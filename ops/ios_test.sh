@@ -1588,7 +1588,7 @@ archive_ui_test_recording() {
   [[ -n "${UI_TEST_VIDEO:-}" && -s "${UI_TEST_VIDEO:-}" ]] || return 0
   local archived
   local archive_root="$PROJECT_ROOT/build/snapshots/uitest-videos"
-  [[ -n "$IOS_ARTIFACT_ROOT" ]] && archive_root="$IOS_ARTIFACT_ROOT/videos"
+  [[ -n "${IOS_ARTIFACT_ROOT:-}" ]] && archive_root="$IOS_ARTIFACT_ROOT/videos"
   if archived="$(uitest_video_archive "$UI_TEST_VIDEO" \
       "$archive_root" \
       "$TEST_SCOPE" "$CALLER" "" "$UI_TEST_RUN_ID")" && [[ -n "$archived" ]]; then
@@ -1608,7 +1608,7 @@ build_ui_test_review_page() {
   local stem fallback_input_dir=""
   stem="$UI_TEST_RUN_ID"
   local review_parent="$PROJECT_ROOT/build/snapshots/uitest-runs"
-  [[ -n "$IOS_ARTIFACT_ROOT" ]] && review_parent="$IOS_ARTIFACT_ROOT/review"
+  [[ -n "${IOS_ARTIFACT_ROOT:-}" ]] && review_parent="$IOS_ARTIFACT_ROOT/review"
   mkdir -p "$review_parent"
   UI_TEST_REVIEW_ROOT="$review_parent/$stem"
   if ! mkdir "$UI_TEST_REVIEW_ROOT"; then
