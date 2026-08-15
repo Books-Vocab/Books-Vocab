@@ -89,20 +89,7 @@ extension ReadiumNavigatorView.Coordinator {
                     // go() only acknowledges dispatch. Keep the request token
                     // alive until the navigator delegate reports the actual
                     // locator, with a bounded callback deadline.
-                    activeTOCTimeoutTask?.cancel()
-                    activeTOCTimeoutTask = Task { @MainActor [weak self] in
-                        do {
-                            try await Task.sleep(
-                                nanoseconds: ReaderMetrics.tocNavigationTimeoutNanoseconds
-                            )
-                        } catch {
-                            return
-                        }
-                        guard let self, self.activeTOCRequestID == requestID else { return }
-                        self.activeTOCRequestID = nil
-                        self.activeTOCTimeoutTask = nil
-                        self.parent.onTOCNavigationEvent(.timedOut(requestID: requestID))
-                    }
+                    beginTOCTimeout(for: requestID)
                 } else if activeTOCRequestID == requestID {
                     activeTOCRequestID = nil
                 }

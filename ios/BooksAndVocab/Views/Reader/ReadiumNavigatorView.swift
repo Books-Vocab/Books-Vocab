@@ -213,22 +213,12 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         navigator.didMove(toParent: host)
 
         if let recoveryLocator {
-            host.onFirstAppearance = { [weak navigator] in
-                Task { @MainActor in
-                    guard let navigator else { return }
-                    // Readium may report the navigator as appeared before its
-                    // WebView is ready to accept a location command. Retry a
-                    // bounded number of times; a single fire-and-forget go()
-                    // made restore recovery timing-dependent on iOS 26.4.
-                    for attempt in 1...8 {
-                        let accepted = await navigator.go(to: recoveryLocator)
-                        AppLog.reader.debug(
-                            "Reader restore fallback navigation attempt=\(attempt, privacy: .public) accepted=\(String(describing: accepted), privacy: .public) href=\(recoveryLocator.href.string, privacy: .public)"
-                        )
-                        if accepted == true { return }
-                        try? await Task.sleep(nanoseconds: 250_000_000)
-                    }
-                }
+            context.coordinator.prepareRecovery(to: recoveryLocator)
+            host.onFirstAppearance = { [weak coordinator = context.coordinator] in
+                // Recovery is retried by Readium readiness/presentation events,
+                // not by a wall-clock polling loop. This keeps the restore path
+                // deterministic on device and observable in UI evidence.
+                coordinator?.triggerRecoveryNavigation()
             }
         }
 
@@ -255,6 +245,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         coordinator.contentOffsetObserver = nil
         coordinator.activeTOCTimeoutTask?.cancel()
         coordinator.activeTOCTimeoutTask = nil
+        coordinator.recoveryTask?.cancel()
+        coordinator.recoveryTask = nil
+        coordinator.pendingRecoveryLocator = nil
     }
 
     func updateUIViewController(_ uiViewController: NavigatorHostViewController, context: Context) {
@@ -277,6 +270,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         var isApplyingPreferences = false
         var activeTOCRequestID: UUID?
         var activeTOCTimeoutTask: Task<Void, Never>?
+        var pendingRecoveryLocator: Locator?
+        var recoveryAttemptCount = 0
+        var recoveryTask: Task<Void, Never>?
         var preferencesApplyState = ReaderPreferencesApplyState()
         let navigatorID = UUID()
         var hasPublishedNavigatorSettingsReceipt = false
@@ -294,6 +290,43 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             self.parent = parent
         }
 
+        private static let maxRecoveryAttempts = 8
+
+        func prepareRecovery(to locator: Locator) {
+            recoveryTask?.cancel()
+            recoveryTask = nil
+            pendingRecoveryLocator = locator
+            recoveryAttemptCount = 0
+        }
+
+        func triggerRecoveryNavigation() {
+            guard recoveryTask == nil,
+                  let locator = pendingRecoveryLocator,
+                  let navigator else { return }
+
+            recoveryAttemptCount += 1
+            let attempt = recoveryAttemptCount
+            recoveryTask = Task { @MainActor [weak self] in
+                let accepted = await navigator.go(to: locator)
+                guard let self else { return }
+                self.recoveryTask = nil
+                guard !Task.isCancelled else { return }
+                AppLog.reader.debug(
+                    "Reader restore fallback navigation attempt=\(attempt, privacy: .public) accepted=\(String(describing: accepted), privacy: .public) href=\(locator.href.string, privacy: .public)"
+                )
+                if accepted == true {
+                    self.pendingRecoveryLocator = nil
+                    return
+                }
+                if attempt >= Self.maxRecoveryAttempts {
+                    AppLog.reader.error(
+                        "Reader restore fallback exhausted readiness attempts href=\(locator.href.string, privacy: .public)"
+                    )
+                    self.pendingRecoveryLocator = nil
+                }
+            }
+        }
+
         // MARK: NavigatorDelegate
 
         func navigator(_ navigator: any Navigator, locationDidChange locator: Locator) {
@@ -307,6 +340,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 publishNavigatorSettingsReceipt(from: epubNavigator, source: .locationDidChange)
             }
             parent.onLocationChanged(locator)
+            triggerRecoveryNavigation()
             if let requestID = activeTOCRequestID {
                 activeTOCRequestID = nil
                 activeTOCTimeoutTask?.cancel()
@@ -337,6 +371,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             _ = preferencesApplyState.observeNavigatorPresentation()
             guard let epubNavigator = navigator as? EPUBNavigatorViewController else { return }
             publishNavigatorSettingsReceipt(from: epubNavigator, source: .presentationDidChange)
+            triggerRecoveryNavigation()
         }
 
         // 注意：不在 didTapAt 呼叫 handleTap，因為注入的 JS click listener 已處理
@@ -384,6 +419,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             userContentController.addUserScript(script)
             AppLog.reader.info("User scripts injected")
             PerfLog.reader.mark("userScriptsInjected")
+            triggerRecoveryNavigation()
 
             // Scripts 注入後重新標記所有生字（修復初始載入的 race condition）
             let words = parent.lookedUpWords
