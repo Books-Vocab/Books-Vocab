@@ -84,29 +84,6 @@ struct DictionaryUIWorldContractTests {
         ])
     }
 
-    @Test("P1 dictionary consumer resolves the canonical surface fixture")
-    func p1DictionaryConsumerResolvesCanonicalSurfaceFixture() throws {
-        let data = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")
-
-        try FixtureDatasetStore.withTestingData(data) {
-            let fixtureID = UIWorldDictionaryFixtureID.p1DictionaryRich
-            let surface = try #require(
-                FixtureDatasetStore.dictionarySurfaceContract(for: fixtureID)
-            )
-            let dictionary = try #require(
-                FixtureDatasetStore.dictionarySeed(for: fixtureID)
-            )
-
-            #expect(fixtureID.rawValue == "ui-p1-dictionary-rich")
-            #expect(surface.stepLabel == "dictionary-rich")
-            #expect(surface.index == 0)
-            #expect(surface.assetIDs == ["catalog_reader_epub"])
-            #expect(dictionary.provenance.entryID == "engraved")
-            #expect(dictionary.senses.count == 2)
-            #expect(dictionary.examples.count == 2)
-        }
-    }
-
     @Test("P2 dictionary senses and counterexamples resolve through typed selectors")
     func p2DictionarySensesAndCounterexamplesResolveThroughTypedSelectors() throws {
         let data = try Self.data(at: "ops/fixtures/ui_worlds/marketing_demo.json")

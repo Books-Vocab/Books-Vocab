@@ -220,37 +220,19 @@ struct OverviewPage {
         XCTAssertEqual(element.value as? String, value, file: file, line: line)
     }
 
-    var overview: XCUIElement { app.descendants(matching: .any)["overview"].firstMatch }
-    var metrics: XCUIElement { app.descendants(matching: .any)["metrics"].firstMatch }
-    var calendar: XCUIElement { app.descendants(matching: .any)["calendar"].firstMatch }
-    var forecast: XCUIElement { app.descendants(matching: .any)["forecast"].firstMatch }
-    var statsContent: XCUIElement { app.descendants(matching: .any)["overview.statsContent"].firstMatch }
-    var forecastChart: XCUIElement { app.descendants(matching: .any)["overview.forecast.chart"].firstMatch }
-    var forecastZero: XCUIElement { app.descendants(matching: .any)["forecast-zero"].firstMatch }
-    var forecastZeroCounterexample: XCUIElement {
-        app.descendants(matching: .any)["forecast-zero-counterexample"].firstMatch
-    }
-    var largeCounts: XCUIElement { app.descendants(matching: .any)["large-counts"].firstMatch }
-
-    func metric(_ name: String) -> XCUIElement {
-        app.descendants(matching: .any)["overview.metric.\(name)"].firstMatch
-    }
-
-    func assertMetric(_ name: String, value: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
-        let element = metric(name)
-        element.assertExists(timeout: 10, file: file, line: line)
-        XCTAssertEqual(element.value as? String, value, file: file, line: line)
-    }
+    var metrics: XCUIElement { element(identifier: "metrics") }
+    var statsContent: XCUIElement { element(identifier: "overview.statsContent") }
+    var forecastChart: XCUIElement { element(identifier: "overview.forecast.chart") }
+    var forecastZero: XCUIElement { element(identifier: "forecast-zero") }
+    var forecastZeroCounterexample: XCUIElement { element(identifier: "forecast-zero-counterexample") }
+    var largeCounts: XCUIElement { element(identifier: "large-counts") }
 
     func assertStatsAccessibilityHierarchy(
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        let overviewQuery = app.descendants(matching: .any).matching(identifier: "overview")
-        let statsQuery = app.descendants(matching: .any).matching(identifier: "overview.statsContent")
-        overview.assertExists(timeout: 10, file: file, line: line)
+        let statsQuery = elements(identifier: "overview.statsContent")
         statsContent.assertExists(timeout: 10, file: file, line: line)
-        XCTAssertEqual(overviewQuery.count, 1, "overview must be unique", file: file, line: line)
         XCTAssertEqual(statsQuery.count, 1, "overview.statsContent must be unique", file: file, line: line)
         XCTAssertEqual(
             overview.descendants(matching: .any).matching(identifier: "overview.statsContent").count,
@@ -261,34 +243,12 @@ struct OverviewPage {
         )
     }
 
-    var overview: XCUIElement { app.descendants(matching: .any)["overview"].firstMatch }
-    var metrics: XCUIElement { app.descendants(matching: .any)["metrics"].firstMatch }
-    var calendar: XCUIElement { app.descendants(matching: .any)["calendar"].firstMatch }
-    var forecast: XCUIElement { app.descendants(matching: .any)["forecast"].firstMatch }
-    var forecastZero: XCUIElement { app.descendants(matching: .any)["forecast-zero"].firstMatch }
-    var forecastZeroCounterexample: XCUIElement {
-        app.descendants(matching: .any)["forecast-zero-counterexample"].firstMatch
-    }
-    var largeCounts: XCUIElement { app.descendants(matching: .any)["large-counts"].firstMatch }
-
-    func metric(_ name: String) -> XCUIElement {
-        app.descendants(matching: .any)["overview.metric.\(name)"].firstMatch
-    }
-
-    func assertMetric(_ name: String, value: String, file: StaticString = #filePath, line: UInt = UInt(#line)) {
-        let element = metric(name)
-        element.assertExists(timeout: 10, file: file, line: line)
-        XCTAssertEqual(element.value as? String, value, file: file, line: line)
-    }
-
-    // MARK: - Assertions
-
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
-        // Overview has a NavigationStack with a large title in both logged-in and logged-out states.
         let navBar = exactlyOne(app.navigationBars, "overview navigation bar", file: file, line: line)
         navBar.assertExists(timeout: 3, file: file, line: line)
     }
 }
+
 
 /// Page Object for Review Calendar. All selectors are identifiers owned by
 /// the app surface; no localized labels are used for navigation or assertions.

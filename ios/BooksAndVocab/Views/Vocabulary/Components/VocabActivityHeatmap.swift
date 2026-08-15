@@ -175,25 +175,42 @@ private struct CellData {
     let isFuture: Bool
 }
 
-#Preview("VocabActivityHeatmap") {
-    var cal = Calendar(identifier: .gregorian)
-    cal.timeZone = TimeZone(secondsFromGMT: 0) ?? cal.timeZone
-    let clock = StatsProjectionClock(now: Date(timeIntervalSince1970: 1_780_300_800), calendar: cal)
+private func makeVocabActivityHeatmapPreviewData(clock: StatsProjectionClock) -> [String: Int] {
     var activity: [String: Int] = [:]
     for offset in 0..<120 where offset % 4 != 0 {
-        if let date = cal.date(byAdding: .day, value: -offset, to: clock.now) {
+        if let date = clock.calendar.date(byAdding: .day, value: -offset, to: clock.now) {
             activity[clock.dayKey(date)] = (offset % 13) + 1
         }
     }
+    return activity
+}
 
-    return AppThemeContainer {
-        VocabActivityHeatmap(
-            activity: activity,
-            thresholds: [2, 5, 9],
-            weeks: 20
-        )
-        .padding()
+private struct VocabActivityHeatmapPreview: View {
+    private let clock: StatsProjectionClock
+    private let activity: [String: Int]
+
+    init() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        let clock = StatsProjectionClock(now: Date(timeIntervalSince1970: 1_780_300_800), calendar: calendar)
+        self.clock = clock
+        self.activity = makeVocabActivityHeatmapPreviewData(clock: clock)
     }
-    .environmentObject(AppAppearanceStore.preview)
-    .environment(\.statsProjectionClock, clock)
+
+    var body: some View {
+        AppThemeContainer {
+            VocabActivityHeatmap(
+                activity: activity,
+                thresholds: [2, 5, 9],
+                weeks: 20
+            )
+            .padding()
+        }
+        .environmentObject(AppAppearanceStore.preview)
+        .environment(\.statsProjectionClock, clock)
+    }
+}
+
+#Preview("VocabActivityHeatmap") {
+    VocabActivityHeatmapPreview()
 }

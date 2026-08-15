@@ -178,33 +178,50 @@ private struct DayCell: Identifiable {
     let isFuture: Bool
 }
 
-#Preview("VocabCalendarGrid") {
-    @Previewable @State var selectedDay: String?
-
-    var cal = Calendar(identifier: .gregorian)
-    cal.timeZone = TimeZone(secondsFromGMT: 0) ?? cal.timeZone
-    let clock = StatsProjectionClock(now: Date(timeIntervalSince1970: 1_780_300_800), calendar: cal)
+private func makeVocabCalendarGridPreviewData(clock: StatsProjectionClock) -> [String: Int] {
     let month = clock.now
     var activity: [String: Int] = [:]
-    if let firstOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: month)),
-       let range = cal.range(of: .day, in: .month, for: firstOfMonth) {
+    if let firstOfMonth = clock.calendar.date(
+        from: clock.calendar.dateComponents([.year, .month], from: month)
+    ), let range = clock.calendar.range(of: .day, in: .month, for: firstOfMonth) {
         for day in range where day % 3 != 0 {
-            var comps = cal.dateComponents([.year, .month], from: month)
-            comps.day = day
-            if let date = cal.date(from: comps) {
+            var components = clock.calendar.dateComponents([.year, .month], from: month)
+            components.day = day
+            if let date = clock.calendar.date(from: components) {
                 activity[clock.dayKey(date)] = (day % 11) + 1
             }
         }
     }
+    return activity
+}
 
-    return AppThemeContainer {
-        VocabCalendarGrid(
-            displayedMonth: month,
-            activityMap: activity,
-            selectedDay: $selectedDay
-        )
-        .padding()
+private struct VocabCalendarGridPreview: View {
+    @State private var selectedDay: String?
+    private let clock: StatsProjectionClock
+    private let activity: [String: Int]
+
+    init() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        let clock = StatsProjectionClock(now: Date(timeIntervalSince1970: 1_780_300_800), calendar: calendar)
+        self.clock = clock
+        self.activity = makeVocabCalendarGridPreviewData(clock: clock)
     }
-    .environmentObject(AppAppearanceStore.preview)
-    .environment(\.statsProjectionClock, clock)
+
+    var body: some View {
+        AppThemeContainer {
+            VocabCalendarGrid(
+                displayedMonth: clock.now,
+                activityMap: activity,
+                selectedDay: $selectedDay
+            )
+            .padding()
+        }
+        .environmentObject(AppAppearanceStore.preview)
+        .environment(\.statsProjectionClock, clock)
+    }
+}
+
+#Preview("VocabCalendarGrid") {
+    VocabCalendarGridPreview()
 }

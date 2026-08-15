@@ -281,9 +281,4 @@ struct SyncProgressStoreTests {
         #expect(SyncPhase.failed != .ready)
     }
 
-    @Test
-    func syncPhasesHaveStableValueEquality() {
-        #expect(SyncPhase.completed == .completed)
-        #expect(SyncPhase.failed != .ready)
-    }
 }
