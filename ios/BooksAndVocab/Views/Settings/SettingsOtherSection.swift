@@ -18,6 +18,24 @@
 import SwiftUI
 
 struct SettingsOtherSection: View {
+    let syncSummary: SettingsPresenterState.SyncSummaryState?
+    let bookSync: SettingsPresenterState.BookSyncState?
+    let isLoggedIn: Bool
+    let version: String
+    let actions: SettingsPresenterActions
+
+    var body: some View {
+        SettingsOtherSectionContent(
+            syncSummary: syncSummary,
+            bookSync: bookSync,
+            isLoggedIn: isLoggedIn,
+            version: version,
+            actions: actions
+        )
+    }
+}
+
+private struct SettingsOtherSectionContent: View {
     @Environment(\.appTheme) var appTheme
     @Environment(\.appSkin) var appSkin
     @Environment(\.quotaStore) var quotaStore
