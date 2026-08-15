@@ -294,6 +294,44 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
+# Evidence wrappers may pin every per-run log/result/snapshot below one
+# unique staging root. The root is deliberately restricted to this worktree's
+# rebuildable evidence area; ordinary direct ios_test calls retain their
+# historical temporary/archive locations.
+IOS_ARTIFACT_ROOT=""
+if [[ -n "${KG_IOS_ARTIFACT_ROOT:-}" ]]; then
+  artifact_root_candidate="$KG_IOS_ARTIFACT_ROOT"
+  if [[ "$artifact_root_candidate" != /* ]]; then
+    artifact_root_candidate="$PROJECT_ROOT/$artifact_root_candidate"
+  fi
+  mkdir -p "$artifact_root_candidate"
+  IOS_ARTIFACT_ROOT="$(cd "$artifact_root_candidate" && pwd -P)"
+  case "$IOS_ARTIFACT_ROOT" in
+    "$PROJECT_ROOT"/build/snapshots/uitest-evidence/*) ;;
+    *)
+      echo "[ios_test] error: KG_IOS_ARTIFACT_ROOT must be under this worktree's build/snapshots/uitest-evidence: $IOS_ARTIFACT_ROOT" >&2
+      exit 65
+      ;;
+  esac
+fi
+artifact_temp_file() {
+  local stem="${1:-ios-test-artifact}"
+  if [[ -n "$IOS_ARTIFACT_ROOT" ]]; then
+    mkdir -p "$IOS_ARTIFACT_ROOT/tmp"
+    mktemp "$IOS_ARTIFACT_ROOT/tmp/${stem}.XXXXXX"
+  else
+    mktemp
+  fi
+}
+artifact_temp_dir() {
+  local stem="${1:-ios-test-artifact}"
+  if [[ -n "$IOS_ARTIFACT_ROOT" ]]; then
+    mkdir -p "$IOS_ARTIFACT_ROOT/tmp"
+    mktemp -d "$IOS_ARTIFACT_ROOT/tmp/${stem}.XXXXXX"
+  else
+    mktemp -d "${TMPDIR:-/tmp}/${stem}.XXXXXX"
+  fi
+}
 # shellcheck source=lib/ios_test_cache_root.sh
 source "$SCRIPT_DIR/lib/ios_test_cache_root.sh"
 # Keep content-keyed test products at the git-common anchor so linked
@@ -985,8 +1023,8 @@ handle_cache_action() {
       if [[ "$products_ready" == true ]]; then
         payload="$(print_cache_payload prepare hit "$cache_key" "$derived_root" "$xctestrun_path" true 0 "$BOOT_MS")"
       else
-        build_log="$(mktemp)"
-        build_result_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
+        build_log="$(artifact_temp_file kg_ios_test_build_log)"
+        build_result_dir="$(artifact_temp_dir kg_ios_test_build_result)"
         build_result_bundle="$build_result_dir/BuildForTesting.xcresult"
         # Guard with `|| build_exit=$?`: this runs under `set -e`, so a non-zero
         # return would abort before we can build the error payload below.
@@ -1453,7 +1491,7 @@ prepare_ui_step_screenshot_dir() {
   UI_TEST_VIDEO_FILE=""
   UI_TEST_VIDEO_SHA256=""
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
-  UI_TEST_SCREENSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_steps.XXXXXX")"
+  UI_TEST_SCREENSHOT_DIR="$(artifact_temp_dir kg_ios_ui_steps)"
 }
 
 # Explicit simulator UDID for this run, when one exists: leased pool sim, or a
@@ -1549,8 +1587,10 @@ stop_ui_test_recording() {
 archive_ui_test_recording() {
   [[ -n "${UI_TEST_VIDEO:-}" && -s "${UI_TEST_VIDEO:-}" ]] || return 0
   local archived
+  local archive_root="$PROJECT_ROOT/build/snapshots/uitest-videos"
+  [[ -n "$IOS_ARTIFACT_ROOT" ]] && archive_root="$IOS_ARTIFACT_ROOT/videos"
   if archived="$(uitest_video_archive "$UI_TEST_VIDEO" \
-      "$PROJECT_ROOT/build/snapshots/uitest-videos" \
+      "$archive_root" \
       "$TEST_SCOPE" "$CALLER" "" "$UI_TEST_RUN_ID")" && [[ -n "$archived" ]]; then
     UI_TEST_VIDEO="$archived"
     echo "[ios_test][ui-video] archived $archived"
@@ -1567,8 +1607,10 @@ build_ui_test_review_page() {
 
   local stem fallback_input_dir=""
   stem="$UI_TEST_RUN_ID"
-  mkdir -p "$PROJECT_ROOT/build/snapshots/uitest-runs"
-  UI_TEST_REVIEW_ROOT="$PROJECT_ROOT/build/snapshots/uitest-runs/$stem"
+  local review_parent="$PROJECT_ROOT/build/snapshots/uitest-runs"
+  [[ -n "$IOS_ARTIFACT_ROOT" ]] && review_parent="$IOS_ARTIFACT_ROOT/review"
+  mkdir -p "$review_parent"
+  UI_TEST_REVIEW_ROOT="$review_parent/$stem"
   if ! mkdir "$UI_TEST_REVIEW_ROOT"; then
     echo "[ios_test][ui-review] error: refusing to overwrite existing review root=$UI_TEST_REVIEW_ROOT" >&2
     return 1
@@ -1577,7 +1619,7 @@ build_ui_test_review_page() {
   if [[ -z "${UI_TEST_SCREENSHOT_DIR:-}" || ! -d "$UI_TEST_SCREENSHOT_DIR" ]]; then
     # Reserve the output root exclusively but keep generator inputs elsewhere:
     # uitest_review_page intentionally refuses a non-empty output root.
-    fallback_input_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_review_input.XXXXXX")"
+    fallback_input_dir="$(artifact_temp_dir kg_ios_ui_review_input)"
     UI_TEST_SCREENSHOT_DIR="$fallback_input_dir"
   fi
   if [[ -z "${UI_TEST_SCREENSHOT_MANIFEST:-}" || ! -s "$UI_TEST_SCREENSHOT_MANIFEST" ]]; then
@@ -1685,7 +1727,7 @@ export_ui_step_attachments_from_xcresult() {
   [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
 
   local attachment_dir
-  attachment_dir="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_ui_attachments.XXXXXX")"
+  attachment_dir="$(artifact_temp_dir kg_ios_ui_attachments)"
   if ! xcrun xcresulttool export attachments \
       --path "$RESULT_BUNDLE" \
       --output-path "$attachment_dir" >/dev/null 2>&1; then
@@ -1763,9 +1805,9 @@ while :; do
   # final verdict if the later attempt fails for another reason.
   INCONCLUSIVE_REASON=""
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
-  TMPOUT=$(mktemp)
+  TMPOUT="$(artifact_temp_file kg_ios_test_log)"
   [[ -n "$RESULT_DIR" ]] && rm -rf "$RESULT_DIR"
-  RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_result.XXXXXX")"
+  RESULT_DIR="$(artifact_temp_dir kg_ios_test_result)"
   RESULT_BUNDLE="$RESULT_DIR/Test.xcresult"
   prepare_ui_step_screenshot_dir
   set +e
@@ -1778,8 +1820,8 @@ while :; do
     if [[ "$EXIT_CODE" -ne 0 ]] && should_rebuild_after_test_without_building_failure; then
       CACHE_STATUS="rebuild-after-failure"
       INCONCLUSIVE_REASON=""
-      BUILD_LOG="$(mktemp)"
-      BUILD_RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
+      BUILD_LOG="$(artifact_temp_file kg_ios_test_build_log)"
+      BUILD_RESULT_DIR="$(artifact_temp_dir kg_ios_test_build_result)"
       BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
       rebuild_test_cache "$BUILD_LOG" "$BUILD_RESULT_BUNDLE"
       BUILD_EXIT=$?
@@ -1800,8 +1842,8 @@ while :; do
     fi
   else
     CACHE_STATUS="miss"
-    BUILD_LOG="$(mktemp)"
-    BUILD_RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
+    BUILD_LOG="$(artifact_temp_file kg_ios_test_build_log)"
+    BUILD_RESULT_DIR="$(artifact_temp_dir kg_ios_test_build_result)"
     BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
     rebuild_test_cache "$BUILD_LOG" "$BUILD_RESULT_BUNDLE"
     BUILD_EXIT=$?

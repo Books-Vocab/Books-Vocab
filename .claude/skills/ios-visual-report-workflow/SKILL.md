@@ -64,10 +64,32 @@ uv run --python 3.13 python ops/ios_ui_run_many.py run \
   --helper "$PWD/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
   --methods-file <cluster-or-batch-methods.json> \
   --device <canonical-udid> \
-  --output-dir build/snapshots/uitest-evidence/<batch>/raw \
+  --output-dir build/snapshots/uitest-evidence/<batch> \
   --publish-root build/snapshots/uitest-evidence/<batch>/bundles \
   --summary-out build/snapshots/uitest-evidence/<batch>/summary.json
 ```
+
+The runner creates a unique `run-manifest.json` before the build and keeps
+logs, raw helper receipts, published bundles, PID/HEAD/worktree provenance,
+and the final summary under that run's staging directory. A failed or
+interrupted run is retained as `failure`/`abandoned` evidence until the
+bounded TTL cleanup command proves that no recorded PID, xcodebuild, runner,
+or shared lock is still active. Cleanup is dry-run unless explicitly
+committed, and it preserves the manifest and failure summary.
+
+After the batch finishes, inspect and then reclaim only expired failed or
+abandoned staging content:
+
+```bash
+uv run --python 3.13 python ops/ios_ui_run_many.py cleanup \
+  --staging-root build/snapshots/uitest-evidence
+uv run --python 3.13 python ops/ios_ui_run_many.py cleanup \
+  --staging-root build/snapshots/uitest-evidence --commit
+```
+
+The cleanup receipt records bounded `du` allocation and `df` free-space
+before/after values. Any recorded live PID, active xcodebuild/runner, or
+unreadable/active shared lock blocks deletion.
 
 The runner must emit heartbeat lines with phase, PID, elapsed time, and alive/exit state. During a long build or UI run, continue an independent queue: inspect the next cluster's source, validate fixtures, run static/contract tests, prepare matrix/report entries, and inspect prior failure artifacts. Waiting is not a work item.
 

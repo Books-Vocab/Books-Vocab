@@ -26,6 +26,7 @@ import uuid
 
 
 SCHEMA = "kg.ios.ui-run-many.v1"
+CLEANUP_SCHEMA = "kg.ios.ui-run-cleanup.v1"
 SELECTOR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\/test[A-Za-z0-9_]+$")
 DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 REQUIREMENT_RE = re.compile(r"^P(?:[1-9]|1[0-5])$")
@@ -149,7 +150,7 @@ def _pid_alive(pid: int | None) -> bool:
     return True
 
 
-def _global_ios_consumers() -> list[str]:
+def _global_ios_consumers(*, exclude_pid: int | None = None) -> list[str]:
     """Return active runner/build consumers; cleanup must fail closed on any."""
     try:
         result = subprocess.run(
@@ -160,7 +161,83 @@ def _global_ios_consumers() -> list[str]:
         )
     except OSError:
         return ["process inspection unavailable"]
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    consumers: list[str] = []
+    for line in result.stdout.splitlines():
+        fields = line.split(maxsplit=1)
+        try:
+            pid = int(fields[0])
+        except (IndexError, ValueError):
+            pid = None
+        if exclude_pid is not None and pid == exclude_pid:
+            continue
+        if line.strip():
+            consumers.append(line)
+    return consumers
+
+
+def _active_lock_holders() -> list[dict[str, Any]]:
+    """Inspect only the known iOS locks; never remove them during cleanup."""
+    lock_paths = [Path("/tmp/kg-ios-build.lock"), Path("/tmp/kg-ios-ui-video.lock")]
+    lock_paths.extend(sorted(Path("/tmp").glob("kg-ios-test-device-*.lock")))
+    holders: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    for path in lock_paths:
+        path = path.resolve()
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+        except OSError as error:
+            holders.append({"path": str(path), "status": "unreadable", "error": str(error)})
+            continue
+        try:
+            pid = int(raw)
+        except ValueError:
+            holders.append({"path": str(path), "status": "invalid", "value": raw})
+            continue
+        holders.append(
+            {
+                "path": str(path),
+                "pid": pid,
+                "alive": _pid_alive(pid),
+                "status": "active" if _pid_alive(pid) else "orphaned",
+            }
+        )
+    return [item for item in holders if item.get("status") in {"active", "invalid", "unreadable"}]
+
+
+def _allocated_bytes(path: Path) -> int | None:
+    """Return allocated bytes for one explicit path, using bounded `du -sk`."""
+    try:
+        result = subprocess.run(
+            ["du", "-sk", str(path)],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return int(result.stdout.split()[0]) * 1024
+    except (OSError, subprocess.CalledProcessError, ValueError, IndexError):
+        return None
+
+
+def _free_bytes() -> int | None:
+    """Read free bytes for `/` without recursively scanning the filesystem."""
+    try:
+        result = subprocess.run(["df", "-k", "/"], text=True, capture_output=True, check=True)
+        fields = result.stdout.splitlines()[-1].split()
+        return int(fields[3]) * 1024
+    except (OSError, subprocess.CalledProcessError, ValueError, IndexError):
+        return None
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
 
 
 def classify_bundle(bundle: Path, upstream_returncode: int) -> str:
@@ -300,6 +377,143 @@ def _publish_bundle(bundle: Path, publish_root: Path, selector: str) -> Path:
     return destination
 
 
+def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    """Preview or reclaim only expired failed/abandoned run staging content."""
+    staging_root = args.staging_root.resolve()
+    if not staging_root.is_dir():
+        raise RunManyError(f"--staging-root must be an existing directory: {staging_root}")
+    manifest_paths = sorted(staging_root.glob("*/run-manifest.json"))
+    if len(manifest_paths) > args.max_runs:
+        raise RunManyError(
+            f"refusing to inspect more than {args.max_runs} direct run manifests; "
+            "bound the cleanup root or raise --max-runs explicitly"
+        )
+    now = _now()
+    global_consumers = _global_ios_consumers(exclude_pid=os.getpid())
+    lock_holders = _active_lock_holders()
+    disk_before = _free_bytes()
+    candidates: list[dict[str, Any]] = []
+    for manifest_path in manifest_paths:
+        manifest = _read_json(manifest_path)
+        if not manifest:
+            continue
+        status = manifest.get("status")
+        if status not in {"failure", "abandoned"}:
+            continue
+        expires_at = _parse_time(manifest.get("expiresAt"))
+        if expires_at is None or expires_at > now:
+            continue
+        run_root = manifest_path.parent.resolve()
+        if not _inside(run_root, staging_root):
+            raise RunManyError(f"manifest escaped staging root: {manifest_path}")
+        recorded_pids: list[int] = []
+        for key in ("pid", "activePID"):
+            value = manifest.get(key)
+            if isinstance(value, int) and value > 0 and value not in recorded_pids:
+                recorded_pids.append(value)
+        live_pids = [pid for pid in recorded_pids if _pid_alive(pid)]
+        publish_root_value = manifest.get("publishRoot")
+        publish_root: Path | None = None
+        if isinstance(publish_root_value, str) and publish_root_value:
+            publish_root = Path(publish_root_value).resolve()
+            if not _inside(publish_root, run_root) or publish_root == run_root:
+                raise RunManyError(f"manifest publishRoot escaped run staging root: {manifest_path}")
+        removable: list[Path] = []
+        for target in (run_root / "prepare", run_root / "raw", run_root / "logs", publish_root):
+            if target is not None and target.exists() and target not in removable:
+                if not _inside(target, run_root) or target == run_root:
+                    raise RunManyError(f"unsafe cleanup target: {target}")
+                removable.append(target)
+        allocated_before = _allocated_bytes(run_root)
+        blockers: list[str] = []
+        if live_pids:
+            blockers.append(f"recorded-live-pids:{','.join(map(str, live_pids))}")
+        if global_consumers:
+            blockers.append("global-ios-consumer-active")
+        if lock_holders:
+            blockers.append("known-lock-active-or-unreadable")
+        candidates.append(
+            {
+                "manifest": str(manifest_path),
+                "runID": manifest.get("runID"),
+                "status": status,
+                "expiresAt": manifest.get("expiresAt"),
+                "stagingRoot": str(run_root),
+                "recordedPIDs": recorded_pids,
+                "livePIDs": live_pids,
+                "removable": [str(path) for path in removable],
+                "allocatedBytesBefore": allocated_before,
+                "blockers": blockers,
+                "action": "blocked" if blockers else ("delete" if args.commit else "preview-delete"),
+            }
+        )
+
+    deleted: list[dict[str, Any]] = []
+    if args.commit:
+        for candidate in candidates:
+            if candidate["blockers"]:
+                continue
+            run_root = Path(candidate["stagingRoot"])
+            for target_text in candidate["removable"]:
+                target = Path(target_text).resolve()
+                if not _inside(target, run_root) or target == run_root:
+                    raise RunManyError(f"cleanup target changed or escaped run root: {target}")
+                if target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    raise RunManyError(f"refusing to remove non-directory cleanup target: {target}")
+            receipt = {
+                "schema": CLEANUP_SCHEMA,
+                "runID": candidate["runID"],
+                "status": "reclaimed",
+                "reclaimedAt": _iso(_now()),
+                "manifest": candidate["manifest"],
+                "preserved": [
+                    str(run_root / "run-manifest.json"),
+                    str(run_root / "methods.json"),
+                    str(run_root / "summary.json"),
+                ],
+                "removed": candidate["removable"],
+                "diskFreeBytesBefore": disk_before,
+                "diskFreeBytesAfter": _free_bytes(),
+            }
+            _write_json_atomic(run_root / "cleanup-receipt.json", receipt)
+            manifest = _read_json(run_root / "run-manifest.json") or {}
+            manifest["cleanup"] = {
+                "status": "reclaimed",
+                "at": receipt["reclaimedAt"],
+                "receipt": str(run_root / "cleanup-receipt.json"),
+                "removed": candidate["removable"],
+            }
+            _write_json_atomic(run_root / "run-manifest.json", manifest)
+            candidate["action"] = "reclaimed"
+            candidate["allocatedBytesAfter"] = _allocated_bytes(run_root)
+            candidate["reclaimedBytes"] = (
+                max(0, (candidate["allocatedBytesBefore"] or 0) - (candidate["allocatedBytesAfter"] or 0))
+                if candidate["allocatedBytesBefore"] is not None
+                else None
+            )
+            deleted.append(candidate)
+
+    payload = {
+        "schema": CLEANUP_SCHEMA,
+        "status": "committed" if args.commit else "preview",
+        "stagingRoot": str(staging_root),
+        "observedAt": _iso(now),
+        "manifestCount": len(manifest_paths),
+        "candidateCount": len(candidates),
+        "commit": bool(args.commit),
+        "diskFreeBytesBefore": disk_before,
+        "diskFreeBytesAfter": _free_bytes() if args.commit else disk_before,
+        "globalConsumers": global_consumers,
+        "lockHolders": lock_holders,
+        "candidates": candidates,
+        "reclaimed": deleted,
+    }
+    blocked = any(candidate["blockers"] for candidate in candidates)
+    return payload, 75 if args.commit and blocked else 0
+
+
 def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     root = args.root.resolve()
     helper = args.helper.resolve()
@@ -330,6 +544,9 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     log_root = staging_root / "logs"
     raw_root.mkdir(parents=True, exist_ok=True)
     log_root.mkdir(parents=True, exist_ok=True)
+    summary_path = args.summary_out.resolve()
+    if not _inside(summary_path, staging_root):
+        raise RunManyError("--summary-out must be inside --output-dir so one run owns all artifacts")
     methods_snapshot = staging_root / "methods.json"
     shutil.copy2(methods_path, methods_snapshot)
     started_at = _now()
@@ -363,7 +580,6 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     env = os.environ.copy()
     env.setdefault("KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE", "420")
-    summary_path = args.summary_out.resolve()
     summary: dict[str, Any] = {
         "schema": SCHEMA,
         "runID": run_id,
@@ -386,6 +602,9 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "prepareCache": {"status": "running"},
         "executions": [],
     }
+    env["KG_IOS_BATCH_RUN_ID"] = run_id
+    env["KG_IOS_ARTIFACT_ROOT"] = str(staging_root / "prepare")
+    env["KG_IOS_TEST_RUN_ID"] = f"{run_id}-prepare"
 
     def persist_summary() -> None:
         _write_json_atomic(summary_path, summary)
@@ -411,6 +630,11 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             summary["status"] = "failed"
             summary["finishedAt"] = _iso(_now())
             persist_summary()
+            manifest["status"] = "failure"
+            manifest["verdict"] = "failed"
+            manifest["finishedAt"] = summary["finishedAt"]
+            manifest["reason"] = "prepare-cache-failed"
+            _write_json_atomic(manifest_path, manifest)
             return summary, 65
 
         overall = 0
@@ -424,10 +648,13 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "--json-out", str(output_path),
             ]
             started = time.monotonic()
+            execution_env = env.copy()
+            execution_env["KG_IOS_EXECUTION_ID"] = f"{run_id}-{index:02d}"
+            execution_env["KG_IOS_TEST_RUN_ID"] = execution_env["KG_IOS_EXECUTION_ID"]
             rc = _run_streaming(
                 command,
                 cwd=root,
-                env=env,
+                env=execution_env,
                 phase=f"run-{index}/{len(methods)}:{item['selector']}",
                 log_path=log_root / f"{index:02d}-{slug}.log",
                 manifest_path=manifest_path,
@@ -452,6 +679,8 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "log": str(log_root / f"{index:02d}-{slug}.log"),
                 "bundleRoot": str(bundle) if bundle else None,
                 "sourceCommit": source_commit,
+                "batchRunID": run_id,
+                "executionID": execution_env["KG_IOS_EXECUTION_ID"],
             }
             summary["executions"].append(execution)
             manifest["executions"] = summary["executions"]
@@ -477,24 +706,43 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         manifest["finishedAt"] = summary["finishedAt"]
         _write_json_atomic(manifest_path, manifest)
         return summary, 130
+    except BaseException as error:
+        summary["status"] = "failed"
+        summary["reason"] = f"runner-error:{type(error).__name__}"
+        summary["finishedAt"] = _iso(_now())
+        persist_summary()
+        manifest["status"] = "failure"
+        manifest["verdict"] = "failed"
+        manifest["reason"] = summary["reason"]
+        manifest["finishedAt"] = summary["finishedAt"]
+        _write_json_atomic(manifest_path, manifest)
+        raise
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["run"])
-    parser.add_argument("--root", type=Path, default=Path.cwd())
-    parser.add_argument("--helper", type=Path, required=True)
-    parser.add_argument("--methods-file", type=Path, required=True)
-    parser.add_argument("--device", required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--publish-root", type=Path)
-    parser.add_argument("--summary-out", type=Path, required=True)
-    parser.add_argument("--configuration", default="Debug")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--root", type=Path, default=Path.cwd())
+    run_parser.add_argument("--helper", type=Path, required=True)
+    run_parser.add_argument("--methods-file", type=Path, required=True)
+    run_parser.add_argument("--device", required=True)
+    run_parser.add_argument("--output-dir", type=Path, required=True)
+    run_parser.add_argument("--publish-root", type=Path)
+    run_parser.add_argument("--summary-out", type=Path, required=True)
+    run_parser.add_argument("--configuration", default="Debug")
+    cleanup_parser = subparsers.add_parser("cleanup")
+    cleanup_parser.add_argument("--staging-root", type=Path, required=True)
+    cleanup_parser.add_argument("--max-runs", type=int, default=200)
+    cleanup_parser.add_argument("--commit", action="store_true")
     args = parser.parse_args()
     try:
-        summary, exit_code = run_batch(args)
-        args.summary_out.parent.mkdir(parents=True, exist_ok=True)
-        args.summary_out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if args.command == "run":
+            summary, exit_code = run_batch(args)
+            args.summary_out.parent.mkdir(parents=True, exist_ok=True)
+            args.summary_out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        else:
+            summary, exit_code = cleanup_runs(args)
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return exit_code
     except (OSError, RunManyError, subprocess.CalledProcessError) as error:
