@@ -22,8 +22,8 @@
       "acceptanceRefs": {"P1": "matrix.requirements[P1]", "P2": "matrix.requirements[P2]"},
       "visualStateRefs": {"P1": "matrix.P1.verification", "P2": "matrix.P2.verification"},
       "runPlan": [
-        {"requirementID": "P1", "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization", "datasetID": "marketing_demo", "status": "pending"},
-        {"requirementID": "P2", "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector", "datasetID": "marketing_demo", "status": "pending"}
+        {"requirementID": "P1", "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization", "datasetID": "marketing_demo", "status": "verified"},
+        {"requirementID": "P2", "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector", "datasetID": "marketing_demo", "status": "verified"}
       ]
     },
     {
@@ -40,11 +40,11 @@
       "acceptanceRefs": {"P3": "matrix.requirements[P3]", "P4": "matrix.requirements[P4]", "P5": "matrix.requirements[P5]", "P6": "matrix.requirements[P6]", "P7": "matrix.requirements[P7]"},
       "visualStateRefs": {"P3": "matrix.P3.verification", "P4": "matrix.P4.verification", "P5": "matrix.P5.verification", "P6": "matrix.P6.verification", "P7": "matrix.P7.verification"},
       "runPlan": [
-        {"requirementID": "P3", "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess", "datasetID": "marketing_demo", "status": "pending"},
+        {"requirementID": "P3", "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess", "datasetID": "marketing_demo", "status": "verified"},
         {"requirementID": "P4", "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen", "datasetID": "marketing_demo", "status": "verified"},
         {"requirementID": "P5", "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen", "datasetID": "marketing_demo", "status": "verified"},
-        {"requirementID": "P6", "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance", "datasetID": "marketing_demo", "status": "pending"},
-        {"requirementID": "P7", "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess", "datasetID": "marketing_demo", "status": "pending"}
+        {"requirementID": "P6", "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance", "datasetID": "marketing_demo", "status": "verified"},
+        {"requirementID": "P7", "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess", "datasetID": "marketing_demo", "status": "verified"}
       ]
     },
     {
@@ -81,7 +81,7 @@
       "acceptanceRefs": {"P11": "matrix.requirements[P11]", "P12": "matrix.requirements[P12]", "P13": "matrix.requirements[P13]"},
       "visualStateRefs": {"P11": "matrix.P11.verification", "P12": "matrix.P12.verification", "P13": "matrix.P13.verification"},
       "runPlan": [
-        {"requirementID": "P11", "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently", "datasetID": "marketing_demo", "status": "in_progress"},
+        {"requirementID": "P11", "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently", "datasetID": "marketing_demo", "status": "verified"},
         {"requirementID": "P12", "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings", "datasetID": "marketing_demo", "status": "verified"},
         {"requirementID": "P13", "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled", "datasetID": "marketing_demo", "status": "verified"}
       ]
