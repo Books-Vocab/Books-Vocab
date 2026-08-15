@@ -231,6 +231,10 @@ def test_record_blocker_appends_history_without_claiming_verified() -> None:
 
 
 def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) -> None:
+    git_root = tmp_path / "git-root"
+    git_root.mkdir()
+    tmp_path = git_root / "nested-source-root"
+    tmp_path.mkdir()
     data = MODULE.load_matrix(MATRIX)
     dataset_path = tmp_path / "ops" / "fixtures" / "ui_worlds" / "dataset-1.json"
     dataset_path.parent.mkdir(parents=True)
@@ -387,22 +391,22 @@ def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    (tmp_path / ".gitignore").write_text("build/\nops/\n", encoding="utf-8")
-    (tmp_path / "source.txt").write_text("source\n", encoding="utf-8")
+    (git_root / ".gitignore").write_text("nested-source-root/\n", encoding="utf-8")
+    (git_root / "source.txt").write_text("source\n", encoding="utf-8")
     verdict_path = evidence / "verdict.json"
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "init", "-q", str(git_root)], check=True)
     subprocess.run(
-        ["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"],
+        ["git", "-C", str(git_root), "config", "user.email", "test@example.com"],
         check=True,
     )
     subprocess.run(
-        ["git", "-C", str(tmp_path), "config", "user.name", "Test"],
+        ["git", "-C", str(git_root), "config", "user.name", "Test"],
         check=True,
     )
-    subprocess.run(["git", "-C", str(tmp_path), "add", ".gitignore", "source.txt"], check=True)
-    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "source"], check=True)
+    subprocess.run(["git", "-C", str(git_root), "add", ".gitignore", "source.txt"], check=True)
+    subprocess.run(["git", "-C", str(git_root), "commit", "-qm", "source"], check=True)
     source_commit = subprocess.check_output(
-        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"], text=True
+        ["git", "-C", str(git_root), "rev-parse", "HEAD"], text=True
     ).strip()
 
     def replace_source_commit(value: object) -> None:
@@ -558,7 +562,7 @@ def test_dirty_git_tree_is_detected(tmp_path: Path) -> None:
     assert MODULE._git_source_tree_dirty(nested) is True
 
 
-def test_source_commit_accepts_evidence_receipt_and_rejects_code_drift(tmp_path: Path) -> None:
+def test_source_commit_accepts_matrix_receipt_and_rejects_other_drift(tmp_path: Path) -> None:
     repo = tmp_path / "receipt-repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -583,23 +587,37 @@ def test_source_commit_accepts_evidence_receipt_and_rejects_code_drift(tmp_path:
     matrix.write_text("{\"version\": 2}\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", str(matrix)], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-qm", "matrix receipt"], check=True)
-    assert MODULE._git_source_commit_matches_current_or_evidence_receipt(repo, source_commit)
+    assert MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
 
-    report = repo / "IOS2.0.1+7-UI-review-report" / "CURRENT-STATUS-2026-08-13.md"
-    report.parent.mkdir(parents=True)
-    report.write_text("receipt\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", str(report)], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "report receipt"], check=True)
-    assert MODULE._git_source_commit_matches_current_or_evidence_receipt(repo, source_commit)
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(other_repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(other_repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(other_repo), "config", "user.name", "Test"],
+        check=True,
+    )
+    (other_repo / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(other_repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(other_repo), "commit", "-qm", "unrelated"], check=True)
+    unrelated_commit = subprocess.check_output(
+        ["git", "-C", str(other_repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(
+        repo, unrelated_commit
+    )
 
     (repo / "source.txt").write_text("drift\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", str(repo / "source.txt")], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-qm", "code drift"], check=True)
-    assert not MODULE._git_source_commit_matches_current_or_evidence_receipt(repo, source_commit)
+    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
 
 
 def test_source_commit_rejects_unverifiable_non_git_root(tmp_path: Path) -> None:
-    assert not MODULE._git_source_commit_matches_current_or_evidence_receipt(
+    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(
         tmp_path,
         "synthetic-source-commit",
     )

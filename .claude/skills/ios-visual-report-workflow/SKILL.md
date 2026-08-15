@@ -94,15 +94,12 @@ uv run --python 3.13 python ops/ios_ui_review_matrix.py validate \
 
 If validation says the evidence source commit differs from `HEAD`, stop unless the
 current HEAD is a descendant whose only committed tree differences are the
-tracked matrix and existing report receipts:
-`ops/fixtures/ios_ui_review_matrix.json`,
-`IOS2.0.1+7-UI-review-report/CURRENT-STATUS-2026-08-13.md`, and
-`IOS2.0.1+7-UI-review-report/evidence-manifest-2026-08-13.json`. This
-receipt-only case is the expected post-`record-many` handoff: preserve the
-evidence's original `sourceCommit`, and report both the evidence source and
-receipt HEAD. Any other code/test/docs drift, dirty tree, non-ancestor source,
-or provenance rewrite is still fail-closed and requires re-running evidence at
-the new exact source HEAD.
+tracked matrix `ops/fixtures/ios_ui_review_matrix.json`. This matrix-only
+receipt case is the expected post-`record-many` handoff: preserve the evidence's
+original `sourceCommit`, and report both the evidence source and receipt HEAD.
+Any report, code, test, or other docs drift, dirty tree, non-ancestor source, or
+provenance rewrite is still fail-closed and requires re-running evidence at the
+new exact source HEAD.
 If Git HEAD, ancestry, or cleanliness cannot be established, validation rejects
 the bundle; a non-Git or partially observable root is never treated as clean.
 
