@@ -25,6 +25,10 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300／360 秒），並以「test body 實測時間 + 啟動／artifact／teardown headroom」推導，不得只把全域上限調大。`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance；v25 已證明 test body 通過後仍可能被 120／180 秒 class allowance 殺掉。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
 - 零步驟的 fixture decoder、manifest schema、projection unit test 不是視覺證據；它們應直接走 unit／focused test，不能用 evidence helper 產生空 screenshot bundle，也不能把「沒有 UI step」記成 visual pass。真正的 UI evidence 必須有至少一個使用者可見狀態與對應 interaction/assertion。
 - iOS 26 production Reader 的 line-height control 是 UIKit `UISlider` bridge 加語意 tick／step controls；endpoint 是已知的 XCTest edge case：從任一端直接呼叫 `adjust(toNormalizedSliderPosition: 0|1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（下端 `0.05/0.15/0.25`、上端 `0.95/0.85/0.75`），每次等待 AX `value` 確實改變，再調到 endpoint 並等待精確目標值；有限次 staged retry 仍只用語意 Slider API，不可把 tap／coordinate drag 當成未驗證 fallback。Dynamic Type／line-height 若使用語意 `toValue("2.5")`，必須同時斷言實際 AX value／畫面結果。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
+- SwiftUI AX projection 可能在同一個 transition 中先更新數量、後 materialize 子節點。先等 terminal cardinality 會把合法的 counterexample transition 誤判成 failure；Page Object 必須按「初始 counterexample → prerequisite content/locator → terminal state」順序，以 bounded wait 逐段驗證，並保留初始與恢復 screenshot。
+- Tab／toolbar action selector 必須解析到實際擁有 action 的 `Button`，不能把 SF Symbol `Image`、`Other` content anchor 或其第一個 descendant 當作可點擊目標。若 SwiftUI 把 symbol identifier 放在子節點，從 `tabBars.buttons` 掃描包含該 symbol 的父 Button；無父 Button 時 fail-closed，不退回 coordinate 或 Image tap。
+- LazyVStack 的 projection acceptance 不得把 `visibleCount` 當成 row materialization 證據。生產 `ScrollView` 要提供語意 scroll-container identifier；facet/query 更新後以該容器做 bounded semantic swipe，直到目標 row 真正 materialize，再斷言 row。禁止座標捲動、localized label 找容器或無限 swipe。
+- Presentation／toolbar 的 transient AX race 要在 cardinality 前先等待 production identifier 對應元素 `exists && hittable`；再做 exactly-one、geometry、type 與 action assertion。等待不得取代 cardinality，也不得用 `firstMatch` 掩蓋 duplicate。
 - 每個 helper run 都會保存 `build/snapshots/uitest-evidence/<run>/verdict.json`、`upstream-verdict.json`、command、runner log；upstream 有提供的 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 也會複製到同一 bundle。runner 失敗或 verdict 不合約時仍讀這個 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
 
 ## 標準流程
@@ -210,6 +214,10 @@ raw: <log> <xcresult>
 ## 失敗診斷捷徑
 
 - 找不到 accessibility identifier：先檢查父容器 `.accessibilityIdentifier` 是否覆蓋子節點；不要先改 selector。
+- tab selector 找到 SF Symbol `Image` 或 `Other` 而非 Button：回到 action-owning parent Button query；不要放寬成任意 descendant 或座標。
+- visible count 已更新但 LazyVStack row 不存在：先檢查 projection 的 ScrollView content offset 與 materialization，再用 production scroll-container ID 做有限 semantic swipe；不要把 count assertion 當 row 證據。
+- counterexample screenshot 已出現但 terminal state 尚未到達：先驗證 counterexample state，再等待 locator／實際內容，最後才等 terminal；不要把 terminal wait 放在 recovery prerequisite 前。
+- Settings／toolbar 的 exact identifier 偶發為 0 或不可點：先等待該 production element 的 exists/hittable，再做 exact cardinality；保留一次原始 AX failure，不用 `firstMatch` 或 localized fallback。
 - Page Object 的 query property 必須無副作用：不得在 getter 內用 `count`／`XCTFail` 阻止後續 `waitUntilExists`；startup、Readium WebView、SwiftUI transient sheet 先等待 materialize，再對已存在節點做唯一性與 scope assertion。SwiftUI 父容器要保留子 selector 時，明確使用 `.accessibilityElement(children: .contain)`。
 - tap 後值沒有改：沿 binding setter → async Task → coordinator → store → view projection 驗證；assert store round-trip，而非只依賴原生 Toggle 的瞬時值。
 - SwiftUI Slider 在任一端直接跳 endpoint：先確認不是產品 binding／store 根因；若 interior action 可動而 exact endpoint 不動，將 endpoint action 封裝在 Page Object 內做有限候選 staged adjustment（下端 `0.05/0.15/0.25 → 0.0`、上端 `0.95/0.85/0.75 → 1.0`），每次都對 interior 與最終 AX value 加 bounded wait。不要改成只點軌道、只拖座標，或把預期值改成目前洩漏的值。
