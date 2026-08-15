@@ -32,7 +32,7 @@ struct UITestFixtureSeedIsolationTests {
             .appendingPathComponent("BooksAndVocabTests", isDirectory: true)
     }
 
-    private static var reviewProbeWorldData: Data {
+    private static func reviewProbeWorldData() throws -> Data {
         let entries = (0..<40).map { index in
             """
             {
@@ -64,7 +64,7 @@ struct UITestFixtureSeedIsolationTests {
             }
             """
         }.joined(separator: ",")
-        return Data(
+        return try FixtureDatasetStoreTests.completeV2DatasetData(
             """
             {
               "schema": "kg.fixture.dataset.v2",
@@ -100,7 +100,7 @@ struct UITestFixtureSeedIsolationTests {
               },
               "syncPresenter": {}
             }
-            """.utf8
+            """
         )
     }
 
@@ -329,7 +329,7 @@ struct UITestFixtureSeedIsolationTests {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: config)
 
-        try FixtureDatasetStore.withTestingData(Self.reviewProbeWorldData) {
+        try FixtureDatasetStore.withTestingData(try Self.reviewProbeWorldData()) {
             UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
         }
 
