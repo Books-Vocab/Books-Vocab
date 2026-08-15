@@ -2,7 +2,7 @@
 
 日期：2026-08-15（final evidence 前的 canonical freeze）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前 canonical worktree 與 pinned Simulator evidence。
-canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`；frozen source HEAD=`58309a9cc8bcf89a67ff2c8630ddc7cbcd5efeb0`。final batch 預定為 `final-head-batch-v35`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
+canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`。exact source HEAD 只由 final summary 與每個 bundle 的 machine provenance 提供；本檔不重複自指的 Git SHA。final batch 預定為 `final-head-batch-v35`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
 
 ## 2026-08-15 canonical freeze（本段為唯一 current contract）
 
