@@ -56,37 +56,10 @@ enum UITestReaderProgressScenario: String, CaseIterable, Equatable {
         case .progressRestoreFailure: return "restore-failure"
         }
     }
-}
-
-/// Progress-only fixture scenarios. Loading/error scenarios intentionally live
-/// in `UITestReaderRuntimeScenario` but are not accepted by progress selectors.
-enum UITestReaderProgressScenario: String, CaseIterable, Equatable {
-    case progressUnknown = "progress-unknown"
-    case progressZero = "progress-zero"
-    case progressMiddle = "progress-middle"
-    case progressComplete = "progress-complete"
-    case progressRestoreFailure = "progress-restore-failure"
-
-    var runtimeScenario: UITestReaderRuntimeScenario {
-        switch self {
-        case .progressUnknown: return .progressUnknown
-        case .progressZero: return .progressZero
-        case .progressMiddle: return .progressMiddle
-        case .progressComplete: return .progressComplete
-        case .progressRestoreFailure: return .progressRestoreFailure
-        }
-    }
-
-    /// The fixture scenario name and rendered badge name are intentionally
-    /// different: the app exposes the normalized production progress state.
-    var progressAccessibilitySuffix: String {
-        switch self {
-        case .progressUnknown: return "unknown"
-        case .progressZero: return "zero"
-        case .progressMiddle: return "middle"
-        case .progressComplete: return "complete"
-        case .progressRestoreFailure: return "restore-failure"
-        }
+    /// Production Reader selectors use the normalized state suffix rather than
+    /// the fixture's `progress-*` launch argument.
+    var readerProgressAccessibilityIdentifier: String {
+        "reader.progress.\(progressAccessibilitySuffix)"
     }
 }
 
@@ -100,18 +73,6 @@ enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
             return "KG_UI_TEST_APP_ARGS_JSON is not valid UTF-8"
         case .invalidJSON(let underlying):
             return "KG_UI_TEST_APP_ARGS_JSON must be a JSON array of strings: \(underlying)"
-
-    /// Canonical production Reader progress IDs use typed state labels, not
-    /// fixture scenario labels such as `progress-zero`.
-    var readerProgressAccessibilityIdentifier: String {
-        switch self {
-        case .progressUnknown: return "reader.progress.unknown"
-        case .progressZero: return "reader.progress.zero"
-        case .progressMiddle: return "reader.progress.middle"
-        case .progressComplete: return "reader.progress.complete"
-        case .progressRestoreFailure: return "reader.progress.restore-failure"
-        case .loadingSlow, .loadingMissing, .loadingErrorRetry:
-            preconditionFailure("Loading scenarios do not have a progress-state selector")
         }
     }
 }
@@ -145,7 +106,6 @@ enum UITestFixture: Equatable {
     case notebookReviewCardFullContent
     case notebookReviewCardFullInfo
     case notebookReviewCardCompactCounterexample
-    case vocabulary(String)
 
     var launchArgument: String {
         switch self {
@@ -205,8 +165,6 @@ enum UITestFixture: Equatable {
             return "-seedFixture:notebook:review.card-full-info"
         case .notebookReviewCardCompactCounterexample:
             return "-seedFixture:notebook:review.card-compact-counterexample"
-        case .vocabulary(let id):
-            return "-seedFixture:vocabulary:\(id)"
         }
     }
 }
