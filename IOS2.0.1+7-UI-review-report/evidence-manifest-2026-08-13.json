@@ -11,7 +11,8 @@
   },
   "generatedAt": "2026-08-15",
   "phase": "frozen-provenance-contract",
-  "sourceCommit": "58309a9cc8bcf89a67ff2c8630ddc7cbcd5efeb0",
+  "sourceCommit": null,
+  "sourceCommitAuthority": "finalBatch.summary and each bundle provenance",
   "assurance": {
     "platform": "iOS Simulator",
     "physicalDeviceVerified": false,
