@@ -173,6 +173,28 @@ private final class ReaderTOCNavigationRace: @unchecked Sendable {
     }
 }
 
+// The deadline belongs to the TOC navigation state machine, not the
+// preference command source. Preference application completes only from the
+// navigator presentation event; this independent deadline covers the separate
+// case where Readium accepted a TOC command but never emits the resulting
+// location callback.
+extension ReadiumNavigatorView.Coordinator {
+    func beginTOCTimeout(for requestID: UUID) {
+        activeTOCTimeoutTask?.cancel()
+        activeTOCTimeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: ReaderMetrics.tocNavigationTimeoutNanoseconds)
+            } catch {
+                return
+            }
+            guard let self, self.activeTOCRequestID == requestID else { return }
+            self.activeTOCRequestID = nil
+            self.activeTOCTimeoutTask = nil
+            self.parent.onTOCNavigationEvent(.timedOut(requestID: requestID))
+        }
+    }
+}
+
 enum ReaderTOCEvidenceHref {
     static func isSafeRelative(_ href: String) -> Bool {
         guard !href.isEmpty,
