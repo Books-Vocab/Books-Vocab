@@ -623,6 +623,11 @@ struct StatsPresenter: View {
                 VStack(spacing: 0) {
                     VocabForecastChart(buckets: summary.forecast)
                         .frame(height: 160)
+                        // Keep the chart anchor while exposing each bar's
+                        // live AX identifier through the nested GeometryReader.
+                        // Without containment, iOS 26 can render the chart but
+                        // omit forecast.bucket.* descendants from the snapshot.
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("overview.forecast.chart")
                     Color.clear
                         .frame(width: 1, height: 1)
