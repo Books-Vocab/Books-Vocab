@@ -775,8 +775,26 @@ enum FixtureDatasetStore {
 
     private static func validateContentType(_ contentType: String, for url: URL, ref: String) throws {
         let expected = contentType.split(separator: ";", maxSplits: 1).first.map(String.init) ?? contentType
-        guard let actual = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType,
-              actual == expected else {
+        // UTType(filenameExtension:) reports `.md` as text/plain on some
+        // simulator/runtime SDK combinations even though the fixture contract
+        // explicitly distinguishes Markdown from plain text. The extension
+        // map is the repo-owned wire contract; UTType remains the fallback for
+        // formats whose MIME mapping is stable but not listed here.
+        let extensionType: String? = switch url.pathExtension.lowercased() {
+        case "epub": "application/epub+zip"
+        case "pdf": "application/pdf"
+        case "md": "text/markdown"
+        case "txt": "text/plain"
+        case "mp3": "audio/mpeg"
+        case "m4a": "audio/mp4"
+        case "srt": "application/x-subrip"
+        case "vtt": "text/vtt"
+        case "png": "image/png"
+        case "jpg", "jpeg": "image/jpeg"
+        default: nil
+        }
+        let actual = extensionType ?? UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+        guard actual == expected else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
                 NSFilePathErrorKey: url.path,
                 NSLocalizedDescriptionKey: "UI World asset \(ref) contentType mismatch: expected \(expected)",

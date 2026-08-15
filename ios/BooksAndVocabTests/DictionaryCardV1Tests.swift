@@ -275,29 +275,45 @@ struct DictionaryCardWireTests {
     }
 
     @Test("materialization projection rejects a missing links field")
-    func strictMaterializationProjectionRejectsMissingLinks() {
-        let malformed = Self.backendProjection.replacingOccurrences(
-            of: "      \"readerHidden\": false,\n      \"links\": [{\"id\":\"link-1\",\"fromId\":\"source-1\",\"toId\":\"card-1\",\"kind\":\"shares_usage\",\"confidence\":0.9,\"reason\":\"dictionary\"}]",
-            with: "      \"readerHidden\": false"
+    func strictMaterializationProjectionRejectsMissingLinks() throws {
+        var malformedObject = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(Self.backendProjection.utf8),
+                options: []
+            ) as? [String: Any]
+        )
+        malformedObject.removeValue(forKey: "links")
+        let malformed = try JSONSerialization.data(
+            withJSONObject: malformedObject,
+            options: [.sortedKeys]
         )
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(
                 KGMaterializationCardProjection.self,
-                from: Data(malformed.utf8)
+                from: malformed
             )
         }
     }
 
     @Test("materialization projection rejects a missing retry barrier")
-    func strictMaterializationProjectionRejectsMissingRetryBarrier() {
-        let malformed = Self.backendProjection.replacingOccurrences(
-            of: "        \"promotionErrorCode\": null,\n        \"promotionRetryable\": null",
-            with: "        \"promotionErrorCode\": null"
+    func strictMaterializationProjectionRejectsMissingRetryBarrier() throws {
+        var malformedObject = try #require(
+            JSONSerialization.jsonObject(
+                with: Data(Self.backendProjection.utf8),
+                options: []
+            ) as? [String: Any]
+        )
+        var dictionary = try #require(malformedObject["dictionary"] as? [String: Any])
+        dictionary.removeValue(forKey: "promotionRetryable")
+        malformedObject["dictionary"] = dictionary
+        let malformed = try JSONSerialization.data(
+            withJSONObject: malformedObject,
+            options: [.sortedKeys]
         )
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(
                 KGMaterializationCardProjection.self,
-                from: Data(malformed.utf8)
+                from: malformed
             )
         }
     }
