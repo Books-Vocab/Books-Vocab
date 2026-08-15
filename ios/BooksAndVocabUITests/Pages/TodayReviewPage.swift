@@ -208,29 +208,44 @@ struct TodayReviewPage {
     }
 
     var frontNaturalContent: XCUIElement {
-        element("todayReview.card.front.content.natural")
+        scopedElement(
+            "todayReview.card.front",
+            "todayReview.card.front.content.natural"
+        )
     }
 
     var frontScrollContent: XCUIElement {
-        element("todayReview.card.front.content.scroll")
+        scopedElement(
+            "todayReview.card.front",
+            "todayReview.card.front.content.scroll"
+        )
     }
 
     /// The renderer publishes exactly one of these two content selectors. They
     /// make the natural-fit versus top-anchored-scroll contract assertable without
     /// depending on localized text or screenshot pixel matching.
     var backNaturalContent: XCUIElement {
-        element("todayReview.card.back.content.natural")
+        scopedElement(
+            "todayReview.card.back",
+            "todayReview.card.back.content.natural"
+        )
     }
 
     var backScrollContent: XCUIElement {
-        element("todayReview.card.back.content.scroll")
+        scopedElement(
+            "todayReview.card.back",
+            "todayReview.card.back.content.scroll"
+        )
     }
 
     /// Field-level selectors are deliberately stable raw-value IDs. The standard
     /// profile test uses them to prove example/explanation/collocations/graph links
     /// remain mounted on the back face, while compact remains testable by absence.
     func backField(_ rawValue: String) -> XCUIElement {
-        element("todayReview.card.back.field.\(rawValue)")
+        scopedElement(
+            "todayReview.card.back",
+            "todayReview.card.back.field.\(rawValue)"
+        )
     }
 
     /// The "tap to expand" zone below the card (front stage only). Its
@@ -605,6 +620,14 @@ struct TodayReviewPage {
             return app.descendants(matching: .any).matching(identifier: "__invalid-card-scope__")
         }
         return cards[0].descendants(matching: .any).matching(identifier: identifier)
+    }
+
+    /// Resolve content beneath the one active face, never against the global
+    /// AX tree. The production review deck keeps preview cards mounted for
+    /// transition/layout continuity; their duplicate identifiers are not part
+    /// of the active-card evidence contract.
+    private func scopedElement(_ cardIdentifier: String, _ identifier: String) -> XCUIElement {
+        scopedElements(cardIdentifier, identifier).element(boundBy: 0)
     }
 
     private func elements(for identifier: String) -> XCUIElementQuery {
