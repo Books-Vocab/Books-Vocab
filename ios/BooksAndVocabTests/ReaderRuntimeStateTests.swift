@@ -65,13 +65,40 @@ struct ReaderRuntimeStateTests {
 
         #expect(state.progressState == .middle(0.568))
         #expect(state.totalProgression == 0.568)
-        #expect(state.runtimeStateAccessibilityValue.contains("progress=middle"))
+        #expect(state.visibleProgressState == .unknown)
+        #expect(state.visibleTotalProgression == nil)
+        #expect(state.runtimeStateAccessibilityValue.contains("progress=unknown"))
+
+        state.markReady()
+        #expect(state.visibleProgressState == .middle(0.568))
+        #expect(state.visibleTotalProgression == 0.568)
 
         state.recordLocationProgression(0.73)
 
         #expect(state.progressState == .middle(0.73))
         #expect(state.totalProgression == 0.73)
         #expect(state.runtimeStateAccessibilityValue.contains("progress=middle"))
+    }
+
+    @Test func loadingAndFailureHidePreviousProgressFromTheVisibleProjection() {
+        let state = ReaderRuntimeState(
+            selection: ReaderRuntimeFixtureAdapter.selection(scenario: nil),
+            initialProgression: 0.42
+        )
+
+        #expect(state.visibleProgressState == .unknown)
+        #expect(state.visibleTotalProgression == nil)
+
+        state.markReady()
+        #expect(state.visibleProgressState == .middle(0.42))
+        #expect(state.visibleProgressState(hasPublication: false) == .unknown)
+        #expect(state.visibleTotalProgression(hasPublication: false) == nil)
+        #expect(state.runtimeStateAccessibilityValue(hasPublication: false).contains("progress=unknown"))
+
+        state.fail(.openFailed)
+        #expect(state.visibleProgressState == .unknown)
+        #expect(state.visibleTotalProgression == nil)
+        #expect(state.runtimeStateAccessibilityValue.contains("progress=unknown"))
     }
 
     @Test func invalidRestoreIsProgressWarningAndDoesNotBecomeLoadFailure() {
@@ -197,6 +224,27 @@ struct ReaderRuntimeStateTests {
                 errorMessage: nil,
                 loadingState: .ready
             ) == .empty
+        )
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: true,
+                errorMessage: nil,
+                loadingState: .loading(.opening)
+            ) == .loading
+        )
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: true,
+                errorMessage: "stale failure",
+                loadingState: .failed(.openFailed)
+            ) == .error
+        )
+        #expect(
+            ReaderMainContentState.resolve(
+                hasPublication: true,
+                errorMessage: nil,
+                loadingState: .failed(.openFailed)
+            ) == .error
         )
     }
 

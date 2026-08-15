@@ -108,11 +108,10 @@ extension ReaderView {
                 readerEmptyState()
             }
         case .error:
-            if let error = readerState.errorMessage {
-                readerErrorState(error)
-            } else {
-                readerEmptyState()
-            }
+            readerErrorState(
+                readerState.errorMessage
+                    ?? L10n.string("請重試載入這本書。")
+            )
         case .loading:
             EmptyView()
         case .empty:

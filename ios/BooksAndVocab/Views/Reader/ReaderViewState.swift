@@ -43,6 +43,80 @@ enum ReaderTOCNavigationEvent: Equatable, Sendable {
     }
 }
 
+/// Owns the single live TOC request token. A cancelled navigation may still
+/// finish inside Readium, so its completion must never mutate a replacement
+/// request.
+struct ReaderTOCNavigationRequestGate: Equatable, Sendable {
+    private(set) var activeRequestID: UUID?
+    private(set) var activeExpectedLocatorHref: String?
+
+    mutating func begin(_ requestID: UUID, expectedLocatorHref: String? = nil) {
+        activeRequestID = requestID
+        activeExpectedLocatorHref = expectedLocatorHref
+    }
+
+    mutating func invalidate() {
+        activeRequestID = nil
+        activeExpectedLocatorHref = nil
+    }
+
+    func isCurrent(_ requestID: UUID) -> Bool {
+        activeRequestID == requestID
+    }
+
+    func matchesCurrent(_ requestID: UUID, locatorHref: String) -> Bool {
+        isCurrent(requestID) && activeExpectedLocatorHref == locatorHref
+    }
+
+    @discardableResult
+    mutating func finish(_ requestID: UUID) -> Bool {
+        guard isCurrent(requestID) else { return false }
+        activeRequestID = nil
+        activeExpectedLocatorHref = nil
+        return true
+    }
+
+    /// A Readium location callback has no request ID. It may be a late event
+    /// from a cancelled request, so only a callback for the active request's
+    /// expected href may consume the token.
+    @discardableResult
+    mutating func finish(
+        _ requestID: UUID,
+        ifMatchingLocatorHref locatorHref: String
+    ) -> Bool {
+        guard matchesCurrent(requestID, locatorHref: locatorHref) else {
+            return false
+        }
+        activeRequestID = nil
+        activeExpectedLocatorHref = nil
+        return true
+    }
+}
+
+/// Rejects delegate callbacks from a dismantled or replaced Readium navigator.
+/// Readium may deliver a queued callback after SwiftUI has torn down the
+/// representable, so a request token alone is not a sufficient lifecycle fence.
+struct ReaderNavigatorLifecycleGate: Equatable, Sendable {
+    private(set) var generation: UInt = 0
+    private(set) var isActive = false
+
+    @discardableResult
+    mutating func activate() -> UInt {
+        generation &+= 1
+        isActive = true
+        return generation
+    }
+
+    mutating func deactivate() {
+        generation &+= 1
+        isActive = false
+    }
+
+    func accepts(_ callbackGeneration: UInt) -> Bool {
+        isActive && generation == callbackGeneration
+    }
+}
+
 @MainActor
 protocol ReaderNavigatorDriving: AnyObject {
     func go(to locator: Locator) async -> Bool?
@@ -180,6 +254,7 @@ private final class ReaderTOCNavigationRace: @unchecked Sendable {
 // location callback.
 extension ReadiumNavigatorView.Coordinator {
     func beginTOCTimeout(for requestID: UUID) {
+        guard tocNavigationGate.isCurrent(requestID) else { return }
         activeTOCTimeoutTask?.cancel()
         activeTOCTimeoutTask = Task { @MainActor [weak self] in
             do {
@@ -187,8 +262,9 @@ extension ReadiumNavigatorView.Coordinator {
             } catch {
                 return
             }
-            guard let self, self.activeTOCRequestID == requestID else { return }
-            self.activeTOCRequestID = nil
+            guard let self, self.tocNavigationGate.finish(requestID) else { return }
+            self.activeTOCNavigationTask?.cancel()
+            self.activeTOCNavigationTask = nil
             self.activeTOCTimeoutTask = nil
             self.parent.onTOCNavigationEvent(.timedOut(requestID: requestID))
         }

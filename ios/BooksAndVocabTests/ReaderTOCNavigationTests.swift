@@ -5,6 +5,78 @@ import Testing
 @testable import BooksAndVocab
 
 struct ReaderTOCNavigationTests {
+    @Test
+    func navigatorLifecycleGateRejectsDismantledAndOlderCallbacks() {
+        var gate = ReaderNavigatorLifecycleGate()
+        let firstGeneration = gate.activate()
+
+        #expect(gate.accepts(firstGeneration))
+
+        gate.deactivate()
+        #expect(!gate.accepts(firstGeneration))
+
+        let replacementGeneration = gate.activate()
+        #expect(replacementGeneration != firstGeneration)
+        #expect(!gate.accepts(firstGeneration))
+        #expect(gate.accepts(replacementGeneration))
+    }
+
+    @Test
+    func staleNavigationCompletionCannotFinishReplacementRequest() {
+        let firstRequest = UUID()
+        let replacementRequest = UUID()
+        var gate = ReaderTOCNavigationRequestGate()
+
+        gate.begin(firstRequest)
+        gate.begin(replacementRequest)
+
+        #expect(!gate.isCurrent(firstRequest))
+        let staleFinished = gate.finish(firstRequest)
+        #expect(!staleFinished)
+        #expect(gate.isCurrent(replacementRequest))
+        let replacementFinished = gate.finish(replacementRequest)
+        #expect(replacementFinished)
+        #expect(gate.activeRequestID == nil)
+    }
+
+    @Test
+    func staleLocationCallbackCannotFinishReplacementRequest() {
+        let firstRequest = UUID()
+        let replacementRequest = UUID()
+        var gate = ReaderTOCNavigationRequestGate()
+
+        gate.begin(firstRequest, expectedLocatorHref: "OEBPS/chapter-a.xhtml")
+        gate.begin(replacementRequest, expectedLocatorHref: "OEBPS/chapter-b.xhtml")
+
+        let staleLocationFinished = gate.finish(
+            replacementRequest,
+            ifMatchingLocatorHref: "OEBPS/chapter-a.xhtml"
+        )
+        #expect(!staleLocationFinished)
+        #expect(gate.isCurrent(replacementRequest))
+        #expect(gate.activeExpectedLocatorHref == "OEBPS/chapter-b.xhtml")
+        let replacementLocationFinished = gate.finish(
+            replacementRequest,
+            ifMatchingLocatorHref: "OEBPS/chapter-b.xhtml"
+        )
+        #expect(replacementLocationFinished)
+        #expect(gate.activeRequestID == nil)
+        #expect(gate.activeExpectedLocatorHref == nil)
+    }
+
+    @Test
+    func invalidatingNavigationGateRejectsLateTeardownCompletion() {
+        let requestID = UUID()
+        var gate = ReaderTOCNavigationRequestGate()
+
+        gate.begin(requestID)
+        gate.invalidate()
+
+        #expect(!gate.isCurrent(requestID))
+        let lateFinished = gate.finish(requestID)
+        #expect(!lateFinished)
+    }
+
     @Test @MainActor
     func navigatorTrueIsTheFirstSuccessfulNavigationSignal() async throws {
         let requestID = UUID()
