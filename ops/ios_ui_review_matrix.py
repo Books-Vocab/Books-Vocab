@@ -239,6 +239,63 @@ def _git_source_tree_dirty(root: Path) -> bool | None:
     return bool(result.stdout.strip())
 
 
+def _git_source_commit_matches_current_or_matrix_receipt(
+    root: Path,
+    source_commit: Any,
+) -> bool:
+    """Accept source HEAD or a committed matrix-only receipt after it.
+
+    Evidence is produced against a clean source snapshot.  ``record-many`` then
+    writes the tracked matrix and the integrator may commit that receipt, so a
+    later validation HEAD can legitimately differ without changing the source
+    tree that produced the evidence.  Keep this exception narrow: the source
+    must be an ancestor of HEAD and every non-matrix path must remain identical.
+    """
+    if not isinstance(source_commit, str) or not source_commit.strip():
+        return False
+    source_commit = source_commit.strip()
+    current_head = _git_head(root)
+    if current_head is None:
+        return True
+    if source_commit == current_head:
+        return True
+
+    try:
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{source_commit}^{{commit}}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source_commit, current_head],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        non_receipt_diff = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--quiet",
+                source_commit,
+                current_head,
+                "--",
+                ".",
+                ":(exclude)ops/fixtures/ios_ui_review_matrix.json",
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return non_receipt_diff.returncode == 0
+
+
 def _validate_ui_world_dataset(path: Path, *, label: str) -> None:
     manifest_script = Path(__file__).with_name("ui_world_manifest.py")
     try:
@@ -315,9 +372,15 @@ def _evidence_provenance(
     if verdict.get("runId") != run_id:
         raise UIReviewMatrixError("runID does not match normalized verdict")
 
-    current_head = _git_head(repository_root or evidence_root.parents[3])
-    if current_head and options.get("sourceCommit") != current_head:
-        raise UIReviewMatrixError("evidence sourceCommit is not the current repository HEAD")
+    repository_for_provenance = repository_root or evidence_root.parents[3]
+    if not _git_source_commit_matches_current_or_matrix_receipt(
+        repository_for_provenance,
+        options.get("sourceCommit"),
+    ):
+        raise UIReviewMatrixError(
+            "evidence sourceCommit is neither the current repository HEAD nor an "
+            "ancestor with a matrix-only receipt diff"
+        )
 
     artifacts = _mapping(verdict.get("artifacts"), owner="verdict.artifacts")
     artifact_paths: dict[str, Path] = {}
