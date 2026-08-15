@@ -853,8 +853,6 @@ struct ReaderPage {
             line: line
         ) else { return false }
 
-        let previousValue = String(describing: slider.value ?? "")
-        slider.adjust(toNormalizedSliderPosition: position)
         let expected: String?
         if position <= 0.01 {
             expected = "1.0"
@@ -863,13 +861,39 @@ struct ReaderPage {
         } else {
             expected = nil
         }
-        if let expected {
-            return waitForSliderValueEquals(expected, timeout: 8)
+        let adjustmentPlans: [[CGFloat]]
+        if position <= 0.01 {
+            // iOS 26.4 can accept a direct endpoint event without committing
+            // the SwiftUI binding. Move through a semantic interior value and
+            // retry the endpoint a bounded number of times; never drag by AX
+            // coordinates, which can hang XCTest on a clipped Form row.
+            adjustmentPlans = [[0.05, 0], [0.15, 0], [0.25, 0]]
+        } else if position >= 0.99 {
+            adjustmentPlans = [[0.95, 1], [0.85, 1], [0.75, 1]]
+        } else {
+            adjustmentPlans = [[position]]
         }
-        return waitForSliderValueChange(
-            from: previousValue,
-            timeout: 8
-        )
+
+        for plan in adjustmentPlans {
+            for target in plan {
+                let previousValue = String(describing: slider.value ?? "")
+                slider.adjust(toNormalizedSliderPosition: target)
+                if let expected, target == plan.last {
+                    if waitForSliderValueEquals(expected, timeout: 3) {
+                        return true
+                    }
+                } else if target == plan.last {
+                    return waitForSliderValueChange(from: previousValue, timeout: 3)
+                } else {
+                    _ = waitForSliderValueChange(from: previousValue, timeout: 3)
+                }
+            }
+        }
+
+        if let expected {
+            return waitForSliderValueEquals(expected, timeout: 2)
+        }
+        return false
     }
 
     @discardableResult
