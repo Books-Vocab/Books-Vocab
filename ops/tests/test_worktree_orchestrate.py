@@ -519,6 +519,11 @@ def test_gate_plan_changed_uitest_file_selects_its_ui_class():
     names = _names(gates)
     # only the impacted UI test CLASS runs (scoped --file, marketing_demo dataset)
     assert "ios-test-ui:ReaderFlowTests" in names
+    ui = _by_name(gates)["ios-test-ui:ReaderFlowTests"]
+    assert ui["cmd"] == [
+        "ops/ios_ops.sh", "test", "--ui", "--json", "--lease",
+        "--dataset", "marketing_demo", "--file", "ReaderFlowTests",
+    ]
     # helper/page-object files are not test classes
     gates = plan_gates(["ios/BooksAndVocabUITests/Pages/AppPage.swift"])
     assert not any(n.startswith("ios-test-ui") for n in _names(gates))

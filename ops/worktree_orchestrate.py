@@ -1005,7 +1005,7 @@ def plan_gates(changed_files: list[str],
             live_only_classes = sorted(set(ui_test_classes) & _LIVE_ONLY_UITEST_CLASSES)
             for cls in sorted(set(ui_test_classes) - _LIVE_ONLY_UITEST_CLASSES):
                 gates.append(_shell(f"ios-test-ui:{cls}", "ios",
-                                    ["ops/ios_ops.sh", "test", "--ui", "--lease",
+                                    ["ops/ios_ops.sh", "test", "--ui", "--json", "--lease",
                                      "--dataset", "marketing_demo", "--file", cls], "block"))
             if live_only_classes:
                 gates.append(_shell(
