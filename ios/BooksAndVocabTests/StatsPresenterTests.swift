@@ -581,8 +581,7 @@ struct StatsPresenterTests {
                 return record
             }
             let clock = UITestFixtureSeed.makeStatsProjectionClock(
-                for: fixtureID,
-                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
+                for: fixtureID
             )
             let visibleEntries = entries.filter(\.shouldAppearInKnowledgeList)
             let todayKey = clock.dayKey(clock.now)
@@ -633,7 +632,7 @@ struct StatsPresenterTests {
         #expect(comps.hour == 12)
         #expect(comps.minute == 0)
         #expect(clock.calendar.timeZone == calendar.timeZone)
-        #expect(clock.dayKey(clock.now) == "2026-07-09")
+        #expect(clock.dayKey(clock.now) == clock.dayKey(latest))
     }
 
     @Test func anchorFallsBackDeterministicallyForEmptySeeds() {
@@ -648,12 +647,11 @@ struct StatsPresenterTests {
         try FixtureDatasetStore.withTestingData(StatsPresenterFixtureData.marketingDemoData) {
             let seed = FixtureDatasetStore.requireVocabularySeed(for: .vocabListLong)
             let clock = UITestFixtureSeed.makeStatsProjectionClock(
-                for: .vocabListLong,
-                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
+                for: .vocabListLong
             )
             let dueDate = try #require(seed.entries.compactMap(\.nextReviewAt).min())
 
-            #expect(clock.calendar.timeZone == StatsViewTime.calendar.timeZone)
+            #expect(clock == ReviewCalendarClock.uiWorldOrLive())
             #expect(clock.dayKey(clock.now) > clock.dayKey(dueDate))
         }
     }

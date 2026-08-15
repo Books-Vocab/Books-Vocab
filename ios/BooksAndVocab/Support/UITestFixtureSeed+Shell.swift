@@ -44,8 +44,7 @@ extension UITestFixtureSeed {
                 seedSignedInLoginFromWorld()
             }
             statsProjectionClock = makeStatsProjectionClock(
-                for: .shellNavigation,
-                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
+                for: .shellNavigation
             )
             AppLog.app.info("UI-test fixture seeded: shell.navigation (\(entries.count) entries)")
         } catch {
@@ -105,8 +104,7 @@ extension UITestFixtureSeed {
             }
 
             statsProjectionClock = makeStatsProjectionClock(
-                for: fixtureID,
-                latestReviewedAt: seed.reviewHistory.map(\.reviewedAt).max()
+                for: fixtureID
             )
             AppLog.app.info("UI-test fixture seeded: vocabulary.\(fixtureID.rawValue) (\(seed.entries.count) entries, \(seed.reviewHistory.count) reviews)")
         } catch {
@@ -114,40 +112,26 @@ extension UITestFixtureSeed {
         }
     }
 
-    /// Every UI fixture gets an explicit UTC projection clock. `vocabListLong`
-    /// uses an explicit pre-due fallback when no review history exists, so the
-    /// zero-forecast counterexample is deterministic. A fixture with review
-    /// history anchors to that history and exercises overdue-to-today folding.
+    /// Every UI fixture uses the one clock declared by the injected UI World
+    /// `scenarioContext.reviewClock`. The Overview composition already consumes
+    /// this same seed through `ReviewCalendarClock.uiWorldOrLive()`; resolving
+    /// it here prevents the environment bridge from inventing a second UTC or
+    /// fixture-local fallback clock.
     @MainActor
     static func makeStatsProjectionClock(
-        for fixtureID: UIWorldVocabularyFixtureID,
-        latestReviewedAt: Date?
+        for fixtureID: UIWorldVocabularyFixtureID
     ) -> StatsProjectionClock {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
-        let fallbackComponents: DateComponents
-        switch fixtureID {
-        case .vocabListLong:
-            fallbackComponents = DateComponents(
-                calendar: calendar,
-                timeZone: calendar.timeZone,
-                year: 2025,
-                month: 12,
-                day: 20,
-                hour: 12
-            )
-        default:
-            fallbackComponents = DateComponents(
-                calendar: calendar,
-                timeZone: calendar.timeZone,
-                year: 2026,
-                month: 6,
-                day: 1,
-                hour: 12
+        guard let context = FixtureDatasetStore.scenarioContext(),
+              let seed = context.reviewClock
+        else {
+            preconditionFailure(
+                "UI World scenarioContext.reviewClock is required for vocabulary.\(fixtureID.rawValue)"
             )
         }
-        let fallback = calendar.date(from: fallbackComponents) ?? Date(timeIntervalSince1970: 0)
-        return StatsProjectionClock(now: latestReviewedAt ?? fallback, calendar: calendar)
+        return ReviewCalendarClock.fromFixture(
+            seed,
+            fixtureID: "vocabulary.\(fixtureID.rawValue)"
+        )
     }
 }
 #endif
