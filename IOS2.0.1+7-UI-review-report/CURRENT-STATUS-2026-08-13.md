@@ -2,7 +2,7 @@
 
 日期：2026-08-15（final evidence 前的 canonical freeze）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前 canonical worktree 與 pinned Simulator evidence。
-canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`。exact source HEAD 只由 final summary 與每個 bundle 的 machine provenance 提供；本檔不重複自指的 Git SHA。final batch 預定為 `final-head-batch-v35`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
+canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`。exact source HEAD 只由 final summary 與每個 bundle 的 machine provenance 提供；本檔不重複自指的 Git SHA。final batch 預定為 `final-head-batch-v36`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
 
 ## 2026-08-15 canonical freeze（本段為唯一 current contract）
 
@@ -10,8 +10,8 @@ canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-re
 
 唯一 current evidence contract：以凍結 HEAD 執行 `final-head-batch-v35`，28 個 unique exact selectors 共用一次 build-for-testing；每個 selector 必須有 machine contract、source/dataset/device provenance、stable screenshots/contact sheet/quick4/UIreview/video、逐步 visual attestation。之後 `record-many --strict-complete` 才能寫入 matrix receipt；selector PASS 不等於 requirement state union PASS。current verdict 的唯一真相是：
 
-- summary：`build/snapshots/uitest-evidence/final-head-batch-v35-summary.json`
-- bundles：`build/snapshots/uitest-evidence/final-head-batch-v35-bundles/`
+- summary：`build/snapshots/uitest-evidence/final-head-batch-v36-summary.json`
+- bundles：`build/snapshots/uitest-evidence/final-head-batch-v36-bundles/`
 - matrix：`ops/fixtures/ios_ui_review_matrix.json`（只允許這個 tracked receipt path 在 evidence 後變動）
 - cluster contract：`ops/fixtures/ios_ui_review_clusters.json`
 - workflow／docs lint／Gate／review receipt：以 final hand-back receipt 與 orchestrator state 內相同 exact HEAD 為準；任何與該 HEAD 不一致的舊 receipt 均為歷史診斷。
@@ -157,9 +157,9 @@ UV_CACHE_DIR=/private/tmp/kg-uv-cache \
   --helper .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
   --methods-file <exact-runs.json> \
   --device <pinned-simulator-udid> \
-  --output-dir build/snapshots/uitest-evidence/final-head-batch-v35 \
-  --publish-root build/snapshots/uitest-evidence/final-head-batch-v35-bundles \
-  --summary-out build/snapshots/uitest-evidence/final-head-batch-v35-summary.json
+  --output-dir build/snapshots/uitest-evidence/final-head-batch-v36 \
+  --publish-root build/snapshots/uitest-evidence/final-head-batch-v36-bundles \
+  --summary-out build/snapshots/uitest-evidence/final-head-batch-v36-summary.json
 
 # 3. 每個 bundle 必須先完成主流程 verdict + evidence contract，
 #    再逐張檢視 contact sheet / screenshot，最後才寫 visual attestation。

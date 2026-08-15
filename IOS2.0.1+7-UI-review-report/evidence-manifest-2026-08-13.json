@@ -38,9 +38,9 @@
     "stateRecording": "record-many --strict-complete"
   },
   "finalBatch": {
-    "id": "final-head-batch-v35",
-    "summary": "build/snapshots/uitest-evidence/final-head-batch-v35-summary.json",
-    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v35-bundles/",
+    "id": "final-head-batch-v36",
+    "summary": "build/snapshots/uitest-evidence/final-head-batch-v36-summary.json",
+    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v36-bundles/",
     "requiredPerSelector": [
       "machine verdict",
       "source/dataset/device provenance",
