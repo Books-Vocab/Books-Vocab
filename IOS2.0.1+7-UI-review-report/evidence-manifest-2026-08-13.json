@@ -1,51 +1,76 @@
 {
   "schema": "kg.ios.ui-review.report-evidence.v1",
-  "report": "IOS2.0.1+7-UI-review-report.pdf",
-  "generatedAt": "2026-08-13",
+  "report": {
+    "pdf": "IOS2.0.1+7-UI-review-report.pdf",
+    "images": [
+      "p1.PNG", "p2.PNG", "p3.PNG", "p4.PNG", "p5.PNG",
+      "p6.PNG", "p7.PNG", "p8.PNG", "p9.PNG", "p10.PNG",
+      "p11.PNG", "p12.PNG", "p13.PNG", "p14.PNG", "p15.PNG"
+    ],
+    "statusDocument": "CURRENT-STATUS-2026-08-13.md"
+  },
+  "generatedAt": "2026-08-15",
+  "phase": "frozen-provenance-contract",
+  "sourceCommit": "SOURCE_HEAD_PENDING",
   "assurance": {
     "platform": "iOS Simulator",
-    "visualReviewer": "main-agent-visual-review",
-    "independentVisualReviewer": false,
     "physicalDeviceVerified": false,
+    "visualReviewer": "codex",
+    "independentVisualReviewer": false,
     "failClosed": true
+  },
+  "uiWorld": {
+    "datasetID": "marketing_demo",
+    "sha256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced"
+  },
+  "simulator": {
+    "udid": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
+    "platform": "iOS Simulator"
   },
   "controlPlane": {
     "clusterManifest": "ops/fixtures/ios_ui_review_clusters.json",
     "matrix": "ops/fixtures/ios_ui_review_matrix.json",
     "clusterCount": 5,
     "requirementCount": 15,
-    "selectorCount": 16,
-    "validation": "valid"
+    "uniqueSelectorCount": 28,
+    "selectorExecution": "build-once/run-many",
+    "stateRecording": "record-many --strict-complete"
   },
-  "requirements": [
-    {"id":"P1","cluster":"dictionary","selector":"DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization","status":"pass","sourceCommit":"39ef0b8e933e34c86c3a819ac68233ee71ae9ae7","evidence":"evidence/P1/20260813-151159-44623"},
-    {"id":"P2","cluster":"dictionary","selector":"DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector","status":"pass","sourceCommit":"39ef0b8e933e34c86c3a819ac68233ee71ae9ae7","evidence":"evidence/P2/20260813-151305-48028"},
-    {"id":"P3","cluster":"reader-runtime","selector":"ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess","status":"blocked","sourceCommit":"722b92fd6635e30101f964697f3d2d5faec3cae3","evidence":null,"blocker":"build preflight could not resolve GoogleSignIn and Minizip; zero product executions"},
-    {"id":"P4","cluster":"reader-runtime","selector":"ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen","status":"pass","sourceCommit":"f219d13804b0f5bf07c052486c380fcf726ed92b","evidence":"evidence/P4-P5"},
-    {"id":"P5","cluster":"reader-runtime","selector":"ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen","status":"pass","sourceCommit":"f219d13804b0f5bf07c052486c380fcf726ed92b","evidence":"evidence/P4-P5"},
-    {"id":"P6","cluster":"reader-runtime","selector":"ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance","status":"pass","sourceCommit":"c6ff48e09cad88e29b772d7da997516bdb98cb3d","evidence":"evidence/P6/20260813-142032-69495"},
-    {"id":"P7","cluster":"reader-runtime","selector":"ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess","status":"pass","sourceCommit":"e6630961f8f930040d9fcb5277133f043b1aaa1f","evidence":"evidence/P7/20260813-142940-99394"},
-    {"id":"P8","cluster":"explore-overview","selector":"ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates","status":"pass","sourceCommit":"b40305dcc2adcc074ec56a5d7506ce42c1afd6e5","evidence":"evidence/P8"},
-    {"id":"P9","cluster":"explore-overview","selector":"FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors","status":"pass","sourceCommit":"a54a3c72c27d292e781183bafb5dac7b2a6f6da8","evidence":"evidence/P9"},
-    {"id":"P10","cluster":"explore-overview","selector":"OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory","status":"pass","sourceCommit":"0798395ac47bfc7ab4e5310d083516f8021f54e8","evidence":"evidence/P10"},
-    {"id":"P11","cluster":"vocabulary-review-card","selector":"VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently","status":"pass","sourceCommit":"10cb1a0a506801b17776a7ceab9b49936a3ccff2","evidence":"evidence/P11/20260813-143617-16438","previousFailure":"initial LazyVStack viewport assertion at old test line 137 was corrected to assert projection semantics"},
-    {"id":"P12","cluster":"vocabulary-review-card","selector":"ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings","status":"pass","sourceCommit":"a5eef902fc7077dcec7c029530473ea2786d30ed","evidence":"evidence/P12"},
-    {"id":"P13","cluster":"vocabulary-review-card","selector":"ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled","status":"pass","sourceCommit":"0d75e910d77dd59dfb3a30aad13344f9312fcb89","evidence":"evidence/P13"},
-    {"id":"P14","cluster":"settings-sync","selector":"SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess","status":"pass","sourceCommit":"e36b22a4a584d9ca31931e9b704dcf65df55ae15","evidence":"evidence/P14"},
-    {"id":"P15","cluster":"settings-sync","selector":"SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges","status":"pass","sourceCommit":"51ea717874f3844923c61de534f89336617e5849","evidence":"evidence/P15/20260813-154837-50720"},
-    {"id":"P15","cluster":"settings-sync","selector":"SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors","status":"pass","sourceCommit":"51ea717874f3844923c61de534f89336617e5849","evidence":"evidence/P15/20260813-155034-55495"},
-    {"id":"P15","cluster":"settings-sync","selector":"SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary","status":"pass","sourceCommit":"51ea717874f3844923c61de534f89336617e5849","evidence":"evidence/P15/20260813-155140-58496"}
+  "finalBatch": {
+    "id": "final-head-batch-v35",
+    "summary": "build/snapshots/uitest-evidence/final-head-batch-v35-summary.json",
+    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v35-bundles/",
+    "requiredPerSelector": [
+      "machine verdict",
+      "source/dataset/device provenance",
+      "step screenshots",
+      "contact_sheet.png",
+      "quick4_contact_sheet.png",
+      "UIreview.html",
+      "video",
+      "all-steps visual attestation"
+    ],
+    "verdictAuthority": "summary plus every bundle review_state.json and ui-evidence-contract.json",
+    "matrixWriteAuthority": "ops/fixtures/ios_ui_review_matrix.json only"
+  },
+  "historicalBatches": [
+    {
+      "id": "final-head-batch-v34",
+      "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+      "matrixReceipt": "f6edc9d52",
+      "status": "historical; not evidence for the frozen HEAD"
+    },
+    {
+      "id": "final-head-batch-v19",
+      "sourceCommit": "4c872d3e2c70abcf005cc0041671f0af9e7a7b3f",
+      "status": "historical selector-level evidence"
+    }
   ],
-  "workflowTests": {
-    "clusterValidator": "pass",
-    "runManyAndMatrixTargetedTests": "27 passed; P15 final batch 3/3 passed and attested",
-    "docsRegistryLint": "pass: 45 documents",
-    "shellSyntax": "pass: bash -n ops/ios_test.sh"
-  },
   "handoff": {
     "integrationPerformed": false,
     "cutoverPerformed": false,
     "remoteSyncPerformed": false,
-    "deploymentPerformed": false
+    "deploymentPerformed": false,
+    "note": "Final exact-HEAD evidence and Gate must complete before convergence receipt updates these flags."
   }
 }
