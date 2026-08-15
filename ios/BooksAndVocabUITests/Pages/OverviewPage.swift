@@ -30,7 +30,7 @@ struct OverviewPage {
         line: UInt = UInt(#line)
     ) {
         let query = app.buttons.matching(identifier: "reviewCalendar.open")
-        let scrollView = app.scrollViews.matching(identifier: "overview.statsContent").element(boundBy: 0)
+        let scrollView = elements(identifier: "overview.statsContent").element(boundBy: 0)
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
@@ -79,7 +79,7 @@ struct OverviewPage {
     ) {
         let query = app.descendants(matching: .any)
             .matching(identifier: "forecast.bucket.\(dayKey)")
-        let scrollView = app.scrollViews.matching(identifier: "overview.statsContent").element(boundBy: 0)
+        let scrollView = elements(identifier: "overview.statsContent").element(boundBy: 0)
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
