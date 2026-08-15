@@ -45,12 +45,16 @@ final class DictionaryLookupFlowUITests: UITestCase {
             fixture: .dictionaryP2Senses,
             perfLog: "dictionary-p2-senses"
         )
+        page.assertInitialState()
+        captureStep("initial", app: app)
         page.search("engraved")
 
         page.assertCanonicalState("result")
         XCTAssertTrue(page.sense(id: "sense-1").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.sense(id: "sense-2").waitUntilExists(timeout: 5))
         XCTAssertTrue(page.example(id: "example-2").waitUntilExists(timeout: 5))
+        XCTAssertTrue(page.provenance.waitUntilLabelContains("canonical dictionary fixture", timeout: 5))
+        _ = page.assertMaterialization(status: "ready")
         captureStep("detail", app: app)
         page.tapSense(id: "sense-2")
         captureStep("select-sense", app: app)
@@ -143,6 +147,8 @@ final class DictionaryLookupFlowUITests: UITestCase {
         page.tapMaterialize()
         XCTAssertTrue(page.materializationFailure.waitUntilExists(timeout: 10))
         XCTAssertTrue(page.materializationFailure.value as? String == "dictionary.p2.materialize-error")
+        page.assertSelectedSense(id: "sense-2")
+        page.assertSelectedExample(id: "example-2")
         captureStep("materialize-error-counterexample", app: app)
     }
 

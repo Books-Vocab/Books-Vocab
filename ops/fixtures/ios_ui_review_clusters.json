@@ -15,15 +15,13 @@
       "requirements": ["P1", "P2"],
       "sourceModules": [
         "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Presentation/DictionaryDetailPresentation.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift"
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
       ],
       "acceptanceRefs": {"P1": "matrix.requirements[P1]", "P2": "matrix.requirements[P2]"},
       "visualStateRefs": {"P1": "matrix.P1.verification", "P2": "matrix.P2.verification"},
       "runPlan": [
         {"requirementID": "P1", "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization", "datasetID": "marketing_demo", "status": "verified"},
-        {"requirementID": "P2", "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector", "datasetID": "marketing_demo", "status": "verified"}
+        {"requirementID": "P2", "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector", "datasetID": "marketing_demo", "status": "in_progress"}
       ]
     },
     {

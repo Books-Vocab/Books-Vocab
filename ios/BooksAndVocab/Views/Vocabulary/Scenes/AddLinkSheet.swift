@@ -90,6 +90,7 @@ struct AddLinkSheet: View {
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(L10n.string("輸入單字名稱來建立連結"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
+                    .accessibilityIdentifier("addLink.local.empty")
             } else if filteredEntries.isEmpty {
                 Text(L10n.string("沒有結果"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
@@ -122,6 +123,7 @@ struct AddLinkSheet: View {
             if trimmed.isEmpty {
                 Text(L10n.string("addLink.dictionaryPrompt"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
+                    .accessibilityIdentifier("addLink.dictionary.prompt")
             } else {
                 switch coordinator.lookupState {
                 case .idle:
@@ -322,6 +324,9 @@ struct AddLinkSheet: View {
                                 ? L10n.string("a11y.toggle.on")
                                 : L10n.string("a11y.toggle.off")
                         )
+                        .accessibilityAddTraits(
+                            coordinator.selectedSenseKey == sense.id ? .isSelected : []
+                        )
                     ForEach(sense.examples) { example in
                         Button {
                             coordinator.select(senseKey: sense.id, exampleKey: example.id)
@@ -344,6 +349,9 @@ struct AddLinkSheet: View {
                             coordinator.selectedExampleKey == example.id
                                 ? L10n.string("a11y.toggle.on")
                                 : L10n.string("a11y.toggle.off")
+                        )
+                        .accessibilityAddTraits(
+                            coordinator.selectedExampleKey == example.id ? .isSelected : []
                         )
                     }
                     }
