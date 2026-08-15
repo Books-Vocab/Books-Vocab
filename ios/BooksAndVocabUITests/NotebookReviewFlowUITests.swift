@@ -119,7 +119,7 @@ final class NotebookReviewFlowUITests: UITestCase {
         }
 
         // ── 6. Next card arrives front-side with the back unmounted ─────────
-        let secondWord = try step("second-card-front", app: app) { () -> String in
+        let secondWord = try step("second-card-front-state", app: app) { () -> String in
             XCTAssertTrue(
                 review.cardBack.waitUntilGone(timeout: 5),
                 "進到下一張卡時背面必須回到未掛載"

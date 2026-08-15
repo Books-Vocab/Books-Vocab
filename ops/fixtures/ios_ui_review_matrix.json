@@ -84,7 +84,7 @@
       "requiredFixtureIDs": ["reader.realBookLibrary"],
       "acceptance": ["loading does not expose stale document content", "retry transitions to a real loaded document or a named error"],
       "counterexamples": ["missing EPUB asset", "slow asset installation"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["launch-loading", "loading", "error", "retry-success"], "counterexampleSteps": ["error-counterexample", "retry-success-counterexample"], "visualChecks": ["loading skeleton", "retry/error hierarchy"], "blockers": ["fixture and selector not yet implemented"]}
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["launch-loading", "error", "retry-success"], "counterexampleSteps": ["error-counterexample", "retry-success-counterexample"], "visualChecks": ["loading skeleton", "retry/error hierarchy"], "blockers": ["fixture and selector not yet implemented"]}
     },
     {
       "id": "P8",
