@@ -155,30 +155,32 @@
     {
       "id": "P2",
       "reportImage": "p2.PNG",
-      "title": "Dictionary detail and card materialization",
-      "surface": "Dictionary detail presentation",
+      "title": "Dictionary add-link sheet hierarchy and card materialization",
+      "surface": "Reader dictionary/add-link sheet",
       "sourceRefs": [
-        "ios/BooksAndVocab/Views/Vocabulary/Presentation/DictionaryDetailPresentation.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift"
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
       ],
       "requiredFixtureIDs": [
         "ui-p2-dictionary-senses"
       ],
       "acceptance": [
-        "all senses, examples, forms and source/license are readable",
+        "blank sheet exposes a clear local-card prompt and dictionary prompt before query",
+        "search results keep senses, examples and selected materialization provenance readable",
         "materialize and failure states preserve the selected sense"
       ],
       "counterexamples": [
         "missing example",
-        "provider payload decode failure"
+        "materialization failure preserves selection"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
         "datasetID": "marketing_demo",
         "runID": "20260815-210431-84398-18390",
         "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210431-84398-18390",
         "requiredSteps": [
+          "initial",
           "detail",
           "select-sense",
           "materialize"
@@ -196,10 +198,13 @@
           ]
         },
         "visualChecks": [
+          "initial hierarchy",
           "long content",
           "provenance hierarchy"
         ],
-        "blockers": [],
+        "blockers": [
+          "fresh exact-head evidence required after Add Link initial-state and selection-preservation scope correction"
+        ],
         "sourceCommit": "1d4db2393a9de7bfd0911c104466524c06a4e06f",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",

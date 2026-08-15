@@ -28,6 +28,14 @@ struct DictionaryLookupPage {
         exactlyOne("addLink.dictionary.searchField", in: app.textFields)
     }
 
+    var localEmptyPrompt: XCUIElement {
+        exactlyOne("addLink.local.empty", in: app.descendants(matching: .any))
+    }
+
+    var dictionaryPrompt: XCUIElement {
+        exactlyOne("addLink.dictionary.prompt", in: app.descendants(matching: .any))
+    }
+
     var loadingState: XCUIElement { stateMarker(.loading) }
     var releaseLoadingButton: XCUIElement {
         exactlyOne("addLink.dictionary.releaseLoading", in: app.buttons)
@@ -49,6 +57,41 @@ struct DictionaryLookupPage {
     }
     var result: XCUIElement { stateMarker(.result) }
     var provenance: XCUIElement { element("addLink.dictionary.provenance") }
+
+    @discardableResult
+    func assertInitialState(
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Self {
+        let localPrompt = app.descendants(matching: .any)
+            .matching(identifier: "addLink.local.empty")
+            .firstMatch
+        let dictionaryPrompt = app.descendants(matching: .any)
+            .matching(identifier: "addLink.dictionary.prompt")
+            .firstMatch
+        XCTAssertTrue(
+            localPrompt.waitUntilExists(timeout: 10),
+            "local add-link prompt did not mount",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            dictionaryPrompt.waitUntilExists(timeout: 10),
+            "dictionary add-link prompt did not mount",
+            file: file,
+            line: line
+        )
+        for (identifier, prompt) in [
+            ("addLink.local.empty", localEmptyPrompt),
+            ("addLink.dictionary.prompt", dictionaryPrompt)
+        ] {
+            let matches = app.descendants(matching: .any).matching(identifier: identifier)
+            XCTAssertEqual(matches.count, 1, "initial prompt selector must resolve exactly once: \(identifier)", file: file, line: line)
+            XCTAssertGreaterThan(prompt.frame.width, 0, "initial prompt has no positive width: \(identifier)", file: file, line: line)
+            XCTAssertGreaterThan(prompt.frame.height, 0, "initial prompt has no positive height: \(identifier)", file: file, line: line)
+        }
+        return self
+    }
 
     @discardableResult
     func assertCanonicalState(
@@ -87,6 +130,38 @@ struct DictionaryLookupPage {
 
     func example(id: String) -> XCUIElement {
         element("addLink.example.\(id)")
+    }
+
+    func assertSelectedSense(
+        id: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let target = sense(id: id)
+        XCTAssertTrue(
+            target.waitUntilExists(timeout: 5),
+            "sense selector did not mount: \(id)",
+            file: file,
+            line: line
+        )
+        assertUnique(target, identifier: "addLink.sense.\(id)", file: file, line: line)
+        XCTAssertTrue(target.isSelected, "sense must remain selected: \(id)", file: file, line: line)
+    }
+
+    func assertSelectedExample(
+        id: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let target = example(id: id)
+        XCTAssertTrue(
+            target.waitUntilExists(timeout: 5),
+            "example selector did not mount: \(id)",
+            file: file,
+            line: line
+        )
+        assertUnique(target, identifier: "addLink.example.\(id)", file: file, line: line)
+        XCTAssertTrue(target.isSelected, "example must remain selected: \(id)", file: file, line: line)
     }
 
     func assertExampleAbsent(
@@ -240,7 +315,7 @@ struct DictionaryLookupPage {
 
     private func exactlyOne(_ identifier: String, in query: XCUIElementQuery) -> XCUIElement {
         let matches = query.matching(identifier: identifier)
-        XCTAssertEqual(matches.count, 1, "P1 selector must resolve exactly once: \(identifier)")
+        XCTAssertEqual(matches.count, 1, "selector must resolve exactly once: \(identifier)")
         return matches.element
     }
 
