@@ -140,27 +140,27 @@ struct ContentView: View {
         TabView(selection: $selectedSection) {
             #if os(iOS)
             BookshelfView()
-                .tabItem { Label(L10n.string(AppPrimarySection.bookshelf.titleKey), systemImage: AppPrimarySection.bookshelf.systemImage) }
+                .tabItem { Label(L10n.string(AppPrimarySection.bookshelf.titleKey), systemImage: AppPrimarySection.bookshelf.systemImage).accessibilityIdentifier("tab.bookshelf.button") }
                 .accessibilityIdentifier("tab.bookshelf")
                 .tag(AppPrimarySection.bookshelf)
             #endif
             if visibleSections.contains(.podcasts) {
                 PodcastHomeView()
-                    .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage) }
+                    .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage).accessibilityIdentifier("tab.podcasts.button") }
                     .accessibilityIdentifier("tab.podcasts")
                     .tag(AppPrimarySection.podcasts)
             }
             NotebookListView()
-                .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage) }
+                .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage).accessibilityIdentifier("tab.notebooks.button") }
                 .accessibilityIdentifier("tab.notebooks")
                 .tag(AppPrimarySection.notebooks)
             OverviewTab()
-                .tabItem { Label(L10n.string(AppPrimarySection.overview.titleKey), systemImage: AppPrimarySection.overview.systemImage) }
+                .tabItem { Label(L10n.string(AppPrimarySection.overview.titleKey), systemImage: AppPrimarySection.overview.systemImage).accessibilityIdentifier("tab.overview.button") }
                 .accessibilityIdentifier("tab.overview")
                 .tag(AppPrimarySection.overview)
             if visibleSections.contains(.explore) {
                 ExploreView()
-                    .tabItem { Label(L10n.string(AppPrimarySection.explore.titleKey), systemImage: AppPrimarySection.explore.systemImage) }
+                    .tabItem { Label(L10n.string(AppPrimarySection.explore.titleKey), systemImage: AppPrimarySection.explore.systemImage).accessibilityIdentifier("tab.explore.button") }
                     .accessibilityIdentifier("tab.explore")
                     .tag(AppPrimarySection.explore)
             }
