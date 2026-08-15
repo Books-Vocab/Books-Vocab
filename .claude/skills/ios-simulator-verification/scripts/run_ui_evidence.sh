@@ -18,6 +18,7 @@ Options:
   --configuration <Debug|Release>  Forward build/test configuration
   --ui-launch-profile <profile>    Forward ui-smoke or standard profile
   --build-lock-timeout <seconds>   Forward ios_test build/device lock timeout
+  --evidence-root <dir>             Put this run bundle below an explicit in-repo root
   --json-out <path>                Atomically publish the normalized stable verdict JSON
   -h, --help                       Show this help
 EOF
@@ -45,6 +46,7 @@ selector_value=""
 device=""
 simulator_mode="lease"
 json_out=""
+evidence_root=""
 forward=()
 
 while (($# > 0)); do
@@ -100,6 +102,12 @@ while (($# > 0)); do
       json_out="$2"
       shift 2
       ;;
+    --evidence-root)
+      (($# >= 2)) || { echo "[ui-evidence] error: --evidence-root needs a value" >&2; exit 64; }
+      [[ -z "$evidence_root" ]] || { echo "[ui-evidence] error: --evidence-root may be specified once" >&2; exit 64; }
+      evidence_root="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -152,13 +160,52 @@ source_tree_dirty=false
   || { echo "[ui-evidence] error: source tree is dirty; commit before collecting evidence" >&2; exit 65; }
 
 run_id="$(date -u '+%Y%m%d-%H%M%S')-${BASHPID:-$$}-${RANDOM:-0}"
-bundle_root="$source_root/build/snapshots/uitest-evidence/$run_id"
+if [[ -n "$evidence_root" ]]; then
+  case "$evidence_root" in
+    /*) evidence_root_candidate="$evidence_root" ;;
+    *) evidence_root_candidate="$source_root/$evidence_root" ;;
+  esac
+  mkdir -p "$evidence_root_candidate"
+  evidence_root_real="$(cd "$evidence_root_candidate" && pwd -P)"
+  case "$evidence_root_real" in
+    "$source_root"/*) ;;
+    *) echo "[ui-evidence] error: --evidence-root must resolve inside this worktree: $evidence_root" >&2; exit 65 ;;
+  esac
+else
+  evidence_root_real="$source_root/build/snapshots/uitest-evidence"
+  mkdir -p "$evidence_root_real"
+fi
+bundle_root="$evidence_root_real/$run_id"
 mkdir -p "$(dirname "$bundle_root")"
 if ! mkdir "$bundle_root"; then
   echo "[ui-evidence] error: refusing to overwrite existing bundle: $bundle_root" >&2
   exit 65
 fi
 mkdir "$bundle_root/artifacts"
+
+mark_abandoned() {
+  local signal_name="${1:-unknown}"
+  set +e
+  if [[ ! -f "$normalized_verdict" ]]; then
+    jq -n \
+      --arg schema "kg.ios.ui-evidence.abandoned.v1" \
+      --arg runId "$run_id" \
+      --arg signal "$signal_name" \
+      --arg sourceCommit "$source_commit" \
+      --arg datasetID "$expected_dataset_id" \
+      --arg datasetSHA256 "$expected_dataset_sha256" \
+      --arg device "$device" \
+      --arg bundle "$bundle_root" \
+      --arg startedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+      '{schema:$schema,runID:$runId,status:"abandoned",reason:("signal:" + $signal),sourceCommit:$sourceCommit,datasetID:$datasetID,datasetSHA256:$datasetSHA256,device:$device,bundleRoot:$bundle,abandonedAt:$startedAt,runnerAlive:false,consumerCheck:"pending",reusableAsFinalEvidence:false}' \
+      >"$bundle_root/abandoned.json"
+  fi
+  exit 130
+}
+
+trap 'mark_abandoned SIGINT' INT
+trap 'mark_abandoned SIGTERM' TERM
+trap 'mark_abandoned SIGHUP' HUP
 
 upstream_stdout="$bundle_root/upstream-verdict.json"
 runner_log="$bundle_root/delegate.stderr.log"
