@@ -22,13 +22,22 @@ ONE_BY_ONE_PNG = base64.b64decode(
 )
 
 
+def _pending_matrix() -> dict:
+    data = MODULE.load_matrix(MATRIX)
+    for requirement in data["requirements"]:
+        verification = requirement["verification"]
+        verification["status"] = "pending"
+        verification["blockers"] = ["synthetic pending state for structural test"]
+    return data
+
+
 def test_matrix_has_exactly_fifteen_report_requirements() -> None:
     result = MODULE.validate_matrix(MODULE.load_matrix(MATRIX), root=ROOT)
 
     assert result["requirementCount"] == 15
-    assert result["verified"] == 0
-    assert result["complete"] is False
-    assert result["pending"] == list(MODULE.REQUIRED_IDS)
+    assert result["verified"] == 15
+    assert result["complete"] is True
+    assert result["pending"] == []
 
 
 def test_matrix_cli_accepts_validate_entrypoint() -> None:
@@ -51,14 +60,15 @@ def test_matrix_cli_accepts_validate_entrypoint() -> None:
 
 
 def test_strict_completion_is_fail_closed_until_every_run_is_attested() -> None:
+    data = _pending_matrix()
     with pytest.raises(MODULE.UIReviewMatrixError, match="strict completion blocked"):
-        MODULE.validate_matrix(MODULE.load_matrix(MATRIX), root=ROOT, require_complete=True)
+        MODULE.validate_matrix(data, root=ROOT, require_complete=True)
 
 
 def test_fixture_gate_reports_undeclared_requirement_fixtures() -> None:
     with pytest.raises(MODULE.UIReviewMatrixError, match="--requirement-id"):
         MODULE.validate_matrix(
-            MODULE.load_matrix(MATRIX),
+            _pending_matrix(),
             root=ROOT,
             dataset_id="marketing_demo",
             require_fixtures=True,
@@ -67,7 +77,7 @@ def test_fixture_gate_reports_undeclared_requirement_fixtures() -> None:
 
 def test_fixture_gate_can_scope_one_requirement() -> None:
     result = MODULE.validate_matrix(
-        MODULE.load_matrix(MATRIX),
+        _pending_matrix(),
         root=ROOT,
         dataset_id="marketing_demo",
         requirement_id="P11",
@@ -80,7 +90,7 @@ def test_fixture_gate_can_scope_one_requirement() -> None:
 @pytest.mark.parametrize("requirement_id", ["P1", "P2", "P8", "P9"])
 def test_fixture_gate_accepts_canonical_scenario_contract_ids(requirement_id: str) -> None:
     result = MODULE.validate_matrix(
-        MODULE.load_matrix(MATRIX),
+        _pending_matrix(),
         root=ROOT,
         dataset_id="marketing_demo",
         requirement_id=requirement_id,
@@ -93,7 +103,7 @@ def test_fixture_gate_accepts_canonical_scenario_contract_ids(requirement_id: st
 def test_fixture_gate_rejects_unknown_requirement_scope() -> None:
     with pytest.raises(MODULE.UIReviewMatrixError, match="requirement id"):
         MODULE.validate_matrix(
-            MODULE.load_matrix(MATRIX),
+            _pending_matrix(),
             root=ROOT,
             dataset_id="marketing_demo",
             requirement_id="P99",
@@ -102,7 +112,7 @@ def test_fixture_gate_rejects_unknown_requirement_scope() -> None:
 
 
 def test_matrix_rejects_missing_report_requirement() -> None:
-    data = MODULE.load_matrix(MATRIX)
+    data = _pending_matrix()
     data["requirements"] = data["requirements"][:-1]
 
     with pytest.raises(MODULE.UIReviewMatrixError, match="exactly P1-P15"):
@@ -110,7 +120,7 @@ def test_matrix_rejects_missing_report_requirement() -> None:
 
 
 def test_matrix_rejects_duplicate_required_or_counterexample_labels() -> None:
-    data = MODULE.load_matrix(MATRIX)
+    data = _pending_matrix()
     p3 = next(item for item in data["requirements"] if item["id"] == "P3")
     p3["verification"]["requiredSteps"].append("reader")
     with pytest.raises(MODULE.UIReviewMatrixError, match="must not contain duplicate labels"):
@@ -154,7 +164,7 @@ def test_aggregate_coverage_reports_all_missing_states_without_partial_write() -
         )
     assert "change" in str(error.value)
 
-    data = MODULE.load_matrix(MATRIX)
+    data = _pending_matrix()
     p3 = next(item for item in data["requirements"] if item["id"] == "P3")
     p3["verification"]["counterexampleSteps"].append("missing-chapter")
     with pytest.raises(MODULE.UIReviewMatrixError, match="must not contain duplicate labels"):
@@ -162,12 +172,12 @@ def test_aggregate_coverage_reports_all_missing_states_without_partial_write() -
 
 
 def test_verified_row_requires_run_provenance() -> None:
-    data = MODULE.load_matrix(MATRIX)
+    data = _pending_matrix()
     verification = data["requirements"][0]["verification"]
     verification["status"] = "verified"
     verification["selector"] = "Example/test"
-    verification["datasetID"] = "dataset"
-    verification["blockers"] = []
+    verification["datasetID"] = "marketing_demo"
+    verification["runID"] = ""
 
     with pytest.raises(MODULE.UIReviewMatrixError, match="runID"):
         MODULE.validate_matrix(data, root=ROOT)
