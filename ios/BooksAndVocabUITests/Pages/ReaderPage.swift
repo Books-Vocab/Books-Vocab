@@ -725,7 +725,8 @@ struct ReaderPage {
         while Date() < deadline {
             if option.exists, option.isHittable {
                 option.tap()
-                return waitForSettingsDoneButtonActionable(
+                return dismissHighlightMenuAndWaitForDone(
+                    selectedOption: option,
                     timeout: min(3, max(0, deadline.timeIntervalSinceNow))
                 )
             }
@@ -750,7 +751,8 @@ struct ReaderPage {
             // step races the overlay and reports a false selector failure.
             if option.exists, option.isHittable {
                 option.tap()
-                return waitForSettingsDoneButtonActionable(
+                return dismissHighlightMenuAndWaitForDone(
+                    selectedOption: option,
                     timeout: min(3, max(0, deadline.timeIntervalSinceNow))
                 )
             }
@@ -767,6 +769,31 @@ struct ReaderPage {
                 timeout: 0.25
             ), done.isHittable, !done.frame.isEmpty, done.frame.intersects(app.frame) {
                 return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
+    }
+
+    private func dismissHighlightMenuAndWaitForDone(
+        selectedOption: XCUIElement,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var retriedSelection = false
+        while Date() < deadline {
+            if waitForSettingsDoneButtonActionable(timeout: 0.25) {
+                return true
+            }
+
+            // iOS 26.4 can leave a Menu's AX child mounted for one snapshot
+            // after selection. A bounded semantic re-tap/toggle is safe; a
+            // coordinate outside the menu is not.
+            if selectedOption.exists, selectedOption.isHittable, !retriedSelection {
+                selectedOption.tap()
+                retriedSelection = true
+            } else if highlightColorPicker.exists, highlightColorPicker.isHittable {
+                highlightColorPicker.tap()
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
@@ -1043,14 +1070,32 @@ struct ReaderPage {
 
     @discardableResult
     func closeSettings(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
-        guard let done = exactlyOne(
-            settingsDoneButtonQuery,
-            named: "Reader settings done button",
-            file: file,
-            line: line
-        ) else { return false }
-        done.tapWhenReady(file: file, line: line)
-        return settingsPanelQuery.waitUntilEmpty(timeout: 5)
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            if let done = exactlyOneIfPresent(
+                settingsDoneButtonQuery,
+                named: "Reader settings done button",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ), done.isHittable, !done.frame.isEmpty, done.frame.intersects(app.frame) {
+                done.tapWhenReady(file: file, line: line)
+                return settingsPanelQuery.waitUntilEmpty(timeout: 5)
+            }
+
+            let openMenuOptions = app.buttons.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "reader.settings.highlightColor.")
+            )
+            if openMenuOptions.count > 0,
+               openMenuOptions.firstMatch.exists,
+               openMenuOptions.firstMatch.isHittable {
+                openMenuOptions.firstMatch.tap()
+            } else if highlightColorPicker.exists, highlightColorPicker.isHittable {
+                highlightColorPicker.tap()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
     }
 
     @discardableResult
