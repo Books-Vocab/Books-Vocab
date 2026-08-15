@@ -558,7 +558,7 @@ def test_dirty_git_tree_is_detected(tmp_path: Path) -> None:
     assert MODULE._git_source_tree_dirty(nested) is True
 
 
-def test_source_commit_accepts_matrix_only_receipt_and_rejects_code_drift(tmp_path: Path) -> None:
+def test_source_commit_accepts_evidence_receipt_and_rejects_code_drift(tmp_path: Path) -> None:
     repo = tmp_path / "receipt-repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -583,16 +583,23 @@ def test_source_commit_accepts_matrix_only_receipt_and_rejects_code_drift(tmp_pa
     matrix.write_text("{\"version\": 2}\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", str(matrix)], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-qm", "matrix receipt"], check=True)
-    assert MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
+    assert MODULE._git_source_commit_matches_current_or_evidence_receipt(repo, source_commit)
+
+    report = repo / "IOS2.0.1+7-UI-review-report" / "CURRENT-STATUS-2026-08-13.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("receipt\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", str(report)], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "report receipt"], check=True)
+    assert MODULE._git_source_commit_matches_current_or_evidence_receipt(repo, source_commit)
 
     (repo / "source.txt").write_text("drift\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", str(repo / "source.txt")], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-qm", "code drift"], check=True)
-    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
+    assert not MODULE._git_source_commit_matches_current_or_evidence_receipt(repo, source_commit)
 
 
 def test_source_commit_rejects_unverifiable_non_git_root(tmp_path: Path) -> None:
-    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(
+    assert not MODULE._git_source_commit_matches_current_or_evidence_receipt(
         tmp_path,
         "synthetic-source-commit",
     )
