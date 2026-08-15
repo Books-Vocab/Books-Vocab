@@ -25,5 +25,12 @@ struct StatsCopyTests {
         #expect(StatsCopy.calendarTitle == L10n.string("學習日曆"))
         #expect(StatsCopy.forecastTitle == L10n.string("複習預測"))
     }
+
+    @Test func summaryCopy_staysStable() {
+        #expect(StatsCopy.totalCardsTitle == L10n.string("單字總數"))
+        #expect(StatsCopy.reviewedTodayTitle == L10n.string("今日複習"))
+        #expect(StatsCopy.dueTodayTitle == L10n.string("今日到期"))
+        #expect(StatsCopy.cardUnit == L10n.string("張"))
+    }
 }
 #endif
