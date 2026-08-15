@@ -147,7 +147,13 @@ struct AppPage {
     }
 
     func exploreDetailCover(deckID: String) -> XCUIElement {
-        app.images["explore.detail.cover.\(deckID)"]
+        // SwiftUI 26 can expose an Image-backed accessibility element as
+        // `Other` after the cover is clipped/elevated inside the header. The
+        // production identifier and exact-one/value contract are stable; the
+        // AX element type is not a safe locator contract across those wrappers.
+        app.descendants(matching: .any)
+            .matching(identifier: "explore.detail.cover.\(deckID)")
+            .firstMatch
     }
 
     func assertExploreAssetIsUnique(
@@ -170,7 +176,7 @@ struct AppPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        let query = app.images.matching(identifier: identifier)
+        let query = app.descendants(matching: .any).matching(identifier: identifier)
         XCTAssertEqual(
             query.count,
             1,
