@@ -68,9 +68,6 @@ struct SettingsReviewSection: View {
                     accessibilityLabel: L10n.string("凍結複習時鐘"),
                     onUserChanged: persistPauseChange
                 )
-                .onChange(of: pauseDraft) { _, isPaused in
-                    persistPauseChange(isPaused)
-                }
             } label: {
                 Text(L10n.string("凍結複習時鐘"))
                     .accessibilityHidden(true)
