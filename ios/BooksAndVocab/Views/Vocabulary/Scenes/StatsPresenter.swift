@@ -516,6 +516,11 @@ struct StatsPresenter: View {
                 )
             }
         }
+        // Keep the section anchor while preserving the metric cards as live
+        // descendants in the iOS 26 accessibility tree. A bare identifier on
+        // the VStack can collapse its children, leaving the rendered numbers
+        // visible but making overview.metric.* unqueryable.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("metrics")
         .background {
             if summary.totalCards >= 40 {
