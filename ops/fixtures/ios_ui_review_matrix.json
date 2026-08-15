@@ -29,7 +29,7 @@
       "requiredFixtureIDs": ["ui-p2-dictionary-senses"],
       "acceptance": ["all senses, examples, forms and source/license are readable", "materialize and failure states preserve the selected sense"],
       "counterexamples": ["missing example", "provider payload decode failure"],
-      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["detail", "select-sense", "materialize"], "counterexampleSteps": ["missing-example", "materialize-error"], "visualChecks": ["long content", "provenance hierarchy"], "blockers": ["needs Simulator flow and source-owned fixture"]}
+      "verification": {"status": "pending", "selector": null, "datasetID": null, "runID": null, "evidenceRoot": null, "requiredSteps": ["detail", "select-sense", "materialize"], "counterexampleSteps": ["missing-example", "materialize-error"], "stateAliases": {"missing-example": ["missing-example-counterexample"], "materialize-error": ["materialize-error-counterexample"]}, "visualChecks": ["long content", "provenance hierarchy"], "blockers": ["needs Simulator flow and source-owned fixture"]}
     },
     {
       "id": "P3",
