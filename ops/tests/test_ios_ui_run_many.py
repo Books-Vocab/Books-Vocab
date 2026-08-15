@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 from pathlib import Path
 import sys
 
@@ -8,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest
 
+from ops import ios_ui_run_many
 from ops.ios_ui_run_many import RunManyError, classify_bundle, deduplicate_methods, load_methods
 
 
@@ -53,3 +55,68 @@ def test_classify_bundle_requires_contract(tmp_path: Path) -> None:
     assert classify_bundle(bundle, 0) == "failed_contract"
     (bundle / "artifacts" / "ui-evidence-contract.json").write_text(json.dumps({"valid": True}), encoding="utf-8")
     assert classify_bundle(bundle, 0) == "passed_unattested"
+
+
+def _expired_manifest(root: Path, *, status: str = "failure") -> Path:
+    run_root = root / "ui-batch-old"
+    (run_root / "raw").mkdir(parents=True)
+    (run_root / "logs").mkdir()
+    (run_root / "bundles" / "failed-helper").mkdir(parents=True)
+    (run_root / "raw" / "selector.json").write_text("{}", encoding="utf-8")
+    (run_root / "logs" / "selector.log").write_text("failed", encoding="utf-8")
+    (run_root / "bundles" / "failed-helper" / "verdict.json").write_text("{}", encoding="utf-8")
+    (run_root / "methods.json").write_text("[]", encoding="utf-8")
+    (run_root / "summary.json").write_text(json.dumps({"status": status}), encoding="utf-8")
+    manifest = {
+        "schema": "kg.ios.ui-run-manifest.v1",
+        "runID": "ui-batch-old",
+        "status": status,
+        "verdict": status,
+        "pid": None,
+        "activePID": None,
+        "expiresAt": "2000-01-01T00:00:00Z",
+        "stagingRoot": str(run_root),
+        "publishRoot": str(run_root / "bundles"),
+    }
+    path = run_root / "run-manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
+def test_cleanup_commit_preserves_receipts_and_reclaims_only_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    _expired_manifest(staging)
+    monkeypatch.setattr(ios_ui_run_many, "_global_ios_consumers", lambda **_: [])
+    monkeypatch.setattr(ios_ui_run_many, "_active_lock_holders", lambda: [])
+
+    payload, exit_code = ios_ui_run_many.cleanup_runs(
+        argparse.Namespace(staging_root=staging, max_runs=10, commit=True)
+    )
+
+    assert exit_code == 0
+    run_root = staging / "ui-batch-old"
+    assert payload["reclaimed"][0]["action"] == "reclaimed"
+    assert not (run_root / "raw").exists()
+    assert not (run_root / "logs").exists()
+    assert not (run_root / "bundles").exists()
+    assert (run_root / "run-manifest.json").exists()
+    assert (run_root / "summary.json").exists()
+    assert (run_root / "methods.json").exists()
+    assert (run_root / "cleanup-receipt.json").exists()
+
+
+def test_cleanup_commit_blocks_on_active_consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    _expired_manifest(staging, status="abandoned")
+    monkeypatch.setattr(ios_ui_run_many, "_global_ios_consumers", lambda **_: ["999 xcodebuild"])
+    monkeypatch.setattr(ios_ui_run_many, "_active_lock_holders", lambda: [])
+
+    payload, exit_code = ios_ui_run_many.cleanup_runs(
+        argparse.Namespace(staging_root=staging, max_runs=10, commit=True)
+    )
+
+    assert exit_code == 75
+    assert payload["candidates"][0]["action"] == "blocked"
+    assert (staging / "ui-batch-old" / "raw").exists()

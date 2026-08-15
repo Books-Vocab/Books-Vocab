@@ -186,7 +186,7 @@ mkdir "$bundle_root/artifacts"
 mark_abandoned() {
   local signal_name="${1:-unknown}"
   set +e
-  if [[ ! -f "$normalized_verdict" ]]; then
+  if [[ -z "${normalized_verdict:-}" || ! -f "$normalized_verdict" ]]; then
     jq -n \
       --arg schema "kg.ios.ui-evidence.abandoned.v1" \
       --arg runId "$run_id" \
@@ -425,6 +425,8 @@ printf '\n' >>"$command_log"
 echo "[ui-evidence] phase=run selector=$selector_kind $selector_value" >&2
 set +e
 KG_UI_TEST_EXACT_SELECTOR="$selector_kind $selector_value" \
+KG_IOS_TEST_RUN_ID="$run_id" \
+KG_IOS_ARTIFACT_ROOT="$bundle_root/upstream" \
   ./ops/ios_ops.sh "${run_args[@]}" >"$upstream_stdout" 2>>"$runner_log"
 run_rc=$?
 set -e
@@ -688,6 +690,15 @@ jq \
     }' "$upstream_stdout" >"$normalized_verdict_tmp"
 mv -f "$normalized_verdict_tmp" "$normalized_verdict"
 publish_json_out
+
+# The stable bundle above is the only durable receipt. The producer's
+# intermediate xcresult/screenshots/review/video/log tree is retained only
+# until normalization finishes, then removed from this same run-owned root.
+# Never touch paths outside the bundle, even if an upstream verdict contains
+# an unexpected absolute path.
+if [[ -d "$bundle_root/upstream" ]]; then
+  rm -rf "$bundle_root/upstream"
+fi
 
 jq -r '
   "[ui-evidence] verdict=\(.status) exit=\(.exit) reason=\(.reason // "")",
