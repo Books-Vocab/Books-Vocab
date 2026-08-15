@@ -387,6 +387,56 @@ def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) 
         encoding="utf-8",
     )
 
+    (tmp_path / ".gitignore").write_text("build/\nops/\n", encoding="utf-8")
+    (tmp_path / "source.txt").write_text("source\n", encoding="utf-8")
+    verdict_path = evidence / "verdict.json"
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "Test"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "add", ".gitignore", "source.txt"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "source"], check=True)
+    source_commit = subprocess.check_output(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+    def replace_source_commit(value: object) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "sourceCommit":
+                    value[key] = source_commit
+                else:
+                    replace_source_commit(child)
+        elif isinstance(value, list):
+            for child in value:
+                replace_source_commit(child)
+
+    for json_path in (
+        verdict_path,
+        evidence / "artifacts" / "ui-evidence-contract.json",
+        review_root / "review_manifest.json",
+        review_root / "review_state.json",
+    ):
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        replace_source_commit(payload)
+        json_path.write_text(json.dumps(payload), encoding="utf-8")
+    updated_manifest = json.loads((review_root / "review_manifest.json").read_text(encoding="utf-8"))
+    updated_review_state = json.loads((review_root / "review_state.json").read_text(encoding="utf-8"))
+    updated_review_state["entries"][-1]["manifestSHA256"] = hashlib.sha256(
+        (review_root / "review_manifest.json").read_bytes()
+    ).hexdigest()
+    updated_review_state["entries"][-1]["evidenceRootSHA256"] = evidence_root_sha256(
+        review_root, updated_manifest
+    )
+    (review_root / "review_state.json").write_text(
+        json.dumps(updated_review_state), encoding="utf-8"
+    )
+
     _, verification = MODULE.record_requirement(
         data,
         requirement_id="P3",
@@ -399,7 +449,7 @@ def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) 
     )
 
     assert verification["status"] == "verified"
-    assert verification["sourceCommit"] == "commit-1"
+    assert verification["sourceCommit"] == source_commit
     assert verification["device"] == "UDID-1"
     assert verification["history"][-1]["runID"] == "run-1"
 
@@ -500,8 +550,12 @@ def test_dirty_git_tree_is_detected(tmp_path: Path) -> None:
     subprocess_module.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess_module.run(["git", "-C", str(repo), "commit", "-qm", "test"], check=True)
     assert MODULE._git_source_tree_dirty(repo) is False
+    nested = repo / "nested"
+    nested.mkdir()
+    assert MODULE._git_source_tree_dirty(nested) is False
     (repo / "tracked.txt").write_text("dirty", encoding="utf-8")
     assert MODULE._git_source_tree_dirty(repo) is True
+    assert MODULE._git_source_tree_dirty(nested) is True
 
 
 def test_source_commit_accepts_matrix_only_receipt_and_rejects_code_drift(tmp_path: Path) -> None:
@@ -535,6 +589,13 @@ def test_source_commit_accepts_matrix_only_receipt_and_rejects_code_drift(tmp_pa
     subprocess.run(["git", "-C", str(repo), "add", str(repo / "source.txt")], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-qm", "code drift"], check=True)
     assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
+
+
+def test_source_commit_rejects_unverifiable_non_git_root(tmp_path: Path) -> None:
+    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(
+        tmp_path,
+        "synthetic-source-commit",
+    )
 
 
 def test_evidence_root_symlink_cannot_escape_repository(tmp_path: Path) -> None:
