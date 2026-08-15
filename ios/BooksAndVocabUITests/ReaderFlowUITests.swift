@@ -399,17 +399,8 @@ final class ReaderFlowUITests: UITestCase {
             if scenario == .progressRestoreFailure {
                 captureStep("restore-failure-counterexample", app: app)
                 XCTAssertTrue(
-                    UITestWaits.wait(
-                        for: NSPredicate(
-                            format: "exists == true AND (value CONTAINS[c] %@ OR value CONTAINS[c] %@ OR value CONTAINS[c] %@)",
-                            "progress=zero",
-                            "progress=middle",
-                            "progress=complete"
-                        ),
-                        on: reader.runtimeState,
-                        timeout: 5
-                    ),
-                    "Restore-failure scenario must converge to a valid Readium progress state"
+                    reader.runtimeState.waitUntilValueContains("progress=restore-failure", timeout: 5),
+                    "Restore-failure counterexample must expose the warning state before recovery"
                 )
                 XCTAssertTrue(
                     reader.currentLocator.waitUntilExists(timeout: 45),
@@ -423,6 +414,19 @@ final class ReaderFlowUITests: UITestCase {
                 XCTAssertTrue(
                     reader.contentText("Introduction").waitUntilExists(timeout: 45),
                     "Restore-failure scenario must render real EPUB content after recovery"
+                )
+                XCTAssertTrue(
+                    UITestWaits.wait(
+                        for: NSPredicate(
+                            format: "exists == true AND (value CONTAINS[c] %@ OR value CONTAINS[c] %@ OR value CONTAINS[c] %@)",
+                            "progress=zero",
+                            "progress=middle",
+                            "progress=complete"
+                        ),
+                        on: reader.runtimeState,
+                        timeout: 5
+                    ),
+                    "Restore-failure scenario must converge to a valid Readium progress state"
                 )
             }
             let provenance = String(describing: reader.runtimeState.value ?? reader.runtimeState.label)
