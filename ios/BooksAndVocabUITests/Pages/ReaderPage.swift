@@ -738,9 +738,10 @@ struct ReaderPage {
                 highlightColorPicker.tap()
             } else {
                 // ColorPicker is below the preview on the production Form.
-                // Reveal it with the real scroll container; never derive a
-                // coordinate from a clipped or invalid AX frame.
-                scrollSettingsPanel(towardTop: false)
+                // Swipe the real scroll container toward its lower rows;
+                // never derive a coordinate from a clipped or invalid AX
+                // frame.
+                scrollSettingsPanel(towardTop: true)
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 
@@ -805,7 +806,7 @@ struct ReaderPage {
         // `isHittable` is true even when a Form row is only partially exposed.
         // Move the scroll view to its canonical top position before sampling
         // geometry; otherwise the first frame can be a clipped intersection.
-        scrollSettingsPanel(towardTop: true)
+        scrollSettingsPanel(towardTop: false)
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
 
         let deadline = Date().addingTimeInterval(timeout)
@@ -817,7 +818,7 @@ struct ReaderPage {
             ), preview.isHittable {
                 return true
             }
-            scrollSettingsPanel(towardTop: true)
+            scrollSettingsPanel(towardTop: false)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return exactlyOneIfPresent(
@@ -965,7 +966,9 @@ struct ReaderPage {
             ), slider.isHittable, !slider.frame.isEmpty {
                 return true
             }
-            scrollSettingsPanel(towardTop: false)
+            // The line-height row is below the preview; swipe the panel
+            // toward its lower rows until the native slider is hittable.
+            scrollSettingsPanel(towardTop: true)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return false
