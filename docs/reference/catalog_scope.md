@@ -5,8 +5,11 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Debug/
   - ios/BooksAndVocab/Support/Fixtures/Core/
+  - ops/demo/emit_ios.py
+  - ops/fixtures/ui_worlds/
   - ops/lib/ios_ops_catalog.sh
-verified_against: 105318f5d518
+  - ops/ui_world_manifest.py
+verified_against: 3bb37a6f7c54
 -->
 # iOS Catalog：Agent UI 工作台（SoT）
 
@@ -15,6 +18,7 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 ## 核心模型
 
 - **UI World 是結構化畫面狀態**：`kg.fixture.dataset.v2` 同時描述資料、登入、權益、preferences、SwiftData rows 與檔案資產。Catalog 不另造第二套假資料。
+- **`scenarioContext` 有兩種精確 wire shape**：既有世界可保留三鍵 legacy（`reviewClock`／`readerPassage`／`wordDetail`，clock 可為 `null` 或 `frozenNow` 形狀）；canonical 世界則必須一次提供五鍵，且 `reviewClock` 明示 `now`／`timeZone`／`frozenEpoch`／`anchorDay`／`source`，並同時帶 `dictionary` 與 `surfaceContracts`，缺鍵、混用或部分 canonical 形狀一律 fail closed。canonical contract 另驗 dictionary lookup/materialization/coverage、`explore`／`settings` required surface、asset ID↔inode 一對一與 review history 時間一致性；host validator、demo emitter、Swift decoder 與 repo fixture tests 共守此契約，與 Catalog scenario 數量解耦。
 - **Scenario 是可選入口**：新 UI 不必註冊；只有 agent 預期會反覆檢查、debug 或展示某個狀態時，才在 `Debug/Scenarios/` 加 scenario 並登錄到 `CatalogScene`。
 - **Explore fixture proof 是單一、可重放的 evidence contract**：`sharedDecks.fixtures.<id>.assetIDs` 必須恰有一個 asset。materializer 與 `ExploreFixtureAssetProof` 都走 manifest 安裝快照；找不到、驗證失敗或 image decode 失敗直接 fail-loud，不能以 optional snapshot、generic first 或 `EmptyView` 產生看似成功的證據。
 - **一個工具，沒有 gallery / 行銷模式**：沒有批次快照、覆蓋率、contact sheet、review desk、視覺回歸、App Store/網站宣傳圖生成或自動行銷流程。
