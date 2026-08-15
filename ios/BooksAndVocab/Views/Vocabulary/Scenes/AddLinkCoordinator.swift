@@ -406,7 +406,10 @@ final class AddLinkCoordinator {
         container: ModelContainer
     ) async {
         let generation = beginAction(.materializing)
-        let sourceContext = sourceEntry.modelContext
+        guard let sourceContext = sourceEntry.modelContext else {
+            failAction(.missingSourceCard, generation: generation)
+            return
+        }
         guard let sourceCardID = sourceEntry.kgCardId, !sourceCardID.isEmpty else {
             failAction(.missingSourceCard, generation: generation)
             return
@@ -557,7 +560,7 @@ final class AddLinkCoordinator {
             try Task.checkCancellation()
             guard isCurrentAction(generation) else { return }
             Self.applyMaterializedLink(response, to: sourceEntry)
-            try sourceContext?.save()
+            try sourceContext.save()
             materializePhase = .succeeded
             actionPhase = .succeeded
             actionError = nil
@@ -598,6 +601,10 @@ final class AddLinkCoordinator {
         using service: any GraphServing
     ) async {
         let generation = beginAction(.linking)
+        guard sourceEntry.modelContext != nil else {
+            failAction(.missingSourceCard, generation: generation)
+            return
+        }
         guard let sourceCardID = sourceEntry.kgCardId, !sourceCardID.isEmpty else {
             failAction(.missingSourceCard, generation: generation)
             return
