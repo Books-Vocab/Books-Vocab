@@ -30,7 +30,8 @@ struct OverviewPage {
         line: UInt = UInt(#line)
     ) {
         let query = app.buttons.matching(identifier: "reviewCalendar.open")
-        let scrollView = app.scrollViews.firstMatch
+        let scrollQuery = app.scrollViews.matching(identifier: "overview.statsContent")
+        let scrollView = scrollQuery.element(boundBy: 0)
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
@@ -38,15 +39,16 @@ struct OverviewPage {
                 let button = query.element(boundBy: 0)
                 if button.exists,
                    !button.frame.isEmpty,
+                   scrollQuery.count == 1,
                    scrollView.exists,
                    scrollView.frame.intersects(button.frame),
                    button.isHittable {
                     return
                 }
 
-                if scrollView.exists, !button.frame.isEmpty, button.frame.minY < scrollView.frame.minY {
+                if scrollQuery.count == 1, scrollView.exists, !button.frame.isEmpty, button.frame.minY < scrollView.frame.minY {
                     scrollView.swipeDown()
-                } else if scrollView.exists {
+                } else if scrollQuery.count == 1, scrollView.exists {
                     scrollView.swipeUp()
                 } else {
                     app.swipeUp()
@@ -79,7 +81,8 @@ struct OverviewPage {
     ) {
         let query = app.descendants(matching: .any)
             .matching(identifier: "forecast.bucket.\(dayKey)")
-        let scrollView = app.scrollViews.firstMatch
+        let scrollQuery = app.scrollViews.matching(identifier: "overview.statsContent")
+        let scrollView = scrollQuery.element(boundBy: 0)
         let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
@@ -87,13 +90,14 @@ struct OverviewPage {
                 let bucket = query.element(boundBy: 0)
                 if bucket.exists,
                    !bucket.frame.isEmpty,
+                   scrollQuery.count == 1,
                    scrollView.exists,
                    scrollView.frame.intersects(bucket.frame),
                    bucket.isHittable {
                     return
                 }
             }
-            if scrollView.exists {
+            if scrollQuery.count == 1, scrollView.exists {
                 scrollView.swipeUp()
             } else {
                 app.swipeUp()
