@@ -725,10 +725,11 @@ struct ReaderPage {
         while Date() < deadline {
             if option.exists, option.isHittable {
                 option.tap()
-                return dismissHighlightMenuAndWaitForDone(
+                _ = dismissHighlightMenuAndWaitForDone(
                     selectedOption: option,
                     timeout: min(3, max(0, deadline.timeIntervalSinceNow))
                 )
+                return true
             }
 
             let pickerIsActionable = highlightColorPicker.exists
@@ -751,10 +752,11 @@ struct ReaderPage {
             // step races the overlay and reports a false selector failure.
             if option.exists, option.isHittable {
                 option.tap()
-                return dismissHighlightMenuAndWaitForDone(
+                _ = dismissHighlightMenuAndWaitForDone(
                     selectedOption: option,
                     timeout: min(3, max(0, deadline.timeIntervalSinceNow))
                 )
+                return true
             }
         }
         return option.exists && option.isHittable
