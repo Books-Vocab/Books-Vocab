@@ -352,10 +352,13 @@ struct ReaderPage {
 
     var webView: XCUIElement {
         // Readium exposes multiple WebKit accessibility projections for one
-        // logical navigator. The existence predicate keeps this query
-        // waitable during startup without depending on projection order;
-        // geometry/content contracts below still validate the selected node.
-        app.webViews.element(matching: NSPredicate(format: "exists == true"))
+        // logical navigator. The production Reader owns one stable container
+        // around that navigator; use it for content and gestures so XCTest
+        // never evaluates an `exists` key-path predicate against an AX
+        // snapshot (iOS 26 aborts on that undefined key). The actual WebView
+        // projections remain independently checked by
+        // `assertReaderWebViewSurface()` and `webViewElement()`.
+        app.otherElements["reader.webView.settingsState"]
     }
 
     /// A rendered text block inside the Readium WebView. Single-word
@@ -493,10 +496,10 @@ struct ReaderPage {
     ) -> XCUIElement? {
         // Readium exposes one logical navigator through multiple WebKit AX
         // projections (ReadiumNavigator.WebView, WebView, WKContentView), all
-        // sharing the same frame. This accessor is geometry-only, so presence
-        // plus the bounded representative used by `webView` is the correct
-        // contract; content and action selectors still use their own exact
-        // typed queries.
+        // sharing the same frame. Wait on the typed WebView query to prove the
+        // real navigator exists, then return the production surface container
+        // for geometry. Content and action selectors use that same stable
+        // semantic root; no projection ordering is part of the contract.
         guard webViewQuery.waitUntilAtLeastOne(timeout: timeout) else {
             XCTFail("production Reader must expose at least one WebView", file: file, line: line)
             return nil
