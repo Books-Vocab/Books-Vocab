@@ -295,6 +295,11 @@ struct DictionaryPhase2ATests {
 
         let missingSource = Self.entry("source", cardID: "source", notebook: "nb")
         missingSource.kgCardId = nil
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let context = ModelContext(container)
+        context.insert(missingSource)
+        context.insert(source)
+        try context.save()
         let missingSourceCoordinator = AddLinkCoordinator()
         missingSourceCoordinator.select(senseKey: "sense_1", exampleKey: "example_1")
         await missingSourceCoordinator.materializeSelectedExample(
@@ -304,7 +309,6 @@ struct DictionaryPhase2ATests {
         #expect(missingSourceCoordinator.actionPhase == .failed)
         #expect(missingSourceCoordinator.actionError == .missingSourceCard)
 
-        let source = Self.entry("source", cardID: "source", notebook: "nb")
         let missingSenseCoordinator = AddLinkCoordinator()
         missingSenseCoordinator.select(senseKey: "missing-sense", exampleKey: "example_1")
         await missingSenseCoordinator.materializeSelectedExample(
@@ -332,6 +336,9 @@ struct DictionaryPhase2ATests {
         ).entry
         let service = P1MaterializeService(failProjectionRefresh: true)
         let coordinator = AddLinkCoordinator()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
         coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
 
         await coordinator.materializeSelectedExample(
@@ -354,6 +361,9 @@ struct DictionaryPhase2ATests {
         ).entry
         let service = P1MaterializeService()
         let coordinator = AddLinkCoordinator()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
         coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
 
         await coordinator.materializeSelectedExample(
@@ -381,6 +391,9 @@ struct DictionaryPhase2ATests {
         ).entry
         let service = SlowP1MaterializeService()
         let coordinator = AddLinkCoordinator()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
         coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
 
         coordinator.startMaterializeSelectedExample(
@@ -409,6 +422,9 @@ struct DictionaryPhase2ATests {
         ).entry
         let service = P1MaterializeService(linkID: "")
         let coordinator = AddLinkCoordinator()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
         coordinator.select(senseKey: "sense_1", exampleKey: "example_1")
 
         await coordinator.materializeSelectedExample(
@@ -421,10 +437,17 @@ struct DictionaryPhase2ATests {
     }
 
     @Test("manual link validation surfaces missing source and duplicate link") @MainActor
-    func manualLinkValidation() async {
+    func manualLinkValidation() async throws {
+        let container = try Self.container()
         let target = Self.entry("target", cardID: "target", notebook: "nb")
         let missingSource = Self.entry("source", cardID: "source", notebook: "nb")
         missingSource.kgCardId = nil
+        let duplicateSource = Self.entry("source", cardID: "source", notebook: "nb")
+        let context = ModelContext(container)
+        context.insert(target)
+        context.insert(missingSource)
+        context.insert(duplicateSource)
+        try context.save()
         let missingSourceCoordinator = AddLinkCoordinator()
         await missingSourceCoordinator.linkExisting(
             target: target, sourceEntry: missingSource, using: KGService()
@@ -432,7 +455,6 @@ struct DictionaryPhase2ATests {
         #expect(missingSourceCoordinator.materializePhase == .failed)
         #expect(missingSourceCoordinator.actionError == .missingSourceCard)
 
-        let duplicateSource = Self.entry("source", cardID: "source", notebook: "nb")
         duplicateSource.insertLink(
             KGCardLinkSummary(
                 id: "existing-link", cardId: "target", word: target.word,
