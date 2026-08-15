@@ -2216,6 +2216,7 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case syncPendingSingle
     case vocabLinkedCards
     case vocabListEmpty
+    case vocabListFilterRich
     case vocabListLong
     case vocabListPopulated
     case vocabListSingle
