@@ -17,7 +17,10 @@ final class NotebookSmokeUITests: XCTestCase {
 
     @MainActor
     func testNotebookTabIsVisibleWithChrome() throws {
-        let app = makeConfiguredApp()
+        let app = makeConfiguredApp(
+            fixtures: [.authSignedIn],
+            extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"]
+        )
         app.launch()
 
         let notebooks = AppPage(app: app).goToNotebooks()
@@ -31,7 +34,10 @@ final class NotebookSmokeUITests: XCTestCase {
 
     @MainActor
     func testNotebookAddButtonIsHittable() throws {
-        let app = makeConfiguredApp()
+        let app = makeConfiguredApp(
+            fixtures: [.authSignedIn],
+            extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"]
+        )
         app.launch()
 
         let notebooks = AppPage(app: app).goToNotebooks()

@@ -85,7 +85,8 @@ struct BookshelfPage {
     /// Tap the first available book card, if any.
     @discardableResult
     func tapFirstBook(file: StaticString = #filePath, line: UInt = UInt(#line)) -> ReaderPage? {
-        guard let book = exactlyOneBookCard(file: file, line: line) else { return nil }
+        guard bookCardsQuery.waitUntilAtLeastOne(timeout: 5) else { return nil }
+        let book = bookCardsQuery.firstMatch
         book.tapWhenReady(file: file, line: line)
         return ReaderPage(app: app)
     }

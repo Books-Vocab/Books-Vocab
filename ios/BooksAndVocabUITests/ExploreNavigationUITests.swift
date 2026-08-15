@@ -11,6 +11,14 @@
 import XCTest
 
 final class ExploreNavigationUITests: UITestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Required-state and counterexample evidence launch several isolated
+        // worlds. The allowance must be set on the test case, not only on the
+        // combined helper test, because XCTest applies it per test method.
+        executionTimeAllowance = 300
+    }
+
 
     @MainActor
     func testExploreTabIsReachableAndRendersSection() throws {
