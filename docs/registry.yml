@@ -955,6 +955,7 @@ documents:
       - ops/ios_ui_run_many.py
       - ops/ios_ui_review_matrix.py
       - .claude/skills/ios-simulator-verification/
+      - .claude/skills/ios-visual-report-workflow/
       - ops/plain_deadzone_lint.sh
       - .claude/skills/ios-simulator-verification/
       - .claude/skills/ios-simulator-verification/SKILL.md

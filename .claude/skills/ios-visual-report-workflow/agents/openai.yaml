@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Visual Report Workflow"
+  short_description: "Compress iOS report review into five clusters"
+  default_prompt: "Use $ios-visual-report-workflow to turn an iOS report into five cluster contracts and exact-head Simulator evidence."

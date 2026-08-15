@@ -1,0 +1,64 @@
+# Five-cluster contract
+
+The report remains visual reference material. The executable contract is `ops/fixtures/ios_ui_review_clusters.json` plus `ops/fixtures/ios_ui_review_matrix.json`.
+
+## Required shape
+
+The cluster manifest must have exactly five unique cluster IDs and requirements `P1` through `P15` exactly once:
+
+```json
+{
+  "schema": "kg.ios.ui-review-clusters.v1",
+  "clusters": [
+    {
+      "id": "dictionary",
+      "requirements": ["P1", "P2"],
+      "sourceModules": ["ios/BooksAndVocab/..."],
+      "datasetIDs": ["marketing_demo"],
+      "runs": [
+        {
+          "requirementID": "P1",
+          "selector": "DictionaryLookupFlowUITests/test...",
+          "requiredStates": ["idle", "loading", "success"],
+          "counterexamples": ["missing-example", "materialize-error"],
+          "requiredFixtureIDs": ["..."],
+          "acceptance": ["..."],
+          "visualAcceptance": ["..."],
+          "evidenceRoot": "build/snapshots/uitest-evidence/..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+The repository's actual schema may use equivalent field names, but the invariants are fixed:
+
+- selectors are exact `ClassName/testMethodName`, never a file/grep wildcard;
+- every requirement has at least one required state and one counterexample;
+- every fixture ID is declared by the selected UI World;
+- every method maps to one requirement/cluster contract;
+- a shared selector is allowed only when the matrix preserves distinct requirement mappings;
+- evidence roots are stable, unique run directories inside the repository;
+- source commit, dataset SHA, device UDID, run ID, manifest SHA, and reviewer are machine-readable.
+
+## Five clusters
+
+| ID | Requirements | State-model boundary |
+|---|---:|---|
+| `dictionary` | P1-P2 | lookup, typed senses, provenance, materialization and retry |
+| `reader-runtime` | P3-P7 | TOC/runtime loading, progress, settings round-trip and preview |
+| `explore-overview` | P8-P10 | loading/empty/error, projection clock, calendar and forecast |
+| `vocabulary-review-card` | P11-P13 | role/filter projection, information hierarchy, natural card layout |
+| `settings-sync` | P14-P15 | sync lifecycle, IA, optimistic-state boundaries and reset |
+
+## Acceptance layers
+
+1. Source layer: root cause and coherent state model are present.
+2. Unit layer: transition/error boundary tests fail before the fix and pass after it.
+3. Fixture layer: UI World deterministically injects data, clock, auth, and counterexample.
+4. Selector layer: exact UITest selector reaches the intended production accessibility node.
+5. Machine layer: normalized verdict and evidence contract pass with current source HEAD.
+6. Visual layer: every manifest step is inspected and explicitly attested; contact sheets are for batching review, not replacing step inspection.
+7. Matrix layer: record-many/strict validation passes and binds all identities.
+8. Delivery layer: fresh Gate, review receipt, docs lint, clean canonical tree, and formal integration closure pass.
