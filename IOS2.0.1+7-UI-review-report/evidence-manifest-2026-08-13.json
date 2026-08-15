@@ -38,9 +38,9 @@
     "stateRecording": "record-many --strict-complete"
   },
   "finalBatch": {
-    "id": "final-head-batch-v36",
-    "summary": "build/snapshots/uitest-evidence/final-head-batch-v36-summary.json",
-    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v36-bundles/",
+    "id": "final-head-batch-v37",
+    "summary": "build/snapshots/uitest-evidence/final-head-batch-v37-summary.json",
+    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v37-bundles/",
     "requiredPerSelector": [
       "machine verdict",
       "source/dataset/device provenance",
@@ -55,6 +55,11 @@
     "matrixWriteAuthority": "ops/fixtures/ios_ui_review_matrix.json only"
   },
   "historicalBatches": [
+    {
+      "id": "final-head-batch-v36",
+      "sourceCommit": "2716598b522eae3cefb548db5039c8e77c80e67c",
+      "status": "abandoned before first selector completed; see build/snapshots/uitest-evidence/final-head-batch-v36/abandoned.json"
+    },
     {
       "id": "final-head-batch-v34",
       "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
