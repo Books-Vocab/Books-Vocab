@@ -239,25 +239,18 @@ def _git_source_tree_dirty(root: Path) -> bool | None:
     return bool(result.stdout.strip())
 
 
-_EVIDENCE_RECEIPT_PATHS = (
-    "ops/fixtures/ios_ui_review_matrix.json",
-    "IOS2.0.1+7-UI-review-report/CURRENT-STATUS-2026-08-13.md",
-    "IOS2.0.1+7-UI-review-report/evidence-manifest-2026-08-13.json",
-)
-
-
-def _git_source_commit_matches_current_or_evidence_receipt(
+def _git_source_commit_matches_current_or_matrix_receipt(
     root: Path,
     source_commit: Any,
 ) -> bool:
-    """Accept source HEAD or a committed evidence receipt after it.
+    """Accept source HEAD or a committed matrix-only receipt after it.
 
     Evidence is produced against a clean source snapshot.  ``record-many`` then
-    writes the tracked matrix and the integrator updates the existing report
-    receipt, so a later validation HEAD can legitimately differ without changing
-    the source tree that produced the evidence. Keep this exception narrow: the
-    source must be an ancestor of HEAD and every non-receipt path must remain
-    identical.
+    writes the tracked matrix, so a later validation HEAD can legitimately differ
+    without changing the source tree that produced the evidence. Keep this
+    exception narrow: the source must be an ancestor of HEAD and every
+    non-matrix path must remain identical. Report receipts are updated before
+    evidence is run and therefore cannot hide post-evidence source drift.
     """
     if not isinstance(source_commit, str) or not source_commit.strip():
         return False
@@ -292,7 +285,7 @@ def _git_source_commit_matches_current_or_evidence_receipt(
                 current_head,
                 "--",
                 ".",
-                *[f":(exclude){path}" for path in _EVIDENCE_RECEIPT_PATHS],
+                ":(exclude)ops/fixtures/ios_ui_review_matrix.json",
             ],
             cwd=root,
             check=False,
@@ -380,13 +373,13 @@ def _evidence_provenance(
     if verdict.get("runId") != run_id:
         raise UIReviewMatrixError("runID does not match normalized verdict")
 
-    if not _git_source_commit_matches_current_or_evidence_receipt(
+    if not _git_source_commit_matches_current_or_matrix_receipt(
         repository_for_provenance,
         options.get("sourceCommit"),
     ):
         raise UIReviewMatrixError(
             "evidence sourceCommit is neither the current repository HEAD nor an "
-            "ancestor with an evidence-receipt-only diff"
+            "ancestor with a matrix-only receipt diff"
         )
 
     artifacts = _mapping(verdict.get("artifacts"), owner="verdict.artifacts")
