@@ -504,6 +504,39 @@ def test_dirty_git_tree_is_detected(tmp_path: Path) -> None:
     assert MODULE._git_source_tree_dirty(repo) is True
 
 
+def test_source_commit_accepts_matrix_only_receipt_and_rejects_code_drift(tmp_path: Path) -> None:
+    repo = tmp_path / "receipt-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "Test"],
+        check=True,
+    )
+    (repo / "source.txt").write_text("source\n", encoding="utf-8")
+    matrix = repo / "ops" / "fixtures" / "ios_ui_review_matrix.json"
+    matrix.parent.mkdir(parents=True)
+    matrix.write_text("{\"version\": 1}\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "source"], check=True)
+    source_commit = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+    matrix.write_text("{\"version\": 2}\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", str(matrix)], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "matrix receipt"], check=True)
+    assert MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
+
+    (repo / "source.txt").write_text("drift\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", str(repo / "source.txt")], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "code drift"], check=True)
+    assert not MODULE._git_source_commit_matches_current_or_matrix_receipt(repo, source_commit)
+
+
 def test_evidence_root_symlink_cannot_escape_repository(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     outside = tmp_path / "outside"
