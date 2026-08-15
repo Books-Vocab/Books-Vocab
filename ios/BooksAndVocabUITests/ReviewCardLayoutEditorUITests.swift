@@ -216,7 +216,12 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         let frontNatural = review.frontNaturalContent.waitUntilExists(timeout: 3)
         let frontScroll = review.frontScrollContent.waitUntilExists(timeout: 3)
         XCTAssertNotEqual(frontNatural, frontScroll, "正面必須只發布一種 natural/scroll presentation")
-        XCTAssertTrue(frontScroll, "Dynamic Type 長正面必須進入 scroll presentation")
+        switch frontCapture.presentation {
+        case .natural:
+            XCTAssertTrue(frontNatural, "canonical full-front contract requires natural presentation")
+        case .scroll:
+            XCTAssertTrue(frontScroll, "canonical full-front contract requires scroll presentation")
+        }
         XCTAssertTrue(
             review.rememberedButton.isHittable && review.forgotButton.isHittable,
             "長內容正面下，底部評分按鈕必須仍可操作"
