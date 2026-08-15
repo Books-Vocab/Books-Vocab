@@ -464,6 +464,7 @@ final class AddLinkCoordinator {
                 failAction(.invalidLink, generation: generation)
                 return
             }
+            var responseForPersistence = response
             let projection: KGDictionaryCardProjection?
             if let dictionaryCard = response.dictionaryCard {
                 guard response.targetCard.cardRole == VocabularyCardRole.dictionary.rawValue else {
@@ -492,7 +493,18 @@ final class AddLinkCoordinator {
                 // dictionary path below.
                 actionPhase = .refreshingProjection
                 do {
-                    projection = try await service.fetchDictionaryCard(cardId: response.targetCard.id)
+                    let refreshedProjection = try await service.fetchDictionaryCard(
+                        cardId: response.targetCard.id
+                    )
+                    projection = refreshedProjection
+                    responseForPersistence = DictionaryMaterializeLinkResponse(
+                        targetCard: response.targetCard,
+                        dictionaryCard: refreshedProjection,
+                        link: response.link,
+                        createdCard: response.createdCard,
+                        createdLink: response.createdLink,
+                        replayed: response.replayed
+                    )
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -541,7 +553,7 @@ final class AddLinkCoordinator {
             }
             let actor = BackgroundSyncActor(modelContainer: container)
             try Task.checkCancellation()
-            _ = try await actor.upsertDictionaryMaterialization(response)
+            _ = try await actor.upsertDictionaryMaterialization(responseForPersistence)
             try Task.checkCancellation()
             guard isCurrentAction(generation) else { return }
             Self.applyMaterializedLink(response, to: sourceEntry)
