@@ -803,21 +803,20 @@ struct ReaderPage {
 
     @discardableResult
     func showPreview(timeout: TimeInterval = 8) -> Bool {
-        // `isHittable` is true even when a Form row is only partially exposed.
-        // Move the scroll view to its canonical top position before sampling
-        // geometry; otherwise the first frame can be a clipped intersection.
-        scrollSettingsPanel(towardTop: false)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let preview = exactlyOneIfPresent(
                 settingsPreviewQuery,
                 named: "Reader settings preview",
                 timeout: 0.25
-            ), preview.isHittable {
+            ), preview.isHittable,
+               !preview.frame.isEmpty,
+               preview.frame.intersects(app.frame) {
                 return true
             }
+            // The preview may be below the sheet's current Form viewport
+            // after a theme/slider action. Only scroll after the semantic
+            // query proves it is not already visible.
             scrollSettingsPanel(towardTop: false)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
