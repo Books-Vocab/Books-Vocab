@@ -163,7 +163,7 @@ import Testing
 
     @MainActor
     @Test func bookshelfMaterializationFailsWhenPreferredNotebookIsMissing() async throws {
-        let dataset = try Self.completeV2DatasetData("""
+        let dataset = try FixtureDatasetStoreTests.completeV2DatasetData("""
         {
           "schema": "kg.fixture.dataset.v2",
           "datasetID": "missing-bookshelf-preferred-notebook",
@@ -211,38 +211,6 @@ import Testing
         }
     }
 
-    private static func completeV2DatasetData(_ json: String) throws -> Data {
-        var object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        object["assets"] = object["assets"] ?? [
-            "books": [:],
-            "audio": [:],
-            "subtitles": [:],
-            "text": [:],
-            "images": [:],
-        ]
-        object["preferences"] = object["preferences"] ?? [
-            "userDefaults": [:],
-            "ubiquitousKeyValueStore": [:],
-        ]
-        for key in [
-            "auth",
-            "entitlements",
-            "settings",
-            "bookshelf",
-            "todayReview",
-            "notebook",
-            "podcast",
-            "runtimePodcast",
-            "reader",
-            "vocabulary",
-            "reviewDeck",
-            "syncPresenter",
-        ] where object[key] == nil {
-            object[key] = [:]
-        }
-        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-    }
-
     private static func expectManifestPDFBook(in document: FixtureDatasetDocument, label: String) throws {
         let seed = try #require(document.bookshelf[BookshelfFixtureID.withBooksLibrary.rawValue])
         let pdfBook = try #require(
@@ -258,8 +226,9 @@ import Testing
         #expect(asset.installAs == "Books/\(pdfBook.fileName)")
         #expect(asset.byteSize > 0)
         #expect(asset.sha256.count == 64)
+        let sourceURL = try FixtureDatasetStore.resolveSourceURL(for: asset)
         let pdfDocument = try #require(
-            PDFDocument(url: URL(fileURLWithPath: asset.sourcePath)),
+            PDFDocument(url: sourceURL),
             "\(label): \(ref) must be readable by PDFKit"
         )
         #expect(pdfDocument.pageCount > 0, "\(label): \(ref) must contain at least one PDF page")

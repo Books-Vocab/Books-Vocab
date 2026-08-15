@@ -433,6 +433,13 @@ struct RepoFixtureDatasetsContractTests {
         let expectedLongest = try #require(plan["longest_streak_days"] as? Int)
         let expectedDue = try #require(plan["due_at_anchor"] as? [String: Any])
         let expectedPrimaryDue = try #require(expectedDue["primary"] as? Int)
+        let boundary = try #require(plan["review_calendar_boundary_event"] as? [String: Any])
+        let boundaryWord = try #require(boundary["word"] as? String)
+        let boundaryFeedback = try #require(boundary["feedback"] as? Int)
+        let boundaryReviewedAtText = try #require(boundary["reviewedAt"] as? String)
+        let boundaryReviewedAt = try #require(
+            ISO8601DateFormatter().date(from: boundaryReviewedAtText)
+        )
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
 
@@ -440,6 +447,10 @@ struct RepoFixtureDatasetsContractTests {
         #expect(dense == committedDense)
         #expect(!dense.reviewHistory.isEmpty)
         #expect(dense.reviewHistory.allSatisfy { event in
+            let isBoundary = event.word == boundaryWord
+                && event.feedback == boundaryFeedback
+                && event.reviewedAt == boundaryReviewedAt
+            if isBoundary { return true }
             let hour = utcCalendar.component(.hour, from: event.reviewedAt)
             return eventHours[0] <= hour && hour <= eventHours[1]
         }, "emitted dense history must use history_plan.event_utc_hours")
@@ -1246,6 +1257,8 @@ struct RepoFixtureDatasetsContractTests {
             "danger",
             "manualLoginUserId",
             "debugLocalServerURL",
+            "evidence",
+            "resetLifecycle",
         ]
         let authKeys: Set<String> = [
             "isLoggedIn",
