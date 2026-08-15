@@ -45,8 +45,8 @@
         "status": "verified",
         "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
         "datasetID": "marketing_demo",
-        "runID": "20260815-043516-75240-22553",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
+        "runID": "20260815-124720-1861-5508",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-124720-1861-5508",
         "requiredSteps": [
           "idle",
           "loading",
@@ -62,50 +62,50 @@
           "error/retry affordance"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "380993d1fc8ef621840e55eb9c8ad5e02e5652d93a00cb6329f3f6edeb728e13",
+        "manifestSHA256": "bd2b25607fa08498243ecb976559c3ae9d900e1ec84c292fcfb54ed4675da805",
         "evidenceBundles": [
           {
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
-            "runID": "20260815-043516-75240-22553",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-124720-1861-5508",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-124720-1861-5508",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "380993d1fc8ef621840e55eb9c8ad5e02e5652d93a00cb6329f3f6edeb728e13"
+            "manifestSHA256": "bd2b25607fa08498243ecb976559c3ae9d900e1ec84c292fcfb54ed4675da805"
           },
           {
             "selector": "DictionaryLookupFlowUITests/testDictionaryLoadingAndEmptySelectorsAreLive",
             "datasetID": "marketing_demo",
-            "runID": "20260815-043628-78294-16853",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043628-78294-16853",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-124828-4747-4041",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-124828-4747-4041",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "0f1618865338bb003df1d325d1ad5c35f762dcb14b5329e851fa06162171b0a7"
+            "manifestSHA256": "30997e705c2c0162899df385bcbe577fa4e3b98e97cbd9becc624ae594c91494"
           },
           {
             "selector": "DictionaryLookupFlowUITests/testDictionaryPartialRetryAndRetryingSelectorsAreLive",
             "datasetID": "marketing_demo",
-            "runID": "20260815-043752-81525-31934",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043752-81525-31934",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-124954-7922-27358",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-124954-7922-27358",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "71a6b73417e445dfba192302595f4a2b6747b17398fa88b2e9fe69215a370757"
+            "manifestSHA256": "812bc16b77c768f3994a81d1e61def7dc6675b8915af953292341bf3b02ea230"
           },
           {
             "selector": "DictionaryLookupFlowUITests/testDictionaryOfflineAndErrorSelectorsExposeRetry",
             "datasetID": "marketing_demo",
-            "runID": "20260815-043849-84121-25247",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043849-84121-25247",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125049-10379-4858",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125049-10379-4858",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "edda7d4f3bd2f11297aa66bb673cf7b0aa8eb950d357df5aa210a0d8f39025f6"
+            "manifestSHA256": "e798e04d1e9cc9070342ef5d8f9ed869e34bcc5d6eec3db638ef09c69db37769"
           }
         ],
         "history": [
@@ -116,6 +116,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-043516-75240-22553",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
+            "evidenceBundleCount": 4,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-124720-1861-5508",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-124720-1861-5508",
             "evidenceBundleCount": 4,
             "blockers": []
           }
@@ -146,8 +156,8 @@
         "status": "verified",
         "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
         "datasetID": "marketing_demo",
-        "runID": "20260815-044013-87414-2960",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
+        "runID": "20260815-125213-13657-24908",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125213-13657-24908",
         "requiredSteps": [
           "detail",
           "select-sense",
@@ -170,40 +180,40 @@
           "provenance hierarchy"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "95fa1d083494bbaa48eb2f8905a3a0b085ed480bac0bb8fdc0c7f26e9649d0a9",
+        "manifestSHA256": "f7944c7309521ab6e95a96f5c4b9355b8e42438c3ba1cad4bfb31f20f02c64ba",
         "evidenceBundles": [
           {
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044013-87414-2960",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125213-13657-24908",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125213-13657-24908",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "95fa1d083494bbaa48eb2f8905a3a0b085ed480bac0bb8fdc0c7f26e9649d0a9"
+            "manifestSHA256": "f7944c7309521ab6e95a96f5c4b9355b8e42438c3ba1cad4bfb31f20f02c64ba"
           },
           {
             "selector": "DictionaryLookupFlowUITests/testP2DictionaryMissingExampleCounterexampleIsVisible",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044115-90440-12764",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044115-90440-12764",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125314-16166-29665",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125314-16166-29665",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "539234a84586d534a49cb68cb5b2c0afac8e93528dcd5edcef82a529b0658325"
+            "manifestSHA256": "54265679e4fc607edccb1365fbd2d7050264667abf499a4b8ecec95e512eff12"
           },
           {
             "selector": "DictionaryLookupFlowUITests/testP2DictionaryMaterializationErrorPreservesSelection",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044206-92676-19570",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044206-92676-19570",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125403-18395-15999",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125403-18395-15999",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "a16ccc5cc45756629ce2c0577f36a3e2ee9679e0b0ea90764b8a2f5b6bee3163"
+            "manifestSHA256": "ede3a40122d48eaafe032828fb09ec49a2ab6851789bb7b1548c2df0b48094df"
           }
         ],
         "history": [
@@ -214,6 +224,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-044013-87414-2960",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-125213-13657-24908",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125213-13657-24908",
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -244,8 +264,8 @@
         "status": "verified",
         "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
         "datasetID": "marketing_demo",
-        "runID": "20260815-044303-95346-29664",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+        "runID": "20260815-125500-20702-8635",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
         "requiredSteps": [
           "reader",
           "toc-open",
@@ -261,40 +281,40 @@
           "selection/loading state"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd",
+        "manifestSHA256": "0368db696a261bbd320fb4415d129f51265a9f96c20d65fd9879beed55bceda7",
         "evidenceBundles": [
           {
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044303-95346-29664",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125500-20702-8635",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd"
+            "manifestSHA256": "0368db696a261bbd320fb4415d129f51265a9f96c20d65fd9879beed55bceda7"
           },
           {
             "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044358-97728-23151",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044358-97728-23151",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125557-23050-3514",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125557-23050-3514",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "79f1cc1e7cacbf83e84098add14b5744ed84a4c5a9bad1624c604b6455dddc47"
+            "manifestSHA256": "23f2fbc04769a3ad4240b7c029e77d921d5c543387622721a70c9ad3c1350cec"
           },
           {
             "selector": "ReaderFlowUITests/testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044456-265-24624",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044456-265-24624",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125655-25721-30446",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125655-25721-30446",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "7755b692dcb57413b4642c6b90555d8a09821499fc9823b776417f9c5aed7ade"
+            "manifestSHA256": "229c6acac16deba92044f41ead758b941710e7b9cad77510d91a5a40fbcfc44e"
           }
         ],
         "history": [
@@ -305,6 +325,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-044303-95346-29664",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-125500-20702-8635",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -335,8 +365,8 @@
         "status": "verified",
         "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
         "datasetID": "marketing_demo",
-        "runID": "20260815-044557-3418-10205",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
+        "runID": "20260815-125757-28169-23875",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125757-28169-23875",
         "requiredSteps": [
           "settings-open",
           "change-theme",
@@ -352,40 +382,40 @@
           "preview versus real Reader"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "25b5662deff9ecf2236a02d56e592178442901080c3b7dceee75a4b1bacd5e74",
+        "manifestSHA256": "0caaa155640526f565ce4be0cdc63f476e3d6d4b13e1d644f960d96e7d6f5687",
         "evidenceBundles": [
           {
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044557-3418-10205",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125757-28169-23875",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125757-28169-23875",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "25b5662deff9ecf2236a02d56e592178442901080c3b7dceee75a4b1bacd5e74"
+            "manifestSHA256": "0caaa155640526f565ce4be0cdc63f476e3d6d4b13e1d644f960d96e7d6f5687"
           },
           {
             "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044844-9396-16183",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-130038-33796-16030",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130038-33796-16030",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "c3f3434fd671ad123cee62b93e414d7ef64c298bb47d190f45200d4a6496b06e"
+            "manifestSHA256": "b0dc7ae83cc7d82a00c7ea2f14e8a29cb052027a2408cd9a0d7d8e6c6f2fda07"
           },
           {
             "selector": "ReaderSettingsUITests/testReaderSettingsDynamicTypeHasGeometryAndAccessibilityAssertions",
             "datasetID": "marketing_demo",
-            "runID": "20260815-045133-15587-6058",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045133-15587-6058",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-130323-39590-19882",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130323-39590-19882",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "7d8973895283f43b5a1ddcc7cae38c6f29ac63f26a068ad2fa9441490f038003"
+            "manifestSHA256": "e32d6487911007aee7cc1db59a0b0c1f993c48791494b5e3cca495d46b6e9bbf"
           }
         ],
         "history": [
@@ -396,6 +426,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-044557-3418-10205",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-125757-28169-23875",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125757-28169-23875",
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -426,8 +466,8 @@
         "status": "verified",
         "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
         "datasetID": "marketing_demo",
-        "runID": "20260815-044844-9396-16183",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+        "runID": "20260815-130038-33796-16030",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130038-33796-16030",
         "requiredSteps": [
           "preview-1.0",
           "preview-1.2",
@@ -443,20 +483,20 @@
           "highlight band height"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "c3f3434fd671ad123cee62b93e414d7ef64c298bb47d190f45200d4a6496b06e",
+        "manifestSHA256": "b0dc7ae83cc7d82a00c7ea2f14e8a29cb052027a2408cd9a0d7d8e6c6f2fda07",
         "evidenceBundles": [
           {
             "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044844-9396-16183",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-130038-33796-16030",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130038-33796-16030",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "c3f3434fd671ad123cee62b93e414d7ef64c298bb47d190f45200d4a6496b06e"
+            "manifestSHA256": "b0dc7ae83cc7d82a00c7ea2f14e8a29cb052027a2408cd9a0d7d8e6c6f2fda07"
           }
         ],
         "history": [
@@ -467,6 +507,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-044844-9396-16183",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-130038-33796-16030",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130038-33796-16030",
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -497,8 +547,8 @@
         "status": "verified",
         "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
         "datasetID": "marketing_demo",
-        "runID": "20260815-044303-95346-29664",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+        "runID": "20260815-125500-20702-8635",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
         "requiredSteps": [
           "reader-load",
           "progress-zero",
@@ -514,30 +564,30 @@
           "failure recovery"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd",
+        "manifestSHA256": "0368db696a261bbd320fb4415d129f51265a9f96c20d65fd9879beed55bceda7",
         "evidenceBundles": [
           {
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
-            "runID": "20260815-044303-95346-29664",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-125500-20702-8635",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "a815414659e4292dc59308f0421c8c40012d3ba180c924721bdcb8ca86894dcd"
+            "manifestSHA256": "0368db696a261bbd320fb4415d129f51265a9f96c20d65fd9879beed55bceda7"
           },
           {
             "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
             "datasetID": "marketing_demo",
-            "runID": "20260815-045247-18716-3025",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045247-18716-3025",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-130437-42416-26650",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130437-42416-26650",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "810396c16f3d9b4ab3b385002385bcb4c2ebe36fafa9542b0dea3e35b6a8e57e"
+            "manifestSHA256": "01ddf072f2e3032a99ace8f7e0929ee78fa8db23462ffb7b96bbc4bf7c7750d1"
           }
         ],
         "history": [
@@ -548,6 +598,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-044303-95346-29664",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "evidenceBundleCount": 2,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-125500-20702-8635",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -578,8 +638,8 @@
         "status": "verified",
         "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
         "datasetID": "marketing_demo",
-        "runID": "20260815-045448-23380-30577",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
+        "runID": "20260815-130635-46525-30075",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130635-46525-30075",
         "requiredSteps": [
           "launch-loading",
           "error",
@@ -594,20 +654,20 @@
           "retry/error hierarchy"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "57e327a393aba1400343f16f9e6196395a6c1945298c5b35e7ee8a1174355e1d",
+        "manifestSHA256": "8de97921c8d418425af40376ade1f974955b72bb3adb266f2fcb7f24d5da6b16",
         "evidenceBundles": [
           {
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
-            "runID": "20260815-045448-23380-30577",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-130635-46525-30075",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130635-46525-30075",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "57e327a393aba1400343f16f9e6196395a6c1945298c5b35e7ee8a1174355e1d"
+            "manifestSHA256": "8de97921c8d418425af40376ade1f974955b72bb3adb266f2fcb7f24d5da6b16"
           }
         ],
         "history": [
@@ -618,6 +678,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-045448-23380-30577",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-130635-46525-30075",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130635-46525-30075",
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -649,8 +719,8 @@
         "status": "verified",
         "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
         "datasetID": "marketing_demo",
-        "runID": "20260815-045629-26990-28956",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
+        "runID": "20260815-130813-50234-6531",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130813-50234-6531",
         "requiredSteps": [
           "explore-loading",
           "explore-loaded",
@@ -666,20 +736,20 @@
           "catalog density"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "e61f3c62f0287cd3f8dcdb74ae297065f56544321f53197e912c7810bfe07620",
+        "manifestSHA256": "2705c6acefa47de57f9b799693edea26f6ef966207e3a12309ff62778cb00f6a",
         "evidenceBundles": [
           {
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
-            "runID": "20260815-045629-26990-28956",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-130813-50234-6531",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130813-50234-6531",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "e61f3c62f0287cd3f8dcdb74ae297065f56544321f53197e912c7810bfe07620"
+            "manifestSHA256": "2705c6acefa47de57f9b799693edea26f6ef966207e3a12309ff62778cb00f6a"
           }
         ],
         "history": [
@@ -690,6 +760,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-045629-26990-28956",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-130813-50234-6531",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130813-50234-6531",
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -721,8 +801,8 @@
         "status": "verified",
         "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
         "datasetID": "marketing_demo",
-        "runID": "20260815-045849-32251-24610",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
+        "runID": "20260815-131029-55314-16897",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131029-55314-16897",
         "requiredSteps": [
           "calendar",
           "empty-day",
@@ -738,20 +818,20 @@
           "selected day"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "92a716c9a87b80a028afa280fba5796d27796862410c4f873d060a75bc8742f6",
+        "manifestSHA256": "bdeef05d05d8038e65a29d3bcdf7bcfea09b84766b91e8754375e11198cb967d",
         "evidenceBundles": [
           {
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
-            "runID": "20260815-045849-32251-24610",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-131029-55314-16897",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131029-55314-16897",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "92a716c9a87b80a028afa280fba5796d27796862410c4f873d060a75bc8742f6"
+            "manifestSHA256": "bdeef05d05d8038e65a29d3bcdf7bcfea09b84766b91e8754375e11198cb967d"
           }
         ],
         "history": [
@@ -762,6 +842,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-045849-32251-24610",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-131029-55314-16897",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131029-55314-16897",
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -793,8 +883,8 @@
         "status": "verified",
         "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
         "datasetID": "marketing_demo",
-        "runID": "20260815-050250-40693-4879",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
+        "runID": "20260815-131440-63595-26415",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131440-63595-26415",
         "requiredSteps": [
           "overview",
           "metrics",
@@ -810,30 +900,30 @@
           "zero-state copy"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "6c491166454fe4d1d79612334cb405a8d70a5e666c82f574fb77aafd818d56b9",
+        "manifestSHA256": "8e776dd0fca8838f5957b88c257e77b06a1b3e6027132d3a86123ebc3811e856",
         "evidenceBundles": [
           {
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050250-40693-4879",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-131440-63595-26415",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131440-63595-26415",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "6c491166454fe4d1d79612334cb405a8d70a5e666c82f574fb77aafd818d56b9"
+            "manifestSHA256": "8e776dd0fca8838f5957b88c257e77b06a1b3e6027132d3a86123ebc3811e856"
           },
           {
             "selector": "OverviewFlowUITests/testOverviewEmptyForecastCounterexampleIsVisible",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050423-44373-31425",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050423-44373-31425",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-131613-67094-19884",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131613-67094-19884",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "026c6ac50c5e7dba7943d233ebd91dc75dfc60145e5b087c1b8000c15bcecefa"
+            "manifestSHA256": "9650cb360286fb21f607f051ec53c205483b6a6b28be0e67e447d4a71d12db02"
           }
         ],
         "history": [
@@ -844,6 +934,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-050250-40693-4879",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
+            "evidenceBundleCount": 2,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-131440-63595-26415",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131440-63595-26415",
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -877,8 +977,8 @@
         "status": "verified",
         "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
         "datasetID": "marketing_demo",
-        "runID": "20260815-050508-46330-23442",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
+        "runID": "20260815-131700-69088-13235",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131700-69088-13235",
         "requiredSteps": [
           "all-scope-644-rows",
           "dictionary-scope",
@@ -896,20 +996,20 @@
           "CTA/sort hierarchy"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "30c530bb0a0dc296cf43994250e41cde07fea484c212ea576f67872677916aeb",
+        "manifestSHA256": "211c95f7c37fc35d4bcdcbaa6fdc803e74d38bea5239bbb2af384c6308ef1390",
         "evidenceBundles": [
           {
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050508-46330-23442",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-131700-69088-13235",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131700-69088-13235",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "30c530bb0a0dc296cf43994250e41cde07fea484c212ea576f67872677916aeb"
+            "manifestSHA256": "211c95f7c37fc35d4bcdcbaa6fdc803e74d38bea5239bbb2af384c6308ef1390"
           }
         ],
         "history": [
@@ -920,6 +1020,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-050508-46330-23442",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-131700-69088-13235",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131700-69088-13235",
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -951,8 +1061,8 @@
         "status": "verified",
         "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
         "datasetID": "marketing_demo",
-        "runID": "20260815-050651-50322-32434",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
+        "runID": "20260815-131844-72821-19250",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131844-72821-19250",
         "requiredSteps": [
           "front",
           "flip",
@@ -968,40 +1078,40 @@
           "scroll/natural height"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "8f18ca1ecf855602890a04865e70717d06195d0cbe58c023f7e35f4635bc44e2",
+        "manifestSHA256": "d1813972c4af758a7a72db8752b8098ffb1f8d4531e419ef04082877d1ef8437",
         "evidenceBundles": [
           {
             "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050651-50322-32434",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-131844-72821-19250",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131844-72821-19250",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "8f18ca1ecf855602890a04865e70717d06195d0cbe58c023f7e35f4635bc44e2"
+            "manifestSHA256": "d1813972c4af758a7a72db8752b8098ffb1f8d4531e419ef04082877d1ef8437"
           },
           {
             "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050742-52723-32281",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050742-52723-32281",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-131933-75157-21881",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131933-75157-21881",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "1f71d32e74a588a886ae11c3b0849d9674c9a96955aaaee365a30b1f99688652"
+            "manifestSHA256": "65a3533482adb76ca314e540edc0b214c8aee2d884ba5887d1192b626ebe8c92"
           },
           {
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050922-56593-16799",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132112-78790-29346",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132112-78790-29346",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "d7ef13cfba0aece9c797f55a0bd09b73e768b8231f77786f7b5d31bc8258779e"
+            "manifestSHA256": "fd2faa6d71e53da6b5d114f8f4104e20827e47238ce58f99360f4548cd0dcd26"
           }
         ],
         "history": [
@@ -1012,6 +1122,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-050651-50322-32434",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-131844-72821-19250",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131844-72821-19250",
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -1043,8 +1163,8 @@
         "status": "verified",
         "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
         "datasetID": "marketing_demo",
-        "runID": "20260815-050922-56593-16799",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+        "runID": "20260815-132112-78790-29346",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132112-78790-29346",
         "requiredSteps": [
           "compact",
           "full",
@@ -1060,30 +1180,30 @@
           "content order"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "d7ef13cfba0aece9c797f55a0bd09b73e768b8231f77786f7b5d31bc8258779e",
+        "manifestSHA256": "fd2faa6d71e53da6b5d114f8f4104e20827e47238ce58f99360f4548cd0dcd26",
         "evidenceBundles": [
           {
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
-            "runID": "20260815-050922-56593-16799",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132112-78790-29346",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132112-78790-29346",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "d7ef13cfba0aece9c797f55a0bd09b73e768b8231f77786f7b5d31bc8258779e"
+            "manifestSHA256": "fd2faa6d71e53da6b5d114f8f4104e20827e47238ce58f99360f4548cd0dcd26"
           },
           {
             "selector": "ReviewCardLayoutEditorUITests/testCompactCounterexampleUsesCanonicalSeedAndHidesOnlyOptionalFields",
             "datasetID": "marketing_demo",
-            "runID": "20260815-051021-59038-24341",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051021-59038-24341",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132226-81828-18194",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132226-81828-18194",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "c828b6de2d5b0d5b29ae0664e190c257633866004f4aafb632915ba4fb8207ee"
+            "manifestSHA256": "23da75c239aad280c0e274570f65fbcbb86ccb85d1cd073bd47ec67862fcb5fe"
           }
         ],
         "history": [
@@ -1094,6 +1214,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-050922-56593-16799",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+            "evidenceBundleCount": 2,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-132112-78790-29346",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132112-78790-29346",
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -1124,8 +1254,8 @@
         "status": "verified",
         "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
         "datasetID": "marketing_demo",
-        "runID": "20260815-051110-61220-5706",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
+        "runID": "20260815-132326-84214-15315",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132326-84214-15315",
         "requiredSteps": [
           "idle",
           "syncing",
@@ -1142,20 +1272,20 @@
           "error action hierarchy"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "2e7e12c375123e1d52654c5bf07bdbc9af7223c2ecbdad1eb130fc7e0e78e1f9",
+        "manifestSHA256": "6ade89ebc1701c3f4394f5062b737fbe959b882ca866727b831511d188aa49f1",
         "evidenceBundles": [
           {
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
-            "runID": "20260815-051110-61220-5706",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132326-84214-15315",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132326-84214-15315",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "2e7e12c375123e1d52654c5bf07bdbc9af7223c2ecbdad1eb130fc7e0e78e1f9"
+            "manifestSHA256": "6ade89ebc1701c3f4394f5062b737fbe959b882ca866727b831511d188aa49f1"
           }
         ],
         "history": [
@@ -1166,6 +1296,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-051110-61220-5706",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
+            "evidenceBundleCount": 1,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-132326-84214-15315",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132326-84214-15315",
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -1198,8 +1338,8 @@
         "status": "verified",
         "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
         "datasetID": "marketing_demo",
-        "runID": "20260815-051208-63983-8898",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
+        "runID": "20260815-132423-86731-5051",
+        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132423-86731-5051",
         "requiredSteps": [
           "settings",
           "section-navigation",
@@ -1215,40 +1355,40 @@
           "safe-area/scroll behavior"
         ],
         "blockers": [],
-        "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+        "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
         "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
         "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-        "manifestSHA256": "c88746047ec36f4f9d9934dae053867b67bec353f6016233b7f8c3bc2845a8e3",
+        "manifestSHA256": "392bf36150d9f2811ee29ec3f27b29b157fd19b8ebcae27e5745cead045a3545",
         "evidenceBundles": [
           {
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
-            "runID": "20260815-051208-63983-8898",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132423-86731-5051",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132423-86731-5051",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "c88746047ec36f4f9d9934dae053867b67bec353f6016233b7f8c3bc2845a8e3"
+            "manifestSHA256": "392bf36150d9f2811ee29ec3f27b29b157fd19b8ebcae27e5745cead045a3545"
           },
           {
             "selector": "SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors",
             "datasetID": "marketing_demo",
-            "runID": "20260815-051413-68743-415",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051413-68743-415",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132625-91043-20598",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132625-91043-20598",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "fb80cddf3d2dc420638947c50c46b23532d4c8c97220b2390630eeca41202970"
+            "manifestSHA256": "e618df10cfbcf4df043ac83888fab629a34b04dc7d707ecfde74b7b5adc581aa"
           },
           {
             "selector": "SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary",
             "datasetID": "marketing_demo",
-            "runID": "20260815-051525-71577-9909",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051525-71577-9909",
-            "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
+            "runID": "20260815-132737-93945-28217",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132737-93945-28217",
+            "sourceCommit": "725053a2afeb19d0138ec21583a9919ddca64bbf",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-            "manifestSHA256": "7498ccc31bd03e6ba2b84bce3526c2515e1c7b8c1ad73c1e2b4fff4403b6fcd3"
+            "manifestSHA256": "8e58cd69f812424942abbfcb5d48273ea09dea021fea72af33d103111130ce36"
           }
         ],
         "history": [
@@ -1259,6 +1399,16 @@
             "datasetID": "marketing_demo",
             "runID": "20260815-051208-63983-8898",
             "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
+            "evidenceBundleCount": 3,
+            "blockers": []
+          },
+          {
+            "recordedAt": "2026-08-15T13:34:33+00:00",
+            "status": "verified",
+            "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
+            "datasetID": "marketing_demo",
+            "runID": "20260815-132423-86731-5051",
+            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132423-86731-5051",
             "evidenceBundleCount": 3,
             "blockers": []
           }
