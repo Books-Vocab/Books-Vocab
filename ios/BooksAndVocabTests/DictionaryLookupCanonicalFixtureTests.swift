@@ -535,6 +535,9 @@ struct DictionaryLookupCanonicalFixtureTests {
         source.kgCardId = "source-card"
         source.notebookId = "notebook"
         let container = try Self.inMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(source)
+        try context.save()
 
         coordinator.submitSearch(query: "engraved", using: service)
         try await settle { coordinator.lookupState.isSuccess }
