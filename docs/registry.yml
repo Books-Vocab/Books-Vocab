@@ -566,9 +566,11 @@ documents:
       - backend_test_matrix_changed
       - backend_pytest_workflow_changed
     sources:
+      - .github/workflows/backend-quality.yml
       - backend/tests/
       - backend/pytest.ini
       - backend/pyproject.toml
+      - backend/uv.lock
       - backend/src/kg/testing/
 
   - id: reference.testing_smoke_checklist
