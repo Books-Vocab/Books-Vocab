@@ -23,7 +23,7 @@ extension EnvironmentValues {
 }
 
 enum StatsPresentation {
-    struct ForecastBucket: Identifiable {
+    struct ForecastBucket: Identifiable, Equatable {
         let id: String
         let label: String
         let count: Int

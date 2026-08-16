@@ -628,9 +628,21 @@ struct StatsPresenter: View {
                 Spacer()
                 VocabTabSelector(
                     options: [
-                        VocabTabOption(id: 7, title: L10n.string("7天")),
-                        VocabTabOption(id: 14, title: L10n.string("14天")),
-                        VocabTabOption(id: 30, title: L10n.string("30天")),
+                        VocabTabOption(
+                            id: 7,
+                            title: L10n.string("7天"),
+                            accessibilityIdentifier: "overview.forecast.range.7"
+                        ),
+                        VocabTabOption(
+                            id: 14,
+                            title: L10n.string("14天"),
+                            accessibilityIdentifier: "overview.forecast.range.14"
+                        ),
+                        VocabTabOption(
+                            id: 30,
+                            title: L10n.string("30天"),
+                            accessibilityIdentifier: "overview.forecast.range.30"
+                        ),
                     ],
                     selection: $forecastDays
                 )

@@ -5,12 +5,20 @@ struct AppTabOption<ID: Hashable>: Identifiable, Hashable {
     let title: String
     let count: Int?
     let systemImage: String?
+    let accessibilityIdentifier: String?
 
-    init(id: ID, title: String, count: Int? = nil, systemImage: String? = nil) {
+    init(
+        id: ID,
+        title: String,
+        count: Int? = nil,
+        systemImage: String? = nil,
+        accessibilityIdentifier: String? = nil
+    ) {
         self.id = id
         self.title = title
         self.count = count
         self.systemImage = systemImage
+        self.accessibilityIdentifier = accessibilityIdentifier
     }
 }
 
@@ -174,7 +182,7 @@ struct AppTabSelector<ID: Hashable>: View {
         HStack(spacing: AppSpacing.s2) {
             ForEach(options) { option in
                 let isSelected = selection == option.id
-                Button {
+                let button = Button {
                     withAnimation(AppMotion.chipSelect) {
                         selection = option.id
                     }
@@ -185,6 +193,11 @@ struct AppTabSelector<ID: Hashable>: View {
                 .appPointerHover()
                 .accessibilityLabel(appChipAccessibilityLabel(option: option))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
+                if let accessibilityIdentifier = option.accessibilityIdentifier {
+                    button.accessibilityIdentifier(accessibilityIdentifier)
+                } else {
+                    button
+                }
             }
         }
     }
