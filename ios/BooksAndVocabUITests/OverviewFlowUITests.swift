@@ -126,9 +126,6 @@ private struct OverviewFixtureProjection {
         )
     }
 
-    static func vocabListLongFromRunner() throws -> Self {
-        try fromRunner(fixtureID: "vocabListLong")
-    }
 }
 
 final class OverviewFlowUITests: UITestCase {
@@ -191,18 +188,18 @@ final class OverviewFlowUITests: UITestCase {
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected on re-entry")
         }
 
-        let counterexampleExpected = try Self.vocabListLongProjection()
+        let counterexampleExpected = try Self.p11ReviewMixProjection()
         let counterexampleApp = launchIsolatedApp(
             extraArgs: [
                 "-UIPreferredContentSizeCategoryName",
                 "UICTContentSizeCategoryAccessibilityXXXL",
             ],
-            fixtures: [.vocabulary("vocabListLong")],
+            fixtures: [.vocabulary("p11.644.reviewMix")],
             perfLog: "overview-counterexamples"
         )
         captureStep("large-text-counterexample", app: counterexampleApp)
         attachText(
-            "fixture=marketing_demo.vocabListLong\n"
+            "fixture=marketing_demo.p11.644.reviewMix\n"
                 + "clock=\(counterexampleExpected.clockNow.ISO8601Format())\n"
                 + "clockSource=UITestFixtureSeed.makeStatsProjectionClock\n"
                 + "clockRule=UTC noon on day after canonical earliest nextReviewAt\n"
@@ -257,8 +254,8 @@ final class OverviewFlowUITests: UITestCase {
         }
     }
 
-    private static func vocabListLongProjection() throws -> OverviewFixtureProjection {
-        try OverviewFixtureProjection.vocabListLongFromRunner()
+    private static func p11ReviewMixProjection() throws -> OverviewFixtureProjection {
+        try OverviewFixtureProjection.fromRunner(fixtureID: "p11.644.reviewMix")
     }
 
 }
