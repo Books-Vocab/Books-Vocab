@@ -252,6 +252,72 @@ struct OverviewPage {
         )
     }
 
+    func forecastRange(_ days: Int) -> XCUIElement {
+        element(identifier: "overview.forecast.range.\(days)")
+    }
+
+    func scrollToForecastRange(
+        _ days: Int,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let query = elements(identifier: "overview.forecast.range.\(days)")
+        let scrollQuery = app.scrollViews.matching(identifier: "overview.statsContent")
+        let scrollView = scrollQuery.element(boundBy: 0)
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if query.count == 1 {
+                let range = query.element(boundBy: 0)
+                if range.exists,
+                   !range.frame.isEmpty,
+                   scrollQuery.count == 1,
+                   scrollView.exists,
+                   scrollView.frame.intersects(range.frame),
+                   range.isHittable {
+                    return
+                }
+            }
+            if scrollQuery.count == 1, scrollView.exists {
+                scrollView.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        }
+
+        XCTAssertEqual(query.count, 1, "overview.forecast.range.\(days) must materialize after scrolling", file: file, line: line)
+        XCTAssertTrue(
+            query.element(boundBy: 0).exists && query.element(boundBy: 0).isHittable,
+            "overview.forecast.range.\(days) must be hittable after scrolling",
+            file: file,
+            line: line
+        )
+    }
+
+    @discardableResult
+    func selectForecastRange(
+        _ days: Int,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Self {
+        forecastRange(days).tapWhenReady(file: file, line: line)
+        XCTAssertTrue(
+            forecastRange(days).waitUntilHittable(timeout: 5),
+            "overview.forecast.range.\(days) must remain live after selection",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            forecastRange(days).isSelected,
+            "overview.forecast.range.\(days) must expose selected state",
+            file: file,
+            line: line
+        )
+        return self
+    }
+
     var metrics: XCUIElement { element(identifier: "metrics") }
     var statsContent: XCUIElement { element(identifier: "overview.statsContent") }
     var forecastChart: XCUIElement { element(identifier: "overview.forecast.chart") }
