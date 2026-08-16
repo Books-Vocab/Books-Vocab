@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 6028c0cff1daaf633902a211b627863113c4b1f2
+verified_against: 4c0efb3cc78aa6f2187901762b34aa9b70dbeba6
 -->
 # Books & Vocab iOS 開發技能
 
