@@ -3,7 +3,7 @@
 //  Books & Vocab
 //
 //  SwiftData ModelContainer bootstrap + 失敗恢復路徑。
-//  從 BooksAndVocabApp 拆出 — 集中管理 store schema、retry、fallback、purge。
+//  從 BooksAndVocabApp 拆出 — 集中管理 store schema、fallback、explicit purge。
 //
 
 import Foundation
@@ -24,7 +24,10 @@ enum AppBootstrap {
     ]
 
     @MainActor
-    static func run(arguments: [String] = ProcessInfo.processInfo.arguments) -> Outcome {
+    static func run(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        persistentContainerFactory: (() throws -> ModelContainer)? = nil
+    ) -> Outcome {
         // UI-test / probe 隔離（2026-06-10 事故）：fixture 會 wipe+seed
         // VocabularyEntry，掛真用戶 on-disk store 等於清掉整個本地單字庫；
         // CloudKit 一併斷開，真機跑 probe 不得污染 iCloud。fixture seed 端
@@ -55,10 +58,15 @@ enum AppBootstrap {
         )
 
         do {
-            let container = try ModelContainer(
-                for: Schema(fullModelTypes),
-                configurations: localConfig, cloudConfig
-            )
+            let container: ModelContainer
+            if let persistentContainerFactory {
+                container = try persistentContainerFactory()
+            } else {
+                container = try ModelContainer(
+                    for: Schema(fullModelTypes),
+                    configurations: localConfig, cloudConfig
+                )
+            }
             AuthManager.shared.modelContainer = container
             CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: true)
             CloudKitMirroringMonitor.shared.start()
@@ -66,19 +74,11 @@ enum AppBootstrap {
             AppLog.app.info("ModelContainer initialized — models: \(fullModelTypes.map { String(describing: $0) }.joined(separator: ", "))")
             return Outcome(container: container, failure: nil)
         } catch {
-            AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — attempting store reset")
-
-            if let retry = retryAfterStoreReset(localConfig: localConfig, cloudConfig: cloudConfig) {
-                AuthManager.shared.modelContainer = retry.container
-                CloudKitMirroringMonitor.shared.configure(cloudKitEnabled: retry.cloudKitEnabled)
-                if retry.cloudKitEnabled {
-                    CloudKitMirroringMonitor.shared.start()
-                }
-                AppLog.app.warning("ModelContainer recovered after store reset — user data will re-sync from server")
-                return Outcome(container: retry.container, failure: nil)
-            }
-
-            AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
+            // A persistent-store initialization error can be a migration or
+            // CloudKit failure. Never turn that signal into an automatic
+            // destructive reset: pending local cards may not exist remotely.
+            // Keep the files intact and let the explicit recovery UI own purge.
+            AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — preserving stores and entering recovery")
             let fallback = makeFallbackModelContainer()
             // 仍把 fallback 交給 AuthManager，使降級後的記憶體 store 在帳號切換時
             // 一樣可被 clearLocalData 清除（與上方兩條成功路徑對齊，避免 nil 時靜默跳過清理）。
@@ -135,44 +135,6 @@ enum AppBootstrap {
         }
     }
 
-    /// 刪除本機 SwiftData store 後重建 ModelContainer（CloudKit store 從 iCloud 恢復）。
-    /// 回傳 cloudKitEnabled 供 CloudKitMirroringMonitor 判斷「mirroring 事件
-    /// 永遠不會來」的 local-only 降級路徑。
-    private static func retryAfterStoreReset(
-        localConfig: ModelConfiguration, cloudConfig: ModelConfiguration
-    ) -> (container: ModelContainer, cloudKitEnabled: Bool)? {
-        for storeURL in [localConfig.url, cloudConfig.url] {
-            let storePaths = [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")]
-            for path in storePaths {
-                try? FileManager.default.removeItem(at: path)
-            }
-            AppLog.app.info("Removed store files at \(storeURL.lastPathComponent)")
-        }
-
-        // First try: dual-store (local + CloudKit)
-        if let container = try? ModelContainer(
-            for: Schema(fullModelTypes),
-            configurations: localConfig, cloudConfig
-        ) {
-            return (container, true)
-        }
-
-        // Second try: all local, no CloudKit (iOS 26 CloudKit schema validation may fail)
-        AppLog.app.warning("Dual-store retry failed — attempting single-store without CloudKit")
-        let localOnlyConfig = ModelConfiguration(
-            "LocalStore",
-            schema: Schema(fullModelTypes),
-            cloudKitDatabase: .none
-        )
-        if let container = try? ModelContainer(
-            for: Schema(fullModelTypes),
-            configurations: localOnlyConfig
-        ) {
-            return (container, false)
-        }
-        return nil
-    }
-
     private static func makeFallbackModelContainer() -> ModelContainer {
         do {
             return try ModelContainer(
@@ -193,24 +155,46 @@ enum AppBootstrap {
         }
     }
 
-    /// Best-effort 刪除已知的 SwiftData store files —
-    /// 與 retryAfterStoreReset 使用同樣的檔名（LocalStore / CloudStore + shm/wal）。
-    static func purgeStoreFiles() {
-        let localURL = ModelConfiguration(
-            "LocalStore",
-            schema: Schema([Notebook.self]),
-            cloudKitDatabase: .none
-        ).url
-        let cloudURL = ModelConfiguration(
-            "CloudStore",
-            schema: Schema([Book.self]),
-            cloudKitDatabase: .automatic
-        ).url
-        for storeURL in [localURL, cloudURL] {
-            for path in [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")] {
-                try? FileManager.default.removeItem(at: path)
-            }
-            AppLog.app.info("purgeStoreFiles: removed \(storeURL.lastPathComponent)")
+    static func storeArtifactURLs(for storeURL: URL) -> [URL] {
+        ["", "-shm", "-wal"].map { suffix in
+            URL(fileURLWithPath: storeURL.path + suffix)
         }
+    }
+
+    /// Explicit recovery action only. Returns false when any existing SQLite
+    /// artifact could not be removed, so the UI does not report a false reset.
+    @discardableResult
+    static func purgeStoreFiles(at storeURLs: [URL]? = nil) -> Bool {
+        let resolvedStoreURLs: [URL]
+        if let storeURLs {
+            resolvedStoreURLs = storeURLs
+        } else {
+            let localURL = ModelConfiguration(
+                "LocalStore",
+                schema: Schema([Notebook.self]),
+                cloudKitDatabase: .none
+            ).url
+            let cloudURL = ModelConfiguration(
+                "CloudStore",
+                schema: Schema([Book.self]),
+                cloudKitDatabase: .automatic
+            ).url
+            resolvedStoreURLs = [localURL, cloudURL]
+        }
+
+        var succeeded = true
+        for storeURL in resolvedStoreURLs {
+            for artifactURL in storeArtifactURLs(for: storeURL) {
+                guard FileManager.default.fileExists(atPath: artifactURL.path) else { continue }
+                do {
+                    try FileManager.default.removeItem(at: artifactURL)
+                } catch {
+                    succeeded = false
+                    AppLog.app.error("purgeStoreFiles failed for \(artifactURL.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+            AppLog.app.info("purgeStoreFiles: processed \(storeURL.lastPathComponent)")
+        }
+        return succeeded
     }
 }

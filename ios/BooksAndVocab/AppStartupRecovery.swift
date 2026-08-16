@@ -68,7 +68,7 @@ extension BooksAndVocabApp {
                     reason: "startup-recovery"
                 )
                 // 額外清除 store 檔案以便下一次 retry 走「全新建立」路徑。
-                AppBootstrap.purgeStoreFiles()
+                let storeFilesRemoved = AppBootstrap.purgeStoreFiles()
                 AppCrashReporting.record(
                     NSError(
                         domain: "AppStartupRecovery",
@@ -77,7 +77,7 @@ extension BooksAndVocabApp {
                     ),
                     context: "startup-recovery-clear-cache"
                 )
-                return true
+                return storeFilesRemoved
             },
             supportMailURL: { failure in
                 AppStartupRecovery.composeSupportMailURL(for: failure)
