@@ -17,7 +17,7 @@
   "groomed_against": "d54fce7bc195f0b823081f228bddd6472c3916d4",
   "groomed_at": "2026-08-09",
   "groomed_by": "workflow:groom@v1",
-  "id": "IMP-20260808-ae9c2f",
+  "id": "IMP-20260808-b58c1a",
   "plan": "先以 IMP-20260808-2f4203 的 scanner 擴充為前置條件；確認 shell_scan.sh 已覆蓋 shebang scripts、裸變數與展開 heredoc 後，再刪除 ops/test_asc.sh 的重複 awk guard，保留指向共用 scanner 的說明並補負控。",
   "resolution": "Implementation 5397dd1be removes the duplicate ASC matcher and delegates the safety invariant to ops/shell_scan.sh. The original wrapper also ran gate-can-fail, which is independently baseline-red on agent-constitution and official-decks proof-corpus gaps; closure now uses the discriminating ASC and script-help commands while retaining that unrelated baseline receipt.",
   "schema": "kg.backlog.entry.v1",
