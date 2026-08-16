@@ -62,6 +62,16 @@
       "purpose": "路由時不可繞過的資料、生產與 stale-doc 邊界"
     },
     {
+      "id": "router.tool-friction",
+      "path": ".claude/skills/kg-router/references/tool-friction.md",
+      "registry_id": "reference.agent_context",
+      "start": "# Tool Friction",
+      "end": null,
+      "kind": "reference",
+      "max_tokens": 1200,
+      "purpose": "只有遇到工具摩擦時才載入的 andon、查重與 stream 分流流程"
+    },
+    {
       "id": "agent-context.bootstrap",
       "path": ".claude/skills/kg-agent-context/SKILL.md",
       "registry_id": "reference.agent_context",
@@ -447,6 +457,11 @@
       "id": "task.review",
       "match": {"roles": ["*"], "tasks": ["review"]},
       "units": ["worktree.review", "receipt.core"]
+    },
+    {
+      "id": "task.tool-friction",
+      "match": {"roles": ["*"], "tasks": ["tool-friction"]},
+      "units": ["router.tool-friction", "receipt.core"]
     },
     {
       "id": "task.backend-routing",
