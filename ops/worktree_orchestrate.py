@@ -1323,6 +1323,7 @@ def gate_probe_corpus() -> list[list[str]]:
             ["ops/docs_lint.sh"],
             ["design-system/tokens.json"],
             ["ops/i18n_baseline.txt"],
+            ["CLAUDE.md"],
             ["README.md"],
         ]
     )
