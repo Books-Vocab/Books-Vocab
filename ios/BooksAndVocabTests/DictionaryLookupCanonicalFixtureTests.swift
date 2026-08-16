@@ -33,7 +33,7 @@ struct DictionaryLookupCanonicalFixtureTests {
         #expect(coordinator.dictionaryMaterialization?.selectedExampleID == "example-1")
         #expect(coordinator.dictionaryMaterialization?.sourceFixtureID == "dictionary.lookup.result")
         #expect(coordinator.dictionaryMaterialization?.datasetID == "marketing_demo")
-        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced")
+        #expect(coordinator.dictionaryMaterialization?.datasetSHA256 == "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetID == "catalog_reader_epub")
         #expect(coordinator.dictionaryMaterialization?.sourceAssetPath.hasSuffix("/ops/fixtures/assets/catalog-reader.epub") == true)
         #expect(coordinator.dictionaryMaterialization?.sourceAssetByteSize == 1690)

@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../lib/ios_lock_wait.sh
 source "$ROOT/ops/lib/ios_lock_wait.sh"
+source "$ROOT/ops/lib/ios_test_failure_verdict.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -51,9 +52,30 @@ for script_name in ios_build.sh ios_release.sh; do
     fail "$script_name still has a bare exit 1 timeout path"
 done
 
-grep -qF 'is_keychain_unavailable' "$ROOT/ops/ios_test.sh" || \
-  fail "ios_test.sh does not classify keychain OSStatus failures"
-grep -qF 'keychain-unavailable-osstatus-25291' "$ROOT/ops/ios_test.sh" || \
-  fail "ios_test.sh keychain verdict reason is missing"
+run_verdict_case() {
+  local name="$1" exit_code="$2" log_contents="$3" expected="$4" log_path actual
+  log_path="$(mktemp "${TMPDIR:-/tmp}/kg-ios-verdict.XXXXXX")"
+  printf '%s\n' "$log_contents" >"$log_path"
+  actual="$(kg_ios_classify_test_execution "$exit_code" "$log_path")"
+  rm -f "$log_path"
+  [[ "$actual" == "$expected" ]] || \
+    fail "$name: expected '$expected', got '$actual'"
+}
+
+run_verdict_case \
+  "test failure wins over intentional keychain OSStatus" \
+  65 $'Keychain save failed: OSStatus -25291\n** TEST EXECUTE FAILED **' \
+  'fail|1|tests-failed'
+run_verdict_case \
+  "short test failure marker remains a test failure" \
+  65 $'Keychain save failed: OSStatus -25291\n** TEST FAILED **' \
+  'fail|1|tests-failed'
+run_verdict_case \
+  "keychain-only failure is infrastructure-unavailable" \
+  65 $'Keychain save failed: OSStatus -25291' \
+  'inconclusive|75|keychain-unavailable-osstatus-25291'
+
+grep -qF 'kg_ios_classify_test_execution' "$ROOT/ops/ios_test.sh" || \
+  fail "ios_test.sh does not use the tested verdict classifier"
 
 printf 'PASS: iOS lock timeout is typed infrastructure-unavailable\n'
