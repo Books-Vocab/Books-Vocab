@@ -715,7 +715,7 @@ def test_gate_plan_ops_shell_selects_no_ops_pytest():
 #
 # Until 2026-08-04 a changed shell script selected NOTHING. `ops/devops_kg_safe.sh`
 # is iron law 7's enforcement point and `ops/release.sh` is the only path to
-# production; both landed on nothing but the commit-trailer audit.
+# production; both previously lacked an explicit shell gate route.
 # ---------------------------------------------------------------------------
 def test_a_changed_shell_script_always_gets_at_least_a_syntax_floor():
     """The floor has to be universal, because ~13 ops scripts have no test at all.
@@ -738,7 +738,7 @@ def test_a_changed_test_script_runs_itself():
 
 
 def test_deleted_shell_paths_do_not_create_untested_warning():
-    deleted = {"ops/review_audit.sh", "ops/tests/test_review_audit.sh"}
+    deleted = {"ops/removed_shell_fixture.sh", "ops/tests/test_removed_shell_fixture.sh"}
     exists = lambda rel: rel not in deleted
 
     gates = plan_gates(sorted(deleted), ops_test_exists=lambda rel: False,

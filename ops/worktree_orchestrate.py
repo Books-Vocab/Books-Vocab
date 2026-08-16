@@ -1086,7 +1086,7 @@ def plan_gates(changed_files: list[str],
 
     # Before 2026-08-04 a changed shell script selected NOTHING: `ops/devops_kg_safe.sh`
     # is iron law 7's enforcement point and `ops/release.sh` is the only path to
-    # production, and both landed on nothing but the commit-trailer audit (IMP-0051).
+    # production, and both previously lacked an explicit shell gate route (IMP-0051).
     # Three layers, because no single one covers the whole surface: a universal syntax
     # floor (needs only bash, so no machine skips it), the script's own test where one
     # resolves, and a named advisory for the rest — an enumerated hole beats an
