@@ -56,6 +56,17 @@ def _stores(tmp_path, uid="u1"):
     return user_dir, shared_store, card_store, notebook_store
 
 
+def _dictionary_sidecar_count(cards_db) -> int:
+    """Transitional assertion helper: retired schemas omit the table entirely."""
+    with sqlite3.connect(cards_db) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entry'"
+        ).fetchone()
+        if exists is None:
+            return 0
+        return conn.execute("SELECT COUNT(*) FROM dictionary_entry").fetchone()[0]
+
+
 def _copy(shared_store, card_store, notebook_store, user_dir, *, deck_id="deck_a",
           copier_id="u1", key="k1", notebook_name=None, on_card=None):
     return copy_shared_deck(
@@ -86,6 +97,7 @@ def test_copy_yields_fresh_srs_fresh_ids_and_provenance(tmp_path):
     copied = list(cards.all(notebook_id=nb.id))
     assert len(copied) == len(src) == outcome.card_count
     src_ids = {c.id for c in src}
+    src_by_content = {c.content: c for c in src}
     for c in copied:
         # model-default SRS (fresh schedule; author's schedule cannot leak)
         assert c.review_count == 0
@@ -98,15 +110,28 @@ def test_copy_yields_fresh_srs_fresh_ids_and_provenance(tmp_path):
         assert c.is_deleted is False
         assert c.id not in src_ids  # freshly minted id
         assert c.source_shared_card_guid == src_guids[c.content]
-        assert c.card_role == "learning"
-        assert c.review_eligible is True
-        assert cards.get_dictionary_entry(c.id) is None
+        # The official content plane is copied verbatim. Keep this exhaustive:
+        # adding a published field without copying it must fail this contract.
+        source = src_by_content[c.content]
+        for field in (
+            "content",
+            "meaning",
+            "pos",
+            "examples",
+            "collocations",
+            "note",
+            "difficulty",
+            "mode",
+            "root_form",
+            "inflections",
+        ):
+            assert getattr(c, field) == getattr(source, field), field
 
-    # content verbatim: note + difficulty came across (add() cannot carry these)
+    # Explicit regression anchors for fields the generic add() path cannot carry.
     meticulous = next(c for c in copied if c.content == "meticulous")
     assert meticulous.note == "teacher note"
     assert meticulous.difficulty == 4.5
-    assert cards.get_dictionary_entry(meticulous.id) is None
+    assert _dictionary_sidecar_count(user_dir / "cards.db") == 0
 
     # SRS isolation: the copy path never constructs a ReviewEventStore, so no
     # review-history plane exists for the copied cards.
@@ -146,8 +171,7 @@ def test_midcopy_crash_leaves_no_halfproduct(tmp_path):
     assert list(nbs.all(include_deleted=True, include_staged=True)) == []
     assert cards.count() == 0
     assert list(cards.all(include_deleted=True)) == []
-    with sqlite3.connect(user_dir / "cards.db") as conn:
-        assert conn.execute("SELECT COUNT(*) FROM dictionary_entry").fetchone()[0] == 0
+    assert _dictionary_sidecar_count(user_dir / "cards.db") == 0
 
 
 # ── 4. two copies → unique names → world-export succeeds ───────────

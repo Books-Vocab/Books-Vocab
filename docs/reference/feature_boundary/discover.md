@@ -16,8 +16,8 @@ verified_against: 105318f5d518
 > —— 那是 EPUB/PDF 書庫（Bookshelf），命名碰撞會混淆。
 >
 > **Phase 1–2（已落地）**：guest 瀏覽 / 預覽官方策展牌組（Phase 1）＋**複製官方牌組
-> 進私人 Notebook 即時可見**（Phase 2）。複製結果是 `card_role=dictionary` 字典卡，預設不進
-> 複習；Settings 開啟字典卡納入複習後才進 review queue/stats。`KGFeatureFlags.exploreEnabled` **自 2026-08-05
+> 進私人 Notebook 即時可見**（Phase 2）。複製結果是一般可複習卡片：完整保留官方
+> content plane、fresh SRS、無字典 sidecar，並直接走 `/api/vocab` sync。`KGFeatureFlags.exploreEnabled` **自 2026-08-05
 > 起恆為 `true`**（Release 亦曝光）——前置條件皆已滿足：`/api/decks` 在生產、官方目錄
 > 已注入實質內容、browse/preview/copy telemetry 齊備。
 > publish / rate / report 與 ShareLink deep-link 分享一律 Phase 2/3 fast-follow，見「範圍邊界」。
