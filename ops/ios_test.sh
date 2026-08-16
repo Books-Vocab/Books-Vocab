@@ -368,6 +368,8 @@ source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 # shellcheck source=lib/ios_lock_wait.sh
 source "$SCRIPT_DIR/lib/ios_lock_wait.sh"
+# shellcheck source=lib/ios_test_failure_verdict.sh
+source "$SCRIPT_DIR/lib/ios_test_failure_verdict.sh"
 # shellcheck source=lib/ios_cache_evict.sh
 source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 # shellcheck source=lib/ios_test_video_archive.sh
@@ -1101,13 +1103,6 @@ handle_cache_action() {
 
 is_build_db_lock_failure() {
   grep -qE 'build\.db.*database is locked|unable to attach DB' "$TMPOUT" 2>/dev/null
-}
-
-# macOS keychain denial is a machine/account prerequisite, not a test failure.
-# Keep the matcher deliberately tied to Apple's stable OSStatus so ordinary
-# test output containing the word "keychain" cannot be reclassified.
-is_keychain_unavailable() {
-  grep -qF -- '-25291' "$TMPOUT" 2>/dev/null
 }
 
 emit_new_test_output() {
@@ -1898,13 +1893,17 @@ while :; do
   break
 done
 
-# A keychain OSStatus can surface after xcodebuild has finished and may carry a
-# TEST FAILED marker. Classify it before parsing the marker so the orchestrator
-# receives the same typed infrastructure result as a lock timeout.
-if [[ "$EXIT_CODE" -ne 0 ]] && is_keychain_unavailable; then
-  EXIT_CODE="$KG_IOS_EXIT_INFRA_UNAVAILABLE"
-  INCONCLUSIVE_REASON="keychain-unavailable-osstatus-25291"
-fi
+TEST_EXECUTION_CLASSIFICATION="$(kg_ios_classify_test_execution "$EXIT_CODE" "$TMPOUT")"
+IFS='|' read -r TEST_VERDICT TEST_EXIT TEST_REASON <<<"$TEST_EXECUTION_CLASSIFICATION"
+case "$TEST_VERDICT" in
+  inconclusive)
+    EXIT_CODE="$TEST_EXIT"
+    INCONCLUSIVE_REASON="$TEST_REASON"
+    ;;
+  fail)
+    EXIT_CODE="$TEST_EXIT"
+    ;;
+esac
 
 ELAPSED=$(( $(date +%s) - START ))
 END_MS="$(ios_test_now_ms)"
@@ -2386,7 +2385,7 @@ elif grep -qE '^\*\* TEST( EXECUTE)? SUCCEEDED' "$TMPOUT" 2>/dev/null; then
   write_json_verdict "ok" "0" "" "$EXECUTED"
   print_timing_summary
   echo "[ios_test] ✓ all tests passed ($EXECUTED executed, ${ELAPSED}s) — $CALLER  log=$TMPOUT  xcresult=$RESULT_BUNDLE  verdict=$VERDICT_FILE"
-elif grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
+elif kg_ios_test_execution_failed "$TMPOUT"; then
   echo ""
   # Show failing test details
   grep -E 'error:|failed' "$TMPOUT" | grep -v 'xcodebuild\|Linker\|frontend' | head -20 || true

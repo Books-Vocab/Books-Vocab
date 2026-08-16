@@ -14,7 +14,8 @@ private func makeEntry(
     reviewCount: Int = 0,
     nextReviewAt: Date = Date().addingTimeInterval(3600),
     lastReviewedAt: Date? = nil,
-    dateAdded: Date = Date()
+    dateAdded: Date = Date(),
+    synced: Bool = true
 ) -> VocabularyEntry {
     let entry = VocabularyEntry(
         word: "w",
@@ -27,6 +28,9 @@ private func makeEntry(
     entry.nextReviewAt = nextReviewAt
     entry.lastReviewedAt = lastReviewedAt
     entry.dateAdded = dateAdded
+    if synced {
+        entry.markSynced()
+    }
     return entry
 }
 
@@ -76,7 +80,10 @@ struct NotebookStatsCalculatorTests {
 
     @Test func computeAddsPendingCountFromSeparateSource() {
         let synced = [makeEntry(notebookId: "P"), makeEntry(notebookId: "P")]
-        let pending = [makeEntry(notebookId: "P"), makeEntry(notebookId: "Q")]
+        let pending = [
+            makeEntry(notebookId: "P", synced: false),
+            makeEntry(notebookId: "Q", synced: false),
+        ]
         let stats = NotebookStatsCalculator.compute(synced, pendingEntries: pending)
         #expect(stats["P"]?.cardCount == 2)
         #expect(stats["P"]?.pendingCount == 1)
