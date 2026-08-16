@@ -145,11 +145,21 @@ run_one() {
         ops/tests/test_kg_board_git_tree.py
       ;;
     backlog)
-      # Both files are stdlib-only on purpose, so they run under the same
-      # --no-project sandbox as the cutover gate uses.
+      # Backlog seam tests are stdlib-only on purpose, so they run under the
+      # same --no-project sandbox as the cutover gate uses. Keep this list
+      # explicit: test_ops_ci_coverage.sh proves every tracked test is wired.
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_backlog.py \
-        ops/tests/test_backlog_migration.py &&
+        ops/tests/test_backlog_migration.py \
+        ops/tests/test_backlog_acceptance.py \
+        ops/tests/test_backlog_contract.py \
+        ops/tests/test_backlog_legacy_view_seams.py \
+        ops/tests/test_backlog_mutations.py \
+        ops/tests/test_backlog_query_seam.py \
+        ops/tests/test_backlog_reanchor.py \
+        ops/tests/test_backlog_store.py \
+        ops/tests/test_backlog_verification.py \
+        ops/tests/test_backlog_wave.py &&
       ./ops/tests/test_backlog_add_stage.sh
       ;;
     review-cycle)       ./ops/tests/test_review_cycle.sh ;;
