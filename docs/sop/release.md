@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: 4c0efb3cc78aa6f2187901762b34aa9b70dbeba6
+verified_against: d7d98039f31019e96854de6592cbc9d7f82ffd8d
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
