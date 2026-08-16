@@ -5559,6 +5559,32 @@ def test_update_acceptance_cmd_selector_count_unavailable_probe_is_nonblocking(
     assert BACKLOG.load_entry(store, entry["id"])["acceptance_cmd"] == cmd
 
 
+def test_selector_report_preserves_backlog_helper_monkeypatch_seams(capsys, monkeypatch):
+    """The façade must remain the injection point for selector helpers."""
+    from types import SimpleNamespace
+
+    seen = {}
+
+    def probe(_cmd):
+        return ["synthetic-probe"]
+
+    def count(_output):
+        return 99
+
+    def runner(argv, **kwargs):
+        seen["argv"] = argv
+        seen["kwargs"] = kwargs
+        return SimpleNamespace(stdout="1 tests collected", returncode=0, timed_out=False)
+
+    monkeypatch.setattr(BACKLOG, "_pytest_selector_probe", probe)
+    monkeypatch.setattr(BACKLOG, "_pytest_collected_count", count)
+    monkeypatch.setattr(BACKLOG, "run_streamed_command", runner)
+    BACKLOG._report_pytest_selector_count("IMP-20260816-abcdef", "ignored")
+
+    assert seen["argv"] == ["synthetic-probe"]
+    assert "selected=99" in capsys.readouterr().err
+
+
 def test_update_refuses_to_close_when_the_acceptance_is_red(tmp_path, capsys):
     """The door most likely to be used by hand, and it checked nothing.
 
