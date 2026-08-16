@@ -346,7 +346,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 > 版號 bump / tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`bump-build`/`changelog`/`tag`(原名 `publish`，別名保留)/`release`/`resubmit`/`shipped`，單一入口；寫入面一律 dry-run 預設——`bump --yes` 才改版號檔、`tag --yes` 才 commit+tag+push origin main）。`tag` 只推 origin main（版本標記，**非部署**）。
 >
-> **iOS 有兩種 tag，語意不同**：`ios/<x.y.z>` = 該 marketing version **上架 App Store** 的那顆 commit，**只由 `release.sh shipped ios` 依 ASC 查證後物化**、immutable；`ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit（只代表出過 archive），由 `tag`/`release`/`resubmit` 產生。`--new-version-after-ready` **已移除**——上架 tag 存在本身就是證據，新版 guard 改為直接讀 repo 的 tag 自行檢查（須有上架 tag、嚴格遞增、不得跳過「有 build tag 卻無上架 tag」的版本）。`release ios` / `resubmit ios` 的順序是 bump→upload→封 build tag，upload 失敗不留下 commit/tag/push。**誰擁有哪個版號事實、怎麼查，SoT 表在 `docs/sop/release.md`。** 本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施。注意目前無 tag-triggered CI，tag 僅為版本標記。三平面語意見 `docs/sop/release.md`。
+> **iOS 有兩種 tag，語意不同**：`ios/<x.y.z>` = 該 marketing version **上架 App Store** 的那顆 commit，**只由 `release.sh shipped ios` 依 ASC 查證後物化**、immutable；`ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit（只代表出過 archive），由 `tag`/`release`/`resubmit` 產生。`--new-version-after-ready` **已移除**——上架 tag 存在本身就是證據，新版 guard 改為直接讀 repo 的 tag 自行檢查（須有上架 tag、嚴格遞增、不得跳過「有 build tag 卻無上架 tag」的版本）。`release ios` 順序是 bump→upload→封 build tag；`resubmit ios` 則先 ASC 對帳並計畫 `max(local build, ASC latest)+1`，再 bump→upload→封 build tag；ASC 查詢失敗／非數字或 upload 失敗都不留下 commit/tag/push。**誰擁有哪個版號事實、怎麼查，SoT 表在 `docs/sop/release.md`。** 本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施。注意目前無 tag-triggered CI，tag 僅為版本標記。三平面語意見 `docs/sop/release.md`。
 
 ### 版號命名決策（下一個 build 該叫什麼）
 
