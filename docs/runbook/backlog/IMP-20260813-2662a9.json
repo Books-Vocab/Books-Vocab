@@ -12,6 +12,9 @@
   "date": "2026-08-13",
   "detail": "目前主線執行 ./ops/injection_lint.sh --strict 仍有 28 findings，集中在 Bookshelf、Podcast、Reader、Settings、Vocabulary 的 View/preview harness；代表性路徑為 PodcastPlayerView.swift、SettingsDebugBackendSection.swift、TodayReviewPresenter+Toolbar.swift。既有 IMP-20260809-b088c0 修的是 scanner 會把註解或 nested type 誤判，不是這 28 個目前缺 injection 的基線債務；現行 baseline-check 仍會放行它們。這票要求逐項判斷 production View、preview-only harness 與刻意例外，不可單純提高 baseline 或批量加 annotation。",
   "fix_site": "ops/injection_lint.py; ops/injection_lint.sh; ios/BooksAndVocab/Views/Bookshelf; ios/BooksAndVocab/Views/Podcast; ios/BooksAndVocab/Views/Reader; ios/BooksAndVocab/Views/Settings; ios/BooksAndVocab/Views/Vocabulary",
+  "fixed_by": [
+    "3b5437ff610bab58c0391c194c4fd68691239b75"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -22,6 +25,10 @@
   "scope": "28 個 findings 的分類、正式 View 接線或具名例外，含 scanner regression 與 baseline 收斂。",
   "severity": "med",
   "source": "Tickets Factory iOS quality audit 2026-08-13",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-16",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "Fresh Gate rc=0; acceptance and independent review were green in the child hand-back; integration tip 5a410c278 is contained in main"
 }

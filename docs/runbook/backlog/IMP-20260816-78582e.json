@@ -11,6 +11,9 @@
   "date": "2026-08-16",
   "detail": "Recurrence of IMP-20260809-67edd9 observed on current main: backlog.py add --stage collision still emits mode=commit in the JSON envelope and human error, although the operation is staged and written=false. The existing regression proves queue/store safety but does not assert the mode field. Add the missing mode contract without reopening the closed historical ticket.",
   "fix_site": "ops/backlog.py; ops/tests/test_backlog_add_stage.sh",
+  "fixed_by": [
+    "3b5437ff610bab58c0391c194c4fd68691239b75"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -21,6 +24,10 @@
   "scope": "一個 stage collision envelope、現有 shell regression 的 mode 斷言與 backlog contract validation。",
   "severity": "low",
   "source": "recurrence:IMP-20260809-67edd9",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-16",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "Fresh Gate rc=0; acceptance recorded green in hand-back; main contains integration tip 5a410c278"
 }

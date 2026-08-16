@@ -12,6 +12,9 @@
   "date": "2026-08-13",
   "detail": "目前 repo 的 .github/workflows 沒有 backend pytest workflow/job；backend 測試策略文件宣告 PR gate 應執行 uv run python -m pytest -q、nightly 應有非 slow lane，但 workflow scan 沒有任何 backend pytest 引用。現場 full suite 3092 tests 需 658.84 秒且有 10 failures，因此 GitHub 綠燈不能代表 backend 品質。coverage 也只有 pytest.ini 的 future/optional 契約，沒有 pytest-cov dependency、current HEAD artifact 或 coverage gate。這是控制面缺失，與目前失敗測試本身分開。",
   "fix_site": ".github/workflows; backend/pyproject.toml; backend/uv.lock; docs/reference/testing/backend_strategy.md",
+  "fixed_by": [
+    "3b5437ff610bab58c0391c194c4fd68691239b75"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -22,6 +25,10 @@
   "scope": "一條 backend CI workflow、uv locked test toolchain、coverage artifact/gate 與測試策略同步。",
   "severity": "high",
   "source": "Tickets Factory 深度審查 2026-08-13",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-16",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "Fresh Gate rc=0; acceptance and independent review were green in the child hand-back; integration tip 5a410c278 is contained in main"
 }
