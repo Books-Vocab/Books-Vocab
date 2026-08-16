@@ -70,6 +70,7 @@ from lib import dispatch_preflight  # noqa: E402
 from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 import backlog_acceptance as _backlog_acceptance  # noqa: E402
+import backlog_mutations as _backlog_mutations  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
@@ -5490,211 +5491,43 @@ def _cmd_validate(args) -> int:
     return 2 if problems else 0
 
 
+def _mutation_deps() -> _backlog_mutations.MutationDeps:
+    """Build mutation callbacks while preserving façade monkeypatch points."""
+    return _backlog_mutations.MutationDeps(
+        root=ROOT,
+        load_entry=load_entry,
+        merged_and_validated=_merged_and_validated,
+        gate_closure=_gate_closure,
+        update_entry=update_entry,
+        mutable_fields=MUTABLE_FIELDS,
+        refused_update_fields=REFUSED_UPDATE_FIELDS,
+        digest_fields=DIGEST_FIELDS,
+        error_type=BacklogError,
+        entry_path=entry_path,
+        entry_lock=_entry_lock,
+        held_tickets=held_tickets,
+        main_commit=_main_commit,
+        git=_git,
+        today=_today,
+        report_pytest_selector_count=_report_pytest_selector_count,
+        update_command=lambda update_args, lock_held=False: _cmd_update(
+            update_args, _lock_held=lock_held
+        ),
+    )
+
+
 def _cmd_groom(args, *, _lock_held: bool = False) -> int:
-    """Typed lifecycle door; `_cmd_update` remains the sole mutation engine."""
-    if args.commit and not _lock_held:
-        with _entry_lock(entry_path(args.store, args.id)):
-            return _cmd_groom(args, _lock_held=True)
-
-    before = load_entry(args.store, args.id)
-    if before.get("status") in ("fixed", "wont-fix"):
-        raise BacklogError(
-            f"{args.id} is closed (status={before.get('status')}); `groom` never "
-            "reopens closed tickets. If the problem recurred, file the new "
-            "occurrence with `add` so the old closure remains an honest audit trail"
-        )
-
-    claim = held_tickets().get(args.id)
-    claim_path = str((claim or {}).get("path") or "")
-    if claim and (not claim_path or Path(claim_path).resolve() != ROOT.resolve()):
-        raise BacklogError(
-            f"{args.id} is claimed by {claim.get('branch')} at {claim_path or '(unknown path)'}; "
-            "only the worktree owning a live claim may re-groom its executable spec"
-        )
-
-    proofs = [
-        field for field in ("acceptance_cmd", "acceptance_manual")
-        if str(getattr(args, field, None) or "").strip()
-    ]
-    if len(proofs) != 1:
-        raise BacklogError(
-            "groom requires exactly one acceptance proof: acceptance_cmd for a "
-            "machine-checkable gate OR acceptance_manual with the reason no "
-            "command can express it"
-        )
-
-    if args.groomed_against:
-        main_sha = _main_commit()
-        against = str(args.groomed_against).strip()
-        if main_sha is None:
-            raise BacklogError(
-                "cannot validate --against because local main does not resolve; "
-                "omit it to let groom capture local main automatically"
-            )
-        ancestry = _git("merge-base", "--is-ancestor", against, main_sha)
-        if ancestry.returncode != 0:
-            raise BacklogError(
-                f"--against {against} is not reachable from local main {main_sha}; "
-                "a grooming snapshot with no readable base cannot become dispatchable"
-            )
-
-    # Grooming replaces the executable snapshot. Merge semantics are right for
-    # generic `update` and wrong here: switching command -> manual used to inherit
-    # the old command and create two contradictory proofs; switching the other way
-    # inherited the old manual exception. Reset every omitted proof adjunct too.
-    if proofs == ["acceptance_cmd"]:
-        clear_fields = ["acceptance_manual"]
-        if args.acceptance_cmd_static is None:
-            clear_fields.append("acceptance_cmd_static")
-        if args.acceptance_expect_rc is None:
-            clear_fields.append("acceptance_expect_rc")
-        if args.acceptance_green_expected is None:
-            clear_fields.append("acceptance_green_expected")
-    else:
-        clear_fields = [
-            "acceptance_cmd", "acceptance_cmd_static", "acceptance_expect_rc",
-            "acceptance_green_expected"
-        ]
-    args._clear_fields = tuple(clear_fields)
-
-    # `triaged` means somebody decided the next action. A complete groom plan is
-    # exactly that decision, so leaving the status open would create two answers
-    # to the same question. Verification remains independent: no verified_* field
-    # is touched here, and dispatch does not require one.
-    args.status = "triaged"
-    args.groomed_at = args.groomed_at or _today()
-    return _cmd_update(args, _lock_held=_lock_held)
+    """Compatibility façade for the extracted grooming command."""
+    return _backlog_mutations.cmd_groom(
+        args, deps=_mutation_deps(), lock_held=_lock_held
+    )
 
 
 def _cmd_update(args, *, _lock_held: bool = False) -> int:
-    if args.commit and not _lock_held:
-        with _entry_lock(entry_path(args.store, args.id)):
-            return _cmd_update(args, _lock_held=True)
-
-    # Derived from MUTABLE_FIELDS, not a second hand-written list. The previous
-    # hand-written tuple happened to be a subset, so the dry-run path and the
-    # commit path agreed by coincidence: adding one parser flag produced a clean
-    # dry-run followed by an exit-64 --commit. That is IMP-0040's shape inside
-    # the code that cites IMP-0040.
-    refused = [f for f in REFUSED_UPDATE_FIELDS
-               if getattr(args, f, None) is not None
-               or getattr(args, f"{f}_file", None) is not None]
-    if refused:
-        # Before anything else, and covering the whole invocation: a command
-        # that applied its mutable half and complained about the rest would
-        # leave the caller guessing which half landed.
-        # Name the flag the caller actually typed. `--detail-file /no/such/path`
-        # used to report the file error, which is a true statement about the wrong
-        # problem: `detail` can never be written by `update` at all.
-        flags = ", ".join(
-            f"--{f}-file" if getattr(args, f"{f}_file", None) is not None else f"--{f}"
-            for f in refused)
-        # Mode-prefixed like every other output of this command: without it the
-        # dry-run and --commit forms produced byte-identical text, so the reader
-        # could not tell from the output which one they had just run.
-        print(
-            f"[{'commit' if args.commit else 'dry-run'}] "
-            f"{flags} cannot be changed: {', '.join(DIGEST_FIELDS)} are the inputs "
-            f"make_entry_id hashes, so editing one would decouple {args.id} from the "
-            f"content its id is derived from.\n"
-            f"  correcting the record  -> put the correction in --resolution\n"
-            f"  a different problem    -> file it with `add`; a reworded problem "
-            f"statement is a different entry\n"
-            f"nothing was written.",
-            file=sys.stderr,
-        )
-        return 64
-
-    changes = {
-        field: getattr(args, field, None)
-        for field in MUTABLE_FIELDS
-        if getattr(args, field, None) is not None
-    }
-    clear_fields = tuple(getattr(args, "_clear_fields", ()))
-    # Clearing a command also clears the adjuncts that only make sense for a
-    # command.  Otherwise the repair emitted for a conflicting proof leaves
-    # `acceptance_expect_rc` behind and immediately trips
-    # `acceptance-expect-rc-without-cmd` on its next validation.  Respect an
-    # explicitly supplied adjunct so an intentional invalid edit is still
-    # refused rather than silently rewritten.
-    if ("acceptance_cmd" in changes
-            and not str(changes["acceptance_cmd"] or "").strip()):
-        clear = list(clear_fields)
-        for field in ("acceptance_cmd_static", "acceptance_expect_rc",
-                      "acceptance_green_expected"):
-            if field not in changes and field not in clear:
-                clear.append(field)
-        clear_fields = tuple(clear)
-    if (
-        "groomed_against" not in changes
-        and any(changes.get(field) is not None for field in ("groomed_at", "groomed_by"))
-    ):
-        # A refreshed groom stamp should not silently lose its reference frame.
-        # Keep the explicit flag for fixture/import use, but make the ordinary CLI
-        # path capture the main tip that the human just inspected.
-        current_main = _main_commit()
-        if current_main:
-            changes["groomed_against"] = current_main
-    if not changes and not clear_fields:
-        print("nothing to change; pass at least one field", file=sys.stderr)
-        return 64
-
-    before = load_entry(args.store, args.id)  # EntryNotFound -> refusal in main()
-    # Validate BEFORE gating, same order as `_cmd_verify`. Reversed, a typo'd
-    # `--fixed-by` ran the entry's whole acceptance suite and only then refused on
-    # traceability — measured, and on a real entry that is a 15-minute pytest run
-    # thrown away for a bad sha. It also let a hand-edited `acceptance_expect_rc:
-    # true` through, because `_acceptance_gate` coerces (`int(... or 0)`) where
-    # `validate_entry` refuses it by name.
-    merged = _merged_and_validated(
-        before, changes, args.id, clear_fields=clear_fields
+    """Compatibility façade for the extracted mutation command."""
+    return _backlog_mutations.cmd_update(
+        args, deps=_mutation_deps(), lock_held=_lock_held
     )
-    # Then the gate, still before any write: a red acceptance must leave the store
-    # untouched, so the refusal cannot be mistaken for "some of it landed".
-    acceptance = _gate_closure(before, changes, args.commit)  # raises on a red one
-
-    # A selector count is author feedback, not a second closure gate. Only probe
-    # when the criterion is being edited, and never after a closing act: the latter
-    # is refused above because changing and judging a criterion in one act would
-    # make the gate self-satisfying. Compound commands are intentionally skipped
-    # by the shape detector; their prelude may have side effects.
-    if (changes.get("status") != "fixed"
-            and str(changes.get("acceptance_cmd") or "").strip()):
-        _report_pytest_selector_count(args.id, str(changes["acceptance_cmd"]))
-
-    if args.commit:
-        after = update_entry(
-            args.store, args.id, _clear_fields=clear_fields,
-            _lock_held=_lock_held, **changes
-        )
-    else:
-        after = merged
-
-    changed_fields = [*changes, *(field for field in clear_fields if field not in changes)]
-    diff = {
-        field: {"from": before.get(field, ""), "to": after.get(field, "")}
-        for field in changed_fields
-    }
-    if args.json:
-        # `entry` alongside `changes`: without it a caller could not tell "the payload
-        # has no entry" from "the write did nothing", and had to re-query to find out
-        # a successful write had happened. `add` and `show` already answer this way.
-        print(json.dumps(
-            {"schema": f"kg.backlog.{args.command}.v1",
-             "mode": "commit" if args.commit else "dry-run",
-             "id": args.id, "changes": diff, "entry": after,
-             # Present only when this write was an act of closing, and then it
-             # carries the evidence grade: a reader can tell a `fixed` a command
-             # proved from a `fixed` somebody asserted.
-             **({"acceptance": acceptance} if acceptance else {})},
-            ensure_ascii=False))
-    else:
-        print(f"[{'commit' if args.commit else 'dry-run'}] {args.id}")
-        for field, change in diff.items():
-            print(f"  {field}: {str(change['from'])[:60]!r} -> {str(change['to'])[:60]!r}")
-        if not args.commit:
-            print("  (dry-run — pass --commit to land)")
-    return 0
 
 
 def _doc_anchor() -> str:
