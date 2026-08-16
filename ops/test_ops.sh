@@ -303,7 +303,9 @@ run_one() {
       ;;
     asc)
       ./ops/test_asc.sh
-      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_asc_text_bundle.py
+      "$UV_BIN" run --python 3.13 --with pytest --with pyjwt --with cryptography pytest -q \
+        ops/tests/test_asc_text_bundle.py \
+        ops/tests/test_asc_build.py
       ;;
     release-surfaces)
       run_one release
@@ -344,6 +346,8 @@ fi
 passed=0
 failed=0
 failed_names=()
+inconclusive=0
+inconclusive_names=()
 start_all=$SECONDS
 
 for name in "${selected[@]}"; do
@@ -358,6 +362,10 @@ for name in "${selected[@]}"; do
   if [[ "$rc" -eq 0 ]]; then
     echo "✓ $name passed (${elapsed}s)"
     passed=$((passed + 1))
+  elif [[ "$rc" -eq 75 ]]; then
+    echo "? $name inconclusive rc=75 (${elapsed}s)" >&2
+    inconclusive=$((inconclusive + 1))
+    inconclusive_names+=("$name")
   elif [[ "$rc" -eq 64 ]]; then
     echo "✗ unknown test group: $name" >&2
     failed=$((failed + 1))
@@ -373,8 +381,13 @@ echo ""
 echo "════════ summary ════════"
 echo "passed groups: $passed"
 echo "failed groups: $failed"
+echo "inconclusive groups: $inconclusive"
 echo "elapsed: $((SECONDS - start_all))s"
 if [[ "$failed" -gt 0 ]]; then
   printf 'failed: %s\n' "${failed_names[*]}" >&2
   exit 1
+fi
+if [[ "$inconclusive" -gt 0 ]]; then
+  printf 'inconclusive: %s\n' "${inconclusive_names[*]}" >&2
+  exit 75
 fi

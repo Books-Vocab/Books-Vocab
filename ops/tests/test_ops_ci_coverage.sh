@@ -213,6 +213,7 @@ UNGROUPED_TESTS=(
 OPTIONAL_ONLY_TESTS=(
   "ops/test_asc.sh|only reached through optional group asc, which is not in DEFAULT_TESTS or CI; promoting asc is a separate decision"
   "ops/tests/test_asc_text_bundle.py|only reached through optional group asc, which is not in DEFAULT_TESTS or CI; promoting asc is a separate decision"
+  "ops/tests/test_asc_build.py|only reached through optional group asc, which is not in DEFAULT_TESTS or CI; promoting asc is a separate decision"
 )
 
 if [[ "${1:-}" == "--print-linux-groups" ]]; then
@@ -224,7 +225,7 @@ if [[ "${1:-}" == "--print-excluded-groups" ]]; then
   exit 0
 fi
 
-pass=0; fail=0; skipped=0; SEC_BASE=0
+pass=0; fail=0; skipped=0; inconclusive=0; SEC_BASE=0
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; SEC_BASE=$fail; }
@@ -361,11 +362,12 @@ section "every tracked test file is reachable from some group"
 # body；OPTIONAL_TESTS 的 case 不屬於 CI 覆蓋面。先剝註解再比對：在註解裡提到一個路徑
 # 不是執行，少了這道 sed，任何人都能靠寫一行註解讓這條檢查閉嘴。
 #
-# `run_one` 有 case 互相呼叫（例如 release-surfaces），所以從 DEFAULT_TESTS 開始遞迴
-# 展開 literal `run_one <group>` 呼叫；只把這些 case body 的路徑收進 REACHABLE。
-REACHABLE=(); TRACKED=()
-while IFS= read -r l; do REACHABLE+=("$l"); done < <(
-  awk -v defaults="${DECLARED[*]}" '
+# `run_one` 有 case 互相呼叫（例如 release-surfaces），所以從指定 group 開始遞迴
+# 展開 literal `run_one <group>` 呼叫；只把這些 case body 的路徑收進結果。DEFAULT 與
+# OPTIONAL 要各自解析：optional 路徑可以被列為例外，但不能被當成 DEFAULT 覆蓋。
+parse_reachable_paths() {
+  local selected_groups="$1"
+  awk -v defaults="$selected_groups" '
     BEGIN {
       default_count = split(defaults, default_groups, /[[:space:]]+/)
       for (i = 1; i <= default_count; i++) {
@@ -416,7 +418,14 @@ while IFS= read -r l; do REACHABLE+=("$l"); done < <(
   ' ops/test_ops.sh \
     | sed 's/[[:space:]]*#.*$//' \
     | grep -oE 'ops/(tests/)?test_[A-Za-z0-9_]+\.(sh|py)' | sort -u
+}
+
+REACHABLE=(); OPTIONAL_DECLARED=(); OPTIONAL_REACHABLE=(); TRACKED=()
+while IFS= read -r l; do REACHABLE+=("$l"); done < <(parse_reachable_paths "${DECLARED[*]}")
+while IFS= read -r l; do OPTIONAL_DECLARED+=("$l"); done < <(
+  awk '/^OPTIONAL_TESTS=\(/{flag=1;next} /^\)/{flag=0} flag {sub(/#.*/,"");gsub(/[[:space:]]/,"");if($0!="")print}' ops/test_ops.sh
 )
+while IFS= read -r l; do OPTIONAL_REACHABLE+=("$l"); done < <(parse_reachable_paths "${OPTIONAL_DECLARED[*]}")
 while IFS= read -r l; do TRACKED+=("$l"); done < <(git ls-files 'ops/tests/test_*' 'ops/test_*' | sort -u)
 
 # 兩道探針自檢，比照 192 / 199 行：少了它們，改個名字就能讓整段恆真地綠。
@@ -425,18 +434,36 @@ if (( ${#TRACKED[@]} == 0 )); then
   fail_t "git ls-files found no tracked ops test file — the probe is broken, not the suite"
 elif (( ${#REACHABLE[@]} == 0 )); then
   fail_t "parsed 0 test paths out of run_one — the probe is broken, not the dispatcher"
+elif (( ${#OPTIONAL_DECLARED[@]} == 0 )); then
+  fail_t "parsed 0 OPTIONAL_TESTS groups — the optional reachability probe is broken"
+elif (( ${#OPTIONAL_REACHABLE[@]} == 0 )); then
+  fail_t "parsed 0 test paths out of OPTIONAL_TESTS — the optional reachability probe is broken"
 else
   for f in "${TRACKED[@]}"; do
     reach=0
     for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    optional_reach=0
+    for r in "${OPTIONAL_REACHABLE[@]}"; do [[ "$r" == "$f" ]] && optional_reach=1; done
     exempt=0
     for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
     optional=0
     for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
-    if (( reach + exempt + optional == 0 )); then
+    if (( optional == 1 )); then
+      if (( exempt == 1 )); then
+        fail_t "$f is named in both UNGROUPED_TESTS and OPTIONAL_ONLY_TESTS — pick one exception table"
+      elif (( reach == 1 )); then
+        fail_t "$f is both reached by a DEFAULT group and named optional-only — remove the exception"
+      elif (( optional_reach == 0 )); then
+        fail_t "$f is named optional-only but no OPTIONAL_TESTS group reaches it — connect it from ops/test_ops.sh run_one"
+      fi
+    elif (( reach == 1 )); then
+      (( exempt == 0 )) || fail_t "$f is both reached by a DEFAULT group and named in UNGROUPED_TESTS — pick one"
+    elif (( exempt == 1 )); then
+      (( optional_reach == 0 )) || fail_t "$f is reached by an OPTIONAL_TESTS group but named only in UNGROUPED_TESTS — use OPTIONAL_ONLY_TESTS"
+    elif (( optional_reach == 1 )); then
+      fail_t "$f is reachable only through an OPTIONAL_TESTS group — name it in OPTIONAL_ONLY_TESTS with a reason"
+    else
       fail_t "$f is reachable from no group — register it in ops/test_ops.sh run_one, or name it in UNGROUPED_TESTS with a reason"
-    elif (( reach + exempt + optional > 1 )); then
-      fail_t "$f is both reached by a DEFAULT group and/or named in multiple exception tables — pick one"
     fi
   done
   # 反向 stale，比照 164-170 行：改名後留下的豁免是一支永久的消音器。
@@ -446,11 +473,13 @@ else
     (( found == 1 )) || fail_t "$p is named exempt but is not a tracked test file — stale entry"
   done
   for u in "${OPTIONAL_ONLY_TESTS[@]}"; do
-    p="${u%%|*}"; found=0; reach=0
+    p="${u%%|*}"; found=0; reach=0; optional_reach=0
     for f in "${TRACKED[@]}"; do [[ "$f" == "$p" ]] && found=1; done
     for r in "${REACHABLE[@]}"; do [[ "$r" == "$p" ]] && reach=1; done
+    for r in "${OPTIONAL_REACHABLE[@]}"; do [[ "$r" == "$p" ]] && optional_reach=1; done
     (( found == 1 )) || fail_t "$p is named optional-only but is not a tracked test file — stale entry"
     (( reach == 0 )) || fail_t "$p is named optional-only but is reachable from DEFAULT_TESTS — remove the exception"
+    (( optional_reach == 1 )) || fail_t "$p is named optional-only but no OPTIONAL_TESTS group reaches it — connect it from ops/test_ops.sh run_one"
   done
   ok_if_clean "all ${#TRACKED[@]} tracked test file(s) are reachable or named-exempt"
 fi
@@ -592,7 +621,7 @@ toolchain_usable() {
 # 會被認證成 xcode 相依。
 run_denied() {
   local denied="$1"; shift
-  local shim rc=0 b
+  local shim rc=0 b output="${RUN_DENIED_OUTPUT:-/dev/null}"
   shim="$(mktemp -d)"
   for b in $denied; do
     printf '#!/bin/sh\necho "DENIED: %s" >&2\nexit 127\n' "$b" >"$shim/$b"
@@ -602,15 +631,28 @@ run_denied() {
   # 一旦有人加 `bin-gh`，少了這段，shim 會被一個仍然有效的 token 繞過去而假綠。
   # 它是未來的保險，不是現在生效的保護——不要把它讀成後者。
   if [[ " $denied " == *" gh "* ]]; then
-    PATH="$shim:$PATH" GH_TOKEN="" GITHUB_TOKEN="" "$@" >/dev/null 2>&1 || rc=$?
+    PATH="$shim:$PATH" GH_TOKEN="" GITHUB_TOKEN="" "$@" >"$output" 2>&1 || rc=$?
   else
-    PATH="$shim:$PATH" "$@" >/dev/null 2>&1 || rc=$?
+    PATH="$shim:$PATH" "$@" >"$output" 2>&1 || rc=$?
   fi
   rm -rf "$shim"
   return "$rc"
 }
 
 run_plain() { "$@" >/dev/null 2>&1; }
+
+# rc=75 是 iOS/運維工具鏈定義的 infrastructure-unavailable；它不是 group
+# 通過，也不是「遮蔽後死亡」的證據。coverage probe 必須把它保留成 inconclusive，
+# 並以非零 typed rc 收尾，避免資源阻塞被包裝成成功。
+probe_inconclusive() {
+  local label="$1" rc="$2" log="$3" evidence=""
+  [[ "$rc" -eq 75 ]] || return 1
+  evidence="$(grep -E 'infrastructure=unavailable|RESULT=inconclusive|rc=75|inconclusive' "$log" | tail -n 1 || true)"
+  [[ -n "$evidence" ]] || evidence="typed infrastructure unavailable"
+  echo "  · $label: inconclusive (resource unavailable, rc=75; $evidence)" >&2
+  inconclusive=$((inconclusive+1))
+  return 0
+}
 
 section "every exclusion carries a token from the closed vocabulary"
 for e in "${EXCLUDED_GROUPS[@]}"; do
@@ -780,20 +822,34 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
     continue
   fi
   echo "  … $g: baseline run (undenied)…" >&2
-  if ! run_plain ./ops/test_ops.sh "$g"; then
+  baseline_log="$(mktemp "${TMPDIR:-/tmp}/kg-ops-coverage-baseline.XXXXXX")"
+  baseline_rc=0
+  ./ops/test_ops.sh "$g" >"$baseline_log" 2>&1 || baseline_rc=$?
+  if probe_inconclusive "$g baseline" "$baseline_rc" "$baseline_log"; then
+    rm -f "$baseline_log"
+    continue
+  elif (( baseline_rc != 0 )); then
     # 「非零」不等於「因為被 deny 而非零」。少了這一腿，一個壞掉的 group 會被永久認證成
     # 合法排除、永遠不進 CI——IMP-0052 原封不動搬到上一層。
     fail_t "$g is already red WITHOUT denial, so its death proves nothing about '$tok' — fix the group first"
+    rm -f "$baseline_log"
     continue
   fi
   echo "  … $g: falsifying (denying:$denials)…" >&2
-  if run_denied "$denials" ./ops/test_ops.sh "$g"; then
+  denied_log="$(mktemp "${TMPDIR:-/tmp}/kg-ops-coverage-denied.XXXXXX")"
+  denied_rc=0
+  RUN_DENIED_OUTPUT="$denied_log" run_denied "$denials" ./ops/test_ops.sh "$g" || denied_rc=$?
+  if probe_inconclusive "$g denied" "$denied_rc" "$denied_log"; then
+    rm -f "$baseline_log" "$denied_log"
+    continue
+  elif (( denied_rc == 0 )); then
     fail_t "$g claims '$tok' but passed with [$denials] denied — the reason is false; move it to LINUX_GROUPS or state the real dependency"
   elif is_falsify_unsound "$g"; then
     ok "$g passes undenied and dies with [$denials] denied — consistent with '$tok', but its chain has absolute-path invocations that walk past the shim, so this is not proof of it"
   else
     ok "$g passes undenied and dies without [$denials]"
   fi
+  rm -f "$baseline_log" "$denied_log"
 done
 
 echo ""
@@ -802,5 +858,10 @@ echo ""
 # 1 failed）。CI 上這個數字現在是 2/2——linux 沒有 Xcode，兩條 bin-* 排除都跳過，
 # **CI 實際證偽的排除數是 0**，唯一真的執行點是開發者本機的 macOS。IMP-0059 提的
 # expected-fail CI step 因此比當初寫下時更值得做。
-echo "ops-ci-coverage: $pass passed, $fail failed, $skipped falsification(s) skipped"
-[[ "$fail" -eq 0 ]]
+echo "ops-ci-coverage: $pass passed, $fail failed, $skipped falsification(s) skipped, $inconclusive inconclusive (resource unavailable; not passed)"
+if [[ "$fail" -ne 0 ]]; then
+  exit 1
+elif [[ "$inconclusive" -ne 0 ]]; then
+  exit 75
+fi
+exit 0
