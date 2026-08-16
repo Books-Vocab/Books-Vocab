@@ -28,6 +28,16 @@ fi
 
 fixture="$tmp/sources"
 mkdir -p "$fixture"
+
+launcher_bin="$tmp/bin/uv"
+mkdir -p "$(dirname "$launcher_bin")"
+cat >"$launcher_bin" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >"${UV_INVOCATION_LOG:?}"
+printf '{"verdict":{"status":"pass","blockCount":0},"blocks":[]}\n'
+STUB
+chmod +x "$launcher_bin"
+
 cat >"$fixture/project-settings.stdout" <<'EOF'
     MARKETING_VERSION = 2.0.1
     CURRENT_PROJECT_VERSION = 7
@@ -60,6 +70,45 @@ printf '%s\n' app-review-gate asc-versions organizer-latest project-settings tes
 cmp "$tmp/expected-invocations" "$tmp/invocations.sorted"
 if grep -Eq '^(build|upload|write|set-|submit)' "$fixture/invocations.log"; then
   echo "workflow fixture observed a mutating invocation" >&2
+  exit 1
+fi
+
+# The App Review gate must use the shared project uv launcher on its real path.
+# The source-fixture branch above intentionally bypasses that path, so exercise
+# the gate helper directly with a fake launcher and keep the provider calls out
+# of this regression test.
+launcher_json="$tmp/launcher.json"
+UV_BIN="$launcher_bin" UV_INVOCATION_LOG="$tmp/uv.invocation" \
+  bash -c '
+    ROOT="$1"
+    SCRIPT_DIR="$ROOT/ops"
+    source "$ROOT/ops/lib/ios_ops_core.sh"
+    source "$ROOT/ops/lib/ios_ops_release.sh"
+    app_review_workflow_gate_json
+  ' _ "$ROOT" >"$launcher_json"
+jq -e '.verdict.status == "pass" and .spec != null' "$launcher_json" >/dev/null
+grep -q -- 'run --python 3.13 python' "$tmp/uv.invocation"
+
+# A missing launcher is a typed gate.execution block, never a shell traceback
+# or an empty executable handed to streaming_command.py.
+missing_json="$tmp/missing-launcher.json"
+UV_BIN="$tmp/missing-uv" \
+  bash -c '
+    ROOT="$1"
+    SCRIPT_DIR="$ROOT/ops"
+    source "$ROOT/ops/lib/ios_ops_core.sh"
+    source "$ROOT/ops/lib/ios_ops_release.sh"
+    app_review_workflow_gate_json
+  ' _ "$ROOT" >"$missing_json"
+jq -e '.verdict.status == "block" and .blocks[0].code == "gate.execution" and .blocks[0].actual.exitCode == 127' "$missing_json" >/dev/null
+
+# The launcher resolver also fails closed when neither UV_BIN, HOME's default,
+# nor PATH can provide uv; this is independent of the JSON-producing caller.
+if HOME= PATH="$tmp/no-uv" bash -c '
+  source "$1/ops/lib/project_python.sh"
+  kg_project_uv_bin
+' _ "$ROOT" >/dev/null 2>&1; then
+  echo "uv resolver unexpectedly found a launcher" >&2
   exit 1
 fi
 

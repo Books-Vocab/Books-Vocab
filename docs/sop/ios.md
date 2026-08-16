@@ -354,14 +354,16 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 | 情境 | marketing | build | 命令 |
 |---|---|---|---|
-| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | +1 | `release.sh resubmit ios [--yes]`（bump-build→upload→封 `ios/<x.y.z>+<build>`） |
+| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | `max(本地 build, ASC TestFlight latest)+1` | `release.sh resubmit ios [--yes]`（先對帳 ASC→bump-build→upload→封 `ios/<x.y.z>+<build>`） |
 | 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh release ios <x.y.z> --yes`（bump→upload→封 build tag）；或拆步先 bump/upload，再 `tag ios <x.y.z> --yes` |
 | 已上架後新版本：加功能不破壞 | minor（第二位+1，如 2.0.0→2.1.0） | +1 | 同上 |
 | 已上架後新版本：大改版/破壞性/里程碑（如 podcast 正式放出） | major（第一位+1，如 2.0.0→3.0.0） | +1 | 同上 |
 
 - semver 判斷**看改動語意、不看 commit 數**（`release.sh status` 的「建議版號」是數量啟發式，僅參考——2.0.0 該輪工具建議 minor、實際是 major）。
 - **判斷「同版重送」還是「新版本」的唯一準則 = 上一個 marketing 版號有沒有真的上架**（這條準則沒變，變的是怎麼落實它）。PREPARE_FOR_SUBMISSION / REJECTED / 審查中 = 還沒上架 → 走「同版重送」列，`resubmit ios`，不動 marketing。**這個判斷現在由工具做，不由 operator 打字背書**：上架事實靠 `release.sh shipped ios --yes` 從 ASC 查證後物化成 `ios/<x.y.z>`，`release ios` 的 guard 再讀它。所以**上架後第一件事就是補跑 `shipped ios --yes`**——沒補，下一版會被 guard 正確地擋下來。
-- **每顆 build 都要留封版紀錄**。`ios/<x.y.z>+<build>` 記的是「這顆 (version, build) 由哪顆 commit 產生」，而 **Apple 不保留這個資訊**（ASC 只有一筆 version 記錄、`versionString` 可變、build number 每版重新計數），所以它必須在封版當下捕捉，**事後無法重建**。`release.sh status` 會在目前的 (version, build) 沒有 build tag 時具名警告；看到就別直接 `ios_release.sh --upload`，走 `release ios` / `resubmit ios` 讓它封版。歷史後果見 `docs/sop/release.md`「機制上線前的舊 tag」（`ios/1.6.0` 上架的是哪顆 build 已永久不可考）。
+- **每顆 build 都要留封版紀錄**。`ios/<x.y.z>+<build>` 記的是「這顆 (version, build) 由哪顆 commit 產生」，而 **Apple 不保留這個資訊**（ASC 只有一筆 version 記錄、`versionString` 可變、build number 每版重新計數），所以它必須在封版當下捕捉，**事後無法重建**。`release.sh resubmit ios` 先以 `./ops/asc.sh builds` 讀 TestFlight latest，計畫 build 固定為 `max(CURRENT_PROJECT_VERSION, ASC latest)+1`；查詢失敗或非數字會在 bump/upload 前硬停，dry-run 會列出三者。`release.sh status` 會在目前的 (version, build) 沒有 build tag 時具名警告；看到就別直接 `ios_release.sh --upload`，走 `release ios` / `resubmit ios` 讓它封版。歷史後果見 `docs/sop/release.md`「機制上線前的舊 tag」（`ios/1.6.0` 上架的是哪顆 build 已永久不可考）。
+
+- **workflow launcher contract**：`ios_ops workflow release` 的 App Review gate 由 `ops/lib/project_python.sh` 的 `kg_project_uv_bin` 解析 uv；缺依賴時輸出 typed `gate.execution` block，不把空 executable 交給 streaming runner，也不以 traceback 代替 gate verdict。
 
 > ⚠ **看發版狀態只信 App Store Connect / TestFlight（server 真相），別信 Xcode Organizer**。Organizer 只列 Xcode.app GUI 出的 archive（存 `~/Library/Developer/Xcode/Archives/`）；本 repo 走 CLI（`ios_release.sh` archive 到 `ios/build/`），CLI 出的 build **永遠不進 Organizer**——Organizer 停在最後一次 GUI 出包（1.6(3)/2026-04）不代表後續 build 遺失。TestFlight `asc.sh builds` 才是實況。
 
