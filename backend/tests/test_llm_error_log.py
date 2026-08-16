@@ -11,8 +11,8 @@ from kg import llm_error_log
 @pytest.fixture(autouse=True)
 def _reset_and_redirect(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-    llm_error_log.DATA_DIR = tmp_path
-    llm_error_log.DB_PATH = tmp_path / "llm_errors.db"
+    monkeypatch.setattr(llm_error_log, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(llm_error_log, "DB_PATH", tmp_path / "llm_errors.db")
     llm_error_log._reset()
     yield
     llm_error_log._reset()
@@ -148,13 +148,13 @@ class TestRecord:
 
 
 class TestReset:
-    def test_reset_switches_db_path(self, tmp_path):
+    def test_reset_switches_db_path(self, tmp_path, monkeypatch):
         """After _reset(), changing DB_PATH makes the next _get_conn open a fresh DB."""
         llm_error_log.record(user_id="u1", call_type="judge", error_class="E")
         llm_error_log._reset()
         new_path = tmp_path / "other" / "llm_errors.db"
         new_path.parent.mkdir(parents=True)
-        llm_error_log.DB_PATH = new_path
+        monkeypatch.setattr(llm_error_log, "DB_PATH", new_path)
         llm_error_log._get_conn()
         # Actually check: old DB still has 1 row, new DB has 0
         old_count = llm_error_log._get_conn().execute(
