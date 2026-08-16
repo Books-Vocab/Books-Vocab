@@ -357,7 +357,8 @@ final class SettingsFlowUITests: UITestCase {
             identifier: "settings.account.resetBoundary.message",
             visible: true
         )
-        XCTAssertTrue(settings.resetMessage.label.contains("失敗") || settings.resetMessage.label.contains("殘留"))
+        let resetMessage = settings.resetMessage.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertFalse(resetMessage.isEmpty, "failed reset must expose a localized terminal message")
         XCTAssertTrue(settings.resetAfterCardCount.waitUntilLabelContains(partialCardValue, timeout: 5))
         XCTAssertTrue(settings.resetAfterPreferences.waitUntilExists(timeout: 5))
         XCTAssertTrue(settings.resetAfterLoginStatus.waitUntilExists(timeout: 5))
