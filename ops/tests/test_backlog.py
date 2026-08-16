@@ -2367,6 +2367,19 @@ def test_legacy_parser_respects_backlog_facade_id_matcher(monkeypatch):
     }]
 
 
+def test_render_table_respects_backlog_cell_and_empty_cell_seams(tmp_path, monkeypatch):
+    monkeypatch.setattr(BACKLOG, "_cell", lambda _value: "")
+    monkeypatch.setattr(BACKLOG, "_EMPTY_CELL", "EMPTY-SEAM")
+    rendered = BACKLOG._render_table([{"id": "IMP-0001"}], ("id", "detail"))
+    assert "EMPTY-SEAM" in rendered
+
+    monkeypatch.setattr(BACKLOG, "_cell", lambda _value: "CELL-SEAM")
+    _add(tmp_path / "store", detail="render seam")
+    assert "CELL-SEAM" in BACKLOG.render_view(
+        tmp_path / "store", verified_against="deadbeef"
+    )
+
+
 # ---------------------------------------------------------------------------
 # IMP-20260805-355016 — the view carries the re-verification fields
 # ---------------------------------------------------------------------------

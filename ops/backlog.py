@@ -2525,7 +2525,12 @@ def _cell(value: str) -> str:
 
 
 def _render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
-    return _backlog_view.render_table(entries, columns)
+    return _backlog_view.render_table(
+        entries,
+        columns,
+        cell_fn=_cell,
+        empty_cell=_EMPTY_CELL,
+    )
 
 
 # SUPERSEDED 2026-08-05 by IMP-20260805-355016. This used to read "the rendered
@@ -2562,6 +2567,8 @@ def render_view(store: Path, *, verified_against: str) -> str:
         statuses=STATUSES,
         severities=SEVERITIES,
         verdicts=VERDICTS,
+        cell_fn=_cell,
+        empty_cell=_EMPTY_CELL,
     )
 
 
