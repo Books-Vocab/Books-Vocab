@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/tests/
-verified_against: c4a8f8bf1
+verified_against: 4c0efb3cc
 -->
 # KG Backend Testing Strategy
 
@@ -74,13 +74,28 @@ uv run python -m pytest -q
 2. 開啟 `/admin/tests?token=...`。
 3. 點擊 `Run Tests` 觸發整包測試，結果會即時刷新在 matrix。
 
-## CI Recommendation
-- PR gate:
-  - `uv run python -m pytest -q`
-- Nightly:
-  - `uv run python -m pytest -q -k "not slow"`（目前皆可快速執行）
-- Optional future:
-  - coverage gate (`--cov=src/kg --cov-fail-under=85`)
+## Backend Quality CI
+
+`.github/workflows/backend-quality.yml` 只在 `backend/**` 或該 workflow 變更時於
+push / pull request 觸發；文件或 iOS-only 變更不會啟動這條 backend runner。job
+`backend-quality` 在乾淨 runner 執行：
+
+1. checkout full history，固定 uv 版本後執行 `uv sync --locked`。
+2. 以 module form 執行測試與 coverage data：
+   `uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`。
+3. 以 `uv run python -m coverage report --fail-under=85` 執行 coverage threshold。
+4. 以 `uv run ruff check src tests` 執行 static quality check。
+
+pytest 的既有 full-suite failure 保持為 `test-failure`，不以 `continue-on-error`
+偽造成功；coverage threshold failure 標為 `coverage-failure`，Ruff failure 標為
+`ruff-failure`。checkout、uv setup、provenance、locked sync 或未產生明確 step
+結果時標為 `infrastructure-inconclusive`。所有非 `pass` 分類都以非零結束，讓
+GitHub job 維持紅燈而不是把不可判定狀態當綠燈。
+
+每次執行都上傳 `backend-quality-${GITHUB_SHA}` artifact（即使 quality step 失敗），
+包含 `coverage.xml` 與 provenance：`HEAD_SHA` / `GITHUB_SHA`、`LOCK_BLOB_SHA`、
+`LOCK_SHA256`、uv 版本、run id 與 attempt。這使 coverage 證據不能脫離被驗證的
+HEAD 或 `backend/uv.lock`。
 
 ## Gaps & Next Iteration
 - 壓力/負載：高併發 `POST /api/vocab`、pipeline 排隊行為（非功能測試）
