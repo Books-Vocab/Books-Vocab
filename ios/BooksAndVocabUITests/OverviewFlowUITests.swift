@@ -224,6 +224,37 @@ final class OverviewFlowUITests: UITestCase {
     }
 
     @MainActor
+    func testOverviewForecastRangeSwitchKeepsChartLive() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("statsPopulated")],
+            perfLog: "overview-forecast-range"
+        )
+        let overview = try step("forecast-range-overview", app: app) {
+            let page = AppPage(app: app).goToOverview()
+            XCTAssertTrue(app.waitForNavigationToSettle())
+            return page
+        }
+
+        try step("forecast-range-14", app: app) {
+            overview.scrollToForecastRange(14)
+            overview.forecastRange(14).assertExists(timeout: 10)
+            XCTAssertTrue(overview.forecastRange(14).isSelected)
+        }
+
+        try step("forecast-range-7", app: app) {
+            overview.selectForecastRange(7)
+        }
+
+        try step("forecast-range-30", app: app) {
+            overview.selectForecastRange(30)
+        }
+
+        try step("forecast-range-7-reentry", app: app) {
+            overview.selectForecastRange(7)
+        }
+    }
+
+    @MainActor
     func testOverviewEmptyForecastCounterexampleIsVisible() throws {
         let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsEmpty")
         let app = launchIsolatedApp(
