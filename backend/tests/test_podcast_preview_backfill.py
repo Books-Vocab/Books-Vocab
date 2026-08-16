@@ -27,6 +27,7 @@ _spec.loader.exec_module(bf)
 
 _HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 ffmpeg_required = pytest.mark.skipif(not _HAS_FFMPEG, reason="ffmpeg/ffprobe not on PATH")
+TEST_STAMP = "2026-08-16T00:00:00+00:00"
 
 
 class _NoSuchKey(Exception):
@@ -111,24 +112,58 @@ def _meta(series_id: str, *, preview_flag: bool = False) -> dict:
 # ── pure metadata transform (no ffmpeg / no S3) ──────────────────────────────
 
 def test_patch_preview_meta_flags_ep1_only():
-    out = bf.patch_preview_meta(_meta("s_a"), duration_sec=180)
+    out = bf.patch_preview_meta(_meta("s_a"), duration_sec=180, stamp=TEST_STAMP)
     eps = {e["episodeNumber"]: e for e in out["episodes"]}
     assert eps[1]["previewAvailable"] is True
     assert eps[1]["previewDurationSec"] == 180
     assert "previewAvailable" not in eps[2]  # ep2 untouched
+    assert out["updatedAt"] == TEST_STAMP
 
 
 def test_patch_preview_meta_preserves_other_fields():
     meta = _meta("s_a")
     meta["createdAt"] = "2020-01-01T00:00:00+00:00"
-    out = bf.patch_preview_meta(meta, duration_sec=180)
+    meta["customField"] = {"keep": True}
+    out = bf.patch_preview_meta(meta, duration_sec=180, stamp=TEST_STAMP)
     assert out["createdAt"] == "2020-01-01T00:00:00+00:00"
-    assert "updatedAt" not in out  # NOT bumped → idempotent
+    assert out["customField"] == {"keep": True}
+    assert out["updatedAt"] == TEST_STAMP
+    assert "updatedAt" not in meta
 
 
 def test_patch_preview_meta_raises_when_no_ep1():
     with pytest.raises(ValueError, match="no episode 1"):
-        bf.patch_preview_meta({"episodes": [{"episodeNumber": 2}]}, duration_sec=180)
+        bf.patch_preview_meta(
+            {"episodes": [{"episodeNumber": 2}]},
+            duration_sec=180,
+            stamp=TEST_STAMP,
+        )
+
+
+def test_patch_preview_meta_requires_stamp():
+    with pytest.raises(TypeError, match="stamp"):
+        bf.patch_preview_meta(_meta("s_a"), duration_sec=180)
+
+
+def test_patch_preview_meta_rejects_positional_stamp():
+    with pytest.raises(TypeError, match="positional"):
+        bf.patch_preview_meta(_meta("s_a"), 180, TEST_STAMP)
+
+
+def test_patch_index_stamp_updates_only_target_entry():
+    index = [
+        {"id": "s_a", "title": "A", "updatedAt": "old"},
+        {"id": "other", "title": "Other", "updatedAt": "other-old"},
+    ]
+
+    out, changed = bf.patch_index_stamp(index, series_id="s_a", stamp=TEST_STAMP)
+
+    assert changed is True
+    assert out == [
+        {"id": "s_a", "title": "A", "updatedAt": TEST_STAMP},
+        {"id": "other", "title": "Other", "updatedAt": "other-old"},
+    ]
+    assert index[0]["updatedAt"] == "old"
 
 
 # ── ffmpeg-backed preview generation ─────────────────────────────────────────
