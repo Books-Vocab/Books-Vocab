@@ -99,7 +99,9 @@ GitHub job 維持紅燈而不是把不可判定狀態當綠燈。
 
 每次執行都嘗試上傳 `backend-quality-${GITHUB_SHA}` artifact（即使 quality step 失敗）；
 缺少 artifact 檔案時以 error fail-closed。artifact 只包含 `coverage.xml` 與
-provenance，不上傳 `.coverage`；provenance 包含 `HEAD_SHA` / `GITHUB_SHA`、
+`backend/ci-artifacts/backend-quality-provenance.txt`、
+`backend/ci-artifacts/backend-quality-verdict.txt`，不包含 `.coverage`；也就是
+coverage XML + provenance + verdict。provenance 包含 `HEAD_SHA` / `GITHUB_SHA`、
 `LOCK_BLOB_SHA`、`LOCK_SHA256`、uv 版本、`PYTHON_VERSION`、`PYTHON_EXECUTABLE`、
 run id 與 attempt，並將 Python interpreter 寫入 job summary。這使 coverage 證據不能
 脫離被驗證的 HEAD、interpreter 或 `backend/uv.lock`。
