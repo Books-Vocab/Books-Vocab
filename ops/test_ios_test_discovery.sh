@@ -294,6 +294,73 @@ else
   fail_t "找不到兩個可用的真實測試名（PAT_A='$PAT_A' PAT_B='$PAT_B'）"
 fi
 
+# ── 11a. build-for-testing progress must identify its caller (IMP-20260808-7bdba0) ──
+# Execute the actual \`rebuild_test_cache\` function with a hermetic xcodebuild
+# stub. Two different caller values make this a value-sensitive regression:
+# checking only for the token \`caller=\` would let a hard-coded or empty value
+# pass, and swapping the expected caller must make one assertion fail.
+section "ios_test.sh build progress caller identity"
+BUILD_FN="$(awk '
+  /^rebuild_test_cache\(\) \{/ { capture=1 }
+  /^ensure_xctestrun_ready_or_fail\(\) \{/ { exit }
+  capture { print }
+' "$IOS_TEST")"
+if [[ -z "$BUILD_FN" ]]; then
+  fail_t "找不到 ios_test.sh 的 rebuild_test_cache fixture"
+else
+  synthetic_build_output() {
+    local caller="$1"
+    local runner="$FIX/build-progress-${caller}.sh"
+    {
+      printf '%s\n' '#!/usr/bin/env bash'
+      printf '%s\n' 'set -euo pipefail'
+      printf 'CALLER=%q\n' "$caller"
+      printf 'DERIVED_DATA_ROOT=%q\n' "$FIX/derived-$caller"
+      printf 'TEST_CACHE_ROOT=%q\n' "$FIX/cache"
+      printf '%s\n' \
+        'IOS_TEST_CACHE_SENTINEL=.kg-test-cache-complete' \
+        'TEST_SCOPE=unit' \
+        'TEST_SCHEME=BooksAndVocabUnitTests' \
+        'CONFIGURATION=Debug' \
+        'DESTINATION="platform=iOS Simulator,name=Fixture"' \
+        'XCODEPROJ=/tmp/BooksAndVocab.xcodeproj' \
+        'IOS_TEST_SIGNING_ARGS=()' \
+        'COVERAGE_XCODEBUILD_ARGS=()' \
+        'MAX_TEST_EXECUTION_TIME_ALLOWANCE=60' \
+        'BUILD_FOR_TESTING_MS=0' \
+        'REBUILD_DID_BUILD=0' \
+        'BUILD_LOG="$0.log"' \
+        'BUILD_RESULT_BUNDLE="$0.xcresult"'
+      printf '%s\n' \
+        'acquire_build_lock() { :; }' \
+        'kg_ios_cache_evict() { :; }' \
+        'ios_test_find_xctestrun() { return 1; }' \
+        'ios_test_cache_is_complete() { return 1; }' \
+        'ios_test_cached_products_ready() { return 0; }' \
+        'ios_test_now_ms() { printf "100\\n"; }' \
+        'start_build_monitor() { (sleep 60) >/dev/null 2>&1 & printf "%s\\n" "$!"; }' \
+        'count_compile_events() { printf "2\\n"; }' \
+        'xcodebuild() { return 0; }' \
+        'release_build_lock() { :; }'
+      printf '%s\n' "$BUILD_FN"
+      printf '%s\n' 'rebuild_test_cache "$BUILD_LOG" "$BUILD_RESULT_BUNDLE"'
+    } > "$runner"
+    chmod +x "$runner"
+    "$runner" 2>&1
+  }
+
+  BUILD_ALPHA="$(synthetic_build_output "caller-alpha")" || BUILD_ALPHA=""
+  BUILD_BRAVO="$(synthetic_build_output "caller-bravo")" || BUILD_BRAVO=""
+  ALPHA_LINE="$(grep -F '[ios_test][build-for-testing]' <<<"$BUILD_ALPHA" || true)"
+  BRAVO_LINE="$(grep -F '[ios_test][build-for-testing]' <<<"$BUILD_BRAVO" || true)"
+  [[ "$ALPHA_LINE" == *"caller=caller-alpha"* && "$ALPHA_LINE" != *"caller=caller-bravo"* ]] \
+    && ok "build progress keeps caller-alpha" \
+    || fail_t "build progress lost/swapped caller-alpha: $ALPHA_LINE"
+  [[ "$BRAVO_LINE" == *"caller=caller-bravo"* && "$BRAVO_LINE" != *"caller=caller-alpha"* ]] \
+    && ok "build progress keeps caller-bravo" \
+    || fail_t "build progress lost/swapped caller-bravo: $BRAVO_LINE"
+fi
+
 # ── 11b. 空 -g pattern 必須被拒（空 ERE alternative 匹配一切 = silent broadening）─
 section "empty -g pattern rejected"
 EMPTY_ERR="$("$IOS_TEST" -g '' --list 2>&1 >/dev/null)" && EMPTY_RC=0 || EMPTY_RC=$?

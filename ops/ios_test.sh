@@ -1448,7 +1448,7 @@ rebuild_test_cache() {
   BUILD_FOR_TESTING_MS=$(( build_end_ms - build_start_ms ))
   local bft_compile_count
   bft_compile_count=$(count_compile_events "$build_log")
-  echo "[ios_test][build-for-testing] finished (${BUILD_FOR_TESTING_MS}ms, ${bft_compile_count} compile events, exit=$build_rc)"
+  echo "[ios_test][build-for-testing] caller=$CALLER finished (${BUILD_FOR_TESTING_MS}ms, ${bft_compile_count} compile events, exit=$build_rc)"
   if [[ "$build_rc" -eq 0 && "$bft_compile_count" -gt 0 ]]; then
     echo "$bft_compile_count" > "$bft_baseline"
   fi
