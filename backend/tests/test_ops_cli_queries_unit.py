@@ -151,6 +151,24 @@ class TestUserConfig:
         payload = json.loads(capsys.readouterr().out)
         assert payload["config"]["auto_link"] == {"enabled": False, "updated_at": 5.0}
 
+    def test_dictionary_review_setting_json_and_text_output(self, tmp_path, monkeypatch, capsys):
+        _seed_user(tmp_path)
+        users_file = tmp_path / "users.json"
+        users_file.write_text(
+            '{"u1": {"config": {"review_mode": {"include_dictionary_cards": true}},'
+            ' "email": "u1@test.com"}}'
+        )
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        q.cmd_user_config(_make_args(uid="u1", json=True))
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["config"]["review_mode"]["include_dictionary_cards"] is True
+
+        q.cmd_user_config(_make_args(uid="u1", json=False))
+        output = capsys.readouterr().out
+        assert "include_dictionary_cards" in output
+        assert "True" in output
+
 
 # ── cmd_world_state ──────────────────────────────────────────────────────
 

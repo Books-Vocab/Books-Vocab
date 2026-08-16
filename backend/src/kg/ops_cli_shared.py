@@ -93,6 +93,7 @@ def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
             "custom_forgot_multiplier": mode.get("custom_forgot_multiplier", 0.45),
             "custom_minimum_interval_hours": mode.get("custom_minimum_interval_hours", 6),
             "custom_maximum_interval_hours": mode.get("custom_maximum_interval_hours", 1440),
+            "include_dictionary_cards": bool(mode.get("include_dictionary_cards", False)),
             "updated_at": mode.get("updated_at"),
         },
         "vocab_ui": {
