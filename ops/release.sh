@@ -145,6 +145,19 @@ release_lock_cleanup() {
   rmdir "$dir" 2>/dev/null || true
 }
 
+api_version_exit_cleanup() {
+  api_version_rollback
+  release_lock_cleanup
+}
+
+api_version_restore_exit_cleanup() {
+  if [[ -n "$RELEASE_LOCK_DIR" ]]; then
+    trap release_lock_cleanup EXIT
+  else
+    trap - EXIT
+  fi
+}
+
 acquire_release_lock() {
   [[ $YES -eq 1 ]] || return 0
   [[ -n "$RELEASE_LOCK_DIR" ]] && return 0
@@ -671,7 +684,9 @@ commit_api_version_transaction() {
     fi
   done
 
-  trap 'api_version_rollback' EXIT
+  # API bump can run inside release's repo lock. Compose the transaction
+  # rollback with that outer cleanup instead of replacing its EXIT trap.
+  trap api_version_exit_cleanup EXIT
   trap 'exit 1' HUP INT TERM
   for ((i=0; i<3; i++)); do
     # Count the current slot before mv so a signal in the tiny post-rename
@@ -682,7 +697,8 @@ commit_api_version_transaction() {
     fi
   done
   API_VERSION_INSTALLED=0
-  trap - EXIT HUP INT TERM
+  trap - HUP INT TERM
+  api_version_restore_exit_cleanup
   api_version_cleanup_temps
 }
 
