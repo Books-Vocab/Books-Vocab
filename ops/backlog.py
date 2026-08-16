@@ -5017,6 +5017,7 @@ def _reanchor_deps() -> _backlog_reanchor.ReanchorDeps:
         sha_pattern=_SHA_RE,
         doc_anchor_pattern=_DOC_VERIFIED_AGAINST_RE,
         git=_git,
+        patch_id_runner=_backlog_reanchor._default_patch_id_runner,
         make_commit_state=make_commit_state,
         iter_entries=_iter_entries,
         entry_path=entry_path,
