@@ -3,6 +3,7 @@
 # 用法: ops/release_bump.sh <api|ios> <new-version> [--yes]（一般經 ops/release.sh bump 呼叫）
 #       ops/release_bump.sh ios --build-only [--yes]（只 +1 CURRENT_PROJECT_VERSION、
 #         MARKETING_VERSION 不動；App Review 被拒同版重送用，經 release.sh bump-build 呼叫）
+#       ops/release_bump.sh ios --build-only --build-number=<n> [--yes]（內部精確目標）
 # 預設 dry-run：只印將改的檔與「舊 → 新」版號，不寫檔；加 --yes 才落地
 # （對齊 release.sh publish / asc.sh set 的 --yes 寫入慣例）。
 set -euo pipefail
@@ -13,12 +14,15 @@ usage() {
 
 YES=0
 MODE=full   # full=marketing+build / build=只 +1 CURRENT_PROJECT_VERSION
+TARGET_BUILD=""
+TARGET_BUILD_SET=0
 POS=()
 for arg in "$@"; do
   case "$arg" in
     -h|--help)    usage; exit 0 ;;
     --yes)        YES=1 ;;
     --build-only) MODE=build ;;
+    --build-number=*) TARGET_BUILD="${arg#*=}"; TARGET_BUILD_SET=1 ;;
     -*)           echo "✗ unknown option: ${arg}" >&2; exit 1 ;;
     *)            POS+=("$arg") ;;
   esac
@@ -29,9 +33,10 @@ KG_ROOT="${KG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"   # 可由 env 覆寫（
 
 if [[ "$MODE" == build ]]; then
   [[ "$COMPONENT" == ios ]] || { echo "✗ --build-only 只支援 ios（api 無 build number；改版號用 ops/release.sh bump api <x.y.z>）" >&2; exit 1; }
-  [[ ${#POS[@]} -le 1 ]] || { echo "✗ 多餘參數：${POS[*]:1}（--build-only 不吃版本號，build number 自動 +1）" >&2; exit 1; }
+  [[ ${#POS[@]} -le 1 ]] || { echo "✗ 多餘參數：${POS[*]:1}（--build-only 不吃版本號，build number 由旗標決定或自動 +1）" >&2; exit 1; }
   VERSION=""   # build-only 不用 marketing 版號
 else
+  (( TARGET_BUILD_SET == 0 )) || { echo "✗ --build-number 只支援 ios --build-only（內部精確 build 目標）" >&2; exit 1; }
   VERSION="${POS[1]:?請提供版本號，例如 1.3.0}"
   [[ ${#POS[@]} -le 2 ]] || { echo "✗ 多餘參數：${POS[*]:2}（用法: ops/release_bump.sh <api|ios> <version> [--yes]）" >&2; exit 1; }
   # 驗證版本號格式
@@ -79,8 +84,8 @@ bump_ios() {
   local cur_mv cur_build new_build
   cur_mv=$(grep -o 'MARKETING_VERSION = [^;]*' "$pbxproj" | head -1 | sed 's/MARKETING_VERSION = //')
   cur_build=$(grep -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$pbxproj" | head -1 | grep -o '[0-9]*')
-  new_build=$((cur_build + 1))
   [[ -n "$cur_mv" && -n "$cur_build" ]] || { echo "✗ 讀不到 app target 當前版號（pbxproj 結構異常）" >&2; exit 1; }
+  new_build=$((cur_build + 1))
 
   echo "將改 ios/BooksAndVocab.xcodeproj/project.pbxproj："
   echo "  MARKETING_VERSION ${cur_mv} → ${VERSION}（project-level；測試 bundle 依繼承跟進）"
@@ -108,7 +113,16 @@ bump_ios_build() {
   cur_mv=$(grep -o 'MARKETING_VERSION = [^;]*' "$pbxproj" | head -1 | sed 's/MARKETING_VERSION = //')
   cur_build=$(grep -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$pbxproj" | head -1 | grep -o '[0-9]*')
   [[ -n "$cur_build" ]] || { echo "✗ 讀不到 app target 當前 build number（pbxproj 結構異常）" >&2; exit 1; }
-  new_build=$((cur_build + 1))
+  if (( TARGET_BUILD_SET )); then
+    [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]] \
+      || { echo "✗ --build-number 必須是非負整數：${TARGET_BUILD}" >&2; exit 1; }
+    local target_dec=$((10#$TARGET_BUILD))
+    (( target_dec > cur_build )) \
+      || { echo "✗ --build-number 必須大於當前 build ${cur_build}：${TARGET_BUILD}" >&2; exit 1; }
+    new_build="$target_dec"
+  else
+    new_build=$((cur_build + 1))
+  fi
 
   echo "將改 ios/BooksAndVocab.xcodeproj/project.pbxproj："
   echo "  CURRENT_PROJECT_VERSION ${cur_build} → ${new_build}（project-level；測試 bundle 依繼承跟進）"

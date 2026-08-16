@@ -412,3 +412,7 @@ receipt：`gate=<verdict> record=… head=<sha8> orch=… gates=N <status 統計
 | `integrate --status --slug <slug>` + `ops/lib/worktree_integration_status.py` | 純唯讀 in-flight integration projector：輸出 picking/conflicted/gate-pending/gate-blocked phase、state/worktree/branch/base/HEAD、picked/skipped/remaining/conflicts、source tips、reservation owner、gate freshness 與恰一個 `next_action`；state/branch/HEAD/source/owner/gate drift 具名回報 rc1，unknown slug、unreadable state/schema 與 mutation flags rc64。查詢不取得 integration lock、不 mkdir、不建立 worktree/verdict，也不隱式 continue/gate/abort。 |
 | `backlog.py acceptance feedback` | `acceptance_cmd_static` 是選填、60 秒內的唯讀 worker feedback；`verify <id> --static-only` 只跑這個子集。`update`、`stage`、`anchor --commit` 結案仍只跑完整 `acceptance_cmd`。 |
 | `worktree_registry.py list` query surface | 在保留無新旗標 `kg.worktree.registry.v1` 完整 payload 的前提下，支援 `--active-only`、`--branch`、`--slug`、`--path` 精確 ledger 篩選；`--fields` 僅接受白名單投影欄位並保留絕對 artifact path；`--summary`／`--conflicts` 輸出 compact 計數或具名 claim 衝突；`--no-liveness` 在篩選後完全跳過 git facts/classifier。未知欄位、空 selector、互斥輸出模式一律 rc64，不回退到整份 ledger。 |
+
+## iOS release control-plane closure
+
+`ops/release.sh resubmit ios` 先透過 `ops/asc.sh builds` 讀取 TestFlight 最新 build，下一顆固定為 `max(local build, ASC latest)+1`；ASC 查詢失敗或非數字時在任何 pbxproj mutation、upload、commit、tag 前 fail-closed。`ops/release_bump.sh ios --build-only --build-number=<n>` 是 resubmit 使用的內部精確目標 primitive；一般 `bump-build ios` 仍維持 local build +1。archive/upload 的 launcher contract 則由 `ops/lib/project_python.sh` 與 `ops/lib/ios_ops_release.sh` 共用 `uv run --python 3.13` 解析。

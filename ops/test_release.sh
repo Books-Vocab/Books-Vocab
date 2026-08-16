@@ -576,7 +576,15 @@ touch "$root/upload.called"
 echo "stub upload invoked" >&2
 exit "${STUB_UPLOAD_EXIT:-0}"
 STUB
-  chmod +x "$fixture/ops/ios_release.sh" "$fixture/ops/release_bump.sh"
+  cat > "$fixture/ops/asc.sh" <<'STUB'
+#!/usr/bin/env bash
+[[ "${1:-}" == builds ]] || exit 64
+if [[ "${ASC_BUILDS_EXIT:-0}" != 0 ]]; then
+  exit "$ASC_BUILDS_EXIT"
+fi
+echo "TestFlight 最新 build number: ${ASC_LATEST_BUILD:-5}"
+STUB
+  chmod +x "$fixture/ops/ios_release.sh" "$fixture/ops/release_bump.sh" "$fixture/ops/asc.sh"
   git init -q -b main "$fixture"
   git -C "$fixture" config user.name "Release Test"
   git -C "$fixture" config user.email "release-test@example.invalid"
@@ -1039,6 +1047,59 @@ grep -q 'CURRENT_PROJECT_VERSION = 5;' "$fx_r/ios/BooksAndVocab.xcodeproj/projec
 echo "$rdry" | grep -q 'ios/2.0.0+6' \
   && ok "resubmit dry-run names the build tag it will create" \
   || fail_t "resubmit dry-run does not preview the build tag: $rdry"
+
+# 20a.1. ASC latest is a remote SoT, not an advisory. If local build 5 has
+# already been followed by TestFlight build 8, the next safe build is 9.
+fx_rd="$TMP5/resubmit-asc-drift"; remote_rd="$TMP5/resubmit-asc-drift.git"
+make_ios_release_fixture "$fx_rd" "$remote_rd"
+head_rd="$(git -C "$fx_rd" rev-parse HEAD)"
+rdry_drift_rc=0
+rdry_drift="$(ASC_LATEST_BUILD=8 bash "$fx_rd/ops/release.sh" resubmit ios 2>&1)" || rdry_drift_rc=$?
+[[ "$rdry_drift_rc" -eq 0 && ! -e "$fx_rd/upload.called" \
+   && "$(grep -c 'CURRENT_PROJECT_VERSION = 5;' "$fx_rd/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 ]] \
+  && ok "resubmit dry-run does not mutate under ASC drift" \
+  || fail_t "ASC-drift dry-run mutated or failed: $rdry_drift"
+echo "$rdry_drift" | grep -q 'ASC TestFlight latest=8' \
+  && ok "resubmit dry-run prints the ASC latest build" \
+  || fail_t "resubmit dry-run hides ASC latest build: $rdry_drift"
+echo "$rdry_drift" | grep -q 'build 5 → 9' && echo "$rdry_drift" | grep -q 'ios/2.0.0+9' \
+  && ok "ASC drift dry-run selects max(local, ASC)+1" \
+  || fail_t "ASC drift dry-run still selects local+1: $rdry_drift"
+
+rdres_drift_rc=0
+rdres_drift="$(ASC_LATEST_BUILD=8 bash "$fx_rd/ops/release.sh" resubmit ios --yes 2>&1)" || rdres_drift_rc=$?
+sealed_rd="$(git -C "$fx_rd" rev-parse HEAD)"
+[[ "$rdres_drift_rc" -eq 0 && -e "$fx_rd/upload.called" \
+   && "$(grep -c 'CURRENT_PROJECT_VERSION = 9;' "$fx_rd/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
+   && "$(git -C "$fx_rd" rev-parse 'refs/tags/ios/2.0.0+9^{commit}')" == "$sealed_rd" \
+   && "$(git --git-dir="$remote_rd" rev-parse -q --verify 'refs/tags/ios/2.0.0+9^{commit}' 2>/dev/null)" == "$sealed_rd" \
+   && -z "$(git -C "$fx_rd" tag -l 'ios/2.0.0+8')" ]] \
+  && ok "ASC drift resubmit uploads and seals build 9 provenance" \
+  || fail_t "ASC drift resubmit did not close build 9 provenance: $rdres_drift"
+
+# ASC failure or malformed latest build must stop before the local bump and
+# irreversible upload; no fallback to local+1 is allowed.
+fx_rbad="$TMP5/resubmit-asc-bad"; remote_rbad="$TMP5/resubmit-asc-bad.git"
+make_ios_release_fixture "$fx_rbad" "$remote_rbad"
+head_rbad="$(git -C "$fx_rbad" rev-parse HEAD)"
+rbad_rc=0
+rbad_out="$(ASC_BUILDS_EXIT=23 bash "$fx_rbad/ops/release.sh" resubmit ios --yes 2>&1)" || rbad_rc=$?
+[[ "$rbad_rc" -ne 0 && "$(git -C "$fx_rbad" rev-parse HEAD)" == "$head_rbad" \
+   && -z "$(git -C "$fx_rbad" tag -l 'ios/2.0.0+*')" \
+   && ! -e "$fx_rbad/upload.called" ]] \
+  && ok "ASC latest lookup failure stops before bump/upload/tag" \
+  || fail_t "ASC latest lookup failure mutated release state: $rbad_out"
+
+fx_rmal="$TMP5/resubmit-asc-malformed"; remote_rmal="$TMP5/resubmit-asc-malformed.git"
+make_ios_release_fixture "$fx_rmal" "$remote_rmal"
+head_rmal="$(git -C "$fx_rmal" rev-parse HEAD)"
+rmal_rc=0
+rmal_out="$(ASC_LATEST_BUILD=not-a-number bash "$fx_rmal/ops/release.sh" resubmit ios --yes 2>&1)" || rmal_rc=$?
+[[ "$rmal_rc" -ne 0 && "$(git -C "$fx_rmal" rev-parse HEAD)" == "$head_rmal" \
+   && ! -e "$fx_rmal/upload.called" ]] \
+  && echo "$rmal_out" | grep -q 'ASC' \
+  && ok "malformed ASC latest build is refused before mutation" \
+  || fail_t "malformed ASC latest build was not fail-closed: $rmal_out"
 
 # 20b. --yes：build +1、marketing 不動、封 ios/2.0.0+6，且不得產生上架 tag。
 rres_rc=0
