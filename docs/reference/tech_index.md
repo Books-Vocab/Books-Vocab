@@ -255,6 +255,8 @@ Live-only worktree gate 例外：修改 `LiveDemoAccessUITests.swift` 時，`wor
 
 ### `worktree_orchestrate.py` parallel round control
 
+Gate 的 shell 路由只適用於 worktree 中仍存在的檔案；diff 刪除的 shell 路徑視為已處理的移除，不建立 syntax、scan 或 untested body gate。
+
 `open --type debug|feat|research` 是可選的顯式分支型別覆寫；省略時仍由 `--intent` 推論，顯式值勝過推論並沿用既有 `debug/`、`feat/`、`research/` 分支命名。
 
 Campaign reservation 是多票並行的 registry control plane：`campaign-reserve` 以 `kg.worktree.campaign.v1` request 在 canonical ledger lock 內重驗 local-main base、coordinator、partition quota、完整 ticket set、structured write sites、blocked/co-land 與既有 claims，通過才原子寫入 `.cache/worktree_campaigns/<campaign-id>.json` 與 registry 的 `campaign_reservations`。child 以 `open --next-backlog --campaign <id> --partition <id>` 從指定 partition 逐票轉成 active claim；普通 `open --next-backlog` 排除所有尚未轉移的 reservation。`read/read` 同 path 可共存；write/write 或 write/read 只有雙方具名不同 symbol 才縮小 collision，未知 path/mode 與未具名 overlap 一律拒絕。CLI 與純 validator 的 machine schema 由 `ops/lib/worktree_campaign.py` 與 `ops/tests/test_worktree_campaign_reservation.py` 共同釘住。
