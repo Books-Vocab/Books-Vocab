@@ -89,6 +89,8 @@ def push_review_states(
             for card in cards_store.all(notebook_id=notebook_id):
                 if card.is_deleted:
                     continue
+                if not getattr(card, "review_eligible", True):
+                    continue
                 cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
         return cards_by_word
 

@@ -502,6 +502,36 @@ def test_dictionary_cards_accept_review_state_updates_when_review_sync_is_enable
     assert updated.review_count == 1
     assert updated.review_eligible is False
 
+def test_legacy_review_state_update_hides_dictionary_cards_across_notebooks(tmp_path):
+    from kg.api_models import ReviewStateEntry
+    from kg.vocab_review import push_review_states
+
+    cards = CardStore(tmp_path / "cards.db")
+    learning = cards.add("invoke", "援引", notebook_id="learning", card_role="learning")
+    dictionary = cards.add(
+        "invoke", "援引", notebook_id="dictionary", card_role="dictionary", review_eligible=False
+    )
+    result = push_review_states(
+        [
+            ReviewStateEntry(
+                word="invoke",
+                review_interval_hours=24,
+                next_review_at="2026-08-06T00:00:00Z",
+                last_reviewed_at="2026-08-05T00:00:00Z",
+                review_count=1,
+                lapse_count=0,
+                review_streak=1,
+                last_review_feedback=1,
+            )
+        ],
+        cards_store=cards,
+        logger=SimpleNamespace(warning=lambda *_args: None),
+    )
+
+    assert result == {"updated": 1, "skipped": 0}
+    assert cards.get(learning.id).review_count == 1
+    assert cards.get(dictionary.id).review_count == 0
+
 def test_all_legacy_vocab_lookup_and_mutation_paths_hide_dictionary_cards(tmp_path):
     from kg.exceptions import NotFoundError
     from kg.vocab_crud import (

@@ -18,12 +18,13 @@ import json
 import sqlite3
 
 import pytest
+from sqlmodel import Session
 
 from kg.cards import CardStore
 from kg.exceptions import ConflictError, NotFoundError
 from kg.notebook import NotebookStore
 from kg.shared_decks.copy import copy_shared_deck
-from kg.shared_decks.store import SharedDeckStore
+from kg.shared_decks.store import SharedDeck, SharedDeckStore
 from ops_helpers import run_ops_cli as _cli
 
 _DECK_CARDS = [
@@ -471,6 +472,26 @@ def test_copy_unknown_deck_raises_notfound(tmp_path):
     user_dir, shared, cards, nbs = _stores(tmp_path)
     with pytest.raises(NotFoundError):
         _copy(shared, cards, nbs, user_dir, deck_id="ghost")
+
+
+def test_public_community_deck_copy_fails_closed_without_sidecar_attribution(tmp_path):
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+    with Session(shared.engine) as session:
+        deck = session.get(SharedDeck, "deck_a")
+        deck.source = "community"
+        deck.owner_id = "owner-1"
+        deck.visibility = "public"
+        session.add(deck)
+        session.commit()
+
+    with pytest.raises(ConflictError, match="Only official decks"):
+        _copy(shared, cards, nbs, user_dir)
+
+    assert list(nbs.all(include_deleted=True, include_staged=True)) == []
+    assert cards.count() == 0
+    assert shared.get_copy_log("u1", "k1") is None
+    assert shared.get("deck_a").download_count == 0
 
 
 # ── 9. router wiring: authed POST end-to-end ───────────────────────

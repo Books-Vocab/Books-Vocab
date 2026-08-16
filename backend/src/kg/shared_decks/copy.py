@@ -256,6 +256,11 @@ def copy_shared_deck(
     deck = shared_store.get(deck_id)
     if deck is None:  # not discoverable → 404 (never leak hidden decks)
         raise NotFoundError("Deck", deck_id)
+    if deck.source != "official":
+        # The current dictionary sidecar contract only has verified official
+        # attribution. Do not materialize a public community deck as if it had
+        # WordNexus's license/attribution until that contract is modeled.
+        raise ConflictError("Only official decks can be copied as dictionary cards")
 
     # Serialize per-user copies (see _user_copy_lock): the copy handler is a SYNC
     # FastAPI endpoint, so two concurrent same-user copies run on separate
