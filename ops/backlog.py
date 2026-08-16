@@ -70,6 +70,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import dispatch_preflight  # noqa: E402
 from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
+import backlog_store as _backlog_store  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
 # nothing outside the standard library, so the sandboxed `uv run --no-project`
@@ -465,7 +466,7 @@ def _matches_imported_historical_identity(
 
 
 def entry_path(store: Path, entry_id: str) -> Path:
-    return Path(store) / f"{entry_id}.json"
+    return _backlog_store.entry_path(store, entry_id)
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +474,7 @@ def entry_path(store: Path, entry_id: str) -> Path:
 # ---------------------------------------------------------------------------
 
 def _dumps(payload: dict) -> str:
-    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    return _backlog_store.dumps(payload)
 
 
 @contextlib.contextmanager
@@ -505,8 +506,7 @@ def _view_lock():
     to fail a mutation that has already landed, so the refresh proceeds unlocked
     rather than not at all — the pre-existing behaviour, no worse than before.
     """
-    lock_path = ROOT / ".cache" / "backlog_view.lock"
-    with exclusive_lock(lock_path, label="backlog-view", fail_closed=False) as acquired:
+    with _backlog_store.view_lock(ROOT) as acquired:
         if not acquired:
             print("backlog: view lock unavailable; refreshing unserialized", file=sys.stderr)
         yield
@@ -524,31 +524,7 @@ def _write_atomic(path: Path, text: str) -> None:
     two concurrent writers raced, the first `os.replace` moved the shared temp
     away, and the second died on `FileNotFoundError` — a crash inside the helper
     whose entire job is to make writing not crash."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # The mode has to be set explicitly, because `mkstemp` creates 0600 and
-    # `os.replace` carries that onto the target. Measured after the switch away from
-    # `write_text`: the 280KB ledger view on disk became `-rw-------` while its
-    # sibling entry files stayed `-rw-r--r--`, and git tracks only the exec bit, so
-    # the diff showed nothing. Every `add` / `update --commit` / `render --commit`
-    # would have quietly demoted whatever it touched. Keep an existing file's mode;
-    # otherwise use the process umask, as an ordinary create would.
-    try:
-        mode = path.stat().st_mode & 0o7777
-    except OSError:
-        umask = os.umask(0)
-        os.umask(umask)
-        mode = 0o666 & ~umask
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp",
-                                    dir=str(path.parent))
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.chmod(tmp, mode)
-        os.replace(tmp, path)
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+    _backlog_store.write_atomic(path, text)
 
 
 @contextlib.contextmanager
@@ -562,15 +538,11 @@ def _entry_lock(path: Path):
     gitignored worktree cache, keyed by the absolute target path, so it never becomes
     backlog data and unrelated entry files remain fully parallel.
     """
-    key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()
-    lock_path = ROOT / ".cache" / "backlog_entry_locks" / f"{key}.lock"
     try:
-        with exclusive_lock(lock_path, label=f"backlog-entry:{path.name}"):
+        with _backlog_store.entry_lock(ROOT, path):
             yield
-    except LockUnavailable as exc:
-        raise BacklogError(
-            f"entry lock unavailable for {path.name}: {exc}; nothing was written"
-        ) from exc
+    except _backlog_store.EntryLockUnavailable as exc:
+        raise BacklogError(f"{exc}; nothing was written") from exc
 
 
 # ---------------------------------------------------------------------------

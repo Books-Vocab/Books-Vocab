@@ -4587,6 +4587,9 @@ def test_two_concurrent_stages_cannot_lose_each_others_row(tmp_path):
     # sweep, which moves the failure from setup time to the middle of a gate.
     shutil.copytree(BACKLOG_PATH.parent / "lib", repo / "ops" / "lib")
     shutil.copy2(
+        BACKLOG_PATH.parent / "backlog_store.py", repo / "ops" / "backlog_store.py"
+    )
+    shutil.copy2(
         BACKLOG_PATH.parent / "task_registry.py", repo / "ops" / "task_registry.py"
     )
     assert (repo / "ops" / "lib" / "streaming_command.py").exists(), (
