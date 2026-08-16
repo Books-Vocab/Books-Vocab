@@ -12,6 +12,13 @@ cleanup() {
   rm -f "$fixture" "$output"
 }
 trap cleanup EXIT
+# Keep this synthetic fixture origin-safe; literal HEAD is valid for reachability
+# but intentionally emits the origin-unreachable warning on a feature worktree.
+verification_anchor="$(git merge-base HEAD origin/main 2>/dev/null || true)"
+if [ -z "$verification_anchor" ]; then
+  echo "feature-boundary LOC fixture requires origin/main; fetch origin before running" >&2
+  exit 1
+fi
 
 write_fixture() {
   body="$1"
@@ -22,7 +29,7 @@ authority: SoT
 update_trigger: manual
 scope:
   - ops/docs_lint.sh
-verified_against: HEAD
+verified_against: $verification_anchor
 -->
 # Synthetic feature-boundary fixture
 
