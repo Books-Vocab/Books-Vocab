@@ -21,7 +21,9 @@ let TIER_COLORS = { dark: {}, light: {} };
 let EDGE_COLORS = {};
 let adjCache = new Map();
 let currentMode = 'dark';
-let W = window.innerWidth, H = window.innerHeight;
+// The holder creates this WKWebView before SwiftUI applies its final frame.
+// Start degenerate so the first real layout pass always initializes the canvas.
+let W = 0, H = 0;
 let backgroundColor = 'transparent';
 let labelColor = '#FFFFFF';
 let labelShadowColor = 'rgba(0,0,0,0.9)';
@@ -68,47 +70,48 @@ function postBridge(obj) {
     }
 }
 
-// ── Retina canvas ─────────────────────────────────────────────────────────────
-function resize() {
+// ── Retina canvas + viewport reconciliation ──────────────────────────────────
+function reconcileGraphViewport(nextWidth = window.innerWidth, nextHeight = window.innerHeight) {
+    const width = Number.isFinite(Number(nextWidth)) ? Math.max(0, Number(nextWidth)) : 0;
+    const height = Number.isFinite(Number(nextHeight)) ? Math.max(0, Number(nextHeight)) : 0;
+    // WKWebView can emit duplicate resize/layout notifications when a tab is
+    // reattached. Do not clear the backing store for an unchanged real size.
+    if (width === W && height === H && W > 0 && H > 0) return false;
+
+    const oldW = W, oldH = H;
+    W = width;
+    H = height;
     const dpr = window.devicePixelRatio || 1;
-    W = window.innerWidth;
-    H = window.innerHeight;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width = W + 'px';
     canvas.style.height = H + 'px';
-    ctx.scale(dpr, dpr);
-}
-window.addEventListener('resize', () => {
-    // Guard BEFORE resize(). Setting canvas.width/height clears the backing
-    // store even when assigning the same value, so running resize() on a
-    // no-op event would blank the thumbnail and no tick would redraw it.
-    // WKWebView emits resize on view hierarchy re-attachment (tab switch,
-    // navigation) with identical dimensions — skip those entirely.
-    const newW = window.innerWidth, newH = window.innerHeight;
-    // Only skip when both old and new dimensions are real. If we're currently
-    // degenerate (W or H is 0 from initial .zero-frame load), any resize —
-    // even to the same reported value — must run so the canvas can recover.
-    if (newW === W && newH === H && W > 0 && H > 0) return;
-    const oldW = W, oldH = H;
-    resize();
-    if (!sim) return;
-    const cx = W / 2, cy = H / 2;
-    // If we transitioned from a zero-sized canvas to a real one (first layout
-    // pass of WKWebView), nodes were spawned near (0,0) and forces target 0,0.
-    // Re-target center forces AND translate existing nodes so the graph lands
-    // in the new center instead of crawling there (thumbnail sim decays fast).
-    const wasDegenerate = oldW < 10 || oldH < 10;
-    if (wasDegenerate) {
-        const dx = cx - oldW / 2;
-        const dy = cy - oldH / 2;
-        nodes.forEach(n => { n.x += dx; n.y += dy; });
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Preserve the settled layout when the card grows or shrinks. Translating
+    // on every actual size change is important: the first non-zero viewport is
+    // often provisional, not just the zero-sized load pass.
+    const dx = (W - oldW) / 2;
+    const dy = (H - oldH) / 2;
+    if (dx !== 0 || dy !== 0) {
+        nodes.forEach(node => { node.x += dx; node.y += dy; });
     }
+
+    if (!sim) return true;
+
+    const cx = W / 2, cy = H / 2;
     sim.force('center', d3.forceCenter(cx, cy));
     const fx = sim.force('x'); if (fx) fx.x(cx);
     const fy = sim.force('y'); if (fy) fy.y(cy);
+    const wasDegenerate = oldW < 10 || oldH < 10;
     sim.alpha(wasDegenerate ? 0.8 : 0.1).restart();
-});
+    scheduleDraw();
+    return true;
+}
+window.reconcileGraphViewport = reconcileGraphViewport;
+function resize() { return reconcileGraphViewport(window.innerWidth, window.innerHeight); }
+window.addEventListener('resize', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 resize();
 
 // ── Node helpers ──────────────────────────────────────────────────────────────
@@ -578,12 +581,6 @@ function postReadyWhenSized() {
 
 function startReadyWatch() {
     if (postReadyWhenSized()) return;
-    if (typeof ResizeObserver !== 'undefined') {
-        const ro = new ResizeObserver(() => {
-            if (postReadyWhenSized()) ro.disconnect();
-        });
-        ro.observe(document.documentElement);
-    }
     // rAF fallback — also covers environments where ResizeObserver doesn't
     // fire for the html element (defensive; ResizeObserver should suffice).
     function tick() {
@@ -593,10 +590,25 @@ function startReadyWatch() {
     requestAnimationFrame(tick);
 }
 
+// Keep observing after ready. The SwiftUI holder can receive a provisional
+// non-zero frame first and its final card frame later.
+function startViewportWatch() {
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+        resize();
+        postReadyWhenSized();
+    });
+    ro.observe(document.documentElement);
+}
+
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    startViewportWatch();
     startReadyWatch();
 } else {
-    document.addEventListener('DOMContentLoaded', startReadyWatch);
+    document.addEventListener('DOMContentLoaded', () => {
+        startViewportWatch();
+        startReadyWatch();
+    });
 }
 </script>
 </body>
