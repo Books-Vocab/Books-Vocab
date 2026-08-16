@@ -5145,9 +5145,11 @@ def test_a_failing_gate_with_no_failure_markers_says_so_rather_than_going_quiet(
     assert "the last line, which is the tail" in result["summary"]
     assert _log_pointer(result["summary"]).is_file()
 
-    # The tail is still shown — but it must NOT be presented under the same heading a
-    # real extraction uses. When the scanner matched nothing, the lines below it are
-    # "the last lines of the log", not "the failure".
+    # "the last lines of the log", not "the failure". Measured cost of conflating the
+    # two (IMP-20260808-8b4690): a gate went red, matched zero markers, and
+    # its tail was an apparently green status line — so a BLOCKED gate displayed
+    # passing lines in the slot an operator reads as evidence, and the operator
+    # (correctly reading a green-looking summary) concluded the red was spurious.
     assert "NOT failure lines" in result["summary"], \
         "a zero-match tail must be labelled as not-evidence: " + result["summary"]
     assert "\n  tail:\n" not in result["summary"], \
@@ -8457,6 +8459,25 @@ def _git_repo_with_anchor_ticket(tmp_path):
                               check=True, capture_output=True, text=True).stdout.strip()
     ticket.write_text("closed\n", encoding="utf-8")
     return repo, base_sha
+
+
+def test_delivery_anchor_identity_accepts_subject_and_paths_without_review_trailer(tmp_path):
+    repo, base_sha = _git_repo_with_anchor_ticket(tmp_path)
+    ticket_path = "docs/runbook/backlog/IMP-20260809-crash.json"
+    subprocess.run(
+        ["git", "add", "--", ticket_path], cwd=repo, check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", MODULE._DELIVERY_ANCHOR_SUBJECT],
+        cwd=repo, check=True,
+    )
+
+    assert MODULE._delivery_anchor_identity(
+        repo, {ticket_path}, base_sha=base_sha,
+    ) == subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
 
 
 def test_delivery_anchor_recovers_commit_when_marker_write_crashes(tmp_path):
