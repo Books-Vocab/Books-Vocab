@@ -10385,6 +10385,7 @@ def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypat
     monkeypatch.setattr(MODULE, "_git", lambda *args, **kwargs: (0, ""))
     tracked = [
         "ios/App.swift",
+        "ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift",
         "ops/ios_ops.sh",
         "ops/ios_build.sh",
         "ops/ios_test.sh",
