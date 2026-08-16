@@ -17,15 +17,15 @@
   "groomed_by": "agent:ticket-factory-full-groom",
   "id": "IMP-20260809-7f9e49",
   "plan": "1. 在 BookshelfCopy 新增閱讀進度 accessibility value formatter，沿用 BookCard 視覺進度的 0 到 1 clamp 與整數百分比口徑，並為 zh-Hant、zh-Hans、en、ja、ko 補齊同一 key。2. BookshelfView 的 book NavigationLink 保留 title、author label 與閱讀提示，另外設定 accessibilityValue 為 formatter 結果；不要把進度塞進 identifier，也不要改可點範圍。3. 新增 BookshelfAccessibilityUITests，啟動既有 bookshelf.with_books_library fixture，定位 label 含 Atomic Habits 的書卡並斷言 value 含 fixture 對應的 72% 與在地化進度語意；同時確認 label 仍含 title、author。4. 不新增 snapshot、不修改 UI World fixture，也不碰 BookCard 的圖片解碼。",
-  "resolution": "",
+  "resolution": "OBSOLETE per explicit user disposition on 2026-08-17; remove from dispatch while preserving history.",
   "schema": "kg.backlog.entry.v1",
   "scope": "一個書架卡片的語音進度值、五語文案與一支精準介面測試。",
   "severity": "low",
   "source": "agent:iOS fanout health audit",
-  "status": "triaged",
+  "status": "wont-fix",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:ios-fanout-health-audit",
-  "verified_evidence": "set -e; rg -Fq \".accessibilityLabel(\\\"\\(book.title), \\(book.author)\\\")\" ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift; ! rg -q \"progress|progression|進度\" ios/BooksAndVocabTests/BookshelfCopyTests.swift"
+  "verdict": "OBSOLETE",
+  "verified_at": "2026-08-17",
+  "verified_by": "user:explicit-obsolete-disposition",
+  "verified_evidence": "Current thread user explicitly declared this ticket obsolete on 2026-08-17"
 }
