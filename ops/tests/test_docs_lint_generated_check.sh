@@ -6,10 +6,10 @@
 # 輸出的關係從未被評估，所以一份 generated 文檔可以腐爛到面目全非而 gate 照樣回綠。
 # 本測試釘住：
 #   1. 產物 == generator 輸出 → rc=0
-#   2. 產物 drift            → rc=1，且**具名該筆 entry**
-#   3. kind=generated 卻沒宣告 check: → rc=1（洞由構造關上，不靠記得）
+#   2. 產物 drift            → docs_lint semantic-block rc=2，且**具名該筆 entry**
+#   3. kind=generated 卻沒宣告 check: → docs_lint semantic-block rc=2（洞由構造關上，不靠記得）
 #   4. stdin canary：check 命令若吃掉 stdin，後續 registry entry 會無聲消失
-#   5. check: 沒指名自己的 path → rc=1（`check: true` 與「複製鄰居的 check」都被擋）
+#   5. check: 沒指名自己的 path → docs_lint semantic-block rc=2（`check: true` 與「複製鄰居的 check」都被擋）
 #   6. 真實 registry 是綠的
 #   7. **真實的 check: 仍然「有能力變紅」** —— 逐筆 kind=generated entry 真的把產物弄髒，
 #      要求 docs_lint 具名那筆 entry 轉紅，然後從備份還原。
@@ -37,6 +37,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# docs_lint classifies registry ERROR as a semantic block; rc=1 belongs to tool failure.
+DOCS_LINT_BLOCK_RC=2
 TMPDIR="$(mktemp -d -t kg_gen_check_XXXXXX)"
 RESTORE_MANIFEST="$TMPDIR/restore.manifest"
 : > "$RESTORE_MANIFEST"
@@ -252,7 +254,7 @@ build_sandbox "$SB2" "hello" yes reference
 printf 'drifted\n' >> "$SB2/docs/snapshot/probe.md"
 LOG2="$TMPDIR/case2.out"
 RC2="$(run_lint "$SB2" "$LOG2")"
-assert_rc "drifted product" 1 "$RC2" "$LOG2"
+assert_rc "drifted product" "$DOCS_LINT_BLOCK_RC" "$RC2" "$LOG2"
 assert_log_contains "drifted product" \
   "ERROR registry — generated.probe 產物與 generator 輸出不一致" "$LOG2"
 
@@ -262,7 +264,7 @@ SB3="$TMPDIR/sb3"
 build_sandbox "$SB3" "hello" no reference
 LOG3="$TMPDIR/case3.out"
 RC3="$(run_lint "$SB3" "$LOG3")"
-assert_rc "generated without check" 1 "$RC3" "$LOG3"
+assert_rc "generated without check" "$DOCS_LINT_BLOCK_RC" "$RC3" "$LOG3"
 # 訊息刻意與既有的「但缺 generator」不同字串，否則這個 grep 會被舊訊息滿足。
 assert_log_contains "generated without check" \
   "ERROR registry — generated.probe kind=generated 但缺 check" "$LOG3"
@@ -274,7 +276,7 @@ build_sandbox "$SB4" "hello" yes bogus_kind
 printf 'drifted\n' >> "$SB4/docs/snapshot/probe.md"
 LOG4="$TMPDIR/case4.out"
 RC4="$(run_lint "$SB4" "$LOG4")"
-assert_rc "canary sandbox" 1 "$RC4" "$LOG4"
+assert_rc "canary sandbox" "$DOCS_LINT_BLOCK_RC" "$RC4" "$LOG4"
 assert_log_contains "canary" \
   "ERROR registry — generated.probe 產物與 generator 輸出不一致" "$LOG4"
 # 少了 `</dev/null`，reference.after 會被 fake_gen 的 cat 吞掉，下面這行就永遠不會出現。
@@ -291,7 +293,7 @@ for mode in nopath truthy; do
   build_sandbox "$SB5" "hello" "$mode" reference
   LOG5="$TMPDIR/case5_$mode.out"
   RC5="$(run_lint "$SB5" "$LOG5")"
-  assert_rc "check[$mode] not naming path" 1 "$RC5" "$LOG5"
+  assert_rc "check[$mode] not naming path" "$DOCS_LINT_BLOCK_RC" "$RC5" "$LOG5"
   assert_log_contains "check[$mode] not naming path" \
     "ERROR registry — generated.probe check 未指名 path" "$LOG5"
   # 反證：不能是被「產物不一致」那條錯誤滿足的。沙盒產物是乾淨的、兩種 check 都 exit 0，
@@ -363,7 +365,7 @@ drift_loop() {
     printf 'KG-DRIFT-PROBE-%s\n' "$$" >> "$artifact"
     LOGD="$TMPDIR/drift_${slug}.out"
     RCD="$(run_lint "$root" "$LOGD")"
-    assert_rc "[$label] $gid drifted artifact" 1 "$RCD" "$LOGD"
+    assert_rc "[$label] $gid drifted artifact" "$DOCS_LINT_BLOCK_RC" "$RCD" "$LOGD"
     assert_log_contains "[$label] $gid drifted artifact" \
       "ERROR registry — $gid 產物與 generator 輸出不一致" "$LOGD"
 
