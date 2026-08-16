@@ -33,12 +33,11 @@ struct VocabularySearchPage {
             .firstMatch
     }
 
-    /// The production list is a LazyVStack. After a facet or query changes,
-    /// SwiftUI may preserve the previous content offset while the new
-    /// projection is already reflected by `visibleCount`. Bring the semantic
-    /// scroll container back toward its top until the requested row is
-    /// actually materialized; this never uses coordinates or a localized
-    /// label.
+    /// Waits for a row after the caller has narrowed the semantic projection
+    /// to place that row near the top. SwiftUI may preserve the previous
+    /// content offset, so swiping down only restores the top before checking
+    /// LazyVStack materialization. This deliberately does not scan an arbitrary
+    /// large result set or depend on localized labels.
     @discardableResult
     func waitForRowMaterialized(
         word: String,
@@ -68,6 +67,23 @@ struct VocabularySearchPage {
 
     var visibleCount: XCUIElement {
         app.descendants(matching: .any).matching(identifier: "vocab.filter.visibleCount").firstMatch
+    }
+
+    private func numericValue(in element: XCUIElement) -> Int? {
+        let digits = element.label.filter(\.isNumber)
+        return Int(digits)
+    }
+
+    /// Parses the localized count label as an integer, so `1` cannot
+    /// accidentally match `517` through substring assertions.
+    var visibleCountValue: Int? {
+        numericValue(in: visibleCount)
+    }
+
+    var reviewCTAValue: Int? { numericValue(in: reviewCTA) }
+
+    func reviewStateCount(_ state: String, labelPrefix: String) -> Int? {
+        numericValue(in: reviewStateOption(state, labelPrefix: labelPrefix))
     }
 
     var reviewCTA: XCUIElement {
