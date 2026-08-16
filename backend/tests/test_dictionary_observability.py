@@ -69,8 +69,8 @@ def test_lookups_record_outcome_and_latency_for_ops_observability(tmp_path):
     assert {e["provider"] for e in events} == {entry.provider}
     assert all(isinstance(e["duration_ms"], int) and e["duration_ms"] >= 0 for e in events)
 
-def test_stale_fallback_and_cache_only_block_are_recorded_distinctly(tmp_path):
-    from kg.exceptions import ExternalServiceError, ForbiddenError
+def test_stale_fallback_is_recorded_for_entry_lookup(tmp_path):
+    from kg.exceptions import ExternalServiceError
     from kg.lexical import LexicalCache, LexicalProviderCapabilities, LexicalService
 
     entry = _lexical_entry()
@@ -102,19 +102,8 @@ def test_stale_fallback_and_cache_only_block_are_recorded_distinctly(tmp_path):
         entry.provider, entry.entry_key, target_language="zh-Hant"
     ).cache_status == "stale"
 
-    empty_path = tmp_path / "empty_cache.db"
-    blocked = LexicalService(provider=_FailingProvider(), cache=LexicalCache(empty_path))
-    with pytest.raises(ForbiddenError):
-        blocked.get_entry(
-            entry.provider,
-            entry.entry_key,
-            target_language="zh-Hant",
-            allow_provider=False,
-        )
-
     assert [e["outcome"] for e in _lookup_events(cache_path)] == ["stale"]
     assert [e["operation"] for e in _lookup_events(cache_path)] == ["entry"]
-    assert [e["outcome"] for e in _lookup_events(empty_path)] == ["blocked"]
 
 def test_per_user_throttle_refusals_are_recorded_for_ops(isolated_api, monkeypatch):
     """User-facing 429s come from our own limiter, not the provider's — an ops

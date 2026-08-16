@@ -165,14 +165,8 @@ class LexicalService:
         entry_key: str,
         *,
         target_language: str,
-        allow_provider: bool = True,
     ) -> LexicalLookupResult:
-        """Resolve one entry. ``allow_provider=False`` serves cache only.
-
-        Cache-only mode exists for saga resumption while the dictionary rollout
-        flag is off: an interrupted materialization must be allowed to finish,
-        but a rolled-back deployment must still never reach the provider.
-        """
+        """Resolve one entry from cache or the configured provider."""
         if provider != self.provider.provider_id:
             raise NotFoundError("Dictionary provider", provider)
         try:
@@ -189,7 +183,6 @@ class LexicalService:
                 provider,
                 entry_key,
                 target_language=target_language,
-                allow_provider=allow_provider,
             ),
         )
 
@@ -199,19 +192,12 @@ class LexicalService:
         entry_key: str,
         *,
         target_language: str,
-        allow_provider: bool,
     ) -> LexicalLookupResult:
         cached = self.cache.get_entry(provider, entry_key)
         if cached is not None and cached.fresh and cached.entry is not None:
             return LexicalLookupResult(
                 entry=cached.entry, cache_status="fresh", provider_called=False
             )
-        if not allow_provider:
-            if cached is not None and cached.entry is not None:
-                return LexicalLookupResult(
-                    entry=cached.entry, cache_status="stale", provider_called=False
-                )
-            raise ForbiddenError("Dictionary lookup is disabled")
         try:
             self._reserve_provider_request()
         except ExternalServiceError:
