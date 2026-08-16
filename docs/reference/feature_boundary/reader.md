@@ -111,7 +111,7 @@ EPUB/TXT/MD 走 `ReaderView`（Readium），`.pdf` 走獨立 `PDFReaderView`（`
 
 Reader（與 Podcast 字幕）的高亮集合**只由三個條件決定**：未 delete ∧ 未 archive ∧ `readerHidden == false`。
 
-- **禁止用 `cardRole` 推導高亮**。字典卡（`cardRole == "dictionary"`）預設 `readerHidden == false`，因此**預設參與高亮**，即使它永不進複習與統計。三個維度（`cardRole` / `reviewEligible` / `readerHidden`）彼此獨立，見 `docs/reference/card_format.md`。
+- **禁止用 `cardRole` 推導高亮**。字典卡（`cardRole == "dictionary"`）預設 `readerHidden == false`，因此**預設參與高亮**；複習則預設排除，Settings 開啟字典卡納入複習後才進 queue/stats。三個維度（`cardRole` / `reviewEligible` / `readerHidden`）彼此獨立，見 `docs/reference/card_format.md`。
 - 高亮集合的重算觸發改由 `VocabularyHighlightSignature.make(entries:notebookId:)` 驅動（`ReaderView.swift`）——只數 `allVocabulary.count` 會漏掉「數量沒變但 eligibility 變了」的情況（例如切 `readerHidden` 或 archive），造成高亮與資料脫節。
 - 使用者切換單張卡的高亮走 `PATCH /api/cards/{id}/reader-visibility`，client 端經 outbox 補送（見 `docs/reference/sync_lifecycle.md`）。
 

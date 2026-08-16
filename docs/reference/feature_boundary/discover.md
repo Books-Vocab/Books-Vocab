@@ -16,7 +16,8 @@ verified_against: 105318f5d518
 > —— 那是 EPUB/PDF 書庫（Bookshelf），命名碰撞會混淆。
 >
 > **Phase 1–2（已落地）**：guest 瀏覽 / 預覽官方策展牌組（Phase 1）＋**複製官方牌組
-> 進私人 Notebook 即時複習**（Phase 2）。`KGFeatureFlags.exploreEnabled` **自 2026-08-05
+> 進私人 Notebook 即時可見**（Phase 2）。複製結果是 `card_role=dictionary` 字典卡，預設不進
+> 複習；Settings 開啟字典卡納入複習後才進 review queue/stats。`KGFeatureFlags.exploreEnabled` **自 2026-08-05
 > 起恆為 `true`**（Release 亦曝光）——前置條件皆已滿足：`/api/decks` 在生產、官方目錄
 > 已注入實質內容、browse/preview/copy telemetry 齊備。
 > publish / rate / report 與 ShareLink deep-link 分享一律 Phase 2/3 fast-follow，見「範圍邊界」。
@@ -43,7 +44,7 @@ verified_against: 105318f5d518
 | 檔案 | 說明 |
 |------|------|
 | `Services/SharedDeckCatalogService.swift` | `final class SharedDeckCatalogService` = `PodcastSyncService` 1:1 analog。`optionallyAuthedData(from:kgService:session:)` guest browse——**無 token 或 token 已過期皆放行，且不觸發 session invalidation**（取 token 走 `KGServing.authTokenWithoutInvalidation()` 這個零副作用入口，**不是** `currentAuthToken()`：後者對過期 token 會先 `sessionInvalidator.logout` 再 throw，`try?` 吞得掉錯誤卻吞不掉副作用，於是逛公開牌組會把人登出 —— APP-20260805-0049ac）。`session:` 帶預設值，僅供測試注入 URLProtocol 探針；`fetchDeckList(query:)` / `fetchDeckDetail(deckId:)` / `fetchDeckCards(deckId:cursor:limit:)`；`syncAll(context:)` **全目錄 cursor 分頁**（跟 `nextCursor` 抓完整個 catalog 再 reconcile；**截斷對稱化**——分頁被截斷時 skip reconcile，partial set 絕不驅動 mass-delete）→ upsert + `reconcileLocalState(serverSummaries:context:)` **empty-response mass-delete guard**（空 server list 視為非權威、不下 tombstone）。SwiftData fetch/reconcile/save 失敗回傳 typed `SyncFailure.storage(...)`、rollback 並不發成功同步通知；caller 必須呈現 error/partial，不得轉成 empty/new row。nested `BrowseQuery`（filter → `URLQueryItem`）。測試 `SharedDeckCatalogServiceTests` / `SharedDeckModelIsolationTests` / `SharedDeckWireDecodeTests`。 |
-| `Services/KGService+Decks.swift` | copy 傳輸擴充。`copyDeck(deckId:idempotencyKey:notebookName:)` 打 `POST /api/decks/{id}/copy`（`DeckCopyResponse`）；`pullCopiedDeck(...)` post-copy **notebook-first targeted pull**——複製後只針對新 notebook + 其卡做 incremental pull，讓卡片與新本即時可複習（既有 synced server rows，不進 outbox）。測試 `SharedDeckCopyPullTests`。 |
+| `Services/KGService+Decks.swift` | copy 傳輸擴充。`copyDeck(deckId:idempotencyKey:notebookName:)` 打 `POST /api/decks/{id}/copy`（`DeckCopyResponse`）；`pullCopiedDeck(...)` post-copy **notebook-first targeted pull**——複製後只針對新 notebook + 其卡做 incremental pull，讓卡片與新本即時可見（複習納入由 `includeDictionaryCards` 控制；既有 synced server rows，不進 outbox）。測試 `SharedDeckCopyPullTests`。 |
 
 UI World materialization 另以 `SharedDeckCatalogService.upsertDeck(summary:installedAsset:)` 寫入 canonical asset provenance；Release remote summary 沒有 canonical asset path 時仍以 `coverPattern` 作 procedural fallback。若已有 canonical projection 但 path/SHA/bytes 不完整、bytes/SHA 驗證失敗或 image decode 失敗，Explore cover fail-closed，不回 procedural pattern。
 
@@ -83,7 +84,7 @@ UI World materialization 另以 `SharedDeckCatalogService.upsertDeck(summary:ins
 |------|-------|------|
 | guest 瀏覽 / 預覽官方牌組（唯讀）| 1 | ✅ 已落地 |
 | Explore section Release 曝光 | 2 | ✅ 2026-08-05 flip（`exploreEnabled` 不再 `#if DEBUG`）|
-| 複製官方牌組進私人 Notebook（copy）+ destination picker + 即時複習 | 2 | ✅ 已落地 |
+| 複製官方牌組進私人 Notebook（copy）+ destination picker + 即時可見；字典卡複習 opt-in | 2 | ✅ 已落地 |
 | ShareLink deep-link 分享 | 2 | ⏳ fast-follow（deferred、out-of-scope）——需 Apple portal Associated Domains + AASA 部署，屬獨立基建決策 |
 | `deckBrowsed` / `deckPreviewed` / `deckCopyCompleted` / `deckCopyFailed` telemetry 事件 | 2 | ✅ 已落地（`AppAnalytics` + `SessionMetrics` 聚合 + copy 路徑 Sentry breadcrumb）|
 | Card / Notebook provenance stamp（`sourceSharedDeckId/Version` + `source_shared_card_guid`）| 2 | ✅ 本切片（copy 落地即 stamp）|
