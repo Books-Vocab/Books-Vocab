@@ -885,7 +885,6 @@ final class SettingsCoordinator: SettingsCoordinating {
 #endif
     }
 
-#if DEBUG
     /// `SettingsView` can materialize its `@State` before the app's launch
     /// fixture router activates the requested Settings fixture. Resolve the
     /// fixture service at the first real sync action as well as in `init`, so
@@ -895,6 +894,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// activation is observable, re-use the canonical fixture router here.
     @MainActor
     private func resolveSettingsSyncServiceIfNeeded() -> SettingsSyncService? {
+#if DEBUG
         guard settingsSyncFixtureSummary == nil else {
             return settingsSyncService
         }
@@ -925,8 +925,12 @@ final class SettingsCoordinator: SettingsCoordinating {
         )
         settingsSyncFixtureEvidenceSessionID = transport.evidenceSessionID
         return settingsSyncService
-    }
+#else
+        // Release has no fixture-only state; preserve dependency injection for
+        // tests while keeping production on the caller-provided KG service.
+        return settingsSyncService
 #endif
+    }
 
 #if DEBUG
     private var syncPerfMarks: [SettingsSyncPerfRecord] = []
