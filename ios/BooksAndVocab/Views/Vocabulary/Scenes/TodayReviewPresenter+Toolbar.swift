@@ -40,6 +40,7 @@ struct ReviewToolbarModel: Equatable {
 struct ReviewTopBar: View, Equatable {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    @Namespace private var glassNamespace
 
     let model: ReviewTopBarModel
     let onShuffle: () -> Void
@@ -63,77 +64,111 @@ struct ReviewTopBar: View, Equatable {
 
     var body: some View {
         HStack(alignment: .center, spacing: AppSpacing.s3) {
-            Text(model.progressText)
-                .font(appSkin.typography.monoLabel)
-                .foregroundStyle(appSkin.palette.tertiaryText)
-                .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
-                .background(
-                    AppRoundedRect(roundness: AppRoundness.pill)
-                        .fill(appSkin.palette.mutedFill)
-                )
-                .accessibilityIdentifier("todayReview.progressLabel")
+            AppFloatingChrome(spacing: AppSpacing.s2) {
+                Text(model.progressText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+                    .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
+                    .accessibilityIdentifier("todayReview.progressLabel")
+                    .appFloatingChromeItem(
+                        union: "todayReview.leadingChrome",
+                        in: glassNamespace,
+                        interactive: false
+                    )
 
-            Button {
-                guard model.isCardInteractive else { return }
-                onShuffle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "shuffle")
-                        .font(appSkin.typography.iconTiny)
-                    Text(TodayReviewShortcutCatalog.shuffleLabel)
-                        .font(appSkin.typography.caption)
+                AppFloatingChromeButton(
+                    accessibilityLabel: TodayReviewShortcutCatalog.shuffleLabel,
+                    action: {
+                        guard model.isCardInteractive else { return }
+                        onShuffle()
+                    }
+                ) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "shuffle")
+                            .font(appSkin.typography.iconTiny)
+                        Text(TodayReviewShortcutCatalog.shuffleLabel)
+                            .font(appSkin.typography.caption)
+                    }
+                    .foregroundStyle(model.canShuffle ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
+                    .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+                    .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
                 }
-                .foregroundStyle(model.canShuffle ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
-                .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
-                .background(
-                    AppRoundedRect(roundness: AppRoundness.pill)
-                        .fill(appSkin.palette.mutedFill)
+                .disabled(!model.canShuffle)
+                .appFloatingChromeItem(
+                    union: "todayReview.leadingChrome",
+                    in: glassNamespace
                 )
             }
-            .buttonStyle(.plain)
-            .disabled(!model.canShuffle)
 
             Spacer()
 
-            VocabChromeIconButton(
-                systemImage: model.isAutoPlaying ? "play.circle.fill" : "play.circle",
-                tone: autoplayTone,
-                label: L10n.string(model.isAutoPlaying ? "vocab.chromeIcon.todayReview.autoplay.on" : "vocab.chromeIcon.todayReview.autoplay.off"),
-                identifier: "todayReview.autoplayToggle",
-                action: onToggleAutoPlay
-            )
-            .disabled(!isAutoplayActionable)
-            // 穩定 identifier:此鍵的 a11y label 會隨播放狀態在「開啟/關閉自動播放」
-            // 之間翻轉,UI 測試若靠 label 選取就會在狀態切換的那一刻選不到。
-            // Layout editor sits between autoplay and close. Gated on the same
-            // `isCardInteractive` lock the rest of the chrome uses, so it cannot
-            // open mid-fling / mid-advance.
-            VocabChromeIconButton(
-                systemImage: "rectangle.split.2x1",
-                label: L10n.string("todayReview.layoutEditor.open"),
-                identifier: "todayReview.layoutEditor.open",
-                action: {
-                    guard model.isCardInteractive else { return }
-                    onAdjustLayout()
+            AppFloatingChrome(spacing: AppSpacing.s2) {
+                AppFloatingChromeButton(
+                    accessibilityLabel: L10n.string(model.isAutoPlaying ? "vocab.chromeIcon.todayReview.autoplay.on" : "vocab.chromeIcon.todayReview.autoplay.off"),
+                    accessibilityIdentifier: "todayReview.autoplayToggle",
+                    action: onToggleAutoPlay
+                ) {
+                    Image(systemName: model.isAutoPlaying ? "play.circle.fill" : "play.circle")
+                        .font(appSkin.typography.iconMedium)
+                        .foregroundStyle(autoplayTone ?? appSkin.palette.secondaryText)
                 }
-            )
+                .disabled(!isAutoplayActionable)
+                .appFloatingChromeItem(
+                    union: "todayReview.trailingChrome",
+                    in: glassNamespace
+                )
+                // 穩定 identifier:此鍵的 a11y label 會隨播放狀態在「開啟/關閉自動播放」
+                // 之間翻轉,UI 測試若靠 label 選取就會在狀態切換的那一刻選不到。
+                // Layout editor sits between autoplay and close. Gated on the same
+                // `isCardInteractive` lock the rest of the chrome uses, so it cannot
+                // open mid-fling / mid-advance.
+                AppFloatingChromeButton(
+                    accessibilityLabel: L10n.string("todayReview.layoutEditor.open"),
+                    accessibilityIdentifier: "todayReview.layoutEditor.open",
+                    action: {
+                        guard model.isCardInteractive else { return }
+                        onAdjustLayout()
+                    }
+                ) {
+                    Image(systemName: "rectangle.split.2x1")
+                        .font(appSkin.typography.iconMedium)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                }
+                .appFloatingChromeItem(
+                    union: "todayReview.trailingChrome",
+                    in: glassNamespace
+                )
 
-            #if targetEnvironment(macCatalyst)
-            VocabChromeIconButton(
-                systemImage: "questionmark.circle",
-                label: L10n.string("vocab.chromeIcon.todayReview.help"),
-                action: onToggleHelp
-            )
-            #endif
+                #if targetEnvironment(macCatalyst)
+                AppFloatingChromeButton(
+                    accessibilityLabel: L10n.string("vocab.chromeIcon.todayReview.help"),
+                    action: onToggleHelp
+                ) {
+                    Image(systemName: "questionmark.circle")
+                        .font(appSkin.typography.iconMedium)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                }
+                .appFloatingChromeItem(
+                    union: "todayReview.trailingChrome",
+                    in: glassNamespace
+                )
+                #endif
 
-            VocabChromeIconButton(
-                systemImage: "xmark",
-                label: L10n.string("vocab.chromeIcon.todayReview.close"),
-                identifier: "todayReview.close",
-                action: onClose
-            )
+                AppFloatingChromeButton(
+                    accessibilityLabel: L10n.string("vocab.chromeIcon.todayReview.close"),
+                    accessibilityIdentifier: "todayReview.close",
+                    action: onClose
+                ) {
+                    Image(systemName: "xmark")
+                        .font(appSkin.typography.iconMedium)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                }
+                .appFloatingChromeItem(
+                    union: "todayReview.trailingChrome",
+                    in: glassNamespace
+                )
+            }
         }
         .padding(.horizontal, TodayReviewMetrics.topBarHorizontalInset)
         .padding(.top, TodayReviewMetrics.topBarTopInset)
