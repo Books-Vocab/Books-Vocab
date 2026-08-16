@@ -131,15 +131,65 @@ ensure_release_primary_clean() {
 ${dirty}"
 }
 
+# release 是跨 local git + ASC 的長交易；iOS archive 自己的 shlock 只保護 Xcode
+# 資源，不能防止兩個 release invocation 同時 bump / upload 同一個 tuple。用 git
+# dir 下的 mkdir 做 primary-local mutex：取得失敗就停，不猜 stale owner，也不讓
+# 第二個 invocation 靠 candidate 檢查的偶然順序來「看似」去重。
+RELEASE_LOCK_DIR=""
+
+release_lock_cleanup() {
+  local dir="$RELEASE_LOCK_DIR"
+  [[ -n "$dir" ]] || return 0
+  RELEASE_LOCK_DIR=""
+  rm -f "$dir/owner"
+  rmdir "$dir" 2>/dev/null || true
+}
+
+acquire_release_lock() {
+  [[ $YES -eq 1 ]] || return 0
+  [[ -n "$RELEASE_LOCK_DIR" ]] && return 0
+  local dir owner
+  dir="$(git -C "$ROOT" rev-parse --git-path kg-release.lock)"
+  [[ "$dir" = /* ]] || dir="$ROOT/$dir"
+  if mkdir "$dir" 2>/dev/null; then
+    printf 'pid=%s\nroot=%s\n' "$$" "$ROOT" >"$dir/owner"
+    RELEASE_LOCK_DIR="$dir"
+    trap release_lock_cleanup EXIT
+    echo "  release lock acquired: ${dir}" >&2
+    return 0
+  fi
+  owner=""
+  [[ -f "$dir/owner" ]] && owner="$(<"$dir/owner")"
+  err "release lock 已被占用：${dir}${owner:+（${owner//$'\n'/; }）}；拒絕平行 release/resubmit/finalize。確認持有者已退出後再重試。"
+}
+
+ios_remote_tag_commit() {
+  local tag="$1" refs rc=0
+  refs="$(git -C "$ROOT" ls-remote origin "refs/tags/${tag}" "refs/tags/${tag}^{}" 2>/dev/null)" || rc=$?
+  (( rc == 0 )) || err "無法查詢 origin tag ${tag}（git ls-remote exit ${rc}）；fail-closed。"
+  awk -v ref="refs/tags/${tag}" '
+    $2 == ref "^{}" { peeled = $1 }
+    $2 == ref { direct = $1 }
+    END { if (peeled != "") print peeled; else if (direct != "") print direct }
+  ' <<<"$refs"
+}
+
+ios_assert_remote_main_head() {
+  local expected="$1" remote_main rc=0
+  remote_main="$(git -C "$ROOT" ls-remote --heads origin main 2>/dev/null)" || rc=$?
+  (( rc == 0 )) || err "無法查詢 origin/main（git ls-remote exit ${rc}）；fail-closed。"
+  remote_main="$(awk 'NR==1{print $1}' <<<"$remote_main")"
+  [[ "$remote_main" == "$expected" ]] \
+    || err "origin/main=${remote_main:-<missing>} ≠ candidate ${expected}；拒絕繼續 finalize。"
+}
+
 # irreversible upload 前只做存在性 collision check。正式 tag 的 commit identity
 # 在 candidate commit 之後才知道；因此這個 preflight 不把既有 tag 誤判成可冪等。
 assert_ios_build_tag_unused() {
-  local tag="$(ios_build_tag "$1" "$2")" existing remote_tag remote_rc
+  local tag="$(ios_build_tag "$1" "$2")" existing remote_tag
   existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
   [[ -z "$existing" ]] || err "${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")；在 upload 前拒絕重用 build tag。"
-  remote_rc=0
-  remote_tag="$(git -C "$ROOT" ls-remote origin "refs/tags/${tag}" 2>/dev/null)" || remote_rc=$?
-  (( remote_rc == 0 )) || err "無法檢查 origin 上的 ${tag}（git ls-remote exit ${remote_rc}）；在 upload 前 fail-closed。"
+  remote_tag="$(ios_remote_tag_commit "$tag")"
   [[ -z "$remote_tag" ]] || err "origin 上已存在 ${tag}；在 upload 前拒絕重用 build tag。"
 }
 
@@ -248,10 +298,11 @@ ios_wait_for_exact_asc_build() {
 cmd_finalize_ios() {
   local version="${1:?用法: release.sh finalize ios <x.y.z> <build> [--yes]}"
   local build="${2:-}" expected_sha="${3:-}" branch curver curbuild head subject tag existing
-  local asc_json asc_id asc_state remote_tag
+  local asc_json asc_id asc_state remote_tag remote_existing
   valid_semver "$version" || err "版本號格式錯誤：${version}（需 x.y.z）"
   [[ "$build" =~ ^[0-9]+$ ]] || err "build 必須是非負整數：${build:-<empty>}"
   [[ $# -le 3 ]] || err "finalize ios 多餘參數：${*:4}"
+  acquire_release_lock
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" == main ]] || err "finalize ios 須在 main 執行（目前 ${branch}）"
   ensure_release_primary_clean
@@ -269,6 +320,10 @@ cmd_finalize_ios() {
   existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
   [[ -z "$existing" || "$existing" == "$head" ]] \
     || err "${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，不是 candidate ${head:0:12}"
+  ios_assert_remote_main_head "$head"
+  remote_existing="$(ios_remote_tag_commit "$tag")"
+  [[ -z "$remote_existing" || "$remote_existing" == "$head" ]] \
+    || err "origin ${tag} 已存在且指向 ${remote_existing:0:12}，不是 candidate ${head:0:12}；拒絕 finalize"
   asc_json="$(ios_wait_for_exact_asc_build "$version" "$build")"
   asc_id="$(jq -r '.id' <<<"$asc_json")"
   asc_state="$(jq -r '.processingState' <<<"$asc_json")"
@@ -285,9 +340,15 @@ cmd_finalize_ios() {
   else
     echo "  ${tag} 已指向 candidate ${head:0:12}，tag 建立步驟冪等略過"
   fi
-  git -C "$ROOT" push origin main "$tag" \
-    || err "finalize tag/push 失敗；candidate 與 ASC proof 保留，可安全重跑 finalize"
-  remote_tag="$(git -C "$ROOT" ls-remote origin "refs/tags/${tag}" | awk 'NR==1{print $1}')"
+  if [[ -z "$remote_existing" ]]; then
+    git -C "$ROOT" push --atomic origin main "$tag" \
+      || err "finalize atomic tag/main push 失敗；candidate 與 ASC proof 保留，可安全重跑 finalize"
+  else
+    git -C "$ROOT" push origin main \
+      || err "finalize main push 失敗；candidate 與 ASC proof 保留，可安全重跑 finalize"
+  fi
+  ios_assert_remote_main_head "$head"
+  remote_tag="$(ios_remote_tag_commit "$tag")"
   [[ "$remote_tag" == "$head" ]] \
     || err "tag push 回報成功但 origin ${tag}=${remote_tag:-<missing>} ≠ ${head}"
   echo "✓ finalize ios ${version} build ${build}：ASC exact verified + ${tag} → ${head:0:12} + origin/main/tag"
@@ -838,6 +899,7 @@ cmd_resubmit() {
   [[ $# -le 1 ]] || err "多餘參數：${*:2}（resubmit 不吃版本號——版號不變才叫重送）"
 
   local branch curver curbuild tf_latest newbuild
+  acquire_release_lock
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" == main ]] \
     || err "resubmit 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
@@ -952,6 +1014,7 @@ cmd_release() {
   esac
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
+  acquire_release_lock
   if [[ "$comp" == ios ]]; then
     guard_ios_new_version "$v"
   fi
