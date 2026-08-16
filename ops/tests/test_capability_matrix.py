@@ -68,6 +68,8 @@ def test_json_schema_exposes_tiers_and_surfaces(capsys):
         "docs.impact",
         "docs.lint.gate",
         "docs.registry.coverage",
+        "context.route",
+        "skill.route",
         "release.status",
         "release.publish",
         "podcast.ops.status",

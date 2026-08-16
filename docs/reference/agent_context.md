@@ -9,6 +9,9 @@ scope:
   - .claude/commands/
   - docs/sop/review_discipline.md
   - docs/registry.yml
+  - ops/context_plane.json
+  - ops/context_route.py
+  - ops/skill_route.py
 verified_against: 7046dd9bf
 -->
 # KG Agent Context Index
@@ -21,11 +24,14 @@ verified_against: 7046dd9bf
 每個 session 依序處理：
 
 1. **Global kernel**：遵守根 `CLAUDE.md` 的安全、TDD、驗證、worktree、receipt、bounded review
-   與並行協作硬邊界。這些是所有角色共用的約束，不因角色縮減。
+   與並行協作硬邊界。這些是所有角色共用的約束，不因角色縮減；需要切片時跑
+   `./ops/context_route.py render --role <role> --json`，不要自行讀整份 sibling skill。
 2. **Role profile**：讀下表中自己那一列，以及該列的 assigned ticket／task brief；不預載兄弟角色、
-   全產品版圖或整份 delivery 歷史。
+   全產品版圖或整份 delivery 歷史。section 缺失、重複或 source/HEAD 在讀取期間變動時，loader
+   必須拒絕，不得 fallback 到全文。
 3. **Authority lookup**：遇到未知才沿「升級索引」讀下一層；不要用記憶、archive、snapshot 或
-   另一個 agent 的散文取代 SoT。
+   另一個 agent 的散文取代 SoT。`docs/registry.yml` 仍是 owner／trigger／source authority；
+   context route manifest 只負責 slice 與 route selection。
 4. **Stop / escalate**：仍無法判定時，保留目前工作狀態，依下方 escalation contract 交給正確的
    owner；不可用猜測擴大 scope。
 

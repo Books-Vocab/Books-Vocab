@@ -47,6 +47,8 @@ SURFACES = [
     Surface("docs.impact", "./ops/docs_impact.py", "./ops/docs_impact.py --since <base> --json", "observer", "repo-read", "repo", "docs registry impact candidates for changed files"),
     Surface("docs.lint.gate", "./ops/docs_lint.sh", "./ops/docs_lint.sh", "observer", "repo-read", "repo", "daily docs registry and changed-docs gate"),
     Surface("docs.registry.coverage", "./ops/docs_registry_coverage.py", "./ops/docs_registry_coverage.py --json", "observer", "repo-read", "repo", "docs registry coverage audit"),
+    Surface("context.route", "./ops/context_route.py", "./ops/context_route.py route --role <role> --json", "observer", "repo-read", "repo", "resolve and render bounded role context slices"),
+    Surface("skill.route", "./ops/skill_route.py", "./ops/skill_route.py route --intent <intent> --json", "observer", "repo-read", "repo", "resolve one primary skill plus typed dependencies"),
     Surface("release.status", "./ops/release.sh", "./ops/release.sh status", "observer", "repo-read", "repo", "api/iOS release status and suggested version bump"),
     Surface("release.changelog", "./ops/release.sh", "./ops/release.sh changelog <api|ios>", "observer", "repo-read", "repo", "release changelog preview"),
     Surface("release.bump", "./ops/release.sh", "./ops/release.sh bump <api|ios> <x.y.z> --yes", "editor", "repo-write", "repo", "local version-file bump (dry-run without --yes)"),

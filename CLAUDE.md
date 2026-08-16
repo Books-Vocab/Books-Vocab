@@ -126,8 +126,8 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## 對話啟動流程
 
-1. **掃描 skill 觸發條件** — 對照使用者第一句話,凡符合已註冊 skill 的觸發描述,立即 `Skill()` 載入。「不確定是否符合」= 符合；若任務是新對話接手、找入口、跨 docs/ops/iOS/backend/podcast/release,優先觸發 `kg-router`。
-2. **判定角色視野** — Ticket Factory／Delivery Team Integrator／Delivery Child／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。
+1. **先做 typed skill routing** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，跑 `./ops/skill_route.py route --intent <intent> --json`；自然語言只產生候選，不得把所有命中描述的 skill 一起載入。「不確定」先停在 `kg-router` bootstrap，再沿 route 的 required dependency 查 authority。
+2. **判定角色視野** — Ticket Factory／Delivery Team Integrator／Delivery Child／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。實際 section 走 `./ops/context_route.py render --role <role> --json`，缺 section 直接 fail-closed。
 3. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 4. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
 5. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
@@ -143,26 +143,26 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 - **coverage debt**:`./ops/docs_registry_coverage.py` 看哪些 linted docs 尚未進 registry,並分成 `active_unregistered`(應補進控制面)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt);`--strict` 只卡 active-doc 覆蓋 debt,不等同日常 gate。
 - **同步流程權威**:背景 doc-sync agent 讀 `docs/sop/doc_sync.md`;人工維護/狗食流程讀 `docs/sop/docs_dogfood.md`。
 
-## Skill 系統(KG 專屬 10 個 + plugin 全域可用)
+## Skill 系統（machine-routed）
 
-| Skill | 觸發 | 用途 |
-|-------|------|------|
-| `kg-router` | 新對話接手 / 找入口 / 跨 docs、ops、iOS、backend、podcast、release 的任務 | 冷啟動路由：讀 capability matrix / docs registry / product+tech index,再載入最小必要 skill |
-| `kg-agent-context` | Ticket Factory／Delivery Team Integrator／Delivery Child／review service 或未知 context | 依角色 row progressive disclosure；沿 authority index 查 SoT，必要時具名升級，不載入兄弟角色與全 repo |
-| `kg-docs-control-plane` | docs impact / docs lint / registry / verified_against / agent-facing surface 同步 | 文檔控制面判讀與 gate |
-| `kg-receipt` | handoff / receipt / 驗證證據 / 任務收尾格式 | 固定輸出完成證據與下一輪接手資訊 |
-| `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
-| `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
-| `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
-| `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務；發布上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze）。child 預設 commit＋hand-back；Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 origin/prod=部署；異常才 thread message，正常以 registry/state/receipt 溝通。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
-| `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
+KG repo-local skill 的完整 roster、primary/secondary/context/closure phase、dependency、exclusion 與 route fixture 唯一以 `.claude/skills/catalog.json` 為準；不要從本節的自然語言猜 trigger，也不要把多個 keyword 命中解讀成全部載入。
 
-**另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
+```bash
+./ops/skill_route.py validate --json
+./ops/skill_route.py route --intent <typed-intent> --json
+./ops/context_route.py render --role <role> --skill <selected-skill> --json
+```
+
+路由契約：一個 typed intent 恰有一個 primary；required dependency 依序載入；optional／closure 只有明示 flag 或收尾階段載入；forbidden skill 不得進 bundle。`skill_route.py` 輸出的 route 不是 capability 或 production 授權，實際 side effect 仍由 `capability_matrix.py`、worktree orchestrator 與 production wrapper 決定。
+
+`kg-router` 是 bootstrap；`kg-agent-context` 是已辨識角色後的 context loader；`kg-receipt` 是 closure；`kg-docs-control-plane`、`worktree-flow`、domain skills 依 catalog route 載入。完整 skill 內容仍由各 `SKILL.md` 保存，context slice 走 `./ops/context_route.py`，不預載整份 sibling skill 或深層 reference。
+
+另有 plugin skill 全域可用（`phased`、`review`、`verify`、`run` 等），其 plugin manifest 不屬 repo-local catalog；觸發描述見 runtime system。
 
 ### 規則
-- 觸發條件符合就**立即** `Skill()` 調用,不問使用者。多個同時符合則全部載入。
-- **所有 Agent() 一律 `run_in_background: true`。無例外。**
+- repo-local skill 先跑 catalog route；自然語言只提供 intent 候選，不得製造第二個 primary。
+- `kg-receipt` 只在 handoff／收尾載入，不與 domain skill 競爭 primary。
+- 所有 Agent() 一律 `run_in_background: true`；長操作保留 heartbeat。
 
 ## 鐵律(全域,9 條,不可繞過)
 

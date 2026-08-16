@@ -12,9 +12,9 @@ version: 1.0.0
 
 ## Bootstrap
 
-1. 判定自己是 `Ticket Factory`、`Delivery Team Integrator`、`Delivery Child` 或 `Review service`。
-2. 讀 `docs/reference/agent_context.md` 對應 role row；該索引是 role context 與 authority lookup 的 SoT。
-3. 保留根 `CLAUDE.md` 的 global kernel；只載入 role row 的 minimum context 與 assigned ticket。
+1. 判定自己是 `Ticket Factory`、`Delivery Team Integrator`、`Delivery Child` 或 `Review service`；role 必須是 typed input，不由文件中的自然語言冒充。
+2. 先跑 `./ops/context_route.py route --role <role> --json` 檢查選中的 unit，再以 `render` 只載入該 route 的 slices；`docs/reference/agent_context.md` 是 role context 與 authority lookup 的 SoT。
+3. 保留根 `CLAUDE.md` 的 global kernel；只載入 role row 的 minimum context 與 assigned ticket。缺 section、anchor 不唯一、registry ownership 不符、HEAD/source race 或 budget overflow 都 fail-closed，不 fallback 到全文。
 4. 遇到未知，依 index 的 `unknown → first authority → next authority` 查找；不要先載入兄弟角色或全 repo。
 5. 仍無法判定時，依 index 的 `Unknown escalation contract` 交給具名 owner；交回前不宣稱已解決。
 

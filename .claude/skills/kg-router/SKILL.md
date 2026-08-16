@@ -2,7 +2,7 @@
 name: kg-router
 description: "KG 新對話冷啟動與任務路由。當使用者要求盤點、設計流程、找入口、接手陌生任務、判斷該用哪個 skill/doc/tool，或任務橫跨 docs/ops/iOS/backend/podcast/release 時觸發；角色視野改由 kg-agent-context progressive disclosure。"
 user-invocable: true
-version: 1.0.0
+version: 1.1.0
 ---
 
 # KG Router
@@ -11,30 +11,31 @@ version: 1.0.0
 
 ## Cold Start
 
-1. 先讀使用者意圖，分成 `observer` / `operator` / `editor` / `production-capable`；若 thread 已有
-   Ticket Factory／Delivery Team／child／review 身分，先觸發 `kg-agent-context`，不要預載其他角色。
-2. 跑 `./ops/capability_matrix.py --json`，確認是否已有 typed surface。
-3. 若任務牽涉功能/endpoint/env/DB/ops/iOS 模組，依 `docs/reference/agent_context.md` 的 authority
-   index 與 `docs/registry.yml` trigger 讀最小必要 SoT，不用記憶或 broad scan 代替。
-4. 若任務牽涉文件同步，交給 `kg-docs-control-plane`。
-5. 若任務牽涉完成回報或交接，交給 `kg-receipt`。
+1. 先把使用者意圖映射為 `.claude/skills/catalog.json` 的 typed intent；先跑
+   `./ops/skill_route.py validate --json`，再跑 `route --intent <intent> --json`。自然語言只提供候選，
+   不得把多個 keyword 命中當成多個 primary。
+2. `kg-router` 只作 bootstrap；依 route 的 `requires` 順序載入，`optional`／`closure` 只有明示需求
+   或收尾階段才載入。`skill_route.py` 的輸出不是 capability 或 production 授權。
+3. 若 thread 已有 Ticket Factory／Delivery Team／child／review 身分，另跑
+   `./ops/context_route.py render --role <role> --json`；只讀選中的 role／authority slices，不能 fallback 全文。
+4. 只有要判定 side effect 或 command capability 時才跑 `./ops/capability_matrix.py --json`；功能、endpoint、
+   env、DB、ops、iOS authority 依 `docs/registry.yml` 與 `docs/reference/agent_context.md` 的 index 查最小 SoT。
 
 ## Routing Table
 
-| 意圖 | 首選入口 |
+Skill inventory、typed intent、dependency、exclusion 與 fixtures 只看
+`.claude/skills/catalog.json`；不要在此維護第二份 keyword table。常用控制面入口：
+
+| 判定 | typed entrypoint |
 |---|---|
-| Ticket Factory／Delivery Team Integrator／Delivery Child／review service 的 context 載入 | `kg-agent-context` → `docs/reference/agent_context.md` 對應 role row |
-| 不知道能不能碰某 surface | `./ops/capability_matrix.py --json` |
-| 生產狀態 / 用戶資料 / 部署 | `devops` skill + `./ops/devops_kg_safe.sh ...` |
-| 成本 / 帳單 / drift | `billing` skill |
-| 用戶資料、圖譜、額度深度分析 | `data-analysis` skill |
-| bug / test failure / 異常行為 | `app-debug` skill |
-| 多個 Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務（bootstrap 補登記/repo 手術鎖）；deploy 上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze；**本地 main 為主幹，三平面**；child 用 commit＋hand-back，Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 **origin/prod**=部署；異常才用 thread message，正常以 registry/state/receipt 溝通；語意見 `docs/sop/release.md`） |
-| iOS build/test/release readiness | `./ops/ios_ops.sh commands --json`，再讀 `docs/sop/ios.md` |
-| docs impact / lint / registry | `kg-docs-control-plane` skill |
-| release version/changelog/tag | `./ops/release.sh status` |
-| podcast pipeline / monitor / publish drift | `podcast` skill + `./ops/podcast_ops.py --help` |
-| LLM prompt eval | `(cd lab/llm_eval && uv run python scripts/cli.py --help)` |
+| skill primary／dependency | `./ops/skill_route.py route --intent <intent> --json` |
+| role／surface／task context | `./ops/context_route.py render --role <role> [--surface <surface>] [--task <task>] --json` |
+| side effect／capability | `./ops/capability_matrix.py --json --tier <tier>` |
+| docs impact／lint | `kg-docs-control-plane` → `./ops/docs_impact.py`／`./ops/docs_lint.sh` |
+| delivery／worktree | route 選 `worktree-flow` → `ops/worktree_orchestrate.py` |
+
+Domain skill 的深層 CLI、SOP、reference 只在 primary route 已選定且 authority index 指向時再讀；
+不因冷啟動預載整份 domain skill。
 
 ## Hard Stops
 
