@@ -72,6 +72,7 @@ from lib.streaming_command import run_streamed_command  # noqa: E402
 import backlog_acceptance as _backlog_acceptance  # noqa: E402
 import backlog_mutations as _backlog_mutations  # noqa: E402
 import backlog_verification as _backlog_verification  # noqa: E402
+import backlog_reanchor as _backlog_reanchor  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
@@ -5005,316 +5006,40 @@ def _cmd_preflight(args) -> int:
 
 
 def _patch_id(rev: str, repo: Path | None = None) -> str | None:
-    """`git patch-id --stable` of one commit, or None if it has no diff to hash."""
-    show = _git("show", rev, repo=repo)
-    if show.returncode != 0 or not show.stdout:
-        return None
-    proc = subprocess.run(
-        ["git", "patch-id", "--stable"], input=show.stdout, cwd=repo or GIT_REPO,
-        capture_output=True, text=True
+    """Compatibility façade for the extracted patch-id helper."""
+    return _backlog_reanchor.patch_id(rev, repo, deps=_reanchor_deps())
+
+
+def _reanchor_deps() -> _backlog_reanchor.ReanchorDeps:
+    """Build reanchor callbacks while preserving façade monkeypatch points."""
+    return _backlog_reanchor.ReanchorDeps(
+        default_repo=GIT_REPO,
+        sha_pattern=_SHA_RE,
+        doc_anchor_pattern=_DOC_VERIFIED_AGAINST_RE,
+        git=_git,
+        make_commit_state=make_commit_state,
+        iter_entries=_iter_entries,
+        entry_path=entry_path,
+        update_entry=update_entry,
+        write_atomic=_write_atomic,
+        reanchor_store=lambda *args, **kwargs: reanchor_store(*args, **kwargs),
+        error_type=BacklogError,
     )
-    out = proc.stdout.split()
-    return out[0] if out else None
 
 
 def reanchor_store(store: Path, ids: list[str] | None = None, *,
                    search_depth: int = DEFAULT_SEARCH_DEPTH,
                    repo: Path | None = None, docs: bool = False) -> dict:
-    """Map orphaned `fixed_by` shas onto their post-rebase equivalents on main.
-
-    The mechanism is measured, not assumed: every orphan in this repo's audit
-    was the *same change* rewritten by the rebase inside `cutover`, so
-    `git patch-id --stable` matches it byte-for-byte against a reachable commit.
-
-    Two deliberate refusals, both from the same rule — only move on proof:
-
-      * no match inside the window: reported as unmatched, NOT guessed at. One
-        real case (IMP-0062) had a whole-commit patch-id that differed because
-        the rebase resolved a conflict differently; a fuzzy matcher would have
-        silently picked a neighbour.
-      * more than one match: ambiguous, so nothing moves.
-
-    The search window is a bound, and a bound that is not reported reads as
-    "searched everything". `searched` is in the result for that reason.
-    Both the orphan and no-orphan return paths keep the same result keys; a
-    field that appears only when there is work is another silent channel.
-    """
-    state = make_commit_state(repo)
-    if state is None:
-        raise BacklogError("reanchor needs a git repository (no --git-dir found)")
-
-    # Find the orphans BEFORE building the index. Indexing first cost 33.3s of
-    # `git patch-id` to print "nothing to do", which is the overwhelmingly
-    # common case — and a repair tool nobody runs because it is slow repairs
-    # nothing.
-    repo_root = Path(repo or GIT_REPO)
-    targets: list[tuple[dict, list[str]]] = []
-    for payload in _iter_entries(store):
-        if ids and payload.get("id") not in ids:
-            continue
-        shas = payload.get("fixed_by") or []
-        orphans = [s for s in shas if _SHA_RE.match(s) and state(s) == "orphan"]
-        if orphans:
-            targets.append((payload, orphans))
-
-    # Documents are a second, opt-in audit surface.  Keep it out of the default
-    # path so the historical `reanchor` result and cost remain unchanged.  Only
-    # a reachable file with a sha-shaped anchor can be a target; `frozen` and
-    # other human-authored values are deliberately not repair candidates.
-    doc_targets: list[tuple[str, str]] = []
-    if docs:
-        docs_root = repo_root / "docs"
-        if docs_root.is_dir():
-            for path in sorted(docs_root.rglob("*.md")):
-                try:
-                    text = path.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                match = _DOC_VERIFIED_AGAINST_RE.search(text)
-                if not match:
-                    continue
-                old = match.group(1)
-                if state(old) == "orphan":
-                    doc_targets.append((str(path.relative_to(repo_root)), old))
-
-    if not targets and not doc_targets:
-        result = {"plan": [], "searched": 0, "scanned": 0, "search_depth": search_depth,
-                  "window_exhausted": None, "frame_depth": None}
-        if docs:
-            result.update({"doc_plan": [], "doc_unmatched": []})
-        return result
-
-    # HEAD, not `main` — the SAME reference frame `commit_state` calls `ok`.
-    # The first cut searched `main` alone and, on its first real run, returned
-    # 8 of 8 UNMATCHED: the rebase that orphaned those shas had rewritten them
-    # onto the BRANCH, and main had not moved. A repair tool whose search space
-    # is narrower than the space its own defect detector accepts can only fail,
-    # and it fails silently-looking (`not guessed` reads like a careful refusal
-    # rather than like looking in the wrong place).
-    # HEAD **and** main — the same union `commit_state` calls `ok`. The first
-    # cut walked main alone and returned 8-of-8 UNMATCHED because the rewrite
-    # landed on the branch; moving it to HEAD alone just mirrored the bug, and
-    # left the ordinary case uncovered: HEAD parked behind main, which is what a
-    # worktree looks like when the fix landed after the branch forked. A repair
-    # tool that searches less than its own detector accepts can only report
-    # `not guessed`, and that reads like care rather than like looking in the
-    # wrong place.
-    frame = ["HEAD", "main"] if _git(
-        "rev-parse", "--verify", "--quiet", "main^{commit}", repo=repo).returncode == 0 else ["HEAD"]
-    log = _git("rev-list", f"--max-count={search_depth}", *frame, repo=repo)
-    if log.returncode != 0:
-        raise BacklogError("reanchor needs a resolvable HEAD")
-    candidates = log.stdout.split()
-    total = _git("rev-list", "--count", *frame, repo=repo).stdout.strip()
-    frame_depth = int(total) if total.isdigit() else None
-
-    by_patch: dict[str, list[str]] = {}
-    indexed = 0
-    for rev in candidates:
-        pid = _patch_id(rev, repo)
-        if pid:
-            by_patch.setdefault(pid, []).append(rev)
-            indexed += 1
-
-    plan: list[dict] = []
-    for payload, orphans in targets:
-        shas = payload.get("fixed_by") or []
-        moves, unmatched = {}, []
-        for sha in orphans:
-            pid = _patch_id(sha, repo)
-            hits = by_patch.get(pid, []) if pid else []
-            if len(hits) == 1:
-                moves[sha] = hits[0][:9]
-            else:
-                if len(hits) > 1:
-                    reason = "ambiguous-patch-id"
-                    next_step = (
-                        f"choose the correct landed commit and run update {payload['id']} "
-                        "--fixed-by <sha>"
-                    )
-                elif frame_depth is None or len(candidates) < frame_depth:
-                    reason = "search-window-not-covered"
-                    next_step = (
-                        f"rerun reanchor with --search-depth > {len(candidates)} "
-                        "to cover the full frame"
-                    )
-                else:
-                    reason = "patch-id-mismatch"
-                    next_step = (
-                        f"run update {payload['id']} --fixed-by {sha} with the "
-                        "correct landed commit"
-                    )
-                unmatched.append({
-                    "sha": sha,
-                    "candidates": len(hits),
-                    "reason": reason,
-                    "next_step": next_step,
-                })
-        if moves or unmatched:
-            plan.append({
-                "id": payload["id"],
-                "moves": moves,
-                "unmatched": unmatched,
-                "new_fixed_by": [moves.get(s, s) for s in shas],
-            })
-
-    doc_plan: list[dict] = []
-    doc_unmatched: list[dict] = []
-    for path, old in doc_targets:
-        pid = _patch_id(old, repo)
-        hits = by_patch.get(pid, []) if pid else []
-        if len(hits) == 1:
-            doc_plan.append({"path": path, "old": old, "new": hits[0][:9]})
-            continue
-        if len(hits) > 1:
-            reason = "ambiguous-patch-id"
-            next_step = "choose the correct landed commit and reanchor the document manually"
-        elif frame_depth is None or len(candidates) < frame_depth:
-            reason = "search-window-not-covered"
-            next_step = f"rerun reanchor with --search-depth > {len(candidates)} to cover the full frame"
-        else:
-            reason = "patch-id-mismatch"
-            next_step = "choose the correct landed commit and reanchor the document manually"
-        doc_unmatched.append({
-            "path": path,
-            "old": old,
-            "candidates": len(hits),
-            "reason": reason,
-            "next_step": next_step,
-        })
-    # `searched` used to be len(candidates), which OVERSTATES the window twice
-    # over: merge commits have no patch-id and contribute nothing (272 of the
-    # first 800 here), and main is 3688 deep so the default leaves most of it
-    # unscanned. A bound that is not reported reads as "searched everything" —
-    # this tool's own argument, applied to its own number.
-    result = {"plan": plan, "searched": indexed, "scanned": len(candidates),
-              "search_depth": search_depth, "frame_depth": frame_depth,
-              "window_exhausted": frame_depth is not None and len(candidates) >= frame_depth}
-    if docs:
-        result.update({"doc_plan": doc_plan, "doc_unmatched": doc_unmatched})
-    return result
+    """Compatibility façade for the extracted reanchor planner."""
+    return _backlog_reanchor.reanchor_store(
+        store, ids, search_depth=search_depth, repo=repo, docs=docs,
+        deps=_reanchor_deps(),
+    )
 
 
 def _cmd_reanchor(args) -> int:
-    result = reanchor_store(
-        args.store, args.ids or None, search_depth=args.search_depth,
-        docs=getattr(args, "docs", False),
-    )
-    landed = []
-    doc_landed = []
-    if args.commit:
-        # Build every replacement before the first write.  A reanchor is a
-        # single repair transaction: if a document disappears or changes while
-        # the patch-id proof is being applied, there must be no prefix of the
-        # plan left in the checkout for the next cutover to mistake for another
-        # agent's edit.
-        doc_operations = []
-        # Keep the exact bytes of every path before mutation.  This covers both
-        # ledger entries and documents: a document write can fail after one or
-        # more fixed_by entries have already landed, and leaving those two planes
-        # at different phases is just as unsafe as leaving one dirty document.
-        entry_snapshots = []
-        doc_snapshots = []
-        try:
-            if getattr(args, "docs", False):
-                for item in result["doc_plan"]:
-                    path = Path(GIT_REPO) / item["path"]
-                    text = path.read_text(encoding="utf-8")
-                    old = item["old"]
-                    new = item["new"]
-                    replaced = False
-
-                    def replace_anchor(match):
-                        nonlocal replaced
-                        if match.group(1) == old:
-                            replaced = True
-                            return match.group(0).replace(match.group(1), new)
-                        return match.group(0)
-
-                    rewritten, count = _DOC_VERIFIED_AGAINST_RE.subn(
-                        replace_anchor,
-                        text,
-                    )
-                    if count < 1 or not replaced:
-                        raise BacklogError(
-                            f"document anchor changed while reanchoring: {item['path']}"
-                        )
-                    doc_operations.append((path, text, rewritten, item["path"]))
-
-            for item in result["plan"]:
-                if not item["moves"]:
-                    continue
-                entry_file = entry_path(args.store, item["id"])
-                entry_snapshots.append((entry_file, entry_file.read_text(encoding="utf-8")))
-                update_entry(args.store, item["id"], fixed_by=item["new_fixed_by"])
-                landed.append(item["id"])
-            for path, original, rewritten, rel_path in doc_operations:
-                doc_snapshots.append((path, original))
-                _write_atomic(path, rewritten)
-                doc_landed.append(rel_path)
-        except (OSError, BacklogError, ValueError) as exc:
-            rollback_errors = []
-            for path, original in reversed(doc_snapshots):
-                try:
-                    _write_atomic(path, original)
-                except (OSError, BacklogError, ValueError) as rollback_exc:
-                    rollback_errors.append(f"{path}: {rollback_exc}")
-            for path, original in reversed(entry_snapshots):
-                try:
-                    _write_atomic(path, original)
-                except (OSError, BacklogError, ValueError) as rollback_exc:
-                    rollback_errors.append(f"{path}: {rollback_exc}")
-
-            result["mode"] = "commit"
-            result["landed"] = []
-            if getattr(args, "docs", False):
-                result["doc_landed"] = []
-            # A failed command can still tell its caller which paths were in
-            # the transaction.  The orchestrator uses this machine channel to
-            # restore arbitrary docs even when no success JSON was emitted.
-            if getattr(args, "docs", False):
-                result["doc_paths"] = [
-                    item["path"] for item in result.get("doc_plan", [])
-                    if isinstance(item, dict) and item.get("path")
-                ]
-            result["ok"] = False
-            result["error"] = f"reanchor transaction rolled back: {exc}"
-            if rollback_errors:
-                result["rollback_errors"] = rollback_errors
-            if args.json:
-                print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result},
-                                 ensure_ascii=False))
-                return 64
-            raise BacklogError(result["error"])
-    result["mode"] = "commit" if args.commit else "dry-run"
-    result["landed"] = landed
-    if getattr(args, "docs", False):
-        result["doc_landed"] = doc_landed
-    if args.json:
-        print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result}, ensure_ascii=False))
-        return 0
-    if result["plan"]:
-        window = (f"indexed {result['searched']} of {result['scanned']} commits scanned"
-                  f" (--search-depth {result['search_depth']}"
-                  + (f", frame is {result['frame_depth']} commits deep"
-                     if result["frame_depth"] is not None else "")
-                  + (", window exhausted" if result["window_exhausted"] else ", window NOT exhausted")
-                  + ")")
-    else:
-        window = "no orphans, so no commits were indexed"
-    print(f"[{result['mode']}] {window}")
-    for item in result["plan"]:
-        for old, new in item["moves"].items():
-            print(f"  {item['id']}: {old} -> {new}")
-        for miss in item["unmatched"]:
-            print(f"  {item['id']}: {miss['sha']} UNMATCHED "
-                  f"({miss['candidates']} patch-id candidates in window) — "
-                  f"{miss['reason']}: {miss['next_step']}")
-    if not result["plan"]:
-        print("  no orphaned fixed_by shas")
-    elif not args.commit:
-        print("  (dry-run — pass --commit to land)")
-    return 0
+    """Compatibility façade for the extracted reanchor transaction."""
+    return _backlog_reanchor.cmd_reanchor(args, deps=_reanchor_deps())
 
 
 def _cmd_validate(args) -> int:
