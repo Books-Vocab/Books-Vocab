@@ -306,12 +306,12 @@ def test_p9_swift_decoders_reject_unknown_keys_at_nested_boundaries() -> None:
 
 def test_malformed_ui_app_args_fail_closed_without_swallowing_decode_errors() -> None:
     launch = _text(IOS / "BooksAndVocabUITests/Helpers/UITestAppLaunch.swift")
-    tests = _text(IOS / "BooksAndVocabUITests/BooksAndVocabUITests.swift")
+    tests = _text(IOS / "BooksAndVocabTests/UITestContractsTests.swift")
 
     assert "try? JSONDecoder().decode([String].self" not in launch
     assert "decodeInheritedLaunchArguments" in launch
     assert "preconditionFailure" in launch
-    assert "testMalformedInheritedLaunchArgumentsFailClosed" in tests
+    assert "inheritedLaunchArgumentsFailClosed" in tests
 
 
 def test_p9_evidence_cli_and_environment_surface_is_documented() -> None:
