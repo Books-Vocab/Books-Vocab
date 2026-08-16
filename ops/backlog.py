@@ -72,6 +72,8 @@ from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
+import backlog_view as _backlog_view  # noqa: E402
+import backlog_legacy as _backlog_legacy  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
 # nothing outside the standard library, so the sandboxed `uv run --no-project`
@@ -2379,7 +2381,7 @@ def _real_date(value) -> bool:
 # legacy table import
 # ---------------------------------------------------------------------------
 
-LEGACY_COLUMNS = ("id", "date", "source", "category", "severity", "status", "detail", "resolution")
+LEGACY_COLUMNS = _backlog_legacy.LEGACY_COLUMNS
 
 # What the VIEW renders. Superset of LEGACY_COLUMNS, which stays exactly as it is
 # because `parse_legacy_table` still has to read historical 8-column files.
@@ -2394,74 +2396,37 @@ LEGACY_COLUMNS = ("id", "date", "source", "category", "severity", "status", "det
 # `plan` / `acceptance` deliberately stay out: the largest plan in the real store is
 # 57KB and a markdown table cell is not where that goes. The footer's groom counter
 # answers "how many have a plan"; `show` and `--json` answer "what is it".
-VIEW_IMP_COLUMNS = LEGACY_COLUMNS + ("verdict", "verified_at", "cost", "fix_site")
+VIEW_IMP_COLUMNS = _backlog_view.VIEW_IMP_COLUMNS
 
-_ID_RE = re.compile(r"^(?:IMP|APP)-(?:\d{4}|\d{8}-[0-9a-f]{6})$")
+_ID_RE = _backlog_legacy.ID_RE
 
-_EMPTY_CELL = "—"
+_EMPTY_CELL = _backlog_legacy.EMPTY_CELL
 
 
 def _split_row_raw(line: str) -> list[str]:
-    """Split a markdown table row on UNESCAPED pipes, WITHOUT cleaning cells.
-
-    IMP-0023's detail contains a literal `\\|\\| true`. Splitting on a naive `|`
-    tears that row into the wrong number of columns, which either drops the
-    entry or shifts every field after it by one — silently, in both cases.
-
-    Cells come back raw and both callers clean immediately. They used to be raw
-    because `_recover_overflowing_row` had to rejoin them; that heuristic was
-    removed with IMP-20260805-3df783. Kept raw anyway so the split stays a pure
-    tokenizer — stripping here would silently eat the whitespace around an
-    unescaped pipe (`` `|| true` `` -> `` `||true` ``) for every future caller.
-    """
-    parts = re.split(r"(?<!\\)\|", line.strip())
-    if parts and not parts[0].strip():
-        parts = parts[1:]
-    if parts and not parts[-1].strip():
-        parts = parts[:-1]
-    return parts
+    return _backlog_legacy.split_row_raw(line)
 
 
 def _clean(cell: str) -> str:
-    return cell.strip().replace("\\|", "|")
+    return _backlog_legacy.clean(cell)
 
 
 def _anchors_ok(cells: list[str]) -> bool:
-    """Do the three closed-vocabulary columns line up?
-
-    This is what tells a data row from a header, a separator, or prose — and it
-    is applied to EVERY row, not just overflowing ones. Restricting it to the
-    overflow branch meant a row whose columns had shifted took the happy path
-    with no check at all.
-    """
-    if len(cells) < len(LEGACY_COLUMNS):
-        return False
-    known_categories = {c for cats in CATEGORIES.values() for c in cats}
-    return (
-        cells[3] in known_categories
-        and cells[4] in SEVERITIES
-        # PARSEABLE_STATUSES, not STATUSES: this decides "is this line a data row",
-        # and the legacy table is FROZEN historical text. Narrowing the vocabulary
-        # made three `in-progress` rows in the shipped fixture stop looking like
-        # rows at all — reported as `malformed-row`, i.e. three entries that would
-        # simply vanish on import. Reading old data and writing new data are
-        # different questions and this is the first one.
-        and cells[5] in PARSEABLE_STATUSES
+    return _backlog_legacy._anchors_ok(
+        cells,
+        categories=CATEGORIES,
+        severities=SEVERITIES,
+        parseable_statuses=PARSEABLE_STATUSES,
     )
 
 
 def _app_anchors_ok(cells: list[str]) -> bool:
-    """The APP table's version of `_anchors_ok`.
-
-    Same idea, three columns to the right: the APP shape inserts `surface` at
-    index 3, so its category/severity/status land on 4/5/6.
-    """
-    if len(cells) < len(APP_COLUMNS):
-        return False
-    return (
-        cells[4] in CATEGORIES["APP"]
-        and cells[5] in SEVERITIES
-        and cells[6] in PARSEABLE_STATUSES
+    return _backlog_legacy._app_anchors_ok(
+        cells,
+        app_columns=APP_COLUMNS,
+        categories=CATEGORIES,
+        severities=SEVERITIES,
+        parseable_statuses=PARSEABLE_STATUSES,
     )
 
 
@@ -2504,106 +2469,13 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
     APP stream, so an APP row can only come from the generated view's own second
     table, which has a different column set.
     """
-    rows: list[dict] = []
-    problems: list[dict] = []
-
-    for lineno, raw in enumerate(text.splitlines(), 1):
-        line = raw.strip()
-        if not line.startswith("|"):
-            continue
-        raw_cells = _split_row_raw(line)
-        if not raw_cells:
-            continue
-        cells = [_clean(c) for c in raw_cells]
-
-        looks_like_id = bool(_ID_RE.match(cells[0]))
-
-        # Before the IMP anchor gate, not after it. `_anchors_ok` is IMP-shaped,
-        # so an APP row — which carries three extra columns — can never satisfy
-        # it; checking `APP-` afterwards made that skip unreachable and reported
-        # every APP row as malformed. Still anchor-checked in its own shape, so
-        # this stays a skip of rows we understand, not a blanket drop.
-        if cells[0].startswith("APP-"):
-            if not _app_anchors_ok(cells):
-                problems.append(
-                    {
-                        "kind": "malformed-row",
-                        "id": cells[0],
-                        "line": lineno,
-                        "columns": len(cells),
-                        "expected": len(APP_COLUMNS),
-                    }
-                )
-            continue
-
-        if not _anchors_ok(cells):
-            # Not a data row — unless its first cell claims to be one, in which
-            # case the columns are shifted or the row is truncated.
-            if looks_like_id:
-                problems.append(
-                    {
-                        "kind": "malformed-row",
-                        "id": cells[0],
-                        "line": lineno,
-                        "columns": len(cells),
-                        "expected": len(LEGACY_COLUMNS),
-                    }
-                )
-            continue
-
-        if not looks_like_id:
-            problems.append(
-                {
-                    "kind": "unrecognised-id",
-                    "id": cells[0],
-                    "line": lineno,
-                    "note": "row has valid category/severity/status but its id is not an entry id",
-                }
-            )
-            continue
-
-        if len(cells) > len(LEGACY_COLUMNS):
-            # Refuse, never repair. This used to call `_recover_overflowing_row`,
-            # which rejoined an over-wide row by assuming the excess came from an
-            # unescaped `|` inside `detail`. That assumption held only while the
-            # view WAS the legacy 8 columns. Since IMP-20260805-355016 the view
-            # renders 12, and the heuristic then produces a confidently wrong row:
-            # measured, `detail` swallowed resolution/verdict/verified_at/cost and
-            # `resolution` became the fix_site — and because a row came back,
-            # `import_legacy` would have written that over a good entry.
-            #
-            # An over-wide row has TWO possible causes and the note must name both.
-            # Assuming only "wrong era" misdiagnoses the one input this narrowed
-            # contract still claims to serve: an unescaped `|` inside a cell of a
-            # genuine 8-column ledger also lands here. Measured: 30 pre-migration
-            # versions of the ledger contain exactly such a row (IMP-0017). It used
-            # to import via the recovery heuristic; it is now refused, which is the
-            # right call — but "read the store instead" is unactionable advice for
-            # someone importing history, and the escape is a one-character fix.
-            problems.append(
-                {
-                    "kind": "malformed-row",
-                    "id": cells[0],
-                    "line": lineno,
-                    "columns": len(cells),
-                    "expected": len(LEGACY_COLUMNS),
-                    "note": "too many columns — two possible causes. (a) An "
-                    "unescaped `|` inside a cell: escape it as `\\|` and re-run; "
-                    "this is the historical hand-written case and it is fixable. "
-                    "(b) A 12-column generated view: `import` reads the LEGACY "
-                    "8-column table only, and the current view is deliberately NOT "
-                    "importable (IMP-20260805-355016 / -3df783) — its entries are "
-                    "one-file-per-entry under the store, read those instead.",
-                }
-            )
-            continue
-
-        row = dict(zip(LEGACY_COLUMNS, cells))
-        if row["resolution"] == _EMPTY_CELL:
-            row["resolution"] = ""
-        rows.append(row)
-
-    return rows, problems
+    return _backlog_legacy.parse_legacy_table(
+        text,
+        categories=CATEGORIES,
+        severities=SEVERITIES,
+        parseable_statuses=PARSEABLE_STATUSES,
+        app_columns=APP_COLUMNS,
+    )
 
 
 # The stamp is the ADJACENCY `YYYY-MM-DD 驗證 <VERDICT>`, matched as one unit.
@@ -2618,36 +2490,19 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
 #   * `DUPLICATE-OF-IMP-20260805-abc123` matched nothing, because ids minted by
 #     this very module end in lowercase hex, which `[A-Z0-9-]` excludes — the
 #     module was incompatible with its own id format.
-_STAMP_HEAD_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*驗證\s*")
-_VERDICT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]*")
+_STAMP_HEAD_RE = _backlog_legacy.STAMP_HEAD_RE
+_VERDICT_TOKEN_RE = _backlog_legacy.VERDICT_TOKEN_RE
 
 # `成本 S–M` uses an EN DASH. Splitting on `-` would report `S` and silently
 # halve the estimate.
-_COST_RE = re.compile(r"成本\s*([SML](?:[–-][SML])?)")
+_COST_RE = _backlog_legacy.COST_RE
 _COST_PRESENT_RE = re.compile(r"成本")
-_FIX_SITE_RE = re.compile(r"`([^`]+)`")
-_FIX_SITE_HEAD_RE = re.compile(r"落點")
+_FIX_SITE_RE = _backlog_legacy.FIX_SITE_RE
+_FIX_SITE_HEAD_RE = _backlog_legacy.FIX_SITE_HEAD_RE
 # A fix site has to look like one. IMP-0021's stamp yields `:738-741` — a bare
 # line range whose filename lives in another column — and `見上一列` passes a
 # purely syntactic backtick check too. Both become paths that readers trust.
-_FIX_SITE_SHAPE_RE = re.compile(r"[/\\]|\.(py|sh|swift|yml|yaml|json|md|ts|js)\b|^\w[\w.-]*:\d")
-
-
-def _single_or_miss(field: str, values: list[str], misses: list[dict]):
-    """Take a value only when the text offers exactly one candidate.
-
-    First-match-wins is how `決策成本 S,出貨成本 L` became cost `S` — the same
-    direction of error as splitting `S–M` on the hyphen. 7 of the 10 real 落點
-    cells name more than one site, and IMP-0057's second one is annotated
-    必須同步 in the prose; dropping it without a word is the loss this module
-    refuses everywhere else.
-    """
-    unique = list(dict.fromkeys(values))
-    if len(unique) == 1:
-        return unique[0]
-    if len(unique) > 1:
-        misses.append({"field": field, "reason": f"{len(unique)} candidates, ambiguous", "values": unique})
-    return None
+_FIX_SITE_SHAPE_RE = _backlog_legacy.FIX_SITE_SHAPE_RE
 
 
 def extract_verdict_fields(resolution: str) -> tuple[dict, list[dict]]:
@@ -2662,74 +2517,11 @@ def extract_verdict_fields(resolution: str) -> tuple[dict, list[dict]]:
     in free prose with no consistent encoding, and deriving a boolean from the
     presence of the word 測試 would be a proxy standing in for the property.
     """
-    fields: dict = {}
-    misses: list[dict] = []
-
-    text = resolution or ""
-    head = _STAMP_HEAD_RE.search(text)
-    if not head:
-        # No stamp: a plain commit hash (the majority) or prose using the word
-        # 驗證. Neither is a miss, and reporting them buries the real ones.
-        return fields, misses
-
-    token_match = _VERDICT_TOKEN_RE.match(text, head.end())
-    token = token_match.group(0).rstrip("-") if token_match else ""
-
-    if token in VERDICTS:
-        fields["verdict"] = token
-    elif token.startswith(_DUPLICATE_VERDICT_PREFIX):
-        target = token[len(_DUPLICATE_VERDICT_PREFIX):]
-        if _ID_RE.match(target):
-            fields["verdict"] = token
-            fields["duplicate_of"] = target
-        else:
-            misses.append({"field": "verdict", "reason": f"duplicate target is not an entry id: {target!r}"})
-    else:
-        # Reachable and previously SILENT: dropping the old 驗證 keyword gate
-        # killed the false positives and the true reports together.
-        misses.append({"field": "verdict", "reason": f"unrecognised verdict token: {token!r}"})
-
-    if "verdict" in fields:
-        fields["verified_at"] = head.group(1)
-
-    cost = _single_or_miss("cost", _COST_RE.findall(text), misses)
-    if cost:
-        fields["cost"] = cost
-    elif ("verdict" in fields
-          and not str(fields["verdict"]).startswith(_DUPLICATE_VERDICT_PREFIX)
-          and not any(m["field"] == "cost" for m in misses)):
-        # ONE reason, deliberately, and it does not claim to know which case
-        # this is. The obvious design splits "written but unparseable" from
-        # "not written at all" — but the only discriminator available is
-        # `_COST_PRESENT_RE`, the keyword test this whole rule exists to reject.
-        # A first cut did exactly that and handed IMP-0048 — whose stamp ends
-        # `;各 S)`, a cost stated without the word — the reason "no cost stated
-        # in the stamp". That is worse than the silence it replaced: it moved
-        # the defect up a layer, from an invisible absence to a confidently
-        # wrong report, and it did so in the one entry the rule was written for.
-        #
-        # So the module says only what it can defend: it could not read a cost.
-        # Naming a cause it cannot determine would be the same mistake in a
-        # different sentence.
-        #
-        # Gated on `"verdict" in fields`, not on the else-branch: a stamp whose
-        # verdict token was not even recognised, or a DUPLICATE-OF stamp (whose
-        # cost lives on the target entry), is not owed a cost — reporting one
-        # there is noise on a legitimate shape. Both were constructed and
-        # measured before this gate went back in.
-        misses.append({"field": "cost",
-                       "reason": "stamp states no cost this module can read"})
-
-    fix_head = _FIX_SITE_HEAD_RE.search(text)
-    if fix_head:
-        candidates = [c for c in _FIX_SITE_RE.findall(text[fix_head.end():]) if _FIX_SITE_SHAPE_RE.search(c)]
-        site = _single_or_miss("fix_site", candidates, misses)
-        if site:
-            fields["fix_site"] = site
-        elif not candidates:
-            misses.append({"field": "fix_site", "reason": "落點 present but no backticked path-shaped token"})
-
-    return fields, misses
+    return _backlog_legacy.extract_verdict_fields(
+        resolution,
+        verdicts=VERDICTS,
+        duplicate_prefix=_DUPLICATE_VERDICT_PREFIX,
+    )
 
 
 def import_legacy(text: str, store: Path) -> dict:
@@ -2744,78 +2536,16 @@ def import_legacy(text: str, store: Path) -> dict:
     Entries already in the store that are absent from the table are left alone,
     so importing the IMP table never disturbs APP entries filed via `add`.
     """
-    rows, problems = parse_legacy_table(text)
-    imported = 0
-
-    for row in rows:
-        # Map retired statuses FORWARD. A migration is exactly where that belongs:
-        # the table is frozen text and will always contain values the current
-        # vocabulary no longer accepts, and the alternative — refusing the row —
-        # loses an entry. Reported, not silent: the caller sees what was rewritten.
-        if row.get("status") in RETIRED_STATUSES:
-            problems.append({"kind": "status-migrated", "id": row["id"],
-                             "from": row["status"],
-                             "to": RETIRED_STATUSES[row["status"]]})
-            row["status"] = RETIRED_STATUSES[row["status"]]
-
-        verdict_fields, misses = extract_verdict_fields(row["resolution"])
-        for miss in misses:
-            problems.append({"kind": "stamp-not-read", "id": row["id"], **miss})
-
-        # Merge, don't rebuild. add_entry() composes a payload from scratch, so
-        # a rerun used to silently erase every field set through `update` —
-        # surface/repro/build and any hand-set verdict fields. The importer is
-        # advertised as safe to rerun, which made that erasure worse than a
-        # crash: the tool that says "rerun me freely" was the one discarding
-        # work. Fields the legacy table owns are overwritten; everything else
-        # is carried forward.
-        try:
-            carried = load_entry(store, row["id"])
-        except KeyError:
-            carried = {}
-        # Everything the legacy table does NOT own survives the round trip.
-        # Stating it as "not owned by the table" rather than as a list of field
-        # names is the point: a list has to be maintained, and the two times it
-        # was not, real work was erased with rc=0 and no report.
-        legacy_owned = set(LEGACY_COLUMNS) | {"schema", "stream"}
-        carried_extra = {k: v for k, v in carried.items() if k not in legacy_owned}
-
-        try:
-            entry = add_entry(
-                store,
-                overwrite=True,
-                extra=carried_extra,
-                entry_id=row["id"],
-                stream=row["id"].split("-", 1)[0],
-                date=row["date"],
-                source=row["source"],
-                category=row["category"],
-                severity=row["severity"],
-                status=row["status"],
-                detail=row["detail"],
-                resolution=row["resolution"],
-                verdict_fields=verdict_fields,
-                # Named at the call site, not inherited by every writer: the
-                # exemption nobody chose is exactly what IMP-20260808-f2bcc1 was.
-                # THIS caller has the reason — the rows predate the rules — and it
-                # is the only one that does.
-                historical=True,
-                _gate=True,
-            )
-        except ValueError as exc:
-            # Record and keep going. Dying mid-import would leave a partial
-            # store, which is worse than a complete store plus a problem list.
-            problems.append({"kind": "rejected-row", "id": row["id"], "error": str(exc)})
-            continue
-        if HISTORICAL_ID_DIGEST in entry:
-            problems.append({
-                "kind": "historical-id-preserved",
-                "id": entry["id"],
-                "derived_id": entry[HISTORICAL_ID_DIGEST],
-            })
-        imported += 1
-
-    return {"imported": imported, "problems": problems}
+    return _backlog_legacy.import_legacy(
+        text,
+        store,
+        parse_table=parse_legacy_table,
+        extract_fields=extract_verdict_fields,
+        load_entry=load_entry,
+        add_entry=add_entry,
+        retired_statuses=RETIRED_STATUSES,
+        historical_id_digest=HISTORICAL_ID_DIGEST,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2933,20 +2663,11 @@ platform-steward 的 triage 失效。
 
 
 def _cell(value: str) -> str:
-    """Make a value safe to sit inside a markdown table cell."""
-    text = str(value or "")
-    text = text.replace("\n", " ").replace("\r", " ")
-    return text.replace("|", "\\|")
+    return _backlog_view.cell(value)
 
 
 def _render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
-    head = "| " + " | ".join(columns) + " |\n"
-    sep = "|" + "|".join("---" for _ in columns) + "|\n"
-    body = ""
-    for entry in entries:
-        cells = [_cell(entry.get(col, "")) or _EMPTY_CELL for col in columns]
-        body += "| " + " | ".join(cells) + " |\n"
-    return head + sep + body
+    return _backlog_view.render_table(entries, columns)
 
 
 # SUPERSEDED 2026-08-05 by IMP-20260805-355016. This used to read "the rendered
@@ -2974,85 +2695,27 @@ APP_COLUMNS = (
 
 
 def view_entry_ids(text: str) -> set[str]:
-    """Every entry id sitting in the FIRST cell of a table row of a view.
-
-    Deliberately NOT `parse_legacy_table`, which is the obvious reuse and the
-    wrong one: it skips every `APP-` row by design, so on the real ledger it
-    reports 129 rows for 138 entries. A guard built on it would be blind to the
-    whole APP stream — exactly half of what it is meant to protect. Only the id
-    column is needed here, so this borrows `_split_row_raw` / `_clean` /
-    `_ID_RE` and nothing else.
-
-    The enumerated hole, stated rather than papered over: a first cell that
-    does not match `_ID_RE` is not seen. That is the same set of rows
-    `parse_legacy_table` reports as `unrecognised-id`.
-    """
-    ids: set[str] = set()
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line.startswith("|"):
-            continue
-        cells = _split_row_raw(line)
-        if not cells:
-            continue
-        first = _clean(cells[0])
-        if _ID_RE.match(first):
-            ids.add(first)
-    return ids
+    return _backlog_view.view_entry_ids(text)
 
 
 def render_view(store: Path, *, verified_against: str) -> str:
     """Render the human-readable view of the store. Deterministic."""
-    imp = list_entries(store, stream="IMP")
-    app = list_entries(store, stream="APP")
-
-    out = _VIEW_HEADER.format(
+    return _backlog_view.render_view(
+        store,
         verified_against=verified_against,
-        # Interpolated, not restated: a hand-copied vocabulary in the doc that
-        # documents the vocabulary is the drift this store was built to remove.
-        imp_categories=" / ".join(f"`{c}`" for c in CATEGORIES["IMP"]),
-        app_categories=" / ".join(f"`{c}`" for c in CATEGORIES["APP"]),
-        statuses=" → ".join(f"`{s}`" for s in STATUSES),
-        severities=" / ".join(f"`{s}`" for s in SEVERITIES),
-        verdicts=" / ".join(f"`{v}`" for v in VERDICTS),
+        list_entries=list_entries,
+        view_header=_VIEW_HEADER,
+        imp_intro=_IMP_INTRO,
+        app_intro=_APP_INTRO,
+        categories=CATEGORIES,
+        statuses=STATUSES,
+        severities=SEVERITIES,
+        verdicts=VERDICTS,
     )
-    out += _IMP_INTRO + "\n" + _render_table(imp, VIEW_IMP_COLUMNS)
-    out += _APP_INTRO + "\n" + _render_table(app, APP_COLUMNS)
-    # NO AGGREGATE FOOTER. There used to be two — an entry counter and a groom
-    # counter — and they re-created, inside the rendered artifact, the exact defect
-    # this module's shape was chosen to escape (see WHY THIS SHAPE, second bullet):
-    # "every append targets the same trailing region, so two worktrees appending
-    # concurrently conflict by construction". A global count IS that trailing
-    # region: two branches filing different NUMBERS of entries write `162` and `163`
-    # on the same last line, and the rebase dies with CONFLICT (content).
-    #
-    # Removing them is a large improvement and NOT a cure, and the difference
-    # matters to whoever reads this next. Measured on a clone of the real ledger,
-    # ten branches landing in turn: with the counters, 4 of 10 landed and the final
-    # view was stale; without them, 6-7 of 10 landed and the view was correct. The
-    # residual conflicts are ADJACENT-ROW insertions — `_sort_key` is `(date, id)`,
-    # so entries filed on the same day cluster, and "the same day" is exactly what
-    # concurrent branches have in common. Those are resolved a layer up, by
-    # `worktree_orchestrate.py` regenerating this file when it is the only thing in
-    # conflict. Do not read this comment as "the artifact merges now".
-    #
-    # Nothing is lost: the same two numbers are printed by `render` and answered
-    # properly by `list --ungroomed`, neither of which has to survive a merge.
-    return out
 
 
 def view_counts(store: Path) -> dict[str, int]:
-    """The numbers that used to be baked into the view's last two lines. They are
-    worth reporting and not worth committing — see `render_view`."""
-    imp = list_entries(store, stream="IMP")
-    app = list_entries(store, stream="APP")
-    unresolved = [e for e in imp + app if e.get("status") not in ("fixed", "wont-fix")]
-    return {
-        "imp": len(imp),
-        "app": len(app),
-        "unresolved": len(unresolved),
-        "groomed": sum(1 for e in unresolved if e.get("groomed_by")),
-    }
+    return _backlog_view.view_counts(store, list_entries=list_entries)
 
 
 # ---------------------------------------------------------------------------
