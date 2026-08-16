@@ -2101,8 +2101,12 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
                 print("✗ hand-back refused: outcome validation failed", file=sys.stderr)
             return EXIT_PARTIAL
 
+    # `--role child` is also a valid annotation for an ordinary child outcome
+    # hand-back. Only campaign-specific fields opt into manifest receipt mode;
+    # requiring campaign metadata for role-only hand-backs makes the documented
+    # non-campaign child path impossible to seal.
     child_metadata = any(getattr(args, key, None) is not None
-                         for key in ("campaign", "partition", "role", "manifest"))
+                         for key in ("campaign", "partition", "manifest"))
     if child_metadata:
         campaign_id = getattr(args, "campaign", None)
         partition_id = getattr(args, "partition", None)

@@ -108,6 +108,29 @@ def test_changed_hand_back_creates_sealed_typed_outcome(tmp_path, capsys):
     assert REGISTRY.validate_handback_seal(record, repo=repo) == []
 
 
+def test_ordinary_child_role_hand_back_does_not_require_campaign_manifest(tmp_path, capsys):
+    repo, base_sha = _repo(tmp_path)
+    state = tmp_path / "registry.json"
+    tip_sha = _register_feature(repo, state, base_sha)
+    capsys.readouterr()
+    outcomes = tmp_path / "outcomes.json"
+    _write_outcomes(outcomes)
+
+    rc = REGISTRY.main([
+        "hand-back", "--state", str(state), "--path", str(repo),
+        "--branch", "feat/a", "--outcomes", str(outcomes),
+        "--role", "child", "--json",
+    ])
+
+    assert rc == REGISTRY.EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["handed_back_sha"] == tip_sha
+    assert payload["handback_seal"]["schema"] == "kg.worktree.handback.v1"
+    assert "child_receipt" not in payload["record"]
+    record = json.loads(state.read_text())["records"][0]
+    assert REGISTRY.validate_handback_seal(record, repo=repo) == []
+
+
 def test_register_without_born_worktree_records_base_sha(tmp_path, capsys):
     repo, base_sha = _repo(tmp_path)
     state = repo / ".cache" / "registry.json"
