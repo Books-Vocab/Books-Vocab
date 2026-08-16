@@ -12,6 +12,9 @@
   "date": "2026-08-13",
   "detail": "backend 全套測試中的 tests/test_podcast_preview_backfill.py 三個純單元案例目前都在呼叫 patch_preview_meta(meta, duration_sec=180) 時缺少新加入的 keyword-only stamp 參數，三者都以 TypeError 失敗。git history 顯示 a0c1233a1 建立原始無 stamp contract，a67d9a783 後來讓實作更新 updatedAt 並要求 stamp，但沒有同步這三個測試；這是已確認的 implementation-test contract drift，不是 provider 或環境問題。",
   "fix_site": "ops/podcast_preview_backfill.py; backend/tests/test_podcast_preview_backfill.py",
+  "fixed_by": [
+    "3b5437ff610bab58c0391c194c4fd68691239b75"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -22,6 +25,10 @@
   "scope": "一個 backfill helper、其三個純單元測試與必要的時間戳行為斷言。",
   "severity": "med",
   "source": "Tickets Factory 深度審查 2026-08-13",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-16",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "Fresh Gate rc=0; acceptance and independent review were green in the child hand-back; integration tip 5a410c278 is contained in main"
 }

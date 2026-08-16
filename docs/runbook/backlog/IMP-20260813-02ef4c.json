@@ -12,6 +12,9 @@
   "date": "2026-08-13",
   "detail": "backend 的同類 runtime env 解析責任分裂：settings.py 的 _env_int 對非法值 warning 後 fallback，但 rate_limit.py 在 import time 直接對 API_RATE_LIMIT、TRANSLATE_RATE_LIMIT、ADMIN_LOGIN_RATE_LIMIT 做 int(os.getenv(...))，非法值會讓模組 import 失敗；三個限流設定也不在單一 KGSettings snapshot。這是 source-confirmed 的不一致，尚未宣稱 production 已發生事故；同票不吸收 unsigned App Store fallback，避免把兩個安全決策混成無法驗收的範圍。",
   "fix_site": "backend/src/kg/settings.py; backend/src/kg/rate_limit.py; backend/tests/test_settings.py; backend/tests/test_rate_limit.py",
+  "fixed_by": [
+    "3b5437ff610bab58c0391c194c4fd68691239b75"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -22,6 +25,10 @@
   "scope": "KGSettings、rate_limit runtime wiring 與設定/限流測試，集中三個 rate-limit env 的型別與範圍語意。",
   "severity": "high",
   "source": "Tickets Factory backend explorer + source audit 2026-08-13",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-16",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "Fresh Gate rc=0; acceptance and independent review were green in the child hand-back; integration tip 5a410c278 is contained in main"
 }

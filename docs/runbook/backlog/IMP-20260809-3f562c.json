@@ -11,6 +11,9 @@
   "date": "2026-08-09",
   "detail": "ios_ops.sh build 是受派者唯一被契約要求跑的編譯 gate，但它只編 app target，\n不編測試 target。於是「測試檔編不過」這一整類錯誤對 gate 完全不可見：它只有在\n有人跑 test 時才會現形，而依批次交回契約，受派者做到自己工作樹裡 commit 為止、\ngate/cutover 留給整合者 —— 也就是說壞掉的測試碼可以一路無聲地進到整合。\n\n失效模式不是「測試沒過」，是「測試 target 根本編不起來」，所以連一條紅都不會有，\n只有 exit 65 + 一堆看起來像 fallout 的 warning。第一個真的去跑測試的人，會在\n一個跟他自己的改動完全無關的檔案上撞牆。\n\n今天兩次同形（同一天、同一個 gate 洞、不同型別錯誤）：\n\n1. UITest target：XCTAttachment 的 .named 在跨檔使用時是 fileprivate，UITest\n   target 編不過。\n2. Unit test target：ios/BooksAndVocabTests/ReaderPreviewStyleSourceTests.swift:96\n   把兩段字串用 + 串起來餵給 #expect 的第二參數，而那個參數型別是\n   swift-testing 的 Comment?（ExpressibleByStringInterpolation，但不是\n   ExpressibleByString-concatenation）。單一字面量可以，+ 出來的 String 不行。\n   這一顆讓整個 BooksAndVocabTests target 編不過，是在 feat/reader-settings-preview\n   的 HEAD 上被發現的 —— 也就是說它已經隨著先前的 commit 進了分支，\n   而那些 commit 的 build gate 全是綠的。\n\n兩次都是「型別/可見性在測試碼裡才會踩到」的錯，app target 永遠看不到。\n\n修的方向（不預設實作）：讓 build gate 涵蓋測試 target 的**編譯**（不是執行）。\nxcodebuild build-for-testing 就是為此存在的動詞，成本大約是多編一次測試 target，\n遠低於「整合時才發現分支不能測」。若不想讓預設 build 變慢，也可以是一個明確的\n新 scope（例如 ios_ops.sh build --with-tests）並把它寫進批次交回契約，\n但那樣就要同時改契約，否則洞還在。\n\n判準要能表達的是「build gate 涵蓋 test target 的編譯」：故意放一個編不過的測試檔\n進去時，build gate 必須非零退出。",
   "fix_site": "ops/ios_build.sh; ops/ios_ops.sh; ops/tests/test_ios_build_covers_test_targets.sh",
+  "fixed_by": [
+    "3b5437ff610bab58c0391c194c4fd68691239b75"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -21,10 +24,10 @@
   "scope": "改一支 build 腳本的編譯範圍，加一支證明它會擋下來的測試。",
   "severity": "med",
   "source": "ios-engineer 修 APP-20260809-f1b8cb 時撞到（今日第二次同形）",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "PARTIAL",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:r6-r8-anchor",
-  "verified_evidence": "R6-R8 implementation is integrated, but this stored acceptance was deliberately not rerun in bounded cleanup because it is a long iOS or full-suite gate; ticket remains unresolved pending fresh targeted evidence."
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-16",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "Fresh Gate rc=0; acceptance and independent review were green in the child hand-back; integration tip 5a410c278 is contained in main"
 }
