@@ -13,10 +13,16 @@ private struct OverviewFixtureProjection {
     private struct Dataset: Decodable {
         struct Vocabulary: Decodable {
             struct Entry: Decodable {
+                let word: String
                 let syncStatus: Int
                 let actionType: String
                 let isArchived: Bool
                 let nextReviewAt: Date?
+            }
+
+            struct EntryOverride: Decodable {
+                let word: String
+                let nextReviewAt: Date
             }
 
             struct Review: Decodable {
@@ -25,6 +31,8 @@ private struct OverviewFixtureProjection {
 
             let entries: [Entry]
             let reviewHistory: [Review]
+            // Resolved materialization treats an absent override list as empty.
+            let entryOverrides: [EntryOverride]?
         }
 
         let vocabulary: [String: Vocabulary]
@@ -110,8 +118,17 @@ private struct OverviewFixtureProjection {
         let visibleEntries = seed.entries.filter {
             $0.syncStatus == 1 && $0.actionType != "delete" && !$0.isArchived
         }
+        // Vocabulary materialization applies entryOverrides before Overview
+        // projects scheduling state. Keep the test projection on that same
+        // resolved seed rather than reading the base entry rows only; the P11
+        // 644-card fixture intentionally stores its due mix in overrides.
+        let nextReviewAtOverrides = Dictionary(
+            uniqueKeysWithValues: (seed.entryOverrides ?? []).map { ($0.word, $0.nextReviewAt) }
+        )
         let dueToday = visibleEntries.filter {
-            guard let nextReviewAt = $0.nextReviewAt else { return false }
+            guard let nextReviewAt = nextReviewAtOverrides[$0.word] ?? $0.nextReviewAt else {
+                return false
+            }
             return dayKey(nextReviewAt) <= todayKey
         }.count
         let reviewedToday = seed.reviewHistory.filter { dayKey($0.reviewedAt) == todayKey }.count
