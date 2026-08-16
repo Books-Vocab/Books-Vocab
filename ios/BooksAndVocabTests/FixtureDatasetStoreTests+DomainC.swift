@@ -776,8 +776,7 @@ extension FixtureDatasetStoreTests {
                       "chapterTitle": "第一章",
                       "syncStatus": 2,
                       "actionType": "delete",
-                      "isArchived": true,
-                      "isExcludedFromReader": true
+                      "isArchived": true
                     }
                   ]
                 },
@@ -832,7 +831,6 @@ extension FixtureDatasetStoreTests {
             #expect(entries.first?.syncStatus == 2)
             #expect(entries.first?.actionType == "delete")
             #expect(entries.first?.isArchived == true)
-            #expect(entries.first?.isExcludedFromReader == true)
 
             let podcastSeed = FixtureDatasetStore.podcastSeed(for: .shelfContinue)
             #expect(podcastSeed?.series.title == "External Series")

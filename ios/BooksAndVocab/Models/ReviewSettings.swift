@@ -71,7 +71,6 @@ struct ReviewSettings {
     var customForgotMultiplier: Double
     var customMinimumIntervalHours: Double
     var customMaximumIntervalHours: Double
-    var includeDictionaryCards: Bool = false
     var isProgressPaused: Bool = false
     var progressPausedAt: Date? = nil
     var autoplaySpeed: AutoplaySpeed = .normal
@@ -178,7 +177,7 @@ enum ReviewClockLWW {
     }
 }
 
-/// 複習模式 + 自訂 SRS 參數 + 字典卡開關的跨裝置狀態快照:`mode` + 5 個 custom 參數複合,
+/// 複習模式 + 自訂 SRS 參數的跨裝置狀態快照:`mode` + 5 個 custom 參數複合,
 /// 共用單一
 /// `updatedAt` 時戳。custom 參數只在 `.custom` 模式生效,但即使非 custom 仍保存使用者調過的值。
 struct ReviewModeState: Equatable {
@@ -188,7 +187,6 @@ struct ReviewModeState: Equatable {
     var customForgotMultiplier: Double
     var customMinimumIntervalHours: Double
     var customMaximumIntervalHours: Double
-    var includeDictionaryCards: Bool = false
     var updatedAt: Double?   // LWW timestamp(秒, since 1970);nil = 從未寫過
 }
 
@@ -255,7 +253,6 @@ final class ReviewSettingsStore {
             customForgotMultiplier: resolvedMode.customForgotMultiplier,
             customMinimumIntervalHours: resolvedMode.customMinimumIntervalHours,
             customMaximumIntervalHours: resolvedMode.customMaximumIntervalHours,
-            includeDictionaryCards: resolvedMode.includeDictionaryCards,
             isProgressPaused: resolvedPause.isPaused,
             progressPausedAt: resolvedPause.pausedAt,
             autoplaySpeed: autoplaySpeed,
@@ -272,7 +269,6 @@ final class ReviewSettingsStore {
             || settings.customForgotMultiplier != self.settings.customForgotMultiplier
             || settings.customMinimumIntervalHours != self.settings.customMinimumIntervalHours
             || settings.customMaximumIntervalHours != self.settings.customMaximumIntervalHours
-            || settings.includeDictionaryCards != self.settings.includeDictionaryCards
         self.settings = settings
         let modeState = Self.currentModeState(settings, updatedAt: nil)
         // mode + 自訂 SRS 參數本地層:總是寫(冪等,與既有行為一致)。
@@ -360,7 +356,6 @@ final class ReviewSettingsStore {
                 ?? ReviewSettings.default.customMinimumIntervalHours,
             customMaximumIntervalHours: params?["maximumIntervalHours"]
                 ?? ReviewSettings.default.customMaximumIntervalHours,
-            includeDictionaryCards: (params?["includeDictionaryCards"] ?? 0) != 0,
             updatedAt: updatedAt
         )
     }
@@ -384,7 +379,6 @@ final class ReviewSettingsStore {
             customForgotMultiplier: settings.customForgotMultiplier,
             customMinimumIntervalHours: settings.customMinimumIntervalHours,
             customMaximumIntervalHours: settings.customMaximumIntervalHours,
-            includeDictionaryCards: settings.includeDictionaryCards,
             updatedAt: updatedAt
         )
     }
@@ -396,7 +390,6 @@ final class ReviewSettingsStore {
             "forgotMultiplier": state.customForgotMultiplier,
             "minimumIntervalHours": state.customMinimumIntervalHours,
             "maximumIntervalHours": state.customMaximumIntervalHours,
-            "includeDictionaryCards": state.includeDictionaryCards ? 1 : 0,
         ]
         return try? JSONSerialization.data(withJSONObject: dict)
     }
@@ -437,7 +430,6 @@ final class ReviewSettingsStore {
         s.customForgotMultiplier = snapshot.customForgotMultiplier
         s.customMinimumIntervalHours = snapshot.customMinimumIntervalHours
         s.customMaximumIntervalHours = snapshot.customMaximumIntervalHours
-        s.includeDictionaryCards = snapshot.includeDictionaryCards
         settings = s
         writeLocalMode(snapshot)
         if let ts = snapshot.updatedAt {
@@ -460,7 +452,6 @@ final class ReviewSettingsStore {
         s.customForgotMultiplier = state.customForgotMultiplier
         s.customMinimumIntervalHours = state.customMinimumIntervalHours
         s.customMaximumIntervalHours = state.customMaximumIntervalHours
-        s.includeDictionaryCards = state.includeDictionaryCards
         settings = s
         writeLocalMode(state)
         if let ts = state.updatedAt {

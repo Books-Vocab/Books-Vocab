@@ -158,7 +158,7 @@ struct FixtureReviewClockSeed: Codable, Equatable {
             _ = try uiWorldRequireNonEmpty(
                 frozenNow!, decoder: decoder, label: "scenarioContext.reviewClock.frozenNow"
             )
-            try uiWorldParseCanonicalDate(
+            _ = try uiWorldParseCanonicalDate(
                 frozenNow!, decoder: decoder, label: "scenarioContext.reviewClock.frozenNow"
             )
             try uiWorldParseAnchorDay(
@@ -236,319 +236,6 @@ struct FixtureReviewClockSeed: Codable, Equatable {
             try container.encode(frozenEpoch, forKey: .frozenEpoch)
             try container.encode(anchorDay, forKey: .anchorDay)
             try container.encode(source, forKey: .source)
-        }
-    }
-}
-
-enum UIWorldDictionaryFixtureID: String, CaseIterable {
-    case p1DictionaryRich = "ui-p1-dictionary-rich"
-    case p2DictionarySenses = "ui-p2-dictionary-senses"
-
-    var requiredStepLabel: String {
-        switch self {
-        case .p1DictionaryRich:
-            return "dictionary-rich"
-        case .p2DictionarySenses:
-            return "dictionary-senses"
-        }
-    }
-}
-
-enum UIWorldDictionaryCounterexampleID: String, CaseIterable {
-    case p2MissingExample = "dictionary.p2.missing-example"
-    case p2MaterializeError = "dictionary.p2.materialize-error"
-
-    var stepLabel: String {
-        switch self {
-        case .p2MissingExample:
-            return "missing-example-counterexample"
-        case .p2MaterializeError:
-            return "materialize-error-counterexample"
-        }
-    }
-}
-
-enum UIWorldDictionaryLookupState: String, CaseIterable {
-    case idle
-    case loading
-    case result
-    case partial
-    case offline
-    case error
-    case retry
-
-    var fixtureID: String { "dictionary.lookup.\(rawValue)" }
-}
-
-struct UIWorldDictionaryLookupSeed: Codable, Equatable {
-    let fixtureID: String
-    let stepLabel: String
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case fixtureID
-        case stepLabel
-    }
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["fixtureID", "stepLabel"], decoder: decoder, label: "dictionary.lookup")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        fixtureID = try uiWorldRequireNonEmpty(
-            container.decode(String.self, forKey: .fixtureID),
-            decoder: decoder,
-            label: "dictionary.lookup.fixtureID"
-        )
-        stepLabel = try uiWorldRequireNonEmpty(
-            container.decode(String.self, forKey: .stepLabel),
-            decoder: decoder,
-            label: "dictionary.lookup.stepLabel"
-        )
-    }
-}
-
-struct UIWorldDictionarySenseSeed: Codable, Equatable {
-    let id: String
-    let partOfSpeech: String
-    let gloss: String
-    let exampleIDs: [String]
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case id
-        case partOfSpeech
-        case gloss
-        case exampleIDs
-    }
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["id", "partOfSpeech", "gloss", "exampleIDs"], decoder: decoder, label: "dictionary.sense")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .id), decoder: decoder, label: "dictionary.sense.id")
-        partOfSpeech = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .partOfSpeech), decoder: decoder, label: "dictionary.sense.partOfSpeech")
-        gloss = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .gloss), decoder: decoder, label: "dictionary.sense.gloss")
-        exampleIDs = try container.decode([String].self, forKey: .exampleIDs)
-        try uiWorldRequireUnique(exampleIDs, decoder: decoder, label: "dictionary.sense.exampleIDs", allowEmpty: false)
-        for value in exampleIDs {
-            _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "dictionary.sense.exampleIDs")
-        }
-    }
-}
-
-struct UIWorldDictionaryExampleSeed: Codable, Equatable {
-    let id: String
-    let senseID: String
-    let text: String
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case id
-        case senseID
-        case text
-    }
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["id", "senseID", "text"], decoder: decoder, label: "dictionary.example")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .id), decoder: decoder, label: "dictionary.example.id")
-        senseID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .senseID), decoder: decoder, label: "dictionary.example.senseID")
-        text = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .text), decoder: decoder, label: "dictionary.example.text")
-    }
-}
-
-struct UIWorldDictionaryProvenanceSeed: Codable, Equatable {
-    let provider: String
-    let entryID: String
-    let sourceLabel: String
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case provider
-        case entryID
-        case sourceLabel
-    }
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["provider", "entryID", "sourceLabel"], decoder: decoder, label: "dictionary.provenance")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        provider = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .provider), decoder: decoder, label: "dictionary.provenance.provider")
-        entryID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .entryID), decoder: decoder, label: "dictionary.provenance.entryID")
-        sourceLabel = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .sourceLabel), decoder: decoder, label: "dictionary.provenance.sourceLabel")
-    }
-}
-
-struct UIWorldDictionaryMaterializationSeed: Codable, Equatable {
-    let status: String
-    let selectedSenseID: String?
-    let selectedExampleID: String?
-    let sourceFixtureID: String
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case status
-        case selectedSenseID
-        case selectedExampleID
-        case sourceFixtureID
-    }
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["status", "selectedSenseID", "selectedExampleID", "sourceFixtureID"], decoder: decoder, label: "dictionary.materialization")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        status = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .status), decoder: decoder, label: "dictionary.materialization.status")
-        guard ["pending", "ready", "failed"].contains(status) else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.materialization.status is invalid")
-        }
-        selectedSenseID = try container.decodeIfPresent(String.self, forKey: .selectedSenseID)
-        selectedExampleID = try container.decodeIfPresent(String.self, forKey: .selectedExampleID)
-        sourceFixtureID = try uiWorldRequireNonEmpty(container.decode(String.self, forKey: .sourceFixtureID), decoder: decoder, label: "dictionary.materialization.sourceFixtureID")
-        if status == "ready" {
-            guard selectedSenseID != nil, selectedExampleID != nil else {
-                throw uiWorldDataCorrupted(decoder, "dictionary.materialization ready requires selected sense/example")
-            }
-        } else if selectedSenseID != nil || selectedExampleID != nil {
-            throw uiWorldDataCorrupted(decoder, "dictionary.materialization pending/failed must not carry selected sense/example")
-        }
-    }
-}
-
-struct UIWorldAssetCoverageSeed: Codable, Equatable {
-    let fixtureIDs: [String]
-    let stepLabels: [String]
-    let assetIDs: [String]
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case fixtureIDs
-        case stepLabels
-        case assetIDs
-    }
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["fixtureIDs", "stepLabels", "assetIDs"], decoder: decoder, label: "asset coverage")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        fixtureIDs = try container.decode([String].self, forKey: .fixtureIDs)
-        stepLabels = try container.decode([String].self, forKey: .stepLabels)
-        assetIDs = try container.decode([String].self, forKey: .assetIDs)
-        try uiWorldRequireUnique(fixtureIDs, decoder: decoder, label: "asset coverage.fixtureIDs")
-        try uiWorldRequireUnique(stepLabels, decoder: decoder, label: "asset coverage.stepLabels")
-        try uiWorldRequireUnique(assetIDs, decoder: decoder, label: "asset coverage.assetIDs")
-        for value in fixtureIDs + stepLabels + assetIDs {
-            _ = try uiWorldRequireNonEmpty(value, decoder: decoder, label: "asset coverage value")
-        }
-    }
-}
-
-struct UIWorldDictionarySeed: Codable, Equatable {
-    let lookup: [String: UIWorldDictionaryLookupSeed]
-    let senses: [UIWorldDictionarySenseSeed]
-    let examples: [UIWorldDictionaryExampleSeed]
-    let provenance: UIWorldDictionaryProvenanceSeed
-    let materialization: UIWorldDictionaryMaterializationSeed
-    let coverage: [String: UIWorldAssetCoverageSeed]
-
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case lookup
-        case senses
-        case examples
-        case provenance
-        case materialization
-        case coverage
-    }
-
-    private static let lookupStates = Set(UIWorldDictionaryLookupState.allCases.map(\.rawValue))
-
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        try uiWorldRequireExactKeys(raw, expected: ["lookup", "senses", "examples", "provenance", "materialization", "coverage"], decoder: decoder, label: "scenarioContext.dictionary")
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        lookup = try container.decode([String: UIWorldDictionaryLookupSeed].self, forKey: .lookup)
-        senses = try container.decode([UIWorldDictionarySenseSeed].self, forKey: .senses)
-        examples = try container.decode([UIWorldDictionaryExampleSeed].self, forKey: .examples)
-        provenance = try container.decode(UIWorldDictionaryProvenanceSeed.self, forKey: .provenance)
-        materialization = try container.decode(UIWorldDictionaryMaterializationSeed.self, forKey: .materialization)
-        coverage = try container.decode([String: UIWorldAssetCoverageSeed].self, forKey: .coverage)
-        try validateShape(decoder: decoder)
-    }
-
-    private func validateShape(decoder: Decoder) throws {
-        guard Set(lookup.keys) == Self.lookupStates else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.lookup states must be exact")
-        }
-        guard !senses.isEmpty, !examples.isEmpty else {
-            throw uiWorldDataCorrupted(decoder, "dictionary senses/examples must be non-empty")
-        }
-        guard Set(senses.map(\.id)).count == senses.count else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.senses.id must be unique")
-        }
-        guard Set(examples.map(\.id)).count == examples.count else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.examples.id must be unique")
-        }
-        guard Set(lookup.values.map(\.fixtureID)).count == lookup.count else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.lookup.fixtureID must be unique")
-        }
-        guard Set(lookup.values.map(\.stepLabel)).count == lookup.count else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.lookup.stepLabel must be unique")
-        }
-        let senseIDs = Set(senses.map(\.id))
-        let exampleByID = Dictionary(uniqueKeysWithValues: examples.map { ($0.id, $0) })
-        var referencedExampleIDs: Set<String> = []
-        for sense in senses {
-            for exampleID in sense.exampleIDs {
-                guard let example = exampleByID[exampleID], example.senseID == sense.id else {
-                    throw uiWorldDataCorrupted(decoder, "dictionary sense/example references must correspond")
-                }
-                referencedExampleIDs.insert(exampleID)
-            }
-        }
-        guard referencedExampleIDs == Set(exampleByID.keys) else {
-            throw uiWorldDataCorrupted(decoder, "dictionary examples must be referenced by their sense")
-        }
-        guard examples.allSatisfy({ senseIDs.contains($0.senseID) }) else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.example.senseID references unknown sense")
-        }
-        guard lookup.values.contains(where: { $0.fixtureID == materialization.sourceFixtureID }) else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.materialization.sourceFixtureID must reference lookup")
-        }
-        if materialization.status == "ready" {
-            guard let selectedSenseID = materialization.selectedSenseID,
-                  let selectedExampleID = materialization.selectedExampleID,
-                  senseIDs.contains(selectedSenseID),
-                  let example = exampleByID[selectedExampleID],
-                  example.senseID == selectedSenseID else {
-                throw uiWorldDataCorrupted(decoder, "dictionary materialization selected sense/example must correspond")
-            }
-        }
-        guard Set(coverage.keys) == Set(["required", "counterexamples"]) else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.coverage keys must be required/counterexamples")
-        }
-        guard let required = coverage["required"], !required.fixtureIDs.isEmpty, !required.stepLabels.isEmpty,
-              let counterexamples = coverage["counterexamples"] else {
-            throw uiWorldDataCorrupted(decoder, "dictionary.coverage required must be non-empty")
-        }
-        try validateDisjoint(required, counterexamples, decoder: decoder, label: "dictionary.coverage")
-    }
-
-    private func validateDisjoint(
-        _ required: UIWorldAssetCoverageSeed,
-        _ counterexamples: UIWorldAssetCoverageSeed,
-        decoder: Decoder,
-        label: String
-    ) throws {
-        let pairs: [(String, Set<String>, Set<String>)] = [
-            ("fixtureIDs", Set(required.fixtureIDs), Set(counterexamples.fixtureIDs)),
-            ("stepLabels", Set(required.stepLabels), Set(counterexamples.stepLabels)),
-            ("assetIDs", Set(required.assetIDs), Set(counterexamples.assetIDs)),
-        ]
-        for (name, requiredValues, counterexampleValues) in pairs where !requiredValues.isDisjoint(with: counterexampleValues) {
-            throw uiWorldDataCorrupted(decoder, "\(label).\(name) required/counterexamples must be disjoint")
-        }
-    }
-
-    func validate(assets: UIWorldAssetManifest, decoder: Decoder) throws {
-        let assetTypes = assets.typeByID
-        for (name, values) in coverage {
-            guard Set(values.assetIDs).isSubset(of: Set(assetTypes.keys)) else {
-                throw uiWorldDataCorrupted(decoder, "dictionary.coverage.\(name).assetIDs must resolve to manifest assets")
-            }
         }
     }
 }
@@ -674,56 +361,43 @@ struct UIWorldSurfaceContractSeed: Codable, Equatable {
 }
 
 struct UIWorldScenarioContextSeed: Codable, Equatable {
-    /// Legacy worlds use exactly these three keys; canonical worlds add the
-    /// dictionary and surface contracts as an inseparable five-key shape.
     let reviewClock: FixtureReviewClockSeed?
-    let dictionary: UIWorldDictionarySeed?
     let surfaceContracts: [String: UIWorldSurfaceContractSeed]?
     let readerPassage: UIWorldReaderPassageSeed?
     let wordDetail: UIWorldVocabularySeed?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case reviewClock
-        case dictionary
         case readerPassage
         case wordDetail
         case surfaceContracts
     }
 
-    private static let legacyKeys: Set<String> = ["reviewClock", "readerPassage", "wordDetail"]
-    private static let canonicalKeys: Set<String> = ["reviewClock", "dictionary", "surfaceContracts", "readerPassage", "wordDetail"]
-
     init(
         reviewClock: FixtureReviewClockSeed? = nil,
-        dictionary: UIWorldDictionarySeed? = nil,
         surfaceContracts: [String: UIWorldSurfaceContractSeed]? = nil,
         readerPassage: UIWorldReaderPassageSeed? = nil,
         wordDetail: UIWorldVocabularySeed? = nil
     ) {
         self.reviewClock = reviewClock
-        self.dictionary = dictionary
         self.readerPassage = readerPassage
         self.wordDetail = wordDetail
         self.surfaceContracts = surfaceContracts
     }
 
     init(from decoder: Decoder) throws {
-        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
-        let keys = Set(rawContainer.allKeys.map(\.stringValue))
-        guard keys == Self.legacyKeys || keys == Self.canonicalKeys else {
-            try uiWorldRequireExactKeys(rawContainer, expected: Self.canonicalKeys, decoder: decoder, label: "UI World scenarioContext")
-            throw uiWorldDataCorrupted(decoder, "UI World scenarioContext has an unsupported key shape")
-        }
         let container = try decoder.container(keyedBy: CodingKeys.self)
         reviewClock = try container.decodeIfPresent(FixtureReviewClockSeed.self, forKey: .reviewClock)
         readerPassage = try container.decodeIfPresent(UIWorldReaderPassageSeed.self, forKey: .readerPassage)
         wordDetail = try container.decodeIfPresent(UIWorldVocabularySeed.self, forKey: .wordDetail)
-        if keys == Self.canonicalKeys {
+        surfaceContracts = try container.decodeIfPresent(
+            [String: UIWorldSurfaceContractSeed].self,
+            forKey: .surfaceContracts
+        )
+        if surfaceContracts != nil {
             guard reviewClock?.isCanonical == true else {
                 throw uiWorldDataCorrupted(decoder, "canonical scenarioContext requires canonical reviewClock")
             }
-            dictionary = try container.decode(UIWorldDictionarySeed.self, forKey: .dictionary)
-            surfaceContracts = try container.decode([String: UIWorldSurfaceContractSeed].self, forKey: .surfaceContracts)
             guard surfaceContracts?.keys.contains("explore") == true,
                   surfaceContracts?.keys.contains("settings") == true else {
                 throw uiWorldDataCorrupted(decoder, "canonical scenarioContext requires explore/settings surfaceContracts")
@@ -732,8 +406,6 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
             guard reviewClock?.isCanonical != true else {
                 throw uiWorldDataCorrupted(decoder, "legacy scenarioContext cannot use canonical reviewClock")
             }
-            dictionary = nil
-            surfaceContracts = nil
         }
     }
 
@@ -746,7 +418,7 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
         guard readerPassage != nil, wordDetail != nil else {
             throw uiWorldDataCorrupted(decoder, "scenarioContext must declare readerPassage and wordDetail")
         }
-        guard let dictionary, let surfaceContracts else {
+        guard let surfaceContracts else {
             return
         }
         guard let reviewClock, reviewClock.isCanonical,
@@ -768,7 +440,6 @@ struct UIWorldScenarioContextSeed: Codable, Equatable {
             }
         }
 
-        try dictionary.validate(assets: assets, decoder: decoder)
         for (surface, contract) in surfaceContracts {
             // Review-calendar evidence uses portable logical proof IDs rather
             // than physical asset-manifest IDs. The host validator owns its
@@ -2222,7 +1893,7 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case vocabListSingle
     case vocabListSyncing
     case p11ReviewMix = "p11.644.reviewMix"
-    case roleMixed = "role.mixed"
+    case reviewStateMixed = "review.mixed"
     case wordDetail
     case wordEdit
 }
@@ -2313,8 +1984,6 @@ struct UIWorldVocabularySeed: Codable, Equatable {
 
 struct UIWorldVocabularyEntryOverride: Codable, Equatable {
     let word: String
-    let cardRole: VocabularyCardRole
-    let reviewEligible: Bool
     let reviewIntervalHours: Double
     let nextReviewAt: Date
     let lastReviewedAt: Date?
@@ -2324,8 +1993,6 @@ struct UIWorldVocabularyEntryOverride: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case word
-        case cardRole
-        case reviewEligible
         case reviewIntervalHours
         case nextReviewAt
         case lastReviewedAt
@@ -2335,18 +2002,6 @@ struct UIWorldVocabularyEntryOverride: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
-        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
-        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
-            .subtracting(CodingKeys.allCases.map(\.rawValue))
-        guard unknownKeys.isEmpty else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "UI World vocabulary entry override contains unknown keys \(unknownKeys.sorted())"
-                )
-            )
-        }
-
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -2359,8 +2014,6 @@ struct UIWorldVocabularyEntryOverride: Codable, Equatable {
         }
 
         word = try container.decode(String.self, forKey: .word)
-        cardRole = try container.decode(VocabularyCardRole.self, forKey: .cardRole)
-        reviewEligible = try container.decode(Bool.self, forKey: .reviewEligible)
         reviewIntervalHours = try container.decode(Double.self, forKey: .reviewIntervalHours)
         nextReviewAt = try container.decode(Date.self, forKey: .nextReviewAt)
         lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
@@ -2481,7 +2134,6 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     let syncStatus: Int
     let actionType: String
     let isArchived: Bool
-    let isExcludedFromReader: Bool
     let reviewIntervalHours: Double?
     let nextReviewAt: Date?
     let lastReviewedAt: Date?
@@ -2508,7 +2160,6 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
         case syncStatus
         case actionType
         case isArchived
-        case isExcludedFromReader
         case reviewIntervalHours
         case nextReviewAt
         case lastReviewedAt
@@ -2519,18 +2170,6 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
-        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
-        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
-            .subtracting(CodingKeys.allCases.map(\.rawValue))
-        guard unknownKeys.isEmpty else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: decoder.codingPath,
-                    debugDescription: "UI World vocabulary entry contains unknown keys \(unknownKeys.sorted())"
-                )
-            )
-        }
-
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -2559,7 +2198,6 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
         syncStatus = try container.decode(Int.self, forKey: .syncStatus)
         actionType = try container.decode(String.self, forKey: .actionType)
         isArchived = try container.decode(Bool.self, forKey: .isArchived)
-        isExcludedFromReader = try container.decode(Bool.self, forKey: .isExcludedFromReader)
         reviewIntervalHours = try container.decodeIfPresent(Double.self, forKey: .reviewIntervalHours)
         nextReviewAt = try container.decodeIfPresent(Date.self, forKey: .nextReviewAt)
         lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)

@@ -22,6 +22,7 @@ extension UITestFixtureSeed {
             // line. In particular, auth.signedIn is the demo account and
             // SettingsCoordinator intentionally refuses sync in demo mode.
             seedSignedInLoginFromWorld(using: authFixtureID(for: seed))
+            seedSettingsSyncResidual(into: container)
             FixtureDatasetStore.activateSettingsFixture(fixtureID)
             AppLog.app.info("UI-test fixture selected: settings.\(id, privacy: .public)")
         case .longContentCounterexample:
@@ -30,6 +31,25 @@ extension UITestFixtureSeed {
             seedResetLifecycle(from: fixtureID, into: container)
         default:
             failFixtureSeed("Settings UI test requires a counterexample fixture, got \(fixtureID.rawValue)")
+        }
+    }
+
+    @MainActor
+    private static func seedSettingsSyncResidual(into container: ModelContainer) {
+        let residual = VocabularyEntry(
+            word: "residual",
+            translation: "residual",
+            context: "residual",
+            bookTitle: "Settings Sync Fixture"
+        )
+        residual.syncStatus = VocabularySyncState.synced.rawValue
+        residual.kgCardId = "settings-residual"
+        residual.reviewStateSyncedAt = residual.dateAdded
+        container.mainContext.insert(residual)
+        do {
+            try container.mainContext.save()
+        } catch {
+            failFixtureSeed("Unable to seed settings sync residual: \(error)")
         }
     }
 

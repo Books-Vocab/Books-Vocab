@@ -74,12 +74,6 @@ final class KGService: KGServing {
     @ObservationIgnored
     let urlSession: URLSession
 
-    /// DEBUG UI World runs use the canonical dictionary scenario context as a
-    /// hermetic service seam. Release builds never route through this adapter.
-    #if DEBUG
-    @ObservationIgnored
-    var fixtureDictionaryService: FixtureDictionaryServing?
-    #endif
     @ObservationIgnored
     let transport: any KGHTTPTransport
 
@@ -141,13 +135,6 @@ final class KGService: KGServing {
         _isPushingReviewEvents = false
         _reviewEventPushLock.unlock()
     }
-    @ObservationIgnored
-    private let _readerVisibilityFlushLock = NSLock()
-    @ObservationIgnored
-    private var _isFlushingReaderVisibility = false
-    @ObservationIgnored
-    private var _readerVisibilityFlushRequested = false
-
     /// Thread-safe check-and-set for background sync guard.
     /// Returns `true` if sync was successfully claimed (caller should proceed).
     func claimBackgroundSync() -> Bool {
@@ -249,38 +236,6 @@ final class KGService: KGServing {
         _pullLock.lock()
         defer { _pullLock.unlock() }
         if _pullChainTailID == id { _pullChainTail = nil }
-    }
-
-    func claimReaderVisibilityFlush() -> Bool {
-        _readerVisibilityFlushLock.lock()
-        defer { _readerVisibilityFlushLock.unlock() }
-        if _isFlushingReaderVisibility {
-            _readerVisibilityFlushRequested = true
-            return false
-        }
-        _isFlushingReaderVisibility = true
-        _readerVisibilityFlushRequested = false
-        return true
-    }
-
-    /// Completes one serialized pass. If a toggle arrived during the pass,
-    /// keeps ownership so the caller can immediately coalesce the latest value.
-    func finishReaderVisibilityFlushPass() -> Bool {
-        _readerVisibilityFlushLock.lock()
-        defer { _readerVisibilityFlushLock.unlock() }
-        if _readerVisibilityFlushRequested {
-            _readerVisibilityFlushRequested = false
-            return true
-        }
-        _isFlushingReaderVisibility = false
-        return false
-    }
-
-    func abortReaderVisibilityFlush() {
-        _readerVisibilityFlushLock.lock()
-        _isFlushingReaderVisibility = false
-        _readerVisibilityFlushRequested = false
-        _readerVisibilityFlushLock.unlock()
     }
 
     var baseURL: URL {

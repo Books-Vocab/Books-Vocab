@@ -187,7 +187,6 @@ protocol SubscriptionServing: AnyObject {
 protocol KGServing:
     BackgroundSyncing,
     DeckCopying,
-    DictionaryServing,
     AuthTokenProviding,
     HealthChecking,
     NotebookServing,

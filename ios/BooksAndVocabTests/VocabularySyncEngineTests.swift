@@ -156,10 +156,6 @@ private final class FakeVocabularySyncService: VocabularySyncEngineServing {
         calls.append("delete")
     }
 
-    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard {
-        fatalError("not used")
-    }
-
     func triggerPipeline(notebookId: String) async throws {
         calls.append("trigger")
         if let triggerError { throw triggerError }

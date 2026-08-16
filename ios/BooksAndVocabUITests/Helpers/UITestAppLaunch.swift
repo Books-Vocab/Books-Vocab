@@ -111,14 +111,12 @@ enum UITestFixture: Equatable {
     case searchVocabNotebook
     case vocabularyLibraryFilterRich
     case vocabularyLibraryP11ReviewMix
-    case vocabularyLibraryP11MixedRoleCounterexample
+    case vocabularyLibraryReviewStateMixed
     case readerRealBookLibrary
     case readerInvalidDestinationLibrary
     case readerRuntime(UITestReaderRuntimeScenario)
     case notebookReviewDeck
     case notebookReviewDeckVaried
-    case dictionaryP1Rich
-    case dictionaryP2Senses
     case explore(String)
     case vocabulary(String)
     case notebookReviewCardFullContent
@@ -157,8 +155,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:vocabulary:vocabListFilterRich"
         case .vocabularyLibraryP11ReviewMix:
             return "-seedFixture:vocabulary:p11.644.reviewMix"
-        case .vocabularyLibraryP11MixedRoleCounterexample:
-            return "-seedFixture:vocabulary:role.mixed"
+        case .vocabularyLibraryReviewStateMixed:
+            return "-seedFixture:vocabulary:review.mixed"
         case .readerRealBookLibrary:
             return "-seedFixture:reader:realBookLibrary"
         case .readerInvalidDestinationLibrary:
@@ -169,10 +167,6 @@ enum UITestFixture: Equatable {
             return "-seedFixture:notebook:reviewDeck"
         case .notebookReviewDeckVaried:
             return "-seedFixture:notebook:reviewDeckVaried"
-        case .dictionaryP1Rich:
-            return "-seedFixture:dictionary:ui-p1-dictionary-rich"
-        case .dictionaryP2Senses:
-            return "-seedFixture:dictionary:ui-p2-dictionary-senses"
         case .explore(let id):
             return "-seedFixture:explore:\(id)"
         case .vocabulary(let id):

@@ -56,8 +56,8 @@ struct KGServiceSyncReportingTests {
 
     @Test("宣告的步驟清單與實際會跑的段落一致，podcast 只在 flag 開時出現")
     func stepIDsFollowFeatureFlag() {
-        #expect(KGService.syncStepIDs(podcastEnabled: false) == [.push, .pull, .dictionary, .reviewEvents])
-        #expect(KGService.syncStepIDs(podcastEnabled: true) == [.push, .pull, .dictionary, .reviewEvents, .podcast])
+        #expect(KGService.syncStepIDs(podcastEnabled: false) == [.push, .pull, .reviewEvents])
+        #expect(KGService.syncStepIDs(podcastEnabled: true) == [.push, .pull, .reviewEvents, .podcast])
     }
 
     @Test("宣告清單不含 .status —— 那一列由設定頁的 resync 自己補，不屬於 backgroundSync")
@@ -224,15 +224,10 @@ struct KGServiceSyncReportingTests {
         #expect(events.first == .started(.push), "第一件事必須是 push 開跑，實際：\(events)")
         #expect(events.contains(.started(.pull)))
         #expect(events.contains(.started(.reviewEvents)))
-        // nil token → pull 走 unauthorized；.pull 與 .dictionary 都必須拿到終態，
-        // 否則那兩列會永遠停在轉圈。
+        // nil token → pull 走 unauthorized；.pull 必須拿到終態，
+        // 否則該列會永遠停在轉圈。
         #expect(events.contains { if case .finished(.pull, .error, _) = $0 { return true }; return false },
                 "pull 失敗後沒有補發終態，UI 會卡在 running：\(events)")
-        // `.dictionary` 這一輪從沒 started 過（401 發生在 `api/vocab` 那個 GET，
-        // 遠早於字典卡投影），所以它不該收到任何事件——維持 waiting 的灰列才誠實。
-        // 硬補一個 `.error` 會讓它的權重被算滿，第一步就死的一輪顯示 80%。
-        #expect(!events.contains { if case .finished(.dictionary, _, _) = $0 { return true }; return false },
-                "沒開始過的步驟不該有終態事件：\(events)")
         // podcast 這一輪不該有任何事件。擋住它的**不是** 401 早退（那條腿現在從
         // 整輪最前面就起跑），而是 runPodcastLeg 自己的 token guard——NilTokenSession
         // 沒有 token。這也是本測試零網路的原因；有人日後給這個 harness 一個真 token，

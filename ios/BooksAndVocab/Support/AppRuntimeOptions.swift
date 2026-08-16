@@ -35,14 +35,6 @@ enum AppRuntimeOptions {
         isUITesting(arguments: arguments) && arguments.contains("-isolatedAuthSession")
     }
 
-    static func shouldGateDictionaryRetry(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        isUITesting(arguments: arguments) && arguments.contains("-dictionaryRetryGate")
-    }
-
-    static func shouldGateDictionaryLoading(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        isUITesting(arguments: arguments) && arguments.contains("-dictionaryLoadingGate")
-    }
-
     /// 啟動即開 Settings sheet（probe rig：真機 devicectl launch 無法驅動 UI，
     /// 用 launch arg 重現「開設定頁」路徑）。沿 isolatedAuthSession 慣例綁
     /// -ui-testing，避免單獨旗標誤觸。

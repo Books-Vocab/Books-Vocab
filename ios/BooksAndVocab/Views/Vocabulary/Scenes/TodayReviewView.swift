@@ -86,14 +86,12 @@ struct TodayReviewView: View {
         entries: [VocabularyEntry],
         allEntries: [VocabularyEntry],
         currentUserID: String?,
-        includeDictionaryCards: Bool = false,
         onClose: @escaping () -> Void
     ) {
         _state = State(initialValue: TodayReviewState(
             entries: entries,
             allEntries: allEntries,
-            currentUserID: currentUserID,
-            includeDictionaryCards: includeDictionaryCards
+            currentUserID: currentUserID
         ))
         self.allEntries = allEntries
         self.onClose = onClose

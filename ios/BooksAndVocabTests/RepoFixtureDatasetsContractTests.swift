@@ -91,18 +91,13 @@ struct RepoFixtureDatasetsContractTests {
         #expect(!document.syncPresenter.isEmpty)
         #expect(Set(document.syncPresenter.keys).isSubset(of: Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue))))
 
-        // Canonical scenario context carries one clock, dictionary materialization,
-        // surface contracts, and reusable Reader/Word Detail content.
+        // Canonical scenario context carries one clock, surface contracts, and
+        // reusable Reader/Word Detail content.
         let scenario = try #require(document.scenarioContext, "generated demo must declare scenarioContext")
         let reviewClock = try #require(scenario.reviewClock, "generated demo must declare reviewClock")
         let clock = try Self.requireCanonicalClock(reviewClock)
         #expect(clock.provenance == ReviewCalendarClock.historyPlanSource)
         #expect(clock.dayKey(for: clock.now) == reviewClock.anchorDay)
-        let dictionary = try #require(scenario.dictionary, "canonical scenarioContext must declare dictionary")
-        #expect(dictionary.lookup.count == 7)
-        #expect(dictionary.materialization.status == "ready")
-        #expect(dictionary.materialization.selectedSenseID == "sense-1")
-        #expect(dictionary.materialization.selectedExampleID == "example-1")
         let surfaceContracts = try #require(
             scenario.surfaceContracts,
             "canonical scenarioContext must declare surfaceContracts"
@@ -191,7 +186,6 @@ struct RepoFixtureDatasetsContractTests {
         let data = try Data(contentsOf: url)
         var topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         var context = try #require(topLevel["scenarioContext"] as? [String: Any])
-        context.removeValue(forKey: "dictionary")
         context.removeValue(forKey: "surfaceContracts")
         context["reviewClock"] = NSNull()
         topLevel["scenarioContext"] = context
@@ -207,7 +201,6 @@ struct RepoFixtureDatasetsContractTests {
         topLevel["scenarioContext"] = context
         let frozenNowData = try JSONSerialization.data(withJSONObject: topLevel)
         let legacyDocument = try FixtureDatasetStore.decode(frozenNowData)
-        #expect(legacyDocument.scenarioContext?.dictionary == nil)
         #expect(legacyDocument.scenarioContext?.reviewClock?.frozenNow == "2026-06-15T23:59:59Z")
     }
 
@@ -226,7 +219,6 @@ struct RepoFixtureDatasetsContractTests {
             for clock in clocks {
                 let data = try Self.encodedGeneratedDemo { topLevel in
                     var context = try #require(topLevel["scenarioContext"] as? [String: Any])
-                    context.removeValue(forKey: "dictionary")
                     context.removeValue(forKey: "surfaceContracts")
                     context["reviewClock"] = clock
                     context[missingField] = NSNull()
@@ -240,7 +232,7 @@ struct RepoFixtureDatasetsContractTests {
     }
 
     @Test func canonicalScenarioContextRejectsPartialAndMixedShapes() throws {
-        for missingField in ["dictionary", "surfaceContracts"] {
+        for missingField in ["surfaceContracts"] {
             let data = try Self.encodedGeneratedDemo { topLevel in
                 var context = try #require(topLevel["scenarioContext"] as? [String: Any])
                 context.removeValue(forKey: missingField)
@@ -263,27 +255,6 @@ struct RepoFixtureDatasetsContractTests {
         }
         #expect(throws: (any Error).self) {
             try FixtureDatasetStore.decode(mixedData)
-        }
-    }
-
-    @Test func canonicalDictionaryRejectsPendingReadyMaterializationContradictions() throws {
-        for status in ["pending", "ready"] {
-            let data = try Self.encodedGeneratedDemo { topLevel in
-                var context = try #require(topLevel["scenarioContext"] as? [String: Any])
-                var dictionary = try #require(context["dictionary"] as? [String: Any])
-                var materialization = try #require(dictionary["materialization"] as? [String: Any])
-                materialization["status"] = status
-                if status == "ready" {
-                    materialization["selectedSenseID"] = NSNull()
-                    materialization["selectedExampleID"] = NSNull()
-                }
-                dictionary["materialization"] = materialization
-                context["dictionary"] = dictionary
-                topLevel["scenarioContext"] = context
-            }
-            #expect(throws: (any Error).self) {
-                try FixtureDatasetStore.decode(data)
-            }
         }
     }
 
@@ -1376,7 +1347,7 @@ struct RepoFixtureDatasetsContractTests {
     }
 
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], document: FixtureDatasetDocument, dataset: String) {
-        let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
+        let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived"]
         let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
         let notebookEntryKeys = requiredNotebookEntryKeys.union(["word", "translation"])
         let requiredUIWorldEntryKeys = requiredEntryKeys.union([
@@ -1887,7 +1858,6 @@ struct RepoFixtureDatasetsContractTests {
             syncStatus: entry.syncStatus,
             actionType: entry.actionType,
             isArchived: entry.isArchived,
-            isExcludedFromReader: entry.isExcludedFromReader,
             dataset: dataset,
             owner: owner
         )
@@ -1902,7 +1872,6 @@ struct RepoFixtureDatasetsContractTests {
             syncStatus: entry.syncStatus,
             actionType: entry.actionType,
             isArchived: entry.isArchived,
-            isExcludedFromReader: entry.isExcludedFromReader,
             dataset: dataset,
             owner: owner
         )
@@ -1912,7 +1881,6 @@ struct RepoFixtureDatasetsContractTests {
         syncStatus: Int,
         actionType: String,
         isArchived: Bool,
-        isExcludedFromReader: Bool,
         dataset: String,
         owner: String
     ) {
@@ -1925,7 +1893,6 @@ struct RepoFixtureDatasetsContractTests {
             "\(dataset): \(owner).actionType must be add/delete/edit"
         )
         _ = isArchived
-        _ = isExcludedFromReader
     }
 
     private func expectInstallableAssetRef(

@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct AddLinkSheet: View {
@@ -6,14 +5,12 @@ struct AddLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appSkin) private var appSkin
     @Environment(\.kgService) private var kgService
-    @Environment(\.modelContext) private var modelContext
 
     let sourceEntry: VocabularyEntry
     let allEntries: [VocabularyEntry]
     var onLinked: () -> Void = {}
 
     @State private var searchText = ""
-    @State private var searchError: String?
     @State private var coordinator = AddLinkCoordinator()
 
     init(
@@ -37,14 +34,7 @@ struct AddLinkSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if let searchError {
-                    AppBanner(
-                        message: searchError,
-                        systemImage: "exclamationmark.triangle",
-                        onDismiss: { self.searchError = nil }
-                    )
-                }
-                if coordinator.materializePhase == .failed {
+                if coordinator.actionPhase == .failed {
                     AppBanner(
                         message: L10n.string("addLink.error.linkFailed"),
                         systemImage: "exclamationmark.triangle"
@@ -56,7 +46,6 @@ struct AddLinkSheet: View {
 
                 List {
                     localSection
-                    dictionarySection
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
@@ -71,12 +60,8 @@ struct AddLinkSheet: View {
                 }
             }
         }
-        .onChange(of: searchText) {
-            searchError = nil
-            coordinator.queryDidChange()
-        }
-        .onChange(of: coordinator.materializePhase) {
-            if coordinator.materializePhase == .succeeded {
+        .onChange(of: coordinator.actionPhase) { _, phase in
+            if phase == .succeeded {
                 onLinked()
                 dismiss()
             }
@@ -116,374 +101,7 @@ struct AddLinkSheet: View {
         }
     }
 
-    @ViewBuilder
-    private var dictionarySection: some View {
-        Section(L10n.string("addLink.dictionarySection")) {
-            let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                Text(L10n.string("addLink.dictionaryPrompt"))
-                    .foregroundStyle(appSkin.palette.tertiaryText)
-                    .accessibilityIdentifier("addLink.dictionary.prompt")
-            } else {
-                switch coordinator.lookupState {
-                case .idle:
-                    Button {
-                        coordinator.submitSearch(query: trimmed, using: kgService)
-                    } label: {
-                        Label(
-                            L10n.format("addLink.searchDictionary", trimmed),
-                            systemImage: "text.book.closed"
-                        )
-                    }
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .accessibilityIdentifier("addLink.dictionary.idle")
-                    .accessibilityValue(Text(verbatim: UIWorldDictionaryLookupState.idle.fixtureID))
-
-                case .loading:
-                    VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                        ZStack(alignment: .topLeading) {
-                            AppLoadingStateCard(
-                                title: L10n.string("addLink.dictionaryLoading"),
-                                systemImage: "magnifyingglass",
-                                visualStyle: .vocab
-                            )
-                            dictionaryAccessibilityMarker(
-                                "addLink.dictionary.loading",
-                                fixtureID: .loading
-                            )
-                        }
-                        if AppRuntimeOptions.shouldGateDictionaryLoading() {
-                            Button(L10n.string("繼續載入")) {
-                                Task { await DictionaryRetryGate.shared.release() }
-                            }
-                            .buttonStyle(.vocabAction(.neutral))
-                            .accessibilityIdentifier("addLink.dictionary.releaseLoading")
-                        }
-                    }
-                    .listRowBackground(Color.clear)
-
-                case .partial(_, _, let failure):
-                    ZStack(alignment: .topLeading) {
-                        VocabStateMessageCard(
-                            title: L10n.string("addLink.dictionarySection"),
-                            systemImage: "exclamationmark.triangle",
-                            description: failureMessage(failure)
-                        ) {
-                            Button(L10n.string("重試")) {
-                                coordinator.retrySearch(using: kgService)
-                            }
-                            .buttonStyle(.vocabAction(.neutral))
-                            .accessibilityIdentifier("addLink.dictionary.retry")
-                        }
-                        dictionaryAccessibilityMarker(
-                            "addLink.dictionary.partial",
-                            fixtureID: .partial
-                        )
-                    }
-                    .listRowBackground(Color.clear)
-
-                case .success(_, let entry, let cacheStatus):
-                    if let entry {
-                        dictionaryResult(entry, cacheStatus: cacheStatus)
-                    } else {
-                        ZStack(alignment: .topLeading) {
-                            VocabStateMessageCard(
-                                title: L10n.string("addLink.dictionaryEmpty"),
-                                systemImage: "text.book.closed"
-                            )
-                            dictionaryAccessibilityMarker(
-                                "addLink.dictionary.empty",
-                                fixtureID: .result
-                            )
-                        }
-                        .listRowBackground(Color.clear)
-                    }
-
-                case .error(_, let failure):
-                    ZStack(alignment: .topLeading) {
-                        VocabStateMessageCard(
-                            title: L10n.string("addLink.dictionarySection"),
-                            systemImage: "exclamationmark.triangle",
-                            description: failureMessage(failure)
-                        ) {
-                            Button(L10n.string("重試")) {
-                                coordinator.retrySearch(using: kgService)
-                            }
-                            .buttonStyle(.vocabAction(.neutral))
-                            .accessibilityIdentifier("addLink.dictionary.retry")
-                        }
-                        dictionaryAccessibilityMarker(
-                            "addLink.dictionary.error",
-                            fixtureID: .error
-                        )
-                    }
-                    .listRowBackground(Color.clear)
-
-                case .offline:
-                    ZStack(alignment: .topLeading) {
-                        VocabStateMessageCard(
-                            title: L10n.string("addLink.dictionarySection"),
-                            systemImage: "exclamationmark.triangle",
-                            description: failureMessage(.offline)
-                        ) {
-                            Button(L10n.string("重試")) {
-                                coordinator.retrySearch(using: kgService)
-                            }
-                            .buttonStyle(.vocabAction(.neutral))
-                            .accessibilityIdentifier("addLink.dictionary.retry")
-                        }
-                        dictionaryAccessibilityMarker(
-                            "addLink.dictionary.offline",
-                            fixtureID: .offline
-                        )
-                    }
-                    .listRowBackground(Color.clear)
-
-                case .retry:
-                    ZStack(alignment: .topLeading) {
-                        VocabStateMessageCard(
-                            title: L10n.string("addLink.dictionaryLoading"),
-                            systemImage: "arrow.clockwise"
-                        ) {
-                            VStack(spacing: AppSpacing.microGap) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                if AppRuntimeOptions.shouldGateDictionaryRetry() {
-                                    Button(L10n.string("重試")) {
-                                        Task { await DictionaryRetryGate.shared.release() }
-                                    }
-                                    .buttonStyle(.vocabAction(.neutral))
-                                    .accessibilityIdentifier("addLink.dictionary.releaseRetry")
-                                }
-                            }
-                        }
-                        dictionaryAccessibilityMarker(
-                            "addLink.dictionary.retrying",
-                            fixtureID: .retry
-                        )
-                    }
-                    .listRowBackground(Color.clear)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dictionaryResult(_ entry: LexicalEntry, cacheStatus: String) -> some View {
-        if let existing = AddLinkCoordinator.existingEntry(
-            for: entry.word,
-            notebookID: sourceEntry.notebookId,
-            excluding: sourceEntry.id,
-            allEntries: allEntries
-        ) {
-            VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-                Button {
-                    selectEntry(existing)
-                } label: {
-                    Label(
-                        existing.cardRole == .learning
-                            ? L10n.string("addLink.alreadyLearning")
-                            : L10n.string("addLink.alreadyDictionary"),
-                        systemImage: existing.cardRole == .learning ? "checkmark.circle" : "text.book.closed"
-                    )
-                }
-                if existing.cardRole == .dictionary, !existing.context.isEmpty {
-                    Text(existing.context)
-                        .font(appSkin.typography.caption)
-                        .foregroundStyle(appSkin.palette.tertiaryText)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                }
-            }
-        } else {
-            VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-                ForEach(entry.senses) { sense in
-                    VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-                    if let partOfSpeech = sense.partOfSpeech {
-                        Text(partOfSpeech)
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.tertiaryText)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    Button {
-                        coordinator.selectSense(senseKey: sense.id)
-                    } label: {
-                        Text(sense.definition)
-                            .font(appSkin.typography.body)
-                            .lineLimit(3)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                        .accessibilityIdentifier("addLink.sense.\(sense.id)")
-                        .accessibilityValue(
-                            coordinator.selectedSenseKey == sense.id
-                                ? L10n.string("a11y.toggle.on")
-                                : L10n.string("a11y.toggle.off")
-                        )
-                        .accessibilityAddTraits(
-                            coordinator.selectedSenseKey == sense.id ? .isSelected : []
-                        )
-                    ForEach(sense.examples) { example in
-                        Button {
-                            coordinator.select(senseKey: sense.id, exampleKey: example.id)
-                        } label: {
-                            let isSelected = coordinator.selectedExampleKey == example.id
-                            HStack(alignment: .top, spacing: AppSpacing.s2) {
-                                Image(systemName: coordinator.selectedExampleKey == example.id
-                                      ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isSelected ? appSkin.palette.accent : appSkin.palette.tertiaryText)
-                                Text(example.text)
-                                    .multilineTextAlignment(.leading)
-                                    .lineLimit(3)
-                                    .truncationMode(.tail)
-                            }
-                            .foregroundStyle(isSelected ? appSkin.palette.accent : appSkin.palette.primaryText)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("addLink.example.\(example.id)")
-                        .accessibilityValue(
-                            coordinator.selectedExampleKey == example.id
-                                ? L10n.string("a11y.toggle.on")
-                                : L10n.string("a11y.toggle.off")
-                        )
-                        .accessibilityAddTraits(
-                            coordinator.selectedExampleKey == example.id ? .isSelected : []
-                        )
-                    }
-                    }
-                    .padding(.vertical, AppSpacing.microGap)
-                }
-
-                if coordinator.selectedExampleKey != nil {
-                    Button {
-                        coordinator.startMaterializeSelectedExample(
-                            sourceEntry: sourceEntry,
-                            entry: entry,
-                            using: kgService,
-                            container: modelContext.container
-                        )
-                    } label: {
-                        if coordinator.materializePhase == .running {
-                            ProgressView()
-                        } else {
-                            Text(coordinator.materializePhase == .failed
-                                 ? L10n.string("重試")
-                                 : L10n.string("addLink.addSelectedExample"))
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .buttonStyle(.vocabAction(.primary))
-                    .disabled(coordinator.materializePhase == .running)
-                    .accessibilityIdentifier("addLink.dictionary.materialize")
-                    .accessibilityValue(
-                        coordinator.selectionState.isSelected
-                            ? L10n.string("a11y.toggle.on")
-                            : L10n.string("a11y.toggle.off")
-                    )
-                }
-            }
-        }
-
-        dictionaryAccessibilityMarker(
-            "addLink.dictionary.result",
-            fixtureID: .result
-        )
-
-        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-            if cacheStatus == "stale" {
-                Label(L10n.string("addLink.staleCache"), systemImage: "clock.arrow.circlepath")
-            }
-            Text(entry.attributionText)
-                .lineLimit(2)
-                .truncationMode(.tail)
-                .accessibilityIdentifier("addLink.dictionary.provenance")
-                .accessibilityValue("\(entry.provider)|\(entry.attributionText)")
-            if let sourceURL = URL(string: entry.sourceUrl) {
-                Link(L10n.string("addLink.openSource"), destination: sourceURL)
-            }
-            if let licenseURL = URL(string: entry.licenseUrl) {
-                Link(entry.licenseName, destination: licenseURL)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            } else {
-                Text(entry.licenseName)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-        }
-        .font(appSkin.typography.caption)
-        .foregroundStyle(appSkin.palette.tertiaryText)
-
-        if let materialization = coordinator.dictionaryMaterialization,
-           let selectedSenseID = materialization.selectedSenseID,
-           let selectedExampleID = materialization.selectedExampleID {
-            let payload = [
-                selectedSenseID,
-                selectedExampleID,
-                materialization.sourceFixtureID,
-                materialization.datasetID,
-                materialization.datasetSHA256,
-                materialization.sourceAssetID,
-                materialization.sourceAssetPath,
-                String(materialization.sourceAssetByteSize),
-                materialization.sourceAssetSHA256,
-            ].joined(separator: "|")
-            Rectangle()
-                .fill(.clear)
-                .frame(width: 1, height: 1)
-                .accessibilityElement()
-                .accessibilityLabel(Text(L10n.string("addLink.dictionarySection")))
-                .accessibilityIdentifier(
-                    "addLink.dictionary.materialization.\(materialization.status)"
-                )
-                .accessibilityValue(Text(verbatim: payload))
-        }
-        if coordinator.materializePhase == .failed {
-            Rectangle()
-                .fill(.clear)
-                .frame(width: 1, height: 1)
-                .accessibilityElement()
-                .accessibilityLabel(Text(L10n.string("addLink.dictionarySection")))
-                .accessibilityIdentifier("addLink.dictionary.materialization.failed")
-                .accessibilityValue(Text(verbatim: "dictionary.p2.materialize-error"))
-        }
-    }
-
-    private func failureMessage(_ failure: DictionarySearchFailure) -> String {
-        switch failure {
-        case .offline: L10n.string("addLink.error.offline")
-        case .rateLimited: L10n.string("addLink.error.rateLimited")
-        case .timeout: L10n.string("addLink.error.timeout")
-        case .malformed: L10n.string("addLink.error.malformed")
-        case .unavailable: L10n.string("addLink.error.unavailable")
-        }
-    }
-
-    @ViewBuilder
-    private func dictionaryAccessibilityMarker(
-        _ identifier: String,
-        fixtureID: UIWorldDictionaryLookupState? = nil
-    ) -> some View {
-        let marker = Color.clear
-            .frame(width: 1, height: 1)
-            .accessibilityElement()
-            .accessibilityIdentifier(identifier)
-        if let fixtureID {
-            marker.accessibilityValue(fixtureID.fixtureID)
-        } else {
-            marker
-        }
-    }
-
     private func selectEntry(_ entry: VocabularyEntry) {
-        guard entry.kgCardId != nil else {
-            searchError = L10n.string("此單字尚未同步，無法建立連結")
-            return
-        }
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
@@ -497,13 +115,13 @@ struct AddLinkSheet: View {
                 .foregroundStyle(appSkin.palette.tertiaryText)
             TextField(L10n.string("搜尋單字…"), text: $searchText)
                 .platformTextInputConfig()
-                .submitLabel(.search)
-                .accessibilityIdentifier("addLink.dictionary.searchField")
-                .onSubmit {
-                    coordinator.submitSearch(query: searchText, using: kgService)
-                }
+                .submitLabel(.done)
+                .accessibilityIdentifier("addLink.searchField")
         }
         .padding(appSkin.metrics.cardBlockInnerGap * 1.5)
-        .background(appSkin.palette.cardBackground, in: AppRoundedRect(roundness: AppRoundness.control))
+        .background(
+            appSkin.palette.cardBackground,
+            in: AppRoundedRect(roundness: AppRoundness.control)
+        )
     }
 }

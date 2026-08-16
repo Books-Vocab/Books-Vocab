@@ -32,7 +32,6 @@ extension UITestFixtureSeed {
         entry.syncStatus = seed.syncStatus
         entry.actionType = seed.actionType
         entry.isArchived = seed.isArchived
-        entry.isExcludedFromReader = seed.isExcludedFromReader
         if let reviewIntervalHours = seed.reviewIntervalHours {
             entry.reviewIntervalHours = reviewIntervalHours
         }
@@ -100,8 +99,6 @@ extension UITestFixtureSeed {
         )
         for entry in entries {
             guard let override = overridesByWord[entry.word] else { continue }
-            entry.cardRole = override.cardRole
-            entry.reviewEligible = override.reviewEligible
             entry.reviewIntervalHours = override.reviewIntervalHours
             entry.nextReviewAt = override.nextReviewAt
             entry.lastReviewedAt = override.lastReviewedAt

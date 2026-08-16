@@ -679,7 +679,6 @@ extension FixtureDatasetStoreTests {
                 "syncStatus": 1,
                 "actionType": "add",
                 "isArchived": false,
-                "isExcludedFromReader": false,
                 "reviewIntervalHours": 24,
                 "nextReviewAt": "2026-01-01T00:00:00Z",
                 "lastReviewedAt": null,
@@ -715,7 +714,6 @@ extension FixtureDatasetStoreTests {
                   "syncStatus": 2,
                   "actionType": "edit",
                   "isArchived": true,
-                  "isExcludedFromReader": true,
                   "reviewIntervalHours": 24,
                   "nextReviewAt": "2026-01-01T00:00:00Z",
                   "lastReviewedAt": null,
@@ -752,7 +750,6 @@ extension FixtureDatasetStoreTests {
                   "syncStatus": 1,
                   "actionType": "add",
                   "isArchived": false,
-                  "isExcludedFromReader": false,
                   "reviewIntervalHours": 12,
                   "nextReviewAt": "2026-01-01T00:00:00Z",
                   "lastReviewedAt": null,
@@ -788,7 +785,6 @@ extension FixtureDatasetStoreTests {
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.syncStatus == 2)
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.actionType == "edit")
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.isArchived == true)
-            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.isExcludedFromReader == true)
             #expect(FixtureDatasetStore.reviewDeckSeed(for: .probe)?.entries.first?.word == "probeword001")
         }
     }

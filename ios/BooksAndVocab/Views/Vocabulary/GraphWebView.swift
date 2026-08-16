@@ -129,7 +129,7 @@ extension GraphWebView {
     ) -> String {
         let mode = colorScheme == .dark ? "dark" : "light"
 
-        let tierNames = ["gray", "dictionary", "archived"]
+        let tierNames = ["gray", "archived"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
             let hex = tierHexes[tierName] ?? "#888888" // token-allow: web graph payload fallback color

@@ -54,7 +54,6 @@ struct KGVocabPresenter: View {
         }
 
         let banner: Banner?
-        let roleOptions: [VocabTabOption<VocabularyRoleFilter>]
         let reviewStateOptions: [VocabTabOption<VocabularyReviewState>]
         let rows: [RowItem]
         let emptyState: EmptyState
@@ -63,9 +62,6 @@ struct KGVocabPresenter: View {
 
         init(
             banner: Banner?,
-            roleOptions: [VocabTabOption<VocabularyRoleFilter>] = VocabularyRoleFilter.allCases.map {
-                VocabTabOption(id: $0, title: $0.title, count: 0)
-            },
             reviewStateOptions: [VocabTabOption<VocabularyReviewState>],
             rows: [RowItem],
             emptyState: EmptyState,
@@ -73,7 +69,6 @@ struct KGVocabPresenter: View {
             selectedRowID: UUID? = nil
         ) {
             self.banner = banner
-            self.roleOptions = roleOptions
             self.reviewStateOptions = reviewStateOptions
             self.rows = rows
             self.emptyState = emptyState
@@ -96,7 +91,6 @@ struct KGVocabPresenter: View {
             // Pinned filter bar — stays visible while scrolling
             VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
                 VocabLibraryFilterBar(
-                    roleOptions: state.roleOptions,
                     reviewOptions: state.reviewStateOptions,
                     query: $query,
                     visibleCount: state.rows.count
@@ -104,9 +98,7 @@ struct KGVocabPresenter: View {
                 HStack(spacing: appSkin.spacing.inlineGap) {
                     Spacer()
                     VocabSortPill(
-                        options: query.contentScope == .dictionary
-                            ? KGVocabSortOption.dictionaryOptions
-                            : KGVocabSortOption.allCases,
+                        options: KGVocabSortOption.allCases,
                         sortOption: Binding(
                             get: { query.sort },
                             set: { query.setSort($0) }
@@ -160,7 +152,7 @@ struct KGVocabPresenter: View {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
                                 KGVocabRow(
                                     entry: item.entry,
-                                    allowsSelection: item.entry.cardRole == .learning,
+                                    allowsSelection: true,
                                     isSelecting: selectionState.isSelecting,
                                     isSelected: selectionState.selectedIDs.contains(item.id),
                                     isHighlighted: KGVocabRowSelection.isHighlighted(
@@ -170,17 +162,14 @@ struct KGVocabPresenter: View {
                                     ),
                                     onTap: {
                                         if selectionState.isSelecting {
-                                            if item.entry.cardRole == .learning {
-                                                selectionState.toggle(item.id)
-                                            }
+                                            selectionState.toggle(item.id)
                                         } else {
                                             onRowTapped(item.id)
                                         }
                                     },
                                     onToggleSelection: { selectionState.toggle(item.id) },
                                     onLongPress: {
-                                        if !selectionState.isSelecting,
-                                           item.entry.cardRole == .learning {
+                                        if !selectionState.isSelecting {
                                             onLongPress(item.id)
                                         }
                                     }

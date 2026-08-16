@@ -53,7 +53,6 @@ struct UITestFixtureSeedIsolationTests {
               "syncStatus": 1,
               "actionType": "add",
               "isArchived": false,
-              "isExcludedFromReader": false,
               "reviewIntervalHours": 24,
               "nextReviewAt": "2026-01-01T00:00:00Z",
               "lastReviewedAt": null,

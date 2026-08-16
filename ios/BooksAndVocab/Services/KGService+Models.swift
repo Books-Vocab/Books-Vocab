@@ -57,7 +57,7 @@ struct KGReviewClockConfig: Codable {
     let updated_at: Double?
 }
 
-/// Per-user 複習模式 + 自訂 SRS 參數 + 字典卡複習開關(對應後端 ReviewModeConfig)。
+/// Per-user 複習模式 + 自訂 SRS 參數(對應後端 ReviewModeConfig)。
 /// mode + 5 個 custom_*
 /// 複合,共用 updated_at 驅動跨裝置 LWW。欄位名為後端 snake_case(wire format),
 /// 與 iOS store 的 camelCase customParams 之間由 SettingsCoordinator 的 push/cold-start mapper 轉換。
@@ -68,7 +68,6 @@ struct KGReviewModeConfig: Codable {
     let custom_forgot_multiplier: Double
     let custom_minimum_interval_hours: Double
     let custom_maximum_interval_hours: Double
-    let include_dictionary_cards: Bool
     let updated_at: Double?
 
     private enum CodingKeys: String, CodingKey {
@@ -78,7 +77,6 @@ struct KGReviewModeConfig: Codable {
         case custom_forgot_multiplier
         case custom_minimum_interval_hours
         case custom_maximum_interval_hours
-        case include_dictionary_cards
         case updated_at
     }
 
@@ -89,7 +87,6 @@ struct KGReviewModeConfig: Codable {
         custom_forgot_multiplier: Double,
         custom_minimum_interval_hours: Double,
         custom_maximum_interval_hours: Double,
-        include_dictionary_cards: Bool = false,
         updated_at: Double?
     ) {
         self.mode = mode
@@ -98,7 +95,6 @@ struct KGReviewModeConfig: Codable {
         self.custom_forgot_multiplier = custom_forgot_multiplier
         self.custom_minimum_interval_hours = custom_minimum_interval_hours
         self.custom_maximum_interval_hours = custom_maximum_interval_hours
-        self.include_dictionary_cards = include_dictionary_cards
         self.updated_at = updated_at
     }
 
@@ -110,7 +106,6 @@ struct KGReviewModeConfig: Codable {
         custom_forgot_multiplier = try values.decode(Double.self, forKey: .custom_forgot_multiplier)
         custom_minimum_interval_hours = try values.decode(Double.self, forKey: .custom_minimum_interval_hours)
         custom_maximum_interval_hours = try values.decode(Double.self, forKey: .custom_maximum_interval_hours)
-        include_dictionary_cards = try values.decodeIfPresent(Bool.self, forKey: .include_dictionary_cards) ?? false
         updated_at = try values.decodeIfPresent(Double.self, forKey: .updated_at)
     }
 }

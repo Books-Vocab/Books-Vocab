@@ -61,10 +61,6 @@ enum KnowledgeGraphPresentation {
             let nodeRatio: Double?
             if entry.isArchived {
                 return nil
-            } else if entry.cardRole == .dictionary {
-                tier = "dictionary"
-                colorHex = nil
-                nodeRatio = nil
             } else if entry.reviewCount == 0 {
                 tier = "gray"
                 colorHex = nil
@@ -83,7 +79,7 @@ enum KnowledgeGraphPresentation {
                 colorHex: colorHex,
                 ratio: nodeRatio,
                 degree: degree,
-                badgeSystemImage: entry.cardRole == .dictionary ? "book.closed" : nil
+                badgeSystemImage: nil
             )
         }
     }
@@ -117,7 +113,6 @@ enum KnowledgeGraphPresentation {
             backgroundHex: cssHex(skin.palette.pageBackground),
             tierHexes: [
                 "gray": cssHex(skin.palette.quaternaryText),
-                "dictionary": cssHex(skin.palette.tertiaryText),
                 "archived": cssHex(skin.palette.quaternaryText)
             ],
             edgeHexes: [

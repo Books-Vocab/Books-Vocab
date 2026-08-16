@@ -138,7 +138,7 @@ extension GraphThumbnailWebView {
         let linkPayloads = edges.map {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
         }
-        let tierNames = ["gray", "dictionary", "archived"]
+        let tierNames = ["gray", "archived"]
         let colorPairs = tierNames.reduce(into: [String: TierPair]()) { result, name in
             let hex = theme.tierHexes[name] ?? "#888888" // token-allow: web graph payload fallback color
             result[name] = TierPair(dark: hex, light: hex)

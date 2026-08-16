@@ -89,7 +89,7 @@ private struct SettingsSyncStepRow: View {
                     ? appSkin.palette.tertiaryText
                     : appSkin.palette.primaryText)
                 .lineLimit(1)
-                // 長 detail（例如「此伺服器尚未提供字典卡」）會把步驟名稱擠掉，
+                // 長 detail 會把步驟名稱擠掉，
                 // 而名稱是這一列的主詞——先截 detail，別截它。
                 .layoutPriority(1)
 
@@ -143,8 +143,6 @@ private struct SettingsSyncStepRow: View {
                          detail: "已送出 12 筆", weight: 1),
             PipelineStep(id: "pull", label: "下載單字卡", status: .running,
                          current: 340, total: 960, weight: 4),
-            PipelineStep(id: "dictionary", label: "下載字典卡", status: .skipped,
-                         detail: "此伺服器尚未提供字典卡", weight: 2),
             PipelineStep(id: "reviewEvents", label: "下載複習紀錄", status: .error,
                          detail: "未知錯誤", weight: 1),
             PipelineStep(id: "podcast", label: "更新 Podcast 目錄", weight: 2),

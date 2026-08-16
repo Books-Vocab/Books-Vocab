@@ -8,7 +8,6 @@ protocol VocabularySyncEngineServing: AnyObject {
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
     func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse
     func deleteCard(word: String, notebookId: String) async throws
-    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard
     func triggerPipeline(notebookId: String) async throws
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
     func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int)
@@ -64,7 +63,7 @@ final class VocabularySyncEngine: VocabularySyncExecuting {
                     && $0.syncAction == .delete
                     && $0.shouldUploadOnNextSync
             }
-            let (deletes, dictionaryDeletes) = SyncCoordinator.partitionDeletesByRole(queuedDeletes)
+            let deletes = queuedDeletes
             let adds = pendingEntries.filter {
                 !sanitizedDeletedEntryIds.contains($0.id)
                     && $0.syncAction == .add
@@ -91,7 +90,7 @@ final class VocabularySyncEngine: VocabularySyncExecuting {
                         failedWords.append(contentsOf: outcome.failedWords)
                         emit(.stepProgress("upload_delete", current: deleted, total: queuedDeletes.count, detail: ""))
                     } catch {
-                        // Batch failure is recoverable: retry each learning card individually.
+                        // Batch failure is recoverable: retry each card individually.
                         for entry in entries {
                             if Task.isCancelled { return cancelledResult(since: start) }
                             do {
@@ -107,19 +106,6 @@ final class VocabularySyncEngine: VocabularySyncExecuting {
                             }
                         }
                     }
-                }
-
-                if !dictionaryDeletes.isEmpty && !Task.isCancelled {
-                    let peers = (try? modelContext.fetch(FetchDescriptor<VocabularyEntry>())) ?? pendingEntries
-                    let outcome = await SyncCoordinator.drainDictionaryDeletes(
-                        dictionaryDeletes,
-                        peers: peers,
-                        modelContext: modelContext
-                    ) { cardID, notebookId in
-                        try await service.deleteDictionaryCard(cardId: cardID, notebookId: notebookId)
-                    }
-                    deleted += outcome.deleted
-                    failedWords.append(contentsOf: outcome.failedWords)
                 }
 
                 if !failedWords.isEmpty { encounteredFailure = true }
@@ -274,10 +260,6 @@ final class KGServingVocabularySyncAdapter: VocabularySyncEngineServing {
 
     func deleteCard(word: String, notebookId: String) async throws {
         try await base.deleteCard(word: word, notebookId: notebookId)
-    }
-
-    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard {
-        try await base.deleteDictionaryCard(cardId: cardId, notebookId: notebookId)
     }
 
     func triggerPipeline(notebookId: String) async throws {

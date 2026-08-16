@@ -30,7 +30,7 @@ enum AppLoadingIndicator: Equatable {
 }
 
 /// Shared iOS 26 loading/status surface. Use the same card for reader overlays,
-/// catalog states, dictionary states and vocabulary scene states; only the skin
+/// catalog states and vocabulary scene states; only the skin
 /// and indicator differ. This keeps loading from becoming a collection of
 /// one-off cards with subtly different padding and motion.
 struct AppLoadingStateCard: View {

@@ -120,14 +120,12 @@ struct NotebookListContent: View {
         pendingEntries: [VocabularyEntry],
         notebooks: [Notebook],
         reviewFilter: NotebookFilter,
-        now: Date,
-        includeDictionaryCards: Bool
+        now: Date
     ) -> ReviewProjection {
         let stats = NotebookStatsCalculator.compute(
             allEntries,
             pendingEntries: pendingEntries,
-            now: now,
-            includeDictionaryCards: includeDictionaryCards
+            now: now
         )
         // The filter pill only renders with ≥2 notebooks. If a user filtered then deleted
         // notebooks down to <2, the persisted filter must NOT keep silently hiding entries
@@ -136,8 +134,7 @@ struct NotebookListContent: View {
         let filtered = NotebookStatsCalculator.filtered(
             allEntries,
             filter: effectiveFilter,
-            now: now,
-            includeDictionaryCards: includeDictionaryCards
+            now: now
         )
         return ReviewProjection(stats: stats, due: filtered.due, unlearned: filtered.unlearned)
     }
@@ -154,8 +151,7 @@ struct NotebookListContent: View {
                 pendingEntries: pendingEntries,
                 notebooks: notebooks,
                 reviewFilter: reviewFilter,
-                now: reviewNow,
-                includeDictionaryCards: reviewSettingsStore.settings.includeDictionaryCards
+                now: reviewNow
             )
         }.value
         return ListModel(

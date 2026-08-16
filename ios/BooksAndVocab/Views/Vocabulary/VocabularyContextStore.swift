@@ -5,8 +5,6 @@ import os
 
 enum VocabularyHighlightSignature {
     /// Stable signature for the effective, notebook-scoped highlight set.
-    /// Role/review eligibility intentionally do not participate: dictionary
-    /// cards highlight exactly like learning cards unless explicitly hidden.
     static func make(entries: [VocabularyEntry], notebookId: String?) -> String {
         let words = entries.lazy
             .filter { entry in

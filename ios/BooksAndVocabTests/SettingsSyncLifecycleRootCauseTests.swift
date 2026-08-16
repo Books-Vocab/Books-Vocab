@@ -90,7 +90,7 @@ struct SettingsSyncLifecycleRootCauseTests {
     func fixtureJSONSerializationFailureIsTyped() {
         do {
             _ = try SettingsSyncFixtureTransport.encodeJSONBody(
-                path: "/api/dictionary-cards",
+                path: "/api/vocab",
                 object: ["error": Date()]
             )
             Issue.record("invalid fixture JSON object unexpectedly encoded")
@@ -99,7 +99,7 @@ struct SettingsSyncLifecycleRootCauseTests {
                 Issue.record("unexpected fixture transport error: \(error)")
                 return
             }
-            #expect(path == "/api/dictionary-cards")
+            #expect(path == "/api/vocab")
             #expect(!reason.isEmpty)
         } catch {
             Issue.record("fixture JSON failure escaped as an untyped error: \(error)")
@@ -167,15 +167,14 @@ struct SettingsSyncLifecycleRootCauseTests {
         #expect(lifecycle == .idle)
     }
 
-    @Test("real backgroundSync preserves a partial pull and succeeds on the next service call")
+    @Test("real backgroundSync preserves local data after a failed pull and succeeds on retry")
     func realServiceFailureThenRetryReadsSwiftDataResidual() async throws {
         let defaults = UserDefaults.standard
         let defaultKeys = [
             KGService.SyncKeys.incrementalBoundary,
             KGService.SyncKeys.payloadVersion,
             KGService.SyncKeys.lastSyncDate,
-            KGService.SyncKeys.reviewEventPullBoundary,
-            "kg_dictionary_reader_visibility_migrated_v1"
+            KGService.SyncKeys.reviewEventPullBoundary
         ]
         let priorDefaults: [String: Any?] = Dictionary(uniqueKeysWithValues: defaultKeys.map {
             ($0, defaults.object(forKey: $0))
@@ -214,6 +213,17 @@ struct SettingsSyncLifecycleRootCauseTests {
             connectivityGate: FixedConnectivityGate(isConnected: true)
         )
         let container = try Self.makeContainer()
+        let residual = VocabularyEntry(
+            word: "residual",
+            translation: "residual",
+            context: "residual",
+            bookTitle: "Settings Sync Fixture"
+        )
+        residual.syncStatus = VocabularySyncState.synced.rawValue
+        residual.kgCardId = "settings-residual"
+        residual.reviewStateSyncedAt = residual.dateAdded
+        container.mainContext.insert(residual)
+        try container.mainContext.save()
 
         let first = await service.backgroundSync(container: container, progress: nil)
         #expect(first == .failed)
@@ -224,23 +234,23 @@ struct SettingsSyncLifecycleRootCauseTests {
         #expect(second == .completed)
         let entriesAfterRetry = try container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
         #expect(entriesAfterRetry.map(\.word).sorted() == ["complete", "residual"])
-        let expectedDictionaryLedger = Array(
+        let expectedTransportLedger = Array(
             repeating: SettingsSyncTransportEvent(
                 round: 1,
-                path: "/api/dictionary-cards",
+                path: "/api/vocab",
                 statusCode: 429
             ),
             count: 3
         ) + [
             SettingsSyncTransportEvent(
                 round: 2,
-                path: "/api/dictionary-cards",
+                path: "/api/vocab",
                 statusCode: 200
             )
         ]
         #expect(
-            SettingsSyncFixtureEvidenceStore.shared.snapshotDictionaryEvents()
-                == expectedDictionaryLedger
+            SettingsSyncFixtureEvidenceStore.shared.snapshot()
+                == expectedTransportLedger
         )
     }
 
