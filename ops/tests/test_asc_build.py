@@ -42,12 +42,16 @@ def _build(
     platform: str = "IOS",
     state: str = "PROCESSING",
     build_id: str = "build-9",
+    resource_type: str = "builds",
+    version_value: object | None = None,
 ) -> dict:
+    if version_value is None:
+        version_value = build
     return {
-        "type": "builds",
+        "type": resource_type,
         "id": build_id,
         "attributes": {
-            "version": build,
+            "version": version_value,
             "processingState": state,
         },
         "relationships": {
@@ -113,6 +117,38 @@ def test_select_exact_build_rejects_missing_prerelease_relationship() -> None:
     with pytest.raises(asc_build.AscBuildError, match="preReleaseVersion"):
         asc_build.select_exact_build(
             _payload(item), marketing_version="2.0.1", build_number="9"
+        )
+
+
+def test_select_exact_build_rejects_wrong_resource_type_or_version_type() -> None:
+    with pytest.raises(asc_build.AscBuildError, match="type"):
+        asc_build.select_exact_build(
+            _payload(_build(resource_type="not-builds")),
+            marketing_version="2.0.1",
+            build_number="9",
+        )
+    with pytest.raises(asc_build.AscBuildError, match="version"):
+        asc_build.select_exact_build(
+            _payload(_build(version_value=9)),
+            marketing_version="2.0.1",
+            build_number="9",
+        )
+
+
+@pytest.mark.parametrize("item", [{"type": "builds", "id": "missing-attrs"}, None])
+def test_select_exact_build_rejects_malformed_data_entries(item: object) -> None:
+    with pytest.raises(asc_build.AscBuildError, match="data entry"):
+        asc_build.select_exact_build(
+            {"data": [item]}, marketing_version="2.0.1", build_number="9"
+        )
+
+
+def test_select_exact_build_rejects_failed_processing_state() -> None:
+    with pytest.raises(asc_build.AscBuildError, match="release-eligible"):
+        asc_build.select_exact_build(
+            _payload(_build(state="FAILED")),
+            marketing_version="2.0.1",
+            build_number="9",
         )
 
 
