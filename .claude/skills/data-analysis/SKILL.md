@@ -31,7 +31,7 @@ uid 支援模糊匹配：`00287` 自動 resolve 為完整 ID。
 ```
 /app/data/
 ├── token_usage.db                    # 全用戶 token 消耗紀錄
-├── users.json                        # 用戶 metadata + per-user config（translation/review_clock/review_mode 含 include_dictionary_cards/vocab_ui active notebook/auto_link）
+├── users.json                        # 用戶 metadata + per-user config（translation/review_clock/review_mode/vocab_ui active notebook/auto_link）
 └── users/<uid>/
     ├── cards.db                      # 單字卡（content, meaning, difficulty, review stats）
     ├── graph_<notebook>.json         # 知識圖譜（links array）

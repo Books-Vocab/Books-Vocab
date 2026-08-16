@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: 2cf93a387
+verified_against: d7d98039f
 -->
 # UI Component & Pattern Inventory
 
@@ -54,7 +54,7 @@ Scope: `ios/BooksAndVocab`
 - `AppStateMessageCard`
 - `AppTabSelector`
 - `AppFilterChipBar` — 多選 filter 版本；與 `AppTabSelector` 共用 `appChipLabel`、count 與 iOS 26 `GlassEffectContainer`/`glassEffect`，fallback style 仍保留給非 glass consumer
-- `AppLoadingStateCard` / `AppLoadingProgressBar` — loading/status 的共用 surface；Reader、TOC、Explore、Dictionary、Vocabulary、Stats 與 Settings sync 使用同一套原生 `ProgressView`，只由 app/vocab skin 決定配色
+- `AppLoadingStateCard` / `AppLoadingProgressBar` — loading/status 的共用 surface；Reader、TOC、Explore、Vocabulary、Stats 與 Settings sync 使用同一套原生 `ProgressView`，只由 app/vocab skin 決定配色
 - `AppSearchField`
 - `AppKeyValueRow`
 - `AppActionButtonStyle`
@@ -121,7 +121,6 @@ Scope: `ios/BooksAndVocab`
 - `VocabTimelineRow`
 - `VocabActionButtonStyle`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
-- **字典卡（V1）沒有引入新的 UI primitive**：列表 filter 走 `VocabTabSelector`、字典搜尋走 `VocabSearchField` + `VocabStateMessageCard`、Dictionary Detail 與 promotion 狀態走 `VocabCard` / `VocabSectionHeader` / `VocabInlineActionButton` / `VocabToneChip`（badge），空/錯誤態走 `VocabEmptyStateContent` 與 `VocabSceneShell`。新增的只有非 UI 的 `Presentation/DictionaryDetailPresentation.swift`（資料轉換）與 `Scenes/AddLinkCoordinator.swift`（流程狀態）。**要加字典相關 UI 時先回來看這行，別另造一套 chip / card。**
 - `GraphThumbnailWebView` — `UIViewRepresentable` 小型圖譜預覽（iOS / Catalyst 共用，無原生 macOS `NSViewRepresentable` 分支），用於 StatsPresenter
 - `NotebookStackedCoverView` — Editorial 立體堆卡（**目前由 Bookshelf / Podcast / EditSheet preview 使用,NotebookCard book-row 不再用**）：彩色封面 + cream 紙頁三階 ghost（`paperLight/paperSepia/paperSepiaDeep`）；幾何走 `NotebookStackMetrics`（dy/dx=4pt / rotation ±1.5° / jitter ±1pt / rotationOverhang 8pt / `patternOpacity` 0.12）；每層 0.5pt `cardBorder` hairline；rotation 由 `stableSeed(for:)` djb2 hash 保證跨 launch 同字串同角度；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 關 offset/scale 但 **保留 rotation**（靜態 layout 非 motion）；`showsName: Bool = true` opt-in 開關
 - `EditorialCoverComposition`(private in `NotebookCard.swift`) — **live**：D1 editorial cover overlay，由 `coverArea` 以 `.overlay` 套在 cover view 之上（grid + hero 兩 style 皆套），跟外層 `rotationEffect` 一起旋轉。內容:serif name 左上(grid 22pt / hero 32pt)+ hairline rule(cover 寬 ×0.25)+ `N 詞` 右下(cardCount > 0)+ 3pt spine(grid && isActive)。cover view 以 `showsName: false` 把 name 渲染交給此 overlay。
@@ -494,7 +493,7 @@ Scope: `ios/BooksAndVocab`
 
 現況：
 - `AppSkeletonLine` 目前無外部直接 callsite（僅 def + `AppSkeletonCard` 內部 + preview）；`AppSkeletonCard` 已被 `VocabSceneShell` 採用（1 處）
-- `AppLoadingStateCard` / `AppLoadingProgressBar` 已收斂 Reader、TOC、Explore、Dictionary、Vocab、Stats 與 Settings sync 的明確 loading/status surface；底層 indicator 統一原生 `ProgressView`
+- `AppLoadingStateCard` / `AppLoadingProgressBar` 已收斂 Reader、TOC、Explore、Vocab、Stats 與 Settings sync 的明確 loading/status surface；底層 indicator 統一原生 `ProgressView`
 - `AppElevation` 已是全 app shadow 唯一入口（~24 callsites）；`AppCompactActionButtonStyle`（4 處）、`AppOfflineBanner`（ContentView 1 處）、`AppMotion.emphasizedDecelerate`（AppOfflineBanner 內部）皆已落地
 - PR #402 曾規劃的 `AppLayout` / `AppFonts.display1/2` token **從未進入 codebase**（doc 舊版誤記為已定義）；readable-width 實際由 `WordDetailPresenter` local `maxContentWidth=640` 控
 

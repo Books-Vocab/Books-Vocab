@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: 3bb37a6f7
+verified_against: d7d98039f
 -->
 # Books & Vocab Architecture (Offline-First & Multi-User)
 
@@ -30,8 +30,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | 帳號 / session | Backend auth + Keychain token | Keychain session cache | 登出 / token invalidation 必須清本機 user-scoped projection |
 | Vocabulary card / graph links / notebook assignment | Backend card / graph / notebook stores | `VocabularyEntry` projection + outbox | 本地新增、刪除、hide/unhide 先 optimistic，再同步收斂 |
 | Review state | Backend card review fields | `VocabularyEntry` review fields projection | LWW 以 `last_reviewed_at` 判定 |
-| Dictionary card（`cardRole='dictionary'`） | Backend card store + `dictionary_entry` sidecar | 獨立 projection（`/api/dictionary-cards`）+ 離線 entry payload | **provider 只在後端**：授權、快取 TTL、每小時上游預算全歸 backend（`lexical_cache.db`），iOS 只吃已正規化的 payload、從不直連字典 provider。離線閱讀靠 sidecar 內的完整 entry，不靠再查一次 |
-| Dictionary lookup cache / provider budget | Backend `lexical_cache.db`（跨用戶全域） | 不投影 | 跨用戶共用快取是**授權與成本**的必要條件（每用戶各自快取會把上游 1000/hr/IP 預算燒光）。觀測入口 `ops_cli.py dictionary-health` |
+| Dictionary lookup / cache / provider budget | Backend GET integration + `lexical_cache.db`（跨用戶全域） | 不投影；iOS 無字典 surface | 查詢不建立 Card 或 graph state；provider、授權、TTL、限流與每小時上游預算全歸 backend。跨用戶共用快取避免重複消耗上游額度；觀測入口 `ops_cli.py dictionary-health` |
 | Review event log | Backend `review_events` append-only log | `ReviewRecord` projection | client UUID 冪等；日曆與每日明細讀事件鏡像 |
 | Notebook metadata | Backend `/api/notebooks/*` | `Notebook` projection + pending mutation | cover photo 本機 path 只是 device cache；遠端 cover 需另設 asset 權威 |
 | Podcast catalog | Backend podcast catalog / object storage | `PodcastSeries` / `PodcastEpisode` cache | 空 server list 不視為權威刪除，避免短暫 index 故障 mass tombstone |
@@ -57,7 +56,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | Book 原始檔 / converted EPUB / originals | iCloud container `Documents/Books` 或 local `Documents/Books` / `Originals` | **未後端化** | 無 object storage asset manifest、upload/download/quota/privacy policy |
 | Reader settings | `ReaderSettings` UserDefaults + iCloud KVS | **未後端化** | font/size/line-height/scroll/underline 尚無 server config domain |
 | Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation`（含 `updated_at`） | **三層後端化**（Feature C；source/target 共用單一 group `updated_at` 整組 LWW + server cold-start wins、只寫本地不回寫 KVS） | 對標其他 group：backend 真 LWW 待 `serverTranslationLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威 |
-| Review settings / pause clock + mode/SRS | `ReviewSettingsStore` UserDefaults + iCloud KVS；backend `/api/user/config.review_clock` + `.review_mode` | **pause clock、mode/自訂 SRS 參數與字典卡 inclusion 皆三層後端化**（各自 updatedAt LWW 整組原子 + server cold-start wins；autoplay 純本地） | 對標 translation：backend 真 LWW 待 `serverReviewClockLwwEnabled` / `serverReviewModeLwwEnabled`，現以 iCloud KVS 為跨裝置權威 |
+| Review settings / pause clock + mode/SRS | `ReviewSettingsStore` UserDefaults + iCloud KVS；backend `/api/user/config.review_clock` + `.review_mode` | pause clock、mode/自訂 SRS 參數皆三層後端化（各自 updatedAt LWW 整組原子 + server cold-start wins；autoplay 純本地） | 對標 translation：backend 真 LWW 待 `serverReviewClockLwwEnabled` / `serverReviewModeLwwEnabled`，現以 iCloud KVS 為跨裝置權威 |
 | App language / appearance | UserDefaults + iCloud KVS | **未後端化** | 若未來新增非 Apple client，不會共享；`.system` selection 需 server contract |
 | Active notebook / notebook filter / sort | `activeNotebookId` 三層（`ActiveNotebookStore` UserDefaults + iCloud KVS + backend `/api/user/config.vocab_ui`）；`NotebookFilter` / `NotebookSortOption` 仍 `@AppStorage` local-only | **activeNotebookId 已三層後端化**（Feature B；updatedAt LWW 整組原子 + server cold-start wins；filter/sort 純觀感 local-only） | 對標 review settings：backend 真 LWW 待 `serverVocabUiLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威、backend 為 cold-start 橋樑 |
 | Review session snapshots | UserDefaults | **local-only** | 可保留本機；不應納入後端權威，除非要跨裝置續答 |
@@ -84,7 +83,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 |---|---|---|---|
 | `translation` | `source_lang`、`target_lang`、`updated_at` | `TranslationLanguage` + iCloud KVS；後端已保存語言但缺 timestamp LWW | `updated_at` LWW；遠端失敗 rollback 本機 |
 | `reader` | `font`、`font_size`、`line_height`、`scroll_mode`、`underline_opacity`、`updated_at` | `ReaderSettings` UserDefaults + iCloud KVS | 整個 reader object LWW；debug hit-testing 不同步 |
-| `review` | `mode`、custom intervals、`include_dictionary_cards`、`progress_paused`、`progress_paused_at`、`updated_at` | `ReviewSettingsStore` UserDefaults；**pause(`review_clock`)與 mode/custom intervals/字典卡 inclusion(`review_mode`)皆已上 iCloud KVS + backend `/api/user/config`**（各自 updatedAt LWW），autoplay 仍純本地 | LWW；pause/resume、mode/SRS 與字典卡 inclusion 皆須跨裝置一致，避免 due/reviewed、SRS 間隔與 queue 形狀漂移（均已落地） |
+| `review` | `mode`、custom intervals、`progress_paused`、`progress_paused_at`、`updated_at` | `ReviewSettingsStore` UserDefaults；pause(`review_clock`)與 mode/custom intervals(`review_mode`)皆已上 iCloud KVS + backend `/api/user/config`（各自 updatedAt LWW），autoplay 仍純本地 | LWW；pause/resume 與 mode/SRS 須跨裝置一致，避免 due/reviewed 與 SRS 間隔漂移 |
 | `appearance` | `mode`、`updated_at` | `AppAppearanceStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 mode，不保存 resolved value |
 | `language` | `app_language`、`updated_at` | `AppLanguageStore` UserDefaults + iCloud KVS | LWW；`.system` 只保存 selection，不保存系統解析結果 |
 | `podcast` | `followed_series_ids`、`updated_at` | `PodcastSeries.isFollowed` local SwiftData | LWW 或 per-series timestamp；server list 用於排序與 cross-platform follow |
@@ -247,7 +246,7 @@ Operational observability：
 
 2. **點擊單字 (Word Selection)**:
    - **已存在於本地**: 從 `VocabularyEntry` 取出翻譯/詞性/解釋瞬間顯示，`O(1)` 無網路。
-   - **全新單字**: 並行觸發 LLM 翻譯（provider 由 backend registry 路由，預設 Gemini）+ Dictionary API 發音。翻譯時自動擷取 context sentence（書籍原文上下文）。儲存時寫入 `syncStatus = 0` 的 `VocabularyEntry`。
+   - **全新單字**: 觸發 LLM 翻譯（provider 由 backend registry 路由，預設 Gemini），自動擷取 context sentence（書籍原文上下文）；儲存時寫入 `syncStatus = 0` 的 `VocabularyEntry`。
 
 ---
 
