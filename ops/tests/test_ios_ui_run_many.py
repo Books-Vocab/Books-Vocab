@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import argparse
 from pathlib import Path
+import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -55,6 +56,28 @@ def test_classify_bundle_requires_contract(tmp_path: Path) -> None:
     assert classify_bundle(bundle, 0) == "failed_contract"
     (bundle / "artifacts" / "ui-evidence-contract.json").write_text(json.dumps({"valid": True}), encoding="utf-8")
     assert classify_bundle(bundle, 0) == "passed_unattested"
+
+
+def test_global_consumers_ignore_self_and_shell_command_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    process_table = """\
+123 1 /bin/zsh -c ./ops/ios_ui_run_many.py cleanup
+124 123 /usr/bin/python3 ./ops/ios_ui_run_many.py run
+125 1 /usr/bin/xcodebuild test-without-building
+126 1 /bin/sh -c echo ios_test.sh
+"""
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert args[0] == ["ps", "-axo", "pid=,ppid=,command="]
+        return subprocess.CompletedProcess(args[0], 0, process_table, "")
+
+    monkeypatch.setattr(ios_ui_run_many.subprocess, "run", fake_run)
+
+    consumers = ios_ui_run_many._global_ios_consumers(exclude_pid=123)
+
+    assert consumers == [
+        "124 123 /usr/bin/python3 ./ops/ios_ui_run_many.py run",
+        "125 1 /usr/bin/xcodebuild test-without-building",
+    ]
 
 
 def _expired_manifest(root: Path, *, status: str = "failure") -> Path:

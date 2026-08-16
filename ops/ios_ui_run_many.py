@@ -150,28 +150,60 @@ def _pid_alive(pid: int | None) -> bool:
     return True
 
 
+_IOS_CONSUMER_RE = re.compile(
+    r"(^|/)(?:xcodebuild|ios_test\.sh|run_ui_evidence\.sh|ios_ui_run_many\.py)(?:\s|$)"
+)
+
+
 def _global_ios_consumers(*, exclude_pid: int | None = None) -> list[str]:
-    """Return active runner/build consumers; cleanup must fail closed on any."""
+    """Return active runner/build consumers; cleanup must fail closed on any.
+
+    pgrep -af also matches the shell that contains the pattern in its command
+    line. That made cleanup report itself as blocked even when no Xcode process
+    was alive. Read a process table instead, match executable path tokens, and
+    exclude the inspected process plus its ancestor shells.
+    """
     try:
         result = subprocess.run(
-            ["pgrep", "-af", "xcodebuild|ios_test\\.sh|run_ui_evidence\\.sh|ios_ui_run_many\\.py"],
+            ["ps", "-axo", "pid=,ppid=,command="],
             text=True,
             capture_output=True,
             check=False,
         )
     except OSError:
         return ["process inspection unavailable"]
-    consumers: list[str] = []
+    if result.returncode != 0:
+        return ["process inspection unavailable"]
+
+    table: dict[int, tuple[int, str, str]] = {}
     for line in result.stdout.splitlines():
-        fields = line.split(maxsplit=1)
+        fields = line.strip().split(maxsplit=2)
+        if len(fields) < 3:
+            continue
         try:
             pid = int(fields[0])
-        except (IndexError, ValueError):
-            pid = None
-        if exclude_pid is not None and pid == exclude_pid:
+            ppid = int(fields[1])
+        except ValueError:
             continue
-        if line.strip():
-            consumers.append(line)
+        table[pid] = (ppid, fields[2], line.strip())
+
+    ignored: set[int] = set()
+    if exclude_pid is not None:
+        ignored.add(exclude_pid)
+    cursor = exclude_pid
+    while cursor is not None and cursor in table:
+        parent = table[cursor][0]
+        if parent <= 0 or parent in ignored:
+            break
+        ignored.add(parent)
+        cursor = parent
+
+    consumers: list[str] = []
+    for pid, (_, command, rendered) in sorted(table.items()):
+        if pid in ignored:
+            continue
+        if _IOS_CONSUMER_RE.search(command):
+            consumers.append(rendered)
     return consumers
 
 
