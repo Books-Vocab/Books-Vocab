@@ -16,18 +16,16 @@ struct UIWorldVocabularyInheritanceTests {
         }
     }
 
-    @Test @MainActor func p11AndReviewStateFixtureIDsRemainStable() {
+    @Test @MainActor func p11FixtureIDRemainsStable() {
         #expect(UIWorldVocabularyFixtureID.p11ReviewMix.rawValue == "p11.644.reviewMix")
-        #expect(UIWorldVocabularyFixtureID.reviewStateMixed.rawValue == "review.mixed")
         #expect(UITestFixtureSeed.vocabularyFixtureID(for: "p11.644.reviewMix") == .p11ReviewMix)
-        #expect(UITestFixtureSeed.vocabularyFixtureID(for: "review.mixed") == .reviewStateMixed)
         #expect(UITestFixtureSeed.vocabularyFixtureID(for: "P11") == nil)
     }
 
     @Test @MainActor func inheritanceMaterializesRecursivelyAndRejectsCycles() throws {
         let data = try FixtureDatasetStoreTests.completeV2DatasetData(Self.inheritanceDataset)
         let document = try FixtureDatasetStore.decode(data)
-        let seed = try #require(document.vocabulary["review.mixed"])
+        let seed = try #require(document.vocabulary["vocabListPopulated"])
 
         #expect(seed.baseFixture == nil, "resolved seeds must not leak inheritance into materializers")
         #expect(seed.entries.map(\.word) == ["alpha"])
@@ -152,7 +150,7 @@ struct UIWorldVocabularyInheritanceTests {
           }],
           "reviewHistory": []
         },
-        "review.mixed": {
+        "vocabListPopulated": {
           "notebookRemoteId": "leaf", "notebookName": "Leaf", "notebookSyncStatus": 1,
           "bookTitle": "Book", "entries": [], "baseFixture": "p11.644.reviewMix",
           "entryOverrides": [],

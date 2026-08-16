@@ -357,7 +357,6 @@ NOTEBOOK_ENTRY_KEYS = {
     "syncStatus",
     "actionType",
     "isArchived",
-    "isExcludedFromReader",
     "context",
     "explanation",
     "partOfSpeech",
@@ -432,7 +431,6 @@ UI_WORLD_ENTRY_KEYS = {
     "syncStatus",
     "actionType",
     "isArchived",
-    "isExcludedFromReader",
     "reviewIntervalHours",
     "nextReviewAt",
     "lastReviewedAt",
@@ -992,7 +990,6 @@ def _validate_vocabulary_row_state(seed: Mapping[str, Any], *, owner: str, label
     if action_type not in {"add", "delete", "edit"}:
         raise UIWorldManifestError(f"{label} {owner}.actionType must be add/delete/edit")
     _ensure_bool(seed.get("isArchived"), field=f"{owner}.isArchived", label=label)
-    _ensure_bool(seed.get("isExcludedFromReader"), field=f"{owner}.isExcludedFromReader", label=label)
 
 
 def _validate_unique(values: list[str], *, owner: str, label: str) -> None:

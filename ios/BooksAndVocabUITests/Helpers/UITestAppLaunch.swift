@@ -111,7 +111,6 @@ enum UITestFixture: Equatable {
     case searchVocabNotebook
     case vocabularyLibraryFilterRich
     case vocabularyLibraryP11ReviewMix
-    case vocabularyLibraryReviewStateMixed
     case readerRealBookLibrary
     case readerInvalidDestinationLibrary
     case readerRuntime(UITestReaderRuntimeScenario)
@@ -155,8 +154,6 @@ enum UITestFixture: Equatable {
             return "-seedFixture:vocabulary:vocabListFilterRich"
         case .vocabularyLibraryP11ReviewMix:
             return "-seedFixture:vocabulary:p11.644.reviewMix"
-        case .vocabularyLibraryReviewStateMixed:
-            return "-seedFixture:vocabulary:review.mixed"
         case .readerRealBookLibrary:
             return "-seedFixture:reader:realBookLibrary"
         case .readerInvalidDestinationLibrary:

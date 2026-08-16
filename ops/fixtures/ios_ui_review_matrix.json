@@ -1016,7 +1016,7 @@
           "dynamic-type"
         ],
         "visualChecks": [
-          "two filter grids",
+          "one review-state filter grid",
           "row/progress density",
           "CTA/sort hierarchy"
         ],
