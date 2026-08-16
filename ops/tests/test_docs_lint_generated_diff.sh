@@ -2,6 +2,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# docs_lint classifies registry ERROR as a semantic block; generator checks may still return 1.
+DOCS_LINT_BLOCK_RC=2
 TMPDIR="$(mktemp -d -t kg_docs_diff_XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 
@@ -52,7 +54,7 @@ assert_mutation_is_caught() {
   remove_diff_call "$sb"
   run_lint "$sb" "$log"
   rc=$?
-  if [ "$rc" -eq 1 ] && ! grep -qF "drift diff (generated.probe):" "$log"; then
+  if [ "$rc" -eq "$DOCS_LINT_BLOCK_RC" ] && ! grep -qF "drift diff (generated.probe):" "$log"; then
     ok "removing diff emission is observable"
   else
     fail_t "removing diff emission was not observable (rc=$rc)"
@@ -64,7 +66,7 @@ SB1="$TMPDIR/basic"
 build_sandbox "$SB1" $'#!/usr/bin/env bash\nif [ "${1:-}" = "--check" ]; then exit 1; fi\nprintf "%s\\n" "expected line 1" "expected line 2"' "actual line"
 LOG1="$TMPDIR/basic.log"
 run_lint "$SB1" "$LOG1"; RC1=$?
-if [ "$RC1" -eq 1 ] &&
+if [ "$RC1" -eq "$DOCS_LINT_BLOCK_RC" ] &&
    grep -qF "ERROR registry — generated.probe 產物與 generator 輸出不一致" "$LOG1" &&
    grep -qF "drift diff (generated.probe):" "$LOG1" &&
    grep -qF "expected line 1" "$LOG1"; then
@@ -79,7 +81,7 @@ SB2="$TMPDIR/fallback"
 build_sandbox "$SB2" $'#!/usr/bin/env bash\nexit 7' "actual line"
 LOG2="$TMPDIR/fallback.log"
 run_lint "$SB2" "$LOG2"; RC2=$?
-if [ "$RC2" -eq 1 ] &&
+if [ "$RC2" -eq "$DOCS_LINT_BLOCK_RC" ] &&
    grep -qF "ERROR registry — generated.probe 產物與 generator 輸出不一致" "$LOG2" &&
    ! grep -qF "drift diff (generated.probe):" "$LOG2"; then
   ok "unusable generator falls back honestly"
@@ -94,7 +96,7 @@ LARGE_BODY=$'#!/usr/bin/env bash\nif [ "${1:-}" = "--check" ]; then exit 1; fi\n
 build_sandbox "$SB3" "$LARGE_BODY" "actual line"
 LOG3="$TMPDIR/large.log"
 run_lint "$SB3" "$LOG3"; RC3=$?
-if [ "$RC3" -eq 1 ] &&
+if [ "$RC3" -eq "$DOCS_LINT_BLOCK_RC" ] &&
    grep -qF "drift diff (generated.probe):" "$LOG3" &&
    grep -qF "還有" "$LOG3" &&
    grep -qF "行差異未顯示" "$LOG3"; then
