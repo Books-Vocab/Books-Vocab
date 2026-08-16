@@ -27,8 +27,6 @@ import XCTest
 
 final class TodayReviewAutoplayChromeUITests: UITestCase {
     private static let notebookCardID = "ui-review-notebook"
-    /// L10n `todayReview.autoplay.playpause.pause` —— 只在播放列上存在。
-    private static let pauseLabel = "暫停自動播放"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -69,25 +67,34 @@ final class TodayReviewAutoplayChromeUITests: UITestCase {
             return
         }
 
-        let autoplayToggle = app.descendants(matching: .any)
-            .matching(identifier: "todayReview.autoplayToggle").firstMatch
+        guard review.waitForUnique("todayReview.autoplayToggle", timeout: 5) else {
+            captureStep("review-autoplay-toggle-not-materialized", app: app)
+            XCTFail("top bar autoplay toggle AX control 應唯一存在")
+            return
+        }
+        let autoplayToggle = review.autoplayToggleButton
         try step("review-started", app: app) {
             review.rememberedButton.assertExists()
             XCTAssertFalse(review.cardBack.exists, "起手不得已翻面")
-            XCTAssertTrue(autoplayToggle.waitUntilExists(timeout: 5), "top bar 必須有播放鍵")
+            autoplayToggle.assertExists()
         }
 
         // ── 兩次點擊之間不做任何截圖/斷言,量測全部延後 ────────────────────
         // ON:toolbar 必須在卡片翻面「之前」就換成播放列。
         autoplayToggle.tap()
-        let swappedToAutoplay = Self.waitUntil(timeout: 1.5) { !review.rememberedButton.exists }
+        let swappedToAutoplay = Self.waitUntil(timeout: 1.5) {
+            !review.rememberedButtonQuery.exists
+        }
         let flippedDuringSwap = review.cardBack.exists
-        let transportShown = app.buttons[Self.pauseLabel].exists
+        let transportShown = review.waitForUnique("todayReview.autoplay.playing", timeout: 1.5)
 
         // OFF:緊接著再按一次(仍在第一次 reveal 的 2s 窗內,不受 loop 推進干擾)。
         autoplayToggle.tap()
-        let restoredFeedback = Self.waitUntil(timeout: 5) { review.rememberedButton.exists }
-        let transportGone = !app.buttons[Self.pauseLabel].exists
+        let restoredFeedback = review.waitForUnique("todayReview.feedback.remembered", timeout: 5)
+        let transportGone = Self.waitUntil(timeout: 1.5) {
+            !review.autoplayPlayingButtonQuery.exists
+                && !review.autoplayPausedButtonQuery.exists
+        }
 
         try step("autoplay-toggled-both-ways", app: app) {
             XCTAssertTrue(

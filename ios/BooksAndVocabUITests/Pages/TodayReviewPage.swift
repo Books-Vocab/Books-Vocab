@@ -178,6 +178,16 @@ struct TodayReviewPage {
         element("todayReview.autoplay.playing")
     }
 
+    /// Query-only autoplay state probes for transitions where either state is
+    /// legitimately absent while the transport is being removed.
+    var autoplayPlayingButtonQuery: XCUIElement {
+        queryElement("todayReview.autoplay.playing")
+    }
+
+    var autoplayPausedButtonQuery: XCUIElement {
+        queryElement("todayReview.autoplay.paused")
+    }
+
     /// Top-bar autoplay toggle.
     var autoplayToggleButton: XCUIElement {
         element("todayReview.autoplayToggle")
@@ -260,6 +270,14 @@ struct TodayReviewPage {
 
     var rememberedButton: XCUIElement {
         element("todayReview.feedback.remembered")
+    }
+
+    /// Query-only counterpart for transitions where the feedback control is
+    /// expected to be absent. The action accessor above intentionally keeps
+    /// the exact-one contract; absence checks must not turn an expected zero
+    /// match into an XCTest failure.
+    var rememberedButtonQuery: XCUIElement {
+        queryElement("todayReview.feedback.remembered")
     }
 
     /// The top-bar progress node can materialize before the bottom feedback
