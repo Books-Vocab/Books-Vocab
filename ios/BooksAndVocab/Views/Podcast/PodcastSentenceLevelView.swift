@@ -40,6 +40,7 @@ import SwiftUI
 ///     capsules via `PodcastUnderlineGeometry.segments`) — no animation modifier,
 ///     geometry per frame.
 struct PodcastSentenceLevelView: View {
+    @ObserveInjection private var inject
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
     /// Continuous-playhead source (reference): the active word + its underline are
@@ -109,6 +110,7 @@ struct PodcastSentenceLevelView: View {
             onPhraseTap: onPhraseTap,
             onExplainTap: onExplainTap
         )
+        .enableInjection()
     }
 }
 

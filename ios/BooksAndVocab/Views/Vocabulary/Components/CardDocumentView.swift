@@ -81,6 +81,7 @@ struct CardDocumentView: View {
 }
 
 struct CardDocumentHeroBlock: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.speechService) private var speechService
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -142,6 +143,7 @@ struct CardDocumentHeroBlock: View {
         }
         .appFeedback(.selection, trigger: speakTrigger)
         .appFeedback(.success, trigger: copyTrigger)
+        .enableInjection()
     }
 }
 

@@ -16,6 +16,7 @@ import UIKit
 /// runs on parent renders, but that is cheap now (only value structs are built;
 /// the token trees live behind the per-cell Equatable boundary).
 struct PodcastTranscriptColumn: View {
+    @ObserveInjection private var inject
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
     let currentId: Int?
@@ -136,6 +137,7 @@ struct PodcastTranscriptColumn: View {
         }
         .padding(.vertical, skin.spacing.sectionGap)
         .padding(.horizontal, skin.spacing.cardPadding)
+        .enableInjection()
     }
 
     /// Maps a word index to its `NSRange` within the sentence text, to seed the
@@ -191,6 +193,7 @@ struct PodcastBubbleSkin: Equatable {
 /// fully determined by `sentenceId` + `contentHash`, so comparing the scalar keys
 /// is enough and avoids an O(n·words) array compare.
 struct PodcastBubbleCell: View, Equatable {
+    @ObserveInjection private var inject
     let sentenceId: Int
     let contentHash: Int
     let isCurrent: Bool
@@ -309,6 +312,7 @@ struct PodcastBubbleCell: View, Equatable {
         .accessibilityAction(named: Text(L10n.string("podcast.transcript.selectAction"))) {
             if !isSelecting { onEnterSelection(0) }
         }
+        .enableInjection()
     }
 
     /// VoiceOver label: the sentence text, prefixed with the speaker (even when the

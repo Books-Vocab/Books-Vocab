@@ -18,6 +18,7 @@
 import SwiftUI
 
 struct SettingsOtherSection: View {
+    @ObserveInjection private var inject
     let syncSummary: SettingsPresenterState.SyncSummaryState?
     let bookSync: SettingsPresenterState.BookSyncState?
     let isLoggedIn: Bool
@@ -32,6 +33,7 @@ struct SettingsOtherSection: View {
             version: version,
             actions: actions
         )
+        .enableInjection()
     }
 }
 

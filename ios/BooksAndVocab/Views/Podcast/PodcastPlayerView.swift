@@ -3,9 +3,11 @@ import SwiftUI
 import SwiftData
 
 struct PodcastPlayerView: View {
+    @ObserveInjection private var inject
     let episodeId: String
     var body: some View {
         PodcastPlayerScene(episodeId: episodeId)
+            .enableInjection()
     }
 
     static func fetchEpisode(remoteId: String, in context: ModelContext) -> PodcastEpisode? {

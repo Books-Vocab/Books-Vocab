@@ -7,6 +7,7 @@ import SwiftData
 /// 刻意不標示「預設」—— 對使用者而言所有單字本平權（每個容器綁定即真相，無 magic
 /// 預設本概念）。選一本即透過 `onSelect` 固化綁定。
 struct NotebookBindingList: View {
+    @ObserveInjection private var inject
     let notebooks: [Notebook]
     let selectedNotebookId: String?
     let onSelect: (Notebook) -> Void
@@ -22,6 +23,7 @@ struct NotebookBindingList: View {
             Text("單字本".localized)
                 .font(AppFonts.caption(weight: .medium))
         }
+        .enableInjection()
     }
 
     private func row(_ notebook: Notebook) -> some View {

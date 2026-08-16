@@ -361,6 +361,7 @@ struct NotebookCard: View {
 /// Spine 走 `NotebookPalette.darken(coverColor, by: 0.4)` (HSB brightness ×0.6,同色族加深)。
 /// Rule 走 `NotebookPalette.darken(coverColor, by: 0.3)`(brightness ×0.7),寬度 = cover 寬 × 0.25 (GeometryReader)。
 struct EditorialCoverComposition: View {
+    @ObserveInjection private var inject
     let name: String
     let cardCount: Int
     let coverColor: Color
@@ -427,5 +428,6 @@ struct EditorialCoverComposition: View {
                 .padding(outerPadding)
             }
         }
+        .enableInjection()
     }
 }

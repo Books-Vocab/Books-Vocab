@@ -11,6 +11,7 @@
 import SwiftUI
 
 struct NotebookReviewActionBar: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var skin
 
     /// 過濾後（active filter 套用）的到期 / 未學計數 — 決定 CTA pill 顯示哪種模式。
@@ -90,6 +91,7 @@ struct NotebookReviewActionBar: View {
             AppRoundedRect(roundness: AppRoundness.pill)
                 .stroke(skin.palette.divider, lineWidth: 1.5)
         )
+        .enableInjection()
     }
 
     @ViewBuilder

@@ -206,6 +206,7 @@ struct BookCard: View {
 // MARK: - iCloud 下載進度徽章
 
 struct ICloudProgressBadge: View {
+    @ObserveInjection private var inject
     let progress: Double
     private let foreground = AppBookshelfMetrics.badgeForeground
 
@@ -224,6 +225,7 @@ struct ICloudProgressBadge: View {
         }
         .frame(width: 32, height: 32)
         .background(.ultraThinMaterial, in: Circle())
+        .enableInjection()
     }
 }
 

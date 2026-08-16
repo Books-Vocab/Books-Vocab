@@ -222,6 +222,7 @@ struct KnowledgeGraphPresenter: View {
 }
 
 struct KnowledgeGraphPresenterPreviewHarness: View {
+    @ObserveInjection private var inject
     @State private var centerForce = 0.24
     @State private var repelForce = 0.76
     @State private var linkForce = 0.32
@@ -254,6 +255,7 @@ struct KnowledgeGraphPresenterPreviewHarness: View {
                 onNodeTapped: { _ in }
             )
         }
+        .enableInjection()
     }
 }
 

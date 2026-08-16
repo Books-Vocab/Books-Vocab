@@ -38,6 +38,7 @@ struct ReviewToolbarModel: Equatable {
 }
 
 struct ReviewTopBar: View, Equatable {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let model: ReviewTopBarModel
@@ -137,10 +138,12 @@ struct ReviewTopBar: View, Equatable {
         .padding(.horizontal, TodayReviewMetrics.topBarHorizontalInset)
         .padding(.top, TodayReviewMetrics.topBarTopInset)
         .padding(.bottom, TodayReviewMetrics.topBarBottomInset)
+        .enableInjection()
     }
 }
 
 struct ReviewToolbarControls: View, Equatable {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -176,6 +179,7 @@ struct ReviewToolbarControls: View, Equatable {
         }
         .animation(AppMotion.reviewNavigationSpring, value: model.showsAnswer)
         .animateSpring(model.isAutoPlaying)
+        .enableInjection()
     }
 
     // MARK: - Autoplay Controls
@@ -526,6 +530,7 @@ extension TodayReviewPresenter {
 
 #if targetEnvironment(macCatalyst)
 struct ShortcutHintChip: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let hint: TodayReviewShortcutHint
@@ -547,10 +552,12 @@ struct ShortcutHintChip: View {
             AppRoundedRect(roundness: AppRoundness.pill)
                 .stroke(appSkin.palette.cardBorder.opacity(0.4), lineWidth: 1)
         )
+        .enableInjection()
     }
 }
 
 struct ShortcutKeyCap: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let key: String
@@ -569,6 +576,7 @@ struct ShortcutKeyCap: View {
                             .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
                     )
             )
+            .enableInjection()
     }
 }
 #endif

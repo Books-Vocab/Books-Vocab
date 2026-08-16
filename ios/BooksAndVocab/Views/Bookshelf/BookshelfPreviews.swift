@@ -81,7 +81,7 @@ struct BookshelfLoadingPreview: View {
     }
 }
 
-struct BookshelfFixtureLibraryScene: View {
+private struct BookshelfFixtureLibraryScene: View {
     let fixtureID: BookshelfFixtureID
 
     @MainActor

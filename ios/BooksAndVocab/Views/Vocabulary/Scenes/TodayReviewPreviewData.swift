@@ -31,6 +31,7 @@ enum TodayReviewPresenterPreviewData {
 }
 
 struct TodayReviewFixtureScene: View {
+    @ObserveInjection private var inject
     let fixtureID: TodayReviewFixtureID
 
     private var renderModel: TodayReviewFixtureRenderModel {
@@ -59,6 +60,7 @@ struct TodayReviewFixtureScene: View {
             )
         }
         .environmentObject(AppAppearanceStore.preview)
+        .enableInjection()
     }
 }
 

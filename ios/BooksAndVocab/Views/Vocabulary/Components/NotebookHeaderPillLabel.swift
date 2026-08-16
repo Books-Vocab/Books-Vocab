@@ -10,6 +10,7 @@
 import SwiftUI
 
 struct NotebookHeaderPillLabel<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let fillColor: Color
     let foregroundColor: Color
@@ -23,6 +24,7 @@ struct NotebookHeaderPillLabel<Content: View>: View {
             .padding(.vertical, AppSpacing.s2 - AppSpacing.hairline)
             .frame(minWidth: 32)
             .background(AppRoundedRect(roundness: AppRoundness.pill).fill(fillColor))
+            .enableInjection()
     }
 }
 
