@@ -876,7 +876,9 @@ cmd_shipped() {
 # 這條路徑原本是 `bump-build ios --yes` + `ios_release.sh --upload` 兩步手動，**不留任何
 # 紀錄**：沒有 release commit、沒有 tag。ios/2.0.0 指著 build 5 的 commit、實際上架的卻是
 # 五天後的 build 6，成因就是這裡——腳本從來沒有詞彙描述「同版號的第 N 顆 build」。
-# 與 cmd_release 對稱：ASC 對帳 → bump → upload → 封版；未知 ASC 狀態硬停，upload 失敗不留 commit/tag/push。
+# 與 cmd_release 對稱：ASC 對帳 → bump → candidate commit/push → upload → 封版；未知 ASC
+# 狀態硬停。upload 失敗仍保留 candidate commit/push，不建立 build tag；先查 ASC，若 exact
+# build 已接受就跑 finalize，只有確認未接受時才可沿用同一 candidate 重試 primitive upload。
 asc_latest_testflight_build() {
   local output="" rc=0 latest="" asc_cmd="${KG_ASC_BUILDS_CMD:-$ROOT/ops/asc.sh}"
   if [[ -n "${KG_ASC_BUILDS_CMD:-}" ]]; then
