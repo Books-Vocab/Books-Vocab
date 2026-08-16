@@ -505,6 +505,54 @@ backup_residue="$(find "$backup_fx/backend" \( -name '*.tmp.*' -o -name '*.bak.*
   && ok "backup copy failure leaves no API mutation or transaction residue" \
   || fail_t "backup copy failure cleanup failed: rc=$backup_rc residue=${backup_residue:-none} out=$backup_out"
 
+# 13i. API version transactions can run inside release's shared lock. The
+# transaction EXIT trap must compose with, not replace, the outer lock cleanup.
+outer_lock_fx="$TMP2/outer-release-lock"
+mkdir -p "$outer_lock_fx/ops/lib" "$outer_lock_fx/backend/src/kg"
+cp "$REL" "$outer_lock_fx/ops/release.sh"
+cp "$WORKSPACE/ops/lib/release_tags.sh" "$outer_lock_fx/ops/lib/release_tags.sh"
+cp "$rollback_fx/backend/pyproject.toml.before" "$outer_lock_fx/backend/pyproject.toml"
+cp "$rollback_fx/backend/src/kg/api.py.before" "$outer_lock_fx/backend/src/kg/api.py"
+cp "$rollback_fx/backend/uv.lock.before" "$outer_lock_fx/backend/uv.lock"
+git init -q -b main "$outer_lock_fx"
+outer_lock_rc=0
+outer_lock_out="$(KG_ROOT="$outer_lock_fx" bash -c '
+  source "$1"
+  YES=1
+  acquire_release_lock
+  prepare_api_version_transaction 0.2.0
+  commit_api_version_transaction
+  [[ -n "$RELEASE_LOCK_DIR" ]]
+' bash "$outer_lock_fx/ops/release.sh" 2>&1)" || outer_lock_rc=$?
+[[ "$outer_lock_rc" -eq 0 && ! -d "$outer_lock_fx/.git/kg-release.lock" \
+   && "$(grep -c 'version = "0.2.0"' "$outer_lock_fx/backend/pyproject.toml")" -eq 1 ]] \
+  && ok "API transaction preserves outer release lock cleanup on success" \
+  || fail_t "API transaction success left outer lock: rc=$outer_lock_rc out=$outer_lock_out"
+
+outer_fail_fx="$TMP2/outer-release-lock-failure"
+mkdir -p "$outer_fail_fx/ops/lib" "$outer_fail_fx/backend/src/kg" "$outer_fail_fx/fakebin"
+cp "$REL" "$outer_fail_fx/ops/release.sh"
+cp "$WORKSPACE/ops/lib/release_tags.sh" "$outer_fail_fx/ops/lib/release_tags.sh"
+cp "$rollback_fx/backend/pyproject.toml.before" "$outer_fail_fx/backend/pyproject.toml"
+cp "$rollback_fx/backend/src/kg/api.py.before" "$outer_fail_fx/backend/src/kg/api.py"
+cp "$rollback_fx/backend/uv.lock.before" "$outer_fail_fx/backend/uv.lock"
+cp "$rollback_fx/fakebin/mv" "$outer_fail_fx/fakebin/mv"
+git init -q -b main "$outer_fail_fx"
+outer_fail_rc=0
+outer_fail_out="$(PATH="$outer_fail_fx/fakebin:$PATH" KG_FAKE_MV_STATE="$outer_fail_fx/mv-count" KG_ROOT="$outer_fail_fx" bash -c '
+  source "$1"
+  YES=1
+  acquire_release_lock
+  prepare_api_version_transaction 0.2.0
+  commit_api_version_transaction
+' bash "$outer_fail_fx/ops/release.sh" 2>&1)" || outer_fail_rc=$?
+[[ "$outer_fail_rc" -ne 0 && ! -d "$outer_fail_fx/.git/kg-release.lock" \
+   && "$(cmp -s "$outer_fail_fx/backend/pyproject.toml" "$rollback_fx/backend/pyproject.toml.before"; echo $?)" -eq 0 \
+   && "$(cmp -s "$outer_fail_fx/backend/src/kg/api.py" "$rollback_fx/backend/src/kg/api.py.before"; echo $?)" -eq 0 \
+   && "$(cmp -s "$outer_fail_fx/backend/uv.lock" "$rollback_fx/backend/uv.lock.before"; echo $?)" -eq 0 ]] \
+  && ok "API transaction preserves outer release lock cleanup on rollback" \
+  || fail_t "API transaction rollback left outer lock or mutation: rc=$outer_fail_rc out=$outer_fail_out"
+
 KG_ROOT="$TMP2" bash "$REL" bump ios 9.9.1 --yes >/dev/null 2>&1 \
   || fail_t "release.sh bump ios --yes failed"
 grep -q 'MARKETING_VERSION = 9.9.1;' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
