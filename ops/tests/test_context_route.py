@@ -72,9 +72,22 @@ def test_unknown_role_fails_closed():
 def test_documented_role_aliases_resolve_to_typed_routes():
     mod = load_module()
 
-    assert mod.resolve_route(mod.load_manifest(), "docs-steward", surface="docs")["role"] == "delivery-child"
+    assert mod.resolve_route(mod.load_manifest(), "docs-steward", surface="docs")["role"] == "docs-steward"
+    assert mod.resolve_route(mod.load_manifest(), "Docs Steward", surface="docs")["role"] == "docs-steward"
     assert mod.resolve_route(mod.load_manifest(), "delivery-coordinator")["role"] == "delivery-integrator"
     assert mod.resolve_route(mod.load_manifest(), "platform-steward")["role"] == "ticket-factory"
+
+
+def test_docs_steward_does_not_preload_worktree_context():
+    mod = load_module()
+    base = mod.resolve_route(mod.load_manifest(), "docs-steward", surface="docs")
+    handback = mod.resolve_route(mod.load_manifest(), "docs-steward", surface="docs", task="handback")
+
+    base_ids = [unit["id"] for unit in base["units"]]
+    handback_ids = [unit["id"] for unit in handback["units"]]
+    assert not any(unit_id.startswith("worktree.") for unit_id in base_ids)
+    assert "worktree.child-stop" in handback_ids
+    assert "worktree.child-handoff" in handback_ids
 
 
 def test_missing_anchor_fails_without_full_file_fallback():
@@ -190,7 +203,7 @@ def test_registry_gate_documented_cli_route_is_executable(capsys):
     assert mod.main(["render", "--role", "docs-steward", "--task", "docs-registry", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["role"] == "delivery-child"
+    assert payload["role"] == "docs-steward"
     assert "docs-control.registry-gate" in [unit["id"] for unit in payload["units"]]
 
 
