@@ -43,7 +43,7 @@ final class TodayReviewAutoplayChromeUITests: UITestCase {
         captureStep("launch", app: app)
 
         let notebook = AppPage(app: app).goToNotebooks()
-        guard notebook.notebookCard(id: Self.notebookCardID).waitUntilExists(timeout: 10) else {
+        guard notebook.waitForNotebookCard(id: Self.notebookCardID, timeout: 10) else {
             captureStep("no-notebook-card", app: app)
             XCTFail("notebook.reviewDeck fixture 應種出單字本卡片；列表空狀態 = fixture 未生效")
             return

@@ -18,6 +18,23 @@ struct NotebookPage {
         )
     }
 
+    /// Wait for the fixture card's AX projection without asserting against an
+    /// expected zero-match snapshot. Each poll re-resolves the query and keeps
+    /// the positive state exact-one before callers use the action accessor.
+    @discardableResult
+    func waitForNotebookCard(id: String, timeout: TimeInterval = 8) -> Bool {
+        let query = app.descendants(matching: .any)
+            .matching(identifier: "notebook.card.\(id)")
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let matches = query.allElementsBoundByIndex
+            if matches.count == 1, matches[0].exists { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        let matches = query.allElementsBoundByIndex
+        return matches.count == 1 && matches[0].exists
+    }
+
     var anyNotebookCard: XCUIElement {
         let matches = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH[c] %@", "notebook.card."))
