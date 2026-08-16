@@ -74,6 +74,7 @@ import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
 import backlog_legacy as _backlog_legacy  # noqa: E402
+import backlog_query as _backlog_query  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
 # nothing outside the standard library, so the sandboxed `uv run --no-project`
@@ -1883,28 +1884,16 @@ def load_entry(store: Path, entry_id: str) -> dict:
 
 
 def _iter_entries(store: Path):
-    store = Path(store)
-    if not store.exists():
-        return
-    for path in sorted(store.glob("*.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            continue
-        if isinstance(payload, dict):
-            yield payload
+    yield from _backlog_query.iter_entries(store)
 
 
 def _sort_key(payload: dict) -> tuple:
-    # (date, id) rather than filesystem order, so the generated view is stable
-    # across machines and reruns.
-    return (str(payload.get("date", "")), str(payload.get("id", "")))
+    return _backlog_query.sort_key(payload)
 
 
 def entry_sort_key_by_id(store: Path):
     """Return a key function over entry ids, matching `list_entries` order."""
-    index = {payload.get("id"): _sort_key(payload) for payload in _iter_entries(store)}
-    return lambda entry_id: index.get(entry_id, ("", entry_id))
+    return _backlog_query.entry_sort_key_by_id(store)
 
 
 def list_entries(
@@ -1927,173 +1916,38 @@ def list_entries(
     held: dict | None = None,
     repo: Path | None = None,
 ) -> list[dict]:
-    if groomed and ungroomed:
-        raise BacklogError("--groomed and --ungroomed are mutually exclusive")
-    if groom_stale_days is not None:
-        if not ungroomed:
-            raise BacklogError("--groom-stale-days only applies with --ungroomed")
-        if groom_stale_days < 0:
-            raise BacklogError("--groom-stale-days must be a non-negative integer")
-    if dispatch:
-        # Each of these intersects dispatch's own clauses to nothing, and an empty
-        # dispatch queue is the worst false read this tool can produce: it says
-        # "there is no work" to the caller whose whole reason for running it was to
-        # find some. Same treatment, and the same reason, as the three pairs above.
-        conflict = None
-        if ungroomed:
-            conflict = ("--ungroomed", "--dispatch only ever contains GROOMED entries")
-        elif status in ("fixed", "wont-fix"):
-            conflict = (f"--status {status}",
-                        "--dispatch only ever contains UNRESOLVED entries")
-        if conflict:
-            flag, why = conflict
-            raise BacklogError(
-                f"{flag} and --dispatch are empty by construction: {why}. Drop one "
-                f"— `--dispatch` for what to take next, `{flag}` on its own to look "
-                f"at that set.")
-    if include_closed and not ungroomed:
-        raise BacklogError(
-            "--include-closed only widens --ungroomed; it has no effect on its own. "
-            "Drop it, or add `--ungroomed`.")
-    if ungroomed and not include_closed and status in ("fixed", "wont-fix"):
-        raise BacklogError(
-            f"--ungroomed already excludes closed entries, so --status {status} is "
-            f"empty by construction. Add `--include-closed` to inspect that closed "
-            f"entry, or drop `--status {status}`.")
-    open_ids = ({p.get("id") for p in _iter_entries(store)
-                 if p.get("status") not in ("fixed", "wont-fix")}
-                if dispatch else set())
-    if missing_brief and status in ("fixed", "wont-fix"):
-        # Empty by construction, and an empty result here reads as "no such debt"
-        # — while 96 closed entries carry no brief today. Same treatment, and the
-        # same reason, as the two pairs above and `--unverified`/`--stale`.
-        raise BacklogError(
-            f"--missing-brief already means UNRESOLVED, so --status {status} is "
-            f"empty by construction (a closed entry never reaches the board). "
-            f"Drop one: `--missing-brief` for the backfill queue, or "
-            f"`--status {status}` on its own to look at closed entries.")
-
-    wanted = {
-        "status": status,
-        "stream": stream,
-        "severity": severity,
-        "category": category,
-    }
-    hits = [
-        payload
-        for payload in _iter_entries(store)
-        if all(value is None or payload.get(field) == value for field, value in wanted.items())
-    ]
-    # The badge, not the date, is the predicate: validate_entry() refuses a
-    # groomed_at without a groomer, so the two cannot disagree on a valid store.
-    if groomed:
-        hits = [payload for payload in hits if payload.get("groomed_by")]
-    if ungroomed:
-        groom_cutoff = (
-            _days_before(_today(), groom_stale_days)
-            if groom_stale_days is not None else None
-        )
-        hits = [payload for payload in hits
-                if (not payload.get("groomed_by")
-                    or (groom_cutoff is not None
-                        and _DATE_RE.match(str(payload.get("groomed_at") or ""))
-                        and str(payload["groomed_at"]) < groom_cutoff))
-                and (include_closed
-                     or payload.get("status") not in ("fixed", "wont-fix"))]
-    if acceptance_manual:
-        # The declared-unverifiable set. It exists so that "no command can express
-        # this" is a COUNT somebody can look at, not an absence nobody notices —
-        # which is what `acceptance` itself had been for its whole life.
-        hits = [p for p in hits if str(p.get("acceptance_manual") or "").strip()]
-    if acceptance_green_expected:
-        # The third declared-exception set, same principle: `audit-criteria` skips
-        # these, so the only thing that keeps the skipping honest is that the set
-        # can be listed and argued with.
-        hits = [p for p in hits
-                if str(p.get(ACCEPTANCE_GREEN_EXPECTED) or "").strip()]
-    if fixed_elsewhere:
-        # The other declared exception, same principle: closures whose audit trail
-        # is prose because the fix landed where shas do not exist. Countable so the
-        # set can be argued with instead of accumulating unseen.
-        hits = [p for p in hits if str(p.get("fixed_elsewhere") or "").strip()]
-    if missing_brief:
-        # The BACKFILL queue, not a dispatch queue — the difference matters enough
-        # to be in `--help` too. These entries are not unworked; most of them carry
-        # a full plan. What they lack is the sentence the board renders, so this is
-        # a writing job over existing entries, and handing one out as if it were a
-        # fix would produce a worktree with nothing to change.
-        #
-        # Restricted to UNRESOLVED entries, which is what makes the number honest:
-        # a closed entry never appears on the board, so counting it would inflate
-        # the debt with work that can have no effect. Same predicate `view_counts`
-        # uses for "unresolved", so the two numbers cannot disagree.
-        hits = [p for p in hits
-                if p.get("status") not in ("fixed", "wont-fix")
-                and any(not str(p.get(f) or "").strip() for f in BRIEF_FIELDS)]
-    if grep:
-        # LAST in the chain, and a filter rather than a subcommand of its own:
-        # the question is never "does this text appear in the store", it is
-        # "does it appear in something still open / already groomed". Only a
-        # filter can be asked that; a `search` subcommand would have to regrow
-        # every flag above it before it could answer, and until it did, callers
-        # would keep writing the throwaway scan scripts that IMP-20260807-c66d97
-        # was filed for.
-        #
-        # BacklogError, not a leaked re.error: `main()` catches
-        # (BacklogError, ValueError, EntryNotFound) and nothing else, so an
-        # unguarded compile turns a typo'd bracket into a traceback about
-        # `sre_parse` — a true statement about the wrong subject.
-        try:
-            pattern = re.compile(grep, re.IGNORECASE)
-        except re.error as exc:
-            raise BacklogError(f"--grep 不是合法的正規表示式: {exc}") from exc
-        # Four fields, not just `detail`. An entry can be an exact match for the
-        # work about to start while its detail never names the file: "is there a
-        # neighbour ticket on ops/foo.py" is answered by `fix_site`, and "did
-        # someone already work out the fix" by `plan` / `resolution`.
-        #
-        # Searched one field at a time rather than joined into one blob: with a
-        # "\n".join the separator IS whitespace, so `alpha\s+beta` matched an
-        # entry whose detail ends in "alpha" and whose plan starts with "beta"
-        # — a phrase no field contains, returned by the tool whose whole job is
-        # answering "has this already been filed" (measured, not theorised).
-        fields = ("detail", "resolution", "plan", "fix_site")
-        hits = [p for p in hits
-                if any(pattern.search(str(p.get(f) or "")) for f in fields)]
-    if dispatch:
-        # THE queue the operating constitution names, expressed as the intersection
-        # of its own four clauses and nothing else. It sits last, like `--grep`, so
-        # every filter above ANDs with it rather than being replaced by it.
-        #
-        # `held` is INJECTED rather than derived here, so the CLI's claim column and
-        # this filter are the same read of the same ledger. Deriving twice would let
-        # a claim taken between the two reads produce a row the list offers and
-        # simultaneously marks as taken.
-        claimed = held_tickets() if held is None else held
-        hits = [p for p in hits
-                # groomed: `validate` already guarantees the badge implies
-                # plan/acceptance/fix_site, so the badge is the whole predicate.
-                if str(p.get("groomed_by") or "").strip()
-                # unresolved
-                and p.get("status") not in ("fixed", "wont-fix")
-                # unclaimed
-                and p.get("id") not in claimed]
-        # Resolve blockers against the whole store, not `hits`: a narrow query
-        # may filter out a low-severity blocker while still returning its high
-        # severity dependent. Reading only the survivors would make the edge
-        # disappear exactly when a caller narrows the question.
-        hits = [p for p in hits
-                if not any(blocker in open_ids for blocker in _blocking_ids(p))]
-        # Contract readiness is a fifth mechanical guard layered onto the four
-        # historical queue clauses. It is deliberately not folded into
-        # ``blocked_by``: a missing file/evidence is a property of this ticket's
-        # executable contract, not a dependency edge to another ticket.
-        hits = [p for p in hits if not contract_preflight(p, repo=repo)]
-        # A queue somebody takes the TOP of, so worst-first, then oldest-first.
-        # `_sort_key` is (date, id), which is right for an inventory and wrong
-        # here: it puts last week's `low` ahead of today's `high`.
-        return sorted(hits, key=_worst_first_key)
-    return sorted(hits, key=_sort_key)
+    deps = _backlog_query.QueryDeps(
+        backlog_error=BacklogError,
+        brief_fields=BRIEF_FIELDS,
+        acceptance_green_expected=ACCEPTANCE_GREEN_EXPECTED,
+        date_re=_DATE_RE,
+        today=_today,
+        days_before=_days_before,
+        held_tickets=held_tickets,
+        blocking_ids=_blocking_ids,
+        contract_preflight=contract_preflight,
+        worst_first_key=_worst_first_key,
+    )
+    return _backlog_query.list_entries(
+        store,
+        deps=deps,
+        status=status,
+        stream=stream,
+        severity=severity,
+        category=category,
+        groomed=groomed,
+        ungroomed=ungroomed,
+        groom_stale_days=groom_stale_days,
+        include_closed=include_closed,
+        acceptance_manual=acceptance_manual,
+        acceptance_green_expected=acceptance_green_expected,
+        fixed_elsewhere=fixed_elsewhere,
+        missing_brief=missing_brief,
+        grep=grep,
+        dispatch=dispatch,
+        held=held,
+        repo=repo,
+    )
 
 
 _ID_IN_SUBJECT_RE = re.compile(
@@ -2325,29 +2179,19 @@ def select_entries(
     closure: the branch gets deleted, the sha gets rebased. Every one of the
     four broken audit trails found the next day was on a `fixed` entry.
     """
-    if unverified and stale_days is not None:
-        # Mathematically empty: `unverified` keeps entries with no usable date,
-        # `stale_days` keeps only entries with one. The neighbouring
-        # --groomed/--ungroomed pair already refuses its own contradiction; an
-        # empty result here would read as "both queues are clear".
-        raise BacklogError("--unverified and --stale are mutually exclusive")
-    hits = list_entries(store, groom_stale_days=groom_stale_days, **filters)
-    if unverified:
-        # No ATTRIBUTABLE verification — missing date OR missing verifier. The
-        # first cut tested only the date, which made the safety net it was
-        # justifying provably empty: the 60 entries carrying a date with no
-        # verifier were, by construction, the exact complement of the predicate.
-        # They were unreachable from the queue AND deliberately exempt from the
-        # gate, i.e. invisible to both. Measured hit rate: 0 of 60.
-        hits = [p for p in hits
-                if not str(p.get("verified_at") or "").strip()
-                or not str(p.get("verified_by") or "").strip()]
-    if stale_days is not None:
-        cutoff = _days_before(today or _today(), stale_days)
-        # A never-verified entry is NOT stale — it belongs to `unverified`.
-        hits = [p for p in hits
-                if _DATE_RE.match(str(p.get("verified_at") or "")) and p["verified_at"] < cutoff]
-    return hits
+    return _backlog_query.select_entries(
+        store,
+        list_entries_fn=list_entries,
+        date_re=_DATE_RE,
+        days_before=_days_before,
+        today=_today,
+        backlog_error=BacklogError,
+        unverified=unverified,
+        stale_days=stale_days,
+        groom_stale_days=groom_stale_days,
+        today_value=today,
+        **filters,
+    )
 
 
 def _today() -> str:
