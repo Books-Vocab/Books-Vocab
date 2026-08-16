@@ -198,6 +198,7 @@ class TestMergeUserConfigReviewMode:
                 custom_forgot_multiplier=0.4,
                 custom_minimum_interval_hours=5.0,
                 custom_maximum_interval_hours=2000.0,
+                include_dictionary_cards=True,
                 updated_at=1717668000.0,
             )
         )
@@ -209,6 +210,7 @@ class TestMergeUserConfigReviewMode:
             "custom_forgot_multiplier": 0.4,
             "custom_minimum_interval_hours": 5.0,
             "custom_maximum_interval_hours": 2000.0,
+            "include_dictionary_cards": True,
             "updated_at": 1717668000.0,
         }
 
@@ -227,6 +229,7 @@ class TestMergeUserConfigReviewMode:
             "custom_forgot_multiplier": 0.4,
             "custom_minimum_interval_hours": 4.0,
             "custom_maximum_interval_hours": 1440.0,
+            "include_dictionary_cards": False,
             "updated_at": 1.0,
         }
         config = {"review_mode": dict(existing)}
@@ -258,6 +261,7 @@ class TestBuildUserConfigReviewMode:
             "custom_forgot_multiplier": 0.4,
             "custom_minimum_interval_hours": 5.0,
             "custom_maximum_interval_hours": 2000.0,
+            "include_dictionary_cards": True,
             "updated_at": 3.0,
         }}
         resp = _build_user_config_response(config)
@@ -265,6 +269,7 @@ class TestBuildUserConfigReviewMode:
         assert resp.review_mode.mode == "custom"
         assert resp.review_mode.custom_initial_interval_hours == 10.0
         assert resp.review_mode.custom_maximum_interval_hours == 2000.0
+        assert resp.review_mode.include_dictionary_cards is True
         assert resp.review_mode.updated_at == 3.0
 
     def test_build_defaults_when_absent(self):
@@ -272,6 +277,7 @@ class TestBuildUserConfigReviewMode:
         assert resp.review_mode is not None
         assert resp.review_mode.mode == "relaxed"
         assert resp.review_mode.custom_initial_interval_hours == 12
+        assert resp.review_mode.include_dictionary_cards is False
         assert resp.review_mode.updated_at is None
 
 

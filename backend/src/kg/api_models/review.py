@@ -85,8 +85,9 @@ class ReviewClockConfig(BaseModel):
 class ReviewModeConfig(BaseModel):
     """Per-user 複習模式 + 自訂 SRS 參數(對標 ReviewClockConfig 走 user config)。
 
-    `mode` + 5 個 `custom_*` 參數為**複合原子狀態**:custom 參數只在 mode="custom"
-    時生效,但即使 mode 為 relaxed/intensive 仍保存使用者調過的值。單一 `updated_at`
+    `mode` + 5 個 `custom_*` 參數 + `include_dictionary_cards` 為**複合原子狀態**:
+    custom 參數只在 mode="custom" 時生效,但即使 mode 為 relaxed/intensive 仍保存使用者
+    調過的值。單一 `updated_at`
     (epoch 秒)驅動跨裝置 LWW — 整組共用一個時戳,確保收斂(不會 mode 取一邊、custom
     參數取另一邊形成半套狀態)。對 client 寬鬆:非法 mode 由 validator 正規化為
     "relaxed",custom 參數不 reject(client UI 已 bound,為 SoT;後端寬鬆存原值)。
@@ -100,6 +101,7 @@ class ReviewModeConfig(BaseModel):
     custom_forgot_multiplier: float = 0.45
     custom_minimum_interval_hours: float = 6
     custom_maximum_interval_hours: float = 1440
+    include_dictionary_cards: bool = False
     updated_at: float | None = None  # LWW timestamp, epoch 秒
 
     @model_validator(mode="after")
