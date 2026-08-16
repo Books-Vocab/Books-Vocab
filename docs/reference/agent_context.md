@@ -35,6 +35,10 @@ verified_against: 7046dd9bf
 4. **Stop / escalate**：仍無法判定時，保留目前工作狀態，依下方 escalation contract 交給正確的
    owner；不可用猜測擴大 scope。
 
+一般 route 不載入 router 的 Tool Friction deep reference；只有 typed task=`tool-friction` 或實際遇到
+工具摩擦時，才由 `./ops/context_route.py render --task tool-friction --json` 載入。該 reference 的
+查重、`dispatch --stream APP` 與 receipt／stream 分流規則是此條件式 context 的唯一內容來源。
+
 Global kernel 的內容仍以根 `CLAUDE.md` 為準；本索引不重抄其規則。`kg-agent-context` 是薄入口，
 不取代 `kg-router`、`worktree-flow` 或 `kg-receipt`。
 

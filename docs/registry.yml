@@ -18,6 +18,7 @@ agent_facing_surface:
     - docs/policy/
     - docs/runbook/system.md
     - ops/context_route.py
+    - ops/context_plane.json
     - ops/skill_route.py
     - ops/capability_matrix.py
 

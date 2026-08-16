@@ -144,6 +144,16 @@ def test_tool_friction_reference_is_opt_in():
     assert "router.tool-friction" in [unit["id"] for unit in friction["units"]]
 
 
+def test_bootstrap_route_contains_complete_router_and_agent_context_kernel():
+    mod = load_module()
+    payload = mod.resolve_route(mod.load_manifest(), "delivery-child")
+    units = {unit["id"]: unit for unit in payload["units"]}
+
+    assert "## Routing Table" in units["router.routing"]["content"]
+    assert "## Output Contract" in units["router.output"]["content"]
+    assert "## Loading discipline" in units["agent-context.loading"]["content"]
+
+
 def test_route_text_output_is_an_index_without_source_content(capsys):
     mod = load_module()
     assert mod.main(["route", "--role", "delivery-child", "--surface", "backend"]) == 0
