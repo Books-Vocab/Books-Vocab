@@ -4070,10 +4070,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
     completed: list[dict[str, str]] = []
     progress_generation: int | None = None
 
-    def publish_progress(*, claim: bool = False) -> None:
+    def publish_progress(*, claim: bool = False, terminal: bool = False) -> None:
         nonlocal progress_generation
         done = len(completed)
-        current = plan[done]["name"] if done < len(plan) else None
+        current = None if terminal or done >= len(plan) else plan[done]["name"]
         progress = {
             "schema": GATE_PROGRESS_SCHEMA,
             "run_id": run_id,
@@ -4151,12 +4151,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   f"status={result['status']} done={len(completed)}/{len(plan)} "
                   f"elapsed={time.monotonic() - progress_started:.1f}s "
                   f"progress={progress_path}", file=sys.stderr, flush=True)
-            if spec.get("preflight") and result.get("status") == "block":
-                # A preflight block already proves that this HEAD cannot land. Stop
-                # before expensive gates; keep the existing gate-record schema and
-                # name the shortened execution in the human/progress stream.
-                print(f"[worktree][gate] phase=stop reason=preflight-block "
-                      f"gate={result['name']} remaining={len(plan) - len(results)} "
+            if spec.get("preflight") and result.get("status") != "pass":
+                # A preflight result must prove the prerequisite, not merely avoid a
+                # hard block. Stop on block, warn, or inconclusive so tag races and
+                # other typed uncertainty cannot launch expensive gates.
+                publish_progress(terminal=True)
+                print(f"[worktree][gate] phase=stop reason=preflight-nonpass "
+                      f"gate={result['name']} status={result['status']} "
+                      f"remaining={len(plan) - len(results)} "
                       f"progress={progress_path}", file=sys.stderr, flush=True)
                 break
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
@@ -4243,8 +4245,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
     record_ref = (str(_gate_record_path(args.state, worktree))
                   if not args.plan_only else "<not recorded>")
     receipt_line = (f"gate={verdict} record={record_ref} "
-                    f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown} "
-                    f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))} "
+                    f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} "
+                    f"executed={len(results)} {breakdown} "
+                    f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
                     f"{no_changes}")
     if getattr(args, "receipt_line", False):
         print(receipt_line)
