@@ -8,7 +8,7 @@ scope:
   - ops/lib/ios_ops_catalog.sh
   - ops/lib/ios_xctestrun_cache.sh
   - ops/ios_clean_derived_data.sh
-verified_against: e47d59fd6
+verified_against: cc50802b1
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -119,12 +119,18 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 - 保留 = mtime 最新 `KG_IOS_CACHE_KEEP`（預設 3）條 ∪ current key ∪ `KG_IOS_CACHE_EVICT_MIN_AGE_HOURS`（預設 6h）內用過的條目；其餘按最舊優先 `rm -rf`。
 - 只動 cache root 第一層**目錄**；log 全走 **stderr**（catalog caller stdout 是純 JSON）。
 - `KG_IOS_CACHE_EVICT_DRY_RUN=1` 只報告不刪。
+- `ios_clean_derived_data.sh --apply` 先確認 `xcodebuild`／runner／evidence
+  consumer 與已知 iOS lock 都不存在；任何 active/invalid lock 都會以 exit 75
+  fail-closed，不進入刪除階段。
+- 每次 manual sweep 產生一個小型 `kg.ios.cache-cleanup.v1` receipt，記錄
+  `runID`、mode、before/after allocated bytes 與 `/` free bytes；receipt 放在
+  `build/snapshots/cache-cleanup/`，不把 cache 內容本身當 receipt。
 
 **接點與並發安全**：
 | caller | 時機 | 並發保護 |
 |---|---|---|
 | `ios_test.sh` `rebuild_test_cache` | 取得 build lock 後、build 前 | 持鎖互斥寫者；無鎖讀者（test-without-building）靠 resolve 時 `touch` 續命 + min-age 視窗 |
-| `ios_clean_derived_data.sh` | 手動 sweep（dry-run 預設，`--apply` 才刪） | current_key 留空，靠 keep-N + min-age |
+| `ios_clean_derived_data.sh` | 手動 sweep（dry-run 預設，`--apply` 才刪） | active consumer/lock guard；通過後 current_key 留空，靠 keep-N + min-age；保留 cleanup receipt |
 
 **不變式**：current key 永不被淘汰；任何 6 小時內活動過的 key 永不被淘汰。讀者續命點：`ios_test.sh` 在 resolve 後 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。另有刪除前 mtime 重驗（stale-snapshot guard）：快照後才被 touch 的 key 一律放過。回歸測試：`./ops/test_ops.sh ios-cache-evict`。
 
