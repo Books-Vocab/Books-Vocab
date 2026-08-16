@@ -187,7 +187,7 @@ verified_against: 18f37badc
 
 字典卡住在本 feature，但**三個維度彼此獨立、不得互推**（欄位定義見 `docs/reference/card_format.md`，狀態流轉見 `docs/reference/sync_lifecycle.md`）：
 
-- `cardRole` 決定它出不出現在一般 vocab 面與 pipeline；`reviewEligible` 決定它進不進複習與統計（字典卡恆 false）；`readerHidden` 決定 Reader／Podcast 高亮。**禁止用 `cardRole` 推導高亮**——高亮 eligibility 固定為「未 delete ∧ 未 archive ∧ `readerHidden == false`」。
+- `cardRole` 決定它出不出現在一般 vocab 面與 pipeline；`reviewEligible` 是每卡的持久 eligibility projection（字典卡預設 false）。全域 `ReviewSettings.includeDictionaryCards`／backend `review_mode.include_dictionary_cards` 再決定字典卡是否納入複習 queue/stats；開關不改 `cardRole`、`reviewEligible` 或 SRS 狀態。`readerHidden` 決定 Reader／Podcast 高亮。**禁止用 `cardRole` 推導高亮**——高亮 eligibility 固定為「未 delete ∧ 未 archive ∧ `readerHidden == false`」。
 - 列表 filter（全部／學習／字典）與排序在 `KGVocabCoordinator` / `KGVocabPresenter`；字典卡詳情走 `WordDetailSceneState` + `DictionaryDetailPresentation`，**不共用**單字卡的編輯面（字典卡不可改 meaning／note）。
 - 「轉換成單字卡」只能由字典卡詳情明示觸發，UI 呈現 `queued` / `running` / `failed` / success 四態；失敗仍是字典卡、可重試。**無 learning → dictionary 降級路徑**，UI 不得提供。
 - 同一 notebook 內同一正規化單字只能有一張 active card：已有 learning card 直接連結不降級；已有 dictionary card 重用既有卡與既有選定義項，**不靜默換例句**。
