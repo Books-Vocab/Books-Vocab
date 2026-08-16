@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/backend-quality.yml"
 REGISTRY = ROOT / "docs/registry.yml"
+STRATEGY = ROOT / "docs/reference/testing/backend_strategy.md"
 
 
 def _event_block(workflow: str, event: str) -> str:
@@ -25,6 +26,15 @@ def _registry_entry(registry: str, entry_id: str) -> str:
         registry,
     )
     assert match, f"registry must declare {entry_id}"
+    return match.group(1)
+
+
+def _step_block(workflow: str, step_name: str) -> str:
+    match = re.search(
+        rf"(?ms)^      - name: {re.escape(step_name)}\n(.*?)(?=^      - name: |\Z)",
+        workflow,
+    )
+    assert match, f"workflow must declare step {step_name}"
     return match.group(1)
 
 
@@ -50,7 +60,7 @@ def test_backend_quality_workflow_uses_locked_module_form_toolchain() -> None:
     assert "uv sync --locked" in workflow
     assert "uv run python -m pytest -q" in workflow
     assert "uv run ruff check" in workflow
-    assert "uv run python -m coverage report" in workflow
+    assert "uv run python -m coverage report --fail-under=85" in workflow
     assert "--cov=src/kg" in workflow
     assert '"pytest-cov' in pyproject
     assert '"ruff' in pyproject
@@ -73,11 +83,12 @@ def test_backend_quality_artifact_carries_head_and_lock_identity() -> None:
 
 def test_backend_quality_artifact_is_fail_closed_and_coverage_is_runner_temp() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    upload = workflow.split("name: Upload backend quality evidence", 1)[1]
+    upload = _step_block(workflow, "Upload backend quality evidence")
 
     assert "COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage" in workflow
     assert "test -s coverage.xml" in workflow
     assert "backend/coverage.xml" in upload
+    assert "backend/ci-artifacts/" in upload
     assert "if-no-files-found: error" in upload
     assert ".coverage" not in upload
 
@@ -85,6 +96,7 @@ def test_backend_quality_artifact_is_fail_closed_and_coverage_is_runner_temp() -
 def test_backend_quality_provenance_and_nightly_non_slow_lane_are_explicit() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     schedule = _event_block(workflow, "schedule")
+    provenance = _step_block(workflow, "Capture backend quality provenance")
 
     assert "- cron:" in schedule
     assert 'GITHUB_EVENT_NAME" == "schedule"' in workflow
@@ -94,9 +106,11 @@ def test_backend_quality_provenance_and_nightly_non_slow_lane_are_explicit() -> 
         "sys.executable",
         "PYTHON_VERSION",
         "PYTHON_EXECUTABLE",
-        "GITHUB_STEP_SUMMARY",
     ):
-        assert marker in workflow
+        assert marker in provenance
+    assert r'echo "- python --version: \`$python_version\`"' in provenance
+    assert r'echo "- sys.executable: \`$python_executable\`"' in provenance
+    assert '} >> "$GITHUB_STEP_SUMMARY"' in provenance
 
 
 def test_backend_strategy_registry_covers_workflow_and_lock() -> None:
@@ -109,6 +123,17 @@ def test_backend_strategy_registry_covers_workflow_and_lock() -> None:
     assert "backend/uv.lock" in registry
 
 
+def test_backend_strategy_documents_complete_quality_artifact() -> None:
+    strategy = STRATEGY.read_text(encoding="utf-8")
+
+    for marker in (
+        "coverage.xml",
+        "backend-quality-provenance.txt",
+        "backend-quality-verdict.txt",
+    ):
+        assert marker in strategy
+
+
 def test_backend_quality_does_not_turn_failures_into_success() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -118,6 +143,8 @@ def test_backend_quality_does_not_turn_failures_into_success() -> None:
         "infrastructure-inconclusive",
         "steps.tests.outcome",
         "steps.coverage.outcome",
+        "ruff-failure",
+        "steps.ruff.outcome",
         "exit 1",
     ):
         assert marker in workflow
