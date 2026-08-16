@@ -1095,7 +1095,11 @@ def plan_gates(changed_files: list[str],
     # And the same defect one directory further out: `ops/` + root still missed 12
     # tracked scripts, one of which (`backend/view_logs.sh`) already had a test
     # watching it (IMP-0057). The routing surface is every tracked `*.sh`.
-    ops_sh = [p for p in changed_files if p.endswith(".sh")]
+    # A deletion is a changed path, but it has no shell body left to parse, scan, or
+    # route to a test. The real gate injects a worktree-anchored existence predicate;
+    # the pure planner remains conservative when no predicate is supplied.
+    live_exists = ops_test_exists or (lambda rel: True)
+    ops_sh = [p for p in changed_files if p.endswith(".sh") and live_exists(p)]
     if ops_sh:
         gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
         # The cross-file layer (IMP-20260808-3bbfa2). The two layers below are

@@ -736,6 +736,17 @@ def test_a_changed_test_script_runs_itself():
     assert gates["ops-shell:test_gate_can_fail.sh"]["cmd"] == ["ops/tests/test_gate_can_fail.sh"]
 
 
+def test_deleted_shell_paths_do_not_create_untested_warning():
+    deleted = {"ops/review_audit.sh", "ops/tests/test_review_audit.sh"}
+    exists = lambda rel: rel not in deleted
+
+    names = _names(plan_gates(sorted(deleted), ops_test_exists=exists))
+
+    assert "ops-shell-syntax" not in names
+    assert "ops-shell-scan" not in names
+    assert "ops-shell-untested" not in names
+
+
 def test_a_deleted_test_script_is_not_handed_back_to_the_runner():
     """A deleted file is in the diff too. Routing to it would make the gate red for a
     reason that has nothing to do with the change — the ops_py branch learned this the
