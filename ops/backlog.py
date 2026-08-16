@@ -71,6 +71,7 @@ from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 import backlog_acceptance as _backlog_acceptance  # noqa: E402
 import backlog_mutations as _backlog_mutations  # noqa: E402
+import backlog_verification as _backlog_verification  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
@@ -4649,126 +4650,36 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     return 0
 
 
+def _verification_deps() -> _backlog_verification.VerificationDeps:
+    """Build verification callbacks while preserving façade monkeypatch points."""
+    return _backlog_verification.VerificationDeps(
+        load_entry=load_entry,
+        closure_changes=_closure_changes,
+        merged_and_validated=_merged_and_validated,
+        gate_closure=_gate_closure,
+        check_acceptance_cmd=_check_acceptance_cmd,
+        run_static_acceptance=_run_static_acceptance,
+        entry_path=entry_path,
+        write_atomic=_write_atomic,
+        dumps=_dumps,
+        error_type=BacklogError,
+        entry_lock=_entry_lock,
+        static_command=lambda verify_args: _cmd_verify_static(verify_args),
+    )
+
+
 def _cmd_verify_static(args) -> int:
-    """Execute a ticket's optional fast feedback criterion, read-only."""
-    if args.commit:
-        raise BacklogError("--static-only is read-only; drop --commit")
-    forbidden = [
-        flag for flag, value in (
-            ("--verdict", args.verdict), ("--by", args.by),
-            ("--evidence", args.evidence), ("--at", args.at),
-            ("--status", args.status), ("--fixed-by", args.fixed_by),
-            ("--fixed-elsewhere", args.fixed_elsewhere),
-            ("--contract-status", args.contract_status),
-            ("--contract-baseline", args.contract_baseline),
-            ("--contract-checked-at", args.contract_checked_at),
-            ("--contract-checked-by", args.contract_checked_by),
-            ("--contract-evidence", args.contract_evidence),
-        ) if value not in (None, "", [])
-    ]
-    if forbidden:
-        raise BacklogError(
-            "--static-only cannot be combined with mutation/verdict flags: "
-            + ", ".join(forbidden))
-    entry = load_entry(args.store, args.id)
-    cmd = str(entry.get("acceptance_cmd_static") or "").strip()
-    if not cmd:
-        raise BacklogError(
-            f"{args.id} has no acceptance_cmd_static; this is optional worker "
-            "feedback and does not replace the full acceptance_cmd")
-    problems = _check_acceptance_cmd(entry)
-    static_problems = [p for p in problems
-                       if str(p.get("kind", "")).startswith("acceptance-static-")
-                       or p.get("kind") == "acceptance-static-without-cmd"]
-    if static_problems:
-        raise BacklogError(
-            f"{args.id} acceptance_cmd_static is invalid: {static_problems}")
-    outcome = _run_static_acceptance(args.id, cmd)
-    payload = {
-        "schema": "kg.backlog.verify-static.v1",
-        "mode": "read-only",
-        "id": args.id,
-        "acceptance": outcome,
-        "closure_uses": "acceptance_cmd",
-    }
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    else:
-        print(f"[static-only] {args.id}: rc={outcome['rc']} "
-              f"expected=0 {'OK' if outcome['ok'] else 'MISMATCH'}")
-    return 0 if outcome["ok"] else (124 if outcome["rc"] is None else 1)
+    """Compatibility façade for the extracted static verification command."""
+    return _backlog_verification.cmd_verify_static(
+        args, deps=_verification_deps()
+    )
 
 
 def _cmd_verify(args, *, _lock_held: bool = False) -> int:
-    """Record a re-verification as one act, so it cannot land half-written.
-
-    Before this, the same thing was done with `update --verdict --verified-at`,
-    two independent flags either of which could be forgotten — and 60 entries in
-    the store carry a date with no attribution, which is what forgetting looks
-    like. Here the verdict, the date, the verifier and the evidence go in
-    together or not at all.
-    """
-    if args.static_only:
-        return _cmd_verify_static(args)
-    missing = [flag for flag, value in (
-        ("--verdict", args.verdict), ("--by", args.by),
-        ("--evidence", args.evidence),
-    ) if value is None]
-    if missing:
-        # Keep ordinary verify's argparse-level contract: callers already rely on
-        # malformed invocations exiting with 2/SystemExit. The optional static
-        # mode is the only form that may omit the three mutation fields.
-        print(
-            "verify: the following arguments are required unless --static-only "
-            f"is selected: {', '.join(missing)}",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
-    if args.commit and not _lock_held:
-        with _entry_lock(entry_path(args.store, args.id)):
-            return _cmd_verify(args, _lock_held=True)
-
-    changes = _closure_changes(verdict=args.verdict, by=args.by, evidence=args.evidence,
-                               at=args.at, status=args.status, fixed_by=args.fixed_by,
-                               fixed_elsewhere=args.fixed_elsewhere,
-                               contract_status=args.contract_status,
-                               contract_baseline=args.contract_baseline,
-                               contract_checked_at=args.contract_checked_at,
-                               contract_checked_by=args.contract_checked_by,
-                               contract_evidence=args.contract_evidence)
-
-    current = load_entry(args.store, args.id)
-    merged = _merged_and_validated(current, changes, args.id)  # raises on refusal
-    # Before the write, and before the dry-run report, so both forms answer the same
-    # question. `verify --status fixed` calls itself "the natural closing act" in its
-    # own parser help — it has to meet the same bar the wave does.
-    acceptance = _gate_closure(current, changes, args.commit)  # raises on a red one
-    if not args.commit:
-        if args.json:
-            print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "dry-run",
-                              "id": args.id, "changes": changes,
-                              **({"acceptance": acceptance} if acceptance else {})},
-                             ensure_ascii=False))
-        else:
-            for field, value in changes.items():
-                # old -> new, like `update`. Overwriting a previous verifier's
-                # stamp is the interesting case and the new-values-only form
-                # hid it completely.
-                print(f"[dry-run] {args.id} {field}: {str(current.get(field))[:40]!r} -> {value!r}")
-            print("  (dry-run — pass --commit to land)")
-        return 0
-
-    _write_atomic(entry_path(args.store, args.id), _dumps(merged))
-    if args.json:
-        print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "commit",
-                          "id": args.id, "changes": changes, "entry": merged,
-                          **({"acceptance": acceptance} if acceptance else {})},
-                         ensure_ascii=False))
-    else:
-        print(f"[commit] {args.id} verified {changes['verified_at']} "
-              f"by {args.by}: {args.verdict}")
-    return 0
+    """Compatibility façade for the extracted verification command."""
+    return _backlog_verification.cmd_verify(
+        args, deps=_verification_deps(), lock_held=_lock_held
+    )
 
 
 # What the dispatch queue is, and — the half that matters — what it cannot see.

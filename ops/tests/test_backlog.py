@@ -4653,6 +4653,9 @@ def test_two_concurrent_stages_cannot_lose_each_others_row(tmp_path):
         BACKLOG_PATH.parent / "backlog_mutations.py", repo / "ops" / "backlog_mutations.py"
     )
     shutil.copy2(
+        BACKLOG_PATH.parent / "backlog_verification.py", repo / "ops" / "backlog_verification.py"
+    )
+    shutil.copy2(
         BACKLOG_PATH.parent / "task_registry.py", repo / "ops" / "task_registry.py"
     )
     assert (repo / "ops" / "lib" / "streaming_command.py").exists(), (
