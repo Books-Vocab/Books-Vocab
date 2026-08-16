@@ -36,6 +36,11 @@ if rg -n --glob '*.swift' '@testable import BooksAndVocab' "$ROOT/ios/BooksAndVo
   exit 1
 fi
 
+if rg -n --glob '*.swift' '^import BooksAndVocab$' "$ROOT/ios/BooksAndVocabUITests" >/dev/null; then
+  echo "FAIL: UI tests must not link the app module; keep contracts inside the black-box target" >&2
+  exit 1
+fi
+
 for config in E9EC4E3C2F4DD27200C3FFB6 E9EC4E3D2F4DD27200C3FFB6; do
   config_block="$(awk -v id="$config" '
     $0 ~ id " \/\*" { in_config=1 }

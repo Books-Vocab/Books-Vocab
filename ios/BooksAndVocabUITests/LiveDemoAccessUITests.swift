@@ -1,6 +1,78 @@
 import Foundation
-import BooksAndVocab
 import XCTest
+
+// UI tests are a black-box target; this safety preflight intentionally does
+// not depend on app-module symbols.
+private enum LiveDemoAccessPreflightError: String, Error {
+    case debugBuild
+    case simulator
+    case missingLiveDemoMarker
+    case invalidAccountIdentityFingerprint
+    case fixtureDataset
+    case fixtureLaunchArgument
+    case backendOverride
+}
+
+private struct LiveDemoAccessPreflight {
+    static let liveDemoMarkerKey = "KG_LIVE_DEMO_RUN"
+    static let accountIdentityFingerprintKey = "KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256"
+    static let accountIdentityIdentifierPrefix = "settings.account.identity."
+
+    let expectedAccountIdentityFingerprint: String
+
+    init(
+        environment: [String: String],
+        isReleaseBuild: Bool,
+        isPhysicalDevice: Bool
+    ) throws {
+        guard isReleaseBuild else {
+            throw LiveDemoAccessPreflightError.debugBuild
+        }
+        guard isPhysicalDevice else {
+            throw LiveDemoAccessPreflightError.simulator
+        }
+        guard environment[Self.liveDemoMarkerKey] == "1" else {
+            throw LiveDemoAccessPreflightError.missingLiveDemoMarker
+        }
+        guard let fingerprint = environment[Self.accountIdentityFingerprintKey],
+              fingerprint.range(
+                of: "^[0-9a-f]{64}$",
+                options: .regularExpression
+              ) != nil else {
+            throw LiveDemoAccessPreflightError.invalidAccountIdentityFingerprint
+        }
+        guard environment["KG_FIXTURE_DATASET_B64"] == nil,
+              environment["KG_FIXTURE_DATASET_DEFLATE_B64"] == nil else {
+            throw LiveDemoAccessPreflightError.fixtureDataset
+        }
+        guard environment["KG_UI_TEST_SERVER_URL"] == nil else {
+            throw LiveDemoAccessPreflightError.backendOverride
+        }
+
+        if let rawArguments = environment["KG_UI_TEST_APP_ARGS_JSON"] {
+            guard let data = rawArguments.data(using: .utf8),
+                  let arguments = try? JSONDecoder().decode([String].self, from: data),
+                  !arguments.contains(where: Self.isFixtureArgument) else {
+                throw LiveDemoAccessPreflightError.fixtureLaunchArgument
+            }
+        }
+
+        expectedAccountIdentityFingerprint = fingerprint
+    }
+
+    func matchesAccountIdentifier(_ identifier: String) -> Bool {
+        identifier
+            == Self.accountIdentityIdentifierPrefix + expectedAccountIdentityFingerprint
+    }
+
+    private static func isFixtureArgument(_ argument: String) -> Bool {
+        argument.hasPrefix("-seedFixture:")
+            || argument == "-isolatedAuthSession"
+            || argument == "-resetContainer"
+            || argument == "-catalog"
+            || argument == "ui-smoke"
+    }
+}
 
 /// Exact-device App Review probe. It verifies the persisted live session's
 /// normalized account identity and backend-sourced Pro entitlement. Credential
