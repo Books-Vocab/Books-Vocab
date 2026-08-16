@@ -45,7 +45,7 @@ description: 分析變更並執行版號發布（backend / iOS）—— 薄路�
    ./ops/release.sh release ios <x.y.z> --yes
    ```
    - `release backend`：bump→tag→`deploy`（推 **origin/prod** → felix reconciler 健康 gate 部署 wordnexus.lol）→ **等生產收斂**（輪詢 `/api/system/info` 直到自報 version == 本次 sha；逾時 480s 非零退出並指向 reconciler log）。**逾時不要重跑 `release`**——版號 tag 已存在會被擋，直接查 reconciler。
-   - `release ios`：guard 先檢查「有上架 tag、新版嚴格遞增、不跳過任何有 build tag 卻無上架 tag 的版本」；再 bump→candidate commit + push `origin/main`→`ios_release.sh --upload`→`finalize ios <version> <build> --yes`。`finalize` 以 `asc.sh build <version> <build>` 做 bounded exact ASC proof，proof 成功後才封 `ios/<x.y.z>+<build>` 並 push；upload／ASC propagation failure 保留 candidate，**不重複 upload，finalize 是唯一 recovery**。被 guard 擋下先跑 `shipped ios` 補上架事實，不要繞。同版重送走 4c。
+   - `release ios`：guard 先檢查「有上架 tag、新版嚴格遞增、不跳過任何有 build tag 卻無上架 tag 的版本」；再 bump→candidate commit + push `origin/main`→`ios_release.sh --upload`→`finalize ios <version> <build> --yes`。`finalize` 以 `asc.sh build <version> <build>` 做 bounded exact ASC proof，proof 成功後才封 `ios/<x.y.z>+<build>` 並 push；upload／ASC propagation failure 保留 candidate，**不得重跑流程產生新 build；先查 exact ASC，已接受就 finalize，只有確認未接受才可用同一 candidate 重試 primitive upload**。被 guard 擋下先跑 `shipped ios` 補上架事實，不要繞。同版重送走 4c。
    - 執行 `release` 前不可先跑 4a tag-only；否則 release 會因 build tag 已存在於另一顆 commit 而拒絕。
    三平面 develop/backup/release 動詞語意與切換 runbook 見 `docs/sop/release.md`。
 
@@ -54,9 +54,9 @@ description: 分析變更並執行版號發布（backend / iOS）—— 薄路�
    ./ops/release.sh resubmit ios        # dry-run：ASC 對帳→candidate commit/push→upload→finalize exact proof→封 build tag
    ./ops/release.sh resubmit ios --yes
    ```
-   先由 `./ops/asc.sh builds` 讀取 TestFlight 最新 build，下一顆固定為 `max(local build, ASC latest)+1`；ASC 查詢失敗或回傳非數字時，在任何 pbxproj mutation、upload、commit、tag 前 hard-stop，絕不降級成 local+1。marketing 版號不動、不吃版本號參數、刻意不產生 `ios/<x.y.z>`。candidate commit/push 在 upload 前完成；upload 後由 `finalize ios <version> <build> [--yes]` 以 `asc.sh build` 做 exact proof 後才封 build tag。upload／ASC propagation failure 保留 candidate，**不得重跑 release/resubmit 或 upload，finalize 是唯一 recovery**。`KG_ASC_BUILD_CMD`、`KG_RELEASE_ASC_WAIT_SECS`、`KG_RELEASE_ASC_POLL_SECS` 控制 proof command / bounded wait。取代舊的「`bump-build ios --yes` + `ios_release.sh --upload`」兩步手動路徑（那條不留完整 candidate/finalize provenance）。
+   先由 `./ops/asc.sh builds` 讀取 TestFlight 最新 build，下一顆固定為 `max(local build, ASC latest)+1`；ASC 查詢失敗或回傳非數字時，在任何 pbxproj mutation、upload、commit、tag 前 hard-stop，絕不降級成 local+1。marketing 版號不動、不吃版本號參數、刻意不產生 `ios/<x.y.z>`。candidate commit/push 在 upload 前完成；upload 後由 `finalize ios <version> <build> [--yes]` 以 `asc.sh build` 做 exact proof 後才封 build tag。upload／ASC propagation failure 保留 candidate，**不得重跑流程產生新 build；先查 exact ASC，已接受就 finalize，只有確認未接受才可用同一 candidate 重試 primitive upload**。`KG_ASC_BUILD_CMD`、`KG_RELEASE_ASC_WAIT_SECS`、`KG_RELEASE_ASC_POLL_SECS` 控制 proof command / bounded wait。取代舊的「`bump-build ios --yes` + `ios_release.sh --upload`」兩步手動路徑（那條不留完整 candidate/finalize provenance）。
 
-4d. **finalize（iOS candidate recovery，dry-run 預設）**：upload 或 ASC propagation failure 後沿用已 push candidate，不重跑 `release`/`resubmit`、不重複 upload；`finalize` 不 archive、不 upload，只重查 exact ASC tuple，proof 成功後才建立並 push build tag：
+4d. **finalize（iOS candidate recovery，dry-run 預設）**：upload 或 ASC propagation failure 後沿用已 push candidate，不重跑 `release`/`resubmit` 產生新 build；`finalize` 不 archive、不 upload，只重查 exact ASC tuple，proof 成功後才建立並 push build tag。只有確認 ASC 未接受時，才可沿用同一 candidate 重試 primitive upload：
    ```bash
    ./ops/release.sh finalize ios <x.y.z> <build>        # dry-run：exact ASC proof + tag plan
    ./ops/release.sh finalize ios <x.y.z> <build> --yes  # proof 成功後建立並 push build tag
