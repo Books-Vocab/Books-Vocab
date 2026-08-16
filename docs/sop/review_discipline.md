@@ -6,7 +6,7 @@ scope:
   - .claude/skills/
   - .claude/agents/
   - docs/sop/
-verified_against: 44d0c76c5
+verified_against: d7d98039f
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 
@@ -23,7 +23,7 @@ verified_against: 44d0c76c5
 
 不派（避免 review 通膨）：
 - 純 typo / 重命名 / 自動格式化
-- 機器產出 snapshot（對應下方 `Review-Exempt: generated-snapshot`）
+- 機器產出 snapshot（由其生成器與驗證器契約負責）
 - 單行 fix 且該檔 ≤30 行
 
 `phased` skill 已在第 N phase（N≥2）強制背景派 review 審 N-1 phase；本 SOP 把同樣模式擴到 phased 以外的場景。
@@ -32,31 +32,16 @@ verified_against: 44d0c76c5
 
 > 派 `code-reviewer` agent 時，先依 `kg-agent-context` 與 `docs/reference/agent_context.md` 的 **Review service** row 載入最小 context，再讀 caller 指定的 commit hash × scope 與本 SOP；下方「Prompt 必含元素」§3–§6 已內建於 `.claude/agents/code-reviewer.md`(指回本 SOP,零重複),prompt 只需給 **commit hash + scope + 本次特別關注點**;用 general-purpose 當 reviewer 才需完整帶齊六項。角色 context 的唯一索引與本 SOP 的 review 契約分工，不在此重複 role matrix。
 
-## Receipt 契約（機械可驗）
+## Review evidence（不寫入 commit metadata）
 
-每個要被本 SOP 管的 commit message 必須二選一：
+Review 是執行中的品質檢查，不是 commit message 的欄位契約。每個需要 review 的
+獨立變更仍要派 reviewer；結果與證據放在 reviewer output、`review_cycle.py` 或
+delivery receipt，由對應流程保存。commit message 不承載、也不宣稱 review 結果。
 
-- `Reviewed-by: <reviewer>`
-- `Review-Exempt: <reason>`
-
-允許的 `Review-Exempt` 僅限：
-
-- `trivial-typo`
-- `rename-only`
-- `format-only`
-- `generated-snapshot`
-- `single-line-small-file` — 工具另實際檢查非 merge、增刪各至多一行，且新增行不得含規範性語彙
-- `machine-repair` — 只給程式用（`worktree_orchestrate.py` 的 post-landing repair 自己蓋）。工具會驗這顆 commit 只碰 backlog ledger JSON 與本次 `reanchor --docs` 實際回報的 `docs/**/*.md`（generated view 除外）；越界即具名該檔並判不合法，空檔案清單也拒（「沒東西可反對」與「看不到」在這裡是同一個字串，把後者當前者正是這道 gate 要防的）。
-- `backlog-grooming` — **純看板資料梳理**用的例外；同樣由工具驗證只碰 `docs/runbook/backlog/*.json`，空檔案清單拒絕。它只免除程式碼 reviewer，不免除資料驗證：同一批仍必須提供 `backlog.py validate --baseline-check` 的當下證據。`audit-criteria` 會執行整批票據各自保存的自由文字命令，屬獨立的 acceptance-health audit，**不是 grooming gate**；沒有明示要求時不得因為在梳理就擴張執行。只要改到 `ops/`、測試、skill 或其他文件，就不能使用此 token，必須有 `Reviewed-by:`。其餘四個語意 token 是無從查證的自述，工具採信作者的話；`single-line-small-file` 不在這個自述桶內，會實際比對 diff
-
-`machine-repair` 與 `backlog-grooming` 都是**路徑受檢的資料例外，不是通用免審通行證**。`backlog-grooming` 的資料語意仍由 backlog gate 負責，review receipt gate 不替它宣稱資料正確。
-
-批次整合另有一條**不寫入 commit message 的機器審核路徑**：整合者從
-`worktree_orchestrate.py integrate --continue --commit` 觸發 fresh gate 時，工具會以
-`--machine-gate` 執行 receipt audit。此模式把缺少 receipt 的 commit 明確記成
-`machine-gate-deferred`，不冒充 LLM 已審；同一批的其餘機器 gate 仍必須通過，且
-`cutover` 只接受綁定這個 HEAD 的 fresh verdict。手動執行 `review_audit.sh` 不會進入此模式，
-明確寫錯的 exemption 仍然 BLOCK。這是批次的成本取捨，不是永久免審。
+Gate 是另一個獨立層：它驗證當下 worktree 的程式、測試、acceptance、provenance 與
+綁定 HEAD 的新鮮 verdict，不解析 commit message 來判定是否 review 過。資料型
+backlog grooming 仍須以 `backlog.py validate --baseline-check` 證明資料正確，不能
+用 review 名義取代 acceptance。
 
 ## Review cycle 的有界收斂
 
@@ -74,7 +59,7 @@ BLOCK 時輸出 `adjudication_required`，**不得自動派第三次完整 revie
 Gate 是獨立的機器 review 層，不是 LLM review 的重播：任何 gate BLOCK 都是具體退回路徑，修正
 後須以 fresh gate 證明。**Gate 綠只提供證據，不授予落地權**：一般 session 仍停在 commit + hand-back；
 只有取得 `worktree-flow` 頂端 develop 授權的整合 session，才可在 fresh gate 通過、review cycle 已有界
-收斂且收據完整後落地。不要為了追求文字或風格上的完美而無限追加 LLM review。遇到來回超過兩三輪，先裁決真正的
+收斂且必要 evidence 完整後落地。不要為了追求文字或風格上的完美而無限追加 LLM review。遇到來回超過兩三輪，先裁決真正的
 release-blocking correctness，其餘記為 follow-up，回到交付與下一輪工具改善。
 
 ```bash
@@ -92,8 +77,6 @@ release-blocking correctness，其餘記為 follow-up，回到交付與下一輪
 當前 scope 是否能放行，後兩者只能作為具名 follow-up。reviewer 在 evidence 產出前崩潰或逾時時，
 先用 `cancel` 釋放 active reservation（不消耗 review slot），不可用它重置已完成的 review。
 乾淨工作樹或已有 commit 不是完成證明。
-
-用 [`ops/review_audit.sh`](../../ops/review_audit.sh) 審 `origin/main..HEAD`（或 `--base` / `--rev-range` 指定範圍）。它不判斷 review 品質，只判斷 receipt 是否存在且合法；任一 commit 缺 receipt 或 exemption reason 不在白名單，exit `2`它稽核的 repo 是**呼叫端所在的** git toplevel（可用 `$KG_REVIEW_AUDIT_ROOT` 覆寫），每次執行會把選中的 root 印到 stderr——舊版無條件 cd 回腳本自己的 repo，`( cd 別處 && review_audit.sh )` 會靜默稽核錯的歷史（IMP-0049）。
 
 固定模板（**優先軌**：`subagent_type: "code-reviewer"`，§3–§6 已內建，prompt 只給 commit hash + scope + 特別關注點；下方 general-purpose 為 fallback 軌，才需完整帶齊六項）：
 

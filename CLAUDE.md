@@ -64,7 +64,7 @@ delivery-loop 授權，Integrator 才進 Gate/cutover/sync；其他 child 停在
 
 **開 agent 前先問值不值得。** 同時滿足「單檔、約 ≤10 行、純樣板、無語意風險」→ 自己做,
 免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
-review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receipt 契約」的白名單。
+Review 結果由 reviewer output / review cycle / delivery receipt 留證；commit message 不承載 review attestation。
 
 **預設假設多 session 並行,落地權在取得使用者明示授權的 Delivery Team Integrator,不在各票。** child
 無例外只做到自己的 commit + hand-back；Integrator 未授權前可用 `integrate ... --commit --no-gate`
@@ -176,7 +176,7 @@ KG repo-local skill 的完整 roster、primary/secondary/context/closure phase�
 1. **TDD** `[prompt]` — failing test → 紅 → 最小實作 → 綠。不可跳過。
 2. **驗證先於宣稱** `[machine]`(cutover 要求綁 HEAD 的新鮮非-block verdict:`worktree_orchestrate.py:cmd_cutover`;receipt 層仍是 `[prompt]`) — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
 3. **根因先於修復** `[prompt]` — 遇 bug 必須確認根因才動手。不可看到錯就補 patch。
-4. **逐項 review,不批次** `[machine]`(commit receipt 由 `ops/review_audit.sh` 在 cutover gate 驗;它只驗 trailer 存在且合法,不驗 review 品質——那部分是 `[prompt]`) — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。適用所有程式碼修改。
+4. **逐項 review,不批次** `[prompt]` — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。review 結果由 reviewer output / review cycle / delivery receipt 留證；commit message 不承載 review attestation。適用所有程式碼修改。
 5. **長時操作背景執行且不可靜默** `[machine]`(`ops/lib/streaming_command.py` 的 heartbeat 契約,worktree gate / app_review_evidence / ios_ops 共用;「所有 Agent() 背景化」那半條是 `[prompt]`) — **兩種呼叫者都要背景執行工作,等待方式不同**。協調者把任何 `Agent()` 與耗時 Bash(`ios_ops.sh build`/`test`、backend `pytest`、deploy/rsync、長下載/install)設為 `run_in_background: true`,保持主線不阻塞,由 notification 喚醒收工。受派子 agent 也必須背景啟動並維持 heartbeat；但 notification 只送到協調者,不會喚醒受派者,所以它若交回前需要結果,必須把自己的 turn 留在前景,在**同一個 turn**輪詢到結果或 rc,不得結束 turn 等 notification。輪詢／回報間隔依預估任務時長自訂；20 秒只是一個預設例子,任務明顯較久時可拉長、較短時可縮短,但不得在所選間隔之外無聲等待。耗時 Bash 可照抄形狀:`pid=<pid>; verdict_file=<verdict-file>; poll_interval="${POLL_INTERVAL_SECONDS:-20}"; until [ -f "$verdict_file" ] || ! kill -0 "$pid" 2>/dev/null; do printf 'elapsed=%ss pid=%s alive=true\n' "$SECONDS" "$pid"; sleep "$poll_interval"; done; wait "$pid"; rc=$?`。背景 agent 啟動後立即回報 phase/agent id/status，driving agent 依自訂間隔輪詢並提供可見進度；長 command 啟動後立即回報 phase/PID，每次輪詢必回 elapsed/PID/alive，正常結束時回 phase/duration/exit status。若既有工具沒有 heartbeat，先補工具或用外層監看補足，禁止讓使用者靠猜測判斷是否卡死。
 6. **主動查文檔(Doc Lookup Discipline)** `[text-only]` — 涉及 endpoint / 模組 / env var / DB schema / 既有 feature / ops 工作流,**判斷「這需要查一下」就立即讀對應 reference,不靠記憶**。dispatch 有複雜度的工作時,prompt 必須明示「拿不準就讀 doc,不要省 token」。純樣板修改(typo / rename)不適用。
 7. **生產禁用指令** `[machine]`(`ops/devops_kg_safe.sh:is_blocked_run`;注意 `ops-cli`/`ops-edit`/`container-script` 是 argv pass-through,不經此閘,安全model改由工具內部 dry-run/備份/verify 承擔) — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。

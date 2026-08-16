@@ -6569,8 +6569,8 @@ def _doc_anchor() -> str:
     local main. Three separate ways to get this wrong, all of them silent, all
     of them hit here:
 
-      * HEAD — rebasing (adding review trailers did exactly this) or
-        squash-merging orphans every sha the branch minted, and docs_lint then
+      * HEAD — rewriting the branch's commits or squash-merging orphans every
+        sha the branch minted, and docs_lint then
         rejects the file. That was the original bug.
       * `git merge-base --short` — no such flag. The first attempt at the fix
         raised CalledProcessError on every call and fell through to the next

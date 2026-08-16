@@ -3617,8 +3617,8 @@ def test_the_ratchet_cannot_be_disarmed_by_standing_somewhere_else(tmp_path, mon
     160 ids — because `DEFAULT_STORE` is ROOT-anchored and the baseline default
     was cwd-anchored. A mismatched pair fails OPEN whenever the foreign baseline
     is the larger one, and the gate reads green from a directory rather than
-    from the ledger. Same shape as IMP-0049 (`review_audit.sh` silently auditing
-    whichever repo the caller happened to stand in).
+    from the ledger. The general failure shape is a caller checking a different
+    checkout than the one it intended.
 
     An explicit env override is still honoured as given: that one has a caller
     who meant it.
@@ -3904,8 +3904,7 @@ def test_no_mutation_writes_the_view(tmp_path, monkeypatch):
     3.5 s, 64 in 7.2 s, 128 in 16.2 s. It also made a 291 KB tracked file the one
     thing concurrent branches provably collide on, which is what `_view_lock`, the
     entry-loss guard on the refresh path, the registry `check:` gate, cutover's
-    render-repair step, catchup's conflict resolver and `review_audit.sh`'s
-    path-scoped exemption all existed to survive.
+    render-repair step and catchup's conflict resolver all existed to survive.
 
     None of that bought anything a reader wanted: the inventory of every pointer to
     the file across CLAUDE.md, the skills, the agent files and the registry found

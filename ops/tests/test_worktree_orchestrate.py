@@ -415,34 +415,17 @@ def test_no_neutral_rule_swallows_a_source_surface():
             assert not (probe == pat or probe.startswith(pat)), f"{pat} swallows {probe}"
 
 
-def test_gate_plan_real_repo_plans_review_receipts():
-    """Iron law 4's mechanical half must be planned for the real repo.
-
-    The gate is skipped when ops/review_audit.sh is absent so synthetic fixture
-    repos still work; this pins that the skip cannot quietly become permanent.
-    """
+def test_gate_plan_does_not_require_commit_review_metadata():
+    """Review metadata must not be a machine gate or cutover prerequisite."""
     gates = plan_gates(["README.md"], ops_test_exists=lambda rel: True, base="main")
-    g = next(x for x in gates if x["name"] == "review-receipts")
-    assert g["level"] == "block"
-    assert g["cmd"][:2] == ["ops/review_audit.sh", "--rev-range"]
-    assert "--machine-gate" not in g["cmd"], (
-        "an ordinary gate must not discharge missing commit review receipts")
-    integration = plan_gates(
-        ["README.md"], ops_test_exists=lambda rel: True, base="main",
-        machine_gate=True,
-    )
-    integration_review = next(
-        x for x in integration if x["name"] == "review-receipts")
-    assert integration_review["cmd"][-1] == "--machine-gate"
-    # and absent when the tool is not there
-    assert "review-receipts" not in _names(
-        plan_gates(["README.md"], ops_test_exists=lambda rel: False, base="main"))
+    assert not any("review" in str(gate.get("name", "")).lower() for gate in gates)
+    assert all(not gate.get("preflight") for gate in gates)
 
 
-def test_integrate_gate_explicitly_requests_the_machine_review_exception(
-    tmp_path, monkeypatch, capsys
+def test_integrate_gate_does_not_request_commit_review_metadata(
+        tmp_path, monkeypatch, capsys
 ):
-    """The exception belongs to parent integration, not to `plan_gates` globally."""
+    """Integration uses normal machine gates without an alternate metadata mode."""
     call = {}
 
     def fake_land_step(func, **kwargs):
@@ -464,7 +447,7 @@ def test_integrate_gate_explicitly_requests_the_machine_review_exception(
 
     assert MODULE._integrate_gate(args, state_path, integration_state) == MODULE.EXIT_BLOCK
     capsys.readouterr()
-    assert call["machine_gate"] is True
+    assert "machine_gate" not in call
 
 
 def test_gate_plan_ios_ui_change_selects_full_ios_set():
@@ -5052,11 +5035,7 @@ def test_a_failing_gate_with_no_failure_markers_says_so_rather_than_going_quiet(
 
     # The tail is still shown — but it must NOT be presented under the same heading a
     # real extraction uses. When the scanner matched nothing, the lines below it are
-    # "the last lines of the log", not "the failure". Measured cost of conflating the
-    # two (IMP-20260808-8b4690): `review-receipts` went red, matched zero markers, and
-    # its tail was `[review][ok]` / `Reviewed-by:` — so a BLOCKED gate displayed
-    # passing lines in the slot an operator reads as evidence, and the operator
-    # (correctly reading a green-looking summary) concluded the red was spurious.
+    # "the last lines of the log", not "the failure".
     assert "NOT failure lines" in result["summary"], \
         "a zero-match tail must be labelled as not-evidence: " + result["summary"]
     assert "\n  tail:\n" not in result["summary"], \
@@ -5091,10 +5070,6 @@ def test_a_matched_failure_still_labels_its_tail_plainly(tmp_path):
     # U+2717 (IMP-20260808-8b4690). Two codepoints that render nearly identically is
     # exactly the shape a by-eye review of the tuple cannot catch.
     ("heavy-cross", "  ✘ Test testGuestGate() recorded an issue"),
-    # `ops/review_audit.sh`'s verdict prefix. `review-receipts` is a BLOCK-level gate
-    # whose red output contained none of the other markers at all, so its summary
-    # fell through to the tail — and its tail is `[review][ok]` lines.
-    ("review-block", "[review][block] deadbeef01 ops: a commit with no receipt"),
     ("FAIL", "FAIL tests/test_thing.py::test_case"),
     ("AssertionError", "E   AssertionError: expected 3, got 4"),
     ("not ok", "not ok 7 - the tap-style failure"),
@@ -5937,7 +5912,7 @@ def test_the_repair_never_commits_or_destroys_a_co_tenants_untracked_entry(
     Measured before this was fixed, both directions from that one state:
       * the repair's `git add -- docs/runbook/backlog` staged it, and the resulting
         commit — the one whose message says everything in it was re-derived by a
-        tool, carrying a review exemption — CONTAINED someone else's unfinished work;
+        tool — CONTAINED someone else's unfinished work;
       * on the failing path, `git checkout HEAD -- <dir>` is a silent no-op for a
         staged-new path absent from HEAD, so the restore reported success over a
         primary that was still dirty. Which blocks every later cutover.

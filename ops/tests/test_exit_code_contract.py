@@ -53,7 +53,6 @@ def test_shared_vocabulary_is_stable_and_distinguishes_outcomes():
     [
         (("bash", "ops/docs_lint.sh", "--not-a-real-option"), 64),
         (("bash", "ops/branch_audit.sh", "--not-a-real-option"), 64),
-        (("bash", "ops/review_audit.sh", "--not-a-real-option"), 64),
         ((sys.executable, "ops/app_review_gate.py", "--not-a-real-option"), 64),
         ((sys.executable, "ops/app_review_evidence.py", "--not-a-real-option"), 64),
         ((sys.executable, "ops/app_review_gate.py", "dry-run"), 64),
@@ -70,13 +69,6 @@ def test_invalid_invocation_is_usage_not_block_or_tool_error(command, expected):
     "command",
     [
         (shutil.which("bash") or "/bin/bash", "ops/branch_audit.sh", "--no-fetch"),
-        (
-            shutil.which("bash") or "/bin/bash",
-            "ops/review_audit.sh",
-            "--rev-range",
-            "HEAD~1..HEAD",
-            "--json",
-        ),
     ],
 )
 def test_missing_jq_is_tool_error_not_usage(command, tmp_path):
@@ -88,7 +80,6 @@ def test_missing_jq_is_tool_error_not_usage(command, tmp_path):
         "PATH": str(tmp_path),
         "PYTHONPATH": str(ROOT / "ops"),
         "KG_BRANCH_AUDIT_ROOT": str(ROOT),
-        "KG_REVIEW_AUDIT_ROOT": str(ROOT),
     }
     result = subprocess.run(
         list(command), cwd=ROOT, text=True, capture_output=True, env=env, check=False

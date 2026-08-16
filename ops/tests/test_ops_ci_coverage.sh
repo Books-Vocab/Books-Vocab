@@ -100,7 +100,6 @@ LINUX_GROUPS=(
   reconcile
   exit-code-contract
   branch-audit
-  review-audit
   review-cycle
   log-assert
   ios-release

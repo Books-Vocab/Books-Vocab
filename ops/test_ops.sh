@@ -35,7 +35,6 @@ DEFAULT_TESTS=(
   worktree-orchestrator
   kg-board
   backlog
-  review-audit
   review-cycle
   capability-matrix
   context-routing
@@ -151,7 +150,6 @@ run_one() {
         ops/tests/test_backlog_migration.py &&
       ./ops/tests/test_backlog_add_stage.sh
       ;;
-    review-audit)       ./ops/tests/test_review_audit.sh ;;
     review-cycle)       ./ops/tests/test_review_cycle.sh ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \
