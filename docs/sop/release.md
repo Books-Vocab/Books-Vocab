@@ -124,7 +124,7 @@ env knob：`KG_RELEASE_WAIT_SECS`（預設 480）、`KG_RELEASE_POLL_SECS`（10�
 
 **ios 新版本**（`release ios x.y.z`）＝ `guard_ios_new_version`（讀 repo 的上架 tag 與 build tag，見上方兩條規則；**無 flag、無 operator 背書**）→ `bump ios` → `ios_release.sh --upload`（archive + 上傳 TestFlight）→ upload 成功後才封 `ios/x.y.z+<build>` + push。upload 失敗不留下 commit/tag/push；封版 tag 若已存在於**另一顆** commit 則在 upload **之前**就拒絕（同一顆 commit 且 pbxproj 乾淨＝重跑，noop）。
 
-**ios 同版重送**（`resubmit ios`）＝ App Review 被拒／尚未上架就要換 binary：`bump-build ios`（marketing 不動、build +1）→ `--upload` → 封 `ios/x.y.z+<build>` + push。這條路徑以前是兩步手動且**不留任何紀錄**，正是 `ios/2.0.0` 脫鉤的成因（`888967dd9`）。
+**ios 同版重送**（`resubmit ios`）＝ App Review 被拒／尚未上架就要換 binary：先以 `./ops/asc.sh builds` 對帳 TestFlight 最新 build，計畫值為 `max(local build, ASC latest)+1`；ASC 失敗或非數字時在 `bump-build` 前 hard-stop，不猜 local+1。成功後才 bump 精確 build→`--upload`→封 `ios/x.y.z+<build>` + push。這條路徑以前是兩步手動且**不留任何紀錄**，正是 `ios/2.0.0` 脫鉤的成因（`888967dd9`）。
 
 `ios_ops workflow release` 的 App Review gate launcher 由 `ops/lib/project_python.sh` 的 `kg_project_uv_bin` 統一解析；缺少 uv 時回 typed `gate.execution` block，不得把空 executable 傳給 streaming runner。
 

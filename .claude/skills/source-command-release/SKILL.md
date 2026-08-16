@@ -61,10 +61,10 @@ Use this skill when the user asks to run the migrated source command `release`.
 
 4c. **resubmit**（iOS 同版號、新 build 重送：App Review 被拒或尚未上架就要換 binary；**碰外部、須使用者明確同意**；dry-run 預設）：
    ```bash
-   ./ops/release.sh resubmit ios        # dry-run：bump-build→upload→封 ios/<x.y.z>+<build>
+   ./ops/release.sh resubmit ios        # dry-run：ASC 對帳→精確 bump→upload→封 ios/<x.y.z>+<build>
    ./ops/release.sh resubmit ios --yes  # 執行
    ```
-   marketing 版號不動、不吃版本號參數、**刻意不產生** `ios/<x.y.z>`（重送不代表會過審）。取代舊的「`bump-build ios --yes` + `ios_release.sh --upload` 兩步手動」——那條路徑不留任何紀錄，正是 `ios/2.0.0` 與實際上架 binary 脫鉤的成因。
+   先由 `./ops/asc.sh builds` 讀取 TestFlight 最新 build，下一顆固定為 `max(local build, ASC latest)+1`；ASC 查詢失敗或回傳非數字時，在任何 pbxproj mutation、upload、commit、tag 前 hard-stop，絕不降級成 local+1。marketing 版號不動、不吃版本號參數、**刻意不產生** `ios/<x.y.z>`（重送不代表會過審）。取代舊的「`bump-build ios --yes` + `ios_release.sh --upload` 兩步手動」——那條路徑不留任何紀錄，正是 `ios/2.0.0` 與實際上架 binary 脫鉤的成因。
 
 5. **回報**：`tag --yes` 後 tag 已推到 origin/main（版本標記，非部署）；`release --yes` 後才真正上生產（backend 已部署 / iOS 已上傳 TestFlight）。**注意：目前沒有 tag-triggered CI workflow**，tag 只是版本標記，GitHub Release 須到 GitHub 手動建（別宣稱「CI 正在發版」）。iOS 上傳 ≠ 上架，回報時別把 `release ios --yes` 說成「已上架」。
 
