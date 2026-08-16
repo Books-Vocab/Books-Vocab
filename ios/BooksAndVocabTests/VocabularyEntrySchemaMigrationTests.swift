@@ -5,6 +5,21 @@ import Testing
 @testable import BooksAndVocab
 
 struct VocabularyEntrySchemaMigrationTests {
+    private struct FixtureProvenance: Decodable {
+        struct Row: Decodable {
+            let word: String
+            let syncStatus: Int
+            let actionType: String
+            let classification: String
+        }
+
+        let schema: String
+        let sourceCommit: String
+        let sourceBuild: Int
+        let storeSHA256: String
+        let rows: [Row]
+    }
+
     private static let fixtureDirectory = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures/VocabularyEntryBuild9", isDirectory: true)
@@ -50,10 +65,20 @@ struct VocabularyEntrySchemaMigrationTests {
         let fixtureDigest = SHA256.hash(data: try Data(contentsOf: fixtureStoreURL))
             .map { String(format: "%02x", $0) }
             .joined()
-        #expect(
-            fixtureDigest == "e19dbe5f1282346e37592d9bf46364930905876c9a6f8d1263e053a665153776",
-            "frozen build 9 store from source commit 0c3bec76d must not drift"
+        let provenanceURL = Self.fixtureDirectory.appendingPathComponent("provenance.json")
+        let provenance = try JSONDecoder().decode(
+            FixtureProvenance.self,
+            from: Data(contentsOf: provenanceURL)
         )
+        #expect(provenance.schema == "kg.ios.vocabulary-schema-fixture.v1")
+        #expect(provenance.sourceCommit == "0c3bec76d")
+        #expect(provenance.sourceBuild == 9)
+        #expect(fixtureDigest == provenance.storeSHA256, "frozen build 9 store must not drift")
+        #expect(provenance.rows.count == 2)
+        #expect(provenance.rows.allSatisfy { $0.classification == "ordinary" })
+        #expect(provenance.rows.first { $0.word == "legacy-synced" }?.syncStatus == 1)
+        #expect(provenance.rows.first { $0.word == "legacy-pending" }?.syncStatus == 0)
+        #expect(provenance.rows.allSatisfy { $0.actionType == "add" })
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("vocabulary-schema-migration-\(UUID().uuidString)", isDirectory: true)

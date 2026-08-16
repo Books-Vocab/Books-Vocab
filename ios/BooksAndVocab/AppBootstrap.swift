@@ -15,6 +15,11 @@ enum AppBootstrap {
         let failure: AppStartupFailure?
     }
 
+    struct PersistentStoreLocations {
+        let local: URL
+        let cloud: URL
+    }
+
     /// 完整 store schema 的唯一真相 — 新增 @Model 時只改這裡，
     /// 避免 6 處重複的型別清單彼此 drift。
     static let fullModelTypes: [any PersistentModel.Type] = [
@@ -26,6 +31,7 @@ enum AppBootstrap {
     @MainActor
     static func run(
         arguments: [String] = ProcessInfo.processInfo.arguments,
+        persistentStoreLocations: PersistentStoreLocations? = nil,
         persistentContainerFactory: (() throws -> ModelContainer)? = nil
     ) -> Outcome {
         // UI-test / probe 隔離（2026-06-10 事故）：fixture 會 wipe+seed
@@ -45,17 +51,38 @@ enum AppBootstrap {
         // 造成的背景同步死鎖（必須早於任何 sync 觸發）。
         KGService.migrateReviewEventBoundaryIfNeeded()
 
-        let localConfig = ModelConfiguration(
-            "LocalStore",
-            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, SharedDeck.self]),
-            cloudKitDatabase: .none
-        )
-
-        let cloudConfig = ModelConfiguration(
-            "CloudStore",
-            schema: Schema([Book.self, PodcastProgress.self]),
-            cloudKitDatabase: .automatic
-        )
+        let localSchema = Schema([
+            VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            PodcastSeries.self, PodcastEpisode.self, SharedDeck.self,
+        ])
+        let cloudSchema = Schema([Book.self, PodcastProgress.self])
+        let localConfig: ModelConfiguration
+        let cloudConfig: ModelConfiguration
+        if let persistentStoreLocations {
+            localConfig = ModelConfiguration(
+                "LocalStore",
+                schema: localSchema,
+                url: persistentStoreLocations.local,
+                cloudKitDatabase: .none
+            )
+            cloudConfig = ModelConfiguration(
+                "CloudStore",
+                schema: cloudSchema,
+                url: persistentStoreLocations.cloud,
+                cloudKitDatabase: .automatic
+            )
+        } else {
+            localConfig = ModelConfiguration(
+                "LocalStore",
+                schema: localSchema,
+                cloudKitDatabase: .none
+            )
+            cloudConfig = ModelConfiguration(
+                "CloudStore",
+                schema: cloudSchema,
+                cloudKitDatabase: .automatic
+            )
+        }
 
         do {
             let container: ModelContainer
