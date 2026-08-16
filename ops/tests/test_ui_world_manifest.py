@@ -77,11 +77,9 @@ def test_validate_rejects_stale_explore_surface_contract_projection(tmp_path: Pa
         validate_fixture_dataset_file(path)
 
 
-def _vocabulary_override(word: str, *, card_role: str = "learning", review_eligible: bool = True) -> dict:
+def _vocabulary_override(word: str) -> dict:
     return {
         "word": word,
-        "cardRole": card_role,
-        "reviewEligible": review_eligible,
         "reviewIntervalHours": 24,
         "nextReviewAt": "2099-01-01T00:00:00Z",
         "lastReviewedAt": None,
@@ -1502,7 +1500,7 @@ def test_validate_rejects_vocabulary_inheritance_cycle(tmp_path: Path):
 
 def test_validate_reports_vocabulary_cycle_before_override_semantics(tmp_path: Path):
     data = _marketing_demo()
-    malformed_override = _vocabulary_override("missing", card_role="malformed")
+    malformed_override = _vocabulary_override("missing")
     malformed_override.update({
         "reviewIntervalHours": -1,
         "nextReviewAt": "not-a-date",
@@ -1514,7 +1512,7 @@ def test_validate_reports_vocabulary_cycle_before_override_semantics(tmp_path: P
         "baseFixture": "vocabListSingle",
         "entryOverrides": [
             malformed_override,
-            _vocabulary_override("also-missing", card_role="dictionary", review_eligible=True),
+            _vocabulary_override("also-missing"),
         ],
     })
     data["vocabulary"]["vocabListSingle"].update({
@@ -1560,17 +1558,27 @@ def test_validate_rejects_duplicate_override_across_vocabulary_chain(tmp_path: P
         validate_fixture_dataset_file(path)
 
 
-def test_validate_rejects_dictionary_override_marked_review_eligible(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("legacy_field", "legacy_value"),
+    (("cardRole", "obsolete"), ("reviewEligible", False)),
+)
+def test_validate_rejects_legacy_vocabulary_override_card_semantics(
+    tmp_path: Path,
+    legacy_field: str,
+    legacy_value: object,
+):
     data = _marketing_demo()
     word = data["vocabulary"]["vocabListLong"]["entries"][0]["word"]
+    override = _vocabulary_override(word)
+    override[legacy_field] = legacy_value
     data["vocabulary"]["vocabListEmpty"].update({
         "baseFixture": "vocabListLong",
-        "entryOverrides": [_vocabulary_override(word, card_role="dictionary", review_eligible=True)],
+        "entryOverrides": [override],
     })
-    path = tmp_path / "vocabulary_dictionary_review_eligible.json"
+    path = tmp_path / f"vocabulary_legacy_{legacy_field}.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match=r"reviewEligible must be false for dictionary cards"):
+    with pytest.raises(UIWorldManifestError, match=r"entryOverrides\[0\] keys 不符合"):
         validate_fixture_dataset_file(path)
 
 

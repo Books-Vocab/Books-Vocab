@@ -464,8 +464,6 @@ VOCABULARY_SEED_KEYS = {
 }
 VOCABULARY_ENTRY_OVERRIDE_KEYS = {
     "word",
-    "cardRole",
-    "reviewEligible",
     "reviewIntervalHours",
     "nextReviewAt",
     "lastReviewedAt",
@@ -2414,8 +2412,6 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
             override_obj = _require_mapping(override, field=owner, label=label)
             _validate_exact_keys(override_obj, expected=VOCABULARY_ENTRY_OVERRIDE_KEYS, owner=owner, label=label)
             _ensure_str(override_obj.get("word"), field=f"{owner}.word", label=label).strip()
-            _ensure_string(override_obj.get("cardRole"), field=f"{owner}.cardRole", label=label)
-            _ensure_bool(override_obj.get("reviewEligible"), field=f"{owner}.reviewEligible", label=label)
             _ensure_number(
                 override_obj.get("reviewIntervalHours"),
                 field=f"{owner}.reviewIntervalHours",
@@ -2476,14 +2472,6 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
                     "must not override the same word twice across inheritance"
                 )
             seen_override_words.add(word)
-            card_role = override_obj["cardRole"]
-            if card_role not in {"learning", "dictionary"}:
-                raise UIWorldManifestError(f"{label} {owner}.cardRole must be learning/dictionary")
-            review_eligible = override_obj["reviewEligible"]
-            if card_role == "dictionary" and review_eligible is True:
-                raise UIWorldManifestError(
-                    f"{label} {owner}.reviewEligible must be false for dictionary cards"
-                )
             interval = override_obj["reviewIntervalHours"]
             if interval < 0:
                 raise UIWorldManifestError(f"{label} {owner}.reviewIntervalHours must be non-negative")
