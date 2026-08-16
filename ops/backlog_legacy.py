@@ -85,6 +85,12 @@ def parse_legacy_table(
     severities: Iterable[str],
     parseable_statuses: Iterable[str],
     app_columns: tuple[str, ...],
+    split_row_raw_fn: Callable[[str], list[str]] = split_row_raw,
+    clean_fn: Callable[[str], str] = clean,
+    id_re: re.Pattern[str] = ID_RE,
+    empty_cell: str = EMPTY_CELL,
+    anchors_ok_fn: Callable[[list[str]], bool] | None = None,
+    app_anchors_ok_fn: Callable[[list[str]], bool] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Parse the historical 8-column ledger and report malformed data rows."""
     rows: list[dict] = []
@@ -96,20 +102,25 @@ def parse_legacy_table(
         line = raw.strip()
         if not line.startswith("|"):
             continue
-        raw_cells = split_row_raw(line)
+        raw_cells = split_row_raw_fn(line)
         if not raw_cells:
             continue
-        cells = [clean(cell) for cell in raw_cells]
-        looks_like_id = bool(ID_RE.match(cells[0]))
+        cells = [clean_fn(cell) for cell in raw_cells]
+        looks_like_id = bool(id_re.match(cells[0]))
 
         if cells[0].startswith("APP-"):
-            if not _app_anchors_ok(
-                cells,
-                app_columns=app_columns,
-                categories=categories,
-                severities=severity_values,
-                parseable_statuses=status_values,
-            ):
+            app_ok = (
+                app_anchors_ok_fn(cells)
+                if app_anchors_ok_fn is not None
+                else _app_anchors_ok(
+                    cells,
+                    app_columns=app_columns,
+                    categories=categories,
+                    severities=severity_values,
+                    parseable_statuses=status_values,
+                )
+            )
+            if not app_ok:
                 problems.append({
                     "kind": "malformed-row",
                     "id": cells[0],
@@ -119,12 +130,17 @@ def parse_legacy_table(
                 })
             continue
 
-        if not _anchors_ok(
-            cells,
-            categories=categories,
-            severities=severity_values,
-            parseable_statuses=status_values,
-        ):
+        anchors_ok = (
+            anchors_ok_fn(cells)
+            if anchors_ok_fn is not None
+            else _anchors_ok(
+                cells,
+                categories=categories,
+                severities=severity_values,
+                parseable_statuses=status_values,
+            )
+        )
+        if not anchors_ok:
             if looks_like_id:
                 problems.append({
                     "kind": "malformed-row",
@@ -162,7 +178,7 @@ def parse_legacy_table(
             continue
 
         row = dict(zip(LEGACY_COLUMNS, cells))
-        if row["resolution"] == EMPTY_CELL:
+        if row["resolution"] == empty_cell:
             row["resolution"] = ""
         rows.append(row)
 

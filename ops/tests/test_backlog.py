@@ -2335,6 +2335,38 @@ def test_view_entry_ids_sees_both_streams(tmp_path):
     )
 
 
+def test_legacy_parser_and_view_entry_ids_use_backlog_facade_tokenizer_seams(
+        tmp_path, monkeypatch):
+    calls = []
+    original_split = BACKLOG._split_row_raw
+
+    def split(line):
+        calls.append(line)
+        return original_split(line)
+
+    monkeypatch.setattr(BACKLOG, "_split_row_raw", split)
+    row = "| IMP-0001 | 2026-08-01 | source | tool | low | open | detail | — |"
+    parsed, problems = BACKLOG.parse_legacy_table(row)
+    assert parsed and not problems and calls
+    BACKLOG.view_entry_ids(row)
+    assert len(calls) == 2
+
+
+def test_legacy_parser_respects_backlog_facade_id_matcher(monkeypatch):
+    import re
+
+    monkeypatch.setattr(BACKLOG, "_ID_RE", re.compile(r"^never$"))
+    row = "| IMP-0001 | 2026-08-01 | source | tool | low | open | detail | — |"
+    parsed, problems = BACKLOG.parse_legacy_table(row)
+    assert parsed == []
+    assert problems == [{
+        "kind": "unrecognised-id",
+        "id": "IMP-0001",
+        "line": 1,
+        "note": "row has valid category/severity/status but its id is not an entry id",
+    }]
+
+
 # ---------------------------------------------------------------------------
 # IMP-20260805-355016 — the view carries the re-verification fields
 # ---------------------------------------------------------------------------
