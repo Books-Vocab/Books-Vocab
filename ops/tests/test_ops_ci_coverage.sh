@@ -196,6 +196,14 @@ PATH_FALSIFY_UNSOUND=(
 # 「它紅了所以豁免」不是這張表的用途。那是本表要殺的靜默綠本身。
 UNGROUPED_TESTS=(
   "ops/test_ops.sh|the aggregate dispatcher itself, not a test — ops/worktree_orchestrate.py:OPS_SHELL_UNROUTABLE_TESTS states the same exemption for the cutover plane"
+  "ops/tests/test_ios_ui_review_clusters.py|legacy iOS UI review evidence fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_ios_ui_review_matrix.py|legacy iOS UI review matrix fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_ios_ui_review_matrix_batch.py|legacy iOS UI review matrix batch fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_ios_ui_run_many.py|legacy iOS UI evidence runner fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_p9_review_calendar_contract.py|legacy P9 review-calendar contract fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_p9_review_calendar_evidence.py|legacy P9 review-calendar evidence fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_settings_sync_fixture_contract.py|legacy Settings sync fixture contract retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
+  "ops/tests/test_uitest_manifest_normalize.py|legacy UI-test manifest fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
 )
 
 # path|reason —— tracked test files reached only through an optional group.
