@@ -3879,31 +3879,34 @@ def _cmd_unstage(args) -> int:
     return _backlog_wave.cmd_unstage(args, deps=_wave_deps())
 
 
+def _anchor_deps() -> _backlog_wave.AnchorDeps:
+    """Build anchor callbacks while preserving façade monkeypatch points."""
+    return _backlog_wave.AnchorDeps(
+        error_type=BacklogError,
+        staged_status=STAGED_STATUS,
+        queue_path=_queue_path,
+        queue_lock=_queue_lock,
+        read_queue=read_queue,
+        write_queue=write_queue,
+        entry_path=entry_path,
+        entry_lock=_entry_lock,
+        load_entry=load_entry,
+        validate_entry=validate_entry,
+        closure_changes=_closure_changes,
+        merged_and_validated=_merged_and_validated,
+        acceptance_gate=_acceptance_gate,
+        acceptance_refusal=_acceptance_refusal,
+        write_atomic=_write_atomic,
+        dumps=_dumps,
+    )
+
+
 def _cmd_anchor(args) -> int:
-    """Replay the wave's staged closures into the store, all or nothing.
+    return _backlog_wave.cmd_anchor(args, deps=_anchor_deps())
 
-    Rows with no `landed_sha` are reported and LEFT: they were staged on a branch
-    that has not reached the trunk, and closing an entry against a commit on no
-    trunk would give `fixed_by` nothing to point at.
 
-    All-or-nothing because the queue is the only record of what a wave closed. A
-    partial apply would consume the prefix and leave the rest, and neither side
-    would say which entries had been dealt with.
-
-    "All or nothing" is a statement about VALIDATION, not about crash-safety, and
-    the difference matters to whoever finds a half-written store. Killed midway
-    through the write loop, some entries are closed and the queue is untouched —
-    because the queue is consumed once, after the loop. So the invariant that does
-    hold under a crash is idempotent replay: re-run `anchor --commit` and it closes
-    the remainder and drains the queue (measured — killed at row 3 of 4, the rerun
-    exits 0 with all four closed). Reach for the rerun, not for the store.
-
-    One row that will not validate blocks the wave by design; `unstage` is the way
-    past it.
-    """
-    queue = _queue_path(args.queue)
-    with _queue_lock(queue):
-        return _cmd_anchor_locked(args, queue)
+def _cmd_anchor_locked(args, queue: Path) -> int:
+    return _backlog_wave.cmd_anchor_locked(args, queue, deps=_anchor_deps())
 
 
 def _execute_criterion(entry_id: str, cmd: str, timeout_seconds: float,
@@ -4180,207 +4183,6 @@ def _gate_closure(entry: dict, changes: dict, commit: bool) -> dict | None:
     if result["kind"] == "failed":
         raise BacklogError(_acceptance_refusal(result))
     return result
-
-
-def _cmd_anchor_locked(args, queue: Path) -> int:
-    rows = read_queue(queue)
-    branch_filter = set(args.branches or [])
-    selected = [
-        r for r in rows
-        if not branch_filter or r.get("branch") in branch_filter
-    ]
-    deferred = [
-        r for r in rows
-        if branch_filter and r.get("branch") not in branch_filter
-    ]
-    ready = [r for r in selected if r.get("landed_sha")]
-    unstamped = [r["id"] for r in selected if not r.get("landed_sha")]
-
-    planned: list[tuple[dict, dict, dict]] = []
-    staged_adds: list[tuple[dict, dict]] = []
-    # Producer-side collision checks are not enough: this shared gitignored JSONL
-    # can contain legacy or hand-written rows. A duplicate ready id used to be
-    # written twice, with queue order deciding the final payload/status, and then
-    # both rows were consumed. When a Delivery Team filters by branch, the peer's
-    # row is deferred but still participates in the collision: letting the first
-    # team close it would allow a later team to overwrite its provenance. Reject
-    # selected ids against the whole stamped queue before acceptance or any store
-    # write.
-    ready_by_id: dict[str, list[dict]] = {}
-    for row in rows:
-        if not row.get("landed_sha"):
-            continue
-        entry_id = row.get("id")
-        if isinstance(entry_id, str):
-            ready_by_id.setdefault(entry_id, []).append(row)
-    selected_ids = {
-        row.get("id") for row in ready
-        if isinstance(row.get("id"), str)
-    }
-    duplicate_ready = {
-        entry_id for entry_id, matching in ready_by_id.items()
-        if entry_id in selected_ids and len(matching) > 1
-    }
-    problems: list[dict] = [
-        {
-            "id": entry_id,
-            "error": f"duplicate ready rows for {entry_id}; refusing the whole "
-                     "wave so queue order cannot overwrite evidence or status",
-        }
-        for entry_id in sorted(duplicate_ready)
-    ]
-    for row in ready:
-        if row.get("kind") == "add":
-            try:
-                entry = row.get("entry")
-                if not isinstance(entry, dict) or entry.get("id") != row.get("id"):
-                    raise BacklogError(
-                        "staged add row must carry an entry whose id matches the row"
-                    )
-                entry_problems = validate_entry(
-                    entry, entry_id=row["id"], check_traceability=False
-                )
-                if entry_problems:
-                    raise BacklogError(f"staged add is invalid: {entry_problems}")
-                path = entry_path(args.store, row["id"])
-                if path.exists():
-                    existing = load_entry(args.store, row["id"])
-                    if existing != entry:
-                        raise BacklogError(
-                            f"{row['id']} already exists in the store with different "
-                            "content; refusing to overwrite it during anchor"
-                        )
-                staged_adds.append((row, entry))
-            except (BacklogError, ValueError, EntryNotFound) as exc:
-                problems.append({"id": row.get("id", "<missing>"), "error": str(exc)})
-            continue
-        try:
-            if row.get("status") != STAGED_STATUS:
-                # `stage` pins this, so a row that disagrees was hand-written or
-                # predates that rule. Refuse rather than replay it: the write below
-                # hangs `fixed_by` on the entry unconditionally, and on any other
-                # status that produces a claim the status contradicts — a wont-fix
-                # carrying a commit hash, which `validate` does not catch.
-                raise BacklogError(
-                    f"staged status is {row.get('status')!r}, and only "
-                    f"{STAGED_STATUS!r} can be anchored — a landing commit is "
-                    f"evidence for a fix, not for a decision not to fix. Use "
-                    f"`unstage {row['id']}` then `update` for anything else.")
-            changes = _closure_changes(
-                verdict=row["verdict"], by=row["by"], evidence=row["evidence"],
-                at=row.get("at"), status=row.get("status"),
-                fixed_by=[row["landed_sha"]])
-            current = load_entry(args.store, row["id"])
-            planned.append((
-                row, current,
-                _merged_and_validated(current, changes, row["id"]),
-            ))
-        except (BacklogError, ValueError, EntryNotFound) as exc:
-            problems.append({"id": row["id"], "error": str(exc)})
-
-    # THE check. Everything above validates that the closure is well-formed; this is
-    # the only step that asks whether the defect is actually gone. Runs on --commit
-    # only — these are real commands with real side effects, and a dry-run that ran
-    # them would not be one.
-    acceptance: dict[str, list] = {"ran": [], "manual": [], "unproven": []}
-    if args.commit and not problems:
-        for row, _current, merged in planned:
-            # Same `_acceptance_gate` the other two doors call — see its docstring.
-            # The wave buckets the results because it closes many entries at once;
-            # the grade itself is decided in one place for all three.
-            result = _acceptance_gate(merged, commit=True)
-            if result["kind"] in ("ran", "failed"):
-                acceptance["ran"].append({k: v for k, v in result.items()
-                                          if k != "kind"})
-                if result["kind"] == "failed":
-                    problems.append({"id": row["id"],
-                                     "error": _acceptance_refusal(result)})
-            else:
-                acceptance[result["kind"]].append(row["id"])
-
-    # Acceptance may be expensive, so do not hold entry locks while it runs. Before
-    # writing, acquire every target lock in deterministic id order and compare the
-    # exact snapshots the gates graded. Any concurrent groom/update/verify then
-    # either lands before this comparison and aborts the WHOLE wave, or waits until
-    # all writes finish. Without this optimistic CAS, anchor could prove an old
-    # criterion, overwrite a newly groomed `false` criterion, and consume the queue.
-    if args.commit and not problems:
-        with contextlib.ExitStack() as locks:
-            target_ids = ({row["id"] for row, _current, _merged in planned}
-                          | {row["id"] for row, _entry in staged_adds})
-            for entry_id in sorted(target_ids):
-                locks.enter_context(_entry_lock(entry_path(args.store, entry_id)))
-            for row, current, _merged in planned:
-                latest = load_entry(args.store, row["id"])
-                if latest != current:
-                    problems.append({
-                        "id": row["id"],
-                        "error": "entry changed while anchor was validating its "
-                                 "acceptance; refusing the whole wave so newer "
-                                 "groom/update evidence is not overwritten",
-                    })
-            for row, entry in staged_adds:
-                path = entry_path(args.store, row["id"])
-                if path.exists() and load_entry(args.store, row["id"]) != entry:
-                    problems.append({
-                        "id": row["id"],
-                        "error": "entry appeared or changed while anchor was "
-                                 "validating the staged add; refusing the whole wave",
-                    })
-            if not problems:
-                for row, _current, merged in planned:
-                    _write_atomic(entry_path(args.store, row["id"]), _dumps(merged))
-                for row, entry in staged_adds:
-                    _write_atomic(entry_path(args.store, row["id"]), _dumps(entry))
-                consumed = {id(r) for r in ready}
-                write_queue(queue, [r for r in rows if id(r) not in consumed])
-
-    payload = {
-        "schema": "kg.backlog.anchor.v1",
-        "mode": "commit" if args.commit else "dry-run",
-        "queue": str(queue),
-        "acceptance": acceptance,
-        "branches": sorted(branch_filter),
-        "applied": [] if problems or not args.commit else (
-            [r["id"] for r, _current, _merged in planned]
-            + [r["id"] for r, _entry in staged_adds]
-        ),
-        "would_apply": ([r["id"] for r, _current, _merged in planned]
-                        + [r["id"] for r, _entry in staged_adds]),
-        "staged_adds": [r["id"] for r, _entry in staged_adds],
-        "unstamped": unstamped,
-        "deferred": [r.get("id") for r in deferred],
-        "problems": problems,
-    }
-    if problems:
-        # Nothing is written. Reported before any store touch, so the refusal cannot
-        # be confused with "some of it went in".
-        if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
-        else:
-            for p in problems:
-                print(f"✗ {p['id']}: {p['error']}", file=sys.stderr)
-            print(f"refusing the whole wave ({len(planned) + len(staged_adds)} other rows left queued)\n"
-                  f"  drop a row you cannot fix with "
-                  f"`./ops/backlog.py unstage <id> --commit`", file=sys.stderr)
-        return 2
-
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    else:
-        verb = "closed" if args.commit else "would close"
-        for row, _current, _merged in planned:
-            print(f"[{'commit' if args.commit else 'dry-run'}] {verb} {row['id']} "
-                  f"fixed_by {row['landed_sha']}")
-        for row, _ in staged_adds:
-            print(f"[{'commit' if args.commit else 'dry-run'}] "
-                  f"{'materialized' if args.commit else 'would materialize'} "
-                  f"{row['id']} from staged add (landed_sha {row['landed_sha']})")
-        for entry_id in unstamped:
-            print(f"  (still queued: {entry_id} — its branch has not landed)")
-        if not args.commit and planned:
-            print("  (dry-run — pass --commit to land)")
-    return 0
 
 
 def _verification_deps() -> _backlog_verification.VerificationDeps:
