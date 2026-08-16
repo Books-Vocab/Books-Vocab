@@ -4244,9 +4244,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   if record.get("no_changed_files") and not args.plan_only else "")
     record_ref = (str(_gate_record_path(args.state, worktree))
                   if not args.plan_only else "<not recorded>")
+    executed_count = sum(
+        1 for result in results
+        if result.get("reuse", {}).get("decision") != "reused"
+        and result.get("executed", True) is not False
+    )
     receipt_line = (f"gate={verdict} record={record_ref} "
                     f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} "
-                    f"executed={len(results)} {breakdown} "
+                    f"executed={executed_count} {breakdown} "
                     f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
                     f"{no_changes}")
     if getattr(args, "receipt_line", False):
@@ -4358,6 +4363,16 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                       f"with {worktree}/ops/worktree_orchestrate.py")
         elif verdict == "block":
             refuse = "gate verdict is 'block' — fix the blocking gate(s) and re-run `gate`"
+        elif (isinstance(rec.get("plan"), list)
+              and isinstance(rec.get("gates"), list)
+              and len(rec["gates"]) != len(rec["plan"])):
+            # A non-pass preflight intentionally stops before expensive gates. Its
+            # aggregate can still be WARN (for example a typed inconclusive result),
+            # but a partial plan is never evidence for cutover: warn is landable only
+            # after every planned gate has produced a row.
+            refuse = (f"gate record is incomplete ({len(rec['gates'])} of "
+                      f"{len(rec['plan'])} planned gate results) — the preflight "
+                      "stopped the run; re-run `gate` before cutover")
         elif verdict not in ("pass", "warn"):
             refuse = f"gate verdict is {verdict!r}, not pass/warn — run `gate` first"
         elif unattributed := [g.get("name") for g in rec.get("gates", [])

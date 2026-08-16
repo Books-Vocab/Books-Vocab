@@ -4161,6 +4161,15 @@ def test_gate_stops_after_nonpassing_review_preflight(
     assert f"gates={len(gate['plan'])}" in receipt
     assert "executed=1" in receipt
 
+    if preflight_status == "warn":
+        rc, cut = _run_json(
+            ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+        )
+        assert rc == MODULE.EXIT_BLOCK
+        assert cut["landed"] is False
+        assert "gate record is incomplete" in cut["error"]
+        assert "notes.txt" not in _local_main_files(repo)
+
 
 @gitmark
 def test_gate_names_the_empty_worktree(scratch):
