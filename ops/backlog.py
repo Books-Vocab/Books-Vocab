@@ -71,6 +71,7 @@ from lib import dispatch_preflight  # noqa: E402
 from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
+import backlog_contract as _backlog_contract  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
 # nothing outside the standard library, so the sandboxed `uv run --no-project`
@@ -994,179 +995,44 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
 
 
 def _contract_site_paths(fix_site: str) -> list[str]:
-    """Extract conservative repository-relative anchors from ``fix_site``.
-
-    The field is human-facing prose with a code anchor, not a mini shell
-    language.  We therefore accept the documented ``path:line`` form and reject
-    unresolved braces/globs instead of guessing which file an executor meant.
-    """
-    paths: list[str] = []
-    for raw in re.split(r"[;；]+", fix_site):
-        token = raw.strip().split()[0] if raw.strip() else ""
-        if not token:
-            continue
-        token = token.split("::", 1)[0]
-        token = re.split(r"(?::\d|：\d)", token, maxsplit=1)[0]
-        paths.append(token.strip("`'\""))
-    return paths
+    return _backlog_contract.site_paths(fix_site)
 
 
 def _contract_command_paths(command: str) -> list[str]:
-    """Find explicit repo paths used by an acceptance command.
-
-    This is intentionally a dependency probe, not a shell interpreter. Dynamic
-    paths and brace/glob expressions are unprovable and are reported as missing
-    evidence rather than treated as present.
-    """
-    paths: list[str] = []
-    pattern = re.compile(
-        r"(?<![A-Za-z0-9_./-])((?:ops|backend|ios|lab|docs|\.github)/[A-Za-z0-9_./-]+)"
-    )
-    for match in pattern.finditer(command):
-        value = match.group(1).rstrip(".,;:'\")")
-        if value not in paths:
-            paths.append(value)
-    return paths
+    return _backlog_contract.command_paths(command)
 
 
 def contract_preflight(payload: dict, *, repo: Path | None = None) -> list[dict]:
-    """Return typed reasons a groomed ticket cannot enter dispatch.
-
-    Dispatch is fail-closed: a ticket must carry a recorded contract check with
-    a RED baseline.  ``no-op`` and ``unknown`` are intentionally different from
-    RED; neither proves there is work for a worker to do.
-    """
-    root = (repo or ROOT).resolve()
-    if payload.get("status") == "contract-blocked":
-        return [{"kind": "contract-blocked",
-                 "reason": "status=contract-blocked is never dispatchable"}]
-    groomed_at = str(payload.get("groomed_at") or "")
-    if groomed_at and groomed_at < CONTRACT_REQUIRED_SINCE \
-            and not any(payload.get(field) is not None for field in CONTRACT_FIELDS):
-        return []
-    problems: list[dict] = []
-    if payload.get("contract_status") != "ready":
-        problems.append({"kind": "contract-evidence-missing",
-                         "reason": "contract_status is not ready"})
-    if payload.get("contract_baseline") != "red":
-        problems.append({"kind": "contract-baseline-not-red",
-                         "value": payload.get("contract_baseline") or "missing"})
-    if not str(payload.get("contract_evidence") or "").strip():
-        problems.append({"kind": "contract-evidence-missing",
-                         "reason": "contract_evidence is empty"})
-    for field in ("contract_checked_at", "contract_checked_by"):
-        if not str(payload.get(field) or "").strip():
-            problems.append({"kind": "contract-check-metadata-missing", "field": field})
-
-    fix_site = str(payload.get("fix_site") or "").strip()
-    if not fix_site:
-        problems.append({"kind": "fix-site-missing"})
-    else:
-        for rel in _contract_site_paths(fix_site):
-            if any(ch in rel for ch in "{}[]*$") or not (root / rel).exists():
-                problems.append({"kind": "fix-site-missing", "path": rel})
-
-    command = str(payload.get("acceptance_cmd") or "").strip()
-    if not command:
-        problems.append({"kind": "acceptance-dependency-missing",
-                         "reason": "acceptance_cmd is empty"})
-    else:
-        for rel in _contract_command_paths(command):
-            if any(ch in rel for ch in "{}[]*$") or not (root / rel).exists():
-                problems.append({"kind": "acceptance-dependency-missing", "path": rel})
-    return problems
+    return _backlog_contract.preflight(
+        payload,
+        repo=repo,
+        default_root=ROOT,
+        required_since=CONTRACT_REQUIRED_SINCE,
+        contract_fields=CONTRACT_FIELDS,
+        contract_statuses=CONTRACT_STATUSES,
+        contract_baselines=CONTRACT_BASELINES,
+    )
 
 
 SELECTOR_PROBE_TIMEOUT_SECONDS = 60
-_SHELL_OPERATOR_TOKENS = frozenset((";", "&&", "||", "|", "<", ">"))
 
 
 def _pytest_selector_probe(cmd: str) -> list[str] | None:
-    """Return a safe argv probe for a direct ``pytest -k`` command.
-
-    This is deliberately a shape detector, not a shell parser or a prose
-    interpreter. Compound commands are left alone: running their prelude just
-    to count tests would turn a visibility hint into a side-effecting write
-    hook. The last ``pytest`` token is the executable in forms such as
-    ``uv run --with pytest pytest ...``; the earlier one is only a dependency
-    specifier.
-    """
-    try:
-        tokens = shlex.split(cmd)
-    except ValueError:
-        return None
-    if not tokens or any(
-            token in _SHELL_OPERATOR_TOKENS
-            or any(operator in token for operator in (";", "|", "<", ">"))
-            for token in tokens):
-        return None
-    pytest_indexes = [index for index, token in enumerate(tokens)
-                      if Path(token).name == "pytest"]
-    if not pytest_indexes:
-        return None
-    pytest_index = pytest_indexes[-1]
-    args = tokens[pytest_index + 1:]
-    try:
-        selector_index = args.index("-k")
-    except ValueError:
-        return None
-    if selector_index + 1 >= len(args) or not args[selector_index + 1].strip():
-        return None
-    probe = list(tokens)
-    if "--collect-only" not in args:
-        probe.insert(pytest_index + 1, "--collect-only")
-    return probe
+    return _backlog_contract.pytest_selector_probe(cmd)
 
 
 def _pytest_collected_count(output: str) -> int | None:
-    """Extract pytest's selected count, with a node-line fallback."""
-    # With ``-k`` pytest reports ``selected/total tests collected``; matching
-    # only the denominator would make a partial selector look complete.
-    summary = re.search(r"\b(\d+)(?:/\d+)?\s+(?:tests?|items?)\s+collected\b",
-                        output)
-    if summary:
-        return int(summary.group(1))
-    if re.search(r"\bno tests collected\b", output, flags=re.IGNORECASE):
-        return 0
-    node_lines = [line for line in output.splitlines()
-                  if "::" in line and not line.lstrip().startswith(("=", "-"))]
-    return len(node_lines) if node_lines else None
+    return _backlog_contract.pytest_collected_count(output)
 
 
 def _report_pytest_selector_count(entry_id: str, cmd: str) -> None:
-    """Print a non-blocking selection count while an acceptance command is edited."""
-    probe = _pytest_selector_probe(cmd)
-    if probe is None:
-        return
-    try:
-        result = run_streamed_command(
-            probe,
-            cwd=ROOT,
-            label_key="entry",
-            label=entry_id,
-            progress_prefix="[backlog][selector-count]",
-            merge_stderr=True,
-            timeout_seconds=SELECTOR_PROBE_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        # This is visibility feedback, never a second write gate. In particular,
-        # a missing `uv`/`pytest` executable must not turn editing a criterion into
-        # an unrelated tool outage. The eventual acceptance run still owns the
-        # authoritative result and will report the missing executable at closure.
-        print(f"[backlog][selector-count] {entry_id} selected=unavailable "
-              f"error={type(exc).__name__} (non-blocking)",
-              file=sys.stderr, flush=True)
-        return
-    if getattr(result, "timed_out", False):
-        print(f"[backlog][selector-count] {entry_id} selected=unavailable "
-              f"timeout={SELECTOR_PROBE_TIMEOUT_SECONDS:g}s (non-blocking)",
-              file=sys.stderr, flush=True)
-        return
-    output = result.stdout or ""
-    count = _pytest_collected_count(output)
-    selected = str(count) if count is not None else "unavailable"
-    print(f"[backlog][selector-count] {entry_id} selected={selected} "
-          f"rc={result.returncode} (non-blocking)", file=sys.stderr, flush=True)
+    _backlog_contract.report_pytest_selector_count(
+        entry_id,
+        cmd,
+        runner=run_streamed_command,
+        root=ROOT,
+        timeout_seconds=SELECTOR_PROBE_TIMEOUT_SECONDS,
+    )
 
 
 def validate_entry(payload: dict, *, entry_id: str | None = None,
