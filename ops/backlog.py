@@ -1895,7 +1895,11 @@ def _sort_key(payload: dict) -> tuple:
 
 def entry_sort_key_by_id(store: Path):
     """Return a key function over entry ids, matching `list_entries` order."""
-    return _backlog_query.entry_sort_key_by_id(store)
+    return _backlog_query.entry_sort_key_by_id(
+        store,
+        iter_entries_fn=_iter_entries,
+        sort_key_fn=_sort_key,
+    )
 
 
 def list_entries(
@@ -1920,6 +1924,8 @@ def list_entries(
 ) -> list[dict]:
     deps = _backlog_query.QueryDeps(
         backlog_error=BacklogError,
+        iter_entries_fn=_iter_entries,
+        sort_key_fn=_sort_key,
         brief_fields=BRIEF_FIELDS,
         acceptance_green_expected=ACCEPTANCE_GREEN_EXPECTED,
         date_re=_DATE_RE,

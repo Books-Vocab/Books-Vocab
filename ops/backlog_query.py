@@ -17,6 +17,8 @@ from typing import Callable, Pattern
 @dataclass(frozen=True)
 class QueryDeps:
     backlog_error: type[Exception]
+    iter_entries_fn: Callable[[Path], object]
+    sort_key_fn: Callable[[dict], tuple]
     brief_fields: tuple[str, ...]
     acceptance_green_expected: str
     date_re: Pattern[str]
@@ -45,8 +47,14 @@ def sort_key(payload: dict) -> tuple:
     return (str(payload.get("date", "")), str(payload.get("id", "")))
 
 
-def entry_sort_key_by_id(store: Path):
-    index = {payload.get("id"): sort_key(payload) for payload in iter_entries(store)}
+def entry_sort_key_by_id(
+    store: Path,
+    *,
+    iter_entries_fn: Callable[[Path], object] = iter_entries,
+    sort_key_fn: Callable[[dict], tuple] = sort_key,
+):
+    index = {payload.get("id"): sort_key_fn(payload)
+             for payload in iter_entries_fn(store)}
     return lambda entry_id: index.get(entry_id, ("", entry_id))
 
 
@@ -104,20 +112,20 @@ def list_entries(
             f"empty by construction. Add `--include-closed` to inspect that closed "
             f"entry, or drop `--status {status}`."
         )
-    open_ids = ({payload.get("id") for payload in iter_entries(store)
+    open_ids = ({payload.get("id") for payload in deps.iter_entries_fn(store)
                  if payload.get("status") not in ("fixed", "wont-fix")}
                 if dispatch else set())
     if missing_brief and status in ("fixed", "wont-fix"):
         raise error(
             f"--missing-brief already means UNRESOLVED, so --status {status} is "
             "empty by construction (a closed entry never reaches the board). "
-            "Drop one: `--missing-brief` for the backfill queue, or `--status` "
-            "on its own to look at closed entries."
+            "Drop one: `--missing-brief` for the backfill queue, or "
+            f"`--status {status}` on its own to look at closed entries."
         )
 
     wanted = {"status": status, "stream": stream, "severity": severity,
               "category": category}
-    hits = [payload for payload in iter_entries(store)
+    hits = [payload for payload in deps.iter_entries_fn(store)
             if all(value is None or payload.get(field) == value
                    for field, value in wanted.items())]
     if groomed:
@@ -169,7 +177,7 @@ def list_entries(
         hits = [payload for payload in hits
                 if not deps.contract_preflight(payload, repo=repo)]
         return sorted(hits, key=deps.worst_first_key)
-    return sorted(hits, key=sort_key)
+    return sorted(hits, key=deps.sort_key_fn)
 
 
 def select_entries(
