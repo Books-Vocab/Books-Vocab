@@ -1276,7 +1276,7 @@
       "requiredFixtureIDs": [
         "vocabListFilterRich",
         "p11.644.reviewMix",
-        "role.mixed"
+        "review.mixed"
       ],
       "acceptance": [
         "role facets, review facets, visible rows and CTA use explicit query layers",

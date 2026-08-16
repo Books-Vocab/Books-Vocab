@@ -277,7 +277,7 @@ FIXTURE_DOMAIN_IDS = {
         "kgVocabRow",
         "p11.644.reviewMix",
         "reviewCalendarDense",
-        "role.mixed",
+        "review.mixed",
         "searchVocabNotebook",
         "shellNavigation",
         "statsEmpty",
