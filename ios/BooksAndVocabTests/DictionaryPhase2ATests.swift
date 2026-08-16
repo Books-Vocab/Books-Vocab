@@ -436,7 +436,7 @@ struct DictionaryPhase2ATests {
         #expect(source.graphLinksByKind.isEmpty)
     }
 
-    @Test("manual link validation surfaces missing source and duplicate link") @MainActor
+    @Test("manual link validation surfaces missing source and treats duplicate as already linked") @MainActor
     func manualLinkValidation() async throws {
         let container = try Self.container()
         let target = Self.entry("target", cardID: "target", notebook: "nb")
@@ -466,9 +466,57 @@ struct DictionaryPhase2ATests {
         await duplicateCoordinator.linkExisting(
             target: target, sourceEntry: duplicateSource, using: KGService()
         )
-        #expect(duplicateCoordinator.materializePhase == .failed)
-        #expect(duplicateCoordinator.actionError == .duplicateLink)
+        #expect(duplicateCoordinator.materializePhase == .succeeded)
+        #expect(duplicateCoordinator.actionPhase == .succeeded)
+        #expect(duplicateCoordinator.actionError == nil)
         #expect(duplicateSource.graphLinksByKind.values.flatMap { $0 }.count == 1)
+    }
+
+    @Test("manual link 409 refreshes graph projection and converges to success") @MainActor
+    func manualLinkConflictRefreshesProjection() async throws {
+        let container = try Self.container()
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let target = Self.entry("target", cardID: "target", notebook: "nb")
+        let context = ModelContext(container)
+        context.insert(source)
+        context.insert(target)
+        try context.save()
+
+        let service = StaleProjectionGraphService()
+        let coordinator = AddLinkCoordinator()
+        await coordinator.linkExisting(
+            target: target, sourceEntry: source, using: service
+        )
+
+        #expect(coordinator.materializePhase == .succeeded)
+        #expect(coordinator.actionPhase == .succeeded)
+        #expect(coordinator.actionError == nil)
+        let link = try #require(source.graphLinksByKind["shares_usage"]?.first)
+        #expect(link.id == "server-link")
+        #expect(link.cardId == "target")
+        #expect(await service.pullNotebookIDs == ["nb"])
+    }
+
+    @Test("manual link 409 without matching projection stays failed and rolls back") @MainActor
+    func manualLinkConflictWithoutProjectionFailsClosed() async throws {
+        let container = try Self.container()
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let target = Self.entry("target", cardID: "target", notebook: "nb")
+        let context = ModelContext(container)
+        context.insert(source)
+        context.insert(target)
+        try context.save()
+
+        let service = StaleProjectionGraphService(links: [])
+        let coordinator = AddLinkCoordinator()
+        await coordinator.linkExisting(
+            target: target, sourceEntry: source, using: service
+        )
+
+        #expect(coordinator.materializePhase == .failed)
+        #expect(coordinator.actionError == .existingLinkRefreshFailed)
+        #expect(source.graphLinksByKind.isEmpty)
+        #expect(await service.pullNotebookIDs == ["nb"])
     }
 
     private static func entry(_ word: String, cardID: String, notebook: String) -> VocabularyEntry {
@@ -515,6 +563,47 @@ struct DictionaryPhase2ATests {
             with: "\"materializationStatus\":\"active\",\"links\":[{\"id\":\"link-1\",\"fromId\":\"source\",\"toId\":\"target\",\"kind\":\"shares_usage\",\"confidence\":0.9,\"reason\":\"related\"}]}"
         )
     }
+}
+
+@MainActor
+private final class StaleProjectionGraphService: GraphServing {
+    private let links: [KGGraphLink]
+    private(set) var pullNotebookIDs: [String] = []
+
+    init(links: [KGGraphLink]? = nil) {
+        self.links = links ?? [
+            KGGraphLink(
+                id: "server-link",
+                fromId: "source",
+                toId: "target",
+                kind: "shares_usage",
+                confidence: 1,
+                reason: "existing"
+            )
+        ]
+    }
+
+    func pullGraphLinks() async throws -> [KGGraphLink] { [] }
+
+    func pullGraphLinks(notebookId: String) async throws -> [KGGraphLink] {
+        pullNotebookIDs.append(notebookId)
+        return links
+    }
+
+    func createManualLink(
+        fromId: String,
+        toId: String,
+        notebookId: String
+    ) async throws -> KGGraphLink {
+        throw KGError.httpError(
+            statusCode: 409,
+            detail: "Link already exists between these cards"
+        )
+    }
+
+    func deleteLink(linkId: String, notebookId: String) async throws {}
+    func hideLink(linkId: String, notebookId: String) async throws {}
+    func unhideLink(linkId: String, notebookId: String) async throws {}
 }
 
 @MainActor

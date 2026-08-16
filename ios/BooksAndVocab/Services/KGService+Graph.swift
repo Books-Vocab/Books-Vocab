@@ -31,7 +31,15 @@ struct KGManualLinkRequest: Codable {
 extension KGService {
 
     func pullGraphLinks() async throws -> [KGGraphLink] {
-        try await authenticatedDecode([KGGraphLink].self, path: "api/graph/links")
+        try await pullGraphLinks(notebookId: "default")
+    }
+
+    func pullGraphLinks(notebookId: String) async throws -> [KGGraphLink] {
+        try await authenticatedDecode(
+            [KGGraphLink].self,
+            path: "api/graph/links",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)]
+        )
     }
 
     func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink {
