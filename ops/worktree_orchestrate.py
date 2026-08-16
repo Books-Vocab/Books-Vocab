@@ -282,9 +282,9 @@ def _is_ops_test(p: str) -> bool:
 
 
 def _shell(name: str, category: str, cmd: list[str], level: str,
-           cwd: str | None = None) -> dict[str, Any]:
+           cwd: str | None = None, *, preflight: bool = False) -> dict[str, Any]:
     return {"name": name, "category": category, "kind": "shell",
-            "cmd": cmd, "level": level, "cwd": cwd}
+            "cmd": cmd, "level": level, "cwd": cwd, "preflight": preflight}
 
 
 def _internal(name: str, category: str, level: str, **extra: Any) -> dict[str, Any]:
@@ -899,6 +899,17 @@ def plan_gates(changed_files: list[str],
     verified_against reachability) are `warn` so they surface without blocking. A
     neutral file selects nothing."""
     gates: list[dict[str, Any]] = []
+
+    # Review receipt presence is a cheap, mechanically verifiable prerequisite for
+    # every later gate. Run it first and mark it as a preflight barrier: if it blocks,
+    # cmd_gate stops before spending minutes on tests that cannot make this HEAD
+    # landable.
+    if base and (ops_test_exists is None or ops_test_exists("ops/review_audit.sh")):
+        review_cmd = ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD"]
+        if machine_gate:
+            review_cmd.append("--machine-gate")
+        gates.append(_shell("review-receipts", "meta", review_cmd, "block",
+                            preflight=True))
 
     # Official-deck specs are a fixed-set gate, not a diff-routed gate. A new spec can
     # be present in the worktree without changing any tracked file; the check must still
@@ -2175,6 +2186,7 @@ _IOS_TEST_INPUTS = frozenset({
     "ops/ui_world_manifest.py",
     "ops/uitest_contact_sheet.py",
     "ops/lib/ios_test_discovery.sh",
+    "ops/lib/ios_test_failure_verdict.sh",
     "ops/lib/ios_test_cache_root.sh",
     "ops/lib/ios_test_failure_verdict.sh",
     "ops/lib/ios_xctestrun_cache.sh",
@@ -4162,6 +4174,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   f"status={result['status']} done={len(completed)}/{len(plan)} "
                   f"elapsed={time.monotonic() - progress_started:.1f}s "
                   f"progress={progress_path}", file=sys.stderr, flush=True)
+            if spec.get("preflight") and result.get("status") == "block":
+                # A preflight block already proves that this HEAD cannot land. Stop
+                # before expensive gates; keep the existing gate-record schema and
+                # name the shortened execution in the human/progress stream.
+                print(f"[worktree][gate] phase=stop reason=preflight-block "
+                      f"gate={result['name']} remaining={len(plan) - len(results)} "
+                      f"progress={progress_path}", file=sys.stderr, flush=True)
+                break
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
 
     now = _head_sha(worktree)
@@ -4247,7 +4267,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   if not args.plan_only else "<not recorded>")
     receipt_line = (f"gate={verdict} record={record_ref} "
                     f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown} "
-                    f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
+                    f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))} "
                     f"{no_changes}")
     if getattr(args, "receipt_line", False):
         print(receipt_line)
