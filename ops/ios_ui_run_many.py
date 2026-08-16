@@ -31,7 +31,7 @@ SCHEMA = "kg.ios.ui-run-many.v1"
 CLEANUP_SCHEMA = "kg.ios.ui-run-cleanup.v1"
 SELECTOR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\/test[A-Za-z0-9_]+$")
 DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
-REQUIREMENT_RE = re.compile(r"^P(?:[1-9]|1[0-5])$")
+REQUIREMENT_RE = re.compile(r"^P(?:[3-9]|1[0-5])$")
 FAILURE_TTL_SECONDS = 24 * 60 * 60
 EPHEMERAL_TTL_SECONDS = 30 * 60
 
@@ -67,7 +67,7 @@ def load_methods(path: Path) -> list[dict[str, str]]:
         if not isinstance(dataset_id, str) or not DATASET_RE.fullmatch(dataset_id):
             raise RunManyError(f"runs[{index}].datasetID is unsafe")
         if not isinstance(requirement_id, str) or not REQUIREMENT_RE.fullmatch(requirement_id):
-            raise RunManyError(f"runs[{index}].requirementID must be P1-P15")
+            raise RunManyError(f"runs[{index}].requirementID must be P3-P15")
         if not isinstance(cluster_id, str) or not cluster_id.strip():
             raise RunManyError(f"runs[{index}].clusterID must be non-empty")
         result.append(

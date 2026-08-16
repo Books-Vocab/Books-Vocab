@@ -70,9 +70,9 @@ struct VocabularyEntryStateTests {
         }
     }
 
-    // MARK: - shouldAppearInReader = !delete && !archived && !excludedFromReader
+    // MARK: - shouldAppearInReader = !delete && !archived
 
-    @Test("未刪除 + 未封存 + 未排除 → 入 Reader（含未同步）")
+    @Test("未刪除 + 未封存 → 入 Reader（含未同步）")
     func reader_pendingStillShows() {
         #expect(entry(status: 0, action: "add").shouldAppearInReader)
     }

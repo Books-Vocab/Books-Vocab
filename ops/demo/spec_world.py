@@ -9,7 +9,7 @@ UI World 注入面使用。這裡只塑造結構化資料，不負責任何圖�
 * **確定式**：同一 spec 重跑 byte 相等。零 wall-clock（無 Date.now / now()）、
   零隨機值；所有排序 / 子集選取 / id 都是 spec 內容的純函式。
 * **explicit-everything**：每個 row state 明示（syncStatus / actionType /
-  isArchived / isExcludedFromReader / review scheduling counters /
+  isArchived / review scheduling counters /
   graphLinksByKind / reviewHistory refs），對齊 `ops/ui_world_manifest.py` 與
   Swift FixtureDatasetStore 的 fail-fast decode 契約。
 * fixture id 只用 app-known id（FIXTURE_DOMAIN_IDS）；本模組**只回傳
@@ -466,7 +466,6 @@ def _entry(card: dict[str, Any], *, nb_name: str, sync_status: int = 1,
         "syncStatus": sync_status,
         "actionType": action_type,
         "isArchived": card["is_archived"],
-        "isExcludedFromReader": False,
         "reviewIntervalHours": card["review_interval_hours"],
         "nextReviewAt": card["next_review_at"],
         "lastReviewedAt": card["last_reviewed_at"],
@@ -525,7 +524,6 @@ def _notebook_entry(card: dict[str, Any], *, nb_name: str) -> dict[str, Any]:
         "syncStatus": 1,
         "actionType": "add",
         "isArchived": card["is_archived"],
-        "isExcludedFromReader": False,
         # review scheduling：NotebookStatsCalculator 的 due/unlearned/reviewed
         # 徽章與進度條靠這四欄；缺了列表徽章=總卡數、進度條全空。
         "reviewIntervalHours": card["review_interval_hours"],

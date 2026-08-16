@@ -1893,7 +1893,6 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case vocabListSingle
     case vocabListSyncing
     case p11ReviewMix = "p11.644.reviewMix"
-    case reviewStateMixed = "review.mixed"
     case wordDetail
     case wordEdit
 }

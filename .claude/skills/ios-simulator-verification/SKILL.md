@@ -19,7 +19,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - helper 只在 clean source、`status=result=ok`、`exit=0`、`executed>0`、source/dataset/device identity 全相符，且五類視覺 artifact 真實存在時回 `0`；不能以 process exit 或可解析 JSON 代替 verdict。
 - 任何 UI test 若會在 test body 寫入 evidence context，必須由 `ios_ops.sh test --ui --json`／本 skill helper 執行；producer 會把同一個 pinned `KG_IOS_VERDICT_FILE` 注入 scoped `.xctestrun`，讓 runner 與 host 讀到同一份 invocation verdict。缺少這個 binding 必須 fail-closed，不能在 test 內自行猜 latest verdict。
 - 視覺 artifact 還必須通過 `ops/uitest_evidence_contract.py validate`：manifest 至少一個真實 step、每個 PNG 有尺寸／byteSize／SHA-256 且與檔案一致，contact/quick4/video/UIreview 非空，並帶同一個 source commit、UI World ID/hash、Simulator UDID provenance。只有路徑存在不算 evidence。
-- 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。單一 requirement 可以由多個 exact selector bundle 組成 evidence union，但每個 bundle 都要獨立通過 machine contract、source/dataset/device provenance 與全步驟 visual attestation；`record-many` 只接受 union 中每個 logical required/counterexample state 恰好一次且 asset 不重疊的結果。
+- 一個 evidence bundle 對應一個明確 selector；要比較 active P3–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。單一 requirement 可以由多個 exact selector bundle 組成 evidence union，但每個 bundle 都要獨立通過 machine contract、source/dataset/device provenance 與全步驟 visual attestation；`record-many` 只接受 union 中每個 logical required/counterexample state 恰好一次且 asset 不重疊的結果。
 - 視覺輸出是 agent 的短命觀察工具：每個 run 預設進系統暫存目錄並帶 TTL；成功、失敗、abandoned 都可回收。只有明確 `--retain` 的 run 才能進 `build/ios-report/retained/`，矩陣只接受這種 promoted receipt。永久保存的是 fixture、selector/matrix 契約與小型 verdict；PNG、MP4、HTML、xcresult 僅在 run 存活期間使用。
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
 - 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300／360 秒），並以「test body 實測時間 + 啟動／artifact／teardown headroom」推導，不得只把全域上限調大。`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance；v25 已證明 test body 通過後仍可能被 120／180 秒 class allowance 殺掉。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
@@ -56,7 +56,7 @@ git status --short
 
 ### 1.1 多日收斂與 agent 分工
 
-P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修補。每一波固定經過：
+Active P3–P15 是一個持續數日的收斂計畫，不是 13 個獨立的像素修補。每一波固定經過：
 
 1. 根因／方案審查：重新讀報告圖、現行程式、既有測試與 UI World，先寫出 confirmed、candidate、blocked。
 2. 單一 ownership 實作：每個 agent 只擁有一個 P 區或一個明確的 fixture／evidence 工具檔案集合；不得跨線改測試來掩蓋失敗。
@@ -79,8 +79,8 @@ P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修�
 每個 requirement 的 `requiredFixtureIDs` 是可執行資料契約，不是測試註解。新增或修正 flow 時：
 
 - fixture 必須由 UI World／`FixtureDatasetStore` 注入，production code 不可為了截圖塞 hardcoded preview rows；test 開始時要能從 app log／AX 可觀察到 dataset identity。
-- rich dataset 至少覆蓋正常、空、載入、錯誤／重試、長文案、混合角色／狀態、邊界數值；每一個反例必須有獨立 state label 與 screenshot asset。
-- seed 的語意欄位要能驅動真實 projection，例如角色、review eligibility、due／unlearned、history、provider provenance、Reader preference、時計與 timezone；只改文字而不改狀態來源不算 injection。
+- rich dataset 至少覆蓋正常、空、載入、錯誤／重試、長文案、複習狀態組合、邊界數值；每一個反例必須有獨立 state label 與 screenshot asset。
+- seed 的語意欄位要能驅動真實 projection，例如 due／unlearned、history、Reader preference、時計與 timezone；只改文字而不改狀態來源不算 injection。
 - UI test 斷言投影後的 rows、counts、CTA、selection、error recovery 與 round-trip；截圖只證明畫面，不取代行為斷言。
 - 修改 UI World schema、seed 或 validator 時，必須同時跑 recursive inheritance／override／cross-reference tests，防止 host validator 與 runtime 解析器各自接受不同資料。
 

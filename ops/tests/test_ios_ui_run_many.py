@@ -49,6 +49,28 @@ def test_load_rejects_non_exact_selector(tmp_path: Path) -> None:
         load_methods(methods)
 
 
+@pytest.mark.parametrize("retired_requirement", ["P1", "P2"])
+def test_load_rejects_retired_requirements(tmp_path: Path, retired_requirement: str) -> None:
+    methods = tmp_path / "methods.json"
+    methods.write_text(
+        json.dumps(
+            {
+                "runs": [
+                    {
+                        "clusterID": "retired",
+                        "requirementID": retired_requirement,
+                        "selector": "RetiredTests/testRetired",
+                        "datasetID": "marketing_demo",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RunManyError, match="P3-P15"):
+        load_methods(methods)
+
+
 def test_classify_bundle_requires_contract(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     (bundle / "artifacts").mkdir(parents=True)

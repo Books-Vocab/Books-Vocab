@@ -72,14 +72,21 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             XCTAssertTrue(page.reviewStateOption("unlearned", labelPrefix: "未學習").label.contains("14"))
             XCTAssertTrue(page.reviewStateOption("due", labelPrefix: "待複習").label.contains("503"))
             XCTAssertTrue(page.reviewStateOption("reviewed", labelPrefix: "已複習").label.contains("127"))
-            captureStep("learning-review-menu-open", app: app)
+            captureStep("review-state-filter-open", app: app)
             page.selectReviewState("unlearned", labelPrefix: "未學習")
             XCTAssertTrue(page.visibleCount.label.contains("14"))
             XCTAssertTrue(page.row(word: "p11-review-word-001").waitUntilExists(timeout: 5))
             XCTAssertTrue(page.row(word: "p11-review-word-015").waitUntilGone(timeout: 5))
             page.selectReviewState("due", labelPrefix: "待複習")
             XCTAssertTrue(page.visibleCount.label.contains("517"), "multi-select must union 14 unlearned and 503 due rows")
-            XCTAssertTrue(page.waitForRowMaterialized(word: "p11-review-word-001"))
+            XCTAssertTrue(
+                page.reviewStateOption("unlearned", labelPrefix: "未學習").isSelected,
+                "union must retain the unlearned review-state selection"
+            )
+            XCTAssertTrue(
+                page.reviewStateOption("due", labelPrefix: "待複習").isSelected,
+                "union must add the due review-state selection"
+            )
             page.search("p11-review-word-015")
             XCTAssertTrue(page.visibleCount.label.contains("1"), "union must include a due row")
             XCTAssertTrue(page.waitForRowMaterialized(word: "p11-review-word-015"))

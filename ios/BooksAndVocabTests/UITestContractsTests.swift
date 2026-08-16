@@ -18,14 +18,10 @@ struct UITestContractsTests {
         )
     }
 
-    @Test func p11LaunchArgumentsRemainCanonicalAndDistinct() {
+    @Test func p11LaunchArgumentRemainsCanonicalAndDistinct() {
         #expect(
             UITestFixtureLaunchContract.vocabularyLibraryP11ReviewMix
                 == "-seedFixture:vocabulary:p11.644.reviewMix"
-        )
-        #expect(
-            UITestFixtureLaunchContract.vocabularyLibraryReviewStateMixed
-                == "-seedFixture:vocabulary:review.mixed"
         )
         #expect(
             UITestFixtureLaunchContract.vocabularyLibraryP11ReviewMix
