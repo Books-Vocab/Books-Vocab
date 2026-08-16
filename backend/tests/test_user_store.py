@@ -107,6 +107,7 @@ class TestNormalizeUsersPayload:
                     "review_mode": {
                         "mode": "relaxed",
                         "include_dictionary_cards": True,
+                        "includeDictionaryCards": False,
                     }
                 }
             }
@@ -166,4 +167,3 @@ class TestCollectAccountIdsForDeletion:
         assert canonical == "ghost_canonical"
         assert "u1" in ids
         assert "ghost_canonical" in ids
-
