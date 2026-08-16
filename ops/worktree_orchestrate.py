@@ -820,7 +820,8 @@ def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
 def plan_gates(changed_files: list[str],
                ops_test_exists: Callable[[str], bool] | None = None,
                base: str | None = None,
-               ops_tests_dir_exists: Callable[[], bool] | None = None) -> list[dict[str, Any]]:
+               ops_tests_dir_exists: Callable[[], bool] | None = None,
+               path_exists: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
     judgement the orchestrator owns; it never decides pass/fail itself.
 
@@ -862,9 +863,9 @@ def plan_gates(changed_files: list[str],
                            basename would report coverage by a test that never runs
                            the script. The remainder is named in a warn advisory
                            rather than left anonymous.
-                           `ops_test_exists` is injected by cmd_gate (anchored at the
-                           WORKTREE, so a test added in the same diff is seen); the pure
-                           default (None) cannot prove existence -> whole-suite fallback.
+                           `ops_test_exists` and `path_exists` are injected by cmd_gate
+                           (both anchored at the WORKTREE, so files added in the same diff
+                           are seen); the pure defaults remain conservative.
       **.yml | **.yaml  -> the tool that asserts it, per DATA_PLANE_OWNERS (ui_quality
                            _plane.yml -> its validate + its test; registry.yml ->
                            docs_lint.sh --registry). No universal syntax floor exists
@@ -1099,8 +1100,9 @@ def plan_gates(changed_files: list[str],
     # A deletion is a changed path, but it has no shell body left to parse, scan, or
     # route to a test. The real gate injects a worktree-anchored existence predicate;
     # the pure planner remains conservative when no predicate is supplied.
-    live_exists = ops_test_exists or (lambda rel: True)
-    ops_sh = [p for p in changed_files if p.endswith(".sh") and live_exists(p)]
+    shell_changed = [p for p in changed_files if p.endswith(".sh")]
+    live_exists = path_exists or (lambda rel: True)
+    ops_sh = [p for p in shell_changed if live_exists(p)]
     if ops_sh:
         gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
         # The cross-file layer (IMP-20260808-3bbfa2). The two layers below are
@@ -1267,7 +1269,7 @@ def plan_gates(changed_files: list[str],
                             ["ops/tests/test_docs_lint.sh"], "block"))
 
     covered: set[str] = set()
-    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml,
+    for bucket in (ios, ds, docs, backend, ops_py, shell_changed, data_yml,
                    backlog_entries, baselines, constitution_files):
         covered.update(bucket)
     cov = _coverage(changed_files, covered)
@@ -4063,7 +4065,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     plan = plan_gates(changed,
                       ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
                       base=args.base,
-                      ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir())
+                      ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir(),
+                      path_exists=lambda rel: (Path(worktree) / rel).is_file())
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     progress_path = _gate_progress_path(args.state, worktree)

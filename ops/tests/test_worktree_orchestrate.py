@@ -741,11 +741,14 @@ def test_deleted_shell_paths_do_not_create_untested_warning():
     deleted = {"ops/review_audit.sh", "ops/tests/test_review_audit.sh"}
     exists = lambda rel: rel not in deleted
 
-    names = _names(plan_gates(sorted(deleted), ops_test_exists=exists))
+    gates = plan_gates(sorted(deleted), ops_test_exists=lambda rel: False,
+                       path_exists=exists)
+    names = _names(gates)
 
     assert "ops-shell-syntax" not in names
     assert "ops-shell-scan" not in names
     assert "ops-shell-untested" not in names
+    assert deleted.isdisjoint(_by_name(gates)["coverage"]["uncovered"])
 
 
 def test_a_deleted_test_script_is_not_handed_back_to_the_runner():
