@@ -318,6 +318,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 customForgotMultiplier: mode.custom_forgot_multiplier,
                 customMinimumIntervalHours: mode.custom_minimum_interval_hours,
                 customMaximumIntervalHours: mode.custom_maximum_interval_hours,
+                includeDictionaryCards: mode.include_dictionary_cards,
                 updatedAt: mode.updated_at
             )
         )
@@ -454,6 +455,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                     custom_forgot_multiplier: newSnapshot.customForgotMultiplier,
                     custom_minimum_interval_hours: newSnapshot.customMinimumIntervalHours,
                     custom_maximum_interval_hours: newSnapshot.customMaximumIntervalHours,
+                    include_dictionary_cards: newSnapshot.includeDictionaryCards,
                     updated_at: newSnapshot.updatedAt
                 )
             )

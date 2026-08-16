@@ -97,7 +97,10 @@ extension KGService {
         // Captured before the payload is built so a review landing mid-request
         // stays dirty rather than being acknowledged as already-sent.
         let boundary = Date()
-        let payload = try await actor.buildReviewStatePushPayload()
+        let includeDictionaryCards = ReviewSettingsStore.shared.settings.includeDictionaryCards
+        let payload = try await actor.buildReviewStatePushPayload(
+            includeDictionaryCards: includeDictionaryCards
+        )
         guard !payload.isEmpty else { return (0, 0) }
 
         struct PushResponse: Decodable {
@@ -110,7 +113,10 @@ extension KGService {
             method: "PATCH",
             body: try JSONSerialization.data(withJSONObject: ["entries": payload])
         )
-        try await actor.markReviewStatesPushed(upTo: boundary)
+        try await actor.markReviewStatesPushed(
+            upTo: boundary,
+            includeDictionaryCards: includeDictionaryCards
+        )
         AppLog.kg.info("pushReviewStates: sent=\(payload.count), updated=\(result.updated), skipped=\(result.skipped)")
         return (result.updated, result.skipped)
     }

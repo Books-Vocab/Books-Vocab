@@ -77,7 +77,8 @@ struct KGVocabView: View {
         let projection = VocabularyEntryPresentation.project(
             syncedEntries,
             query: projectionQuery,
-            now: n
+            now: n,
+            includeDictionaryCards: reviewSettingsStore.settings.includeDictionaryCards
         )
 
         VocabSceneShell(phase: buildScenePhase()) {

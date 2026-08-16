@@ -58,7 +58,12 @@ final class TodayReviewState {
 
     // MARK: - Init
 
-    init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], currentUserID: String?) {
+    init(
+        entries: [VocabularyEntry],
+        allEntries: [VocabularyEntry],
+        currentUserID: String?,
+        includeDictionaryCards: Bool = false
+    ) {
         let _initStart = DispatchTime.now()
         Self.instanceCounter += 1
         self.instanceSeq = Self.instanceCounter
@@ -68,7 +73,9 @@ final class TodayReviewState {
         // decides whether killing the throwaway needs full ownership injection or just a
         // lazy `start()`. DispatchTime captures match the existing `_initStart` precedent.
         let _tLoad = DispatchTime.now()
-        let reviewEntries = entries.filter(\.shouldAppearInReview)
+        let reviewEntries = entries.filter {
+            $0.shouldAppearInReview(includingDictionaryCards: includeDictionaryCards)
+        }
         let ordered = ReviewSessionStore.loadOrder(
             availableEntries: reviewEntries,
             userID: currentUserID,

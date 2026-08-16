@@ -109,27 +109,62 @@ struct NotebookListContent: View {
         var totalUnlearned: Int = 0
     }
 
+    struct ReviewProjection {
+        let stats: [String: NotebookStats]
+        let due: [VocabularyEntry]
+        let unlearned: [VocabularyEntry]
+    }
+
+    static func makeReviewProjection(
+        allEntries: [VocabularyEntry],
+        pendingEntries: [VocabularyEntry],
+        notebooks: [Notebook],
+        reviewFilter: NotebookFilter,
+        now: Date,
+        includeDictionaryCards: Bool
+    ) -> ReviewProjection {
+        let stats = NotebookStatsCalculator.compute(
+            allEntries,
+            pendingEntries: pendingEntries,
+            now: now,
+            includeDictionaryCards: includeDictionaryCards
+        )
+        // The filter pill only renders with ≥2 notebooks. If a user filtered then deleted
+        // notebooks down to <2, the persisted filter must NOT keep silently hiding entries
+        // with no UI to clear it — apply an unfiltered view while keeping reviewFilter intact.
+        let effectiveFilter = notebooks.count >= 2 ? reviewFilter : NotebookFilter()
+        let filtered = NotebookStatsCalculator.filtered(
+            allEntries,
+            filter: effectiveFilter,
+            now: now,
+            includeDictionaryCards: includeDictionaryCards
+        )
+        return ReviewProjection(stats: stats, due: filtered.due, unlearned: filtered.unlearned)
+    }
+
     /// 計算 `ListModel`。被 detail/review cover 蓋住時（`covered`）回空結果，跳過 636-entry
     /// 的 `compute`/`filtered`/`sort`（Cost A，~80ms）。抽成獨立 method 讓 body 維持平凡
     /// 賦值——既好讀，也避開 Inject 熱重載對「@ViewBuilder body 內三元套 trailing-closure
     /// + `.value`」符號解析吐野指標而崩潰（dev-tool bug，非 production）。
     private func computeListModel(covered: Bool, reviewNow: Date) -> ListModel {
         guard !covered else { return ListModel() }
-        let stats = PerfLog.review.measure("notebookList.stats", "n=\(allEntries.count)") {
-            NotebookStatsCalculator.compute(allEntries, pendingEntries: pendingEntries, now: reviewNow)
+        let projection = PerfLog.review.measure("notebookList.stats", "n=\(allEntries.count)") {
+            Self.makeReviewProjection(
+                allEntries: allEntries,
+                pendingEntries: pendingEntries,
+                notebooks: notebooks,
+                reviewFilter: reviewFilter,
+                now: reviewNow,
+                includeDictionaryCards: reviewSettingsStore.settings.includeDictionaryCards
+            )
         }.value
-        // The filter pill only renders with ≥2 notebooks. If a user filtered then deleted
-        // notebooks down to <2, the persisted filter must NOT keep silently hiding entries
-        // with no UI to clear it — apply an unfiltered view while keeping reviewFilter intact.
-        let effectiveFilter = notebooks.count >= 2 ? reviewFilter : NotebookFilter()
-        let filtered = NotebookStatsCalculator.filtered(allEntries, filter: effectiveFilter, now: reviewNow)
         return ListModel(
-            stats: stats,
-            due: filtered.due,
-            unlearned: filtered.unlearned,
-            sortedNotebooks: sortOption.sort(notebooks, stats: stats),
-            totalDue: stats.values.reduce(0) { $0 + $1.dueCount },
-            totalUnlearned: stats.values.reduce(0) { $0 + $1.unlearnedCount }
+            stats: projection.stats,
+            due: projection.due,
+            unlearned: projection.unlearned,
+            sortedNotebooks: sortOption.sort(notebooks, stats: projection.stats),
+            totalDue: projection.stats.values.reduce(0) { $0 + $1.dueCount },
+            totalUnlearned: projection.stats.values.reduce(0) { $0 + $1.unlearnedCount }
         )
     }
 

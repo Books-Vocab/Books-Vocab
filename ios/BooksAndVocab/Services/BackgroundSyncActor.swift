@@ -524,14 +524,15 @@ actor BackgroundSyncActor {
     /// predicate because it compares two of the entry's own optional dates,
     /// which `#Predicate` does not express. The fetch is local and bounded by
     /// the library size; the payload and the round trip were the expensive part.
-    func buildReviewStatePushPayload() throws -> [[String: Any]] {
+    func buildReviewStatePushPayload(includeDictionaryCards: Bool = false) throws -> [[String: Any]] {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
         )
         let entries = try modelContext.fetch(descriptor).filter(\.needsReviewStatePush)
 
         var payload: [[String: Any]] = []
-        for entry in entries where entry.reviewEligible {
+        for entry in entries where entry.reviewEligible
+            || (includeDictionaryCards && entry.cardRole == .dictionary) {
             let lastReviewed = entry.lastReviewedAt ?? entry.dateAdded
             var item: [String: Any] = [
                 "word": entry.word,
@@ -556,12 +557,18 @@ actor BackgroundSyncActor {
     /// `boundary` is captured *before* the payload is built, so a review that
     /// lands while the request is in flight stays dirty and goes out next sync
     /// instead of being silently acknowledged as already-sent.
-    func markReviewStatesPushed(upTo boundary: Date) throws {
+    func markReviewStatesPushed(
+        upTo boundary: Date,
+        includeDictionaryCards: Bool = false
+    ) throws {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
         )
         var marked = 0
-        for entry in try modelContext.fetch(descriptor) where entry.needsReviewStatePush {
+        for entry in try modelContext.fetch(descriptor)
+            where entry.needsReviewStatePush
+            && (entry.reviewEligible
+                || (includeDictionaryCards && entry.cardRole == .dictionary)) {
             guard (entry.lastReviewedAt ?? entry.dateAdded) <= boundary else { continue }
             entry.reviewStateSyncedAt = boundary
             marked += 1
@@ -739,7 +746,7 @@ extension BackgroundSyncActor {
     /// The ordering makes a partially-drained history advance monotonically:
     /// batches are cut from this array, so a failed batch leaves a stable
     /// oldest-first remainder instead of re-shuffling on the next attempt.
-    func buildReviewEventsPushPayload() throws -> [KGReviewEventPayload] {
+    func buildReviewEventsPushPayload(includeDictionaryCards: Bool = false) throws -> [KGReviewEventPayload] {
         let descriptor = FetchDescriptor<ReviewRecord>(
             predicate: #Predicate<ReviewRecord> { $0.pushedAt == nil },
             sortBy: [SortDescriptor(\.reviewedAt, order: .forward)]
@@ -761,7 +768,11 @@ extension BackgroundSyncActor {
             // local row means eligibility cannot be inferred safely.
             let associatedEntry = record.entryID.flatMap { entriesByID[$0] }
                 ?? record.kgCardId.flatMap { entriesByCardID[$0] }
-            guard associatedEntry?.reviewEligible != false else { return nil }
+            if let associatedEntry {
+                guard associatedEntry.reviewEligible
+                    || (includeDictionaryCards && associatedEntry.cardRole == .dictionary)
+                else { return nil }
+            }
 
             // 優先用複習當下固化在事件上的 kgCardId(自包含,不退化)。只有 legacy 紀錄
             // (固化前)才回退舊的 entryID→entry→kgCardId 三段反查 —— 卡若已離場仍會是

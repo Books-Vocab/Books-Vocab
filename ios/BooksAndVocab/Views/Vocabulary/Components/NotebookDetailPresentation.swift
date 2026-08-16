@@ -13,6 +13,7 @@
 import SwiftUI
 
 struct NotebookDetailPresentation: ViewModifier {
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     let detailState: DetailRouter
     let allEntries: [VocabularyEntry]
     let currentUserID: String?
@@ -43,6 +44,7 @@ struct NotebookDetailPresentation: ViewModifier {
                     session: session,
                     allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
                     currentUserID: currentUserID,
+                    includeDictionaryCards: reviewSettingsStore.settings.includeDictionaryCards,
                     onClose: { detailState.dismiss() }
                 )
                 .toastOverlay()

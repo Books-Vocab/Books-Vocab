@@ -82,6 +82,26 @@ struct ReviewSettingsStoreModeSyncTests {
         #expect(cloud.double(forKey: "review_settings_mode_updated_at") != nil)
     }
 
+    @Test func dictionaryReviewSettingIsSyncedInModeGroup() throws {
+        let defaults = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        var settings = store.settings
+        settings.includeDictionaryCards = true
+        store.update(settings)
+
+        for json in [
+            defaults.data(forKey: "review_settings_custom_params"),
+            cloud.string(forKey: "review_settings_custom_params")?.data(using: .utf8),
+        ] {
+            let object = try #require(json.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any])
+            #expect(object["includeDictionaryCards"] as? Int == 1)
+        }
+
+        let restored = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        #expect(restored.settings.includeDictionaryCards)
+    }
+
     @Test func pauseChangeDoesNotAdvanceModeClock() {
         // 改 pause 不該動 mode 的 LWW 時戳,否則跨裝置誤判 mode 較新。
         let defaults = makeDefaults()
