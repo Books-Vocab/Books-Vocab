@@ -576,6 +576,12 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
   count=0
   [[ -f "$root/upload.count" ]] && count="$(<"$root/upload.count")"
   printf '%s\n' "$((count + 1))" > "$root/upload.count"
+  if [[ -n "${STUB_UPLOAD_SLEEP_SECS:-}" ]]; then
+    sleep "$STUB_UPLOAD_SLEEP_SECS"
+  fi
+  if [[ -n "${STUB_REMOTE_TAG:-}" ]]; then
+    git -C "$root" push -q origin "HEAD^:refs/tags/$STUB_REMOTE_TAG"
+  fi
 echo "stub upload invoked" >&2
 exit "${STUB_UPLOAD_EXIT:-0}"
 STUB
@@ -686,6 +692,13 @@ candidate_rpending="$(git -C "$fx_rpending" rev-parse HEAD)"
    && "$(git --git-dir="$remote_rpending" rev-parse refs/heads/main)" == "$candidate_rpending" ]] \
   && ok "ASC propagation miss retains candidate and does not create a false tag" \
   || fail_t "ASC propagation miss did not retain recoverable state: $pending_asc_out"
+pending_dry_rc=0
+pending_dry_out="$(bash "$fx_rpending/ops/release.sh" finalize ios 2.0.1 6 2>&1)" || pending_dry_rc=$?
+[[ "$pending_dry_rc" -eq 0 \
+   && -z "$(git -C "$fx_rpending" tag -l 'ios/2.0.1+6')" \
+   && "$pending_dry_out" == *"[dry-run] 未建立 tag"* ]] \
+  && ok "finalize recovery dry-run proves exact ASC without writing tag" \
+  || fail_t "finalize dry-run mutated or failed: $pending_dry_out"
 pending_finalize_rc=0
 pending_finalize_out="$(bash "$fx_rpending/ops/release.sh" finalize ios 2.0.1 6 --yes 2>&1)" || pending_finalize_rc=$?
 [[ "$pending_finalize_rc" -eq 0 \
@@ -693,6 +706,45 @@ pending_finalize_out="$(bash "$fx_rpending/ops/release.sh" finalize ios 2.0.1 6 
    && "$(git --git-dir="$remote_rpending" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_rpending" ]] \
   && ok "ASC propagation recovery finalizes without a second upload" \
   || fail_t "ASC propagation recovery failed: $pending_finalize_out"
+
+# 15c.2. finalize must recheck remote-only tag collisions after upload. The stub
+#      creates a conflicting remote tag between preflight and finalize.
+fx_remote_collision="$TMP4/remote-tag-collision"; remote_remote_collision="$TMP4/remote-tag-collision.git"
+make_ios_release_fixture "$fx_remote_collision" "$remote_remote_collision"
+head_remote_collision="$(git -C "$fx_remote_collision" rev-parse HEAD)"
+remote_collision_rc=0
+remote_collision_out="$(STUB_REMOTE_TAG=ios/2.0.1+6 bash "$fx_remote_collision/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || remote_collision_rc=$?
+candidate_remote_collision="$(git -C "$fx_remote_collision" rev-parse HEAD)"
+[[ "$remote_collision_rc" -ne 0 \
+   && "$(<"$fx_remote_collision/upload.count")" == 1 \
+   && -z "$(git -C "$fx_remote_collision" tag -l 'ios/2.0.1+6')" \
+   && "$(git --git-dir="$remote_remote_collision" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$head_remote_collision" \
+   && "$(git --git-dir="$remote_remote_collision" rev-parse refs/heads/main)" == "$candidate_remote_collision" ]] \
+  && ok "finalize refuses a remote-only conflicting tag after upload" \
+  || fail_t "remote-only tag collision was not fail-closed: $remote_collision_out"
+
+# 15c.3. A second release invocation must not pass preflight while the first
+#      transaction owns the shared release lock.
+fx_lock="$TMP4/release-lock"; remote_lock="$TMP4/release-lock.git"
+make_ios_release_fixture "$fx_lock" "$remote_lock"
+lock_first_out="$TMP4/release-lock-first.out"
+STUB_UPLOAD_SLEEP_SECS=2 bash "$fx_lock/ops/release.sh" release ios 2.0.1 --yes >"$lock_first_out" 2>&1 &
+lock_first_pid=$!
+for _ in {1..20}; do
+  [[ -d "$fx_lock/.git/kg-release.lock" ]] && break
+  sleep 0.1
+done
+lock_second_rc=0
+lock_second_out="$(bash "$fx_lock/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || lock_second_rc=$?
+lock_first_rc=0
+wait "$lock_first_pid" || lock_first_rc=$?
+[[ "$lock_first_rc" -eq 0 \
+   && "$lock_second_rc" -ne 0 \
+   && "$lock_second_out" == *"release lock"* \
+   && "$(<"$fx_lock/upload.count")" == 1 \
+   && "$(git --git-dir="$remote_lock" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$(git -C "$fx_lock" rev-parse HEAD)" ]] \
+  && ok "shared release lock prevents a concurrent duplicate upload" \
+  || fail_t "concurrent release was not serialized: first=$lock_first_rc second=$lock_second_out"
 
 # 15d. direct tag 也是外部 release marker，必須吃同一個 guard——否則 bump→tag 兩步
 #      就是一條繞過 release 的旁路。這裡用倒退版號當探針。
