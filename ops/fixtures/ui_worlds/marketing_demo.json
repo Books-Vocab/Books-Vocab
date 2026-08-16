@@ -37919,8 +37919,6 @@
       "entryOverrides": [
         {
           "word": "knowledge-word-01",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -37930,8 +37928,6 @@
         },
         {
           "word": "knowledge-word-02",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2019-12-31T00:00:00Z",
@@ -37941,8 +37937,6 @@
         },
         {
           "word": "knowledge-word-03",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2026-01-05T00:00:00Z",
@@ -37952,8 +37946,6 @@
         },
         {
           "word": "knowledge-word-04",
-          "cardRole": "dictionary",
-          "reviewEligible": false,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -37963,8 +37955,6 @@
         },
         {
           "word": "knowledge-word-05",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2019-12-31T00:00:00Z",
@@ -37974,8 +37964,6 @@
         },
         {
           "word": "knowledge-word-06",
-          "cardRole": "dictionary",
-          "reviewEligible": false,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -37985,8 +37973,6 @@
         },
         {
           "word": "knowledge-word-07",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -37996,8 +37982,6 @@
         },
         {
           "word": "knowledge-word-08",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 48,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2026-01-05T00:00:00Z",
@@ -38007,8 +37991,6 @@
         },
         {
           "word": "knowledge-word-09",
-          "cardRole": "dictionary",
-          "reviewEligible": false,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -38018,8 +38000,6 @@
         },
         {
           "word": "knowledge-word-10",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2019-12-31T00:00:00Z",
@@ -38029,8 +38009,6 @@
         },
         {
           "word": "knowledge-word-11",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 96,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2026-01-05T00:00:00Z",
@@ -38040,8 +38018,6 @@
         },
         {
           "word": "knowledge-word-12",
-          "cardRole": "dictionary",
-          "reviewEligible": false,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56904,8 +56880,6 @@
       "entryOverrides": [
         {
           "word": "p11-review-word-001",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56915,8 +56889,6 @@
         },
         {
           "word": "p11-review-word-002",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56926,8 +56898,6 @@
         },
         {
           "word": "p11-review-word-003",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56937,8 +56907,6 @@
         },
         {
           "word": "p11-review-word-004",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56948,8 +56916,6 @@
         },
         {
           "word": "p11-review-word-005",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56959,8 +56925,6 @@
         },
         {
           "word": "p11-review-word-006",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56970,8 +56934,6 @@
         },
         {
           "word": "p11-review-word-007",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56981,8 +56943,6 @@
         },
         {
           "word": "p11-review-word-008",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -56992,8 +56952,6 @@
         },
         {
           "word": "p11-review-word-009",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -57003,8 +56961,6 @@
         },
         {
           "word": "p11-review-word-010",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -57014,8 +56970,6 @@
         },
         {
           "word": "p11-review-word-011",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -57025,8 +56979,6 @@
         },
         {
           "word": "p11-review-word-012",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -57036,8 +56988,6 @@
         },
         {
           "word": "p11-review-word-013",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -57047,8 +56997,6 @@
         },
         {
           "word": "p11-review-word-014",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -57058,8 +57006,6 @@
         },
         {
           "word": "p11-review-word-015",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57069,8 +57015,6 @@
         },
         {
           "word": "p11-review-word-016",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57080,8 +57024,6 @@
         },
         {
           "word": "p11-review-word-017",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57091,8 +57033,6 @@
         },
         {
           "word": "p11-review-word-018",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57102,8 +57042,6 @@
         },
         {
           "word": "p11-review-word-019",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57113,8 +57051,6 @@
         },
         {
           "word": "p11-review-word-020",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57124,8 +57060,6 @@
         },
         {
           "word": "p11-review-word-021",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57135,8 +57069,6 @@
         },
         {
           "word": "p11-review-word-022",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57146,8 +57078,6 @@
         },
         {
           "word": "p11-review-word-023",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57157,8 +57087,6 @@
         },
         {
           "word": "p11-review-word-024",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57168,8 +57096,6 @@
         },
         {
           "word": "p11-review-word-025",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57179,8 +57105,6 @@
         },
         {
           "word": "p11-review-word-026",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57190,8 +57114,6 @@
         },
         {
           "word": "p11-review-word-027",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57201,8 +57123,6 @@
         },
         {
           "word": "p11-review-word-028",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57212,8 +57132,6 @@
         },
         {
           "word": "p11-review-word-029",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57223,8 +57141,6 @@
         },
         {
           "word": "p11-review-word-030",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57234,8 +57150,6 @@
         },
         {
           "word": "p11-review-word-031",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57245,8 +57159,6 @@
         },
         {
           "word": "p11-review-word-032",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57256,8 +57168,6 @@
         },
         {
           "word": "p11-review-word-033",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57267,8 +57177,6 @@
         },
         {
           "word": "p11-review-word-034",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57278,8 +57186,6 @@
         },
         {
           "word": "p11-review-word-035",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57289,8 +57195,6 @@
         },
         {
           "word": "p11-review-word-036",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57300,8 +57204,6 @@
         },
         {
           "word": "p11-review-word-037",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57311,8 +57213,6 @@
         },
         {
           "word": "p11-review-word-038",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57322,8 +57222,6 @@
         },
         {
           "word": "p11-review-word-039",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57333,8 +57231,6 @@
         },
         {
           "word": "p11-review-word-040",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57344,8 +57240,6 @@
         },
         {
           "word": "p11-review-word-041",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57355,8 +57249,6 @@
         },
         {
           "word": "p11-review-word-042",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57366,8 +57258,6 @@
         },
         {
           "word": "p11-review-word-043",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57377,8 +57267,6 @@
         },
         {
           "word": "p11-review-word-044",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57388,8 +57276,6 @@
         },
         {
           "word": "p11-review-word-045",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57399,8 +57285,6 @@
         },
         {
           "word": "p11-review-word-046",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57410,8 +57294,6 @@
         },
         {
           "word": "p11-review-word-047",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57421,8 +57303,6 @@
         },
         {
           "word": "p11-review-word-048",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57432,8 +57312,6 @@
         },
         {
           "word": "p11-review-word-049",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57443,8 +57321,6 @@
         },
         {
           "word": "p11-review-word-050",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57454,8 +57330,6 @@
         },
         {
           "word": "p11-review-word-051",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57465,8 +57339,6 @@
         },
         {
           "word": "p11-review-word-052",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57476,8 +57348,6 @@
         },
         {
           "word": "p11-review-word-053",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57487,8 +57357,6 @@
         },
         {
           "word": "p11-review-word-054",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57498,8 +57366,6 @@
         },
         {
           "word": "p11-review-word-055",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57509,8 +57375,6 @@
         },
         {
           "word": "p11-review-word-056",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57520,8 +57384,6 @@
         },
         {
           "word": "p11-review-word-057",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57531,8 +57393,6 @@
         },
         {
           "word": "p11-review-word-058",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57542,8 +57402,6 @@
         },
         {
           "word": "p11-review-word-059",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57553,8 +57411,6 @@
         },
         {
           "word": "p11-review-word-060",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57564,8 +57420,6 @@
         },
         {
           "word": "p11-review-word-061",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57575,8 +57429,6 @@
         },
         {
           "word": "p11-review-word-062",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57586,8 +57438,6 @@
         },
         {
           "word": "p11-review-word-063",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57597,8 +57447,6 @@
         },
         {
           "word": "p11-review-word-064",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57608,8 +57456,6 @@
         },
         {
           "word": "p11-review-word-065",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57619,8 +57465,6 @@
         },
         {
           "word": "p11-review-word-066",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57630,8 +57474,6 @@
         },
         {
           "word": "p11-review-word-067",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57641,8 +57483,6 @@
         },
         {
           "word": "p11-review-word-068",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57652,8 +57492,6 @@
         },
         {
           "word": "p11-review-word-069",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57663,8 +57501,6 @@
         },
         {
           "word": "p11-review-word-070",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57674,8 +57510,6 @@
         },
         {
           "word": "p11-review-word-071",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57685,8 +57519,6 @@
         },
         {
           "word": "p11-review-word-072",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57696,8 +57528,6 @@
         },
         {
           "word": "p11-review-word-073",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57707,8 +57537,6 @@
         },
         {
           "word": "p11-review-word-074",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57718,8 +57546,6 @@
         },
         {
           "word": "p11-review-word-075",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57729,8 +57555,6 @@
         },
         {
           "word": "p11-review-word-076",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57740,8 +57564,6 @@
         },
         {
           "word": "p11-review-word-077",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57751,8 +57573,6 @@
         },
         {
           "word": "p11-review-word-078",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57762,8 +57582,6 @@
         },
         {
           "word": "p11-review-word-079",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57773,8 +57591,6 @@
         },
         {
           "word": "p11-review-word-080",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57784,8 +57600,6 @@
         },
         {
           "word": "p11-review-word-081",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57795,8 +57609,6 @@
         },
         {
           "word": "p11-review-word-082",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57806,8 +57618,6 @@
         },
         {
           "word": "p11-review-word-083",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57817,8 +57627,6 @@
         },
         {
           "word": "p11-review-word-084",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57828,8 +57636,6 @@
         },
         {
           "word": "p11-review-word-085",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57839,8 +57645,6 @@
         },
         {
           "word": "p11-review-word-086",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57850,8 +57654,6 @@
         },
         {
           "word": "p11-review-word-087",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57861,8 +57663,6 @@
         },
         {
           "word": "p11-review-word-088",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57872,8 +57672,6 @@
         },
         {
           "word": "p11-review-word-089",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57883,8 +57681,6 @@
         },
         {
           "word": "p11-review-word-090",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57894,8 +57690,6 @@
         },
         {
           "word": "p11-review-word-091",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57905,8 +57699,6 @@
         },
         {
           "word": "p11-review-word-092",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57916,8 +57708,6 @@
         },
         {
           "word": "p11-review-word-093",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57927,8 +57717,6 @@
         },
         {
           "word": "p11-review-word-094",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57938,8 +57726,6 @@
         },
         {
           "word": "p11-review-word-095",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57949,8 +57735,6 @@
         },
         {
           "word": "p11-review-word-096",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57960,8 +57744,6 @@
         },
         {
           "word": "p11-review-word-097",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57971,8 +57753,6 @@
         },
         {
           "word": "p11-review-word-098",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57982,8 +57762,6 @@
         },
         {
           "word": "p11-review-word-099",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -57993,8 +57771,6 @@
         },
         {
           "word": "p11-review-word-100",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58004,8 +57780,6 @@
         },
         {
           "word": "p11-review-word-101",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58015,8 +57789,6 @@
         },
         {
           "word": "p11-review-word-102",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58026,8 +57798,6 @@
         },
         {
           "word": "p11-review-word-103",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58037,8 +57807,6 @@
         },
         {
           "word": "p11-review-word-104",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58048,8 +57816,6 @@
         },
         {
           "word": "p11-review-word-105",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58059,8 +57825,6 @@
         },
         {
           "word": "p11-review-word-106",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58070,8 +57834,6 @@
         },
         {
           "word": "p11-review-word-107",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58081,8 +57843,6 @@
         },
         {
           "word": "p11-review-word-108",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58092,8 +57852,6 @@
         },
         {
           "word": "p11-review-word-109",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58103,8 +57861,6 @@
         },
         {
           "word": "p11-review-word-110",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58114,8 +57870,6 @@
         },
         {
           "word": "p11-review-word-111",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58125,8 +57879,6 @@
         },
         {
           "word": "p11-review-word-112",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58136,8 +57888,6 @@
         },
         {
           "word": "p11-review-word-113",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58147,8 +57897,6 @@
         },
         {
           "word": "p11-review-word-114",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58158,8 +57906,6 @@
         },
         {
           "word": "p11-review-word-115",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58169,8 +57915,6 @@
         },
         {
           "word": "p11-review-word-116",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58180,8 +57924,6 @@
         },
         {
           "word": "p11-review-word-117",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58191,8 +57933,6 @@
         },
         {
           "word": "p11-review-word-118",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58202,8 +57942,6 @@
         },
         {
           "word": "p11-review-word-119",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58213,8 +57951,6 @@
         },
         {
           "word": "p11-review-word-120",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58224,8 +57960,6 @@
         },
         {
           "word": "p11-review-word-121",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58235,8 +57969,6 @@
         },
         {
           "word": "p11-review-word-122",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58246,8 +57978,6 @@
         },
         {
           "word": "p11-review-word-123",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58257,8 +57987,6 @@
         },
         {
           "word": "p11-review-word-124",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58268,8 +57996,6 @@
         },
         {
           "word": "p11-review-word-125",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58279,8 +58005,6 @@
         },
         {
           "word": "p11-review-word-126",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58290,8 +58014,6 @@
         },
         {
           "word": "p11-review-word-127",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58301,8 +58023,6 @@
         },
         {
           "word": "p11-review-word-128",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58312,8 +58032,6 @@
         },
         {
           "word": "p11-review-word-129",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58323,8 +58041,6 @@
         },
         {
           "word": "p11-review-word-130",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58334,8 +58050,6 @@
         },
         {
           "word": "p11-review-word-131",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58345,8 +58059,6 @@
         },
         {
           "word": "p11-review-word-132",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58356,8 +58068,6 @@
         },
         {
           "word": "p11-review-word-133",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58367,8 +58077,6 @@
         },
         {
           "word": "p11-review-word-134",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58378,8 +58086,6 @@
         },
         {
           "word": "p11-review-word-135",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58389,8 +58095,6 @@
         },
         {
           "word": "p11-review-word-136",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58400,8 +58104,6 @@
         },
         {
           "word": "p11-review-word-137",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58411,8 +58113,6 @@
         },
         {
           "word": "p11-review-word-138",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58422,8 +58122,6 @@
         },
         {
           "word": "p11-review-word-139",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58433,8 +58131,6 @@
         },
         {
           "word": "p11-review-word-140",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58444,8 +58140,6 @@
         },
         {
           "word": "p11-review-word-141",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58455,8 +58149,6 @@
         },
         {
           "word": "p11-review-word-142",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58466,8 +58158,6 @@
         },
         {
           "word": "p11-review-word-143",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58477,8 +58167,6 @@
         },
         {
           "word": "p11-review-word-144",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58488,8 +58176,6 @@
         },
         {
           "word": "p11-review-word-145",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58499,8 +58185,6 @@
         },
         {
           "word": "p11-review-word-146",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58510,8 +58194,6 @@
         },
         {
           "word": "p11-review-word-147",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58521,8 +58203,6 @@
         },
         {
           "word": "p11-review-word-148",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58532,8 +58212,6 @@
         },
         {
           "word": "p11-review-word-149",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58543,8 +58221,6 @@
         },
         {
           "word": "p11-review-word-150",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58554,8 +58230,6 @@
         },
         {
           "word": "p11-review-word-151",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58565,8 +58239,6 @@
         },
         {
           "word": "p11-review-word-152",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58576,8 +58248,6 @@
         },
         {
           "word": "p11-review-word-153",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58587,8 +58257,6 @@
         },
         {
           "word": "p11-review-word-154",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58598,8 +58266,6 @@
         },
         {
           "word": "p11-review-word-155",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58609,8 +58275,6 @@
         },
         {
           "word": "p11-review-word-156",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58620,8 +58284,6 @@
         },
         {
           "word": "p11-review-word-157",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58631,8 +58293,6 @@
         },
         {
           "word": "p11-review-word-158",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58642,8 +58302,6 @@
         },
         {
           "word": "p11-review-word-159",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58653,8 +58311,6 @@
         },
         {
           "word": "p11-review-word-160",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58664,8 +58320,6 @@
         },
         {
           "word": "p11-review-word-161",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58675,8 +58329,6 @@
         },
         {
           "word": "p11-review-word-162",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58686,8 +58338,6 @@
         },
         {
           "word": "p11-review-word-163",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58697,8 +58347,6 @@
         },
         {
           "word": "p11-review-word-164",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58708,8 +58356,6 @@
         },
         {
           "word": "p11-review-word-165",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58719,8 +58365,6 @@
         },
         {
           "word": "p11-review-word-166",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58730,8 +58374,6 @@
         },
         {
           "word": "p11-review-word-167",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58741,8 +58383,6 @@
         },
         {
           "word": "p11-review-word-168",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58752,8 +58392,6 @@
         },
         {
           "word": "p11-review-word-169",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58763,8 +58401,6 @@
         },
         {
           "word": "p11-review-word-170",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58774,8 +58410,6 @@
         },
         {
           "word": "p11-review-word-171",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58785,8 +58419,6 @@
         },
         {
           "word": "p11-review-word-172",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58796,8 +58428,6 @@
         },
         {
           "word": "p11-review-word-173",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58807,8 +58437,6 @@
         },
         {
           "word": "p11-review-word-174",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58818,8 +58446,6 @@
         },
         {
           "word": "p11-review-word-175",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58829,8 +58455,6 @@
         },
         {
           "word": "p11-review-word-176",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58840,8 +58464,6 @@
         },
         {
           "word": "p11-review-word-177",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58851,8 +58473,6 @@
         },
         {
           "word": "p11-review-word-178",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58862,8 +58482,6 @@
         },
         {
           "word": "p11-review-word-179",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58873,8 +58491,6 @@
         },
         {
           "word": "p11-review-word-180",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58884,8 +58500,6 @@
         },
         {
           "word": "p11-review-word-181",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58895,8 +58509,6 @@
         },
         {
           "word": "p11-review-word-182",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58906,8 +58518,6 @@
         },
         {
           "word": "p11-review-word-183",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58917,8 +58527,6 @@
         },
         {
           "word": "p11-review-word-184",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58928,8 +58536,6 @@
         },
         {
           "word": "p11-review-word-185",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58939,8 +58545,6 @@
         },
         {
           "word": "p11-review-word-186",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58950,8 +58554,6 @@
         },
         {
           "word": "p11-review-word-187",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58961,8 +58563,6 @@
         },
         {
           "word": "p11-review-word-188",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58972,8 +58572,6 @@
         },
         {
           "word": "p11-review-word-189",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58983,8 +58581,6 @@
         },
         {
           "word": "p11-review-word-190",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -58994,8 +58590,6 @@
         },
         {
           "word": "p11-review-word-191",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59005,8 +58599,6 @@
         },
         {
           "word": "p11-review-word-192",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59016,8 +58608,6 @@
         },
         {
           "word": "p11-review-word-193",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59027,8 +58617,6 @@
         },
         {
           "word": "p11-review-word-194",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59038,8 +58626,6 @@
         },
         {
           "word": "p11-review-word-195",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59049,8 +58635,6 @@
         },
         {
           "word": "p11-review-word-196",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59060,8 +58644,6 @@
         },
         {
           "word": "p11-review-word-197",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59071,8 +58653,6 @@
         },
         {
           "word": "p11-review-word-198",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59082,8 +58662,6 @@
         },
         {
           "word": "p11-review-word-199",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59093,8 +58671,6 @@
         },
         {
           "word": "p11-review-word-200",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59104,8 +58680,6 @@
         },
         {
           "word": "p11-review-word-201",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59115,8 +58689,6 @@
         },
         {
           "word": "p11-review-word-202",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59126,8 +58698,6 @@
         },
         {
           "word": "p11-review-word-203",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59137,8 +58707,6 @@
         },
         {
           "word": "p11-review-word-204",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59148,8 +58716,6 @@
         },
         {
           "word": "p11-review-word-205",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59159,8 +58725,6 @@
         },
         {
           "word": "p11-review-word-206",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59170,8 +58734,6 @@
         },
         {
           "word": "p11-review-word-207",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59181,8 +58743,6 @@
         },
         {
           "word": "p11-review-word-208",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59192,8 +58752,6 @@
         },
         {
           "word": "p11-review-word-209",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59203,8 +58761,6 @@
         },
         {
           "word": "p11-review-word-210",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59214,8 +58770,6 @@
         },
         {
           "word": "p11-review-word-211",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59225,8 +58779,6 @@
         },
         {
           "word": "p11-review-word-212",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59236,8 +58788,6 @@
         },
         {
           "word": "p11-review-word-213",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59247,8 +58797,6 @@
         },
         {
           "word": "p11-review-word-214",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59258,8 +58806,6 @@
         },
         {
           "word": "p11-review-word-215",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59269,8 +58815,6 @@
         },
         {
           "word": "p11-review-word-216",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59280,8 +58824,6 @@
         },
         {
           "word": "p11-review-word-217",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59291,8 +58833,6 @@
         },
         {
           "word": "p11-review-word-218",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59302,8 +58842,6 @@
         },
         {
           "word": "p11-review-word-219",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59313,8 +58851,6 @@
         },
         {
           "word": "p11-review-word-220",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59324,8 +58860,6 @@
         },
         {
           "word": "p11-review-word-221",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59335,8 +58869,6 @@
         },
         {
           "word": "p11-review-word-222",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59346,8 +58878,6 @@
         },
         {
           "word": "p11-review-word-223",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59357,8 +58887,6 @@
         },
         {
           "word": "p11-review-word-224",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59368,8 +58896,6 @@
         },
         {
           "word": "p11-review-word-225",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59379,8 +58905,6 @@
         },
         {
           "word": "p11-review-word-226",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59390,8 +58914,6 @@
         },
         {
           "word": "p11-review-word-227",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59401,8 +58923,6 @@
         },
         {
           "word": "p11-review-word-228",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59412,8 +58932,6 @@
         },
         {
           "word": "p11-review-word-229",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59423,8 +58941,6 @@
         },
         {
           "word": "p11-review-word-230",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59434,8 +58950,6 @@
         },
         {
           "word": "p11-review-word-231",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59445,8 +58959,6 @@
         },
         {
           "word": "p11-review-word-232",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59456,8 +58968,6 @@
         },
         {
           "word": "p11-review-word-233",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59467,8 +58977,6 @@
         },
         {
           "word": "p11-review-word-234",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59478,8 +58986,6 @@
         },
         {
           "word": "p11-review-word-235",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59489,8 +58995,6 @@
         },
         {
           "word": "p11-review-word-236",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59500,8 +59004,6 @@
         },
         {
           "word": "p11-review-word-237",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59511,8 +59013,6 @@
         },
         {
           "word": "p11-review-word-238",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59522,8 +59022,6 @@
         },
         {
           "word": "p11-review-word-239",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59533,8 +59031,6 @@
         },
         {
           "word": "p11-review-word-240",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59544,8 +59040,6 @@
         },
         {
           "word": "p11-review-word-241",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59555,8 +59049,6 @@
         },
         {
           "word": "p11-review-word-242",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59566,8 +59058,6 @@
         },
         {
           "word": "p11-review-word-243",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59577,8 +59067,6 @@
         },
         {
           "word": "p11-review-word-244",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59588,8 +59076,6 @@
         },
         {
           "word": "p11-review-word-245",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59599,8 +59085,6 @@
         },
         {
           "word": "p11-review-word-246",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59610,8 +59094,6 @@
         },
         {
           "word": "p11-review-word-247",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59621,8 +59103,6 @@
         },
         {
           "word": "p11-review-word-248",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59632,8 +59112,6 @@
         },
         {
           "word": "p11-review-word-249",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59643,8 +59121,6 @@
         },
         {
           "word": "p11-review-word-250",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59654,8 +59130,6 @@
         },
         {
           "word": "p11-review-word-251",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59665,8 +59139,6 @@
         },
         {
           "word": "p11-review-word-252",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59676,8 +59148,6 @@
         },
         {
           "word": "p11-review-word-253",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59687,8 +59157,6 @@
         },
         {
           "word": "p11-review-word-254",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59698,8 +59166,6 @@
         },
         {
           "word": "p11-review-word-255",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59709,8 +59175,6 @@
         },
         {
           "word": "p11-review-word-256",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59720,8 +59184,6 @@
         },
         {
           "word": "p11-review-word-257",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59731,8 +59193,6 @@
         },
         {
           "word": "p11-review-word-258",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59742,8 +59202,6 @@
         },
         {
           "word": "p11-review-word-259",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59753,8 +59211,6 @@
         },
         {
           "word": "p11-review-word-260",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59764,8 +59220,6 @@
         },
         {
           "word": "p11-review-word-261",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59775,8 +59229,6 @@
         },
         {
           "word": "p11-review-word-262",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59786,8 +59238,6 @@
         },
         {
           "word": "p11-review-word-263",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59797,8 +59247,6 @@
         },
         {
           "word": "p11-review-word-264",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59808,8 +59256,6 @@
         },
         {
           "word": "p11-review-word-265",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59819,8 +59265,6 @@
         },
         {
           "word": "p11-review-word-266",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59830,8 +59274,6 @@
         },
         {
           "word": "p11-review-word-267",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59841,8 +59283,6 @@
         },
         {
           "word": "p11-review-word-268",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59852,8 +59292,6 @@
         },
         {
           "word": "p11-review-word-269",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59863,8 +59301,6 @@
         },
         {
           "word": "p11-review-word-270",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59874,8 +59310,6 @@
         },
         {
           "word": "p11-review-word-271",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59885,8 +59319,6 @@
         },
         {
           "word": "p11-review-word-272",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59896,8 +59328,6 @@
         },
         {
           "word": "p11-review-word-273",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59907,8 +59337,6 @@
         },
         {
           "word": "p11-review-word-274",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59918,8 +59346,6 @@
         },
         {
           "word": "p11-review-word-275",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59929,8 +59355,6 @@
         },
         {
           "word": "p11-review-word-276",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59940,8 +59364,6 @@
         },
         {
           "word": "p11-review-word-277",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59951,8 +59373,6 @@
         },
         {
           "word": "p11-review-word-278",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59962,8 +59382,6 @@
         },
         {
           "word": "p11-review-word-279",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59973,8 +59391,6 @@
         },
         {
           "word": "p11-review-word-280",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59984,8 +59400,6 @@
         },
         {
           "word": "p11-review-word-281",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -59995,8 +59409,6 @@
         },
         {
           "word": "p11-review-word-282",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60006,8 +59418,6 @@
         },
         {
           "word": "p11-review-word-283",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60017,8 +59427,6 @@
         },
         {
           "word": "p11-review-word-284",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60028,8 +59436,6 @@
         },
         {
           "word": "p11-review-word-285",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60039,8 +59445,6 @@
         },
         {
           "word": "p11-review-word-286",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60050,8 +59454,6 @@
         },
         {
           "word": "p11-review-word-287",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60061,8 +59463,6 @@
         },
         {
           "word": "p11-review-word-288",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60072,8 +59472,6 @@
         },
         {
           "word": "p11-review-word-289",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60083,8 +59481,6 @@
         },
         {
           "word": "p11-review-word-290",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60094,8 +59490,6 @@
         },
         {
           "word": "p11-review-word-291",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60105,8 +59499,6 @@
         },
         {
           "word": "p11-review-word-292",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60116,8 +59508,6 @@
         },
         {
           "word": "p11-review-word-293",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60127,8 +59517,6 @@
         },
         {
           "word": "p11-review-word-294",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60138,8 +59526,6 @@
         },
         {
           "word": "p11-review-word-295",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60149,8 +59535,6 @@
         },
         {
           "word": "p11-review-word-296",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60160,8 +59544,6 @@
         },
         {
           "word": "p11-review-word-297",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60171,8 +59553,6 @@
         },
         {
           "word": "p11-review-word-298",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60182,8 +59562,6 @@
         },
         {
           "word": "p11-review-word-299",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60193,8 +59571,6 @@
         },
         {
           "word": "p11-review-word-300",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60204,8 +59580,6 @@
         },
         {
           "word": "p11-review-word-301",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60215,8 +59589,6 @@
         },
         {
           "word": "p11-review-word-302",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60226,8 +59598,6 @@
         },
         {
           "word": "p11-review-word-303",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60237,8 +59607,6 @@
         },
         {
           "word": "p11-review-word-304",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60248,8 +59616,6 @@
         },
         {
           "word": "p11-review-word-305",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60259,8 +59625,6 @@
         },
         {
           "word": "p11-review-word-306",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60270,8 +59634,6 @@
         },
         {
           "word": "p11-review-word-307",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60281,8 +59643,6 @@
         },
         {
           "word": "p11-review-word-308",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60292,8 +59652,6 @@
         },
         {
           "word": "p11-review-word-309",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60303,8 +59661,6 @@
         },
         {
           "word": "p11-review-word-310",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60314,8 +59670,6 @@
         },
         {
           "word": "p11-review-word-311",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60325,8 +59679,6 @@
         },
         {
           "word": "p11-review-word-312",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60336,8 +59688,6 @@
         },
         {
           "word": "p11-review-word-313",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60347,8 +59697,6 @@
         },
         {
           "word": "p11-review-word-314",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60358,8 +59706,6 @@
         },
         {
           "word": "p11-review-word-315",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60369,8 +59715,6 @@
         },
         {
           "word": "p11-review-word-316",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60380,8 +59724,6 @@
         },
         {
           "word": "p11-review-word-317",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60391,8 +59733,6 @@
         },
         {
           "word": "p11-review-word-318",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60402,8 +59742,6 @@
         },
         {
           "word": "p11-review-word-319",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60413,8 +59751,6 @@
         },
         {
           "word": "p11-review-word-320",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60424,8 +59760,6 @@
         },
         {
           "word": "p11-review-word-321",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60435,8 +59769,6 @@
         },
         {
           "word": "p11-review-word-322",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60446,8 +59778,6 @@
         },
         {
           "word": "p11-review-word-323",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60457,8 +59787,6 @@
         },
         {
           "word": "p11-review-word-324",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60468,8 +59796,6 @@
         },
         {
           "word": "p11-review-word-325",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60479,8 +59805,6 @@
         },
         {
           "word": "p11-review-word-326",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60490,8 +59814,6 @@
         },
         {
           "word": "p11-review-word-327",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60501,8 +59823,6 @@
         },
         {
           "word": "p11-review-word-328",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60512,8 +59832,6 @@
         },
         {
           "word": "p11-review-word-329",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60523,8 +59841,6 @@
         },
         {
           "word": "p11-review-word-330",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60534,8 +59850,6 @@
         },
         {
           "word": "p11-review-word-331",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60545,8 +59859,6 @@
         },
         {
           "word": "p11-review-word-332",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60556,8 +59868,6 @@
         },
         {
           "word": "p11-review-word-333",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60567,8 +59877,6 @@
         },
         {
           "word": "p11-review-word-334",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60578,8 +59886,6 @@
         },
         {
           "word": "p11-review-word-335",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60589,8 +59895,6 @@
         },
         {
           "word": "p11-review-word-336",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60600,8 +59904,6 @@
         },
         {
           "word": "p11-review-word-337",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60611,8 +59913,6 @@
         },
         {
           "word": "p11-review-word-338",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60622,8 +59922,6 @@
         },
         {
           "word": "p11-review-word-339",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60633,8 +59931,6 @@
         },
         {
           "word": "p11-review-word-340",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60644,8 +59940,6 @@
         },
         {
           "word": "p11-review-word-341",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60655,8 +59949,6 @@
         },
         {
           "word": "p11-review-word-342",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60666,8 +59958,6 @@
         },
         {
           "word": "p11-review-word-343",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60677,8 +59967,6 @@
         },
         {
           "word": "p11-review-word-344",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60688,8 +59976,6 @@
         },
         {
           "word": "p11-review-word-345",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60699,8 +59985,6 @@
         },
         {
           "word": "p11-review-word-346",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60710,8 +59994,6 @@
         },
         {
           "word": "p11-review-word-347",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60721,8 +60003,6 @@
         },
         {
           "word": "p11-review-word-348",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60732,8 +60012,6 @@
         },
         {
           "word": "p11-review-word-349",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60743,8 +60021,6 @@
         },
         {
           "word": "p11-review-word-350",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60754,8 +60030,6 @@
         },
         {
           "word": "p11-review-word-351",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60765,8 +60039,6 @@
         },
         {
           "word": "p11-review-word-352",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60776,8 +60048,6 @@
         },
         {
           "word": "p11-review-word-353",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60787,8 +60057,6 @@
         },
         {
           "word": "p11-review-word-354",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60798,8 +60066,6 @@
         },
         {
           "word": "p11-review-word-355",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60809,8 +60075,6 @@
         },
         {
           "word": "p11-review-word-356",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60820,8 +60084,6 @@
         },
         {
           "word": "p11-review-word-357",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60831,8 +60093,6 @@
         },
         {
           "word": "p11-review-word-358",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60842,8 +60102,6 @@
         },
         {
           "word": "p11-review-word-359",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60853,8 +60111,6 @@
         },
         {
           "word": "p11-review-word-360",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60864,8 +60120,6 @@
         },
         {
           "word": "p11-review-word-361",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60875,8 +60129,6 @@
         },
         {
           "word": "p11-review-word-362",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60886,8 +60138,6 @@
         },
         {
           "word": "p11-review-word-363",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60897,8 +60147,6 @@
         },
         {
           "word": "p11-review-word-364",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60908,8 +60156,6 @@
         },
         {
           "word": "p11-review-word-365",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60919,8 +60165,6 @@
         },
         {
           "word": "p11-review-word-366",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60930,8 +60174,6 @@
         },
         {
           "word": "p11-review-word-367",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60941,8 +60183,6 @@
         },
         {
           "word": "p11-review-word-368",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60952,8 +60192,6 @@
         },
         {
           "word": "p11-review-word-369",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60963,8 +60201,6 @@
         },
         {
           "word": "p11-review-word-370",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60974,8 +60210,6 @@
         },
         {
           "word": "p11-review-word-371",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60985,8 +60219,6 @@
         },
         {
           "word": "p11-review-word-372",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -60996,8 +60228,6 @@
         },
         {
           "word": "p11-review-word-373",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61007,8 +60237,6 @@
         },
         {
           "word": "p11-review-word-374",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61018,8 +60246,6 @@
         },
         {
           "word": "p11-review-word-375",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61029,8 +60255,6 @@
         },
         {
           "word": "p11-review-word-376",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61040,8 +60264,6 @@
         },
         {
           "word": "p11-review-word-377",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61051,8 +60273,6 @@
         },
         {
           "word": "p11-review-word-378",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61062,8 +60282,6 @@
         },
         {
           "word": "p11-review-word-379",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61073,8 +60291,6 @@
         },
         {
           "word": "p11-review-word-380",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61084,8 +60300,6 @@
         },
         {
           "word": "p11-review-word-381",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61095,8 +60309,6 @@
         },
         {
           "word": "p11-review-word-382",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61106,8 +60318,6 @@
         },
         {
           "word": "p11-review-word-383",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61117,8 +60327,6 @@
         },
         {
           "word": "p11-review-word-384",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61128,8 +60336,6 @@
         },
         {
           "word": "p11-review-word-385",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61139,8 +60345,6 @@
         },
         {
           "word": "p11-review-word-386",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61150,8 +60354,6 @@
         },
         {
           "word": "p11-review-word-387",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61161,8 +60363,6 @@
         },
         {
           "word": "p11-review-word-388",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61172,8 +60372,6 @@
         },
         {
           "word": "p11-review-word-389",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61183,8 +60381,6 @@
         },
         {
           "word": "p11-review-word-390",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61194,8 +60390,6 @@
         },
         {
           "word": "p11-review-word-391",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61205,8 +60399,6 @@
         },
         {
           "word": "p11-review-word-392",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61216,8 +60408,6 @@
         },
         {
           "word": "p11-review-word-393",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61227,8 +60417,6 @@
         },
         {
           "word": "p11-review-word-394",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61238,8 +60426,6 @@
         },
         {
           "word": "p11-review-word-395",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61249,8 +60435,6 @@
         },
         {
           "word": "p11-review-word-396",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61260,8 +60444,6 @@
         },
         {
           "word": "p11-review-word-397",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61271,8 +60453,6 @@
         },
         {
           "word": "p11-review-word-398",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61282,8 +60462,6 @@
         },
         {
           "word": "p11-review-word-399",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61293,8 +60471,6 @@
         },
         {
           "word": "p11-review-word-400",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61304,8 +60480,6 @@
         },
         {
           "word": "p11-review-word-401",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61315,8 +60489,6 @@
         },
         {
           "word": "p11-review-word-402",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61326,8 +60498,6 @@
         },
         {
           "word": "p11-review-word-403",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61337,8 +60507,6 @@
         },
         {
           "word": "p11-review-word-404",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61348,8 +60516,6 @@
         },
         {
           "word": "p11-review-word-405",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61359,8 +60525,6 @@
         },
         {
           "word": "p11-review-word-406",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61370,8 +60534,6 @@
         },
         {
           "word": "p11-review-word-407",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61381,8 +60543,6 @@
         },
         {
           "word": "p11-review-word-408",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61392,8 +60552,6 @@
         },
         {
           "word": "p11-review-word-409",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61403,8 +60561,6 @@
         },
         {
           "word": "p11-review-word-410",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61414,8 +60570,6 @@
         },
         {
           "word": "p11-review-word-411",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61425,8 +60579,6 @@
         },
         {
           "word": "p11-review-word-412",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61436,8 +60588,6 @@
         },
         {
           "word": "p11-review-word-413",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61447,8 +60597,6 @@
         },
         {
           "word": "p11-review-word-414",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61458,8 +60606,6 @@
         },
         {
           "word": "p11-review-word-415",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61469,8 +60615,6 @@
         },
         {
           "word": "p11-review-word-416",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61480,8 +60624,6 @@
         },
         {
           "word": "p11-review-word-417",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61491,8 +60633,6 @@
         },
         {
           "word": "p11-review-word-418",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61502,8 +60642,6 @@
         },
         {
           "word": "p11-review-word-419",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61513,8 +60651,6 @@
         },
         {
           "word": "p11-review-word-420",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61524,8 +60660,6 @@
         },
         {
           "word": "p11-review-word-421",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61535,8 +60669,6 @@
         },
         {
           "word": "p11-review-word-422",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61546,8 +60678,6 @@
         },
         {
           "word": "p11-review-word-423",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61557,8 +60687,6 @@
         },
         {
           "word": "p11-review-word-424",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61568,8 +60696,6 @@
         },
         {
           "word": "p11-review-word-425",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61579,8 +60705,6 @@
         },
         {
           "word": "p11-review-word-426",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61590,8 +60714,6 @@
         },
         {
           "word": "p11-review-word-427",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61601,8 +60723,6 @@
         },
         {
           "word": "p11-review-word-428",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61612,8 +60732,6 @@
         },
         {
           "word": "p11-review-word-429",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61623,8 +60741,6 @@
         },
         {
           "word": "p11-review-word-430",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61634,8 +60750,6 @@
         },
         {
           "word": "p11-review-word-431",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61645,8 +60759,6 @@
         },
         {
           "word": "p11-review-word-432",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61656,8 +60768,6 @@
         },
         {
           "word": "p11-review-word-433",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61667,8 +60777,6 @@
         },
         {
           "word": "p11-review-word-434",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61678,8 +60786,6 @@
         },
         {
           "word": "p11-review-word-435",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61689,8 +60795,6 @@
         },
         {
           "word": "p11-review-word-436",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61700,8 +60804,6 @@
         },
         {
           "word": "p11-review-word-437",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61711,8 +60813,6 @@
         },
         {
           "word": "p11-review-word-438",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61722,8 +60822,6 @@
         },
         {
           "word": "p11-review-word-439",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61733,8 +60831,6 @@
         },
         {
           "word": "p11-review-word-440",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61744,8 +60840,6 @@
         },
         {
           "word": "p11-review-word-441",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61755,8 +60849,6 @@
         },
         {
           "word": "p11-review-word-442",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61766,8 +60858,6 @@
         },
         {
           "word": "p11-review-word-443",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61777,8 +60867,6 @@
         },
         {
           "word": "p11-review-word-444",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61788,8 +60876,6 @@
         },
         {
           "word": "p11-review-word-445",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61799,8 +60885,6 @@
         },
         {
           "word": "p11-review-word-446",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61810,8 +60894,6 @@
         },
         {
           "word": "p11-review-word-447",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61821,8 +60903,6 @@
         },
         {
           "word": "p11-review-word-448",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61832,8 +60912,6 @@
         },
         {
           "word": "p11-review-word-449",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61843,8 +60921,6 @@
         },
         {
           "word": "p11-review-word-450",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61854,8 +60930,6 @@
         },
         {
           "word": "p11-review-word-451",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61865,8 +60939,6 @@
         },
         {
           "word": "p11-review-word-452",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61876,8 +60948,6 @@
         },
         {
           "word": "p11-review-word-453",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61887,8 +60957,6 @@
         },
         {
           "word": "p11-review-word-454",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61898,8 +60966,6 @@
         },
         {
           "word": "p11-review-word-455",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61909,8 +60975,6 @@
         },
         {
           "word": "p11-review-word-456",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61920,8 +60984,6 @@
         },
         {
           "word": "p11-review-word-457",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61931,8 +60993,6 @@
         },
         {
           "word": "p11-review-word-458",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61942,8 +61002,6 @@
         },
         {
           "word": "p11-review-word-459",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61953,8 +61011,6 @@
         },
         {
           "word": "p11-review-word-460",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61964,8 +61020,6 @@
         },
         {
           "word": "p11-review-word-461",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61975,8 +61029,6 @@
         },
         {
           "word": "p11-review-word-462",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61986,8 +61038,6 @@
         },
         {
           "word": "p11-review-word-463",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -61997,8 +61047,6 @@
         },
         {
           "word": "p11-review-word-464",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62008,8 +61056,6 @@
         },
         {
           "word": "p11-review-word-465",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62019,8 +61065,6 @@
         },
         {
           "word": "p11-review-word-466",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62030,8 +61074,6 @@
         },
         {
           "word": "p11-review-word-467",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62041,8 +61083,6 @@
         },
         {
           "word": "p11-review-word-468",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62052,8 +61092,6 @@
         },
         {
           "word": "p11-review-word-469",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62063,8 +61101,6 @@
         },
         {
           "word": "p11-review-word-470",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62074,8 +61110,6 @@
         },
         {
           "word": "p11-review-word-471",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62085,8 +61119,6 @@
         },
         {
           "word": "p11-review-word-472",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62096,8 +61128,6 @@
         },
         {
           "word": "p11-review-word-473",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62107,8 +61137,6 @@
         },
         {
           "word": "p11-review-word-474",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62118,8 +61146,6 @@
         },
         {
           "word": "p11-review-word-475",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62129,8 +61155,6 @@
         },
         {
           "word": "p11-review-word-476",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62140,8 +61164,6 @@
         },
         {
           "word": "p11-review-word-477",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62151,8 +61173,6 @@
         },
         {
           "word": "p11-review-word-478",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62162,8 +61182,6 @@
         },
         {
           "word": "p11-review-word-479",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62173,8 +61191,6 @@
         },
         {
           "word": "p11-review-word-480",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62184,8 +61200,6 @@
         },
         {
           "word": "p11-review-word-481",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62195,8 +61209,6 @@
         },
         {
           "word": "p11-review-word-482",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62206,8 +61218,6 @@
         },
         {
           "word": "p11-review-word-483",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62217,8 +61227,6 @@
         },
         {
           "word": "p11-review-word-484",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62228,8 +61236,6 @@
         },
         {
           "word": "p11-review-word-485",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62239,8 +61245,6 @@
         },
         {
           "word": "p11-review-word-486",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62250,8 +61254,6 @@
         },
         {
           "word": "p11-review-word-487",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62261,8 +61263,6 @@
         },
         {
           "word": "p11-review-word-488",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62272,8 +61272,6 @@
         },
         {
           "word": "p11-review-word-489",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62283,8 +61281,6 @@
         },
         {
           "word": "p11-review-word-490",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62294,8 +61290,6 @@
         },
         {
           "word": "p11-review-word-491",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62305,8 +61299,6 @@
         },
         {
           "word": "p11-review-word-492",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62316,8 +61308,6 @@
         },
         {
           "word": "p11-review-word-493",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62327,8 +61317,6 @@
         },
         {
           "word": "p11-review-word-494",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62338,8 +61326,6 @@
         },
         {
           "word": "p11-review-word-495",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62349,8 +61335,6 @@
         },
         {
           "word": "p11-review-word-496",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62360,8 +61344,6 @@
         },
         {
           "word": "p11-review-word-497",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62371,8 +61353,6 @@
         },
         {
           "word": "p11-review-word-498",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62382,8 +61362,6 @@
         },
         {
           "word": "p11-review-word-499",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62393,8 +61371,6 @@
         },
         {
           "word": "p11-review-word-500",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62404,8 +61380,6 @@
         },
         {
           "word": "p11-review-word-501",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62415,8 +61389,6 @@
         },
         {
           "word": "p11-review-word-502",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62426,8 +61398,6 @@
         },
         {
           "word": "p11-review-word-503",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62437,8 +61407,6 @@
         },
         {
           "word": "p11-review-word-504",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62448,8 +61416,6 @@
         },
         {
           "word": "p11-review-word-505",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62459,8 +61425,6 @@
         },
         {
           "word": "p11-review-word-506",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62470,8 +61434,6 @@
         },
         {
           "word": "p11-review-word-507",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62481,8 +61443,6 @@
         },
         {
           "word": "p11-review-word-508",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62492,8 +61452,6 @@
         },
         {
           "word": "p11-review-word-509",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62503,8 +61461,6 @@
         },
         {
           "word": "p11-review-word-510",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62514,8 +61470,6 @@
         },
         {
           "word": "p11-review-word-511",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62525,8 +61479,6 @@
         },
         {
           "word": "p11-review-word-512",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62536,8 +61488,6 @@
         },
         {
           "word": "p11-review-word-513",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62547,8 +61497,6 @@
         },
         {
           "word": "p11-review-word-514",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62558,8 +61506,6 @@
         },
         {
           "word": "p11-review-word-515",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62569,8 +61515,6 @@
         },
         {
           "word": "p11-review-word-516",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62580,8 +61524,6 @@
         },
         {
           "word": "p11-review-word-517",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2020-01-01T00:00:00Z",
           "lastReviewedAt": "2020-01-01T00:00:00Z",
@@ -62591,8 +61533,6 @@
         },
         {
           "word": "p11-review-word-518",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62602,8 +61542,6 @@
         },
         {
           "word": "p11-review-word-519",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62613,8 +61551,6 @@
         },
         {
           "word": "p11-review-word-520",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62624,8 +61560,6 @@
         },
         {
           "word": "p11-review-word-521",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62635,8 +61569,6 @@
         },
         {
           "word": "p11-review-word-522",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62646,8 +61578,6 @@
         },
         {
           "word": "p11-review-word-523",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62657,8 +61587,6 @@
         },
         {
           "word": "p11-review-word-524",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62668,8 +61596,6 @@
         },
         {
           "word": "p11-review-word-525",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62679,8 +61605,6 @@
         },
         {
           "word": "p11-review-word-526",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62690,8 +61614,6 @@
         },
         {
           "word": "p11-review-word-527",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62701,8 +61623,6 @@
         },
         {
           "word": "p11-review-word-528",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62712,8 +61632,6 @@
         },
         {
           "word": "p11-review-word-529",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62723,8 +61641,6 @@
         },
         {
           "word": "p11-review-word-530",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62734,8 +61650,6 @@
         },
         {
           "word": "p11-review-word-531",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62745,8 +61659,6 @@
         },
         {
           "word": "p11-review-word-532",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62756,8 +61668,6 @@
         },
         {
           "word": "p11-review-word-533",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62767,8 +61677,6 @@
         },
         {
           "word": "p11-review-word-534",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62778,8 +61686,6 @@
         },
         {
           "word": "p11-review-word-535",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62789,8 +61695,6 @@
         },
         {
           "word": "p11-review-word-536",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62800,8 +61704,6 @@
         },
         {
           "word": "p11-review-word-537",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62811,8 +61713,6 @@
         },
         {
           "word": "p11-review-word-538",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62822,8 +61722,6 @@
         },
         {
           "word": "p11-review-word-539",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62833,8 +61731,6 @@
         },
         {
           "word": "p11-review-word-540",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62844,8 +61740,6 @@
         },
         {
           "word": "p11-review-word-541",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62855,8 +61749,6 @@
         },
         {
           "word": "p11-review-word-542",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62866,8 +61758,6 @@
         },
         {
           "word": "p11-review-word-543",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62877,8 +61767,6 @@
         },
         {
           "word": "p11-review-word-544",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62888,8 +61776,6 @@
         },
         {
           "word": "p11-review-word-545",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62899,8 +61785,6 @@
         },
         {
           "word": "p11-review-word-546",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62910,8 +61794,6 @@
         },
         {
           "word": "p11-review-word-547",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62921,8 +61803,6 @@
         },
         {
           "word": "p11-review-word-548",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62932,8 +61812,6 @@
         },
         {
           "word": "p11-review-word-549",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62943,8 +61821,6 @@
         },
         {
           "word": "p11-review-word-550",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62954,8 +61830,6 @@
         },
         {
           "word": "p11-review-word-551",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62965,8 +61839,6 @@
         },
         {
           "word": "p11-review-word-552",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62976,8 +61848,6 @@
         },
         {
           "word": "p11-review-word-553",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62987,8 +61857,6 @@
         },
         {
           "word": "p11-review-word-554",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -62998,8 +61866,6 @@
         },
         {
           "word": "p11-review-word-555",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63009,8 +61875,6 @@
         },
         {
           "word": "p11-review-word-556",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63020,8 +61884,6 @@
         },
         {
           "word": "p11-review-word-557",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63031,8 +61893,6 @@
         },
         {
           "word": "p11-review-word-558",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63042,8 +61902,6 @@
         },
         {
           "word": "p11-review-word-559",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63053,8 +61911,6 @@
         },
         {
           "word": "p11-review-word-560",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63064,8 +61920,6 @@
         },
         {
           "word": "p11-review-word-561",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63075,8 +61929,6 @@
         },
         {
           "word": "p11-review-word-562",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63086,8 +61938,6 @@
         },
         {
           "word": "p11-review-word-563",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63097,8 +61947,6 @@
         },
         {
           "word": "p11-review-word-564",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63108,8 +61956,6 @@
         },
         {
           "word": "p11-review-word-565",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63119,8 +61965,6 @@
         },
         {
           "word": "p11-review-word-566",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63130,8 +61974,6 @@
         },
         {
           "word": "p11-review-word-567",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63141,8 +61983,6 @@
         },
         {
           "word": "p11-review-word-568",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63152,8 +61992,6 @@
         },
         {
           "word": "p11-review-word-569",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63163,8 +62001,6 @@
         },
         {
           "word": "p11-review-word-570",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63174,8 +62010,6 @@
         },
         {
           "word": "p11-review-word-571",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63185,8 +62019,6 @@
         },
         {
           "word": "p11-review-word-572",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63196,8 +62028,6 @@
         },
         {
           "word": "p11-review-word-573",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63207,8 +62037,6 @@
         },
         {
           "word": "p11-review-word-574",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63218,8 +62046,6 @@
         },
         {
           "word": "p11-review-word-575",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63229,8 +62055,6 @@
         },
         {
           "word": "p11-review-word-576",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63240,8 +62064,6 @@
         },
         {
           "word": "p11-review-word-577",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63251,8 +62073,6 @@
         },
         {
           "word": "p11-review-word-578",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63262,8 +62082,6 @@
         },
         {
           "word": "p11-review-word-579",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63273,8 +62091,6 @@
         },
         {
           "word": "p11-review-word-580",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63284,8 +62100,6 @@
         },
         {
           "word": "p11-review-word-581",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63295,8 +62109,6 @@
         },
         {
           "word": "p11-review-word-582",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63306,8 +62118,6 @@
         },
         {
           "word": "p11-review-word-583",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63317,8 +62127,6 @@
         },
         {
           "word": "p11-review-word-584",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63328,8 +62136,6 @@
         },
         {
           "word": "p11-review-word-585",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63339,8 +62145,6 @@
         },
         {
           "word": "p11-review-word-586",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63350,8 +62154,6 @@
         },
         {
           "word": "p11-review-word-587",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63361,8 +62163,6 @@
         },
         {
           "word": "p11-review-word-588",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63372,8 +62172,6 @@
         },
         {
           "word": "p11-review-word-589",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63383,8 +62181,6 @@
         },
         {
           "word": "p11-review-word-590",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63394,8 +62190,6 @@
         },
         {
           "word": "p11-review-word-591",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63405,8 +62199,6 @@
         },
         {
           "word": "p11-review-word-592",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63416,8 +62208,6 @@
         },
         {
           "word": "p11-review-word-593",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63427,8 +62217,6 @@
         },
         {
           "word": "p11-review-word-594",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63438,8 +62226,6 @@
         },
         {
           "word": "p11-review-word-595",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63449,8 +62235,6 @@
         },
         {
           "word": "p11-review-word-596",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63460,8 +62244,6 @@
         },
         {
           "word": "p11-review-word-597",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63471,8 +62253,6 @@
         },
         {
           "word": "p11-review-word-598",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63482,8 +62262,6 @@
         },
         {
           "word": "p11-review-word-599",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63493,8 +62271,6 @@
         },
         {
           "word": "p11-review-word-600",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63504,8 +62280,6 @@
         },
         {
           "word": "p11-review-word-601",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63515,8 +62289,6 @@
         },
         {
           "word": "p11-review-word-602",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63526,8 +62298,6 @@
         },
         {
           "word": "p11-review-word-603",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63537,8 +62307,6 @@
         },
         {
           "word": "p11-review-word-604",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63548,8 +62316,6 @@
         },
         {
           "word": "p11-review-word-605",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63559,8 +62325,6 @@
         },
         {
           "word": "p11-review-word-606",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63570,8 +62334,6 @@
         },
         {
           "word": "p11-review-word-607",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63581,8 +62343,6 @@
         },
         {
           "word": "p11-review-word-608",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63592,8 +62352,6 @@
         },
         {
           "word": "p11-review-word-609",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63603,8 +62361,6 @@
         },
         {
           "word": "p11-review-word-610",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63614,8 +62370,6 @@
         },
         {
           "word": "p11-review-word-611",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63625,8 +62379,6 @@
         },
         {
           "word": "p11-review-word-612",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63636,8 +62388,6 @@
         },
         {
           "word": "p11-review-word-613",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63647,8 +62397,6 @@
         },
         {
           "word": "p11-review-word-614",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63658,8 +62406,6 @@
         },
         {
           "word": "p11-review-word-615",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63669,8 +62415,6 @@
         },
         {
           "word": "p11-review-word-616",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63680,8 +62424,6 @@
         },
         {
           "word": "p11-review-word-617",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63691,8 +62433,6 @@
         },
         {
           "word": "p11-review-word-618",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63702,8 +62442,6 @@
         },
         {
           "word": "p11-review-word-619",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63713,8 +62451,6 @@
         },
         {
           "word": "p11-review-word-620",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63724,8 +62460,6 @@
         },
         {
           "word": "p11-review-word-621",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63735,8 +62469,6 @@
         },
         {
           "word": "p11-review-word-622",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63746,8 +62478,6 @@
         },
         {
           "word": "p11-review-word-623",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63757,8 +62487,6 @@
         },
         {
           "word": "p11-review-word-624",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63768,8 +62496,6 @@
         },
         {
           "word": "p11-review-word-625",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63779,8 +62505,6 @@
         },
         {
           "word": "p11-review-word-626",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63790,8 +62514,6 @@
         },
         {
           "word": "p11-review-word-627",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63801,8 +62523,6 @@
         },
         {
           "word": "p11-review-word-628",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63812,8 +62532,6 @@
         },
         {
           "word": "p11-review-word-629",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63823,8 +62541,6 @@
         },
         {
           "word": "p11-review-word-630",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63834,8 +62550,6 @@
         },
         {
           "word": "p11-review-word-631",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63845,8 +62559,6 @@
         },
         {
           "word": "p11-review-word-632",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63856,8 +62568,6 @@
         },
         {
           "word": "p11-review-word-633",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63867,8 +62577,6 @@
         },
         {
           "word": "p11-review-word-634",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63878,8 +62586,6 @@
         },
         {
           "word": "p11-review-word-635",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63889,8 +62595,6 @@
         },
         {
           "word": "p11-review-word-636",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63900,8 +62604,6 @@
         },
         {
           "word": "p11-review-word-637",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63911,8 +62613,6 @@
         },
         {
           "word": "p11-review-word-638",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63922,8 +62622,6 @@
         },
         {
           "word": "p11-review-word-639",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63933,8 +62631,6 @@
         },
         {
           "word": "p11-review-word-640",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63944,8 +62640,6 @@
         },
         {
           "word": "p11-review-word-641",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63955,8 +62649,6 @@
         },
         {
           "word": "p11-review-word-642",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63966,8 +62658,6 @@
         },
         {
           "word": "p11-review-word-643",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -63977,8 +62667,6 @@
         },
         {
           "word": "p11-review-word-644",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": "2098-12-01T00:00:00Z",
@@ -64115,8 +62803,6 @@
       "entryOverrides": [
         {
           "word": "p11-review-word-001",
-          "cardRole": "dictionary",
-          "reviewEligible": false,
           "reviewIntervalHours": 12,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -64126,8 +62812,6 @@
         },
         {
           "word": "p11-review-word-002",
-          "cardRole": "dictionary",
-          "reviewEligible": false,
           "reviewIntervalHours": 24,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -64137,8 +62821,6 @@
         },
         {
           "word": "p11-review-word-003",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 72,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
@@ -64148,8 +62830,6 @@
         },
         {
           "word": "p11-review-word-004",
-          "cardRole": "learning",
-          "reviewEligible": true,
           "reviewIntervalHours": 0,
           "nextReviewAt": "2099-01-01T00:00:00Z",
           "lastReviewedAt": null,
