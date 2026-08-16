@@ -100,11 +100,16 @@ def select_exact_build(
     matches: list[dict] = []
     for item in data:
         if not isinstance(item, dict):
-            continue
+            raise AscBuildError("ASC build lookup response has malformed data entry")
+        if item.get("type") != "builds":
+            raise AscBuildError("ASC build lookup response has unexpected resource type")
         attrs = item.get("attributes")
         if not isinstance(attrs, dict):
-            continue
-        if str(attrs.get("version", "")) != str(build_number):
+            raise AscBuildError("ASC build lookup response has malformed data entry attributes")
+        build_version = attrs.get("version")
+        if not isinstance(build_version, str) or not build_version:
+            raise AscBuildError("ASC build lookup response has invalid build version")
+        if build_version != str(build_number):
             continue
         prerelease = _pre_release_attributes(payload, item)
         if prerelease["platform"] != "IOS" or prerelease["version"] != marketing_version:
