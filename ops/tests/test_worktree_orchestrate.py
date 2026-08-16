@@ -8965,6 +8965,7 @@ def test_close_wave_recovery_real_subprocess_wiring(
     gate_path.write_text(json.dumps({
         "schema": MODULE.GATE_SCHEMA, "step": "gate", "worktree": str(integration),
         "base": "main", "head_sha": integration_tip, "verdict": "pass",
+        "plan": [],
         "gates": [], "orchestrator": MODULE._orchestrator_identity(str(integration)),
     }, indent=2) + "\n", encoding="utf-8")
 
