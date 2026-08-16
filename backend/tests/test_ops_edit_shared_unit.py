@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -93,7 +95,10 @@ class TestBackupUserDir:
     def test_creates_backup(self, tmp_path):
         user_dir = tmp_path / "users" / "u1"
         user_dir.mkdir(parents=True)
-        (user_dir / "cards.db").write_text("")
+        conn = sqlite3.connect(user_dir / "cards.db")
+        conn.execute("CREATE TABLE card (content TEXT)")
+        conn.commit()
+        conn.close()
         (tmp_path / "users.json").write_text('{"u1": {"email": "u1@test.com"}}')
 
         path = shared.backup_user_dir(tmp_path, "u1")
@@ -111,6 +116,38 @@ class TestBackupUserDir:
         assert p1 != p2
         assert p1.exists()
         assert p2.exists()
+
+    def test_wal_sidecar_churn_is_not_archived(self, tmp_path, monkeypatch):
+        user_dir = tmp_path / "users" / "u1"
+        user_dir.mkdir(parents=True)
+        (tmp_path / "users.json").write_text('{"u1": {}}')
+        db = user_dir / "cards.db"
+        conn = sqlite3.connect(db)
+        try:
+            assert conn.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() == "wal"
+            conn.execute("CREATE TABLE card (content TEXT)")
+            conn.execute("INSERT INTO card VALUES ('stable')")
+            conn.commit()
+            assert (user_dir / "cards.db-wal").exists()
+            assert (user_dir / "cards.db-shm").exists()
+
+            original_gettarinfo = tarfile.TarFile.gettarinfo
+
+            def fail_if_sidecar_is_statted(tar, name, arcname=None, fileobj=None):
+                if Path(name).name in {"cards.db-wal", "cards.db-shm"}:
+                    raise FileNotFoundError(2, "sidecar disappeared", name)
+                return original_gettarinfo(tar, name, arcname, fileobj)
+
+            monkeypatch.setattr(tarfile.TarFile, "gettarinfo", fail_if_sidecar_is_statted)
+            backup = shared.backup_user_dir(tmp_path, "u1")
+        finally:
+            conn.close()
+
+        assert backup is not None and backup.exists()
+        with tarfile.open(backup) as archive:
+            names = archive.getnames()
+        assert "u1/cards.db" in names
+        assert not any(name.endswith((".db-wal", ".db-shm", ".db-journal")) for name in names)
 
 
 # ── backup_world ─────────────────────────────────────────────────────────
@@ -243,6 +280,34 @@ class TestEditContext:
         assert rc == 1
         out = capsys.readouterr().out
         assert "error" in out
+
+    def test_backup_failure_is_structured_and_skips_apply(self, tmp_path, monkeypatch, capsys):
+        dd = self._setup(tmp_path)
+        monkeypatch.setattr(
+            shared,
+            "backup_user_dir",
+            lambda *_args: (_ for _ in ()).throw(OSError("sidecar snapshot race")),
+        )
+        applied = False
+
+        def apply_fn():
+            nonlocal applied
+            applied = True
+            return {"unexpected": True}
+
+        ctx = shared.EditContext(data_dir=dd, uid="u1", commit=True, json_mode=True)
+        rc = ctx.run(action="test", plan={"x": 1}, apply_fn=apply_fn)
+
+        assert rc == 1
+        assert applied is False
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["mode"] == "error"
+        assert payload["committed"] is False
+        assert payload["data_mutated"] is False
+        assert payload["failure_stage"] == "backup"
+        assert payload["verified"]["ok"] is False
+        assert payload["verified"]["stage"] == "backup"
+        assert "result" not in payload
 
     def test_destructive_apply_raises_reports_mutation_and_recovery(self, tmp_path, capsys):
         dd = self._setup(tmp_path)
