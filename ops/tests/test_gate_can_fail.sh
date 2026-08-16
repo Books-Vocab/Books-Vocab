@@ -76,6 +76,8 @@ PROOFS=(
   "ops-shell-scan|cheap|cheap|two throwaway tracked trees driven through the real ops/shell_scan.sh: one with a \$VAR abutting full-width punctuation, one without"
   "ops-python-scan|cheap|cheap|a duplicate function fixture versus a clean Python fixture driven through ops/python_scan.py"
   "data-plane|fixture|fixture|no fixed tool either: the yml's declared owner IS the command (DATA_PLANE_OWNERS), so what is provable here is that this family propagates its owner's exit code — driven through _run_gate against an owner that exits 4"
+  "official-decks-check|expensive|journal|fixed-set official-deck drift check; green is read from recorded gate history"
+  "agent-constitution|expensive|journal|root agent constitution contract check; green is read from recorded gate history"
   "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
   "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
   "ios-test-unit|expensive|journal|ops/tests/test_ios_run_verdict.sh false-green section"

@@ -4112,30 +4112,46 @@ def test_gate_record_carries_orchestrator_identity(scratch):
      ("warn", MODULE.EXIT_OK)],
 )
 @gitmark
-def test_gate_stops_after_nonpassing_review_preflight(
+def test_gate_stops_after_nonpassing_preflight(
         scratch, monkeypatch, preflight_status, expected_rc):
-    """A cheap receipt failure must not launch later expensive gates."""
+    """A typed cheap preflight failure must not launch later expensive gates."""
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "preflight-reg.json")
     wt = _open_wt(state, slug="review-preflight")
     source = Path(wt) / "ops" / "tests" / "test_worktree_orchestrate.py"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("# preflight fixture\n", encoding="utf-8")
-    review_tool = Path(wt) / "ops" / "review_audit.sh"
-    review_tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     _git(["add", "-A"], wt)
     _git(["commit", "-qm", "change orchestrator"], wt)
 
     calls = []
+
+    preflight = {
+        "name": "cheap-preflight",
+        "category": "meta",
+        "level": "block",
+        "preflight": True,
+        "cmd": ["true"],
+    }
+    expensive = {
+        "name": "expensive-follow-up",
+        "category": "ops",
+        "level": "block",
+        "cmd": ["false"],
+    }
+
+    monkeypatch.setattr(MODULE, "plan_gates", lambda *args, **kwargs: [
+        preflight, expensive,
+    ])
 
     def fake_run_gate(spec, worktree, *, record_path=None, state=None):
         calls.append(spec["name"])
         return {
             "name": spec["name"], "category": spec["category"],
             "level": spec["level"],
-            "status": preflight_status if spec["name"] == "review-receipts" else "pass",
-            "rc": 2 if spec["name"] == "review-receipts" else 0,
-            "summary": "stubbed preflight" if spec["name"] == "review-receipts"
+            "status": preflight_status if spec["name"] == "cheap-preflight" else "pass",
+            "rc": 2 if spec["name"] == "cheap-preflight" else 0,
+            "summary": "stubbed preflight" if spec["name"] == "cheap-preflight"
                        else "should not run",
         }
 
@@ -4143,8 +4159,8 @@ def test_gate_stops_after_nonpassing_review_preflight(
     rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
 
     assert rc == expected_rc
-    assert calls == ["review-receipts"]
-    assert gate["gates"][0]["name"] == "review-receipts"
+    assert calls == ["cheap-preflight"]
+    assert gate["gates"][0]["name"] == "cheap-preflight"
     assert gate["gates"][0]["status"] == preflight_status
     assert len(gate["gates"]) == 1
     progress = json.loads(
