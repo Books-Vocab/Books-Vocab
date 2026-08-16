@@ -27,6 +27,10 @@ final class TodayReviewGapUITests: UITestCase {
     /// background slot inflates it by the card-height delta (100pt+), so a
     /// generous 44pt threshold cleanly separates healthy from bug.
     private static let gapThreshold: CGFloat = 44
+    /// The grading toolbar is the last sibling in the full-screen review
+    /// column. A collapsed root column leaves this much more space below the
+    /// buttons than the safe-area/home-indicator inset should allow.
+    private static let toolbarBottomSlackThreshold: CGFloat = 120
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -41,6 +45,16 @@ final class TodayReviewGapUITests: UITestCase {
         let cardHeight: CGFloat
         let cardMaxY: CGFloat
         let zoneMinY: CGFloat
+    }
+
+    private struct ToolbarSample {
+        let index: Int
+        let face: String
+        let word: String
+        let buttonMaxY: CGFloat
+        let appMaxY: CGFloat
+
+        var bottomSlack: CGFloat { appMaxY - buttonMaxY }
     }
 
     @MainActor
@@ -125,6 +139,103 @@ final class TodayReviewGapUITests: UITestCase {
                 + offenders.map {
                     "  card[\($0.index)] \($0.word) gap=\(String(format: "%.1f", $0.gap))pt"
                         + " (cardH=\(String(format: "%.1f", $0.cardHeight)))"
+                }.joined(separator: "\n")
+                + "\n全表:\n" + table
+        )
+    }
+
+    /// Regression for the reported screenshot: after a reveal/advance cycle,
+    /// the outer review column can be recomputed at intrinsic content height.
+    /// The card and grading toolbar then move upward together, leaving a large
+    /// empty area below the buttons. Assert the toolbar in both face states so
+    /// a fix cannot only mask the front-stage transition.
+    @MainActor
+    func testGradingToolbarRemainsAttachedToBottomAcrossFaceTransitions() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.notebookReviewDeckVaried],
+            perfLog: "review"
+        )
+        captureStep("launch", app: app)
+
+        let notebook = AppPage(app: app).goToNotebooks()
+        guard notebook.notebookCard(id: Self.notebookCardID).waitUntilExists(timeout: 10),
+              notebook.reviewCTAButton.waitUntilExists(timeout: 10) else {
+            captureStep("review-not-ready", app: app)
+            XCTFail("varied review deck 應能進入 Today Review")
+            return
+        }
+        let review = notebook.startReview()
+        guard review.progressLabel.waitUntilExists(timeout: 10) else {
+            captureStep("review-not-started", app: app)
+            XCTFail("Today Review progress label 缺席")
+            return
+        }
+
+        var samples: [ToolbarSample] = []
+        for i in 0..<Self.deckSize {
+            guard review.cardFront.waitUntilExists(timeout: 8),
+                  review.rememberedButton.waitUntilExists(timeout: 8) else {
+                captureStep("front-\(i)-missing", app: app)
+                XCTFail("front \(i) 的 card/toolbar 必須存在")
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            samples.append(
+                ToolbarSample(
+                    index: i,
+                    face: "front",
+                    word: review.frontWord,
+                    buttonMaxY: review.rememberedButton.frame.maxY,
+                    appMaxY: app.frame.maxY
+                )
+            )
+
+            guard i < Self.deckSize - 1 else { break }
+            review.flipCard()
+            guard review.cardBack.waitUntilExists(timeout: 5) else {
+                captureStep("back-\(i)-missing", app: app)
+                XCTFail("front \(i) 翻面後 back 必須存在")
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            samples.append(
+                ToolbarSample(
+                    index: i,
+                    face: "back",
+                    word: review.frontWord,
+                    buttonMaxY: review.rememberedButton.frame.maxY,
+                    appMaxY: app.frame.maxY
+                )
+            )
+
+            review.tapRemembered()
+            _ = review.waitForProgress("\(i + 2) / \(Self.deckSize)")
+            _ = review.cardBack.waitUntilGone(timeout: 5)
+        }
+
+        let table = samples.map { sample in
+            String(
+                format: "  [%d] %@ %@ buttonMaxY=%.1f appMaxY=%.1f bottomSlack=%.1f",
+                sample.index,
+                sample.face,
+                sample.word,
+                sample.buttonMaxY,
+                sample.appMaxY,
+                sample.bottomSlack
+            )
+        }.joined(separator: "\n")
+        let tableAttachment = XCTAttachment(string: table)
+        tableAttachment.name = "toolbar-bottom-samples"
+        add(tableAttachment)
+
+        let offenders = samples.filter {
+            $0.bottomSlack > Self.toolbarBottomSlackThreshold
+        }
+        XCTAssertTrue(
+            offenders.isEmpty,
+            "評分按鈕底下出現異常大空白（bottomSlack > \(Self.toolbarBottomSlackThreshold)pt）:\n"
+                + offenders.map {
+                    "  [\($0.index)] \($0.face) \($0.word) bottomSlack=\(String(format: "%.1f", $0.bottomSlack))pt"
                 }.joined(separator: "\n")
                 + "\n全表:\n" + table
         )
