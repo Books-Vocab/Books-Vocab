@@ -472,7 +472,7 @@ async def test_dictionary_cards_are_excluded_from_general_pipeline(tmp_path):
     assert (enriched, scored) == (0, 0)
     assert cards.get(reference.id).difficulty is None
 
-def test_dictionary_cards_reject_review_state_updates(tmp_path):
+def test_dictionary_cards_accept_review_state_updates_when_review_sync_is_enabled(tmp_path):
     from kg.api_models import ReviewStateEntry
     from kg.vocab_review import push_review_states
 
@@ -497,8 +497,10 @@ def test_dictionary_cards_reject_review_state_updates(tmp_path):
         cards_store=cards,
         logger=SimpleNamespace(warning=lambda *_args: None),
     )
-    assert result == {"updated": 0, "skipped": 1}
-    assert cards.get(reference.id).review_count == 0
+    assert result == {"updated": 1, "skipped": 0}
+    updated = cards.get(reference.id)
+    assert updated.review_count == 1
+    assert updated.review_eligible is False
 
 def test_all_legacy_vocab_lookup_and_mutation_paths_hide_dictionary_cards(tmp_path):
     from kg.exceptions import NotFoundError

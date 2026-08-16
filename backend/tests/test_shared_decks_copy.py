@@ -3,7 +3,7 @@ into the copier's private Notebook.
 
 The load-bearing guardrails (all asserted here):
 
-* fresh SRS + fresh id + provenance stamp, zero review_events (SRS isolation).
+* fresh SRS + fresh id + provenance stamp + dictionary sidecar, zero review_events.
 * strictly-monotonic (distinct) updated_at — §4.4 timestamp-tie pagination skip.
 * mid-copy crash leaves NO half-product (materialization barrier + compensation).
 * two copies of one deck → two uniquely-named notebooks → world-export still
@@ -15,6 +15,7 @@ The load-bearing guardrails (all asserted here):
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 
@@ -95,11 +96,27 @@ def test_copy_yields_fresh_srs_fresh_ids_and_provenance(tmp_path):
         assert c.is_deleted is False
         assert c.id not in src_ids  # freshly minted id
         assert c.source_shared_card_guid == src_guids[c.content]
+        assert c.card_role == "dictionary"
+        assert c.review_eligible is False
+        dictionary = cards.get_dictionary_entry(c.id)
+        assert dictionary is not None
+        assert dictionary.provider == "shared_deck"
+        assert dictionary.materialization_status == "active"
+        assert dictionary.provider_entry_key == c.source_shared_card_guid
 
     # content verbatim: note + difficulty came across (add() cannot carry these)
     meticulous = next(c for c in copied if c.content == "meticulous")
     assert meticulous.note == "teacher note"
     assert meticulous.difficulty == 4.5
+    meticulous_dictionary = cards.get_dictionary_entry(meticulous.id)
+    assert meticulous_dictionary is not None
+    assert meticulous_dictionary.selected_sense_key == "sense_1"
+    assert meticulous_dictionary.selected_example_key == "example_1"
+    payload = json.loads(meticulous_dictionary.payload_json)
+    assert payload["provider"] == "shared_deck"
+    assert payload["word"] == meticulous.content
+    assert payload["senses"][0]["translations"] == [meticulous.meaning]
+    assert payload["senses"][0]["examples"][0]["text"] == meticulous.examples[0]
 
     # SRS isolation: the copy path never constructs a ReviewEventStore, so no
     # review-history plane exists for the copied cards.
@@ -138,6 +155,9 @@ def test_midcopy_crash_leaves_no_halfproduct(tmp_path):
     # not even a hidden barrier row, survives.
     assert list(nbs.all(include_deleted=True, include_staged=True)) == []
     assert cards.count() == 0
+    assert list(cards.all(include_deleted=True)) == []
+    with sqlite3.connect(user_dir / "cards.db") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM dictionary_entry").fetchone()[0] == 0
 
 
 # ── 4. two copies → unique names → world-export succeeds ───────────
