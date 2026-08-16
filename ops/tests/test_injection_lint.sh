@@ -47,25 +47,25 @@ write_baseline() {  # $1 = destination, $2 = sunset line (empty = omit header)
   } >"$dest"
 }
 
-run_check() {  # $1 = baseline path -> echoes exit code
+run_check() {  # $1 = baseline path, optional $2 = captured output -> echoes exit code
+  local output="${2:-/dev/null}"
   local rc=0
-  KG_INJECTION_BASELINE="$1" "$LINT" --baseline-check >/dev/null 2>&1 || rc=$?
+  KG_INJECTION_BASELINE="$1" "$LINT" --baseline-check >"$output" 2>&1 || rc=$?
   echo "$rc"
 }
 
 section "baseline path is overridable (siblings already are)"
-# Discriminating probe: an EMPTY baseline must read as a regression. A passing
-# result here would mean the override was ignored and the real (passing)
-# baseline answered instead — the probe has to be able to fail for the right
-# reason, or every later assertion in this file is vacuous.
-write_baseline "$TMP/empty.txt" "# sunset: 2099-01-01"
-: >"$TMP/empty-findings.txt"
-{ echo "# synthesized"; echo "# sunset: 2099-01-01"; } >"$TMP/empty.txt"
-rc="$(run_check "$TMP/empty.txt")"
-if [[ "$rc" -ne 0 ]]; then
-  ok "KG_INJECTION_BASELINE honoured (empty baseline reads as regression, exit $rc)"
+# Discriminating probe: the real tree now has zero findings, so an empty
+# baseline with no sunset must fail as missing-sunset. A passing result here
+# would mean the override was ignored and the checked-in future-sunset
+# baseline answered instead.
+write_baseline "$TMP/empty.txt" ""
+rc="$(run_check "$TMP/empty.txt" "$TMP/empty.out")"
+if [[ "$rc" -ne 0 ]] && grep -q 'baseline has no valid.*sunset' "$TMP/empty.out"; then
+  ok "KG_INJECTION_BASELINE honoured (zero findings expose missing-sunset, exit $rc)"
 else
-  fail_t "KG_INJECTION_BASELINE ignored — an empty baseline still exits 0, so the real baseline answered; injection_lint is the only lint of its family without a baseline override and its sunset behaviour cannot be tested"
+  fail_t "KG_INJECTION_BASELINE override did not expose missing-sunset — rc=$rc"
+  sed 's/^/      /' "$TMP/empty.out"
 fi
 
 write_baseline "$TMP/future.txt" "# sunset: 2099-01-01"
@@ -241,12 +241,12 @@ got="$(cd "$DECOY_DIR" && KG_INJECTION_BASELINE="$DECOY_REL" PYTHONPATH="$WORKSP
 rc=0
 ( cd "$DECOY_DIR" && KG_INJECTION_BASELINE="$DECOY_REL" "${PYRUN[@]}" "$LINT_PY" --baseline-check ) \
   >"$TMP/decoy_rel.out" 2>&1 || rc=$?
-if [[ "$rc" -ne 0 ]] && grep -q 'REGRESSION' "$TMP/decoy_rel.out"; then
-  ok "端到端：站在誘餌目錄用相對覆寫 → rc=$rc 且判 REGRESSION（讀的是 repo root 底下那條不存在的路徑，不是誘餌）"
+if [[ "$rc" -ne 0 ]] && grep -q 'baseline has no valid.*sunset' "$TMP/decoy_rel.out"; then
+  ok "端到端：站在誘餌目錄用相對覆寫 → rc=$rc 且拒絕 missing-sunset（讀的是 repo root 底下那條不存在的路徑，不是誘餌）"
 elif [[ "$rc" -eq 0 ]]; then
   fail_t "站在誘餌目錄用相對覆寫 → rc=0，誘餌被讀到並赦免了全部 findings"
 else
-  fail_t "站在誘餌目錄用相對覆寫 → rc=$rc 但輸出沒有 REGRESSION，擋它的是別的原因"
+  fail_t "站在誘餌目錄用相對覆寫 → rc=$rc 但輸出沒有 missing-sunset，擋它的是別的原因"
   head -3 "$TMP/decoy_rel.out" | sed 's/^/      /'
 fi
 
@@ -279,16 +279,20 @@ section "掃到零個檔案必須 fail closed，不可讀成通過"
 # 直接注入 VIEWS_ROOT 跑 collect_findings，因為這支工具刻意**沒有**掃描根的環境
 # 覆寫（多一個覆寫就多一個把 gate 指向空樹的旋鈕）。單引號 heredoc：python 原始碼
 # 不經 bash 展開。
-scan_probe() {   # $1=views root $2=輸出檔 -> echo rc
+scan_probe() {   # $1=views root $2=輸出檔，rest = lint mode（預設 --strict） -> echo rc
   local root="$1" out="$2" rc=0
+  shift 2
+  if [[ "$#" -eq 0 ]]; then
+    set -- --strict
+  fi
   ( cd "$WORKSPACE/ops" && "${PYRUN[@]}" -c '
 import sys
 from pathlib import Path
 import injection_lint as m
 m.VIEWS_ROOT = Path(sys.argv[1])
-sys.argv = ["injection_lint.py", "--strict"]
+sys.argv = ["injection_lint.py", *sys.argv[2:]]
 raise SystemExit(m.main())
-' "$root" ) >"$out" 2>&1 || rc=$?
+' "$root" "$@" ) >"$out" 2>&1 || rc=$?
   echo "$rc"
 }
 
@@ -308,6 +312,17 @@ struct Offender: View {
     var body: some View { EmptyView() }
 }
 SWIFT
+
+section "a temporary offender keeps baseline regression coverage real"
+write_baseline "$TMP/regression.txt" "# sunset: 2099-01-01"
+rc="$(KG_INJECTION_BASELINE="$TMP/regression.txt" \
+  scan_probe "$TREE/offender" "$TMP/probe_baseline_regression.out" --baseline-check)"
+if [[ "$rc" -eq 1 ]] && grep -q 'REGRESSION' "$TMP/probe_baseline_regression.out"; then
+  ok "temporary VIEWS_ROOT offender with an empty baseline → rc=1 REGRESSION"
+else
+  fail_t "temporary VIEWS_ROOT offender did not produce REGRESSION → rc=$rc"
+  sed 's/^/      /' "$TMP/probe_baseline_regression.out"
+fi
 
 # 負控先跑：證明這個探針不是「永遠紅」。
 rc="$(scan_probe "$TREE/clean" "$TMP/probe_clean.out")"
