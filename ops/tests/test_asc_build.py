@@ -152,7 +152,7 @@ def test_select_exact_build_rejects_failed_processing_state() -> None:
         )
 
 
-def test_lookup_exact_build_uses_prerelease_filters_and_include(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lookup_exact_build_uses_app_and_build_filters_and_include(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, str] = {}
 
     def fake_get(path: str, token: str) -> dict:
@@ -164,9 +164,10 @@ def test_lookup_exact_build_uses_prerelease_filters_and_include(monkeypatch: pyt
     monkeypatch.setattr(asc_build, "mint_token", lambda: "test-token")
 
     result = asc_build.lookup_exact_build("2.0.1", "9")
-    query = parse_qs(urlsplit(captured["path"]).query)
-    assert query["filter[preReleaseVersion.platform]"] == ["IOS"]
-    assert query["filter[preReleaseVersion.version]"] == ["2.0.1"]
+    parsed = urlsplit(captured["path"])
+    assert parsed.path == "/v1/builds"
+    query = parse_qs(parsed.query)
+    assert query["filter[app]"] == [asc_build.APP_ID]
     assert query["filter[version]"] == ["9"]
     assert query["include"] == ["preReleaseVersion"]
     assert captured["token"] == "test-token"

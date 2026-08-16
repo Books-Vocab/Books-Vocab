@@ -149,19 +149,18 @@ def select_exact_build(
 
 
 def lookup_exact_build(marketing_version: str, build_number: str) -> dict[str, str]:
-    """Fetch the filtered build collection and return exact provenance."""
+    """Fetch the app's filtered build collection and return exact provenance."""
 
     query = urlencode(
         [
-            ("filter[preReleaseVersion.platform]", "IOS"),
-            ("filter[preReleaseVersion.version]", marketing_version),
+            ("filter[app]", APP_ID),
             ("filter[version]", str(build_number)),
             ("include", "preReleaseVersion"),
             ("limit", "50"),
         ]
     )
     payload = get(
-        f"/v1/apps/{APP_ID}/builds?{query}",
+        f"/v1/builds?{query}",
         mint_token(),
     )
     return select_exact_build(
