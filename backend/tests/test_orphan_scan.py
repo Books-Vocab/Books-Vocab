@@ -31,10 +31,10 @@ def env(tmp_path, monkeypatch):
     import kg.judge_log as jl
     import kg.token_tracker as tt
     import kg.translate_log as tl
-    jl.DATA_DIR = data_dir
-    jl.DB_PATH = data_dir / "judge_log.db"
-    tt.DATA_DIR = data_dir
-    tt.DB_PATH = data_dir / "token_usage.db"
+    monkeypatch.setattr(jl, "DATA_DIR", data_dir)
+    monkeypatch.setattr(jl, "DB_PATH", data_dir / "judge_log.db")
+    monkeypatch.setattr(tt, "DATA_DIR", data_dir)
+    monkeypatch.setattr(tt, "DB_PATH", data_dir / "token_usage.db")
     jl._reset()
     tl._reset()
     if hasattr(tt, "_reset"):
