@@ -52,6 +52,16 @@
       "purpose": "冷啟動與 capability tier 判定"
     },
     {
+      "id": "router.routing",
+      "path": ".claude/skills/kg-router/SKILL.md",
+      "registry_id": "reference.agent_context",
+      "start": "## Routing Table",
+      "end": "## Hard Stops",
+      "kind": "kernel",
+      "max_tokens": 900,
+      "purpose": "typed skill、context、capability 與 worktree 入口"
+    },
+    {
       "id": "router.hard-stops",
       "path": ".claude/skills/kg-router/SKILL.md",
       "registry_id": "reference.agent_context",
@@ -60,6 +70,16 @@
       "kind": "skill",
       "max_tokens": 700,
       "purpose": "路由時不可繞過的資料、生產與 stale-doc 邊界"
+    },
+    {
+      "id": "router.output",
+      "path": ".claude/skills/kg-router/SKILL.md",
+      "registry_id": "reference.agent_context",
+      "start": "## Output Contract",
+      "end": null,
+      "kind": "kernel",
+      "max_tokens": 700,
+      "purpose": "路由完成後的最小可驗證回報欄位"
     },
     {
       "id": "router.tool-friction",
@@ -411,7 +431,7 @@
     {
       "id": "bootstrap",
       "match": {"roles": ["*"]},
-      "units": ["kernel.startup", "kernel.nonnegotiables", "router.bootstrap", "agent-context.bootstrap"]
+      "units": ["kernel.startup", "kernel.nonnegotiables", "router.bootstrap", "router.routing", "router.hard-stops", "router.output", "agent-context.bootstrap", "agent-context.loading"]
     },
     {
       "id": "role.ticket-factory",
