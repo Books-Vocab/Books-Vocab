@@ -63,6 +63,12 @@ final class TodayReviewAutoplayChromeUITests: UITestCase {
             return
         }
 
+        guard review.waitForFeedbackControls(timeout: 5) else {
+            captureStep("review-feedback-not-materialized", app: app)
+            XCTFail("複習底部 feedback AX controls 應在 top bar 後完成 materialize")
+            return
+        }
+
         let autoplayToggle = app.descendants(matching: .any)
             .matching(identifier: "todayReview.autoplayToggle").firstMatch
         try step("review-started", app: app) {

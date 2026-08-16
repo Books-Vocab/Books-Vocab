@@ -262,6 +262,14 @@ struct TodayReviewPage {
         element("todayReview.feedback.remembered")
     }
 
+    /// The top-bar progress node can materialize before the bottom feedback
+    /// controls during the initial SwiftUI accessibility projection. Wait on
+    /// the production identifier before using the exact-one action accessor.
+    @discardableResult
+    func waitForFeedbackControls(timeout: TimeInterval = 5) -> Bool {
+        waitForUnique("todayReview.feedback.remembered", timeout: timeout)
+    }
+
     var forgotButton: XCUIElement {
         element("todayReview.feedback.forgot")
     }
