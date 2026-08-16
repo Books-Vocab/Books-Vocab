@@ -1,0 +1,20 @@
+{
+  "schema": "kg.ios.vocabulary-schema-fixture.v1",
+  "sourceCommit": "0c3bec76d",
+  "sourceBuild": 9,
+  "storeSHA256": "4ae25ab41bda82148cdf5bacfdba7c9bcbadcef8d709adbc93c5b9c37aaae665",
+  "rows": [
+    {
+      "word": "legacy-synced",
+      "syncStatus": 1,
+      "actionType": "add",
+      "classification": "ordinary"
+    },
+    {
+      "word": "legacy-pending",
+      "syncStatus": 0,
+      "actionType": "add",
+      "classification": "ordinary"
+    }
+  ]
+}

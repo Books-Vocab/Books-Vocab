@@ -6,12 +6,31 @@ import Testing
 struct AppBootstrapStorageSafetyTests {
     private struct InjectedPersistentStoreFailure: Error {}
 
-    @Test @MainActor func persistentInitializationFailurePreservesStoreAndEntersRecovery() {
+    @Test @MainActor func persistentInitializationFailurePreservesStoreAndEntersRecovery() throws {
         let previous = AuthManager.shared.modelContainer
         defer { AuthManager.shared.modelContainer = previous }
 
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("app-bootstrap-failure-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let locations = AppBootstrap.PersistentStoreLocations(
+            local: directory.appendingPathComponent("LocalStore.store"),
+            cloud: directory.appendingPathComponent("CloudStore.store")
+        )
+        let artifacts = [locations.local, locations.cloud]
+            .flatMap { AppBootstrap.storeArtifactURLs(for: $0) }
+        var originalData: [URL: Data] = [:]
+        for (index, artifact) in artifacts.enumerated() {
+            let data = Data("store-sentinel-\(index)".utf8)
+            try data.write(to: artifact)
+            originalData[artifact] = data
+        }
+
         let outcome = AppBootstrap.run(
             arguments: [],
+            persistentStoreLocations: locations,
             persistentContainerFactory: { throw InjectedPersistentStoreFailure() }
         )
 
@@ -20,6 +39,10 @@ struct AppBootstrapStorageSafetyTests {
         }
         let allInMemory = outcome.container.configurations.allSatisfy(\.isStoredInMemoryOnly)
         #expect(allInMemory)
+        for artifact in artifacts {
+            #expect(FileManager.default.fileExists(atPath: artifact.path))
+            #expect(try Data(contentsOf: artifact) == originalData[artifact])
+        }
     }
 
     @Test func explicitPurgeRemovesSQLiteStoreAndRealSidecars() throws {
