@@ -22,14 +22,14 @@ from kg import judge_log, llm_error_log, log_retention, pipeline_log, token_trac
 def isolated_logs(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
 
-    pipeline_log.DATA_DIR = tmp_path
-    pipeline_log.DB_PATH = tmp_path / "pipeline_runs.db"
-    judge_log.DATA_DIR = tmp_path
-    judge_log.DB_PATH = tmp_path / "judge_log.db"
-    token_tracker.DATA_DIR = tmp_path
-    token_tracker.DB_PATH = tmp_path / "token_usage.db"
-    llm_error_log.DATA_DIR = tmp_path
-    llm_error_log.DB_PATH = tmp_path / "llm_errors.db"
+    monkeypatch.setattr(pipeline_log, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pipeline_log, "DB_PATH", tmp_path / "pipeline_runs.db")
+    monkeypatch.setattr(judge_log, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(judge_log, "DB_PATH", tmp_path / "judge_log.db")
+    monkeypatch.setattr(token_tracker, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(token_tracker, "DB_PATH", tmp_path / "token_usage.db")
+    monkeypatch.setattr(llm_error_log, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(llm_error_log, "DB_PATH", tmp_path / "llm_errors.db")
     # translate_log resolves path via _db_path() each connect — env var alone is enough.
 
     pipeline_log._reset()

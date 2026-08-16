@@ -137,12 +137,12 @@ def admin_app_factory(tmp_path, monkeypatch):
             import kg.pipeline_log as pl
             import kg.token_tracker as tt
             import kg.translate_log as tl
-            pl.DATA_DIR = data_dir
-            pl.DB_PATH = data_dir / "pipeline_runs.db"
-            jl.DATA_DIR = data_dir
-            jl.DB_PATH = data_dir / "judge_log.db"
-            tt.DATA_DIR = data_dir
-            tt.DB_PATH = data_dir / "token_usage.db"
+            monkeypatch.setattr(pl, "DATA_DIR", data_dir)
+            monkeypatch.setattr(pl, "DB_PATH", data_dir / "pipeline_runs.db")
+            monkeypatch.setattr(jl, "DATA_DIR", data_dir)
+            monkeypatch.setattr(jl, "DB_PATH", data_dir / "judge_log.db")
+            monkeypatch.setattr(tt, "DATA_DIR", data_dir)
+            monkeypatch.setattr(tt, "DB_PATH", data_dir / "token_usage.db")
 
             def _reset_log_dbs():
                 pl.reset()
