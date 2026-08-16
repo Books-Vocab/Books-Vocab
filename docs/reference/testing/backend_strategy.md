@@ -77,13 +77,18 @@ uv run python -m pytest -q
 ## Backend Quality CI
 
 `.github/workflows/backend-quality.yml` 只在 `backend/**` 或該 workflow 變更時於
-push / pull request 觸發；文件或 iOS-only 變更不會啟動這條 backend runner。job
-`backend-quality` 在乾淨 runner 執行：
+push / pull request 觸發；另有每日 02:17 UTC 的 nightly schedule。文件或 iOS-only
+變更不會啟動 push / pull request backend runner。job `backend-quality` 在乾淨 runner
+執行：
 
 1. checkout full history，固定 uv 版本後執行 `uv sync --locked`。
-2. 以 module form 執行測試與 coverage data：
-   `uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`。
-3. 以 `uv run python -m coverage report --fail-under=85` 執行 coverage threshold。
+2. 以 module form 執行測試與 coverage data；push / pull request 執行完整 suite：
+   `uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`；
+   nightly schedule 使用同一命令加 `-k "not slow"` 的 non-slow lane。coverage data
+   透過 `COVERAGE_FILE=${{ runner.temp }}/backend-quality/.coverage` 寫入 runner temp，
+   不改寫 repo 內既有的 `backend/.coverage`。
+3. 以 `uv run python -m coverage report --fail-under=85` 執行 coverage threshold，並
+   明確拒絕缺少或空白的 `coverage.xml`。
 4. 以 `uv run ruff check src tests` 執行 static quality check。
 
 pytest 的既有 full-suite failure 保持為 `test-failure`，不以 `continue-on-error`
@@ -92,10 +97,12 @@ pytest 的既有 full-suite failure 保持為 `test-failure`，不以 `continue-
 結果時標為 `infrastructure-inconclusive`。所有非 `pass` 分類都以非零結束，讓
 GitHub job 維持紅燈而不是把不可判定狀態當綠燈。
 
-每次執行都上傳 `backend-quality-${GITHUB_SHA}` artifact（即使 quality step 失敗），
-包含 `coverage.xml` 與 provenance：`HEAD_SHA` / `GITHUB_SHA`、`LOCK_BLOB_SHA`、
-`LOCK_SHA256`、uv 版本、run id 與 attempt。這使 coverage 證據不能脫離被驗證的
-HEAD 或 `backend/uv.lock`。
+每次執行都嘗試上傳 `backend-quality-${GITHUB_SHA}` artifact（即使 quality step 失敗）；
+缺少 artifact 檔案時以 error fail-closed。artifact 只包含 `coverage.xml` 與
+provenance，不上傳 `.coverage`；provenance 包含 `HEAD_SHA` / `GITHUB_SHA`、
+`LOCK_BLOB_SHA`、`LOCK_SHA256`、uv 版本、`PYTHON_VERSION`、`PYTHON_EXECUTABLE`、
+run id 與 attempt，並將 Python interpreter 寫入 job summary。這使 coverage 證據不能
+脫離被驗證的 HEAD、interpreter 或 `backend/uv.lock`。
 
 ## Gaps & Next Iteration
 - 壓力/負載：高併發 `POST /api/vocab`、pipeline 排隊行為（非功能測試）
