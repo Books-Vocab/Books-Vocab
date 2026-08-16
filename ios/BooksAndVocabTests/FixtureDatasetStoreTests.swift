@@ -409,8 +409,7 @@ struct FixtureDatasetStoreTests {
                       "translation": "局部",
                       "syncStatus": 1,
                       "actionType": "add",
-                      "isArchived": false,
-                      "isExcludedFromReader": false
+                      "isArchived": false
                     }
                   ]
                 }

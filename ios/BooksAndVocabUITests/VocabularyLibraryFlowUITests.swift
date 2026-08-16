@@ -1,8 +1,7 @@
 import XCTest
 
-/// P11 acceptance flow: the report baseline injects 644 role-pure learning
-/// rows. Its review buckets are 14/503/127 and its CTA is 517. The separate
-/// `role.mixed` fixture is a small counterexample, never the baseline.
+/// P11 acceptance flow: the report baseline injects 644 ordinary reviewable
+/// rows. Its review buckets are 14/503/127 and its CTA is 517.
 final class VocabularyLibraryFlowUITests: UITestCase {
     private static let notebookID = "ui-p11-644-review-mix-notebook"
 
@@ -16,7 +15,7 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     }
 
     @MainActor
-    func testRichWorldProjectsRoleReviewSearchAndCTAConsistently() throws {
+    func testRichWorldProjectsReviewSearchAndCTAConsistently() throws {
         let app = launchIsolatedApp(
             extraArgs: [
                 "-UIPreferredContentSizeCategoryName",
@@ -51,10 +50,8 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         }
         captureStep("vocabulary-list-open", app: app)
         XCTAssertTrue(page.visibleCount.waitUntilExists(timeout: 5))
-        captureStep("all-scope-644-rows", app: app)
-        XCTAssertTrue(page.visibleCount.label.contains("644"), "all scope must show 644 visible rows")
-        XCTAssertTrue(page.scopeOption("dictionary", labelPrefix: "字典").label.contains("0"))
-        XCTAssertTrue(page.scopeOption("learning", labelPrefix: "學習").label.contains("644"))
+        captureStep("all-644-rows", app: app)
+        XCTAssertTrue(page.visibleCount.label.contains("644"), "review-state projection must show 644 visible rows")
         XCTAssertTrue(page.reviewCTA.waitUntilExists(timeout: 5), "report baseline CTA must be visible")
         XCTAssertTrue(page.reviewCTA.label.contains("517"), "report baseline CTA must be exactly 517")
         XCTAssertTrue(page.sortMenu.waitUntilExists(timeout: 5), "sort control must remain a separate semantic control")
@@ -66,18 +63,9 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         captureStep("dynamic-type", app: app)
         captureStep("cta", app: app)
 
-        try step("dictionary-scope", app: app) {
-            page.selectScope("dictionary", labelPrefix: "字典")
-            XCTAssertTrue(page.visibleCount.label.contains("0"), "baseline dictionary scope must be empty")
-            XCTAssertTrue(page.reviewStateControls.waitUntilGone(timeout: 5))
-            XCTAssertTrue(page.reviewCTA.waitUntilGone(timeout: 5), "dictionary scope must not expose a review CTA")
-            XCTAssertTrue(page.sortMenu.label.contains("字母序"), "dictionary scope must canonicalize sort to alphabetical")
-        }
-
-        try step("learning-review", app: app) {
-            page.selectScope("learning", labelPrefix: "學習")
+        try step("review-state", app: app) {
             XCTAssertTrue(page.reviewStateControls.waitUntilExists(timeout: 5))
-            XCTAssertTrue(page.visibleCount.label.contains("644"), "learning scope must show exactly 644 learning rows")
+            XCTAssertTrue(page.visibleCount.label.contains("644"), "review-state projection must show all ordinary cards")
             XCTAssertTrue(page.reviewStateOption("unlearned", labelPrefix: "未學習").waitUntilExists(timeout: 5))
             XCTAssertTrue(page.reviewStateOption("due", labelPrefix: "待複習").waitUntilExists(timeout: 5))
             XCTAssertTrue(page.reviewStateOption("reviewed", labelPrefix: "已複習").waitUntilExists(timeout: 5))
@@ -132,37 +120,5 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         }
 
         captureStep("rich-projection-verified", app: app)
-
-        // The rich fixture has 644 rows and AX3 intentionally exercises a
-        // large accessibility tree. Terminate it before launching the small
-        // counterexample app so two XCUIApplication processes never compete
-        // for the simulator accessibility/runtime channel.
-        app.terminate()
-
-        let mixedApp = launchIsolatedApp(
-            extraArgs: [
-                "-UIPreferredContentSizeCategoryName",
-                "UICTContentSizeCategoryAccessibility3",
-            ],
-            fixtures: [.vocabularyLibraryP11MixedRoleCounterexample],
-            extraEnvironment: [
-                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
-            ],
-            perfLog: "vocabulary-filter-rich-mixed-role"
-        )
-        try step("mixed-role", app: mixedApp) {
-            let mixedShell = AppPage(app: mixedApp)
-            let mixedNotebooks = mixedShell.goToNotebooks()
-            let mixedNotebookID = "ui-p11-role-mixed-notebook"
-            XCTAssertTrue(mixedNotebooks.notebookCard(id: mixedNotebookID).waitUntilExists(timeout: 10))
-            mixedNotebooks.notebookCard(id: mixedNotebookID).tapWhenReady()
-            XCTAssertTrue(mixedApp.waitForNavigationToSettle())
-            let mixedPage = VocabularySearchPage(app: mixedApp)
-            XCTAssertTrue(mixedPage.visibleCount.waitUntilExists(timeout: 10))
-            XCTAssertTrue(mixedPage.visibleCount.label.contains("4"))
-            XCTAssertTrue(mixedPage.scopeOption("dictionary", labelPrefix: "字典").label.contains("2"))
-            XCTAssertTrue(mixedPage.scopeOption("learning", labelPrefix: "學習").label.contains("2"))
-        }
-
     }
 }

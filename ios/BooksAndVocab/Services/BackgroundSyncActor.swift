@@ -179,7 +179,6 @@ actor BackgroundSyncActor {
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
                     existingEntry.isArchived = card.isArchived ?? false
-                    Self.applyDictionaryLifecycle(from: card, into: existingEntry)
                     if let cardNotebookId = card.notebookId {
                         existingEntry.notebookId = cardNotebookId
                     }
@@ -214,7 +213,6 @@ actor BackgroundSyncActor {
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.isArchived = card.isArchived ?? false
-                Self.applyDictionaryLifecycle(from: card, into: newEntry)
                 newEntry.notebookId = card.notebookId ?? notebookId
                 newEntry.markSynced()
 
@@ -233,11 +231,8 @@ actor BackgroundSyncActor {
         // means it was deleted remotely before soft-deletes were implemented.
         var orphanCleanupBlocked = false
         if !isIncremental {
-            // Legacy `/api/vocab` intentionally excludes dictionary cards.
-            // Only learning rows participate in this projection's orphan check;
-            // dictionary deletion/archive is owned by `/api/dictionary-cards`.
             let localSyncedCount = localEntries.filter {
-                $0.shouldAppearInKnowledgeList && $0.cardRole == .learning
+                $0.shouldAppearInKnowledgeList
             }.count
             let serverReturnedCount = fetchedCards.count
 
@@ -255,7 +250,7 @@ actor BackgroundSyncActor {
                 progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
                 var orphanedWords: [String] = []
                 for entry in localEntries {
-                    guard entry.shouldAppearInKnowledgeList, entry.cardRole == .learning else { continue }
+                    guard entry.shouldAppearInKnowledgeList else { continue }
                     let orphanKey = mergeKey(entry.word, notebookId: entry.notebookId)
                     guard !fetchedCardKeys.contains(orphanKey) else { continue }
                     orphanedWords.append(entry.word)
@@ -276,139 +271,6 @@ actor BackgroundSyncActor {
             updated: updatedCount,
             deleted: deletedCount
         )
-    }
-
-    /// Merge the dictionary projection into the same SwiftData row identified
-    /// by `kgCardId`. Promotion therefore changes role in place instead of
-    /// creating a second local row keyed by the same word.
-    @discardableResult
-    func upsertDictionaryProjection(_ projection: KGDictionaryCardProjection) throws -> UUID? {
-        try upsertDictionaryProjections([projection])
-        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        return entries.first(where: { $0.kgCardId == projection.card.id })?.id
-    }
-
-    func upsertDictionaryProjections(_ projections: [KGDictionaryCardProjection]) throws {
-        guard !projections.isEmpty else { return }
-        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        var byCardID = Dictionary(
-            entries.compactMap { entry in
-                entry.kgCardId.map { ($0, entry) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var byWordAndNotebook = Dictionary(
-            entries.map { entry in
-                (mergeKey(entry.word, notebookId: entry.notebookId), entry)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-        for projection in projections {
-            let card = projection.card
-            let notebookID = card.notebookId ?? "default"
-            let wordKey = mergeKey(card.content, notebookId: notebookID)
-            let existing = byCardID[card.id] ?? byWordAndNotebook[wordKey]
-            if card.isDeleted == true {
-                if let existing {
-                    modelContext.delete(existing)
-                    byCardID.removeValue(forKey: card.id)
-                    byWordAndNotebook.removeValue(forKey: wordKey)
-                }
-                continue
-            }
-
-            let entry: VocabularyEntry
-            if let existing {
-                entry = existing
-            } else {
-                let lexical = projection.dictionaryEntry
-                let sense = lexical.senses.first { $0.id == projection.selectedSenseKey }
-                let example = sense?.examples.first { $0.id == projection.selectedExampleKey }
-                entry = VocabularyEntry(
-                    word: card.content,
-                    translation: card.meaning,
-                    context: example?.text ?? card.examples.first ?? "",
-                    explanation: card.note,
-                    partOfSpeech: sense?.partOfSpeech ?? card.pos,
-                    bookTitle: L10n.string("dictionary.cardSource")
-                )
-                modelContext.insert(entry)
-            }
-            applyCard(card, to: entry, fallbackNotebookID: notebookID)
-            applyDictionarySidecar(projection, to: entry)
-            byCardID[card.id] = entry
-            byWordAndNotebook[wordKey] = entry
-        }
-        for projection in projections {
-            guard let entry = byCardID[projection.card.id] else { continue }
-            var groups: [String: [KGCardLinkSummary]] = [:]
-            for link in projection.links {
-                let peerID = link.fromId == projection.card.id ? link.toId : link.fromId
-                let summary = KGCardLinkSummary(
-                    id: link.id,
-                    cardId: peerID,
-                    word: byCardID[peerID]?.word ?? "",
-                    kind: link.kind,
-                    label: link.kind,
-                    confidence: link.confidence,
-                    reason: link.reason,
-                    hidden: false
-                )
-                groups[link.kind, default: []].append(summary)
-            }
-            entry.graphLinksByKind = groups
-        }
-        try modelContext.save()
-    }
-
-    /// Targeted response merge used immediately after materialize/link, without
-    /// waiting for the next full background sync.
-    @discardableResult
-    func upsertDictionaryMaterialization(_ response: DictionaryMaterializeLinkResponse) throws -> UUID? {
-        if let projection = response.dictionaryCard {
-            return try upsertDictionaryProjection(projection)
-        }
-        let card = response.targetCard
-        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        let notebookID = card.notebookId ?? "default"
-        let entry = entries.first(where: { $0.kgCardId == card.id }) ?? VocabularyEntry(
-            word: card.content,
-            translation: card.meaning,
-            context: card.examples.first ?? "",
-            explanation: card.note,
-            partOfSpeech: card.pos,
-            bookTitle: Self.fallbackBookTitle
-        )
-        if entry.modelContext == nil { modelContext.insert(entry) }
-        applyCard(card, to: entry, fallbackNotebookID: notebookID)
-        try modelContext.save()
-        return entry.id
-    }
-
-    func markLegacyHiddenCardsForReaderVisibilityMigration() throws {
-        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        for entry in entries where entry.isSynced && entry.isExcludedFromReader && entry.kgCardId != nil {
-            entry.readerVisibilitySyncPending = true
-        }
-        try modelContext.save()
-    }
-
-    func pendingReaderVisibilityEdits() throws -> [(cardID: String, hidden: Bool)] {
-        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        return entries.compactMap { entry in
-            guard entry.readerVisibilitySyncPending,
-                  let cardID = entry.kgCardId, !cardID.isEmpty else { return nil }
-            return (cardID, entry.isExcludedFromReader)
-        }
-    }
-
-    func markReaderVisibilitySynced(cardID: String, hidden: Bool) throws {
-        let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-        guard let entry = entries.first(where: { $0.kgCardId == cardID }),
-              entry.readerVisibilitySyncPending,
-              entry.isExcludedFromReader == hidden else { return }
-        entry.readerVisibilitySyncPending = false
-        try modelContext.save()
     }
 
     /// Deletes the app-account-scoped local SwiftData state — vocabulary, review
@@ -524,15 +386,14 @@ actor BackgroundSyncActor {
     /// predicate because it compares two of the entry's own optional dates,
     /// which `#Predicate` does not express. The fetch is local and bounded by
     /// the library size; the payload and the round trip were the expensive part.
-    func buildReviewStatePushPayload(includeDictionaryCards: Bool = false) throws -> [[String: Any]] {
+    func buildReviewStatePushPayload() throws -> [[String: Any]] {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
         )
         let entries = try modelContext.fetch(descriptor).filter(\.needsReviewStatePush)
 
         var payload: [[String: Any]] = []
-        for entry in entries where entry.reviewEligible
-            || (includeDictionaryCards && entry.cardRole == .dictionary) {
+        for entry in entries {
             let lastReviewed = entry.lastReviewedAt ?? entry.dateAdded
             var item: [String: Any] = [
                 "word": entry.word,
@@ -557,18 +418,12 @@ actor BackgroundSyncActor {
     /// `boundary` is captured *before* the payload is built, so a review that
     /// lands while the request is in flight stays dirty and goes out next sync
     /// instead of being silently acknowledged as already-sent.
-    func markReviewStatesPushed(
-        upTo boundary: Date,
-        includeDictionaryCards: Bool = false
-    ) throws {
+    func markReviewStatesPushed(upTo boundary: Date) throws {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
         )
         var marked = 0
-        for entry in try modelContext.fetch(descriptor)
-            where entry.needsReviewStatePush
-            && (entry.reviewEligible
-                || (includeDictionaryCards && entry.cardRole == .dictionary)) {
+        for entry in try modelContext.fetch(descriptor) where entry.needsReviewStatePush {
             guard (entry.lastReviewedAt ?? entry.dateAdded) <= boundary else { continue }
             entry.reviewStateSyncedAt = boundary
             marked += 1
@@ -630,66 +485,6 @@ actor BackgroundSyncActor {
         entry.chapterTitle = (chapter?.isEmpty == false) ? chapter : nil
     }
 
-    private static func applyDictionaryLifecycle(from card: KGCard, into entry: VocabularyEntry) {
-        let role = VocabularyCardRole(rawValue: card.cardRole ?? "") ?? .learning
-        entry.cardRole = role
-        entry.reviewEligible = card.reviewEligible ?? (role == .learning)
-        entry.applyServerReaderVisibility(card.readerHidden)
-        entry.promotionState = VocabularyPromotionState(rawValue: card.promotionState ?? "") ?? .idle
-        entry.promotedAt = card.promotedAt.flatMap(Self.parseISO8601)
-    }
-
-    private func applyCard(
-        _ card: KGCard, to entry: VocabularyEntry, fallbackNotebookID: String
-    ) {
-        entry.word = card.content
-        entry.translation = card.meaning
-        entry.partOfSpeech = card.pos
-        entry.explanation = card.note
-        entry.difficultyTier = card.difficultyTier
-        entry.kgCardId = card.id
-        entry.inflections = card.inflections ?? []
-        entry.collocations = card.collocations ?? []
-        entry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
-        entry.reviewExamples = card.examples
-        entry.graphLinksByKind = card.linksByKind ?? [:]
-        entry.isArchived = card.isArchived ?? false
-        entry.notebookId = card.notebookId ?? fallbackNotebookID
-        if let createdAt = card.createdAt.flatMap(Self.parseISO8601) {
-            entry.dateAdded = createdAt
-        }
-        Self.applyDictionaryLifecycle(from: card, into: entry)
-        Self.applySource(from: card, into: entry)
-        entry.markSynced()
-        Self.mergeReviewState(from: card, into: entry)
-    }
-
-    private func applyDictionarySidecar(
-        _ projection: KGDictionaryCardProjection, to entry: VocabularyEntry
-    ) {
-        let lexical = projection.dictionaryEntry
-        entry.dictionaryPayloadJSON = (try? JSONEncoder().encode(lexical))
-            .flatMap { String(data: $0, encoding: .utf8) }
-        entry.dictionaryProvider = lexical.provider
-        entry.dictionaryId = lexical.dictionaryId
-        entry.dictionaryEntryKey = lexical.entryKey
-        entry.dictionarySelectedSenseKey = projection.selectedSenseKey
-        entry.dictionarySelectedExampleKey = projection.selectedExampleKey
-        entry.dictionarySourceURL = lexical.sourceUrl
-        entry.dictionaryLicenseName = lexical.licenseName
-        entry.dictionaryLicenseURL = lexical.licenseUrl
-        entry.dictionaryAttributionText = lexical.attributionText
-        entry.dictionaryFetchedAt = Self.parseISO8601(lexical.fetchedAt)
-        entry.promotionErrorCode = projection.promotionErrorCode
-        entry.promotionRetryable = projection.promotionRetryable
-
-        if let sense = lexical.senses.first(where: { $0.id == projection.selectedSenseKey }) {
-            entry.partOfSpeech = sense.partOfSpeech ?? entry.partOfSpeech
-            if let example = sense.examples.first(where: { $0.id == projection.selectedExampleKey }) {
-                entry.context = example.text
-            }
-        }
-    }
 
     // MARK: - Review State Merge Helper
 
@@ -746,7 +541,7 @@ extension BackgroundSyncActor {
     /// The ordering makes a partially-drained history advance monotonically:
     /// batches are cut from this array, so a failed batch leaves a stable
     /// oldest-first remainder instead of re-shuffling on the next attempt.
-    func buildReviewEventsPushPayload(includeDictionaryCards: Bool = false) throws -> [KGReviewEventPayload] {
+    func buildReviewEventsPushPayload() throws -> [KGReviewEventPayload] {
         let descriptor = FetchDescriptor<ReviewRecord>(
             predicate: #Predicate<ReviewRecord> { $0.pushedAt == nil },
             sortBy: [SortDescriptor(\.reviewedAt, order: .forward)]
@@ -755,25 +550,7 @@ extension BackgroundSyncActor {
         guard !records.isEmpty else { return [] }
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
-        let entriesByCardID = Dictionary(
-            uniqueKeysWithValues: entries.compactMap { entry in
-                entry.kgCardId.map { ($0, entry) }
-            }
-        )
-
         return records.compactMap { record in
-            // Events created by current clients always carry entryID and a
-            // fixated card ID. Filter any event whose associated local card is
-            // review-ineligible. Unknown legacy orphans remain uploadable: no
-            // local row means eligibility cannot be inferred safely.
-            let associatedEntry = record.entryID.flatMap { entriesByID[$0] }
-                ?? record.kgCardId.flatMap { entriesByCardID[$0] }
-            if let associatedEntry {
-                guard associatedEntry.reviewEligible
-                    || (includeDictionaryCards && associatedEntry.cardRole == .dictionary)
-                else { return nil }
-            }
-
             // 優先用複習當下固化在事件上的 kgCardId(自包含,不退化)。只有 legacy 紀錄
             // (固化前)才回退舊的 entryID→entry→kgCardId 三段反查 —— 卡若已離場仍會是
             // nil,但那是固化上線前的歷史殘留,新事件不再受此影響。

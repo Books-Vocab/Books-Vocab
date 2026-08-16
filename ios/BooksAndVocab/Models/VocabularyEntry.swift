@@ -20,18 +20,6 @@ enum VocabularySyncAction: String, Codable {
     case edit
 }
 
-enum VocabularyCardRole: String, Codable, CaseIterable {
-    case learning
-    case dictionary
-}
-
-enum VocabularyPromotionState: String, Codable, CaseIterable {
-    case idle
-    case queued
-    case running
-    case failed
-}
-
 /// 生詞條目 — 記錄使用者在閱讀中查詢的單字/短語
 @Model
 final class VocabularyEntry {
@@ -62,35 +50,6 @@ final class VocabularyEntry {
     var collocationExplanationsJSON: String = "{}"
     var graphLinksJSON: String = "{}"
     var isArchived: Bool = false
-    var isExcludedFromReader: Bool = false
-    /// Durable optimistic outbox bit. While true, sync must not overwrite the
-    /// local reader visibility intent with an older server projection.
-    var readerVisibilitySyncPending: Bool = false
-
-    // Dictionary-card lifecycle. Stored raw strings preserve lightweight
-    // migration for existing SwiftData rows and keep unknown future values
-    // fail-soft through the typed accessors below.
-    var cardRoleRaw: String = VocabularyCardRole.learning.rawValue
-    var reviewEligible: Bool = true
-    var promotionStateRaw: String = VocabularyPromotionState.idle.rawValue
-    var promotedAt: Date?
-    var promotionErrorCode: String?
-    var promotionRetryable: Bool = false
-
-    // Provider-neutral dictionary snapshot/provenance. The normalized payload
-    // remains JSON so provider schema growth doesn't require a SwiftData model
-    // migration for every optional lexical field.
-    var dictionaryPayloadJSON: String?
-    var dictionaryProvider: String?
-    var dictionaryId: String?
-    var dictionaryEntryKey: String?
-    var dictionarySelectedSenseKey: String?
-    var dictionarySelectedExampleKey: String?
-    var dictionarySourceURL: String?
-    var dictionaryLicenseName: String?
-    var dictionaryLicenseURL: String?
-    var dictionaryAttributionText: String?
-    var dictionaryFetchedAt: Date?
 
     // Local spaced-review state
     var reviewIntervalHours: Double = VocabularyReviewPolicy.initialIntervalHours
@@ -155,28 +114,11 @@ final class VocabularyEntry {
     var isFailedAdd: Bool { syncState == .failed && syncAction == .add }
     var isFailedDelete: Bool { syncState == .failed && syncAction == .delete }
     var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete || isFailedAdd || isFailedDelete }
-    var shouldAppearInReader: Bool { syncAction != .delete && !isArchived && !isExcludedFromReader }
-    var shouldAppearInReview: Bool {
-        shouldAppearInReview(includingDictionaryCards: false)
-    }
-
-    func shouldAppearInReview(includingDictionaryCards: Bool) -> Bool {
-        shouldAppearInKnowledgeList
-            && (reviewEligible || (includingDictionaryCards && cardRole == .dictionary))
-    }
+    var shouldAppearInReader: Bool { syncAction != .delete && !isArchived }
+    var shouldAppearInReview: Bool { shouldAppearInKnowledgeList }
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete && !isArchived }
     var shouldAppearInArchiveList: Bool { isSynced && syncAction != .delete && isArchived }
-    var effectiveDateAdded: Date { promotedAt ?? dateAdded }
-
-    var cardRole: VocabularyCardRole {
-        get { VocabularyCardRole(rawValue: cardRoleRaw) ?? .learning }
-        set { cardRoleRaw = newValue.rawValue }
-    }
-
-    var promotionState: VocabularyPromotionState {
-        get { VocabularyPromotionState(rawValue: promotionStateRaw) ?? .idle }
-        set { promotionStateRaw = newValue.rawValue }
-    }
+    var effectiveDateAdded: Date { dateAdded }
 
     /// Shared `#Predicate` for SwiftData `@Query` knowledge-list call sites.
     /// `#Predicate` can't reference the `shouldAppearInKnowledgeList` computed
@@ -276,38 +218,6 @@ extension VocabularyEntry {
         if isFailed {
             syncState = .pending
         }
-    }
-
-    func queueReaderVisibility(_ hidden: Bool) {
-        isExcludedFromReader = hidden
-        readerVisibilitySyncPending = true
-    }
-
-    /// Applies a server-supplied `readerHidden` — but never over an unflushed
-    /// local intent.
-    ///
-    /// `readerHidden` is its own dimension (never derived from `cardRole`), and
-    /// the durable outbox is what makes a reader toggle survive a failed push.
-    /// A projection that lands between the optimistic toggle and its successful
-    /// flush still carries the OLD server value, so writing it back unguarded
-    /// silently rewinds the toggle the user just made — and, because the row now
-    /// agrees with the server, `markReaderVisibilitySynced` would drop the queued
-    /// edit too. Every projection applier must route through here; both the sync
-    /// actor and the detail scene apply the same card shape, and duplicating the
-    /// guard is exactly how one of them loses it.
-    func applyServerReaderVisibility(_ readerHidden: Bool?) {
-        guard let readerHidden, !readerVisibilitySyncPending else { return }
-        isExcludedFromReader = readerHidden
-    }
-
-    /// Restores the complete durable outbox state when the local SwiftData
-    /// save for an optimistic visibility toggle fails.
-    func restoreReaderVisibilityAfterSaveFailure(
-        previousHidden: Bool,
-        previousPending: Bool
-    ) {
-        isExcludedFromReader = previousHidden
-        readerVisibilitySyncPending = previousPending
     }
 
     var reviewMode: VocabularyCardMode {

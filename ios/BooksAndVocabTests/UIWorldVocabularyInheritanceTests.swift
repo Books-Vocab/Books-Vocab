@@ -16,25 +16,23 @@ struct UIWorldVocabularyInheritanceTests {
         }
     }
 
-    @Test @MainActor func p11AndMixedRoleFixtureIDsRemainStable() {
+    @Test @MainActor func p11AndReviewStateFixtureIDsRemainStable() {
         #expect(UIWorldVocabularyFixtureID.p11ReviewMix.rawValue == "p11.644.reviewMix")
-        #expect(UIWorldVocabularyFixtureID.roleMixed.rawValue == "role.mixed")
+        #expect(UIWorldVocabularyFixtureID.reviewStateMixed.rawValue == "review.mixed")
         #expect(UITestFixtureSeed.vocabularyFixtureID(for: "p11.644.reviewMix") == .p11ReviewMix)
-        #expect(UITestFixtureSeed.vocabularyFixtureID(for: "role.mixed") == .roleMixed)
+        #expect(UITestFixtureSeed.vocabularyFixtureID(for: "review.mixed") == .reviewStateMixed)
         #expect(UITestFixtureSeed.vocabularyFixtureID(for: "P11") == nil)
     }
 
     @Test @MainActor func inheritanceMaterializesRecursivelyAndRejectsCycles() throws {
         let data = try FixtureDatasetStoreTests.completeV2DatasetData(Self.inheritanceDataset)
         let document = try FixtureDatasetStore.decode(data)
-        let seed = try #require(document.vocabulary["role.mixed"])
+        let seed = try #require(document.vocabulary["review.mixed"])
 
         #expect(seed.baseFixture == nil, "resolved seeds must not leak inheritance into materializers")
         #expect(seed.entries.map(\.word) == ["alpha"])
         #expect(seed.entryOverrides.count == 1)
         let overlay = try #require(seed.entryOverrides.first)
-        #expect(overlay.cardRole == .learning)
-        #expect(overlay.reviewEligible)
         #expect(overlay.reviewCount == 3)
         #expect(overlay.nextReviewAt == Date(timeIntervalSince1970: 1_800_000_000 - 60))
 
@@ -44,8 +42,6 @@ struct UIWorldVocabularyInheritanceTests {
         )
         let entries = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
         let entry = try #require(entries.first)
-        #expect(entry.cardRole == .learning)
-        #expect(entry.reviewEligible)
         #expect(entry.reviewState(at: Date(timeIntervalSince1970: 1_800_000_000)) == .due)
 
         let cyclicData = try FixtureDatasetStoreTests.completeV2DatasetData(Self.cyclicDataset)
@@ -93,23 +89,13 @@ struct UIWorldVocabularyInheritanceTests {
         }
     }
 
-    @Test @MainActor func p11AndMixedRoleMaterializeTheCanonicalContract() throws {
+    @Test @MainActor func p11MaterializesTheCanonicalReviewContract() throws {
         try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
             let p11 = FixtureDatasetStore.requireVocabularySeed(for: .p11ReviewMix)
-            let mixed = FixtureDatasetStore.requireVocabularySeed(for: .roleMixed)
 
             #expect(p11.baseFixture == nil)
             #expect(p11.entries.count == 644)
             #expect(p11.entryOverrides.count == 644)
-            #expect(p11.entryOverrides.filter { $0.cardRole == .learning }.count == 644)
-            #expect(p11.entryOverrides.filter { $0.cardRole == .dictionary }.count == 0)
-            #expect(p11.entryOverrides.allSatisfy { $0.reviewEligible })
-
-            #expect(mixed.baseFixture == nil)
-            #expect(mixed.entries.count == 4)
-            #expect(mixed.entryOverrides.count == 4)
-            #expect(mixed.entryOverrides.filter { $0.cardRole == .learning }.count == 2)
-            #expect(mixed.entryOverrides.filter { $0.cardRole == .dictionary }.count == 2)
 
             let p11Container = try ModelContainer(
                 for: VocabularyEntry.self, Notebook.self, ReviewRecord.self,
@@ -125,23 +111,12 @@ struct UIWorldVocabularyInheritanceTests {
                 now: now
             )
             #expect(p11Entries.count == 644)
-            #expect(p11Entries.allSatisfy { $0.cardRole == .learning && $0.shouldAppearInReview })
+            #expect(p11Entries.allSatisfy { $0.shouldAppearInReview })
             #expect(classified.unlearnedCount == 14)
             #expect(classified.dueCount == 503)
             #expect(classified.reviewedCount == 127)
             #expect(classified.unlearnedCount + classified.dueCount == 517)
 
-            let mixedContainer = try ModelContainer(
-                for: VocabularyEntry.self, Notebook.self, ReviewRecord.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-            )
-            let mixedEntries = try UITestFixtureSeed.insertVocabularySeed(
-                mixed,
-                into: mixedContainer.mainContext
-            )
-            #expect(mixedEntries.filter { $0.cardRole == .learning && $0.reviewEligible }.count == 2)
-            #expect(mixedEntries.filter { $0.cardRole == .dictionary && !$0.reviewEligible }.count == 2)
-            #expect(mixedEntries.filter(\.shouldAppearInReview).count == 2)
         }
     }
 
@@ -158,7 +133,7 @@ struct UIWorldVocabularyInheritanceTests {
             "explanation": null, "partOfSpeech": "noun", "bookTitle": "Book", "chapterTitle": null,
             "kgCardId": "card-alpha", "difficultyTier": "core", "reviewMode": "recognition",
             "reviewExamples": [], "collocations": null, "rootForm": null, "inflections": null,
-            "syncStatus": 1, "actionType": "add", "isArchived": false, "isExcludedFromReader": false,
+            "syncStatus": 1, "actionType": "add", "isArchived": false,
             "reviewIntervalHours": 24, "nextReviewAt": "2099-01-01T00:00:00Z",
             "lastReviewedAt": null, "reviewCount": 0, "reviewStreak": 0,
             "lastReviewFeedbackRaw": -1, "graphLinksByKind": {}
@@ -170,14 +145,14 @@ struct UIWorldVocabularyInheritanceTests {
           "notebookRemoteId": "middle", "notebookName": "Middle", "notebookSyncStatus": 1,
           "bookTitle": "Book", "entries": [], "baseFixture": "vocabListLong",
           "entryOverrides": [{
-            "word": "alpha", "cardRole": "learning", "reviewEligible": true,
+            "word": "alpha",
             "reviewIntervalHours": 24, "nextReviewAt": 1799999940,
             "lastReviewedAt": "2026-08-12T00:00:00Z", "reviewCount": 3,
             "reviewStreak": 2, "lastReviewFeedbackRaw": 1
           }],
           "reviewHistory": []
         },
-        "role.mixed": {
+        "review.mixed": {
           "notebookRemoteId": "leaf", "notebookName": "Leaf", "notebookSyncStatus": 1,
           "bookTitle": "Book", "entries": [], "baseFixture": "p11.644.reviewMix",
           "entryOverrides": [],
@@ -219,13 +194,13 @@ struct UIWorldVocabularyInheritanceTests {
             "explanation": null, "partOfSpeech": "noun", "bookTitle": "Book", "chapterTitle": null,
             "kgCardId": "card-alpha", "difficultyTier": "core", "reviewMode": "recognition",
             "reviewExamples": [], "collocations": null, "rootForm": null, "inflections": null,
-            "syncStatus": 1, "actionType": "add", "isArchived": false, "isExcludedFromReader": false,
+            "syncStatus": 1, "actionType": "add", "isArchived": false,
             "reviewIntervalHours": 24, "nextReviewAt": "2099-01-01T00:00:00Z",
             "lastReviewedAt": null, "reviewCount": 0, "reviewStreak": 0,
             "lastReviewFeedbackRaw": -1, "graphLinksByKind": {}
           }],
           "entryOverrides": [{
-            "word": "alpha", "cardRole": "learning", "reviewEligible": true,
+            "word": "alpha",
             "reviewIntervalHours": 24, "nextReviewAt": "2099-01-01T00:00:00Z",
             "lastReviewedAt": null, "reviewCount": 1, "reviewStreak": 1,
             "lastReviewFeedbackRaw": 1
@@ -236,7 +211,7 @@ struct UIWorldVocabularyInheritanceTests {
           "notebookRemoteId": "child", "notebookName": "Child", "notebookSyncStatus": 1,
           "bookTitle": "Book", "entries": [], "baseFixture": "vocabListLong",
           "entryOverrides": [{
-            "word": "alpha", "cardRole": "learning", "reviewEligible": true,
+            "word": "alpha",
             "reviewIntervalHours": 48, "nextReviewAt": "2099-01-02T00:00:00Z",
             "lastReviewedAt": null, "reviewCount": 2, "reviewStreak": 2,
             "lastReviewFeedbackRaw": 1
@@ -260,7 +235,7 @@ struct UIWorldVocabularyInheritanceTests {
             "explanation": null, "partOfSpeech": "noun", "bookTitle": "Book", "chapterTitle": null,
             "kgCardId": "card-alpha", "difficultyTier": "core", "reviewMode": "recognition",
             "reviewExamples": [], "collocations": null, "rootForm": null, "inflections": null,
-            "syncStatus": 1, "actionType": "add", "isArchived": false, "isExcludedFromReader": false,
+            "syncStatus": 1, "actionType": "add", "isArchived": false,
             "reviewIntervalHours": 24, "nextReviewAt": "2099-01-01T00:00:00Z",
             "lastReviewedAt": null, "reviewCount": 0, "reviewStreak": 0,
             "lastReviewFeedbackRaw": -1, "graphLinksByKind": {}

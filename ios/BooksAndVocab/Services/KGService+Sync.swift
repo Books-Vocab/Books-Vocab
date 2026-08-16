@@ -32,63 +32,6 @@ private struct SettingsResetInjectedFailure: LocalizedError {
 
 extension KGService {
 
-    private static let readerVisibilityMigrationKey = "kg_dictionary_reader_visibility_migrated_v1"
-
-    /// Flush reader visibility before any pull. Local intent remains durable on
-    /// failure and `BackgroundSyncActor` refuses to overwrite it with the
-    /// server projection until the exact desired value is acknowledged.
-    func flushReaderVisibilityOutbox(container: ModelContainer) async throws {
-        guard claimReaderVisibilityFlush() else { return }
-        let actor = BackgroundSyncActor(modelContainer: container)
-        do {
-            repeat {
-                if !UserDefaults.standard.bool(forKey: Self.readerVisibilityMigrationKey) {
-                    try await actor.markLegacyHiddenCardsForReaderVisibilityMigration()
-                }
-                let edits = try await actor.pendingReaderVisibilityEdits()
-                for edit in edits {
-                    do {
-                        _ = try await updateReaderVisibility(
-                            cardId: edit.cardID,
-                            readerHidden: edit.hidden
-                        )
-                        try await actor.markReaderVisibilitySynced(
-                            cardID: edit.cardID,
-                            hidden: edit.hidden
-                        )
-                    } catch KGError.httpError(let statusCode, _) where statusCode == 404 {
-                        // Rolling backend: preserve the durable intent without
-                        // blocking legacy vocab sync. A later sync retries it.
-                        UserDefaults.standard.set(
-                            true, forKey: Self.readerVisibilityMigrationKey
-                        )
-                        abortReaderVisibilityFlush()
-                        return
-                    }
-                }
-                UserDefaults.standard.set(true, forKey: Self.readerVisibilityMigrationKey)
-            } while finishReaderVisibilityFlushPass()
-        } catch {
-            abortReaderVisibilityFlush()
-            throw error
-        }
-    }
-
-    func pullDictionaryCardsToLocal(
-        container: ModelContainer,
-        since: String?,
-        notebookId: String?
-    ) async throws {
-        let actor = BackgroundSyncActor(modelContainer: container)
-        var cursor: String?
-        repeat {
-            let page = try await fetchDictionaryCards(
-                since: since, notebookId: notebookId, cursor: cursor
-            )
-            try await actor.upsertDictionaryProjections(page.cards)
-            cursor = page.nextCursor
-        } while cursor != nil
-    }
 
     // MARK: - Push Review State
 
@@ -97,10 +40,7 @@ extension KGService {
         // Captured before the payload is built so a review landing mid-request
         // stays dirty rather than being acknowledged as already-sent.
         let boundary = Date()
-        let includeDictionaryCards = ReviewSettingsStore.shared.settings.includeDictionaryCards
-        let payload = try await actor.buildReviewStatePushPayload(
-            includeDictionaryCards: includeDictionaryCards
-        )
+        let payload = try await actor.buildReviewStatePushPayload()
         guard !payload.isEmpty else { return (0, 0) }
 
         struct PushResponse: Decodable {
@@ -113,10 +53,7 @@ extension KGService {
             method: "PATCH",
             body: try JSONSerialization.data(withJSONObject: ["entries": payload])
         )
-        try await actor.markReviewStatesPushed(
-            upTo: boundary,
-            includeDictionaryCards: includeDictionaryCards
-        )
+        try await actor.markReviewStatesPushed(upTo: boundary)
         AppLog.kg.info("pushReviewStates: sent=\(payload.count), updated=\(result.updated), skipped=\(result.skipped)")
         return (result.updated, result.skipped)
     }
@@ -152,12 +89,6 @@ extension KGService {
     }
 
     /// `pullCardsToLocal` 加上逐步進度回報。
-    ///
-    /// 為什麼字典卡的回報必須從這裡出去：字典卡投影是 `performPullCardsToLocal`
-    /// **內部**的一段（在單字卡 merge 之後、推進 `incrementalBoundary` 之前），
-    /// 兩者共用同一個 `since` 游標與同一個 boundary 決策。把它拉到外面變成獨立的
-    /// 一步會改動那個契約，代價遠大於「讓 UI 多一列」的收益。所以改成讓這支在
-    /// 內部把 `.pull` 收尾、再開 `.dictionary`，UI 看到的順序才與實際執行順序一致。
     ///
     /// `reporter` 沒有預設值：它與上面那支三參數版構成 overload，給了預設值會讓
     /// 兩者在只傳 container 時互相打架。
@@ -229,10 +160,6 @@ extension KGService {
         // Bug A fix: 記錄邊界在發起請求前，避免 pull 期間新增的卡片被跳過
         let pullBoundary = Date().timeIntervalSince1970
 
-        // Preserve a user's local visibility choice across the server-authority
-        // migration before either projection can overwrite it.
-        try await flushReaderVisibilityOutbox(container: container)
-
         let (data, httpResponse) = try await authenticatedRequest(
             path: "api/vocab",
             queryItems: queryItems.isEmpty ? nil : queryItems
@@ -261,39 +188,9 @@ extension KGService {
             notebookId: notebookId ?? "default"
         )
 
-        // 單字卡這一步在此收尾——下面的字典卡投影是另一件事，讓它們在 UI 上同時
-        // 顯示為 running 會謊報平行度（它們是嚴格序列的，理由見 backgroundSync）。
         reporter?(.finished(.pull, status: .done, detail: Self.pullDetail(
             inserted: pullResult.inserted, updated: pullResult.updated, deleted: pullResult.deleted
         )))
-
-        reporter?(.started(.dictionary))
-        do {
-            try await pullDictionaryCardsToLocal(
-                container: container,
-                since: isIncremental
-                    ? AppDateFormatters.iso8601.string(from: Date(timeIntervalSince1970: lastSyncMillis))
-                    : nil,
-                notebookId: notebookId
-            )
-            reporter?(.finished(.dictionary, status: .done, detail: ""))
-        } catch KGError.httpError(let statusCode, _) where statusCode == 404 {
-            // Rolling-upgrade compatibility: legacy backend has no dictionary
-            // projection yet. Learning-card sync remains available.
-            AppLog.sync.info("Dictionary projection unavailable on legacy backend")
-            reporter?(.finished(.dictionary, status: .skipped, detail: L10n.string("此伺服器尚未提供字典卡")))
-        } catch is CancellationError {
-            // 取消不畫紅叉（與 `legFinishedEvent` 同一條契約）。走 generic catch 的話
-            // 除了誤標失敗，`CancellationError().localizedDescription` 還會把英文的
-            // "The operation couldn't be completed." 原封送上 zh-Hant / ja / ko 的設定頁。
-            reporter?(.finished(.dictionary, status: .skipped, detail: ""))
-            throw CancellationError()
-        } catch {
-            // 非 404 一律往外拋（維持既有語意：字典卡壞掉 = 整條 pull 失敗）。
-            // 先回報再 rethrow，否則這一列會停在 running 直到下一輪覆寫。
-            reporter?(.finished(.dictionary, status: .error, detail: SyncFailurePresentation.reason(for: error)))
-            throw error
-        }
 
         // Orphan cleanup leak fix: when a full sync's orphan cleanup was
         // blocked by the mass-deletion safety valve, the local store still
@@ -375,7 +272,7 @@ extension KGService {
     static func syncStepIDs(
         podcastEnabled: Bool = KGFeatureFlags.podcastEnabled
     ) -> [SyncStepID] {
-        var ids: [SyncStepID] = [.push, .pull, .dictionary, .reviewEvents]
+        var ids: [SyncStepID] = [.push, .pull, .reviewEvents]
         if podcastEnabled { ids.append(.podcast) }
         return ids
     }
@@ -623,20 +520,6 @@ extension KGService {
         // **push → pull 必須序列。** pull 會把伺服器的 `lastReviewedAt` 寫回本地；
         // 先拉再送會讓「還沒送出」的基準被覆蓋掉（7a8352f27 有測試釘住）。
         //
-        // **單字卡 pull 與字典卡 pull 也必須序列，這點違反直覺所以寫下來。**
-        // `BackgroundSyncActor` 是 `@ModelActor`，但它在 12 個 call site 各自 init，
-        // 每個實例有自己的 `ModelContext` —— actor 隔離只序列化「對同一實例」的呼叫，
-        // 不會序列化兩個不同實例。而 `pullCardsToLocal` 與 `upsertDictionaryProjections`
-        // 都 fetch 全部 `VocabularyEntry`、都寫 translation / explanation / isArchived
-        // / cardRole / markSynced() 這幾乎相同的一組欄位。併發的後果具體有五個：
-        // 兩個 context 的 lost update、同一 mergeKey 重複插入、mass-deletion 安全閥
-        // 讀到會動的分母（而它決定 incrementalBoundary 要不要前進）、
-        // `reviewMergeEqualInstantConflicts` 這個 nonisolated(unsafe) static 的真實
-        // data race，以及 `SyncKeys.incrementalBoundary` 是單一全域 key（`enqueuePull`
-        // 全域序列化的原因也在此）。所以字典卡留在 pull 內部序列跑，不要「順手併發」。
-        //
-        // `.pull` 與 `.dictionary` 的收尾事件由 `performPullCardsToLocal` 內部發出
-        // （字典卡投影是它的一段，見那支的說明）；這裡只負責開場與失敗時的補救。
         progress?(.started(.pull))
         progress?(.started(.reviewEvents))
         // `progress:` 這條線一直都在（`pullCardsToLocal` 從第一天就收 progress
@@ -663,11 +546,6 @@ extension KGService {
         // `CancellationError`，所以 `api/vocab` 這個 GET 真的產得出取消；漏掉這條
         // 分支的話 `.pull` 會停在轉圈，而 `wasCancelled` 早退後再也不會有事件來救它。
         //
-        // **`.dictionary` 不補。** 它的 do/catch 涵蓋了自己 started 之後的每一條
-        // 出口，所以它要嘛已終態、要嘛從沒開始過——沒開始過的是 `.waiting`（灰列），
-        // 不會轉圈。硬補一個 `.error` 只會讓「單字卡第一步就死」的那一輪憑空把
-        // 字典卡的權重算滿，進度條顯示 80%。store 端的「首個終態說了算」讓成功路徑
-        // 上這裡的重複發送無害，但無害不等於該發。
         if case .failure(let error) = pullCards {
             progress?(error is CancellationError
                 ? .finished(.pull, status: .skipped, detail: "")
@@ -761,7 +639,7 @@ extension KGService {
         // 取消檢查，所以它的寫入階段會在清除之後才落地，把剛被刪掉的列寫回去。
         //
         // 在這裡自己判 expiry（純讀，無副作用），過期就當作沒 session。
-        guard let token = await kgService.authSession.token,
+        guard let token = kgService.authSession.token,
               !JWTExpiry.isExpired(token) else { return }
         progress?(.started(.podcast))
         // 儀器必須放在 service 內，不能掛在 `progress` 上：冷啟動路徑傳的是

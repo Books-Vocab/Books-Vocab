@@ -156,8 +156,7 @@ private struct AddLinkSheetScene: View {
 
     var body: some View {
         AppThemeContainer {
-            // AddLinkSheet reads `\.modelContext` for the dictionary
-            // materialization path, so the scene must supply a container.
+            // AddLinkSheet persists graph links through the model context.
             AddLinkSheet(
                 sourceEntry: source,
                 allEntries: candidates + [source]

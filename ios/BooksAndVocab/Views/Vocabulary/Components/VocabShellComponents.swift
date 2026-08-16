@@ -44,18 +44,15 @@ struct VocabFilterChipBar<ID: Hashable>: View {
 
 /// Semantic library controls for p11.
 ///
-/// The report is not describing two unrelated menus. It shows one filter
-/// surface with two dimensions: a single content-role selection and a
-/// multi-select review-state selection. Both dimensions therefore use the
-/// same three-column pill grid, counts come from the same projection, and the
-/// query mutation remains explicit at the button boundary. A native Picker
+/// The review-state filter uses the same three-column pill grid as the report,
+/// with counts from the shared projection and explicit query mutation at the
+/// button boundary. A native Picker
 /// hid the interaction contract from UI tests and made the layout diverge
 /// from the report, so these controls are rendered as buttons.
 struct VocabLibraryFilterBar: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
-    let roleOptions: [VocabTabOption<VocabularyRoleFilter>]
     let reviewOptions: [VocabTabOption<VocabularyReviewState>]
     @Binding var query: VocabularyLibraryQuery
     let visibleCount: Int
@@ -63,35 +60,24 @@ struct VocabLibraryFilterBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.rowMicroGap) {
             filterGrid(
-                options: roleOptions,
-                isSelected: { query.contentScope == $0 },
-                identifierPrefix: "vocab.filter.scope",
+                options: reviewOptions,
+                isSelected: { query.reviewStates.contains($0) },
+                identifierPrefix: "vocab.filter.reviewState",
                 identifier: { $0.rawValue }
             ) { option in
-                query.setContentScope(option)
+                query.toggleReviewState(option)
             }
 
-            if query.contentScope != .dictionary {
-                filterGrid(
-                    options: reviewOptions,
-                    isSelected: { query.reviewStates.contains($0) },
-                    identifierPrefix: "vocab.filter.reviewState",
-                    identifier: { $0.rawValue }
-                ) { option in
-                    query.toggleReviewState(option)
+            if !query.reviewStates.isEmpty {
+                Button {
+                    query.setReviewState(nil)
+                } label: {
+                    Label(L10n.string("explore.noResults.clear"), systemImage: "xmark.circle")
                 }
-
-                if !query.reviewStates.isEmpty {
-                    Button {
-                        query.setReviewState(nil)
-                    } label: {
-                        Label(L10n.string("explore.noResults.clear"), systemImage: "xmark.circle")
-                    }
-                    .font(appSkin.typography.caption)
-                    .foregroundStyle(appSkin.palette.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .accessibilityIdentifier("vocab.filter.reviewState.clear")
-                }
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityIdentifier("vocab.filter.reviewState.clear")
             }
 
             // Facet counts are scope-wide; this is the post-search visible-row

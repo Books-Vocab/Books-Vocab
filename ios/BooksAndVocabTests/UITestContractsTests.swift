@@ -24,8 +24,8 @@ struct UITestContractsTests {
                 == "-seedFixture:vocabulary:p11.644.reviewMix"
         )
         #expect(
-            UITestFixtureLaunchContract.vocabularyLibraryP11MixedRoleCounterexample
-                == "-seedFixture:vocabulary:role.mixed"
+            UITestFixtureLaunchContract.vocabularyLibraryReviewStateMixed
+                == "-seedFixture:vocabulary:review.mixed"
         )
         #expect(
             UITestFixtureLaunchContract.vocabularyLibraryP11ReviewMix

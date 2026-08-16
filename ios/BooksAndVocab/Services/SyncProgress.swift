@@ -69,8 +69,6 @@ enum SyncStepID: String, Sendable, CaseIterable {
     case push
     /// 拉回單字卡。唯一有真實 current/total 可回報的步驟。
     case pull
-    /// 拉回字典卡投影。**序列跟在 `pull` 之後**，理由見 `KGService+Sync.swift`。
-    case dictionary
     /// 拉回伺服器端的複習事件。
     case reviewEvents
     /// 更新 Podcast 目錄（Release 由 `KGFeatureFlags.podcastEnabled` 關掉，不宣告此步）。
@@ -82,7 +80,6 @@ enum SyncStepID: String, Sendable, CaseIterable {
         switch self {
         case .push:         return L10n.string("送出複習紀錄")
         case .pull:         return L10n.string("下載單字卡")
-        case .dictionary:   return L10n.string("下載字典卡")
         case .reviewEvents: return L10n.string("下載複習紀錄")
         case .podcast:      return L10n.string("更新 Podcast 目錄")
         case .status:       return L10n.string("額度與連線")
@@ -97,7 +94,6 @@ enum SyncStepID: String, Sendable, CaseIterable {
         switch self {
         case .push:         return 1
         case .pull:         return 4
-        case .dictionary:   return 2
         case .reviewEvents: return 1
         case .podcast:      return 2
         case .status:       return 1
@@ -211,10 +207,7 @@ final class SyncProgressStore {
             mutate(id) { step in
                 // 第一個終態說了算，與 `.advanced` 的守衛對稱。
                 //
-                // 具體會咬人的情況：單字卡 merge 成功、字典卡投影拋非 404。
-                // `performPullCardsToLocal` 內部已經發過 `.finished(.pull, .done,
-                // "同步 6 筆")`，外層的失敗補救接著又發一次 `.finished(.pull, .error)`
-                // —— 卡片明明已經寫進本地庫了，那一列卻從綠翻紅。
+                // 若 leaf 已發出成功，外層的補救事件不得再把它翻成失敗。
                 guard !step.status.isTerminal else { return }
                 step.status = status
                 if !detail.isEmpty { step.detail = detail }

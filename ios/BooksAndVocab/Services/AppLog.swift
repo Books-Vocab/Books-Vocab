@@ -10,7 +10,6 @@ enum AppLog {
     static let translation = Logger(subsystem: subsystem, category: "Translation")
     static let auth = Logger(subsystem: subsystem, category: "Auth")
     static let sync = Logger(subsystem: subsystem, category: "Sync")
-    static let dictionary = Logger(subsystem: subsystem, category: "Dictionary")
     static let book = Logger(subsystem: subsystem, category: "Book")
     static let reader = Logger(subsystem: subsystem, category: "Reader")
     static let fonts = Logger(subsystem: subsystem, category: "Fonts")

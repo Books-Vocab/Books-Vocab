@@ -18,7 +18,6 @@
 | 階段 | 觸發方式 | 內容 | Token 成本 |
 |------|---------|------|-----------|
 | **Phase 1** | 點擊單字 | 精簡翻譯 + 詞性 | ~10 output tokens |
-| **音標** | 自動 | IPA 發音 | 0（免費字典 API）|
 | **Phase 2** | 手動按 `▼` | 語境解釋（1-2句） | 按需觸發 |
 
 - 已加入生詞庫的單字**直接從本地讀取**，零 API 呼叫
@@ -63,8 +62,6 @@ BooksAndVocab/
 ├── Services/
 │   ├── TranslationService.swift   # AI 翻譯（後端 API）
 │   ├── KGService.swift            # KG 伺服器通訊（health check / batch add / background pipeline / pull & merge）
-│   ├── KGService+Dictionary.swift # 字典卡 API（搜尋 / entry / 卡 CRUD / promote）
-│   │                              # ※ iOS 不直連字典 provider：授權、快取、上游配額全在 backend
 │   └── SpeechService.swift        # 單字朗讀（AVSpeechSynthesizer）
 │
 ├── Views/
@@ -96,7 +93,6 @@ BooksAndVocab/
 |------|------|
 | [Readium Swift Toolkit](https://github.com/nicegamer7/readium-swift-toolkit) (v3.7.0) | EPUB 解析與排版 |
 | Gemini API (`gemini-flash-lite-latest`) | 雲端 AI 翻譯（低 Token 成本）|
-| [Free Dictionary API](https://dictionaryapi.dev/) | IPA 音標（免費，零 Token）|
 | Books & Vocab Backend（自架） | 知識圖譜、雲端同步與背景處理後端 |
 
 ---

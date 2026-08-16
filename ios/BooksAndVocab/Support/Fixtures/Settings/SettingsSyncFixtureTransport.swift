@@ -52,14 +52,6 @@ final class SettingsSyncFixtureEvidenceStore: @unchecked Sendable {
         return eventsBySession[sessionID] ?? []
     }
 
-    func snapshotDictionaryEvents() -> [SettingsSyncTransportEvent] {
-        snapshot().filter { $0.path == "/api/dictionary-cards" }
-    }
-
-    func snapshotDictionaryEvents(sessionID: Int) -> [SettingsSyncTransportEvent] {
-        snapshot(sessionID: sessionID).filter { $0.path == "/api/dictionary-cards" }
-    }
-
     private func currentSessionID() -> Int {
         lock.lock()
         defer { lock.unlock() }
@@ -100,40 +92,25 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
         let path = request.url?.path ?? ""
         switch path {
         case "/api/vocab":
-            let attempt = nextVocabPull()
+            let requestIndex = nextVocabPull()
+            let isFailureRound = requestIndex <= 3
+            let round = isFailureRound ? 1 : 2
+            let statusCode = isFailureRound ? 429 : 200
             let result = response(
                 request,
-                statusCode: 200,
-                body: attempt == 1 ? Self.partialCards : Self.completeCards
+                statusCode: statusCode,
+                body: isFailureRound
+                    ? try Self.encodeJSONBody(path: path, object: ["error": failureMessage])
+                    : Self.completeCards
             )
-            SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: attempt, path: path, statusCode: 200)
-            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
-            return result
-        case "/api/dictionary-cards":
-            let attempt = currentVocabPull()
-            guard attempt > 1 else {
-                let body = try Self.encodeJSONBody(
-                    path: path,
-                    object: ["error": failureMessage]
-                )
-                let result = response(
-                    request,
-                    statusCode: 429,
-                    body: body
-                )
-                SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: attempt, path: path, statusCode: 429)
-                PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=429")
-                return result
-            }
-            let result = response(request, statusCode: 200, body: Data("[]".utf8))
-            SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: attempt, path: path, statusCode: 200)
-            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(attempt) path=\(path) status=200")
+            SettingsSyncFixtureEvidenceStore.shared.record(sessionID: evidenceSessionID, round: round, path: path, statusCode: statusCode)
+            PerfLog.sync.mark("settings.sync.fixture.transport", "round=\(round) path=\(path) status=\(statusCode)")
             return result
         case "/api/vocab/review":
             // `backgroundSync` always runs the two push legs before the pull. The
             // marketing dataset contains local review state, so returning the
             // generic 404 here would prevent the lifecycle fixture from ever
-            // reaching its dictionary retry path. This fixture does not need to
+            // reaching its pull retry path. This fixture does not need to
             // mutate a remote server; it only needs to return the same accounting
             // contract as the production PATCH endpoint.
             let count = Self.entryCount(in: request)
@@ -157,8 +134,7 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
             // This read runs concurrently with the vocabulary pull. Its response
             // can arrive before `nextVocabPull()` increments the round counter,
             // so it is intentionally not added to the round-bound evidence ledger.
-            // The vocab and dictionary pull events below are the canonical,
-            // round-stable proof of this lifecycle.
+            // The vocab pull event is the canonical round-stable proof.
             let result = response(
                 request,
                 statusCode: 200,
@@ -223,12 +199,6 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
         return vocabPullCount
     }
 
-    private func currentVocabPull() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return vocabPullCount
-    }
-
     private func response(
         _ request: URLRequest,
         statusCode: Int,
@@ -246,12 +216,6 @@ final class SettingsSyncFixtureTransport: KGHTTPTransport, @unchecked Sendable {
         )!
         return (body, response)
     }
-
-    private static let partialCards = Data(#"""
-        [
-        {"id":"settings-residual","content":"residual","meaning":"residual","examples":["residual"],"mode":"recognition","isDeleted":false,"isArchived":false}
-        ]
-        """#.utf8)
 
     private static let completeCards = Data(#"""
         [

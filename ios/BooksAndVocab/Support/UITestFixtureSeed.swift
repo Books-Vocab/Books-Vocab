@@ -67,14 +67,10 @@ enum UITestFixtureSeed {
                 seedReader(id, into: container, runtime: readerRuntimeSelection)
             case "notebook":
                 seedNotebook(id, into: container)
-            case "dictionary":
-                seedDictionary(id)
 #if DEBUG && targetEnvironment(simulator)
             case "explore":
                 seedExplore(id, into: container)
 #endif
-            case "vocabulary":
-                seedVocabulary(id, into: container)
             case "entitlements":
                 guard id == "pro" || id == "free" else {
                     failFixtureSeed("Unknown entitlements fixture ID: \(id)")
@@ -90,25 +86,6 @@ enum UITestFixtureSeed {
               container.configurations.allSatisfy(\.isStoredInMemoryOnly) else {
             throw UITestFixtureSeedValidationError.persistentContainer
         }
-    }
-
-    /// Dictionary content is canonical scenarioContext data; the seed only
-    /// verifies that the declared fixture resolves to the injected dataset.
-    /// Dictionary data is already canonical scenarioContext content. The
-    /// launch seed only resolves the declared surface row; it never writes a
-    /// synthetic dictionary response into SwiftData.
-    private static func seedDictionary(_ id: String) {
-        guard let fixtureID = UIWorldDictionaryFixtureID(rawValue: id) else {
-            failFixtureSeed("Unknown dictionary fixture ID: \(id)")
-        }
-        guard FixtureDatasetStore.dictionarySeed(for: fixtureID) != nil else {
-            failFixtureSeed(
-                FixtureDatasetStore.seedResolutionFailureDescription(
-                    resolving: "dictionary.\(fixtureID.rawValue)"
-                )
-            )
-        }
-        AppLog.app.info("UITestFixtureSeed: resolved canonical dictionary fixture \(fixtureID.rawValue)")
     }
 
     static func failFixtureSeed(_ message: String) -> Never {

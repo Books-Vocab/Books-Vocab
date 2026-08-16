@@ -33,7 +33,6 @@ struct SettingsSyncLifecycleEvidence: Equatable {
     let residualWords: [String]
     let readBackWords: [String]
     let transportEvents: [SettingsSyncTransportEvent]
-    let dictionaryEvents: [SettingsSyncTransportEvent]
     let perfMarks: [SettingsSyncPerfRecord]
 
     /// DEBUG-only accessibility payload. Every field is produced by the real
@@ -49,9 +48,6 @@ struct SettingsSyncLifecycleEvidence: Equatable {
         let transport = stableTransportEvents.isEmpty
             ? "-"
             : stableTransportEvents.map(\.marker).joined(separator: "|")
-        let dictionary = dictionaryEvents.isEmpty
-            ? "-"
-            : dictionaryEvents.map(\.marker).joined(separator: "|")
         let perf = perfMarks.isEmpty
             ? "-"
             : perfMarks.map(\.marker).joined(separator: "|")
@@ -65,7 +61,6 @@ struct SettingsSyncLifecycleEvidence: Equatable {
             "readBackCount=\(readBackWords.count)",
             "readBackWords=\(readBack)",
             "transportEvents=\(transport)",
-            "dictionaryEvents=\(dictionary)",
             "perfMarks=\(perf)"
         ].joined(separator: ";")
     }

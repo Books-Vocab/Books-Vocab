@@ -89,8 +89,7 @@ struct SyncProgressStoreTests {
     func firstTerminalWins() {
         let store = makeStore([.pull])
         store.apply(.started(.pull))
-        // 真實序列：pullCardsToLocal 內部在單字卡 merge 成功後發 done，
-        // 接著字典卡投影拋非 404，外層的失敗補救又發一次 error。
+        // 真實序列：pull 已完成後，外層可能仍收到晚到的 error。
         store.apply(.finished(.pull, status: .done, detail: "同步 6 筆"))
         store.apply(.finished(.pull, status: .error, detail: "伺服器錯誤"))
 

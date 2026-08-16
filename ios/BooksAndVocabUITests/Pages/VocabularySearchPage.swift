@@ -87,18 +87,6 @@ struct VocabularySearchPage {
             .firstMatch
     }
 
-    func scopeOption(
-        _ rawValue: String,
-        labelPrefix: String,
-        file: StaticString = #filePath,
-        line: UInt = UInt(#line)
-    ) -> XCUIElement {
-        let byID = app.descendants(matching: .any)
-            .matching(identifier: "vocab.filter.scope.\(rawValue)")
-            .firstMatch
-        return byID
-    }
-
     func reviewStateOption(
         _ rawValue: String,
         labelPrefix: String
@@ -107,15 +95,6 @@ struct VocabularySearchPage {
             .matching(identifier: "vocab.filter.reviewState.\(rawValue)")
             .firstMatch
         return byID
-    }
-
-    func selectScope(
-        _ rawValue: String,
-        labelPrefix: String,
-        file: StaticString = #filePath,
-        line: UInt = UInt(#line)
-    ) {
-        scopeOption(rawValue, labelPrefix: labelPrefix).tapWhenReady(file: file, line: line)
     }
 
     func selectReviewState(

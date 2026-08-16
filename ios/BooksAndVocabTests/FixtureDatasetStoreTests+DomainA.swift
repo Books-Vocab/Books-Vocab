@@ -182,7 +182,6 @@ extension FixtureDatasetStoreTests {
                   "syncStatus": 1,
                   "actionType": "add",
                   "isArchived": false,
-                  "isExcludedFromReader": false,
                   "graphLinksByKind": {}
                 }
               ],

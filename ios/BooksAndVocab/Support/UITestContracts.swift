@@ -33,7 +33,7 @@ public enum UITestLaunchArguments {
 public enum UITestFixtureLaunchContract {
     public static let vocabularyLibraryFilterRich = "-seedFixture:vocabulary:vocabListFilterRich"
     public static let vocabularyLibraryP11ReviewMix = "-seedFixture:vocabulary:p11.644.reviewMix"
-    public static let vocabularyLibraryP11MixedRoleCounterexample = "-seedFixture:vocabulary:role.mixed"
+    public static let vocabularyLibraryReviewStateMixed = "-seedFixture:vocabulary:review.mixed"
 }
 
 public enum LiveDemoAccessPreflightError: String, Error, Equatable {

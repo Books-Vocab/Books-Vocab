@@ -56,7 +56,6 @@ struct NotebookEntrySeed: Codable {
     let syncStatus: Int
     let actionType: String
     let isArchived: Bool
-    let isExcludedFromReader: Bool
     let context: String
     let explanation: String?
     let partOfSpeech: String?
@@ -76,7 +75,6 @@ struct NotebookEntrySeed: Codable {
         case syncStatus
         case actionType
         case isArchived
-        case isExcludedFromReader
         case context
         case explanation
         case partOfSpeech
@@ -102,7 +100,6 @@ struct NotebookEntrySeed: Codable {
         syncStatus: Int,
         actionType: String,
         isArchived: Bool,
-        isExcludedFromReader: Bool,
         context: String,
         explanation: String?,
         partOfSpeech: String?,
@@ -118,7 +115,6 @@ struct NotebookEntrySeed: Codable {
         self.syncStatus = syncStatus
         self.actionType = actionType
         self.isArchived = isArchived
-        self.isExcludedFromReader = isExcludedFromReader
         self.context = context
         self.explanation = explanation
         self.partOfSpeech = partOfSpeech
@@ -131,11 +127,6 @@ struct NotebookEntrySeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
-        try rejectUnknownNotebookKeys(
-            decoder: decoder,
-            keys: CodingKeys.allCases,
-            context: "UI World notebook entry"
-        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !Self.optionalKeys.contains(key) && !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -151,7 +142,6 @@ struct NotebookEntrySeed: Codable {
         syncStatus = try container.decode(Int.self, forKey: .syncStatus)
         actionType = try container.decode(String.self, forKey: .actionType)
         isArchived = try container.decode(Bool.self, forKey: .isArchived)
-        isExcludedFromReader = try container.decode(Bool.self, forKey: .isExcludedFromReader)
         context = try container.decode(String.self, forKey: .context)
         explanation = try container.decodeIfPresent(String.self, forKey: .explanation)
         partOfSpeech = try container.decodeIfPresent(String.self, forKey: .partOfSpeech)
@@ -513,7 +503,6 @@ enum NotebookFixtures {
         entry.syncStatus = seed.syncStatus
         entry.actionType = seed.actionType
         entry.isArchived = seed.isArchived
-        entry.isExcludedFromReader = seed.isExcludedFromReader
         // Optional review scheduling：缺席時沿用 VocabularyEntry 預設（unlearned）。
         if let reviewIntervalHours = seed.reviewIntervalHours {
             entry.reviewIntervalHours = reviewIntervalHours

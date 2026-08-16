@@ -6,8 +6,6 @@ enum KGVocabSortOption: String, CaseIterable, Identifiable, Hashable {
     case dateAdded
     case difficulty
 
-    static let dictionaryOptions: [Self] = [.alphabetical, .dateAdded]
-
     var id: String { rawValue }
 
     var label: String {

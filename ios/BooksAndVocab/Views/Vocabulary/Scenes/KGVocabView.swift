@@ -43,18 +43,15 @@ struct KGVocabView: View {
         onEntrySelected: ((VocabularyEntry) -> Void)? = nil,
         onStartReview: (([VocabularyEntry]) -> Void)? = nil,
         initialReviewStates: Set<VocabularyReviewState> = [],
-        initialRoleFilter: VocabularyRoleFilter = .all,
         initialSort: KGVocabSortOption = .default
     ) {
         self._searchText = searchText
         self.notebookId = notebookId
         self.onEntrySelected = onEntrySelected
         self.onStartReview = onStartReview
-        // Keep the legacy initializer surface for callers/scenarios, but store
-        // the values as one query so every projection consumer sees the same
-        // content scope, progress filter, and sort.
+        // Store the values as one query so every projection consumer sees the
+        // same progress filter and sort.
         let initialQuery = VocabularyLibraryQuery(
-            contentScope: initialRoleFilter,
             reviewStates: initialReviewStates,
             sort: initialSort
         )
@@ -77,8 +74,7 @@ struct KGVocabView: View {
         let projection = VocabularyEntryPresentation.project(
             syncedEntries,
             query: projectionQuery,
-            now: n,
-            includeDictionaryCards: reviewSettingsStore.settings.includeDictionaryCards
+            now: n
         )
 
         VocabSceneShell(phase: buildScenePhase()) {
@@ -131,13 +127,6 @@ struct KGVocabView: View {
                 count: projection.reviewCount(for: state)
             )
         }
-        let roleOptions = VocabularyRoleFilter.allCases.map { filter in
-            VocabTabOption(
-                id: filter,
-                title: filter.title,
-                count: projection.count(for: filter)
-            )
-        }
         // Selection and empty state use visible rows; the CTA deliberately uses
         // the scope-wide review queue so search/facet narrowing cannot hide due
         // work that remains actionable.
@@ -165,7 +154,6 @@ struct KGVocabView: View {
 
         let state = KGVocabPresenter.State(
             banner: bannerState,
-            roleOptions: roleOptions,
             reviewStateOptions: tabOptions,
             rows: projection.visibleEntries.map {
                 KGVocabPresenter.State.RowItem(id: $0.id, entry: $0)
@@ -299,7 +287,6 @@ struct KGVocabView: View {
         guard syncedEntries.isEmpty,
               projection.effectiveQuery.searchText.isEmpty,
               projection.effectiveQuery.reviewStates.isEmpty,
-              projection.effectiveQuery.contentScope == .all,
               authManager.isLoggedIn else {
             return nil
         }

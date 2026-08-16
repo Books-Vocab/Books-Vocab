@@ -21,13 +21,12 @@ enum NotebookStatsCalculator {
     static func compute(
         _ entries: [VocabularyEntry],
         pendingEntries: [VocabularyEntry],
-        now: Date = Date(),
-        includeDictionaryCards: Bool = false
+        now: Date = Date()
     ) -> [String: NotebookStats] {
         var result: [String: NotebookStats] = [:]
         for entry in entries {
             result[entry.notebookId, default: NotebookStats()].cardCount += 1
-            if entry.shouldAppearInReview(includingDictionaryCards: includeDictionaryCards) {
+            if entry.shouldAppearInReview {
                 if entry.reviewCount > 0 && entry.nextReviewAt <= now {
                     result[entry.notebookId, default: NotebookStats()].dueCount += 1
                 } else if entry.reviewCount == 0 {
@@ -51,13 +50,11 @@ enum NotebookStatsCalculator {
     static func filtered(
         _ entries: [VocabularyEntry],
         filter: NotebookFilter,
-        now: Date = Date(),
-        includeDictionaryCards: Bool = false
+        now: Date = Date()
     ) -> (due: [VocabularyEntry], unlearned: [VocabularyEntry]) {
         var due: [VocabularyEntry] = []
         var unlearned: [VocabularyEntry] = []
-        for entry in entries where filter.matches(entry.notebookId)
-            && entry.shouldAppearInReview(includingDictionaryCards: includeDictionaryCards) {
+        for entry in entries where filter.matches(entry.notebookId) && entry.shouldAppearInReview {
             if entry.reviewCount > 0 && entry.nextReviewAt <= now {
                 due.append(entry)
             } else if entry.reviewCount == 0 {
