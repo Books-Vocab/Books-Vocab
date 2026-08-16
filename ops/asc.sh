@@ -9,6 +9,7 @@
 #   ./ops/asc.sh status                        # 綜合盤點：info + versions + review-status + subscriptions
 #   ./ops/asc.sh versions                      # 列 App Store 版本 + 審查 state
 #   ./ops/asc.sh builds                        # TestFlight 最新 build number
+#   ./ops/asc.sh build <version> <build>       # 精確查詢一組 ASC iOS build（JSON；唯讀）
 #   ./ops/asc.sh metadata [--locale zh-Hant]   # 讀某版本某語系的文案欄位
 #   ./ops/asc.sh info                          # app 層級唯讀資訊（name/bundle/sku/語言）
 #   ./ops/asc.sh review-status                 # 審查提交 state（被拒原因須 GUI 解決中心看）
@@ -186,6 +187,14 @@ cmd_builds() {
   local latest
   latest="$(asc get-latest-testflight-build-number "$APP_ID" --platform IOS 2>/dev/null | tail -1 | tr -d '[:space:]')"
   echo "TestFlight 最新 build number: ${latest:-（無）}"
+}
+
+cmd_build() {
+  local version="${1:-}" build="${2:-}"
+  [[ -n "$version" && -n "$build" && "$build" =~ ^[0-9]+$ ]] \
+    || err "用法：asc.sh build <marketing-version> <build-number>（build 必須是數字）"
+  require_key
+  "$(dirname "$0")/asc_build.py" "$version" "$build"
 }
 
 cmd_metadata() {
@@ -806,6 +815,7 @@ case "${SUB:-}" in
   status)        cmd_status ;;
   versions)      cmd_versions ;;
   builds)        cmd_builds ;;
+  build)         cmd_build "${ARGS[@]}" ;;
   metadata)      cmd_metadata ;;
   info)          cmd_info ;;
   review-status) cmd_review_status ;;

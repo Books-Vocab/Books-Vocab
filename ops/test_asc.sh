@@ -24,10 +24,14 @@ bash -n "$ASC"    && ok "asc.sh syntax"   || fail_t "asc.sh syntax error"
 
 # ── 2. 子命令 dispatch 分支齊全 ─────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in versions builds metadata info review-status set set-review; do
+for sub in versions builds build metadata info review-status set set-review; do
   grep -qE "^[[:space:]]*$sub\)" "$ASC" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
+
+[[ -f "$WORKSPACE/ops/asc_build.py" ]] \
+  && ok "asc_build.py exact-build helper exists" \
+  || fail_t "asc_build.py exact-build helper missing"
 
 # ── 3. 複用 codemagic wrapper，不在主檔重造 JWT（review 核心） ───────────────
 section "codemagic wrapper (no hand-rolled JWT)"
