@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# ios_test_video_archive.sh — persist UITest run recordings beyond the tmp dir.
+# ios_test_video_archive.sh — finalize one UITest recording inside its run root.
 #
-# `ios_test.sh --ui` records the simulator into a mktemp dir that the OS
-# reclaims, so the verdict's artifacts.uiVideo went stale within hours. This
-# lib moves the finalized mp4 into build/snapshots/uitest-videos/ with a
-# timestamped name, maintains index.json (kg.ios.uitest-videos.v1, newest
-# first), and prunes to KG_UITEST_VIDEO_KEEP (default 10) so the archive
-# can't grow unbounded. The UITest review workspace reads index.json and mirrors
-# the recordings into each review root for the UIreview.html gallery.
+# `ios_test.sh --visual` records the simulator into a temporary directory that
+# the OS can reclaim. This lib moves the finalized mp4 into the caller-owned
+# run root, maintains a bounded per-run index (kg.ios.uitest-videos.v1), and
+# returns the exact path for the normalized verdict. The caller decides whether
+# that run root is ephemeral or explicitly retained.
 
 # uitest_video_archive <video_path> <dest_root> <scope> <caller> [timestamp] [run_id]
 # Echoes the archived path. Missing/empty recording is a silent no-op (the

@@ -41,6 +41,7 @@
 #   KG_IOS_TEST_LOG_IDLE_LIMIT=300 ./ops/ios_test.sh ...          # fail after 300s without log writes
 #   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=<seconds> ./ops/ios_test.sh --ui ... # bounded per-test timeout
 #   KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE=420 ./ops/ios_test.sh ... # raise XCTest max
+#   ./ops/ios_test.sh --ui --visual ...                         # opt in to screenshots/video/UIreview
 #
 # Examples:
 #   ./ops/ios_test.sh resolveNotebookId_emptyCandidate_returnsDefault
@@ -88,6 +89,7 @@ TEST_SCHEME="BooksAndVocab"
 TEST_CACHE_ACTION=""
 JSON_MODE=0
 UI_LAUNCH_PROFILE="${KG_IOS_TEST_UI_LAUNCH_PROFILE:-}"
+VISUAL_CAPTURE_ENABLED="${KG_IOS_VISUAL_CAPTURE:-0}"
 LAUNCH_BENCHMARK=0
 COVERAGE_ENABLED=0
 COVERAGE_FAIL_UNDER=""
@@ -201,6 +203,7 @@ while [[ $# -gt 0 ]]; do
     --cache-status) TEST_CACHE_ACTION="status"; shift ;;
     --clean-cache) TEST_CACHE_ACTION="clean"; shift ;;
     --json) JSON_MODE=1; shift ;;
+    --visual|--visual-capture) VISUAL_CAPTURE_ENABLED=1; shift ;;
     --ui-launch-profile) UI_LAUNCH_PROFILE="$2"; shift 2 ;;
     --launch-benchmark) LAUNCH_BENCHMARK=1; shift ;;
     --coverage) COVERAGE_ENABLED=1; shift ;;
@@ -294,10 +297,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
-# Evidence wrappers may pin every per-run log/result/snapshot below one
-# unique staging root. The root is deliberately restricted to this worktree's
-# rebuildable evidence area; ordinary direct ios_test calls retain their
-# historical temporary/archive locations.
+# Evidence wrappers may pin every per-run log/result/snapshot below one unique
+# staging root. New visual runs use a short-lived temp root; the in-repo path is
+# reserved for an explicit retained report. Ordinary UI tests are behavior-only
+# unless --visual (or KG_IOS_VISUAL_CAPTURE=1) opts into visual capture.
 IOS_ARTIFACT_ROOT=""
 if [[ -n "${KG_IOS_ARTIFACT_ROOT:-}" ]]; then
   artifact_root_candidate="$KG_IOS_ARTIFACT_ROOT"
@@ -306,13 +309,26 @@ if [[ -n "${KG_IOS_ARTIFACT_ROOT:-}" ]]; then
   fi
   mkdir -p "$artifact_root_candidate"
   IOS_ARTIFACT_ROOT="$(cd "$artifact_root_candidate" && pwd -P)"
+  tmp_root_real="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+  ephemeral_root_real=""
+  if [[ -n "${KG_IOS_EPHEMERAL_ROOT:-}" ]]; then
+    mkdir -p "$KG_IOS_EPHEMERAL_ROOT"
+    ephemeral_root_real="$(cd "$KG_IOS_EPHEMERAL_ROOT" && pwd -P)"
+  fi
+  artifact_root_allowed=0
   case "$IOS_ARTIFACT_ROOT" in
-    "$PROJECT_ROOT"/build/snapshots/uitest-evidence/*) ;;
-    *)
-      echo "[ios_test] error: KG_IOS_ARTIFACT_ROOT must be under this worktree's build/snapshots/uitest-evidence: $IOS_ARTIFACT_ROOT" >&2
-      exit 65
-      ;;
+    "$PROJECT_ROOT"/build/ios-report/retained|"$PROJECT_ROOT"/build/ios-report/retained/*) artifact_root_allowed=1 ;;
+    "$tmp_root_real"/kg-ios-*/*) artifact_root_allowed=1 ;; # ephemeral run-owned staging
   esac
+  if [[ -n "$ephemeral_root_real" ]]; then
+    case "$IOS_ARTIFACT_ROOT" in
+      "$ephemeral_root_real"|"$ephemeral_root_real"/*) artifact_root_allowed=1 ;;
+    esac
+  fi
+  if [[ "$artifact_root_allowed" -ne 1 ]]; then
+    echo "[ios_test] error: KG_IOS_ARTIFACT_ROOT must be an explicit retained report root or an ephemeral /tmp run root: $IOS_ARTIFACT_ROOT" >&2
+    exit 65
+  fi
 fi
 artifact_temp_file() {
   local stem="${1:-ios-test-artifact}"
@@ -1144,7 +1160,7 @@ stage_ui_evidence_runner_environment() {
     echo "[ios_test] evidence stage blocked: source commit could not be resolved" >&2
     return 1
   fi
-  if [[ -z "${UI_TEST_SCREENSHOT_DIR:-}" ]]; then
+  if [[ "$VISUAL_CAPTURE_ENABLED" == "1" && -z "${UI_TEST_SCREENSHOT_DIR:-}" ]]; then
     echo "[ios_test] evidence stage blocked: UI_TEST_SCREENSHOT_DIR is missing" >&2
     return 1
   fi
@@ -1160,9 +1176,11 @@ stage_ui_evidence_runner_environment() {
     echo "[ios_test] evidence stage failed: key=KG_UI_TEST_SOURCE_COMMIT xctestrun=$staged_path" >&2
     return 1
   fi
-  if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR"; then
-    echo "[ios_test] evidence stage failed: key=KG_UI_TEST_SCREENSHOT_DIR xctestrun=$staged_path" >&2
-    return 1
+  if [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]]; then
+    if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR"; then
+      echo "[ios_test] evidence stage failed: key=KG_UI_TEST_SCREENSHOT_DIR xctestrun=$staged_path" >&2
+      return 1
+    fi
   fi
   if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_ID "$EVIDENCE_DATASET_ID"; then
     echo "[ios_test] evidence stage failed: key=KG_UI_TEST_DATASET_ID xctestrun=$staged_path" >&2
@@ -1491,6 +1509,7 @@ prepare_ui_step_screenshot_dir() {
   UI_TEST_VIDEO_FILE=""
   UI_TEST_VIDEO_SHA256=""
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
+  [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]] || return 0
   UI_TEST_SCREENSHOT_DIR="$(artifact_temp_dir kg_ios_ui_steps)"
 }
 
@@ -1580,14 +1599,14 @@ stop_ui_test_recording() {
   fi
 }
 
-# Move the finalized recording out of the mktemp dir into the repo archive
-# (build/snapshots/uitest-videos/) and repoint UI_TEST_VIDEO so the verdict's
-# artifacts.uiVideo references the stable copy instead of a path the OS will
-# reclaim. The catalog review page embeds the archive via its index.json.
+# Move the finalized recording out of the step temp dir into this run's
+# artifact root when a visual run explicitly owns one; direct behavior tests
+# never start a recorder. A report helper may later promote the run bundle.
 archive_ui_test_recording() {
+  [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]] || return 0
   [[ -n "${UI_TEST_VIDEO:-}" && -s "${UI_TEST_VIDEO:-}" ]] || return 0
   local archived
-  local archive_root="$PROJECT_ROOT/build/snapshots/uitest-videos"
+  local archive_root="${KG_IOS_VISUAL_ROOT:-${TMPDIR:-/tmp}/kg-ios-visual-direct/$UI_TEST_RUN_ID}/videos"
   [[ -n "${IOS_ARTIFACT_ROOT:-}" ]] && archive_root="$IOS_ARTIFACT_ROOT/videos"
   if archived="$(uitest_video_archive "$UI_TEST_VIDEO" \
       "$archive_root" \
@@ -1604,10 +1623,11 @@ archive_ui_test_recording() {
 build_ui_test_review_page() {
   local review_status="${1:-}"
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
+  [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]] || return 0
 
   local stem fallback_input_dir=""
   stem="$UI_TEST_RUN_ID"
-  local review_parent="$PROJECT_ROOT/build/snapshots/uitest-runs"
+  local review_parent="${KG_IOS_VISUAL_ROOT:-${TMPDIR:-/tmp}/kg-ios-visual-direct}/review"
   [[ -n "${IOS_ARTIFACT_ROOT:-}" ]] && review_parent="$IOS_ARTIFACT_ROOT/review"
   mkdir -p "$review_parent"
   UI_TEST_REVIEW_ROOT="$review_parent/$stem"
@@ -2029,11 +2049,13 @@ emit_ui_runner_lifecycle() {
     | grep -E 'BooksAndVocab|UITests-Runner|testmanagerd' \
     | sed 's/^/[ios_test][ui-lifecycle] process /' >&2 || echo "[ios_test][ui-lifecycle] process none" >&2
   safe_device="$(printf '%s' "$device" | tr -c '[:alnum:]._- ' '_')"
-  screenshot_path="${TMPDIR:-/tmp}/kg_ios_ui_lifecycle_${safe_device}_$$.png"
-  if xcrun simctl io "$device" screenshot "$screenshot_path" >/dev/null 2>&1; then
-    echo "[ios_test][ui-lifecycle] screenshot=$screenshot_path" >&2
-  else
-    echo "[ios_test][ui-lifecycle] screenshot unavailable" >&2
+  if [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]]; then
+    screenshot_path="${TMPDIR:-/tmp}/kg_ios_ui_lifecycle_${safe_device}_$$.png"
+    if xcrun simctl io "$device" screenshot "$screenshot_path" >/dev/null 2>&1; then
+      echo "[ios_test][ui-lifecycle] screenshot=$screenshot_path" >&2
+    else
+      echo "[ios_test][ui-lifecycle] screenshot unavailable" >&2
+    fi
   fi
 }
 

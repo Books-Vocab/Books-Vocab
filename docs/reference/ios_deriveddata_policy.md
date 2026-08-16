@@ -20,6 +20,7 @@ verified_against: cc50802b1
 - iOS build 的 DerivedData 一律走 **單一共享快取**：`<主repo>/.cache/ios-build-derived-data`，由 `git-common-dir` 錨定，所有 worktree 解析到同一路徑。
 - **不要**自己呼叫不帶 `-derivedDataPath` 的 `xcodebuild`，也不要改 `ops/ios_build.sh` 移除該旗標。那會讓快取掉回 Xcode 全域預設位置，每個 worktree 路徑生一份孤兒。
 - build / test 共用 `/tmp/kg-ios-build.lock` 序列化，共享快取**不會**並行寫壞。
+- UITest 的截圖、video、UIreview、xcresult 是 agent 觀察產物，不是 DerivedData：視覺 run 預設進系統暫存的 run bundle 並帶 TTL；只有顯式 `--retain` 才進 `build/ios-report/retained/`。source tree 只保存 fixture、契約與小型 receipt。
 
 ## 問題：110G 孤兒洩漏
 
@@ -81,6 +82,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | `ios_test.sh` test-without-building | 走 `-xctestrun`（不編譯） | 免釘 |
 | `ios_release.sh` archive | `.cache/ios-release-derived-data`（共享） | 2026-06-09 補釘；與 Debug 分開避免互相 invalidate |
 | `ios_ops_catalog.sh` `catalog list|open|capture` | 委派 `ios_build.sh` 的共享 DerivedData | Agent UI 工作台；不擁有 xctestrun/test cache lifecycle |
+| `run_ui_evidence.sh` / `ios_ui_run_many.py` 視覺產物 | 系統暫存的 run-scoped root（TTL）；顯式 `--retain` 才進 `build/ios-report/retained/` | Agent 觀察工具；永久狀態只保留小型 verdict、provenance 與必要 receipt |
 
 三份共享快取(build / test / release)都靠 `/tmp/kg-ios-build.lock` 同一把鎖序列化,不會並行寫壞。
 
@@ -124,7 +126,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
   fail-closed，不進入刪除階段。
 - 每次 manual sweep 產生一個小型 `kg.ios.cache-cleanup.v1` receipt，記錄
   `runID`、mode、before/after allocated bytes 與 `/` free bytes；receipt 放在
-  `build/snapshots/cache-cleanup/`，不把 cache 內容本身當 receipt。
+  `build/ios-report/retained/receipts/`，不把 cache 內容本身當 receipt。
 
 **接點與並發安全**：
 | caller | 時機 | 並發保護 |

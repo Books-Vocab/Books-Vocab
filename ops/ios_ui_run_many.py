@@ -1,9 +1,10 @@
 #!/usr/bin/env -S uv run --python 3.13 python
-"""Build once, run many exact iOS UI selectors, and emit durable evidence metadata.
+"""Build once, run many exact iOS UI selectors, and emit run-scoped evidence metadata.
 
 This is deliberately a thin orchestration layer over the fail-closed single-run
 evidence helper. It never invents a visual pass: contract validation happens in
-the helper, while visual attestation remains an explicit later step.
+the helper, visual attestation remains an explicit later step, and visual bytes
+are ephemeral unless the caller explicitly requests retention.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Iterable
 import uuid
@@ -31,6 +33,7 @@ SELECTOR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\/test[A-Za-z0-9_]+$")
 DATASET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 REQUIREMENT_RE = re.compile(r"^P(?:[1-9]|1[0-5])$")
 FAILURE_TTL_SECONDS = 24 * 60 * 60
+EPHEMERAL_TTL_SECONDS = 30 * 60
 
 
 class RunManyError(ValueError):
@@ -272,6 +275,11 @@ def _parse_time(value: Any) -> datetime | None:
         return None
 
 
+def _ephemeral_root() -> Path:
+    configured = os.environ.get("KG_IOS_EPHEMERAL_ROOT")
+    return Path(configured).expanduser() if configured else Path(tempfile.gettempdir()) / "kg-ios-ui-run-many"
+
+
 def classify_bundle(bundle: Path, upstream_returncode: int) -> str:
     if upstream_returncode != 0:
         return "failed"
@@ -394,7 +402,7 @@ def _publish_bundle(bundle: Path, publish_root: Path, selector: str) -> Path:
     shutil.copytree(bundle, destination)
     source_prefix = str(bundle.resolve())
     destination_prefix = str(destination.resolve())
-    # Stable bundles are portable report artifacts. Rewrite only textual
+    # Retained bundles are portable report artifacts. Rewrite only textual
     # metadata; binaries remain byte-for-byte copies. This keeps the helper's
     # absolute provenance internally consistent after publication.
     for path in destination.rglob("*"):
@@ -410,7 +418,7 @@ def _publish_bundle(bundle: Path, publish_root: Path, selector: str) -> Path:
 
 
 def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    """Preview or reclaim only expired failed/abandoned run staging content."""
+    """Preview/reclaim expired ephemeral visual runs, never retained reports."""
     staging_root = args.staging_root.resolve()
     if not staging_root.is_dir():
         raise RunManyError(f"--staging-root must be an existing directory: {staging_root}")
@@ -430,7 +438,20 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if not manifest:
             continue
         status = manifest.get("status")
-        if status not in {"failure", "abandoned"}:
+        retention = manifest.get("retention")
+        helper_manifest = manifest.get("schema") == "kg.ios.ui-evidence-run-manifest.v1"
+        if retention == "retained":
+            continue
+        orphaned_running = False
+        if retention == "ephemeral" and status == "running":
+            running_expires_at = _parse_time(manifest.get("expiresAt"))
+            if running_expires_at is not None and running_expires_at <= _now():
+                status = "abandoned"
+                orphaned_running = True
+        eligible_statuses = {"failure", "abandoned"}
+        if retention == "ephemeral":
+            eligible_statuses.add("success")
+        if status not in eligible_statuses:
             continue
         expires_at = _parse_time(manifest.get("expiresAt"))
         if expires_at is None or expires_at > now:
@@ -451,7 +472,23 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             if not _inside(publish_root, run_root) or publish_root == run_root:
                 raise RunManyError(f"manifest publishRoot escaped run staging root: {manifest_path}")
         removable: list[Path] = []
-        for target in (run_root / "prepare", run_root / "raw", run_root / "logs", publish_root):
+        if helper_manifest:
+            # A single helper keeps its compact verdict/manifest/command receipt,
+            # while all visual binaries and xcresult data live under artifacts.
+            helper_artifact_root = Path(str(manifest.get("artifactRoot", run_root / "artifacts"))).resolve()
+            if not _inside(helper_artifact_root, run_root) or helper_artifact_root == run_root:
+                raise RunManyError(f"manifest artifactRoot escaped helper run root: {manifest_path}")
+            helper_targets = (
+                helper_artifact_root,
+                run_root / "upstream-verdict.json",
+                run_root / "upstream-verdict.raw",
+                run_root / "delegate.stderr.log",
+                run_root / "validator-preflight.txt",
+                run_root / "helper-error.txt",
+            )
+        else:
+            helper_targets = (run_root / "prepare", run_root / "raw", run_root / "logs", publish_root)
+        for target in helper_targets:
             if target is not None and target.exists() and target not in removable:
                 if not _inside(target, run_root) or target == run_root:
                     raise RunManyError(f"unsafe cleanup target: {target}")
@@ -469,6 +506,9 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "manifest": str(manifest_path),
                 "runID": manifest.get("runID"),
                 "status": status,
+                "retention": retention,
+                "manifestSchema": manifest.get("schema"),
+                "orphanedRunning": orphaned_running,
                 "expiresAt": manifest.get("expiresAt"),
                 "stagingRoot": str(run_root),
                 "recordedPIDs": recorded_pids,
@@ -492,8 +532,10 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                     raise RunManyError(f"cleanup target changed or escaped run root: {target}")
                 if target.is_dir():
                     shutil.rmtree(target)
+                elif target.is_file() or target.is_symlink():
+                    target.unlink()
                 elif target.exists():
-                    raise RunManyError(f"refusing to remove non-directory cleanup target: {target}")
+                    raise RunManyError(f"refusing to remove unknown cleanup target: {target}")
             receipt = {
                 "schema": CLEANUP_SCHEMA,
                 "runID": candidate["runID"],
@@ -511,6 +553,10 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             }
             _write_json_atomic(run_root / "cleanup-receipt.json", receipt)
             manifest = _read_json(run_root / "run-manifest.json") or {}
+            if candidate.get("orphanedRunning"):
+                manifest["status"] = "abandoned"
+                manifest["verdict"] = "abandoned"
+                manifest["reason"] = "expired-running-manifest-without-live-recorded-pid"
             manifest["cleanup"] = {
                 "status": "reclaimed",
                 "at": receipt["reclaimedAt"],
@@ -564,7 +610,23 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         raise RunManyError(f"cannot establish source provenance: {error}") from error
     if dirty:
         raise RunManyError("run-many requires a clean source tree")
-    staging_root = args.output_dir.resolve()
+    if args.retain:
+        if args.output_dir is None:
+            raise RunManyError("--retain requires an explicit --output-dir under build/ios-report/retained")
+        staging_root = args.output_dir.resolve()
+        retained_root = (root / "build" / "ios-report" / "retained").resolve()
+        if not _inside(staging_root, retained_root):
+            raise RunManyError("--retain --output-dir must be below build/ios-report/retained")
+    elif args.output_dir is not None:
+        staging_root = args.output_dir.resolve()
+        if _inside(staging_root, root):
+            raise RunManyError("ephemeral run-many output must be outside the repository; use --retain for repo output")
+        if not _inside(staging_root, _ephemeral_root().resolve()):
+            raise RunManyError("ephemeral --output-dir must be below KG_IOS_EPHEMERAL_ROOT")
+    else:
+        ephemeral_root = _ephemeral_root().resolve()
+        ephemeral_root.mkdir(parents=True, exist_ok=True)
+        staging_root = Path(tempfile.mkdtemp(prefix="ui-batch-", dir=str(ephemeral_root))).resolve()
     if staging_root.exists() and any(staging_root.iterdir()):
         raise RunManyError(f"refusing to reuse non-empty run staging directory: {staging_root}")
     staging_root.mkdir(parents=True, exist_ok=True)
@@ -576,7 +638,7 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     log_root = staging_root / "logs"
     raw_root.mkdir(parents=True, exist_ok=True)
     log_root.mkdir(parents=True, exist_ok=True)
-    summary_path = args.summary_out.resolve()
+    summary_path = (args.summary_out.resolve() if args.summary_out else staging_root / "summary.json")
     if not _inside(summary_path, staging_root):
         raise RunManyError("--summary-out must be inside --output-dir so one run owns all artifacts")
     methods_snapshot = staging_root / "methods.json"
@@ -600,12 +662,14 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "sourceTreeDirty": dirty,
         "device": device,
         "startedAt": _iso(started_at),
+        "retention": "retained" if args.retain else "ephemeral",
+        "retentionTTLSeconds": None if args.retain else EPHEMERAL_TTL_SECONDS,
         "stagingRoot": str(staging_root),
         "publishRoot": str(publish_root),
         "methodsFile": str(methods_snapshot),
         "methodsSHA256": _sha256(methods_snapshot),
-        "failureTTLSeconds": FAILURE_TTL_SECONDS,
-        "expiresAt": _iso(started_at + timedelta(seconds=FAILURE_TTL_SECONDS)),
+        "failureTTLSeconds": EPHEMERAL_TTL_SECONDS,
+        "expiresAt": None if args.retain else _iso(started_at + timedelta(seconds=EPHEMERAL_TTL_SECONDS)),
         "executions": [],
     }
     _write_json_atomic(manifest_path, manifest)
@@ -623,6 +687,8 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "sourceCommit": source_commit,
         "sourceTreeDirty": dirty,
         "device": device,
+        "retention": "retained" if args.retain else "ephemeral",
+        "expiresAt": manifest["expiresAt"],
         "datasetIDs": sorted({item["datasetID"] for item in methods}),
         "buildOnce": True,
         "runMany": True,
@@ -637,6 +703,9 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     env["KG_IOS_BATCH_RUN_ID"] = run_id
     env["KG_IOS_ARTIFACT_ROOT"] = str(staging_root / "prepare")
     env["KG_IOS_TEST_RUN_ID"] = f"{run_id}-prepare"
+    env["KG_IOS_VISUAL_CAPTURE"] = "0"
+    env["KG_IOS_EPHEMERAL_ARTIFACT_ROOT"] = "1"
+    env["KG_IOS_EPHEMERAL_ROOT"] = str(_ephemeral_root().resolve())
 
     def persist_summary() -> None:
         _write_json_atomic(summary_path, summary)
@@ -679,6 +748,8 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "--ui-launch-profile", "ui-smoke", "--evidence-root", str(publish_root),
                 "--json-out", str(output_path),
             ]
+            if args.retain:
+                command.insert(-2, "--retain")
             started = time.monotonic()
             execution_env = env.copy()
             execution_env["KG_IOS_EXECUTION_ID"] = f"{run_id}-{index:02d}"
@@ -710,6 +781,7 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "jsonOut": str(output_path),
                 "log": str(log_root / f"{index:02d}-{slug}.log"),
                 "bundleRoot": str(bundle) if bundle else None,
+                "retention": "retained" if args.retain else "ephemeral",
                 "sourceCommit": source_commit,
                 "batchRunID": run_id,
                 "executionID": execution_env["KG_IOS_EXECUTION_ID"],
@@ -759,9 +831,18 @@ def main() -> int:
     run_parser.add_argument("--helper", type=Path, required=True)
     run_parser.add_argument("--methods-file", type=Path, required=True)
     run_parser.add_argument("--device", required=True)
-    run_parser.add_argument("--output-dir", type=Path, required=True)
+    run_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Run staging root; omitted means ephemeral temp storage, never repository build/ output",
+    )
     run_parser.add_argument("--publish-root", type=Path)
-    run_parser.add_argument("--summary-out", type=Path, required=True)
+    run_parser.add_argument("--summary-out", type=Path)
+    run_parser.add_argument(
+        "--retain",
+        action="store_true",
+        help="Explicitly retain visual bundles; requires --output-dir below build/ios-report/retained",
+    )
     run_parser.add_argument("--configuration", default="Debug")
     cleanup_parser = subparsers.add_parser("cleanup")
     cleanup_parser.add_argument("--staging-root", type=Path, required=True)
@@ -771,8 +852,11 @@ def main() -> int:
     try:
         if args.command == "run":
             summary, exit_code = run_batch(args)
-            args.summary_out.parent.mkdir(parents=True, exist_ok=True)
-            args.summary_out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            if args.summary_out is not None:
+                args.summary_out.parent.mkdir(parents=True, exist_ok=True)
+                args.summary_out.write_text(
+                    json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
         else:
             summary, exit_code = cleanup_runs(args)
         print(json.dumps(summary, ensure_ascii=False, indent=2))

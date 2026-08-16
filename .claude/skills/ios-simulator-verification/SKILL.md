@@ -20,7 +20,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - 任何 UI test 若會在 test body 寫入 evidence context，必須由 `ios_ops.sh test --ui --json`／本 skill helper 執行；producer 會把同一個 pinned `KG_IOS_VERDICT_FILE` 注入 scoped `.xctestrun`，讓 runner 與 host 讀到同一份 invocation verdict。缺少這個 binding 必須 fail-closed，不能在 test 內自行猜 latest verdict。
 - 視覺 artifact 還必須通過 `ops/uitest_evidence_contract.py validate`：manifest 至少一個真實 step、每個 PNG 有尺寸／byteSize／SHA-256 且與檔案一致，contact/quick4/video/UIreview 非空，並帶同一個 source commit、UI World ID/hash、Simulator UDID provenance。只有路徑存在不算 evidence。
 - 一個 evidence bundle 對應一個明確 selector；要比較 P1–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。單一 requirement 可以由多個 exact selector bundle 組成 evidence union，但每個 bundle 都要獨立通過 machine contract、source/dataset/device provenance 與全步驟 visual attestation；`record-many` 只接受 union 中每個 logical required/counterexample state 恰好一次且 asset 不重疊的結果。
-- `build/snapshots/uitest-runs/index.json` 是 append-only history；同一 flow/variant 的新 run 只更新 cockpit 的 latest status，不得刪除舊的 fail／inconclusive record。
+- 視覺輸出是 agent 的短命觀察工具：每個 run 預設進系統暫存目錄並帶 TTL；成功、失敗、abandoned 都可回收。只有明確 `--retain` 的 run 才能進 `build/ios-report/retained/`，矩陣只接受這種 promoted receipt。永久保存的是 fixture、selector/matrix 契約與小型 verdict；PNG、MP4、HTML、xcresult 僅在 run 存活期間使用。
 - tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
 - 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300／360 秒），並以「test body 實測時間 + 啟動／artifact／teardown headroom」推導，不得只把全域上限調大。`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance；v25 已證明 test body 通過後仍可能被 120／180 秒 class allowance 殺掉。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
 - 零步驟的 fixture decoder、manifest schema、projection unit test 不是視覺證據；它們應直接走 unit／focused test，不能用 evidence helper 產生空 screenshot bundle，也不能把「沒有 UI step」記成 visual pass。真正的 UI evidence 必須有至少一個使用者可見狀態與對應 interaction/assertion。
@@ -29,7 +29,7 @@ description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔�
 - Tab／toolbar action selector 必須解析到實際擁有 action 的 `Button`，不能把 SF Symbol `Image`、`Other` content anchor 或其第一個 descendant 當作可點擊目標。若 SwiftUI 把 symbol identifier 放在子節點，從 `tabBars.buttons` 掃描包含該 symbol 的父 Button；無父 Button 時 fail-closed，不退回 coordinate 或 Image tap。
 - LazyVStack 的 projection acceptance 不得把 `visibleCount` 當成 row materialization 證據。生產 `ScrollView` 要提供語意 scroll-container identifier；facet/query 更新後以該容器做 bounded semantic swipe，直到目標 row 真正 materialize，再斷言 row。禁止座標捲動、localized label 找容器或無限 swipe。
 - Presentation／toolbar 的 transient AX race 要在 cardinality 前先等待 production identifier 對應元素 `exists && hittable`；再做 exactly-one、geometry、type 與 action assertion。等待不得取代 cardinality，也不得用 `firstMatch` 掩蓋 duplicate。
-- 每個 helper run 都會保存 `build/snapshots/uitest-evidence/<run>/verdict.json`、`upstream-verdict.json`、command、runner log；upstream 有提供的 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 也會複製到同一 bundle。runner 失敗或 verdict 不合約時仍讀這個 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
+- 每個 helper run 都會在系統暫存目錄保存一個帶 TTL 的 run bundle，包含 `verdict.json`、`run-manifest.json`、command 與必要的短期診斷。上游 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 只在該 run 內供 agent 檢查；runner 失敗或 verdict 不合約時仍讀 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
 
 ## 標準流程
 
@@ -90,7 +90,7 @@ P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修�
 
 - 行為回歸、非同步狀態、導航：用指定 test selector。
 - SwiftUI layout／glass／截斷／狀態卡：用 UI test 的 screenshot、contact sheet、video 與 `UIreview.html`，再以 `view_image` 檢查關鍵畫面。
-- 互動探索或找入口：用 `./ops/ios_ops.sh catalog open --dataset ...`，記下 session，檢查後用 `catalog capture`，最後必須 `catalog close`。
+- 互動探索或找入口：用 `./ops/ios_ops.sh catalog open --dataset ...`，記下 session，檢查後用 `catalog capture`（預設輸出到 `/tmp`，有 TTL），最後必須 `catalog close`。只有要交付人類報告時才用 `catalog capture --out build/ios-report/retained/... --retain`。
 - 編譯或靜態契約：先跑對應 lint／unit；它們不能取代 runtime UI 證據。
 
 ### 3. 執行 UI test
@@ -130,20 +130,22 @@ P1–P15 是一個持續數日的收斂計畫，不是 15 個獨立的像素修�
 
 `--lease` 由 runner 負責 pool claim、boot、execution lock 與 release；不要自己 erase／刪除 simulator data 來「修」測試污染。`--build-lock-timeout` 只控制底層 build/device lock 等待，不是 XCTest 的 test timeout；XCTest timeout 由 `ios_test.sh` 的 runner 契約管理。
 
-單一 helper invocation 不接受 `--output-dir`：它會自行建立不可覆寫的 stable bundle。需要一次 build、跑多個 exact selectors 並集中輸出到指定目錄時，才由 `ops/ios_ui_run_many.py run --output-dir ... --summary-out ...` 編排；每個 selector 仍必須產生獨立 bundle，不能用混合 `--file` 截圖替代。
+此 helper 的視覺 bundle 預設在系統暫存目錄且有 TTL；`--json-out` 只是一份小型 verdict。要讓二進位視覺產物進入報告，必須顯式加 `--retain`，並指定 `build/ios-report/retained/` 下的 root。
 
-### 3.1 視覺證據機器 gate
+單一 helper invocation 不接受 `--output-dir`：它會自行建立不可覆寫的 ephemeral TTL bundle。需要一次 build、跑多個 exact selectors 時，由 `ops/ios_ui_run_many.py run` 編排；它預設把整批放在系統暫存目錄，只有 `--retain --output-dir build/ios-report/retained/<batch>` 才會保留。每個 selector 仍必須產生獨立短命 run，不能用混合 `--file` 截圖替代。
 
-`run_ui_evidence.sh` 會把 upstream run 複製到 stable per-run bundle，然後執行：
+### 3.1 視覺證據機器 gate（run-scoped）
+
+`run_ui_evidence.sh` 會把 upstream run 複製到帶 TTL 的 per-run bundle，然後執行：
 
 ```bash
 uv run --python 3.13 python ops/uitest_evidence_contract.py validate \
-  --screenshot-dir <stable-ui-review-root> \
-  --manifest <stable-ui-review-root>/review_manifest.json \
-  --contact-sheet <stable-ui-review-root>/contact_sheet.png \
-  --quick4-sheet <stable-ui-review-root>/quick4_contact_sheet.png \
-  --video <stable-ui-review-root>/uitest-videos/<run>.mp4 \
-  --review-html <stable-ui-review-root>/UIreview.html \
+  --screenshot-dir <run-bundle>/artifacts/ui-review \
+  --manifest <run-bundle>/artifacts/ui-review/review_manifest.json \
+  --contact-sheet <run-bundle>/artifacts/ui-review/contact_sheet.png \
+  --quick4-sheet <run-bundle>/artifacts/ui-review/quick4_contact_sheet.png \
+  --video <run-bundle>/artifacts/ui-review/uitest-videos/<run>.mp4 \
+  --review-html <run-bundle>/artifacts/ui-review/UIreview.html \
   --source-commit <HEAD> --dataset-id <datasetID> \
   --dataset-sha256 <datasetSHA256> --device <Simulator-UDID>
 ```
@@ -152,11 +154,11 @@ validator fail 時 helper 回 `70/inconclusive`，即使 XCTest upstream 回 `0`
 
 ### 4. 讀完整證據
 
-成功或失敗都讀：
+成功或失敗都讀當下仍在 TTL 內的 run bundle：
 
-1. stable bundle 的 `artifacts/delegate.stderr.log`、`verdict.json` 與 `upstream-verdict.json`（若 upstream 沒輸出 JSON，讀 `upstream-verdict.raw`）。
+1. run bundle 的 `artifacts/delegate.stderr.log`、`verdict.json` 與 `upstream-verdict.json`（若 upstream 沒輸出 JSON，讀 `upstream-verdict.raw`）。
 2. normalized verdict 的 `status/result/exit/reason`、`executed`、`options.sourceCommit`、`options.sourceTreeDirty`、`options.datasetID/datasetSHA256`、`device`。
-3. normalized `artifacts.log` 與 `artifacts.xcresult`；兩者必須指向 stable bundle 內仍存在的檔案／目錄。
+3. normalized `artifacts.log` 與 `artifacts.xcresult`；兩者必須指向 run bundle 內仍存在的檔案／目錄。
 4. UI run 的 `artifacts.uiReviewHtml`、`uiContactSheet`、`uiQuick4Sheet`、`uiVideo`、`uiVisualReviewManifest`，以及 `uiVisualReview.*Exists == true`。
 5. 關鍵 step screenshot；有遮罩、系統 prompt、錯誤 overlay 或畫面未到達時，標記證據缺口。
 
@@ -165,8 +167,8 @@ validator fail 時 helper 回 `70/inconclusive`，即使 XCTest upstream 回 `0`
 ### 5. 結果分類與回報
 
 - `0 / status=ok`：helper 已證明 clean source、非零 tests、identity 一致與視覺 artifact 存在；仍要親自檢查 contact sheet／HTML。
-- `1 / status=fail`：test 紅；先讀 stable bundle 的 upstream status、stderr、xcresult／UI artifacts，再修根因後重跑同一 selector。
-- `65 / status=inconclusive`：runner／preflight、contract evidence 或 compile/build 不足；stable bundle 是診斷來源，不是 pass 證據，先看 compiler diagnostics／upstream status。
+- `1 / status=fail`：test 紅；先讀 run bundle 的 upstream status、stderr、xcresult／UI artifacts，再修根因後重跑同一 selector。
+- `65 / status=inconclusive`：runner／preflight、contract evidence 或 compile/build 不足；run bundle 是診斷來源，不是 pass 證據，先看 compiler diagnostics／upstream status。
 - `143` 等 `128+N`：被訊號中止，不是綠也不是產品紅；確認 lock／process cleanup 後重跑。
 - Simulator 被 prompt、其他 app、其他 worktree 或不可識別狀態污染：`inconclusive`，換 `--lease` 裝置重跑。
 
@@ -178,7 +180,7 @@ validator fail 時 helper 回 `70/inconclusive`，即使 XCTest upstream 回 `0`
 
 ```bash
 uv run --python 3.13 python ops/uitest_review_attest.py \
-  build/snapshots/uitest-evidence/<run>/artifacts/ui-review \
+  /tmp/kg-ios-visual-runs/<run>/artifacts/ui-review \
   --reviewer codex --status pass --all-steps \
   --notes '檢查 full/quick4/UIreview/video；確認狀態順序與反例'
 ```
@@ -200,7 +202,7 @@ raw: <log> <xcresult>
 
 ### 5.2 最終化與真機邊界
 
-最終 consumer 只讀每個 stable bundle 的 normalized `verdict.json`，不讀 workspace badge、上游暫存路徑或「最新一個」未綁定的 artifact。每一個 logical state 必須以唯一 tuple 對齊：`source commit + clean-tree result + UI World/dataset ID+SHA + device UDID/OS + exact selector + variant`。禁止把舊 HEAD、不同 dataset、不同 device 或尚未 attestation 的 bundle 混進同一個 aggregate。
+最終 consumer 只讀每個已明確 retained/promoted run 的 normalized `verdict.json`，不讀上游暫存路徑或「最新一個」未綁定的 artifact。每一個 logical state 必須以唯一 tuple 對齊：`source commit + clean-tree result + UI World/dataset ID+SHA + device UDID/OS + exact selector + variant`。禁止把舊 HEAD、不同 dataset、不同 device 或尚未 attestation 的 bundle 混進同一個 aggregate。
 
 一批要能寫入矩陣，必須同時滿足：
 
@@ -224,10 +226,12 @@ raw: <log> <xcresult>
 - UI test 突然超時且第一個 assertion 很晚才出現：檢查 AX query 是否在錯誤頁／prompt 上反覆重試、裝置是否被另一 run 佔用、以及 `deviceRunLockWaitMs`。
 - UI screenshot 有 Apple 帳號驗證、登入、權限或鍵盤遮罩：這是環境污染證據，不能當 UI pass。
 - `build.db database is locked`：先視為共用 build lock／另一 worktree 的基礎設施問題，讀 runner heartbeat 和 lock wait；不要刪 DerivedData 或改測試。
-- helper contract regression：執行 `./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`，它會驗證 selector translation、false-green 拒絕、canonical device 與 stable retention。
+- helper contract regression：執行 `./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`，它會驗證 selector translation、false-green 拒絕、canonical device 與 ephemeral/explicit-retain lifecycle。
 
 詳細 verdict 欄位、artifact retention 與常見 exit code 見 [`references/evidence-contract.md`](references/evidence-contract.md)。
 
 ## 收尾
+
+視覺檢查完成後必須執行 bounded cleanup；它會檢查 PID、xcodebuild、runner 與 known lock，成功、失敗、abandoned 都不會無限期留下。不要以「方便下次看」為理由把 PNG、MP4、HTML、xcresult 複製回 repo；若確實要做報告交付，先用 `--retain` 明確提升，完成 `record-many` 後再按報告政策清理二進位產物。
 
 完成 code／test 修改後，依 worktree-flow 停在：最小充分驗證 → commit → `./ops/worktree_registry.py hand-back --json`。只有取得 Delivery Team Integrator 的明示授權，才可進行 fresh Gate、`close-wave --commit --sync`、local `main`／`origin/main` 收斂；deploy／`origin/prod` 仍是另一個明示意圖。回報中把每個 PDF／UI requirement 對應到 source、unit、UI behavior、visual artifact；沒有 live／pixel／physical evidence 就明確標出缺口。任務若要求矩陣結案，必須在最後一次視覺 attestation 後才跑 `record-many`，並保留其 accept/reject output。

@@ -30,7 +30,7 @@ KEYED_ROOTS=(
   "${KG_IOS_TEST_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-test-derived-data}"
   "${KG_IOS_OPS_CATALOG_CACHE_ROOT:-$PROJECT_ROOT/.cache/ios-catalog-derived-data}"
 )
-RECEIPT_ROOT="${KG_IOS_CACHE_CLEANUP_RECEIPT_ROOT:-$PROJECT_ROOT/build/snapshots/cache-cleanup}"
+RECEIPT_ROOT="${KG_IOS_CACHE_CLEANUP_RECEIPT_ROOT:-$PROJECT_ROOT/build/ios-report/retained/receipts}"
 RUN_ID="cache-cleanup-$(date -u '+%Y%m%d-%H%M%S')-$$"
 RECEIPT_PATH="$RECEIPT_ROOT/$RUN_ID.json"
 RECEIPT_STATUS="running"

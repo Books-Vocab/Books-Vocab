@@ -1,6 +1,6 @@
 # Five-cluster contract
 
-The report remains visual reference material. The executable contract is `ops/fixtures/ios_ui_review_clusters.json` plus `ops/fixtures/ios_ui_review_matrix.json`.
+The report's PNG/PDF material is an input contract. Visual inspection is an agent-only, on-demand step; the durable control plane is `ops/fixtures/ios_ui_review_clusters.json` plus `ops/fixtures/ios_ui_review_matrix.json` and compact provenance receipts.
 
 ## Required shape
 
@@ -24,7 +24,7 @@ The cluster manifest must have exactly five unique cluster IDs and requirements 
           "requiredFixtureIDs": ["..."],
           "acceptance": ["..."],
           "visualAcceptance": ["..."],
-          "evidenceRoot": "build/snapshots/uitest-evidence/..."
+          "evidenceRoot": "build/ios-report/retained/..."
         }
       ]
     }
@@ -39,7 +39,7 @@ The repository's actual schema may use equivalent field names, but the invariant
 - every fixture ID is declared by the selected UI World;
 - every method maps to one requirement/cluster contract;
 - a shared selector is allowed only when the matrix preserves distinct requirement mappings;
-- evidence roots are stable, unique run directories inside the repository;
+- evidence roots are unique run directories in the ephemeral bundle, or in `build/ios-report/retained/` only after explicit promotion;
 - source commit, dataset SHA, device UDID, run ID, manifest SHA, and reviewer are machine-readable.
 
 ## Five clusters

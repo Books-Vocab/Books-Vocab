@@ -21,7 +21,7 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 - **`scenarioContext` 有兩種精確 wire shape**：既有世界可保留三鍵 legacy（`reviewClock`／`readerPassage`／`wordDetail`，clock 可為 `null` 或 `frozenNow` 形狀）；canonical 世界則必須一次提供五鍵，且 `reviewClock` 明示 `now`／`timeZone`／`frozenEpoch`／`anchorDay`／`source`，並同時帶 `dictionary` 與 `surfaceContracts`，缺鍵、混用或部分 canonical 形狀一律 fail closed。canonical contract 另驗 dictionary lookup/materialization/coverage、`explore`／`settings` required surface、asset ID↔inode 一對一與 review history 時間一致性；host validator、demo emitter、Swift decoder 與 repo fixture tests 共守此契約，與 Catalog scenario 數量解耦。
 - **Scenario 是可選入口**：新 UI 不必註冊；只有 agent 預期會反覆檢查、debug 或展示某個狀態時，才在 `Debug/Scenarios/` 加 scenario 並登錄到 `CatalogScene`。
 - **Explore fixture proof 是單一、可重放的 evidence contract**：`sharedDecks.fixtures.<id>.assetIDs` 必須恰有一個 asset。materializer 與 `ExploreFixtureAssetProof` 都走 manifest 安裝快照；找不到、驗證失敗或 image decode 失敗直接 fail-loud，不能以 optional snapshot、generic first 或 `EmptyView` 產生看似成功的證據。
-- **一個工具，沒有 gallery / 行銷模式**：沒有批次快照、覆蓋率、contact sheet、review desk、視覺回歸、App Store/網站宣傳圖生成或自動行銷流程。
+- **一個工具，服務 agent 的即時觀察**：Catalog 只在需要時開啟指定 UI World 與 scenario，讓 agent 讀取真實 simulator window；觀察結束後只留下必要的短型 receipt。
 - **真實 compositor 取圖**：app 必須在 disposable iOS Simulator 的真 window 顯示，`capture` 再用 `simctl io screenshot` 擷取。禁止回到 `CALayer.render(in:)`；後者繞過系統 compositor，無法正確呈現 iOS 26 Liquid Glass、backdrop sampling、部分 WebKit/系統材質與陰影。
 
 ## Agent 工作流
@@ -33,14 +33,18 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 # 開互動式 Catalog；也可用 --scenario 'Reader View · Chrome/Reading · Compact Header' 直達
 ./ops/ios_ops.sh catalog open --dataset marketing_demo
 
-# open 會回 session id；需要交付靜態證據時才擷取
-./ops/ios_ops.sh catalog capture --session <session-id> --out build/catalog-agent/example.png
+# open 會回 session id；agent 需要看畫面時擷取到暫存（預設有 TTL）
+./ops/ios_ops.sh catalog capture --session <session-id> --json
+
+# 只有人類報告真的需要二進位畫面時才明確提升
+./ops/ios_ops.sh catalog capture --session <session-id> \
+  --out build/ios-report/retained/<batch>/catalog/example.png --retain
 
 # 使用完一定關閉，釋放該 session 擁有的 disposable simulator
 ./ops/ios_ops.sh catalog close --session <session-id>
 ```
 
-`open` 的 keeper 預設存活 1800 秒（沿用 simulator pool TTL）；可用 `KG_IOS_CATALOG_SESSION_MAX_SECONDS` 縮短或延長。keeper 到期後 lease 進入可回收狀態，遺忘／崩潰的 agent 不會永久佔住 slot；若 slot 已被重新租用，舊 session 的 `capture`／`close` 會在碰 simulator 前拒絕。
+`open` 的 keeper 預設存活 1800 秒（沿用 simulator pool TTL）；可用 `KG_IOS_CATALOG_SESSION_MAX_SECONDS` 縮短或延長。keeper 到期後 lease 進入可回收狀態，遺忘／崩潰的 agent 不會永久佔住 slot；若 slot 已被重新租用，舊 session 的 `capture`／`close` 會在碰 simulator 前拒絕。capture PNG 預設在系統暫存目錄並於 TTL 後回收；只有明確指定保留時才提升到報告保留區。
 
 自動化 consumer 應加 `--json`，不要解析人類輸出。`list` / `open` 必須明示 `--dataset <name>` 或 `--dataset-file <path>`；host 會先以 `ops/ui_world_manifest.py validate` 驗證，再用 deflate-base64 注入 app。
 

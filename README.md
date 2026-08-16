@@ -77,7 +77,6 @@ flowchart LR
 | `ios/` | SwiftUI app（書架 / reader / 詞庫 / 圖譜 / 複習 / 播客 / 設定），支援 iPhone · iPad · Mac Catalyst |
 | `backend/` | FastAPI 服務 — REST API、圖譜 pipeline、官網靜態頁、SQLite log stores |
 | `design-system/` | 跨平台設計 token（iOS 為 SoT），生成 web `kg-tokens.css` / `kg-components.css` |
-| `frozen/2026-06-14-web-chrome-parity/` | 已冷凍的 web pilot、Chrome extension 與 web/chrome parity tooling |
 | `ops/` | 部署、健康檢查、i18n lint、doc lint 等運維腳本 |
 | `lab/` | 播客生成 pipeline、Claude Code Gateway 等實驗工具 |
 | `docs/` | 工程文檔（reference / sop / policy / runbook，含 doc-as-code 契約） |

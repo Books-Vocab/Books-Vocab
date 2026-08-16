@@ -6,10 +6,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixture_dataset_env.sh"
 # shellcheck source=ios_xctestrun_cache.sh
 # The current Catalog agent workbench builds via ios_build.sh and does not own
 # a test xctestrun lifecycle; keep the shared primitives available to any
-# scoped test adapter without reviving the removed snapshot pipeline.
+# scoped test adapter while keeping Catalog limited to on-demand observation.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ios_xctestrun_cache.sh"
 
-CATALOG_SESSION_ROOT="${KG_IOS_CATALOG_SESSION_ROOT:-$ROOT/.cache/catalog-agent}"
+CATALOG_SESSION_ROOT="${KG_IOS_CATALOG_SESSION_ROOT:-${TMPDIR:-/tmp}/kg-catalog-agent}"
+CATALOG_CAPTURE_ROOT="${KG_IOS_CATALOG_CAPTURE_ROOT:-${TMPDIR:-/tmp}/kg-catalog-captures}"
+CATALOG_CAPTURE_TTL_SECONDS="${KG_IOS_CATALOG_CAPTURE_TTL_SECONDS:-1800}"
 CATALOG_ACTIVE_SESSION=""
 CATALOG_ACTIVE_UDID=""
 CATALOG_ACTIVE_KEEPER_PID=""
@@ -48,6 +50,38 @@ catalog_stop_keeper() {
 
 catalog_disarm_cleanup() {
   trap - EXIT INT TERM HUP
+}
+
+catalog_cleanup_orphan_build_logs() {
+  local now mtime log session state
+  [[ "$CATALOG_CAPTURE_TTL_SECONDS" =~ ^[0-9]+$ && "$CATALOG_CAPTURE_TTL_SECONDS" -ge 60 ]] || return 0
+  now="$(date +%s)"
+  for log in "$CATALOG_SESSION_ROOT"/*.build.log; do
+    [[ -f "$log" ]] || continue
+    session="${log%.build.log}"
+    state="${session}.json"
+    [[ -f "$state" ]] && continue
+    mtime="$(stat -f %m "$log" 2>/dev/null || printf '0')"
+    [[ "$mtime" =~ ^[0-9]+$ ]] || continue
+    if (( now - mtime >= CATALOG_CAPTURE_TTL_SECONDS )); then
+      rm -f "$log"
+    fi
+  done
+}
+
+catalog_cleanup_expired_captures() {
+  local now mtime capture
+  [[ "$CATALOG_CAPTURE_TTL_SECONDS" =~ ^[0-9]+$ && "$CATALOG_CAPTURE_TTL_SECONDS" -ge 60 ]] || return 0
+  mkdir -p "$CATALOG_CAPTURE_ROOT"
+  now="$(date +%s)"
+  for capture in "$CATALOG_CAPTURE_ROOT"/kg-catalog-capture.*.png; do
+    [[ -f "$capture" ]] || continue
+    mtime="$(stat -f %m "$capture" 2>/dev/null || printf '0')"
+    [[ "$mtime" =~ ^[0-9]+$ ]] || continue
+    if (( now - mtime >= CATALOG_CAPTURE_TTL_SECONDS )); then
+      rm -f "$capture"
+    fi
+  done
 }
 
 catalog_abort_active_session() {
@@ -94,12 +128,14 @@ catalog_usage() {
 Usage:
   ./ops/ios_ops.sh catalog list --dataset <name>|--dataset-file <path> [--appearance light|dark] [--json]
   ./ops/ios_ops.sh catalog open --dataset <name>|--dataset-file <path> [--scenario <category/title>] [--appearance light|dark] [--json]
-  ./ops/ios_ops.sh catalog capture --session <id> --out <png> [--json]
+  ./ops/ios_ops.sh catalog capture --session <id> [--out <png>] [--retain] [--json]
   ./ops/ios_ops.sh catalog close --session <id> [--json]
 
 Catalog is an agent-only, on-demand UI workbench. It launches a disposable
 iOS Simulator with an explicit UI World and captures the real Simulator window.
-It does not provide an export or release-artifact pipeline.
+Capture output is temporary by default and expires; --retain is an explicit
+promotion into build/ios-report/retained/. Release artifact generation remains
+outside Catalog.
 EOF
 }
 
@@ -253,6 +289,7 @@ catalog_release_session() {
   }
   catalog_stop_keeper "$session" "$keeper_pid"
   rm -f "$state"
+  rm -f "$CATALOG_SESSION_ROOT/$session.build.log"
   CATALOG_RELEASE_JSON="$release_json"
 }
 
@@ -296,6 +333,8 @@ catalog_start_session() {
     return 1
   }
   mkdir -p "$CATALOG_SESSION_ROOT"
+  catalog_cleanup_orphan_build_logs
+  catalog_cleanup_expired_captures
   build_log="$CATALOG_SESSION_ROOT/$CATALOG_ACTIVE_SESSION.build.log"
 
   catalog_start_keeper "$CATALOG_ACTIVE_SESSION" "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" || return 1
@@ -457,24 +496,70 @@ catalog_open() {
 }
 
 catalog_capture() {
-  local session="" out="" json=0 state udid absolute_out width height sha payload
+  local session="" out="" json=0 retain=0 out_explicit=0 state udid output_candidate absolute_out width height sha payload capture_root_real retained_root_real
+  catalog_cleanup_expired_captures
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --session) [[ $# -ge 2 ]] || { echo "✗ --session requires an id" >&2; return 1; }; session="$2"; shift 2 ;;
-      --out) [[ $# -ge 2 ]] || { echo "✗ --out requires a PNG path" >&2; return 1; }; out="$2"; shift 2 ;;
+      --out) [[ $# -ge 2 ]] || { echo "✗ --out requires a PNG path" >&2; return 1; }; out="$2"; out_explicit=1; shift 2 ;;
+      --retain) retain=1; shift ;;
       --json) json=1; shift ;;
       -h|--help|help) catalog_usage; return 0 ;;
       *) echo "✗ unknown catalog capture option: $1" >&2; return 1 ;;
     esac
   done
   [[ "$session" =~ ^catalog-[A-Za-z0-9T-]+$ ]] || { echo "✗ invalid Catalog session id" >&2; return 1; }
-  [[ -n "$out" && "${out##*.}" == "png" ]] || { echo "✗ --out must end in .png" >&2; return 1; }
+  [[ "$retain" -eq 0 || "$out_explicit" -eq 1 ]] || {
+    echo "✗ --retain requires an explicit --out under build/ios-report/retained" >&2
+    return 65
+  }
+  if [[ -z "$out" ]]; then
+    mkdir -p "$CATALOG_CAPTURE_ROOT"
+    out="$(mktemp "$CATALOG_CAPTURE_ROOT/kg-catalog-capture.XXXXXX.png")"
+  fi
+  [[ "${out##*.}" == "png" ]] || { echo "✗ --out must end in .png" >&2; return 1; }
+  [[ "$out" != *"/../"* && "$out" != */.. && "$out" != ../* && "$out" != ".." ]] || {
+    echo "✗ --out must not contain parent-directory traversal" >&2
+    return 65
+  }
+  if [[ "$out" = /* ]]; then
+    output_candidate="$out"
+  else
+    output_candidate="$PWD/$out"
+  fi
+  case "$output_candidate" in
+    "$ROOT"/*)
+      if [[ "$retain" -ne 1 || "$output_candidate" != "$ROOT/build/ios-report/retained/"* ]]; then
+        echo "✗ Catalog output inside the repository requires --retain and build/ios-report/retained/" >&2
+        return 65
+      fi
+      ;;
+  esac
   state="$CATALOG_SESSION_ROOT/$session.json"
   [[ -f "$state" ]] || { echo "✗ Catalog session not found: $session" >&2; return 1; }
   catalog_assert_session_ownership "$session" || return 1
   udid="$(jq -r '.udid' "$state")"
   mkdir -p "$(dirname "$out")"
   absolute_out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
+  capture_root_real="$(cd "$CATALOG_CAPTURE_ROOT" && pwd -P)"
+  retained_root_real="$ROOT/build/ios-report/retained"
+  if [[ "$retain" -eq 1 ]]; then
+    case "$absolute_out" in
+      "$retained_root_real"/*) ;;
+      *)
+        echo "✗ --retain output must be below $retained_root_real" >&2
+        return 65
+        ;;
+    esac
+  else
+    case "$absolute_out" in
+      "$capture_root_real"/*) ;;
+      *)
+        echo "✗ ephemeral Catalog capture must be below $capture_root_real; use --retain for report output" >&2
+        return 65
+        ;;
+    esac
+  fi
   xcrun simctl io "$udid" screenshot --type=png "$absolute_out" >/dev/null
   width="$(sips -g pixelWidth "$absolute_out" | awk '/pixelWidth/{print $2}')"
   height="$(sips -g pixelHeight "$absolute_out" | awk '/pixelHeight/{print $2}')"
@@ -482,8 +567,9 @@ catalog_capture() {
   payload="$(jq -n \
     --arg session "$session" --arg path "$absolute_out" --arg sha "$sha" \
     --argjson width "$width" --argjson height "$height" \
+    --arg retention "$(if [[ "$retain" -eq 1 ]]; then printf retained; else printf ephemeral; fi)" \
     '{schema:"kg.ios.catalog-agent.v1",status:"ok",action:"capture",session:$session,
-      renderer:"simulator-window",artifact:{path:$path,sha256:$sha,width:$width,height:$height}}')"
+      renderer:"simulator-window",retention:$retention,artifact:{path:$path,sha256:$sha,width:$width,height:$height}}')"
   catalog_emit "$json" "$payload"
 }
 

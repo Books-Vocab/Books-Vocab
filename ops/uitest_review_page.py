@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import json
-import logging
 import os
 import shutil
 import tempfile
@@ -19,14 +17,6 @@ from pathlib import Path
 from png_integrity import png_metadata
 from uitest_review_contract import REVIEW_HTML_NAME
 from uitest_review_ui import artifact_link, esc, image_modal_script, shell_css, status_badge
-from uitest_review_workspace import (
-    WorkspacePublicationError,
-    ensure_workspace,
-    render_workspace_html as render_persistent_workspace_html,
-    write_workspace_index as write_persistent_workspace_index,
-)
-
-log = logging.getLogger(__name__)
 
 
 def link_or_copy(source: Path, target: Path) -> None:
@@ -112,14 +102,6 @@ def video_entry(video: Path, out_root: Path) -> list[dict]:
     ]
 
 
-def relpath(path: Path, root: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        log.warning("Silently handled exception; using fallback response", exc_info=True)
-        return str(path)
-
-
 def infer_flow_id(test_file: str | None, out_root: Path) -> str:
     if test_file:
         return Path(test_file).stem
@@ -144,19 +126,14 @@ def run_record(
     device: str | None,
     last_run_at: str | None = None,
 ) -> dict:
-    workspace_root = out_root.parent
     artifact_root = artifact_root or out_root
     log_rel = None
     if log and log.is_file():
         target = artifact_root / log.name
         link_or_copy(log, target)
-        log_rel = relpath(out_root / log.name, workspace_root)
+        log_rel = log.name
 
-    review_html = out_root / REVIEW_HTML_NAME
-    manifest_path = out_root / "review_manifest.json"
     video_rel = videos[0]["src"] if videos else None
-    if video_rel:
-        video_rel = relpath(out_root / video_rel, workspace_root)
     items = manifest.get("items", [])
     return {
         "runId": out_root.name,
@@ -176,69 +153,12 @@ def run_record(
             for item in items
         ],
         "artifacts": {
-            "reviewHtml": relpath(review_html, workspace_root),
-            "manifest": relpath(manifest_path, workspace_root),
+            "reviewHtml": REVIEW_HTML_NAME,
+            "manifest": "review_manifest.json",
             "video": video_rel,
             "log": log_rel,
         },
     }
-
-
-def workspace_summary(runs: list[dict]) -> dict:
-    ok = sum(1 for run in runs if run.get("status") in {"ok", "pass"})
-    fail = sum(1 for run in runs if run.get("status") in {"fail", "failed", "error"})
-    flows = {run.get("flowId") for run in runs if run.get("flowId")}
-    variants = {
-        (run.get("flowId"), run.get("variantId"))
-        for run in runs
-        if run.get("flowId") and run.get("variantId")
-    }
-    return {
-        "totalRuns": len(runs),
-        "okRuns": ok,
-        "failRuns": fail,
-        "flows": len(flows),
-        "variants": len(variants),
-    }
-
-
-def flow_records(runs: list[dict]) -> list[dict]:
-    grouped: dict[str, list[dict]] = {}
-    for run in runs:
-        grouped.setdefault(run.get("flowId") or "unknown", []).append(run)
-    flows = []
-    for flow_id, flow_runs in sorted(grouped.items()):
-        latest = flow_runs[0]
-        variants = sorted({run.get("variantId") or "default" for run in flow_runs})
-        flows.append(
-            {
-                "flowId": flow_id,
-                "runs": len(flow_runs),
-                "latestStatus": latest.get("status") or "unknown",
-                "lastRunAt": latest.get("lastRunAt"),
-                "variants": variants,
-            }
-        )
-    return flows
-
-
-def load_workspace_index(workspace_root: Path) -> dict:
-    path = workspace_root / "index.json"
-    if not path.is_file():
-        return {
-            "schema": "kg.ios.uitest-review-workspace.v1",
-            "summary": workspace_summary([]),
-            "runs": [],
-            "flows": [],
-        }
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data.setdefault("schema", "kg.ios.uitest-review-workspace.v1")
-    data.setdefault("runs", [])
-    return data
-
-
-def write_workspace_index(workspace_root: Path, run: dict) -> dict:
-    return write_persistent_workspace_index(workspace_root, run)
 
 
 def _esc(value) -> str:
@@ -319,7 +239,6 @@ def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[
   <div class="topbar">
     <div class="brand">KG UITest Run Review <span>Evidence Cockpit</span></div>
     <div class="top-actions">
-      <a class="btn" href="../UIreview.html">workspace</a>
       <a class="btn" href="review_manifest.json">manifest</a>
     </div>
   </div>
@@ -380,10 +299,6 @@ def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[
 </body>
 </html>
 """
-
-
-def render_workspace_html(index: dict) -> str:
-    return render_persistent_workspace_html(index)
 
 
 def build_review_root(
@@ -458,15 +373,10 @@ def build_review_root(
         )
         os.replace(staging_root, out_root)
         published = True
-        workspace = write_workspace_index(out_root.parent, run)
     except Exception as error:
-        cleanup_safe = (
-            isinstance(error, WorkspacePublicationError) and error.cleanup_safe
-        )
-        if not published or cleanup_safe:
-            cleanup_root = out_root if published else staging_root
-            if cleanup_root.exists():
-                shutil.rmtree(cleanup_root)
+        cleanup_root = out_root if published else staging_root
+        if cleanup_root.exists():
+            shutil.rmtree(cleanup_root)
         raise
 
     html_path = out_root / REVIEW_HTML_NAME
@@ -478,12 +388,6 @@ def build_review_root(
         "manifest": str(out_root / "review_manifest.json"),
         "state": str(out_root / "review_state.json"),
         "videos": videos,
-        "workspace": {
-            "root": str(out_root.parent),
-            "html": str(out_root.parent / REVIEW_HTML_NAME),
-            "index": str(out_root.parent / "index.json"),
-            "summary": workspace.get("summary", {}),
-        },
     }
 
 

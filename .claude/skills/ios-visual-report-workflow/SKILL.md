@@ -11,7 +11,7 @@ Use this as the integrator workflow for report-driven iOS UI work. The report is
 
 - Work in the existing integration worktree. Do not create a workaround tree for a late test, fixture, or evidence problem.
 - Collapse P1-P15 into exactly five clusters: Dictionary (P1-P2), Reader Runtime (P3-P7), Explore/Overview (P8-P10), Vocabulary/Review Card (P11-P13), Settings/Sync (P14-P15).
-- A cluster hand-back contains the root cause, implementation, unit test, UI World fixture, exact XCTest selector, machine acceptance, stable evidence bundle, visual attestation, and current HEAD.
+- A cluster hand-back contains the root cause, implementation, unit test, UI World fixture, exact XCTest selector, machine acceptance, run-scoped visual receipt, visual attestation, and current HEAD. Screenshots/video/xcresult are short-lived agent inspection material; the durable hand-back is the compact receipt and its provenance.
 - A selector PASS is not a requirement PASS. A requirement is verified only after fixture coverage, machine contract, counterexample coverage, complete visual attestation, and matrix provenance all pass.
 - Every evidence claim binds the same clean source HEAD, UI World ID/SHA, Simulator UDID, selector, run ID, evidence root, manifest SHA, and reviewer identity.
 - Evidence from a Simulator never proves physical-device, TestFlight, App Store, or production behavior.
@@ -54,7 +54,7 @@ Then deliver together:
 
 Use TDD and root-cause-first debugging. If the same UI hypothesis misses twice, instrument the behavior instead of adding another timeout/retry. Review each independently committed unit before starting the next unit; never fabricate a review receipt.
 
-## Phase 2 — build once, run many
+## Phase 2 — build once, run many (ephemeral visual tool)
 
 Keep the source tree clean and pin one Simulator. Put all exact selector mappings in a JSON methods file. Use the existing runner, which prepares the build cache once and invokes each selector separately:
 
@@ -63,28 +63,43 @@ uv run --python 3.13 python ops/ios_ui_run_many.py run \
   --root "$PWD" \
   --helper "$PWD/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
   --methods-file <cluster-or-batch-methods.json> \
-  --device <canonical-udid> \
-  --output-dir build/snapshots/uitest-evidence/<batch> \
-  --publish-root build/snapshots/uitest-evidence/<batch>/bundles \
-  --summary-out build/snapshots/uitest-evidence/<batch>/summary.json
+  --device <canonical-udid>
 ```
 
-The runner creates a unique `run-manifest.json` before the build and keeps
-logs, raw helper receipts, published bundles, PID/HEAD/worktree provenance,
-and the final summary under that run's staging directory. A failed or
-interrupted run is retained as `failure`/`abandoned` evidence until the
-bounded TTL cleanup command proves that no recorded PID, xcodebuild, runner,
-or shared lock is still active. Cleanup is dry-run unless explicitly
-committed, and it preserves the manifest and failure summary.
+The runner creates a unique `run-manifest.json` under the system temporary
+directory, keeps visual material only for the configured TTL (default 30
+minutes), and records PID/HEAD/worktree provenance there. A success, failure,
+or interruption is reclaimable after TTL; cleanup first proves that no
+recorded PID, xcodebuild, runner, or shared lock is active. The source tree
+remains free of visual run material unless an explicit promotion is requested.
 
-After the batch finishes, inspect and then reclaim only expired failed or
-abandoned staging content:
+When a human-facing report genuinely needs binary visual evidence, promote it
+explicitly and only then:
+
+```bash
+uv run --python 3.13 python ops/ios_ui_run_many.py run \
+  --root "$PWD" \
+  --helper "$PWD/.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh" \
+  --methods-file <cluster-or-batch-methods.json> \
+  --device <canonical-udid> \
+  --retain \
+  --output-dir build/ios-report/retained/<batch>
+```
+
+`--retain` is the promotion boundary; it is required before `record-many` can
+consume a visual bundle. The normal agent loop inspects the temporary bundle,
+records a compact verdict/attestation, then reclaims the binaries.
+
+After the batch finishes, inspect and then reclaim all expired ephemeral
+staging content (including successful runs):
 
 ```bash
 uv run --python 3.13 python ops/ios_ui_run_many.py cleanup \
-  --staging-root build/snapshots/uitest-evidence
+  --staging-root "${KG_IOS_EPHEMERAL_ROOT:-${TMPDIR:-/tmp}/kg-ios-ui-run-many}"
 uv run --python 3.13 python ops/ios_ui_run_many.py cleanup \
-  --staging-root build/snapshots/uitest-evidence --commit
+  --staging-root "${KG_IOS_EPHEMERAL_ROOT:-${TMPDIR:-/tmp}/kg-ios-ui-run-many}" --commit
+uv run --python 3.13 python ops/ios_ui_run_many.py cleanup \
+  --staging-root "${TMPDIR:-/tmp}/kg-ios-visual-runs" --commit
 ```
 
 The cleanup receipt records bounded `du` allocation and `df` free-space
@@ -93,17 +108,17 @@ unreadable/active shared lock blocks deletion.
 
 The runner must emit heartbeat lines with phase, PID, elapsed time, and alive/exit state. During a long build or UI run, continue an independent queue: inspect the next cluster's source, validate fixtures, run static/contract tests, prepare matrix/report entries, and inspect prior failure artifacts. Waiting is not a work item.
 
-For every bundle, validate the normalized verdict and evidence contract, then inspect the full contact sheet, quick sheet, UIreview HTML, video, and step images. Use `ops/uitest_review_attest.py ... --all-steps` only after visual inspection. Keep machine verification and visual attestation as separate receipts.
+For every run, validate the normalized verdict and evidence contract, then inspect the full contact sheet, quick sheet, UIreview HTML, video, and step images while the temporary bundle is alive. Use `ops/uitest_review_attest.py ... --all-steps` only after visual inspection. Keep machine verification and visual attestation as separate compact receipts; retain binary material only when an explicit report or hand-off requires it.
 
 ## Phase 3 — record and render the matrix
 
-Record only from durable, already-attested bundles:
+Record only from explicitly retained, already-attested bundles:
 
 ```bash
 uv run --python 3.13 python ops/ios_ui_review_matrix.py record-many \
   ops/fixtures/ios_ui_review_matrix.json \
   --root . \
-  --summary build/snapshots/uitest-evidence/<batch>/summary.json \
+  --summary build/ios-report/retained/<batch>/summary.json \
   --strict-complete
 ```
 

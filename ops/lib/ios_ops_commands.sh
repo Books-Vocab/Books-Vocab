@@ -153,7 +153,7 @@ cmd_commands_json() {
         sideEffect:"read-only",
         command:"./ops/ios_ops.sh quality list [--json] | ./ops/ios_ops.sh quality impact --files <path...> [--json] | ./ops/ios_ops.sh quality impact --since <ref> [--json] | ./ops/ios_ops.sh quality validate",
         delegate:"./ops/ui_quality_plane.py",
-        purpose:"query the UI quality control plane for applicable static, structural, snapshot, behavior, perf, and visual-regression gates",
+        purpose:"query the UI quality control plane for applicable static, structural, state, behavior, and perf gates",
         jsonSchemas:[]
       },
       {

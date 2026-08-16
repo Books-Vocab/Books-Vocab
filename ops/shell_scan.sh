@@ -81,7 +81,7 @@ file_inventory() {
     git -C "${ROOT}" ls-files
     git -C "${ROOT}" ls-files --others --exclude-standard
   } | while IFS= read -r f; do
-    [[ -z "${f}" || "${f}" == frozen/* ]] && continue
+    [[ -z "${f}" ]] && continue
     if [[ "${f}" == *.sh ]] || is_shell_shebang "${ROOT}/${f}"; then
       printf '%s\n' "${f}"
     fi
@@ -92,7 +92,7 @@ workflow_inventory() {
   {
     git -C "${ROOT}" ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml'
     git -C "${ROOT}" ls-files --others --exclude-standard -- '.github/workflows/*.yml' '.github/workflows/*.yaml'
-  } | awk 'NF && $0 !~ /^frozen\// { print }' | LC_ALL=C sort -u
+  } | awk 'NF { print }' | LC_ALL=C sort -u
 }
 
 # ── $VAR 緊接任何非 ASCII 字元 = 定時炸彈 ──────────────────────────────────
@@ -109,7 +109,7 @@ workflow_inventory() {
 # 這個 repo 的字串大量是中文，而命中的 9 處**全部落在錯誤路徑**——也就是它只在
 # 「已經出事了、正要印出原因」的那一刻引爆，把診斷訊息換成一行 unbound variable。
 # 2026-08-04 它讓 kg_reconcile.sh 的回滾告警整個吞掉 verdict（IMP-0062）。
-# 修法一律是 `${VAR}`。frozen/ 具名排除：刻意冷凍、不執行。
+# 修法一律是 `${VAR}`。
 echo "── no \$VAR abuts a non-ASCII character (UTF-8 locale time bomb) ──"
 # 不用 `grep -P`：macOS 的 BSD grep 沒有這個旗標，而這段第一版正是 `-P` + `2>/dev/null`
 # ——每個檔案都 "invalid option" 失敗、輸出全空、掃描器報 ✓。**沉默被當成沒有違規**，

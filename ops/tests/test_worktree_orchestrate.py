@@ -943,7 +943,7 @@ def test_a_yaml_with_no_owner_tool_is_named_not_swallowed():
 
 
 def test_a_neutral_yaml_stays_neutral_and_is_not_named_twice():
-    """`promotion/` and `frozen/` already have a neutral rule. Routing yml must not
+    """`promotion/` already has a neutral rule. Routing yml must not
     re-adopt them, or every asset-metadata edit grows a warn that means nothing."""
     real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
     gates = _by_name(plan_gates(["promotion/screenshots/manifest.yml"],
@@ -1022,8 +1022,8 @@ def test_no_two_routable_shell_scripts_share_a_basename():
     the guard has been made redundant by a better fix — delete the test, don't patch it.
 
     Since IMP-0057 the `routable` predicate below is no longer the gate's file filter
-    (that is now every `*.sh` minus SHELL_GATE_EXCLUDED_TREES) but exactly the set where
-    the basename CONVENTION applies. The guard therefore also pins the two halves
+    but exactly the set where the basename CONVENTION applies. The guard therefore
+    also pins the two halves
     together: widen `_ops_shell_test_candidates` past ops/ + root without renaming
     `lab/podcast/start.sh`, and this collides."""
     # the trap itself, demonstrated rather than asserted from memory
@@ -1070,8 +1070,7 @@ def test_no_two_routable_shell_scripts_share_a_basename():
     # Two scripts resolving to the SAME target (ios_build.sh and ios_archive.sh both
     # alias to ops/test_ios_ops.sh) is not this bug: one path, one gate, one log.
     # Found by review of IMP-0057; nothing collides today.
-    excluded = tuple(pat for pat, _ in MODULE.SHELL_GATE_EXCLUDED_TREES)
-    routed = [p for p in out.stdout.split() if not p.startswith(excluded)]
+    routed = out.stdout.split()
     assert len(routed) > 20, f"git ls-files returned {len(routed)} — the probe is broken"
     # The RESOLVED target only — first candidate that exists, exactly as plan_gates
     # picks it. Comparing the whole candidate list would compare hypotheticals: it
@@ -1107,17 +1106,6 @@ def test_a_shell_script_outside_ops_is_routed_like_any_other():
     assert not any(n.startswith("ops-shell:") for n in gates)
     assert gates["ops-shell-untested"]["files"] == ["backend/view_logs.sh"]
     assert gates["coverage"]["uncovered"] == []
-
-
-def test_a_frozen_shell_script_selects_no_shell_gate():
-    """frozen/ 是刻意冷凍的快照：掛上 gate 只會讓 advisory 永遠列著 7 個沒人打算補測試
-    的檔，advisory 一有長期雜訊就沒人看。排除必須具名，不能靠 anonymous hole。"""
-    rel = "frozen/2026-06-14-web-chrome-parity/web/start.sh"
-    real = lambda p: (ROOT / p).is_file()  # noqa: E731
-    gates = _by_name(plan_gates([rel], ops_test_exists=real))
-    assert not any(n.startswith("ops-shell") for n in gates)
-    assert gates["coverage"]["neutral"] == [[rel, "frozen/"]]
-    assert "frozen/" in dict(MODULE.SHELL_GATE_EXCLUDED_TREES)
 
 
 def test_shell_test_convention_stops_at_ops_and_root():
@@ -1162,9 +1150,8 @@ def test_the_workflow_triggers_on_every_routed_script_outside_ops():
 
     out = subprocess.run(["git", "ls-files", "*.sh"], cwd=str(ROOT),
                          capture_output=True, text=True, check=True)
-    excluded = tuple(pat for pat, _ in MODULE.SHELL_GATE_EXCLUDED_TREES)
     routed_outside_ops = [p for p in out.stdout.split()
-                          if not p.startswith("ops/") and not p.startswith(excluded)]
+                          if not p.startswith("ops/")]
     assert len(routed_outside_ops) >= 5, (
         f"git ls-files 只給了 {len(routed_outside_ops)} 支——探針壞了")
     missing = [p for p in routed_outside_ops if p not in listed]
@@ -8134,7 +8121,7 @@ def test_anchor_noop_recovery_after_multiple_metadata_commits(
     "illegal_path",
     [
         "docs/runbook/backlog/nested/rogue.json",
-        "frozen/foreign.json",
+        "retired/foreign.json",
     ],
 )
 def test_noop_recovery_rejects_nested_or_foreign_source_paths(

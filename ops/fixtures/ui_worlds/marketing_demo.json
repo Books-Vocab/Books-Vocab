@@ -55,14 +55,14 @@
     },
     "audio": {
       "atomic_habits_ep1_flash_playable": {
-        "sourcePath": "frozen/2026-06-14-web-chrome-parity/web/src/assets/podcast_demo.mp3",
+        "sourcePath": "ops/fixtures/assets/podcast_demo.mp3",
         "sha256": "415409cd0d2e2cf204c63a2cf318d3766da0bac0b6d74499eb9da9184f2ff108",
         "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.mp3",
         "byteSize": 96591,
         "contentType": "audio/mpeg"
       },
       "atomic_habits_ep1_flash_auth": {
-        "sourcePath": "frozen/2026-06-14-web-chrome-parity/web/src/assets/podcast_demo.mp3",
+        "sourcePath": "ops/fixtures/assets/podcast_demo.mp3",
         "sha256": "415409cd0d2e2cf204c63a2cf318d3766da0bac0b6d74499eb9da9184f2ff108",
         "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.mp3",
         "byteSize": 96591,

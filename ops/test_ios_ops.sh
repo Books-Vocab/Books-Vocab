@@ -1158,6 +1158,8 @@ bash -c '
   UI_TEST_VIDEO=""
   UI_TEST_REVIEW_ROOT=""
   UI_TEST_REVIEW_HTML=""
+  VISUAL_CAPTURE_ENABLED=1
+  KG_IOS_VISUAL_ROOT="'"$ui_steps_tmp"'/project/run-bundles"
   UI_TEST_RUN_ID="fixture-run-$$"
   EVIDENCE_DATASET_ID="fixture-dataset"
   EVIDENCE_DATASET_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
@@ -1174,19 +1176,14 @@ bash -c '
   build_ui_test_review_page
 ' >"$ui_steps_tmp/snippet.log" 2>&1 || true
 ui_steps_review_html=""
-ui_steps_workspace_html=""
-ui_steps_workspace_index=""
-if [[ -d "$ui_steps_tmp/project/build/snapshots/uitest-runs" ]]; then
-  ui_steps_review_html="$(find "$ui_steps_tmp/project/build/snapshots/uitest-runs" -name UIreview.html -type f | head -1)"
-  ui_steps_workspace_html="$ui_steps_tmp/project/build/snapshots/uitest-runs/UIreview.html"
-  ui_steps_workspace_index="$ui_steps_tmp/project/build/snapshots/uitest-runs/index.json"
+if [[ -d "$ui_steps_tmp/project/run-bundles/review" ]]; then
+  ui_steps_review_html="$(find "$ui_steps_tmp/project/run-bundles/review" -name UIreview.html -type f | head -1)"
 fi
 if [[ -s "$ui_steps_tmp/contact_sheet.png" && -s "$ui_steps_tmp/quick4_contact_sheet.png" && -s "$ui_steps_tmp/review_manifest.json" ]] \
   && [[ -n "$ui_steps_review_html" && -s "$ui_steps_review_html" ]] \
-  && [[ -s "$ui_steps_workspace_html" && -s "$ui_steps_workspace_index" ]] \
   && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null \
-  && jq -e '.schema=="kg.ios.uitest-review-workspace.v1" and .summary.totalRuns==1 and .runs[0].flowId=="PodcastPlaybackPerfUITests" and .runs[0].variantId=="profile:ui-smoke" and (.runs[0].artifacts.log|endswith("/test.log"))' "$ui_steps_workspace_index" >/dev/null; then
-  ok "ios_test builds full + quick4 contact sheets, manifest, standalone UIreview, and UITest workspace index"
+  && [[ ! -e "$ui_steps_tmp/project/run-bundles/review/index.json" && ! -e "$ui_steps_tmp/project/run-bundles/review/UIreview.html" ]]; then
+  ok "ios_test builds full + quick4 contact sheets, manifest, and one run-scoped UIreview"
   rm -rf "$ui_steps_tmp"
 else
   # keep $ui_steps_tmp as the debug artifact — the failure message points at it
@@ -1205,6 +1202,8 @@ bash -c '
   UI_TEST_VIDEO=""
   UI_TEST_REVIEW_ROOT=""
   UI_TEST_REVIEW_HTML=""
+  VISUAL_CAPTURE_ENABLED=1
+  KG_IOS_VISUAL_ROOT="'"$ui_empty_tmp"'/project/run-bundles"
   UI_TEST_RUN_ID="empty-fixture-run-$$"
   UI_TEST_FLOW_ID="BooksAndVocabUITests"
   UI_TEST_VARIANT_ID="profile:ui-smoke"
@@ -1217,9 +1216,9 @@ bash -c '
   resolve_run_device_udid() { printf "STUB-UDID-EMPTY"; }
   build_ui_test_review_page ok
 ' >"$ui_empty_tmp/snippet.log" 2>&1 || true
-ui_empty_runs_root="$ui_empty_tmp/project/build/snapshots/uitest-runs"
+ui_empty_runs_root="$ui_empty_tmp/project/run-bundles/review"
 if grep -qF '[ios_test][ui-review] warning: failed to build standalone UIreview' "$ui_empty_tmp/snippet.log" \
-  && [[ ! -e "$ui_empty_runs_root/empty-fixture-run-"* ]] \
+  && ! compgen -G "$ui_empty_runs_root/empty-fixture-run-*" >/dev/null \
   && [[ ! -e "$ui_empty_runs_root/index.json" && ! -e "$ui_empty_runs_root/UIreview.html" ]]; then
   ok "ios_test rejects empty visual review without publishing a ghost run"
   rm -rf "$ui_empty_tmp"
