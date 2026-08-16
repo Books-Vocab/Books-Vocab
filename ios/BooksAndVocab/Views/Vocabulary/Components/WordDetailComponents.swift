@@ -111,6 +111,7 @@ struct WordDetailGraphLinkRow: View {
 // MARK: - ShimmerLine
 
 struct ShimmerLine: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @State private var shimmerPhase = false
 
@@ -122,5 +123,6 @@ struct ShimmerLine: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(AppMotion.breathing, value: shimmerPhase)
             .onAppear { shimmerPhase = true }
+            .enableInjection()
     }
 }

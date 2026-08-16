@@ -14,6 +14,7 @@ import SwiftUI
 /// `onTick` 僅在 `state == .playing` 時呼叫,保留原 `.onChange` 的語意(節流/持久化
 /// gating 仍由呼叫端 `saveProgressIfNeeded` 的 `lastSavedTime` 判斷負責)。
 struct PodcastProgressTicker: View {
+    @ObserveInjection private var inject
     let viewModel: PodcastPlayerViewModel
     let onTick: (TimeInterval) -> Void
 
@@ -23,6 +24,7 @@ struct PodcastProgressTicker: View {
                 guard viewModel.state == .playing else { return }
                 onTick(newTime)
             }
+            .enableInjection()
     }
 }
 #endif

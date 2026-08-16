@@ -48,7 +48,7 @@ struct QuotaBar: View {
     }
 }
 
-struct QuotaBarPreviewHarness: View {
+private struct QuotaBarPreviewHarness: View {
     let isLoggedIn: Bool
     let fraction: Double
     let level: QuotaStore.Level

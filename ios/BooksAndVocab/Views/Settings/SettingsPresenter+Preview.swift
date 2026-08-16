@@ -35,6 +35,7 @@ enum SettingsPresenterPreviewData {
 }
 
 struct SettingsFixtureScene: View {
+    @ObserveInjection private var inject
     let fixtureID: SettingsFixtureID
 
     private var renderModel: SettingsFixtureRenderModel {
@@ -56,6 +57,7 @@ struct SettingsFixtureScene: View {
             }
         }
         .environmentObject(AppAppearanceStore.preview)
+        .enableInjection()
     }
 }
 

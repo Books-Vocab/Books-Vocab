@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct PodcastPlayerLockedGateView: View {
+    @ObserveInjection private var inject
     let isGuest: Bool
     let action: () -> Void
 
@@ -39,10 +40,12 @@ struct PodcastPlayerLockedGateView: View {
         .background(theme.palette.pageBackground.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier(isGuest ? "podcast.player.locked.loginGate" : "podcast.player.locked.paywallGate")
+        .enableInjection()
     }
 }
 
 struct PodcastPlayerPreviewBanner: View {
+    @ObserveInjection private var inject
     let action: () -> Void
 
     @Environment(\.appSkin) private var skin
@@ -69,10 +72,12 @@ struct PodcastPlayerPreviewBanner: View {
         .background(skin.palette.brandHero, in: AppRoundedRect(roundness: AppRoundness.control))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("podcast.preview.banner")
+        .enableInjection()
     }
 }
 
 struct PodcastPlayerSettingsButton: View {
+    @ObserveInjection private var inject
     let action: () -> Void
 
     var body: some View {
@@ -81,6 +86,7 @@ struct PodcastPlayerSettingsButton: View {
         }
         .accessibilityLabel(L10n.string("podcast.player.subtitleSettings"))
         .accessibilityIdentifier("podcast.player.settingsButton")
+        .enableInjection()
     }
 }
 #endif

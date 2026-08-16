@@ -15,6 +15,7 @@
 import SwiftUI
 
 struct SettingsDebugBackendSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) var appSkin
 
     let kg: SettingsPresenterState.KGSection
@@ -65,6 +66,7 @@ struct SettingsDebugBackendSection: View {
             }
             .settingsCard()
         }
+        .enableInjection()
     }
 
     private func debugBackendOptionButton(
