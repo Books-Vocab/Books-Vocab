@@ -1,6 +1,6 @@
 {
   "acceptance": "RED：目前 stage regression 沒有 mode=staged assertion，且 collision envelope 實際回 mode=commit。GREEN：test_backlog_add_stage.sh 明確斷言 stderr 與 JSON 都是 mode=staged、written=false，並與 queue/store/anchor assertions 一起通過。",
-  "acceptance_cmd": "grep -qF 'mode=staged' ops/tests/test_backlog_add_stage.sh && bash ops/tests/test_backlog_add_stage.sh && ./ops/backlog.py validate",
+  "acceptance_cmd": "grep -qF 'mode=staged' ops/tests/test_backlog_add_stage.sh && bash ops/tests/test_backlog_add_stage.sh && ./ops/backlog.py validate --baseline-check",
   "brief": "批次立單的 stage collision 回報仍宣稱已提交，維護者會誤判資料寫入平面。",
   "category": "cli",
   "contract_baseline": "red",
