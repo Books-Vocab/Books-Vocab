@@ -1,0 +1,146 @@
+name: backend-quality
+
+# Keep the backend quality surface narrow. Backend source/tests, its locked
+# toolchain, and this workflow are the only changes that need this runner.
+
+on:
+  push:
+    paths: &backend_quality_paths
+      - 'backend/**'
+      - '.github/workflows/backend-quality.yml'
+  pull_request:
+    paths: *backend_quality_paths
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        id: setup_uv
+        continue-on-error: true
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+        with:
+          version: '0.8.23'
+
+      - name: Capture backend quality provenance
+        id: provenance
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          head_sha="$(git rev-parse HEAD)"
+          lock_blob_sha="$(git rev-parse HEAD:backend/uv.lock)"
+          lock_sha256="$(cd "$GITHUB_WORKSPACE" && sha256sum backend/uv.lock | awk '{print $1}')"
+          uv_version="$(uv --version 2>&1 || true)"
+          {
+            printf 'HEAD_SHA=%s\n' "$head_sha"
+            printf 'GITHUB_SHA=%s\n' "$GITHUB_SHA"
+            printf 'LOCK_BLOB_SHA=%s\n' "$lock_blob_sha"
+            printf 'LOCK_SHA256=%s\n' "$lock_sha256"
+            printf 'UV_VERSION=%s\n' "$uv_version"
+            printf 'RUN_ID=%s\n' "$GITHUB_RUN_ID"
+            printf 'RUN_ATTEMPT=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } | tee ci-artifacts/backend-quality-provenance.txt
+
+      - name: Install locked backend environment
+        id: sync
+        continue-on-error: true
+        run: uv sync --locked
+
+      - name: Run backend tests and collect coverage
+        id: tests
+        if: steps.sync.outcome == 'success'
+        continue-on-error: true
+        run: uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
+
+      - name: Enforce coverage threshold
+        id: coverage
+        if: steps.sync.outcome == 'success' && steps.tests.outcome == 'success'
+        continue-on-error: true
+        run: uv run python -m coverage report --fail-under=85
+
+      - name: Run Ruff
+        id: ruff
+        if: steps.sync.outcome == 'success'
+        continue-on-error: true
+        run: uv run ruff check src tests
+
+      - name: Classify backend quality result
+        id: verdict
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SETUP_UV_OUTCOME: ${{ steps.setup_uv.outcome }}
+          PROVENANCE_OUTCOME: ${{ steps.provenance.outcome }}
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
+          RUFF_OUTCOME: ${{ steps.ruff.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+          status="pass"
+          detail="tests, coverage, and Ruff passed"
+
+          if [[ "$CHECKOUT_OUTCOME" != "success" || "$SETUP_UV_OUTCOME" != "success" || "$PROVENANCE_OUTCOME" != "success" || "$SYNC_OUTCOME" != "success" ]]; then
+            status="infrastructure-inconclusive"
+            detail="checkout, uv setup, provenance, or locked sync was inconclusive"
+          elif [[ "$TEST_OUTCOME" == "failure" ]]; then
+            status="test-failure"
+            detail="backend test command failed; existing full-suite failures remain failures"
+          elif [[ "$TEST_OUTCOME" != "success" ]]; then
+            status="infrastructure-inconclusive"
+            detail="backend test step did not produce a success outcome"
+          elif [[ "$COVERAGE_OUTCOME" == "failure" ]]; then
+            status="coverage-failure"
+            detail="coverage threshold command failed"
+          elif [[ "$COVERAGE_OUTCOME" != "success" ]]; then
+            status="infrastructure-inconclusive"
+            detail="coverage step did not produce a success outcome"
+          elif [[ "$RUFF_OUTCOME" == "failure" ]]; then
+            status="ruff-failure"
+            detail="Ruff check failed"
+          elif [[ "$RUFF_OUTCOME" != "success" ]]; then
+            status="infrastructure-inconclusive"
+            detail="Ruff step did not produce a success outcome"
+          fi
+
+          printf 'STATUS=%s\nDETAIL=%s\n' "$status" "$detail" > ci-artifacts/backend-quality-verdict.txt
+          {
+            echo '### Backend quality verdict'
+            echo "- status: \`$status\`"
+            echo "- $detail"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$status" != "pass" ]]; then
+            exit 1
+          fi
+
+      - name: Upload backend quality evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-quality-${{ github.sha }}
+          path: |
+            backend/coverage.xml
+            backend/ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
