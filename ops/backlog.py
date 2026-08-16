@@ -347,7 +347,6 @@ def _acceptance_deps() -> _backlog_acceptance.AcceptanceDeps:
         check_acceptance_cmd=_check_acceptance_cmd,
         list_entries=list_entries,
         worst_first_key=_worst_first_key,
-        acceptance_green_expected=ACCEPTANCE_GREEN_EXPECTED,
         acceptance_timeout_seconds=ACCEPTANCE_TIMEOUT_SECONDS,
         static_acceptance_timeout_seconds=STATIC_ACCEPTANCE_TIMEOUT_SECONDS,
         execute_criterion=_execute_criterion,
