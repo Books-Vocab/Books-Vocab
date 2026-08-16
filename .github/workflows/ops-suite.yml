@@ -44,7 +44,7 @@ jobs:
         # setup-uv v6 的 enable-cache 預設是 "auto"，在 GitHub-hosted runner 上等於開啟，
         # 所以這裡不需要（也不該）顯式寫 enable-cache: true——那會讀起來像是這個 edit
         # 帶來了加速，實際上什麼都沒改變。
-        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
       - name: Install tools the suite needs
         # 明列，不靠 ubuntu-latest 碰巧預裝：runner image 的工具清單不是契約，而
         # `ubuntu-latest` 是會動的標籤。實測（runner 等價容器）少了它們的後果——
