@@ -83,6 +83,8 @@ PROOFS=(
   "ios-live-demo-uitest-compile|expensive|journal|Release iphoneos compile gate, see test_ios_ops.sh"
   "design-system|expensive|journal|ops/verify_design_system.sh has its own regression suite"
   "backend-pytest|expensive|journal|pytest's own non-zero exit"
+  "agent-constitution|expensive|journal|the constitution path is validated by the real docs-lint gate; green requires recorded execution of that gate"
+  "official-decks-check|expensive|journal|the fixed official deck set check has its own executable acceptance; green requires the real official deck validator"
   "ops-pytest|expensive|journal|pytest's own non-zero exit"
 )
 
