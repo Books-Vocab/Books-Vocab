@@ -17,7 +17,7 @@ bash -n "$REL"   && ok "release.sh syntax" || fail_t "release.sh syntax error"
 
 # ── 2. 子命令 dispatch 齊全 ─────────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in status changelog bump bump-build tag publish release shipped resubmit; do
+for sub in status changelog bump bump-build tag publish release shipped resubmit finalize; do
   grep -qE "^[[:space:]]*$sub\)" "$REL" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
@@ -572,18 +572,28 @@ PBX
   cat > "$fixture/ops/ios_release.sh" <<'STUB'
 #!/usr/bin/env bash
 root="$(cd "$(dirname "$0")/.." && pwd)"
-touch "$root/upload.called"
+  touch "$root/upload.called"
+  count=0
+  [[ -f "$root/upload.count" ]] && count="$(<"$root/upload.count")"
+  printf '%s\n' "$((count + 1))" > "$root/upload.count"
 echo "stub upload invoked" >&2
 exit "${STUB_UPLOAD_EXIT:-0}"
 STUB
   cat > "$fixture/ops/asc.sh" <<'STUB'
 #!/usr/bin/env bash
+if [[ "${1:-}" == build ]]; then
+  [[ "${ASC_EXACT_BUILD_EXIT:-0}" == 0 ]] || exit "$ASC_EXACT_BUILD_EXIT"
+  printf '{"schema":"kg.asc.build.v1","id":"%s-%s","version":"%s","build":"%s","platform":"IOS","processingState":"%s"}\n' \
+    "${ASC_EXACT_BUILD_ID_PREFIX:-build}" "${2:-unknown}" "${2:-unknown}" "${3:-unknown}" "${ASC_EXACT_BUILD_STATE:-VALID}"
+  exit 0
+fi
 [[ "${1:-}" == builds ]] || exit 64
 if [[ "${ASC_BUILDS_EXIT:-0}" != 0 ]]; then
   exit "$ASC_BUILDS_EXIT"
 fi
 echo "TestFlight 最新 build number: ${ASC_LATEST_BUILD:-5}"
 STUB
+  printf 'upload.called\nupload.count\n' > "$fixture/.gitignore"
   chmod +x "$fixture/ops/ios_release.sh" "$fixture/ops/release_bump.sh" "$fixture/ops/asc.sh"
   git init -q -b main "$fixture"
   git -C "$fixture" config user.name "Release Test"
@@ -631,7 +641,8 @@ mismatch_out="$(bash "$fx_b/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || mi
 [[ ! -e "$fx_b/upload.called" ]] \
   && ok "no-shipped-tag refusal is pre-upload" || fail_t "uploaded before the shipped-tag check"
 
-# 15c. 正確 attestation 後 upload 若失敗，不得留下 false release commit/tag/push。
+# 15c. upload 若失敗，candidate commit/push 必須保留作為可恢復 provenance，但不得
+#      建立 false build tag；下一輪不可靜默產生另一顆 build。
 fx_c="$TMP4/upload-failure"; remote_c="$TMP4/upload-failure.git"
 make_ios_release_fixture "$fx_c" "$remote_c"
 head_c="$(git -C "$fx_c" rev-parse HEAD)"
@@ -640,12 +651,48 @@ upload_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_c/ops/release.sh" release ios 2.0.1 
 [[ "$upload_rc" -ne 0 && -e "$fx_c/upload.called" ]] \
   && ok "attested release reaches upload and propagates upload failure" \
   || fail_t "attested release did not exercise failing upload: $upload_out"
-[[ "$(git -C "$fx_c" rev-parse HEAD)" == "$head_c" ]] \
-  && [[ -z "$(git -C "$fx_c" tag -l 'ios/2.0.1*')" ]] \
-  && [[ -z "$(git --git-dir="$remote_c" tag -l 'ios/2.0.1*')" ]] \
-  && [[ "$(git --git-dir="$remote_c" rev-parse refs/heads/main)" == "$head_c" ]] \
-  && ok "upload failure leaves no false release commit/tag/push" \
-  || fail_t "upload failure left a false release commit/tag/push"
+candidate_c="$(git -C "$fx_c" rev-parse HEAD)"
+[[ "$candidate_c" != "$head_c" \
+   && "$(git -C "$fx_c" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
+   && -z "$(git -C "$fx_c" tag -l 'ios/2.0.1*')" \
+   && -z "$(git --git-dir="$remote_c" tag -l 'ios/2.0.1*')" \
+   && "$(git --git-dir="$remote_c" rev-parse refs/heads/main)" == "$candidate_c" ]] \
+   && ok "upload failure leaves recoverable candidate but no false build tag" \
+   || fail_t "upload failure did not preserve the correct candidate boundary"
+[[ "$(STUB_UPLOAD_EXIT=23 bash "$fx_c/ops/release.sh" release ios 2.0.1 --yes 2>&1 || true)" == *"finalize ios 2.0.1 6"* ]] \
+  && ok "pending candidate blocks rerun and points to finalize" \
+  || fail_t "pending candidate rerun did not point to finalize"
+
+# 15c.1. upload 失敗後只重跑 finalize 不得重新 upload；若 upload 成功但 ASC 尚未
+#       顯示 exact build，也必須保留 candidate，稍後 finalize 可無副作用恢復。
+finalize_c_rc=0
+finalize_c_out="$(bash "$fx_c/ops/release.sh" finalize ios 2.0.1 6 --yes 2>&1)" || finalize_c_rc=$?
+[[ "$finalize_c_rc" -eq 0 \
+   && "$(<"$fx_c/upload.count")" == 1 \
+   && "$(git -C "$fx_c" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_c" \
+   && "$(git --git-dir="$remote_c" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_c" ]] \
+  && ok "finalize recovery seals failed-upload candidate without re-upload" \
+  || fail_t "finalize recovery re-uploaded or failed: $finalize_c_out"
+
+fx_rpending="$TMP4/asc-pending"; remote_rpending="$TMP4/asc-pending.git"
+make_ios_release_fixture "$fx_rpending" "$remote_rpending"
+pending_asc_rc=0
+pending_asc_out="$(ASC_EXACT_BUILD_EXIT=3 KG_RELEASE_ASC_WAIT_SECS=0 bash "$fx_rpending/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || pending_asc_rc=$?
+candidate_rpending="$(git -C "$fx_rpending" rev-parse HEAD)"
+[[ "$pending_asc_rc" -ne 0 \
+   && "$(<"$fx_rpending/upload.count")" == 1 \
+   && "$(git -C "$fx_rpending" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
+   && -z "$(git -C "$fx_rpending" tag -l 'ios/2.0.1+6')" \
+   && "$(git --git-dir="$remote_rpending" rev-parse refs/heads/main)" == "$candidate_rpending" ]] \
+  && ok "ASC propagation miss retains candidate and does not create a false tag" \
+  || fail_t "ASC propagation miss did not retain recoverable state: $pending_asc_out"
+pending_finalize_rc=0
+pending_finalize_out="$(bash "$fx_rpending/ops/release.sh" finalize ios 2.0.1 6 --yes 2>&1)" || pending_finalize_rc=$?
+[[ "$pending_finalize_rc" -eq 0 \
+   && "$(<"$fx_rpending/upload.count")" == 1 \
+   && "$(git --git-dir="$remote_rpending" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_rpending" ]] \
+  && ok "ASC propagation recovery finalizes without a second upload" \
+  || fail_t "ASC propagation recovery failed: $pending_finalize_out"
 
 # 15d. direct tag 也是外部 release marker，必須吃同一個 guard——否則 bump→tag 兩步
 #      就是一條繞過 release 的旁路。這裡用倒退版號當探針。
@@ -675,7 +722,7 @@ downgrade_out="$(bash "$fx_e/ops/release.sh" release ios 1.9.9 --yes 2>&1)" || d
   && ok "iOS new marketing version must increase monotonically" \
   || fail_t "iOS downgrade was not safely rejected: $downgrade_out"
 
-# 15f. 合法恢復：版號已在 HEAD、upload 成功時，跳過空 commit 並 tag/push current HEAD。
+# 15f. 合法恢復：版號已在 HEAD、upload 成功時仍建立明確 candidate commit，再 tag/push。
 fx_f="$TMP4/already-committed"; remote_f="$TMP4/already-committed.git"
 make_ios_release_fixture "$fx_f" "$remote_f"
 sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 6;/g' \
@@ -685,13 +732,15 @@ git -C "$fx_f" commit -qm "fixture: version already committed"
 committed_head="$(git -C "$fx_f" rev-parse HEAD)"
 committed_rc=0
 committed_out="$(bash "$fx_f/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || committed_rc=$?
+committed_candidate="$(git -C "$fx_f" rev-parse HEAD)"
 [[ "$committed_rc" -eq 0 && -e "$fx_f/upload.called" \
-   && "$(git -C "$fx_f" rev-parse HEAD)" == "$committed_head" \
-   && "$(git -C "$fx_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_head" \
-   && "$(git --git-dir="$remote_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_head" \
-   && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" == "$committed_head" ]] \
-  && ok "already-committed version uploads then tags/pushes current HEAD" \
-  || fail_t "already-committed version left a partial release: $committed_out"
+   && "$committed_candidate" != "$committed_head" \
+   && "$(git -C "$fx_f" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
+   && "$(git -C "$fx_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_candidate" \
+   && "$(git --git-dir="$remote_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_candidate" \
+   && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" == "$committed_candidate" ]] \
+  && ok "already-committed version creates candidate then uploads/tags/pushes" \
+  || fail_t "already-committed version did not close candidate release: $committed_out"
 
 # 15g. 事故本體：有一個版本出過 build、卻還沒有上架 tag，就直接發下一版。
 #      2.0.1 事故就是這個形狀——2.0.0 還在審（build 5 已上傳），卻已 bump 成 2.0.1。
@@ -1120,18 +1169,31 @@ sealed_r="$(git -C "$fx_r" rev-parse HEAD)"
 [[ "$(git -C "$fx_r" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$head_r" ]] \
   && ok "resubmit does not touch the shipped tag" || fail_t "resubmit moved ios/2.0.0"
 
-# 20c. upload 失敗 → 不留 commit / tag / push（與 release 同一條不變式）。
+# 20c. upload 失敗 → 保留 candidate provenance，但不留 false build tag；
+#      recovery 必須只 finalize，不得再次產生 build 或隱式 upload。
 fx_rf="$TMP5/resubmit-failure"; remote_rf="$TMP5/resubmit-failure.git"
 make_ios_release_fixture "$fx_rf" "$remote_rf"
 head_rf="$(git -C "$fx_rf" rev-parse HEAD)"
 rf_rc=0
 rf_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_rf/ops/release.sh" resubmit ios --yes 2>&1)" || rf_rc=$?
+candidate_rf="$(git -C "$fx_rf" rev-parse HEAD)"
 [[ "$rf_rc" -ne 0 && -e "$fx_rf/upload.called" \
-   && "$(git -C "$fx_rf" rev-parse HEAD)" == "$head_rf" \
+   && "$candidate_rf" != "$head_rf" \
+   && "$(<"$fx_rf/upload.count")" == 1 \
+   && "$(git -C "$fx_rf" log -1 --format=%s)" == "ops: prepare ios 2.0.0 build 6" \
    && -z "$(git -C "$fx_rf" tag -l 'ios/2.0.0+6')" \
-   && -z "$(git --git-dir="$remote_rf" tag -l 'ios/2.0.0+6')" ]] \
-  && ok "failed resubmit upload leaves no commit/tag/push" \
-  || fail_t "failed resubmit left a false marker: $rf_out"
+   && -z "$(git --git-dir="$remote_rf" tag -l 'ios/2.0.0+6')" \
+   && "$(git --git-dir="$remote_rf" rev-parse refs/heads/main)" == "$candidate_rf" ]] \
+  && ok "failed resubmit upload leaves recoverable candidate but no false build tag" \
+  || fail_t "failed resubmit did not preserve the correct candidate boundary: $rf_out"
+rf_finalize_rc=0
+rf_finalize_out="$(bash "$fx_rf/ops/release.sh" finalize ios 2.0.0 6 --yes 2>&1)" || rf_finalize_rc=$?
+[[ "$rf_finalize_rc" -eq 0 \
+   && "$(<"$fx_rf/upload.count")" == 1 \
+   && "$(git -C "$fx_rf" rev-parse 'refs/tags/ios/2.0.0+6^{commit}')" == "$candidate_rf" \
+   && "$(git --git-dir="$remote_rf" rev-parse 'refs/tags/ios/2.0.0+6^{commit}')" == "$candidate_rf" ]] \
+  && ok "failed resubmit candidate finalizes without a second upload" \
+  || fail_t "failed resubmit recovery failed or re-uploaded: $rf_finalize_out"
 
 # 20d. api 拒絕，且指路。
 ra_rc=0

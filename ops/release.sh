@@ -20,6 +20,7 @@
 #                                                # backend 會等生產收斂（線上 version == 本次 sha）才宣稱成功
 #   ./ops/release.sh shipped ios                 # 查 ASC 上架版本 → join build tag → 打 ios/<x.y.z>（dry-run 預設）
 #   ./ops/release.sh resubmit ios                # 同版號、新 build 重送：ASC 對帳 → max(local,ASC)+1 → upload → 封 tag（dry-run 預設）
+#   ./ops/release.sh finalize ios <x.y.z> <build> # ASC 精確確認後補封既有 candidate（dry-run 預設）
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
 # iOS 版號的兩種 tag（語意不同，別混）：
@@ -37,6 +38,9 @@
 #           —— release backend 收斂等待的上限與輪詢間隔。設 0 秒不會關閉等待，只會讓它
 #           立刻逾時；真要跳過請直接用 `orchestrate deploy --commit`（那條路本來就不等）。
 #           KG_ASC_BUILDS_CMD（測試注入；預設 ops/asc.sh builds）供 resubmit 查 TestFlight 最新 build。
+#           KG_ASC_BUILD_CMD（測試注入；預設 ops/asc.sh build <version> <build>）供 iOS finalize
+#           查 ASC 精確 build；KG_RELEASE_ASC_WAIT_SECS（預設 120）/KG_RELEASE_ASC_POLL_SECS（5）
+#           控制 upload 後 ASC propagation 的 bounded wait。
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
 set -euo pipefail
@@ -57,6 +61,8 @@ KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
 # 就宣告失敗——假紅會讓下一個人學會忽略這個閘。
 KG_RELEASE_WAIT_SECS="${KG_RELEASE_WAIT_SECS:-480}"
 KG_RELEASE_POLL_SECS="${KG_RELEASE_POLL_SECS:-10}"
+KG_RELEASE_ASC_WAIT_SECS="${KG_RELEASE_ASC_WAIT_SECS:-120}"
+KG_RELEASE_ASC_POLL_SECS="${KG_RELEASE_ASC_POLL_SECS:-5}"
 
 # shellcheck source=lib/release_tags.sh
 . "$ROOT/ops/lib/release_tags.sh"
@@ -113,6 +119,186 @@ check_ios_build_tag() {  # 設 IOS_BUILD_TAG_STATE=new|idempotent，衝突則 er
    同一 (version, build) 從兩顆不同 commit 出過 archive = 真正的歧義，不靜默覆蓋。
    若這次是新的 archive，先 ./ops/release.sh bump-build ios --yes 取得新 build number；
    若是既有那顆的補封，請確認哪顆 commit 才是上傳的那顆再人工處理 tag。"
+}
+
+# release 交易只能以 tracked-clean 的 primary 開始。candidate commit 會把版號檔
+# 的唯一預期變更收進來；任何 operator 或其他 session 的變更都必須先離開 release
+# 臨界區，否則 upload provenance 會無法判定。
+ensure_release_primary_clean() {
+  local dirty
+  dirty="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
+  [[ -z "$dirty" ]] || err "release primary 必須 clean；先處理以下變更再重試：
+${dirty}"
+}
+
+# irreversible upload 前只做存在性 collision check。正式 tag 的 commit identity
+# 在 candidate commit 之後才知道；因此這個 preflight 不把既有 tag 誤判成可冪等。
+assert_ios_build_tag_unused() {
+  local tag="$(ios_build_tag "$1" "$2")" existing remote_tag remote_rc
+  existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
+  [[ -z "$existing" ]] || err "${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")；在 upload 前拒絕重用 build tag。"
+  remote_rc=0
+  remote_tag="$(git -C "$ROOT" ls-remote origin "refs/tags/${tag}" 2>/dev/null)" || remote_rc=$?
+  (( remote_rc == 0 )) || err "無法檢查 origin 上的 ${tag}（git ls-remote exit ${remote_rc}）；在 upload 前 fail-closed。"
+  [[ -z "$remote_tag" ]] || err "origin 上已存在 ${tag}；在 upload 前拒絕重用 build tag。"
+}
+
+ios_candidate_subject() {
+  printf 'ops: prepare ios %s build %s\n' "$1" "$2"
+}
+
+ios_refuse_pending_candidate() {
+  local version="$1" build="$2" subject tag existing
+  subject="$(git -C "$ROOT" log -1 --format=%s)"
+  [[ "$subject" == "$(ios_candidate_subject "$version" "$build")" ]] || return 0
+  tag="$(ios_build_tag "$version" "$build")"
+  existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
+  [[ -n "$existing" ]] && return 0
+  err "目前 HEAD 是未 finalize 的 iOS candidate ${version}+${build}，禁止重跑 release/resubmit 產生下一顆 build。
+   若 ASC 已接受，執行：./ops/release.sh finalize ios ${version} ${build} --yes
+   若 upload 確認未接受，沿用此 candidate 重新執行 ./ops/ios_release.sh --upload，成功後再 finalize。"
+}
+
+# candidate commit 是 upload provenance 的持久錨點：先 commit，再推 origin/main，最後
+# 才碰 ASC。只允許 pbxproj 作為 candidate 變更；candidate message 以 tuple 固定 identity。
+ios_commit_candidate() {
+  local version="$1" build="$2" file="ios/BooksAndVocab.xcodeproj/project.pbxproj"
+  local changed staged subject
+  changed="$(git -C "$ROOT" diff --name-only)"
+  [[ -z "$changed" || "$changed" == "ios/BooksAndVocab.xcodeproj/project.pbxproj" ]] \
+    || err "iOS candidate 含非版號檔變更，拒絕混入 release commit：${changed}"
+  staged="$(git -C "$ROOT" diff --cached --name-only)"
+  [[ -z "$staged" ]] || err "release 開始前已有 staged 變更：${staged}"
+
+  git -C "$ROOT" add -- "$file"
+  subject="$(ios_candidate_subject "$version" "$build")"
+  if git -C "$ROOT" diff --cached --quiet -- "$file"; then
+    [[ "$(git -C "$ROOT" log -1 --format=%s)" == "$subject" ]] \
+      || git -C "$ROOT" commit --allow-empty -m "$subject"
+  else
+    git -C "$ROOT" commit -m "$subject" -- "$file"
+  fi
+  IOS_CANDIDATE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+  echo "  candidate=${IOS_CANDIDATE_SHA} (${subject})"
+}
+
+ios_push_candidate() {
+  local remote_main
+  git -C "$ROOT" push origin main \
+    || err "candidate commit 未能推到 origin/main；upload 尚未執行，先處理 remote race/rejection。"
+  remote_main="$(git -C "$ROOT" ls-remote --heads origin main | awk 'NR==1{print $1}')"
+  [[ "$remote_main" == "$IOS_CANDIDATE_SHA" ]] \
+    || err "candidate push 回報成功但 origin/main=${remote_main:-<missing>} ≠ ${IOS_CANDIDATE_SHA}；拒絕 upload。"
+  echo "  candidate 已備份至 origin/main=${remote_main}"
+}
+
+ios_validate_asc_build_json() {
+  local version="$1" build="$2" payload="$3"
+  jq -e --arg version "$version" --arg build "$build" '
+    (.schema == "kg.asc.build.v1") and
+    (.version == $version) and
+    ((.build | tostring) == $build) and
+    (.platform == "IOS") and
+    ((.id | type) == "string") and
+    ((.id | length) > 0) and
+    (.processingState == "PROCESSING" or .processingState == "VALID")
+  ' <<<"$payload" >/dev/null 2>&1
+}
+
+# ASC upload 成功與 ASC build 可查到之間存在 propagation window。只把 exit=3
+# （目前尚未找到 exact build）當成可重試；auth/network/schema 失敗立即 hard-stop。
+# 成功 payload 仍要由 release.sh 再驗一次，避免測試/替代 command 回傳錯誤 tuple。
+ios_wait_for_exact_asc_build() {
+  local version="$1" build="$2" output rc now deadline start
+  local asc_cmd="${KG_ASC_BUILD_CMD:-$ROOT/ops/asc.sh}"
+  [[ "$KG_RELEASE_ASC_WAIT_SECS" =~ ^[0-9]+$ && "$KG_RELEASE_ASC_POLL_SECS" =~ ^[0-9]+$ ]] \
+    || err "KG_RELEASE_ASC_WAIT_SECS / KG_RELEASE_ASC_POLL_SECS 必須是非負整數"
+  start="$(date +%s)"
+  deadline=$((start + KG_RELEASE_ASC_WAIT_SECS))
+  echo "  等 ASC 精確確認 ${version} build ${build}（最多 ${KG_RELEASE_ASC_WAIT_SECS}s）…" >&2
+  while :; do
+    output=""; rc=0
+    if [[ -n "${KG_ASC_BUILD_CMD:-}" ]]; then
+      output="$($asc_cmd "$version" "$build" 2>&1)" || rc=$?
+    else
+      output="$($asc_cmd build "$version" "$build" 2>&1)" || rc=$?
+    fi
+    if (( rc == 0 )); then
+      ios_validate_asc_build_json "$version" "$build" "$output" \
+        || err "ASC exact build command 回傳 malformed/mismatched payload；不建立 build tag：${output:-<empty>}"
+      printf '%s\n' "$output"
+      return 0
+    fi
+    (( rc == 3 )) \
+      || err "ASC exact build lookup 失敗（exit ${rc}）：${output:-<empty>}；不建立 build tag"
+    now="$(date +%s)"
+    if (( now >= deadline )); then
+      err "ASC 尚未顯示精確的 ${version} build ${build}（等待 ${KG_RELEASE_ASC_WAIT_SECS}s）；candidate 已保留。
+   不要重跑 release/resubmit 產生下一顆 build；確認 ASC upload/processing 後重跑：
+   ./ops/release.sh finalize ios ${version} ${build} --yes"
+    fi
+    echo "    [elapsed=$((now - start))s] ASC 尚未顯示 exact build，${KG_RELEASE_ASC_POLL_SECS}s 後重試…" >&2
+    sleep "$KG_RELEASE_ASC_POLL_SECS"
+  done
+}
+
+# finalize 是 post-upload recovery 的唯一正式入口：它要求 current HEAD 就是
+# candidate commit，先查 exact ASC build，再建立 immutable build tag。若流程在 tag
+# 前中斷，重跑此命令不會重新 archive/upload。
+cmd_finalize_ios() {
+  local version="${1:?用法: release.sh finalize ios <x.y.z> <build> [--yes]}"
+  local build="${2:-}" expected_sha="${3:-}" branch curver curbuild head subject tag existing
+  local asc_json asc_id asc_state remote_tag
+  valid_semver "$version" || err "版本號格式錯誤：${version}（需 x.y.z）"
+  [[ "$build" =~ ^[0-9]+$ ]] || err "build 必須是非負整數：${build:-<empty>}"
+  [[ $# -le 3 ]] || err "finalize ios 多餘參數：${*:4}"
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" == main ]] || err "finalize ios 須在 main 執行（目前 ${branch}）"
+  ensure_release_primary_clean
+  curver="$(current_version ios)"; curbuild="$(current_build)"
+  [[ "$curver" == "$version" && "$curbuild" == "$build" ]] \
+    || err "current project tuple=${curver}+${curbuild}，不是要 finalize 的 ${version}+${build}"
+  head="$(git -C "$ROOT" rev-parse HEAD)"
+  subject="$(ios_candidate_subject "$version" "$build")"
+  [[ "$(git -C "$ROOT" log -1 --format=%s)" == "$subject" ]] \
+    || err "current HEAD ${head:0:12} 不是 ${version}+${build} candidate；拒絕替未知 commit 封版"
+  [[ -z "$expected_sha" || "$head" == "$expected_sha" ]] \
+    || err "candidate HEAD 已漂移：預期 ${expected_sha}，目前 ${head}；拒絕 finalize"
+
+  tag="$(ios_build_tag "$version" "$build")"
+  existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
+  [[ -z "$existing" || "$existing" == "$head" ]] \
+    || err "${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，不是 candidate ${head:0:12}"
+  asc_json="$(ios_wait_for_exact_asc_build "$version" "$build")"
+  asc_id="$(jq -r '.id' <<<"$asc_json")"
+  asc_state="$(jq -r '.processingState' <<<"$asc_json")"
+  echo "  exact ASC proof: id=${asc_id} state=${asc_state} version=${version} build=${build}"
+
+  if [[ $YES -ne 1 ]]; then
+    echo "[dry-run] 未建立 tag。確認無誤後加 --yes："
+    echo "  ./ops/release.sh finalize ios ${version} ${build} --yes"
+    return 0
+  fi
+
+  if [[ -z "$existing" ]]; then
+    git -C "$ROOT" tag "$tag"
+  else
+    echo "  ${tag} 已指向 candidate ${head:0:12}，tag 建立步驟冪等略過"
+  fi
+  git -C "$ROOT" push origin main "$tag" \
+    || err "finalize tag/push 失敗；candidate 與 ASC proof 保留，可安全重跑 finalize"
+  remote_tag="$(git -C "$ROOT" ls-remote origin "refs/tags/${tag}" | awk 'NR==1{print $1}')"
+  [[ "$remote_tag" == "$head" ]] \
+    || err "tag push 回報成功但 origin ${tag}=${remote_tag:-<missing>} ≠ ${head}"
+  echo "✓ finalize ios ${version} build ${build}：ASC exact verified + ${tag} → ${head:0:12} + origin/main/tag"
+  echo "  上架後仍須另跑 ./ops/release.sh shipped ios --yes；本流程不宣稱 App Store 上架。"
+}
+
+cmd_finalize() {
+  local target="${1:?用法: release.sh finalize ios <x.y.z> <build> [--yes]}"
+  [[ "$target" == ios ]] || err "finalize 只支援 ios（ASC build provenance 目前只有 iOS）"
+  shift
+  cmd_finalize_ios "$@"
 }
 
 # 非 x.y.z 一律 err，不回「不大於」。回 false 會讓 guard 用錯誤的理由拒絕、讓
@@ -660,6 +846,8 @@ cmd_resubmit() {
     || err "pbxproj 的 MARKETING_VERSION 是 '${curver}'，不是 x.y.z —— 先跑 ./ops/release.sh bump ios <x.y.z> --yes 對齊成三段"
   curbuild="$(current_build)"
   [[ "$curbuild" =~ ^[0-9]+$ ]] || err "讀不到 pbxproj 的 CURRENT_PROJECT_VERSION：'${curbuild}'"
+  ensure_release_primary_clean
+  ios_refuse_pending_candidate "$curver" "$curbuild"
   tf_latest="$(asc_latest_testflight_build)"
   newbuild=$((curbuild > tf_latest ? curbuild : tf_latest))
   newbuild=$((newbuild + 1))
@@ -667,8 +855,9 @@ cmd_resubmit() {
   echo "resubmit ios ${curver}  build ${curbuild} → ${newbuild}  (local=${curbuild} ASC TestFlight latest=${tf_latest})  branch=${branch}"
   echo "  計畫（dry-run 預設）："
   echo "    1) bump-build ios（CURRENT_PROJECT_VERSION ${curbuild} → ${newbuild}；ASC latest=${tf_latest}；MARKETING_VERSION 不動）"
-  echo "    2) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
-  echo "    3) commit 版號檔 + $(ios_build_tag "$curver" "$newbuild") + push origin ${branch}"
+  echo "    2) candidate commit + push origin/${branch}（先備份 provenance）"
+  echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
+  echo "    4) ASC exact verify → $(ios_build_tag "$curver" "$newbuild") + push origin/${branch}"
   echo "  ios/${curver}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
 
   if [[ $YES -ne 1 ]]; then
@@ -677,20 +866,21 @@ cmd_resubmit() {
     return 0
   fi
 
+  assert_ios_build_tag_unused "$curver" "$newbuild"
   "$ROOT/ops/release_bump.sh" ios --build-only --build-number="$newbuild" --yes
-  # 與 cmd_release 同理：封不下去就別送。TestFlight upload 不可逆。
-  check_ios_build_tag "$(ios_build_tag "$curver" "$(current_build)")" ios/BooksAndVocab.xcodeproj/project.pbxproj
-  "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止（pbxproj 已 bump 但未 commit/tag）"
-  IOS_SAME_VERSION_RESUBMIT=1
-  cmd_tag ios "$curver"
-  IOS_SAME_VERSION_RESUBMIT=0
-  echo "✓ resubmit ios ${curver} build ${newbuild}：已上傳 TestFlight + 封版 tag。"
-  echo "  過審上架後記得跑 ./ops/release.sh shipped ios --yes 補上上架 tag。"
+  ios_commit_candidate "$curver" "$newbuild"
+  ios_push_candidate
+  if ! "$ROOT/ops/ios_release.sh" --upload; then
+    echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推 origin/main，未建立 build tag。" >&2
+    echo "  不要重跑 resubmit 產生下一顆 build；確認 upload 結果後跑 finalize，或沿用此 candidate 重試 primitive upload。" >&2
+    return 1
+  fi
+  cmd_finalize_ios "$curver" "$newbuild" "$IOS_CANDIDATE_SHA"
 }
 
 # ---- release：前後端統一發布入口。dry-run 預設，--yes 才執行 ----
 # backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
-# ios:     bump ios → ios_release.sh --upload（archive + 上傳 TestFlight）→ tag ios（upload failure 不留 false tag）
+# ios:     bump ios → candidate commit/push → ios_release upload → ASC exact → build tag
 # 須在 primary、on main（release 發布本地主幹；feature 改動先 cutover 進 main）。
 # ---- 部署收斂閘（release backend 的最後一哩）----------------------------------
 # deploy 只保證 origin/prod 前進——那是「我要求什麼」，不是「線上跑什麼」。真正的部署
@@ -766,7 +956,7 @@ cmd_release() {
     guard_ios_new_version "$v"
   fi
 
-  local branch curver need_bump
+  local branch curver curbuild target_build need_bump
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" == main ]] || err "release 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
   curver="$(current_version "$comp")"
@@ -774,6 +964,14 @@ cmd_release() {
   # (如 2.0)，若用正規化相等判 2.0==2.0.0 會跳過 bump，但 cmd_tag strict 比較 raw 2.0≠2.0.0 反而
   # abort。用 raw 判 → 2.0 vs 2.0.0 觸發 bump 寫成三段 → cmd_tag 一致通過。
   need_bump=0; [[ "$curver" == "$v" ]] || need_bump=1
+  if [[ "$comp" == ios ]]; then
+    ensure_release_primary_clean
+    curbuild="$(current_build)"
+    [[ "$curbuild" =~ ^[0-9]+$ ]] || err "讀不到 pbxproj 的 CURRENT_PROJECT_VERSION：'${curbuild}'"
+    ios_refuse_pending_candidate "$curver" "$curbuild"
+    target_build="$curbuild"
+    (( need_bump == 1 )) && target_build=$((curbuild + 1))
+  fi
 
   echo "release target=${target}（component=${comp}）version=${v}  branch=${branch}"
   echo "  計畫（dry-run 預設）："
@@ -785,8 +983,9 @@ cmd_release() {
     echo "       （最長 ${KG_RELEASE_WAIT_SECS}s，逾時非零退出並指向 reconciler log；"
     echo "        range 內無 reconciler 觸發路徑時自動跳過）"
   else
-    echo "    2) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
-    echo "    3) tag ${comp} ${v}（upload 成功後才 commit 版號檔 + ios/${v}+<build> build tag + push origin main）"
+    echo "    2) candidate commit + push origin/main（先備份 ${v}+${target_build} provenance）"
+    echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
+    echo "    4) ASC exact verify → ios/${v}+${target_build} + push origin/main"
     echo "    ios/${v}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
   fi
 
@@ -797,7 +996,7 @@ cmd_release() {
   fi
 
   # 執行：任一步失敗即 err 中止（cmd_bump/cmd_tag 讀全域 YES=1）
-  if [[ $need_bump -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
+  if [[ "$comp" == api && $need_bump -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
   if [[ "$comp" == api ]]; then
     cmd_tag "$comp" "$v"
     # rollout 判定要在 deploy **之前**取 range：deploy 一旦推上去，origin/prod 就等於
@@ -837,13 +1036,18 @@ cmd_release() {
       echo "✓ release backend ${v}：已 tag + 推 origin/prod（range 內無 reconciler 觸發路徑 → 不會 rollout，無需等待）。"
     fi
   else
-    # build tag 衝突要在 upload **之前**發現。TestFlight upload 不可逆，而 cmd_tag 的
-    # 拒絕發生在 upload 之後——那等於先送出一顆我們已經知道封不下去的 archive。
-    # bump 已經跑完，pbxproj 此刻帶的就是本次 archive 的 (version, build)。
-    check_ios_build_tag "$(ios_build_tag "$v" "$(current_build)")" ios/BooksAndVocab.xcodeproj/project.pbxproj
-    "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止"
-    cmd_tag "$comp" "$v"
-    echo "✓ release ios ${v}：已上傳 TestFlight + tag（GUI 綁 build 送審見 docs/sop/ios.md）。"
+    assert_ios_build_tag_unused "$v" "$target_build"
+    if [[ "$need_bump" -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
+    [[ "$(current_build)" == "$target_build" ]] \
+      || err "bump 後 build drift：預期 ${target_build}，實際 $(current_build)"
+    ios_commit_candidate "$v" "$target_build"
+    ios_push_candidate
+    if ! "$ROOT/ops/ios_release.sh" --upload; then
+      echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推 origin/main，未建立 build tag。" >&2
+      echo "  不要重跑 release 產生下一顆 build；確認 upload 結果後跑 finalize，或沿用此 candidate 重試 primitive upload。" >&2
+      return 1
+    fi
+    cmd_finalize_ios "$v" "$target_build" "$IOS_CANDIDATE_SHA"
   fi
 }
 
@@ -883,6 +1087,7 @@ case "${SUB:-}" in
   publish)   cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;   # 相容別名：publish → tag
   shipped)   cmd_shipped ${ARGS[@]+"${ARGS[@]}"} ;;
   resubmit)  cmd_resubmit ${ARGS[@]+"${ARGS[@]}"} ;;
+  finalize)  cmd_finalize ${ARGS[@]+"${ARGS[@]}"} ;;
   release)   cmd_release ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
