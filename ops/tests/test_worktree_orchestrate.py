@@ -623,6 +623,7 @@ def test_gate_plan_ops_test_file_runs_itself():
     assert spec["cmd"][:7] == ["uv", "run", "--no-project", "--python", "3.13",
                                "--with", "pytest"]
     assert spec["cmd"][7:11] == ["--with", "pyjwt", "--with", "cryptography"]
+    assert spec["cmd"][11:13] == ["pytest", "-q"]
     assert "ops/tests/test_capability_matrix.py" in spec["cmd"]
     # targeted — never the whole ops/tests directory when every change maps to a test
     assert "ops/tests" not in spec["cmd"]
