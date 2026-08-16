@@ -132,6 +132,7 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 - Exit Code `0` → 編譯成功;仍看 `[ios][issues] warnings=...`，release 前不可無視新增 warnings
 - Exit Code 非 `0` → 第一屏 diagnostics 會列官方 `.xcresult` top errors/warnings + raw log path，進 Step 2
+- 預設 `build` 使用 `xcodebuild build-for-testing`：除 app target 外，也會編譯 `BooksAndVocab` scheme 宣告的 test targets；它只驗編譯、不執行測試。故意植入無法編譯的測試檔時，這道 gate 必須非零；行為驗證仍走 `test`。
 - 動到三平台 navigation / Catalyst 專屬路徑時，`--catalyst` 與預設各跑一次驗證（`--timeout` 預設 600s）
 - `--dry-run` 印的 argv 與真實 build 消費的是**同一個陣列**（`ios_build.sh:xcodebuild_argv`），所以 plan 不可能與 run 分岔。它不寫 verdict，因此**與 `--json` 互斥**（否則會把上一次的 run 當成這次的結果回報）。
 
