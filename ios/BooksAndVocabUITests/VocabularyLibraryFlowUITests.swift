@@ -51,7 +51,7 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         captureStep("vocabulary-list-open", app: app)
         XCTAssertTrue(page.visibleCount.waitUntilExists(timeout: 5))
         captureStep("all-644-rows", app: app)
-        XCTAssertEqual(page.visibleCountValue, 644, "review-state projection must show 644 visible rows")
+        page.assertVisibleCount(644, message: "review-state projection must show 644 visible rows")
         XCTAssertTrue(page.reviewCTA.waitUntilExists(timeout: 5), "report baseline CTA must be visible")
         XCTAssertEqual(page.reviewCTAValue, 517, "report baseline CTA must be exactly 517")
         XCTAssertTrue(page.sortMenu.waitUntilExists(timeout: 5), "sort control must remain a separate semantic control")
@@ -65,7 +65,7 @@ final class VocabularyLibraryFlowUITests: UITestCase {
 
         try step("review-state", app: app) {
             XCTAssertTrue(page.reviewStateControls.waitUntilExists(timeout: 5))
-            XCTAssertEqual(page.visibleCountValue, 644, "review-state projection must show all ordinary cards")
+            page.assertVisibleCount(644, message: "review-state projection must show all ordinary cards")
             XCTAssertTrue(page.reviewStateOption("unlearned", labelPrefix: "未學習").waitUntilExists(timeout: 5))
             XCTAssertTrue(page.reviewStateOption("due", labelPrefix: "待複習").waitUntilExists(timeout: 5))
             XCTAssertTrue(page.reviewStateOption("reviewed", labelPrefix: "已複習").waitUntilExists(timeout: 5))
@@ -74,11 +74,11 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             XCTAssertEqual(page.reviewStateCount("reviewed", labelPrefix: "已複習"), 127)
             captureStep("review-state-filter-open", app: app)
             page.selectReviewState("unlearned", labelPrefix: "未學習")
-            XCTAssertEqual(page.visibleCountValue, 14)
+            page.assertVisibleCount(14)
             XCTAssertTrue(page.row(word: "p11-review-word-001").waitUntilExists(timeout: 5))
             XCTAssertTrue(page.row(word: "p11-review-word-015").waitUntilGone(timeout: 5))
             page.selectReviewState("due", labelPrefix: "待複習")
-            XCTAssertEqual(page.visibleCountValue, 517, "multi-select must union 14 unlearned and 503 due rows")
+            page.assertVisibleCount(517, message: "multi-select must union 14 unlearned and 503 due rows")
             XCTAssertTrue(
                 page.reviewStateOption("unlearned", labelPrefix: "未學習").isSelected,
                 "union must retain the unlearned review-state selection"
@@ -88,39 +88,39 @@ final class VocabularyLibraryFlowUITests: UITestCase {
                 "union must add the due review-state selection"
             )
             page.search("p11-review-word-001")
-            XCTAssertEqual(page.visibleCountValue, 1, "union must retain an unlearned row")
+            page.assertVisibleCount(1, message: "union must retain an unlearned row")
             XCTAssertTrue(page.waitForRowMaterialized(word: "p11-review-word-001"))
             page.clearSearch()
-            XCTAssertEqual(page.visibleCountValue, 517)
+            page.assertVisibleCount(517)
             page.search("p11-review-word-015")
-            XCTAssertEqual(page.visibleCountValue, 1, "union must include a due row")
+            page.assertVisibleCount(1, message: "union must include a due row")
             XCTAssertTrue(page.waitForRowMaterialized(word: "p11-review-word-015"))
             page.clearSearch()
-            XCTAssertEqual(page.visibleCountValue, 517)
+            page.assertVisibleCount(517)
         }
 
         try step("reviewed-scope", app: app) {
             page.clearReviewStates()
             page.selectReviewState("reviewed", labelPrefix: "已複習")
-            XCTAssertEqual(page.visibleCountValue, 127)
+            page.assertVisibleCount(127)
             page.search("p11-review-word-518")
-            XCTAssertEqual(page.visibleCountValue, 1, "reviewed facet must project a reviewed row")
+            page.assertVisibleCount(1, message: "reviewed facet must project a reviewed row")
             XCTAssertTrue(page.waitForRowMaterialized(word: "p11-review-word-518"))
             page.clearSearch()
-            XCTAssertEqual(page.visibleCountValue, 127)
+            page.assertVisibleCount(127)
         }
 
         try step("search-within-projection", app: app) {
             page.clearReviewStates()
             page.search("p11-review-word-001")
-            XCTAssertEqual(page.visibleCountValue, 1, "search visible count must be independent from facet counts")
+            page.assertVisibleCount(1, message: "search visible count must be independent from facet counts")
             XCTAssertTrue(page.waitForRowMaterialized(word: "p11-review-word-001"))
             XCTAssertTrue(page.row(word: "p11-review-word-015").waitUntilGone(timeout: 5))
             XCTAssertEqual(page.reviewStateCount("unlearned", labelPrefix: "未學習"), 14)
             XCTAssertEqual(page.reviewStateCount("due", labelPrefix: "待複習"), 503)
             XCTAssertEqual(page.reviewStateCount("reviewed", labelPrefix: "已複習"), 127)
             page.clearSearch()
-            XCTAssertEqual(page.visibleCountValue, 644)
+            page.assertVisibleCount(644)
             // Clearing a query restores the full projection without resetting
             // LazyVStack's scroll position. Assert the projection count and a
             // materialized non-query row instead of assuming row 015 is in the

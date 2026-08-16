@@ -80,6 +80,26 @@ struct VocabularySearchPage {
         numericValue(in: visibleCount)
     }
 
+    /// Waits for SwiftUI's accessibility snapshot to converge after a search
+    /// or facet mutation, then compares the parsed integer exactly. The visual
+    /// tree can already show the new count while XCTest briefly exposes the
+    /// previous label, so an immediate read is racy for this 644-row fixture.
+    func assertVisibleCount(
+        _ expected: Int,
+        timeout: TimeInterval = 5,
+        message: String = "visible vocabulary count must match",
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        var observed = visibleCountValue
+        while observed != expected, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            observed = visibleCountValue
+        }
+        XCTAssertEqual(observed, expected, message, file: file, line: line)
+    }
+
     var reviewCTAValue: Int? { numericValue(in: reviewCTA) }
 
     func reviewStateCount(_ state: String, labelPrefix: String) -> Int? {
