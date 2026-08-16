@@ -2175,6 +2175,7 @@ _IOS_TEST_INPUTS = frozenset({
     "ops/uitest_contact_sheet.py",
     "ops/lib/ios_test_discovery.sh",
     "ops/lib/ios_test_cache_root.sh",
+    "ops/lib/ios_test_failure_verdict.sh",
     "ops/lib/ios_xctestrun_cache.sh",
     "ops/lib/ios_build_progress.sh",
     "ops/lib/ios_lock_wait.sh",
