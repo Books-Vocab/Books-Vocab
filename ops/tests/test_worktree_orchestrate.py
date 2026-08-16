@@ -4106,8 +4106,14 @@ def test_gate_record_carries_orchestrator_identity(scratch):
     assert orch["resolved"] == str(Path(MODULE.__file__).resolve())
 
 
+@pytest.mark.parametrize(
+    ("preflight_status", "expected_rc"),
+    [("block", MODULE.EXIT_BLOCK), ("inconclusive", MODULE.EXIT_OK),
+     ("warn", MODULE.EXIT_OK)],
+)
 @gitmark
-def test_gate_stops_after_blocking_review_preflight(scratch, monkeypatch):
+def test_gate_stops_after_nonpassing_review_preflight(
+        scratch, monkeypatch, preflight_status, expected_rc):
     """A cheap receipt failure must not launch later expensive gates."""
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "preflight-reg.json")
@@ -4127,7 +4133,7 @@ def test_gate_stops_after_blocking_review_preflight(scratch, monkeypatch):
         return {
             "name": spec["name"], "category": spec["category"],
             "level": spec["level"],
-            "status": "block" if spec["name"] == "review-receipts" else "pass",
+            "status": preflight_status if spec["name"] == "review-receipts" else "pass",
             "rc": 2 if spec["name"] == "review-receipts" else 0,
             "summary": "stubbed preflight" if spec["name"] == "review-receipts"
                        else "should not run",
@@ -4136,11 +4142,24 @@ def test_gate_stops_after_blocking_review_preflight(scratch, monkeypatch):
     monkeypatch.setattr(MODULE, "_run_gate", fake_run_gate)
     rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
 
-    assert rc == MODULE.EXIT_BLOCK
+    assert rc == expected_rc
     assert calls == ["review-receipts"]
     assert gate["gates"][0]["name"] == "review-receipts"
-    assert gate["gates"][0]["status"] == "block"
+    assert gate["gates"][0]["status"] == preflight_status
     assert len(gate["gates"]) == 1
+    progress = json.loads(
+        MODULE._gate_progress_path(state, wt).read_text(encoding="utf-8")
+    )
+    assert progress["done"] == 1
+    assert progress["plan_total"] == len(gate["plan"])
+    assert progress["current"] is None
+
+    rc, receipt = _run_text(
+        ["gate", "--worktree", wt, "--state", state, "--receipt-line"]
+    )
+    assert rc == expected_rc
+    assert f"gates={len(gate['plan'])}" in receipt
+    assert "executed=1" in receipt
 
 
 @gitmark
