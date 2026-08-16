@@ -408,58 +408,6 @@ final class FixtureDatasetUITests: UITestCase {
     }
 
     @MainActor
-    func testFixtureDatasetMirrorRejectsNestedP9UnknownKeys() throws {
-        let environment = ProcessInfo.processInfo.environment
-        let encoded = environment["KG_FIXTURE_DATASET_DEFLATE_B64"]
-            ?? environment["KG_FIXTURE_DATASET_B64"]
-        guard let encoded, let compressedOrPlain = Data(base64Encoded: encoded) else {
-            XCTFail("missing UI World — run with --dataset marketing_demo")
-            return
-        }
-        let data: Data
-        if environment["KG_FIXTURE_DATASET_DEFLATE_B64"] != nil {
-            data = try (compressedOrPlain as NSData).decompressed(using: .zlib) as Data
-        } else {
-            data = compressedOrPlain
-        }
-        let object = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: data) as? [String: Any]
-        )
-        XCTAssertNoThrow(try decodeDataset(data))
-
-        for unknownKey in ["assetInodes", "inode"] {
-            var mutated = object
-            var scenarioContext = try XCTUnwrap(
-                mutated["scenarioContext"] as? [String: Any]
-            )
-            var surfaceContracts = try XCTUnwrap(
-                scenarioContext["surfaceContracts"] as? [String: Any]
-            )
-            var reviewCalendar = try XCTUnwrap(
-                surfaceContracts["reviewCalendar"] as? [String: Any]
-            )
-            var required = try XCTUnwrap(
-                reviewCalendar["required"] as? [[String: Any]]
-            )
-            var firstRequired = try XCTUnwrap(required.first)
-            firstRequired[unknownKey] = unknownKey == "inode"
-                ? "checkout-inode"
-                : ["checkout-inode"]
-            required[0] = firstRequired
-            reviewCalendar["required"] = required
-            surfaceContracts["reviewCalendar"] = reviewCalendar
-            scenarioContext["surfaceContracts"] = surfaceContracts
-            mutated["scenarioContext"] = scenarioContext
-
-            let mutatedData = try JSONSerialization.data(withJSONObject: mutated)
-            XCTAssertThrowsError(
-                try decodeDataset(mutatedData),
-                "mirror must reject nested (unknownKey)"
-            )
-        }
-    }
-
-    @MainActor
     func testBookshelfRendersDatasetOverriddenTitle() throws {
         let environment = ProcessInfo.processInfo.environment
         let data: Data

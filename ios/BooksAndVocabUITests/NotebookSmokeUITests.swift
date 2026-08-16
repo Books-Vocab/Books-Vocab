@@ -17,7 +17,7 @@ final class NotebookSmokeUITests: UITestCase {
     }
 
     @MainActor
-    func testNotebookTabIsVisibleWithChrome() throws {
+    func testNotebookStateShowsChromeAndAddButton() throws {
         let app = launchIsolatedApp(
             fixtures: [.authSignedIn],
             extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"]
@@ -25,7 +25,12 @@ final class NotebookSmokeUITests: UITestCase {
         app.launch()
 
         let notebooks = AppPage(app: app).goToNotebooks()
-        notebooks.assertIsActive()  // notebook.addButton exists
+        notebooks.assertIsActive()
+        notebooks.addButton.assertExists()
+        XCTAssertTrue(
+            notebooks.addButton.isHittable,
+            "Notebook add button exists but is not hittable"
+        )
 
         XCTAssertTrue(
             app.navigationBars.firstMatch.waitForExistence(timeout: 5),
@@ -33,19 +38,4 @@ final class NotebookSmokeUITests: UITestCase {
         )
     }
 
-    @MainActor
-    func testNotebookAddButtonIsHittable() throws {
-        let app = launchIsolatedApp(
-            fixtures: [.authSignedIn],
-            extraEnvironment: ["KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"]
-        )
-        app.launch()
-
-        let notebooks = AppPage(app: app).goToNotebooks()
-        notebooks.addButton.assertExists()
-        XCTAssertTrue(
-            notebooks.addButton.isHittable,
-            "Notebook add button exists but is not hittable"
-        )
-    }
 }

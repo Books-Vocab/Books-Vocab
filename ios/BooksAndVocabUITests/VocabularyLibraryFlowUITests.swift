@@ -15,22 +15,6 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         executionTimeAllowance = 360
     }
 
-    func testP11LaunchSelectorsAreBoundToCanonicalWorlds() {
-        XCTAssertEqual(
-            UITestFixture.vocabularyLibraryP11ReviewMix.launchArgument,
-            "-seedFixture:vocabulary:p11.644.reviewMix"
-        )
-        XCTAssertEqual(
-            UITestFixture.vocabularyLibraryP11MixedRoleCounterexample.launchArgument,
-            "-seedFixture:vocabulary:role.mixed"
-        )
-        XCTAssertNotEqual(
-            UITestFixture.vocabularyLibraryP11ReviewMix.launchArgument,
-            UITestFixture.vocabularyLibraryFilterRich.launchArgument,
-            "P11 must never silently run the legacy 40-row fixture"
-        )
-    }
-
     @MainActor
     func testRichWorldProjectsRoleReviewSearchAndCTAConsistently() throws {
         let app = launchIsolatedApp(

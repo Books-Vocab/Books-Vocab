@@ -45,7 +45,7 @@ final class ExploreNavigationUITests: UITestCase {
     }
 
     @MainActor
-    func testExploreRequiredStateFlowProducesSeparateEvidenceSteps() throws {
+    private func runExploreRequiredStateFlow() throws {
         let loadingApp = launchIsolatedApp(fixtures: [.explore("loading")], perfLog: "explore-loading")
         let loading = AppPage(app: loadingApp).goToExplore()
         XCTAssertTrue(loading.exploreLoadingState.waitUntilExists(timeout: 5))
@@ -101,7 +101,7 @@ final class ExploreNavigationUITests: UITestCase {
     }
 
     @MainActor
-    func testExploreCounterexampleEvidenceUsesDistinctAssets() throws {
+    private func runExploreCounterexampleEvidence() throws {
         let emptyApp = launchIsolatedApp(
             fixtures: [.explore("empty-counterexample")],
             perfLog: "explore-empty-counterexample"
@@ -136,9 +136,8 @@ final class ExploreNavigationUITests: UITestCase {
         captureStep("explore-retry-counterexample", app: retryApp)
     }
 
-    /// Matrix evidence needs one stable bundle that covers the required states and
-    /// both counterexamples. Keep the focused tests above for targeted reruns, but
-    /// make the combined artifact explicit instead of merging bundles on the host.
+    /// Matrix evidence owns all required states and counterexamples in one bundle.
+    /// The scenario helpers stay private so XCTest cannot discover and rerun them.
     @MainActor
     func testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates() throws {
         // This evidence selector intentionally launches six isolated apps and
@@ -146,8 +145,8 @@ final class ExploreNavigationUITests: UITestCase {
         // one-minute allowance and the old 120s cap terminate during AX/video
         // attachment work even when every product assertion is green.
         executionTimeAllowance = 300
-        try testExploreRequiredStateFlowProducesSeparateEvidenceSteps()
-        try testExploreCounterexampleEvidenceUsesDistinctAssets()
+        try runExploreRequiredStateFlow()
+        try runExploreCounterexampleEvidence()
     }
 
     @MainActor
