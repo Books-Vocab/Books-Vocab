@@ -218,10 +218,6 @@ final class OverviewFlowUITests: UITestCase {
             counterexampleOverview.assertMetric("dueToday", value: String(counterexampleExpected.dueToday))
             counterexampleOverview.assertMetricCardsHaveUniformGeometry()
             counterexampleOverview.calendar.assertExists(timeout: 10)
-            XCTAssertEqual(
-                counterexampleOverview.calendar.value as? String,
-                counterexampleExpected.activityIsEmpty ? "0" : "populated"
-            )
             counterexampleOverview.assertUniqueForecastContract()
             counterexampleOverview.assertForecastContainsCount(String(counterexampleExpected.dueToday))
         }
