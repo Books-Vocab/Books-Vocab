@@ -1,6 +1,8 @@
 """Tests for KGSettings defaults."""
 from pathlib import Path
 
+import pytest
+
 from kg.settings import KGSettings, load_settings
 
 
@@ -34,3 +36,62 @@ def test_invalid_int_env_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("EMBEDDING_DIM", "notanint")
     s = load_settings()
     assert s.embedding_dim == 3072
+
+
+def test_rate_limit_envs_are_captured_in_settings_snapshot(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "x" * 16)
+    monkeypatch.setenv("API_RATE_LIMIT", "61")
+    monkeypatch.setenv("TRANSLATE_RATE_LIMIT", "21")
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "6")
+
+    s = load_settings()
+
+    assert s.api_rate_limit == 61
+    assert s.translate_rate_limit == 21
+    assert s.admin_login_rate_limit == 6
+
+
+def test_rate_limit_envs_missing_use_safe_defaults(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "x" * 16)
+    for name in ("API_RATE_LIMIT", "TRANSLATE_RATE_LIMIT", "ADMIN_LOGIN_RATE_LIMIT"):
+        monkeypatch.delenv(name, raising=False)
+
+    s = load_settings()
+
+    assert (s.api_rate_limit, s.translate_rate_limit, s.admin_login_rate_limit) == (60, 20, 5)
+
+
+@pytest.mark.parametrize(
+    ("env_name", "setting_name", "default", "raw"),
+    [
+        ("API_RATE_LIMIT", "api_rate_limit", 60, "not-an-int"),
+        ("TRANSLATE_RATE_LIMIT", "translate_rate_limit", 20, "0"),
+        ("ADMIN_LOGIN_RATE_LIMIT", "admin_login_rate_limit", 5, "10001"),
+    ],
+)
+def test_rate_limit_envs_invalid_non_positive_or_too_large_fall_back(
+    monkeypatch, env_name, setting_name, default, raw
+):
+    monkeypatch.setenv("JWT_SECRET", "x" * 16)
+    monkeypatch.setenv(env_name, raw)
+
+    s = load_settings()
+
+    assert getattr(s, setting_name) == default
+
+
+@pytest.mark.parametrize(
+    ("env_name", "setting_name"),
+    [
+        ("API_RATE_LIMIT", "api_rate_limit"),
+        ("TRANSLATE_RATE_LIMIT", "translate_rate_limit"),
+        ("ADMIN_LOGIN_RATE_LIMIT", "admin_login_rate_limit"),
+    ],
+)
+def test_rate_limit_envs_accept_positive_boundary(monkeypatch, env_name, setting_name):
+    monkeypatch.setenv("JWT_SECRET", "x" * 16)
+    monkeypatch.setenv(env_name, "10000")
+
+    s = load_settings()
+
+    assert getattr(s, setting_name) == 10000

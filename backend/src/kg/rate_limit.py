@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import collections
-import os
 import time
+
+from dotenv import load_dotenv
+
+from .settings import RateLimitSettingsSnapshot, load_rate_limit_settings
 
 
 class RateLimiter:
@@ -86,19 +89,23 @@ class RateLimiter:
         self._tick = 0
 
 
-# 全域 limiter 實例（可透過環境變數覆蓋）
+# 全域 limiter 實例；環境值已在 typed rate-limit settings snapshot 中解析。
+# kg.api imports this module before its own load_dotenv() call, so local `.env`
+# values must be available before the settings snapshot is created.
+load_dotenv()
+_settings_snapshot: RateLimitSettingsSnapshot = load_rate_limit_settings()
 api_limiter = RateLimiter(
-    max_requests=int(os.getenv("API_RATE_LIMIT", "60")),
+    max_requests=_settings_snapshot.api_rate_limit,
     window_seconds=60,
 )
 translate_limiter = RateLimiter(
-    max_requests=int(os.getenv("TRANSLATE_RATE_LIMIT", "20")),
+    max_requests=_settings_snapshot.translate_rate_limit,
     window_seconds=60,
 )
 # Dedicated low-threshold limiter for POST /admin/login. The admin password is a
 # single shared online-guessable secret, so the generic api_limiter (60/min) is
 # far too loose to slow credential stuffing. Default 5/min/IP, env-overridable.
 login_limiter = RateLimiter(
-    max_requests=int(os.getenv("ADMIN_LOGIN_RATE_LIMIT", "5")),
+    max_requests=_settings_snapshot.admin_login_rate_limit,
     window_seconds=60,
 )

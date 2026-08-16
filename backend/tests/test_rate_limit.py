@@ -5,6 +5,10 @@ Tests for in-memory per-user sliding window rate limiter and middleware.
 from __future__ import annotations
 
 import asyncio
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -214,3 +218,70 @@ class TestRateLimitMiddlewareEnforcement:
         )
         assert r.status_code == 429
         assert r.headers.get("Retry-After") == str(api_limiter.window_seconds)
+
+
+def test_rate_limit_import_uses_settings_fallback_for_invalid_env(monkeypatch):
+    env = os.environ.copy()
+    env.update(
+        {
+            "API_RATE_LIMIT": "not-an-int",
+            "TRANSLATE_RATE_LIMIT": "-1",
+            "ADMIN_LOGIN_RATE_LIMIT": "10001",
+        }
+    )
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    env["PYTHONPATH"] = str(src_dir)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from kg.rate_limit import api_limiter, translate_limiter, login_limiter; "
+                "print(api_limiter.max_requests, translate_limiter.max_requests, "
+                "login_limiter.max_requests)"
+            ),
+        ],
+        cwd=src_dir.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "60 20 5"
+
+
+def test_rate_limit_import_does_not_require_unrelated_startup_secret(monkeypatch):
+    env = os.environ.copy()
+    env.pop("JWT_SECRET", None)
+    env.update(
+        {
+            "API_RATE_LIMIT": "61",
+            "TRANSLATE_RATE_LIMIT": "21",
+            "ADMIN_LOGIN_RATE_LIMIT": "6",
+        }
+    )
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    env["PYTHONPATH"] = str(src_dir)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from kg.rate_limit import api_limiter, translate_limiter, login_limiter; "
+                "print(api_limiter.max_requests, translate_limiter.max_requests, "
+                "login_limiter.max_requests)"
+            ),
+        ],
+        cwd=src_dir.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "61 21 6"
