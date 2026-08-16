@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import json
 import re
 import sys
@@ -26,6 +25,7 @@ from review_calendar_clock import (  # noqa: E402
     ReviewClockPlanError,
     clock_from_plan,
 )
+from lib.provenance import sha256_file  # noqa: E402
 
 FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
 FIXTURE_TOP_LEVEL_KEYS = {
@@ -771,11 +771,8 @@ def _resolve_path(
 
 
 def _sha256_hex(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    """Preserve the local helper boundary while using the shared byte hash."""
+    return sha256_file(path)
 
 
 def _epub_nav_destinations(archive: zipfile.ZipFile) -> tuple[set[str], list[str]]:

@@ -503,6 +503,24 @@ def test_git_fixture_asset_identity_is_path_hash_and_size_only():
             assert "inode" not in json.dumps(asset)
 
 
+def test_asset_hash_delegates_to_shared_provenance_helper(tmp_path: Path, monkeypatch):
+    from lib.provenance import sha256_file as shared_sha256_file
+
+    source = tmp_path / "asset.bin"
+    source.write_bytes(b"shared provenance")
+    calls = []
+
+    def fake_sha256_file(path: Path) -> str:
+        calls.append(path)
+        return "shared-digest"
+
+    assert MODULE.sha256_file is shared_sha256_file
+    monkeypatch.setattr(MODULE, "sha256_file", fake_sha256_file)
+
+    assert MODULE._sha256_hex(source) == "shared-digest"
+    assert calls == [source]
+
+
 @pytest.mark.parametrize("field", ["sourcePath", "sha256", "byteSize", "contentType"])
 def test_validate_rejects_missing_asset_provenance_field(tmp_path: Path, field: str):
     data = _marketing_demo()

@@ -9,8 +9,8 @@ commits, and until this module existed nothing in the emitted verdict said which
 Content hash, not git commit: a commit id attributes an uncommitted edit to the
 committed version, which is exactly the case where the difference matters most.
 
-This module is the SoT for tool-identity hashing. `ops/ui_world_manifest.py` still
-has a local `_sha256_hex`; migrating that copy belongs to its own bounded change.
+This module is the SoT for tool-identity hashing. `ops/ui_world_manifest.py` keeps its
+local `_sha256_hex` boundary for manifest validation but delegates the byte hashing here.
 """
 
 from __future__ import annotations
