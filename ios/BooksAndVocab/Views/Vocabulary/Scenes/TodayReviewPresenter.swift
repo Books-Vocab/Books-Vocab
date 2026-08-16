@@ -201,6 +201,12 @@ struct TodayReviewPresenter: View {
                     completionState
                 }
             }
+            // The review cover is a full-screen surface. Keep the root column
+            // tied to that proposal across reveal/card transitions; otherwise
+            // SwiftUI may remeasure this VStack at intrinsic content height,
+            // moving the card and grading toolbar upward while the background
+            // still fills the screen and leaves a large empty area below it.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             #if targetEnvironment(macCatalyst)
             .overlay {
                 if isHelpPresented {
