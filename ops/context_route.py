@@ -27,14 +27,21 @@ SCHEMA = "kg.context_plane.v1"
 MANIFEST_NAME = "context_plane.json"
 ROLE_ALIASES = {
     "Ticket Factory": "ticket-factory",
+    "platform-steward": "ticket-factory",
     "Delivery Team Integrator": "delivery-integrator",
+    "delivery-coordinator": "delivery-integrator",
     "Delivery Child": "delivery-child",
+    "backend-engineer": "delivery-child",
+    "ios-engineer": "delivery-child",
+    "ops-engineer": "delivery-child",
+    "docs-steward": "delivery-child",
     "Review service": "review-service",
     "review-service": "review-service",
+    "code-reviewer": "review-service",
 }
 KNOWN_ROLES = {"ticket-factory", "delivery-integrator", "delivery-child", "review-service"}
 KNOWN_SURFACES = {"docs", "backend", "ios", "release"}
-KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence", "tool-friction"}
+KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence", "tool-friction", "docs-registry"}
 KNOWN_SKILLS = {
     "app-debug", "billing", "data-analysis", "devops", "ios-simulator-verification",
     "ios-visual-report-workflow", "kg-agent-context", "kg-docs-control-plane", "kg-receipt",
@@ -103,8 +110,9 @@ def validate_manifest(payload: dict[str, Any], root: Path) -> None:
     except (OSError, ValueError) as exc:
         raise ContextPlaneError(f"registry 無法解析: {exc}") from exc
     defaults = _require(payload, "defaults", "manifest")
-    if not isinstance(defaults.get("max_route_tokens"), int) or defaults["max_route_tokens"] <= 0:
-        raise ContextPlaneError("defaults.max_route_tokens 必須是正整數")
+    for budget_name in ("max_route_tokens", "max_unit_tokens"):
+        if not isinstance(defaults.get(budget_name), int) or defaults[budget_name] <= 0:
+            raise ContextPlaneError(f"defaults.{budget_name} 必須是正整數")
 
     units = _require(payload, "units", "manifest")
     if not isinstance(units, list) or not units:
@@ -138,6 +146,11 @@ def validate_manifest(payload: dict[str, Any], root: Path) -> None:
         max_tokens = _require(raw, "max_tokens", context)
         if not isinstance(max_tokens, int) or max_tokens <= 0:
             raise ContextPlaneError(f"{context}.max_tokens 必須是正整數")
+        if max_tokens > defaults["max_unit_tokens"]:
+            raise ContextPlaneError(
+                f"{context}.max_tokens 超過全域上限: "
+                f"declared={max_tokens} max={defaults['max_unit_tokens']}"
+            )
         if not isinstance(raw.get("kind"), str) or not raw["kind"]:
             raise ContextPlaneError(f"{context}.kind 必須是非空字串")
         if not isinstance(raw.get("purpose"), str) or not raw["purpose"]:
