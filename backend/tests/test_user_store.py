@@ -100,6 +100,23 @@ class TestNormalizeUsersPayload:
         result, changed = self._normalize(users)
         assert not changed
 
+    def test_retired_dictionary_review_setting_is_removed(self):
+        users = {
+            "u1": {
+                "config": {
+                    "review_mode": {
+                        "mode": "relaxed",
+                        "include_dictionary_cards": True,
+                    }
+                }
+            }
+        }
+
+        result, changed = self._normalize(users)
+
+        assert changed is True
+        assert result["u1"]["config"]["review_mode"] == {"mode": "relaxed"}
+
     def test_underscore_prefixed_keys_pass_through(self):
         users = {
             "_revoked_before": {"u1": "2024-01-01"},
@@ -149,5 +166,4 @@ class TestCollectAccountIdsForDeletion:
         assert canonical == "ghost_canonical"
         assert "u1" in ids
         assert "ghost_canonical" in ids
-
 

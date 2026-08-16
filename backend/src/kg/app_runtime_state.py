@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from .settings import KGSettings
 from .types import SubscriptionRecord, UsersPayload
-from .user_store import CachedUserStore, normalize_users_payload
+from .user_store import CachedUserStore, migrate_users_file, normalize_users_payload
 
 UsersLoader = Callable[[], UsersPayload]
 UsersSaver = Callable[[UsersPayload], None]
@@ -48,6 +48,11 @@ def install_runtime_user_state_from_dependencies(
             encrypt_fn=encrypt_fn,
         )
 
+    migrate_users_file(
+        settings.users_file,
+        settings.users_lock_file,
+        _normalize_users_payload_fn,
+    )
     user_store = CachedUserStore(settings.users_file, _normalize_users_payload_fn)
 
     def _load_users_fn() -> UsersPayload:

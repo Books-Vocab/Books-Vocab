@@ -188,7 +188,7 @@
     "test_provider_traversal_is_bounded_and_truncation_is_truthful",
     "test_stale_cache_survives_provider_429_and_timeout[429]",
     "test_stale_cache_survives_provider_429_and_timeout[timeout]",
-    "test_stale_fallback_and_cache_only_block_are_recorded_distinctly",
+    "test_stale_fallback_is_recorded_for_entry_lookup",
     "test_timeout_without_stale_cache_and_malformed_json_fail_closed"
   ]
 }

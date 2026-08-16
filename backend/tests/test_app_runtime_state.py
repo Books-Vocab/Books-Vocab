@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 from fastapi import FastAPI
@@ -108,3 +109,36 @@ def test_runtime_user_state_load_and_save_share_the_same_store(tmp_path):
 
     assert bindings.load_users() == expected
     assert app.state.load_users() == expected
+
+
+def test_runtime_user_state_persists_normalized_legacy_config(tmp_path):
+    settings = KGSettings(
+        data_dir=tmp_path,
+        jwt_secret="test-secret",
+        admin_token="adm-secret",
+    )
+    settings.users_file.write_text(
+        json.dumps(
+            {
+                "user-123": {
+                    "config": {
+                        "review_mode": {
+                            "mode": "relaxed",
+                            "include_dictionary_cards": True,
+                        }
+                    }
+                }
+            }
+        )
+    )
+    app = FastAPI()
+    app.state.kg_settings = settings
+
+    install_runtime_user_state(
+        app,
+        settings,
+        default_subscription_payload_fn=lambda: {"source": "test"},
+    )
+
+    persisted = json.loads(settings.users_file.read_text())
+    assert persisted["user-123"]["config"]["review_mode"] == {"mode": "relaxed"}

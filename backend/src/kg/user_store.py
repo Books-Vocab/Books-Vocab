@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from filelock import FileLock
+
 from .types import UsersPayload
 
 
@@ -92,6 +94,24 @@ def save_users_to(
     tmp_path.replace(users_file)
 
 
+def migrate_users_file(
+    users_file: Path,
+    users_lock_file: Path,
+    normalize_users_payload: NormalizeUsersPayload,
+) -> bool:
+    """Persist normalization changes atomically under the shared users lock."""
+    if not users_file.exists():
+        return False
+    with FileLock(str(users_lock_file)):
+        if not users_file.exists():
+            return False
+        users = json.loads(users_file.read_text())
+        normalized, changed = normalize_users_payload(users)
+        if changed:
+            save_users_to(users_file, normalized, normalize_users_payload)
+        return changed
+
+
 def normalize_users_payload(
     users: dict[str, object],
     default_subscription_payload: DefaultSubscriptionPayload,
@@ -125,6 +145,15 @@ def normalize_users_payload(
             if not integrations:
                 config.pop("integrations", None)
                 changed = True
+
+        review_mode = config.get("review_mode")
+        if isinstance(review_mode, dict):
+            normalized_review_mode = dict(review_mode)
+            for retired_key in ("include_dictionary_cards", "includeDictionaryCards"):
+                if retired_key in normalized_review_mode:
+                    normalized_review_mode.pop(retired_key, None)
+                    changed = True
+            config["review_mode"] = normalized_review_mode
 
         if had_config or config:
             if normalized_record.get("config") != config:
