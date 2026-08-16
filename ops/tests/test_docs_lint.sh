@@ -280,7 +280,7 @@ ANCHOR_EOF
 # 乾淨的 CI 容器沒有 → `fatal: unable to auto-detect email address`、rc=128，
 # 而且錯誤跟本測試要驗的東西毫無關係。用 `-c` 就地供給，不動 repo 的 config
 # （這支跑在真 repo 裡，不是 temp clone）。慣例對齊 test_branch_audit /
-# test_review_audit / test_gate_can_fail 等既有做法。
+# test_gate_can_fail 等既有做法。
 orphan_sha="$(git -c user.email=docs-lint@example.test -c user.name="docs-lint fixture" commit-tree "HEAD^{tree}" -m "docs_lint orphan anchor fixture")"
 if git merge-base --is-ancestor "$orphan_sha" HEAD; then
   echo "fixture bug: orphan commit 竟然可達 HEAD: $orphan_sha" >&2

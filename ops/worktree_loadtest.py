@@ -152,8 +152,7 @@ def make_lane_commit(wt: Path, i: int, conflict: str) -> list[dict]:
                          encoding="utf-8")
         paths.append(str(table))
     steps.append(run(["git", "add", *paths], cwd=wt, label="add"))
-    steps.append(run(["git", "commit", "-m",
-                      f"ops: load-test lane {i}\n\nReviewed-by: loadtest"],
+    steps.append(run(["git", "commit", "-m", f"ops: load-test lane {i}"],
                      cwd=wt, label="commit"))
     return steps
 

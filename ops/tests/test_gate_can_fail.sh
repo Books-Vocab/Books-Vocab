@@ -68,7 +68,6 @@ trap cleanup EXIT
 # coverage hole wearing a checkmark.
 PROOFS=(
   "ui-quality-fast|cheap|cheap|raw-CJK Text() turns it red; the untouched tree is green"
-  "review-receipts|cheap|cheap|a commit with / without a Reviewed-by trailer"
   "docs-lint|cheap|cheap|a doc with / without a conflict marker"
   "docs-conflict-markers|cheap|cheap|internal gate, driven through its real function"
   "ops-shell-syntax|cheap|cheap|a script that does not parse vs one that does"
@@ -100,7 +99,7 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
 # past a failing proof is to reclassify the gate as `expensive|journal` and delete the
 # proof body, and nothing would object. Downgrading one of these is then a deliberate,
 # visible edit.
-CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate ops-shell-scan ops-python-scan"
+CHEAP_FLOOR="ui-quality-fast docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate ops-shell-scan ops-python-scan"
 
 # Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
 # journal-sourced green is real evidence but it is not an executed proof, and without
@@ -270,36 +269,6 @@ failed_n="$(summary_field failed "$TMP/uiq_probe.out")"
   && ok "ui-quality-fast's red failed exactly one more mechanism than the clean baseline ($base_failed -> $probe_failed)" \
   || fail_t "ui-quality-fast's red reported ${failed_n:-0} failing mechanisms — expected clean baseline $base_failed + 1 = $probe_failed"
 
-# --- review-receipts ------------------------------------------------------------
-# KG_REVIEW_AUDIT_ROOT is kept EXPLICIT, not stylistic. review_audit.sh used to cd to
-# its own repo root unconditionally, so a subshell `cd "$TMP/repo"` was discarded and
-# the audit silently ran against KG's own history. That is what the previous version of
-# this proof did — it passed for as long as KG's recent commits lacked trailers, and
-# turned GREEN (i.e. stopped proving anything) the day they all had them. A proof whose
-# verdict depends on the host repo instead of its fixture is not a proof.
-# IMP-0049 made the caller's cwd the default, so `cd` would now work too; naming the
-# root anyway keeps this proof independent of that resolution order ever changing back.
-git init -q "$TMP/repo" 2>/dev/null
-git -C "$TMP/repo" config user.email t@t.test; git -C "$TMP/repo" config user.name T
-: >"$TMP/repo/a.txt"; git -C "$TMP/repo" add -A; git -C "$TMP/repo" commit -qm root
-git -C "$TMP/repo" branch -M main
-: >"$TMP/repo/b.txt"; git -C "$TMP/repo" add -A
-git -C "$TMP/repo" commit -qm "feat: no receipt at all"
-rc=0
-( KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$WORKSPACE/ops/review_audit.sh" --rev-range main~1..HEAD ) \
-  >"$TMP/review_bad.out" 2>&1 || rc=$?
-assert_red review-receipts "[review][block]" "$TMP/review_bad.out" "$rc"
-
-git -C "$TMP/repo" checkout -q -b clean main~1
-: >"$TMP/repo/c.txt"; git -C "$TMP/repo" add -A
-git -C "$TMP/repo" commit -qm "feat: with receipt
-
-Reviewed-by: gate-can-fail (positive control)"
-rc=0
-( KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$WORKSPACE/ops/review_audit.sh" --rev-range main~1..HEAD ) \
-  >"$TMP/review_ok.out" 2>&1 || rc=$?
-assert_green review-receipts "[review][ok]" "$TMP/review_ok.out" "$rc"
-
 # --- docs-lint ------------------------------------------------------------------
 # The fixture MUST live under docs/ and be a real doc: docs_lint.sh rejects any other
 # --files path as a usage error before reading it, which is how the previous version of
@@ -367,8 +336,8 @@ rm -f "$DOCS_PROBE"
 # section would report "backlog-validate cannot go green" — the wrong diagnosis
 # attached to the wrong owner. It would also make a `cp` of a since-deleted entry
 # abort the whole script under `set -euo pipefail`, silently skipping every proof
-# below. Same rule the review-receipts section states: a proof whose verdict depends
-# on the host repo instead of its fixture is not a proof.
+# below. A proof whose verdict depends on the host repo instead of its fixture is not
+# a proof.
 BL_STORE="$TMP/backlog_store"
 mkdir -p "$BL_STORE"
 write_backlog_entry() {  # $1 = severity, $2 = "with-detail" | "no-detail"

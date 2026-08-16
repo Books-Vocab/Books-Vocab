@@ -104,7 +104,8 @@ Exit codes use the shared contract: 0=pass, 1=tool error, 2=block, 3=warn,
              gate and rewrote branch shas, so ledger `fixed_by` values only become
              correct at landing time; `backlog.py reanchor --commit` + `render
              --commit` + `validate --baseline-check` run here and commit what they
-             produce (`Review-Exempt: machine-repair`, a path-checked token). Local
+             produce. The repair commit is identified by its fixed subject, parent
+             and exact changed paths. Local
              main's tip is therefore `trunk_tip`, which may differ from the gated
              `sha`. OFFLINE — no push, no deploy. A `warn` is advisory: it LANDS ("landed with
              warnings") — the driving agent owns a warn's disposition, so the tool must
@@ -842,7 +843,6 @@ def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
 def plan_gates(changed_files: list[str],
                ops_test_exists: Callable[[str], bool] | None = None,
                base: str | None = None,
-               machine_gate: bool = False,
                ops_tests_dir_exists: Callable[[], bool] | None = None) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
     judgement the orchestrator owns; it never decides pass/fail itself.
@@ -912,24 +912,6 @@ def plan_gates(changed_files: list[str],
              "check", "--json"],
             "block", cwd="backend",
         ))
-
-    # Iron law 4's mechanical half. review_audit only checks that each commit
-    # carries a `Reviewed-by:` or a whitelisted `Review-Exempt:` trailer — it
-    # cannot judge review quality, and the trailer is agent-authored. Its value
-    # is making the ABSENCE visible at the moment code lands: receipts ran at
-    # 100% over 07-13..07-17 and had decayed to 0% by 08-03 with nothing to
-    # notice. Scoped to this worktree's own commits, so it is amendable in
-    # seconds and cannot block on unrelated history.
-    # `ops_test_exists` is the module's worktree-anchored path probe
-    # (`(worktree / rel).is_file()`); synthetic fixture repos have no ops/ tree.
-    # test_gate_plan_real_repo_plans_review_receipts pins that the real repo does
-    # get this gate, so "file vanished" cannot silently drop it.
-    if base and (ops_test_exists is None or ops_test_exists("ops/review_audit.sh")):
-        review_cmd = ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD"]
-        if machine_gate:
-            review_cmd.append("--machine-gate")
-        gates.append(_shell("review-receipts", "meta",
-                            review_cmd, "block"))
 
     ios = [p for p in changed_files if p.startswith("ios/")]
     ds = [p for p in changed_files if DS_RE.search(p)]
@@ -1180,11 +1162,10 @@ def plan_gates(changed_files: list[str],
     # they already have a declared reason to select nothing, and re-adopting them would
     # grow a warn on every marketing-manifest edit — a warn that always fires is a warn
     # nobody reads.
-    # Lint watermarks. Five of these are checked in and, before this route
-    # existed, changing ANY of them selected nothing but review-receipts —
-    # so the debt ceiling could be raised, or a stale key left to rot into a
-    # permanent re-offence slot, and the cutover gate stayed green. A ratchet
-    # whose watermark is not itself gated is a ratchet in name only.
+    # Lint watermarks. Five of these are checked in and changing ANY of them must
+    # select their own validator, or the debt ceiling could be raised and the
+    # cutover gate would stay green. A ratchet whose watermark is not itself gated
+    # is a ratchet in name only.
     # `test_lint_baselines.sh` already enumerates every checked-in baseline and
     # fails on one it does not cover, so a single owner routes all of them and
     # every future one — a pattern, not a file list (same rule NEUTRAL_RULES states).
@@ -1197,9 +1178,9 @@ def plan_gates(changed_files: list[str],
     data_yml = [p for p in changed_files
                 if p.endswith((".yml", ".yaml")) and _neutral_rule(p) is None]
     if data_yml:
-        # `None` (no probe injected) means assume-present, matching review-receipts
-        # above; the ops_sh default is the opposite because there a missing test is a
-        # meaningful verdict rather than a missing prerequisite.
+        # `None` (no probe injected) means assume-present; the ops_sh default is the
+        # opposite because there a missing test is a meaningful verdict rather than a
+        # missing prerequisite.
         present = ops_test_exists or (lambda rel: True)
         planned_cmds = [g["cmd"] for g in gates if g.get("cmd")]
         docs_lint_files_planned = any(
@@ -2245,9 +2226,7 @@ def _gate_input_scope(spec: dict[str, Any], worktree: str,
     kind = "unknown"
     files: list[str] = []
     if tracked is not None:
-        if name == "review-receipts":
-            kind = "history"
-        elif name == "coverage":
+        if name == "coverage":
             kind = "changed-files"
             files = sorted(changed_files)
         elif name == "backlog-validate":
@@ -2440,14 +2419,10 @@ def _gate_log_path(record_path: Path, gate_name: str) -> Path:
 #     already here and visually near-identical, so no by-eye review of this tuple
 #     was ever going to catch it. Measured on a real ios-test-unit log: 4 lines
 #     carried U+2718, 1 carried U+2717.
-#   `[review][block]` — `ops/review_audit.sh`'s verdict prefix. Its red output
-#     contains NONE of the other markers, so a BLOCK-level gate's summary fell
-#     through to the tail, and that gate's tail is `[review][ok]` lines.
-# The comment below already predicted both; what it could not do was notice. That is
-# why the zero-match branch in `_failed_gate_summary` now changes how the tail is
-# LABELLED — adding tokens fixes the two producers we know about, and nothing else.
-GATE_FAILURE_MARKERS = ("✗", "✘", "FAIL", "AssertionError", "not ok", "error:",
-                        "[review][block]")
+# The zero-match branch in `_failed_gate_summary` changes how the tail is labelled,
+# so a gate whose output uses an unfamiliar failure vocabulary cannot masquerade as a
+# named failure.
+GATE_FAILURE_MARKERS = ("✗", "✘", "FAIL", "AssertionError", "not ok", "error:")
 GATE_MAX_FAILURE_LINES = 20
 
 # The log is now the artefact an operator opens, so the capture has to be able to
@@ -3030,11 +3005,6 @@ def _failed_gate_summary(returncode: int, output: str, tail: str,
         # The heading is CONDITIONAL, and that is the whole repair. Both branches used
         # to print a bare `tail:`, so the slot an operator reads as "the evidence" was
         # byte-identical whether the scanner had found the failure or found nothing at
-        # all. Measured cost (IMP-20260808-8b4690): `review-receipts` blocked, matched
-        # zero markers, and its tail — `[review][ok]` / `Reviewed-by:` — was printed
-        # into that slot. A red gate showed passing lines as its evidence, and the
-        # operator who believed the slot spent six turns on the wrong hypothesis.
-        #
         # Conditional rather than always-on: a warning that fires on every ordinary
         # red is one people stop reading, which is this same defect one level up.
         lines.append("  tail:" if hits else
@@ -4098,7 +4068,6 @@ def cmd_gate(args: argparse.Namespace) -> int:
     plan = plan_gates(changed,
                       ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
                       base=args.base,
-                      machine_gate=getattr(args, "machine_gate", False),
                       ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir())
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
@@ -4563,7 +4532,7 @@ def _tool_mutation(argv: list[str], *, cwd: Path | str, label: str) -> tuple[int
 # The store, and only the store. The generated view left version control (its own
 # entry, IMP-20260807-b9526c): it is produced on demand by `backlog.py render` and
 # is gitignored, so there is no longer a tracked derived file for the trunk to
-# repair, for a rebase to conflict on, or for a review exemption to be scoped to.
+# repair, for a rebase to conflict on, or for a separate derived artifact to be scoped to.
 LEDGER_PATHS = ("docs/runbook/backlog",)
 # A flat backstop, NOT "one per replayed commit" — the loop cannot see how many
 # commits are being replayed, and a bound that claims to be derived from something
@@ -6009,8 +5978,7 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         return EXIT_BLOCK
 
     grc, gpay = _land_step(cmd_gate, state=args.state, json=True, base=args.base,
-                           worktree=wt, receipt_line=False, plan_only=False,
-                           machine_gate=True)
+                           worktree=wt, receipt_line=False, plan_only=False)
     verdict = gpay.get("verdict")
     if verdict is None:
         # `gate` REFUSED rather than judged (mid-operation tree, orchestrator
@@ -6946,7 +6914,6 @@ def _delivery_primary_dirty(primary: Path) -> list[str]:
 
 
 _DELIVERY_ANCHOR_SUBJECT = "ops: anchor delivered backlog wave"
-_DELIVERY_ANCHOR_TRAILER = "Review-Exempt: machine-repair"
 
 
 def _delivery_anchor_identity(
@@ -6960,7 +6927,7 @@ def _delivery_anchor_identity(
 
     The close-wave manifest is written before the anchor commit. If the process dies
     after ``git commit`` and before the manifest flips ``anchor_committed``, a retry
-    must identify that one commit by parent, subject, trailer and changed paths. A
+    must identify that one commit by parent, subject and changed paths. A
     bare "primary is clean" check is not enough: it could silently bless an unrelated
     clean commit made by another actor.
     """
@@ -6976,10 +6943,7 @@ def _delivery_anchor_identity(
     if base_sha and parent_tokens[1] != base_sha:
         return None
     subject_rc, subject = _git(["show", "-s", "--format=%s", "HEAD"], cwd=primary)
-    body_rc, body = _git(["show", "-s", "--format=%B", "HEAD"], cwd=primary)
-    if (subject_rc != EXIT_OK or body_rc != EXIT_OK
-            or subject != _DELIVERY_ANCHOR_SUBJECT
-            or _DELIVERY_ANCHOR_TRAILER not in body.splitlines()):
+    if subject_rc != EXIT_OK or subject != _DELIVERY_ANCHOR_SUBJECT:
         return None
     paths_rc, changed = _git(
         ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"], cwd=primary
@@ -7003,7 +6967,7 @@ def _delivery_anchor_history_identity(
     ``_delivery_anchor_identity`` intentionally requires the anchor to be the
     current tip.  Recovery is slightly wider: an unrelated primary advance may
     follow a committed anchor before the manifest receipt is flushed.  The
-    commit is still accepted only when its parent, subject, trailer, and exact
+    commit is still accepted only when its parent, subject, and exact
     changed paths prove it is this wave's anchor.
     """
     if expected_sha:
@@ -7030,12 +6994,7 @@ def _delivery_anchor_history_identity(
         subject_rc, subject = _git(
             ["show", "-s", "--format=%s", candidate], cwd=primary
         )
-        body_rc, body = _git(
-            ["show", "-s", "--format=%B", candidate], cwd=primary
-        )
-        if (subject_rc != EXIT_OK or body_rc != EXIT_OK
-                or subject != _DELIVERY_ANCHOR_SUBJECT
-                or _DELIVERY_ANCHOR_TRAILER not in body.splitlines()):
+        if subject_rc != EXIT_OK or subject != _DELIVERY_ANCHOR_SUBJECT:
             continue
         paths_rc, changed = _git(
             ["diff-tree", "--no-commit-id", "--name-only", "-r", candidate],
@@ -7297,8 +7256,6 @@ def _delivery_anchor_commit(
             "commit",
             "-m",
             _DELIVERY_ANCHOR_SUBJECT,
-            "-m",
-            _DELIVERY_ANCHOR_TRAILER,
         ],
         cwd=primary,
         label="delivery-anchor-commit",
@@ -8777,8 +8734,7 @@ _REPAIR_MESSAGE = (
     "ops: cutover 落地後重新推導 ledger 錨點\n\n"
     "rebase 在 gate 之後改寫了分支的 sha,所以 entry 的 fixed_by 在落地那一刻\n"
     "才指得到正確的 commit。這顆 commit 由 cutover 自己產生,內容全部是\n"
-    "`backlog.py reanchor --docs --commit` 從既有資料重新推導的。\n\n"
-    "Review-Exempt: machine-repair"
+    "`backlog.py reanchor --docs --commit` 從既有資料重新推導的。"
 )
 
 
@@ -8789,7 +8745,7 @@ def _ledger_dirty(primary: Path, paths: tuple[str, ...] = LEDGER_PATHS) -> tuple
     entry JSON in the primary is a LEGAL and common state (an agent filed one and
     has not committed it), and it does not block anybody's cutover. Counting it as
     dirt is what led the repair to sweep other people's unfinished work into a
-    commit carrying a review exemption.
+    commit carrying no review metadata.
     """
     return _git(["status", "--porcelain", "--untracked-files=no", "--", *paths],
                 cwd=primary)

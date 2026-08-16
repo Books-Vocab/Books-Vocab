@@ -697,7 +697,6 @@ documents:
       - .claude/agents/
       - .claude/skills/phased/
       - .claude/skills/app-debug/
-      - ops/review_audit.sh
       - ops/review_cycle.py
       - ops/backlog.py
       - docs/sop/review_discipline.md

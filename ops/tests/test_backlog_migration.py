@@ -784,8 +784,8 @@ def test_the_date_must_sit_next_to_the_verdict():
 def test_render_anchor_survives_a_rebase(tmp_path, monkeypatch):
     """`verified_against` must not be minted from HEAD.
 
-    Rebasing this branch to add review trailers orphaned every sha it had
-    minted, and docs_lint rejected the generated view for an unreachable
+    Rewriting this branch's commits orphaned every sha it had minted, and
+    docs_lint rejected the generated view for an unreachable
     anchor — IMP-0038's exact shape, produced by the tool itself. The anchor is
     now the merge-base with main, which survives both rebase and squash merge.
     """

@@ -42,7 +42,6 @@ TIERS = [
 
 SURFACES = [
     Surface("branch.audit", "./ops/branch_audit.sh", "./ops/branch_audit.sh --json", "observer", "repo-read", "repo", "遠端分支 reachability audit"),
-    Surface("review.audit", "./ops/review_audit.sh", "./ops/review_audit.sh --json", "observer", "repo-read", "repo", "review receipt contract audit"),
     Surface("capability.matrix", "./ops/capability_matrix.py", "./ops/capability_matrix.py --json", "observer", "repo-read", "repo", "查詢 agent capability contract"),
     Surface("docs.impact", "./ops/docs_impact.py", "./ops/docs_impact.py --since <base> --json", "observer", "repo-read", "repo", "docs registry impact candidates for changed files"),
     Surface("docs.lint.gate", "./ops/docs_lint.sh", "./ops/docs_lint.sh", "observer", "repo-read", "repo", "daily docs registry and changed-docs gate"),

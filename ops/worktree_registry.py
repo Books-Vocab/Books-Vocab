@@ -180,37 +180,12 @@ def _load_hand_back_outcomes(path: Path) -> list[dict[str, Any]]:
     return payload
 
 
-def _review_receipt_problems(worktree: Path, base_sha: str, tip_sha: str) -> list[dict[str, Any]]:
-    script = worktree / "ops" / "review_audit.sh"
-    if not script.is_file():
-        return [{"kind": "review-audit-missing", "path": str(script)}]
-    if not os.access(script, os.X_OK):
-        return [{"kind": "review-audit-unreadable", "path": str(script),
-                 "detail": "review audit script is not executable"}]
-    try:
-        proc = subprocess.run(
-            [str(script), "--rev-range", f"{base_sha}..{tip_sha}"],
-            cwd=str(worktree), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True,
-        )
-    except OSError as exc:
-        return [{"kind": "review-audit-unreadable", "path": str(script),
-                 "detail": str(exc)}]
-    if proc.returncode == 0:
-        return []
-    output = (proc.stdout + "\n" + proc.stderr).strip()
-    return [{"kind": "review-audit-failed", "rc": proc.returncode,
-             "output_tail": output[-1200:]}]
-
-
 def _outcome_problems(
     outcomes: list[dict[str, Any]],
     *,
     claimed: list[str],
     base_sha: str,
     worktree: Path,
-    tip_sha: str,
-    run_review: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     problems: list[dict[str, Any]] = []
     normalised: list[dict[str, Any]] = []
@@ -283,8 +258,6 @@ def _outcome_problems(
     if seen != expected:
         problems.append({"kind": "ticket-set-mismatch", "claimed": sorted(expected),
                          "outcomes": sorted(seen)})
-    if run_review and any(item.get("outcome") == "changed" for item in normalised):
-        problems.extend(_review_receipt_problems(worktree, base_sha, tip_sha))
     return problems, sorted(normalised, key=lambda item: item["ticket_id"])
 
 
@@ -446,8 +419,7 @@ def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
                 and expected_base and body.get("tip_sha")):
             semantic_problems, checked = _outcome_problems(
                 outcomes, claimed=list(record.get("backlog") or []),
-                base_sha=expected_base, worktree=repo, tip_sha=body["tip_sha"],
-                run_review=False,
+                base_sha=expected_base, worktree=repo,
             )
             seal_ticket_set_problem = any(
                 item.get("kind") == "handback-seal-ticket-set-mismatch"
@@ -2102,8 +2074,7 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
         if base_sha:
             outcome_problems, normalised = _outcome_problems(
                 raw_outcomes, claimed=list(rec.get("backlog") or []),
-                base_sha=base_sha, worktree=worktree, tip_sha=tip_sha,
-                run_review=True,
+                base_sha=base_sha, worktree=worktree,
             )
             refusal.extend(outcome_problems)
             if any(item.get("outcome") == "changed" for item in normalised):

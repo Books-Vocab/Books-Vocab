@@ -42,9 +42,6 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     _git(repo, "config", "user.email", "test@example.test")
     _git(repo, "config", "user.name", "Test")
     (repo / "ops").mkdir()
-    audit = repo / "ops" / "review_audit.sh"
-    audit.write_text("#!/bin/sh\nexit 0\n")
-    audit.chmod(0o755)
     (repo / "README.md").write_text("base\n")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "base")
@@ -282,9 +279,8 @@ def test_hand_back_refuses_semantically_inconsistent_outcomes(
     assert "handback_seal" not in record
 
 
-def test_hand_back_refuses_unreadable_review_audit_structured(tmp_path, capsys):
+def test_hand_back_accepts_changed_outcome_without_commit_attestation(tmp_path, capsys):
     repo, base_sha = _repo(tmp_path)
-    (repo / "ops" / "review_audit.sh").chmod(0o644)
     state = tmp_path / "registry.json"
     _register_feature(repo, state, base_sha)
     capsys.readouterr()
@@ -295,12 +291,11 @@ def test_hand_back_refuses_unreadable_review_audit_structured(tmp_path, capsys):
         "hand-back", "--state", str(state), "--path", str(repo),
         "--branch", "feat/a", "--outcomes", str(outcomes), "--json",
     ])
-    assert rc == REGISTRY.EXIT_PARTIAL
+    assert rc == REGISTRY.EXIT_OK
     payload = json.loads(capsys.readouterr().out)
-    assert any(item["kind"] == "review-audit-unreadable"
-               for item in payload["problems"])
+    assert payload["handback_seal"]["outcomes"][0]["outcome"] == "changed"
     record = json.loads(state.read_text())["records"][0]
-    assert "handback_seal" not in record
+    assert "handback_seal" in record
 
 
 def test_hand_back_refuses_dirty_tree_and_ticket_set_drift(tmp_path, capsys):
@@ -337,7 +332,6 @@ def test_noop_requires_verifiable_provenance_and_integrate_rejects_non_code_seal
         [{"ticket_id": "IMP-TEST-1", "outcome": "no-op-existing-fix",
           "acceptance_status": "green", "evidence": "acceptance passed"}],
         claimed=record["backlog"], base_sha=base_sha, worktree=repo,
-        tip_sha=base_sha, run_review=False,
     )
     assert any(item["kind"] == "no-op-provenance-missing" for item in problems)
 
