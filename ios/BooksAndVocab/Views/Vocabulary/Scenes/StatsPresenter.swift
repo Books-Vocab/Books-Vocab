@@ -8,6 +8,16 @@
 import SwiftUI
 import SwiftData
 
+/// Layout contract for the large number and its unit in an Overview metric.
+/// The number may shrink to preserve the card row, but neither side may wrap
+/// onto a second line and the unit must keep its intrinsic width.
+enum StatsMetricValueLayout {
+    static let maximumLines = 1
+    static let minimumScaleFactor: CGFloat = 0.72
+    static let allowsTightening = true
+    static let unitIsFixedWidth = true
+}
+
 enum StatsScenePhase: Equatable {
     case loading
     case empty
@@ -553,10 +563,17 @@ struct StatsPresenter: View {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.microGap) {
                     Text(value)
                         .font(appSkin.typography.numericHero)
+                        .monospacedDigit()
+                        .lineLimit(StatsMetricValueLayout.maximumLines)
+                        .minimumScaleFactor(StatsMetricValueLayout.minimumScaleFactor)
+                        .allowsTightening(StatsMetricValueLayout.allowsTightening)
+                        .layoutPriority(1)
                         .foregroundStyle(appSkin.palette.primaryText)
                         .contentTransition(.numericText())
                     Text(unit)
                         .font(appSkin.typography.caption)
+                        .lineLimit(StatsMetricValueLayout.maximumLines)
+                        .fixedSize(horizontal: StatsMetricValueLayout.unitIsFixedWidth, vertical: false)
                         .foregroundStyle(appSkin.palette.tertiaryText)
                 }
             }

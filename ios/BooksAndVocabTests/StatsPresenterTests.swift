@@ -132,6 +132,13 @@ struct StatsPresenterTests {
         #expect(StatsPresentation.graphThumbnailBodyKind(linksLoaded: true, nodeCount: 1) == .graph)
     }
 
+    @Test func metricValueLayout_keepsNumericValueAndUnitOnOneLine() {
+        #expect(StatsMetricValueLayout.maximumLines == 1)
+        #expect(StatsMetricValueLayout.minimumScaleFactor == 0.72)
+        #expect(StatsMetricValueLayout.allowsTightening)
+        #expect(StatsMetricValueLayout.unitIsFixedWidth)
+    }
+
     @Test func singleCard_singleReview_countsAsOne() {
         let summary = StatsPresentation.buildSummary(
             from: [syncedEntry(dueOffset: 0)],
