@@ -34,12 +34,13 @@ ROLE_ALIASES = {
     "backend-engineer": "delivery-child",
     "ios-engineer": "delivery-child",
     "ops-engineer": "delivery-child",
-    "docs-steward": "delivery-child",
+    "Docs Steward": "docs-steward",
+    "docs-steward": "docs-steward",
     "Review service": "review-service",
     "review-service": "review-service",
     "code-reviewer": "review-service",
 }
-KNOWN_ROLES = {"ticket-factory", "delivery-integrator", "delivery-child", "review-service"}
+KNOWN_ROLES = {"ticket-factory", "delivery-integrator", "delivery-child", "docs-steward", "review-service"}
 KNOWN_SURFACES = {"docs", "backend", "ios", "release"}
 KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence", "tool-friction", "docs-registry"}
 KNOWN_SKILLS = {

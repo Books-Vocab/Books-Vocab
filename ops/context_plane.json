@@ -217,11 +217,22 @@
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
       "start": "| **Delivery Child** (",
-      "end": "| **Review service** (",
+      "end": "| **Docs Steward** (",
       "anchor_mode": "prefix",
       "kind": "authority",
       "max_tokens": 1200,
       "purpose": "Delivery Child 最小 context 與升級入口"
+    },
+    {
+      "id": "agent-context.role.docs-steward",
+      "path": "docs/reference/agent_context.md",
+      "registry_id": "reference.agent_context",
+      "start": "| **Docs Steward** (",
+      "end": "| **Review service** (",
+      "anchor_mode": "prefix",
+      "kind": "authority",
+      "max_tokens": 1200,
+      "purpose": "Docs Steward 最小 context 與 opt-in handback 入口"
     },
     {
       "id": "agent-context.role.integrator",
@@ -459,6 +470,11 @@
       "units": ["agent-context.role.delivery-child", "worktree.boundary", "worktree.child-stop", "worktree.child-handoff"]
     },
     {
+      "id": "role.docs-steward",
+      "match": {"roles": ["docs-steward"]},
+      "units": ["agent-context.role.docs-steward"]
+    },
+    {
       "id": "role.review-service",
       "match": {"roles": ["review-service"]},
       "units": ["agent-context.role.review", "worktree.review", "receipt.core"]
@@ -505,7 +521,7 @@
     },
     {
       "id": "task.handback",
-      "match": {"roles": ["delivery-child"], "tasks": ["handback"]},
+      "match": {"roles": ["delivery-child", "docs-steward"], "tasks": ["handback"]},
       "units": ["worktree.child-stop", "worktree.child-handoff", "receipt.core"]
     },
     {
