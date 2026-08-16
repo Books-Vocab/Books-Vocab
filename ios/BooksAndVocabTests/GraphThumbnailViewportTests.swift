@@ -1,0 +1,92 @@
+#if DEBUG
+import Foundation
+import Testing
+import WebKit
+@testable import BooksAndVocab
+
+/// Locks the viewport contract used by the persistent overview thumbnail.
+///
+/// The holder is created before SwiftUI gives it a non-zero frame, so the HTML
+/// can observe a provisional viewport and later receive a larger one. Every
+/// real size change must translate the existing layout by the center delta;
+/// otherwise the settled cloud remains stranded in the old upper-left region.
+@MainActor
+struct GraphThumbnailViewportTests {
+    private struct JSError: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    private func makeGraphWebView() throws -> WKWebView {
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 160, height: 160))
+        guard let htmlURL = Bundle.main.url(forResource: "graph", withExtension: "html") else {
+            throw JSError(description: "graph.html missing from host app bundle")
+        }
+        webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
+        return webView
+    }
+
+    private func evaluate(_ script: String, in webView: WKWebView) async throws -> Any? {
+        try await withCheckedThrowingContinuation { continuation in
+            webView.evaluateJavaScript(script) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: result)
+                }
+            }
+        }
+    }
+
+    private func waitForGraphRuntime(in webView: WKWebView) async throws {
+        for _ in 0..<200 {
+            let loaded = try? await evaluate(
+                "typeof window.initGraph === 'function' && typeof d3 !== 'undefined'",
+                in: webView
+            )
+            if loaded as? Bool == true { return }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        throw JSError(description: "graph.html runtime did not become ready within 10s")
+    }
+
+    @Test func viewportGrowth_translatesExistingNodesByCenterDelta() async throws {
+        let webView = try makeGraphWebView()
+        try await waitForGraphRuntime(in: webView)
+
+        guard let result = try await evaluate(
+            """
+            (() => {
+              nodes = [{x: 0, y: 0}, {x: 10, y: 20}, {x: 20, y: 40}];
+              sim = null;
+              W = 100;
+              H = 80;
+              const before = { width: W, height: H, nodes: nodes.map(node => [node.x, node.y]) };
+              window.reconcileGraphViewport(before.width + 80, before.height + 40);
+              return JSON.stringify({ before, after: { width: W, height: H, nodes: nodes.map(node => [node.x, node.y]) } });
+            })()
+            """,
+            in: webView
+        ) as? String,
+        let data = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any],
+        let before = data["before"] as? [String: Any],
+        let after = data["after"] as? [String: Any],
+        let beforeWidth = before["width"] as? Double,
+        let beforeHeight = before["height"] as? Double,
+        let afterWidth = after["width"] as? Double,
+        let afterHeight = after["height"] as? Double,
+        let beforeNodes = before["nodes"] as? [[Double]],
+        let afterNodes = after["nodes"] as? [[Double]]
+        else {
+            throw JSError(description: "viewport reconciliation result was unreadable")
+        }
+
+        #expect(afterWidth == beforeWidth + 80)
+        #expect(afterHeight == beforeHeight + 40)
+        #expect(afterNodes.count == beforeNodes.count)
+        for (beforeNode, afterNode) in zip(beforeNodes, afterNodes) {
+            #expect(abs((afterNode[0] - beforeNode[0]) - 40) < 0.001)
+            #expect(abs((afterNode[1] - beforeNode[1]) - 20) < 0.001)
+        }
+    }
+}
+#endif
