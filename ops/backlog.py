@@ -3905,10 +3905,6 @@ def _cmd_anchor(args) -> int:
     return _backlog_wave.cmd_anchor(args, deps=_anchor_deps())
 
 
-def _cmd_anchor_locked(args, queue: Path) -> int:
-    return _backlog_wave.cmd_anchor_locked(args, queue, deps=_anchor_deps())
-
-
 def _execute_criterion(entry_id: str, cmd: str, timeout_seconds: float,
                        progress_prefix: str) -> tuple[int | None, str, float]:
     return _backlog_acceptance.execute_criterion(
