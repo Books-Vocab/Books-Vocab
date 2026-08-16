@@ -10,6 +10,7 @@ import SwiftUI
 struct VocabForecastChart: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let buckets: [StatsPresentation.ForecastBucket]
 
     @State private var tappedIndex: Int?
@@ -51,6 +52,12 @@ struct VocabForecastChart: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
             }
+        }
+        .animation(reduceMotion ? nil : AppMotion.chipSelect, value: buckets)
+        .onChange(of: buckets) { _, _ in
+            tappedIndex = nil
+            dismissTask?.cancel()
+            dismissTask = nil
         }
         .enableInjection()
     }
