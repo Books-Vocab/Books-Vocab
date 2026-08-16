@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: c907585a0
+verified_against: 6028c0cff1daaf633902a211b627863113c4b1f2
 -->
 # iOS Smoke Test Checklist
 
@@ -14,8 +14,8 @@ verified_against: c907585a0
 ## 0. Release readiness
 
 - [ ] iOS 新 marketing version：`./ops/release.sh release ios <new>` dry-run 通過。guard 直接讀 repo 的上架 tag / build tag 自行檢查，**沒有 attestation flag 可帶**（`--new-version-after-ready` 已移除，傳了會 hard-error）；被擋就代表真的有版本狀態未確認，先跑 `./ops/release.sh shipped ios`
-- [ ] iOS 未上架／被拒重送：marketing version 不動，走 `./ops/release.sh resubmit ios`（先查 `./ops/asc.sh builds`，取 `max(local build, ASC latest)+1`，再 bump→upload→封 build tag），不走 `release`
-- [ ] release / resubmit dry-run 的 iOS 順序為（resubmit 先 ASC 對帳）bump→upload→封 `ios/<x.y.z>+<build>`；ASC 查詢失敗／非數字與 upload failure 都不應留下 commit/tag/push
+- [ ] iOS 未上架／被拒重送：marketing version 不動，走 `./ops/release.sh resubmit ios`（先查 `./ops/asc.sh builds`，取 `max(local build, ASC latest)+1`，candidate commit/push 後才 upload，再由 `finalize` 做 exact ASC proof 與封 build tag），不走 `release`
+- [ ] release / resubmit dry-run 的 iOS 順序為（resubmit 先 ASC 對帳）candidate commit→push `origin/main`→upload→`finalize` 的 exact `(version, build)` ASC proof→封 `ios/<x.y.z>+<build>`；upload／ASC propagation failure 保留 candidate、不得重複 upload，`finalize` 是唯一 recovery；沒有當下 proof 不宣稱 ASC/TestFlight 已完成
 - [ ] `./ops/release.sh status` 的 ios 段沒有「目前的 (version, build) 沒有 build tag」警告（有＝這顆 build 出去了卻沒留 build→commit 紀錄，事後不可重建）
 - [ ] 上架後補跑 `./ops/release.sh shipped ios --yes`，依 ASC 物化 `ios/<x.y.z>`（版號事實 owner 表見 `docs/sop/release.md`）
 

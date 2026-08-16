@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: d027c43d9
+verified_against: 6028c0cff1daaf633902a211b627863113c4b1f2
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -42,7 +42,7 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 | # | 事實 | 唯一 owner | 怎麼查 | 誰寫進去 |
 |---|---|---|---|---|
 | ① | **我要發什麼版號 / build** | `ios/BooksAndVocab.xcodeproj/project.pbxproj` 的 `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`（**project-level build settings**；target-level override 已全數刪除，測試 bundle 靠繼承，見 `fe4a82355`）。backend 對應面是 `backend/pyproject.toml` | `./ops/release.sh status` 的「專案版號」行 | `release.sh bump ios` / `bump-build ios`（委派 `release_bump.sh`） |
-| ② | **(version, build) 由哪顆 commit 產生** | repo 的 **build tag** `ios/<x.y.z>+<build>`。immutable；同一 marketing version 下可多顆並存（`2.0.0+5` 與 `2.0.0+6` 同時為真） | `git tag -l 'ios/*+*'`；`./ops/release.sh status` 的「build tag 對照」表 | `release.sh tag ios` / `release ios` / `resubmit ios`，在 upload 成功後封版 |
+| ② | **(version, build) 由哪顆 commit 產生** | repo 的 **build tag** `ios/<x.y.z>+<build>`。immutable；同一 marketing version 下可多顆並存（`2.0.0+5` 與 `2.0.0+6` 同時為真） | `git tag -l 'ios/*+*'`；`./ops/release.sh status` 的「build tag 對照」表 | 正常 `release ios` / `resubmit ios` 先建立 candidate commit 並 push `origin/main`，upload 後由 `finalize ios <x.y.z> <build>` 在 ASC exact proof 後封版；`tag ios` 僅是已上傳 binary 的明示補標/恢復路徑 |
 | ③ | **哪顆 build 上架了** | **App Store Connect，唯一權威**。**不快取成 repo 內的事實**——只能在需要時現查 | `./ops/asc_shipped.py`（stdout 一行 `<version> <build>`；查不到就非零退出，不猜）；旁證 `./ops/asc.sh versions` / `review-status` / `builds` | Apple。我們只讀 |
 | ④ | **某 marketing version 上架的是哪顆 commit** | **版本級 tag** `ios/<x.y.z>` — 就是 ②③ 的 join | `git rev-list -n1 ios/<x.y.z>`；`./ops/release.sh status` 的「已上架 tag」行 | **只有** `./ops/release.sh shipped ios --yes`，在 ASC 查證後物化。immutable，工具不移動；衝突一律 refuse 交人裁決 |
 
@@ -78,8 +78,8 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
-| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy→**等收斂**；iOS：bump→upload→封 build tag | **生產** |
-| `resubmit ios` | `ops/release.sh resubmit ios` | 版號檔 + ASC TestFlight 最新 build、本地 main | marketing 版號不動，`max(local build, ASC latest)+1`→upload→封 `ios/x.y.z+<build>` | **外部**—TestFlight 上傳不可逆 |
+| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy→**等收斂**；iOS：candidate commit/push→upload→ASC exact proof→`finalize` 封 build tag | **生產** |
+| `resubmit ios` | `ops/release.sh resubmit ios` | 版號檔 + ASC TestFlight 最新 build、本地 main | marketing 版號不動，`max(local build, ASC latest)+1`→candidate commit/push→upload→ASC exact proof→`finalize` 封 `ios/x.y.z+<build>` | **外部**—TestFlight 上傳不可逆 |
 | `shipped ios` | `ops/release.sh shipped ios` | ASC（現查）+ build tag | `ios/x.y.z`（上架標記）+ push origin | 無—唯讀查 ASC，只寫 tag |
 
 - **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
@@ -87,9 +87,9 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 - **`cutover` 的新鮮度是兩軸**：HEAD（判決**讀**的碼）與 base（判決落地時**身旁**的碼）。base 落後即拒——cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被判過也不是落地的那棵，而 HEAD 檢查看不到（HEAD 沒動，動的是 base）。`gate` 也會提前拒，省下白跑的 gate。修法：`catchup --commit` → **重跑 gate** → cutover（IMP-20260806-945e01）。
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
-- `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 一樣過 `guard_ios_new_version`（見上「版號事實 SoT 表」的兩條規則），不能繞過。
+- `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 一樣過 `guard_ios_new_version`（見上「版號事實 SoT 表」的兩條規則），不能繞過；正常 upload 流程不以它取代 `finalize`。
 - `release <backend|ios>` / `resubmit ios` 須在 primary、on `main` 執行（發布本地主幹）。`shipped ios` 只讀 ASC + 打 tag，不受此限。
-- `resubmit ios` 先透過 `./ops/asc.sh builds` 對帳 TestFlight 最新 build；ASC 查詢失敗或回傳非數字會在 bump 前 hard-stop，不降級成 local+1。dry-run 會明示 local、ASC latest 與下一顆 build；成功 upload 後才封同版 build tag。
+- `resubmit ios` 先透過 `./ops/asc.sh builds` 對帳 TestFlight 最新 build；ASC 查詢失敗或回傳非數字會在 bump 前 hard-stop，不降級成 local+1。dry-run 會明示 local、ASC latest 與下一顆 build；candidate commit/push 在 upload 前完成，成功 upload 後仍須由 `finalize ios <x.y.z> <build>` 以 exact `(version, build)` ASC proof 才能封同版 build tag。
 - `changelog ios` 的區間錨在**上架 tag**、不是 build tag——這條規則的單一 owner 是 `ops/lib/release_tags.sh`（`release_last_tag`），`release.sh` 與 `release_changelog.sh` 共用同一份。曾各持一份副本，只改一邊的後果是 changelog 靜默錨到 build tag、印出「無變更」（`47e9fea97`）。
 
 ## develop 平面之前：批次整合
@@ -122,9 +122,9 @@ origin/main。多個 Delivery Team 可並行，shared lock 只序列化最後共
 
 env knob：`KG_RELEASE_WAIT_SECS`（預設 480）、`KG_RELEASE_POLL_SECS`（10）、`KG_PUBLIC_URL`。要「推了就走、不等」請直接用 `orchestrate deploy --commit`——那條路本來就不等，語意上也誠實。
 
-**ios 新版本**（`release ios x.y.z`）＝ `guard_ios_new_version`（讀 repo 的上架 tag 與 build tag，見上方兩條規則；**無 flag、無 operator 背書**）→ `bump ios` → `ios_release.sh --upload`（archive + 上傳 TestFlight）→ upload 成功後才封 `ios/x.y.z+<build>` + push。upload 失敗不留下 commit/tag/push；封版 tag 若已存在於**另一顆** commit 則在 upload **之前**就拒絕（同一顆 commit 且 pbxproj 乾淨＝重跑，noop）。
+**ios 新版本**（`release ios x.y.z`）＝ `guard_ios_new_version`（讀 repo 的上架 tag 與 build tag，見上方兩條規則；**無 flag、無 operator 背書**）→ `bump ios` → candidate commit + push `origin/main` → `ios_release.sh --upload`（archive + upload primitive）→ `finalize ios <x.y.z> <build> --yes`。`finalize` 會以 `./ops/asc.sh build <version> <build>`（可由 `KG_ASC_BUILD_CMD` 注入）輪詢並驗證 exact `(version, build)` proof；只有 proof 成功才物化並 push `ios/x.y.z+<build>`，不把命令成功或本地 archive 當成 ASC/TestFlight 已完成。upload failure 或 ASC propagation timeout 都保留已 push 的 candidate、沒有 build tag；**不得重跑 release/resubmit 或重複 upload，唯一 recovery 是沿用 candidate 執行 `finalize`**。`KG_RELEASE_ASC_WAIT_SECS`（預設 120）與 `KG_RELEASE_ASC_POLL_SECS`（預設 5）控制 bounded wait。封版 tag 若已存在於**另一顆** commit 則在 upload **之前**就拒絕（同一顆 commit 且 pbxproj 乾淨＝重跑，noop）。
 
-**ios 同版重送**（`resubmit ios`）＝ App Review 被拒／尚未上架就要換 binary：先以 `./ops/asc.sh builds` 對帳 TestFlight 最新 build，計畫值為 `max(local build, ASC latest)+1`；ASC 失敗或非數字時在 `bump-build` 前 hard-stop，不猜 local+1。成功後才 bump 精確 build→`--upload`→封 `ios/x.y.z+<build>` + push。這條路徑以前是兩步手動且**不留任何紀錄**，正是 `ios/2.0.0` 脫鉤的成因（`888967dd9`）。
+**ios 同版重送**（`resubmit ios`）＝ App Review 被拒／尚未上架就要換 binary：先以 `./ops/asc.sh builds` 對帳 TestFlight 最新 build，計畫值為 `max(local build, ASC latest)+1`；ASC 失敗或非數字時在 `bump-build` 前 hard-stop，不猜 local+1。candidate 先 commit + push，之後才 upload；upload 後同樣必須由 `finalize ios <x.y.z> <build> --yes` 完成 bounded exact ASC proof 與 build tag。任何 upload/ASC propagation failure 都保留 candidate，**不重複 upload，finalize 是唯一 recovery**。這條路徑以前是兩步手動且**不留任何紀錄**，正是 `ios/2.0.0` 脫鉤的成因（`888967dd9`）。
 
 `ios_ops workflow release` 的 App Review gate launcher 由 `ops/lib/project_python.sh` 的 `kg_project_uv_bin` 統一解析；缺少 uv 時回 typed `gate.execution` block，不得把空 executable 傳給 streaming runner。
 

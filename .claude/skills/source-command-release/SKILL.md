@@ -32,7 +32,7 @@ Use this skill when the user asks to run the migrated source command `release`.
 
    **iOS 兩種 tag 的語意不同，別混**（完整 owner 表見 `docs/sop/release.md`）：
    - `ios/<x.y.z>` = 該 marketing version **上架 App Store** 的那顆 commit。**只由 `shipped ios` 依 ASC 查證後物化**（步驟 6），immutable、不移動。
-   - `ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit，只代表出過 archive。由 `tag` / `release` / `resubmit` 產生。
+   - `ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit；正常 `release` / `resubmit` 只有在 `finalize` 完成 exact ASC proof 後才產生，`tag` 僅是已上傳 binary 的明示補標／恢復路徑。
    `--new-version-after-ready` **已移除**（傳入 hard-error）：新版 guard 現在直接讀 repo 的上架 tag 與 build tag 自己檢查，不再要求 operator 打字背書。
 
 4a. **tag-only**（原名 `publish`，別名保留；dry-run 預設）：`tag` = commit 版號檔 + 打 tag + push **origin main** = 版號**備份／標記，非部署**（三平面 backup 平面）。先**不帶 --yes** 跑一次給使用者看計畫：
@@ -51,22 +51,22 @@ Use this skill when the user asks to run the migrated source command `release`.
    ```bash
    ./ops/release.sh release backend <x.y.z>       # dry-run：bump→tag→deploy→等收斂
    ./ops/release.sh release backend <x.y.z> --yes # 執行
-   ./ops/release.sh release ios <x.y.z>           # dry-run：bump→upload→封 ios/<x.y.z>+<build>
+   ./ops/release.sh release ios <x.y.z>           # dry-run：bump→candidate commit/push→upload→finalize exact proof→封 build tag
    ./ops/release.sh release ios <x.y.z> --yes     # 執行
    ```
    - `release backend`：bump→tag→`deploy`（推 **origin/prod** → felix reconciler 健康 gate 部署 wordnexus.lol）→ **等生產收斂**（輪詢 `/api/system/info` 直到自報 version == 本次 sha；逾時 480s 非零退出並指向 reconciler log）。**逾時不要重跑 `release`**——版號 tag 已存在會被擋，直接查 reconciler。
-   - `release ios`：`guard_ios_new_version` 先檢查「存在上架 tag `ios/<x.y.z>`、新版嚴格遞增、且不跳過任何有 build tag 卻無上架 tag 的版本」；再 bump→`ios_release.sh --upload`→成功後才封 build tag/push。**被 guard 擋下不是可繞過的手續**——它擋的是 ios/2.0.1 事故的形狀（上一版還在審就先 bump 過去），先跑 `shipped ios` 把上架事實補進 repo。
+   - `release ios`：`guard_ios_new_version` 先檢查「存在上架 tag `ios/<x.y.z>`、新版嚴格遞增、且不跳過任何有 build tag 卻無上架 tag 的版本」；再 bump→candidate commit + push `origin/main`→`ios_release.sh --upload`→`finalize ios <version> <build> --yes`。`finalize` 以 `asc.sh build <version> <build>` 做 bounded exact ASC proof，proof 成功後才封 build tag/push；upload／ASC propagation failure 保留 candidate，**不重複 upload，finalize 是唯一 recovery**。**被 guard 擋下不是可繞過的手續**——它擋的是 ios/2.0.1 事故的形狀（上一版還在審就先 bump 過去），先跑 `shipped ios` 把上架事實補進 repo。
    - 執行 `release` 前**不可先跑 4a tag-only**；否則 release 會因 build tag 已存在於另一顆 commit 而拒絕。
    三平面 develop/backup/release 動詞語意與切換 runbook 見 `docs/sop/release.md`。
 
 4c. **resubmit**（iOS 同版號、新 build 重送：App Review 被拒或尚未上架就要換 binary；**碰外部、須使用者明確同意**；dry-run 預設）：
    ```bash
-   ./ops/release.sh resubmit ios        # dry-run：ASC 對帳→精確 bump→upload→封 ios/<x.y.z>+<build>
+   ./ops/release.sh resubmit ios        # dry-run：ASC 對帳→candidate commit/push→upload→finalize exact proof→封 build tag
    ./ops/release.sh resubmit ios --yes  # 執行
    ```
-   先由 `./ops/asc.sh builds` 讀取 TestFlight 最新 build，下一顆固定為 `max(local build, ASC latest)+1`；ASC 查詢失敗或回傳非數字時，在任何 pbxproj mutation、upload、commit、tag 前 hard-stop，絕不降級成 local+1。marketing 版號不動、不吃版本號參數、**刻意不產生** `ios/<x.y.z>`（重送不代表會過審）。取代舊的「`bump-build ios --yes` + `ios_release.sh --upload` 兩步手動」——那條路徑不留任何紀錄，正是 `ios/2.0.0` 與實際上架 binary 脫鉤的成因。
+   先由 `./ops/asc.sh builds` 讀取 TestFlight 最新 build，下一顆固定為 `max(local build, ASC latest)+1`；ASC 查詢失敗或回傳非數字時，在任何 pbxproj mutation、upload、commit、tag 前 hard-stop，絕不降級成 local+1。marketing 版號不動、不吃版本號參數、**刻意不產生** `ios/<x.y.z>`（重送不代表會過審）。candidate commit/push 在 upload 前完成；upload 後由 `finalize ios <version> <build> [--yes]` 以 `asc.sh build` 做 exact proof 後才封 build tag。upload／ASC propagation failure 保留 candidate，**不得重跑 release/resubmit 或 upload，finalize 是唯一 recovery**。`KG_ASC_BUILD_CMD`、`KG_RELEASE_ASC_WAIT_SECS`、`KG_RELEASE_ASC_POLL_SECS` 控制 proof command / bounded wait。取代舊的「`bump-build ios --yes` + `ios_release.sh --upload` 兩步手動」——那條路徑不留完整 candidate/finalize provenance，正是 `ios/2.0.0` 與實際上架 binary 脫鉤的成因。
 
-5. **回報**：`tag --yes` 後 tag 已推到 origin/main（版本標記，非部署）；`release --yes` 後才真正上生產（backend 已部署 / iOS 已上傳 TestFlight）。**注意：目前沒有 tag-triggered CI workflow**，tag 只是版本標記，GitHub Release 須到 GitHub 手動建（別宣稱「CI 正在發版」）。iOS 上傳 ≠ 上架，回報時別把 `release ios --yes` 說成「已上架」。
+5. **回報**：`tag --yes` 後 tag 已推到 origin/main（版本標記，非部署）；`release --yes` 只可依當下 command output 與 exact proof 回報 workflow 結果，不能用 dry-run、文件或本地 archive 捏造 ASC/TestFlight 已完成。**注意：目前沒有 tag-triggered CI workflow**，tag 只是版本標記，GitHub Release 須到 GitHub 手動建（別宣稱「CI 正在發版」）。iOS 上傳 ≠ 上架，回報時別把 build tag 說成「已上架」。
 
 6. **上架後補記錄**（iOS 專屬，`release`/`resubmit` 之後的獨立一步）：App Review 通過、App Store 實際開賣後跑
    ```bash
@@ -98,13 +98,14 @@ Use this skill when the user asks to run the migrated source command `release`.
 - 只有三者都 PASS，才可把 ASC GUI submit 作為人工下一步；這個 skill 與 `asc.sh` 都不代替操作者按下不可逆 submit。
 
 - 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
-- App Store Connect 全表面（查版本/審查/送審佇列/評論/訂閱/定價/發布方式，改文案/審查資訊/App 資訊/分類/年齡分級/EULA/訂閱/發布控制）→ `./ops/asc.sh`。唯讀：`versions`/`builds`/`info`/`metadata`/`review-status`/`review-detail`/`submissions`/`screenshots`/`categories`/`reviews`/`accessibility`/`subscriptions`/`iap`/`pricing`/`sub-offers`/`release-plan`。寫入（皆 dry-run 預設、`--yes` 才真送）：`set`/`set-review`/`set-appinfo`/`set-eula`/`set-content-rights`/`set-category`/`set-rating`/`reply-review`/`set-sub-name|desc|review-note|price`/`set-release-type`/`phased`。**刻意不做** submit-for-review。`asc.sh help` 看完整用法、`docs/sop/ios.md §發版` 看物件邊界
-- 被拒同 `MARKETING_VERSION` 重送 → `./ops/release.sh resubmit ios`（步驟 4c；它會封 build tag 留下紀錄）。裸 primitive `./ops/release.sh bump-build ios` 只改版號檔、**不留封版紀錄**，僅用於拆步或修補，不是重送流程的入口
+- candidate recovery → `./ops/release.sh finalize ios <version> <build> [--yes]`（不 archive、不 upload；以 `./ops/asc.sh build <version> <build>` exact JSON proof 後才封 tag）
+- App Store Connect 全表面（查版本/審查/送審佇列/評論/訂閱/定價/發布方式，改文案/審查資訊/App 資訊/分類/年齡分級/EULA/訂閱/發布控制）→ `./ops/asc.sh`。唯讀：`versions`/`builds`/`build <version> <build>`（exact JSON proof）/`info`/`metadata`/`review-status`/`review-detail`/`submissions`/`screenshots`/`categories`/`reviews`/`accessibility`/`subscriptions`/`iap`/`pricing`/`sub-offers`/`release-plan`。寫入（皆 dry-run 預設、`--yes` 才真送）：`set`/`set-review`/`set-appinfo`/`set-eula`/`set-content-rights`/`set-category`/`set-rating`/`reply-review`/`set-sub-name|desc|review-note|price`/`set-release-type`/`phased`。**刻意不做** submit-for-review。`asc.sh help` 看完整用法、`docs/sop/ios.md §發版` 看物件邊界
+- 被拒同 `MARKETING_VERSION` 重送 → `./ops/release.sh resubmit ios`（步驟 4c；candidate 先 push，upload 後由 `finalize` exact proof 並封 build tag）。裸 primitive `./ops/release.sh bump-build ios` 只改版號檔、**不留完整 candidate/finalize provenance**，僅用於拆步或修補，不是重送流程的入口
 - 被拒處理、GUI vs API 可讀範圍、加密合規、重送演練 → `docs/sop/ios.md §發版`
 
 ## 鐵則
 
-- **絕不跳過使用者確認**（版號、changelog、`tag`/`release`/`resubmit`/`shipped` --yes 三關都要）。`release` 碰生產、`resubmit` 碰外部不可逆上傳，確認尤其不可省。
+- **絕不跳過使用者確認**（版號、changelog、`tag`/`release`/`resubmit`/`finalize`/`shipped` --yes 三關都要）。`release` 碰生產、`resubmit` 碰外部不可逆上傳，確認尤其不可省。
 - **不代替 repo 宣稱上架**。`ios/<x.y.z>` 只能由 `shipped ios` 從 ASC 查證後產生；工具 refuse 時不要用 `--commit` 繞過，那是人工斷言、要使用者拍板。
 - **App Review BLOCK 是 submit hard stop**：只能查狀態或修 typed evidence，不能手動 submit／resubmit，**也不能用 `refresh-anchor --commit` 移動錨點把 block 抹掉**（見上段）。
 - `tag`/`release` 前 working tree 若有非版號檔的雜變更，先問使用者。

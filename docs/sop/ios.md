@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 57c2f2204
+verified_against: 6028c0cff1daaf633902a211b627863113c4b1f2
 -->
 # Books & Vocab iOS 開發技能
 
@@ -344,9 +344,11 @@ xcrun simctl spawn <udid> log show --last 5m --style compact --predicate 'proces
 
 App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基建，**無需手動匯入 Apple Distribution 憑證**（cert/profile 已一次性建置，含重建步驟見 `~/.secrets/apple/README.md`）。
 
-> 版號 bump / tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`bump-build`/`changelog`/`tag`(原名 `publish`，別名保留)/`release`/`resubmit`/`shipped`，單一入口；寫入面一律 dry-run 預設——`bump --yes` 才改版號檔、`tag --yes` 才 commit+tag+push origin main）。`tag` 只推 origin main（版本標記，**非部署**）。
+> 版號 bump / tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`bump-build`/`changelog`/`tag`(原名 `publish`，別名保留)/`release`/`resubmit`/`finalize`/`shipped`，單一入口；寫入面一律 dry-run 預設——`bump --yes` 才改版號檔、`tag --yes` 才 commit+tag+push origin main）。`tag` 只推 origin main（版本標記，**非部署**）。
 >
-> **iOS 有兩種 tag，語意不同**：`ios/<x.y.z>` = 該 marketing version **上架 App Store** 的那顆 commit，**只由 `release.sh shipped ios` 依 ASC 查證後物化**、immutable；`ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit（只代表出過 archive），由 `tag`/`release`/`resubmit` 產生。`--new-version-after-ready` **已移除**——上架 tag 存在本身就是證據，新版 guard 改為直接讀 repo 的 tag 自行檢查（須有上架 tag、嚴格遞增、不得跳過「有 build tag 卻無上架 tag」的版本）。`release ios` 順序是 bump→upload→封 build tag；`resubmit ios` 則先 ASC 對帳並計畫 `max(local build, ASC latest)+1`，再 bump→upload→封 build tag；ASC 查詢失敗／非數字或 upload 失敗都不留下 commit/tag/push。**誰擁有哪個版號事實、怎麼查，SoT 表在 `docs/sop/release.md`。** 本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施。注意目前無 tag-triggered CI，tag 僅為版本標記。三平面語意見 `docs/sop/release.md`。
+> **iOS 有兩種 tag，語意不同**：`ios/<x.y.z>` = 該 marketing version **上架 App Store** 的那顆 commit，**只由 `release.sh shipped ios` 依 ASC 查證後物化**、immutable；`ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit（只有 exact ASC proof 後才可由正常流程產生；`tag` 是已上傳 binary 的明示補標/恢復路徑）。`--new-version-after-ready` **已移除**——上架 tag 存在本身就是證據，新版 guard 改為直接讀 repo 的 tag 自行檢查（須有上架 tag、嚴格遞增、不得跳過「有 build tag 卻無上架 tag」的版本）。`release ios` / `resubmit ios` 都是 candidate commit→push `origin/main`→upload→exact `(version, build)` ASC proof→`finalize` 封 build tag；upload／ASC propagation failure 保留 candidate，**不重複 upload，`finalize` 是唯一 recovery**。**誰擁有哪個版號事實、怎麼查，SoT 表在 `docs/sop/release.md`。** 本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢；`build <version> <build>` 是 exact JSON proof）是**正交**設施。注意目前無 tag-triggered CI，tag 僅為版本標記。三平面語意見 `docs/sop/release.md`。
+
+> **Candidate / finalize closure**：`release ios` 與 `resubmit ios` 在 `ios_release.sh --upload` 前先 commit 並 push candidate；upload 命令回傳不等於 ASC/TestFlight 已完成。`finalize ios <x.y.z> <build> [--yes]` 會以 `./ops/asc.sh build <version> <build>` 的 exact JSON proof 做 bounded propagation wait，成功後才建立並 push `ios/<x.y.z>+<build>`。`KG_ASC_BUILD_CMD`、`KG_RELEASE_ASC_WAIT_SECS`（預設 120）、`KG_RELEASE_ASC_POLL_SECS`（預設 5）是此檢查的 command injection / wait knobs。upload 或 propagation failure 時保留 candidate；不要重跑 release/resubmit 或 `ios_release.sh --upload`，沿用 candidate 執行 `finalize` 是唯一 recovery。
 
 ### 版號命名決策（下一個 build 該叫什麼）
 
@@ -354,14 +356,14 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 | 情境 | marketing | build | 命令 |
 |---|---|---|---|
-| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | `max(本地 build, ASC TestFlight latest)+1` | `release.sh resubmit ios [--yes]`（先對帳 ASC→以 `release_bump.sh --build-number` 精確 bump→upload→封 `ios/<x.y.z>+<build>`） |
-| 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh release ios <x.y.z> --yes`（bump→upload→封 build tag）；或拆步先 bump/upload，再 `tag ios <x.y.z> --yes` |
+| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | `max(本地 build, ASC TestFlight latest)+1` | `release.sh resubmit ios [--yes]`（先對帳 ASC→精確 bump→candidate commit/push→upload→exact ASC proof→`finalize`） |
+| 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh release ios <x.y.z> --yes`（bump→candidate commit/push→upload→exact ASC proof→`finalize`） |
 | 已上架後新版本：加功能不破壞 | minor（第二位+1，如 2.0.0→2.1.0） | +1 | 同上 |
 | 已上架後新版本：大改版/破壞性/里程碑（如 podcast 正式放出） | major（第一位+1，如 2.0.0→3.0.0） | +1 | 同上 |
 
 - semver 判斷**看改動語意、不看 commit 數**（`release.sh status` 的「建議版號」是數量啟發式，僅參考——2.0.0 該輪工具建議 minor、實際是 major）。
 - **判斷「同版重送」還是「新版本」的唯一準則 = 上一個 marketing 版號有沒有真的上架**（這條準則沒變，變的是怎麼落實它）。PREPARE_FOR_SUBMISSION / REJECTED / 審查中 = 還沒上架 → 走「同版重送」列，`resubmit ios`，不動 marketing。**這個判斷現在由工具做，不由 operator 打字背書**：上架事實靠 `release.sh shipped ios --yes` 從 ASC 查證後物化成 `ios/<x.y.z>`，`release ios` 的 guard 再讀它。所以**上架後第一件事就是補跑 `shipped ios --yes`**——沒補，下一版會被 guard 正確地擋下來。
-- **每顆 build 都要留封版紀錄**。`ios/<x.y.z>+<build>` 記的是「這顆 (version, build) 由哪顆 commit 產生」，而 **Apple 不保留這個資訊**（ASC 只有一筆 version 記錄、`versionString` 可變、build number 每版重新計數），所以它必須在封版當下捕捉，**事後無法重建**。`release.sh resubmit ios` 先以 `./ops/asc.sh builds` 讀 TestFlight latest，計畫 build 固定為 `max(CURRENT_PROJECT_VERSION, ASC latest)+1`；查詢失敗或非數字會在 bump/upload 前硬停，dry-run 會列出三者。`release.sh status` 會在目前的 (version, build) 沒有 build tag 時具名警告；看到就別直接 `ios_release.sh --upload`，走 `release ios` / `resubmit ios` 讓它封版。歷史後果見 `docs/sop/release.md`「機制上線前的舊 tag」（`ios/1.6.0` 上架的是哪顆 build 已永久不可考）。
+- **每顆 build 都要留封版紀錄**。`ios/<x.y.z>+<build>` 記的是「這顆 (version, build) 由哪顆 commit 產生」，而 **Apple 不保留這個資訊**（ASC 只有一筆 version 記錄、`versionString` 可變、build number 每版重新計數），所以它必須在封版當下捕捉，**事後無法重建**。`release.sh resubmit ios` 先以 `./ops/asc.sh builds` 讀 TestFlight latest，計畫 build 固定為 `max(CURRENT_PROJECT_VERSION, ASC latest)+1`；查詢失敗或非數字會在 candidate/upload 前硬停，dry-run 會列出三者。`release.sh status` 會在目前的 (version, build) 沒有 build tag 時具名警告；若已有 candidate，走 `finalize ios <x.y.z> <build>`，不要直接重跑 `ios_release.sh --upload`。歷史後果見 `docs/sop/release.md`「機制上線前的舊 tag」（`ios/1.6.0` 上架的是哪顆 build 已永久不可考）。
 
 - **workflow launcher contract**：`ios_ops workflow release` 的 App Review gate 由 `ops/lib/project_python.sh` 的 `kg_project_uv_bin` 解析 uv；缺依賴時輸出 typed `gate.execution` block，不把空 executable 交給 streaming runner，也不以 traceback 代替 gate verdict。
 
@@ -396,6 +398,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 ```bash
 # ── 唯讀查詢 ──
 ./ops/asc.sh versions / builds / info             # 版本+審查 state / TestFlight build / app 層級
+./ops/asc.sh build <version> <build>              # exact ASC build JSON proof（唯讀）
 ./ops/asc_text_bundle.py dump -o asc.json         # 整包文案/審查資料 JSON
 ./ops/asc.sh metadata --locale zh-Hant            # 某版本某語系文案
 ./ops/asc.sh review-status / review-detail        # 審查提交 state / 審查聯絡+demo+送審備註
@@ -458,7 +461,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 2. 到 ASC GUI「App 審查 → 解決中心」讀 Apple 的拒絕理由（API 讀不到）。
 3. **掃殘留**：被拒功能名若已移除，`asc.sh metadata` + `review-detail` + app 副標全 grep 一遍確認 0 命中；`asc.sh screenshots` 列出截圖、fetch 縮圖目視無殘影。
 4. **查備註是否過期**：`asc.sh review-detail` 的 notes 常沿用上一輪舊文（KG 實例曾停在 3.1.2(c) EULA 而非當輪原因）；重送時若需更新送審備註，直接 `asc.sh set-review notes "..."`（dry-run 看舊→新，`--yes` 才寫）對應「本輪」原因；向審查員對話回覆仍須 GUI 解決中心。
-5. 改 code/文案（`asc.sh set …` 或改 app 碼）→ **`./ops/release.sh resubmit ios`（dry-run 先看計畫，`--yes` 才執行）**：先由 `./ops/asc.sh builds` 取 TestFlight 最新 build，選 `max(local build, ASC latest)+1`；ASC 查詢失敗或非數字直接 hard-stop，不用 local+1 猜測。接著 bump `CURRENT_PROJECT_VERSION`（`MARKETING_VERSION` 不動）→ `ios_release.sh --upload` → commit 版號檔 + 封 `ios/<x.y.z>+<build>` + push → GUI 把新 build 綁上該版本 → 重送。**別再手跑 `bump-build ios --yes` + `ios_release.sh --upload`**：那條路徑不留 commit、不留 tag、status 也看不見，`ios/2.0.0` 與實際上架 binary 脫鉤就是這樣來的（`888967dd9`）。upload 前的 build number 衝突與封版 tag 衝突都由 `resubmit` 自己擋，失敗不留 commit/tag/push。
+5. 改 code/文案（`asc.sh set …` 或改 app 碼）→ **`./ops/release.sh resubmit ios`（dry-run 先看計畫，`--yes` 才執行）**：先由 `./ops/asc.sh builds` 取 TestFlight 最新 build，選 `max(local build, ASC latest)+1`；ASC 查詢失敗或非數字直接 hard-stop，不用 local+1 猜測。接著 bump `CURRENT_PROJECT_VERSION`（`MARKETING_VERSION` 不動）→ candidate commit + push `origin/main` → `ios_release.sh --upload` → `finalize ios <x.y.z> <build> --yes`（exact ASC proof 後封 tag）→ GUI 把新 build 綁上該版本 → 重送。**別再手跑 `bump-build ios --yes` + `ios_release.sh --upload`**：那條路徑不留完整 candidate/finalize provenance，`ios/2.0.0` 與實際上架 binary 脫鉤就是這樣來的（`888967dd9`）。upload／ASC propagation failure 保留 candidate；不要重跑 release/resubmit 或 upload，`finalize` 是唯一 recovery，沒有當下 exact proof 不宣稱 ASC/TestFlight 已完成。
 6. 加密合規順手：本專案 `GENERATE_INFOPLIST_FILE = YES`（無 source Info.plist），故設 build setting `INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO`（多數 app 免出口加密，省每次上傳被問）。
 
 #### 已知缺口（待辦，本輪未工具化）
