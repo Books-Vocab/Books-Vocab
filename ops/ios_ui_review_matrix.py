@@ -28,7 +28,7 @@ from ui_world_manifest import FIXTURE_DOMAIN_IDS
 
 
 SCHEMA = "kg.ios.ui-review-matrix.v1"
-REQUIRED_IDS = tuple(f"P{index}" for index in range(1, 16))
+REQUIRED_IDS = tuple(f"P{index}" for index in range(3, 16))
 STATUSES = {"pending", "in_progress", "verified", "blocked"}
 EXACT_METHOD_SELECTOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\/test[A-Za-z0-9_]+$")
 SAFE_DATASET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -146,34 +146,12 @@ def _fixture_ids_for_dataset(*, root: Path, dataset_id: str) -> set[str]:
             fixture_ids.add(f"{domain}.{fixture_id}")
 
     # Canonical cross-domain evidence is declared under scenarioContext rather
-    # than a seed domain.  These rows are still fixture contracts: dictionary
-    # rows are consumed by FixtureDatasetStore and surface-contract rows are
-    # the portable state/asset mapping used by the UI evidence flows.  Keep
-    # both the declared ID and a qualified surface alias so matrix authors do
-    # not have to guess which namespace a contract uses.
+    # than a seed domain. Surface-contract rows are the portable state/asset
+    # mapping used by the UI evidence flows. Keep both the declared ID and a
+    # qualified surface alias so matrix authors do not have to guess which
+    # namespace a contract uses.
     scenario_context = dataset.get("scenarioContext")
     if isinstance(scenario_context, dict):
-        dictionary = scenario_context.get("dictionary")
-        if isinstance(dictionary, dict):
-            lookup = dictionary.get("lookup")
-            if isinstance(lookup, dict):
-                for row in lookup.values():
-                    if isinstance(row, dict) and isinstance(row.get("fixtureID"), str):
-                        fixture_ids.add(row["fixtureID"])
-                        fixture_ids.add(f"dictionary.{row['fixtureID']}")
-            coverage = dictionary.get("coverage")
-            if isinstance(coverage, dict):
-                for group in coverage.values():
-                    if not isinstance(group, dict):
-                        continue
-                    raw_ids = group.get("fixtureIDs")
-                    if not isinstance(raw_ids, list):
-                        continue
-                    for fixture_id in raw_ids:
-                        if isinstance(fixture_id, str):
-                            fixture_ids.add(fixture_id)
-                            fixture_ids.add(f"dictionary.{fixture_id}")
-
         contracts = scenario_context.get("surfaceContracts")
         if isinstance(contracts, dict):
             for surface, contract in contracts.items():
@@ -1018,9 +996,9 @@ def validate_matrix(
         report_dir, root=root, owner="report.directory"
     )
     report_root = root.resolve()
-    images = _non_empty_strings(report.get("images"), owner="report.images", minimum=15)
-    if set(images) != {f"p{index}.PNG" for index in range(1, 16)}:
-        raise UIReviewMatrixError("report.images must contain exactly p1.PNG through p15.PNG")
+    images = _non_empty_strings(report.get("images"), owner="report.images", minimum=13)
+    if set(images) != {f"p{index}.PNG" for index in range(3, 16)}:
+        raise UIReviewMatrixError("report.images must contain exactly p3.PNG through p15.PNG")
     missing_report_images = []
     for image in images:
         resolved_image = (resolved_report_dir / image).resolve()
@@ -1209,7 +1187,7 @@ def validate_matrix(
     missing = [requirement_id for requirement_id in REQUIRED_IDS if requirement_id not in by_id]
     extra = sorted(set(by_id) - set(REQUIRED_IDS))
     if missing or extra or len(requirements) != len(REQUIRED_IDS):
-        raise UIReviewMatrixError(f"requirements must be exactly P1-P15 missing={missing} extra={extra}")
+        raise UIReviewMatrixError(f"requirements must be exactly P3-P15 missing={missing} extra={extra}")
 
     pending = [
         requirement_id

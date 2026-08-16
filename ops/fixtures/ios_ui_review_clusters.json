@@ -10,21 +10,6 @@
   },
   "clusters": [
     {
-      "id": "dictionary",
-      "title": "Dictionary",
-      "requirements": ["P1", "P2"],
-      "sourceModules": [
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
-      ],
-      "acceptanceRefs": {"P1": "matrix.requirements[P1]", "P2": "matrix.requirements[P2]"},
-      "visualStateRefs": {"P1": "matrix.P1.verification", "P2": "matrix.P2.verification"},
-      "runPlan": [
-        {"requirementID": "P1", "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization", "datasetID": "marketing_demo", "status": "verified"},
-        {"requirementID": "P2", "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector", "datasetID": "marketing_demo", "status": "in_progress"}
-      ]
-    },
-    {
       "id": "reader-runtime",
       "title": "Reader Runtime",
       "requirements": ["P3", "P4", "P5", "P6", "P7"],
@@ -79,7 +64,7 @@
       "acceptanceRefs": {"P11": "matrix.requirements[P11]", "P12": "matrix.requirements[P12]", "P13": "matrix.requirements[P13]"},
       "visualStateRefs": {"P11": "matrix.P11.verification", "P12": "matrix.P12.verification", "P13": "matrix.P13.verification"},
       "runPlan": [
-        {"requirementID": "P11", "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently", "datasetID": "marketing_demo", "status": "verified"},
+        {"requirementID": "P11", "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsReviewSearchAndCTAConsistently", "datasetID": "marketing_demo", "status": "verified"},
         {"requirementID": "P12", "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings", "datasetID": "marketing_demo", "status": "verified"},
         {"requirementID": "P13", "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled", "datasetID": "marketing_demo", "status": "verified"}
       ]

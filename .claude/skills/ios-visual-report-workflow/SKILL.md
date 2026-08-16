@@ -1,6 +1,6 @@
 ---
 name: ios-visual-report-workflow
-description: Turn an iOS visual report with PDF/PNG references into five cluster contracts, complete source/fixture/UITest changes, and exact-head Simulator evidence with a machine-rendered report. Use when working from P1-P15 screenshots, rebuilding a SwiftUI surface, operating the iOS Simulator, or closing an iOS UI review into one integrated delivery tree.
+description: Turn the active P3-P15 iOS visual report references into four cluster contracts, complete source/fixture/UITest changes, and exact-head Simulator evidence with a machine-rendered report. Use when rebuilding a covered SwiftUI surface, operating the iOS Simulator, or closing an iOS UI review into one integrated delivery tree.
 ---
 
 # iOS Visual Report Workflow
@@ -10,7 +10,7 @@ Use this as the integrator workflow for report-driven iOS UI work. The report is
 ## Non-negotiable invariants
 
 - Work in the existing integration worktree. Do not create a workaround tree for a late test, fixture, or evidence problem.
-- Collapse P1-P15 into exactly five clusters: Dictionary (P1-P2), Reader Runtime (P3-P7), Explore/Overview (P8-P10), Vocabulary/Review Card (P11-P13), Settings/Sync (P14-P15).
+- Partition active P3-P15 requirements into exactly four clusters: Reader Runtime (P3-P7), Explore/Overview (P8-P10), Vocabulary/Review Card (P11-P13), Settings/Sync (P14-P15).
 - A cluster hand-back contains the root cause, implementation, unit test, UI World fixture, exact XCTest selector, machine acceptance, run-scoped visual receipt, visual attestation, and current HEAD. Screenshots/video/xcresult are short-lived agent inspection material; the durable hand-back is the compact receipt and its provenance.
 - A selector PASS is not a requirement PASS. A requirement is verified only after fixture coverage, machine contract, counterexample coverage, complete visual attestation, and matrix provenance all pass.
 - Every evidence claim binds the same clean source HEAD, UI World ID/SHA, Simulator UDID, selector, run ID, evidence root, manifest SHA, and reviewer identity.
@@ -20,7 +20,7 @@ Use this as the integrator workflow for report-driven iOS UI work. The report is
 ## Phase 0 — freeze the executable plan before implementation
 
 1. Confirm host, primary `main`, canonical integration worktree, and registry. If another tree is dirty, inspect and protect its ownership; do not overwrite it.
-2. Read the PDF text and inspect `p1.PNG` through `p15.PNG`. Run the bundled input audit:
+2. Read the PDF text and inspect active references `p3.PNG` through `p15.PNG`. Run the bundled input audit:
 
    ```bash
    uv run --python 3.13 python .claude/skills/ios-visual-report-workflow/scripts/audit_report_inputs.py \
@@ -156,7 +156,7 @@ The integrator owns convergence, not just code collection:
 
 Return a compact receipt containing:
 
-- five-cluster map and report inputs;
+- four-cluster map and active report inputs;
 - integrated source/test/docs commits and duplicate decisions;
 - exact canonical path/branch/HEAD/tree/base;
 - UI World, Simulator, selector, batch, bundle, matrix, visual reviewer identities;
@@ -167,6 +167,6 @@ Return a compact receipt containing:
 
 ## Bundled resources
 
-- `scripts/audit_report_inputs.py`: read-only audit of PDF/PNG P1-P15 inputs and five-cluster/matrix coverage.
+- `scripts/audit_report_inputs.py`: read-only audit of PDF plus active PNG P3-P15 inputs and four-cluster/matrix coverage.
 - `references/cluster-contract.md`: compact cluster manifest and evidence contract; load before editing the manifest.
 - `.claude/skills/ios-simulator-verification/`: low-level Simulator/evidence runner and artifact contract.

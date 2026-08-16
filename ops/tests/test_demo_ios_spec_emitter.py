@@ -844,7 +844,7 @@ def test_scenario_context_frozen_carries_review_clock_and_reader_passage(tmp_pat
         review_clock_frozen_at=freeze)
     mc = json.loads(content)["scenarioContext"]
     assert set(mc) == {
-        "reviewClock", "readerPassage", "wordDetail", "dictionary", "surfaceContracts",
+        "reviewClock", "readerPassage", "wordDetail", "surfaceContracts",
     }
     assert mc["wordDetail"]["entries"][0]["word"]  # 聚焦字非空
     clock = mc["reviewClock"]

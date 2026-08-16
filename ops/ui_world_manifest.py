@@ -47,41 +47,24 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "syncPresenter",
     "sharedDecks",
     # Optional cross-domain state for scenarios that need one coherent clock or
-    # content projection. It is not a fixture-id dictionary, so it is validated
+    # content projection. It is not a fixture-ID lookup table, so it is validated
     # separately from FIXTURE_DOMAIN_IDS.
     "scenarioContext",
 }
 OPTIONAL_TOP_LEVEL_KEYS = {"scenarioContext"}
 REQUIRED_TOP_LEVEL_KEYS = FIXTURE_TOP_LEVEL_KEYS - OPTIONAL_TOP_LEVEL_KEYS
 LEGACY_SCENARIO_CONTEXT_KEYS = {"reviewClock", "readerPassage", "wordDetail"}
-SCENARIO_CONTEXT_REQUIRED_KEYS = {"reviewClock", "readerPassage", "wordDetail"}
-SCENARIO_CONTEXT_OPTIONAL_KEYS = {"dictionary", "surfaceContracts"}
-SCENARIO_CONTEXT_KEYS = SCENARIO_CONTEXT_REQUIRED_KEYS | SCENARIO_CONTEXT_OPTIONAL_KEYS
+SCENARIO_CONTEXT_REQUIRED_KEYS = {
+    "reviewClock", "readerPassage", "wordDetail", "surfaceContracts",
+}
+SCENARIO_CONTEXT_KEYS = SCENARIO_CONTEXT_REQUIRED_KEYS
 LEGACY_REVIEW_CLOCK_FIELD_KEYS = {"frozenNow", "frozenEpoch", "anchorDay", "source"}
 REVIEW_CLOCK_FIELD_KEYS = {"now", "timeZone", "frozenEpoch", "anchorDay", "source"}
-DICTIONARY_LOOKUP_STATES = {
-    "idle", "loading", "result", "partial", "offline", "error", "retry",
-}
-DICTIONARY_KEYS = {
-    "lookup", "senses", "examples", "provenance", "materialization", "coverage",
-}
-COVERAGE_KEYS = {"required", "counterexamples"}
-COVERAGE_SET_KEYS = {"fixtureIDs", "stepLabels", "assetIDs"}
 SURFACE_CONTRACT_KEYS = {"required", "counterexamples"}
 SURFACE_CONTRACT_ROW_KEYS = {
     "fixtureID", "stepLabel", "index", "assetIDs",
 }
-P1_DICTIONARY_SURFACE = "dictionary"
-P1_DICTIONARY_REQUIRED_FIXTURE_ID = "ui-p1-dictionary-rich"
-P1_DICTIONARY_REQUIRED_STEP_LABEL = "dictionary-rich"
-P2_DICTIONARY_REQUIRED_FIXTURE_ID = "ui-p2-dictionary-senses"
-P2_DICTIONARY_REQUIRED_STEP_LABEL = "dictionary-senses"
-P1_DICTIONARY_COUNTEREXAMPLE_STATES = ("partial", "offline", "error", "retry")
-P2_DICTIONARY_COUNTEREXAMPLES = (
-    ("dictionary.p2.missing-example", "missing-example-counterexample"),
-    ("dictionary.p2.materialize-error", "materialize-error-counterexample"),
-)
-REQUIRED_SURFACE_CONTRACTS = {"explore", "settings", P1_DICTIONARY_SURFACE}
+REQUIRED_SURFACE_CONTRACTS = {"explore", "reviewCalendar", "settings"}
 SHARED_DECKS_KEYS = {"fixtures", "decks"}
 EXPLORE_FIXTURE_IDS = {
     "loading",
@@ -125,82 +108,13 @@ REVIEW_CALENDAR_REQUIRED_LABELS = (
 REVIEW_CALENDAR_COUNTEREXAMPLE_LABELS = (
     "empty-day-counterexample", "timezone-boundary-counterexample",
 )
-SURFACE_CONTRACTS_KEYS = {"dictionary", "explore", "reviewCalendar", "settings"}
+SURFACE_CONTRACTS_KEYS = {"explore", "reviewCalendar", "settings"}
 REVIEW_CALENDAR_KEYS = {"required", "counterexamples"}
 REVIEW_CALENDAR_ROW_KEYS = {"fixtureID", "stepLabel", "index", "assetIDs"}
 READER_PASSAGE_KEYS = {
     "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
     "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
 }
-def build_p1_dictionary_surface_contract(
-    dictionary: Mapping[str, Any],
-) -> dict[str, list[dict[str, Any]]]:
-    """Project the P1/P2 dictionary matrix from the canonical dictionary seed.
-
-    P2 deliberately reuses this same canonical dictionary source, but owns a
-    distinct required fixture row and distinct counterexample rows.  The
-    surface contract therefore proves matrix coverage without making P2 a
-    P1 string assertion or introducing a second dictionary schema.
-    """
-    try:
-        lookup = dictionary["lookup"]
-        coverage = dictionary["coverage"]
-        required_coverage = coverage["required"]
-        counterexample_coverage = coverage["counterexamples"]
-        required_assets = list(required_coverage["assetIDs"])
-        counterexample_assets = list(counterexample_coverage["assetIDs"])
-    except (KeyError, TypeError) as exc:
-        raise ValueError(
-            "canonical dictionary seed must expose lookup/coverage asset identity"
-        ) from exc
-
-    counterexamples = []
-    for index, state in enumerate(P1_DICTIONARY_COUNTEREXAMPLE_STATES, start=2):
-        try:
-            lookup_row = lookup[state]
-            fixture_id = lookup_row["fixtureID"]
-        except (KeyError, TypeError) as exc:
-            raise ValueError(
-                f"canonical dictionary seed must expose lookup state {state!r}"
-            ) from exc
-        counterexamples.append(
-            {
-                "fixtureID": fixture_id,
-                "stepLabel": f"{state}-counterexample",
-                "index": index,
-                "assetIDs": counterexample_assets if state == "error" else [],
-            }
-        )
-
-    return {
-        "required": [
-            {
-                "fixtureID": P1_DICTIONARY_REQUIRED_FIXTURE_ID,
-                "stepLabel": P1_DICTIONARY_REQUIRED_STEP_LABEL,
-                "index": 0,
-                "assetIDs": required_assets,
-            },
-            {
-                "fixtureID": P2_DICTIONARY_REQUIRED_FIXTURE_ID,
-                "stepLabel": P2_DICTIONARY_REQUIRED_STEP_LABEL,
-                "index": 1,
-                "assetIDs": required_assets,
-            },
-        ],
-        "counterexamples": counterexamples + [
-            {
-                "fixtureID": fixture_id,
-                "stepLabel": step_label,
-                "index": index,
-                "assetIDs": [],
-            }
-            for index, (fixture_id, step_label) in enumerate(
-                P2_DICTIONARY_COUNTEREXAMPLES,
-                start=len(counterexamples) + 2,
-            )
-        ],
-    }
-
 REVIEW_CARD_EVIDENCE_FIXTURE_IDS = {
     "review.card-full-info",
     "review.card-compact-counterexample",
@@ -277,7 +191,6 @@ FIXTURE_DOMAIN_IDS = {
         "kgVocabRow",
         "p11.644.reviewMix",
         "reviewCalendarDense",
-        "review.mixed",
         "searchVocabNotebook",
         "shellNavigation",
         "statsEmpty",
@@ -2668,27 +2581,6 @@ def _validate_string_list(value: Any, *, field: str, label: str, allow_empty: bo
     return result
 
 
-def _validate_asset_reference_lists(
-    container: Mapping[str, Any], *, field: str, label: str,
-    asset_types: Mapping[str, str], allow_empty: bool = True,
-) -> tuple[list[str], list[str], list[str]]:
-    keys = set(container)
-    if keys != COVERAGE_SET_KEYS:
-        extra = sorted(keys - COVERAGE_SET_KEYS)
-        missing = sorted(COVERAGE_SET_KEYS - keys)
-        raise UIWorldManifestError(
-            f"{label} {field} keys 不符: extra={extra} missing={missing}")
-    fixture_ids = _validate_string_list(
-        container.get("fixtureIDs"), field=f"{field}.fixtureIDs", label=label,
-        allow_empty=allow_empty)
-    step_labels = _validate_string_list(
-        container.get("stepLabels"), field=f"{field}.stepLabels", label=label,
-        allow_empty=allow_empty)
-    referenced_assets = _validate_asset_pair(
-        container.get("assetIDs"),
-        field=field, label=label, asset_types=asset_types,
-    )
-    return fixture_ids, step_labels, referenced_assets
 def _review_clock_instant(
     clock: Mapping[str, Any], *, label: str
 ) -> tuple[datetime, ZoneInfo, datetime.date, str]:
@@ -2844,215 +2736,20 @@ def _validate_asset_pair(
             f"{label} {field}.assetIDs references unknown assets: {unknown_assets}")
     return referenced_assets
 
-def _validate_disjoint_coverage(
-    required: Mapping[str, Any], counterexamples: Mapping[str, Any], *,
-    field: str, label: str, asset_types: Mapping[str, str],
-) -> None:
-    required_sets = _validate_asset_reference_lists(
-        required, field=f"{field}.required", label=label, asset_types=asset_types,
-        allow_empty=False)
-    counterexample_sets = _validate_asset_reference_lists(
-        counterexamples, field=f"{field}.counterexamples", label=label,
-        asset_types=asset_types)
-    for set_name, required_values, counterexample_values in zip(
-        ("fixtureIDs", "stepLabels", "assetIDs"),
-        required_sets,
-        counterexample_sets,
-        strict=True,
-    ):
-        overlap = sorted(set(required_values) & set(counterexample_values))
-        if overlap:
-            raise UIWorldManifestError(
-                f"{label} {field}.{set_name} required/counterexamples must be disjoint: {overlap}")
-
-
-def _validate_dictionary_context(
-    dictionary: Mapping[str, Any], *, label: str,
-    asset_types: Mapping[str, str],
-) -> None:
-    keys = set(dictionary)
-    if keys != DICTIONARY_KEYS:
-        extra = sorted(keys - DICTIONARY_KEYS)
-        missing = sorted(DICTIONARY_KEYS - keys)
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary keys 不符: extra={extra} missing={missing}")
-
-    lookup = _require_mapping(
-        dictionary.get("lookup"), field="scenarioContext.dictionary.lookup", label=label)
-    if set(lookup) != DICTIONARY_LOOKUP_STATES:
-        extra = sorted(set(lookup) - DICTIONARY_LOOKUP_STATES)
-        missing = sorted(DICTIONARY_LOOKUP_STATES - set(lookup))
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.lookup states 不符: extra={extra} missing={missing}")
-    lookup_fixture_ids = set()
-    lookup_step_labels = set()
-    for state in sorted(DICTIONARY_LOOKUP_STATES):
-        row = _require_mapping(
-            lookup[state], field=f"scenarioContext.dictionary.lookup.{state}", label=label)
-        if set(row) != {"fixtureID", "stepLabel"}:
-            extra = sorted(set(row) - {"fixtureID", "stepLabel"})
-            missing = sorted({"fixtureID", "stepLabel"} - set(row))
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.dictionary.lookup.{state} keys 不符: "
-                f"extra={extra} missing={missing}")
-        fixture_id = _ensure_str(
-            row.get("fixtureID"),
-            field=f"scenarioContext.dictionary.lookup.{state}.fixtureID", label=label)
-        step_label = _ensure_str(
-            row.get("stepLabel"),
-            field=f"scenarioContext.dictionary.lookup.{state}.stepLabel", label=label)
-        lookup_fixture_ids.add(fixture_id)
-        lookup_step_labels.add(step_label)
-    if len(lookup_fixture_ids) != len(DICTIONARY_LOOKUP_STATES):
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.lookup.fixtureID 必須唯一")
-    if len(lookup_step_labels) != len(DICTIONARY_LOOKUP_STATES):
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.lookup.stepLabel 必須唯一")
-
-    senses = _require_list(
-        dictionary.get("senses"), field="scenarioContext.dictionary.senses", label=label)
-    if not senses:
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.senses 必須是非空 list")
-    sense_ids: set[str] = set()
-    for index, sense in enumerate(senses):
-        row = _require_mapping(
-            sense, field=f"scenarioContext.dictionary.senses[{index}]", label=label)
-        if set(row) != {"id", "partOfSpeech", "gloss", "exampleIDs"}:
-            extra = sorted(set(row) - {"id", "partOfSpeech", "gloss", "exampleIDs"})
-            missing = sorted({"id", "partOfSpeech", "gloss", "exampleIDs"} - set(row))
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.dictionary.senses[{index}] keys 不符: "
-                f"extra={extra} missing={missing}")
-        sense_id = _ensure_str(row.get("id"), field=f"scenarioContext.dictionary.senses[{index}].id", label=label)
-        if sense_id in sense_ids:
-            raise UIWorldManifestError(f"{label} scenarioContext.dictionary.senses.id 必須唯一")
-        sense_ids.add(sense_id)
-        _ensure_str(row.get("partOfSpeech"), field=f"scenarioContext.dictionary.senses[{index}].partOfSpeech", label=label)
-        _ensure_str(row.get("gloss"), field=f"scenarioContext.dictionary.senses[{index}].gloss", label=label)
-        _validate_string_list(
-            row.get("exampleIDs"), field=f"scenarioContext.dictionary.senses[{index}].exampleIDs",
-            label=label, allow_empty=False)
-
-    examples = _require_list(
-        dictionary.get("examples"), field="scenarioContext.dictionary.examples", label=label)
-    if not examples:
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.examples 必須是非空 list")
-    example_ids: set[str] = set()
-    example_senses: dict[str, str] = {}
-    for index, example in enumerate(examples):
-        row = _require_mapping(
-            example, field=f"scenarioContext.dictionary.examples[{index}]", label=label)
-        if set(row) != {"id", "senseID", "text"}:
-            extra = sorted(set(row) - {"id", "senseID", "text"})
-            missing = sorted({"id", "senseID", "text"} - set(row))
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.dictionary.examples[{index}] keys 不符: "
-                f"extra={extra} missing={missing}")
-        example_id = _ensure_str(row.get("id"), field=f"scenarioContext.dictionary.examples[{index}].id", label=label)
-        if example_id in example_ids:
-            raise UIWorldManifestError(f"{label} scenarioContext.dictionary.examples.id 必須唯一")
-        example_ids.add(example_id)
-        sense_id = _ensure_str(row.get("senseID"), field=f"scenarioContext.dictionary.examples[{index}].senseID", label=label)
-        example_senses[example_id] = sense_id
-        if not _ensure_str(row.get("text"), field=f"scenarioContext.dictionary.examples[{index}].text", label=label).strip():
-            raise UIWorldManifestError(f"{label} scenarioContext.dictionary.examples[{index}].text 不可為空")
-    for index, sense in enumerate(senses):
-        for example_id in _validate_string_list(
-            sense["exampleIDs"], field=f"scenarioContext.dictionary.senses[{index}].exampleIDs", label=label,
-            allow_empty=False):
-            if example_id not in example_ids or example_senses[example_id] != sense["id"]:
-                raise UIWorldManifestError(
-                    f"{label} scenarioContext.dictionary.senses[{index}].exampleIDs references mismatched example {example_id!r}")
-    if set(example_senses.values()) - sense_ids:
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.examples.senseID references unknown sense")
-
-    provenance = _require_mapping(
-        dictionary.get("provenance"), field="scenarioContext.dictionary.provenance", label=label)
-    if set(provenance) != {"provider", "entryID", "sourceLabel"}:
-        extra = sorted(set(provenance) - {"provider", "entryID", "sourceLabel"})
-        missing = sorted({"provider", "entryID", "sourceLabel"} - set(provenance))
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.provenance keys 不符: extra={extra} missing={missing}")
-    for field in ("provider", "entryID", "sourceLabel"):
-        _ensure_str(provenance.get(field), field=f"scenarioContext.dictionary.provenance.{field}", label=label)
-
-    materialization = _require_mapping(
-        dictionary.get("materialization"), field="scenarioContext.dictionary.materialization", label=label)
-    materialization_keys = {"status", "selectedSenseID", "selectedExampleID", "sourceFixtureID"}
-    if set(materialization) != materialization_keys:
-        extra = sorted(set(materialization) - materialization_keys)
-        missing = sorted(materialization_keys - set(materialization))
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.materialization keys 不符: extra={extra} missing={missing}")
-    status = _ensure_str(
-        materialization.get("status"),
-        field="scenarioContext.dictionary.materialization.status", label=label,
-    )
-    if status not in {"pending", "ready", "failed"}:
-        raise UIWorldManifestError(f"{label} scenarioContext.dictionary.materialization.status is invalid")
-
-    def optional_selection(field: str) -> str | None:
-        raw = materialization.get(field)
-        if raw is None:
-            return None
-        return _ensure_str(
-            raw,
-            field=f"scenarioContext.dictionary.materialization.{field}",
-            label=label,
-        )
-
-    selected_sense = optional_selection("selectedSenseID")
-    selected_example = optional_selection("selectedExampleID")
-    if status == "ready":
-        if selected_sense is None or selected_example is None:
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.dictionary.materialization status=ready "
-                "requires selectedSenseID and selectedExampleID"
-            )
-        if selected_sense not in sense_ids or selected_example not in example_ids:
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.dictionary.materialization selected sense/example "
-                "must correspond to real rows"
-            )
-        if example_senses[selected_example] != selected_sense:
-            raise UIWorldManifestError(
-                f"{label} scenarioContext.dictionary.materialization selected example "
-                "must match selected sense"
-            )
-    elif selected_sense is not None or selected_example is not None:
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.materialization status={status} "
-            "must not carry a selected sense/example"
-        )
-    source_fixture = _ensure_str(materialization.get("sourceFixtureID"), field="scenarioContext.dictionary.materialization.sourceFixtureID", label=label)
-    if source_fixture not in lookup_fixture_ids:
-        raise UIWorldManifestError(f"{label} scenarioContext.dictionary.materialization.sourceFixtureID must reference lookup")
-
-    coverage = _require_mapping(
-        dictionary.get("coverage"), field="scenarioContext.dictionary.coverage", label=label)
-    if set(coverage) != COVERAGE_KEYS:
-        extra = sorted(set(coverage) - COVERAGE_KEYS)
-        missing = sorted(COVERAGE_KEYS - set(coverage))
-        raise UIWorldManifestError(
-            f"{label} scenarioContext.dictionary.coverage keys 不符: extra={extra} missing={missing}")
-    required = _require_mapping(coverage["required"], field="scenarioContext.dictionary.coverage.required", label=label)
-    counterexamples = _require_mapping(coverage["counterexamples"], field="scenarioContext.dictionary.coverage.counterexamples", label=label)
-    _validate_disjoint_coverage(
-        required, counterexamples, field="scenarioContext.dictionary.coverage", label=label,
-        asset_types=asset_types)
 
 
 def _validate_surface_contracts(
     contracts: Mapping[str, Any], *, label: str,
     asset_types: Mapping[str, str],
-    dictionary: Mapping[str, Any],
 ) -> None:
     if not contracts:
         raise UIWorldManifestError(f"{label} scenarioContext.surfaceContracts must not be empty")
+    extra_surfaces = sorted(set(contracts) - SURFACE_CONTRACTS_KEYS)
+    if extra_surfaces:
+        raise UIWorldManifestError(
+            f"{label} scenarioContext.surfaceContracts keys 不符合: "
+            f"extra={extra_surfaces} missing=[]"
+        )
     missing_required_surfaces = sorted(REQUIRED_SURFACE_CONTRACTS - set(contracts))
     if missing_required_surfaces:
         surface = missing_required_surfaces[0]
@@ -3139,20 +2836,6 @@ def _validate_surface_contracts(
             if overlap:
                 raise UIWorldManifestError(
                     f"{label} scenarioContext.surfaceContracts.{surface}.{attr} required/counterexamples must be disjoint: {overlap}")
-        if surface == P1_DICTIONARY_SURFACE:
-            try:
-                expected = build_p1_dictionary_surface_contract(dictionary)
-            except ValueError as exc:
-                raise UIWorldManifestError(
-                    f"{label} scenarioContext.dictionary cannot project P1 surface contract: {exc}"
-                ) from exc
-            if contract_map != expected:
-                raise UIWorldManifestError(
-                    f"{label} scenarioContext.surfaceContracts.{surface} must match the canonical "
-                    f"{P1_DICTIONARY_REQUIRED_FIXTURE_ID} matrix contract"
-                )
-
-
 def _validate_review_calendar_evidence(
     scenario_context: Mapping[str, Any], *, label: str, required: bool
 ) -> None:
@@ -3590,8 +3273,8 @@ def _validate_scenario_context(
     """Validate legacy and canonical scenario context without broad fallback.
 
     A context with exactly the historical three keys is legacy: its clock may
-    be null or use ``frozenNow``.  The five-key context is canonical and must
-    carry the new clock, dictionary and surface contracts together.
+    be null or use ``frozenNow``.  The four-key context is canonical and must
+    carry the new clock and surface contracts together.
     """
     if "scenarioContext" not in data:
         if require_review_clock:
@@ -3633,15 +3316,12 @@ def _validate_scenario_context(
 
     if canonical:
         assert now_dt is not None and zone is not None
-        _validate_dictionary_context(
-            mc["dictionary"], label=label, asset_types=asset_types)
         contracts = _require_mapping(
             mc["surfaceContracts"], field="scenarioContext.surfaceContracts", label=label)
         _validate_surface_contracts(
             contracts,
             label=label,
             asset_types=asset_types,
-            dictionary=mc["dictionary"],
         )
         _validate_explore_surface_projection(
             contracts["explore"], shared_decks=data["sharedDecks"], label=label)

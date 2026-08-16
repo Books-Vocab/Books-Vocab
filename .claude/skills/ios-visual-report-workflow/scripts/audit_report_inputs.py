@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run --python 3.13 python
-"""Read-only audit for report inputs and the five-cluster evidence control plane."""
+"""Read-only audit for the active P3-P15 four-cluster evidence control plane."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 from typing import Any
 
 
-REQUIREMENTS = {f"P{i}" for i in range(1, 16)}
+REQUIREMENTS = {f"P{i}" for i in range(3, 16)}
 
 
 def load(path: Path) -> Any:
@@ -31,7 +31,7 @@ def main() -> int:
     clusters_path = (root / args.clusters).resolve()
     matrix_path = (root / args.matrix).resolve()
     problems: list[str] = []
-    pngs = {f"p{i}.PNG" for i in range(1, 16)}
+    pngs = {f"p{i}.PNG" for i in range(3, 16)}
     present = {path.name for path in report.iterdir()} if report.is_dir() else set()
     missing_pngs = sorted(pngs - present, key=lambda value: int(re.search(r"\d+", value)[0]))
     if not report.is_dir():
@@ -95,12 +95,12 @@ def main() -> int:
             else:
                 selectors.append(selector)
 
-    if len(clusters) != 5:
-        problems.append(f"expected exactly 5 clusters, got {len(clusters)}")
+    if len(clusters) != 4:
+        problems.append(f"expected exactly 4 clusters, got {len(clusters)}")
     if len(cluster_ids) != len(set(cluster_ids)):
         problems.append("cluster IDs are not unique")
     if set(mapped) != REQUIREMENTS or len(mapped) != len(REQUIREMENTS):
-        problems.append(f"requirements must map P1-P15 exactly once; got {sorted(mapped)}")
+        problems.append(f"requirements must map P3-P15 exactly once; got {sorted(mapped)}")
     if set(selector_requirements) != REQUIREMENTS:
         problems.append(
             "runPlan must provide at least one exact selector for every requirement; "
@@ -114,14 +114,14 @@ def main() -> int:
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
     if matrix_ids != REQUIREMENTS:
-        problems.append(f"matrix requirements must be P1-P15; got {sorted(matrix_ids)}")
+        problems.append(f"matrix requirements must be P3-P15; got {sorted(matrix_ids)}")
 
     result = {
         "schema": "kg.ios.visual-report-input-audit.v1",
         "valid": not problems,
         "reportDir": str(report),
         "pdf": (report / "IOS2.0.1+7-UI-review-report.pdf").is_file(),
-        "images": {"expected": 15, "present": len(pngs - set(missing_pngs)), "missing": missing_pngs},
+        "images": {"expected": 13, "present": len(pngs - set(missing_pngs)), "missing": missing_pngs},
         "clusters": {"count": len(clusters), "ids": cluster_ids, "requirements": sorted(set(mapped))},
         "selectorCount": len(selectors),
         "matrixRequirementCount": len(matrix_ids),

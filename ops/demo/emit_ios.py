@@ -52,7 +52,6 @@ from ui_world_manifest import (  # noqa: E402
     REVIEW_CLOCK_TIME_ZONE,  # noqa: F401 - retained as a Swift-facing module export
     SURFACE_CONTRACTS_KEYS,
     UIWorldManifestError,
-    build_p1_dictionary_surface_contract,
     validate_fixture_dataset_file,
 )
 
@@ -85,9 +84,10 @@ FIXTURE_TOP_LEVEL_KEYS = {
     # Detail seed. Ordinary UI Worlds may omit this whole domain.
     "scenarioContext",
 }
-SCENARIO_CONTEXT_REQUIRED_KEYS = frozenset({"reviewClock", "readerPassage", "wordDetail"})
-SCENARIO_CONTEXT_OPTIONAL_KEYS = frozenset({"dictionary", "surfaceContracts"})
-SCENARIO_CONTEXT_KEYS = SCENARIO_CONTEXT_REQUIRED_KEYS | SCENARIO_CONTEXT_OPTIONAL_KEYS
+SCENARIO_CONTEXT_REQUIRED_KEYS = frozenset({
+    "reviewClock", "readerPassage", "wordDetail", "surfaceContracts",
+})
+SCENARIO_CONTEXT_KEYS = SCENARIO_CONTEXT_REQUIRED_KEYS
 REVIEW_CLOCK_FIELD_KEYS = frozenset(
     {"now", "timeZone", "frozenEpoch", "anchorDay", "source"})
 IDENTITY_OWNED_SIGNED_IN_KEYS = {
@@ -234,10 +234,9 @@ def _build_scenario_context(
         "readerPassage": spec_world.derive_reader_passage(spec),
         "wordDetail": spec_world.derive_word_detail(spec),
     }
-    if baseline_context:
-        for key in SCENARIO_CONTEXT_OPTIONAL_KEYS:
-            if key in baseline_context:
-                context[key] = baseline_context[key]
+    if not baseline_context or not isinstance(baseline_context.get("surfaceContracts"), dict):
+        raise ValueError("baseline scenarioContext.surfaceContracts must be an object")
+    context["surfaceContracts"] = baseline_context["surfaceContracts"]
     return context
 
 
@@ -313,17 +312,9 @@ def _load_base_ui_world() -> dict[str, Any]:
     context = data.get("scenarioContext")
     if not isinstance(context, dict):
         raise ValueError(f"{BASE_UI_WORLD_PATH} scenarioContext must be an object")
-    dictionary = context.get("dictionary")
-    if not isinstance(dictionary, dict):
-        raise ValueError(f"{BASE_UI_WORLD_PATH} scenarioContext.dictionary must be an object")
     surface_contracts = context.get("surfaceContracts")
     if not isinstance(surface_contracts, dict):
         raise ValueError(f"{BASE_UI_WORLD_PATH} scenarioContext.surfaceContracts must be an object")
-    normalized_context = dict(context)
-    normalized_surface_contracts = dict(surface_contracts)
-    normalized_surface_contracts["dictionary"] = build_p1_dictionary_surface_contract(dictionary)
-    normalized_context["surfaceContracts"] = normalized_surface_contracts
-    data["scenarioContext"] = normalized_context
     _normalize_asset_source_paths(data)
     return data
 
@@ -402,8 +393,8 @@ def _validate_scenario_context_field(
 ) -> None:
     """scenarioContext 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
 
-    required keys 恆存在；optional surface contracts/dictionary 只可由 baseline
-    明確帶入。reviewClock 永遠是完整 clock dict，不允許 null/fallback。
+    四個 required keys 恆存在；reviewClock 永遠是完整 clock dict，不允許
+    null/fallback。
     """
     mc = document.get("scenarioContext")
     if not isinstance(mc, dict) or not SCENARIO_CONTEXT_REQUIRED_KEYS <= set(mc) \

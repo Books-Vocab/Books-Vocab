@@ -31,13 +31,49 @@ def _pending_matrix() -> dict:
     return data
 
 
-def test_matrix_has_exactly_fifteen_report_requirements() -> None:
-    result = MODULE.validate_matrix(MODULE.load_matrix(MATRIX), root=ROOT)
+def test_matrix_has_exactly_active_p3_through_p15_requirements() -> None:
+    matrix = MODULE.load_matrix(MATRIX)
+    result = MODULE.validate_matrix(matrix, root=ROOT)
 
-    assert result["requirementCount"] == 15
+    assert result["requirementCount"] == 13
     assert result["verified"] == 0
     assert result["complete"] is False
-    assert result["pending"] == [f"P{index}" for index in range(1, 16)]
+    assert result["pending"] == [f"P{index}" for index in range(3, 16)]
+    assert [item["id"] for item in matrix["requirements"]] == [
+        f"P{index}" for index in range(3, 16)
+    ]
+
+
+def test_p11_is_one_review_state_contract_with_the_current_selector() -> None:
+    p11 = next(
+        item
+        for item in MODULE.load_matrix(MATRIX)["requirements"]
+        if item["id"] == "P11"
+    )
+
+    assert p11["title"] == "Vocabulary review-state query projection"
+    assert p11["acceptance"] == [
+        "review-state facets, visible rows and CTA use explicit query layers",
+        "review-state projection, search, sort and CTA IDs are asserted in UI World",
+    ]
+    assert p11["verification"]["selector"] == (
+        "VocabularyLibraryFlowUITests/"
+        "testRichWorldProjectsReviewSearchAndCTAConsistently"
+    )
+    assert p11["verification"]["requiredSteps"] == [
+        "all-644-rows",
+        "review-state",
+        "search-within-projection",
+        "cta",
+    ]
+    assert p11["verification"]["evidenceBundles"] == []
+    assert p11["verification"]["history"] == []
+    serialized = json.dumps(p11).lower()
+    assert "dictionary isolation" not in serialized
+    assert "dictionary-scope" not in serialized
+    assert "mixed roles" not in serialized
+    assert "mixed-role" not in serialized
+    assert "role facets" not in serialized
 
 
 def test_matrix_cli_accepts_validate_entrypoint() -> None:
@@ -87,7 +123,7 @@ def test_fixture_gate_can_scope_one_requirement() -> None:
     assert result["fixtureGaps"] == {}
 
 
-@pytest.mark.parametrize("requirement_id", ["P1", "P2", "P8", "P9"])
+@pytest.mark.parametrize("requirement_id", ["P8", "P9"])
 def test_fixture_gate_accepts_canonical_scenario_contract_ids(requirement_id: str) -> None:
     result = MODULE.validate_matrix(
         _pending_matrix(),
@@ -115,7 +151,7 @@ def test_matrix_rejects_missing_report_requirement() -> None:
     data = _pending_matrix()
     data["requirements"] = data["requirements"][:-1]
 
-    with pytest.raises(MODULE.UIReviewMatrixError, match="exactly P1-P15"):
+    with pytest.raises(MODULE.UIReviewMatrixError, match="exactly P3-P15"):
         MODULE.validate_matrix(data, root=ROOT)
 
 
@@ -672,9 +708,9 @@ def test_report_and_source_paths_cannot_escape_repository(tmp_path: Path) -> Non
         )
     data["report"]["directory"] = report_dir.name
     outside_image = tmp_path.parent / f"{tmp_path.name}-outside.png"
-    outside_image.write_bytes((report_dir / "p1.PNG").read_bytes())
-    (report_dir / "p1.PNG").unlink()
-    (report_dir / "p1.PNG").symlink_to(outside_image)
+    outside_image.write_bytes((report_dir / "p3.PNG").read_bytes())
+    (report_dir / "p3.PNG").unlink()
+    (report_dir / "p3.PNG").symlink_to(outside_image)
     with pytest.raises(MODULE.UIReviewMatrixError, match="report image resolves outside"):
         MODULE.validate_matrix(data, root=tmp_path)
 

@@ -13,12 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "ops" / "fixtures" / "ios_ui_review_clusters.json"
 
 
-def test_cluster_manifest_partitions_all_fifteen_requirements() -> None:
+def test_cluster_manifest_partitions_active_p3_through_p15_requirements() -> None:
     result = validate(MANIFEST, ROOT)
 
     assert result["valid"] is True
-    assert result["clusterCount"] == 5
+    assert result["clusterCount"] == 4
     assert result["requirementCount"] == len(REQUIREMENTS)
+    assert REQUIREMENTS == {f"P{index}" for index in range(3, 16)}
     assert {cluster["id"] for cluster in result["clusters"]} == CLUSTERS
 
 
@@ -42,3 +43,20 @@ def test_manifest_is_machine_readable() -> None:
         "oneEvidenceBundlePerSelector": True,
         "oneSourceHeadPerBatch": True,
     }
+
+    assert [cluster["id"] for cluster in raw["clusters"]] == [
+        "reader-runtime",
+        "explore-overview",
+        "vocabulary-review-card",
+        "settings-sync",
+    ]
+    p11_run = next(
+        run
+        for cluster in raw["clusters"]
+        for run in cluster["runPlan"]
+        if run["requirementID"] == "P11"
+    )
+    assert p11_run["selector"] == (
+        "VocabularyLibraryFlowUITests/"
+        "testRichWorldProjectsReviewSearchAndCTAConsistently"
+    )
