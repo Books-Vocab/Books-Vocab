@@ -13,7 +13,7 @@
   "detail": "backend 全套測試中的 tests/test_podcast_preview_backfill.py 三個純單元案例目前都在呼叫 patch_preview_meta(meta, duration_sec=180) 時缺少新加入的 keyword-only stamp 參數，三者都以 TypeError 失敗。git history 顯示 a0c1233a1 建立原始無 stamp contract，a67d9a783 後來讓實作更新 updatedAt 並要求 stamp，但沒有同步這三個測試；這是已確認的 implementation-test contract drift，不是 provider 或環境問題。",
   "fix_site": "ops/podcast_preview_backfill.py; backend/tests/test_podcast_preview_backfill.py",
   "fixed_by": [
-    "3b5437ff610bab58c0391c194c4fd68691239b75"
+    "5a410c2783b0d46bb5721208871d8b2a183b7fe0"
   ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",

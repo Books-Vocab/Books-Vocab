@@ -13,7 +13,7 @@
   "detail": "backend 的同類 runtime env 解析責任分裂：settings.py 的 _env_int 對非法值 warning 後 fallback，但 rate_limit.py 在 import time 直接對 API_RATE_LIMIT、TRANSLATE_RATE_LIMIT、ADMIN_LOGIN_RATE_LIMIT 做 int(os.getenv(...))，非法值會讓模組 import 失敗；三個限流設定也不在單一 KGSettings snapshot。這是 source-confirmed 的不一致，尚未宣稱 production 已發生事故；同票不吸收 unsigned App Store fallback，避免把兩個安全決策混成無法驗收的範圍。",
   "fix_site": "backend/src/kg/settings.py; backend/src/kg/rate_limit.py; backend/tests/test_settings.py; backend/tests/test_rate_limit.py",
   "fixed_by": [
-    "3b5437ff610bab58c0391c194c4fd68691239b75"
+    "5a410c2783b0d46bb5721208871d8b2a183b7fe0"
   ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",

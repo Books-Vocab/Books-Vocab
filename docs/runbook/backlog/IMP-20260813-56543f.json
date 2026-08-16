@@ -13,7 +13,7 @@
   "detail": "目前主線 2d9ad6de8 的 backend 全套測試實跑 3092 cases，結果 3082 passed、10 failed，耗時 658.84 秒。失敗包括三個 notebook delete 路徑在 ops_edit_shared.py 的 backup_user_dir 以 tar.add 遞迴打包使用者 SQLite 目錄時，cards.db-shm 在列舉與 lstat 間消失，導致 backup 先失敗，接著 fallback response 缺 verified 欄位；這是可重現的檔案生命週期競態。現有 IMP-20260808-8c70b6 聚焦 notebook active config dangling，不能吸收 backup tar race；IMP-20260809-c0ddcf 的 log lifecycle fixed ticket 也不是本缺陷。",
   "fix_site": "backend/src/kg/ops_edit_shared.py; backend/tests/test_ops_coverage_gaps.py; backend/tests/test_ops_edit_links.py; backend/tests/test_ops_edit_shared_unit.py",
   "fixed_by": [
-    "3b5437ff610bab58c0391c194c4fd68691239b75"
+    "5a410c2783b0d46bb5721208871d8b2a183b7fe0"
   ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",

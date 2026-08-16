@@ -12,7 +12,7 @@
   "detail": "Recurrence of IMP-20260809-67edd9 observed on current main: backlog.py add --stage collision still emits mode=commit in the JSON envelope and human error, although the operation is staged and written=false. The existing regression proves queue/store safety but does not assert the mode field. Add the missing mode contract without reopening the closed historical ticket.",
   "fix_site": "ops/backlog.py; ops/tests/test_backlog_add_stage.sh",
   "fixed_by": [
-    "3b5437ff610bab58c0391c194c4fd68691239b75"
+    "5a410c2783b0d46bb5721208871d8b2a183b7fe0"
   ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",

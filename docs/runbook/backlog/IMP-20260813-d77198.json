@@ -13,7 +13,7 @@
   "detail": "在目前主線 2d9ad6de8 執行 ops 測試覆蓋自檢時，ops test coverage 回報兩個可重現的分類缺口：disk-guard 已被 ops/test_ops.sh 宣告但未列入 ops/tests/test_ops_ci_coverage.sh 的 LINUX_GROUPS 或 EXCLUDED_GROUPS；ops/tests/test_ios_build_cache_lifecycle.sh 已被版控追蹤但沒有任何 run_one 路徑。測試前段明確報兩個錯誤；後段 iOS falsifier 因另一個 worktree 佔用 Xcode 資源而中止，不能把資源阻塞誤當成第三個 source 缺陷。既有 IMP-20260811-3432c3 與 IMP-20260811-5fc296 是舊案例且已結案，本票是目前新增群組再次漏接的 recurrence。",
   "fix_site": "ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh; ops/tests/test_ios_build_cache_lifecycle.sh",
   "fixed_by": [
-    "3b5437ff610bab58c0391c194c4fd68691239b75"
+    "5a410c2783b0d46bb5721208871d8b2a183b7fe0"
   ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
