@@ -7,14 +7,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/backend-quality.yml"
+REGISTRY = ROOT / "docs/registry.yml"
 
 
 def _event_block(workflow: str, event: str) -> str:
     match = re.search(
-        rf"(?ms)^  {re.escape(event)}:\n(.*?)(?=^  (?:push|pull_request|permissions|jobs):|\Z)",
+        rf"(?ms)^  {re.escape(event)}:\n(.*?)(?=^  (?:push|pull_request|schedule|permissions|jobs):|\Z)",
         workflow,
     )
     assert match, f"workflow must declare {event}"
+    return match.group(1)
+
+
+def _registry_entry(registry: str, entry_id: str) -> str:
+    match = re.search(
+        rf"(?ms)^  - id: {re.escape(entry_id)}\n(.*?)(?=^  - id: |\Z)",
+        registry,
+    )
+    assert match, f"registry must declare {entry_id}"
     return match.group(1)
 
 
@@ -59,6 +69,44 @@ def test_backend_quality_artifact_carries_head_and_lock_identity() -> None:
         "backend-quality-${{ github.sha }}",
     ):
         assert marker in workflow
+
+
+def test_backend_quality_artifact_is_fail_closed_and_coverage_is_runner_temp() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    upload = workflow.split("name: Upload backend quality evidence", 1)[1]
+
+    assert "COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage" in workflow
+    assert "test -s coverage.xml" in workflow
+    assert "backend/coverage.xml" in upload
+    assert "if-no-files-found: error" in upload
+    assert ".coverage" not in upload
+
+
+def test_backend_quality_provenance_and_nightly_non_slow_lane_are_explicit() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    schedule = _event_block(workflow, "schedule")
+
+    assert "- cron:" in schedule
+    assert 'GITHUB_EVENT_NAME" == "schedule"' in workflow
+    assert 'uv run python -m pytest -q -k "not slow"' in workflow
+    for marker in (
+        "python --version",
+        "sys.executable",
+        "PYTHON_VERSION",
+        "PYTHON_EXECUTABLE",
+        "GITHUB_STEP_SUMMARY",
+    ):
+        assert marker in workflow
+
+
+def test_backend_strategy_registry_covers_workflow_and_lock() -> None:
+    registry = _registry_entry(
+        REGISTRY.read_text(encoding="utf-8"),
+        "reference.testing_backend_strategy",
+    )
+
+    assert ".github/workflows/backend-quality.yml" in registry
+    assert "backend/uv.lock" in registry
 
 
 def test_backend_quality_does_not_turn_failures_into_success() -> None:

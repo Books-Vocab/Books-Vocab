@@ -10,9 +10,14 @@ on:
       - '.github/workflows/backend-quality.yml'
   pull_request:
     paths: *backend_quality_paths
+  schedule:
+    - cron: '17 2 * * *'
 
 permissions:
   contents: read
+
+env:
+  COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage
 
 defaults:
   run:
@@ -37,6 +42,11 @@ jobs:
         with:
           version: '0.8.23'
 
+      - name: Install locked backend environment
+        id: sync
+        continue-on-error: true
+        run: uv sync --locked
+
       - name: Capture backend quality provenance
         id: provenance
         if: always()
@@ -49,32 +59,48 @@ jobs:
           lock_blob_sha="$(git rev-parse HEAD:backend/uv.lock)"
           lock_sha256="$(cd "$GITHUB_WORKSPACE" && sha256sum backend/uv.lock | awk '{print $1}')"
           uv_version="$(uv --version 2>&1 || true)"
+          python_version="$(uv run python --version 2>&1)"
+          python_executable="$(uv run python -c 'import sys; print(sys.executable)')"
           {
             printf 'HEAD_SHA=%s\n' "$head_sha"
             printf 'GITHUB_SHA=%s\n' "$GITHUB_SHA"
             printf 'LOCK_BLOB_SHA=%s\n' "$lock_blob_sha"
             printf 'LOCK_SHA256=%s\n' "$lock_sha256"
             printf 'UV_VERSION=%s\n' "$uv_version"
+            printf 'PYTHON_VERSION=%s\n' "$python_version"
+            printf 'PYTHON_EXECUTABLE=%s\n' "$python_executable"
             printf 'RUN_ID=%s\n' "$GITHUB_RUN_ID"
             printf 'RUN_ATTEMPT=%s\n' "$GITHUB_RUN_ATTEMPT"
           } | tee ci-artifacts/backend-quality-provenance.txt
-
-      - name: Install locked backend environment
-        id: sync
-        continue-on-error: true
-        run: uv sync --locked
+          {
+            echo '### Backend interpreter provenance'
+            echo "- python --version: \`$python_version\`"
+            echo "- sys.executable: \`$python_executable\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run backend tests and collect coverage
         id: tests
-        if: steps.sync.outcome == 'success'
+        if: steps.sync.outcome == 'success' && steps.provenance.outcome == 'success'
         continue-on-error: true
-        run: uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$COVERAGE_FILE")"
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            uv run python -m pytest -q -k "not slow" --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
+          else
+            uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
+          fi
 
       - name: Enforce coverage threshold
         id: coverage
         if: steps.sync.outcome == 'success' && steps.tests.outcome == 'success'
         continue-on-error: true
-        run: uv run python -m coverage report --fail-under=85
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python -m coverage report --fail-under=85
+          test -s coverage.xml
 
       - name: Run Ruff
         id: ruff
@@ -142,5 +168,5 @@ jobs:
           path: |
             backend/coverage.xml
             backend/ci-artifacts/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
