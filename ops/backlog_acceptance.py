@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import shlex
 import sys
 import time
@@ -57,7 +56,6 @@ class AcceptanceDeps:
     check_acceptance_cmd: Callable[[dict], list[dict]] | None = None
     list_entries: Callable[..., list[dict]] | None = None
     worst_first_key: Callable[[dict], tuple] | None = None
-    acceptance_green_expected: str = "acceptance_green_expected"
     acceptance_timeout_seconds: float = ACCEPTANCE_TIMEOUT_SECONDS
     static_acceptance_timeout_seconds: float = STATIC_ACCEPTANCE_TIMEOUT_SECONDS
     execute_criterion: Callable[..., tuple[int | None, str, float]] | None = None

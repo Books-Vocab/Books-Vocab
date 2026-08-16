@@ -29,3 +29,25 @@ def test_acceptance_gate_uses_injected_runner_without_importing_backlog(tmp_path
     assert result["ok"] is True
     assert calls[0][0] == ["bash", "-c", "echo ok"]
     assert calls[0][1]["cwd"] == tmp_path
+
+
+def test_acceptance_gate_dry_run_never_calls_the_runner(tmp_path):
+    calls = []
+
+    def runner(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("dry-run must not execute acceptance")
+
+    result = acceptance_gate(
+        {"id": "IMP-20260816-fedcba", "acceptance_cmd": "pytest -q"},
+        False,
+        deps=AcceptanceDeps(root=tmp_path, run_streamed_command=runner),
+    )
+
+    assert result == {
+        "kind": "would-run",
+        "id": "IMP-20260816-fedcba",
+        "cmd": "pytest -q",
+        "expect_rc": 0,
+    }
+    assert calls == []
