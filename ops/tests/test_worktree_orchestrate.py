@@ -7448,6 +7448,7 @@ def test_independent_no_ticket_close_wave_completed_manifest_route(
         "worktree": str(tmp_path / "removed-integration"),
         "branch": "feat/integration",
         "status": "gated",
+        "integration_revision": MODULE.sha256_file(Path(MODULE.__file__).resolve()),
         "independent": independent,
         "close_wave": {
             "status": "completed",
@@ -7514,6 +7515,7 @@ def test_close_wave_recovery_guard_refuses_open_expected_ticket(
         "worktree": str(tmp_path / "already-removed"),
         "branch": "feat/integration",
         "status": "gated",
+        "integration_revision": MODULE.sha256_file(Path(MODULE.__file__).resolve()),
         "close_wave": {
             "status": marker_status,
             "expected_ticket_ids": [ticket_id],
@@ -7589,6 +7591,88 @@ def test_delivery_json_tool_rejects_semantically_invalid_success_receipt(
     assert rc == MODULE.EXIT_BLOCK
     assert "mode" in payload["contract_errors"][0]
     assert payload["receipt"]["landed"] is False
+
+
+@pytest.mark.parametrize(
+    "runner_revision,integration_revision,expected",
+    [
+        ("a" * 64, "a" * 64, None),
+        (None, "a" * 64, "runner_revision is missing"),
+        ("a" * 64, None, "integration_revision is missing"),
+        ("a" * 64, "b" * 64, "runner_revision does not match integration_revision"),
+    ],
+)
+def test_close_wave_runner_revision_guard_requires_matching_revisions(
+        runner_revision, integration_revision, expected):
+    error = MODULE._delivery_revision_guard(
+        runner_revision, integration_revision,
+    )
+    if expected is None:
+        assert error is None
+    else:
+        assert expected in error
+
+
+def test_integrate_gated_receipt_requires_integration_revision():
+    payload = {
+        "mode": "committed",
+        "landed": False,
+        "verdict": "pass",
+        "manifest": "/tmp/integration.json",
+        "runner_revision": "a" * 64,
+        "integration_revision": "a" * 64,
+    }
+    assert MODULE._delivery_require_integrate_gated(payload) is None
+
+    del payload["integration_revision"]
+    error = MODULE._delivery_require_integrate_gated(payload)
+    assert error is not None
+    assert "integration_revision" in error
+
+
+def test_close_wave_stops_before_sync_on_mismatched_revision_manifest(
+        tmp_path, monkeypatch, capsys):
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    manifest = tmp_path / "completed.json"
+    manifest.write_text(json.dumps({
+        "schema": MODULE.INTEGRATE_SCHEMA,
+        "slug": "delivery-wave",
+        "base": "main",
+        "branches": ["feat/source"],
+        "worktree": str(tmp_path / "already-removed"),
+        "branch": "feat/integration",
+        "status": "gated",
+        "integration_revision": "b" * 64,
+        "close_wave": {"status": "completed", "expected_ticket_ids": []},
+    }), encoding="utf-8")
+    state = tmp_path / "state.json"
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
+    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
+    monkeypatch.setattr(MODULE, "_delivery_primary_dirty", lambda _primary: [])
+    monkeypatch.setattr(
+        MODULE, "_delivery_state_paths", lambda _args: (state, [manifest])
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_registry_records",
+        lambda _args, **_kwargs: (MODULE.EXIT_OK, []),
+    )
+    monkeypatch.setattr(
+        MODULE, "_delivery_sync_close_wave",
+        lambda *_args, **_kwargs: pytest.fail("revision mismatch must stop before sync"),
+    )
+    args = argparse.Namespace(
+        state=str(state), json=True, base="main", slug="delivery-wave",
+        branches=["feat/source"], commit=True, sync=True,
+    )
+
+    rc = MODULE._cmd_close_wave_impl(args)
+
+    assert rc == MODULE.EXIT_BLOCK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "runner_revision does not match integration_revision"
+    assert payload["runner_revision"] == MODULE.sha256_file(Path(MODULE.__file__).resolve())
+    assert payload["integration_revision"] == "b" * 64
 
 
 def test_delivery_registry_records_rejects_malformed_record(
@@ -8538,6 +8622,7 @@ def test_close_wave_recovery_resumes_each_phase_and_is_idempotent(
         "base": "main", "branches": ["feat/source"],
         "worktree": str(integration_path), "branch": "feat/integration",
         "status": "gated", "gate": {"verdict": "pass"},
+        "integration_revision": MODULE.sha256_file(Path(MODULE.__file__).resolve()),
         "close_wave": {"status": "gated", "expected_ticket_ids": [ticket_id]},
     }), encoding="utf-8")
     state = tmp_path / "state.json"
@@ -8768,10 +8853,14 @@ def test_close_wave_recovery_real_subprocess_wiring(
     manifest_dir = repo / ".cache" / "worktree_integrations" / "completed"
     manifest_dir.mkdir(parents=True)
     manifest = manifest_dir / f"{slug}-{integration_tip}.json"
+    integration_revision = MODULE.sha256_file(
+        integration / "ops" / "worktree_orchestrate.py"
+    )
     manifest.write_text(json.dumps({
         "schema": MODULE.INTEGRATE_SCHEMA, "slug": slug, "base": "main",
         "branches": ["feat/source"], "worktree": str(integration),
         "branch": "feat/integration", "status": "gated",
+        "integration_revision": integration_revision,
         "gate": {"verdict": "pass", "head_sha": integration_tip},
         "close_wave": {"status": "gated", "expected_ticket_ids": [ticket_id]},
     }, indent=2) + "\n", encoding="utf-8")
@@ -8818,6 +8907,10 @@ def test_close_wave_recovery_real_subprocess_wiring(
         second_rc = MODULE.cmd_close_wave(args)
         second_payload = json.loads(capsys.readouterr().out)
         assert second_rc == MODULE.EXIT_OK, second_payload
+        assert second_payload["runner_revision"] == MODULE.sha256_file(
+            Path(MODULE.__file__).resolve()
+        ), second_payload
+        assert second_payload["integration_revision"] == integration_revision, second_payload
         assert calls[failure_phase] == 2
         final_marker = json.loads(manifest.read_text(encoding="utf-8"))["close_wave"]
         assert final_marker["last_successful_phase"] == "sync"
