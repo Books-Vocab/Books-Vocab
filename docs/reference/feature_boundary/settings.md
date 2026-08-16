@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: 3bb37a6f7
+verified_against: d7d98039f
 -->
 # Settings Feature Boundary
 
@@ -49,7 +49,7 @@ verified_against: 3bb37a6f7
 |------|------|
 | `SettingsAccountSection.swift` | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）；summary row 的 accessibility identifier 只用 `settings.account.identity.<sha256>`（缺 identity 時為 `.unavailable`）。畫面仍可顯示可存取的 email；live evidence 不註冊完整 app tree，也不把 raw account 寫入 attachment/log |
 | `SettingsSubscriptionSection.swift` | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
-| `SettingsReviewSection.swift` | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數、字典卡納入複習 toggle；樂觀寫＋後端推送＋失敗回滾 |
+| `SettingsReviewSection.swift` | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
 | `SettingsPreferencesSection.swift` | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）、UI「聲音回饋」「觸覺回饋」本機開關，以及 **「複習卡片」列**（`rectangle.split.2x1` → `ReviewCardLayoutEditor`，列尾摘要由 `ReviewCardLayoutSummary.titleKey(for:)` 給 預設／自訂）。**刻意與「複習節奏」分成兩列**：複習節奏那頁擁有 SRS 排程規則，卡片長什麼樣不屬於它 |
 | `SettingsOtherSection.swift` | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）。同步中時 sync row 底下展開 `SettingsSyncProgressPanel`（見下 §同步進度）；panel 放在 Button **外面**——整段同步期間 Button 是 disabled 的，包進去等於把活的進度顯示塞進死的控制項 |
 | `SettingsSyncProgressPanel.swift` | `struct SettingsSyncProgressPanel: View`（+ private `SettingsSyncProgressBar` / `SettingsSyncStepRow`）：同步中展開的總進度條 + 逐步清單。進度條形狀**刻意照抄同 section 的 `quotaRow`**（兩層 pill `AppRoundedRect`、高 3）——設定頁只該有一種進度條長相。狀態符號走共用 `SyncStepStatusIcon`（`UIComponents/`，與詞庫頁同步畫面同一組視覺語言，見 `docs/reference/ui/components.md`）。**三個 struct 各自獨立、不得內聯回 `SettingsOtherSection`**（同下方 stack 約束） |

@@ -22,7 +22,7 @@ scope:
   - backend/src/kg/vocab_crud.py
   - backend/src/kg/vocab_handlers/intake.py
   - backend/src/kg/vocab_handlers/crud.py
-verified_against: 3bb37a6f7
+verified_against: d7d98039f
 -->
 # Sync Lifecycle
 
@@ -129,7 +129,7 @@ vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-r
 1. vocab push → vocab pull（本文上述狀態流轉）。**push → pull 必須序列**（pull 會把伺服器的 `lastReviewedAt` 寫回本地，先拉再送會覆蓋掉「還沒送出」的基準）。
 2. **podcast catalog** — 自整輪最前面就與第 1 條**併行**（2026-08-06 起；原為序執行於 vocab pull 之後）。共用 backgroundSync 的所有觸發；自我防禦、不 throw。詳見 `docs/reference/feature_boundary/podcast.md §同步觸發`（含空 server list 非權威的 tombstone 不變式、以及它併行後必須自帶的 session 前置檢查）。
 
-**併行邊界（不變式，違反會靜默損毀資料）**：可併行的只有「零欄位重疊」的腿——podcast catalog（`PodcastSeries`/`Episode`/`Progress`）與 vocab 管線（`VocabularyEntry`/`ReviewRecord`）互不相交，故安全。**單字卡 pull 與字典卡投影則必須維持序列**，即使 `BackgroundSyncActor` 是 `@ModelActor` 也一樣：它在多個 call site 各自 `init`，actor 隔離只序列化「對同一實例」的呼叫。兩者都 fetch 全部 `VocabularyEntry`、都寫幾乎相同的一組欄位，併發會得到 lost update / 同 mergeKey 重複插入 / mass-deletion 安全閥讀到會動的分母 / 單一全域 `SyncKeys.incrementalBoundary`。逐項理由寫在 `KGService+Sync.swift:backgroundSync` 的註解裡，**要改併行結構前先讀它**。
+**併行邊界（不變式，違反會靜默損毀資料）**：可併行的只有「零欄位重疊」的腿——podcast catalog（`PodcastSeries`/`Episode`/`Progress`）與 vocab 管線（`VocabularyEntry`/`ReviewRecord`）互不相交，故安全。Card 只有一個 `/api/vocab` pull writer；不得再增加會同時 fetch/write 全部 `VocabularyEntry` 或共用 `SyncKeys.incrementalBoundary` 的第二 projection。即使 `BackgroundSyncActor` 是 `@ModelActor`，多個 call site 各自 `init` 仍只會序列化同一實例；平行 writer 會造成 lost update、mergeKey 重複插入或 mass-deletion 分母漂移。
 
 ### Settings 顯式同步與帳號邊界
 
@@ -173,16 +173,11 @@ vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-r
 共享牌組庫（Explore）**不進**上述 `syncStatus × actionType` 狀態機：
 
 - **browse = guest-tolerant public GET**：`SharedDeckCatalogService`（`PodcastSyncService` analog）走 `/api/decks*` 唯讀 mirror，router 無 auth dependency、容忍過期 bearer→guest；upsert 進獨立 `SharedDeck @Model`（**非** `VocabularyEntry`/`Card`），**永不進 client outbox**，故不觸發 vocab 上傳/刪除轉移。reconcile 保 empty-response mass-delete guard（空 server list 視為非權威、不下 tombstone），與 podcast catalog 同範式。
-- **copy provenance（`source_shared_deck_id`/`source_version`/`source_shared_card_guid`）**：欄位 day-one 建（`Card` / `Notebook` / `NotebookResponse` / iOS `Notebook @Model`）；browse（Phase 1）**不 stamp**、pull-only，**Phase 2 server-side copy 寫入**。契約結構在設計時已 anticipate、落地後不變：複製卡由 server 蓋 fresh `updated_at`，經**既有 incremental pull**（`?since` / post-copy notebook-first targeted pull）作為**已 synced server rows** 落地（**NO SRS / graph transport**——SRS 全新、graph link server 端 remap，皆不經 sync 傳輸），**永不進 outbox**，故本 `syncStatus × actionType` 狀態機結構性不受影響（詳見 `docs/plans/2026-07-09-shared-decks-library.md §4.1`）。
+- **copy provenance（`source_shared_deck_id`/`source_version`/`source_shared_card_guid`）**：browse（Phase 1）不 stamp、pull-only；Phase 2 server-side copy 把完整 content plane 寫成 ordinary Card，重設 SRS 與 id、蓋 fresh `updated_at`，再經既有 incremental `/api/vocab` pull（`?since` / post-copy notebook-first targeted pull）作為已 synced rows 落地並立即參與一般複習。copy 不進 outbox；graph link 由 server 端 remap，故 `syncStatus × actionType` 狀態機結構性不變。
 
-## 字典卡（V1）與 sync 邊界
+## Card 單一 projection 與字典 lookup 邊界
 
-字典卡是正式、同步、可離線的 graph node，但**走自己的 projection**，不共用 `/api/vocab` 的增量面。
-
-- **雙 projection**：`GET /api/vocab`（legacy vocab 面）**結構性排除** `card_role='dictionary'` 的卡與它們的 link；字典卡走 `GET /api/dictionary-cards`（同樣的 `since` / `cursor` / `X-Next-Cursor` 契約，item 帶 card node + 離線 entry + links）。兩面都以 `updated_at` 為 watermark，故上面「知識圖譜變更的傳播（server 端 touch barrier）」的 touch 不變式**原封適用**——materialize 會 touch source 與 target 兩端，touch 失敗直接讓整個 saga 失敗（`RuntimeError("Dictionary materialization touch barrier failed")`），不容忍「graph 變了但 client 抓不到」。
-- **promotion 的 role 轉移**：`promotion_state` 走 `idle → queued → running →`（成功）`idle + card_role='learning'` 或（失敗）`failed`。role 一旦轉成 `learning`，該卡**從 dictionary projection 消失、開始出現在 vocab projection**——對 client 是「同一個 card id 換了一個 projection」，不是刪除加新增。因此 client 兩面都必須以 card id 收斂，任一面的「消失」不可當成 tombstone。**不支援 learning → dictionary 降級**，故轉移是單向的。
-- **`readerHidden` 走 outbox**：Reader/Podcast 高亮開關是使用者可離線切換的本機意圖，經 client outbox 補送 `PATCH /api/cards/{id}/reader-visibility`；它與 `syncStatus × actionType` 正交（不是 add/delete/edit 的一種），失敗留在 outbox 重試。高亮 eligibility 固定為「未 delete ∧ 未 archive ∧ `readerHidden=false`」——**不得由 `card_role` 推導**。
-- **materialize 的冪等**：`POST /api/graph/links/from-dictionary` 以 `Idempotency-Key` 為 saga 主鍵。同 key 同 request 重送 → replay 已完成結果；同 key 不同 request → 409。crash 後同 key 續跑會沿用已持久化的 judgement（不重新計費），且此續跑**先於** rollout flag 判定，避免關旗標把 staged 卡卡成孤兒。
+所有 Card 與 graph link 只走既有 `/api/vocab` 增量面與同一套 outbox/SRS 規則。後端字典 integration 的 search/detail GET 只回 lookup payload，不建立 Card、graph link 或同步狀態，因此不屬於本狀態機；lookup endpoint、flag、cache 與限流見 `docs/reference/tech_index.md`。
 
 ## Phase 2 之後的建議
 

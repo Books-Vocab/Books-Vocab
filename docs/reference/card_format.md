@@ -4,7 +4,7 @@ authority: SoT
 update_trigger: code-change
 scope:
   - backend/src/kg/
-verified_against: f25fd2ed6
+verified_against: d7d98039f
 -->
 # Card 欄位格式規範
 
@@ -19,7 +19,7 @@ verified_against: f25fd2ed6
 | `collocations` | | 常見搭配 | `invoke a law` |
 | `mode` | | `recognition`（預設）或 `production` | `recognition` |
 
-Card 只有一種產品語意：加入詞庫後即是一般可複習卡片，走同一套 vocab、pipeline、graph 與 SRS。後端純字典查詢只回傳 provider-neutral lookup payload，不持久化為 Card 或 sidecar。
+Card 只有一種產品語意：加入詞庫後即是一般可複習卡片，走同一套 vocab、pipeline、graph 與 SRS。後端字典查詢是獨立的唯讀 integration，不建立或改寫 Card，也不啟動任何 Card 生命週期；endpoint 與運行契約見 `docs/reference/tech_index.md`。
 
 ## Mode 說明
 
