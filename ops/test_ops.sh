@@ -130,6 +130,7 @@ run_one() {
         ops/tests/test_worktree_campaign_reservation.py \
         ops/tests/test_worktree_handback_outcomes.py \
         ops/tests/test_worktree_gate.py \
+        ops/tests/test_worktree_loadtest.py \
         ops/tests/test_worktree_parent_integration.py \
         ops/tests/test_worktree_integrate_status.py \
         ops/tests/test_worktree_registry_queries.py &&
