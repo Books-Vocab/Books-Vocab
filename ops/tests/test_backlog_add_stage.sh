@@ -27,12 +27,23 @@ test -n "$entry_id"
 test ! -f "$store/$entry_id.json"
 grep -Fq "$entry_id" "$queue"
 
+collision_stdout="$tmp_dir/collision.stdout"
+collision_stderr="$tmp_dir/collision.stderr"
 if ./ops/backlog.py add --stage --queue "$queue" --store "$store" \
   --stream IMP --date 2026-01-01 --source test --category tool --severity low \
-  --brief 'probe' --scope 'one staged entry' --detail 'probe' --json; then
+  --brief 'probe' --scope 'one staged entry' --detail 'probe' --json \
+  >"$collision_stdout" 2>"$collision_stderr"; then
   echo "FAIL: duplicate staged id was accepted" >&2
   exit 1
 fi
+
+uv run --no-project --python 3.13 python -c '
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert payload["mode"] == "staged"
+assert payload["written"] is False
+' "$collision_stdout"
+grep -Fq 'ERROR [mode=staged; written=false]' "$collision_stderr"
 
 uv run --no-project --python 3.13 python -c '
 import json, pathlib, sys

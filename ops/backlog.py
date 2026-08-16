@@ -6889,7 +6889,9 @@ def main(argv: list[str] | None = None) -> int:
         # red if they drifted.
         failure_context = {}
         if args.command == "add":
-            mode = "dry-run" if getattr(args, "dry_run", False) else "commit"
+            mode = ("staged" if getattr(args, "stage", False)
+                    else "dry-run" if getattr(args, "dry_run", False)
+                    else "commit")
             failure_context = {"mode": mode, "written": False}
             print(f"ERROR [mode={mode}; written=false] {exc}", file=sys.stderr)
         else:
