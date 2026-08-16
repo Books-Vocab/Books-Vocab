@@ -22,9 +22,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shlex
+import shutil
+import sqlite3
+import stat
 import tarfile
+import tempfile
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -45,6 +50,7 @@ _BACKUP_MANIFEST = "backup_manifest.json"
 _WORLD_ROOT_ARCNAME = "__kg_world__"
 # 檔名上限保守值(macOS/Linux 單段 255 bytes;留 buffer 給備份檔的 timestamp 後綴)。
 _MAX_UID_LEN = 200
+_SQLITE_SIDECAR_SUFFIXES = (".db-wal", ".db-shm", ".db-journal")
 
 
 logger = logging.getLogger(__name__)
@@ -173,6 +179,49 @@ def _world_snapshot_members(data_dir: Path) -> list[Path]:
     return [p for p in sorted(Path(data_dir).iterdir()) if p.name not in excluded]
 
 
+def _is_sqlite_sidecar(path: Path) -> bool:
+    return path.name.endswith(_SQLITE_SIDECAR_SUFFIXES)
+
+
+def _sqlite_online_backup(src: Path, dst: Path) -> None:
+    """複製 WAL 中的邏輯資料為乾淨單檔，不把 transient sidecar 帶入快照。"""
+    src_conn = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    try:
+        dst_conn = sqlite3.connect(str(dst))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+
+
+def _copy_user_snapshot_tree(src: Path, dst: Path) -> None:
+    """把 user tree 複製到穩定 staging；sidecar 消失視為可忽略的 transient。"""
+    dst.mkdir(parents=True, exist_ok=True)
+    for child in sorted(src.iterdir(), key=lambda path: path.name):
+        if _is_sqlite_sidecar(child):
+            continue
+        target = dst / child.name
+        try:
+            mode = child.lstat().st_mode
+            if stat.S_ISDIR(mode):
+                _copy_user_snapshot_tree(child, target)
+            elif stat.S_ISREG(mode):
+                if child.name.endswith(".db"):
+                    _sqlite_online_backup(child, target)
+                else:
+                    shutil.copy2(child, target)
+            elif stat.S_ISLNK(mode):
+                target.symlink_to(os.readlink(child))
+            else:
+                raise OSError(f"unsupported user snapshot member: {child}")
+        except FileNotFoundError:
+            if _is_sqlite_sidecar(child):
+                continue
+            raise
+
+
 def backup_user_dir(data_dir: Path, uid: str) -> Path | None:
     """寫前快照:把整個 ``users/<uid>/`` tar.gz 到 ``data_dir/_ops_backups/``。
 
@@ -204,25 +253,34 @@ def backup_user_dir(data_dir: Path, uid: str) -> Path | None:
             "emailIndex": bool(scoped_email_index),
         },
     }
-    with tarfile.open(dest, "w:gz") as tar:
-        tar.add(src, arcname=uid)
-        _add_bytes_member(
-            tar,
-            _user_meta_arc(uid, _BACKUP_MANIFEST),
-            json.dumps(manifest, ensure_ascii=False, default=str).encode("utf-8"),
-        )
-        if record is not None:
-            _add_bytes_member(
-                tar,
-                _user_meta_arc(uid, _USER_RECORD_SNAPSHOT),
-                json.dumps(record, ensure_ascii=False, default=str).encode("utf-8"),
-            )
-        if scoped_email_index:
-            _add_bytes_member(
-                tar,
-                _user_meta_arc(uid, _EMAIL_INDEX_SNAPSHOT),
-                json.dumps(scoped_email_index, ensure_ascii=False, default=str).encode("utf-8"),
-            )
+    temporary_dest = backup_root / f".{dest.name}.tmp"
+    try:
+        with tempfile.TemporaryDirectory(prefix="kg-user-backup-") as staging:
+            staged_user_dir = Path(staging) / uid
+            _copy_user_snapshot_tree(src, staged_user_dir)
+            with tarfile.open(temporary_dest, "w:gz") as tar:
+                tar.add(staged_user_dir, arcname=uid)
+                _add_bytes_member(
+                    tar,
+                    _user_meta_arc(uid, _BACKUP_MANIFEST),
+                    json.dumps(manifest, ensure_ascii=False, default=str).encode("utf-8"),
+                )
+                if record is not None:
+                    _add_bytes_member(
+                        tar,
+                        _user_meta_arc(uid, _USER_RECORD_SNAPSHOT),
+                        json.dumps(record, ensure_ascii=False, default=str).encode("utf-8"),
+                    )
+                if scoped_email_index:
+                    _add_bytes_member(
+                        tar,
+                        _user_meta_arc(uid, _EMAIL_INDEX_SNAPSHOT),
+                        json.dumps(scoped_email_index, ensure_ascii=False, default=str).encode("utf-8"),
+                    )
+        temporary_dest.replace(dest)
+    except Exception:
+        temporary_dest.unlink(missing_ok=True)
+        raise
     return dest
 
 
@@ -393,10 +451,13 @@ class EditContext:
         # 走結構化 error 而非拋 traceback 污染 --json。備份在 apply 之前,備份失敗
         # 即中止、不落地 —— 保住「任何寫入前都有可還原快照」的不變式。
         backup = None
+        backup_completed = False
         try:
             backup = backup_user_dir(self.data_dir, self.uid)
+            backup_completed = True
             result = apply_fn()
         except Exception as exc:  # noqa: BLE001 — 落地失敗要結構化呈現,非 crash
+            failure_stage = "backup" if not backup_completed else "apply"
             data_mutated = self._destructive_step_started
             recovery_path = None
             if data_mutated and backup is not None:
@@ -404,6 +465,7 @@ class EditContext:
                     "cd backend && uv run python ops_edit.py restore "
                     f"{shlex.quote(self.uid)} --backup {shlex.quote(str(backup))} --commit"
                 )
+            verified = {"ok": False, "stage": failure_stage, "error": str(exc)}
             # 失敗的 commit 也留 audit 痕跡(status=error):備份已建但寫入失敗的
             # 操作此前無任何紀錄,事後審查無跡可查。記下 error + backup,讓 operator
             # 能定位「哪次操作炸了、可從哪個快照回退」。
@@ -418,6 +480,8 @@ class EditContext:
                     "backup": str(backup) if backup else None,
                     "data_mutated": data_mutated,
                     "recovery_path": recovery_path,
+                    "failure_stage": failure_stage,
+                    "verified": verified,
                 },
             )
             error_payload = {
@@ -430,15 +494,19 @@ class EditContext:
                 "backup": str(backup) if backup else None,
                 "data_mutated": data_mutated,
                 "recovery_path": recovery_path,
+                "failure_stage": failure_stage,
+                "verified": verified,
             }
-            if data_mutated:
+            if failure_stage == "backup":
+                error_payload["hint"] = "backup 失敗；未執行資料變更"
+            elif data_mutated:
                 error_payload["hint"] = (
                     "資料已變更；請依 recovery_path 從 backup 還原"
                     if recovery_path
                     else "資料已變更，但沒有可用 backup；請立即人工處理"
                 )
             emit(error_payload, json_mode=self.json_mode)
-            logger.warning("Silently handled exception; using fallback response", exc_info=True)
+            logger.warning("Edit operation failed during %s: %s", failure_stage, exc, exc_info=True)
             return 1
 
         verified = verify_fn() if verify_fn else None
