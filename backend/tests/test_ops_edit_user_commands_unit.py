@@ -33,7 +33,6 @@ def _make_args(**kwargs) -> argparse.Namespace:
         "custom_forgot_multiplier": None,
         "custom_minimum_interval_hours": None,
         "custom_maximum_interval_hours": None,
-        "include_dictionary_cards": None,
         "active_notebook": None,
         "auto_link": None,
         "backup": None,
@@ -166,17 +165,14 @@ class TestUserDelete:
         assert ns.uid == "u1"
         assert ns.commit is True
 
-    def test_parser_dictionary_review_flag_is_tristate(self):
+    def test_parser_rejects_retired_dictionary_card_flags(self):
         from kg.ops_edit_parser import build_parser
 
         parser = build_parser()
-        absent = parser.parse_args(["user-config-set", "u1"])
-        included = parser.parse_args(["user-config-set", "u1", "--include-dictionary-cards"])
-        excluded = parser.parse_args(["user-config-set", "u1", "--exclude-dictionary-cards"])
-
-        assert absent.include_dictionary_cards is None
-        assert included.include_dictionary_cards is True
-        assert excluded.include_dictionary_cards is False
+        with pytest.raises(SystemExit):
+            parser.parse_args(["user-config-set", "u1", "--include-dictionary-cards"])
+        with pytest.raises(SystemExit):
+            parser.parse_args(["user-config-set", "u1", "--exclude-dictionary-cards"])
 
 
 # ── cmd_user_config_set ──────────────────────────────────────────────────
@@ -240,30 +236,6 @@ class TestUserConfigSet:
         rm = users["u1"]["config"]["review_mode"]
         assert rm["mode"] == "intensive"
         assert rm["custom_initial_interval_hours"] == 6
-
-    def test_review_mode_edit_preserves_dictionary_review_setting(self, tmp_path, monkeypatch, capsys):
-        self._setup_user(tmp_path)
-        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        assert user_cmd.cmd_user_config_set(
-            _make_args(include_dictionary_cards=True, commit=True)
-        ) == 0
-        assert user_cmd.cmd_user_config_set(
-            _make_args(review_mode="intensive", commit=True)
-        ) == 0
-        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
-        assert users["u1"]["config"]["review_mode"]["include_dictionary_cards"] is True
-
-    def test_explicit_exclude_dictionary_review_setting(self, tmp_path, monkeypatch, capsys):
-        self._setup_user(tmp_path)
-        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
-        assert user_cmd.cmd_user_config_set(
-            _make_args(include_dictionary_cards=True, commit=True)
-        ) == 0
-        assert user_cmd.cmd_user_config_set(
-            _make_args(include_dictionary_cards=False, commit=True)
-        ) == 0
-        users = load_users_from(tmp_path / "users.json", lambda x: (x, False))
-        assert users["u1"]["config"]["review_mode"]["include_dictionary_cards"] is False
 
     def test_commit_auto_link_off(self, tmp_path, monkeypatch, capsys):
         self._setup_user(tmp_path)

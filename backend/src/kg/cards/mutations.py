@@ -14,10 +14,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from ..exceptions import ConflictError, NotFoundError
-from ..lexical import LexicalEntry
 from ..text_utils import normalize_nfc, normalize_nfc_lower
-from .dictionary_models import DictionaryEntry
 from .model import Card
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,9 +35,6 @@ class CardMutationMixin:
         inflections: list[str] | None = None,
         notebook_id: str = "default",
         source: str | None = None,
-        card_role: str = "learning",
-        review_eligible: bool = True,
-        reader_hidden: bool = False,
     ) -> Card:
         """Create and store a new card.
 
@@ -52,8 +46,6 @@ class CardMutationMixin:
         """
         if not content or not content.strip():
             raise ValueError("content must be non-empty")
-        if card_role not in {"learning", "dictionary"}:
-            raise ValueError("card_role must be learning or dictionary")
         norm = normalize_nfc(content)
         with Session(self.engine) as session:
             row = session.connection().exec_driver_sql(
@@ -62,16 +54,7 @@ class CardMutationMixin:
                 (norm, notebook_id),
             ).first()
             if row:
-                existing = session.get(Card, row[0])
-                if (
-                    existing is not None
-                    and card_role == "learning"
-                    and getattr(existing, "card_role", "learning") == "dictionary"
-                ):
-                    raise ConflictError(
-                        "Existing dictionary card requires explicit promotion"
-                    )
-                return existing  # type: ignore[return-value]
+                return session.get(Card, row[0])  # type: ignore[return-value]
 
             card = Card(
                 content=content,
@@ -85,9 +68,6 @@ class CardMutationMixin:
                 inflections=inflections or [],
                 notebook_id=notebook_id,
                 source=source,
-                card_role=card_role,
-                review_eligible=review_eligible,
-                reader_hidden=reader_hidden,
             )
             session.add(card)
             try:
@@ -106,16 +86,7 @@ class CardMutationMixin:
                     (norm, notebook_id),
                 ).first()
                 if row:
-                    existing = session.get(Card, row[0])
-                    if (
-                        existing is not None
-                        and card_role == "learning"
-                        and getattr(existing, "card_role", "learning") == "dictionary"
-                    ):
-                        raise ConflictError(
-                            "Existing dictionary card requires explicit promotion"
-                        )
-                    return existing  # type: ignore[return-value]
+                    return session.get(Card, row[0])  # type: ignore[return-value]
                 raise
             session.refresh(card)
         return card
@@ -195,109 +166,6 @@ class CardMutationMixin:
             session.refresh(card)
         return card, True
 
-    def add_shared_dictionary_copy(
-        self,
-        *,
-        content: str,
-        meaning: str,
-        pos: str | None,
-        examples: list[str] | None,
-        collocations: list[str] | None,
-        note: str | None,
-        difficulty: float | None,
-        mode: str,
-        root_form: str | None,
-        inflections: list[str] | None,
-        notebook_id: str,
-        updated_at: datetime,
-        source_shared_card_guid: str,
-        dictionary_entry: LexicalEntry,
-        selected_sense_key: str,
-        selected_example_key: str,
-    ) -> tuple[Card, bool]:
-        """Insert an official-deck card and its active dictionary sidecar atomically.
-
-        Shared decks contain the canonical content projection but no provider
-        payload.  The caller supplies a provider-neutral lexical snapshot so
-        the copied row obeys the same ``Card`` + ``DictionaryEntry`` identity
-        contract as a card materialized from a dictionary lookup.
-        """
-        if not content or not content.strip():
-            raise ValueError("content must be non-empty")
-        sense = next(
-            (item for item in dictionary_entry.senses if item.key == selected_sense_key),
-            None,
-        )
-        if sense is None:
-            raise NotFoundError("Dictionary sense", selected_sense_key)
-        example = next(
-            (item for item in sense.examples if item.key == selected_example_key),
-            None,
-        )
-        if example is None:
-            raise NotFoundError("Dictionary example", selected_example_key)
-
-        norm = normalize_nfc(content)
-        with Session(self.engine) as session:
-            row = session.connection().exec_driver_sql(
-                "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                (norm, notebook_id),
-            ).first()
-            if row:
-                return session.get(Card, row[0]), False  # type: ignore[return-value]
-
-            card = Card(
-                content=content,
-                content_nfc_lower=normalize_nfc_lower(content),
-                meaning=meaning,
-                pos=pos,
-                examples=examples or [],
-                collocations=collocations or [],
-                note=note,
-                difficulty=difficulty,
-                mode=mode,
-                root_form=root_form,
-                inflections=inflections or [],
-                notebook_id=notebook_id,
-                updated_at=updated_at,
-                source_shared_card_guid=source_shared_card_guid,
-                card_role="dictionary",
-                review_eligible=False,
-            )
-            sidecar = DictionaryEntry(
-                card_id=card.id,
-                provider=dictionary_entry.provider,
-                dictionary_id=dictionary_entry.dictionary_id,
-                provider_entry_key=dictionary_entry.entry_key,
-                provider_schema_version=dictionary_entry.schema_version,
-                selected_sense_key=sense.key,
-                selected_example_key=example.key,
-                payload_json=dictionary_entry.model_dump_json(),
-                source_url=dictionary_entry.attribution.source_url,
-                license_name=dictionary_entry.attribution.license_name,
-                license_url=dictionary_entry.attribution.license_url,
-                attribution_text=dictionary_entry.attribution.attribution_text,
-                fetched_at=dictionary_entry.fetched_at,
-                materialization_status="active",
-            )
-            session.add(card)
-            session.add(sidecar)
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-                row = session.connection().exec_driver_sql(
-                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                    (norm, notebook_id),
-                ).first()
-                if row:
-                    return session.get(Card, row[0]), False  # type: ignore[return-value]
-                raise
-            session.refresh(card)
-        return card, True
-
     def hard_delete_by_notebook(self, notebook_id: str) -> int:
         """Physically delete every card in a notebook. Compensation-only (a
         failed copy must leave no partial rows); ordinary deletes are soft.
@@ -315,19 +183,6 @@ class CardMutationMixin:
                 return 0
             placeholders = ", ".join("?" for _ in card_ids)
             params = tuple(card_ids)
-            # These rows are part of a dictionary card's durable identity. The
-            # target is a staged notebook being compensated, so hard-delete
-            # the sidecar/saga rows before the card rather than leaking them.
-            for table in (
-                "dictionary_archive_link_cause",
-                "dictionary_lifecycle_state",
-                "dictionary_promotion_jobs",
-                "dictionary_entry",
-                "lexical_operations",
-            ):
-                session.connection().exec_driver_sql(
-                    f"DELETE FROM {table} WHERE card_id IN ({placeholders})", params
-                )
             session.connection().exec_driver_sql(
                 f"DELETE FROM card WHERE id IN ({placeholders})", params
             )

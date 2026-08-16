@@ -15,7 +15,6 @@ class TestFlattenUserConfig:
         assert flat["translation"] == {"source_lang": "en", "target_lang": "zh-Hant"}
         assert flat["vocab_ui"] == {"active_notebook_id": "default", "updated_at": None}
         assert flat["review_mode"]["mode"] == "relaxed"
-        assert flat["review_mode"]["include_dictionary_cards"] is False
         assert flat["review_clock"]["is_paused"] is False
 
     def test_vocab_ui_flattened(self):

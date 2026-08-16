@@ -3,7 +3,7 @@
 
 
 
-from _dictionary_v1_support import *  # noqa: F403
+from _dictionary_lookup_support import *  # noqa: F403
 
 
 

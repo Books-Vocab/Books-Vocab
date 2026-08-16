@@ -86,7 +86,6 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
             custom_forgot_multiplier=mode_data.get("custom_forgot_multiplier", 0.45),
             custom_minimum_interval_hours=mode_data.get("custom_minimum_interval_hours", 6),
             custom_maximum_interval_hours=mode_data.get("custom_maximum_interval_hours", 1440),
-            include_dictionary_cards=bool(mode_data.get("include_dictionary_cards", False)),
             updated_at=mode_data.get("updated_at"),
         )
     else:
@@ -149,7 +148,6 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
             "custom_forgot_multiplier": rm.custom_forgot_multiplier,
             "custom_minimum_interval_hours": rm.custom_minimum_interval_hours,
             "custom_maximum_interval_hours": rm.custom_maximum_interval_hours,
-            "include_dictionary_cards": rm.include_dictionary_cards,
             "updated_at": rm.updated_at,
         }
     # Vocab UI(目前僅全域 active notebook 游標)。決定新選詞歸屬;單一 updated_at 驅動

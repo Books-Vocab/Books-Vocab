@@ -187,17 +187,6 @@ EXPORT_IGNORED_CARD_COLUMNS: dict[str, str] = {
     "updated_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
     "is_deleted": "查詢過濾條件，非可重放值（軟刪卡不進 payload）",
     "content_nfc_lower": "content 的衍生索引，由寫面自動維護",
-    # ── 以下 5 欄：seed 今日沒有攝入面 ──────────────────────────────
-    # 列在這裡＝**明示承認 snapshot/restore 會丟掉它們**，不是宣稱無害。
-    # §1.1 欄位對稱要求「export 吐出的每個欄位 seed 都要吃得進去」，硬導會讓
-    # export A 吐鍵 → seed B 忽略 → export B 缺鍵 → byte-equal fixpoint 破。
-    # 要真正保住這幾欄，得先擴 seed 的攝入面（另一條 entry，非本條範圍）。
-    "card_role": "seed 無攝入面；由 spec 重建的世界會回退 learning（已知有損）",
-    "review_eligible": "seed 無攝入面；重建後回退 True（已知有損）",
-    "reader_hidden": "seed 無攝入面；重建後回退 False —— 這是**使用者意圖**，"
-                     "是這批裡最該優先補攝入面的一欄（已知有損）",
-    "promotion_state": "轉卡 job 狀態機，pipeline 衍生態，非可重放值",
-    "promoted_at": "轉卡 job 時戳，pipeline 衍生態，非可重放值",
 }
 
 

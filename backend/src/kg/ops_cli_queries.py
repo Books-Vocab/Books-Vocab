@@ -154,7 +154,6 @@ def cmd_user_config(args: argparse.Namespace) -> None:
             ["review_mode", "custom_forgot_multiplier", str(rm["custom_forgot_multiplier"])],
             ["review_mode", "custom_minimum_interval_hours", str(rm["custom_minimum_interval_hours"])],
             ["review_mode", "custom_maximum_interval_hours", str(rm["custom_maximum_interval_hours"])],
-            ["review_mode", "include_dictionary_cards", str(rm["include_dictionary_cards"])],
             ["review_mode", "updated_at", str(rm["updated_at"])],
             ["vocab_ui", "active_notebook_id", str(vu["active_notebook_id"])],
             ["vocab_ui", "updated_at", str(vu["updated_at"])],

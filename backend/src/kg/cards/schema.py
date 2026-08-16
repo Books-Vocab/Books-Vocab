@@ -6,32 +6,29 @@ from sqlalchemy.engine import Engine
 
 from ..sqlite_utils import ensure_columns
 from ..text_utils import normalize_nfc_lower
-from .dictionary_models import (
-    DictionaryArchiveLinkCause,
-    DictionaryEntry,
-    DictionaryLifecycleState,
-    DictionaryPromotionJob,
-    LexicalOperation,
-)
 from .model import Card
+
+_RETIRED_DICTIONARY_CARD_COLUMNS = (
+    "card_role",
+    "review_eligible",
+    "reader_hidden",
+    "promotion_state",
+    "promoted_at",
+)
+_RETIRED_DICTIONARY_CARD_TABLES = (
+    "dictionary_entry",
+    "lexical_operations",
+    "dictionary_promotion_jobs",
+    "dictionary_lifecycle_state",
+    "dictionary_archive_link_cause",
+)
 
 
 def init_schema(engine: Engine) -> None:
     """Create the card table, run migrations and ensure all indexes exist."""
-    Card.metadata.create_all(
-        engine,
-        tables=[
-            Card.__table__,
-            DictionaryArchiveLinkCause.__table__,
-            DictionaryEntry.__table__,
-            DictionaryLifecycleState.__table__,
-            LexicalOperation.__table__,
-            DictionaryPromotionJob.__table__,
-        ],
-        checkfirst=True,
-    )
+    Card.metadata.create_all(engine, tables=[Card.__table__], checkfirst=True)
+    _retire_dictionary_card_schema(engine)
     _migrate_review_columns(engine)
-    _migrate_dictionary_promotion_jobs(engine)
     _migrate_content_nfc_lower(engine)
     _create_indexes(engine)
 
@@ -71,6 +68,25 @@ def _create_indexes(engine: Engine) -> None:
         conn.commit()
 
 
+def _retire_dictionary_card_schema(engine: Engine) -> None:
+    """Remove the retired card subtype while preserving ordinary card rows."""
+    with engine.connect() as conn:
+        # Serialize the inspect/drop boundary across independent CardStore
+        # instances. SQLite has no DROP COLUMN IF EXISTS, so a deferred
+        # transaction would allow two workers to observe the same old column.
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
+        for table in _RETIRED_DICTIONARY_CARD_TABLES:
+            conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{table}"')
+
+        existing_columns = {
+            row[1] for row in conn.exec_driver_sql("PRAGMA table_info(card)").fetchall()
+        }
+        for column in _RETIRED_DICTIONARY_CARD_COLUMNS:
+            if column in existing_columns:
+                conn.exec_driver_sql(f'ALTER TABLE card DROP COLUMN "{column}"')
+        conn.commit()
+
+
 def _migrate_review_columns(engine: Engine) -> None:
     """Add review state columns to existing card tables (SQLModel create_all won't ALTER)."""
     review_columns = {
@@ -85,21 +101,9 @@ def _migrate_review_columns(engine: Engine) -> None:
         "review_streak": "INTEGER DEFAULT 0",
         "last_review_feedback": "INTEGER DEFAULT -1",
         "source_shared_card_guid": "TEXT",
-        "card_role": "TEXT NOT NULL DEFAULT 'learning'",
-        "review_eligible": "INTEGER NOT NULL DEFAULT 1",
-        "reader_hidden": "INTEGER NOT NULL DEFAULT 0",
-        "promotion_state": "TEXT NOT NULL DEFAULT 'idle'",
-        "promoted_at": "TIMESTAMP",
     }
     with engine.connect() as conn:
         ensure_columns(conn, "card", review_columns)
-        conn.commit()
-
-
-def _migrate_dictionary_promotion_jobs(engine: Engine) -> None:
-    """Keep pre-release promotion job tables forward-compatible."""
-    with engine.connect() as conn:
-        ensure_columns(conn, "dictionary_promotion_jobs", {"worker_id": "TEXT"})
         conn.commit()
 
 
