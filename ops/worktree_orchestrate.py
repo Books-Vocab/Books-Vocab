@@ -840,8 +840,9 @@ def plan_gates(changed_files: list[str],
                            with no targeted test is a WARN advisory (never the full
                            suite — it carries known pre-existing false failures).
       ops/**.py         -> targeted pytest via the pinned uv sandbox (`uv run
-                           --no-project --python 3.13 --with pytest` — never touching
-                           backend/uv.lock): a changed ops/tests/test_*.py runs itself;
+                           --no-project --python 3.13 --with pytest --with pyjwt
+                           --with cryptography` — never touching backend/uv.lock): a
+                           changed ops/tests/test_*.py runs itself;
                            a changed src file runs its ops/tests/test_<basename>. EVERY
                            target must pass `ops_test_exists` (a deleted test file is
                            in the diff too — a gone path would make pytest exit 4);
