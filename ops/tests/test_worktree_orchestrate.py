@@ -529,6 +529,21 @@ def test_gate_plan_changed_uitest_file_selects_its_ui_class():
     assert not any(n.startswith("ios-test-ui") for n in _names(gates))
 
 
+def test_gate_plan_deleted_uitest_is_named_but_never_executed():
+    deleted = "ios/BooksAndVocabUITests/DictionaryLookupFlowUITests.swift"
+    changed = [deleted, "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift"]
+    gates = plan_gates(changed, ops_test_exists=lambda rel: rel != deleted)
+    names = _names(gates)
+
+    assert "ios-test-ui:DictionaryLookupFlowUITests" not in names
+    removed = _by_name(gates)["ios-ui-tests-removed"]
+    assert removed["level"] == "warn"
+    assert removed["files"] == [deleted]
+
+    fixture = _by_name(gates)["ios-test-ui:FixtureDatasetUITests"]
+    assert "--visual" in fixture["cmd"]
+
+
 def test_gate_plan_live_demo_uitest_compiles_for_device_but_never_runs_fixture_simulator():
     gates = plan_gates(["ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift"])
     by_name = _by_name(gates)
@@ -589,6 +604,19 @@ def test_gate_plan_backend_test_file_runs_targeted_pytest():
     assert "backend-tests-advisory" not in g
 
 
+def test_gate_plan_deleted_backend_test_is_not_passed_to_pytest():
+    deleted = "backend/tests/test_dictionary_lifecycle.py"
+    live = "backend/tests/test_dictionary_lookup_surface.py"
+    gates = plan_gates([deleted, live], ops_test_exists=lambda rel: rel != deleted)
+    spec = _by_name(gates)["backend-pytest"]
+
+    assert "tests/test_dictionary_lifecycle.py" not in spec["cmd"]
+    assert "tests/test_dictionary_lookup_surface.py" in spec["cmd"]
+    removed = _by_name(gates)["backend-tests-removed"]
+    assert removed["level"] == "warn"
+    assert removed["files"] == [deleted]
+
+
 def test_gate_plan_backend_src_only_is_advisory_warn_not_full_suite():
     # honours the "don't run the full backend suite (36 pre-existing false fails)"
     # rule: a src-only change with no targeted test in the diff is a WARN advisory.
@@ -611,6 +639,7 @@ def test_gate_plan_ops_test_file_runs_itself():
     assert spec.get("cwd") is None
     assert spec["cmd"][:7] == ["uv", "run", "--no-project", "--python", "3.13",
                                "--with", "pytest"]
+    assert spec["cmd"][7:11] == ["--with", "pyjwt", "--with", "cryptography"]
     assert "ops/tests/test_capability_matrix.py" in spec["cmd"]
     # targeted — never the whole ops/tests directory when every change maps to a test
     assert "ops/tests" not in spec["cmd"]
