@@ -5997,14 +5997,49 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
               f"✗ integrate: the gate refused to judge {wt}:\n  {why}")
         return grc
     head = _head_sha(wt)
+    runner_revision = st.get("runner_revision")
+    requires_revision = "runner_revision" in st
+    integration_revision = None
+    if requires_revision and verdict in ("pass", "warn"):
+        integration_revision = _delivery_revision(
+            Path(wt) / "ops" / "worktree_orchestrate.py"
+        )
+        if integration_revision is None:
+            _emit({
+                "schema": INTEGRATE_SCHEMA, "step": "integrate",
+                "mode": "refused", "slug": st["slug"],
+                "worktree": wt, "head_sha": head,
+                "error": "gated integration tree has no readable orchestrator revision",
+            }, args.json,
+                "✗ integrate refused: could not capture integration_revision")
+            return EXIT_BLOCK
+        revision_error = _delivery_revision_guard(
+            runner_revision, integration_revision,
+        )
+        if revision_error:
+            _emit({
+                "schema": INTEGRATE_SCHEMA, "step": "integrate",
+                "mode": "refused", "slug": st["slug"],
+                "worktree": wt, "head_sha": head,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
+                "error": revision_error,
+            }, args.json, f"✗ integrate refused: {revision_error}")
+            return EXIT_BLOCK
     st["gate"] = {
         "verdict": verdict, "rc": grc, "head_sha": gpay.get("head_sha"),
         "record": str(_gate_record_path(args.state, wt)),
+        **({"runner_revision": runner_revision}
+           if requires_revision else {}),
+        **({"integration_revision": integration_revision}
+           if integration_revision is not None else {}),
         "gates": [{"name": g.get("name"), "status": g.get("status"),
                    "summary": g.get("summary")}
                   for g in (gpay.get("gates") or [])
                   if g.get("status") in ("block", "warn", "inconclusive")],
     }
+    if integration_revision is not None:
+        st["integration_revision"] = integration_revision
     _integrate_save(spath, st)
     next_step = (f"{wt}/ops/worktree_orchestrate.py cutover --worktree {wt} --commit"
                  if verdict in ("pass", "warn")
@@ -6022,6 +6057,10 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         "source_claim": st.get("source_claim"),
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "head_sha": head, "gate": st["gate"], "gate_runs": 1,
+        **({"runner_revision": runner_revision}
+           if requires_revision else {}),
+        **({"integration_revision": integration_revision}
+           if integration_revision is not None else {}),
         "verdict": verdict, "landed": False, "next_step": next_step,
         "state_cleared": verdict in ("pass", "warn"),
     }
@@ -6404,6 +6443,12 @@ def _delivery_require_integrate_gated(payload: dict[str, Any]) -> str | None:
                 f"{payload.get('verdict')!r}")
     if not isinstance(payload.get("manifest"), str) or not payload["manifest"]:
         return "gated integration receipt has no manifest"
+    if not isinstance(payload.get("runner_revision"), str) \
+            or not payload["runner_revision"]:
+        return "gated integration receipt has no runner_revision"
+    if not isinstance(payload.get("integration_revision"), str) \
+            or not payload["integration_revision"]:
+        return "gated integration receipt has no integration_revision"
     return None
 
 
@@ -6504,6 +6549,28 @@ def _delivery_load_json(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _delivery_revision(path: Path) -> str | None:
+    """Return the content revision of one orchestrator copy, fail-closed."""
+    try:
+        return sha256_file(path)
+    except OSError:
+        return None
+
+
+def _delivery_revision_guard(
+    runner_revision: str | None,
+    integration_revision: str | None,
+) -> str | None:
+    """Require the runner and gated integration tree to use one tool revision."""
+    if not isinstance(runner_revision, str) or not runner_revision:
+        return "runner_revision is missing"
+    if not isinstance(integration_revision, str) or not integration_revision:
+        return "integration_revision is missing"
+    if runner_revision != integration_revision:
+        return "runner_revision does not match integration_revision"
+    return None
 
 
 def _delivery_common_dir(worktree: Path) -> str | None:
@@ -7725,6 +7792,17 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     if blocked is not None:
         return blocked
     primary = primary_root()
+    coordinator_orchestrator = Path(__file__).resolve()
+    runner_revision = _delivery_revision(coordinator_orchestrator)
+    if getattr(args, "commit", False) and runner_revision is None:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "stopped", "slug": args.slug,
+            "runner_revision": None,
+            "integration_revision": None,
+            "error": "runner_revision is missing",
+        }, args.json, "✗ close-wave refused: runner_revision is missing")
+        return EXIT_BLOCK
     dirty = _delivery_primary_dirty(primary)
     _, early_manifests = _delivery_state_paths(args)
     early_manifest = early_manifests[0] if early_manifests else None
@@ -7854,6 +7932,20 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         return EXIT_BLOCK
     if args.commit and manifest is not None and manifest_delivery_status == "completed":
         steps: list[dict[str, Any]] = []
+        integration_revision = manifest.get("integration_revision")
+        revision_error = _delivery_revision_guard(
+            runner_revision, integration_revision,
+        )
+        if revision_error:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
+                "steps": steps, "manifest": str(manifest_path),
+                "error": revision_error,
+            }, args.json, f"✗ close-wave stopped: {revision_error}")
+            return EXIT_BLOCK
         saved_expected = _delivery_saved_expected_ticket_ids(manifest)
         expected_ticket_ids = _delivery_expected_ticket_set(
             primary, records, branches, saved_expected=saved_expected,
@@ -7908,6 +8000,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             _emit({
                 "schema": DELIVERY_SCHEMA, "step": "close-wave",
                 "mode": "stopped", "slug": args.slug, "branches": branches,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
                 "steps": steps, "manifest": str(manifest_path) if manifest_path else None,
             }, args.json, "✗ close-wave stopped during remote sync")
             return sync_rc
@@ -7917,6 +8011,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             "mode": "already-closed", "slug": args.slug, "branches": branches,
             "integration_branch": manifest.get("branch"),
             "manifest": str(manifest_path) if manifest_path else None,
+            "runner_revision": runner_revision,
+            "integration_revision": integration_revision,
             "steps": steps, "expected_ticket_ids": expected_ticket_ids,
             "sync_status": marker.get("sync_status", "not-requested"),
         }, args.json,
@@ -7947,6 +8043,20 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 args=args, state_path=state_path, manifest_path=manifest_path,
                 error="validated close-wave manifest disappeared during recovery",
             )
+        integration_revision = recovered.get("integration_revision")
+        revision_error = _delivery_revision_guard(
+            runner_revision, integration_revision,
+        )
+        if revision_error:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
+                "steps": [], "manifest": str(manifest_path),
+                "error": revision_error,
+            }, args.json, f"✗ close-wave recovery stopped: {revision_error}")
+            return EXIT_BLOCK
         saved_expected = _delivery_saved_expected_ticket_ids(recovered)
         expected_ticket_ids = _delivery_expected_ticket_set(
             primary, recovery_records, branches, saved_expected=saved_expected,
@@ -8014,6 +8124,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             _emit({
                 "schema": DELIVERY_SCHEMA, "step": "close-wave",
                 "mode": "stopped", "slug": args.slug, "branches": branches,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
                 "steps": recovery_steps, "manifest": str(manifest_path),
             }, args.json, "close-wave recovered locally but remote sync stopped")
             return sync_rc
@@ -8022,6 +8134,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             "mode": "recovered", "slug": args.slug, "branches": branches,
             "integration_branch": manifest.get("branch"),
             "manifest": str(manifest_path) if manifest_path else None,
+            "runner_revision": runner_revision,
+            "integration_revision": integration_revision,
             "steps": recovery_steps, "expected_ticket_ids": expected_ticket_ids,
         }, args.json,
             f"close-wave {args.slug}: recovered after teardown"
@@ -8081,7 +8195,6 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             return False
         return True
 
-    coordinator_orchestrator = Path(__file__).resolve()
     # Before cutover the source coordinator is required for the new protocol;
     # after cutover, all remaining steps use this stable primary copy.  A delivery
     # wave may resolve its own source worktree before anchor/sync, so any later
@@ -8136,6 +8249,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         allowed.add(str(integration_state["branch"]))
 
     if integration_state is not None:
+        integration_state["runner_revision"] = runner_revision
+        try:
+            _integrate_save(state_path, integration_state)
+        except OSError as exc:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=f"could not persist runner_revision: {exc}",
+            )
+
+    if integration_state is not None:
         integration_worktree = Path(str(integration_state["worktree"]))
         integration_branch = str(integration_state.get("branch") or "")
         continue_script = integration_worktree / "ops" / "worktree_orchestrate.py"
@@ -8149,14 +8272,19 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             ],
             label=f"integrate-gate:{args.slug}",
             expected_schema=INTEGRATE_SCHEMA,
-            required_keys=("worktree", "branch", "manifest"),
+            required_keys=("worktree", "branch", "manifest", "integration_revision"),
             receipt_validator=_delivery_require_integrate_gated,
         )
         steps.append({"name": "integrate-gate", "rc": continue_rc,
                       "payload": continue_payload})
         if continue_rc != EXIT_OK or continue_payload.get("verdict") not in ("pass", "warn"):
             _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
-                   "mode": "stopped", "slug": args.slug, "steps": steps,
+                   "mode": "stopped", "slug": args.slug,
+                   "runner_revision": runner_revision,
+                   "integration_revision": continue_payload.get(
+                       "integration_revision"
+                   ),
+                   "steps": steps,
                    "next": "fix/resume the named integrated-tree issue, then rerun close-wave"},
                   args.json, "✗ close-wave stopped: integrated-tree Gate is not non-block")
             return continue_rc or EXIT_BLOCK
@@ -8179,8 +8307,67 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
                 args=args, state_path=state_path, manifest_path=manifest_path,
                 error=manifest_error,
             )
+        integration_revision = manifest.get("integration_revision")
+        if continue_payload.get("integration_revision") != integration_revision:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error="integrate gate receipt and manifest disagree on integration_revision",
+            )
+        revision_error = _delivery_revision_guard(
+            runner_revision, integration_revision,
+        )
+        if revision_error:
+            steps.append({
+                "name": "revision-provenance", "ok": False,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
+                "error": revision_error,
+            })
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
+                "steps": steps, "manifest": str(manifest_path),
+                "error": revision_error,
+            }, args.json, f"✗ close-wave stopped: {revision_error}")
+            return EXIT_BLOCK
+        manifest["runner_revision"] = runner_revision
+        try:
+            _integrate_save(manifest_path, manifest)
+        except OSError as exc:
+            return _delivery_state_error(
+                args=args, state_path=state_path, manifest_path=manifest_path,
+                error=f"could not persist runner_revision in manifest: {exc}",
+            )
         integration_state = None
         allowed.add(str(manifest.get("branch")))
+
+    if getattr(args, "commit", False) and manifest is not None:
+        integration_revision = manifest.get("integration_revision")
+        revision_error = _delivery_revision_guard(
+            runner_revision, integration_revision,
+        )
+        if revision_error:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug,
+                "runner_revision": runner_revision,
+                "integration_revision": integration_revision,
+                "steps": steps,
+                "manifest": str(manifest_path) if manifest_path else None,
+                "error": revision_error,
+            }, args.json, f"✗ close-wave stopped: {revision_error}")
+            return EXIT_BLOCK
+        if manifest.get("runner_revision") != runner_revision:
+            manifest["runner_revision"] = runner_revision
+            try:
+                _integrate_save(manifest_path, manifest)
+            except OSError as exc:
+                return _delivery_state_error(
+                    args=args, state_path=state_path, manifest_path=manifest_path,
+                    error=f"could not persist runner_revision in manifest: {exc}",
+                )
 
     # The opening registry snapshot is not enough: a peer may start while the
     # integrated Gate is running.  Recheck before the irreversible develop step.
@@ -8640,6 +8827,11 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave",
             "mode": "stopped", "slug": args.slug, "steps": steps,
+            "runner_revision": runner_revision,
+            "integration_revision": (
+                (manifest or {}).get("integration_revision")
+                if isinstance(manifest, dict) else None
+            ),
             "manifest": str(manifest_path) if manifest_path else None,
         }, args.json, "close-wave landed locally but remote sync stopped")
         return sync_rc
@@ -8647,9 +8839,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     final_manifest = _delivery_load_json(manifest_path) if manifest_path else None
     final_marker = ((final_manifest or {}).get("close_wave")
                     if isinstance(final_manifest, dict) else {}) or {}
+    final_integration_revision = None
+    for candidate in (final_manifest, manifest):
+        if isinstance(candidate, dict) and candidate.get("integration_revision"):
+            final_integration_revision = candidate["integration_revision"]
+            break
     _emit({
         "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "committed",
         "slug": args.slug, "branches": branches, "integration_branch": integration_branch,
+        "runner_revision": runner_revision,
+        "integration_revision": final_integration_revision,
         "steps": steps, "primary_dirty": _delivery_primary_dirty(primary),
         "expected_ticket_ids": expected_ticket_ids,
         "sync_status": final_marker.get("sync_status", "not-requested"),
