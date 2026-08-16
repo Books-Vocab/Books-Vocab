@@ -48,7 +48,7 @@ jobs:
       - name: Install tools the suite needs
         # 明列，不靠 ubuntu-latest 碰巧預裝：runner image 的工具清單不是契約，而
         # `ubuntu-latest` 是會動的標籤。實測（runner 等價容器）少了它們的後果——
-        # jq→ui-quality-plane/branch-audit/review-audit、sqlite3→backup-verify、
+        # jq→ui-quality-plane/branch-audit、sqlite3→backup-verify、
         # python3→infra-health、ssh→證偽器自我檢驗。清單與
         # ops/tests/test_ops_ci_coverage.sh 開頭那段註解是同一份，改一邊要改兩邊。
         run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3 python3 openssh-client
