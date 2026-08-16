@@ -135,6 +135,15 @@ def test_feature_existence_route_is_explicit_opt_in():
     assert "product-surface.backend" in [unit["id"] for unit in feature["units"]]
 
 
+def test_tool_friction_reference_is_opt_in():
+    mod = load_module()
+    base = mod.resolve_route(mod.load_manifest(), "delivery-child")
+    friction = mod.resolve_route(mod.load_manifest(), "delivery-child", task="tool-friction")
+
+    assert "router.tool-friction" not in [unit["id"] for unit in base["units"]]
+    assert "router.tool-friction" in [unit["id"] for unit in friction["units"]]
+
+
 def test_route_text_output_is_an_index_without_source_content(capsys):
     mod = load_module()
     assert mod.main(["route", "--role", "delivery-child", "--surface", "backend"]) == 0

@@ -34,7 +34,7 @@ ROLE_ALIASES = {
 }
 KNOWN_ROLES = {"ticket-factory", "delivery-integrator", "delivery-child", "review-service"}
 KNOWN_SURFACES = {"docs", "backend", "ios", "release"}
-KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence"}
+KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence", "tool-friction"}
 KNOWN_SKILLS = {
     "app-debug", "billing", "data-analysis", "devops", "ios-simulator-verification",
     "ios-visual-report-workflow", "kg-agent-context", "kg-docs-control-plane", "kg-receipt",
