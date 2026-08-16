@@ -11,6 +11,11 @@ DEFAULT_PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
 _GOOGLE_WEB_CALLBACK_PATH = "/auth/web/google/callback"
 _APPLE_WEB_CALLBACK_PATH = "/auth/web/apple/callback"
 
+DEFAULT_API_RATE_LIMIT = 60
+DEFAULT_TRANSLATE_RATE_LIMIT = 20
+DEFAULT_ADMIN_LOGIN_RATE_LIMIT = 5
+MAX_RATE_LIMIT_REQUESTS = 10_000
+
 _DEFAULT_CORS: tuple[str, ...] = (
     DEFAULT_PUBLIC_WEB_BASE_URL,
     "http://localhost:8000",
@@ -20,6 +25,15 @@ _DEFAULT_CORS: tuple[str, ...] = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 )
+
+
+@dataclass(frozen=True)
+class RateLimitSettingsSnapshot:
+    """Validated rate-limit configuration independent of auth bootstrap."""
+
+    api_rate_limit: int = DEFAULT_API_RATE_LIMIT
+    translate_rate_limit: int = DEFAULT_TRANSLATE_RATE_LIMIT
+    admin_login_rate_limit: int = DEFAULT_ADMIN_LOGIN_RATE_LIMIT
 
 
 @dataclass(frozen=True)
@@ -51,6 +65,9 @@ class KGSettings:
     # Set to N+1 only if N additional trusted proxies (CDN/ALB) are placed in
     # front of Caddy. See docs/reference/host_topology.md.
     rate_limit_trusted_hops: int = 1
+    api_rate_limit: int = DEFAULT_API_RATE_LIMIT
+    translate_rate_limit: int = DEFAULT_TRANSLATE_RATE_LIMIT
+    admin_login_rate_limit: int = DEFAULT_ADMIN_LOGIN_RATE_LIMIT
 
     # LLM
     embedding_model: str = "gemini-embedding-2-preview"
@@ -182,6 +199,51 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_rate_limit(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        _logger.warning(
+            "Env var %s=%r is not a valid rate-limit int; falling back to default %s.",
+            name,
+            raw,
+            default,
+        )
+        return default
+    if not 0 < value <= MAX_RATE_LIMIT_REQUESTS:
+        _logger.warning(
+            "Env var %s=%r is outside the supported range 1..%s; "
+            "falling back to default %s.",
+            name,
+            raw,
+            MAX_RATE_LIMIT_REQUESTS,
+            default,
+        )
+        return default
+    return value
+
+
+def load_rate_limit_settings() -> RateLimitSettingsSnapshot:
+    """Load only the validated rate-limit snapshot.
+
+    The limiter module is imported before the API module loads its full
+    settings. Keep this narrow so importing a generic limiter does not require
+    unrelated startup secrets such as JWT_SECRET.
+    """
+    return RateLimitSettingsSnapshot(
+        api_rate_limit=_env_rate_limit("API_RATE_LIMIT", DEFAULT_API_RATE_LIMIT),
+        translate_rate_limit=_env_rate_limit(
+            "TRANSLATE_RATE_LIMIT", DEFAULT_TRANSLATE_RATE_LIMIT
+        ),
+        admin_login_rate_limit=_env_rate_limit(
+            "ADMIN_LOGIN_RATE_LIMIT", DEFAULT_ADMIN_LOGIN_RATE_LIMIT
+        ),
+    )
+
+
 def load_settings() -> KGSettings:
     default_data_dir = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -198,6 +260,8 @@ def load_settings() -> KGSettings:
             "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS is ON — "
             "signature verification disabled. DO NOT use in production."
         )
+
+    rate_limit_settings = load_rate_limit_settings()
 
     return KGSettings(
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
@@ -220,6 +284,9 @@ def load_settings() -> KGSettings:
         pro_daily_limit_usd=_env_float("PRO_DAILY_LIMIT_USD", 0.30),
         free_daily_limit_usd=_env_float("FREE_DAILY_LIMIT_USD", 0.03),
         rate_limit_trusted_hops=_env_int("RATE_LIMIT_TRUSTED_HOPS", 1),
+        api_rate_limit=rate_limit_settings.api_rate_limit,
+        translate_rate_limit=rate_limit_settings.translate_rate_limit,
+        admin_login_rate_limit=rate_limit_settings.admin_login_rate_limit,
         judge_confidence_threshold=_env_float("JUDGE_CONFIDENCE_THRESHOLD", 0.7),
         dictionary_lookup_enabled=_env_truthy("DICTIONARY_LOOKUP_ENABLED"),
         dictionary_provider_default=os.getenv(
