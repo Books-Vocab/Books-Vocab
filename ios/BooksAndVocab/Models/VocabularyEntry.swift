@@ -156,7 +156,14 @@ final class VocabularyEntry {
     var isFailedDelete: Bool { syncState == .failed && syncAction == .delete }
     var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete || isFailedAdd || isFailedDelete }
     var shouldAppearInReader: Bool { syncAction != .delete && !isArchived && !isExcludedFromReader }
-    var shouldAppearInReview: Bool { shouldAppearInKnowledgeList && reviewEligible }
+    var shouldAppearInReview: Bool {
+        shouldAppearInReview(includingDictionaryCards: false)
+    }
+
+    func shouldAppearInReview(includingDictionaryCards: Bool) -> Bool {
+        shouldAppearInKnowledgeList
+            && (reviewEligible || (includingDictionaryCards && cardRole == .dictionary))
+    }
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete && !isArchived }
     var shouldAppearInArchiveList: Bool { isSynced && syncAction != .delete && isArchived }
     var effectiveDateAdded: Date { promotedAt ?? dateAdded }

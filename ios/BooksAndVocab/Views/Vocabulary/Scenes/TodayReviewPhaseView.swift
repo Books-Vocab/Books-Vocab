@@ -35,6 +35,7 @@ enum TodayReviewPhase {
 struct TodayReviewPhaseView: View {
     @ObserveInjection private var inject
     let phase: TodayReviewPhase
+    let includeDictionaryCards: Bool
     let onClose: () -> Void
 
     /// 從一個 `TodayReviewSession` 推導 phase：
@@ -45,6 +46,7 @@ struct TodayReviewPhaseView: View {
         session: TodayReviewSession,
         allEntries: [VocabularyEntry],
         currentUserID: String?,
+        includeDictionaryCards: Bool = false,
         onClose: @escaping () -> Void
     ) {
         if session.entries.isEmpty {
@@ -56,12 +58,14 @@ struct TodayReviewPhaseView: View {
                 currentUserID: currentUserID
             )
         }
+        self.includeDictionaryCards = includeDictionaryCards
         self.onClose = onClose
     }
 
     /// 直接以明確 phase 建構（preview / 未來 robustness 路徑）。
     init(phase: TodayReviewPhase, onClose: @escaping () -> Void) {
         self.phase = phase
+        self.includeDictionaryCards = false
         self.onClose = onClose
     }
 
@@ -112,6 +116,7 @@ struct TodayReviewPhaseView: View {
                     entries: entries,
                     allEntries: allEntries,
                     currentUserID: currentUserID,
+                    includeDictionaryCards: includeDictionaryCards,
                     onClose: onClose
                 )
                 .animatePhaseChange(3)

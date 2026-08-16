@@ -71,7 +71,9 @@ extension KGService {
         defer { releaseReviewEventPush() }
 
         let actor = BackgroundSyncActor(modelContainer: container)
-        let payload = try await actor.buildReviewEventsPushPayload()
+        let payload = try await actor.buildReviewEventsPushPayload(
+            includeDictionaryCards: ReviewSettingsStore.shared.settings.includeDictionaryCards
+        )
         guard !payload.isEmpty else { return (0, 0) }
 
         struct PushResponse: Decodable {

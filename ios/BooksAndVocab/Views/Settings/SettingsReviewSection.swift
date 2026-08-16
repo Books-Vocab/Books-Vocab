@@ -23,8 +23,10 @@ struct SettingsReviewSection: View {
     // old accessibility value even though the model had already changed.
     @State private var pauseDraft = false
     @State private var modeDraft: ReviewSettingsMode = .relaxed
+    @State private var dictionaryReviewDraft = false
     @State private var pauseMutationID = 0
     @State private var modeMutationID = 0
+    @State private var dictionaryReviewMutationID = 0
 
     /// 樂觀寫本地+iCloud + push 後端 + 失敗 rollback 全由 coordinator 一條龍處理。
     /// preview / 無 network 場景用 no-op default。
@@ -35,6 +37,7 @@ struct SettingsReviewSection: View {
     var body: some View {
         Form {
             pauseSection
+            dictionaryReviewSection
             modeSection
             customParamsSection
             effectiveSummarySection
@@ -46,10 +49,12 @@ struct SettingsReviewSection: View {
         .onAppear {
             pauseDraft = reviewSettingsStore.settings.isProgressPaused
             modeDraft = reviewSettingsStore.settings.mode
+            dictionaryReviewDraft = reviewSettingsStore.settings.includeDictionaryCards
         }
         .onAppear {
             pauseDraft = reviewSettingsStore.settings.isProgressPaused
             modeDraft = reviewSettingsStore.settings.mode
+            dictionaryReviewDraft = reviewSettingsStore.settings.includeDictionaryCards
         }
     }
 
@@ -77,6 +82,54 @@ struct SettingsReviewSection: View {
         } footer: {
             SettingsSectionFooter(pauseDescription)
         }
+    }
+
+    private var dictionaryReviewSection: some View {
+        Section {
+            Toggle(isOn: dictionaryReviewBinding) {
+                Label(
+                    L10n.string("複習時納入字典卡"),
+                    systemImage: "book.closed"
+                )
+            }
+            .accessibilityIdentifier("settings.review.includeDictionaryCardsToggle")
+        } header: {
+            SettingsSectionHeader(title: L10n.string("複習內容"), icon: "rectangle.stack")
+        } footer: {
+            SettingsSectionFooter(dictionaryReviewDescription)
+        }
+    }
+
+    private var dictionaryReviewBinding: Binding<Bool> {
+        Binding(
+            get: { dictionaryReviewDraft },
+            set: { include in
+                guard dictionaryReviewDraft != include else { return }
+                dictionaryReviewDraft = include
+                persistDictionaryReviewChange(include)
+            }
+        )
+    }
+
+    private func persistDictionaryReviewChange(_ include: Bool) {
+        dictionaryReviewMutationID &+= 1
+        let mutationID = dictionaryReviewMutationID
+        let snapshot = reviewSettingsStore.reviewModeSnapshot
+        var updated = reviewSettingsStore.settings
+        updated.includeDictionaryCards = include
+        reviewSettingsStore.update(updated)
+        Task { @MainActor in
+            await onModeChanged(updated, snapshot)
+            guard mutationID == dictionaryReviewMutationID else { return }
+            dictionaryReviewDraft = reviewSettingsStore.settings.includeDictionaryCards
+        }
+    }
+
+    private var dictionaryReviewDescription: String {
+        if reviewSettingsStore.settings.includeDictionaryCards {
+            return L10n.string("已開啟：字典卡會和一般複習卡一起出現在今日複習，並沿用同一套排程。")
+        }
+        return L10n.string("關閉時只複習完整學習卡；字典卡仍會保留在詞庫中。")
     }
 
     private struct NativeSettingsPauseSwitch: UIViewRepresentable {

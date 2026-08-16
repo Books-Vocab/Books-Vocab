@@ -163,12 +163,17 @@ enum VocabularyEntryPresentation {
     static func project(
         _ entries: [VocabularyEntry],
         query: VocabularyLibraryQuery,
-        now: Date
+        now: Date,
+        includeDictionaryCards: Bool = false
     ) -> VocabularyLibraryProjection {
         let effectiveQuery = query.normalized
         let allEntriesInScope = filterByRole(entries, filter: effectiveQuery.contentScope)
         let searchMatches = filterBySearch(allEntriesInScope, searchText: effectiveQuery.searchText)
-        let classified = classifyKnowledgeEntries(in: allEntriesInScope, now: now)
+        let classified = classifyKnowledgeEntries(
+            in: allEntriesInScope,
+            now: now,
+            includeDictionaryCards: includeDictionaryCards
+        )
         let selectedEntries: [VocabularyEntry]
         if effectiveQuery.reviewStates.isEmpty {
             selectedEntries = searchMatches
@@ -189,7 +194,9 @@ enum VocabularyEntryPresentation {
         let reviewCounts = Dictionary(uniqueKeysWithValues: VocabularyReviewState.allCases.map { state in
             (state, classified.count(for: state))
         })
-        let reviewVisible = allEntriesInScope.filter { $0.shouldAppearInReview }
+        let reviewVisible = allEntriesInScope.filter {
+            $0.shouldAppearInReview(includingDictionaryCards: includeDictionaryCards)
+        }
         let reviewQueue = VocabularyReviewQueue(
             due: reviewVisible.filter { $0.reviewState(at: now) == .due },
             unlearned: reviewVisible.filter { $0.reviewState(at: now) == .unlearned }
@@ -263,14 +270,17 @@ enum VocabularyEntryPresentation {
 
     static func classifyKnowledgeEntries(
         in entries: [VocabularyEntry],
-        now: Date
+        now: Date,
+        includeDictionaryCards: Bool = false
     ) -> ClassifiedResult {
         var due: [VocabularyEntry] = []
         var unlearned: [VocabularyEntry] = []
         var reviewed: [VocabularyEntry] = []
 
         for entry in entries {
-            guard entry.shouldAppearInReview else { continue }
+            guard entry.shouldAppearInReview(includingDictionaryCards: includeDictionaryCards) else {
+                continue
+            }
             switch entry.reviewState(at: now) {
             case .due: due.append(entry)
             case .unlearned: unlearned.append(entry)

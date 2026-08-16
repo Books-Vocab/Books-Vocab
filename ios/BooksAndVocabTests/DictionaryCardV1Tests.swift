@@ -55,6 +55,14 @@ struct DictionaryCardV1Tests {
 
         #expect(result.dueCount + result.unlearnedCount + result.reviewedCount == 1)
         #expect(result.mergedBucket(for: []).map(\.word) == ["learn"])
+
+        let optedIn = VocabularyEntryPresentation.classifyKnowledgeEntries(
+            in: [dictionary, learning],
+            now: .now.addingTimeInterval(60 * 60 * 24),
+            includeDictionaryCards: true
+        )
+        #expect(optedIn.dueCount + optedIn.unlearnedCount + optedIn.reviewedCount == 2)
+        #expect(optedIn.mergedBucket(for: []).map(\.word) == ["reference", "learn"])
     }
 
     @MainActor
@@ -73,6 +81,14 @@ struct DictionaryCardV1Tests {
         )
 
         #expect(state.queue.map(\.word) == ["learn"])
+
+        let optedIn = TodayReviewState(
+            entries: [dictionary, learning],
+            allEntries: [dictionary, learning],
+            currentUserID: userID,
+            includeDictionaryCards: true
+        )
+        #expect(optedIn.queue.map(\.word) == ["reference", "learn"])
     }
 
     @Test("default and difficulty sorting place dictionary cards last")
@@ -95,7 +111,7 @@ struct DictionaryCardV1Tests {
         #expect(alphabeticalWords == ["aardvark", "zebra"])
     }
 
-    @Test("notebook totals include dictionary cards but review metrics do not")
+    @Test("notebook CTA and review queue include dictionary cards when opted in")
     func notebookStats() {
         let learning = entry("learn")
         let dictionary = entry("reference", role: .dictionary, eligible: false)
@@ -110,6 +126,41 @@ struct DictionaryCardV1Tests {
             [learning, dictionary], filter: NotebookFilter(), now: .now
         )
         #expect(filtered.due.count + filtered.unlearned.count == 1)
+
+        let optedInStats = NotebookStatsCalculator.compute(
+            [learning, dictionary],
+            pendingEntries: [],
+            now: .now,
+            includeDictionaryCards: true
+        )["default"]
+        #expect((optedInStats?.dueCount ?? 0) + (optedInStats?.unlearnedCount ?? 0) + (optedInStats?.reviewedCount ?? 0) == 2)
+        let optedInFiltered = NotebookStatsCalculator.filtered(
+            [learning, dictionary],
+            filter: NotebookFilter(),
+            now: .now,
+            includeDictionaryCards: true
+        )
+        #expect(optedInFiltered.due.count + optedInFiltered.unlearned.count == 2)
+
+        let dictionaryOnlyStats = NotebookStatsCalculator.compute(
+            [dictionary], pendingEntries: [], now: .now, includeDictionaryCards: true
+        )["default"]
+        let dictionaryOnlyQueue = NotebookStatsCalculator.filtered(
+            [dictionary], filter: NotebookFilter(), now: .now, includeDictionaryCards: true
+        )
+        #expect(dictionaryOnlyStats?.unlearnedCount == 1)
+        #expect(dictionaryOnlyQueue.unlearned.count == 1)
+
+        let productionListProjection = NotebookListContent.makeReviewProjection(
+            allEntries: [dictionary],
+            pendingEntries: [],
+            notebooks: [],
+            reviewFilter: NotebookFilter(),
+            now: .now,
+            includeDictionaryCards: true
+        )
+        #expect(productionListProjection.stats["default"]?.unlearnedCount == 1)
+        #expect(productionListProjection.unlearned.map(\.word) == ["reference"])
     }
 
     @Test("highlight signature captures eligibility and lexical forms")
@@ -127,7 +178,7 @@ struct DictionaryCardV1Tests {
     }
 
     @MainActor
-    @Test("review payloads exclude dictionary cards")
+    @Test("review payloads gate dictionary cards by setting")
     func reviewPayloadExclusion() async throws {
         let schema = Schema([VocabularyEntry.self, ReviewRecord.self])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -150,11 +201,36 @@ struct DictionaryCardV1Tests {
 
         #expect(statePayload.compactMap { $0["word"] as? String } == ["learn"])
         #expect(eventPayload.map(\.word_snapshot) == ["learn"])
+
+        let optedInStatePayload = try await actor.buildReviewStatePushPayload(includeDictionaryCards: true)
+        let optedInEventPayload = try await actor.buildReviewEventsPushPayload(includeDictionaryCards: true)
+        #expect(Set(optedInStatePayload.compactMap { $0["word"] as? String }) == Set(["learn", "reference"]))
+        #expect(Set(optedInEventPayload.map(\.word_snapshot)) == Set(["learn", "reference"]))
     }
 }
 
 @Suite("Dictionary card V1 wire format")
 struct DictionaryCardWireTests {
+    @Test("legacy review mode wire defaults dictionary-card inclusion to off")
+    func legacyReviewModeDefaultsDictionaryCardsOff() throws {
+        let legacy = """
+        {
+          "mode": "relaxed",
+          "custom_initial_interval_hours": 12,
+          "custom_remembered_multiplier": 1.9,
+          "custom_forgot_multiplier": 0.45,
+          "custom_minimum_interval_hours": 6,
+          "custom_maximum_interval_hours": 1440,
+          "updated_at": null
+        }
+        """
+        let decoded = try JSONDecoder().decode(
+            KGReviewModeConfig.self,
+            from: Data(legacy.utf8)
+        )
+        #expect(decoded.include_dictionary_cards == false)
+    }
+
     @Test("dictionary projection decodes provenance and selected example")
     func decodeProjection() throws {
         let data = Data(Self.payload.utf8)
