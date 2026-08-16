@@ -174,6 +174,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import worktree_registry as wr  # noqa: E402
 import backlog as backlog_tool  # noqa: E402
 import worktree_campaign as campaign  # noqa: E402
+import worktree_gate as gate_logic  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 from lib import dispatch_preflight  # noqa: E402
@@ -798,46 +799,22 @@ AGENT_CONSTITUTION: tuple[str, ...] = ("CLAUDE.md", "AGENTS.md")
 
 
 # Paths that legitimately select no gate, each with the reason. Deny-by-default:
-# anything matching neither a gate nor a rule here shows up as `uncovered`.
-# Kept as a module constant beside plan_gates (not a new yml) because it is the
-# complement of the same hand-written routing judgement, guarded by the same
-# contract tests. Rules are path patterns, never file enumerations, so a new file
-# under an already-declared tree needs no edit.
-NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
-    ("backups/", "本機備份產物，不影響任何 runtime 或 build"),
-    ("promotion/", "行銷素材產物，由 catalog/App Review 平面自行驗證"),
-    (".claude/", "agent / skill 文本；今天沒有任何機械內容檢查"),
-    ("README.md", "根層 prose，無機械 gate"),
-    (".gitignore", "不影響 runtime 或 build 行為"),
-)
+# Compatibility names for callers/tests that historically imported these helpers
+# from the CLI module.  The implementation now lives in the side-effect-free gate
+# module so it can be tested and reused without loading the delivery lifecycle.
+NEUTRAL_RULES = gate_logic.NEUTRAL_RULES
+GATE_STATUSES = gate_logic.GATE_STATUSES
+UnknownGateStatus = gate_logic.UnknownGateStatus
+assert_known_statuses = gate_logic.assert_known_statuses
+aggregate_verdict = gate_logic.aggregate_verdict
 
 
 def _neutral_rule(rel: str) -> str | None:
-    """The declared reason this path may select no gate, or None. Shared with the yml
-    router so a tree that is already neutral is not re-adopted and warned about twice."""
-    return next((pat for pat, _ in NEUTRAL_RULES
-                 if rel == pat or rel.startswith(pat)), None)
+    return gate_logic.neutral_rule(rel)
 
 
 def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
-    """Split every changed file into covered / neutral / uncovered.
-
-    The point is visibility, not blocking: a routing hole must be nameable at
-    the moment it happens. `aggregate_verdict([])` returns pass for an empty
-    plan — correct for a pure function — so the fix is to make an empty plan
-    structurally impossible rather than to change what a verdict means.
-    """
-    neutral: list[list[str]] = []
-    uncovered: list[str] = []
-    for rel in changed_files:
-        if rel in covered:
-            continue
-        rule = _neutral_rule(rel)
-        if rule is not None:
-            neutral.append([rel, rule])
-        else:
-            uncovered.append(rel)
-    return {"covered": sorted(covered), "neutral": neutral, "uncovered": uncovered}
+    return gate_logic.coverage(changed_files, covered)
 
 
 def plan_gates(changed_files: list[str],
