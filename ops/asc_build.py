@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -32,7 +32,52 @@ class AscBuildError(RuntimeError):
 
 
 class NoExactBuild(AscBuildError):
-    """The response did not contain exactly one requested build."""
+    """The response did not contain the requested build yet."""
+
+
+class AmbiguousExactBuild(AscBuildError):
+    """More than one exact build matched; retrying cannot resolve this."""
+
+
+ALLOWED_RELEASE_STATES = frozenset({"PROCESSING", "VALID"})
+
+
+def _pre_release_attributes(payload: dict, item: dict) -> dict:
+    relationships = item.get("relationships")
+    if not isinstance(relationships, dict):
+        raise AscBuildError("ASC exact build is missing preReleaseVersion relationship")
+    relationship = relationships.get("preReleaseVersion")
+    if not isinstance(relationship, dict):
+        raise AscBuildError("ASC exact build has invalid preReleaseVersion relationship")
+    linkage = relationship.get("data")
+    if not isinstance(linkage, dict) or linkage.get("type") != "preReleaseVersions":
+        raise AscBuildError("ASC exact build has invalid preReleaseVersion relationship")
+    prerelease_id = linkage.get("id")
+    if not isinstance(prerelease_id, str) or not prerelease_id:
+        raise AscBuildError("ASC exact build has no preReleaseVersion relationship id")
+
+    included = payload.get("included")
+    if not isinstance(included, list):
+        raise AscBuildError("ASC exact build response did not include preReleaseVersion")
+    matches = [
+        resource
+        for resource in included
+        if isinstance(resource, dict)
+        and resource.get("type") == "preReleaseVersions"
+        and resource.get("id") == prerelease_id
+    ]
+    if len(matches) != 1:
+        raise AscBuildError(
+            f"ASC preReleaseVersion relationship is not unique: id={prerelease_id} count={len(matches)}"
+        )
+    attributes = matches[0].get("attributes")
+    if not isinstance(attributes, dict):
+        raise AscBuildError("ASC preReleaseVersion is missing attributes")
+    if not isinstance(attributes.get("version"), str) or not isinstance(
+        attributes.get("platform"), str
+    ):
+        raise AscBuildError("ASC preReleaseVersion is missing version/platform")
+    return attributes
 
 
 def select_exact_build(
@@ -40,6 +85,8 @@ def select_exact_build(
 ) -> dict[str, str]:
     """Validate and normalize one exact iOS build from an ASC response."""
 
+    if not isinstance(payload, dict):
+        raise AscBuildError("ASC build lookup response is not an object")
     if "_httpError" in payload:
         raise AscBuildError(
             f"ASC build lookup failed: HTTP {payload.get('_httpError')} "
@@ -57,19 +104,20 @@ def select_exact_build(
         attrs = item.get("attributes")
         if not isinstance(attrs, dict):
             continue
-        platform = attrs.get("platform") or attrs.get("appPlatform")
-        if platform is not None and platform != "IOS":
-            continue
-        if attrs.get("versionString") != marketing_version:
-            continue
         if str(attrs.get("version", "")) != str(build_number):
+            continue
+        prerelease = _pre_release_attributes(payload, item)
+        if prerelease["platform"] != "IOS" or prerelease["version"] != marketing_version:
             continue
         matches.append(item)
 
-    if len(matches) != 1:
+    if not matches:
         raise NoExactBuild(
-            f"ASC exact build match is not unique for IOS "
-            f"{marketing_version} build {build_number}: count={len(matches)}"
+            f"ASC exact build was not found for IOS {marketing_version} build {build_number}"
+        )
+    if len(matches) > 1:
+        raise AmbiguousExactBuild(
+            f"ASC exact build is ambiguous for IOS {marketing_version} build {build_number}: count={len(matches)}"
         )
 
     item = matches[0]
@@ -80,6 +128,10 @@ def select_exact_build(
         raise AscBuildError("ASC exact build is missing a stable id")
     if not isinstance(state, str) or not state:
         raise AscBuildError("ASC exact build is missing processingState")
+    if state not in ALLOWED_RELEASE_STATES:
+        raise AscBuildError(
+            f"ASC exact build processingState={state} is not release-eligible"
+        )
 
     return {
         "schema": "kg.asc.build.v1",
@@ -94,14 +146,17 @@ def select_exact_build(
 def lookup_exact_build(marketing_version: str, build_number: str) -> dict[str, str]:
     """Fetch the filtered build collection and return exact provenance."""
 
-    encoded_version = quote(marketing_version, safe="")
-    encoded_build = quote(str(build_number), safe="")
+    query = urlencode(
+        [
+            ("filter[preReleaseVersion.platform]", "IOS"),
+            ("filter[preReleaseVersion.version]", marketing_version),
+            ("filter[version]", str(build_number)),
+            ("include", "preReleaseVersion"),
+            ("limit", "50"),
+        ]
+    )
     payload = get(
-        f"/v1/apps/{APP_ID}/builds"
-        f"?filter%5BappPlatform%5D=IOS"
-        f"&filter%5BversionString%5D={encoded_version}"
-        f"&filter%5Bversion%5D={encoded_build}"
-        "&limit=50",
+        f"/v1/apps/{APP_ID}/builds?{query}",
         mint_token(),
     )
     return select_exact_build(
@@ -120,7 +175,13 @@ def main(argv: list[str] | None = None) -> int:
     except NoExactBuild as exc:
         print(f"✗ {exc}", file=sys.stderr)
         return 3
-    except (AscBuildError, OSError) as exc:
+    except AmbiguousExactBuild as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return 1
+    except (AscBuildError, OSError, ValueError, TypeError, KeyError) as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # pragma: no cover - last-resort fail-closed boundary
         print(f"✗ {exc}", file=sys.stderr)
         return 1
 
