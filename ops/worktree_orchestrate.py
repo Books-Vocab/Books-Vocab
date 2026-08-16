@@ -8956,7 +8956,7 @@ def _post_landing_repair(primary: Path) -> dict[str, Any]:
     # files under those paths and nothing else. A `git add -- docs/runbook/backlog`
     # also stages untracked entry JSONs, which is precisely how a co-tenant's
     # uncommitted filing got swept into a commit whose message says "everything here
-    # was re-derived by a tool" and whose trailer buys it past the review gate.
+    # was re-derived by a tool and was mistakenly treated as a delivery attestation.
     # Measured: the repair commit contained COTENANT.json; without the add, it
     # contains only the file `reanchor` actually rewrote.
     crc, ctext = _git_mutation(["commit", "-m", _REPAIR_MESSAGE, "--", *repair_paths],
