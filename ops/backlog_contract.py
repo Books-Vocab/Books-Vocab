@@ -54,9 +54,6 @@ def preflight(
     contract_baselines: Iterable[str],
 ) -> list[dict]:
     """Return typed reasons a groomed ticket cannot enter dispatch."""
-    fields = tuple(contract_fields)
-    statuses = set(contract_statuses)
-    baselines = set(contract_baselines)
     root = (repo or default_root).resolve()
     if payload.get("status") == "contract-blocked":
         return [{"kind": "contract-blocked",
@@ -67,12 +64,10 @@ def preflight(
         return []
 
     problems: list[dict] = []
-    if payload.get("contract_status") not in statuses \
-            or payload.get("contract_status") != "ready":
+    if payload.get("contract_status") != "ready":
         problems.append({"kind": "contract-evidence-missing",
                          "reason": "contract_status is not ready"})
-    if payload.get("contract_baseline") not in baselines \
-            or payload.get("contract_baseline") != "red":
+    if payload.get("contract_baseline") != "red":
         problems.append({"kind": "contract-baseline-not-red",
                          "value": payload.get("contract_baseline") or "missing"})
     if not str(payload.get("contract_evidence") or "").strip():
@@ -153,9 +148,11 @@ def report_pytest_selector_count(
     runner: Callable[..., object],
     root: Path,
     timeout_seconds: float,
+    selector_probe: Callable[[str], list[str] | None] = pytest_selector_probe,
+    count_parser: Callable[[str], int | None] = pytest_collected_count,
 ) -> None:
     """Print a non-blocking selection count while an acceptance command is edited."""
-    probe = pytest_selector_probe(cmd)
+    probe = selector_probe(cmd)
     if probe is None:
         return
     try:
@@ -179,7 +176,7 @@ def report_pytest_selector_count(
               file=sys.stderr, flush=True)
         return
     output = result.stdout or ""
-    count = pytest_collected_count(output)
+    count = count_parser(output)
     selected = str(count) if count is not None else "unavailable"
     print(f"[backlog][selector-count] {entry_id} selected={selected} "
           f"rc={result.returncode} (non-blocking)", file=sys.stderr, flush=True)

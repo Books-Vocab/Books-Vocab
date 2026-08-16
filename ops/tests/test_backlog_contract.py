@@ -35,3 +35,27 @@ def test_selector_helpers_are_pure_and_reject_compound_commands():
     assert CONTRACT.pytest_selector_probe("pytest -k test_store && rm -rf /") is None
     assert CONTRACT.pytest_collected_count("2/9 tests collected") == 2
     assert CONTRACT.pytest_collected_count("no tests collected") == 0
+
+
+def test_preflight_reports_unhashable_contract_values_instead_of_raising(tmp_path):
+    common = {
+        "status": "triaged",
+        "groomed_at": "2026-08-16",
+        "contract_evidence": "observed red",
+        "contract_checked_at": "2026-08-16",
+        "contract_checked_by": "test",
+        "fix_site": "ops/backlog.py:1",
+        "acceptance_cmd": "true",
+    }
+    for field, value in (("contract_status", []), ("contract_baseline", {})):
+        payload = {**common, field: value}
+        problems = CONTRACT.preflight(
+            payload,
+            repo=tmp_path,
+            default_root=tmp_path,
+            required_since="2026-08-10",
+            contract_fields=("contract_status", "contract_baseline"),
+            contract_statuses=("ready", "blocked"),
+            contract_baselines=("red", "no-op", "unknown"),
+        )
+        assert problems and all(isinstance(problem, dict) for problem in problems)

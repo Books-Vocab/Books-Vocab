@@ -1035,6 +1035,8 @@ def _report_pytest_selector_count(entry_id: str, cmd: str) -> None:
         runner=run_streamed_command,
         root=ROOT,
         timeout_seconds=SELECTOR_PROBE_TIMEOUT_SECONDS,
+        selector_probe=_pytest_selector_probe,
+        count_parser=_pytest_collected_count,
     )
 
 
