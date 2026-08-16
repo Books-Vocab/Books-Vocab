@@ -79,7 +79,7 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
 | **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy→**等收斂**；iOS：bump→upload→封 build tag | **生產** |
-| `resubmit ios` | `ops/release.sh resubmit ios` | 版號檔、本地 main | marketing 版號不動，build +1→upload→封 `ios/x.y.z+<build>` | **外部**—TestFlight 上傳不可逆 |
+| `resubmit ios` | `ops/release.sh resubmit ios` | 版號檔 + ASC TestFlight 最新 build、本地 main | marketing 版號不動，`max(local build, ASC latest)+1`→upload→封 `ios/x.y.z+<build>` | **外部**—TestFlight 上傳不可逆 |
 | `shipped ios` | `ops/release.sh shipped ios` | ASC（現查）+ build tag | `ios/x.y.z`（上架標記）+ push origin | 無—唯讀查 ASC，只寫 tag |
 
 - **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
@@ -89,6 +89,7 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
 - `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 一樣過 `guard_ios_new_version`（見上「版號事實 SoT 表」的兩條規則），不能繞過。
 - `release <backend|ios>` / `resubmit ios` 須在 primary、on `main` 執行（發布本地主幹）。`shipped ios` 只讀 ASC + 打 tag，不受此限。
+- `resubmit ios` 先透過 `./ops/asc.sh builds` 對帳 TestFlight 最新 build；ASC 查詢失敗或回傳非數字會在 bump 前 hard-stop，不降級成 local+1。dry-run 會明示 local、ASC latest 與下一顆 build；成功 upload 後才封同版 build tag。
 - `changelog ios` 的區間錨在**上架 tag**、不是 build tag——這條規則的單一 owner 是 `ops/lib/release_tags.sh`（`release_last_tag`），`release.sh` 與 `release_changelog.sh` 共用同一份。曾各持一份副本，只改一邊的後果是 changelog 靜默錨到 build tag、印出「無變更」（`47e9fea97`）。
 
 ## develop 平面之前：批次整合
