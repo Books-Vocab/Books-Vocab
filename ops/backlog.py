@@ -2321,6 +2321,12 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
         severities=SEVERITIES,
         parseable_statuses=PARSEABLE_STATUSES,
         app_columns=APP_COLUMNS,
+        split_row_raw_fn=_split_row_raw,
+        clean_fn=_clean,
+        id_re=_ID_RE,
+        empty_cell=_EMPTY_CELL,
+        anchors_ok_fn=_anchors_ok,
+        app_anchors_ok_fn=_app_anchors_ok,
     )
 
 
@@ -2525,23 +2531,16 @@ def _render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
 # this note stays rather than being deleted: the old rule read as settled policy,
 # so its absence has to be visible to whoever comes looking for it.
 
-APP_COLUMNS = (
-    "id",
-    "date",
-    "source",
-    "surface",
-    "category",
-    "severity",
-    "status",
-    "detail",
-    "repro",
-    "build",
-    "resolution",
-)
+APP_COLUMNS = _backlog_view.APP_COLUMNS
 
 
 def view_entry_ids(text: str) -> set[str]:
-    return _backlog_view.view_entry_ids(text)
+    return _backlog_view.view_entry_ids(
+        text,
+        split_row_raw_fn=_split_row_raw,
+        clean_fn=_clean,
+        id_re=_ID_RE,
+    )
 
 
 def render_view(store: Path, *, verified_against: str) -> str:

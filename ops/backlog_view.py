@@ -6,19 +6,16 @@ import re
 from pathlib import Path
 from typing import Callable
 
+from backlog_legacy import EMPTY_CELL, ID_RE, LEGACY_COLUMNS
+
 
 VIEW_IMP_COLUMNS = (
-    "id", "date", "source", "category", "severity", "status", "detail",
-    "resolution", "verdict", "verified_at", "cost", "fix_site",
+    *LEGACY_COLUMNS, "verdict", "verified_at", "cost", "fix_site",
 )
 APP_COLUMNS = (
     "id", "date", "source", "surface", "category", "severity", "status",
     "detail", "repro", "build", "resolution",
 )
-ID_RE = re.compile(r"^(?:IMP|APP)-(?:\d{4}|\d{8}-[0-9a-f]{6})$")
-EMPTY_CELL = "—"
-
-
 def cell(value: str) -> str:
     """Make a value safe to sit inside a markdown table cell."""
     text = str(value or "")
@@ -49,17 +46,23 @@ def _clean(cell_value: str) -> str:
     return cell_value.strip().replace("\\|", "|")
 
 
-def view_entry_ids(text: str) -> set[str]:
+def view_entry_ids(
+    text: str,
+    *,
+    split_row_raw_fn: Callable[[str], list[str]] = _split_row_raw,
+    clean_fn: Callable[[str], str] = _clean,
+    id_re: re.Pattern[str] = ID_RE,
+) -> set[str]:
     """Return ids in the first cell of both IMP and APP rendered tables."""
     ids: set[str] = set()
     for raw in text.splitlines():
         line = raw.strip()
         if not line.startswith("|"):
             continue
-        cells = _split_row_raw(line)
+        cells = split_row_raw_fn(line)
         if cells:
-            first = _clean(cells[0])
-            if ID_RE.match(first):
+            first = clean_fn(cells[0])
+            if id_re.match(first):
                 ids.add(first)
     return ids
 
