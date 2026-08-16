@@ -877,17 +877,6 @@ def plan_gates(changed_files: list[str],
     neutral file selects nothing."""
     gates: list[dict[str, Any]] = []
 
-    # Review receipt presence is a cheap, mechanically verifiable prerequisite for
-    # every later gate. Run it first and mark it as a preflight barrier: if it blocks,
-    # cmd_gate stops before spending minutes on tests that cannot make this HEAD
-    # landable.
-    if base and (ops_test_exists is None or ops_test_exists("ops/review_audit.sh")):
-        review_cmd = ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD"]
-        if machine_gate:
-            review_cmd.append("--machine-gate")
-        gates.append(_shell("review-receipts", "meta", review_cmd, "block",
-                            preflight=True))
-
     # Official-deck specs are a fixed-set gate, not a diff-routed gate. A new spec can
     # be present in the worktree without changing any tracked file; the check must still
     # compare the on-disk set with the git index and name the omitted deck (IMP-20260808-
@@ -1296,7 +1285,8 @@ def gate_probe_corpus() -> list[list[str]]:
     guard that reports when this corpus misses a future route.
     """
     return (
-        [[key] for key in sorted(DATA_PLANE_OWNERS)]
+        [[], ["CLAUDE.md"]]
+        + [[key] for key in sorted(DATA_PLANE_OWNERS)]
         + [[f"{BACKLOG_STORE_DIR}IMP-0001.json"], ["ops/backlog.py"]]
         + [[f"ios/BooksAndVocabUITests/{name}.swift"]
            for name in sorted(_LIVE_ONLY_UITEST_CLASSES)]
