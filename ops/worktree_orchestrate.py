@@ -2386,6 +2386,15 @@ def _reuse_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     return {"reused": reused, "rerun": rerun}
 
 
+def _executed_gate_count(results: list[dict[str, Any]]) -> int:
+    """Count gates run by this invocation, excluding reuse and spawn failures."""
+    return sum(
+        1 for result in results
+        if result.get("reuse", {}).get("decision") != "reused"
+        and result.get("executed", True) is not False
+    )
+
+
 def _gate_log_path(record_path: Path, gate_name: str) -> Path:
     """Where a FAILED gate's captured output is kept — beside its verdict record.
 
@@ -4244,11 +4253,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   if record.get("no_changed_files") and not args.plan_only else "")
     record_ref = (str(_gate_record_path(args.state, worktree))
                   if not args.plan_only else "<not recorded>")
-    executed_count = sum(
-        1 for result in results
-        if result.get("reuse", {}).get("decision") != "reused"
-        and result.get("executed", True) is not False
-    )
+    executed_count = _executed_gate_count(results)
     receipt_line = (f"gate={verdict} record={record_ref} "
                     f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} "
                     f"executed={executed_count} {breakdown} "
@@ -4348,7 +4353,12 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         rec = json.loads(rec_path.read_text())
         verdict = rec.get("verdict")
         gated_head = rec.get("head_sha")
-        gate_reuse = rec.get("gate_reuse") or _reuse_summary(rec.get("gates", []))
+        planned_gates = rec.get("plan")
+        recorded_gates = rec.get("gates")
+        gate_reuse = rec.get("gate_reuse") or (
+            _reuse_summary(recorded_gates)
+            if isinstance(recorded_gates, list) else {"reused": [], "rerun": []}
+        )
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
         if rec.get("head_sha") != head:
@@ -4363,15 +4373,16 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                       f"with {worktree}/ops/worktree_orchestrate.py")
         elif verdict == "block":
             refuse = "gate verdict is 'block' — fix the blocking gate(s) and re-run `gate`"
-        elif (isinstance(rec.get("plan"), list)
-              and isinstance(rec.get("gates"), list)
-              and len(rec["gates"]) != len(rec["plan"])):
+        elif not isinstance(planned_gates, list) or not isinstance(recorded_gates, list):
+            refuse = ("gate record is malformed (plan/gates must be lists) — "
+                      "re-run `gate` before cutover")
+        elif len(recorded_gates) != len(planned_gates):
             # A non-pass preflight intentionally stops before expensive gates. Its
             # aggregate can still be WARN (for example a typed inconclusive result),
             # but a partial plan is never evidence for cutover: warn is landable only
             # after every planned gate has produced a row.
-            refuse = (f"gate record is incomplete ({len(rec['gates'])} of "
-                      f"{len(rec['plan'])} planned gate results) — the preflight "
+            refuse = (f"gate record is incomplete ({len(recorded_gates)} of "
+                      f"{len(planned_gates)} planned gate results) — the preflight "
                       "stopped the run; re-run `gate` before cutover")
         elif verdict not in ("pass", "warn"):
             refuse = f"gate verdict is {verdict!r}, not pass/warn — run `gate` first"

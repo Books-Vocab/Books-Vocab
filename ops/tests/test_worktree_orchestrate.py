@@ -4171,6 +4171,37 @@ def test_gate_stops_after_nonpassing_review_preflight(
         assert "notes.txt" not in _local_main_files(repo)
 
 
+def test_executed_gate_count_excludes_reuse_and_spawn_failures():
+    assert MODULE._executed_gate_count([
+        {"name": "rerun", "status": "pass"},
+        {"name": "reused", "status": "pass",
+         "reuse": {"decision": "reused"}},
+        {"name": "spawn-failed", "status": "block", "executed": False},
+    ]) == 1
+
+
+@gitmark
+def test_cutover_refuses_a_malformed_gate_record(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "malformed-record.json")
+    wt = _open_wt(state, slug="malformed-gate-record")
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record.pop("plan")
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "gate record is malformed" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
 @gitmark
 def test_gate_names_the_empty_worktree(scratch):
     """An empty diff is a legal re-gate, but its record must say it verified nothing."""
