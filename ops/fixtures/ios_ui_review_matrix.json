@@ -3,8 +3,6 @@
   "report": {
     "directory": "IOS2.0.1+7-UI-review-report",
     "images": [
-      "p1.PNG",
-      "p2.PNG",
       "p3.PNG",
       "p4.PNG",
       "p5.PNG",
@@ -21,288 +19,6 @@
     ]
   },
   "requirements": [
-    {
-      "id": "P1",
-      "reportImage": "p1.PNG",
-      "title": "Dictionary lookup before materializing a card",
-      "surface": "Reader dictionary/add-link flow",
-      "sourceRefs": [
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
-      ],
-      "requiredFixtureIDs": [
-        "ui-p1-dictionary-rich"
-      ],
-      "acceptance": [
-        "idle, loading, success, error and retry are distinct states",
-        "selected sense/example can be materialized without losing provenance"
-      ],
-      "counterexamples": [
-        "offline lookup error",
-        "partial result with no selected sense"
-      ],
-      "verification": {
-        "status": "pending",
-        "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-        "datasetID": "marketing_demo",
-        "runID": null,
-        "evidenceRoot": null,
-        "requiredSteps": [
-          "idle",
-          "loading",
-          "success",
-          "retry"
-        ],
-        "counterexampleSteps": [
-          "error",
-          "partial-result"
-        ],
-        "visualChecks": [
-          "result hierarchy",
-          "error/retry affordance"
-        ],
-        "blockers": ["historical visual evidence retired; no current retained run"],
-        "sourceCommit": null,
-        "datasetSHA256": null,
-        "device": null,
-        "manifestSHA256": null,
-        "evidenceBundles": [
-          {
-            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-005738-61448-10129",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "e6600ec6c78f69ed8353d5b8e1115ca1c0f467396d4b54f00db793be053aeb45"
-          },
-          {
-            "selector": "DictionaryLookupFlowUITests/testDictionaryLoadingAndEmptySelectorsAreLive",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-012829-33799-20877",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "77e9bf809c37b0dc534b926768903192a3b5d3a90d93847c5b4d86626454f1a5"
-          },
-          {
-            "selector": "DictionaryLookupFlowUITests/testDictionaryPartialRetryAndRetryingSelectorsAreLive",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-013005-37811-19392",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "943157d6854544e751af4abdce3cbf00d08076ce8abd404e7ff1e2a6f01320cf"
-          },
-          {
-            "selector": "DictionaryLookupFlowUITests/testDictionaryOfflineAndErrorSelectorsExposeRetry",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-013109-40744-21076",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "8b566a062de1b7ff7851c23851e992485a4d43cd68fff5a7eceef0f477f2f7e6"
-          }
-        ],
-        "history": [
-          {
-            "recordedAt": "2026-08-15T05:18:26+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-043516-75240-22553",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 4,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T13:34:33+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-124720-1861-5508",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 4,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T18:35:29+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-173314-23996-28504",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 4,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T21:57:01+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-210312-80916-6692",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 4,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-16T01:53:55+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-005738-61448-10129",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 4,
-            "blockers": []
-          }
-        ]
-      }
-    },
-    {
-      "id": "P2",
-      "reportImage": "p2.PNG",
-      "title": "Dictionary add-link sheet hierarchy and card materialization",
-      "surface": "Reader dictionary/add-link sheet",
-      "sourceRefs": [
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
-        "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
-      ],
-      "requiredFixtureIDs": [
-        "ui-p2-dictionary-senses"
-      ],
-      "acceptance": [
-        "blank sheet exposes a clear local-card prompt and dictionary prompt before query",
-        "search results keep senses, examples and selected materialization provenance readable",
-        "materialize and failure states preserve the selected sense"
-      ],
-      "counterexamples": [
-        "missing example",
-        "materialization failure preserves selection"
-      ],
-      "verification": {
-        "status": "pending",
-        "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-        "datasetID": "marketing_demo",
-        "runID": null,
-        "evidenceRoot": null,
-        "requiredSteps": [
-          "initial",
-          "detail",
-          "select-sense",
-          "materialize"
-        ],
-        "counterexampleSteps": [
-          "missing-example",
-          "materialize-error"
-        ],
-        "stateAliases": {
-          "missing-example": [
-            "missing-example-counterexample"
-          ],
-          "materialize-error": [
-            "materialize-error-counterexample"
-          ]
-        },
-        "visualChecks": [
-          "initial hierarchy",
-          "long content",
-          "provenance hierarchy"
-        ],
-        "blockers": ["historical visual evidence retired; no current retained run"],
-        "sourceCommit": null,
-        "datasetSHA256": null,
-        "device": null,
-        "manifestSHA256": null,
-        "evidenceBundles": [
-          {
-            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-005854-64856-20068",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "24089d3eea02dc012f5ff0c5967021ec960724a7cdff4c425dd86444ba8971d0"
-          },
-          {
-            "selector": "DictionaryLookupFlowUITests/testP2DictionaryMissingExampleCounterexampleIsVisible",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-013240-44527-11587",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "930eb46a4b15cf5b711de3574a2fc7e8bd4abebb3e42a5db97cb4b3a5fb55041"
-          },
-          {
-            "selector": "DictionaryLookupFlowUITests/testP2DictionaryMaterializationErrorPreservesSelection",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-013338-47336-2909",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "8014d3b05650e867b004d3b1a954db96ffb53804432017c4f8167d91ee69f57d"
-          }
-        ],
-        "history": [
-          {
-            "recordedAt": "2026-08-15T05:18:26+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-044013-87414-2960",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 3,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T13:34:33+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-125213-13657-24908",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 3,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T18:35:29+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-173433-27948-8421",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 3,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T21:57:01+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-210431-84398-18390",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 3,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-16T01:53:55+00:00",
-            "status": "verified",
-            "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-005854-64856-20068",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 3,
-            "blockers": []
-          }
-        ]
-      }
-    },
     {
       "id": "P3",
       "reportImage": "p3.PNG",
@@ -1266,7 +982,7 @@
     {
       "id": "P11",
       "reportImage": "p11.PNG",
-      "title": "Vocabulary role/review query projection",
+      "title": "Vocabulary review-state query projection",
       "surface": "Vocabulary library",
       "sourceRefs": [
         "ios/BooksAndVocab/Views/Vocabulary/Presentation/VocabularyEntryPresentation.swift",
@@ -1275,32 +991,28 @@
       ],
       "requiredFixtureIDs": [
         "vocabListFilterRich",
-        "p11.644.reviewMix",
-        "review.mixed"
+        "p11.644.reviewMix"
       ],
       "acceptance": [
-        "role facets, review facets, visible rows and CTA use explicit query layers",
-        "dictionary isolation, multi-select union, search, sort and CTA IDs are asserted in UI World"
+        "review-state facets, visible rows and CTA use explicit query layers",
+        "review-state projection, search, sort and CTA IDs are asserted in UI World"
       ],
       "counterexamples": [
-        "learning plus dictionary mixed roles",
         "Dynamic Type accessibility3 with 644 rows"
       ],
       "verification": {
         "status": "pending",
-        "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
+        "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsReviewSearchAndCTAConsistently",
         "datasetID": "marketing_demo",
         "runID": null,
         "evidenceRoot": null,
         "requiredSteps": [
-          "all-scope-644-rows",
-          "dictionary-scope",
-          "learning-review",
+          "all-644-rows",
+          "review-state",
           "search-within-projection",
           "cta"
         ],
         "counterexampleSteps": [
-          "mixed-role",
           "dynamic-type"
         ],
         "visualChecks": [
@@ -1313,70 +1025,8 @@
         "datasetSHA256": null,
         "device": null,
         "manifestSHA256": null,
-        "evidenceBundles": [
-          {
-            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-011653-5943-25650",
-            "evidenceRoot": null,
-            "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-            "datasetSHA256": "3b181b405c0965944aaed18c6e83e096a306c1fd9d29fc26c6a84133c4a656d3",
-            "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-            "manifestSHA256": "e4b40eb7dda50b7564a40c4678fb0861d8607f7b2f2843b0e349e687aacea6af"
-          }
-        ],
-        "history": [
-          {
-            "recordedAt": "2026-08-15T05:18:26+00:00",
-            "status": "verified",
-            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-050508-46330-23442",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 1,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T13:34:33+00:00",
-            "status": "verified",
-            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-131700-69088-13235",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 1,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T18:35:29+00:00",
-            "status": "verified",
-            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-175249-72908-10041",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 1,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-15T21:57:01+00:00",
-            "status": "verified",
-            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
-            "datasetID": "marketing_demo",
-            "runID": "20260815-212200-26711-27105",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 1,
-            "blockers": []
-          },
-          {
-            "recordedAt": "2026-08-16T01:53:55+00:00",
-            "status": "verified",
-            "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
-            "datasetID": "marketing_demo",
-            "runID": "20260816-011653-5943-25650",
-            "evidenceRoot": null,
-            "evidenceBundleCount": 1,
-            "blockers": []
-          }
-        ]
+        "evidenceBundles": [],
+        "history": []
       }
     },
     {

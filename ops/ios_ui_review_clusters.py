@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and expand the five-cluster iOS UI review orchestration manifest."""
+"""Validate and expand the four-cluster iOS UI review orchestration manifest."""
 
 from __future__ import annotations
 
@@ -12,9 +12,8 @@ from typing import Any
 
 
 SCHEMA = "kg.ios.ui-review-clusters.v1"
-REQUIREMENTS = {f"P{n}" for n in range(1, 16)}
+REQUIREMENTS = {f"P{n}" for n in range(3, 16)}
 CLUSTERS = {
-    "dictionary",
     "reader-runtime",
     "explore-overview",
     "vocabulary-review-card",
@@ -60,7 +59,7 @@ def matrix_requirements(matrix: dict[str, Any]) -> dict[str, dict[str, Any]]:
             raise ClusterManifestError("matrix requirements must have string ids")
         result[item["id"]] = item
     if set(result) != REQUIREMENTS:
-        raise ClusterManifestError("matrix must contain exactly P1 through P15")
+        raise ClusterManifestError("matrix must contain exactly P3 through P15")
     return result
 
 
@@ -77,8 +76,8 @@ def validate(manifest_path: Path, root: Path) -> dict[str, Any]:
     if not isinstance(policy, dict) or policy.get("buildOnce") is not True or policy.get("runMany") is not True:
         raise ClusterManifestError("batchPolicy must require buildOnce=true and runMany=true")
     raw_clusters = manifest.get("clusters")
-    if not isinstance(raw_clusters, list) or len(raw_clusters) != 5:
-        raise ClusterManifestError("manifest must contain exactly five clusters")
+    if not isinstance(raw_clusters, list) or len(raw_clusters) != 4:
+        raise ClusterManifestError("manifest must contain exactly four clusters")
     seen_requirements: set[str] = set()
     selector_owners: dict[str, tuple[str, str]] = {}
     cluster_results: list[dict[str, Any]] = []
@@ -144,9 +143,9 @@ def validate(manifest_path: Path, root: Path) -> dict[str, Any]:
             raise ClusterManifestError(f"{cluster_id}.runPlan must cover every cluster requirement")
         cluster_results.append({"id": cluster_id, "requirements": cluster_requirements, "runCount": len(run_plan)})
     if seen_requirements != REQUIREMENTS:
-        raise ClusterManifestError(f"cluster partition must cover P1-P15; missing={sorted(REQUIREMENTS - seen_requirements)}")
+        raise ClusterManifestError(f"cluster partition must cover P3-P15; missing={sorted(REQUIREMENTS - seen_requirements)}")
     if {cluster["id"] for cluster in cluster_results} != CLUSTERS:
-        raise ClusterManifestError("cluster ids must be the canonical five-cluster set")
+        raise ClusterManifestError("cluster ids must be the canonical four-cluster set")
     return {
         "schema": SCHEMA,
         "valid": True,

@@ -1,26 +1,26 @@
-# Five-cluster contract
+# Four-cluster contract
 
 The report's PNG/PDF material is an input contract. Visual inspection is an agent-only, on-demand step; the durable control plane is `ops/fixtures/ios_ui_review_clusters.json` plus `ops/fixtures/ios_ui_review_matrix.json` and compact provenance receipts.
 
 ## Required shape
 
-The cluster manifest must have exactly five unique cluster IDs and requirements `P1` through `P15` exactly once:
+The active cluster manifest must have exactly four unique cluster IDs and requirements `P3` through `P15` exactly once:
 
 ```json
 {
   "schema": "kg.ios.ui-review-clusters.v1",
   "clusters": [
     {
-      "id": "dictionary",
-      "requirements": ["P1", "P2"],
+      "id": "reader-runtime",
+      "requirements": ["P3", "P4", "P5", "P6", "P7"],
       "sourceModules": ["ios/BooksAndVocab/..."],
       "datasetIDs": ["marketing_demo"],
       "runs": [
         {
-          "requirementID": "P1",
-          "selector": "DictionaryLookupFlowUITests/test...",
+          "requirementID": "P3",
+          "selector": "ReaderFlowUITests/test...",
           "requiredStates": ["idle", "loading", "success"],
-          "counterexamples": ["missing-example", "materialize-error"],
+          "counterexamples": ["runtime-timeout", "retry-after-timeout"],
           "requiredFixtureIDs": ["..."],
           "acceptance": ["..."],
           "visualAcceptance": ["..."],
@@ -42,14 +42,13 @@ The repository's actual schema may use equivalent field names, but the invariant
 - evidence roots are unique run directories in the ephemeral bundle, or in `build/ios-report/retained/` only after explicit promotion;
 - source commit, dataset SHA, device UDID, run ID, manifest SHA, and reviewer are machine-readable.
 
-## Five clusters
+## Four clusters
 
 | ID | Requirements | State-model boundary |
 |---|---:|---|
-| `dictionary` | P1-P2 | lookup, typed senses, provenance, materialization and retry |
 | `reader-runtime` | P3-P7 | TOC/runtime loading, progress, settings round-trip and preview |
 | `explore-overview` | P8-P10 | loading/empty/error, projection clock, calendar and forecast |
-| `vocabulary-review-card` | P11-P13 | role/filter projection, information hierarchy, natural card layout |
+| `vocabulary-review-card` | P11-P13 | review-state filter projection, information hierarchy, natural card layout |
 | `settings-sync` | P14-P15 | sync lifecycle, IA, optimistic-state boundaries and reset |
 
 ## Acceptance layers

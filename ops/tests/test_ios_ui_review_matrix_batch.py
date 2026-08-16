@@ -12,7 +12,7 @@ def test_record_many_is_fail_closed_before_visual_attestation() -> None:
     summary = {
         "schema": "kg.ios.ui-run-many.v1",
         "status": "passed_unattested",
-        "executions": [{"status": "passed_unattested", "requirementID": "P1"}],
+        "executions": [{"status": "passed_unattested", "requirementID": "P3"}],
     }
     # A summary without a real evidenceRoot cannot be recorded. This assertion
     # protects the boundary where machine pass must still meet visual evidence.

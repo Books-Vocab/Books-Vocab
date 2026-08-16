@@ -42,7 +42,7 @@ def test_load_and_deduplicate_shared_selector(tmp_path: Path) -> None:
 def test_load_rejects_non_exact_selector(tmp_path: Path) -> None:
     methods = tmp_path / "methods.json"
     methods.write_text(
-        json.dumps({"runs": [{"clusterID": "x", "requirementID": "P1", "selector": "--grep x", "datasetID": "marketing_demo"}]}),
+        json.dumps({"runs": [{"clusterID": "x", "requirementID": "P3", "selector": "--grep x", "datasetID": "marketing_demo"}]}),
         encoding="utf-8",
     )
     with pytest.raises(RunManyError, match="exact XCTest selector"):

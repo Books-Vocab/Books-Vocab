@@ -77,7 +77,7 @@ def test_emit_ios_uses_full_ui_world_manifest_baseline():
     assert document["reviewDeck"]
 
 
-def test_p1_dictionary_rich_fixture_is_emitted_across_canonical_artifacts():
+def test_dictionary_scenario_contract_is_absent_from_canonical_artifacts():
     bundle = sot.load_sot()
     artifacts = dict(emit_ios._artifacts(bundle))
     marketing_path = ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
@@ -88,60 +88,12 @@ def test_p1_dictionary_rich_fixture_is_emitted_across_canonical_artifacts():
     contexts = [document["scenarioContext"] for document in documents]
     assert contexts[0] == contexts[1]
 
-    dictionary = contexts[0]["dictionary"]
-    assert set(dictionary["lookup"]) == {
-        "idle", "loading", "result", "partial", "offline", "error", "retry",
+    assert set(contexts[0]) == {
+        "reviewClock", "readerPassage", "wordDetail", "surfaceContracts",
     }
-    assert dictionary["lookup"]["result"] == {
-        "fixtureID": "dictionary.lookup.result",
-        "stepLabel": "result",
+    assert set(contexts[0]["surfaceContracts"]) == {
+        "explore", "reviewCalendar", "settings",
     }
-    assert dictionary["provenance"] == {
-        "provider": "fixture",
-        "entryID": "engraved",
-        "sourceLabel": "canonical dictionary fixture",
-    }
-    assert [sense["id"] for sense in dictionary["senses"]] == ["sense-1", "sense-2"]
-    assert [sense["exampleIDs"] for sense in dictionary["senses"]] == [
-        ["example-1"],
-        ["example-2"],
-    ]
-    assert [example["id"] for example in dictionary["examples"]] == ["example-1", "example-2"]
-    assert dictionary["materialization"] == {
-        "status": "ready",
-        "selectedSenseID": "sense-1",
-        "selectedExampleID": "example-1",
-        "sourceFixtureID": "dictionary.lookup.result",
-    }
-    assert dictionary["materialization"]["sourceFixtureID"] == dictionary["lookup"]["result"]["fixtureID"]
-
-    surface = contexts[0]["surfaceContracts"]["dictionary"]
-    assert [row["fixtureID"] for row in surface["required"]] == [
-        "ui-p1-dictionary-rich",
-        "ui-p2-dictionary-senses",
-    ]
-    assert [row["stepLabel"] for row in surface["required"]] == [
-        "dictionary-rich",
-        "dictionary-senses",
-    ]
-    assert [row["fixtureID"] for row in surface["counterexamples"]] == [
-        "dictionary.lookup.partial",
-        "dictionary.lookup.offline",
-        "dictionary.lookup.error",
-        "dictionary.lookup.retry",
-        "dictionary.p2.missing-example",
-        "dictionary.p2.materialize-error",
-    ]
-    assert [row["stepLabel"] for row in surface["counterexamples"]] == [
-        "partial-counterexample",
-        "offline-counterexample",
-        "error-counterexample",
-        "retry-counterexample",
-        "missing-example-counterexample",
-        "materialize-error-counterexample",
-    ]
-    assert surface["required"][0]["assetIDs"] == ["catalog_reader_epub"]
-    assert "assetInodes" not in surface["required"][0]
 
 
 def test_emit_ios_preserves_real_reader_toc_assets():

@@ -21,7 +21,6 @@ SPEC.loader.exec_module(MODULE)
 
 UIWorldManifestError = MODULE.UIWorldManifestError
 validate_fixture_dataset_file = MODULE.validate_fixture_dataset_file
-build_p1_dictionary_surface_contract = MODULE.build_p1_dictionary_surface_contract
 
 
 def _marketing_demo() -> dict:
@@ -48,6 +47,17 @@ def test_marketing_demo_declares_canonical_explore_shared_decks_contract():
     assert len(title) >= 80
     assert "🧭" in title
     assert any("\u0590" <= char <= "\u08ff" for char in title)
+
+
+def test_marketing_demo_retires_dictionary_scenario_contract():
+    context = _marketing_demo()["scenarioContext"]
+
+    assert set(context) == {
+        "reviewClock", "readerPassage", "wordDetail", "surfaceContracts",
+    }
+    assert set(context["surfaceContracts"]) == {
+        "explore", "reviewCalendar", "settings",
+    }
 
 
 def test_validate_rejects_ui_world_without_top_level_shared_decks(tmp_path: Path):
@@ -653,7 +663,7 @@ def test_review_calendar_evidence_rejects_unknown_nested_object_keys(
     path = tmp_path / f"unknown_{location}_{unknown_key}.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match="keys 不符合|evidence row keys"):
+    with pytest.raises(UIWorldManifestError, match="keys 不符合|evidence row keys|required contract is missing"):
         validate_fixture_dataset_file(path, require_review_clock=True)
 
 
@@ -680,7 +690,7 @@ def test_review_calendar_evidence_rejects_missing_nested_object_keys(
     path = tmp_path / f"missing_{location}_{missing_key}.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match="keys 不符合|evidence row keys"):
+    with pytest.raises(UIWorldManifestError, match="keys 不符合|evidence row keys|required contract is missing"):
         validate_fixture_dataset_file(path, require_review_clock=True)
 
 
@@ -1863,54 +1873,9 @@ def _canonical_review_clock():
     }
 
 
-def _canonical_dictionary_context():
-    state_rows = {
-        state: {
-            "fixtureID": f"dictionary.lookup.{state}",
-            "stepLabel": state,
-        }
-        for state in ("idle", "loading", "result", "partial", "offline", "error", "retry")
-    }
-    return {
-        "lookup": state_rows,
-        "senses": [
-            {
-                "id": "sense-1",
-                "partOfSpeech": "noun",
-                "gloss": "a durable trace",
-                "exampleIDs": ["example-1"],
-            }
-        ],
-        "examples": [
-            {"id": "example-1", "senseID": "sense-1", "text": "The mark remained."}
-        ],
-        "provenance": {
-            "provider": "fixture",
-            "entryID": "mark",
-            "sourceLabel": "canonical dictionary fixture",
-        },
-        "materialization": {
-            "status": "ready",
-            "selectedSenseID": "sense-1",
-            "selectedExampleID": "example-1",
-            "sourceFixtureID": "dictionary.lookup.result",
-        },
-        "coverage": {
-            "required": {
-                "fixtureIDs": ["dictionary.lookup.result", "dictionary.detail.senses"],
-                "stepLabels": ["idle", "loading", "result", "partial", "offline", "error", "retry"],
-                "assetIDs": ["catalog_reader_epub"],
-            },
-            "counterexamples": {
-                "fixtureIDs": ["dictionary.lookup.error"],
-                "stepLabels": ["error-counterexample"],
-                "assetIDs": ["notebook_cover_app_icon"],
-            },
-        },
-    }
 
 
-def _canonical_surface_contracts(dictionary=None):
+def _canonical_surface_contracts():
     contracts = {
         "explore": {
             "required": [
@@ -1972,16 +1937,13 @@ def _canonical_surface_contracts(dictionary=None):
                 }
             ],
         },
+        "reviewCalendar": _marketing_demo()["scenarioContext"]["surfaceContracts"]["reviewCalendar"],
     }
-    if dictionary is None:
-        dictionary = _marketing_demo()["scenarioContext"]["dictionary"]
-    contracts["dictionary"] = build_p1_dictionary_surface_contract(dictionary)
     return contracts
 
 
 def _legacy_scenario_context(data: dict, *, review_clock=None) -> dict:
     context = dict(data["scenarioContext"])
-    context.pop("dictionary", None)
     context.pop("surfaceContracts", None)
     context["reviewClock"] = review_clock
     return context
@@ -2050,91 +2012,53 @@ def test_validate_rejects_null_review_clock_in_canonical_context(tmp_path: Path)
         validate_fixture_dataset_file(path)
 
 
-@pytest.mark.parametrize("missing_key", ["dictionary", "surfaceContracts"])
-def test_validate_rejects_partial_canonical_scenario_context(tmp_path: Path, missing_key: str):
+def test_validate_rejects_partial_canonical_scenario_context(tmp_path: Path):
     data = _marketing_demo()
-    data["scenarioContext"].pop(missing_key)
-    path = tmp_path / f"canonical_missing_{missing_key}.json"
+    data["scenarioContext"].pop("surfaceContracts")
+    path = tmp_path / "canonical_missing_surface_contracts.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(UIWorldManifestError, match=r"scenarioContext keys.*(extra|missing)"):
+    with pytest.raises(UIWorldManifestError, match=r"scenarioContext.*(keys|reviewClock)"):
         validate_fixture_dataset_file(path)
 
 
-def test_validate_accepts_canonical_dictionary_clock_and_surface_contracts(tmp_path: Path):
+
+
+def test_validate_rejects_retired_dictionary_scenario_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["scenarioContext"]["dictionary"] = {}
+    path = tmp_path / "retired_dictionary_context.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"scenarioContext keys.*extra=.*dictionary"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_retired_dictionary_surface_contract(tmp_path: Path):
+    data = _marketing_demo()
+    contracts = data["scenarioContext"]["surfaceContracts"]
+    contracts["dictionary"] = json.loads(json.dumps(contracts["settings"]))
+    path = tmp_path / "retired_dictionary_surface_contract.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(
+        UIWorldManifestError,
+        match=r"surfaceContracts keys.*extra=.*dictionary",
+    ):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_accepts_canonical_four_key_scenario_context(tmp_path: Path):
     data = _marketing_demo()
     data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
-    dictionary = _canonical_dictionary_context()
-    data["scenarioContext"]["dictionary"] = dictionary
-    data["scenarioContext"]["surfaceContracts"] = _canonical_surface_contracts(dictionary)
-    path = tmp_path / "canonical_dictionary_and_clock.json"
+    data["scenarioContext"]["surfaceContracts"] = _canonical_surface_contracts()
+    path = tmp_path / "canonical_four_key_context.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
     validate_fixture_dataset_file(path)
 
 
-def test_validate_rejects_missing_p1_dictionary_rich_surface_contract(tmp_path: Path):
-    data = _marketing_demo()
-    data["scenarioContext"]["surfaceContracts"].pop("dictionary", None)
-    path = tmp_path / "p1_dictionary_rich_surface_missing.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-    with pytest.raises(
-        UIWorldManifestError,
-        match=r"surfaceContracts\.dictionary\.required contract is missing",
-    ):
-        validate_fixture_dataset_file(path)
-
-
-def test_validate_rejects_dictionary_materialization_sense_example_mismatch(tmp_path: Path):
-    data = _marketing_demo()
-    dictionary = _canonical_dictionary_context()
-    dictionary["materialization"]["selectedSenseID"] = "sense-2"
-    data["scenarioContext"]["dictionary"] = dictionary
-    path = tmp_path / "dictionary_materialization_mismatch.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-    with pytest.raises(UIWorldManifestError, match=r"materialization.*(match|correspond)"):
-        validate_fixture_dataset_file(path)
-
-
-def test_validate_rejects_duplicate_dictionary_lookup_selector(tmp_path: Path):
-    data = _marketing_demo()
-    dictionary = _canonical_dictionary_context()
-    dictionary["lookup"]["retry"]["stepLabel"] = dictionary["lookup"]["result"]["stepLabel"]
-    data["scenarioContext"]["dictionary"] = dictionary
-    path = tmp_path / "dictionary_lookup_duplicate_selector.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-    with pytest.raises(UIWorldManifestError, match=r"dictionary\.lookup\.stepLabel.*唯一"):
-        validate_fixture_dataset_file(path)
-
-
-@pytest.mark.parametrize(
-    ("status", "selected_sense", "selected_example"),
-    [
-        ("pending", "sense-1", "example-1"),
-        ("ready", None, None),
-    ],
-)
-def test_validate_rejects_dictionary_materialization_selection_state_contradiction(
-    tmp_path: Path, status: str, selected_sense: str | None, selected_example: str | None,
-):
-    data = _marketing_demo()
-    dictionary = _canonical_dictionary_context()
-    materialization = dictionary["materialization"]
-    materialization["status"] = status
-    materialization["selectedSenseID"] = selected_sense
-    materialization["selectedExampleID"] = selected_example
-    data["scenarioContext"]["dictionary"] = dictionary
-    path = tmp_path / f"dictionary_materialization_{status}_contradiction.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-    with pytest.raises(UIWorldManifestError, match=r"materialization.*status"):
-        validate_fixture_dataset_file(path)
-
-
-@pytest.mark.parametrize("surface", ["explore", "settings"])
+@pytest.mark.parametrize("surface", ["explore", "reviewCalendar", "settings"])
 def test_validate_rejects_missing_required_surface_contract(tmp_path: Path, surface: str):
     data = _marketing_demo()
     contracts = _canonical_surface_contracts()
@@ -2180,18 +2104,12 @@ def test_validate_rejects_duplicate_surface_selector(tmp_path: Path, field: str)
         validate_fixture_dataset_file(path)
 
 
-@pytest.mark.parametrize("owner", ["dictionary", "surface"])
-def test_validate_rejects_unknown_asset_id(tmp_path: Path, owner: str):
+def test_validate_rejects_unknown_asset_id(tmp_path: Path):
     data = _marketing_demo()
-    if owner == "dictionary":
-        dictionary = _canonical_dictionary_context()
-        dictionary["coverage"]["required"]["assetIDs"] = ["missing_asset"]
-        data["scenarioContext"]["dictionary"] = dictionary
-    else:
-        contracts = _canonical_surface_contracts()
-        contracts["explore"]["required"][0]["assetIDs"] = ["missing_asset"]
-        data["scenarioContext"]["surfaceContracts"] = contracts
-    path = tmp_path / f"{owner}_unknown_asset_id.json"
+    contracts = _canonical_surface_contracts()
+    contracts["explore"]["required"][0]["assetIDs"] = ["missing_asset"]
+    data["scenarioContext"]["surfaceContracts"] = contracts
+    path = tmp_path / "surface_unknown_asset_id.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(UIWorldManifestError, match=r"assetIDs references unknown assets"):
@@ -2221,57 +2139,18 @@ def test_validate_rejects_empty_asset_manifest_key(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
-@pytest.mark.parametrize("owner", ["dictionary", "surface"])
-def test_validate_rejects_legacy_generic_asset_inodes_wire(tmp_path: Path, owner: str):
+def test_validate_rejects_legacy_generic_asset_inodes_wire(tmp_path: Path):
     data = _marketing_demo()
-    if owner == "dictionary":
-        data["scenarioContext"]["dictionary"]["coverage"]["required"]["assetInodes"] = [
-            "inode:catalog_reader_epub"
-        ]
-    else:
-        data["scenarioContext"]["surfaceContracts"]["explore"]["required"][0]["assetInodes"] = [
-            "inode:explore_required"
-        ]
-    path = tmp_path / f"legacy_generic_asset_inodes_{owner}.json"
+    data["scenarioContext"]["surfaceContracts"]["explore"]["required"][0]["assetInodes"] = [
+        "inode:explore_required"
+    ]
+    path = tmp_path / "legacy_generic_asset_inodes_surface.json"
     path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(UIWorldManifestError, match=r"assetInodes"):
         validate_fixture_dataset_file(path)
 
 
-def test_validate_rejects_dictionary_required_counterexample_overlap(tmp_path: Path):
-    data = _marketing_demo()
-    data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
-    dictionary = _canonical_dictionary_context()
-    dictionary["coverage"]["counterexamples"]["stepLabels"] = ["loading"]
-    data["scenarioContext"]["dictionary"] = dictionary
-    path = tmp_path / "dictionary_coverage_overlap.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-    with pytest.raises(UIWorldManifestError, match=r"dictionary.*stepLabels.*disjoint"):
-        validate_fixture_dataset_file(path)
-
-
-@pytest.mark.parametrize(
-    ("field", "overlap_value"),
-    [
-        ("fixtureIDs", "dictionary.lookup.result"),
-        ("assetIDs", "catalog_reader_epub"),
-    ],
-)
-def test_validate_rejects_dictionary_coverage_overlap_for_each_identity_set(
-    tmp_path: Path, field: str, overlap_value: str,
-):
-    data = _marketing_demo()
-    dictionary = _canonical_dictionary_context()
-    data["scenarioContext"]["reviewClock"] = _canonical_review_clock()
-    dictionary["coverage"]["counterexamples"][field] = [overlap_value]
-    data["scenarioContext"]["dictionary"] = dictionary
-    path = tmp_path / f"dictionary_{field}_overlap.json"
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-    with pytest.raises(UIWorldManifestError, match=rf"dictionary.*{field}.*disjoint"):
-        validate_fixture_dataset_file(path)
 
 
 def test_validate_rejects_review_clock_history_day_mismatch(tmp_path: Path):
