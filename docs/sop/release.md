@@ -125,6 +125,8 @@ env knob：`KG_RELEASE_WAIT_SECS`（預設 480）、`KG_RELEASE_POLL_SECS`（10�
 
 **ios 同版重送**（`resubmit ios`）＝ App Review 被拒／尚未上架就要換 binary：`bump-build ios`（marketing 不動、build +1）→ `--upload` → 封 `ios/x.y.z+<build>` + push。這條路徑以前是兩步手動且**不留任何紀錄**，正是 `ios/2.0.0` 脫鉤的成因（`888967dd9`）。
 
+`ios_ops workflow release` 的 App Review gate launcher 由 `ops/lib/project_python.sh` 的 `kg_project_uv_bin` 統一解析；缺少 uv 時回 typed `gate.execution` block，不得把空 executable 傳給 streaming runner。
+
 **ios 上架後**（`shipped ios --yes`）＝ 向 ASC 查 `READY_FOR_SALE` 的 (version, build) → join 對應的 build tag → 物化 `ios/<x.y.z>` 並推 origin。任何歧義都 refuse 不猜：ASC 不可達／無 `READY_FOR_SALE`／多筆 `READY_FOR_SALE`／版號或 build 格式不對／找不到 build tag／`ios/<x.y.z>` 已存在於不同 commit。找不到 build tag 時唯一逃生口是 `--commit <sha>`，輸出會標記「這是人工斷言，不是查證出來的 join」。已一致時為 noop，可排程或在中斷後重跑。
 
 日常盤點：`ops/release.sh status`（各 component 待發版 commit + released gap + 專案版號 + build tag 對照；本地唯讀）。status 的 ios 段會在「目前的 (version, build) 沒有 build tag」時具名警告——那是「一顆 build 出去了卻沒留紀錄」唯一看得見的症狀。
