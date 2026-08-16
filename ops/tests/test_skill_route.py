@@ -70,3 +70,14 @@ def test_primary_overlap_is_rejected():
         assert "primary intent overlap" in str(exc)
     else:
         raise AssertionError("primary overlap must fail closed")
+
+
+def test_cold_start_contract_validates_before_route_and_names_docs_steward():
+    startup = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    validate = "./ops/skill_route.py validate --json"
+    route = "./ops/skill_route.py route --intent <intent> --json"
+    assert validate in startup
+    assert route in startup
+    assert startup.index(validate) < startup.index(route)
+    assert "Docs Steward" in startup

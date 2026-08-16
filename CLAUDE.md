@@ -126,8 +126,8 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## 對話啟動流程
 
-1. **先做 typed skill routing** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，跑 `./ops/skill_route.py route --intent <intent> --json`；自然語言只產生候選，不得把所有命中描述的 skill 一起載入。「不確定」先停在 `kg-router` bootstrap，再沿 route 的 required dependency 查 authority。
-2. **判定角色視野** — Ticket Factory／Delivery Team Integrator／Delivery Child／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。實際 section 走 `./ops/context_route.py render --role <role> --json`，缺 section 直接 fail-closed。
+1. **先做 typed skill routing** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，先跑 `./ops/skill_route.py validate --json`，再跑 `./ops/skill_route.py route --intent <intent> --json`；自然語言只產生候選，不得把所有命中描述的 skill 一起載入。「不確定」先停在 `kg-router` bootstrap，再沿 route 的 required dependency 查 authority。
+2. **判定角色視野** — Ticket Factory／Delivery Team Integrator／Delivery Child／Docs Steward／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。實際 section 走 `./ops/context_route.py render --role <role> --json`，缺 section 直接 fail-closed。
 3. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 4. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
 5. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
