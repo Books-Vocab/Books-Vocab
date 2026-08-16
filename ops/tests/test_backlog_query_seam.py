@@ -61,3 +61,5 @@ def test_query_facade_preserves_traversal_sort_and_refusal_contracts(tmp_path):
     assert [entry["id"] for entry in QUERY.list_entries(tmp_path, deps=deps)] == ["b", "a"]
     with pytest.raises(Error, match=r"--status fixed"):
         QUERY.list_entries(tmp_path, deps=deps, ungroomed=True, status="fixed")
+    with pytest.raises(Error, match=r"--status fixed"):
+        QUERY.list_entries(tmp_path, deps=deps, missing_brief=True, status="fixed")
