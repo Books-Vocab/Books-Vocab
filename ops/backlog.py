@@ -51,7 +51,6 @@ import inspect
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -70,6 +69,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import dispatch_preflight  # noqa: E402
 from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
+import backlog_acceptance as _backlog_acceptance  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
@@ -81,6 +81,13 @@ import backlog_query as _backlog_query  # noqa: E402
 # the cutover gate uses to run these tests can still load it.
 
 SCHEMA = "kg.backlog.entry.v1"
+
+ACCEPTANCE_TIMEOUT_SECONDS = _backlog_acceptance.ACCEPTANCE_TIMEOUT_SECONDS
+AUDIT_TIMEOUT_SECONDS = _backlog_acceptance.AUDIT_TIMEOUT_SECONDS
+AUDIT_POPULATION = _backlog_acceptance.AUDIT_POPULATION
+AUDIT_CAVEAT = _backlog_acceptance.AUDIT_CAVEAT
+_SHELL_CANNOT_RUN = _backlog_acceptance._SHELL_CANNOT_RUN
+_AUDIT_UNRUNNABLE = _backlog_acceptance._AUDIT_UNRUNNABLE
 
 # Two streams, deliberately kept apart. IMP is harness/tooling friction owned by
 # platform-steward; APP is what a user hits while actually using the app, owned
@@ -309,7 +316,7 @@ ACCEPTANCE_PROOF = ("acceptance_cmd", "acceptance_manual")
 # A static subset is a worker feedback loop, not a second closure criterion.
 # It is intentionally bounded more tightly than the full acceptance command so
 # a child cannot accidentally turn this path back into a toolchain queue.
-STATIC_ACCEPTANCE_TIMEOUT_SECONDS = 60
+STATIC_ACCEPTANCE_TIMEOUT_SECONDS = _backlog_acceptance.STATIC_ACCEPTANCE_TIMEOUT_SECONDS
 
 # The declared exception for `audit-criteria`, and the third field in this module
 # shaped like `acceptance_manual` / `fixed_elsewhere` for the same reason.
@@ -329,6 +336,23 @@ STATIC_ACCEPTANCE_TIMEOUT_SECONDS = 60
 # auditable is the sentence saying why.
 ACCEPTANCE_GREEN_EXPECTED = "acceptance_green_expected"
 AUDIT_FIELDS = (ACCEPTANCE_GREEN_EXPECTED,)
+
+
+def _acceptance_deps() -> _backlog_acceptance.AcceptanceDeps:
+    """Build the acceptance seam while preserving façade monkeypatch points."""
+    return _backlog_acceptance.AcceptanceDeps(
+        root=ROOT,
+        run_streamed_command=run_streamed_command,
+        check_acceptance_cmd=_check_acceptance_cmd,
+        list_entries=list_entries,
+        worst_first_key=_worst_first_key,
+        acceptance_green_expected=ACCEPTANCE_GREEN_EXPECTED,
+        acceptance_timeout_seconds=ACCEPTANCE_TIMEOUT_SECONDS,
+        static_acceptance_timeout_seconds=STATIC_ACCEPTANCE_TIMEOUT_SECONDS,
+        execute_criterion=_execute_criterion,
+        trace_failed_clause=_trace_failed_clause,
+        run_acceptance=_run_acceptance,
+    )
 
 # Grooming stamped on or after this date must carry one. Everything groomed before
 # it stays legal — 49 entries, measured, of which 39 have an acceptance that already
@@ -4148,202 +4172,61 @@ def _cmd_anchor(args) -> int:
         return _cmd_anchor_locked(args, queue)
 
 
-ACCEPTANCE_TIMEOUT_SECONDS = 900
-
-
 def _execute_criterion(entry_id: str, cmd: str, timeout_seconds: float,
                        progress_prefix: str) -> tuple[int | None, str, float]:
-    """Run one stored criterion. THE executor — both readers of these strings use it.
-
-    Two things read `acceptance_cmd` by running it: the closing gate (`_run_acceptance`
-    below, via `anchor` / `update` / `verify`) and the sweep that hunts for criteria
-    which are green while their entry is open (`audit-criteria`). The sweep exists to
-    PREDICT the gate, so any difference between the two harnesses is a difference the
-    sweep would report as a property of the entry. Locale is the concrete one: this
-    runner chooses the child's `LC_CTYPE` (see `CHILD_LC_CTYPE`) while a plain
-    `subprocess.run` inherits whatever the caller had, and that byte-level parse
-    difference has already broken one script in this repo (IMP-20260808-3bbfa2). Two
-    executors would have made the audit's verdict a function of who invoked it.
-
-    What that costs the GATE, stated because it is a real change to the thing that
-    decides closures: `run_streamed_command` also REMOVES `LC_ALL` (it has to — POSIX
-    makes `LC_ALL` outrank every `LC_*`, so setting `LC_CTYPE` beside it changes
-    nothing). A caller who had `LC_ALL` set therefore gets a child whose collation
-    now falls back rather than inheriting: measured, `sort` on `a A b B` gives
-    `a A b B` under an inherited `LC_ALL=en_US.UTF-8` and `A B a b` without it.
-    Latent rather than live — 0 of today's 81 criteria use shell `sort` or `[a-z]`
-    ranges — but a criterion that grew one would be graded by a different collation
-    than before this change. The trade is deliberate: an executor that behaves the
-    same for everyone is worth more than one that reproduces each caller's shell.
-
-    Run under **bash**, explicitly, and `cwd=ROOT`. The field contains shell, not an
-    argv list — the real store's strings are `cd backend && uv run pytest …`. The
-    shell has to be bash for one reason: `_check_acceptance_cmd` vets these strings
-    with `bash -n`, and `shell=True` would execute them under `/bin/sh` instead
-    (bash 3.2 in POSIX mode on macOS, dash on a Linux runner). Measured:
-    `bash -n -c '[[ 1 == 1 ]]'` exits 0, `dash -c '[[ 1 == 1 ]]'` exits 127 — so the
-    floor was certifying a property of a shell that would never run the command, and
-    a grooming agent had already begun downgrading every criterion to POSIX sh to
-    stay clear of it. A floor and an executor that disagree is worse than neither.
-    The command comes from the repo's own version-controlled ledger — the same trust
-    boundary as every other file this tool executes.
-
-    Progress goes to STDERR because these are pytest suites: a silent multi-minute
-    pause is the failure mode the heartbeat contract (iron law 5) exists to prevent,
-    and `run_streamed_command` is where that contract lives. stdout stays the single
-    JSON document.
-
-    Returns `(rc, output_tail, elapsed)` with **rc None for a timeout**, which is not
-    a code the caller could have derived: `run_streamed_command` writes 124 when it
-    enforced the deadline, and a child may exit 124 by itself. `timed_out` is the
-    only thing that separates them — a command that ran out of time has said nothing
-    about the defect, and grading it as "failed" would be the report inventing an
-    answer.
-    """
-    started = time.monotonic()
-    result = run_streamed_command(
-        ["bash", "-c", cmd],
-        cwd=ROOT,
-        label_key="entry",
-        label=entry_id,
-        progress_prefix=progress_prefix,
-        # Merged, because the tail is for a human deciding where to look and the
-        # stream a command chose to talk on is not part of that decision.
-        merge_stderr=True,
-        timeout_seconds=timeout_seconds,
+    return _backlog_acceptance.execute_criterion(
+        entry_id,
+        cmd,
+        timeout_seconds,
+        progress_prefix,
+        deps=_backlog_acceptance.AcceptanceDeps(
+            root=ROOT,
+            run_streamed_command=run_streamed_command,
+        ),
     )
-    elapsed = time.monotonic() - started
-    if result.timed_out:
-        return None, f"timed out after {timeout_seconds:g}s", elapsed
-    return result.returncode, (result.stdout or "").strip()[-400:], elapsed
 
 
 def _trace_failed_clause(entry_id: str, cmd: str, timeout_seconds: float,
                          progress_prefix: str) -> str:
-    """Re-run a failed criterion under bash tracing and name its last clause.
-
-    This is intentionally a second execution only on the failure path.  The
-    trace is evidence about which clause ran last; it is not folded into the
-    criterion's output tail, because stdout/stderr are the command's evidence
-    while the trace is the runner's attribution.
-    """
-    trace_token = "KG_ACCEPT_TRACE_" + hashlib.sha256(
-        f"{entry_id}\0{cmd}".encode("utf-8")).hexdigest()[:16] + ": "
-    trace_env = dict(os.environ)
-    trace_env["PS4"] = trace_token
-    result = run_streamed_command(
-        ["bash", "-x", "-c", cmd],
-        cwd=ROOT,
-        label_key="entry",
-        label=entry_id,
-        progress_prefix=f"{progress_prefix}-trace",
-        merge_stderr=False,
-        timeout_seconds=timeout_seconds,
-        env=trace_env,
+    return _backlog_acceptance.trace_failed_clause(
+        entry_id,
+        cmd,
+        timeout_seconds,
+        progress_prefix,
+        deps=_backlog_acceptance.AcceptanceDeps(
+            root=ROOT,
+            run_streamed_command=run_streamed_command,
+        ),
     )
-    if getattr(result, "timed_out", False):
-        return ""
-    trace = result.stderr or ""
-    lines = []
-    for line in trace.splitlines():
-        marker = line.find(trace_token)
-        if marker >= 0:
-            lines.append((marker, line[marker + len(trace_token):].strip()))
-    if not lines:
-        return ""
-    deepest = max(marker for marker, _ in lines)
-    return next(command for marker, command in reversed(lines)
-                if marker == deepest)
 
 
 def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
-    """The closing gate's reading of a criterion: did it hold, yes or no."""
-    print(f"[backlog][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
-    rc, tail, elapsed = _execute_criterion(
-        entry_id, cmd, ACCEPTANCE_TIMEOUT_SECONDS, "[backlog][acceptance]")
-    ok = rc == expect_rc
-    print(f"[backlog][acceptance] {entry_id} done: rc={rc} expected={expect_rc} "
-          f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s", file=sys.stderr, flush=True)
-    failing_clause = ("" if ok or rc is None else _trace_failed_clause(
-        entry_id, cmd, ACCEPTANCE_TIMEOUT_SECONDS, "[backlog][acceptance]"))
-    return {"id": entry_id, "cmd": cmd, "rc": rc, "expect_rc": expect_rc,
-            "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail,
-            "failing_clause": failing_clause}
+    return _backlog_acceptance.run_acceptance(
+        entry_id,
+        cmd,
+        expect_rc,
+        deps=_acceptance_deps(),
+    )
 
 
 def _run_static_acceptance(entry_id: str, cmd: str) -> dict:
-    """Run the optional worker feedback command without changing the store.
-
-    The static path is deliberately separate from `_acceptance_gate`: a worker
-    needs cheap feedback, while a closure still owes the complete criterion. A
-    fixed expected rc of zero keeps this adjunct unambiguous; inverted detectors
-    belong in the full `acceptance_cmd` and are never silently copied here.
-    """
-    print(f"[backlog][acceptance-static] {entry_id} start: {cmd[:120]}",
-          file=sys.stderr, flush=True)
-    rc, tail, elapsed = _execute_criterion(
-        entry_id, cmd, STATIC_ACCEPTANCE_TIMEOUT_SECONDS,
-        "[backlog][acceptance-static]")
-    ok = rc == 0
-    print(f"[backlog][acceptance-static] {entry_id} done: rc={rc} expected=0 "
-          f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s",
-          file=sys.stderr, flush=True)
-    return {"id": entry_id, "cmd": cmd, "rc": rc, "expect_rc": 0,
-            "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail}
+    return _backlog_acceptance.run_static_acceptance(
+        entry_id,
+        cmd,
+        deps=_acceptance_deps(),
+    )
 
 
 def _acceptance_gate(entry: dict, commit: bool) -> dict:
-    """THE precondition for writing `status: fixed`, shared by all three doors.
-
-    There are three ways an entry reaches `fixed`: the wave (`anchor`), a direct
-    `update --status fixed`, and `verify --status fixed`. Section 18 of the tests
-    wired the acceptance command into the first one only, so the other two wrote the
-    same status while checking only traceability — that a commit exists, which is a
-    different claim from "the defect is gone". Both kinds of `fixed` then sat in the
-    store looking identical, so nobody could have counted how many closures rested
-    on nothing.
-
-    ONE implementation, called from all three, is the actual fix. Three copies of
-    this check would be three things to forget the next time a door is added, and
-    forgetting is how the hole got here.
-
-    The return value is the evidence grade, and every caller reports it:
-
-      ran / failed  — a command was nominated and run; `failed` is a refusal
-      manual        — the entry declared why no command can express its acceptance
-      unproven      — neither; allowed, but counted rather than silent
-      would-run     — dry run. These commands have real side effects (`rm`,
-                      container restarts, network calls), so a dry run that
-                      executed them would not be one.
-    """
-    entry_id = entry.get("id", "?")
-    cmd = str(entry.get("acceptance_cmd") or "").strip()
-    if not cmd:
-        manual = str(entry.get("acceptance_manual") or "").strip()
-        return ({"kind": "manual", "id": entry_id, "reason": manual} if manual
-                else {"kind": "unproven", "id": entry_id})
-    expect_rc = int(entry.get("acceptance_expect_rc") or 0)
-    if not commit:
-        return {"kind": "would-run", "id": entry_id, "cmd": cmd, "expect_rc": expect_rc}
-    outcome = _run_acceptance(entry_id, cmd, expect_rc)
-    return {"kind": "ran" if outcome["ok"] else "failed", **outcome}
+    return _backlog_acceptance.acceptance_gate(
+        entry,
+        commit,
+        deps=_acceptance_deps(),
+    )
 
 
 def _acceptance_refusal(result: dict) -> str:
-    """One wording for the refusal, because the reader's next move depends on it.
-
-    The rc and the command's last words are what separate "the criterion is red"
-    from "the harness could not run" — without them the reader goes off to debug
-    the fix, which is the wrong end.
-    """
-    text = (f"acceptance did not hold: `{result['cmd']}` exited {result['rc']}, "
-            f"expected {result['expect_rc']}. The closure claims this defect is "
-            f"gone; the command the entry nominated to prove that says otherwise.")
-    if result.get("output_tail"):
-        text += f"\n  last output: {result['output_tail']}"
-    if result.get("failing_clause"):
-        text += f"\n  failing clause: {result['failing_clause']}"
-    return text
+    return _backlog_acceptance.acceptance_refusal(result)
 
 
 # ---------------------------------------------------------------------------
@@ -4365,138 +4248,31 @@ def _acceptance_refusal(result: dict) -> str:
 # would put a 20-hour ceiling on a sweep somebody is supposed to run before triage.
 # The cost of the smaller number is named rather than hidden: a criterion that needs
 # longer lands in `timeout`, which is a reported bucket and not a verdict.
-AUDIT_TIMEOUT_SECONDS = ACCEPTANCE_TIMEOUT_SECONDS // 3
-
-AUDIT_POPULATION = "groomed AND unresolved"
-
-AUDIT_CAVEAT = (
-    "green is a CANDIDATE for a human to judge, never a verdict. Some criteria are "
-    "green by design (a negative assertion is green until the defect is REintroduced), "
-    "and no reading of the command can tell those from a criterion that lies. Declare "
-    "the by-design ones with `update <id> --acceptance-green-expected '<why>'` — they "
-    "move to `exempt`, where they stay countable. "
-    # The blind spot on the OTHER side, which matters more than it reads: `red` is the
-    # long bucket nobody scrolls, and a criterion can land there for a reason that has
-    # nothing to do with its subject too. Measured on today's population: 49 of 81
-    # criteria call `grep` (exit 2 when the file it names is gone) and 18 run
-    # `pytest -k <expr>` (exit 5 when the filter selects nothing). The pytest shape is
-    # now identified as `error`; the un-negated grep majority still fails the other
-    # way and this sweep cannot see it. The confirmed case this command was built for
-    # was a NEGATED grep, so it surfaced as green. Nothing here can interpret every
-    # program-specific code: a wider rc table would be a guess wearing a classifier's
-    # clothes.
-    "And `red` is not a clean bill of health: an rc this tool cannot interpret "
-    "(grep's 2 for a missing file, or another program-specific code) lands there "
-    "too, so a criterion that stopped testing its subject is invisible here whenever "
-    "it fails for the wrong reason rather than passing for one. A pytest-shaped "
-    "command's rc=5 is reported as `error` / `no-tests-collected`. "
-    "For an unexpected rc, the runner executes the criterion a second time under "
-    "`bash -x` and records the last traced command as `failing_clause`; this is "
-    "diagnostic evidence, not a new verdict, and may repeat side effects."
-)
-
-# Return codes the SHELL produces when it could not run what it was given. Neither
-# is evidence about the defect, and filing them under `red` would say "still broken,
-# carry on" about a command that never executed — which is this entry's own defect
-# reproduced inside the tool built to find it.
-_SHELL_CANNOT_RUN = {127: "command-not-found", 126: "not-executable"}
-
-
 def _looks_like_pytest_command(cmd: str) -> bool:
-    """Recognize pytest as the command, not merely as an argument value."""
-    try:
-        tokens = shlex.split(cmd)
-    except ValueError:
-        return False
-    for index, token in enumerate(tokens):
-        if Path(token).name != "pytest":
-            continue
-        if index == 0 or tokens[index - 1] in {"-m", "run", "env", "command",
-                                                "&&", ";", "||", "|"}:
-            return True
-        # `uv run --with pytest pytest ...`: the first occurrence names the
-        # dependency and the second is the executable.
-        if index >= 2 and tokens[index - 2] == "--with":
-            return True
-    return False
+    return _backlog_acceptance.looks_like_pytest_command(cmd)
 
 
 def _criterion_unrunnable_reason(cmd: str, rc: int) -> str | None:
-    """Return a reason when the shell/tool did not produce criterion evidence."""
-    if rc in _SHELL_CANNOT_RUN:
-        return _SHELL_CANNOT_RUN[rc]
-    # Pytest reserves rc=5 for "no tests collected". Restrict this interpretation
-    # to pytest-shaped commands: rc=5 is a legitimate failure code elsewhere.
-    if rc == 5 and _looks_like_pytest_command(cmd):
-        return "no-tests-collected"
-    return None
-
-# Static findings that stop a criterion being run at all, mapped to the word the
-# report uses. Read off `_check_acceptance_cmd` rather than re-implemented: a second
-# `bash -n` here would be a second floor to keep in step with the first.
-_AUDIT_UNRUNNABLE = {"acceptance-cmd-does-not-parse": "does-not-parse",
-                     "acceptance-cmd-unparsed": "shell-unavailable"}
-
+    return _backlog_acceptance.criterion_unrunnable_reason(cmd, rc)
 
 def _audit_population(store: Path) -> list[dict]:
-    """Groomed AND unresolved, worst-first.
-
-    Two of `dispatch`'s four clauses and pointedly not the other two: a ticket somebody
-    is holding is exactly as likely to carry a lying criterion as an unclaimed one,
-    and dropping it would make the sweep's coverage a function of who happens to be
-    working today. Ungroomed entries are excluded because they have no criterion, and
-    closed ones because the premise — "this entry says the defect is still there" —
-    is what makes a green suspicious.
-    """
-    hits = [p for p in list_entries(store, groomed=True)
-            if p.get("status") not in ("fixed", "wont-fix")]
-    return sorted(hits, key=_worst_first_key)
+    return _backlog_acceptance.audit_population(store, deps=_acceptance_deps())
 
 
 def _audit_row(entry: dict, **extra) -> dict:
-    """The identifying half of every row, so the buckets cannot describe entries
-    differently from each other."""
-    return {"id": entry.get("id"), "severity": entry.get("severity"),
-            "detail": str(entry.get("detail") or "")[:120], **extra}
+    return _backlog_acceptance.audit_row(entry, **extra)
 
 
 def _audit_unrunnable(entry: dict) -> str | None:
-    """Why this criterion cannot be executed at all, or None. Static, side-effect-free.
-
-    Asked BEFORE `--limit` slices the queue, so a slot is spent on a command that
-    will actually run. `bash -n` is free and this is the only way to know: a string
-    bash cannot parse exits 2 when executed, and 2 is what a hundred tools return for
-    "I found the problem" — so running it would manufacture a `red` out of a broken
-    entry, in the one bucket this command's own caveat admits it cannot police.
-    """
-    unrunnable = [_AUDIT_UNRUNNABLE[p["kind"]] for p in _check_acceptance_cmd(entry)
-                  if p["kind"] in _AUDIT_UNRUNNABLE]
-    return unrunnable[0] if unrunnable else None
+    return _backlog_acceptance.audit_unrunnable(entry, deps=_acceptance_deps())
 
 
 def _audit_one(entry: dict, timeout_seconds: float) -> tuple[str, dict]:
-    """Execute one criterion and classify the result. Returns (bucket, row)."""
-    cmd = str(entry.get("acceptance_cmd") or "").strip()
-    expect_rc = int(entry.get("acceptance_expect_rc") or 0)
-    rc, tail, elapsed = _execute_criterion(
-        entry["id"], cmd, timeout_seconds, "[backlog][audit]")
-    row = _audit_row(entry, cmd=cmd, expect_rc=expect_rc, rc=rc,
-                     elapsed_s=round(elapsed, 1), output_tail=tail)
-    if rc is None:
-        return "timeout", {**row, "timeout_seconds": timeout_seconds}
-    unrunnable_reason = _criterion_unrunnable_reason(cmd, rc)
-    if unrunnable_reason:
-        # Checked BEFORE the expect_rc comparison, and that ordering decides both
-        # halves of a rare case: an entry whose `acceptance_expect_rc` is itself 126
-        # or 127 gets NO verdict from this sweep — neither the green it would have
-        # been graded nor the red. The same rule applies to pytest rc=5: it means
-        # the selector collected nothing, not that the criterion answered red.
-        return "error", {**row, "reason": unrunnable_reason,
-                           "failing_clause": ""}
-    if rc != expect_rc:
-        row["failing_clause"] = _trace_failed_clause(
-            entry["id"], cmd, timeout_seconds, "[backlog][audit]")
-    return ("green" if rc == expect_rc else "red"), row
+    return _backlog_acceptance.audit_one(
+        entry,
+        timeout_seconds,
+        deps=_acceptance_deps(),
+    )
 
 
 def _cmd_audit_criteria(args) -> int:
