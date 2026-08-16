@@ -4617,14 +4617,15 @@ def test_two_concurrent_stages_cannot_lose_each_others_row(tmp_path):
     repo = tmp_path / "repo"
     (repo / "docs" / "runbook" / "backlog").mkdir(parents=True)
     (repo / "ops").mkdir()
-    src = BACKLOG_PATH.read_text(encoding="utf-8")
+    src = (BACKLOG_PATH.parent / "backlog_wave.py").read_text(encoding="utf-8")
     anchor = "        clash = [r for r in rows if r.get(\"id\") == args.id]"
     assert src.count(anchor) == 1, "the stage RMW moved; re-anchor this probe"
-    (repo / "ops" / "backlog.py").write_text(
+    (repo / "ops" / "backlog_wave.py").write_text(
         src.replace(anchor,
-                    "        __import__('time').sleep(float(os.environ.get("
+                    "        __import__('time').sleep(float(__import__('os').environ.get("
                     "'KG_TEST_STAGE_DELAY', '0')))\n" + anchor),
         encoding="utf-8")
+    shutil.copy2(BACKLOG_PATH, repo / "ops" / "backlog.py")
     # The module imports `lib.streaming_command` (the heartbeat runner both readers
     # of `acceptance_cmd` go through), so a copy of the FILE is not a copy of the
     # TOOL. Copied rather than made lazy on purpose: a lazy import would let this

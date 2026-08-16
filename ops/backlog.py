@@ -73,6 +73,7 @@ import backlog_acceptance as _backlog_acceptance  # noqa: E402
 import backlog_mutations as _backlog_mutations  # noqa: E402
 import backlog_verification as _backlog_verification  # noqa: E402
 import backlog_reanchor as _backlog_reanchor  # noqa: E402
+import backlog_wave as _backlog_wave  # noqa: E402
 import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
@@ -3812,339 +3813,70 @@ def _closure_changes(*, verdict: str, by: str, evidence: str, at: str | None,
     return changes
 
 
+def _wave_deps() -> _backlog_wave.WaveDeps:
+    """Build wave-queue callbacks while preserving façade monkeypatch points."""
+    return _backlog_wave.WaveDeps(
+        root=ROOT,
+        error_type=BacklogError,
+        git=_git,
+        current_branch=_current_branch,
+        queue_anchor=_queue_anchor,
+        queue_path=_queue_path,
+        queue_lock=_queue_lock,
+        read_queue=read_queue,
+        write_queue=write_queue,
+        entry_path=entry_path,
+        entry_lock=_entry_lock,
+        load_entry=load_entry,
+        closure_changes=_closure_changes,
+        merged_and_validated=_merged_and_validated,
+        write_atomic=_write_atomic,
+        staged_status=STAGED_STATUS,
+    )
+
+
 def _current_branch() -> str:
-    """Which branch staged this row — the key `cutover` stamps by."""
-    proc = _git("rev-parse", "--abbrev-ref", "HEAD")
-    return proc.stdout.strip() if proc.returncode == 0 else ""
-
-
-def _queue_path(explicit: Path | None = None) -> Path:
-    """`<primary>/.cache/backlog_anchor_queue.jsonl` — one queue per repo.
-
-    Anchored on the git COMMON dir's parent, exactly like the worktree ledger, so
-    every linked worktree appends to the same file: `stage` runs in a hunter's
-    worktree, the stamp runs in the primary during cutover, and `anchor` runs in a
-    third worktree at wave end. Under `.cache/` because it is per-machine and must
-    never be committed — a version-controlled queue would recreate the very merge
-    conflict this exists to remove.
-
-    The two-step fallback mirrors `worktree_registry.common_anchor()` rather than
-    dropping straight to ROOT, and the difference is not cosmetic: ROOT is THIS
-    worktree's root, so any git failure silently gives every worktree its own queue
-    while `cutover` keeps stamping the primary's. `--path-format=absolute` is the
-    part that can be missing (git < 2.31), so retry the bare form and resolve it
-    against cwd before giving up.
-    """
-    if explicit is not None:
-        return Path(explicit)
-    return _queue_anchor() / ".cache" / "backlog_anchor_queue.jsonl"
-
-
-def _stage_add(args, entry: dict) -> tuple[dict, Path]:
-    """Park a newly composed entry on the shared wave queue.
-
-    The store and the queue are two possible homes for the same content-derived
-    id. Both must be checked before the row is appended: checking only the store
-    lets two worktrees stage the same issue and checking only the queue lets a
-    staged issue overwrite an entry that another branch already filed.
-    """
-    queue = _queue_path(args.queue)
-    row = {
-        "kind": "add",
-        "id": entry["id"],
-        "entry": entry,
-        "branch": _current_branch(),
-        # `cutover` stamps this once the branch reaches the trunk. Until then
-        # `anchor` must leave the row visible and unmaterialized.
-        "landed_sha": None,
-    }
-    path = entry_path(args.store, entry["id"])
-    # Match anchor's lock order (queue -> entries), otherwise a concurrent stage
-    # and anchor could deadlock while each holds the lock the other needs.
-    with _queue_lock(queue):
-        with _entry_lock(path):
-            if path.exists():
-                raise BacklogError(
-                    f"{entry['id']} already exists in the store; staged add would "
-                    "collide with an existing entry"
-                )
-            rows = read_queue(queue)
-            clash = next((r for r in rows if r.get("id") == entry["id"]), None)
-            if clash is not None:
-                raise BacklogError(
-                    f"{entry['id']} is already staged on branch "
-                    f"{clash.get('branch') or '<unknown>'}. Two staged adds for one "
-                    "id would make anchor choose an arbitrary payload; resolve the "
-                    "collision before retrying."
-                )
-            rows.append(row)
-            write_queue(queue, rows)
-    return row, queue
-
-
-def held_tickets(anchor: Path | None = None) -> dict[str, dict]:
-    """Which tickets are claimed right now, from the worktree ledger. DERIVED.
-
-    This replaces the stored `in-progress` status. The ledger already records the
-    claim — branch, path, timestamp — and it is the side that acts: `open --backlog`
-    takes the claim, `resolve` and `sweep` release it. A second copy in the entry had
-    no writer on the release path at all, so an abandoned worktree left its ticket
-    marked in-progress forever, and nothing would ever have noticed.
-
-    **PER-MACHINE, and callers must say so.** The ledger lives under `.cache/`, is
-    gitignored, and describes THIS checkout's worktrees. On another machine the
-    answer is legitimately empty — which means "nobody here is on it", not "nobody
-    is on it". Rendering that as a bare blank would be the same false confidence the
-    stored status produced, one layer down; `_cmd_list` labels the column instead.
-
-    Fail-soft by design: no ledger, unreadable ledger, or a ledger from an older
-    schema all yield {}. This is a convenience column on a read command, and a
-    ledger problem must not make the backlog unreadable.
-    """
-    path = (anchor or _queue_anchor()) / ".cache" / "worktree_registry.json"
-    try:
-        state = json.loads(path.read_text(encoding="utf-8"))
-        records = state["records"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return {}
-    held: dict[str, dict] = {}
-    for rec in records:
-        if not isinstance(rec, dict) or rec.get("status") != "active":
-            continue
-        for ticket in rec.get("backlog") or []:
-            held[str(ticket)] = {"branch": rec.get("branch"),
-                                 "path": rec.get("path"),
-                                 "claimed_at": rec.get("claimed_at")}
-    return held
+    return _backlog_wave.current_branch(deps=_wave_deps())
 
 
 def _queue_anchor() -> Path:
-    proc = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
-    common = proc.stdout.strip() if proc.returncode == 0 else ""
-    if not common:
-        proc = _git("rev-parse", "--git-common-dir")
-        common = proc.stdout.strip() if proc.returncode == 0 else ""
-    if not common:
-        return ROOT
-    return (Path(common) if Path(common).is_absolute()
-            else (Path.cwd() / common)).resolve().parent
+    return _backlog_wave.queue_anchor(deps=_wave_deps())
 
 
-@contextlib.contextmanager
+def held_tickets(anchor: Path | None = None) -> dict[str, dict]:
+    return _backlog_wave.held_tickets(anchor, deps=_wave_deps())
+
+
+def _queue_path(explicit: Path | None = None) -> Path:
+    return _backlog_wave.queue_path(explicit, deps=_wave_deps())
+
+
 def _queue_lock(queue: Path):
-    """Serialize read-queue → modify → write-queue. FAIL-CLOSED, unlike `_view_lock`.
-
-    `read_queue` + append + `write_queue` is a read-modify-write of one shared file.
-    `_write_atomic` makes each WRITE all-or-nothing; it does nothing for the gap
-    between the read and the write. Measured with real processes on a 179-entry
-    store, staging distinct ids concurrently:
-
-        N=2 → rows lost in 6 of 6 rounds      N=24 → 16/19/21/18/19 of 24 survived
-
-    and every loser printed `[staged]` and exited 0. Nothing downstream notices: the
-    row is not in the queue, so `cutover` never stamps it, so `resolve`'s pending-
-    anchor note cannot see it, so every reader of the store — `list`, `show`, the
-    generated view — reports the entry as still open. That is the exact failure this
-    whole queue exists to prevent.
-
-    The lock lives NEXT TO the queue, not at `ROOT/.cache/` where `_view_lock` sits.
-    That pairing is deliberate in both cases: the view is per-worktree, so its lock
-    must be too; the queue is per-repo, so a per-worktree lock would leave two
-    worktrees each holding their own and serializing nothing.
-
-    Fail-closed is the other deliberate difference. `_view_lock` proceeds unlocked
-    because by then the mutation has already landed and refusing would not unmake
-    it. Here the write has NOT happened, and an unlocked append is how rows vanish
-    silently — so a lock we cannot take refuses the stage instead.
-
-    The name is `<queue>.lock` — `with_name(name + ".lock")`, NOT `with_suffix`,
-    which would strip `.jsonl` and give `backlog_anchor_queue.lock`. The other
-    holder of this lock is `worktree_orchestrate._stamp_anchor_queue`, which reaches
-    it through `worktree_registry._ledger_lock`, and that primitive uses the
-    with_name form. Two spellings would be two different files, i.e. two processes
-    each holding their own lock and serializing nothing — a lock that looks present
-    in both modules and is absent in fact. `test_the_queue_lock_is_the_same_file_in
-    _both_modules` pins the agreement, because nothing else would notice.
-    """
-    lock_path = Path(queue).with_name(Path(queue).name + ".lock")
-    try:
-        with exclusive_lock(lock_path, label=f"backlog-queue:{queue.name}"):
-            yield
-    except LockUnavailable as exc:
-        raise BacklogError(
-            f"queue lock unavailable ({exc}); refusing to stage rather than append "
-            f"unserialized — an unlocked append loses rows silently. Lock: {lock_path}"
-        ) from exc
+    return _backlog_wave.queue_lock(queue, deps=_wave_deps())
 
 
 def read_queue(path: Path) -> list[dict]:
-    if not Path(path).exists():
-        return []
-    rows = []
-    for lineno, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            # Name the file and the line. A truncated row is recoverable by hand,
-            # but only by someone who is told which hand-edit to make — and this is
-            # the one file in the ledger that policy allows editing, because it is
-            # per-machine scratch rather than the store.
-            raise BacklogError(
-                f"{path}:{lineno} is not valid JSON ({exc.msg}). The wave queue is "
-                f"per-machine scratch: delete the bad line, or delete the file to "
-                f"drop every staged closure that has not been anchored yet."
-            ) from exc
-    return rows
-
-
-def _pending_queue_summary(queue: Path | None = None) -> dict:
-    """Expose per-machine queue work without making it part of the store.
-
-    A staged add is intentionally absent from `list`'s entry rows until its
-    landing commit exists and `anchor` materializes it. The count is therefore a
-    separate, explicitly local fact; hiding it would turn a forgotten anchor into
-    a silent omission.
-    """
-    path = _queue_path(queue)
-    try:
-        rows = read_queue(path)
-    except BacklogError as exc:
-        return {"queue": str(path), "error": str(exc)}
-    return {
-        "queue": str(path),
-        "total": len(rows),
-        "staged_adds": sum(1 for row in rows if row.get("kind") == "add"),
-        "staged_closures": sum(1 for row in rows if row.get("kind") != "add"),
-        "unstamped": sum(1 for row in rows if not row.get("landed_sha")),
-    }
+    return _backlog_wave.read_queue(path, deps=_wave_deps())
 
 
 def write_queue(path: Path, rows: list[dict]) -> None:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    _write_atomic(Path(path),
-                  "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    return _backlog_wave.write_queue(path, rows, deps=_wave_deps())
+
+
+def _pending_queue_summary(queue: Path | None = None) -> dict:
+    return _backlog_wave.pending_queue_summary(queue, deps=_wave_deps())
+
+
+def _stage_add(args, entry: dict) -> tuple[dict, Path]:
+    return _backlog_wave.stage_add(args, entry, deps=_wave_deps())
 
 
 def _cmd_stage(args) -> int:
-    """Park a closure on the queue instead of writing it into the store.
-
-    A hunter that closes its own entry rewrites the generated view from its branch,
-    and that file is the one thing parallel branches provably conflict on — plus the
-    render is O(entries) and now serialized, so N hunters pay it N times. Staging
-    costs an append to a gitignored file and moves the store write to once per wave.
-
-    Validated HERE, against the real store, so a bad closure fails on the hunter's
-    branch rather than at wave end in someone else's batch.
-
-    Staging always means `status=fixed`, and there is no flag to say otherwise. The
-    queue's entire reason to exist is that the landing commit does not exist yet —
-    and `fixed` is the ONLY status that needs one. `wont-fix` owes a reason, not a
-    hash; `triaged` owes a next action. Both can be written the moment they are
-    decided, so they go through `update` and never touch a wave.
-
-    That is a correctness fix, not tidying. While `--status` accepted the full
-    vocabulary, `anchor` still hung `fixed_by=[landed_sha]` on the row unconditionally
-    — so `stage --status wont-fix` ran green end to end and left a wont-fix entry
-    carrying a commit hash, with `validate` reporting 0 problems. `_check_traceability`
-    says in as many words that a wont-fix decision is "a reason, not a hash". Forcing
-    the status here makes anchor's unconditional write true by construction instead
-    of true only when the caller happened to pass the right flag.
-    """
-    changes = _closure_changes(verdict=args.verdict, by=args.by, evidence=args.evidence,
-                               at=args.at, status=STAGED_STATUS, fixed_by=None)
-    current = load_entry(args.store, args.id)      # EntryNotFound -> refusal in main()
-    # Everything `verify` checks EXCEPT the traceability rules. The exclusion is
-    # structural: `fixed` cannot carry `fixed_by` yet (the branch has not been
-    # rebased or fast-forwarded, so the commit does not exist). `anchor` runs the
-    # full check, with the real sha, before it writes anything.
-    #
-    # It used to be WIDER than the rule that forces it — `no-next-action`,
-    # `wont-fix-without-reason` and `wont-fix-reason-is-a-sha` mention no sha and
-    # were switched off with it. That is no longer true: those three moved to
-    # `_check_status_obligations`, which `validate_entry` runs unconditionally.
-    # The note stays because the same over-wide exclusion, unnoticed on THIS path
-    # (the status is pinned to `fixed`, which owes none of them), was the whole of
-    # IMP-20260808-f2bcc1 on `add`'s.
-    _merged_and_validated(current, changes, args.id, check_traceability=False)
-
-    row = {
-        "id": args.id,
-        "verdict": args.verdict,
-        "by": args.by,
-        "evidence": args.evidence,
-        "status": STAGED_STATUS,
-        "at": changes["verified_at"],
-        "branch": _current_branch(),
-        # Stamped by `cutover` once this branch has actually reached the trunk.
-        # Until then the closure is a claim about work that may never land.
-        "landed_sha": None,
-    }
-    queue = _queue_path(args.queue)
-    with _queue_lock(queue):
-        rows = read_queue(queue)
-        clash = [r for r in rows if r.get("id") == args.id]
-        if clash and not args.replace:
-            # Two rows for one id used to be accepted in silence: `anchor` applied
-            # both, the second overwrote the first, and `applied` listed the id
-            # twice. The evidence the first hunter travelled with was gone with no
-            # warning — and evidence quietly replaced by someone else's is worse
-            # than no evidence, because it still reads as attributable.
-            raise BacklogError(
-                f"{args.id} is already staged on branch "
-                f"{clash[0].get('branch') or '<unknown>'} by "
-                f"{clash[0].get('by') or '<unknown>'}. Two closures for one entry "
-                f"means two people fixed it or one of you has the wrong id — decide "
-                f"which, then `unstage {args.id}` or re-run with --replace."
-            )
-        rows = [r for r in rows if r.get("id") != args.id]
-        rows.append(row)
-        write_queue(queue, rows)
-    if args.json:
-        print(json.dumps({"schema": "kg.backlog.stage.v1", "staged": row,
-                          "queue": str(queue), "replaced": bool(clash)},
-                         ensure_ascii=False))
-    else:
-        print(f"[staged] {args.id} {args.verdict} by {args.by}"
-              f"{' (replaced a previous row)' if clash else ''}\n"
-              f"  queued in {queue} — lands in the store when the wave runs "
-              f"`./ops/backlog.py anchor --commit`")
-    return 0
+    return _backlog_wave.cmd_stage(args, deps=_wave_deps())
 
 
 def _cmd_unstage(args) -> int:
-    """Take a row back off the queue.
-
-    `anchor` is all-or-nothing, so one unusable row blocks the whole wave. Without
-    this the only way out is hand-editing the jsonl — and this module's own policy
-    is that the ledger is reached through this CLI, never by hand. An all-or-nothing
-    gate with no escape verb does not make people fix the row; it makes them edit
-    the file, and once they are in there nothing constrains what else they change.
-    """
-    queue = _queue_path(args.queue)
-    with _queue_lock(queue):
-        rows = read_queue(queue)
-        keep = [r for r in rows if r.get("id") != args.id]
-        dropped = [r for r in rows if r.get("id") == args.id]
-        if not dropped:
-            raise BacklogError(f"{args.id} is not on the queue ({queue})")
-        if args.commit:
-            write_queue(queue, keep)
-    payload = {"schema": "kg.backlog.unstage.v1", "id": args.id,
-               "mode": "committed" if args.commit else "dry-run",
-               "dropped": dropped, "remaining": len(keep), "queue": str(queue)}
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
-    else:
-        verb = "dropped" if args.commit else "would drop"
-        for r in dropped:
-            print(f"[{verb}] {r.get('id')} {r.get('verdict')} by {r.get('by')}"
-                  f" (branch {r.get('branch') or '<unknown>'},"
-                  f" landed_sha {r.get('landed_sha') or '—'})")
-        print(f"  {len(keep)} row(s) remain in {queue}"
-              + ("" if args.commit else "  [dry-run: --commit to apply]"))
-    return 0
+    return _backlog_wave.cmd_unstage(args, deps=_wave_deps())
 
 
 def _cmd_anchor(args) -> int:
