@@ -219,6 +219,7 @@ final class OverviewFlowUITests: UITestCase {
             counterexampleOverview.assertMetric("totalCards", value: String(counterexampleExpected.totalCards))
             counterexampleOverview.assertMetric("reviewedToday", value: String(counterexampleExpected.reviewedToday))
             counterexampleOverview.assertMetric("dueToday", value: String(counterexampleExpected.dueToday))
+            counterexampleOverview.assertMetricCardsHaveUniformGeometry()
             counterexampleOverview.calendar.assertExists(timeout: 10)
             XCTAssertEqual(
                 counterexampleOverview.calendar.value as? String,
