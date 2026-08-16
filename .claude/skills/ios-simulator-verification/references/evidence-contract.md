@@ -2,7 +2,7 @@
 
 ## Verdict identity
 
-`ops/ios_test.sh --json` emits `kg.ios.run-verdict.v1`; the helper writes a normalized copy with `helper.schema=kg.ios.ui-evidence.v1` into a stable per-run bundle. Treat these fields as the minimum identity tuple:
+`ops/ios_test.sh --json` emits `kg.ios.run-verdict.v1`; the visual helper writes a normalized copy with `helper.schema=kg.ios.ui-evidence.v1` into a run-scoped bundle. The bundle is ephemeral by default and is promoted only by explicit `--retain`. Treat these fields as the minimum identity tuple:
 
 | Field | Meaning | Required reading |
 |---|---|---|
@@ -12,7 +12,7 @@
 | `options.sourceTreeDirty` | uncommitted source state | Dirty evidence is not a release claim |
 | `options.datasetID` / `datasetSHA256` | UI World provenance | Prevent fixture drift |
 | `device` | resolved Simulator UDID | Required for parallel-run attribution |
-| `artifacts.log` / `xcresult` | raw diagnostics | Normalized paths must point inside the stable bundle and exist |
+| `artifacts.log` / `xcresult` | raw diagnostics | Normalized paths must point inside the run bundle and exist while it is alive |
 | `artifacts.uiReviewHtml` | navigable visual review | Preferred human entrypoint |
 | `artifacts.uiContactSheet` / `uiQuick4Sheet` | screenshot overview | Inspect, do not merely archive |
 | `artifacts.uiVideo` | full interaction recording | Use when timing or transition matters |
@@ -33,7 +33,7 @@ integrity.
 - `options.datasetID` and `datasetSHA256` equal the validated local UI World;
 - top-level `device` is a UUID and agrees with the `id=` in `options.device`; explicit `--device` must match it;
 - `uiVisualReview.reviewHtml`, contact sheet, quick4 sheet, manifest, video and review root all exist;
-- normalized log, xcresult and visual artifacts are copied under `build/snapshots/uitest-evidence/<run>/`.
+- normalized log, xcresult and visual artifacts are inside the ephemeral run bundle; only an explicit `--retain` promotion places them under `build/ios-report/retained/<run>/`.
 - the visual manifest resolves every `relPath` inside its stable screenshot root; symlink escapes
   are rejected before PNG metadata is trusted.
 
@@ -44,7 +44,7 @@ named `tool-missing`/`tool-invalid` preflight failure with exit `70`, never a so
 copy or a contract downgrade. Successful normalized verdicts retain `helper.toolRoot`,
 `helper.validator`, and `helper.toolResolution` so the tool provenance is auditable.
 
-The helper keeps `upstream-verdict.json`, the delegate stderr log, command metadata and every upstream artifact that still exists in the complete UI review directory even when the upstream runner's temporary paths are removed. For a non-zero runner it still emits a normalized `status=fail` verdict; for invalid JSON or a zero-exit contract violation it emits `status=inconclusive`. Missing upstream artifacts remain explicit `*Exists=false` fields and never become a pass.
+The helper keeps `upstream-verdict.json`, the delegate stderr log, command metadata and every upstream artifact that still exists in the complete UI review directory while the run bundle is alive, then the bounded cleanup removes the binary artifacts after TTL. For a non-zero runner it still emits a normalized `status=fail` verdict; for invalid JSON or a zero-exit contract violation it emits `status=inconclusive`. Missing upstream artifacts remain explicit `*Exists=false` fields and never become a pass.
 
 ## Evidence strength
 
@@ -68,6 +68,6 @@ disjoint screenshot assets.
 - Keep the exact command, branch, HEAD, dataset, UDID, verdict, log, xcresult, and visual artifact paths together.
 - Re-run the same selector after a code fix. Do not compare a new source tree against an old simulator recording without naming the mismatch.
 - If the test runner returns `0` but executes zero tests, treat it as false-green and investigate the runner／selector contract.
-- If the test runner returns non-zero, read the helper's normalized stable bundle before changing code; its `upstreamStatus`, stable log, xcresult and any retained UI artifacts are the failure record.
+- If the test runner returns non-zero, read the helper's normalized run bundle before changing code; its `upstreamStatus`, log, xcresult and any visual artifacts are the failure record while the TTL is alive.
 - A parseable JSON object with `status=missing`, missing `uiVisualReview`, dirty source, mismatched dataset/device, or missing artifacts is still a failed evidence contract, never a pass.
 - If another Xcode process shares the device or DerivedData, wait on the runner lock or use another leased pool device; do not manually mutate shared state.

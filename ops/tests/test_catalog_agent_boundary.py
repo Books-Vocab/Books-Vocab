@@ -63,10 +63,10 @@ def test_retired_gallery_launchers_are_removed() -> None:
         assert legacy not in launch
 
 
-def test_catalog_is_not_a_snapshot_or_visual_regression_gate() -> None:
+def test_catalog_is_not_a_quality_plane_gate() -> None:
     quality_plane = (ROOT / "ops/ui_quality_plane.yml").read_text(encoding="utf-8")
     assert "snapshot.catalog" not in quality_plane
-    assert "visual.catalog_regression" not in quality_plane
+    assert "catalog_regression" not in quality_plane
     assert "CatalogCoverageTests" not in quality_plane
 
 

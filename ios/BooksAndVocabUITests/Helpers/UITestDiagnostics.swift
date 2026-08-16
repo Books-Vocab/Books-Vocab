@@ -124,7 +124,7 @@ class UITestCase: XCTestCase {
         // Readium/WebKit accessibility tree can be enormous; requesting the
         // complete remote snapshot after a failure can keep xcodebuild alive
         // for minutes and hide the original assertion.  The failure screenshot
-        // and the bounded summaries below are the stable evidence contract.
+        // and the bounded summaries below are the compact run-receipt contract.
         add(XCTAttachment(
             string: "Full accessibility-tree dump intentionally omitted; use the failure screenshot and focused query output."
         ).named("\(namePrefix) Diagnostics Policy"))

@@ -40,7 +40,6 @@ SLOW_LAYERS = {
     "state-snapshot",
     "behavior",
     "perf",
-    "visual-regression",
     "cross-platform",
 }
 

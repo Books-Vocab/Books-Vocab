@@ -5,7 +5,7 @@
 ## Identity
 
 **KG = Knowledge Graph 英語詞彙學習 app** — EPUB/PDF/TXT/MD reader 選詞 → 翻譯 → 詞庫 → 知識圖譜 → today review → podcast。  
-Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官網)+ `lab/`(Podcast monitor / Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`；`frozen/2026-06-14-web-chrome-parity/` 收納已冷凍的 web pilot / Chrome extension / web-chrome parity tooling。
+Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官網)+ `lab/`(Podcast monitor / Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`。
 
 | key | value |
 |-----|-------|

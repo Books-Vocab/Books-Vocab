@@ -474,8 +474,8 @@ else
 fi
 
 # ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
-# 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是「`.sh` 且不在
-# SHELL_GATE_EXCLUDED_TREES 之下」（worktree_orchestrate.py:plan_gates）；workflow 的
+# 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是所有 tracked `*.sh`
+#（worktree_orchestrate.py:plan_gates）；workflow 的
 # `ops/**` 一條只涵蓋 ops/，其餘沒有共同前綴，只能逐條列——所以它是會漂的那一半。
 # 漏一條的後果就是 IMP-0052 本身：本機 gate 擋得住、CI 完全看不到那支腳本。
 #

@@ -42,11 +42,11 @@
         "partial result with no selected sense"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
         "datasetID": "marketing_demo",
-        "runID": "20260816-005738-61448-10129",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-005738-61448-10129",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "idle",
           "loading",
@@ -61,17 +61,17 @@
           "result hierarchy",
           "error/retry affordance"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "e6600ec6c78f69ed8353d5b8e1115ca1c0f467396d4b54f00db793be053aeb45",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
             "runID": "20260816-005738-61448-10129",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-005738-61448-10129",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -81,7 +81,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryLoadingAndEmptySelectorsAreLive",
             "datasetID": "marketing_demo",
             "runID": "20260816-012829-33799-20877",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012829-33799-20877",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -91,7 +91,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryPartialRetryAndRetryingSelectorsAreLive",
             "datasetID": "marketing_demo",
             "runID": "20260816-013005-37811-19392",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013005-37811-19392",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -101,7 +101,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryOfflineAndErrorSelectorsExposeRetry",
             "datasetID": "marketing_demo",
             "runID": "20260816-013109-40744-21076",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013109-40744-21076",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -115,7 +115,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
             "runID": "20260815-043516-75240-22553",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-043516-75240-22553",
+            "evidenceRoot": null,
             "evidenceBundleCount": 4,
             "blockers": []
           },
@@ -125,7 +125,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
             "runID": "20260815-124720-1861-5508",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-124720-1861-5508",
+            "evidenceRoot": null,
             "evidenceBundleCount": 4,
             "blockers": []
           },
@@ -135,7 +135,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
             "runID": "20260815-173314-23996-28504",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-173314-23996-28504",
+            "evidenceRoot": null,
             "evidenceBundleCount": 4,
             "blockers": []
           },
@@ -145,7 +145,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
             "runID": "20260815-210312-80916-6692",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210312-80916-6692",
+            "evidenceRoot": null,
             "evidenceBundleCount": 4,
             "blockers": []
           },
@@ -155,7 +155,7 @@
             "selector": "DictionaryLookupFlowUITests/testDictionaryResultShowsCanonicalSensesProvenanceAndMaterialization",
             "datasetID": "marketing_demo",
             "runID": "20260816-005738-61448-10129",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-005738-61448-10129",
+            "evidenceRoot": null,
             "evidenceBundleCount": 4,
             "blockers": []
           }
@@ -184,11 +184,11 @@
         "materialization failure preserves selection"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
         "datasetID": "marketing_demo",
-        "runID": "20260816-005854-64856-20068",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-005854-64856-20068",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "initial",
           "detail",
@@ -212,17 +212,17 @@
           "long content",
           "provenance hierarchy"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "24089d3eea02dc012f5ff0c5967021ec960724a7cdff4c425dd86444ba8971d0",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
             "runID": "20260816-005854-64856-20068",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-005854-64856-20068",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -232,7 +232,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionaryMissingExampleCounterexampleIsVisible",
             "datasetID": "marketing_demo",
             "runID": "20260816-013240-44527-11587",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013240-44527-11587",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -242,7 +242,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionaryMaterializationErrorPreservesSelection",
             "datasetID": "marketing_demo",
             "runID": "20260816-013338-47336-2909",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013338-47336-2909",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -256,7 +256,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
             "runID": "20260815-044013-87414-2960",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044013-87414-2960",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -266,7 +266,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
             "runID": "20260815-125213-13657-24908",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125213-13657-24908",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -276,7 +276,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
             "runID": "20260815-173433-27948-8421",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-173433-27948-8421",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -286,7 +286,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
             "runID": "20260815-210431-84398-18390",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210431-84398-18390",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -296,7 +296,7 @@
             "selector": "DictionaryLookupFlowUITests/testP2DictionarySensesUsesIndependentTypedSurfaceSelector",
             "datasetID": "marketing_demo",
             "runID": "20260816-005854-64856-20068",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-005854-64856-20068",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -324,11 +324,11 @@
         "navigation failure retains retryable state"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
         "datasetID": "marketing_demo",
-        "runID": "20260816-010010-68015-31573",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010010-68015-31573",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "reader",
           "toc-open",
@@ -343,17 +343,17 @@
           "chapter hierarchy",
           "selection/loading state"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "30fb1dab9bf5cc4d0e6a75ab96450a453ebf1fbd600468a17198966bde1adcc7",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260816-010010-68015-31573",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010010-68015-31573",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -363,7 +363,7 @@
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
             "runID": "20260816-013446-50359-31368",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013446-50359-31368",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -373,7 +373,7 @@
             "selector": "ReaderFlowUITests/testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable",
             "datasetID": "marketing_demo",
             "runID": "20260816-013548-53212-28567",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013548-53212-28567",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -387,7 +387,7 @@
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
             "runID": "20260815-044303-95346-29664",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -397,7 +397,7 @@
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
             "runID": "20260815-125500-20702-8635",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -407,7 +407,7 @@
             "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-173540-31385-11517",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-173540-31385-11517",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -417,7 +417,7 @@
             "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-210538-87368-22317",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210538-87368-22317",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -427,7 +427,7 @@
             "selector": "ReaderFlowUITests/testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260816-010010-68015-31573",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010010-68015-31573",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -455,11 +455,11 @@
         "Dynamic Type accessibility3"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
         "datasetID": "marketing_demo",
-        "runID": "20260816-010114-71279-3409",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010114-71279-3409",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "settings-open",
           "change-theme",
@@ -474,17 +474,17 @@
           "selected marker",
           "preview versus real Reader"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "79208beb851d93b7d92926e6afc6fcc13261f1ae5882c081a02567d17d31ed93",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260816-010114-71279-3409",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010114-71279-3409",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -494,7 +494,7 @@
             "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
             "datasetID": "marketing_demo",
             "runID": "20260816-013657-56582-1679",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013657-56582-1679",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -504,7 +504,7 @@
             "selector": "ReaderSettingsUITests/testReaderSettingsDynamicTypeHasGeometryAndAccessibilityAssertions",
             "datasetID": "marketing_demo",
             "runID": "20260816-013943-62294-1045",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013943-62294-1045",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -518,7 +518,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260815-044557-3418-10205",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044557-3418-10205",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -528,7 +528,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260815-125757-28169-23875",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125757-28169-23875",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -538,7 +538,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260815-173645-34404-3574",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-173645-34404-3574",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -548,7 +548,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260815-210639-90417-26186",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210639-90417-26186",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -558,7 +558,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260816-010114-71279-3409",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010114-71279-3409",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -586,11 +586,11 @@
         "line-height 2.5"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
         "datasetID": "marketing_demo",
-        "runID": "20260816-010114-71279-3409",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010114-71279-3409",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "preview-1.0",
           "preview-1.2",
@@ -605,17 +605,17 @@
           "line spacing",
           "highlight band height"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "79208beb851d93b7d92926e6afc6fcc13261f1ae5882c081a02567d17d31ed93",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260816-010114-71279-3409",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010114-71279-3409",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -625,7 +625,7 @@
             "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
             "datasetID": "marketing_demo",
             "runID": "20260816-013657-56582-1679",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013657-56582-1679",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -639,7 +639,7 @@
             "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
             "datasetID": "marketing_demo",
             "runID": "20260815-044844-9396-16183",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044844-9396-16183",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -649,7 +649,7 @@
             "selector": "ReaderSettingsUITests/testReaderPreviewKeepsViewportAcrossDarkAndSepiaCounterexamples",
             "datasetID": "marketing_demo",
             "runID": "20260815-130038-33796-16030",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130038-33796-16030",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -659,7 +659,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260815-173645-34404-3574",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-173645-34404-3574",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -669,7 +669,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260815-210639-90417-26186",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210639-90417-26186",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -679,7 +679,7 @@
             "selector": "ReaderSettingsUITests/testProductionReaderSettingsRoundTripAfterReaderReopen",
             "datasetID": "marketing_demo",
             "runID": "20260816-010114-71279-3409",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010114-71279-3409",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -707,11 +707,11 @@
         "restore position failure"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
         "datasetID": "marketing_demo",
-        "runID": "20260816-010408-77454-20600",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010408-77454-20600",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "reader-load",
           "progress-zero",
@@ -726,17 +726,17 @@
           "progress chrome",
           "failure recovery"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "e1eabd2bac2bbeb619acf2c9a9b607187d44a76f4281c7417f564302d57cda51",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
             "datasetID": "marketing_demo",
             "runID": "20260816-010408-77454-20600",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010408-77454-20600",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -746,7 +746,7 @@
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
             "runID": "20260816-013446-50359-31368",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-013446-50359-31368",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -760,7 +760,7 @@
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
             "runID": "20260815-044303-95346-29664",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-044303-95346-29664",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -770,7 +770,7 @@
             "selector": "ReaderFlowUITests/testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages",
             "datasetID": "marketing_demo",
             "runID": "20260815-125500-20702-8635",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-125500-20702-8635",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -780,7 +780,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
             "datasetID": "marketing_demo",
             "runID": "20260815-173943-42587-17325",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-173943-42587-17325",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -790,7 +790,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
             "datasetID": "marketing_demo",
             "runID": "20260815-210933-97366-1794",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-210933-97366-1794",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -800,7 +800,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeProgressStatesArePreciselySelectableWithProvenance",
             "datasetID": "marketing_demo",
             "runID": "20260816-010408-77454-20600",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010408-77454-20600",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -828,11 +828,11 @@
         "slow asset installation"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
         "datasetID": "marketing_demo",
-        "runID": "20260816-010617-82443-19211",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010617-82443-19211",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "launch-loading",
           "error",
@@ -846,17 +846,17 @@
           "loading skeleton",
           "retry/error hierarchy"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "8ab6bc25d98c6fae6294a00ecf036c64305a87fe5675566cd482338d5d6d6305",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260816-010617-82443-19211",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010617-82443-19211",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -870,7 +870,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-045448-23380-30577",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045448-23380-30577",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -880,7 +880,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-130635-46525-30075",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130635-46525-30075",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -890,7 +890,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-174206-48222-4029",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-174206-48222-4029",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -900,7 +900,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-211138-2559-11544",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-211138-2559-11544",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -910,7 +910,7 @@
             "selector": "ReaderFlowUITests/testReaderRuntimeLoadingScenariosAreControllableAndRetryToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260816-010617-82443-19211",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010617-82443-19211",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -939,11 +939,11 @@
         "empty catalog with retry"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
         "datasetID": "marketing_demo",
-        "runID": "20260816-010804-86613-12584",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010804-86613-12584",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "explore-loading",
           "explore-loaded",
@@ -958,17 +958,17 @@
           "loading transition",
           "catalog density"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "cb05f9e2f6d1bded77eb6ff92050efd95eafaf2cf70235f6574512d1690aa820",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
             "runID": "20260816-010804-86613-12584",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010804-86613-12584",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -982,7 +982,7 @@
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
             "runID": "20260815-045629-26990-28956",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045629-26990-28956",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -992,7 +992,7 @@
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
             "runID": "20260815-130813-50234-6531",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-130813-50234-6531",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1002,7 +1002,7 @@
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
             "runID": "20260815-174402-53026-27831",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-174402-53026-27831",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1012,7 +1012,7 @@
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
             "runID": "20260815-211321-6380-24770",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-211321-6380-24770",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1022,7 +1022,7 @@
             "selector": "ExploreNavigationUITests/testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates",
             "datasetID": "marketing_demo",
             "runID": "20260816-010804-86613-12584",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-010804-86613-12584",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -1051,11 +1051,11 @@
         "day with zero reviews between populated days"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
         "datasetID": "marketing_demo",
-        "runID": "20260816-011023-91906-22776",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011023-91906-22776",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "calendar",
           "empty-day",
@@ -1070,17 +1070,17 @@
           "empty state",
           "selected day"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "33bb8b5627df7b2da33a1ec21482c63da00669453b8962b13f0f4dd09182add6",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260816-011023-91906-22776",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011023-91906-22776",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1094,7 +1094,7 @@
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260815-045849-32251-24610",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-045849-32251-24610",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1104,7 +1104,7 @@
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260815-131029-55314-16897",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131029-55314-16897",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1114,7 +1114,7 @@
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260815-174627-58420-20643",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-174627-58420-20643",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1124,7 +1124,7 @@
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260815-211540-12023-13291",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-211540-12023-13291",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1134,7 +1134,7 @@
             "selector": "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260816-011023-91906-22776",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011023-91906-22776",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -1163,11 +1163,11 @@
         "large counts and long forecast text"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
         "datasetID": "marketing_demo",
-        "runID": "20260816-011503-1708-1385",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011503-1708-1385",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "overview",
           "metrics",
@@ -1182,17 +1182,17 @@
           "number hierarchy",
           "zero-state copy"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "de54c72f0882b4712a70e04d770105593bf76e5a5c227f1165a6c97f6595605c",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
             "runID": "20260816-011503-1708-1385",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011503-1708-1385",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1202,7 +1202,7 @@
             "selector": "OverviewFlowUITests/testOverviewEmptyForecastCounterexampleIsVisible",
             "datasetID": "marketing_demo",
             "runID": "20260816-014108-66045-23898",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-014108-66045-23898",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1216,7 +1216,7 @@
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
             "runID": "20260815-050250-40693-4879",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050250-40693-4879",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1226,7 +1226,7 @@
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
             "runID": "20260815-131440-63595-26415",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131440-63595-26415",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1236,7 +1236,7 @@
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
             "runID": "20260815-175103-68210-6171",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-175103-68210-6171",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1246,7 +1246,7 @@
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
             "runID": "20260815-212017-21899-21959",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-212017-21899-21959",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1256,7 +1256,7 @@
             "selector": "OverviewFlowUITests/testOverviewStatsRenderFromSeededReviewHistory",
             "datasetID": "marketing_demo",
             "runID": "20260816-011503-1708-1385",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011503-1708-1385",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -1287,11 +1287,11 @@
         "Dynamic Type accessibility3 with 644 rows"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
         "datasetID": "marketing_demo",
-        "runID": "20260816-011653-5943-25650",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011653-5943-25650",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "all-scope-644-rows",
           "dictionary-scope",
@@ -1308,17 +1308,17 @@
           "row/progress density",
           "CTA/sort hierarchy"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "e4b40eb7dda50b7564a40c4678fb0861d8607f7b2f2843b0e349e687aacea6af",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
             "runID": "20260816-011653-5943-25650",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011653-5943-25650",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1332,7 +1332,7 @@
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
             "runID": "20260815-050508-46330-23442",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050508-46330-23442",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1342,7 +1342,7 @@
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
             "runID": "20260815-131700-69088-13235",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131700-69088-13235",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1352,7 +1352,7 @@
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
             "runID": "20260815-175249-72908-10041",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-175249-72908-10041",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1362,7 +1362,7 @@
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
             "runID": "20260815-212200-26711-27105",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-212200-26711-27105",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1372,7 +1372,7 @@
             "selector": "VocabularyLibraryFlowUITests/testRichWorldProjectsRoleReviewSearchAndCTAConsistently",
             "datasetID": "marketing_demo",
             "runID": "20260816-011653-5943-25650",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011653-5943-25650",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -1401,11 +1401,11 @@
         "missing optional sections"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
         "datasetID": "marketing_demo",
-        "runID": "20260816-011848-10441-7830",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011848-10441-7830",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "front",
           "flip",
@@ -1420,17 +1420,17 @@
           "answer hierarchy",
           "scroll/natural height"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "dc55ef33a0a9cb6be3c28411503fbd688cef0286baf1bfaa0dfae5bc5a43db7e",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
             "datasetID": "marketing_demo",
             "runID": "20260816-011848-10441-7830",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011848-10441-7830",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1440,7 +1440,7 @@
             "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
             "datasetID": "marketing_demo",
             "runID": "20260816-014210-68798-8435",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-014210-68798-8435",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1450,7 +1450,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260816-015145-86542-24185",
-            "evidenceRoot": "build/snapshots/uitest-evidence/p12-small-supplemental-20260816/bundles/20260816-015145-86542-24185",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1464,7 +1464,7 @@
             "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
             "datasetID": "marketing_demo",
             "runID": "20260815-050651-50322-32434",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050651-50322-32434",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1474,7 +1474,7 @@
             "selector": "NotebookReviewFlowUITests/testNotebookReviewFlipAndGradingAdvanceQueue",
             "datasetID": "marketing_demo",
             "runID": "20260815-131844-72821-19250",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-131844-72821-19250",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1484,7 +1484,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
             "datasetID": "marketing_demo",
             "runID": "20260815-175439-77226-22861",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-175439-77226-22861",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1494,7 +1494,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
             "datasetID": "marketing_demo",
             "runID": "20260815-212351-31359-10077",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-212351-31359-10077",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1504,7 +1504,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testToolbarEditorRelayoutsTheCardAndSharesOneProfileWithSettings",
             "datasetID": "marketing_demo",
             "runID": "20260816-011848-10441-7830",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-011848-10441-7830",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           }
@@ -1533,11 +1533,11 @@
         "large text with all optional fields"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
         "datasetID": "marketing_demo",
-        "runID": "20260816-012033-14637-12105",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012033-14637-12105",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "compact",
           "full",
@@ -1552,17 +1552,17 @@
           "no blank dead zone",
           "content order"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "417696c981e9478aa85ac62f975a0758a208f4528ca91a69a1ae23bd663a75a0",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260816-012033-14637-12105",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012033-14637-12105",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1572,7 +1572,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testCompactCounterexampleUsesCanonicalSeedAndHidesOnlyOptionalFields",
             "datasetID": "marketing_demo",
             "runID": "20260816-014307-71528-13019",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-014307-71528-13019",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1586,7 +1586,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260815-050922-56593-16799",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-050922-56593-16799",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1596,7 +1596,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260815-132112-78790-29346",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132112-78790-29346",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1606,7 +1606,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260815-175623-81553-3822",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-175623-81553-3822",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1616,7 +1616,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260815-212533-35396-6291",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-212533-35396-6291",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           },
@@ -1626,7 +1626,7 @@
             "selector": "ReviewCardLayoutEditorUITests/testGradingToolbarStaysOperableWithEveryFieldEnabled",
             "datasetID": "marketing_demo",
             "runID": "20260816-012033-14637-12105",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012033-14637-12105",
+            "evidenceRoot": null,
             "evidenceBundleCount": 2,
             "blockers": []
           }
@@ -1654,11 +1654,11 @@
         "retry after terminal error"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
         "datasetID": "marketing_demo",
-        "runID": "20260816-012200-18130-122",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012200-18130-122",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "idle",
           "syncing",
@@ -1674,17 +1674,17 @@
           "progress to terminal transition",
           "error action hierarchy"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "aaabb643b5eeae2d20623a5ef5011985410cab79e731d43ccf162363c1cc1620",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260816-012200-18130-122",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012200-18130-122",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1698,7 +1698,7 @@
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-051110-61220-5706",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051110-61220-5706",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1708,7 +1708,7 @@
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-132326-84214-15315",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132326-84214-15315",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1718,7 +1718,7 @@
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-175741-84812-12969",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-175741-84812-12969",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1728,7 +1728,7 @@
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260815-212653-38598-22765",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-212653-38598-22765",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           },
@@ -1738,7 +1738,7 @@
             "selector": "SettingsSyncLifecycleUITests/testSettingsSyncTerminalErrorRetriesToSuccess",
             "datasetID": "marketing_demo",
             "runID": "20260816-012200-18130-122",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012200-18130-122",
+            "evidenceRoot": null,
             "evidenceBundleCount": 1,
             "blockers": []
           }
@@ -1768,11 +1768,11 @@
         "clean defaults versus persisted non-defaults"
       ],
       "verification": {
-        "status": "verified",
+        "status": "pending",
         "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
         "datasetID": "marketing_demo",
-        "runID": "20260816-012310-21210-22163",
-        "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012310-21210-22163",
+        "runID": null,
+        "evidenceRoot": null,
         "requiredSteps": [
           "settings",
           "section-navigation",
@@ -1787,17 +1787,17 @@
           "section grouping",
           "safe-area/scroll behavior"
         ],
-        "blockers": [],
-        "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
-        "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
-        "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
-        "manifestSHA256": "d05963d5ac46aba08b8261622531d312e073c011bd5135a6cfd7e15e3ee5b269",
+        "blockers": ["historical visual evidence retired; no current retained run"],
+        "sourceCommit": null,
+        "datasetSHA256": null,
+        "device": null,
+        "manifestSHA256": null,
         "evidenceBundles": [
           {
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
             "runID": "20260816-012310-21210-22163",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012310-21210-22163",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1807,7 +1807,7 @@
             "selector": "SettingsFlowUITests/testSettingsLongContentCounterexampleResolvesProductionSelectors",
             "datasetID": "marketing_demo",
             "runID": "20260816-012522-26192-18958",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012522-26192-18958",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1817,7 +1817,7 @@
             "selector": "SettingsFlowUITests/testSettingsResetCounterexampleShowsObservableBoundary",
             "datasetID": "marketing_demo",
             "runID": "20260816-012642-29565-14359",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012642-29565-14359",
+            "evidenceRoot": null,
             "sourceCommit": "a4cde6a868a613349c95f55d1d9483aa56a644d1",
             "datasetSHA256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced",
             "device": "43FA3E1B-16F8-4144-B17D-53D5E4728FC6",
@@ -1831,7 +1831,7 @@
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
             "runID": "20260815-051208-63983-8898",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v34-bundles/20260815-051208-63983-8898",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1841,7 +1841,7 @@
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
             "runID": "20260815-132423-86731-5051",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/20260815-132423-86731-5051",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1851,7 +1851,7 @@
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
             "runID": "20260815-175842-87669-27915",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging/published/20260815-175842-87669-27915",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1861,7 +1861,7 @@
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
             "runID": "20260815-212752-41634-3435",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-ui-report-fef85ca8-20260816/staging-exact-1d4db2393a9d/published/20260815-212752-41634-3435",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           },
@@ -1871,7 +1871,7 @@
             "selector": "SettingsFlowUITests/testSettingsFlowAppliesRealPreferenceChanges",
             "datasetID": "marketing_demo",
             "runID": "20260816-012310-21210-22163",
-            "evidenceRoot": "build/snapshots/uitest-evidence/final-head-batch-20260816-085900/bundles/20260816-012310-21210-22163",
+            "evidenceRoot": null,
             "evidenceBundleCount": 3,
             "blockers": []
           }

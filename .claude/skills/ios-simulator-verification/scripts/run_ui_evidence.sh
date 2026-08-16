@@ -18,8 +18,9 @@ Options:
   --configuration <Debug|Release>  Forward build/test configuration
   --ui-launch-profile <profile>    Forward ui-smoke or standard profile
   --build-lock-timeout <seconds>   Forward ios_test build/device lock timeout
-  --evidence-root <dir>             Put this run bundle below an explicit in-repo root
-  --json-out <path>                Atomically publish the normalized stable verdict JSON
+  --evidence-root <dir>             Put this run bundle below an explicit run root
+  --retain                          Promote the visual bundle into build/ios-report/retained/
+  --json-out <path>                 Atomically publish the normalized verdict JSON
   -h, --help                       Show this help
 EOF
 }
@@ -47,6 +48,8 @@ device=""
 simulator_mode="lease"
 json_out=""
 evidence_root=""
+retention_mode="ephemeral"
+retention_ttl_seconds="${KG_IOS_VISUAL_TTL_SECONDS:-1800}"
 forward=()
 
 while (($# > 0)); do
@@ -108,6 +111,10 @@ while (($# > 0)); do
       evidence_root="$2"
       shift 2
       ;;
+    --retain)
+      retention_mode="retained"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -160,19 +167,62 @@ source_tree_dirty=false
   || { echo "[ui-evidence] error: source tree is dirty; commit before collecting evidence" >&2; exit 65; }
 
 run_id="$(date -u '+%Y%m%d-%H%M%S')-${BASHPID:-$$}-${RANDOM:-0}"
-if [[ -n "$evidence_root" ]]; then
+[[ "$retention_ttl_seconds" =~ ^[0-9]+$ && "$retention_ttl_seconds" -ge 60 ]] || {
+  echo "[ui-evidence] error: KG_IOS_VISUAL_TTL_SECONDS must be an integer >= 60" >&2
+  exit 64
+}
+ephemeral_parent_candidate="${KG_IOS_EPHEMERAL_ROOT:-${TMPDIR:-/tmp}/kg-ios-visual-runs}"
+mkdir -p "$ephemeral_parent_candidate"
+ephemeral_parent_real="$(cd "$ephemeral_parent_candidate" && pwd -P)"
+retained_parent="$source_root/build/ios-report/retained"
+if [[ "$retention_mode" == "retained" && -z "$evidence_root" ]]; then
+  evidence_root_candidate="$retained_parent"
+elif [[ -n "$evidence_root" ]]; then
   case "$evidence_root" in
     /*) evidence_root_candidate="$evidence_root" ;;
     *) evidence_root_candidate="$source_root/$evidence_root" ;;
   esac
+  if [[ "$retention_mode" == "retained" ]]; then
+    case "$evidence_root_candidate" in
+      "$retained_parent"|"$retained_parent"/*) ;;
+      *)
+        echo "[ui-evidence] error: --retain requires --evidence-root below $retained_parent" >&2
+        exit 65
+        ;;
+    esac
+  else
+    case "$evidence_root_candidate" in
+      "$ephemeral_parent_real"|"$ephemeral_parent_real"/*) ;;
+      *)
+        echo "[ui-evidence] error: ephemeral evidence root must be below $ephemeral_parent_real" >&2
+        exit 65
+        ;;
+    esac
+  fi
   mkdir -p "$evidence_root_candidate"
   evidence_root_real="$(cd "$evidence_root_candidate" && pwd -P)"
-  case "$evidence_root_real" in
-    "$source_root"/*) ;;
-    *) echo "[ui-evidence] error: --evidence-root must resolve inside this worktree: $evidence_root" >&2; exit 65 ;;
-  esac
 else
-  evidence_root_real="$source_root/build/snapshots/uitest-evidence"
+  evidence_root_real="$ephemeral_parent_real"
+fi
+if [[ -z "${evidence_root_real:-}" ]]; then
+  mkdir -p "$evidence_root_candidate"
+  evidence_root_real="$(cd "$evidence_root_candidate" && pwd -P)"
+fi
+case "$retention_mode:$evidence_root_real" in
+  retained:"$source_root/build/ios-report/retained"|retained:"$source_root/build/ios-report/retained"/*)
+    ;;
+  retained:*)
+    echo "[ui-evidence] error: --retain requires --evidence-root below $retained_parent" >&2
+    exit 65
+    ;;
+  ephemeral:"$ephemeral_parent_real"|ephemeral:"$ephemeral_parent_real"/*)
+    ;;
+  ephemeral:*)
+    echo "[ui-evidence] error: ephemeral evidence root must be below $ephemeral_parent_real" >&2
+    exit 65
+    ;;
+esac
+if [[ "$retention_mode" == "ephemeral" ]]; then
   mkdir -p "$evidence_root_real"
 fi
 bundle_root="$evidence_root_real/$run_id"
@@ -182,6 +232,47 @@ if ! mkdir "$bundle_root"; then
   exit 65
 fi
 mkdir "$bundle_root/artifacts"
+started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+if [[ "$retention_mode" == "retained" ]]; then
+  expires_at=""
+else
+  expires_at="$(date -u -v+${retention_ttl_seconds}S '+%Y-%m-%dT%H:%M:%SZ')"
+fi
+run_manifest="$bundle_root/run-manifest.json"
+
+write_run_manifest() {
+  local status="${1:-running}" reason="${2:-}" active_pid="null" finished_at=""
+  [[ "$status" == "running" ]] && active_pid="$$"
+  [[ "$status" != "running" ]] && finished_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  jq -n \
+    --arg schema "kg.ios.ui-evidence-run-manifest.v1" \
+    --arg runId "$run_id" \
+    --arg status "$status" \
+    --arg owner "${USER:-unknown}" \
+    --arg worktree "$source_root" \
+    --arg branch "$(git branch --show-current)" \
+    --arg sourceCommit "$source_commit" \
+    --arg datasetID "$expected_dataset_id" \
+    --arg datasetSHA256 "$expected_dataset_sha256" \
+    --arg selector "$selector_kind $selector_value" \
+    --arg startedAt "$started_at" \
+    --arg expiresAt "$expires_at" \
+    --arg finishedAt "$finished_at" \
+    --arg retention "$retention_mode" \
+    --arg bundleRoot "$bundle_root" \
+    --arg artifactRoot "$bundle_root/artifacts" \
+    --arg reason "$reason" \
+    --argjson pid "$$" \
+    --argjson activePID "$active_pid" \
+    '{schema:$schema,runID:$runId,status:$status,owner:$owner,pid:$pid,activePID:$activePID,
+      worktree:$worktree,branch:$branch,sourceCommit:$sourceCommit,sourceTreeDirty:false,
+      datasetID:$datasetID,datasetSHA256:$datasetSHA256,selector:$selector,
+      startedAt:$startedAt,finishedAt:(if $finishedAt == "" then null else $finishedAt end),
+      retention:$retention,expiresAt:(if $expiresAt == "" then null else $expiresAt end),
+      bundleRoot:$bundleRoot,artifactRoot:$artifactRoot,
+      reason:(if $reason == "" then null else $reason end)}' >"$run_manifest"
+}
+write_run_manifest
 
 mark_abandoned() {
   local signal_name="${1:-unknown}"
@@ -196,10 +287,13 @@ mark_abandoned() {
       --arg datasetSHA256 "$expected_dataset_sha256" \
       --arg device "$device" \
       --arg bundle "$bundle_root" \
-      --arg startedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-      '{schema:$schema,runID:$runId,status:"abandoned",reason:("signal:" + $signal),sourceCommit:$sourceCommit,datasetID:$datasetID,datasetSHA256:$datasetSHA256,device:$device,bundleRoot:$bundle,abandonedAt:$startedAt,runnerAlive:false,consumerCheck:"pending",reusableAsFinalEvidence:false}' \
+      --arg startedAt "$started_at" \
+      --arg retention "$retention_mode" \
+      --arg expiresAt "$expires_at" \
+      '{schema:$schema,runID:$runId,status:"abandoned",reason:("signal:" + $signal),sourceCommit:$sourceCommit,datasetID:$datasetID,datasetSHA256:$datasetSHA256,device:$device,bundleRoot:$bundle,abandonedAt:$startedAt,retention:$retention,expiresAt:(if $expiresAt == "" then null else $expiresAt end),runnerAlive:false,consumerCheck:"pending",reusableAsFinalEvidence:false}' \
       >"$bundle_root/abandoned.json"
   fi
+  write_run_manifest abandoned "signal:$signal_name"
   exit 130
 }
 
@@ -306,6 +400,8 @@ write_fallback_verdict() {
     --arg validator "$canonical_validator" \
     --arg toolResolution "$tool_resolution" \
     --arg selector "$selector_kind $selector_value" \
+    --arg retention "$retention_mode" \
+    --arg expiresAt "$expires_at" \
     --arg sourceCommit "$source_commit" \
     --arg datasetID "$expected_dataset_id" \
     --arg datasetSHA256 "$expected_dataset_sha256" \
@@ -356,12 +452,15 @@ write_fallback_verdict() {
       helper:{
         schema:"kg.ios.ui-evidence.v1", bundleRoot:$bundle,
         commandLog:$commandLog, selector:$selector,
-        retention:"stable-per-run-bundle", contractStatus:$contractStatus,
+        retention:$retention,
+        expiresAt:(if $expiresAt == "" then null else $expiresAt end),
+        contractStatus:$contractStatus,
         toolRoot:$toolRoot, validator:$validator, toolResolution:$toolResolution,
         normalizedVerdict:($bundle + "/verdict.json")
       }
     }' >"$normalized_verdict_tmp"
   mv -f "$normalized_verdict_tmp" "$normalized_verdict"
+  write_run_manifest failure "$reason"
   publish_json_out
 }
 
@@ -426,6 +525,9 @@ echo "[ui-evidence] phase=run selector=$selector_kind $selector_value" >&2
 set +e
 KG_UI_TEST_EXACT_SELECTOR="$selector_kind $selector_value" \
 KG_IOS_TEST_RUN_ID="$run_id" \
+KG_IOS_VISUAL_CAPTURE=1 \
+KG_IOS_EPHEMERAL_ARTIFACT_ROOT=1 \
+KG_IOS_EPHEMERAL_ROOT="$ephemeral_parent_real" \
 KG_IOS_ARTIFACT_ROOT="$bundle_root/upstream" \
   ./ops/ios_ops.sh "${run_args[@]}" >"$upstream_stdout" 2>>"$runner_log"
 run_rc=$?
@@ -478,8 +580,8 @@ else
   printf '%s\n' 'no delegate stderr output' >"$stable_log"
 fi
 
-# Rebind legacy manifests to the copied step PNG bytes and current provenance
-# in the stable bundle; never mutate the producer's source artifact.
+# Rebind producer manifests to the copied step PNG bytes and current provenance
+# in the normalized run bundle; never mutate the producer's source artifact.
 normalize_stable_manifest() {
   [[ -d "$stable_review_root" && -s "$stable_manifest" ]] || return 0
   local normalize_device="$1"
@@ -627,6 +729,8 @@ jq \
   --arg videoFile "$upstream_video_file" \
   --arg videoSHA256 "$upstream_video_sha256" \
   --arg selector "$selector_kind $selector_value" \
+  --arg retention "$retention_mode" \
+  --arg expiresAt "$expires_at" \
   --arg contractStatus "$contract_status" \
   --arg normalizedStatus "$normalized_status" \
   --arg normalizedResult "$normalized_result" \
@@ -680,7 +784,9 @@ jq \
   | .helper = {
       schema:"kg.ios.ui-evidence.v1", bundleRoot:$bundle,
       commandLog:$commandLog, selector:$selector,
-      retention:"stable-per-run-bundle", contractStatus:$contractStatus,
+      retention:$retention,
+      expiresAt:(if $expiresAt == "" then null else $expiresAt end),
+      contractStatus:$contractStatus,
       toolRoot:$toolRoot, validator:$validator, toolResolution:$toolResolution,
       artifactContractStatus:$artifactContractStatus,
       artifactContractReason:(if $artifactContractReason == "" then null else $artifactContractReason end),
@@ -689,19 +795,24 @@ jq \
       normalizedVerdict:($bundle + "/verdict.json")
     }' "$upstream_stdout" >"$normalized_verdict_tmp"
 mv -f "$normalized_verdict_tmp" "$normalized_verdict"
+if [[ "$normalized_status" == "ok" ]]; then
+  write_run_manifest success ""
+else
+  write_run_manifest failure "$normalized_reason"
+fi
 publish_json_out
 
-# The stable bundle above is the only durable receipt. The producer's
-# intermediate xcresult/screenshots/review/video/log tree is retained only
-# until normalization finishes, then removed from this same run-owned root.
-# Never touch paths outside the bundle, even if an upstream verdict contains
-# an unexpected absolute path.
+# The run-owned upstream tree is disposable after normalization. The remaining
+# bundle is ephemeral by default and is reclaimed by the bounded cleanup command;
+# --retain is the only path that intentionally leaves visual binaries in repo.
+# Never touch paths outside the bundle, even if an upstream verdict contains an
+# unexpected absolute path.
 if [[ -d "$bundle_root/upstream" ]]; then
   rm -rf "$bundle_root/upstream"
 fi
 
 jq -r '
-  "[ui-evidence] verdict=\(.status) exit=\(.exit) reason=\(.reason // "")",
+  "[ui-evidence] verdict=\(.status) exit=\(.exit) retention=\(.helper.retention) expires=\(.helper.expiresAt // "never") reason=\(.reason // "")",
   "[ui-evidence] contract=\(.helper.contractStatus)",
   "[ui-evidence] bundle=\(.helper.bundleRoot)",
   "[ui-evidence] uiReview=\(.artifacts.uiReviewHtml)",

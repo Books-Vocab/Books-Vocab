@@ -1,11 +1,10 @@
 #!/usr/bin/env -S uv run --python 3.13 python
-"""Rebind legacy UITest visual manifests to copied PNG bytes.
+"""Bind one UITest visual manifest to its copied PNG bytes.
 
-Some older source worktrees emit a review manifest with dimensions only.  The
-stable evidence helper may copy that historical output, but the machine
-contract requires byte size, SHA-256, and current run provenance.  This small
-stdlib-only adapter repairs the copied manifest without rerunning or changing
-the source UITest.
+The producer may emit a manifest with dimensions only. The run-scoped evidence
+helper copies that output, then this stdlib-only adapter adds byte size,
+SHA-256, and current run provenance without rerunning or changing the source
+UITest.
 """
 from __future__ import annotations
 

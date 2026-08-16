@@ -323,7 +323,7 @@ def _evidence_provenance(
     repository_root: Path | None = None,
     validate_steps: bool = True,
 ) -> dict[str, Any]:
-    """Require one complete, already-attested stable run before recording verified.
+    """Require one complete, already-attested retained run before recording verified.
 
     The runner and visual-attestation tools own the detailed artifact checks. This
     control plane verifies their durable outputs and cross-checks the identities
@@ -352,6 +352,15 @@ def _evidence_provenance(
     if source_tree_dirty:
         raise UIReviewMatrixError("verified revalidation requires the current source tree to be clean")
     helper = _mapping(verdict.get("helper"), owner="verdict.helper")
+    retention = helper.get("retention")
+    if retention == "ephemeral":
+        raise UIReviewMatrixError(
+            "recording a matrix row requires explicit retained evidence; ephemeral visual output is inspection-only"
+        )
+    if retention not in {"retained", "promoted", "retained-explicit"}:
+        raise UIReviewMatrixError(
+            "verified evidence must declare retained/promoted retention before it can enter the matrix"
+        )
     if _canonical_selector(helper.get("selector"), owner="verdict.helper.selector") != _canonical_selector(
         selector, owner="matrix selector"
     ):
@@ -360,7 +369,7 @@ def _evidence_provenance(
     if not isinstance(bundle_root, str) or Path(bundle_root).resolve() != evidence_root.resolve():
         raise UIReviewMatrixError("evidence root does not match verdict.helper.bundleRoot")
     if evidence_root.name != run_id or Path(bundle_root).name != run_id:
-        raise UIReviewMatrixError("runID must match the stable evidence bundle directory")
+        raise UIReviewMatrixError("runID must match the run bundle directory")
     options = _mapping(verdict.get("options"), owner="verdict.options")
     if options.get("datasetID") != dataset_id:
         raise UIReviewMatrixError("datasetID does not match normalized verdict")
@@ -401,7 +410,7 @@ def _evidence_provenance(
             resolved_artifact.relative_to(evidence_root.resolve())
         except ValueError as error:
             raise UIReviewMatrixError(
-                f"verified artifact {key} must be inside the stable evidence root"
+                f"verified artifact {key} must be inside the run evidence root"
             ) from error
         artifact_paths[key] = resolved_artifact
 
@@ -573,7 +582,7 @@ def _state_label_matches(label: str, step: str, aliases: list[str]) -> bool:
 
     The evidence manifest prefixes capture names with the XCTest selector.  A
     requirement may explicitly declare aliases when the product state is
-    stable but an older test uses a different capture name.  Arbitrary
+    canonical but an older test uses a different capture name.  Arbitrary
     substring matching is deliberately forbidden.
     """
     for candidate in [step, *aliases]:
@@ -760,11 +769,11 @@ def record_requirement(
             _non_empty_string(value, owner=owner)
         normalized_selector = _canonical_selector(selector, owner="--selector")
         _require_fixture_ids(requirement, root=root, dataset_id=dataset_id)
-        stable_root, stored_root = _resolve_rooted_path(
+        retained_root, stored_root = _resolve_rooted_path(
             evidence_root, root=root, owner="--evidence-root"
         )
         provenance = _evidence_provenance(
-            stable_root,
+            retained_root,
             requirement=requirement,
             selector=normalized_selector,
             dataset_id=dataset_id,
@@ -889,14 +898,14 @@ def record_many(
                 execution.get("bundleRoot"), owner=f"executions[{index}].bundleRoot"
             )
             run_id = Path(bundle_root_value).name
-            stable_root, stored_root = _resolve_rooted_path(
+            retained_root, stored_root = _resolve_rooted_path(
                 bundle_root_value,
                 root=root,
                 owner=f"executions[{index}].bundleRoot",
             )
             _require_fixture_ids(requirement, root=root, dataset_id=dataset_id)
             provenance = _evidence_provenance(
-                stable_root,
+                retained_root,
                 requirement=requirement,
                 selector=selector,
                 dataset_id=dataset_id,
@@ -910,7 +919,7 @@ def record_many(
                     "datasetID": dataset_id,
                     "runID": run_id,
                     "evidenceRoot": stored_root,
-                    "stateLabels": _manifest_state_labels(stable_root),
+                    "stateLabels": _manifest_state_labels(retained_root),
                     **provenance,
                 }
             )

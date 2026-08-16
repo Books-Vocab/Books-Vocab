@@ -35,9 +35,9 @@ def test_matrix_has_exactly_fifteen_report_requirements() -> None:
     result = MODULE.validate_matrix(MODULE.load_matrix(MATRIX), root=ROOT)
 
     assert result["requirementCount"] == 15
-    assert result["verified"] == 15
-    assert result["complete"] is True
-    assert result["pending"] == []
+    assert result["verified"] == 0
+    assert result["complete"] is False
+    assert result["pending"] == [f"P{index}" for index in range(1, 16)]
 
 
 def test_matrix_cli_accepts_validate_entrypoint() -> None:
@@ -242,7 +242,7 @@ def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) 
     dataset["datasetID"] = "dataset-1"
     dataset_path.write_text(json.dumps(dataset), encoding="utf-8")
     dataset_sha256 = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
-    evidence = tmp_path / "build" / "snapshots" / "uitest-evidence" / "run-1"
+    evidence = tmp_path / "build" / "ios-report" / "retained" / "run-1"
     review_root = evidence / "artifacts" / "ui-review"
     review_root.mkdir(parents=True)
     (evidence / "artifacts" / "delegate.stderr.log").write_text("log", encoding="utf-8")
@@ -289,6 +289,7 @@ def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) 
                     "helper": {
                     "selector": "Example/testExample",
                     "bundleRoot": str(evidence),
+                    "retention": "retained",
                 },
                 "artifacts": {
                     "log": str(evidence / "artifacts" / "delegate.stderr.log"),
@@ -449,7 +450,7 @@ def test_record_verified_requires_machine_and_visual_provenance(tmp_path: Path) 
         selector="Example/testExample",
         dataset_id="dataset-1",
         run_id="run-1",
-        evidence_root="build/snapshots/uitest-evidence/run-1",
+        evidence_root="build/ios-report/retained/run-1",
     )
 
     assert verification["status"] == "verified"
@@ -626,15 +627,15 @@ def test_source_commit_rejects_unverifiable_non_git_root(tmp_path: Path) -> None
 def test_evidence_root_symlink_cannot_escape_repository(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     outside = tmp_path / "outside"
-    (root / "build" / "snapshots").mkdir(parents=True)
+    (root / "build" / "ios-report" / "retained").mkdir(parents=True)
     outside.mkdir()
-    (root / "build" / "snapshots" / "uitest-evidence").symlink_to(
+    (root / "build" / "ios-report" / "retained" / "evidence").symlink_to(
         outside, target_is_directory=True
     )
 
     with pytest.raises(MODULE.UIReviewMatrixError, match="outside repository root"):
         MODULE._resolve_rooted_path(
-            "build/snapshots/uitest-evidence/run-1",
+            "build/ios-report/retained/evidence/run-1",
             root=root,
             owner="--evidence-root",
         )

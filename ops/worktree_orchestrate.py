@@ -804,23 +804,10 @@ AGENT_CONSTITUTION: tuple[str, ...] = ("CLAUDE.md", "AGENTS.md")
 # under an already-declared tree needs no edit.
 NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
     ("backups/", "本機備份產物，不影響任何 runtime 或 build"),
-    ("frozen/", "凍結快照，依定義不再變更行為"),
     ("promotion/", "行銷素材產物，由 catalog/App Review 平面自行驗證"),
     (".claude/", "agent / skill 文本；今天沒有任何機械內容檢查"),
     ("README.md", "根層 prose，無機械 gate"),
     (".gitignore", "不影響 runtime 或 build 行為"),
-)
-
-
-# shell gate 掃全 repo 的 *.sh，減去這份具名排除清單。frozen/ 是刻意冷凍的快照：
-# 掛上 gate 只會讓 ops-shell-untested advisory 永遠列著 7 個沒人打算補測試的檔，
-# 而 advisory 一旦長期有雜訊就沒人看——比沒有 advisory 更糟。排除必須具名。
-#
-# `.claude/` 刻意不在此列，即使 NEUTRAL_RULES 也有一條同名的樹：今天沒有任何
-# 機械內容檢查，對 `.claude/skills/app-debug/find-polluter.sh` 這支可執行腳本
-# 也不宣稱已有 shell gate 覆蓋（同 IMP-0054 打掉的那批假理由）。
-SHELL_GATE_EXCLUDED_TREES: tuple[tuple[str, str], ...] = (
-    ("frozen/", "凍結快照，依定義不再變更行為"),
 )
 
 
@@ -885,8 +872,8 @@ def plan_gates(changed_files: list[str],
                            back to the whole ops/tests suite (which subsumes the
                            targeted files, and which sandbox-unsafe tests must dep-guard
                            with a skip — see test_demo_ios_spec_emitter).
-      **.sh             -> every tracked shell script MINUS SHELL_GATE_EXCLUDED_TREES
-                           (`frozen/`): a syntax floor on each — the interpreter read
+      **.sh             -> every tracked shell script: a syntax floor on each — the
+                           interpreter read
                            from its shebang, an unrecognised one SKIPPED and named
                            rather than guessed at — which is the only check covering
                            the ~1/3 with no test, plus the test that resolves for each.
@@ -1117,11 +1104,8 @@ def plan_gates(changed_files: list[str],
     # tree with the highest blast radius (IMP-0052).
     # And the same defect one directory further out: `ops/` + root still missed 12
     # tracked scripts, one of which (`backend/view_logs.sh`) already had a test
-    # watching it (IMP-0057). The routing surface is now every tracked `*.sh` MINUS
-    # SHELL_GATE_EXCLUDED_TREES — a named exclusion instead of an anonymous hole.
-    ops_sh = [p for p in changed_files
-              if p.endswith(".sh")
-              and not p.startswith(tuple(pat for pat, _ in SHELL_GATE_EXCLUDED_TREES))]
+    # watching it (IMP-0057). The routing surface is every tracked `*.sh`.
+    ops_sh = [p for p in changed_files if p.endswith(".sh")]
     if ops_sh:
         gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
         # The cross-file layer (IMP-20260808-3bbfa2). The two layers below are
@@ -1161,7 +1145,7 @@ def plan_gates(changed_files: list[str],
                 note=f"no test runs for {why} — syntax is the only gate they get",
                 files=untested))
 
-    # yml/yaml control files. Neutral trees (promotion/, frozen/) are excluded up front:
+    # yml/yaml control files. The promotion tree is excluded up front:
     # they already have a declared reason to select nothing, and re-adopting them would
     # grow a warn on every marketing-manifest edit — a warn that always fires is a warn
     # nobody reads.
@@ -2266,8 +2250,7 @@ def _gate_input_scope(spec: dict[str, Any], worktree: str,
             files = [p for p in tracked if p.endswith(".py")]
         elif name.startswith("ops-shell"):
             kind = "tracked-shell-tree"
-            files = [p for p in tracked if p.endswith(".sh") and
-                     not p.startswith(tuple(pat for pat, _ in SHELL_GATE_EXCLUDED_TREES))]
+            files = [p for p in tracked if p.endswith(".sh")]
         elif spec.get("category") == "ios":
             executable = _ios_executable_input_files(name, tracked)
             if executable is not None:

@@ -113,7 +113,7 @@ assert_log_contains "asc_shipped help without site packages" "ASC_APP_ID" "$log"
 # cutover 的 ops/**.sh 路由是 per-file 的（bash -n + 該腳本自己的同名測試），而跨檔
 # 掃描器不屬於任何單一腳本。抽成獨立入口後 gate 用 `ops-shell-scan` 路由它，本檔繼續
 # 用同一份實作——**共用而非複製**：兩份掃描邏輯就是兩份會各自漂移的判準
-# （IMP-20260808-3bbfa2）。正控與 frozen/ 排除都在那支腳本裡。
+# （IMP-20260808-3bbfa2）。正控與非現行內容排除都在那支腳本裡。
 section "shell_scan help"
 out=$(run_help "ops/shell_scan.sh"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "shell_scan help exits 0" 0 "$rc" "$log"

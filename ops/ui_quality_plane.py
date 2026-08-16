@@ -33,7 +33,6 @@ LAYERS = {
     "behavior",
     "perf",
     "cross-platform",
-    "visual-regression",
 }
 GATES = {"ci", "test_ops", "ios-test", "xcode", "manual"}
 REQUIRED_KEYS = {"id", "layer", "entrypoint", "gate", "triggers", "verdict", "docs"}

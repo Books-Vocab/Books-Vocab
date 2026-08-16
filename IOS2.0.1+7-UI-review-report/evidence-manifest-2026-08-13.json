@@ -1,5 +1,5 @@
 {
-  "schema": "kg.ios.ui-review.report-evidence.v1",
+  "schema": "kg.ios.ui-review.report-input.v2",
   "report": {
     "pdf": "IOS2.0.1+7-UI-review-report.pdf",
     "images": [
@@ -9,10 +9,8 @@
     ],
     "statusDocument": "CURRENT-STATUS-2026-08-13.md"
   },
-  "generatedAt": "2026-08-15",
-  "phase": "frozen-provenance-contract",
-  "sourceCommit": null,
-  "sourceCommitAuthority": "finalBatch.summary and each bundle provenance",
+  "generatedAt": "2026-08-16",
+  "phase": "current-control-plane",
   "assurance": {
     "platform": "iOS Simulator",
     "physicalDeviceVerified": false,
@@ -24,10 +22,6 @@
     "datasetID": "marketing_demo",
     "sha256": "609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced"
   },
-  "simulator": {
-    "udid": "F068B3D8-9E0B-475B-85C3-97BC61748A8F",
-    "platform": "iOS Simulator"
-  },
   "controlPlane": {
     "clusterManifest": "ops/fixtures/ios_ui_review_clusters.json",
     "matrix": "ops/fixtures/ios_ui_review_matrix.json",
@@ -37,51 +31,21 @@
     "selectorExecution": "build-once/run-many",
     "stateRecording": "record-many --strict-complete"
   },
-  "finalBatch": {
-    "id": "final-head-batch-v43",
-    "summary": "build/snapshots/uitest-evidence/final-head-batch-v43-summary.json",
-    "bundles": "build/snapshots/uitest-evidence/final-head-batch-v43-bundles/",
-    "requiredPerSelector": [
-      "machine verdict",
-      "source/dataset/device provenance",
-      "step screenshots",
-      "contact_sheet.png",
-      "quick4_contact_sheet.png",
-      "UIreview.html",
-      "video",
-      "all-steps visual attestation"
-    ],
-    "verdictAuthority": "summary plus every bundle review_state.json and ui-evidence-contract.json",
-    "matrixWriteAuthority": "ops/fixtures/ios_ui_review_matrix.json only"
+  "verification": {
+    "status": "pending",
+    "reason": "No fresh exact-head UI run was executed in this maintenance turn; existing selector results do not establish the full requirement state union."
   },
-  "historicalBatches": [
-    {
-      "id": "repair-head-v42",
-      "sourceCommit": "088e9c1863cf0b83285b74f7564b2450467f859f",
-      "status": "pre-final P10 focused repair; both exact selectors machine and all-steps visual PASS; not matrix evidence"
-    },
-    {
-      "id": "final-head-batch-v36",
-      "sourceCommit": "2716598b522eae3cefb548db5039c8e77c80e67c",
-      "status": "abandoned before first selector completed; see build/snapshots/uitest-evidence/final-head-batch-v36/abandoned.json"
-    },
-    {
-      "id": "final-head-batch-v34",
-      "sourceCommit": "d3f2d0e32199a9f13d7c8e6eace32bbe773217be",
-      "matrixReceipt": "f6edc9d52",
-      "status": "historical; not evidence for the frozen HEAD"
-    },
-    {
-      "id": "final-head-batch-v19",
-      "sourceCommit": "4c872d3e2c70abcf005cc0041671f0af9e7a7b3f",
-      "status": "historical selector-level evidence"
-    }
-  ],
-  "handoff": {
-    "integrationPerformed": false,
-    "cutoverPerformed": false,
-    "remoteSyncPerformed": false,
-    "deploymentPerformed": false,
-    "note": "Final exact-HEAD evidence and Gate must complete before convergence receipt updates these flags."
+  "artifactPolicy": {
+    "visualRuns": "ephemeral-by-default",
+    "ttlSeconds": 1800,
+    "explicitRetentionRoot": "build/ios-report/retained",
+    "durableOutputs": [
+      "fixture",
+      "selector",
+      "matrix",
+      "verdict",
+      "provenance",
+      "review receipt"
+    ]
   }
 }
