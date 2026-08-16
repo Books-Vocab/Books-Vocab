@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from .candidates import _CandidatesMixin
-from .lifecycle import _LifecycleMixin
 from .links import _LinksMixin
 from .models import CandidatePair, GraphLink
 from .persistence import _PersistenceMixin
@@ -22,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin, _LifecycleMixin):
+class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     """JSON-based graph storage.
 
     Locking strategy (fine-grained):

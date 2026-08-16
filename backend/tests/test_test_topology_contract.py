@@ -11,7 +11,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
 AGGREGATES = (
-    TESTS / "test_dictionary_v1.py",
     TESTS / "test_ops_cli.py",
     TESTS / "test_ops_edit.py",
 )

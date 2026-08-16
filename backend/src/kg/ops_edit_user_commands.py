@@ -202,7 +202,6 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
         args.custom_forgot_multiplier,
         args.custom_minimum_interval_hours,
         args.custom_maximum_interval_hours,
-        args.include_dictionary_cards,
     )
     if any(v is not None for v in review_mode_fields):
         updates["review_mode"] = {
@@ -212,7 +211,6 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
             "custom_forgot_multiplier": args.custom_forgot_multiplier,
             "custom_minimum_interval_hours": args.custom_minimum_interval_hours,
             "custom_maximum_interval_hours": args.custom_maximum_interval_hours,
-            "include_dictionary_cards": args.include_dictionary_cards,
         }
 
     resolved_nb_id = None
@@ -290,11 +288,6 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
                         if updates["review_mode"]["custom_maximum_interval_hours"] is not None
                         else current.get("custom_maximum_interval_hours", 1440)
                     ),
-                    include_dictionary_cards=(
-                        updates["review_mode"]["include_dictionary_cards"]
-                        if updates["review_mode"]["include_dictionary_cards"] is not None
-                        else bool(current.get("include_dictionary_cards", False))
-                    ),
                     updated_at=now_epoch,
                 )
                 config["review_mode"] = {
@@ -304,7 +297,6 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
                     "custom_forgot_multiplier": mode.custom_forgot_multiplier,
                     "custom_minimum_interval_hours": mode.custom_minimum_interval_hours,
                     "custom_maximum_interval_hours": mode.custom_maximum_interval_hours,
-                    "include_dictionary_cards": mode.include_dictionary_cards,
                     "updated_at": mode.updated_at,
                 }
 

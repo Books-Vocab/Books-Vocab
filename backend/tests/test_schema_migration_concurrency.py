@@ -65,14 +65,25 @@ def _create_legacy_card_db(path: Path) -> None:
         conn.execute("DROP INDEX IF EXISTS ix_card_content_nfc_lower")
         for column in (
             "source_shared_card_guid",
-            "card_role",
-            "review_eligible",
-            "reader_hidden",
-            "promotion_state",
-            "promoted_at",
             "content_nfc_lower",
         ):
             conn.execute(f"ALTER TABLE card DROP COLUMN {column}")
+        for column, definition in (
+            ("card_role", "TEXT DEFAULT 'learning'"),
+            ("review_eligible", "INTEGER DEFAULT 1"),
+            ("reader_hidden", "INTEGER DEFAULT 0"),
+            ("promotion_state", "TEXT DEFAULT 'idle'"),
+            ("promoted_at", "TIMESTAMP"),
+        ):
+            conn.execute(f"ALTER TABLE card ADD COLUMN {column} {definition}")
+        for table in (
+            "dictionary_entry",
+            "lexical_operations",
+            "dictionary_promotion_jobs",
+            "dictionary_lifecycle_state",
+            "dictionary_archive_link_cause",
+        ):
+            conn.execute(f"CREATE TABLE {table} (id TEXT PRIMARY KEY)")
 
 
 def _create_legacy_notebook_db(path: Path) -> None:
@@ -101,6 +112,7 @@ def test_card_legacy_migration_is_safe_with_two_independent_stores(tmp_path: Pat
 
     stores = _run_two_writers(lambda: CardStore(path))
     try:
+        columns = _columns(path, "card")
         assert {
             "review_interval_hours",
             "next_review_at",
@@ -110,13 +122,29 @@ def test_card_legacy_migration_is_safe_with_two_independent_stores(tmp_path: Pat
             "review_streak",
             "last_review_feedback",
             "source_shared_card_guid",
+            "content_nfc_lower",
+        } <= columns
+        assert {
             "card_role",
             "review_eligible",
             "reader_hidden",
             "promotion_state",
             "promoted_at",
-            "content_nfc_lower",
-        } <= _columns(path, "card")
+        }.isdisjoint(columns)
+        with sqlite3.connect(path) as conn:
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+        assert {
+            "dictionary_entry",
+            "lexical_operations",
+            "dictionary_promotion_jobs",
+            "dictionary_lifecycle_state",
+            "dictionary_archive_link_cause",
+        }.isdisjoint(tables)
     finally:
         for store in stores:
             store.close()

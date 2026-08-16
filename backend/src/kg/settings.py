@@ -87,9 +87,7 @@ class KGSettings:
     max_batch_size: int = 500
     max_word_length: int = 200
 
-    # External lexical lookup is rollout-gated. Existing materialized cards are
-    # served independently of this flag in later phases; this only gates new
-    # provider search/fetch traffic.
+    # Pure external lexical lookup is rollout-gated and never mutates cards.
     dictionary_lookup_enabled: bool = False
     dictionary_provider_default: str = "free_dictionary"
     dictionary_cache_ttl_days: int = 30

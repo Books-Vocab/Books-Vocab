@@ -108,15 +108,9 @@ ops-cli dictionary-health [--window <hours>]  # 字典全域面(讀 lexical_cach
                                            #    provider_budget 餘裕,別直接歸咎上游。failure_rate 不受影響
                                            #    (stale 本來就在分子裡)。
                                            # 回滾後看 by_outcome 的 blocked 是否如預期出現
-ops-cli dictionary-cards [uid]             # 字典卡面(預設 all;讀 users/<uid>/cards.db)
-                                           # 字典卡數 + active/archived/deleted/reader_hidden 拆分、staged sidecar
-                                           # totals.operations_in_flight = lexical_operations status≠completed
-                                           #   → **不歸零就是 materialize saga 卡死的簽名**,回滾後必看
-                                           # totals.promotion_failures + 逐筆 error_code/retryable/attempt
-                                           # ⚠ 明示的 uid 打錯時 totals 全零但 exit 0——先確認 totals.users>0 再讀數字
 
-# ⚠ 字典的 runbook 一律走上面兩個 typed 子指令,**禁止用 db-query 手拼 SQL 當正式流程**
-#   (見 docs/reference/tech_index.md;回滾檢查清單見 docs/sop/deploy.md「字典卡（V1）rollout 開關」)。
+# ⚠ 純字典查詢的 runbook 一律走上面的 typed 子指令，禁止用 db-query
+#   手拼 SQL 當正式流程（見 docs/reference/tech_index.md）。
 
 # 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
 #   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
@@ -152,7 +146,6 @@ ops-edit user-config-set <uid> [--translation-source L] [--translation-target L]
                          [--custom-forgot-multiplier X]
                          [--custom-minimum-interval-hours H]
                          [--custom-maximum-interval-hours H]
-                         [--include-dictionary-cards|--exclude-dictionary-cards]
                          [--active-notebook <id|name>]           # settings/active notebook 行銷造景
                          [--auto-link on|off]                    # judge pipeline 自動連結開關
 ops-edit notebook-update <uid> <id|name> [--name] [--color] [--cover] [--sort-order N]

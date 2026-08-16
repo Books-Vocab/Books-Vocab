@@ -54,54 +54,18 @@ def embed_and_link_new_cards(
         graph.add_pending_judge(embedded_ids)
 
 
-def graph_links_payload(
-    *, graph: Any, cards_store: Any | None = None, include_dictionary: bool = False,
-) -> list[GraphLinkResponse]:
-    """Build graph links response from active links."""
-    active_links = [link for link in graph.all_links() if link.status == "active"]
-    cards_by_id: dict[str, Any] = {}
-    active_dictionary_ids: set[str] = set()
-    if cards_store is not None:
-        endpoint_ids = {
-            card_id for link in active_links for card_id in (link.from_id, link.to_id)
-        }
-        cards_by_id = cards_store.get_batch(endpoint_ids)
-        if include_dictionary:
-            dictionary_ids = {
-                card_id
-                for card_id, card in cards_by_id.items()
-                if getattr(card, "card_role", "learning") == "dictionary"
-            }
-            active_dictionary_ids = cards_store.get_active_dictionary_card_ids(dictionary_ids)
-    links = []
-    for link in active_links:
-        if cards_store is not None and not include_dictionary:
-            from_card = cards_by_id.get(link.from_id)
-            to_card = cards_by_id.get(link.to_id)
-            if (
-                (from_card is not None and getattr(from_card, "card_role", "learning") != "learning")
-                or (to_card is not None and getattr(to_card, "card_role", "learning") != "learning")
-            ):
-                continue
-        if cards_store is not None and include_dictionary:
-            endpoint_cards = (cards_by_id.get(link.from_id), cards_by_id.get(link.to_id))
-            if any(
-                card is not None
-                and getattr(card, "card_role", "learning") == "dictionary"
-                and card.id not in active_dictionary_ids
-                for card in endpoint_cards
-            ):
-                continue
-        if link.status != "active":
-            continue
-        links.append(
-            GraphLinkResponse(
-                id=link.id,
-                fromId=link.from_id,
-                toId=link.to_id,
-                kind=link.kind.value,
-                confidence=link.confidence,
-                reason=link.reason,
-            )
+def graph_links_payload(*, graph: Any, cards_store: Any | None = None) -> list[GraphLinkResponse]:
+    """Build the active graph-link response for ordinary vocabulary cards."""
+    del cards_store  # retained for call-site compatibility; no role projection exists
+    return [
+        GraphLinkResponse(
+            id=link.id,
+            fromId=link.from_id,
+            toId=link.to_id,
+            kind=link.kind.value,
+            confidence=link.confidence,
+            reason=link.reason,
         )
-    return links
+        for link in graph.all_links()
+        if link.status == "active"
+    ]

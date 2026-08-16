@@ -12,11 +12,9 @@ implementation is split across focused submodules:
 
 from __future__ import annotations
 
-from .lifecycle import GraphLifecycleRollbackError
 from .models import (
     LINK_LABELS,
     CandidatePair,
-    GraphCardLifecycleSnapshot,
     GraphLink,
     LinkKind,
 )
@@ -25,8 +23,6 @@ from .store import GraphStore
 __all__ = [
     "LINK_LABELS",
     "CandidatePair",
-    "GraphCardLifecycleSnapshot",
-    "GraphLifecycleRollbackError",
     "GraphLink",
     "GraphStore",
     "LinkKind",

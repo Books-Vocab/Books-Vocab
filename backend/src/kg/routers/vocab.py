@@ -215,7 +215,6 @@ def delete_word(
 def get_graph_links(
     user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-    include_dictionary: bool = False,
 ):
     return get_graph_links_response(
         user,
@@ -223,7 +222,6 @@ def get_graph_links(
         card_store_factory=_card_store,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
-        include_dictionary=include_dictionary,
     )
 
 

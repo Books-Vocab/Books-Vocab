@@ -20,7 +20,6 @@ def get_graph_links_response(
     card_store_factory: CardStoreFactory | None = None,
     notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
-    include_dictionary: bool = False,
 ) -> list[GraphLinkResponse]:
     stores = _resolve_stores(
         user,
@@ -32,7 +31,6 @@ def get_graph_links_response(
     return graph_links_payload(
         graph=stores.graph,
         cards_store=stores.cards if card_store_factory is not None else None,
-        include_dictionary=include_dictionary,
     )
 
 

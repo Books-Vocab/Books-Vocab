@@ -58,11 +58,9 @@ async def _step_enrich(
 ) -> int:
     logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
-    eligible_cards = [
-        card
-        for card in cards.all(include_deleted=False, notebook_id=notebook_id)
-        if getattr(card, "card_role", "learning") == "learning"
-    ]
+    eligible_cards = list(
+        cards.all(include_deleted=False, notebook_id=notebook_id)
+    )
     if force:
         targets = eligible_cards
     else:
@@ -158,7 +156,6 @@ async def _step_embed_and_judge(
         card for card in cards.all(notebook_id=notebook_id)
         if not embeddings.has(card.id)
         and not card.is_archived
-        and getattr(card, "card_role", "learning") == "learning"
     ]
     newly_embedded: list[str] = []
     if missing:
@@ -233,7 +230,6 @@ async def _step_embed_and_judge(
             not card
             or card.is_deleted
             or card.is_archived
-            or getattr(card, "card_role", "learning") != "learning"
         ):
             continue
         current_degree = _active_degree(card_id)
@@ -292,7 +288,6 @@ async def _step_embed_and_judge(
                 not other
                 or other.is_deleted
                 or other.is_archived
-                or getattr(other, "card_role", "learning") != "learning"
             ):
                 continue
             if _active_degree(other_id) >= MAX_DEGREE:
@@ -473,8 +468,6 @@ async def _step_difficulty(
     cards = card_store_factory(user["dir"])
     updates = []
     for card in cards.all(include_deleted=False, notebook_id=notebook_id):
-        if getattr(card, "card_role", "learning") != "learning":
-            continue
         difficulty = round(get_zipf(card.content), 2)
         if card.difficulty != difficulty:
             updates.append((card.id, {"difficulty": difficulty}))
