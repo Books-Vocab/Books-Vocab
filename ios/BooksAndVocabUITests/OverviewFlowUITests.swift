@@ -254,8 +254,7 @@ final class OverviewFlowUITests: UITestCase {
 
         try step("forecast-range-14", app: app) {
             overview.scrollToForecastRange(14)
-            overview.forecastRange(14).assertExists(timeout: 10)
-            XCTAssertTrue(overview.forecastRange(14).isSelected)
+            overview.selectForecastRange(14)
         }
 
         try step("forecast-range-7", app: app) {

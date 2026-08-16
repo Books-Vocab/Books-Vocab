@@ -299,23 +299,44 @@ struct OverviewPage {
     @discardableResult
     func selectForecastRange(
         _ days: Int,
+        timeout: TimeInterval = 5,
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> Self {
         forecastRange(days).tapWhenReady(file: file, line: line)
         XCTAssertTrue(
-            forecastRange(days).waitUntilHittable(timeout: 5),
-            "overview.forecast.range.\(days) must remain live after selection",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            forecastRange(days).isSelected,
-            "overview.forecast.range.\(days) must expose selected state",
+            waitUntilForecastRangeSelected(days, timeout: timeout),
+            "overview.forecast.range.\(days) must expose selected state after selection",
             file: file,
             line: line
         )
         return self
+    }
+
+    /// SwiftUI may publish the chip's `.isSelected` trait after its state
+    /// mutation has already made the button hittable. Re-resolve the AX query
+    /// on every poll so this helper never asserts against a stale snapshot.
+    @discardableResult
+    private func waitUntilForecastRangeSelected(
+        _ days: Int,
+        timeout: TimeInterval
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let query = elements(identifier: "overview.forecast.range.\(days)")
+            if query.count == 1 {
+                let candidate = query.element(boundBy: 0)
+                if candidate.exists, candidate.isHittable, candidate.isSelected {
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        let query = elements(identifier: "overview.forecast.range.\(days)")
+        guard query.count == 1 else { return false }
+        let candidate = query.element(boundBy: 0)
+        return candidate.exists && candidate.isHittable && candidate.isSelected
     }
 
     var metrics: XCUIElement { element(identifier: "metrics") }
