@@ -33,6 +33,28 @@ class WaveDeps:
     staged_status: str = "fixed"
 
 
+@dataclass(frozen=True)
+class AnchorDeps:
+    """Callbacks for replaying a landed wave into the store."""
+
+    error_type: type[Exception] = ValueError
+    staged_status: str = "fixed"
+    queue_path: Callable[[Path | None], Path] | None = None
+    queue_lock: Callable[[Path], Any] | None = None
+    read_queue: Callable[[Path], list[dict]] | None = None
+    write_queue: Callable[[Path, list[dict]], None] | None = None
+    entry_path: Callable[[Path, str], Path] | None = None
+    entry_lock: Callable[[Path], Any] | None = None
+    load_entry: Callable[[Path, str], dict] | None = None
+    validate_entry: Callable[..., list[dict]] | None = None
+    closure_changes: Callable[..., dict] | None = None
+    merged_and_validated: Callable[..., dict] | None = None
+    acceptance_gate: Callable[[dict, bool], dict] | None = None
+    acceptance_refusal: Callable[[dict], str] | None = None
+    write_atomic: Callable[[Path, str], None] | None = None
+    dumps: Callable[[dict], str] | None = None
+
+
 def current_branch(*, deps: WaveDeps) -> str:
     if deps.git is None:
         raise RuntimeError("wave queue requires a git dependency")
@@ -303,4 +325,206 @@ def cmd_unstage(args, *, deps: WaveDeps) -> int:
             f"  {len(keep)} row(s) remain in {queue}"
             + ("" if args.commit else "  [dry-run: --commit to apply]")
         )
+    return 0
+
+
+def cmd_anchor(args, *, deps: AnchorDeps) -> int:
+    """Replay the landed portion of a wave under one queue lock."""
+    path_fn = deps.queue_path or (lambda explicit: queue_path(explicit, deps=WaveDeps(error_type=deps.error_type)))
+    lock_fn = deps.queue_lock
+    if lock_fn is None:
+        raise RuntimeError("anchor requires a queue_lock dependency")
+    queue = path_fn(args.queue)
+    with lock_fn(queue):
+        return cmd_anchor_locked(args, queue, deps=deps)
+
+
+def cmd_anchor_locked(args, queue: Path, *, deps: AnchorDeps) -> int:
+    """Validate and apply a wave atomically at the queue level."""
+    required = (
+        deps.read_queue,
+        deps.write_queue,
+        deps.entry_path,
+        deps.load_entry,
+        deps.validate_entry,
+        deps.closure_changes,
+        deps.merged_and_validated,
+        deps.acceptance_gate,
+        deps.acceptance_refusal,
+        deps.write_atomic,
+        deps.dumps,
+    )
+    if any(callback is None for callback in required):
+        raise RuntimeError("anchor requires complete queue, validation, and write dependencies")
+
+    rows = deps.read_queue(queue)
+    branch_filter = set(args.branches or [])
+    selected = [row for row in rows if not branch_filter or row.get("branch") in branch_filter]
+    deferred = [row for row in rows if branch_filter and row.get("branch") not in branch_filter]
+    ready = [row for row in selected if row.get("landed_sha")]
+    unstamped = [row["id"] for row in selected if not row.get("landed_sha")]
+
+    planned: list[tuple[dict, dict, dict]] = []
+    staged_adds: list[tuple[dict, dict]] = []
+    ready_by_id: dict[str, list[dict]] = {}
+    for row in rows:
+        if not row.get("landed_sha"):
+            continue
+        entry_id = row.get("id")
+        if isinstance(entry_id, str):
+            ready_by_id.setdefault(entry_id, []).append(row)
+    selected_ids = {row.get("id") for row in ready if isinstance(row.get("id"), str)}
+    duplicate_ready = {
+        entry_id
+        for entry_id, matching in ready_by_id.items()
+        if entry_id in selected_ids and len(matching) > 1
+    }
+    problems: list[dict] = [
+        {
+            "id": entry_id,
+            "error": f"duplicate ready rows for {entry_id}; refusing the whole "
+                     "wave so queue order cannot overwrite evidence or status",
+        }
+        for entry_id in sorted(duplicate_ready)
+    ]
+
+    for row in ready:
+        if row.get("kind") == "add":
+            try:
+                entry = row.get("entry")
+                if not isinstance(entry, dict) or entry.get("id") != row.get("id"):
+                    raise deps.error_type(
+                        "staged add row must carry an entry whose id matches the row"
+                    )
+                entry_problems = deps.validate_entry(
+                    entry, entry_id=row["id"], check_traceability=False
+                )
+                if entry_problems:
+                    raise deps.error_type(f"staged add is invalid: {entry_problems}")
+                path = deps.entry_path(args.store, row["id"])
+                if path.exists():
+                    existing = deps.load_entry(args.store, row["id"])
+                    if existing != entry:
+                        raise deps.error_type(
+                            f"{row['id']} already exists in the store with different "
+                            "content; refusing to overwrite it during anchor"
+                        )
+                staged_adds.append((row, entry))
+            except (deps.error_type, ValueError, KeyError) as exc:
+                problems.append({"id": row.get("id", "<missing>"), "error": str(exc)})
+            continue
+        try:
+            if row.get("status") != deps.staged_status:
+                raise deps.error_type(
+                    f"staged status is {row.get('status')!r}, and only "
+                    f"{deps.staged_status!r} can be anchored — a landing commit is "
+                    "evidence for a fix, not for a decision not to fix. Use "
+                    f"`unstage {row['id']}` then `update` for anything else."
+                )
+            changes = deps.closure_changes(
+                verdict=row["verdict"],
+                by=row["by"],
+                evidence=row["evidence"],
+                at=row.get("at"),
+                status=row.get("status"),
+                fixed_by=[row["landed_sha"]],
+            )
+            current = deps.load_entry(args.store, row["id"])
+            planned.append((row, current, deps.merged_and_validated(current, changes, row["id"])))
+        except (deps.error_type, ValueError, KeyError) as exc:
+            problems.append({"id": row["id"], "error": str(exc)})
+
+    acceptance: dict[str, list] = {"ran": [], "manual": [], "unproven": []}
+    if args.commit and not problems:
+        for row, _current, merged in planned:
+            result = deps.acceptance_gate(merged, True)
+            if result["kind"] in ("ran", "failed"):
+                acceptance["ran"].append({key: value for key, value in result.items() if key != "kind"})
+                if result["kind"] == "failed":
+                    problems.append({"id": row["id"], "error": deps.acceptance_refusal(result)})
+            else:
+                acceptance[result["kind"]].append(row["id"])
+
+    if args.commit and not problems:
+        if deps.entry_lock is None:
+            raise RuntimeError("anchor commit requires an entry_lock dependency")
+        with contextlib.ExitStack() as locks:
+            target_ids = (
+                {row["id"] for row, _current, _merged in planned}
+                | {row["id"] for row, _entry in staged_adds}
+            )
+            for entry_id in sorted(target_ids):
+                locks.enter_context(deps.entry_lock(deps.entry_path(args.store, entry_id)))
+            for row, current, _merged in planned:
+                latest = deps.load_entry(args.store, row["id"])
+                if latest != current:
+                    problems.append({
+                        "id": row["id"],
+                        "error": "entry changed while anchor was validating its "
+                                 "acceptance; refusing the whole wave so newer "
+                                 "groom/update evidence is not overwritten",
+                    })
+            for row, entry in staged_adds:
+                path = deps.entry_path(args.store, row["id"])
+                if path.exists() and deps.load_entry(args.store, row["id"]) != entry:
+                    problems.append({
+                        "id": row["id"],
+                        "error": "entry appeared or changed while anchor was "
+                                 "validating the staged add; refusing the whole wave",
+                    })
+            if not problems:
+                for row, _current, merged in planned:
+                    deps.write_atomic(deps.entry_path(args.store, row["id"]), deps.dumps(merged))
+                for row, entry in staged_adds:
+                    deps.write_atomic(deps.entry_path(args.store, row["id"]), deps.dumps(entry))
+                consumed = {id(row) for row in ready}
+                deps.write_queue(queue, [row for row in rows if id(row) not in consumed])
+
+    payload = {
+        "schema": "kg.backlog.anchor.v1",
+        "mode": "commit" if args.commit else "dry-run",
+        "queue": str(queue),
+        "acceptance": acceptance,
+        "branches": sorted(branch_filter),
+        "applied": [] if problems or not args.commit else (
+            [row["id"] for row, _current, _merged in planned]
+            + [row["id"] for row, _entry in staged_adds]
+        ),
+        "would_apply": (
+            [row["id"] for row, _current, _merged in planned]
+            + [row["id"] for row, _entry in staged_adds]
+        ),
+        "staged_adds": [row["id"] for row, _entry in staged_adds],
+        "unstamped": unstamped,
+        "deferred": [row.get("id") for row in deferred],
+        "problems": problems,
+    }
+    if problems:
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            for problem in problems:
+                print(f"✗ {problem['id']}: {problem['error']}", file=__import__("sys").stderr)
+            print(
+                f"refusing the whole wave ({len(planned) + len(staged_adds)} other rows left queued)\n"
+                "  drop a row you cannot fix with `./ops/backlog.py unstage <id> --commit`",
+                file=__import__("sys").stderr,
+            )
+        return 2
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        verb = "closed" if args.commit else "would close"
+        for row, _current, _merged in planned:
+            print(f"[{'commit' if args.commit else 'dry-run'}] {verb} {row['id']} fixed_by {row['landed_sha']}")
+        for row, _ in staged_adds:
+            print(
+                f"[{'commit' if args.commit else 'dry-run'}] "
+                f"{'materialized' if args.commit else 'would materialize'} "
+                f"{row['id']} from staged add (landed_sha {row['landed_sha']})"
+            )
+        for entry_id in unstamped:
+            print(f"  (still queued: {entry_id} — its branch has not landed)")
+        if not args.commit and planned:
+            print("  (dry-run — pass --commit to land)")
     return 0
