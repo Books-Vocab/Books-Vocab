@@ -35,7 +35,7 @@ verified_against: f955b8f1066c9928a3ea04bfe1828fc8aa6b84f5
 | 腳本／資料 | 用途 |
 |------|------|
 | `ops/skill_route.py` + `.claude/skills/catalog.json` | `kg.skill_catalog.v1` 的 skill inventory parity、frontmatter/path 對帳、dependency cycle、primary intent overlap、forbidden fixture 與 typed route；`validate --json` 是 route catalog gate，`route --intent <intent> --json` 只輸出一個 primary 加 required dependency，不授予 capability 或 production 權限。 |
-| `ops/context_route.py` + `ops/context_plane.json` | `kg.context_plane.v1` 的 virtual slice loader；`route/render --role <role> [--surface <surface>] [--task <task>] --json` 以 exact/prefix anchor 取最小 section，驗 `docs/registry.yml` owner/source、unit/route budget、HEAD/branch/registry/manifest/source SHA-256 provenance；缺 section、ownership 不符或讀取 race 一律 fail-closed，禁止全文 fallback。 |
+| `ops/context_route.py` + `ops/context_plane.json` | `kg.context_plane.v1` 的 virtual slice loader；`route/render --role <role> [--surface <surface>] [--task <task>] --json` 以 exact/prefix anchor 取最小 section，驗 `docs/registry.yml` owner/source、unit/route budget（含 `defaults.max_unit_tokens` 硬上限）、HEAD/branch/registry/manifest/source SHA-256 provenance；缺 section、ownership 不符或讀取 race 一律 fail-closed，禁止全文 fallback。文件角色別名（如 `docs-steward`）會正規化到 typed role；deep reference 以 task opt-in。 |
 | `ops/capability_matrix.py` | `context.route` 與 `skill.route` 只屬 observer/read-only routing surface；route bundle 的 `authorization.granted=false`，side-effect 授權仍由既有 capability／orchestrator／safe wrapper 契約決定。 |
 
 ## Backend API Routers (`backend/src/kg/routers/`)

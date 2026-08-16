@@ -69,6 +69,14 @@ def test_unknown_role_fails_closed():
         raise AssertionError("unknown role must fail closed")
 
 
+def test_documented_role_aliases_resolve_to_typed_routes():
+    mod = load_module()
+
+    assert mod.resolve_route(mod.load_manifest(), "docs-steward", surface="docs")["role"] == "delivery-child"
+    assert mod.resolve_route(mod.load_manifest(), "delivery-coordinator")["role"] == "delivery-integrator"
+    assert mod.resolve_route(mod.load_manifest(), "platform-steward")["role"] == "ticket-factory"
+
+
 def test_missing_anchor_fails_without_full_file_fallback():
     mod = load_module()
     manifest = mod.load_manifest()
@@ -81,6 +89,19 @@ def test_missing_anchor_fails_without_full_file_fallback():
         assert "anchor 次數=0" in str(exc)
     else:
         raise AssertionError("missing anchor must fail closed")
+
+
+def test_unit_budget_cannot_exceed_manifest_default():
+    mod = load_module()
+    broken = copy.deepcopy(mod.load_manifest())
+    broken["units"][0]["max_tokens"] = broken["defaults"]["max_unit_tokens"] + 1
+
+    try:
+        mod.validate_manifest(broken, ROOT)
+    except mod.ContextPlaneError as exc:
+        assert "超過全域上限" in str(exc)
+    else:
+        raise AssertionError("unit budget must be bounded by manifest default")
 
 
 def test_registry_owner_mismatch_fails_closed():
@@ -152,6 +173,25 @@ def test_bootstrap_route_contains_complete_router_and_agent_context_kernel():
     assert "## Routing Table" in units["router.routing"]["content"]
     assert "## Output Contract" in units["router.output"]["content"]
     assert "## Loading discipline" in units["agent-context.loading"]["content"]
+
+
+def test_registry_gate_reference_is_opt_in():
+    mod = load_module()
+    base = mod.resolve_route(mod.load_manifest(), "delivery-child")
+    registry = mod.resolve_route(mod.load_manifest(), "delivery-child", task="docs-registry")
+
+    assert "docs-control.registry-gate" not in [unit["id"] for unit in base["units"]]
+    assert "docs-control.registry-gate" in [unit["id"] for unit in registry["units"]]
+
+
+def test_registry_gate_documented_cli_route_is_executable(capsys):
+    mod = load_module()
+
+    assert mod.main(["render", "--role", "docs-steward", "--task", "docs-registry", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["role"] == "delivery-child"
+    assert "docs-control.registry-gate" in [unit["id"] for unit in payload["units"]]
 
 
 def test_route_text_output_is_an_index_without_source_content(capsys):

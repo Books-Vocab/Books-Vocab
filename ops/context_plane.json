@@ -142,6 +142,16 @@
       "purpose": "agent-facing surface 變更的同步契約"
     },
     {
+      "id": "docs-control.registry-gate",
+      "path": ".claude/skills/kg-docs-control-plane/references/registry-gate.md",
+      "registry_id": "reference.agent_context",
+      "start": "# Registry Gate",
+      "end": null,
+      "kind": "reference",
+      "max_tokens": 700,
+      "purpose": "只有 registry/generated gate 才載入的 live-state 與 check 契約"
+    },
+    {
       "id": "worktree.boundary",
       "path": ".claude/skills/worktree-flow/SKILL.md",
       "registry_id": "sop.release",
@@ -482,6 +492,11 @@
       "id": "task.tool-friction",
       "match": {"roles": ["*"], "tasks": ["tool-friction"]},
       "units": ["router.tool-friction", "receipt.core"]
+    },
+    {
+      "id": "task.docs-registry",
+      "match": {"roles": ["*"], "tasks": ["docs-registry"]},
+      "units": ["docs-control.registry-gate"]
     },
     {
       "id": "task.backend-routing",
