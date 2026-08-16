@@ -350,11 +350,11 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 ### 版號命名決策（下一個 build 該叫什麼）
 
-兩個獨立計數器：`MARKETING_VERSION`（`x.y.z`，對使用者的版本故事）與 `CURRENT_PROJECT_VERSION`（build 號）。**build 號永遠全域單調 +1、絕不歸零**（工具 `release_bump.sh` 硬性 +1；防同號被 Apple 退。Apple 只要求「同 marketing 版號下 build 唯一」，全域遞增最省心）。marketing 版號怎麼跳看情境：
+兩個獨立計數器：`MARKETING_VERSION`（`x.y.z`，對使用者的版本故事）與 `CURRENT_PROJECT_VERSION`（build 號）。**build 號不是所有流程都以 local +1 作為 SoT**：同版 resubmit 先查 ASC，目標固定為 `max(local build, ASC latest)+1`；一般新版本 release 才由 `release_bump.sh` 維持 local +1。Apple 的硬要求是同一個 marketing 版號下 build 唯一，任何查詢失敗都不得猜測。marketing 版號怎麼跳看情境：
 
 | 情境 | marketing | build | 命令 |
 |---|---|---|---|
-| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | `max(本地 build, ASC TestFlight latest)+1` | `release.sh resubmit ios [--yes]`（先對帳 ASC→bump-build→upload→封 `ios/<x.y.z>+<build>`） |
+| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | `max(本地 build, ASC TestFlight latest)+1` | `release.sh resubmit ios [--yes]`（先對帳 ASC→以 `release_bump.sh --build-number` 精確 bump→upload→封 `ios/<x.y.z>+<build>`） |
 | 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh release ios <x.y.z> --yes`（bump→upload→封 build tag）；或拆步先 bump/upload，再 `tag ios <x.y.z> --yes` |
 | 已上架後新版本：加功能不破壞 | minor（第二位+1，如 2.0.0→2.1.0） | +1 | 同上 |
 | 已上架後新版本：大改版/破壞性/里程碑（如 podcast 正式放出） | major（第一位+1，如 2.0.0→3.0.0） | +1 | 同上 |
