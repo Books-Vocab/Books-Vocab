@@ -1,6 +1,37 @@
 import Foundation
-import BooksAndVocab
 import XCTest
+
+// UI tests are a black-box target. Keep their launch contract local instead
+// of importing the app module, which would require app-module linkage.
+enum UITestLaunchArgumentsError: Error, CustomStringConvertible {
+    case missingUTF8
+    case invalidJSON(underlying: Error)
+
+    var description: String {
+        switch self {
+        case .missingUTF8:
+            return "KG_UI_TEST_APP_ARGS_JSON is not valid UTF-8"
+        case .invalidJSON(let underlying):
+            return "KG_UI_TEST_APP_ARGS_JSON must be a JSON array of strings: \(underlying)"
+        }
+    }
+}
+
+enum UITestLaunchArguments {
+    static func decodeInheritedLaunchArguments(from raw: String?) throws -> [String] {
+        guard let raw else {
+            return []
+        }
+        guard let data = raw.data(using: .utf8) else {
+            throw UITestLaunchArgumentsError.missingUTF8
+        }
+        do {
+            return try JSONDecoder().decode([String].self, from: data)
+        } catch {
+            throw UITestLaunchArgumentsError.invalidJSON(underlying: error)
+        }
+    }
+}
 
 private let uiTestAppArgumentsEnvKey = "KG_UI_TEST_APP_ARGS_JSON"
 private let uiTestLaunchProfileEnvKey = "KG_UI_TEST_LAUNCH_PROFILE"
@@ -123,11 +154,11 @@ enum UITestFixture: Equatable {
         case .searchVocabNotebook:
             return "-seedFixture:search:vocabNotebook"
         case .vocabularyLibraryFilterRich:
-            return UITestFixtureLaunchContract.vocabularyLibraryFilterRich
+            return "-seedFixture:vocabulary:vocabListFilterRich"
         case .vocabularyLibraryP11ReviewMix:
-            return UITestFixtureLaunchContract.vocabularyLibraryP11ReviewMix
+            return "-seedFixture:vocabulary:p11.644.reviewMix"
         case .vocabularyLibraryP11MixedRoleCounterexample:
-            return UITestFixtureLaunchContract.vocabularyLibraryP11MixedRoleCounterexample
+            return "-seedFixture:vocabulary:role.mixed"
         case .readerRealBookLibrary:
             return "-seedFixture:reader:realBookLibrary"
         case .readerInvalidDestinationLibrary:
