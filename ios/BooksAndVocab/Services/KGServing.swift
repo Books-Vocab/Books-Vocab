@@ -138,10 +138,19 @@ protocol VocabularySyncServing: VocabularyDeleting, CardArchiving {
 /// 知識圖譜連結能力。
 protocol GraphServing: AnyObject {
     func pullGraphLinks() async throws -> [KGGraphLink]
+    func pullGraphLinks(notebookId: String) async throws -> [KGGraphLink]
     func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink
     func deleteLink(linkId: String, notebookId: String) async throws
     func hideLink(linkId: String, notebookId: String) async throws
     func unhideLink(linkId: String, notebookId: String) async throws
+}
+
+extension GraphServing {
+    /// Backwards-compatible default for fixture and lightweight test services.
+    /// Production `KGService` overrides this to preserve notebook isolation.
+    func pullGraphLinks(notebookId: String) async throws -> [KGGraphLink] {
+        try await pullGraphLinks()
+    }
 }
 
 /// 複習同步能力。

@@ -93,6 +93,7 @@ enum AddLinkActionError: Equatable {
     case invalidProjection
     case materializationFailed
     case projectionRefreshFailed
+    case existingLinkRefreshFailed
     case existingLinkFailed
 }
 
@@ -617,7 +618,10 @@ final class AddLinkCoordinator {
             .flatMap { $0 }
             .contains { $0.cardId == targetCardID }
         guard !alreadyLinked else {
-            failAction(.duplicateLink, generation: generation)
+            materializePhase = .succeeded
+            actionPhase = .succeeded
+            actionError = nil
+            materializeFailure = nil
             return
         }
         guard let pending = VocabularyGraphLinkMutation.beginManualLink(
@@ -654,6 +658,40 @@ final class AddLinkCoordinator {
         } catch is CancellationError {
             VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
             cancelCurrentAction(generation)
+        } catch let error as KGError where Self.isConflict(error) {
+            do {
+                actionPhase = .refreshingProjection
+                let links = try await service.pullGraphLinks(notebookId: sourceEntry.notebookId)
+                try Task.checkCancellation()
+                guard isCurrentAction(generation) else {
+                    VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
+                    return
+                }
+                guard let existingLink = links.first(where: {
+                    $0.fromId == sourceCardID && $0.toId == targetCardID
+                }) else {
+                    throw KGError.serverError("Graph link refresh returned no matching link")
+                }
+                guard !existingLink.id.isEmpty else {
+                    throw KGError.serverError("Graph link refresh returned an empty link id")
+                }
+                VocabularyGraphLinkMutation.commitManualLink(
+                    pending,
+                    result: existingLink,
+                    on: sourceEntry
+                )
+                materializePhase = .succeeded
+                actionPhase = .succeeded
+                actionError = nil
+                materializeFailure = nil
+            } catch is CancellationError {
+                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
+                cancelCurrentAction(generation)
+            } catch {
+                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
+                failAction(.existingLinkRefreshFailed, generation: generation)
+                materializeFailure = .malformed
+            }
         } catch {
             VocabularyGraphLinkMutation.rollbackManualLink(pending, on: sourceEntry)
             failAction(.existingLinkFailed, generation: generation)
@@ -742,6 +780,11 @@ final class AddLinkCoordinator {
         materializeFailure = .malformed
         actionPhase = .failed
         actionError = error
+    }
+
+    private static func isConflict(_ error: KGError) -> Bool {
+        guard case .httpError(let statusCode, _) = error else { return false }
+        return statusCode == 409
     }
 
     private func clearSelection() {

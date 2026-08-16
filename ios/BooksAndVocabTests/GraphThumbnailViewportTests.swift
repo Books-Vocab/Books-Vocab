@@ -88,5 +88,48 @@ struct GraphThumbnailViewportTests {
             #expect(abs((afterNode[1] - beforeNode[1]) - 20) < 0.001)
         }
     }
+
+    @Test func provisionalThenFinalViewport_translatesOncePerRealSizeChange() async throws {
+        let webView = try makeGraphWebView()
+        try await waitForGraphRuntime(in: webView)
+
+        guard let result = try await evaluate(
+            """
+            (() => {
+              nodes = [{x: 0, y: 0}];
+              sim = null;
+              W = 0;
+              H = 0;
+              const first = window.reconcileGraphViewport(100, 80);
+              const afterFirst = { width: W, height: H, node: [nodes[0].x, nodes[0].y] };
+              const duplicate = window.reconcileGraphViewport(100, 80);
+              const afterDuplicate = { width: W, height: H, node: [nodes[0].x, nodes[0].y] };
+              const final = window.reconcileGraphViewport(180, 120);
+              return JSON.stringify({ first, duplicate, final, afterFirst, afterDuplicate, afterFinal: { width: W, height: H, node: [nodes[0].x, nodes[0].y] } });
+            })()
+            """,
+            in: webView
+        ) as? String,
+        let data = try JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any],
+        let afterFirst = data["afterFirst"] as? [String: Any],
+        let afterDuplicate = data["afterDuplicate"] as? [String: Any],
+        let afterFinal = data["afterFinal"] as? [String: Any],
+        let first = data["first"] as? Bool,
+        let duplicate = data["duplicate"] as? Bool,
+        let final = data["final"] as? Bool,
+        let firstNode = afterFirst["node"] as? [Double],
+        let duplicateNode = afterDuplicate["node"] as? [Double],
+        let finalNode = afterFinal["node"] as? [Double]
+        else {
+            throw JSError(description: "provisional viewport reconciliation result was unreadable")
+        }
+
+        #expect(first)
+        #expect(!duplicate)
+        #expect(final)
+        #expect(firstNode == [50, 40])
+        #expect(duplicateNode == firstNode)
+        #expect(finalNode == [90, 60])
+    }
 }
 #endif
