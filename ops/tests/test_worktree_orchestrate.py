@@ -8476,7 +8476,7 @@ def _git_repo_with_anchor_ticket(tmp_path):
     return repo, base_sha
 
 
-def test_delivery_anchor_identity_accepts_subject_and_paths_without_review_trailer(tmp_path):
+def test_delivery_anchor_identity_accepts_subject_and_paths(tmp_path):
     repo, base_sha = _git_repo_with_anchor_ticket(tmp_path)
     ticket_path = "docs/runbook/backlog/IMP-20260809-crash.json"
     subprocess.run(
