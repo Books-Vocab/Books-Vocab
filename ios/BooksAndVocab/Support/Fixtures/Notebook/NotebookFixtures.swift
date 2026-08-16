@@ -127,6 +127,11 @@ struct NotebookEntrySeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownNotebookKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World notebook entry"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !Self.optionalKeys.contains(key) && !container.contains(key) {
             throw DecodingError.keyNotFound(
