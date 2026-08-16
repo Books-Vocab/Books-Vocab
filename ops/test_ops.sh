@@ -38,6 +38,7 @@ DEFAULT_TESTS=(
   review-audit
   review-cycle
   capability-matrix
+  context-routing
   ui-deadcode
   ui-graph
   log-assert
@@ -158,6 +159,13 @@ run_one() {
         ops/tests/test_compute_contract.py \
         ops/tests/test_compute_dogfood.py \
         ops/tests/test_compute_executor.py
+      ;;
+    context-routing)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_context_route.py \
+        ops/tests/test_skill_route.py &&
+      ./ops/context_route.py validate --json >/dev/null &&
+      ./ops/skill_route.py validate --json >/dev/null
       ;;
     ui-deadcode)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_deadcode.py &&

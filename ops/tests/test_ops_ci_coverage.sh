@@ -67,6 +67,7 @@ LINUX_GROUPS=(
   review-card-golden
   python-entrypoints
   capability-matrix
+  context-routing
   worktree-orchestrator
   kg-board
   script-help

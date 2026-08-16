@@ -17,6 +17,9 @@ agent_facing_surface:
     - docs/sop/
     - docs/policy/
     - docs/runbook/system.md
+    - ops/context_route.py
+    - ops/skill_route.py
+    - ops/capability_matrix.py
 
 documents:
   - id: contract.sync_lifecycle
@@ -283,6 +286,10 @@ documents:
       - docs/sop/review_discipline.md
       - docs/registry.yml
       - docs/reference/agent_context.md
+      - ops/context_plane.json
+      - ops/context_route.py
+      - ops/skill_route.py
+      - ops/capability_matrix.py
 
   - id: reference.ops_state_plane
     path: docs/reference/ops_state_plane.md
