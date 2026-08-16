@@ -66,7 +66,7 @@ struct VocabularySearchPage {
     }
 
     var visibleCount: XCUIElement {
-        app.descendants(matching: .any).matching(identifier: "vocab.filter.visibleCount").firstMatch
+        app.staticTexts.matching(identifier: "vocab.filter.visibleCount").firstMatch
     }
 
     private func numericValue(in element: XCUIElement) -> Int? {
