@@ -36,7 +36,7 @@ verified_against: 5be999ee9
    owner；不可用猜測擴大 scope。
 
 一般 route 不載入 router 的 Tool Friction deep reference；只有 typed task=`tool-friction` 或實際遇到
-工具摩擦時，才由 `./ops/context_route.py render --task tool-friction --json` 載入。該 reference 的
+工具摩擦時，才由 `./ops/context_route.py render --role <role> --task tool-friction --json` 載入。該 reference 的
 查重、`dispatch --stream APP` 與 receipt／stream 分流規則是此條件式 context 的唯一內容來源。
 
 只有實際執行 `docs_lint.sh --registry` 或診斷 generated check 時，才用
