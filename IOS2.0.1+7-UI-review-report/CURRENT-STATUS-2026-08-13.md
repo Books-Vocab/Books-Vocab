@@ -1,10 +1,22 @@
 # iOS 2.0.1 (Build 7) UI review：重構收斂狀態
 
-日期：2026-08-15（final evidence 前的 canonical freeze）
+日期：2026-08-16（final evidence 前的 canonical convergence checkpoint）
 來源：`IOS2.0.1+7-UI-review-report.pdf`、`p1.PNG`–`p15.PNG`、目前 canonical worktree 與 pinned Simulator evidence。
 canonical 工作樹：`/Users/chenliangyu/project/kg/.claude/worktrees/ios-ui-review-report-complete-20260813`；branch=`feat/ios-ui-review-report-complete-20260813`。exact source HEAD 只由 final summary 與每個 bundle 的 machine provenance 提供；本檔不重複自指的 Git SHA。v36 已標記 abandoned；P10 focused repair v42 已通過 machine/visual，但 final batch 預定為 `final-head-batch-v43`。Simulator：`F068B3D8-9E0B-475B-85C3-97BC61748A8F`；UI World：`marketing_demo`，SHA=`609f35f300df7a2d340f2799625b8ff50486bda835cafb05b72a6b7396abfced`。
 
-## 2026-08-15 canonical freeze（本段為唯一 current contract）
+## 2026-08-16 convergence checkpoint（取代前一版未更新的 current 描述）
+
+本 checkpoint 已完成既有 canonical integration tree 內的 source/test/control-plane 收斂，尚未產生新的 P1–P15 exact-head UI evidence；因此不可把任何舊 bundle 或 selector PASS 升格為目前 requirement PASS。
+
+- Reader lifecycle／runtime 修正已提交並通過 reviewer：navigator callback、preferences apply task、recovery task 均以 navigator generation、identity 與 task token 設防；同一 canonical working tree 的 focused run 為 `51/51`，但這是 commit 前同內容的 focused validation，不是 final exact-head evidence。
+- P2 已把 scope 從錯誤的 Dictionary detail 描述校正為 Add Link initial/detail/selection/materialization surface；sense/example selection 以 accessibility `.isSelected` 暴露，failure 後保留選取狀態；focused unit 為 `49/49`。P2 matrix 維持 `pending`，因尚未在最終 exact HEAD 取得 initial、result、selection-preservation 與 materialization-failure 的 UI bundle。
+- cluster 控制面將 P2 run-plan 標為 `in_progress`，matrix 才標 `pending`：`expand-run-plan` 會排除 `pending/blocked`，保留 `in_progress` 以確保待取證 selector 不會從批次清單消失；這不是 verified。
+- strict localization、cluster validate、P2/Reader focused tests 均已跑過；現存 evidence 仍綁舊 source commit，不能重用作這輪 exact-head receipt。
+- 穩定工作流已固化於 `.claude/skills/ios-simulator-verification/` 與 `.claude/skills/ios-visual-report-workflow/`：唯一 helper、pinned Simulator/UI World、run manifest/PID/HEAD/TTL、build-once/run-many、failure cleanup、visual attestation、matrix strict-complete 與 canonical convergence 均以 fail-closed 契約執行。
+
+目前唯一尚未完成的交付阻塞是：在所有 source/test/docs 固定後，對 P1–P15 required/counterexample state 重新執行同一 exact HEAD 的 Simulator/UI-test evidence，完成逐 bundle visual attestation，並由 `record-many --strict-complete` 寫入 matrix receipt；在此之前不可宣稱可合併。
+
+## 2026-08-15 canonical freeze（歷史 freeze contract；目前以 2026-08-16 checkpoint 為準）
 
 本輪不新增 worktree、branch、ticket、cluster 或 scope；只在既有 integration worktree 收斂。source/test/docs 已在 evidence 前固定；此檔與 `evidence-manifest-2026-08-13.json` 在 final batch 完成後不得再修改，避免把 post-evidence 報告編輯誤認成 source receipt。v34（source=`d3f2d0e32199a9f13d7c8e6eace32bbe773217be`、matrix receipt=`f6edc9d52`）降格為歷史證據，不能證明目前 canonical HEAD。
 
