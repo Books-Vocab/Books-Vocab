@@ -23,12 +23,18 @@ def cell(value: str) -> str:
     return text.replace("|", "\\|")
 
 
-def render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
+def render_table(
+    entries: list[dict],
+    columns: tuple[str, ...],
+    *,
+    cell_fn: Callable[[str], str] = cell,
+    empty_cell: str = EMPTY_CELL,
+) -> str:
     head = "| " + " | ".join(columns) + " |\n"
     sep = "|" + "|".join("---" for _ in columns) + "|\n"
     body = ""
     for entry in entries:
-        cells = [cell(entry.get(column, "")) or EMPTY_CELL for column in columns]
+        cells = [cell_fn(entry.get(column, "")) or empty_cell for column in columns]
         body += "| " + " | ".join(cells) + " |\n"
     return head + sep + body
 
@@ -79,6 +85,8 @@ def render_view(
     statuses: tuple[str, ...],
     severities: tuple[str, ...],
     verdicts: tuple[str, ...],
+    cell_fn: Callable[[str], str] = cell,
+    empty_cell: str = EMPTY_CELL,
 ) -> str:
     """Render the human-readable view of the store deterministically."""
     imp = list_entries(store, stream="IMP")
@@ -91,8 +99,12 @@ def render_view(
         severities=" / ".join(f"`{severity}`" for severity in severities),
         verdicts=" / ".join(f"`{verdict}`" for verdict in verdicts),
     )
-    out += imp_intro + "\n" + render_table(imp, VIEW_IMP_COLUMNS)
-    out += app_intro + "\n" + render_table(app, APP_COLUMNS)
+    out += imp_intro + "\n" + render_table(
+        imp, VIEW_IMP_COLUMNS, cell_fn=cell_fn, empty_cell=empty_cell
+    )
+    out += app_intro + "\n" + render_table(
+        app, APP_COLUMNS, cell_fn=cell_fn, empty_cell=empty_cell
+    )
     return out
 
 
