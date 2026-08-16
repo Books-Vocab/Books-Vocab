@@ -118,6 +118,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--custom-forgot-multiplier", type=float)
     p.add_argument("--custom-minimum-interval-hours", type=float)
     p.add_argument("--custom-maximum-interval-hours", type=float)
+    dictionary_review = p.add_mutually_exclusive_group()
+    dictionary_review.add_argument(
+        "--include-dictionary-cards",
+        dest="include_dictionary_cards",
+        action="store_true",
+        help="複習時納入字典卡",
+    )
+    dictionary_review.add_argument(
+        "--exclude-dictionary-cards",
+        dest="include_dictionary_cards",
+        action="store_false",
+        help="複習時排除字典卡（預設）",
+    )
+    p.set_defaults(include_dictionary_cards=None)
     p.add_argument("--active-notebook", help="notebook id 或 name")
     p.add_argument("--auto-link", choices=["on", "off"], help="judge pipeline 自動連結開關")
     p.set_defaults(func=cmd_user_config_set)
