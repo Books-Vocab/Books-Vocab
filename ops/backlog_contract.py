@@ -54,6 +54,7 @@ def preflight(
     contract_baselines: Iterable[str],
 ) -> list[dict]:
     """Return typed reasons a groomed ticket cannot enter dispatch."""
+    fields = tuple(contract_fields)
     root = (repo or default_root).resolve()
     if payload.get("status") == "contract-blocked":
         return [{"kind": "contract-blocked",
