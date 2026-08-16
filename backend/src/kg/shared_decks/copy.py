@@ -7,11 +7,11 @@ here so the router stays a thin adapter:
 * **new Notebook**: ``is_default`` forced false (model default), name made
   unique against the copier's active notebooks (the world-export duplicate-name
   trap), provenance (``source_shared_deck_id`` + ``source_version``) stamped.
-* **dictionary-card copy**: verbatim content fields plus a provider-neutral
-  ``DictionaryEntry`` sidecar via ``CardStore.add_shared_dictionary_copy``,
-  model-default SRS, freshly-minted ids, **strictly-monotonic ``updated_at``**
-  (§4.4 — a timestamp tie lets a keyset page boundary silently drop cards on
-  sync-down), and ``source_shared_card_guid`` = the source card's ``content_guid``.
+* **ordinary-card copy**: verbatim content fields via
+  ``CardStore.add_shared_copy``, model-default SRS, freshly-minted ids,
+  **strictly-monotonic ``updated_at``** (§4.4 — a timestamp tie lets a keyset
+  page boundary silently drop cards on sync-down), and
+  ``source_shared_card_guid`` = the source card's ``content_guid``.
 * **idempotency**: ``shared_deck_copy_log(copier_id, idempotency_key)`` UNIQUE —
   a transport retry replays to the same notebook, never a duplicate.
 * **materialization barrier + compensating rollback**: cards.db / notebooks.db
@@ -43,7 +43,6 @@ from pathlib import Path
 
 from ..cards import CardStore
 from ..exceptions import ConflictError, NotFoundError
-from ..lexical import LexicalAttribution, LexicalEntry, LexicalExample, LexicalSense
 from ..notebook import NotebookStore
 from .store import SharedDeck, SharedDeckStore
 
@@ -51,55 +50,6 @@ _LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_TITLE = "Untitled Deck"
 
-
-def _dictionary_entry_for_shared_card(
-    deck: SharedDeck, card, *, fetched_at: datetime
-) -> tuple[LexicalEntry, str, str]:
-    """Project an official content-plane card into the dictionary SoT shape.
-
-    Official decks do not carry an external provider payload.  This synthetic
-    ``shared_deck`` provider preserves the exact published meaning/examples,
-    while giving the copied card the same durable sidecar contract as a normal
-    dictionary lookup.  A blank sentinel example is used only when the source
-    card has no example because the sidecar schema requires a selected key;
-    the client-facing ``Card.examples`` remains exactly empty in that case.
-    """
-    examples = [
-        LexicalExample(key=f"example_{index}", text=text)
-        for index, text in enumerate(card.examples or [], start=1)
-    ]
-    if not examples:
-        examples = [LexicalExample(key="example_1", text="")]
-    sense_key = "sense_1"
-    example_key = examples[0].key
-    language = (deck.language_pair or "en").split("-", 1)[0] or "en"
-    entry = LexicalEntry(
-        provider="shared_deck",
-        dictionary_id=f"shared-deck:{deck.id}",
-        schema_version="shared-deck-v1",
-        entry_key=card.content_guid,
-        word=card.content,
-        language=language,
-        forms=list(card.inflections or []),
-        senses=[
-            LexicalSense(
-                key=sense_key,
-                part_of_speech=card.pos,
-                definition=card.meaning,
-                examples=examples,
-                translations=[card.meaning] if card.meaning else [],
-            )
-        ],
-        attribution=LexicalAttribution(
-            provider="shared_deck",
-            source_url=f"https://wordnexus.lol/explore/{deck.id}",
-            license_name="WordNexus official deck",
-            license_url="https://wordnexus.lol",
-            attribution_text="WordNexus official deck",
-        ),
-        fetched_at=fetched_at,
-    )
-    return entry, sense_key, example_key
 
 # Per-user copy serialization (see _user_copy_lock). LRU-bounded so a burst of
 # distinct users cannot leak locks without limit — mirrors deps._USER_LOCKS.
@@ -257,10 +207,9 @@ def copy_shared_deck(
     if deck is None:  # not discoverable → 404 (never leak hidden decks)
         raise NotFoundError("Deck", deck_id)
     if deck.source != "official":
-        # The current dictionary sidecar contract only has verified official
-        # attribution. Do not materialize a public community deck as if it had
-        # WordNexus's license/attribution until that contract is modeled.
-        raise ConflictError("Only official decks can be copied as dictionary cards")
+        # Explore copy is intentionally limited to curated official content.
+        # Community publishing/copying remains a separate product phase.
+        raise ConflictError("Only official decks can be copied")
 
     # Serialize per-user copies (see _user_copy_lock): the copy handler is a SYNC
     # FastAPI endpoint, so two concurrent same-user copies run on separate
@@ -321,10 +270,7 @@ def _copy_locked(
     created = 0
     try:
         for i, sc in enumerate(src_cards):
-            dictionary_entry, sense_key, example_key = _dictionary_entry_for_shared_card(
-                deck, sc, fetched_at=now + timedelta(milliseconds=i)
-            )
-            card, was_created = card_store.add_shared_dictionary_copy(
+            card, was_created = card_store.add_shared_copy(
                 content=sc.content, meaning=sc.meaning, pos=sc.pos,
                 examples=sc.examples, collocations=sc.collocations, note=sc.note,
                 difficulty=sc.difficulty, mode=sc.mode, root_form=sc.root_form,
@@ -332,9 +278,6 @@ def _copy_locked(
                 # strictly-monotonic, distinct per card (§4.4 tie defense)
                 updated_at=now + timedelta(milliseconds=i),
                 source_shared_card_guid=sc.content_guid,
-                dictionary_entry=dictionary_entry,
-                selected_sense_key=sense_key,
-                selected_example_key=example_key,
             )
             id_map[sc.content_guid] = card.id
             if was_created:

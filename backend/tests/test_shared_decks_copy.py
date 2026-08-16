@@ -3,7 +3,8 @@ into the copier's private Notebook.
 
 The load-bearing guardrails (all asserted here):
 
-* fresh SRS + fresh id + provenance stamp + dictionary sidecar, zero review_events.
+* fresh SRS + fresh id + provenance stamp, ordinary reviewable cards, zero
+  dictionary sidecars and review_events.
 * strictly-monotonic (distinct) updated_at — §4.4 timestamp-tie pagination skip.
 * mid-copy crash leaves NO half-product (materialization barrier + compensation).
 * two copies of one deck → two uniquely-named notebooks → world-export still
@@ -97,27 +98,15 @@ def test_copy_yields_fresh_srs_fresh_ids_and_provenance(tmp_path):
         assert c.is_deleted is False
         assert c.id not in src_ids  # freshly minted id
         assert c.source_shared_card_guid == src_guids[c.content]
-        assert c.card_role == "dictionary"
-        assert c.review_eligible is False
-        dictionary = cards.get_dictionary_entry(c.id)
-        assert dictionary is not None
-        assert dictionary.provider == "shared_deck"
-        assert dictionary.materialization_status == "active"
-        assert dictionary.provider_entry_key == c.source_shared_card_guid
+        assert c.card_role == "learning"
+        assert c.review_eligible is True
+        assert cards.get_dictionary_entry(c.id) is None
 
     # content verbatim: note + difficulty came across (add() cannot carry these)
     meticulous = next(c for c in copied if c.content == "meticulous")
     assert meticulous.note == "teacher note"
     assert meticulous.difficulty == 4.5
-    meticulous_dictionary = cards.get_dictionary_entry(meticulous.id)
-    assert meticulous_dictionary is not None
-    assert meticulous_dictionary.selected_sense_key == "sense_1"
-    assert meticulous_dictionary.selected_example_key == "example_1"
-    payload = json.loads(meticulous_dictionary.payload_json)
-    assert payload["provider"] == "shared_deck"
-    assert payload["word"] == meticulous.content
-    assert payload["senses"][0]["translations"] == [meticulous.meaning]
-    assert payload["senses"][0]["examples"][0]["text"] == meticulous.examples[0]
+    assert cards.get_dictionary_entry(meticulous.id) is None
 
     # SRS isolation: the copy path never constructs a ReviewEventStore, so no
     # review-history plane exists for the copied cards.
@@ -474,7 +463,7 @@ def test_copy_unknown_deck_raises_notfound(tmp_path):
         _copy(shared, cards, nbs, user_dir, deck_id="ghost")
 
 
-def test_public_community_deck_copy_fails_closed_without_sidecar_attribution(tmp_path):
+def test_public_community_deck_copy_remains_outside_official_copy_scope(tmp_path):
     user_dir, shared, cards, nbs = _stores(tmp_path)
     _publish_deck(shared)
     with Session(shared.engine) as session:
@@ -516,6 +505,20 @@ def test_copy_endpoint_end_to_end(isolated_api):
     assert body["alreadyCopied"] is False
     assert body["cardCount"] == len(_DECK_CARDS)
     nb_id = body["notebookId"]
+
+    # The regular vocab projection is the copied deck's only card surface.
+    # iOS targeted pull must see every copied card immediately, with no
+    # dictionary projection or review opt-in required.
+    vocab = env.client.get(
+        "/api/vocab", params={"notebook_id": nb_id}, headers=env.headers
+    )
+    assert vocab.status_code == 200, vocab.text
+    copied_cards = vocab.json()
+    assert {card["content"] for card in copied_cards} == {
+        card["content"] for card in _DECK_CARDS
+    }
+    assert all("cardRole" not in card for card in copied_cards)
+    assert all("reviewEligible" not in card for card in copied_cards)
 
     # the notebook shows up in the copier's list
     nbs = env.client.get("/api/notebooks", headers=env.headers)
