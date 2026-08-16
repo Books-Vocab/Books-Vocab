@@ -2169,6 +2169,18 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World vocabulary entry contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
