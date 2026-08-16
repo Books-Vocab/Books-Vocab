@@ -7,7 +7,44 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ops"))
 
-from backlog_wave import WaveDeps, cmd_unstage
+from backlog_wave import AnchorDeps, WaveDeps, cmd_anchor, cmd_unstage
+
+
+def test_cmd_anchor_isolated_dry_run_needs_no_write_dependencies(capsys):
+    entry_id = "IMP-20260816-abc123"
+    rows = [{
+        "id": entry_id,
+        "verdict": "CONFIRMED-FIXED",
+        "by": "agent:test",
+        "evidence": "pytest -q",
+        "status": "fixed",
+        "landed_sha": "abc1234",
+    }]
+    args = SimpleNamespace(
+        queue=Path("/tmp/backlog-queue.jsonl"),
+        store=Path("/tmp/backlog-store"),
+        branches=[],
+        commit=False,
+        json=True,
+    )
+
+    result = cmd_anchor(
+        args,
+        deps=AnchorDeps(
+            queue_path=lambda explicit: explicit,
+            queue_lock=lambda path: __import__("contextlib").nullcontext(),
+            read_queue=lambda path: rows,
+            entry_path=lambda store, item_id: store / f"{item_id}.json",
+            load_entry=lambda store, item_id: {"id": item_id, "status": "open"},
+            validate_entry=lambda entry, **kwargs: [],
+            closure_changes=lambda **kwargs: {},
+            merged_and_validated=lambda current, changes, item_id: current,
+        ),
+    )
+
+    assert result == 0
+    payload = capsys.readouterr().out
+    assert f'"would_apply": ["{entry_id}"]' in payload
 
 
 def test_cmd_unstage_isolated_dry_run_does_not_write_queue(capsys):

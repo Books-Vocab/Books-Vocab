@@ -343,17 +343,20 @@ def cmd_anchor_locked(args, queue: Path, *, deps: AnchorDeps) -> int:
     """Validate and apply a wave atomically at the queue level."""
     required = (
         deps.read_queue,
-        deps.write_queue,
         deps.entry_path,
         deps.load_entry,
         deps.validate_entry,
         deps.closure_changes,
         deps.merged_and_validated,
-        deps.acceptance_gate,
-        deps.acceptance_refusal,
-        deps.write_atomic,
-        deps.dumps,
     )
+    if args.commit:
+        required += (
+            deps.write_queue,
+            deps.acceptance_gate,
+            deps.acceptance_refusal,
+            deps.write_atomic,
+            deps.dumps,
+        )
     if any(callback is None for callback in required):
         raise RuntimeError("anchor requires complete queue, validation, and write dependencies")
 
