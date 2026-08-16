@@ -984,16 +984,29 @@ def plan_gates(changed_files: list[str],
             # A UI-source change with no changed UITest is covered by build +
             # unit + quality-impact; a full-suite run here would just reintroduce
             # the flaky false-block.
+            present = ops_test_exists or (lambda rel: True)
             ui_test_classes = sorted({
                 p.rsplit("/", 1)[-1].removesuffix(".swift")
                 for p in ios
                 if "UITests/" in p and p.endswith("Tests.swift")
+                and present(p)
+            })
+            ui_tests_removed = sorted({
+                p for p in ios
+                if "UITests/" in p and p.endswith("Tests.swift")
+                and not present(p)
             })
             live_only_classes = sorted(set(ui_test_classes) & _LIVE_ONLY_UITEST_CLASSES)
             for cls in sorted(set(ui_test_classes) - _LIVE_ONLY_UITEST_CLASSES):
+                ui_cmd = ["ops/ios_ops.sh", "test", "--ui", "--json", "--lease"]
+                if cls == "FixtureDatasetUITests":
+                    # P9's app-written evidence contract requires the unique screenshot
+                    # directory staged by the visual runner. A behavior-only invocation
+                    # cannot satisfy that test and would fail late inside XCTest.
+                    ui_cmd.append("--visual")
+                ui_cmd.extend(["--dataset", "marketing_demo", "--file", cls])
                 gates.append(_shell(f"ios-test-ui:{cls}", "ios",
-                                    ["ops/ios_ops.sh", "test", "--ui", "--json", "--lease",
-                                     "--dataset", "marketing_demo", "--file", cls], "block"))
+                                    ui_cmd, "block"))
             if live_only_classes:
                 gates.append(_shell(
                     "ios-live-demo-uitest-compile", "ios",
@@ -1011,6 +1024,13 @@ def plan_gates(changed_files: list[str],
                         f"ios/BooksAndVocabUITests/{cls}.swift"
                         for cls in live_only_classes
                     ],
+                ))
+            if ui_tests_removed:
+                gates.append(_internal(
+                    "ios-ui-tests-removed", "ios", "warn",
+                    note=("changed UI test files were deleted in this worktree and were "
+                          "not executed; verify the product/test topology explicitly"),
+                    files=ui_tests_removed,
                 ))
 
     if ds:
@@ -1039,12 +1059,22 @@ def plan_gates(changed_files: list[str],
             gates.append(_internal("docs-removed", "docs", "warn", files=docs_removed))
 
     if backend:
+        present = ops_test_exists or (lambda rel: True)
         tests = [p for p in backend if _is_backend_test(p)]
-        if tests:
-            rel = [p[len("backend/"):] for p in tests]
+        live_tests = [p for p in tests if present(p)]
+        removed_tests = [p for p in tests if not present(p)]
+        if live_tests:
+            rel = [p[len("backend/"):] for p in live_tests]
             gates.append(_shell("backend-pytest", "backend",
                                 ["uv", "run", "pytest", "-q", *rel], "block", cwd="backend"))
-        else:
+        if removed_tests:
+            gates.append(_internal(
+                "backend-tests-removed", "backend", "warn",
+                note=("deleted backend test files were not passed to pytest; verify their "
+                      "replacement topology explicitly"),
+                files=removed_tests,
+            ))
+        if not live_tests:
             gates.append(_internal("backend-tests-advisory", "backend", "warn",
                                    note="backend src changed but no targeted test in the diff — "
                                         "run the relevant tests manually (the full suite carries "
@@ -1090,7 +1120,8 @@ def plan_gates(changed_files: list[str],
             selected = ["ops/tests"] if fallback else sorted(targets)
             gates.append(_shell("ops-pytest", "ops",
                                 ["uv", "run", "--no-project", "--python", "3.13",
-                                 "--with", "pytest", "pytest", "-q", *selected], "block"))
+                                 "--with", "pytest", "--with", "pyjwt",
+                                 "--with", "cryptography", "pytest", "-q", *selected], "block"))
 
     # Before 2026-08-04 a changed shell script selected NOTHING: `ops/devops_kg_safe.sh`
     # is iron law 7's enforcement point and `ops/release.sh` is the only path to
