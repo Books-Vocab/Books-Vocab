@@ -19,21 +19,7 @@ verified_against: f25fd2ed6
 | `collocations` | | 常見搭配 | `invoke a law` |
 | `mode` | | `recognition`（預設）或 `production` | `recognition` |
 
-### 字典卡欄位（V1，`card` 表；CSV 不含這些欄）
-
-字典卡與單字卡同住 `card` 表、同享 notebook 唯一性，靠下列欄位分流。**三個維度彼此獨立，不得用 `card_role` 推導其他兩個**——這是 V1 的硬性不變式。
-
-| 欄位 | 型別/預設 | 語意 |
-|------|-----------|------|
-| `card_role` | `TEXT NOT NULL DEFAULT 'learning'` | `learning`（單字卡）或 `dictionary`（字典卡）。決定它出不出現在一般 vocab 面與 enrich/embed/judge pipeline |
-| `review_eligible` | `INTEGER NOT NULL DEFAULT 1` | 每卡的複習 eligibility projection（learning 預設 `1`、dictionary 預設 `0`）。字典卡預設不進 today review / stats；`review_mode.include_dictionary_cards=true` 時可納入 queue/stats，但不改此欄位或 SRS 狀態 |
-| `reader_hidden` | `INTEGER NOT NULL DEFAULT 0` | Reader / Podcast 高亮的**唯一**排除旗標。高亮 eligibility 固定為「未 delete ∧ 未 archive ∧ `reader_hidden=0`」，字典卡預設參與高亮 |
-| `promotion_state` | `TEXT NOT NULL DEFAULT 'idle'` | `idle` / `queued` / `running` / `failed`。字典卡轉單字卡的 client-facing 生命週期真相；worker 側的 error/retry 狀態在 `dictionary_promotion_jobs` |
-| `promoted_at` | `TIMESTAMP`（nullable） | 成功轉為 `learning` 的時刻 |
-
-轉換只有一個方向：字典卡經明示 promote → enrich 成功才切 `learning` 並 `review_eligible=1`；enrich 失敗仍是字典卡、可重試。**不支援 learning → dictionary 降級。**
-
-離線 entry payload、選定 sense/example、provider 授權資訊不在 `card` 表，而在 sidecar `dictionary_entry`（見 `tech_index.md`）。Explore 共享牌組複製沿用同一條字典卡路徑：`Card.meaning` / `Card.examples` 保留牌組原值，`card_role=dictionary`；牌組沒有 provider payload 時，sidecar 使用 provider-neutral 的 `shared_deck` envelope。
+Card 只有一種產品語意：加入詞庫後即是一般可複習卡片，走同一套 vocab、pipeline、graph 與 SRS。後端純字典查詢只回傳 provider-neutral lookup payload，不持久化為 Card 或 sidecar。
 
 ## Mode 說明
 
