@@ -4107,6 +4107,43 @@ def test_gate_record_carries_orchestrator_identity(scratch):
 
 
 @gitmark
+def test_gate_stops_after_blocking_review_preflight(scratch, monkeypatch):
+    """A cheap receipt failure must not launch later expensive gates."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "preflight-reg.json")
+    wt = _open_wt(state, slug="review-preflight")
+    source = Path(wt) / "ops" / "tests" / "test_worktree_orchestrate.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("# preflight fixture\n", encoding="utf-8")
+    review_tool = Path(wt) / "ops" / "review_audit.sh"
+    review_tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "change orchestrator"], wt)
+
+    calls = []
+
+    def fake_run_gate(spec, worktree, *, record_path=None, state=None):
+        calls.append(spec["name"])
+        return {
+            "name": spec["name"], "category": spec["category"],
+            "level": spec["level"],
+            "status": "block" if spec["name"] == "review-receipts" else "pass",
+            "rc": 2 if spec["name"] == "review-receipts" else 0,
+            "summary": "stubbed preflight" if spec["name"] == "review-receipts"
+                       else "should not run",
+        }
+
+    monkeypatch.setattr(MODULE, "_run_gate", fake_run_gate)
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert calls == ["review-receipts"]
+    assert gate["gates"][0]["name"] == "review-receipts"
+    assert gate["gates"][0]["status"] == "block"
+    assert len(gate["gates"]) == 1
+
+
+@gitmark
 def test_gate_names_the_empty_worktree(scratch):
     """An empty diff is a legal re-gate, but its record must say it verified nothing."""
     tmp_path, repo, remote = scratch
