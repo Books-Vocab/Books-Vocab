@@ -18,7 +18,7 @@ Catalog 只有一個定位：讓 agent 在開發、debug 或與使用者討論 U
 ## 核心模型
 
 - **UI World 是結構化畫面狀態**：`kg.fixture.dataset.v2` 同時描述資料、登入、權益、preferences、SwiftData rows 與檔案資產。Catalog 不另造第二套假資料。
-- **`scenarioContext` 有兩種精確 wire shape**：既有世界可保留三鍵 legacy（`reviewClock`／`readerPassage`／`wordDetail`，clock 可為 `null` 或 `frozenNow` 形狀）；canonical 世界則必須一次提供四鍵，且 `reviewClock` 明示 `now`／`timeZone`／`frozenEpoch`／`anchorDay`／`source`，並帶 `surfaceContracts`，缺鍵、混用或部分 canonical 形狀一律 fail closed。canonical contract 另驗 `explore`／`settings` required surface、asset ID↔inode 一對一與 review history 時間一致性；host validator、demo emitter、Swift decoder 與 repo fixture tests 共守此契約，與 Catalog scenario 數量解耦。
+- **`scenarioContext` 有兩種精確 wire shape**：既有世界可保留三鍵 legacy（`reviewClock`／`readerPassage`／`wordDetail`，clock 可為 `null` 或 `frozenNow` 形狀）；canonical 世界則必須一次提供四鍵（另加 `surfaceContracts`），且 `reviewClock` 明示 `now`／`timeZone`／`frozenEpoch`／`anchorDay`／`source`，`surfaceContracts` 精確包含 `explore`／`reviewCalendar`／`settings` 三鍵；缺鍵、混用、未知 surface 或部分 canonical 形狀一律 fail closed。canonical contract 另驗 required surface、asset ID↔inode 一對一與 review history 時間一致性；host validator、demo emitter、Swift decoder 與 repo fixture tests 共守此契約，與 Catalog scenario 數量解耦。
 - **Scenario 是可選入口**：新 UI 不必註冊；只有 agent 預期會反覆檢查、debug 或展示某個狀態時，才在 `Debug/Scenarios/` 加 scenario 並登錄到 `CatalogScene`。
 - **Explore fixture proof 是單一、可重放的 evidence contract**：`sharedDecks.fixtures.<id>.assetIDs` 必須恰有一個 asset。materializer 與 `ExploreFixtureAssetProof` 都走 manifest 安裝快照；找不到、驗證失敗或 image decode 失敗直接 fail-loud，不能以 optional snapshot、generic first 或 `EmptyView` 產生看似成功的證據。
 - **一個工具，服務 agent 的即時觀察**：Catalog 只在需要時開啟指定 UI World 與 scenario，讓 agent 讀取真實 simulator window；觀察結束後只留下必要的短型 receipt。
