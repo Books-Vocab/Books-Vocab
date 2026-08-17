@@ -654,6 +654,30 @@ def test_cutover_refuses_a_malformed_gate_record(scratch):
     assert "gate record is malformed" in cut["error"]
     assert "notes.txt" not in _local_main_files(repo)
 
+
+@gitmark
+def test_cutover_refuses_a_fake_s4_record_without_release_gate_plan(scratch):
+    """A tier label cannot turn an S2 record with ordinary gates into S4 evidence."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "s4-record.json")
+    wt = _open_wt(state, slug="fake-s4-record")
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["gate_tier"] = "S4"
+    record["verdict"] = "pass"
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "canonical plan" in cut["error"] or "release gates" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
 @gitmark
 def test_gate_names_the_empty_worktree(scratch):
     """An empty diff is a legal re-gate, but its record must say it verified nothing."""
@@ -2273,6 +2297,14 @@ def test_gate_reuse_is_fail_safe_for_changed_unknown_legacy_and_bad_sources(
     next(g for g in blocked["gates"] if g["name"] == "ops-pytest")["status"] = "block"
     reused, reason = MODULE._reuse_gate(ops_spec, current_input, blocked, None, orch)
     assert reused is None and reason == "source_status_block"
+    deferred = json.loads(json.dumps(previous))
+    deferred_gate = next(g for g in deferred["gates"] if g["name"] == "ops-pytest")
+    deferred_gate.update({
+        "status": "warn", "original_status": "block",
+        "deferral": {"disposition": "deferred", "ticket_id": "IMP-0001"},
+    })
+    reused, reason = MODULE._reuse_gate(ops_spec, current_input, deferred, None, orch)
+    assert reused is None and reason == "deferred_failure_requires_explicit_deferral"
     inconclusive = json.loads(json.dumps(previous))
     next(g for g in inconclusive["gates"] if g["name"] == "ops-pytest")["status"] = "inconclusive"
     reused, reason = MODULE._reuse_gate(ops_spec, current_input, inconclusive, None, orch)
