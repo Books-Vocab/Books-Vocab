@@ -1585,6 +1585,43 @@ def test_ios_gate_marks_missing_lock_metric_unknown_in_bounded_output(
     assert shell["work_dur_s"] is None
 
 
+def test_ios_prepare_cache_gate_requires_only_process_lock_metric(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        # --prepare-cache exits after build-for-testing and never enters the
+        # device execution-lock phase that emits deviceRunLockWaitMs.
+        lambda *args, **kwargs: (0, "lockWaitMs=9000", 12.5),
+    )
+
+    shell = MODULE._run_gate(
+        MODULE._shell(
+            "ios-live-demo-uitest-compile",
+            "ios",
+            [
+                "ops/ios_ops.sh",
+                "test",
+                "--configuration",
+                "Release",
+                "--destination",
+                "generic/platform=iOS",
+                "--prepare-cache",
+                "--json",
+            ],
+            "block",
+        ),
+        str(tmp_path),
+    )
+
+    assert shell["status"] == "pass"
+    assert shell["timing_status"] == "known"
+    assert shell["lock_wait_ms"] == 9000
+    assert shell["work_dur_s"] == pytest.approx(3.5)
+
+
 def test_duration_fields_use_latest_lock_metrics_without_changing_verdict():
     metrics = MODULE._duration_fields(
         12.5,
