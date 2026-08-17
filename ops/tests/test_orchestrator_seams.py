@@ -234,7 +234,7 @@ def test_core_gate_inputs_use_the_gate_route_instead_of_fallback():
 def test_facade_change_unions_behavior_routes_and_missing_selector_falls_back():
     facade = ROUTES.resolve_routes(["ops/worktree_orchestrate.py"])
     assert facade["fallback"] is False
-    assert {route["route_id"] for route in facade["routes"]} == {
+    expected_routes = {
         "orchestrator.planning",
         "orchestrator.gate",
         "orchestrator.lifecycle",
@@ -243,6 +243,10 @@ def test_facade_change_unions_behavior_routes_and_missing_selector_falls_back():
         "orchestrator.recovery",
         "orchestrator.facade",
     }
+    assert {route["route_id"] for route in facade["routes"]} == expected_routes
+    seam_test = ROUTES.resolve_routes(["ops/tests/test_orchestrator_seams.py"])
+    assert seam_test["fallback"] is False
+    assert {route["route_id"] for route in seam_test["routes"]} == expected_routes
     facade_route = next(route for route in facade["routes"]
                         if route["route_id"] == "orchestrator.facade")
     assert "ops/tests/test_worktree_gate_tiers.py" in facade_route["selectors"]

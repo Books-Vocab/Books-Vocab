@@ -561,6 +561,7 @@ def test_gate_plan_routes_control_plane_and_kg_board_sources_without_ops_suite_f
         "ops/lib/worktree_gate_tiers.py",
         "ops/lib/worktree_test_routes.py",
         "ops/lib/worktree_orchestrator_commands.py",
+        "ops/tests/test_orchestrator_seams.py",
         "ops/kg_board/__init__.py",
         "ops/kg_board/git_tree.py",
         "ops/kg_board/model.py",

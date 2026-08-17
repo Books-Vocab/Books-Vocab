@@ -188,7 +188,7 @@ _ALL_ROUTES: tuple[dict[str, Any], ...] = (
 )
 _DIRECT_ROUTES: tuple[dict[str, Any], ...] = (*_BEHAVIOR_ROUTES, _KG_BOARD_ROUTE)
 _ROUTES_BY_ID = {route["route_id"]: route for route in _ALL_ROUTES}
-_FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"][:-1])
+_FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"])
 _LEGACY_PATH = "ops/tests/test_worktree_orchestrate.py"
 
 _FALLBACK_ROUTE: dict[str, Any] = {
