@@ -13,6 +13,11 @@
   "date": "2026-08-12",
   "detail": "[IMP-0029 子項] child-4 vocab_ui：實作 syncActiveNotebookFromServer 的 server LWW，清理所有 cold-start 敘述與 dead flag，補 active notebook 拒收回歸。",
   "fix_site": "ios/BooksAndVocab/Models/ActiveNotebookStore.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocabTests/ActiveNotebookStoreTests.swift",
+  "fixed_by": [
+    "b202eb592bb671955af948ba9c8b87a508951bbd",
+    "58597602dc8990320ca862b2bca074cb44767d85",
+    "37425e451678b1184e4c55fb33b2fc05b87b008c"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -23,6 +28,10 @@
   "scope": "一個 active notebook/vocab UI sync seam、設定呼叫點與回歸測試。",
   "severity": "low",
   "source": "IMP-0029/child-4",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }
