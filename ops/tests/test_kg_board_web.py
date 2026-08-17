@@ -311,6 +311,8 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     assert "tree-index-label" in js
     assert "treeLayout" in js
     assert "edgePath" in js
+    assert "reachableCommitSet" in js
+    assert "mainReachableSet" in js
     assert "TREE_ROW_HEIGHT" in js
     assert "lane-header" in js
     assert "foreignObject" not in js
@@ -324,6 +326,15 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     assert ".commitcircle{r:14px}" not in "".join(css.split())
 
 
+def test_git_tree_browser_marks_parents_outside_the_bounded_viewport():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "parent-missing" in js
+    assert "tree-parent-endpoint" in js
+    assert "此 commit 的 parent 在目前圖面外" in js
+    assert "parentSha" in js
+
+
 def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
@@ -335,6 +346,14 @@ def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_z
     assert "treeFitInitialized" in js
     assert "cancelTreeAutoFit" in js
     assert ".tree-control-button" in css
+
+
+def test_git_tree_browser_preserves_manual_zoom_through_empty_refreshes():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+    empty_branch = js[js.index('if(!tree||!tree.commits?.length)'):js.index('const commits=new Map', js.index('if(!tree||!tree.commits?.length)'))]
+
+    assert "treeFitInitialized=false" not in empty_branch
+    assert "if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom()" in js
 
 
 def test_git_tree_browser_keeps_lane_density_readable_at_fit_scale():
@@ -371,6 +390,13 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert ".tree-controls{display:none}" in "".join(css.split())
     assert ".tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
     assert ".tree-control-button{min-height:44px}" in "".join(css.split())
+    assert re.search(r"@media\(max-width:860px\)\{[^}]*\.git-tree\{display:none\}", css)
+    assert ".tree-mobile-list{display:block;border:1pxsolidvar(--border-light);background:var(--surface-alt);padding:10px}" in "".join(css.split())
+    assert ".tree-mobile-list.tree-ticket,.tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
+    assert "viewport.branchPaths.values()" in js
+    assert "refs.map(ref=>ref.head)" in js
+    assert 'stateLabel=detached?"未連接":treeStateOf(ref)' in js
+    assert ".searchinput{width:100%;min-height:44px" in "".join(css.split())
 
 
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
