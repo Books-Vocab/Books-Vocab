@@ -576,6 +576,26 @@ def _entry_lock(path: Path):
         raise BacklogError(f"{exc}; nothing was written") from exc
 
 
+@contextlib.contextmanager
+def _store_lock(store: Path):
+    """Serialize a multi-entry read-modify-write transaction for one store.
+
+    The ordinary entry lock is deliberately keyed to one destination path, which
+    is enough for ``add`` and ``update``.  ``supersede`` publishes a replacement
+    and retires its source, so two entry locks would still leave a window where a
+    second caller can observe or create only half of the transition.  The lock
+    lives under the worktree cache rather than beside the tracked store.
+    """
+    store = Path(store).resolve()
+    key = hashlib.sha256(str(store).encode("utf-8")).hexdigest()
+    lock_path = ROOT / ".cache" / "backlog_store_locks" / f"{key}.lock"
+    try:
+        with exclusive_lock(lock_path, label=f"backlog-store:{store}"):
+            yield
+    except LockUnavailable as exc:
+        raise BacklogError(f"store lock unavailable for {store}: {exc}") from exc
+
+
 # ---------------------------------------------------------------------------
 # validation
 # ---------------------------------------------------------------------------
@@ -1690,6 +1710,14 @@ REFUSED_UPDATE_FIELDS = tuple(DIGEST_FIELDS)
 # does not read a file whose value has no destination.
 REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELDS}
 
+# A source is safe to re-file only before any verification or closure evidence
+# has attached to it.  ``fix_site`` and the other verdict fields are included on
+# purpose: they are populated by the verification/audit surface as well as by
+# grooming, and supersede must not guess which meaning a pre-existing reference
+# had.  Conservative refusal preserves the old record instead of risking an
+# audit trail that silently points at the wrong immutable payload.
+SUPERSEDE_REFERENCE_FIELDS = tuple(dict.fromkeys((*TRACE_FIELDS, *VERDICT_FIELDS)))
+
 # Free text, i.e. fields whose value is prose an agent composes rather than a
 # token from a fixed vocabulary. Every one of these gets a `--<flag>-file` twin,
 # because argv is not a safe channel for prose: a backtick inside a double-quoted
@@ -1903,6 +1931,183 @@ def update_entry(store: Path, entry_id: str, *, _clear_fields: tuple[str, ...] =
     )
     _write_atomic(entry_path(store, entry_id), _dumps(updated))
     return updated
+
+
+def _restore_atomic_bytes(path: Path, content: bytes) -> None:
+    """Restore a file byte-for-byte through a temporary atomic replacement."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        mode = path.stat().st_mode & 0o7777
+    except OSError:
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
+
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.rollback.", suffix=".tmp", dir=str(path.parent)
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def _supersede_present_references(entry: dict) -> list[str]:
+    return [
+        field for field in SUPERSEDE_REFERENCE_FIELDS
+        if entry.get(field) not in (None, "", [], {})
+    ]
+
+
+def _supersede_transaction(
+    store: Path,
+    source_id: str,
+    *,
+    stream: str | None = None,
+    date: str | None = None,
+    source: str | None = None,
+    detail: str | None = None,
+    commit: bool,
+) -> dict:
+    """Plan or atomically commit a corrected replacement for one open entry."""
+    if not _SAFE_ID_RE.fullmatch(source_id or ""):
+        raise BacklogError(f"invalid source id: {source_id!r}")
+
+    store = Path(store)
+    with _store_lock(store):
+        source_path = entry_path(store, source_id)
+        original = load_entry(store, source_id)
+
+        if original.get("status") != "open":
+            raise BacklogError(
+                f"{source_id} can be superseded only while status=open; "
+                f"current status={original.get('status')!r}"
+            )
+
+        claims = held_tickets()
+        if source_id in claims:
+            claim = claims[source_id]
+            raise BacklogError(
+                f"{source_id} is claimed by {claim.get('branch')} at "
+                f"{claim.get('path') or '(unknown path)'}; supersede requires an unclaimed source"
+            )
+
+        references = _supersede_present_references(original)
+        if references:
+            raise BacklogError(
+                f"{source_id} has audit references ({', '.join(references)}); "
+                "supersede refuses a source with fixed or verification evidence"
+            )
+
+        source_problems = validate_entry(
+            original, entry_id=source_id, check_traceability=False
+        )
+        if source_problems:
+            raise BacklogError(
+                f"{source_id} source entry is not complete; supersede refused: "
+                f"{source_problems}"
+            )
+
+        identity = {
+            "stream": stream if stream is not None else original["stream"],
+            "date": date if date is not None else original["date"],
+            "source": source if source is not None else original["source"],
+            "detail": detail if detail is not None else original["detail"],
+        }
+        if not isinstance(identity["date"], str) or not _DATE_RE.fullmatch(
+            identity["date"]
+        ):
+            raise BacklogError(
+                f"date must be YYYY-MM-DD, got {identity['date']!r}"
+            )
+        replacement_id = make_entry_id(**identity)
+        if not _SAFE_ID_RE.fullmatch(replacement_id):
+            raise BacklogError(
+                f"unusable replacement id (must be a bare filename): {replacement_id!r}"
+            )
+        if replacement_id == source_id:
+            raise BacklogError(
+                "supersede needs a corrected immutable field; the replacement id "
+                "would be identical to the source id"
+            )
+
+        replacement_path = entry_path(store, replacement_id)
+        if replacement_path.exists():
+            raise BacklogError(
+                f"replacement id {replacement_id} already exists; refusing a duplicate"
+            )
+
+        replacement = dict(original)
+        replacement.update(identity)
+        replacement["id"] = replacement_id
+        replacement["status"] = "open"
+        replacement["resolution"] = ""
+
+        original_resolution = str(original.get("resolution") or "").strip()
+        retirement_reason = f"superseded by {replacement_id}"
+        if original_resolution:
+            retirement_reason += f"; previous resolution retained: {original_resolution}"
+        retired = dict(original)
+        retired["status"] = "wont-fix"
+        retired["resolution"] = retirement_reason
+
+        for label, payload, entry_id in (
+            ("replacement", replacement, replacement_id),
+            ("retired source", retired, source_id),
+        ):
+            problems = validate_entry(
+                payload, entry_id=entry_id, check_traceability=False
+            )
+            if problems:
+                raise BacklogError(
+                    f"supersede would create an invalid {label}: {problems}"
+                )
+
+        result = {
+            "schema": "kg.backlog.supersede.v1",
+            "mode": "commit" if commit else "dry-run",
+            "written": False,
+            "source_id": source_id,
+            "replacement_id": replacement_id,
+            "source": retired,
+            "entry": replacement,
+        }
+        if not commit:
+            return result
+
+        original_bytes = source_path.read_bytes()
+        try:
+            _write_atomic(replacement_path, _dumps(replacement))
+            _write_atomic(source_path, _dumps(retired))
+        except Exception as exc:
+            rollback_errors: list[str] = []
+            if replacement_path.exists():
+                try:
+                    replacement_path.unlink()
+                except OSError as rollback_exc:
+                    rollback_errors.append(
+                        f"remove replacement: {rollback_exc}"
+                    )
+            try:
+                _restore_atomic_bytes(source_path, original_bytes)
+            except OSError as rollback_exc:
+                rollback_errors.append(f"restore source: {rollback_exc}")
+            suffix = (
+                f"; rollback errors: {'; '.join(rollback_errors)}"
+                if rollback_errors else "; both files restored"
+            )
+            raise BacklogError(
+                f"supersede publish failed: {exc}{suffix}"
+            ) from exc
+
+        result["written"] = True
+        return result
 
 
 def load_entry(store: Path, entry_id: str) -> dict:
@@ -3336,6 +3541,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--commit", action="store_true")
     p_update.add_argument("--json", action="store_true")
 
+    p_supersede = sub.add_parser(
+        "supersede",
+        help="re-file a corrected immutable payload and retire the open source "
+             "(DRY-RUN by default, --commit to land)",
+        description=(
+            "Replace a damaged open entry without deleting its audit trail. "
+            "The source must be unclaimed and carry no fixed or verification "
+            "reference. The replacement id is derived from stream/date/source/detail; "
+            "both files are published under one store lock."
+        ),
+    )
+    _add_store_arg(p_supersede)
+    p_supersede.add_argument("id")
+    p_supersede.add_argument("--stream", choices=STREAMS,
+                             help="corrected stream (default: source stream)")
+    p_supersede.add_argument("--date",
+                             help="corrected observed date (default: source date)")
+    p_supersede.add_argument("--source",
+                             help="corrected source text (default: source value)")
+    p_supersede.add_argument("--detail",
+                             help="corrected detail text (default: source value)")
+    supersede_mode = p_supersede.add_mutually_exclusive_group()
+    supersede_mode.add_argument(
+        "--dry-run", action="store_true",
+        help="validate and show both resulting entries without writing either file",
+    )
+    supersede_mode.add_argument(
+        "--commit", action="store_true",
+        help="publish the replacement and retire the source atomically",
+    )
+    p_supersede.add_argument("--json", action="store_true")
+
     p_reanchor = sub.add_parser(
         "reanchor",
         help="re-point orphaned fixed_by shas at their post-rebase equivalents "
@@ -3539,6 +3776,13 @@ def _lifecycle_contract() -> dict:
                 "required_for_dispatch": True,
             },
             {
+                "id": "supersede", "actor": "recorder",
+                "command": "backlog.py supersede <id>",
+                "meaning": "re-file a corrected immutable payload and retire the eligible source as wont-fix without deleting its audit trail",
+                "writes_store": True, "write_mode": "dry-run-default",
+                "required_for_dispatch": False,
+            },
+            {
                 "id": "dispatch", "actor": "worker", "command": "backlog.py dispatch",
                 "meaning": "read the worst-first takeable queue",
                 "writes_store": False, "write_mode": "read-only",
@@ -3595,6 +3839,10 @@ def _lifecycle_contract() -> dict:
             {
                 "id": "recurrence",
                 "path": "do not reopen through groom; dedupe and add a new occurrence with its observed date/source so identity is distinct",
+            },
+            {
+                "id": "corrected-filing",
+                "path": "supersede an open, unclaimed, unreferenced source with corrected immutable content; keep the source as wont-fix with replacement provenance",
             },
         ],
     }
@@ -4696,6 +4944,28 @@ def _cmd_update(args, *, _lock_held: bool = False) -> int:
     )
 
 
+def _cmd_supersede(args) -> int:
+    result = _supersede_transaction(
+        args.store,
+        args.id,
+        stream=args.stream,
+        date=args.date,
+        source=args.source,
+        detail=args.detail,
+        commit=args.commit,
+    )
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(
+            f"[{result['mode']}] {result['source_id']} -> "
+            f"{result['replacement_id']}; written={str(result['written']).lower()}"
+        )
+        if not result["written"]:
+            print("  nothing written; pass --commit to land")
+    return 0
+
+
 def _doc_anchor() -> str:
     """Resolve `verified_against` for the generated view.
 
@@ -4999,6 +5269,7 @@ def main(argv: list[str] | None = None) -> int:
         "validate": _cmd_validate,
         "groom": _cmd_groom,
         "update": _cmd_update,
+        "supersede": _cmd_supersede,
         "import": _cmd_import,
         "render": _cmd_render,
         "reanchor": _cmd_reanchor,
@@ -5027,6 +5298,14 @@ def main(argv: list[str] | None = None) -> int:
                     else "dry-run" if getattr(args, "dry_run", False)
                     else "commit")
             failure_context = {"mode": mode, "written": False}
+            print(f"ERROR [mode={mode}; written=false] {exc}", file=sys.stderr)
+        elif args.command == "supersede":
+            mode = "commit" if getattr(args, "commit", False) else "dry-run"
+            failure_context = {
+                "mode": mode,
+                "written": False,
+                "source_id": getattr(args, "id", None),
+            }
             print(f"ERROR [mode={mode}; written=false] {exc}", file=sys.stderr)
         else:
             print(f"ERROR {exc}", file=sys.stderr)
