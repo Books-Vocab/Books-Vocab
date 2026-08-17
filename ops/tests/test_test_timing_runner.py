@@ -102,6 +102,59 @@ def test_bundle_timeout_is_terminal_and_not_a_normal_sample(tmp_path, monkeypatc
     assert estimate["sample_count"] == 0
 
 
+def test_bundle_retries_failed_task_and_records_each_attempt(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("KG_TASK_REGISTRY_PATH", str(tmp_path / "tasks.json"))
+    monkeypatch.setenv("KG_TEST_TIMING_DB", str(tmp_path / "timing.sqlite3"))
+    marker = tmp_path / "attempts.txt"
+    code = (
+        "from pathlib import Path; "
+        f"p=Path({str(marker)!r}); n=int(p.read_text()) if p.exists() else 0; "
+        "p.write_text(str(n+1)); import sys; sys.exit(3) if n == 0 else None"
+    )
+    manifest = _manifest(tmp_path, [{
+        "id": "retry", "command_key": "command.retry", "command": _command(code),
+        "retry": 1, "resource_class": "lane",
+    }])
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-retry", json=True)
+    assert test_timing.cmd_run_bundle(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    row = payload["tasks"][0]
+    assert row["status"] == "passed"
+    assert row["attempts"] == 2
+    assert [attempt["status"] for attempt in row["attempt_results"]] == ["failed", "passed"]
+    assert test_timing.store.estimate("command.retry", db_path=tmp_path / "timing.sqlite3")["sample_count"] == 2
+
+
+def test_bundle_keyboard_interrupt_marks_pending_and_running_tasks_cancelled(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("KG_TASK_REGISTRY_PATH", str(tmp_path / "tasks.json"))
+    manifest = _manifest(tmp_path, [{
+        "id": "cancel", "command_key": "command.cancel", "command": _command("print('never')"),
+        "resource_class": "lane",
+    }])
+
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(test_timing, "_run_bundle_task", interrupt)
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-cancel", json=True)
+    assert test_timing.cmd_run_bundle(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "cancelled"
+    assert payload["verdict"] == "cancelled"
+    assert payload["tasks"][0]["status"] == "cancelled"
+
+
+def test_bundle_rejects_negative_retry_count(tmp_path, capsys):
+    manifest = _manifest(tmp_path, [{
+        "id": "bad-retry", "command_key": "command.bad", "command": _command("pass"),
+        "retry": -1,
+    }])
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-bad-retry", json=True)
+    assert test_timing.cmd_run_bundle(args) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "error"
+
+
 def test_invalid_bundle_is_rejected_without_starting_a_task(tmp_path, capsys):
     manifest = tmp_path / "bad.json"
     manifest.write_text(json.dumps({"schema": "wrong", "tasks": []}))
