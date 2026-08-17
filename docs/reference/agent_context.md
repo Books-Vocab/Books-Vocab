@@ -51,14 +51,16 @@ Global kernel 的內容仍以根 `CLAUDE.md` 為準；本索引不重抄其規�
 | role | minimum context | do not preload | escalation start |
 |---|---|---|---|
 | **Ticket Factory** (`platform-steward`) | `kg-agent-context`、`kg-router`、`kg-receipt` 的立單／stream 規則、`./ops/backlog.py lifecycle --json`、需求本身 | Delivery Team fan-in、Gate/cutover、domain implementation、完整產品技術地圖 | `docs/registry.yml` 的 trigger → 產品／技術 SoT；若修法需要 code／merge，保留 ticket id、fix_site、groom evidence，交由 `delivery-coordinator` 從 `./ops/backlog.py dispatch` 取得，不自行修 code |
-| **Delivery Team Integrator** (`delivery-coordinator`) | `kg-agent-context`、assigned batch、backlog lifecycle、`worktree-flow` 的停止點／批次整合／`close-wave`／並發段、`docs/sop/release.md` | Ticket Factory 的 triage 細節、未被 batch 指向的 domain 文件、Catalog 與其他 team 的內部狀態 | 先查 assigned ticket 的 `fix_site` 與 registry trigger；再讀所需 domain SoT；只在 state／collision／primary race 等不穩定狀況傳 thread message |
-| **Delivery Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、assigned groomed ticket、自己的 agent contract、`worktree-flow` 的 child stop／hand-back、最小 domain SoT | Ticket Factory 流程、Integrator 批次收尾、其他 domain、全量 Gate／release 文件 | 依 assigned path／trigger 查 registry；先讀 domain SoT，再向 Integrator 回報跨界或不可判定問題 |
+| **Delivery Team Integrator** (`delivery-coordinator`) | `kg-agent-context`、assigned batch、backlog lifecycle、`worktree-flow` 的停止點／批次整合／`close-wave`／並發段、`docs/sop/release.md` | Ticket Factory 的 triage 細節、未被 batch 指向的 domain 文件、Catalog 與其他 team 的內部狀態 | 先查 assigned ticket 的 `fix_site` 與 registry trigger；Gate BLOCK 時依 hand-back 的 exact source thread ID 退回原提交者；只在 state／collision／primary race 等不穩定狀況傳 thread message |
+| **Delivery Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、assigned groomed ticket、自己的 agent contract、`worktree-flow` 的 child stop／hand-back、最小 domain SoT | Ticket Factory 流程、Integrator 批次收尾、其他 domain、全量 Gate／release 文件 | hand-back 必須附 exact source thread ID（跨 host 加 source host ID）；Gate BLOCK 後由原 thread 修正並以新 commit／新 hand-back 回交；依 assigned path／trigger 查 registry，再向 Integrator 回報跨界或不可判定問題 |
 | **Docs Steward** (`docs-steward`) | `kg-agent-context`、assigned docs ticket、`kg-docs-control-plane`、`docs/registry.yml`、最小受影響 SoT | `worktree-flow` child stop／hand-back、domain implementation、全量 release 文件；只有明示 handback task 才載入 worktree slices | 依 registry trigger／impact 查 SoT；只有實際 hand-back 才載入 child stop／handoff slice，跨界時交回 Integrator |
 | **Review service** (`code-reviewer`) | `kg-agent-context`、指定 commit SHA × scope、`docs/sop/review_discipline.md` | 業務全景、未被 scope 觸及的 domain 文件、任何 code modification | 只把 block／nit／tooling debt 回給 caller；不自行修 code 或改寫 scope |
 
 角色不是階層命令，而是資訊邊界。Integrator 是 Delivery Team thread 的主 agent；child 的停止點
 永遠是自己的 `commit + hand-back`，Ticket Factory 只產出 groomed ticket，不宣稱修復完成。完整動詞與
 授權邊界分別以 `ops/backlog.py lifecycle --json` 與 `worktree-flow` 為準。
+
+Fan-out 的淺規則：優先選 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作；新產品行為、策略、open-ended discovery、跨面產品變更需 parent 明示後才列為 fan-out 優先項。這只是 agent 的排序／派工指引，不是 backlog lifecycle、acceptance 或 status 的新契約。
 
 ## Authority escalation index
 
@@ -98,7 +100,8 @@ flag、skill 或 role contract，使用 registry 唯一清單做 `./ops/docs_imp
 - **Delivery Team Integrator**：source／state／primary race、衝突或工具 schema 不一致 → 用內建
   thread message 通知受影響 peer；訊息至少帶 canonical contract 的 `team/slug`、`branch`、
   `worktree path`、`HEAD`、`state path`、具體 blocker 與證據、要求的動作，以及
-  `pause|continue` 判定。正常進度仍讀 registry／state／receipt，不聊天同步。
+  `pause|continue` 判定；若是 child Gate BLOCK，另依 hand-back receipt 的 exact source thread ID
+  回到原提交者。正常進度仍讀 registry／state／receipt，不聊天同步。
 - **所有角色**：真正的使用者策略、預算、不可逆 production／GUI-only 動作或安全紅線 → 升級使用者，
   不用文件假裝替使用者做取捨。
 

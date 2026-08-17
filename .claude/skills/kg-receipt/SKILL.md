@@ -132,7 +132,7 @@ bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::
 
 Fan-out 受派 child worker 在回報「已完成」前，還必須在自己的工作樹執行
 `./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
-一併回報。受派者只交回 commit 與戳記，沒有 develop 例外。尚未取得 `worktree-flow` 頂端授權時，
+與 exact source thread ID（跨 host 加 source host ID）一併回報。Gate BLOCK 必須回到該 source thread；由原 thread 產生新 commit／新 hand-back，不沿用舊 SHA／verdict／seal。受派者只交回 commit 與戳記，沒有 develop 例外。尚未取得 `worktree-flow` 頂端授權時，
 Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝；只有取得 delivery-loop 授權且握有整批
 視野的 Integrator 才執行最終 `close-wave --commit --sync`（fresh／continue Gate、cutover、resolve、anchor、validate、origin/main）。`deploy`
 另須 release 意圖。Integrator 若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
