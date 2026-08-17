@@ -84,10 +84,9 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
     //   - NSUbiquitousKeyValueStore via CloudPreferencesSync (cross-device LWW)
     //   - `*_updated_at` timestamps (Double, seconds since 1970) drive LWW
     //
-    // Server LWW is feature-flagged off (see KGFeatureFlags) until the backend
-    // persists `updated_at` on TranslationLanguageConfig. Until then iCloud KV
-    // is the authoritative cross-device sync path; server only wins on initial
-    // fetch (server-wins-cold-start).
+    // Server responses and local writes share the translation group's
+    // `updated_at` clock. Accepted server state updates the local cache only;
+    // local/iCloud writes remain responsible for publishing user edits.
 
     private static let sourceKey = "translation_source_lang"
     private static let targetKey = "translation_target_lang"
@@ -95,12 +94,24 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
     private static let targetUpdatedAtKey = "translation_target_lang_updated_at"
 
     static var currentSource: TranslationLanguage {
-        get { readPersisted(key: sourceKey, fallback: { resolveSourceDefault() }) }
+        get {
+            readPersisted(
+                key: sourceKey,
+                updatedAtKey: sourceUpdatedAtKey,
+                fallback: { resolveSourceDefault() }
+            )
+        }
         set { writePersisted(value: newValue, key: sourceKey, updatedAtKey: sourceUpdatedAtKey) }
     }
 
     static var currentTarget: TranslationLanguage {
-        get { readPersisted(key: targetKey, fallback: { resolveTargetDefault() }) }
+        get {
+            readPersisted(
+                key: targetKey,
+                updatedAtKey: targetUpdatedAtKey,
+                fallback: { resolveTargetDefault() }
+            )
+        }
         set { writePersisted(value: newValue, key: targetKey, updatedAtKey: targetUpdatedAtKey) }
     }
 
@@ -130,15 +141,29 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
 
     private static func readPersisted(
         key: String,
+        updatedAtKey: String,
         fallback: () -> TranslationLanguage
     ) -> TranslationLanguage {
-        // Prefer cloud read (cross-device), falling back to local UserDefaults.
-        if let cloudRaw = CloudPreferencesSync.shared.string(forKey: key),
-           let lang = TranslationLanguage(rawValue: cloudRaw) {
-            return lang
+        let localRaw = UserDefaults.standard.string(forKey: key)
+        let cloudRaw = CloudPreferencesSync.shared.string(forKey: key)
+        let localUpdatedAt = UserDefaults.standard.object(forKey: updatedAtKey) as? Double
+        let cloudUpdatedAt = CloudPreferencesSync.shared.double(forKey: updatedAtKey)
+
+        let resolvedRaw: String?
+        switch (localUpdatedAt, cloudUpdatedAt) {
+        case let (local?, cloud?):
+            resolvedRaw = local >= cloud ? (localRaw ?? cloudRaw) : (cloudRaw ?? localRaw)
+        case (.some, nil):
+            resolvedRaw = localRaw ?? cloudRaw
+        case (nil, .some):
+            resolvedRaw = cloudRaw ?? localRaw
+        case (nil, nil):
+            // Preserve the historical cloud-first fallback when neither layer
+            // has an LWW clock to compare.
+            resolvedRaw = cloudRaw ?? localRaw
         }
-        if let localRaw = UserDefaults.standard.string(forKey: key),
-           let lang = TranslationLanguage(rawValue: localRaw) {
+
+        if let resolvedRaw, let lang = TranslationLanguage(rawValue: resolvedRaw) {
             return lang
         }
         return fallback()
@@ -172,21 +197,26 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
         CloudPreferencesSync.shared.set(timestamp, forKey: updatedAtKey)
     }
 
-    /// Server cold-start：以 server 值初始化本地層 + 記 server 的**單一 group 時戳**
-    /// 作後續 LWW 基準（設計 A：source/target 共用一個 `updated_at`）。
-    /// **只寫 UserDefaults，不回寫 iCloud KVS** —— 對齊 `ActiveNotebookStore.applyServerState`
-    /// / `ReviewSettingsStore.applyServerModeState`：避免新 Apple 裝置 cold-start 覆蓋
-    /// 他裝置尚未傳播的 genuine local write。caller 須 guard「本機從未寫過」
-    /// （`sourceUpdatedAt == nil && targetUpdatedAt == nil`）才呼叫。
-    static func applyServerColdStart(
+    /// Applies a server translation group when its timestamp is newer than both
+    /// locally observed source/target timestamps. The server projection writes
+    /// UserDefaults only, so accepting a response cannot publish it as a new
+    /// iCloud user edit. Returns `true` only when the group was accepted.
+    @discardableResult
+    static func applyServer(
         source: TranslationLanguage,
         target: TranslationLanguage,
-        updatedAt: TimeInterval
-    ) {
+        serverUpdatedAt: TimeInterval
+    ) -> Bool {
+        let localUpdatedAt = [sourceUpdatedAt, targetUpdatedAt].compactMap { $0 }.max()
+        if let localUpdatedAt, serverUpdatedAt <= localUpdatedAt {
+            return false
+        }
+
         UserDefaults.standard.set(source.rawValue, forKey: sourceKey)
-        UserDefaults.standard.set(updatedAt, forKey: sourceUpdatedAtKey)
+        UserDefaults.standard.set(serverUpdatedAt, forKey: sourceUpdatedAtKey)
         UserDefaults.standard.set(target.rawValue, forKey: targetKey)
-        UserDefaults.standard.set(updatedAt, forKey: targetUpdatedAtKey)
+        UserDefaults.standard.set(serverUpdatedAt, forKey: targetUpdatedAtKey)
+        return true
     }
 
     /// Restore previously-snapshotted source/target with their original

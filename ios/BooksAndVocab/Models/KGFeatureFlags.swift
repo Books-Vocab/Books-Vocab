@@ -11,15 +11,6 @@ import Foundation
 
 enum KGFeatureFlags {
     /// Whether to send `updated_at` and trust server-returned `updated_at` for
-    /// LWW resolution on TranslationLanguage sync. Backend now persists
-    /// `TranslationLanguageConfig.updated_at` (Feature C) and iOS already sends it
-    /// on push + applies the server timestamp on cold-start (local-only, no KVS
-    /// write-back). Until this flag is on, server is single-direction (server-wins
-    /// on cold-start) and iCloud KV is the authoritative cross-device path —
-    /// mirrors `serverVocabUiLwwEnabled` / `serverReviewModeLwwEnabled`.
-    static var serverTranslationLwwEnabled: Bool { false }
-
-    /// Whether to send `updated_at` and trust server-returned `updated_at` for
     /// LWW on the pause review clock. Backend dependency: `review_clock.updated_at`
     /// persisted + returned by `GET /api/user/config`. Until on, server is
     /// single-direction (server-wins on cold-start) and iCloud KV is the

@@ -11,6 +11,7 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
+@Suite(.serialized)
 struct TranslationLanguageTests {
 
     // MARK: - inferFromPreferredLanguages
@@ -148,24 +149,131 @@ struct TranslationLanguageTests {
         }
     }
 
-    // MARK: - applyServerColdStart
+    // MARK: - Server LWW
 
-    @Test func coldStartWritesToUserDefaults() {
-        let defaults = UserDefaults(suiteName: #file)!
+    @Test func serverTranslationAppliesWhenServerTimestampIsNewer() {
+        let previousSource = TranslationLanguage.currentSource
+        let previousTarget = TranslationLanguage.currentTarget
+        let previousSourceUpdatedAt = TranslationLanguage.sourceUpdatedAt
+        let previousTargetUpdatedAt = TranslationLanguage.targetUpdatedAt
         defer {
-            defaults.removeObject(forKey: "translation_source_lang")
-            defaults.removeObject(forKey: "translation_target_lang")
-            defaults.removeObject(forKey: "translation_source_lang_updated_at")
-            defaults.removeObject(forKey: "translation_target_lang_updated_at")
+            TranslationLanguage.restore(
+                source: previousSource,
+                sourceUpdatedAt: previousSourceUpdatedAt,
+                target: previousTarget,
+                targetUpdatedAt: previousTargetUpdatedAt
+            )
         }
 
-        // Temporarily swap the keys by using a swizzled approach is not viable;
-        // instead we verify the API contract: after cold-start the values are
-        // retrievable from standard UserDefaults.
-        TranslationLanguage.applyServerColdStart(
+        TranslationLanguage.restore(
+            source: .en,
+            sourceUpdatedAt: 100,
+            target: .zhHant,
+            targetUpdatedAt: 100
+        )
+
+        let applied = TranslationLanguage.applyServer(
             source: .ja,
             target: .zhHans,
-            updatedAt: 1234.5
+            serverUpdatedAt: 200
+        )
+
+        #expect(applied)
+        #expect(TranslationLanguage.currentSource == .ja)
+        #expect(TranslationLanguage.currentTarget == .zhHans)
+        #expect(TranslationLanguage.sourceUpdatedAt == 200)
+        #expect(TranslationLanguage.targetUpdatedAt == 200)
+    }
+
+    @Test func serverTranslationIgnoredWhenLocalTimestampIsNewer() {
+        let previousSource = TranslationLanguage.currentSource
+        let previousTarget = TranslationLanguage.currentTarget
+        let previousSourceUpdatedAt = TranslationLanguage.sourceUpdatedAt
+        let previousTargetUpdatedAt = TranslationLanguage.targetUpdatedAt
+        defer {
+            TranslationLanguage.restore(
+                source: previousSource,
+                sourceUpdatedAt: previousSourceUpdatedAt,
+                target: previousTarget,
+                targetUpdatedAt: previousTargetUpdatedAt
+            )
+        }
+
+        TranslationLanguage.restore(
+            source: .en,
+            sourceUpdatedAt: 300,
+            target: .zhHant,
+            targetUpdatedAt: 300
+        )
+
+        let applied = TranslationLanguage.applyServer(
+            source: .ja,
+            target: .zhHans,
+            serverUpdatedAt: 200
+        )
+
+        #expect(!applied)
+        #expect(TranslationLanguage.currentSource == .en)
+        #expect(TranslationLanguage.currentTarget == .zhHant)
+        #expect(TranslationLanguage.sourceUpdatedAt == 300)
+        #expect(TranslationLanguage.targetUpdatedAt == 300)
+    }
+
+    @Test func serverTranslationUsesServerValueWhenLocalTimestampIsAbsent() {
+        let previousSource = TranslationLanguage.currentSource
+        let previousTarget = TranslationLanguage.currentTarget
+        let previousSourceUpdatedAt = TranslationLanguage.sourceUpdatedAt
+        let previousTargetUpdatedAt = TranslationLanguage.targetUpdatedAt
+        defer {
+            TranslationLanguage.restore(
+                source: previousSource,
+                sourceUpdatedAt: previousSourceUpdatedAt,
+                target: previousTarget,
+                targetUpdatedAt: previousTargetUpdatedAt
+            )
+        }
+
+        TranslationLanguage.restore(
+            source: .en,
+            sourceUpdatedAt: nil,
+            target: .zhHant,
+            targetUpdatedAt: nil
+        )
+
+        let applied = TranslationLanguage.applyServer(
+            source: .de,
+            target: .en,
+            serverUpdatedAt: 400
+        )
+
+        #expect(applied)
+        #expect(TranslationLanguage.currentSource == .de)
+        #expect(TranslationLanguage.currentTarget == .en)
+        #expect(TranslationLanguage.sourceUpdatedAt == 400)
+        #expect(TranslationLanguage.targetUpdatedAt == 400)
+    }
+
+    // MARK: - Server persistence
+
+    @Test func serverTranslationWritesToUserDefaults() {
+        let previousSource = TranslationLanguage.currentSource
+        let previousTarget = TranslationLanguage.currentTarget
+        let previousSourceUpdatedAt = TranslationLanguage.sourceUpdatedAt
+        let previousTargetUpdatedAt = TranslationLanguage.targetUpdatedAt
+        defer {
+            TranslationLanguage.restore(
+                source: previousSource,
+                sourceUpdatedAt: previousSourceUpdatedAt,
+                target: previousTarget,
+                targetUpdatedAt: previousTargetUpdatedAt
+            )
+        }
+
+        let serverUpdatedAt = ([previousSourceUpdatedAt, previousTargetUpdatedAt].compactMap { $0 }.max() ?? Date().timeIntervalSince1970) + 1
+        let applied = TranslationLanguage.applyServer(
+            source: .ja,
+            target: .zhHans,
+            serverUpdatedAt: serverUpdatedAt
         )
 
         let sourceRaw = UserDefaults.standard.string(forKey: "translation_source_lang")
@@ -173,9 +281,10 @@ struct TranslationLanguageTests {
         let sourceAt = UserDefaults.standard.object(forKey: "translation_source_lang_updated_at") as? Double
         let targetAt = UserDefaults.standard.object(forKey: "translation_target_lang_updated_at") as? Double
 
+        #expect(applied)
         #expect(sourceRaw == "ja")
         #expect(targetRaw == "zh-Hans")
-        #expect(sourceAt == 1234.5)
-        #expect(targetAt == 1234.5)
+        #expect(sourceAt == serverUpdatedAt)
+        #expect(targetAt == serverUpdatedAt)
     }
 }
