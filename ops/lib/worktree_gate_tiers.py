@@ -35,7 +35,7 @@ def normalize_gate_tier(value: str | None, *, default: str = DEFAULT_GATE_TIER) 
 
 
 def tier_at_most(spec: dict[str, Any], requested: str) -> bool:
-    """Return whether a planned gate is included by ``requested``."""
+    """Return whether a planned gate is a candidate at ``requested`` depth."""
     tier = normalize_gate_tier(str(spec.get("tier", "S2")))
     return TIER_RANK[tier] <= TIER_RANK[requested]
 
@@ -119,10 +119,38 @@ def annotate_plan(plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [annotate_gate(spec) for spec in plan]
 
 
+def _superseded_gate_names(plan: list[dict[str, Any]]) -> set[str]:
+    """Return lower-level gate names explicitly covered by selected gates."""
+    by_name = {str(spec.get("name")): spec for spec in plan}
+    names: set[str] = set()
+    for spec in plan:
+        supersedes = spec.get("supersedes", ())
+        if isinstance(supersedes, (list, tuple, set, frozenset)):
+            superseding_tier = normalize_gate_tier(str(spec.get("tier", "S2")))
+            for name in supersedes:
+                target_name = str(name)
+                target = by_name.get(target_name)
+                if target is None:
+                    continue
+                target_tier = normalize_gate_tier(str(target.get("tier", "S2")))
+                if TIER_RANK[target_tier] < TIER_RANK[superseding_tier]:
+                    names.add(target_name)
+    return names
+
+
 def select_plan(plan: list[dict[str, Any]], requested: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Split a complete impact plan into executed and explicitly deferred checks."""
+    """Split a complete plan into executed, coalesced, and deferred checks.
+
+    Tiers remain cumulative for checks without a higher-level replacement: S2 must
+    still execute S0 and any S1 check that its plan does not cover.  A higher-level
+    gate may explicitly declare ``supersedes`` to prevent an equivalent lower-level
+    check from running twice.  Coalesced checks are neither executed nor deferred;
+    their coverage is represented by the selected superseding gate.
+    """
     tier = normalize_gate_tier(requested)
-    executed = [spec for spec in plan if tier_at_most(spec, tier)]
+    candidates = [spec for spec in plan if tier_at_most(spec, tier)]
+    superseded = _superseded_gate_names(candidates)
+    executed = [spec for spec in candidates if str(spec.get("name")) not in superseded]
     deferred = [spec for spec in plan if not tier_at_most(spec, tier)]
     return executed, deferred
 
