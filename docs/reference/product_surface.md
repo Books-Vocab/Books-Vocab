@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: d7d98039f31019e96854de6592cbc9d7f82ffd8d
+verified_against: 0f33893738dfae736ec9414cf33df2d0bf726b90
 -->
 # Implemented Product Surface
 
@@ -54,7 +54,7 @@ verified_against: d7d98039f31019e96854de6592cbc9d7f82ffd8d
 
 ## 交付進度看板（`ops/kg_board`）
 
-- **Admin 唯讀工作流觀測面**：桌面版以指標、Git/worktree DAG 與雙欄票卡呈現；手機版改用第一個分支附近的線性 commit/branch 清單與折疊票卡，避免圖形裁切與觸控密度過高。上方 Git tree 顯示所有 mirror 提供的 refs/worktrees 與所有可達 commit，節點 hover/focus/click 顯示 author、時間、parents、diff stats、檔案與 branch；下方票卡預設折疊，只顯示白話摘要，展開後查看 scope/plan/fix site/acceptance。`/api/board`、`/api/history`、`/api/git-tree` 全為唯讀；排序、釘選、延後與 `/api/priority` browser write surface 已移除。主機 mirror 仍以 Bearer 寫入 claims、sync-state、git-tree，長期 token 不進頁面；tree incomplete/stale 時 UI 必須明示資料不完整或不新鮮。
+- **Admin 唯讀工作流觀測面**：桌面與手機共用同一份 bounded Git/worktree DAG；手機直接顯示樹圖，並提供無邊際全螢幕 viewer，可用單指／滑鼠拖動、雙指捏合、滾輪或按鈕自由縮放，另保留線性 commit/branch 清單作為觸控與無障礙備援。上方 Git tree 顯示所有 mirror 提供的 refs/worktrees 與所有可達 commit，節點 hover/focus/click 顯示 author、時間、parents、diff stats、檔案與 branch；檔案佔用矩陣以結構化 `scope.files[]`（`add`／`modify`）呈現 active／queued 票據，collision 只表示 queued 與 active 的已知檔案範圍重疊，Scope 未知不等於碰撞未知；下方票卡預設折疊，只顯示白話摘要，展開後查看 scope/plan/fix site/acceptance。`/api/board`、`/api/history`、`/api/git-tree`、`/api/scope-matrix` 全為唯讀；排序、釘選、延後與 `/api/priority` browser write surface 已移除。主機 mirror 仍以 Bearer 寫入 claims、sync-state、git-tree，長期 token 不進頁面；tree incomplete/stale 時 UI 必須明示資料不完整或不新鮮。
 
 ## Backend (`backend/src/kg`)
 

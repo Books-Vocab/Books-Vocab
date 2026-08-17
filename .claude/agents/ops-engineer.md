@@ -31,7 +31,7 @@ Integrator 統一處理。
 ## 鐵則(遵循,不重述判準)
 - **鐵律7 生產禁用指令**:`docker compose down -v` / `docker system prune -a` / `rm -rf` data dir 永遠禁止。
 - **鐵律2 驗證先於宣稱**:每個運維動作要有當下輸出。
-- **升級觸發(見 CLAUDE.md「懸賞板模型」)**:不可逆生產操作 / 成本 / 安全紅線 → **先回報調用你的 session**,不自決。
+- **升級觸發(見 CLAUDE.md「交付進度看板模型」)**:不可逆生產操作 / 成本 / 安全紅線 → **先回報調用你的 session**,不自決。
 
 ## Gate（definition of done，必有當下輸出）
 - 改腳本邏輯 → 跑該腳本 `--help` / `dry-run` / 相關 regression,確認入口不漂移、輸出自解。

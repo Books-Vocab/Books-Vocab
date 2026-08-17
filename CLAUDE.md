@@ -18,7 +18,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 | port | `8000` |
 | commit prefix | `ios:` / `api:` / `ops:` / `docs:` |
 
-## 懸賞板模型（營運憲法，always-on）
+## 交付進度看板模型（營運憲法，always-on）
 
 本工作區的協調物是**一塊板子**,不是一張組織圖。這是 2026-08-08 的取代:先前的
 「執行長→總經理→部門」遞迴委派隱喻已**整份刪除,不留副本**。理由不是文風——那個模型
@@ -48,11 +48,11 @@ delivery-loop 授權，Integrator 才進 Gate/cutover/sync；其他 child 停在
 
 **Fan-out 淺規則（agent guidance）**：優先把 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這只影響排序／派工，不改 `backlog.py` 的 lifecycle、ticket acceptance、status 或結案語義。
 
-**一張票要能被取,得先夠具體——而且要能被排序。** 梳理(groom)= 填上 `plan` / `acceptance` /
+**一張票要能被取,得先夠具體——而且要能被排序。** 梳理(groom)= 將票放進 queued，填上 `plan` / `acceptance` /
 `fix_site` + 可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」;**再加
-`brief` / `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料另以
+`brief` / 結構化 `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料另以
 `BRIEF_REQUIRED_SINCE` = 2026-08-09 為界由 `validate` grandfather)——一句白話的「壞了什麼、誰有感」
-與一句體積感,寫給**在手機看板上排序的人**,不寫給機器。前四欄讓票**做得動**,這兩欄讓票
+與一份 `scope.files[]` 檔案清單（每個 path 標 `add` 或 `modify`），讓人與 agent 都能直接判斷檔案佔用。舊文字 Scope 只標為 Scope 未知，不猜碰撞。前四欄讓票**做得動**,這兩欄讓票
 **排得動**:看板只有釘選 / 排序 / 延後三個動作,而它渲染的是 `detail` 前 400 字的技術散文,
 122 筆未解時那個寫入面實質是惰性的。`fix_site` 不能兼任——它是程式錨點,讀者不同。
 未梳理的票留在板上但不進 `dispatch`——沒有修法的票不是工作,是待調查;

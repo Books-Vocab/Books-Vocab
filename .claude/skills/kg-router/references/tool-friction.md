@@ -18,7 +18,7 @@ domain route 不得預載。
 
 命中就接手既有票；沒有命中才用 `./ops/backlog.py add`。`list --grep` 掃 detail／resolution／plan／fix_site，
 並與其他旗標取交集，不要把全表 `list` 當 dispatch queue。自由文字含反引號、`$` 或跳脫字元時，改用
-`--<flag>-file <路徑>`，避免 shell 先改寫 argv。能一句話講清楚就補 `--brief` 與 `--scope`。
+`--<flag>-file <路徑>`，避免 shell 先改寫 argv。能一句話講清楚就補 `--brief` 與結構化 `--scope`（實際檔案清單，每個 path 標 `add` 或 `modify`）。
 
 批次 wave worker 必須用 `add --stage`，讓整合者以 `anchor --commit` 落地；一般單線工作才用裸 `add`。
 
