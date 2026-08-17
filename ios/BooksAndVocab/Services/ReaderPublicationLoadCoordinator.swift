@@ -67,8 +67,9 @@ final class ReaderPublicationLoadCoordinator {
         onUniqueWords: @escaping @MainActor (Set<String>) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) async {
-        guard isCurrent(request.generation), !Task.isCancelled else { return }
+        guard isCurrent(request.generation) else { return }
         defer { finish(request.generation) }
+        guard !Task.isCancelled else { return }
 
         do {
             let result = try await loader.loadPublication(for: book) { [weak self] phase in

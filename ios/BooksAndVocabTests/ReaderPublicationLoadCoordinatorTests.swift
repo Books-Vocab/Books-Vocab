@@ -18,9 +18,11 @@ struct ReaderPublicationLoadCoordinatorTests {
         let loadEnd = source.range(of: "\n    }\n}\n#endif", range: loadStart.upperBound..<source.endIndex)?.lowerBound
             ?? source.endIndex
         let loadBody = source[loadStart.lowerBound..<loadEnd]
+        let cancellationOffset = try #require(loadBody.range(of: "guard !Task.isCancelled else { return }"))
         let requestOffset = try #require(loadBody.range(of: "let request = publicationLoadCoordinator.beginRequest()"))
         let attemptOffset = try #require(loadBody.range(of: "readerState.runtime.beginLoadAttempt()"))
 
+        #expect(cancellationOffset.lowerBound < requestOffset.lowerBound)
         #expect(requestOffset.lowerBound < attemptOffset.lowerBound)
     }
 
@@ -110,6 +112,7 @@ struct ReaderPublicationLoadCoordinatorTests {
             )
         }
         await settle()
+        task.cancel()
         coordinator.cancelAndInvalidate()
         loader.resolve(
             title: book.title,
@@ -184,6 +187,7 @@ struct ReaderPublicationLoadCoordinatorTests {
             )
         }
         await settle()
+        loader.emitPhase(title: book.title, phase: "current")
         loader.resolve(
             title: book.title,
             result: .success(makeResult(title: book.title, words: ["done"]))
@@ -192,7 +196,52 @@ struct ReaderPublicationLoadCoordinatorTests {
 
         loader.emitPhase(title: book.title, phase: "late")
 
-        #expect(phases.isEmpty)
+        #expect(phases == ["current"])
+    }
+
+    @Test
+    func supersededLoadCannotPublishLateError() async {
+        let loader = ControlledReaderPublicationLoader()
+        let coordinator = ReaderPublicationLoadCoordinator()
+        let first = makeBook(title: "first-error")
+        let second = makeBook(title: "second-after-error")
+        var published: [String] = []
+        var errors: [String] = []
+
+        let firstTask = Task {
+            await coordinator.load(
+                book: first,
+                loader: loader,
+                onPhase: { _ in },
+                onPublication: { publication in published.append(publication.metadata.title ?? "") },
+                onUniqueWords: { _ in },
+                onError: { errors.append($0.localizedDescription) }
+            )
+        }
+        await settle()
+
+        let secondTask = Task {
+            await coordinator.load(
+                book: second,
+                loader: loader,
+                onPhase: { _ in },
+                onPublication: { publication in published.append(publication.metadata.title ?? "") },
+                onUniqueWords: { _ in },
+                onError: { errors.append($0.localizedDescription) }
+            )
+        }
+        await settle()
+
+        loader.resolve(title: first.title, result: .failure(TestLoadError.failed))
+        loader.resolve(
+            title: second.title,
+            result: .success(makeResult(title: second.title, words: ["current"]))
+        )
+        await firstTask.value
+        await secondTask.value
+
+        #expect(published == [second.title])
+        #expect(errors.isEmpty)
     }
 
     private func makeBook(title: String) -> Book {
