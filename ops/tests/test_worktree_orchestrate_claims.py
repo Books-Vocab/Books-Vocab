@@ -368,6 +368,9 @@ def test_claiming_an_ungroomed_ticket_is_refused_and_names_the_repair(tmp_path):
         assert re.search(rf"{re.escape(flag)}(?=[\s=]|$)", command), (
             f"the repair hint's command stopped naming {flag}; following it now "
             f"produces a command `backlog.py update` will refuse:\n  {command}")
+    assert "structured JSON file claim" in problems[0]["repair"]
+    assert "files[]" in problems[0]["repair"]
+    assert "add|modify" in problems[0]["repair"]
 
 def test_the_ungroomed_refusal_also_offers_a_ticket_that_needs_no_grooming(tmp_path):
     """Two different needs, so two exits — and the second one used to be missing.
