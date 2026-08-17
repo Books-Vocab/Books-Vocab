@@ -251,14 +251,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
               + "\n".join(f"  - {problem}" for problem in deferral_problems))
         return EXIT_USAGE
     deferrals_by_gate = {item["gate"]: item for item in deferral_requests}
-    required_tier = required_cutover_tier(changed)
+    required_tier = required_cutover_tier(changed, full_plan)
     results: list[dict[str, Any]] = []
     deferred_failures: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     progress_path = _gate_progress_path(args.state, worktree)
     progress_started = time.monotonic()
     run_id = f"{head[:12]}-{os.getpid()}-{time.monotonic_ns()}"
-    print(f"[worktree][gate] phase=plan tier={gate_tier} gates={len(plan)} "
+    print(f"[worktree][gate] phase=plan gates={len(plan)} tier={gate_tier} "
           f"deferred={len(deferred_plan)} progress={progress_path} "
           f"run_id={run_id}", file=sys.stderr, flush=True)
     completed: list[dict[str, str]] = []
@@ -578,16 +578,26 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         rec = json.loads(rec_path.read_text())
         verdict = rec.get("verdict")
         gated_head = rec.get("head_sha")
+        planned_gates = rec.get("plan")
+        deferred_planned_gates = rec.get("deferred_plan")
+        all_planned_gates = None
+        if isinstance(planned_gates, list) and isinstance(deferred_planned_gates, list):
+            all_planned_gates = [*planned_gates, *deferred_planned_gates]
+        computed_required_tier = required_cutover_tier(
+            rec.get("changed_files") or [], all_planned_gates
+        )
         try:
             gate_tier = normalize_gate_tier(rec.get("gate_tier"))
             required_tier = normalize_gate_tier(
-                rec.get("required_tier") or required_cutover_tier(
-                    rec.get("changed_files") or []
-                )
+                rec.get("required_tier") or computed_required_tier
             )
+            if (rec.get("required_tier") is not None
+                    and required_tier != computed_required_tier):
+                refuse = ("gate record required tier does not match its changed-file scope "
+                           f"and available plan ({required_tier} != {computed_required_tier}) "
+                           "— re-run `gate`")
         except GateTierError as exc:
             refuse = f"gate record has invalid tier metadata: {exc} — re-run `gate`"
-        planned_gates = rec.get("plan")
         recorded_gates = rec.get("gates")
         gate_reuse = rec.get("gate_reuse") or (
             _reuse_summary(recorded_gates)

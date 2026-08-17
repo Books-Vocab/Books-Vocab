@@ -89,8 +89,18 @@ def test_only_named_non_high_s2_s3_failures_can_be_deferred(
         (["README.md"], "S0"),
         (["docs/sop/release.md"], "S0"),
         (["ops/worktree_orchestrate.py"], "S2"),
-        (["ios/App.swift", "backend/src/kg/app.py"], "S3"),
+        (["ios/App.swift", "backend/src/kg/app.py"], "S2"),
     ],
 )
 def test_required_cutover_tier_comes_from_scope(files: list[str], expected: str) -> None:
     assert tiers.required_cutover_tier(files) == expected
+
+
+def test_cross_root_floor_requires_a_real_s3_gate_in_the_plan() -> None:
+    changed = ["ios/App.swift", "backend/src/kg/app.py"]
+    assert tiers.required_cutover_tier(
+        changed, [_gate("ios-build-catalyst")]
+    ) == "S3"
+    assert tiers.required_cutover_tier(
+        changed, [_gate("backend-pytest"), _gate("ops-pytest")]
+    ) == "S2"

@@ -254,23 +254,31 @@ def cmd_land(args) -> int:
         "the integrator owns landing")
         return EXIT_BLOCK
     primary = primary_root()
+    requested_gate_tier = getattr(args, "gate_tier", "S2")
+    requested_deferrals = list(getattr(args, "defer_gate", []) or [])
 
     if not args.commit:
         with _land_lock(primary):
             live = _land_tickets(_land_queue_dir(primary))
         _emit({"schema": SCHEMA, "step": "land", "mode": "dry-run", "landed": False,
                "worktree": worktree, "queue_depth": len(live),
-               "would_run": ["catchup --commit", "gate", "cutover --commit"],
+               "would_run": ["catchup --commit",
+                             f"gate --gate-tier {requested_gate_tier}",
+                             "cutover --commit"],
+               "gate_tier": requested_gate_tier,
+               "defer_gates": requested_deferrals,
                "note": "takes a FIFO turn first; the whole sequence runs under it"},
               args.json,
               f"[dry-run] land {worktree}: queue depth {len(live)}; would take a turn "
-              f"then run catchup --commit -> gate -> cutover --commit")
+              f"then run catchup --commit -> gate({requested_gate_tier}) -> "
+              "cutover --commit")
         return EXIT_OK
 
     seq, ticket_fd = _land_enqueue(primary, worktree)
     started = time.monotonic()
     common = {"state": args.state, "json": True, "base": args.base,
-              "worktree": worktree}
+              "worktree": worktree, "gate_tier": requested_gate_tier,
+              "defer_gate": requested_deferrals}
     try:
         waited = 0.0
         last_beat = 0.0
@@ -401,6 +409,8 @@ def cmd_land(args) -> int:
                "landed": landed, "worktree": worktree, "queue_seq": seq,
                "waited_for_turn_s": round(waited, 1),
                "elapsed_s": round(total, 1), "gate_runs": 1,
+               "gate_tier": requested_gate_tier,
+               "defer_gates": requested_deferrals,
                "verdict": gpay.get("verdict"), "sha": opay.get("sha"),
                "warnings": opay.get("warnings", []), "steps": steps},
               args.json,

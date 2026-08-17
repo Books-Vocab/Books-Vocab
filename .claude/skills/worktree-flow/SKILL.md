@@ -156,14 +156,15 @@ Gate 不是每次都跑全 repo。`--gate-tier S0|S1|S2|S3|S4` 選擇驗證深�
 | **S4** | 現在能不能正式交付？ | release full backend/ops/iOS targets 與 release readiness |
 
 日常預設是 child 開發／hand-back 跑 S0+S1；Integrator 批次 cutover 跑 S0 加
-變更所需的 S2；只有跨兩個以上功能根目錄才升 S3；真正 release checkpoint 才明示
+變更所需的 S2；只有跨兩個以上功能根目錄且計畫內有真實 S3 檢查才升 S3；真正 release checkpoint 才明示
 S4。視覺 evidence 是 S1～S4 的附加證據，不是單獨的下一層。若只跑較低層，仍可
 hand-back，但不能拿它宣稱已完成較高層 cutover。
 
 required tier 由 changed roots 計算：docs／neutral 只需 S0；單一 backend、iOS、lab、
-ops 或 design-system surface 至少 S2；跨兩個以上上述 surface 至少 S3。指定低於
-required tier 會在 cutover fail-closed。S4 會額外加入發布級 full profile，不能用
-ticket deferral 降級。
+ops 或 design-system surface 至少 S2；跨兩個以上上述 surface 若已有對應的真實 S3
+檢查則至少 S3，尚未有 S3 route 時保持 S2 並由 receipt／follow-up ticket 暴露覆蓋缺口，
+不虛構跨模組證據。指定低於 required tier 會在 cutover fail-closed。S4 會額外加入發布級
+full profile，不能用 ticket deferral 降級。
 
 只有明確的 `--defer-gate GATE=TICKET` 才能把非重大 S2/S3 紅燈帶成 warning：ticket
 必須已存在且是 `open`／`triaged`／`contract-blocked`，severity 只能 `low`／`med`；

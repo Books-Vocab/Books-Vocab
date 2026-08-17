@@ -4467,6 +4467,28 @@ def test_cutover_refuses_a_malformed_gate_record(scratch):
 
 
 @gitmark
+def test_cutover_refuses_required_tier_metadata_drift(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "tier-drift.json")
+    wt = _open_wt(state, slug="tier-drift")
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["required_tier"] = "S3"
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "required tier" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
 def test_gate_names_the_empty_worktree(scratch):
     """An empty diff is a legal re-gate, but its record must say it verified nothing."""
     tmp_path, repo, remote = scratch
@@ -10365,6 +10387,13 @@ def test_gate_tiering_and_deferral_flags_are_preserved_by_each_delivery_entrypoi
     ])
     assert close_wave.gate_tier == "S4"
     assert close_wave.defer_gate == []
+
+    land = parser.parse_args([
+        "land", "--worktree", "/w", "--gate-tier", "S1",
+        "--defer-gate", "ops-pytest=IMP-20260817-123456",
+    ])
+    assert land.gate_tier == "S1"
+    assert land.defer_gate == ["ops-pytest=IMP-20260817-123456"]
 
 
 @gitmark

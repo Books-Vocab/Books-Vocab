@@ -486,6 +486,12 @@ def build_parser() -> argparse.ArgumentParser:
                          "(N-1) x gate, so a total-wait budget would fail healthy "
                          "lanes in exactly the long-gate batches this verb exists "
                          "for")
+    ln.add_argument("--gate-tier", choices=GATE_TIERS, default=DEFAULT_GATE_TIER,
+                    help=("verification depth for the gate held inside land; "
+                          "persisted nowhere because land is one atomic turn "
+                          f"(default {DEFAULT_GATE_TIER})"))
+    ln.add_argument("--defer-gate", action="append", default=[], metavar="GATE=TICKET",
+                    help="carry named non-critical S2/S3 failures with existing tickets")
     ln.set_defaults(func=cmd_land)
 
     cw = sub.add_parser(

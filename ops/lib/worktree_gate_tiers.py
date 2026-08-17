@@ -191,12 +191,23 @@ def deferral_allowed(spec: dict[str, Any], severity: str) -> tuple[bool, str | N
     return True, None
 
 
-def required_cutover_tier(changed_files: list[str]) -> str:
+def required_cutover_tier(
+    changed_files: list[str],
+    planned_plan: list[dict[str, Any]] | None = None,
+) -> str:
     """Select the minimum daily cutover tier for a changed-file set.
 
     Neutral/docs-only changes need only their S0 contract checks.  A change that
-    crosses product/ops surfaces needs the S3 cross-module floor.  Everything else
-    that can affect runtime requires S2.  Release S4 is a separate release decision.
+    crosses product/ops surfaces needs the S3 cross-module floor when the selected
+    impact plan contains a real S3 check.  If the repository has not yet wired an
+    honest S3 check for that combination, keep the floor at S2 rather than claiming
+    that a numeric label performed cross-module verification.  Everything else that
+    can affect runtime requires S2.  Release S4 is a separate release decision.
+
+    ``planned_plan`` is optional for callers that only need the scope baseline.  The
+    executable gate path supplies its complete annotated plan, including checks that
+    are deferred by a lower requested tier, so the required floor is based on an
+    available real check rather than on the caller's selected subset.
     """
     functional_roots = {
         rel.split("/", 1)[0]
@@ -204,7 +215,11 @@ def required_cutover_tier(changed_files: list[str]) -> str:
         if rel.split("/", 1)[0] in {"backend", "ios", "lab", "ops", "design-system"}
     }
     if len(functional_roots) >= 2:
-        return "S3"
+        has_real_s3 = any(
+            classify_gate_tier(spec) == "S3"
+            for spec in (planned_plan or [])
+        )
+        return "S3" if has_real_s3 else "S2"
     if functional_roots:
         return "S2"
     return "S0"
