@@ -1542,6 +1542,39 @@ def test_shell_and_internal_gate_results_carry_duration(tmp_path, monkeypatch):
     assert internal["status"] == "pass"
 
 
+def test_shell_gate_separates_known_ios_lock_wait_from_work_duration(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        lambda *args, **kwargs: (0, "lockWaitMs=9000 deviceRunLockWaitMs=3000", 12.5),
+    )
+
+    shell = MODULE._run_gate(
+        MODULE._shell("ios-test-unit", "ios", ["ops/ios_ops.sh", "test"], "block"),
+        str(tmp_path),
+    )
+
+    assert shell["dur_s"] == 12.5
+    assert shell["lock_wait_ms"] == 12000
+    assert shell["work_dur_s"] == pytest.approx(0.5)
+
+
+def test_duration_fields_use_latest_lock_metrics_without_changing_verdict():
+    metrics = MODULE._duration_fields(
+        12.5,
+        "lockWaitMs=100\nlockWaitMs: 9000\ndeviceRunLockWaitMs: 3000",
+    )
+
+    assert metrics == {
+        "dur_s": 12.5,
+        "lock_wait_ms": 12000,
+        "work_dur_s": pytest.approx(0.5),
+    }
+
+
 def test_git_mutation_streams_semantic_progress_without_exposing_argv(
     tmp_path, monkeypatch,
 ):
@@ -4779,6 +4812,28 @@ def test_gate_history_records_duration_and_stable_run_order(tmp_path, monkeypatc
         "2026-08-09T01:02:03.000002Z",
         "2026-08-09T01:02:03.000003Z",
     ]
+
+
+def test_gate_history_records_lock_wait_separately_from_work_duration(tmp_path):
+    state = str(tmp_path / "reg.json")
+    results = [{
+        "name": "ios-test-unit",
+        "status": "pass",
+        "rc": 0,
+        "level": "block",
+        "dur_s": 12.5,
+        "lock_wait_ms": 12000,
+        "work_dur_s": 0.5,
+    }]
+
+    assert MODULE._append_gate_history(
+        state, str(tmp_path), "b" * 40, {"sha256": "a" * 64}, results,
+    ) is None
+
+    row = _history_lines(state)[0]
+    assert row["dur_s"] == 12.5
+    assert row["lock_wait_ms"] == 12000
+    assert row["work_dur_s"] == 0.5
 
 
 @gitmark
