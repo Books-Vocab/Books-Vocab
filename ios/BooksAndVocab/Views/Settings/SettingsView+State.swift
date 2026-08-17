@@ -46,7 +46,7 @@ extension SettingsView {
     /// line rather than claiming a time it does not have.
     var lastSyncedText: String? {
         guard let lastSync = kgService.lastSyncDate else { return nil }
-        return L10n.format("上次同步 %@", lastSync.formatted(.relative(presentation: .named)))
+        return L10n.format("settings.sync.lastSynced", lastSync.formatted(.relative(presentation: .named)))
     }
 
     var hasCustomSettingsPreferences: Bool {

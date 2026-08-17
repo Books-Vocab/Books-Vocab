@@ -226,9 +226,9 @@ struct PDFReaderView: View {
 
     private var loadingView: some View {
         AppStateMessageCard(
-            title: "正在開啟 PDF".localized,
+            title: L10n.string("reader.pdf.loading.title"),
             systemImage: "doc.richtext",
-            description: "正在載入文件內容與閱讀位置。".localized
+            description: L10n.string("reader.pdf.loading.description")
         ) {
             ProgressView()
                 .controlSize(.large)

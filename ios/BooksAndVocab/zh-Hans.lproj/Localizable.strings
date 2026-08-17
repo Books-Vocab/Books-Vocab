@@ -494,7 +494,6 @@
 "已凍結 · %@" = "已冻结 · %@";
 "複習結果尚未寫入本機：%@" = "复习结果尚未写入本机：%@";
 "複習進度" = "复习进度";
-"進度 %d%%" = "进度 %d%%";
 "複習預測" = "复习预测";
 "複製" = "复制";
 "視覺化詞彙關聯與間隔複習" = "视觉化词汇关联与间隔复习";
@@ -1006,8 +1005,6 @@
 
 /* track-16 notebook i18n */
 "個單字" = "个单词";
-"%d 到期" = "%d 到期";
-"%d 未學" = "%d 未学";
 "使用中" = "使用中";
 "，" = "，";
 "建立第一本單字本" = "创建第一本单词本";
@@ -1123,7 +1120,7 @@
 "目錄讀取失敗" = "目录读取失败";
 
 /* Settings — 逐步同步進度的 VoiceOver 播报 */
-"載入進度" = "加载进度";
+"app.loading.progress" = "加载进度";
 "同步進度" = "同步进度";
 "等待中" = "等待中";
 "進行中" = "进行中";
@@ -1178,11 +1175,11 @@
 "reader.theme.dark" = "深色";
 
 /* i18n strict coverage: Vocabulary / Reader / Sync */
-"iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。" = "iCloud 同步超时。可能原因：\n• 原设备尚未完成上传\n• 网络连接不稳定\n\n请确认两台设备都已登录相同 Apple ID，并已开启 iCloud 云盘。";
-"上次同步 %@" = "上次同步 %@";
-"明天再來複習新到期的單字" = "明天再来复习新到期的单词";
-"正在載入文件內容與閱讀位置。" = "正在加载文档内容和阅读位置。";
-"正在開啟 PDF" = "正在打开 PDF";
+"reader.icloud.syncTimeout" = "iCloud 同步超时。可能原因：\n• 原设备尚未完成上传\n• 网络连接不稳定\n\n请确认两台设备都已登录相同 Apple ID，并已开启 iCloud 云盘。";
+"settings.sync.lastSynced" = "上次同步 %@";
+"todayReview.completion.nextDue" = "明天再来复习新到期的单词";
+"reader.pdf.loading.description" = "正在加载文档内容和阅读位置。";
+"reader.pdf.loading.title" = "正在打开 PDF";
 
 /* i18n strict coverage: integrated UI review surfaces */
 "互動回饋" = "互动反馈";

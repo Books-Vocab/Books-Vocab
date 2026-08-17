@@ -117,7 +117,7 @@ struct AppLoadingProgressBar: View {
             .progressViewStyle(.linear)
             .tint(tint)
             .accessibilityElement()
-            .accessibilityLabel(Text(accessibilityLabel ?? L10n.string("載入進度")))
+            .accessibilityLabel(Text(accessibilityLabel ?? L10n.string("app.loading.progress")))
             .accessibilityValue(Text(verbatim: "\(Int(normalizedProgress * 100))%"))
             .animation(AppMotion.progressLinear, value: normalizedProgress)
     }

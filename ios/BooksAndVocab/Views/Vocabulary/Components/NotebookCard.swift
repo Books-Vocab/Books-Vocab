@@ -349,8 +349,12 @@ struct NotebookCard: View {
 
     private var accessibilityDescription: String {
         var parts = [data.name, "\(data.cardCount) \(data.cardCountLabel)"]
-        if data.dueCount > 0 { parts.append(L10n.format("%d 到期", data.dueCount)) }
-        if data.unlearnedCount > 0 { parts.append(L10n.format("%d 未學", data.unlearnedCount)) }
+        if data.dueCount > 0 {
+            parts.append(L10n.format("notebook.dueCount", Int64(data.dueCount)))
+        }
+        if data.unlearnedCount > 0 {
+            parts.append(L10n.format("notebook.unlearnedCount", Int64(data.unlearnedCount)))
+        }
         if data.isActive { parts.append("使用中".localized) }
         return parts.joined(separator: "，".localized)
     }

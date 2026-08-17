@@ -123,7 +123,7 @@
 			<string>已收录 %d 个单词，去复习巩固记忆吧。</string>
 		</dict>
 	</dict>
-	<key>%d 到期</key>
+	<key>notebook.dueCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@count@</string>
@@ -137,7 +137,7 @@
 			<string>%lld 张到期</string>
 		</dict>
 	</dict>
-	<key>%d 未學</key>
+	<key>notebook.unlearnedCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@count@</string>
@@ -151,7 +151,7 @@
 			<string>%lld 个未学习</string>
 		</dict>
 	</dict>
-	<key>進度 %d%%</key>
+	<key>vocab.reviewProgress.percent</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@count@</string>
