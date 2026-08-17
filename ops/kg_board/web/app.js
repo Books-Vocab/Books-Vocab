@@ -4,6 +4,7 @@ let board=null,history=null,tree=null,tab="now",query="";
 const esc=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const shortSha=sha=>String(sha||"").slice(0,9);
 const compactLabel=(value,max=32)=>{const text=String(value||"");return text.length>max?`${text.slice(0,max-1)}…`:text};
+const compactBranchLabel=(value,max=17)=>compactLabel(String(value||"").replace(/^(?:feat|debug)\//,""),max);
 
 function metric(label,value){return `<div class="metric"><b>${esc(value)}</b><span>${esc(label)}</span></div>`}
 function setTrust(freshness){
@@ -79,10 +80,10 @@ const TREE_VIEW_RADIUS = 10;
 const TREE_ZOOM_MIN = 70;
 const TREE_ZOOM_MAX = 140;
 const TREE_ZOOM_STEP = 10;
-const TREE_LANE_WIDTH = 136;
+const TREE_LANE_WIDTH = 124;
 const TREE_ROW_HEIGHT = 44;
 const TREE_HEADER_HEIGHT = 66;
-const TREE_PADDING_X = 36;
+const TREE_PADDING_X = 30;
 let treeZoom = 100;
 let treeBaseWidth = 0;
 let treeFitInitialized = false;
@@ -122,6 +123,14 @@ function pathToAnyTarget(start,targets,commits,limit=commits.size+1){
   }
   return [];
 }
+function projectBranchPath(ref,mainlineSet,commits){
+  const fullPath=pathToAnyTarget(ref.head,mainlineSet,commits);
+  if(!fullPath.length){
+    return {path:commits.has(ref.head)?[ref.head]:[],anchor:null,truncated:false,detached:true};
+  }
+  const path=fullPath.slice(0,TREE_VIEW_RADIUS+1);
+  return {path,anchor:fullPath.at(-1),truncated:path.length<fullPath.length,detached:false};
+}
 function firstBranchPoint(mainHead,commits){
   const children=new Map();
   commits.forEach(row=>(row.parents||[]).forEach(parent=>{
@@ -146,30 +155,29 @@ function treeViewport(tree,commits,refs){
   const visibleBranches=new Set(["main"]);
   const branchAnchors=new Map();
   const branchPaths=new Map();
+  const branchTruncations=new Map();
+  const branchDetached=new Set();
   const mainlineSet=new Set(mainline);
   const ticketRefs=refs.filter(ref=>ref.branch!=="main"&&(ref.tickets||[]).length);
-  ticketRefs.forEach(ref=>{
-    // Ticket-bearing refs are never hidden by the bounded mainline window.
-    // Their full history remains lazy, but their recent divergent segment and
-    // exact common ancestor are part of this tree projection.
-    const path=pathToAnyTarget(ref.head,mainlineSet,commits);
-    const branchPath=path.length?path.slice(0,TREE_VIEW_RADIUS+1):[ref.head].filter(sha=>commits.has(sha));
-    const anchor=path.at(-1)||branchPath.at(-1)||ref.head;
-    if(anchor)branchPath.push(...(branchPath.at(-1)===anchor?[]:[anchor]));
-    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,branchPath);
-    branchPath.forEach(sha=>visible.add(sha));
-  });
+  const addBranch=ref=>{
+    const projection=projectBranchPath(ref,mainlineSet,commits);
+    const {path,anchor,truncated,detached}=projection;
+    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,path);
+    if(detached)branchDetached.add(ref.branch);
+    if(truncated&&path.at(-1))branchTruncations.set(ref.branch,{from:path.at(-1),to:anchor});
+    if(anchor&&commits.has(anchor))visible.add(anchor);
+    path.forEach(sha=>visible.add(sha));
+  };
+  // Ticket-bearing refs are never hidden by the bounded mainline window.
+  // Their full history remains lazy, but their recent divergent segment and
+  // exact common ancestor are part of this tree projection.
+  ticketRefs.forEach(addBranch);
   refs.forEach(ref=>{
     if(ref.branch==="main")return;
     if(ticketRefs.includes(ref))return;
-    const path=pathToAnyTarget(ref.head,mainlineSet,commits);
     // Every branch remains represented; only its recent divergent segment is
     // bounded. Fully converged history is not loaded into the initial view.
-    const branchPath=path.length?path.slice(0,TREE_VIEW_RADIUS+1):[ref.head].filter(sha=>commits.has(sha));
-    const anchor=path.at(-1)||branchPath.at(-1)||ref.head;
-    if(anchor)branchPath.push(...(branchPath.at(-1)===anchor?[]:[anchor]));
-    visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,branchPath);
-    branchPath.forEach(sha=>visible.add(sha));
+    addBranch(ref);
   });
   if(branchSha)visible.add(branchSha);
   return {
@@ -177,6 +185,8 @@ function treeViewport(tree,commits,refs){
     refs:refs.filter(ref=>visibleBranches.has(ref.branch)),
     branchAnchors,
     branchPaths,
+    branchTruncations,
+    branchDetached,
     ticketRefs,
     mainline,mainlineWindow,branchSha,branchIndex,total:tree.commits.length,
   };
@@ -196,6 +206,7 @@ function fitTreeZoom(){
   renderTree();
   return true;
 }
+function cancelTreeAutoFit(){treeFitInitialized=true}
 function treeStateOf(ref){
   return ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
 }
@@ -224,28 +235,56 @@ function treeLayout(viewport,visibleCommits){
   const branchLanes=new Map([["main",0]]);
   viewport.refs.filter(ref=>ref.branch!=="main").forEach((ref,index)=>branchLanes.set(ref.branch,index+1));
   const mainlineRanks=new Map(viewport.mainline.map((sha,index)=>[sha,index-viewport.branchIndex]));
-  const ranks=new Map(),lanes=new Map();
+  const mainlineSet=new Set(viewport.mainline),hints=new Map(),lanes=new Map();
+  const setHint=(sha,value)=>{
+    if(mainlineSet.has(sha)||!hints.has(sha)){hints.set(sha,value);return;}
+    hints.set(sha,Math.min(hints.get(sha),value));
+  };
   viewport.mainlineWindow.forEach((sha,index)=>{
-    if(visibleCommits.has(sha)){ranks.set(sha,index);lanes.set(sha,0)}
+    if(visibleCommits.has(sha)){hints.set(sha,index);lanes.set(sha,0)}
   });
   viewport.mainline.forEach(sha=>{
-    if(visibleCommits.has(sha)&&!ranks.has(sha)){ranks.set(sha,mainlineRanks.get(sha)??0);lanes.set(sha,0)}
+    if(visibleCommits.has(sha)){setHint(sha,mainlineRanks.get(sha)??0);lanes.set(sha,0)}
   });
   viewport.branchPaths.forEach((path,branch)=>{
     const lane=branchLanes.get(branch);if(lane===undefined||!path.length)return;
-    const anchor=path.at(-1),anchorRank=ranks.get(anchor)??mainlineRanks.get(anchor)??0;
-    path.slice(0,-1).forEach((sha,index)=>{
+    const branchAnchor=viewport.branchAnchors.get(branch);
+    const anchor=branchAnchor??path.at(-1),anchorRank=hints.get(anchor)??mainlineRanks.get(anchor)??0;
+    const anchorInPath=branchAnchor!==null&&branchAnchor!==undefined&&path.includes(branchAnchor);
+    path.forEach((sha,index)=>{
       if(!visibleCommits.has(sha))return;
-      if(!ranks.has(sha)){ranks.set(sha,anchorRank-(path.length-1-index));lanes.set(sha,lane)}
+      if(!lanes.has(sha))lanes.set(sha,lane);
+      const hint=anchorInPath?anchorRank-(path.length-1-index):index;
+      setHint(sha,hint);
     });
   });
-  visibleCommits.forEach((row,sha)=>{
-    if(ranks.has(sha))return;
-    const parent=(row.parents||[]).find(parentSha=>ranks.has(parentSha));
-    ranks.set(sha,parent?Math.max(-1,ranks.get(parent)-1):0);lanes.set(sha,lanes.get(sha)??0);
+  viewport.refs.filter(ref=>ref.branch!=="main").forEach(ref=>{
+    const lane=branchLanes.get(ref.branch);
+    if(lane===undefined||!visibleCommits.has(ref.head))return;
+    if(!lanes.has(ref.head))lanes.set(ref.head,lane);
+    setHint(ref.head,0);
   });
-  const minRank=Math.min(0,...ranks.values()),maxRank=Math.max(0,...ranks.values());
-  const positions=new Map([...visibleCommits.keys()].map(sha=>[sha,{lane:lanes.get(sha)??0,row:(ranks.get(sha)??0)-minRank}]));
+  visibleCommits.forEach((row,sha)=>{
+    lanes.set(sha,lanes.get(sha)??0);setHint(sha,hints.get(sha)??0);
+  });
+  const ranks=new Map([...visibleCommits.keys()].map(sha=>[sha,hints.get(sha)??0]));
+  const rows=[...visibleCommits.values()];
+  for(let pass=0;pass<=rows.length;pass++){
+    let changed=false;
+    rows.forEach(row=>{
+      const childRank=ranks.get(row.sha)??0;
+      (row.parents||[]).forEach(parentSha=>{
+        if(!ranks.has(parentSha))return;
+        const required=childRank+1;
+        if((ranks.get(parentSha)??0)<required){ranks.set(parentSha,required);changed=true}
+      });
+    });
+    if(!changed)break;
+  }
+  const rankValues=[...new Set(ranks.values())].sort((left,right)=>left-right),rankIndex=new Map(rankValues.map((rank,index)=>[rank,index]));
+  const normalizedRanks=new Map([...ranks.entries()].map(([sha,rank])=>[sha,rankIndex.get(rank)??0]));
+  const minRank=Math.min(0,...normalizedRanks.values()),maxRank=Math.max(0,...normalizedRanks.values());
+  const positions=new Map([...visibleCommits.keys()].map(sha=>[sha,{lane:lanes.get(sha)??0,row:(normalizedRanks.get(sha)??0)-minRank}]));
   const ordered=[...visibleCommits.values()].sort((left,right)=>{
     const a=positions.get(left.sha),b=positions.get(right.sha);
     return a.row-b.row||a.lane-b.lane||left.sha.localeCompare(right.sha);
@@ -327,18 +366,27 @@ function renderTree(){
       if(to)edges.push(`<path class="edge" d="${edgePath(from,to,x,y)}"/>`);
     });
   });
+  const truncationMarkers=[...viewport.branchTruncations.values()].map(record=>{
+    const pos=positions.get(record.from),row=visibleCommits.get(record.from);
+    if(!pos||!row||(row.parents||[]).some(parentSha=>positions.has(parentSha)))return "";
+    const markerY=y(pos.row)+Math.round(TREE_ROW_HEIGHT*.48);
+    return `<path class="edge edge-truncated" d="M ${x(pos.lane)} ${y(pos.row)} V ${markerY}"><title>此分支中間歷史已省略</title></path><text class="tree-truncation" x="${x(pos.lane)+7}" y="${markerY+4}" aria-label="此分支中間歷史已省略">⋯</text>`;
+  }).join("");
   const laneGuides=[...branchLanes.entries()].map(([branch,lane])=>`<line class="tree-lane-guide${branch==="main"?" main":""}" x1="${x(lane)}" y1="${TREE_HEADER_HEIGHT-14}" x2="${x(lane)}" y2="${height-18}"/>`).join("");
   const laneHeaders=viewport.refs.map(ref=>{
     const lane=branchLanes.get(ref.branch);if(lane===undefined)return "";
     const state=treeStateOf(ref);
-    return `<g class="lane-header state-${esc(treeStateClass(state))}" transform="translate(${x(lane)-52} 12)"><rect width="104" height="38" rx="6"></rect><text x="9" y="16">${esc(compactLabel(ref.branch,17))}</text><text class="lane-state" x="9" y="31">${esc(state)}</text></g>`;
+    const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":state;
+    const detachedLabel=detached?`<text class="lane-state" x="14" y="31">${esc(stateLabel)}</text>`:"";
+    const headerX=lane===0?0:x(lane)-52;
+    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)"><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
     const head=ref?" head":"";
     return `<g class="commit${head}${ref?.branch==="main"?" main":""}" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${y(pos.row)})"><title>${esc(shortSha(row.sha)+" · "+row.subject)}</title><circle r="${head?8:6}"></circle></g>`;
   }).join("");
-  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}</g>${nodes}</svg>`;
+  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}${truncationMarkers}</g>${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
   const mainlineCount=viewport.mainlineWindow.length;
   document.getElementById("tree-state").textContent=tree.complete?`主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}% · ${viewportLabel}`:`資料不完整 · 主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}%`;
@@ -399,13 +447,14 @@ async function load(){
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
 document.getElementById("tree-zoom").addEventListener("input",event=>{
+  cancelTreeAutoFit();
   const next=Number(event.target.value);
   treeZoom=Math.max(TREE_ZOOM_MIN,Math.min(TREE_ZOOM_MAX,Number.isFinite(next)?next:100));
   renderTreeZoom();
   if(tree)renderTree();
 });
-document.getElementById("tree-fit").addEventListener("click",fitTreeZoom);
-document.getElementById("tree-reset").addEventListener("click",()=>{treeZoom=100;if(tree)renderTree();else renderTreeZoom()});
+document.getElementById("tree-fit").addEventListener("click",()=>{cancelTreeAutoFit();fitTreeZoom()});
+document.getElementById("tree-reset").addEventListener("click",()=>{cancelTreeAutoFit();treeZoom=100;if(tree)renderTree();else renderTreeZoom()});
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
 renderTreeZoom();
 load().catch(showLoadError);

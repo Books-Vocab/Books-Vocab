@@ -305,14 +305,21 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
     assert 'id="tree-legend"' in index
+    assert index.index('id="git-tree"') < index.index('id="tree-legend"')
     assert "renderTreeLegend" in js
     assert "treeLayout" in js
     assert "edgePath" in js
     assert "TREE_ROW_HEIGHT" in js
     assert "lane-header" in js
     assert "foreignObject" not in js
+    assert "branchTruncations" in js
+    assert "branchDetached" in js
+    assert "edge-truncated" in js
+    assert "lane-dot" in js
+    assert "compactBranchLabel" in js
     assert ".tree-legend" in css
     assert ".git-tree:focus-visible" in css
+    assert ".commitcircle{r:14px}" not in "".join(css.split())
 
 
 def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
@@ -324,15 +331,16 @@ def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_z
     assert 'id="tree-reset"' in index
     assert "fitTreeZoom" in js
     assert "treeFitInitialized" in js
+    assert "cancelTreeAutoFit" in js
     assert ".tree-control-button" in css
 
 
 def test_git_tree_browser_keeps_lane_density_readable_at_fit_scale():
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert "const TREE_LANE_WIDTH = 136" in js
+    assert "const TREE_LANE_WIDTH = 124" in js
     assert "const TREE_ROW_HEIGHT = 44" in js
-    assert "const TREE_PADDING_X = 36" in js
+    assert "const TREE_PADDING_X = 30" in js
 
 
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
@@ -359,6 +367,8 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert "-webkit-line-clamp:2" in "".join(css.split())
     assert "--sub:#637181" in "".join(css.split())
     assert ".tree-controls{display:none}" in "".join(css.split())
+    assert ".tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
+    assert ".tree-control-button{min-height:44px}" in "".join(css.split())
 
 
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
