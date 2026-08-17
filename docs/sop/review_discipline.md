@@ -32,7 +32,7 @@ verified_against: d7d98039f
 
 > 派 `code-reviewer` agent 時，先依 `kg-agent-context` 與 `docs/reference/agent_context.md` 的 **Review service** row 載入最小 context，再讀 caller 指定的 commit hash × scope 與本 SOP；下方「Prompt 必含元素」§3–§6 已內建於 `.claude/agents/code-reviewer.md`(指回本 SOP,零重複),prompt 只需給 **commit hash + scope + 本次特別關注點**;用 general-purpose 當 reviewer 才需完整帶齊六項。角色 context 的唯一索引與本 SOP 的 review 契約分工，不在此重複 role matrix。
 
-## Review evidence（不寫入 commit metadata）
+## Review evidence（不寫入 commit message）
 
 Review 是執行中的品質檢查，不是 commit message 的欄位契約。每個需要 review 的
 獨立變更仍要派 reviewer；結果與證據放在 reviewer output、`review_cycle.py` 或

@@ -9006,7 +9006,7 @@ def _ledger_dirty(primary: Path, paths: tuple[str, ...] = LEDGER_PATHS) -> tuple
     entry JSON in the primary is a LEGAL and common state (an agent filed one and
     has not committed it), and it does not block anybody's cutover. Counting it as
     dirt is what led the repair to sweep other people's unfinished work into a
-    commit carrying no review metadata.
+    commit that claimed every changed path was tool-derived.
     """
     return _git(["status", "--porcelain", "--untracked-files=no", "--", *paths],
                 cwd=primary)
@@ -9215,8 +9215,8 @@ def _post_landing_repair(primary: Path) -> dict[str, Any]:
     # same: `git commit -- <paths>` takes the working-tree content of the TRACKED
     # files under those paths and nothing else. A `git add -- docs/runbook/backlog`
     # also stages untracked entry JSONs, which is precisely how a co-tenant's
-    # uncommitted filing got swept into a commit whose message says "everything here
-    # was re-derived by a tool and was mistakenly treated as a delivery attestation.
+    # uncommitted filing got swept into a commit whose message claimed "everything here
+    # was re-derived by a tool" even though it also contained that filing.
     # Measured: the repair commit contained COTENANT.json; without the add, it
     # contains only the file `reanchor` actually rewrote.
     crc, ctext = _git_mutation(["commit", "-m", _REPAIR_MESSAGE, "--", *repair_paths],
