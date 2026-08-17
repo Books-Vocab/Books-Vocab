@@ -442,8 +442,7 @@ final class ReviewSettingsStore {
         }
     }
 
-    /// Server cold-start 套用:本機從未寫過 mode 時,以 server 值初始化本地三層(記 server
-    /// updatedAt 作後續 LWW 基準;不回寫 iCloud,避免與他裝置 KV 競爭)。對標 `applyServerPauseState`。
+    /// Server mode projection 的本地寫入 seam。後續 ticket 會在此套用 server LWW。
     func applyServerModeState(_ state: ReviewModeState) {
         var s = settings
         s.mode = state.mode
@@ -490,17 +489,23 @@ final class ReviewSettingsStore {
         }
     }
 
-    /// Server cold-start 套用:本機從未寫過 pause 時,以 server 值初始化本地三層
-    /// (記 server updatedAt 作後續 LWW 基準;不回寫 iCloud,避免與他裝置 KV 競爭)。
-    func applyServerPauseState(isPaused: Bool, pausedAt: Date?, updatedAt: Double?) {
+    /// Server pause-clock projection 的本地 LWW 寫入 seam。較新的本機 timestamp
+    /// 保留；server projection 不回寫 iCloud，避免把讀取結果誤當成另一台裝置的 edit。
+    @discardableResult
+    func applyServerPauseState(isPaused: Bool, pausedAt: Date?, updatedAt: Double?) -> Bool {
+        guard let serverUpdatedAt = updatedAt else { return false }
+        if let localUpdatedAt = pauseClockSnapshot.updatedAt,
+           serverUpdatedAt <= localUpdatedAt {
+            return false
+        }
+
         var s = settings
         s.isProgressPaused = isPaused
         s.progressPausedAt = pausedAt
         settings = s
         writeLocalPause(isPaused, pausedAt)
-        if let ts = updatedAt {
-            defaults.set(ts, forKey: Keys.progressUpdatedAt)
-        }
+        defaults.set(serverUpdatedAt, forKey: Keys.progressUpdatedAt)
+        return true
     }
 
     private func writeLocalPause(_ isPaused: Bool, _ pausedAt: Date?) {

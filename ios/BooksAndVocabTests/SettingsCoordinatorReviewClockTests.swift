@@ -2,7 +2,7 @@
 //  SettingsCoordinatorReviewClockTests.swift
 //  Books & Vocab Tests
 //
-//  Defect A 回歸測試：`SettingsCoordinator.applyServerReviewClock` 冷啟動套用
+//  Defect A 回歸測試：`SettingsCoordinator.applyServerReviewClock` 套用
 //  server pause-clock 時，`paused_at` 若走 strict `AppDateFormatters.iso8601`
 //  （要求小數秒）解析，後端回傳不含小數秒的 ISO8601 時戳會靜默解析失敗
 //  （`.date(from:)` 回 nil）→ 凍結沒套上，但 config 仍回報 `is_paused=true`
@@ -20,6 +20,7 @@ import SwiftData
 import Testing
 @testable import BooksAndVocab
 
+@Suite(.serialized)
 @MainActor
 struct SettingsCoordinatorReviewClockTests {
 
@@ -59,16 +60,14 @@ struct SettingsCoordinatorReviewClockTests {
 
     // MARK: - Helpers
 
-    /// 走 `SettingsCoordinator.loadData` 冷啟動路徑套用 server pause-clock，驗證
-    /// `ReviewSettingsStore.shared` 的三層是否套上。強制打開 cold-start gate
-    /// （`pauseClockSnapshot.updatedAt == nil`），跑完還原原狀避免污染其他測試。
-    private func runColdStartApply(pausedAtISO: String, updatedAt: Double) async -> PauseClockState {
+    /// 走 `SettingsCoordinator.loadData` 路徑套用 server pause-clock，驗證
+    /// `ReviewSettingsStore.shared` 的三層是否套上，跑完還原原狀避免污染其他測試。
+    private func runServerApply(pausedAtISO: String, updatedAt: Double) async -> PauseClockState {
         let store = ReviewSettingsStore.shared
         let originalSnapshot = store.pauseClockSnapshot
         defer { store.restorePauseState(originalSnapshot) }
 
-        // 強制打開 cold-start gate：清掉本地 pause updatedAt，讓 store 視為
-        // 「此裝置從未寫過 pause clock」（對齊 SettingsCoordinator 的 guard 條件）。
+        // 清掉本地 pause updatedAt，讓 server timestamp 成為可比較的基準。
         UserDefaults.standard.removeObject(forKey: "review_settings_progress_updated_at")
 
         let coordinator = SettingsCoordinator()
@@ -105,8 +104,8 @@ struct SettingsCoordinatorReviewClockTests {
 
     /// Defect A 案例：後端回傳的 `paused_at` 不含小數秒。修前用 strict formatter
     /// 解析回 nil → `progressPausedAt` 沒套上（凍結靜默失效）。
-    @Test func coldStartAppliesPauseClock_whenPausedAtHasNoFractionalSeconds() async {
-        let result = await runColdStartApply(
+    @Test func serverAppliesPauseClock_whenPausedAtHasNoFractionalSeconds() async {
+        let result = await runServerApply(
             pausedAtISO: "2026-07-09T14:59:59Z",
             updatedAt: 1_800_000_000
         )
@@ -116,8 +115,8 @@ struct SettingsCoordinatorReviewClockTests {
     }
 
     /// 對照案例：含小數秒的既有格式仍要正確解析（防迴歸）。
-    @Test func coldStartAppliesPauseClock_whenPausedAtHasFractionalSeconds() async {
-        let result = await runColdStartApply(
+    @Test func serverAppliesPauseClock_whenPausedAtHasFractionalSeconds() async {
+        let result = await runServerApply(
             pausedAtISO: "2026-07-09T14:59:59.000Z",
             updatedAt: 1_800_000_001
         )
@@ -149,5 +148,70 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(store.settings.isProgressPaused == true)
         #expect(store.settings.progressPausedAt != nil)
         #expect(defaults.bool(forKey: "review_settings_progress_paused") == true)
+    }
+
+    @Test func serverPauseClockAppliesWhenTimestampIsNewer() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-clock-newer.\(UUID().uuidString)")!
+        let cloud = FakeCloudKVStore()
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        let pausedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let applied = store.applyServerPauseState(
+            isPaused: true,
+            pausedAt: pausedAt,
+            updatedAt: 200
+        )
+
+        #expect(applied)
+        #expect(store.settings.isProgressPaused)
+        #expect(store.settings.progressPausedAt == pausedAt)
+        #expect(defaults.double(forKey: "review_settings_progress_updated_at") == 200)
+        #expect(cloud.double(forKey: "review_settings_progress_updated_at") == nil)
+    }
+
+    @Test func serverPauseClockIgnoredWhenLocalTimestampIsNewer() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-clock-local-newer.\(UUID().uuidString)")!
+        defaults.set(true, forKey: "review_settings_progress_paused")
+        defaults.set(1_700_000_000.0, forKey: "review_settings_progress_paused_at")
+        defaults.set(300.0, forKey: "review_settings_progress_updated_at")
+        let store = ReviewSettingsStore(defaults: defaults, cloud: FakeCloudKVStore())
+        let original = store.pauseClockSnapshot
+
+        let applied = store.applyServerPauseState(
+            isPaused: false,
+            pausedAt: nil,
+            updatedAt: 200
+        )
+
+        #expect(!applied)
+        #expect(store.pauseClockSnapshot == original)
+        #expect(defaults.double(forKey: "review_settings_progress_updated_at") == 300)
+    }
+
+    @Test func serverPauseClockAfterAccountSwitchDoesNotWriteSharedCloudState() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-clock-account-switch.\(UUID().uuidString)")!
+        let cloud = FakeCloudKVStore()
+        cloud.set(1.0, forKey: "review_settings_progress_paused")
+        cloud.set(1_600_000_000.0, forKey: "review_settings_progress_paused_at")
+        cloud.set(100.0, forKey: "review_settings_progress_updated_at")
+
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        defaults.removeObject(forKey: "review_settings_progress_paused")
+        defaults.removeObject(forKey: "review_settings_progress_paused_at")
+        defaults.removeObject(forKey: "review_settings_progress_updated_at")
+        let nextAccountStore = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+
+        let applied = nextAccountStore.applyServerPauseState(
+            isPaused: false,
+            pausedAt: nil,
+            updatedAt: 200
+        )
+
+        #expect(applied)
+        #expect(!nextAccountStore.settings.isProgressPaused)
+        #expect(nextAccountStore.settings.progressPausedAt == nil)
+        #expect(defaults.double(forKey: "review_settings_progress_updated_at") == 200)
+        #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 100)
+        _ = store
     }
 }

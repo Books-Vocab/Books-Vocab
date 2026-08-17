@@ -281,15 +281,11 @@ final class SettingsCoordinator: SettingsCoordinating {
         )
     }
 
-    /// Reconcile server pause-clock with local + iCloud KV (mirrors translation).
-    /// Cold-start only: server wins ONLY when this device has never written the
-    /// pause clock locally (`snapshot.updatedAt == nil`). After any local write,
-    /// iCloud KV is the cross-device authority. Real LWW awaits the backend flag.
+    /// Reconcile server pause-clock with the local LWW timestamp. A stale server
+    /// response is a valid no-op; malformed pause anchors remain configuration errors.
     private func applyServerReviewClock(_ clock: KGReviewClockConfig?) -> Bool {
         guard let clock else { return true }
         let store = ReviewSettingsStore.shared
-        guard store.pauseClockSnapshot.updatedAt == nil else { return true }
-        _ = KGFeatureFlags.serverReviewClockLwwEnabled  // keep wired for future LWW flip
         let pausedAt: Date?
         if let rawPausedAt = clock.paused_at {
             guard let parsedPausedAt = AppDateFormatters.parseISO8601(rawPausedAt) else {
@@ -299,7 +295,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         } else {
             pausedAt = nil
         }
-        store.applyServerPauseState(
+        _ = store.applyServerPauseState(
             isPaused: clock.is_paused,
             pausedAt: clock.is_paused ? pausedAt : nil,
             updatedAt: clock.updated_at
