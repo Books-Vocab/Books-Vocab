@@ -514,6 +514,7 @@ def test_gate_plan_ops_src_with_matching_test_runs_it():
         "ops/tests/test_worktree_orchestrate_delivery.py",
         "ops/tests/test_worktree_orchestrate_recovery.py",
         "ops/tests/test_orchestrator_seams.py",
+        "ops/tests/test_worktree_gate_tiers.py",
     }.__contains__
     gates = plan_gates(["ops/worktree_orchestrate.py"], ops_test_exists=exists)
     focused = _by_name(gates)["ops-pytest-orchestrator-focused"]
@@ -571,6 +572,7 @@ def test_gate_plan_ops_src_and_its_test_dedupes_target():
         "ops/tests/test_worktree_orchestrate_delivery.py",
         "ops/tests/test_worktree_orchestrate_recovery.py",
         "ops/tests/test_orchestrator_seams.py",
+        "ops/tests/test_worktree_gate_tiers.py",
     }.__contains__
     gates = plan_gates(["ops/worktree_orchestrate.py",
                         "ops/tests/test_worktree_orchestrate.py"],
