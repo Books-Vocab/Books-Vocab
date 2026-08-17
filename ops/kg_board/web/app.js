@@ -508,17 +508,11 @@ function renderTree(){
       if(to)graphEdges.push({from,to});
     });
   });
-  const routeGroups=new Map();
-  graphEdges.forEach(edge=>{
-    if(edge.from.lane===edge.to.lane)return;
-    const key=`${edge.to.lane}:${edge.to.row}`;
-    if(!routeGroups.has(key))routeGroups.set(key,[]);
-    routeGroups.get(key).push(edge);
-  });
+  const crossLaneEdges=graphEdges.filter(edge=>edge.from.lane!==edge.to.lane);
+  const routeIndexByEdge=new Map(crossLaneEdges.map((edge,index)=>[edge,index]));
   const edges=graphEdges.map(edge=>{
-    if(edge.from.lane===edge.to.lane)return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y)}"/>`;
-    const group=routeGroups.get(`${edge.to.lane}:${edge.to.row}`)||[edge];
-    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y,group.indexOf(edge),group.length)}"/>`;
+    const routeIndex=routeIndexByEdge.get(edge);
+    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y,routeIndex??0,crossLaneEdges.length)}"/>`;
   });
   const branchBoundaryByFrom=new Map([...viewport.branchTruncations.values()].map(record=>[record.from,record]));
   const parentBoundaryMarkers=ordered.map(row=>{
@@ -538,7 +532,7 @@ function renderTree(){
     const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":state;
     const detachedLabel=detached?`<text class="lane-state" x="14" y="31">${esc(stateLabel)}</text>`:"";
     const headerX=lane===0?0:x(lane)-52;
-    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)" tabindex="0" role="button" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}" data-branch="${esc(ref.branch)}"><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
+    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)" tabindex="0" role="button" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}" data-branch="${esc(ref.branch)}"><title>${esc(ref.branch)} · ${esc(stateLabel)}</title><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
@@ -619,7 +613,8 @@ document.getElementById("tree-zoom").addEventListener("input",event=>{
   renderTreeZoom();
   if(tree)renderTree();
 });
-document.getElementById("tree-lane-spacing").addEventListener("input",event=>{
+const laneSpacingInput=document.getElementById("tree-lane-spacing");
+if(laneSpacingInput)laneSpacingInput.addEventListener("input",event=>{
   cancelTreeAutoFit();
   const next=Number(event.target.value);
   treeLaneWidth=Math.max(TREE_LANE_WIDTH_MIN,Math.min(TREE_LANE_WIDTH_MAX,Number.isFinite(next)?next:TREE_LANE_WIDTH));
