@@ -25,8 +25,7 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 .tree-legend-item.state-blocked .tree-legend-swatch{background:var(--warn)}.tree-legend-item.state-stale .tree-legend-swatch{background:var(--bad)}
 .git-tree{max-height:520px;min-height:280px;overflow:auto;background:#f8fafc;border-color:#dfe5ec;overscroll-behavior:contain}
 .git-tree svg{font:11px/1.2 "Noto Sans TC",system-ui,-apple-system,sans-serif}.tree-lane-guide{stroke:#e4e9ef;stroke-width:1;vector-effect:non-scaling-stroke}.tree-lane-guide.main{stroke:#aab7c5;stroke-width:2}
-.lane-header rect{fill:var(--surface);stroke:#d6dee7;stroke-width:1;vector-effect:non-scaling-stroke}.lane-header text{fill:var(--ink);font-size:10px;font-weight:600}.lane-header .lane-state{fill:var(--sub);font:9px "JetBrains Mono",monospace;font-weight:400}
-.lane-header.state-active rect{stroke:rgba(36,115,78,.45)}.lane-header.state-main rect{fill:#f0f3f6;stroke:#aab7c5}.lane-header.state-blocked rect{stroke:rgba(154,100,26,.55)}.lane-header.state-stale rect{stroke:rgba(174,59,49,.55)}
+.lane-header text{fill:var(--ink);font-size:10px;font-weight:600}.lane-header .lane-dot{fill:var(--sub)}.lane-header .lane-state{fill:var(--sub);font:9px "JetBrains Mono",monospace;font-weight:400}.lane-header.state-active .lane-dot{fill:var(--green)}.lane-header.state-main .lane-dot{fill:var(--ink)}.lane-header.state-blocked .lane-dot{fill:var(--warn)}.lane-header.state-stale .lane-dot{fill:var(--bad)}
 .edges .edge{stroke:#b7c2ce;stroke-width:1.5;vector-effect:non-scaling-stroke}.commit circle{r:6px;fill:var(--surface);stroke:#8392a2;stroke-width:2;vector-effect:non-scaling-stroke}.commit.main circle{stroke:var(--ink);stroke-width:2.5}.commit.head circle{r:8px;stroke:var(--green);stroke-width:2.5}.commit:hover circle,.commit:focus circle{fill:var(--green);stroke:var(--green)}
 .commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}.tree-ticket:hover,.tree-ticket:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.12);outline:none}
 @media(max-width:860px){.tree-legend{grid-template-columns:repeat(2,minmax(0,1fr))}.git-tree{max-height:460px}}
@@ -66,12 +65,13 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 .tree-held-ticket{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:start;gap:9px;width:100%;min-height:44px;padding:8px 9px;border:1px solid var(--border);background:var(--surface);color:var(--ink);text-align:left}
 .tree-held-ticket code{color:var(--green);font-size:10px;white-space:nowrap}.tree-held-ticket span{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .tree-held-ticket:hover,.tree-held-ticket:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.14);outline:none}
-.commit circle{r:14px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
+.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
 .tabs button{min-height:44px;padding-inline:14px}
 @media(max-width:860px){
   .section-heading{align-items:stretch}
   .section-heading .status-chip{align-self:flex-start;max-width:100%;overflow-wrap:anywhere}
   .ticket-meta{max-width:100%}
+  .tree-control-button{min-height:44px}
 }
 @media(max-width:520px){
   .admin-nav{align-items:flex-start;row-gap:6px}
@@ -100,9 +100,10 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
   .ticket-body{padding-inline:12px}
   .ticket-body p{overflow-wrap:anywhere}
   .tree-mobile-list .tree-ticket{min-height:44px;min-width:44px}
+  .tree-legend .tree-ticket{min-height:44px;min-width:44px}
   .tree-controls{display:none}
 }
 
 .tree-control-copy{display:grid;gap:1px;line-height:1.25}.tree-control-copy span{color:var(--sub);font-size:10px;white-space:nowrap}
 .tree-control-button{min-height:34px;padding:0 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--ink);font-size:11px;white-space:nowrap}.tree-control-button:hover,.tree-control-button:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.12);outline:none}.tree-control-button.secondary{color:var(--sub)}
-.git-tree{background:#f8fafc}.git-tree:focus-visible{outline:2px solid var(--green);outline-offset:2px}.commit circle{r:6px}.commit.head circle{r:8px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
+.git-tree{background:#f8fafc}.git-tree:focus-visible{outline:2px solid var(--green);outline-offset:2px}.commit circle{r:6px}.commit.head circle{r:8px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}.edge-truncated{stroke:var(--warn)!important;stroke-dasharray:3 3}.tree-truncation{fill:var(--warn);font-size:14px;font-weight:600}.lane-header.detached .lane-dot{fill:var(--warn)}.lane-header.detached .lane-state{fill:var(--warn)}
