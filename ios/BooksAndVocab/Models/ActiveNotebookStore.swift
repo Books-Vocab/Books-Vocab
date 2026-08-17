@@ -26,7 +26,7 @@ enum ActiveNotebookLWW {
 }
 
 /// 全域 active notebook 游標的單一存取點（三層：UserDefaults 本地 + iCloud KVS 跨 Apple
-/// 裝置 + backend cold-start/push）。「active notebook」= 決定新選詞預設歸進哪一本的全域
+/// 裝置 + backend sync/push）。「active notebook」= 決定新選詞預設歸進哪一本的全域
 /// 指標（per-book `Book.preferredNotebookId` 走 CloudKit，不在此）。對齊
 /// `ReviewSettingsStore` 的 LWW 機制（本地 vs iCloud KVS 比 updatedAt 取較新整組）。
 ///
@@ -35,8 +35,8 @@ enum ActiveNotebookLWW {
 /// 故為 thread-safe wrapper over UserDefaults + iCloud KVS，清除點在背景 service thread
 /// 也安全。init 把 LWW resolved 值寫回本地，使 consumer 看到跨裝置收斂後的值。
 ///
-/// backend 層為 cold-start（首次裝置）+ best-effort push（讓 chrome / web 能讀）；
-/// `serverVocabUiLwwEnabled` 仍 false，iCloud KVS 為 Apple 裝置間實質權威。
+/// backend 層提供 server sync + best-effort push（讓 chrome / web 能讀）；iCloud KVS
+/// 仍負責 Apple 裝置間的 local projection 收斂。
 final class ActiveNotebookStore {
     static let shared = ActiveNotebookStore()
 
@@ -139,19 +139,23 @@ final class ActiveNotebookStore {
         cloud.set(state.updatedAt ?? 0, forKey: Keys.updatedAt)
     }
 
-    // MARK: - Backend push / cold-start support
+    // MARK: - Backend sync / push support
 
     /// 當前 LWW 快照（push 帶 updatedAt 用；取本地層）。
     var snapshot: ActiveNotebookState {
         Self.readLocalState(defaults)
     }
 
-    /// cold-start：server 值僅套進本地層（記 server updatedAt 作後續 LWW 基準）。
-    /// 對齊 `ReviewSettingsStore.applyServerModeState` / `applyServerPauseState`：
-    /// **不回寫 iCloud KVS**，避免在新 Apple 裝置上與他裝置尚未傳播的 genuine local
-    /// write 競爭。caller 已 guard `snapshot.updatedAt == nil`（僅本機從未寫過時才套）；
-    /// 本機後續真正 setActive 才寫 iCloud。
-    func applyServerState(_ state: ActiveNotebookState) {
+    /// Apply a server projection only when its group timestamp is newer than the
+    /// local projection. The accepted state stays local-only; a user selection
+    /// remains the operation that publishes a new iCloud value.
+    @discardableResult
+    func syncActiveNotebookFromServer(_ state: ActiveNotebookState) -> Bool {
+        guard let serverUpdatedAt = state.updatedAt else { return false }
+        if let localUpdatedAt = snapshot.updatedAt, serverUpdatedAt <= localUpdatedAt {
+            return false
+        }
         Self.writeLocalState(state, into: defaults)
+        return true
     }
 }
