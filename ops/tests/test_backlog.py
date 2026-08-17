@@ -7600,23 +7600,38 @@ def test_entry_mutations_wait_for_the_supersede_store_lock(tmp_path):
 
 
 def test_store_lock_is_reentrant_for_same_thread_entry_writers(tmp_path, monkeypatch):
-    """Anchor can lock several entries without self-deadlocking the store."""
+    """Anchor can lock several entries and re-enter one without self-deadlocking."""
     acquisitions = []
+    entry_acquisitions = []
     real_exclusive_lock = BACKLOG.exclusive_lock
 
     def track_acquisition(path, **kwargs):
         acquisitions.append(Path(path))
         return real_exclusive_lock(path, **kwargs)
 
+    def track_entry_lock(root, path):
+        entry_acquisitions.append(Path(path))
+        class NoopEntryLock:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        return NoopEntryLock()
+
     monkeypatch.setattr(BACKLOG, "exclusive_lock", track_acquisition)
+    monkeypatch.setattr(BACKLOG._backlog_store, "entry_lock", track_entry_lock)
     store = tmp_path / "s"
     path = BACKLOG.entry_path(store, "IMP-20260808-abcdef")
 
     with BACKLOG._store_lock(store):
         with BACKLOG._entry_lock(path):
-            pass
+            with BACKLOG._entry_lock(path):
+                pass
 
     assert len(acquisitions) == 1, acquisitions
+    assert len(entry_acquisitions) == 1, entry_acquisitions
 
 
 def test_supersede_waits_for_the_claim_ledger_lock(tmp_path, monkeypatch):
