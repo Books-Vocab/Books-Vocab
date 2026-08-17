@@ -22,7 +22,7 @@ Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協
 
 任務選擇的淺規則：優先 fan-out bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收工作；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這是排序／派工提示，不是 `backlog.py` lifecycle 或 acceptance/status 契約。
 
-只有擁有整批視野的 Integrator 在當下取得使用者對 develop＋backup 的明示授權，才可越過 child 停止點：① 確認本輪預期 child 已 hand-back；② 以 `close-wave --commit --sync` 進行唯一 fresh Gate、cutover、resolve、anchor、validate 與 origin/main sync。若只有 develop 授權，使用 `close-wave --commit` 停在本地 primary；若沒有授權，整合樹也只准 `integrate ... --commit --no-gate` 後 hand-back。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬任何工具護欄；一旦獲授權仍完整走 fresh Gate，不能拿 targeted test 代替 Gate。
+只有擁有整批視野的 Integrator 在當下取得使用者對 develop＋backup 的明示授權，才可越過 child 停止點：① 確認本輪預期 child 已 hand-back；② 以 `close-wave --commit --sync` 進行唯一依 scope/tier 選擇的 fresh Gate、cutover、resolve、anchor、validate 與 origin/main sync。若只有 develop 授權，使用 `close-wave --commit` 停在本地 primary；若沒有授權，整合樹也只准 `integrate ... --commit --no-gate` 後 hand-back。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬 required tier、current HEAD 或 release 護欄；targeted test 只能證明它自己的 tier，不能冒充較高 tier。
 
 `--commit` 只控制各命令的**主要落地動作**，不是「沒帶就整個命令零副作用」的通則；`--json` 也只改輸出。出生／登記簿生命週期動詞沒有 dry-run：orchestrator `open`／`adopt` 與 registry `register`／`hand-back`／`resolve` 呼叫即寫。另有三個必記例外：`gate` 除 `--plan-only` 外會執行檢查並寫 verdict／history／失敗 log；`freeze on|off` 直接建立／刪除鎖，只有 `freeze status` 唯讀；`preflight` 不論 `--commit` 都會 `git fetch --prune`，該旗標只控制 sweep clearance。`open --backlog`／`--next-backlog` 必須在建立 branch/path 前原子取得獨佔認領；`hand-back` 必須立即寫入與當下 branch tip 綁定的交回戳記。呼叫前以子命令 help 為準，不可從有無 `--commit` 推導純讀性。
 
@@ -141,6 +141,34 @@ gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一�
 **`gate` / `cutover` 一律用工作樹自己那份 orchestrator（上面的絕對路徑形式），不是裸 `ops/...`。** 理由：gate 的**工具**是以工作樹為 cwd 執行的，所以**路由規則必須同代**——從主 repo 跑會用主 repo 的規則去排一組分支版工具的 gate（實測排出 8 道 vs 分支的 11 道，輸出形狀完全相同）。工具現在會自己擋，判決紀錄也帶 orchestrator 身分、cutover 會核對——但**它擋得很窄，別把它讀成「跑錯樹會有人喊」**：這道閘只在**分支真的改了這支工具本身**時觸發（三態語意與比對機制見 SoT `docs/reference/tech_index.md` 的 `worktree_orchestrate.py` 段）。所以它守的是「路由規則與工具同代」，**不是「你人在哪棵樹」**——後者今天沒有任何機器直接在守，見下方「硬邊界」第一條。正確形式仍是上面這行。
 
 它 diff `<path>` vs 本地 `main`，把改動路由到既有 gate 工具並彙總 `verdict`（block/warn/pass），把結果**記錄下來**（綁 worktree + HEAD sha + base 包含性）供 cutover 核對。
+
+### Gate 五層模型（成本與風險對齊）
+
+Gate 不是每次都跑全 repo。`--gate-tier S0|S1|S2|S3|S4` 選擇驗證深度；它不是
+`--no-gate`，也不能繞過 required tier 或 current-HEAD／base／orchestrator 護欄。
+
+| 層級 | 回答的問題 | 典型內容 |
+|---|---|---|
+| **S0** | 工具與程式有沒有立即性錯誤？ | diff check、compile、i18n/UI token、docs/schema/static lint |
+| **S1** | 這次改動的核心路徑能不能跑一次？ | 受影響 selector、單一 API、targeted ops/UI smoke |
+| **S2** | 這個模組有沒有回歸？ | 受影響檔案／suite／模組的範圍回歸 |
+| **S3** | 跨模組接線仍然正確嗎？ | backend↔iOS、sync、pipeline、跨平台整合 |
+| **S4** | 現在能不能正式交付？ | release full backend/ops/iOS targets 與 release readiness |
+
+日常預設是 child 開發／hand-back 跑 S0+S1；Integrator 批次 cutover 跑 S0 加
+變更所需的 S2；只有跨兩個以上功能根目錄才升 S3；真正 release checkpoint 才明示
+S4。視覺 evidence 是 S1～S4 的附加證據，不是單獨的下一層。若只跑較低層，仍可
+hand-back，但不能拿它宣稱已完成較高層 cutover。
+
+required tier 由 changed roots 計算：docs／neutral 只需 S0；單一 backend、iOS、lab、
+ops 或 design-system surface 至少 S2；跨兩個以上上述 surface 至少 S3。指定低於
+required tier 會在 cutover fail-closed。S4 會額外加入發布級 full profile，不能用
+ticket deferral 降級。
+
+只有明確的 `--defer-gate GATE=TICKET` 才能把非重大 S2/S3 紅燈帶成 warning：ticket
+必須已存在且是 `open`／`triaged`／`contract-blocked`，severity 只能 `low`／`med`；
+S0、S1、high severity、S4、找不到票或已結案一律 BLOCK。receipt 同時保留原始紅燈與
+ticket，不把 deferred 當成 pass。這套模型降低日常排隊與等待，不降低正式發布的 S4 標準。
 
 同一工作樹追加變更時，gate 可在**輸入指紋仍一致**且新增 diff 不屬於該 gate 責任範圍時重用先前的
 `pass/warn`；record 與 cutover payload 會列出 `reused_from_head`、輸入檔案集合、指紋與每道 gate

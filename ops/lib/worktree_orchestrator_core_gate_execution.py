@@ -239,6 +239,8 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     # of ONE check; capability lives at the base name.
                     "base_name": r["name"].split(":")[0],
                     "status": r.get("status"),
+                    "original_status": r.get("original_status", r.get("status")),
+                    "disposition": r.get("deferral", {}).get("disposition"),
                     "rc": r.get("rc"),
                     "level": r.get("level"),
                     "dur_s": r.get("dur_s"),

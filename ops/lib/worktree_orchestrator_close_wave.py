@@ -200,6 +200,52 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
 
     branches = list(args.branches or [])
     persisted = integration_state or manifest
+    try:
+        requested_gate_tier = normalize_gate_tier(
+            getattr(args, "gate_tier", None)
+        )
+    except GateTierError as exc:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave", "slug": args.slug,
+            "error": str(exc),
+        }, args.json, f"✗ close-wave refused: {exc}")
+        return EXIT_USAGE
+    try:
+        persisted_gate_tier = (
+            normalize_gate_tier(persisted.get("gate_tier"))
+            if isinstance(persisted, dict) and persisted.get("gate_tier") is not None
+            else None
+        )
+    except GateTierError as exc:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave", "slug": args.slug,
+            "error": f"persisted integration state has invalid gate tier: {exc}",
+        }, args.json, f"✗ close-wave refused: invalid persisted gate tier: {exc}")
+        return EXIT_BLOCK
+    if persisted_gate_tier is not None and requested_gate_tier != persisted_gate_tier:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave", "slug": args.slug,
+            "error": "gate tier must match the persisted integration state",
+            "persisted_gate_tier": persisted_gate_tier,
+            "requested_gate_tier": requested_gate_tier,
+        }, args.json,
+            "✗ close-wave refused: repeat the original --gate-tier exactly")
+        return EXIT_USAGE
+    persisted_deferrals = (
+        list(persisted.get("defer_gates") or [])
+        if isinstance(persisted, dict) else []
+    )
+    requested_deferrals = list(getattr(args, "defer_gate", []) or [])
+    if persisted is not None and requested_deferrals and requested_deferrals != persisted_deferrals:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave", "slug": args.slug,
+            "error": "gate deferrals must match the persisted integration state",
+            "persisted_defer_gates": persisted_deferrals,
+            "requested_defer_gates": requested_deferrals,
+        }, args.json,
+            "✗ close-wave refused: repeat the original --defer-gate values exactly")
+        return EXIT_USAGE
+    effective_deferrals = requested_deferrals or persisted_deferrals
     requested_independent = bool(getattr(args, "independent", False))
     persisted_independent = (
         isinstance(persisted, dict) and persisted.get("independent") is True
@@ -508,11 +554,16 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
 
     if not args.commit:
         independent_suffix = " --independent" if requested_independent else ""
+        tier_suffix = (f" --gate-tier {requested_gate_tier}"
+                       if requested_gate_tier != DEFAULT_GATE_TIER else "")
+        deferral_suffix = "".join(
+            f" --defer-gate {shlex.quote(item)}" for item in effective_deferrals
+        )
         plan = [
             "integrate --commit --no-gate"
             f"{independent_suffix} (fresh) or --continue --commit"
-            f"{independent_suffix} (resume)",
-            "integrated-tree fresh Gate",
+            f"{independent_suffix}{tier_suffix}{deferral_suffix} (resume)",
+            f"integrated-tree fresh Gate ({requested_gate_tier})",
             "cutover --commit",
             "resolve every source with --via-integration main",
             "backlog.py anchor --commit",
@@ -523,11 +574,13 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
         if getattr(args, "sync", False):
             plan.append("sync --commit -> origin/main (backup leg)")
         if integration_state:
-            next_step = f"integrate --continue --commit{independent_suffix}"
+            next_step = (f"integrate --continue --commit{independent_suffix}"
+                         f"{tier_suffix}{deferral_suffix}")
         elif manifest:
             next_step = "cutover --commit"
         else:
-            next_step = f"integrate --commit --no-gate{independent_suffix}"
+            next_step = (f"integrate --commit --no-gate{independent_suffix}"
+                         f"{tier_suffix}{deferral_suffix}")
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "dry-run",
             "slug": args.slug, "branches": branches, "allowed_branches": sorted(allowed),
@@ -574,6 +627,8 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             [
                 "integrate", "--slug", args.slug, "--branches", *branches,
                 "--no-gate", "--commit", "--base", operation_base,
+                "--gate-tier", requested_gate_tier,
+                *sum((["--defer-gate", item] for item in effective_deferrals), []),
                 *(["--independent"] if requested_independent else []),
                 *_state_arg(args.state),
             ],
@@ -630,7 +685,9 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
             integration_worktree,
             [
                 "integrate", "--slug", args.slug, "--continue", "--commit",
-                "--base", operation_base, *_state_arg(args.state),
+                "--base", operation_base, "--gate-tier", requested_gate_tier,
+                *sum((["--defer-gate", item] for item in effective_deferrals), []),
+                *_state_arg(args.state),
                 *(["--independent"] if requested_independent else []),
             ],
             label=f"integrate-gate:{args.slug}",

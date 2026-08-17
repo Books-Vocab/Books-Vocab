@@ -253,6 +253,7 @@ def cmd_integrate(args) -> int:
             "--append": bool(args.append),
             "--abort": bool(args.abort),
             "--no-gate": bool(args.no_gate),
+            "--defer-gate": bool(getattr(args, "defer_gate", [])),
             "--allow-unhanded": bool(args.allow_unhanded),
             "--commit": bool(args.commit),
             "--independent": bool(getattr(args, "independent", False)),
@@ -596,6 +597,7 @@ def _integrate_start(args, spath: Path) -> int:
         "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
         "branches": list(args.branches),
         "gate_tier": gate_tier,
+        "defer_gates": list(getattr(args, "defer_gate", []) or []),
         "independent": bool(getattr(args, "independent", False)),
         "handoff": handoff,
         "queue": [c for p in plan for c in p["commits"]],
@@ -709,6 +711,18 @@ def _integrate_append(args, spath: Path) -> int:
             "requested_gate_tier": requested_tier,
         }, args.json,
             "✗ integrate --append refused: repeat the original --gate-tier exactly")
+        return EXIT_USAGE
+    persisted_deferrals = list(st.get("defer_gates") or [])
+    requested_deferrals = list(getattr(args, "defer_gate", []) or [])
+    if requested_deferrals and requested_deferrals != persisted_deferrals:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+            "mode": "refused", "slug": args.slug,
+            "error": "gate deferrals must match the persisted integration state",
+            "persisted_defer_gates": persisted_deferrals,
+            "requested_defer_gates": requested_deferrals,
+        }, args.json,
+            "✗ integrate --append refused: repeat the original --defer-gate values exactly")
         return EXIT_USAGE
     independent_suffix = " --independent" if persisted_independent else ""
     wt = st.get("worktree")
@@ -987,14 +1001,21 @@ def _integrate_picked_only(args, spath: Path, st: dict[str, Any]) -> int:
     _integrate_save(spath, st)
     wt = st["worktree"]
     independent_suffix = " --independent" if st.get("independent") is True else ""
+    gate_tier_suffix = (f" --gate-tier {st['gate_tier']}"
+                        if st.get("gate_tier", DEFAULT_GATE_TIER) != DEFAULT_GATE_TIER
+                        else "")
+    deferral_suffix = "".join(f" --defer-gate {shlex.quote(item)}"
+                              for item in st.get("defer_gates") or [])
     next_step = (f"{wt}/ops/worktree_orchestrate.py integrate --slug "
-                 f"{st['slug']} --continue --commit{independent_suffix}")
+                 f"{st['slug']} --continue --commit{independent_suffix}"
+                 f"{gate_tier_suffix}{deferral_suffix}")
     payload = {
         "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "picked",
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
         "independent": st.get("independent") is True,
         "gate_tier": st.get("gate_tier", DEFAULT_GATE_TIER),
+        "defer_gates": list(st.get("defer_gates") or []),
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "remaining": st.get("queue", []), "head_sha": _head_sha(wt),
         "gated": False, "verdict": None, "landed": False,
@@ -1047,9 +1068,11 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         return EXIT_BLOCK
 
     gate_tier = normalize_gate_tier(st.get("gate_tier"))
+    defer_gates = list(st.get("defer_gates") or [])
     grc, gpay = _land_step(
         cmd_gate, state=args.state, json=True, base=args.base, worktree=wt,
-        gate_tier=gate_tier, receipt_line=False, plan_only=False,
+        gate_tier=gate_tier, defer_gate=defer_gates,
+        receipt_line=False, plan_only=False,
     )
     verdict = gpay.get("verdict")
     if verdict is None:
@@ -1103,6 +1126,9 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
            if requires_revision else {}),
         **({"integration_revision": integration_revision}
            if integration_revision is not None else {}),
+        "gate_tier": gate_tier,
+        "deferral_requests": gpay.get("deferral_requests", []),
+        "deferred_failures": gpay.get("deferred_failures", []),
         "gates": [{"name": g.get("name"), "status": g.get("status"),
                    "summary": g.get("summary")}
                   for g in (gpay.get("gates") or [])
@@ -1111,23 +1137,29 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
     if integration_revision is not None:
         st["integration_revision"] = integration_revision
     _integrate_save(spath, st)
+    deferral_suffix = "".join(f" --defer-gate {shlex.quote(item)}"
+                              for item in defer_gates)
     next_step = (f"{wt}/ops/worktree_orchestrate.py cutover --worktree {wt} --commit"
                  if verdict in ("pass", "warn")
                  else f"fix the blocking gate(s), then run `{wt}/ops/"
                       f"worktree_orchestrate.py integrate --slug {st['slug']} "
                       f"--continue --commit"
-                      f"{' --independent' if st.get('independent') is True else ''}`")
+                      f"{' --independent' if st.get('independent') is True else ''}"
+                      f"{deferral_suffix}`")
     payload = {
         "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
         "independent": st.get("independent") is True,
         "gate_tier": gate_tier,
+        "defer_gates": defer_gates,
         "handoff": st.get("handoff", {"checked": st["branches"],
                                         "warnings": [], "problems": []}),
         "source_claim": st.get("source_claim"),
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "head_sha": head, "gate": st["gate"], "gate_runs": 1,
+        "deferral_requests": gpay.get("deferral_requests", []),
+        "deferred_failures": gpay.get("deferred_failures", []),
         **({"runner_revision": runner_revision}
            if requires_revision else {}),
         **({"integration_revision": integration_revision}
@@ -1223,6 +1255,18 @@ def _integrate_continue(args, spath: Path) -> int:
         }, args.json,
             "✗ integrate --continue refused: repeat the original --gate-tier exactly")
         return EXIT_USAGE
+    persisted_deferrals = list(st.get("defer_gates") or [])
+    requested_deferrals = list(getattr(args, "defer_gate", []) or [])
+    if requested_deferrals and requested_deferrals != persisted_deferrals:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+            "slug": args.slug, "state_file": str(spath),
+            "error": "gate deferrals must match the persisted integration state",
+            "persisted_defer_gates": persisted_deferrals,
+            "requested_defer_gates": requested_deferrals,
+        }, args.json,
+            "✗ integrate --continue refused: repeat the original --defer-gate values exactly")
+        return EXIT_USAGE
     persisted_independent = st.get("independent") is True
     requested_independent = bool(getattr(args, "independent", False))
     if persisted_independent != requested_independent:
@@ -1239,6 +1283,8 @@ def _integrate_continue(args, spath: Path) -> int:
     independent_suffix = " --independent" if persisted_independent else ""
     gate_tier_suffix = (f" --gate-tier {persisted_tier}"
                         if persisted_tier != DEFAULT_GATE_TIER else "")
+    deferral_suffix = "".join(f" --defer-gate {shlex.quote(item)}"
+                              for item in persisted_deferrals)
     wt = st["worktree"]
     if not Path(wt).is_dir():
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
@@ -1318,7 +1364,8 @@ def _integrate_continue(args, spath: Path) -> int:
                    "error": f"`git cherry-pick --continue` failed:\n{out[-800:]}\n"
                             f"  fix it in {wt} (an empty pick wants `git -C {wt} "
                             f"cherry-pick --skip`), then re-run "
-                        f"--continue{independent_suffix}{gate_tier_suffix}; or "
+                        f"--continue{independent_suffix}{gate_tier_suffix}"
+                        f"{deferral_suffix}; or "
                             f"`--abort --commit`",
                    "detail": out[-2000:]}, args.json,
                   f"✗ integrate --continue: cherry-pick --continue failed:\n{out}")
