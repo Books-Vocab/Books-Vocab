@@ -136,7 +136,7 @@ def test_legacy_collector_matches_split_behavior_collection():
 def test_route_manifest_has_explicit_selectors_and_negative_control():
     manifest = ROUTES.route_manifest()
     assert manifest["schema"] == "kg.test.route.v1"
-    assert len(manifest["routes"]) == 7
+    assert len(manifest["routes"]) == 8
     for route in manifest["routes"]:
         assert route["route_id"]
         assert route["source_patterns"]
@@ -153,6 +153,50 @@ def test_route_manifest_has_explicit_selectors_and_negative_control():
     assert ROUTES.resolve_routes(["ops/test_route.py"])["fallback"] is True
     assert ROUTES.resolve_routes(["ops/lib/worktree_gate_tiers.py"])["fallback"] is False
     assert ROUTES.resolve_routes(["ops/tests/worktree_orchestrate_support.py"])["fallback"] is False
+
+
+def test_control_plane_and_kg_board_sources_have_explicit_focused_routes():
+    control_plane = ROUTES.resolve_routes([
+        "ops/lib/worktree_gate_tiers.py",
+        "ops/lib/worktree_test_routes.py",
+    ])
+    assert control_plane["fallback"] is False
+    assert "orchestrator.facade" in {
+        route["route_id"] for route in control_plane["routes"]
+    }
+    facade = next(
+        route for route in control_plane["routes"]
+        if route["route_id"] == "orchestrator.facade"
+    )
+    assert "ops/tests/test_orchestrator_seams.py" in facade["selectors"]
+    assert "ops/tests/test_worktree_gate_tiers.py" in facade["selectors"]
+
+    board = ROUTES.resolve_routes([
+        "ops/kg_board/__init__.py",
+        "ops/kg_board/git_tree.py",
+        "ops/kg_board/model.py",
+        "ops/kg_board/scope.py",
+        "ops/kg_board/server.py",
+    ])
+    assert board["fallback"] is False
+    assert [route["route_id"] for route in board["routes"]] == [
+        "orchestrator.kg-board",
+    ]
+    assert set(board["routes"][0]["selectors"]) == {
+        "ops/tests/test_kg_board_git_tree.py",
+        "ops/tests/test_kg_board_model.py",
+        "ops/tests/test_kg_board_web.py",
+    }
+
+
+def test_unknown_source_still_fails_safe_alongside_known_routes():
+    payload = ROUTES.resolve_routes([
+        "ops/lib/worktree_gate_tiers.py",
+        "ops/kg_board/model.py",
+        "ops/kg_board_future.py",
+    ])
+    assert payload["fallback"] is True
+    assert payload["routes"][0]["route_id"] == "orchestrator.fallback"
 
 
 def test_core_gate_inputs_use_the_gate_route_instead_of_fallback():
