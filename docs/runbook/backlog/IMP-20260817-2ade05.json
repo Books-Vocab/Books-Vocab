@@ -13,7 +13,7 @@
   "detail": "現行 gate 已不再要求 commit review metadata，但 active backlog 與維護註解仍把舊 gate 名稱當成修法目標。清理 active contract，保留 archive 與歷史 receipt 作為 provenance，不讓新 worker 追不存在的入口。",
   "fix_site": "ops/worktree_orchestrate.py; docs/sop/review_discipline.md; docs/registry.yml",
   "fixed_by": [
-    "f0c440f60009ab70c1b999048d866a781a7b02c7"
+    "474b71818"
   ],
   "groomed_against": "d7d98039f31019e96854de6592cbc9d7f82ffd8d",
   "groomed_at": "2026-08-17",
