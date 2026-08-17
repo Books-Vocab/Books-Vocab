@@ -107,7 +107,7 @@ def test_open_next_backlog_claims_the_next_available_ticket_instead_of_racing_on
 
     rc1, first = _run_json([
         "open", "--intent", "round four lane", "--slug", "round-four-01",
-        "--next-backlog", "--state", state, "--json",
+        "--next-backlog", "--codex-thread-id", "thread-next", "--state", state, "--json",
     ])
     rc2, second = _run_json([
         "open", "--intent", "round five lane", "--slug", "round-five-01",
@@ -123,6 +123,9 @@ def test_open_next_backlog_claims_the_next_available_ticket_instead_of_racing_on
     active = [r for r in json.loads(Path(state).read_text())["records"]
               if r["status"] == "active"]
     assert {r["backlog"][0] for r in active} == {"IMP-0001", "IMP-0002"}
+    assert next(r for r in active if r["backlog"] == ["IMP-0001"])["codex_thread_id"] == (
+        "thread-next"
+    )
 
 def test_next_backlog_uses_its_owning_repo_for_contract_preflight(tmp_path):
     repo = tmp_path / "external-repo"

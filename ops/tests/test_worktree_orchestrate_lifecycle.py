@@ -1320,6 +1320,24 @@ def test_adopt_registers_an_out_of_band_worktree(scratch):
     assert Path(mine[0]["path"]).resolve() == wt.resolve()
 
 @gitmark
+def test_adopt_refuses_direct_scope_with_explicit_empty_backlog(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "oob"
+    scope = tmp_path / "scope.json"
+    scope.write_text(json.dumps({
+        "files": [{"path": "ops/direct.py", "operation": "modify"}],
+    }), encoding="utf-8")
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+
+    rc, _res = _run_json([
+        "adopt", "--worktree", str(wt), "--intent", "direct scope",
+        "--scope-file", str(scope), "--backlog", "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_USAGE
+    assert not Path(state).exists()
+
+@gitmark
 def test_adopt_is_idempotent(scratch):
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")

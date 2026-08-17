@@ -72,11 +72,13 @@ ops/worktree_orchestrate.py preflight --commit --json # 確認殘骸可清才落
 
 **b. open**：
 ```
-ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab-slug> [--type debug|feat|research] [--backlog IMP-xxxx ...] --json
+ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab-slug> [--type debug|feat|research] [--backlog IMP-xxxx ...] [--scope-file <scope.json>] [--codex-thread-id <thread-id>] --json
 ```
 **先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 預設由 intent 推論，`--type` 可顯式指定並勝過推論）。記下回傳的 `path`。
 
 單一協調者可先用 `./ops/backlog.py dispatch` 再明示 `--backlog`。**兩個以上協調者同步取票時改用 `--next-backlog`**：工具在同一把本機 registry lock 內，以 backlog 的既有 dispatch predicate/worst-first 排序選第一張尚未認領的票並立即登記；兩邊會拿到不同票，不會都讀到同一份 top-N snapshot 再讓敗方整批重試。明示 `--backlog` 也不能繞過未解的 `blocked_by`；同 slug/path 的第二次 `open` 由 exclusive birth 拒絕，不會把第一個成功者當成 idempotent update。
+
+直接指派 worktree 若要讓看板顯示檔案佔用，必須在出生時帶 `--scope` 或 `--scope-file`；這兩個參數不可與任何 `--backlog`／campaign claim 同用，ticketed worktree 的 Scope 只由票據提供。`--codex-thread-id` 是穩定 owner join key；同一 thread 可綁多個 direct／ticketed worktree，thread 改名只更新看板的顯示 title，不改 claims 或 worktree identity。既有樹可用 `./ops/worktree_registry.py scope set ...` 宣告 Scope、`owner bind ...` 綁定 thread。
 
 需要先把多票分區、quota、structured write sites 與 blocked/co-land 關係一次凍結時，使用 `campaign-reserve --request-file <manifest.json> --commit --json`；它在 canonical registry lock 內重讀 primary base、backlog 與 active claims，驗證通過後才原子保存 campaign manifest 與 registry reservation。之後以 `open --next-backlog --campaign <campaign-id> --partition <partition-id>` 從該分區逐票轉移 reservation→active claim；普通 `open --next-backlog` 會排除尚未轉移的 reserved tickets。path/symbol/mode 不明或跨票 collision 預設 fail-closed，除非 request 具名 `blocked_by` 或相同 `co_land_group` 的序列化證據。
 

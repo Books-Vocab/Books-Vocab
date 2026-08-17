@@ -1109,11 +1109,15 @@ def claim_campaign_ticket(
     repo_root_path: Path | str | None = None,
     now_iso: str | None = None,
     delegated: bool | None = None,
+    codex_thread_id: str | None = None,
 ) -> dict[str, Any]:
     """Atomically transfer one campaign reservation into an active record."""
     state_path = Path(state_path).resolve()
     timestamp = now_iso or datetime.now(timezone.utc).isoformat()
     path = os.path.abspath(path)
+    owner = str(codex_thread_id).strip() if codex_thread_id is not None else None
+    if codex_thread_id is not None and not owner:
+        return {"ok": False, "reason": "invalid-codex-thread-id"}
     with _ledger_lock(state_path):
         state = load_state(state_path)
         reservation = next(
@@ -1169,6 +1173,9 @@ def claim_campaign_ticket(
             "partition_id": partition_id,
             "role": "child",
         }
+        if owner is not None:
+            record["codex_thread_id"] = owner
+            record["codex_thread_bound_at"] = timestamp
         claimed[ticket] = {"branch": branch, "path": path, "claimed_at": timestamp}
         state.setdefault("records", []).append(record)
         save_state(state_path, state)
@@ -1771,6 +1778,26 @@ def cmd_register(args: argparse.Namespace) -> int:
               f"`imp-0001` would silently be a different ticket from `IMP-0001` and "
               f"claim nothing.", file=sys.stderr)
         return EXIT_USAGE
+    # Scope ownership is a locked-upsert invariant, not merely a parser rule:
+    # an existing direct record must not retain Scope while gaining a ticket,
+    # and an explicit empty --backlog still counts as a ticket-mode argument.
+    # Check before rec.update so every refusal leaves the on-disk ledger byte
+    # identical to the caller's snapshot.
+    if scope_provided and args.backlog is not None:
+        return _scope_refusal(
+            args, "direct-scope-cannot-use-backlog-flag",
+            detail="--scope/--scope-file cannot be combined with --backlog, even when it is empty",
+        )
+    if wanted and any(r.get("scope") for r in matches):
+        return _scope_refusal(
+            args, "direct-scope-cannot-become-ticketed",
+            detail="existing direct worktree Scope must be cleared by an explicit lifecycle change before claiming tickets",
+        )
+    if scope_provided and any(r.get("backlog") for r in matches):
+        return _scope_refusal(
+            args, "ticketed-worktree-scope-owned-by-tickets",
+            detail="ticketed worktree 的 Scope 必須由其 tickets 宣告",
+        )
     if wanted and scope_provided:
         return _scope_refusal(
             args, "ticketed-worktree-scope-owned-by-tickets",

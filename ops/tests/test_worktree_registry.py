@@ -670,6 +670,27 @@ def test_direct_scope_and_codex_thread_owner_roundtrip(tmp_path):
     assert record["scope"]["files"] == [{"path": "ops/ui.js", "operation": "modify"}]
     assert record["codex_thread_id"] == "thread-agent-a"
 
+    # A live direct worktree cannot be silently converted into a ticketed one:
+    # that would leave a stale worktree Scope beside the new claim. Refusal must
+    # happen before the locked upsert mutates any bytes.
+    before = state.read_bytes()
+    assert MODULE.main([
+        "register", *common, "--path", str(tmp_path / "direct"),
+        "--branch", "feat/direct", "--intent", "direct now ticketed", "--base", "main",
+        "--backlog", "IMP-20260818-scope", "--json",
+    ]) == MODULE.EXIT_USAGE
+    assert state.read_bytes() == before
+
+    # argparse represents an explicitly supplied empty --backlog as [], so the
+    # boundary must reject that flag too when --scope is present.
+    before = state.read_bytes()
+    assert MODULE.main([
+        "register", *common, "--path", str(tmp_path / "direct"),
+        "--branch", "feat/direct", "--intent", "direct empty claim", "--base", "main",
+        "--scope-file", str(replacement), "--backlog", "--json",
+    ]) == MODULE.EXIT_USAGE
+    assert state.read_bytes() == before
+
 
 def test_one_codex_thread_can_bind_multiple_active_worktrees(tmp_path):
     state = tmp_path / "reg.json"
