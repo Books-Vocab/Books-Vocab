@@ -74,6 +74,36 @@ def test_missing_exact_dimensions_use_low_confidence_same_command_fallback(tmp_p
     assert "fallback" in estimate["basis"]
 
 
+def test_bundle_eta_is_unknown_when_any_task_has_no_history(tmp_path):
+    db = tmp_path / "timing.sqlite3"
+    _record(db, 7.0)
+    estimate = store.estimate_bundle([
+        {"id": "known", "command_key": "ops.orchestrator.gate", "selector": "gate.py::test"},
+        {"id": "unknown", "command_key": "ops.orchestrator.missing"},
+    ], db_path=db)
+    assert estimate["estimate_s"] is None
+    assert estimate["unknown_tasks"] == ["unknown"]
+
+
+def test_bundle_eta_preserves_selector_suite_and_tier_dimensions(tmp_path):
+    db = tmp_path / "timing.sqlite3"
+    common = dict(
+        db_path=db, run_id="run", bundle_id="bundle", suite="suite", tier="S1", host="oscar",
+        runtime_version="python-3.13", xcode_or_device=None, dataset=None, head_sha="b" * 40,
+        resource_class="ops-python", started_at="2026-08-17T00:00:00+00:00",
+        finished_at="2026-08-17T00:00:01+00:00", status="pass", exit_code=0,
+        cache_status="warm", timing_source="test",
+    )
+    store.record_measurement(command_key="ops.bundle", selector="A", duration_s=1.0, **common)
+    store.record_measurement(command_key="ops.bundle", selector="B", duration_s=100.0, **common)
+    estimate = store.estimate_bundle([
+        {"id": "a", "command_key": "ops.bundle", "selector": "A", "suite": "suite", "tier": "S1",
+         "host": "oscar", "runtime_version": "python-3.13", "resource_class": "ops-python",
+         "cache_status": "warm"},
+    ], db_path=db)
+    assert estimate["estimate_s"] == 1.0
+
+
 def test_concurrent_writes_are_transactional(tmp_path):
     db = tmp_path / "timing.sqlite3"
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -101,6 +131,19 @@ def test_prune_keeps_aggregated_rollup(tmp_path):
     assert result["rollups"] == 1
     with store.connection(db) as conn:
         assert conn.execute("SELECT count(*) FROM timing_rollups").fetchone()[0] == 1
+    estimate = store.estimate("ops.orchestrator.gate", db_path=db, selector="gate.py::test",
+                              suite="worktree-orchestrator", tier="S1", host="oscar",
+                              runtime_version="python-3.13", resource_class="ops-python",
+                              cache_status="warm")
+    assert estimate["sample_count"] == 1
+
+
+def test_prune_initializes_empty_store_and_corrupt_store_is_non_blocking(tmp_path):
+    db = tmp_path / "new.sqlite3"
+    assert store.prune(db)["available"] is True
+    corrupt = tmp_path / "corrupt.sqlite3"
+    corrupt.write_bytes(b"not sqlite")
+    assert store.prune(corrupt)["available"] is False
 
 
 def test_bundle_eta_serializes_same_resource_lane(tmp_path):
@@ -125,6 +168,20 @@ def test_status_and_wait_cli_read_atomic_status(tmp_path, capsys):
     args = Namespace(run_id="run-1", repo=str(tmp_path), json=True)
     assert test_timing.cmd_status(args) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "passed"
+
+
+def test_status_rejects_path_traversal_and_wait_timeout_is_bounded(tmp_path, capsys, monkeypatch):
+    args = Namespace(run_id="../escape", repo=str(tmp_path), json=True)
+    assert test_timing.cmd_status(args) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "error"
+    sleeps = []
+    monkeypatch.setattr(test_timing.time, "sleep", lambda seconds: sleeps.append(seconds))
+    clock = iter((0.0, 0.0, 0.0, 0.2))
+    monkeypatch.setattr(test_timing.time, "monotonic", lambda: next(clock))
+    args = Namespace(run_id="run-missing", repo=str(tmp_path), json=True,
+                     interval_s=60.0, timeout_s=0.1)
+    assert test_timing.cmd_wait(args) == 1
+    assert all(seconds <= 0.1 for seconds in sleeps)
 
 
 def test_unknown_timing_command_is_rejected():

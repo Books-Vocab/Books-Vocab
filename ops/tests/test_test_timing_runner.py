@@ -85,6 +85,43 @@ def test_bundle_warning_failure_does_not_fail_verdict(tmp_path, monkeypatch, cap
     assert payload["warnings"] == ["warn"]
 
 
+def test_bundle_rejects_unknown_failure_policy(tmp_path, capsys):
+    manifest = _manifest(tmp_path, [{
+        "id": "bad-policy", "command_key": "command.bad", "command": _command("pass"),
+        "failure_policy": "blocK",
+    }])
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-bad-policy", json=True)
+    assert test_timing.cmd_run_bundle(args) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "error"
+
+
+def test_bundle_unknown_command_marks_task_error_not_running(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("KG_TASK_REGISTRY_PATH", str(tmp_path / "tasks.json"))
+    manifest = _manifest(tmp_path, [{"id": "unknown", "command_key": "command.unknown"}])
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-unknown", json=True)
+    assert test_timing.cmd_run_bundle(args) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["tasks"][0]["status"] == "error"
+
+
+def test_bundle_ingests_and_cleans_xdist_sidecar_outputs(tmp_path, monkeypatch):
+    monkeypatch.setenv("KG_TEST_TIMING_DB", str(tmp_path / "timing.sqlite3"))
+    base = tmp_path / "timing.jsonl"
+    sidecar = tmp_path / "timing.jsonl.gw0"
+    row = {"command_key": "pytest.xdist", "selector": "test_one", "suite": "pytest",
+           "duration_s": 0.1, "status": "pass", "exit_code": 0}
+    base.write_text(json.dumps(row) + "\n")
+    sidecar.write_text(json.dumps({**row, "selector": "test_two"}) + "\n")
+    count = test_timing._ingest_plugin_output(
+        base, run_id="run-xdist", bundle_id="bundle", task={"resource_class": "lane"},
+        started_at="2026-08-17T00:00:00+00:00", finished_at="2026-08-17T00:00:01+00:00",
+    )
+    assert count == 2
+    assert not base.exists()
+    assert not sidecar.exists()
+
+
 def test_bundle_timeout_is_terminal_and_not_a_normal_sample(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("KG_TASK_REGISTRY_PATH", str(tmp_path / "tasks.json"))
     monkeypatch.setenv("KG_TEST_TIMING_DB", str(tmp_path / "timing.sqlite3"))
