@@ -37,13 +37,18 @@
         <button type="button" id="tree-reset" class="tree-control-button secondary">重設</button>
       </div>
       <div id="tree-alert" class="tree-alert" role="status"></div>
+      <div class="tree-boundary-note" role="note">
+        <span class="tree-boundary-symbol" aria-hidden="true">⋯</span>
+        <span><strong>圖面邊界</strong>：表示 parent 或被截短的中間歷史不在目前 bounded window，不是額外 commit；移到標記、branch 名稱或 commit 節點查看詳細資料。</span>
+      </div>
       <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
       <div id="tree-mobile-list" class="tree-mobile-list" aria-label="分支與 commit 清單"></div>
       <div id="tree-legend" class="tree-legend" aria-label="分支與工作樹狀態"></div>
       <div id="tree-held-tickets" class="tree-held-tickets" aria-live="polite"></div>
+      <div id="tree-hover-card" class="tree-hover-card" role="status" aria-live="polite" hidden></div>
       <aside id="commit-inspector" class="commit-inspector" aria-live="polite">
         <span class="eyebrow">COMMIT INSPECTOR</span>
-        <p>將游標移到 commit 或 branch 節點查看詳細資料。</p>
+        <p>將游標移到 commit 或 branch 節點查看詳細資料；鍵盤可用 Tab 聚焦。</p>
       </aside>
     </section>
 
