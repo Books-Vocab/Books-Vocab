@@ -2600,6 +2600,8 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     "rc": r.get("rc"),
                     "level": r.get("level"),
                     "dur_s": r.get("dur_s"),
+                    "lock_wait_ms": r.get("lock_wait_ms", 0),
+                    "work_dur_s": r.get("work_dur_s", r.get("dur_s")),
                     # False only for gates that never started (spawn failure). A row
                     # for a check that did not run must not be usable as evidence
                     # about whether that check can pass.
@@ -2977,6 +2979,40 @@ def _run_streamed_command(
     return completed.returncode, completed.stdout, completed.elapsed_s
 
 
+_LOCK_WAIT_PATTERNS = {
+    "lockWaitMs": re.compile(
+        r"(?<![A-Za-z0-9_])lockWaitMs(?:=|:)\s*(\d+(?:\.\d+)?)\b"
+    ),
+    "deviceRunLockWaitMs": re.compile(
+        r"(?<![A-Za-z0-9_])deviceRunLockWaitMs(?:=|:)\s*(\d+(?:\.\d+)?)\b"
+    ),
+}
+
+
+def _duration_fields(elapsed_s: float, output: str = "") -> dict[str, float | int]:
+    """Keep runner wall time and known iOS lock time as separate measurements.
+
+    ``dur_s`` is the monotonic wall time measured by ``run_streamed_command``. The
+    iOS wrappers expose lock waits as ``lockWaitMs`` and
+    ``deviceRunLockWaitMs``; use the last value for each field because wrappers may
+    print an acquisition line and a final timing line. Non-iOS gates omit both
+    fields, so their work duration remains the full elapsed time.
+    """
+    elapsed = max(float(elapsed_s), 0.0)
+    waits_ms = []
+    for pattern in _LOCK_WAIT_PATTERNS.values():
+        matches = pattern.findall(output)
+        if matches:
+            waits_ms.append(float(matches[-1]))
+    lock_wait_ms = round(sum(waits_ms), 3)
+    work_dur_s = max(elapsed - lock_wait_ms / 1000.0, 0.0)
+    return {
+        "dur_s": round(elapsed, 6),
+        "lock_wait_ms": lock_wait_ms,
+        "work_dur_s": round(work_dur_s, 6),
+    }
+
+
 def _failed_gate_summary(returncode: int, output: str, tail: str,
                          log_path: Path | None) -> str:
     """What a blocked operator actually reads: named failures, then the tail, then
@@ -3075,7 +3111,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
             result.update(_run_verified_against(worktree, spec["files"]))
         else:  # advisory-only gate (e.g. backend-tests-advisory)
             result.update({"status": "warn", "rc": 0, "summary": spec.get("note", "advisory")})
-        result["dur_s"] = round(time.monotonic() - started, 6)
+        result.update(_duration_fields(time.monotonic() - started))
         result["machine_state"] = _machine_state_record(machine_before, _machine_state(state))
         return result
 
@@ -3105,10 +3141,10 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     try:
         cwd.stat()
     except FileNotFoundError:
+        result.update(_duration_fields(time.monotonic() - started))
         result.update({
             "status": "block" if level == "block" else "warn",
             "rc": 127,
-            "dur_s": round(time.monotonic() - started, 6),
             "executed": False,
             "summary": (f"gate tool not runnable: cmd={spec['cmd'][0]} cwd={cwd} — "
                         f"FileNotFoundError on {cwd}"),
@@ -3120,7 +3156,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         returncode, output, dur_s = _run_streamed_command(
             spec["cmd"], cwd=cwd, gate_name=name, capture_limit=GATE_CAPTURE_LIMIT,
         )
-        result["dur_s"] = round(dur_s, 6)
+        result.update(_duration_fields(dur_s, output))
     except OSError as exc:
         # The router and the tools it routes to can be different generations
         # (IMP-0045): a branch that deleted a script leaves a stale router still
@@ -3148,8 +3184,8 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # never pass. The next genuine red then arrives carrying "no green ever
         # recorded", steering the reader away from their own bug. rc alone cannot
         # carry this: a tool that RAN and exited 127 is a real red.
+        result.update(_duration_fields(time.monotonic() - started))
         result.update({"status": "block" if level == "block" else "warn", "rc": 127,
-                       "dur_s": round(time.monotonic() - started, 6),
                        "executed": False, "summary": summary,
                        "machine_state": _machine_state_record(
                            machine_before, _machine_state(state))})
