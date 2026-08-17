@@ -404,6 +404,18 @@ def test_git_tree_browser_routes_cross_lane_edges_without_shared_horizontal_buse
     assert "C ${" in js
 
 
+def test_git_tree_browser_exposes_adjustable_worktree_lane_spacing():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="tree-lane-spacing"' in index
+    assert 'id="tree-lane-spacing-value"' in index
+    assert "TREE_LANE_WIDTH_MIN" in js
+    assert "TREE_LANE_WIDTH_MAX" in js
+    assert "let treeLaneWidth = TREE_LANE_WIDTH" in js
+    assert "tree-lane-spacing" in js
+
+
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")

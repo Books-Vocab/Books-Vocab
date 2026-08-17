@@ -90,10 +90,14 @@ const TREE_ZOOM_MIN = 70;
 const TREE_ZOOM_MAX = 140;
 const TREE_ZOOM_STEP = 10;
 const TREE_LANE_WIDTH = 124;
+const TREE_LANE_WIDTH_MIN = 104;
+const TREE_LANE_WIDTH_MAX = 224;
+const TREE_LANE_WIDTH_STEP = 4;
 const TREE_ROW_HEIGHT = 44;
 const TREE_HEADER_HEIGHT = 66;
 const TREE_PADDING_X = 30;
 let treeZoom = 100;
+let treeLaneWidth = TREE_LANE_WIDTH;
 let treeBaseWidth = 0;
 let treeFitInitialized = false;
 function firstParentChain(sha,commits,limit=commits.size+1){
@@ -215,6 +219,10 @@ function renderTreeZoom(){
   const output=document.getElementById("tree-zoom-value");
   if(input){input.value=String(treeZoom);input.min=String(TREE_ZOOM_MIN);input.max=String(TREE_ZOOM_MAX);input.step=String(TREE_ZOOM_STEP);input.setAttribute("aria-valuetext",`${treeZoom}%`)}
   if(output)output.textContent=`${treeZoom}%`;
+  const laneInput=document.getElementById("tree-lane-spacing");
+  const laneOutput=document.getElementById("tree-lane-spacing-value");
+  if(laneInput){laneInput.value=String(treeLaneWidth);laneInput.min=String(TREE_LANE_WIDTH_MIN);laneInput.max=String(TREE_LANE_WIDTH_MAX);laneInput.step=String(TREE_LANE_WIDTH_STEP);laneInput.setAttribute("aria-valuetext",`${treeLaneWidth}px`)}
+  if(laneOutput)laneOutput.textContent=`${treeLaneWidth}px`;
 }
 function fitTreeZoom(){
   const mount=document.getElementById("git-tree");
@@ -486,11 +494,11 @@ function renderTree(){
   const layout=treeLayout(viewport,visibleCommits);
   const {branchLanes,positions,ordered}=layout;
   const maxLane=Math.max(0,...branchLanes.values());
-  const width=Math.max(680,TREE_PADDING_X*2+(maxLane+1)*TREE_LANE_WIDTH);
+  const width=Math.max(680,TREE_PADDING_X*2+(maxLane+1)*treeLaneWidth);
   treeBaseWidth=width;
   const height=Math.max(260,TREE_HEADER_HEIGHT+(layout.rowCount+1)*TREE_ROW_HEIGHT);
   const renderedWidth=Math.round(width*treeZoom/100),renderedHeight=Math.round(height*treeZoom/100);
-  const x=lane=>TREE_PADDING_X+lane*TREE_LANE_WIDTH;
+  const x=lane=>TREE_PADDING_X+lane*treeLaneWidth;
   const y=row=>TREE_HEADER_HEIGHT+row*TREE_ROW_HEIGHT;
   const graphEdges=[];
   ordered.forEach(row=>{
@@ -611,8 +619,15 @@ document.getElementById("tree-zoom").addEventListener("input",event=>{
   renderTreeZoom();
   if(tree)renderTree();
 });
+document.getElementById("tree-lane-spacing").addEventListener("input",event=>{
+  cancelTreeAutoFit();
+  const next=Number(event.target.value);
+  treeLaneWidth=Math.max(TREE_LANE_WIDTH_MIN,Math.min(TREE_LANE_WIDTH_MAX,Number.isFinite(next)?next:TREE_LANE_WIDTH));
+  renderTreeZoom();
+  if(tree)renderTree();
+});
 document.getElementById("tree-fit").addEventListener("click",()=>{cancelTreeAutoFit();fitTreeZoom()});
-document.getElementById("tree-reset").addEventListener("click",()=>{cancelTreeAutoFit();treeZoom=100;if(tree)renderTree();else renderTreeZoom()});
+document.getElementById("tree-reset").addEventListener("click",()=>{cancelTreeAutoFit();treeZoom=100;treeLaneWidth=TREE_LANE_WIDTH;if(tree)renderTree();else renderTreeZoom()});
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
 renderTreeZoom();
 load().catch(showLoadError);
