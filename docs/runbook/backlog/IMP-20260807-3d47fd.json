@@ -13,6 +13,9 @@
   "date": "2026-08-07",
   "detail": "`ops/kg_reconcile.sh` 的 `infra_crit_is_same_outage` 判定「這個 crit 是不是就是那場對外斷網」的方式是：`EXTERNAL_SMOKE_CLASS == unreachable` 且 infra 的 crit key 集合**恰好等於 `http_probe`**（`:296`）。但 `http_probe` 只說「HTTPS 端點探針不是 200」（`ops/infra_health.sh:186`：`hst=crit; [[ \"$HTTP_CODE\" == \"200\" ]] && hst=ok`）。\n\n**破口是真的**：本機 Caddy 掛掉／沒在聽，只要外部 smoke 同時也 unreachable，就會被歸因成同一場斷網而**不回滾**——一場「新版 compose 把本機 Caddy 弄壞」的部署事故因此逃過回滾。\n\n**但初稿列的五個「完全同形」成因有兩個是假的，review 實測推翻**：\n- **憑證過期**：`cert_days_left` 走 `th_low(days, 14, 3)`（`ops/infra_health.sh:194`）；實測 `CERT_DAYS` 為 -5 / 0 / 2 / 3 一律 crit → 多一個 crit key → `crit_keys != \"http_probe\"` → **不會被豁免**。\n- **FastAPI 502**：`ops/kg_reconcile.sh:249` `if (( saw_response == 1 )); then EXTERNAL_SMOKE_CLASS=\"bad\"`；502 是拿得到的 HTTP 回應 → 判 `bad` → `:318` 直接 `return 1`，**根本走不到 infra 這一關**。\n\n真正同形的成因只剩：本機 Caddy 死／沒在聽、DNS 解析失敗、以及真正的對外斷網。記下這件事是因為初稿的錯法很典型——**把「我想得到的成因」當成「會走到這條路徑的成因」**，而中間隔著兩道會提前分流的檢查。結論站得住，支撐它的證據清單四成不成立。\n\n**落地會改到生產 reconciler 的回滾決策，需執行長明確同意後才動。**",
   "fix_site": "ops/kg_reconcile.sh; ops/infra_health.sh; ops/tests/test_kg_reconcile.sh; docs/sop/deploy.md; docs/reference/tech_index.md",
+  "fixed_by": [
+    "fbbccf0b24fc2f89551d6598d98e97dceb0a6c00"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -23,10 +26,10 @@
   "scope": "兩支健康腳本、三份部署/技術文件與多情境測試。",
   "severity": "med",
   "source": "立單初稿被 review 推翻後重立",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "PARTIAL",
-  "verified_at": "2026-08-16",
-  "verified_by": "agent:ticket-factory-full-groom",
-  "verified_evidence": "Read-only current-main review: acceptance was shell-invalid because backticks were unquoted; current code/test still lack the value-sensitive rollback branch."
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }

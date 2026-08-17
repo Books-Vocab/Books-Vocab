@@ -11,6 +11,9 @@
   "date": "2026-08-08",
   "detail": "`ops_edit` 的 `notebook-delete`(`backend/src/kg/ops_edit_notebook_commands.py:103-119`)刪掉一本 notebook 後,`users.json` 的 `config.vocab_ui.active_notebook_id` 若正指向那本,會留下懸空指標而 verify 報綠。後果是該帳號的「新選詞歸哪本」指向不存在的本;`backend/src/kg/api_models/notebook.py:67` 只把 \"default\" 當缺省值,不做存在性回退。\n\nIMP-0024 已在 `seed --replace` 的 verify 加了同族偵測(`dangling_config`,見 `_seed_replace_verdict`),可直接沿用同一個形狀:讀 users.json 的 active_notebook_id,不在現存 notebook id 集合且非 \"default\" 就進 verify 的紅。`notebook-delete` 這條是**既有缺口、非 IMP-0024 引入**,故當時未一併修。\n\n要決定的取捨:是 verify 報紅要 operator 自己跑 `user-config-set --active-notebook`,還是 apply 時就自動 reset 成 \"default\"。後者會動到 identity 檔,與現行「notebook 操作不碰 users.json」的邊界有張力,建議先做前者。同一形狀也該檢查 `notebook-delete --cascade` 與 world-restore 路徑。",
   "fix_site": "backend/src/kg/ops_edit_notebook_commands.py; backend/src/kg/ops_edit_seed_commands.py; backend/tests/test_ops_edit_notebook.py; backend/tests/test_ops_edit_notebook_commands_unit.py; backend/tests/test_ops_edit_shared_unit.py; backend/tests/test_ops_edit_seed.py",
+  "fixed_by": [
+    "ba8ab6ab3ad1a178d251edf8bd036f9e7edce613"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -21,10 +24,10 @@
   "scope": "後端一支 ops 子指令的 verify 加一道檢查,配一支測試。",
   "severity": "low",
   "source": "IMP-0024 的 code review 發現(backend-engineer)",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "PARTIAL",
-  "verified_at": "2026-08-09",
-  "verified_by": "agent:r6-r8-anchor",
-  "verified_evidence": "R6-R8 implementation is integrated, but this stored acceptance was deliberately not rerun in bounded cleanup because it is a long iOS or full-suite gate; ticket remains unresolved pending fresh targeted evidence."
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }

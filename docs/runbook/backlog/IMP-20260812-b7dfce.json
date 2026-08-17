@@ -13,6 +13,9 @@
   "date": "2026-08-12",
   "detail": "[IMP-0029 子項] child-1 pause clock：將 review clock 轉成以 server timestamp 做 LWW，移除 dead flag 並保留本機較新值的拒收測試。",
   "fix_site": "ios/BooksAndVocab/Models/ReviewSettings.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift",
+  "fixed_by": [
+    "0c1afc9bb6fe18524cbafcca48b5d0fc58d80be9"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -23,6 +26,10 @@
   "scope": "一個 review clock model/coordinator seam 與一組回歸測試。",
   "severity": "low",
   "source": "IMP-0029/child-1",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }

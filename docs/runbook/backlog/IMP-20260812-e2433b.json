@@ -13,6 +13,9 @@
   "date": "2026-08-12",
   "detail": "[IMP-0029 子項] child-2 review mode：實作 applyServerModeState 的 LWW 合併，清理對應 dead flag 並補本機較新值拒收測試。",
   "fix_site": "ios/BooksAndVocab/Models/ReviewSettings.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift",
+  "fixed_by": [
+    "1164cf980cc0a8f33dc13017676198121da70024"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -23,6 +26,10 @@
   "scope": "一個 review mode model/coordinator seam 與一組回歸測試。",
   "severity": "low",
   "source": "IMP-0029/child-2",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }

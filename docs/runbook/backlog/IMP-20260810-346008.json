@@ -11,6 +11,9 @@
   "date": "2026-08-10",
   "detail": "執行 ./ops/ios_ops.sh workflow release --json 時，ops/lib/ios_ops_release.sh:245 仍呼叫 catalog_uv_bin；該命令不存在，streaming wrapper 因空 executable 收到 PermissionError，最後把 app-review gate 回報成 gate.execution block。專用 ./ops/release.sh resubmit ios dry-run 不受此錯誤影響。",
   "fix_site": "ops/lib/ios_ops_release.sh; ops/tests/test_ios_ops_release_heartbeat.sh; docs/reference/tech_index.md",
+  "fixed_by": [
+    "c2ea6dbae66ea9f831c2b74c6eaaea981b6b3be2"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -21,6 +24,10 @@
   "scope": "一支 iOS release helper、heartbeat regression 與必要的 release contract 文件。",
   "severity": "med",
   "source": "iOS TestFlight dry-run",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }

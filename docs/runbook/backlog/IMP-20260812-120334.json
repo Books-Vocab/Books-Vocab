@@ -13,6 +13,10 @@
   "date": "2026-08-12",
   "detail": "[IMP-0029 子項] child-3 translation：實作 static func applyServer(source:target:serverUpdatedAt:) 的 LWW 契約，移除舊旗標註解並補拒收測試。",
   "fix_site": "ios/BooksAndVocab/Models/TranslationLanguage.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift; ios/BooksAndVocab/Models/KGFeatureFlags.swift; ios/BooksAndVocabTests/TranslationLanguageTests.swift; ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+  "fixed_by": [
+    "3e194df991675b9a5bbdcb0587ebf463f52af5c4",
+    "0dd2f88895fe8b07b851ce403c98781e95effe69"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -23,6 +27,10 @@
   "scope": "一個 translation model API、呼叫點與回歸測試。",
   "severity": "low",
   "source": "IMP-0029/child-3",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "current-main acceptance executed during close-wave recovery; child receipt was green"
 }
