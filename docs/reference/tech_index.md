@@ -384,7 +384,7 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 
 ### Backlog supersede / re-file
 
-`backlog.py supersede <id>` 預設 dry-run，`--commit` 才落地；`--source` / `--detail` 等自由文字旗標自動提供 `--*-file`，只剝除檔案尾端換行。它只接受 `status=open`、未被本機 worktree 認領且沒有 fixed/verification reference 的來源；更正後的 `stream` / `date` / `source` / `detail` 重新衍生新 id，在 store lock 內原子建立新 `open` entry，再以含 replacement id 的理由將原票轉為 `wont-fix`。duplicate、claimed、closed、referenced 或任一 publish 失敗均拒絕且不留部分寫入；失敗路徑以原始位元組回復來源檔。
+`backlog.py supersede <id>` 預設 dry-run，`--commit` 才落地；`--source` / `--detail` 等自由文字旗標自動提供 `--*-file`，只剝除檔案尾端換行。它只接受 `status=open`、未被本機 worktree 認領且沒有 fixed/verification reference 的來源；更正後的 `stream` / `date` / `source` / `detail` 重新衍生新 id，在 store lock 與 canonical worktree claim-ledger lock 下原子建立新 `open` entry，再以含 replacement id 的理由將原票轉為 `wont-fix`。一般 add/update/verify/anchor writer 也共用 store lock，避免與雙檔 publish 互相覆寫。duplicate、claimed、closed、referenced 或任一 publish 失敗均拒絕且不留部分寫入；失敗路徑以原始位元組回復來源檔。
 
 `backlog.py add` 可用完整 grooming/contract 旗標一次原子建立 `status=triaged`、可派工 entry；部分旗標會在寫入前拒絕，plain detail 則輸出不在 dispatch queue。完整 acceptance proof 契約仍以 `backlog.py update --help` 為準。
 

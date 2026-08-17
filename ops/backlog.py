@@ -54,6 +54,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -64,6 +65,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GIT_REPO = ROOT
 DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
 DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
+_STORE_LOCK_STATE = threading.local()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import dispatch_preflight  # noqa: E402
@@ -560,18 +562,21 @@ def _write_atomic(path: Path, text: str) -> None:
 
 @contextlib.contextmanager
 def _entry_lock(path: Path):
-    """Serialize create-or-reuse for one entry path and fail closed on lock errors.
+    """Serialize one entry mutation with every writer for its store.
 
     Atomic replacement prevents partial JSON; it does not make the preceding
     exists/read/compare decision atomic.  Two agents filing the same observation in
     one checkout therefore need one critical section if ``written`` is to describe
-    this invocation rather than an earlier snapshot.  The sidecar belongs in the
-    gitignored worktree cache, keyed by the absolute target path, so it never becomes
-    backlog data and unrelated entry files remain fully parallel.
+    this invocation rather than an earlier snapshot.  Supersede adds a second
+    destination and must serialize with ordinary add/update/verify/anchor writers,
+    so the lock order is store then entry.  The sidecars belong in the gitignored
+    worktree cache, keyed by the absolute store/path, so they never become backlog
+    data.
     """
     try:
-        with _backlog_store.entry_lock(ROOT, path):
-            yield
+        with _store_lock(Path(path).parent):
+            with _backlog_store.entry_lock(ROOT, path):
+                yield
     except _backlog_store.EntryLockUnavailable as exc:
         raise BacklogError(f"{exc}; nothing was written") from exc
 
@@ -587,13 +592,58 @@ def _store_lock(store: Path):
     lives under the worktree cache rather than beside the tracked store.
     """
     store = Path(store).resolve()
+    held = getattr(_STORE_LOCK_STATE, "held", None)
+    if held is None:
+        held = {}
+        _STORE_LOCK_STATE.held = held
+    depth = held.get(store, 0)
+    if depth:
+        held[store] = depth + 1
+        try:
+            yield
+        finally:
+            if depth == 1:
+                held.pop(store, None)
+            else:
+                held[store] = depth
+        return
+
     key = hashlib.sha256(str(store).encode("utf-8")).hexdigest()
     lock_path = ROOT / ".cache" / "backlog_store_locks" / f"{key}.lock"
     try:
         with exclusive_lock(lock_path, label=f"backlog-store:{store}"):
-            yield
+            held[store] = 1
+            try:
+                yield
+            finally:
+                held.pop(store, None)
     except LockUnavailable as exc:
         raise BacklogError(f"store lock unavailable for {store}: {exc}") from exc
+
+
+def _claim_ledger_path() -> Path:
+    """Return the canonical per-machine worktree claim ledger path."""
+    return _queue_anchor() / ".cache" / "worktree_registry.json"
+
+
+@contextlib.contextmanager
+def _claim_lock():
+    """Serialize a claim snapshot with the registry's ledger writers."""
+    ledger = _claim_ledger_path().resolve()
+    lock_path = ledger.with_name(ledger.name + ".lock")
+    try:
+        with exclusive_lock(lock_path, label=f"worktree-ledger:{ledger.name}"):
+            yield
+    except LockUnavailable as exc:
+        raise BacklogError(f"claim ledger lock unavailable for {ledger}: {exc}") from exc
+
+
+@contextlib.contextmanager
+def _supersede_locks(store: Path):
+    """Hold store and claim locks in the one order shared by all writers."""
+    with _store_lock(store):
+        with _claim_lock():
+            yield
 
 
 # ---------------------------------------------------------------------------
@@ -1980,7 +2030,7 @@ def _supersede_transaction(
         raise BacklogError(f"invalid source id: {source_id!r}")
 
     store = Path(store)
-    with _store_lock(store):
+    with _supersede_locks(store):
         source_path = entry_path(store, source_id)
         original = load_entry(store, source_id)
 
