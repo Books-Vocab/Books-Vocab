@@ -341,6 +341,16 @@ def _reuse_gate(spec: dict[str, Any], current_input: dict[str, Any],
         return None, "no_prior_gate"
     if prior.get("status") not in {"pass", "warn"}:
         return None, f"source_status_{prior.get('status', 'missing')}"
+    prior_deferral = prior.get("deferral")
+    if (prior.get("original_status") == "block"
+            or (isinstance(prior_deferral, dict)
+                and prior_deferral.get("disposition") == "deferred")):
+        # A warning created by an explicit S2 deferral is not a durable green
+        # result.  Reusing it without a fresh --defer-gate would silently carry
+        # an old red past a later cutover, even if its ticket is now closed or
+        # escalated.  The next run must either re-run raw block or explicitly
+        # re-admit the current ticket through _validate_gate_deferrals.
+        return None, "deferred_failure_requires_explicit_deferral"
     old_input = prior.get("input")
     if not isinstance(old_input, dict):
         return None, "source_record_has_no_input_fingerprint"

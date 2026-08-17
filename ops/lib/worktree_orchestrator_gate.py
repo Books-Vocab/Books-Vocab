@@ -33,7 +33,35 @@ def bind_runtime(namespace: dict[str, object]) -> None:
         if not name.startswith("__"):
             globals()[name] = value
     if namespace.get("__file__"):
-        globals()["__file__"] = namespace["__file__"]
+            globals()["__file__"] = namespace["__file__"]
+
+
+def _gate_plan_projection(plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the JSON-stable gate definitions used for plan identity checks."""
+    return [json.loads(json.dumps(spec, ensure_ascii=False, sort_keys=True)) for spec in plan]
+
+
+def _gate_plan_digest(plan: list[dict[str, Any]]) -> str:
+    projected = _gate_plan_projection(plan)
+    return hashlib.sha256(
+        json.dumps(projected, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _current_full_gate_plan(
+    worktree: str, changed_files: list[str], gate_tier: str, base: str | None = None,
+) -> list[dict[str, Any]]:
+    """Rebuild the canonical plan at cutover instead of trusting record contents."""
+    full_plan = plan_gates(
+        changed_files,
+        ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
+        base=base or "main",
+        ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir(),
+        path_exists=lambda rel: (Path(worktree) / rel).is_file(),
+    )
+    if gate_tier == "S4":
+        full_plan = [*full_plan, *gate_tiers.release_gate_plan()]
+    return full_plan
 
 
 def _deferral_store_candidates(worktree: str | Path) -> list[Path]:
@@ -430,13 +458,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
               "head_sha": head, "orchestrator": orch, "changed_files": changed,
               "no_changed_files": no_changed_files,
               "gate_tier": gate_tier, "required_tier": required_tier,
-              "plan": [{"name": g["name"], "level": g["level"], "category": g["category"],
-                        "tier": g.get("tier", "S2"), "cmd": g.get("cmd")} for g in plan],
-              "deferred_plan": [{"name": g["name"], "level": g["level"],
-                                 "category": g["category"],
-                                 "tier": g.get("tier", "S2"),
-                                "note": g.get("note")}
-                                for g in deferred_plan],
+              "canonical_plan_digest": _gate_plan_digest(full_plan),
+              "selected_plan_digest": _gate_plan_digest(plan),
+              "plan": _gate_plan_projection(plan),
+              "deferred_plan": _gate_plan_projection(deferred_plan),
               "deferral_requests": deferral_requests,
               "deferred_failures": deferred_failures,
               "gates": results, "verdict": verdict,
@@ -605,6 +630,45 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         )
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
+        if not refuse and (gate_tier == "S4" or rec.get("canonical_plan_digest") is not None):
+            recorded_full_plan = None
+            if isinstance(planned_gates, list) and isinstance(deferred_planned_gates, list):
+                recorded_full_plan = [*planned_gates, *deferred_planned_gates]
+            recorded_digest = rec.get("canonical_plan_digest")
+            changed_for_plan = rec.get("changed_files")
+            if not isinstance(recorded_digest, str) or not recorded_digest:
+                refuse = "gate record has no canonical plan digest — re-run gate"
+            elif recorded_full_plan is None:
+                if gate_tier == "S4":
+                    refuse = "S4 gate record has no complete plan for identity verification — re-run gate"
+            elif _gate_plan_digest(recorded_full_plan) != recorded_digest:
+                refuse = "gate record plan digest does not match its stored plan — re-run gate"
+            elif not isinstance(changed_for_plan, list) or any(
+                    not isinstance(path, str) for path in changed_for_plan):
+                refuse = "gate record changed_files is malformed — re-run gate"
+            else:
+                try:
+                    current_full_plan = _current_full_gate_plan(
+                        worktree, changed_for_plan, gate_tier, args.base,
+                    )
+                    current_digest = _gate_plan_digest(current_full_plan)
+                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    refuse = f"could not rebuild canonical gate plan: {type(exc).__name__}: {exc}"
+                else:
+                    if current_digest != recorded_digest:
+                        refuse = (
+                            "gate record canonical plan differs from the current orchestrator "
+                            "plan — re-run gate"
+                        )
+                    elif gate_tier == "S4":
+                        release_names = {spec["name"] for spec in gate_tiers.release_gate_plan()}
+                        actual_names = {str(spec.get("name")) for spec in recorded_full_plan}
+                        missing_release = sorted(release_names - actual_names)
+                        if missing_release:
+                            refuse = (
+                                "S4 gate record is missing release gates: "
+                                + ", ".join(missing_release) + " — re-run gate"
+                            )
         if refuse:
             pass
         elif TIER_RANK[gate_tier] < TIER_RANK[required_tier]:
