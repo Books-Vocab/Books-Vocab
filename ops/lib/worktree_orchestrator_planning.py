@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import worktree_gate as gate_logic
+from lib import worktree_gate_tiers as gate_tiers
 
 BACKLOG_STORE_DIR = "docs/runbook/backlog/"
 RESOLVED_STATUSES = ("fixed", "wont-fix")
@@ -216,6 +217,14 @@ GATE_STATUSES = gate_logic.GATE_STATUSES
 UnknownGateStatus = gate_logic.UnknownGateStatus
 assert_known_statuses = gate_logic.assert_known_statuses
 aggregate_verdict = gate_logic.aggregate_verdict
+GATE_TIERS = gate_tiers.GATE_TIERS
+TIER_RANK = gate_tiers.TIER_RANK
+DEFAULT_GATE_TIER = gate_tiers.DEFAULT_GATE_TIER
+GateTierError = gate_tiers.GateTierError
+normalize_gate_tier = gate_tiers.normalize_gate_tier
+classify_gate_tier = gate_tiers.classify_gate_tier
+select_gate_plan = gate_tiers.select_plan
+required_cutover_tier = gate_tiers.required_cutover_tier
 
 
 def _neutral_rule(rel: str) -> str | None:
@@ -690,7 +699,7 @@ def plan_gates(changed_files: list[str],
     # Always planned, so `plan` is never empty and aggregate_verdict's
     # "pass (incl. empty)" branch is unreachable from cmd_gate.
     gates.append(_internal("coverage", "meta", "warn", note=note, **cov))
-    return gates
+    return gate_tiers.annotate_plan(gates)
 
 
 def gate_probe_corpus() -> list[list[str]]:

@@ -437,6 +437,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(ga)
     add_base(ga)
     ga.add_argument("--worktree", required=True, help="worktree path to gate")
+    ga.add_argument("--gate-tier", choices=GATE_TIERS, default=DEFAULT_GATE_TIER,
+                    help=("verification depth: S0 static, S1 focused, S2 affected "
+                          "module, S3 cross-module, S4 release; "
+                          f"default {DEFAULT_GATE_TIER}"))
     ga.add_argument("--receipt-line", action="store_true",
                     help="print ONLY the paste-ready receipt line (the normal report already ends with it)")
     ga.add_argument("--plan-only", action="store_true",
@@ -503,6 +507,9 @@ def build_parser() -> argparse.ArgumentParser:
                          "manifest, registry intent marker, Gate HEAD and clean "
                          "primary must all prove this opt-in before an empty "
                          "expected-ticket set can proceed")
+    cw.add_argument("--gate-tier", choices=GATE_TIERS, default=DEFAULT_GATE_TIER,
+                    help=("daily closure verification depth; use S4 only for an "
+                          f"explicit release checkpoint (default {DEFAULT_GATE_TIER})"))
     cw.set_defaults(func=cmd_close_wave)
 
     ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
@@ -541,6 +548,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="pick only: drain the queue and STOP before the gate; the "
                          "integration state survives, so the next `--continue --commit` "
                          "runs ONLY the gate on the already-integrated tree")
+    ig.add_argument("--gate-tier", choices=GATE_TIERS, default=DEFAULT_GATE_TIER,
+                    help=("verification depth for the one integration Gate; persisted "
+                          f"across --continue (default {DEFAULT_GATE_TIER})"))
     ig.add_argument("--independent", action="store_true",
                     help="persist the explicit independent no-ticket provenance "
                          "marker; --continue must repeat this opt-in")
