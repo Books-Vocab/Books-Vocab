@@ -288,7 +288,7 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert "branchLanes" in js
     assert "branchLanes.set(ref.branch,index+1)" in js
     assert "mainlineWindow" in js
-    assert "branchRow" in js
+    assert "treeLayout" in js
     assert "compactLabel" in js
     assert 'ref.live_state!=="unknown"' in js
     assert "第一個分支附近" in js
@@ -299,6 +299,21 @@ def test_git_tree_browser_uses_bounded_branch_viewport_without_recursive_stack()
     assert 'data-zoom="${treeZoom}"' in js
 
 
+def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_layout():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="tree-legend"' in index
+    assert "renderTreeLegend" in js
+    assert "treeLayout" in js
+    assert "edgePath" in js
+    assert "TREE_ROW_HEIGHT" in js
+    assert "lane-header" in js
+    assert "foreignObject" not in js
+    assert ".tree-legend" in css
+
+
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
@@ -306,7 +321,7 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
 
     assert "交付進度看板" in index
     assert "分支與工作樹" in index
-    assert "所有分支保留最近分叉段" in index
+    assert "主線與工作分支依 commit 關係排列" in index
     assert "樹圖縮放" in index
     assert 'id="tree-zoom"' in index
     assert 'id="tree-zoom-value"' in index

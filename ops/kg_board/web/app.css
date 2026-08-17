@@ -13,6 +13,25 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 @media(max-width:520px){.admin-nav{flex-wrap:wrap;padding:10px 12px}.trust-badge{margin-left:auto}.trust-detail{width:100%;order:3;max-width:none}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.metric{padding:10px}.metric b{font-size:19px}.tree-panel,.backlog-panel{padding:12px;margin-bottom:12px}.section-heading h1,.section-heading h2{font-size:17px}.ticket summary{display:block}.ticket-meta{justify-content:flex-start;margin-top:7px}.detail-grid{grid-template-columns:74px 1fr}.git-tree{min-height:190px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
+/* The graph is a topology overview; branch metadata belongs in a stable
+   legend instead of floating over commit edges. */
+.tree-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:12px 0 14px}
+.tree-legend-item{display:flex;align-items:flex-start;gap:9px;min-height:58px;padding:9px 10px;border:1px solid var(--border-light);border-radius:6px;background:var(--surface);box-shadow:0 2px 8px rgba(42,37,32,.04)}
+.tree-legend-swatch{flex:0 0 9px;width:9px;height:9px;margin-top:5px;border-radius:50%;background:var(--sub)}
+.tree-legend-copy{min-width:0;flex:1}.tree-legend-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.tree-legend-heading strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.tree-legend-heading span{flex:0 0 auto;color:var(--sub);font:10px "JetBrains Mono",monospace}
+.tree-legend-tickets{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}.tree-legend .tree-ticket{min-height:24px;margin:0;padding:3px 6px;font-size:10px}
+.tree-legend-item.state-active .tree-legend-swatch{background:var(--green)}.tree-legend-item.state-main .tree-legend-swatch{background:var(--ink)}
+.tree-legend-item.state-blocked .tree-legend-swatch{background:var(--warn)}.tree-legend-item.state-stale .tree-legend-swatch{background:var(--bad)}
+.git-tree{max-height:520px;min-height:280px;overflow:auto;background:#f8fafc;border-color:#dfe5ec;overscroll-behavior:contain}
+.git-tree svg{font:11px/1.2 "Noto Sans TC",system-ui,-apple-system,sans-serif}.tree-lane-guide{stroke:#e4e9ef;stroke-width:1;vector-effect:non-scaling-stroke}.tree-lane-guide.main{stroke:#aab7c5;stroke-width:2}
+.lane-header rect{fill:var(--surface);stroke:#d6dee7;stroke-width:1;vector-effect:non-scaling-stroke}.lane-header text{fill:var(--ink);font-size:10px;font-weight:600}.lane-header .lane-state{fill:var(--sub);font:9px "JetBrains Mono",monospace;font-weight:400}
+.lane-header.state-active rect{stroke:rgba(36,115,78,.45)}.lane-header.state-main rect{fill:#f0f3f6;stroke:#aab7c5}.lane-header.state-blocked rect{stroke:rgba(154,100,26,.55)}.lane-header.state-stale rect{stroke:rgba(174,59,49,.55)}
+.edges .edge{stroke:#b7c2ce;stroke-width:1.5;vector-effect:non-scaling-stroke}.commit circle{r:6px;fill:var(--surface);stroke:#8392a2;stroke-width:2;vector-effect:non-scaling-stroke}.commit.main circle{stroke:var(--ink);stroke-width:2.5}.commit.head circle{r:8px;stroke:var(--green);stroke-width:2.5}.commit:hover circle,.commit:focus circle{fill:var(--green);stroke:var(--green)}
+.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}.tree-ticket:hover,.tree-ticket:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.12);outline:none}
+@media(max-width:860px){.tree-legend{grid-template-columns:repeat(2,minmax(0,1fr))}.git-tree{max-height:460px}}
+@media(max-width:520px){.tree-legend{grid-template-columns:1fr;margin-top:10px}.tree-legend-item{min-height:52px}.tree-legend-heading strong{font-size:11px}}
+
 /* Responsive board contract: readable first, graph second.  The graph is a
    desktop visualisation; phones get the same bounded data as a linear list. */
 .tree-mobile-list{display:none}
