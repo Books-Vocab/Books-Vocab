@@ -15,9 +15,8 @@ files to the project's existing gate tools (ios_ops.sh / verify_design_system.sh
 docs_lint.sh / pytest) and aggregates their verdicts.
 
 Architecture (mirrors worktree_registry.py / the retired converge_board.py — three layers):
-  IO layer      git + subprocess to the real gate tools. Side-effecting steps
-                (worktree add, rebase, push, worktree remove, branch -D) are gated
-                behind --commit; dry-run is the default for every mutation.
+  IO layer      git + subprocess to the real gate tools. Landing-plane steps (rebase,
+                push, worktree remove, branch -D) are gated behind --commit; open / adopt / freeze take effect at once and have no --commit.
   pure layer    the two pieces of judgement this tool owns, both unit-tested:
                   classify_intent(text)        -> "debug" | "feat" | "research"
                   plan_gates(changed_files)    -> [gate spec, ...]   (impact routing)
