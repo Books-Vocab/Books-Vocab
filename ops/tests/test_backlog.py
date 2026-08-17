@@ -6900,6 +6900,8 @@ def test_lifecycle_is_a_machine_readable_contract_not_tribal_knowledge(capsys):
     acts = {item["id"]: item for item in payload["acts"]}
     assert acts["verify"]["required_for_dispatch"] is False
     assert acts["groom"]["required_for_dispatch"] is True
+    assert acts["supersede"]["write_mode"] == "dry-run-default"
+    assert "wont-fix" in acts["supersede"]["meaning"]
     assert acts["dispatch"]["writes_store"] is False
     assert "optimistic" in acts["dispatch"]["held_scope"].lower()
     assert "snooze" in acts["dispatch"]["snooze_scope"].lower()
@@ -6918,6 +6920,7 @@ def test_lifecycle_is_a_machine_readable_contract_not_tribal_knowledge(capsys):
     assert {
         "fresh-report", "uncertain-or-stale", "reporter-also-verifies",
         "duplicate", "manual-acceptance", "batch-wave", "recurrence",
+        "corrected-filing",
     } <= scenarios
 
 
@@ -7567,7 +7570,21 @@ def test_add_dry_run_returns_the_entry_without_writing_it(tmp_path, capsys):
 
 def test_supersede_refiles_corrected_detail_atomically(tmp_path, capsys):
     store = tmp_path / "s"
-    original = _add(store, detail="detail damaged by shell expansion")
+    original = _add(
+        store,
+        detail="detail damaged by shell expansion",
+        brief="A filed report needs correction",
+        scope="one entry and its regression tests",
+    )
+    BACKLOG.update_entry(
+        store,
+        original["id"],
+        plan="re-file the corrected immutable payload",
+        acceptance="new entry is open and the source is auditable",
+        acceptance_cmd="true",
+        acceptance_expect_rc=0,
+    )
+    original = BACKLOG.load_entry(store, original["id"])
     corrected = "detail restored from a file; `_run_gate` survives"
     detail_file = tmp_path / "corrected-detail.txt"
     detail_file.write_text(corrected + "\n", encoding="utf-8")
@@ -7603,7 +7620,7 @@ def test_supersede_refiles_corrected_detail_atomically(tmp_path, capsys):
 def test_supersede_refuses_claimed_closed_or_referenced_source(
     tmp_path, capsys, monkeypatch
 ):
-    cases = ("claimed", "closed", "fixed_by", "fix_site", "duplicate_of",
+    cases = ("claimed", "closed", "fixed", "fixed_by", "fix_site", "duplicate_of",
              "cost", "verified")
     for case in cases:
         store = tmp_path / case
@@ -7611,6 +7628,9 @@ def test_supersede_refuses_claimed_closed_or_referenced_source(
         if case == "closed":
             source["status"] = "wont-fix"
             source["resolution"] = "declined for a documented reason"
+        elif case == "fixed":
+            source["status"] = "fixed"
+            source["fixed_elsewhere"] = "external:fixture"
         elif case == "fixed_by":
             # An open entry carrying fixed_by is intentionally malformed: the
             # supersede safety check must name this reference before any write,
@@ -7646,6 +7666,7 @@ def test_supersede_refuses_claimed_closed_or_referenced_source(
         expected_reason = {
             "claimed": "claimed",
             "closed": "status=open",
+            "fixed": "status=open",
             "fixed_by": "audit references (fixed_by)",
             "fix_site": "audit references (fix_site)",
             "duplicate_of": "audit references (duplicate_of)",
@@ -7696,7 +7717,9 @@ def test_supersede_refuses_duplicate_replacement_without_writing(tmp_path, capsy
         "supersede", original["id"], "--store", str(store),
         "--detail", duplicate["detail"], "--commit", "--json",
     ]) == 64
-    capsys.readouterr()
+    captured = capsys.readouterr()
+    assert duplicate["id"] in captured.err
+    assert "already exists" in captured.err
     assert {
         path.name: path.read_bytes()
         for path in store.glob("*.json")
@@ -7711,22 +7734,29 @@ def test_supersede_rolls_back_both_files_when_second_write_fails(
     source_path = store / f"{original['id']}.json"
     before = source_path.read_bytes()
     real_write = BACKLOG._write_atomic
-    calls = []
+    corrected = "corrected but not partially committed"
+    replacement_id = BACKLOG.make_entry_id(
+        stream=original["stream"], date=original["date"],
+        source=original["source"], detail=corrected,
+    )
+    replacement_path = store / f"{replacement_id}.json"
 
-    def fail_once(path, text):
-        calls.append(Path(path))
-        if len(calls) == 2:
+    def fail_on_source(path, text):
+        if Path(path) == source_path:
             raise OSError("synthetic source publish failure")
         return real_write(path, text)
 
-    monkeypatch.setattr(BACKLOG, "_write_atomic", fail_once)
+    monkeypatch.setattr(BACKLOG, "_write_atomic", fail_on_source)
     assert BACKLOG.main([
         "supersede", original["id"], "--store", str(store),
-        "--detail", "corrected but not partially committed", "--commit", "--json",
+        "--detail", corrected, "--commit", "--json",
     ]) == 64
-    capsys.readouterr()
+    captured = capsys.readouterr()
+    assert "publish failed" in captured.err
+    assert "both files restored" in captured.err
 
     assert source_path.read_bytes() == before
+    assert not replacement_path.exists()
     assert len(list(store.glob("*.json"))) == 1
 
 
@@ -7753,6 +7783,9 @@ def test_supersede_dry_run_defaults_and_modes_are_non_writing(tmp_path, capsys):
             "--detail", "corrected dry-run", "--dry-run", "--commit",
         ])
     assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "--dry-run" in captured.err and "--commit" in captured.err
+    assert "not allowed" in captured.err or "mutually exclusive" in captured.err
     assert source_path.read_bytes() == before
     assert len(list(store.glob("*.json"))) == 1
 
