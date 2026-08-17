@@ -7588,6 +7588,10 @@ def test_supersede_refiles_corrected_detail_atomically(tmp_path, capsys):
     retired = BACKLOG.load_entry(store, original["id"])
     assert replaced["detail"] == corrected
     assert replaced["status"] == "open"
+    for field, value in original.items():
+        if field in {"id", "detail", "status", "resolution"}:
+            continue
+        assert replaced[field] == value, field
     assert retired["status"] == "wont-fix"
     assert replacement_id in retired["resolution"]
     assert retired["detail"] == original["detail"]
@@ -7599,7 +7603,8 @@ def test_supersede_refiles_corrected_detail_atomically(tmp_path, capsys):
 def test_supersede_refuses_claimed_closed_or_referenced_source(
     tmp_path, capsys, monkeypatch
 ):
-    cases = ("claimed", "closed", "fixed_by", "verified")
+    cases = ("claimed", "closed", "fixed_by", "fix_site", "duplicate_of",
+             "cost", "verified")
     for case in cases:
         store = tmp_path / case
         source = _add(store, detail=f"source for {case}")
@@ -7607,7 +7612,16 @@ def test_supersede_refuses_claimed_closed_or_referenced_source(
             source["status"] = "wont-fix"
             source["resolution"] = "declined for a documented reason"
         elif case == "fixed_by":
+            # An open entry carrying fixed_by is intentionally malformed: the
+            # supersede safety check must name this reference before any write,
+            # not let a generic source-schema error make the test pass.
             source["fixed_by"] = ["aaaaaaa"]
+        elif case == "fix_site":
+            source["fix_site"] = "ops/backlog.py"
+        elif case == "duplicate_of":
+            source["duplicate_of"] = "IMP-20260808-000000"
+        elif case == "cost":
+            source["cost"] = "S"
         elif case == "verified":
             source["verified_at"] = "2026-08-17"
             source["verified_by"] = "agent:test"
@@ -7629,7 +7643,16 @@ def test_supersede_refuses_claimed_closed_or_referenced_source(
             "--detail", f"corrected {case}", "--commit", "--json",
         ]) == 64
         captured = capsys.readouterr()
-        assert source["id"] in captured.err or case in captured.err
+        expected_reason = {
+            "claimed": "claimed",
+            "closed": "status=open",
+            "fixed_by": "audit references (fixed_by)",
+            "fix_site": "audit references (fix_site)",
+            "duplicate_of": "audit references (duplicate_of)",
+            "cost": "audit references (cost)",
+            "verified": "audit references (verified_at",
+        }[case]
+        assert expected_reason in captured.err, captured.err
         assert (store / f"{source['id']}.json").read_bytes() == before
         assert len(list(store.glob("*.json"))) == 1
 
@@ -7703,6 +7726,33 @@ def test_supersede_rolls_back_both_files_when_second_write_fails(
     ]) == 64
     capsys.readouterr()
 
+    assert source_path.read_bytes() == before
+    assert len(list(store.glob("*.json"))) == 1
+
+
+def test_supersede_dry_run_defaults_and_modes_are_non_writing(tmp_path, capsys):
+    store = tmp_path / "s"
+    original = _add(store, detail="source for dry-run")
+    source_path = store / f"{original['id']}.json"
+    before = source_path.read_bytes()
+
+    for mode_flags in ([], ["--dry-run"]):
+        assert BACKLOG.main([
+            "supersede", original["id"], "--store", str(store),
+            "--detail", "corrected dry-run", *mode_flags, "--json",
+        ]) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["mode"] == "dry-run"
+        assert result["written"] is False
+        assert source_path.read_bytes() == before
+        assert len(list(store.glob("*.json"))) == 1
+
+    with pytest.raises(SystemExit) as excinfo:
+        BACKLOG.main([
+            "supersede", original["id"], "--store", str(store),
+            "--detail", "corrected dry-run", "--dry-run", "--commit",
+        ])
+    assert excinfo.value.code == 2
     assert source_path.read_bytes() == before
     assert len(list(store.glob("*.json"))) == 1
 
