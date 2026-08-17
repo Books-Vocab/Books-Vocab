@@ -14,7 +14,7 @@ enum KGFeatureFlags {
     /// LWW on the pause review clock. Backend dependency: `review_clock.updated_at`
     /// persisted + returned by `GET /api/user/config`. Until on, server is
     /// single-direction (server-wins on cold-start) and iCloud KV is the
-    /// authoritative cross-device path — mirrors `serverTranslationLwwEnabled`.
+    /// authoritative cross-device path — mirrors the adjacent review-mode gate.
     static var serverReviewClockLwwEnabled: Bool { false }
 
     /// Whether to send `updated_at` and trust server-returned `updated_at` for
