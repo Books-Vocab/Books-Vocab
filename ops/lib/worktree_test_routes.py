@@ -137,6 +137,7 @@ _FACADE_ROUTE = _route(
     [
         "ops/worktree_orchestrate.py",
         "ops/lib/worktree_orchestrator_runtime.py",
+        "ops/lib/worktree_orchestrator_commands.py",
         "ops/lib/worktree_gate_tiers.py",
         "ops/lib/worktree_test_routes.py",
         "ops/tests/worktree_orchestrate_support.py",
