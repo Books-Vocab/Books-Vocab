@@ -79,6 +79,10 @@ const TREE_VIEW_RADIUS = 10;
 const TREE_ZOOM_MIN = 70;
 const TREE_ZOOM_MAX = 140;
 const TREE_ZOOM_STEP = 10;
+const TREE_LANE_WIDTH = 168;
+const TREE_ROW_HEIGHT = 56;
+const TREE_HEADER_HEIGHT = 66;
+const TREE_PADDING_X = 52;
 let treeZoom = 100;
 function firstParentChain(sha,commits,limit=commits.size+1){
   const result=[],seen=new Set();let current=sha;
@@ -172,7 +176,7 @@ function treeViewport(tree,commits,refs){
     branchAnchors,
     branchPaths,
     ticketRefs,
-    mainline,mainlineWindow,branchSha,total:tree.commits.length,
+    mainline,mainlineWindow,branchSha,branchIndex,total:tree.commits.length,
   };
 }
 function renderTreeZoom(){
@@ -180,6 +184,66 @@ function renderTreeZoom(){
   const output=document.getElementById("tree-zoom-value");
   if(input){input.value=String(treeZoom);input.min=String(TREE_ZOOM_MIN);input.max=String(TREE_ZOOM_MAX);input.step=String(TREE_ZOOM_STEP);input.setAttribute("aria-valuetext",`${treeZoom}%`)}
   if(output)output.textContent=`${treeZoom}%`;
+}
+function treeStateOf(ref){
+  return ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
+}
+function treeStateClass(value){
+  return String(value||"unknown").toLowerCase().replace(/[^a-z0-9_-]+/g,"-");
+}
+function renderTreeLegend(viewport){
+  const mount=document.getElementById("tree-legend");
+  if(!mount)return;
+  mount.innerHTML=(viewport.refs||[]).map(ref=>{
+    const state=treeStateOf(ref);
+    const tickets=(ref.tickets||[]).map(ticket=>`<button type="button" class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
+    return `<article class="tree-legend-item state-${esc(treeStateClass(state))}">
+      <span class="tree-legend-swatch" aria-hidden="true"></span>
+      <div class="tree-legend-copy">
+        <div class="tree-legend-heading"><strong title="${esc(ref.branch)}">${esc(compactLabel(ref.branch,34))}</strong><span>${esc(state)}</span></div>
+        ${tickets?`<div class="tree-legend-tickets" aria-label="${esc(ref.branch)} 的票據">${tickets}</div>`:""}
+      </div>
+    </article>`;
+  }).join("");
+  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{
+    event.stopPropagation();selectTicket(node.dataset.ticketId);
+  }));
+}
+function treeLayout(viewport,visibleCommits){
+  const branchLanes=new Map([["main",0]]);
+  viewport.refs.filter(ref=>ref.branch!=="main").forEach((ref,index)=>branchLanes.set(ref.branch,index+1));
+  const mainlineRanks=new Map(viewport.mainline.map((sha,index)=>[sha,index-viewport.branchIndex]));
+  const ranks=new Map(),lanes=new Map();
+  viewport.mainlineWindow.forEach((sha,index)=>{
+    if(visibleCommits.has(sha)){ranks.set(sha,index);lanes.set(sha,0)}
+  });
+  viewport.mainline.forEach(sha=>{
+    if(visibleCommits.has(sha)&&!ranks.has(sha)){ranks.set(sha,mainlineRanks.get(sha)??0);lanes.set(sha,0)}
+  });
+  viewport.branchPaths.forEach((path,branch)=>{
+    const lane=branchLanes.get(branch);if(lane===undefined||!path.length)return;
+    const anchor=path.at(-1),anchorRank=ranks.get(anchor)??mainlineRanks.get(anchor)??0;
+    path.slice(0,-1).forEach((sha,index)=>{
+      if(!visibleCommits.has(sha))return;
+      if(!ranks.has(sha)){ranks.set(sha,anchorRank-(path.length-1-index));lanes.set(sha,lane)}
+    });
+  });
+  visibleCommits.forEach((row,sha)=>{
+    if(ranks.has(sha))return;
+    const parent=(row.parents||[]).find(parentSha=>ranks.has(parentSha));
+    ranks.set(sha,parent?Math.max(-1,ranks.get(parent)-1):0);lanes.set(sha,lanes.get(sha)??0);
+  });
+  const minRank=Math.min(0,...ranks.values()),maxRank=Math.max(0,...ranks.values());
+  const positions=new Map([...visibleCommits.keys()].map(sha=>[sha,{lane:lanes.get(sha)??0,row:(ranks.get(sha)??0)-minRank}]));
+  const ordered=[...visibleCommits.values()].sort((left,right)=>{
+    const a=positions.get(left.sha),b=positions.get(right.sha);
+    return a.row-b.row||a.lane-b.lane||left.sha.localeCompare(right.sha);
+  });
+  return {branchLanes,positions,ordered,minRank,maxRank,rowCount:maxRank-minRank+1};
+}
+function edgePath(from,to,x,y){
+  if(from.lane===to.lane)return `M ${x(from.lane)} ${y(from.row)} V ${y(to.row)}`;
+  return `M ${x(from.lane)} ${y(from.row)} V ${y(to.row)} H ${x(to.lane)}`;
 }
 function commitInspector(row,ref){
   const files=(row.files||[]).map(file=>`<li><code>${esc(file)}</code></li>`).join("")||"<li>沒有檔案統計</li>";
@@ -224,6 +288,7 @@ function renderTree(){
   renderTreeZoom();
   if(!tree||!tree.commits?.length){
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
+    renderTreeLegend({refs:[]});
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
     document.getElementById("tree-state").textContent="資料不足";
     return;
@@ -232,78 +297,45 @@ function renderTree(){
   const refs=tree.refs||[];
   const viewport=treeViewport(tree,commits,refs);
   const visibleCommits=new Map(viewport.commits.map(row=>[row.sha,row]));
-  const positions=new Map();
-  const branchLanes=new Map();
-  viewport.refs.filter(ref=>ref.branch!=="main").forEach((ref,index)=>{
-    branchLanes.set(ref.branch,index+1);
-    const anchor=viewport.branchAnchors.get(ref.branch);
-    if(anchor&&visibleCommits.has(anchor)&&!positions.has(anchor))positions.set(anchor,{lane:index+1});
-  });
-  const main=commits.get(refs.find(ref=>ref.branch==="main")?.head);
-  if(main)viewport.mainline.forEach(sha=>{if(visibleCommits.has(sha))positions.set(sha,{lane:0});});
-  viewport.branchPaths.forEach((path,branch)=>{
-    const lane=branchLanes.get(branch);
-    if(lane===undefined)return;
-    path.forEach(sha=>{if(!viewport.mainlineWindow.includes(sha))positions.set(sha,{lane});});
-  });
-  [...visibleCommits.keys()].forEach((sha,index)=>{if(!positions.has(sha))positions.set(sha,{lane:(index%Math.max(1,viewport.refs.length+1))});});
-  const windowRows=viewport.mainlineWindow.map(sha=>visibleCommits.get(sha)).filter(Boolean);
-  const anchorRows=[...new Set(viewport.branchAnchors.values())].map(sha=>visibleCommits.get(sha)).filter(Boolean);
-  const branchRow=visibleCommits.get(viewport.branchSha);
-  const branchRows=[...viewport.branchPaths.values()].flatMap(path=>path.map(sha=>visibleCommits.get(sha)).filter(Boolean));
-  const ordered=[],orderedSet=new Set();
-  const appendRows=rows=>rows.forEach(row=>{if(row&&!orderedSet.has(row.sha)){orderedSet.add(row.sha);ordered.push(row);}});
-  appendRows(branchRow?[branchRow]:[]);
-  appendRows(anchorRows);
-  appendRows(branchRows);
-  appendRows(windowRows);
-  const width=Math.max(520,(Math.max(0,...[...positions.values()].map(pos=>pos.lane))+1)*210);
-  const height=Math.max(220,ordered.length*72+70);
+  const layout=treeLayout(viewport,visibleCommits);
+  const {branchLanes,positions,ordered}=layout;
+  const maxLane=Math.max(0,...branchLanes.values());
+  const width=Math.max(680,TREE_PADDING_X*2+(maxLane+1)*TREE_LANE_WIDTH);
+  const height=Math.max(260,TREE_HEADER_HEIGHT+(layout.rowCount+1)*TREE_ROW_HEIGHT);
   const renderedWidth=Math.round(width*treeZoom/100),renderedHeight=Math.round(height*treeZoom/100);
-  const x=lane=>70+lane*190,y=index=>55+index*72;
-  ordered.forEach((row,index)=>{positions.get(row.sha).y=y(index);});
+  const x=lane=>TREE_PADDING_X+lane*TREE_LANE_WIDTH;
+  const y=row=>TREE_HEADER_HEIGHT+row*TREE_ROW_HEIGHT;
   const edges=[];
-  ordered.forEach(row=>{const from=positions.get(row.sha);(row.parents||[]).forEach(parentSha=>{const to=positions.get(parentSha);if(to)edges.push(`<path class="edge" d="M ${x(from.lane)} ${from.y} C ${x(from.lane)} ${from.y+28}, ${x(to.lane)} ${to.y-28}, ${x(to.lane)} ${to.y}"/>`);});});
-  const labelsByAnchor=new Map();
-  viewport.refs.forEach(ref=>{
-    const branchPath=viewport.branchPaths.get(ref.branch)||[];
-    const anchor=ref.branch==="main"?viewport.branchSha:(branchPath[0]||viewport.branchAnchors.get(ref.branch));
-    if(!anchor||!positions.has(anchor))return;
-    if(!labelsByAnchor.has(anchor))labelsByAnchor.set(anchor,[]);labelsByAnchor.get(anchor).push(ref);
+  ordered.forEach(row=>{
+    const from=positions.get(row.sha);
+    (row.parents||[]).forEach(parentSha=>{
+      const to=positions.get(parentSha);
+      if(to)edges.push(`<path class="edge" d="${edgePath(from,to,x,y)}"/>`);
+    });
   });
-  const labels=[...labelsByAnchor.entries()].map(([anchor,anchorRefs])=>{
-    const pos=positions.get(anchor);
-    // Keep the ref row and its ticket buttons above the commit node.  A 22px
-    // foreignObject plus a 24px gap prevents multiple refs at one anchor from
-    // colliding with the node subject or with the next branch row.
-    const labelTop=Math.max(18,pos.y-50-(anchorRefs.length-1)*28);
-    return anchorRefs.map((ref,index)=>{
-      const refState=ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
-      const ticketList=ref.tickets||[];
-      const tickets=ticketList.slice(0,3).map(ticket=>`<button class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
-      const more=ticketList.length>3?`<span class="tree-ticket-more">+${ticketList.length-3}</span>`:"";
-      const rowY=labelTop+index*28;
-      return `<g class="ref-label"><text x="${x(pos.lane)+18}" y="${rowY}">${esc(compactLabel(ref.branch,24))} · ${esc(refState)}</text><foreignObject x="${x(pos.lane)+18}" y="${rowY+4}" width="190" height="22"><div xmlns="http://www.w3.org/1999/xhtml">${tickets}${more}</div></foreignObject></g>`;
-    }).join("");
+  const laneGuides=[...branchLanes.entries()].map(([branch,lane])=>`<line class="tree-lane-guide${branch==="main"?" main":""}" x1="${x(lane)}" y1="${TREE_HEADER_HEIGHT-14}" x2="${x(lane)}" y2="${height-18}"/>`).join("");
+  const laneHeaders=viewport.refs.map(ref=>{
+    const lane=branchLanes.get(ref.branch);if(lane===undefined)return "";
+    const state=treeStateOf(ref);
+    return `<g class="lane-header state-${esc(treeStateClass(state))}" transform="translate(${x(lane)-58} 12)"><rect width="116" height="38" rx="6"></rect><text x="10" y="16">${esc(compactLabel(ref.branch,18))}</text><text class="lane-state" x="10" y="31">${esc(state)}</text></g>`;
   }).join("");
   const nodes=ordered.map(row=>{
-    const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha||viewport.branchAnchors.get(item.branch)===row.sha);
-    return `<g class="commit" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${pos.y})"><circle r="9"></circle><text x="16" y="5">${esc(shortSha(row.sha))} · ${esc(compactLabel(row.subject,30))}</text></g>`;
+    const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
+    const head=ref?" head":"";
+    return `<g class="commit${head}${ref?.branch==="main"?" main":""}" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${y(pos.row)})"><title>${esc(shortSha(row.sha)+" · "+row.subject)}</title><circle r="${head?8:6}"></circle></g>`;
   }).join("");
-  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="edges">${edges.join("")}</g>${labels}${nodes}</svg>`;
+  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}</g>${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
-  const mainlineCount=windowRows.length;
+  const mainlineCount=viewport.mainlineWindow.length;
   document.getElementById("tree-state").textContent=tree.complete?`主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}% · ${viewportLabel}`:`資料不完整 · 主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}%`;
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
+  renderTreeLegend(viewport);
   renderMobileTree(viewport,commits);
   mount.querySelectorAll(".commit").forEach(node=>{
     const show=()=>commitInspector(commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));
     node.addEventListener("mouseenter",show);node.addEventListener("focus",show);node.addEventListener("click",show);
     node.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();show()}});
   });
-  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{
-    event.stopPropagation();selectTicket(node.dataset.ticketId);
-  }));
 }
 function renderMobileTree(viewport,commits){
   const mount=document.getElementById("tree-mobile-list");if(!mount)return;
