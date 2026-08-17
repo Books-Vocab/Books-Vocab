@@ -303,20 +303,17 @@ final class SettingsCoordinator: SettingsCoordinating {
         return true
     }
 
-    /// Reconcile server review-mode with local + iCloud KV (mirrors pause clock).
-    /// Cold-start only: server wins ONLY when this device has never written the
-    /// review mode locally (`snapshot.updatedAt == nil`). After any local write,
-    /// iCloud KV is the cross-device authority. Real LWW awaits the backend flag.
+    /// Reconcile server review-mode with the local LWW timestamp. A stale server
+    /// response is a valid no-op. The backend snake_case payload maps to one
+    /// atomic `ReviewModeState` before the model applies it.
     /// 後端 snake_case wire(`KGReviewModeConfig`)→ iOS `ReviewModeState` 的轉換在此。
     private func applyServerReviewMode(_ mode: KGReviewModeConfig?) -> Bool {
         guard let mode else { return true }
         let store = ReviewSettingsStore.shared
-        guard store.reviewModeSnapshot.updatedAt == nil else { return true }
-        _ = KGFeatureFlags.serverReviewModeLwwEnabled  // keep wired for future LWW flip
         guard let reviewMode = ReviewSettingsMode(rawValue: mode.mode) else {
             return false
         }
-        store.applyServerModeState(
+        _ = store.applyServerModeState(
             ReviewModeState(
                 mode: reviewMode,
                 customInitialIntervalHours: mode.custom_initial_interval_hours,

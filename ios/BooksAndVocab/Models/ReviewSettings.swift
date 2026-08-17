@@ -442,8 +442,16 @@ final class ReviewSettingsStore {
         }
     }
 
-    /// Server mode projection 的本地寫入 seam。後續 ticket 會在此套用 server LWW。
-    func applyServerModeState(_ state: ReviewModeState) {
+    /// Server review-mode projection 的本地 LWW 寫入 seam。較新的本機 timestamp
+    /// 保留；server projection 不回寫 iCloud，避免把讀取結果誤當成另一台裝置的 edit。
+    @discardableResult
+    func applyServerModeState(_ state: ReviewModeState) -> Bool {
+        guard let serverUpdatedAt = state.updatedAt else { return false }
+        if let localUpdatedAt = reviewModeSnapshot.updatedAt,
+           serverUpdatedAt <= localUpdatedAt {
+            return false
+        }
+
         var s = settings
         s.mode = state.mode
         s.customInitialIntervalHours = state.customInitialIntervalHours
@@ -453,9 +461,8 @@ final class ReviewSettingsStore {
         s.customMaximumIntervalHours = state.customMaximumIntervalHours
         settings = s
         writeLocalMode(state)
-        if let ts = state.updatedAt {
-            defaults.set(ts, forKey: Keys.modeUpdatedAt)
-        }
+        defaults.set(serverUpdatedAt, forKey: Keys.modeUpdatedAt)
+        return true
     }
 
     // MARK: - Pause clock push/rollback support (Phase 3)

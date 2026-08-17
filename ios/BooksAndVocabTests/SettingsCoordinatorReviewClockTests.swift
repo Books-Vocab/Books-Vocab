@@ -214,4 +214,85 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 100)
         _ = store
     }
+
+    private func reviewModeState(
+        mode: ReviewSettingsMode,
+        initialIntervalHours: Double,
+        updatedAt: Double?
+    ) -> ReviewModeState {
+        ReviewModeState(
+            mode: mode,
+            customInitialIntervalHours: initialIntervalHours,
+            customRememberedMultiplier: 3.0,
+            customForgotMultiplier: 0.3,
+            customMinimumIntervalHours: 12,
+            customMaximumIntervalHours: 2_000,
+            updatedAt: updatedAt
+        )
+    }
+
+    @Test func serverReviewModeAppliesWhenTimestampIsNewer() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-mode-newer.\(UUID().uuidString)")!
+        let cloud = FakeCloudKVStore()
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        let serverState = reviewModeState(mode: .custom, initialIntervalHours: 48, updatedAt: 200)
+
+        let applied = store.applyServerModeState(serverState)
+
+        #expect(applied)
+        #expect(store.settings.mode == .custom)
+        #expect(store.settings.customInitialIntervalHours == 48)
+        #expect(defaults.string(forKey: "review_settings_mode") == "custom")
+        #expect(defaults.double(forKey: "review_settings_mode_updated_at") == 200)
+        #expect(cloud.double(forKey: "review_settings_mode_updated_at") == nil)
+    }
+
+    @Test func serverReviewModeIgnoredWhenLocalTimestampIsNewer() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-mode-local-newer.\(UUID().uuidString)")!
+        defaults.set("intensive", forKey: "review_settings_mode")
+        defaults.set(
+            try! JSONSerialization.data(withJSONObject: [
+                "initialIntervalHours": 30.0,
+                "rememberedMultiplier": 2.2,
+                "forgotMultiplier": 0.4,
+                "minimumIntervalHours": 8.0,
+                "maximumIntervalHours": 1_500.0,
+            ]),
+            forKey: "review_settings_custom_params"
+        )
+        defaults.set(300.0, forKey: "review_settings_mode_updated_at")
+        let store = ReviewSettingsStore(defaults: defaults, cloud: FakeCloudKVStore())
+        let original = store.reviewModeSnapshot
+
+        let applied = store.applyServerModeState(
+            reviewModeState(mode: .relaxed, initialIntervalHours: 7, updatedAt: 200)
+        )
+
+        #expect(!applied)
+        #expect(store.reviewModeSnapshot == original)
+        #expect(defaults.double(forKey: "review_settings_mode_updated_at") == 300)
+    }
+
+    @Test func serverReviewModeMergesNewerStateAfterCloudDeviceUpdate() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-mode-cloud-merge.\(UUID().uuidString)")!
+        let cloud = FakeCloudKVStore()
+        cloud.set("relaxed", forKey: "review_settings_mode")
+        cloud.set(
+            "{\"initialIntervalHours\":12,\"rememberedMultiplier\":1.9,\"forgotMultiplier\":0.45,\"minimumIntervalHours\":6,\"maximumIntervalHours\":1440}",
+            forKey: "review_settings_custom_params"
+        )
+        cloud.set(100.0, forKey: "review_settings_mode_updated_at")
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+
+        let applied = store.applyServerModeState(
+            reviewModeState(mode: .custom, initialIntervalHours: 48, updatedAt: 200)
+        )
+
+        #expect(applied)
+        #expect(store.settings.mode == .custom)
+        #expect(store.settings.customInitialIntervalHours == 48)
+        #expect(store.settings.customMaximumIntervalHours == 2_000)
+        #expect(cloud.string(forKey: "review_settings_mode") == "relaxed")
+        #expect(cloud.double(forKey: "review_settings_mode_updated_at") == 100)
+    }
 }
