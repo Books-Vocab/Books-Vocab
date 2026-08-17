@@ -134,7 +134,7 @@ struct ReaderPublicationLoader {
         AppLog.readium.error("iCloud file wait timed out: \(fileName)")
         throw iCloudLoadError(
             code: 3,
-            message: L10n.string("iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。")
+            message: L10n.string("reader.icloud.syncTimeout")
         )
     }
 

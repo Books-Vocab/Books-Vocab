@@ -380,7 +380,7 @@ struct TodayReviewPresenter: View {
                 title: L10n.string("今天複習完成"),
                 systemImage: "checkmark.circle",
                 description: L10n.string("這一輪 session 的卡片都處理完了。"),
-                guidanceText: L10n.string("明天再來複習新到期的單字"),
+                guidanceText: L10n.string("todayReview.completion.nextDue"),
                 symbolBounce: celebrationTriggered
             )
             .scaleEffect(celebrationTriggered ? 1 : 0.8)

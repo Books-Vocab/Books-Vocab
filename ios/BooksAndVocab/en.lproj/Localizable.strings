@@ -501,7 +501,6 @@
 "語氣標記" = "Tone Marker";
 "難度等級：%@" = "Difficulty: %@";
 "複習進度" = "Review Progress";
-"進度 %d%%" = "Progress %d%%";
 "載入解釋..." = "Loading explanation...";
 
 // Review Settings
@@ -1038,8 +1037,6 @@
 
 /* track-16 notebook i18n */
 "個單字" = "words";
-"%d 到期" = "%d due";
-"%d 未學" = "%d unlearned";
 "使用中" = "Active";
 "，" = ", ";
 "建立第一本單字本" = "Create your first deck";
@@ -1155,7 +1152,7 @@
 "目錄讀取失敗" = "Could not load catalog";
 
 /* Settings — 逐步同步進度的 VoiceOver 播報 */
-"載入進度" = "Loading progress";
+"app.loading.progress" = "Loading progress";
 "同步進度" = "Sync progress";
 "等待中" = "Waiting";
 "進行中" = "In progress";
@@ -1210,11 +1207,11 @@
 "reader.theme.dark" = "Dark";
 
 /* i18n strict coverage: Vocabulary / Reader / Sync */
-"iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。" = "iCloud sync timed out. Possible reasons:\n• The original device has not finished uploading\n• The network connection is unstable\n\nMake sure both devices are signed in with the same Apple ID and have iCloud Drive enabled.";
-"上次同步 %@" = "Last synced %@";
-"明天再來複習新到期的單字" = "Come back tomorrow to review newly due words";
-"正在載入文件內容與閱讀位置。" = "Loading the document and your reading position.";
-"正在開啟 PDF" = "Opening PDF";
+"reader.icloud.syncTimeout" = "iCloud sync timed out. Possible reasons:\n• The original device has not finished uploading\n• The network connection is unstable\n\nMake sure both devices are signed in with the same Apple ID and have iCloud Drive enabled.";
+"settings.sync.lastSynced" = "Last synced %@";
+"todayReview.completion.nextDue" = "Come back tomorrow to review newly due words";
+"reader.pdf.loading.description" = "Loading the document and your reading position.";
+"reader.pdf.loading.title" = "Opening PDF";
 
 /* i18n strict coverage: integrated UI review surfaces */
 "互動回饋" = "Interaction Feedback";

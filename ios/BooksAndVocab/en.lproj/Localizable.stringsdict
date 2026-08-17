@@ -141,7 +141,7 @@
 			<string>You have %d collected words.</string>
 		</dict>
 	</dict>
-	<key>%d 到期</key>
+	<key>notebook.dueCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@count@</string>
@@ -157,7 +157,7 @@
 			<string>%lld due</string>
 		</dict>
 	</dict>
-	<key>%d 未學</key>
+	<key>notebook.unlearnedCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@count@</string>
@@ -173,7 +173,7 @@
 			<string>%lld unlearned</string>
 		</dict>
 	</dict>
-	<key>進度 %d%%</key>
+	<key>vocab.reviewProgress.percent</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@count@</string>

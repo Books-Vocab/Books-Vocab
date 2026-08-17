@@ -31,6 +31,9 @@ verified_against: afda0439c
 | `vocab_reviewed_cards_plural` | 已複習數 |
 | `vocab_graph_node_count_plural` | 知識圖譜 node 數 |
 | `vocab_graph_link_count_plural` | 知識圖譜 link 數 |
+| `notebook.dueCount` | Notebook 卡片待複習數 |
+| `notebook.unlearnedCount` | Notebook 尚未學習數 |
+| `vocab.reviewProgress.percent` | 單字列與書架閱讀進度百分比 |
 
 > Welcome banner 另有 2 個 raw 中文 plural key（`已收錄 %d 個單字...`）使用 stringsdict 機制但 key 本身是字面字串 — 待 Phase 6 i18n sweep 收尾後改 snake_case。
 

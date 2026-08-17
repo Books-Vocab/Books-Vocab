@@ -25,7 +25,7 @@ enum BookshelfCopy {
 
     static func readingProgressAccessibilityValue(_ progression: Double?) -> String {
         let clamped = min(max(progression ?? 0, 0), 1)
-        return L10n.format("進度 %d%%", Int(clamped * 100))
+        return L10n.format("vocab.reviewProgress.percent", Int64(clamped * 100))
     }
 
     static var emptyState: BookshelfEmptyStateCopy {
