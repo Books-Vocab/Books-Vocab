@@ -111,6 +111,7 @@ def test_board_payload_v3_is_single_compact_row_set_with_id_partitions(monkeypat
     assert all(
         set(row) == {
             "id", "brief", "detail", "severity", "stream", "held", "ready",
+            "decision", "scope_status",
         }
         for row in payload["board"]
     )
@@ -248,8 +249,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert '<title>交付進度看板 · 唯讀觀測</title>' in index
     assert '<a class="brand" href="/">交付進度看板</a>' in index
     assert '票面、工作樹與資料新鮮度' in index
-    assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "ungroomed", "all", "history")] == [True] * 6
-    assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理"))
+    assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "ungroomed", "contract", "all", "history")] == [True] * 7
+    assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理", "契約未就緒"))
     assert "歷史完成" in index
     assert "<details data-ticket-details" in js and "loadHistory" in js
     assert "commitInspector" in js
@@ -269,9 +270,25 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert "/api/git-tree" in js
     assert "/api/scope-matrix" in js
     assert "scope_status" in js and "scope-cell-collision" in js
+    assert "row.decision" in js and "contract-not-ready" in js
+    assert 'terminal={fixed:"已修復","wont-fix":"不修"}' in js
     assert "scopeMatrix.worktrees" in js and "scopeMatrix.queued_tickets" in js
     assert "scope-column-worktree" in js and "scope-column-ticket" in js
     assert "/api/ticket/" in js
+
+
+def test_model_page_exposes_one_terminology_and_live_state_contract():
+    html = (server.WEB_DIR / "model.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "model.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "model.js").read_text(encoding="utf-8")
+
+    assert "術語與流程" in html
+    assert "COMMUNICATION CONTRACT" in html
+    assert "flow-main" in html and "scope-audit" in html and "terms" in html
+    assert "/api/model" in js
+    assert "needs-grooming" in js and "contract-not-ready" in js
+    assert "依賴阻塞" in js and "Scope audit" in js
+    assert ".flow-node" in css and ".terms-table" in css
 
 
 def test_board_trust_detail_does_not_append_seconds_to_unknown_age():
@@ -520,8 +537,11 @@ def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
 
     for path, content_type, marker in (
         ("/", "text/html; charset=utf-8", b"admin-nav"),
+        ("/model", "text/html; charset=utf-8", b"COMMUNICATION CONTRACT"),
         ("/assets/app.css", "text/css; charset=utf-8", b"min-height"),
         ("/assets/app.js", "text/javascript; charset=utf-8", b"/api/git-tree"),
+        ("/assets/model.css", "text/css; charset=utf-8", b"flow-node"),
+        ("/assets/model.js", "text/javascript; charset=utf-8", b"/api/model"),
     ):
         handler = _handler(path)
         responses = []
@@ -560,6 +580,19 @@ def test_scope_matrix_read_route_returns_versioned_projection(monkeypatch):
     assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.scope-matrix.v2"
 
 
+def test_model_read_route_returns_terminology_and_live_projection(monkeypatch):
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    monkeypatch.setattr(server, "model_payload", lambda: {
+        "schema": "kg.board.model.v1", "terms": [], "flow": {}, "live": {},
+    })
+    handler = _capturing_handler("/api/model")
+
+    handler.do_GET()
+
+    assert handler.response_code == 200
+    assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.model.v1"
+
+
 def test_ticket_read_route_returns_full_detail_projection(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
     row = _ticket("IMP-1")
@@ -581,8 +614,10 @@ def test_ticket_read_route_returns_full_detail_projection(monkeypatch):
 
 def test_history_read_route_returns_only_resolved_rows(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    fixed = _ticket("FIXED", status="fixed")
+    fixed["scope"] = {"files": [{"path": "ops/backlog.py", "operation": "modify"}]}
     monkeypatch.setattr(server, "read_entries", lambda: {
-        "entries": [_ticket("OPEN"), _ticket("FIXED", status="fixed"), _ticket("WONT", status="wont-fix")],
+        "entries": [_ticket("OPEN"), fixed, _ticket("WONT", status="wont-fix")],
     })
     monkeypatch.setattr(server, "freshness", lambda: {"freshness_state": "current"})
     handler = _capturing_handler("/api/history")
@@ -593,6 +628,10 @@ def test_history_read_route_returns_only_resolved_rows(monkeypatch):
     assert payload["schema"] == "kg.board.history.v1"
     assert [row["id"] for row in payload["board"]] == ["WONT", "FIXED"]
     assert payload["count"] == 2
+    fixed_row = next(row for row in payload["board"] if row["id"] == "FIXED")
+    assert fixed_row["decision"] == "fixed"
+    assert fixed_row["scope_status"] == "known"
+    assert fixed_row["scope"]["files"][0]["path"] == "ops/backlog.py"
 
 
 def test_require_token_mode_is_explicitly_api_only_without_browser_session(monkeypatch):
@@ -679,6 +718,10 @@ def test_projection_exposes_decision_counts_and_blocked_rows():
         "inflight": 1,
         "blocked": 1,
         "ungroomed": 1,
+        "contract_not_ready": 0,
+        # Queued is a lifecycle overlay, not another mutually-exclusive
+        # decision bucket: NOW and BLOCKED are both already groomed/queued.
+        "queued": 2,
     }
     assert payload["counts"]["history"] == {"total": 6, "fixed": 1, "wont_fix": 1}
 

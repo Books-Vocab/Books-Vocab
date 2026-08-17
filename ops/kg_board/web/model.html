@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="kg-app-revision" content="{{APP_REVISION}}">
+  <title>交付進度看板 · 術語與流程</title>
+  <link rel="stylesheet" href="/assets/model.css">
+</head>
+<body>
+  <header class="model-nav">
+    <a class="brand" href="/">交付進度看板</a>
+    <span class="nav-caption">術語與流程</span>
+    <a class="back-link" href="/">回到票面</a>
+    <span id="model-trust" class="trust-badge">資料確認中</span>
+  </header>
+  <main class="model-main">
+    <section class="hero panel">
+      <span class="eyebrow">COMMUNICATION CONTRACT</span>
+      <h1>術語與流程</h1>
+      <p>這一頁是交付進度看板的共同語言。它把「票面內容」「工作樹認領」與「看板投影」分開，讓主管可以直接知道一張票現在為什麼不能往下一步走。</p>
+      <p class="hero-note">重要原則：看板只呈現當下狀態，不另創一套派工規則；真正的票面判定仍由 backlog CLI，認領判定仍由 worktree registry。</p>
+    </section>
+
+    <section class="panel" aria-labelledby="live-title">
+      <div class="section-heading">
+        <div><span class="eyebrow">LIVE DECISION MODEL</span><h2 id="live-title">目前數字怎麼解讀</h2></div>
+        <span id="live-source" class="source-label">讀取中</span>
+      </div>
+      <p class="section-note">前五張卡是互斥 decision buckets，合計等於所有未結案票；「已入列」是 lifecycle 觀察值，會包含可派工、依賴阻塞與契約未就緒，不應再加總一次。這裡的「待梳理」只代表 CLI 的 <code>list --ungroomed</code>。</p>
+      <div id="live-summary" class="live-summary" aria-live="polite"><p class="empty">資料載入中</p></div>
+      <div id="scope-audit" class="scope-audit" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="flow-title">
+      <div class="section-heading">
+        <div><span class="eyebrow">WORKFLOW</span><h2 id="flow-title">一張票如何走到交付</h2></div>
+      </div>
+      <div id="flow-main" class="flow-main" aria-label="主要交付流程"></div>
+      <div id="flow-branches" class="flow-branches" aria-label="流程分支"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="terms-title">
+      <div class="section-heading">
+        <div><span class="eyebrow">TERMINOLOGY</span><h2 id="terms-title">英文與中文定義</h2></div>
+      </div>
+      <p class="section-note">報告時優先使用英文 canonical term，再接中文說明；同一個詞只代表一個狀態或一個資料責任。</p>
+      <div id="terms" class="terms-table-wrap"><p class="empty">資料載入中</p></div>
+    </section>
+
+    <footer id="source-note" class="source-note">來源確認中</footer>
+  </main>
+  <script src="/assets/model.js" defer></script>
+</body>
+</html>

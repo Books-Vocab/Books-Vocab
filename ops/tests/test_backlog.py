@@ -1397,6 +1397,11 @@ def test_every_field_named_in_digest_fields_actually_changes_the_id():
 # "a fully groomed entry" cannot be expressed without them any more.
 BRIEF_TEXT = "有一份自動產生的統計報告已經爛掉，但檢查程式只確認它有人負責產生就放行。"
 SCOPE_TEXT = "改一支檢查腳本、加一道比對，連帶要重生一份報告。"
+SCOPE_FILES = {
+    "schema": "kg.backlog.scope.v1",
+    "files": [{"path": "ops/x.py", "operation": "modify"}],
+}
+SCOPE_ARG = json.dumps(SCOPE_FILES, ensure_ascii=False, separators=(",", ":"))
 
 
 def _groom_kwargs(**overrides):
@@ -1407,7 +1412,7 @@ def _groom_kwargs(**overrides):
         # without them, so every groomed fixture in this file needs them to exist
         # at all; the tests that assert the RULE override them explicitly.
         brief=BRIEF_TEXT,
-        scope=SCOPE_TEXT,
+        scope=SCOPE_FILES,
         acceptance="pytest -q ops/tests/test_x.py::test_y",
         # The EXECUTABLE half. `acceptance` above is prose and nothing reads it;
         # this is what `anchor --commit` actually runs before closing the entry.
@@ -1426,6 +1431,16 @@ def test_a_fully_groomed_entry_validates(tmp_path):
     entry = _add(store)
     BACKLOG.update_entry(store, entry["id"], **_groom_kwargs())
     assert BACKLOG.validate_store(store) == []
+
+
+def test_new_groom_write_rejects_legacy_scope_prose(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store)
+
+    with pytest.raises(ValueError, match="groom-claim-with-unknown-scope"):
+        BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(scope=SCOPE_TEXT))
+
+    assert BACKLOG.load_entry(store, entry["id"]).get("groomed_by") is None
 
 
 @pytest.mark.parametrize("missing", ["plan", "acceptance", "fix_site"])
@@ -2995,7 +3010,7 @@ def test_groomed_against_is_captured_when_refreshing_a_groom_stamp(
         "--acceptance", "the synthetic history warning is visible",
         "--acceptance-cmd", "true", "--fix-site", "ops/backlog.py:1",
         "--brief", "待辦快照落後時接手者會先看到複查提醒。",
-        "--scope", "一支工具與一支測試，沒有資料遷移。",
+        "--scope", SCOPE_ARG,
         "--groomed-at", "2026-08-09", "--groomed-by", "test:groom@v1",
         "--commit",
     ]) == 0
@@ -5330,7 +5345,7 @@ def test_an_acceptance_command_that_cannot_parse_is_refused(tmp_path):
 def _add_groomed_flags():
     return [
         "--brief", "一張已知修法的票可以一次進入派工佇列。",
-        "--scope", "一支 CLI 與其既有測試，沒有資料遷移。",
+        "--scope", SCOPE_ARG,
         "--plan", "在 add 落檔前套用既有 groom 驗證並輸出 claimability。",
         "--acceptance", "完整旗標產出的票可被 dispatch 取到。",
         "--acceptance-cmd", "true",
@@ -5368,7 +5383,7 @@ def test_add_groomed_file_twins_preserve_prose_and_contract(tmp_path, capsys):
     store = tmp_path / "s"
     files = {
         "brief": "一次加入完整欄位，仍應保留 shell-safe prose。",
-        "scope": "只改 backlog CLI 與測試。",
+        "scope": SCOPE_ARG + "\n",
         "plan": "先驗證欄位，再原子寫入。",
         "acceptance": "完整欄位可派工。",
         "acceptance_cmd": "true\n",
@@ -5398,7 +5413,8 @@ def test_add_groomed_file_twins_preserve_prose_and_contract(tmp_path, capsys):
     assert payload["claimable"] is True
     entry = payload["entry"]
     for name, content in files.items():
-        assert entry[name] == content.rstrip("\n")
+        expected = SCOPE_FILES if name == "scope" else content.rstrip("\n")
+        assert entry[name] == expected
     assert entry["status"] == "triaged"
 
 
@@ -5408,7 +5424,7 @@ def test_add_groomed_current_contract_requires_all_contract_fields(tmp_path, cap
         "add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-11",
         "--source", "contract-required-test", "--category", "tool", "--severity", "low",
         "--detail", "missing contract stamp",
-        "--brief", "完整欄位但缺 contract stamp。", "--scope", "只改 CLI 與測試。",
+        "--brief", "完整欄位但缺 contract stamp。", "--scope", SCOPE_ARG,
         "--plan", "先驗證欄位，再原子寫入。", "--acceptance", "欄位可派工。",
         "--acceptance-cmd", "true", "--fix-site", "ops/backlog.py:1",
         "--groomed-by", "test:contract-required", "--groomed-at", "2026-08-11",
@@ -6240,7 +6256,7 @@ def _briefed(**overrides):
     return base
 
 
-@pytest.mark.parametrize("field", ["brief", "scope"])
+@pytest.mark.parametrize("field", ["brief"])
 def test_grooming_stamped_from_the_cutoff_on_must_speak_plain_language(tmp_path, field):
     """Grooming now means "worked out AND explained", and the second half is
     checkable the same way the first is: by its precondition being non-empty."""
@@ -6253,11 +6269,31 @@ def test_grooming_stamped_from_the_cutoff_on_must_speak_plain_language(tmp_path,
 
     # and the whole stamp, complete, is clean — otherwise the test above could be
     # passing off some unrelated defect as the finding
-    assert BACKLOG.validate_entry({**payload, field: BRIEF_TEXT}) == []
+    replacement = SCOPE_FILES if field == "scope" else BRIEF_TEXT
+    assert BACKLOG.validate_entry({**payload, field: replacement}) == []
 
     # the stronger half: the violation cannot be written through the CLI path
     with pytest.raises(ValueError, match=f"groom-claim-without-{field}"):
         BACKLOG.update_entry(store, entry["id"], **_briefed(**{field: ""}))
+
+
+def test_grooming_stamped_from_the_cutoff_rejects_legacy_scope_in_stored_data(
+    tmp_path, monkeypatch
+):
+    store = tmp_path / "s"
+    entry = _add(store)
+    # The repository's Scope ratchet deliberately starts one day after the
+    # newest shipped stamp. Pin it to today's valid fixture date so this test
+    # exercises the Scope gate instead of the independent future-date check.
+    monkeypatch.setattr(BACKLOG, "SCOPE_REQUIRED_SINCE", "2026-08-17")
+    payload = {
+        **BACKLOG.load_entry(store, entry["id"]),
+        **_briefed(scope=SCOPE_TEXT, groomed_at="2026-08-17"),
+    }
+
+    kinds = {problem["kind"] for problem in BACKLOG.validate_entry(payload)}
+    assert "groom-claim-without-scope" in kinds
+    assert BACKLOG.validate_entry({**payload, "scope": SCOPE_FILES}) == []
 
 
 def test_grooming_from_before_the_cutoff_is_grandfathered(tmp_path):
@@ -6281,10 +6317,13 @@ def test_grooming_from_before_the_cutoff_is_grandfathered(tmp_path):
     assert BACKLOG.validate_entry(payload) == [], (
         "grooming that predates the rule was turned red by it")
 
-    # and it really is the DATE doing the forgiving: move the same payload forward
-    # and both problems appear
+    # and it really is the DATE doing the forgiving: brief and Scope have separate
+    # ratchets because Scope was redefined after the brief rule shipped.
     fresh = {**payload, "groomed_at": BACKLOG.BRIEF_REQUIRED_SINCE}
     kinds = {p["kind"] for p in BACKLOG.validate_entry(fresh)}
+    assert kinds == {"groom-claim-without-brief"}, kinds
+    scope_fresh = {**payload, "groomed_at": BACKLOG.SCOPE_REQUIRED_SINCE}
+    kinds = {p["kind"] for p in BACKLOG.validate_entry(scope_fresh)}
     assert {"groom-claim-without-brief", "groom-claim-without-scope"} <= kinds, kinds
 
 
@@ -6335,6 +6374,10 @@ def test_the_cutoff_forgives_every_groom_stamp_already_in_the_shipped_store():
         f"BRIEF_REQUIRED_SINCE={BACKLOG.BRIEF_REQUIRED_SINCE} is more than one day "
         f"past the newest stamp in the store ({newest}), so `validate` is inert "
         f"over a window nobody declared")
+    assert BACKLOG.SCOPE_REQUIRED_SINCE <= day_after, (
+        f"SCOPE_REQUIRED_SINCE={BACKLOG.SCOPE_REQUIRED_SINCE} is more than one day "
+        f"past the newest stamp in the store ({newest}), so the structured Scope "
+        f"ratchet is inert over a window nobody declared")
 
 
 @pytest.mark.parametrize("field", ["brief", "scope"])
@@ -6389,7 +6432,7 @@ def test_list_missing_brief_is_the_backfill_queue_not_the_dispatch_queue(tmp_pat
     half = _add(store, detail="brief but no scope")
     BACKLOG.update_entry(store, half["id"], brief=BRIEF_TEXT)
     done = _add(store, detail="both fields written")
-    BACKLOG.update_entry(store, done["id"], brief=BRIEF_TEXT, scope=SCOPE_TEXT)
+    BACKLOG.update_entry(store, done["id"], brief=BRIEF_TEXT, scope=SCOPE_FILES)
     closed = _add(store, detail="closed and never shown on the board", status="fixed")
 
     hits = [e["id"] for e in BACKLOG.list_entries(store, missing_brief=True)]
@@ -6410,7 +6453,7 @@ def test_list_missing_brief_is_reachable_from_argv(tmp_path, capsys):
     store = tmp_path / "s"
     bare = _add(store, detail="no plain language anywhere")
     done = _add(store, detail="both fields written")
-    BACKLOG.update_entry(store, done["id"], brief=BRIEF_TEXT, scope=SCOPE_TEXT)
+    BACKLOG.update_entry(store, done["id"], brief=BRIEF_TEXT, scope=SCOPE_FILES)
 
     assert BACKLOG.main(["list", "--store", str(store), "--missing-brief", "--json"]) == 0
     ids = [e["id"] for e in json.loads(capsys.readouterr().out)["entries"]]
@@ -6440,8 +6483,9 @@ def test_stamping_a_groom_badge_demands_plain_language_whatever_the_date(tmp_pat
     """The date ratchet grandfathers DATA; it must not grandfather ACTS.
 
     `BRIEF_REQUIRED_SINCE` had to land ahead of the newest stamp in the store
-    (see the cutoff test above), which left a window in which grooming could
-    still be stamped with no plain language at all — measured, not theorised.
+    (see the cutoff test above), while `SCOPE_REQUIRED_SINCE` is a later ratchet
+    for the redefined structured Scope field. These dates leave a window in which
+    old-style stored grooming can remain grandfathered — measured, not theorised.
     Closing it with an earlier date is impossible without reddening 95 existing
     entries, and closing it with a list of exempt ids is the whitelist this
     design refuses. So the two questions are answered in the two places they
@@ -6538,7 +6582,7 @@ def test_the_groom_refusal_names_each_defect_once_and_says_how_to_repair_it(tmp_
     """
     store = tmp_path / "s"
     entry = _add(store)
-    bound = BACKLOG.BRIEF_REQUIRED_SINCE  # both gates active
+    bound = BACKLOG.SCOPE_REQUIRED_SINCE  # both stored-data gates active
 
     with pytest.raises(ValueError) as excinfo:
         BACKLOG.update_entry(store, entry["id"],
@@ -6612,7 +6656,7 @@ def _groom_argv(store: Path, entry_id: str, *extra: str) -> list[str]:
     return [
         "groom", entry_id, "--store", str(store),
         "--brief", BRIEF_TEXT,
-        "--scope", SCOPE_TEXT,
+        "--scope", SCOPE_ARG,
         "--plan", "open ops/x.py:10, replace the stale predicate, run the test",
         "--acceptance", "the focused regression turns green",
         "--fix-site", "ops/x.py:10",
@@ -6960,7 +7004,7 @@ def _groomed_ticket(store, *, status=None, fixed_by=None, resolution=None, **ove
 
 
 def _dispatch_store(tmp_path):
-    """One store carrying a member of every class the four clauses discriminate."""
+    """One store carrying a member of every class the five clauses discriminate."""
     store = tmp_path / "s"
     takeable = _groomed_ticket(store, detail="groomed, unresolved, free — the only takeable one")
     ungroomed = _add(store, detail="nobody has worked out how to fix this")
@@ -6972,8 +7016,8 @@ def _dispatch_store(tmp_path):
                        refused=refused, claimed=claimed)
 
 
-def test_dispatch_is_the_intersection_of_four_clauses_each_with_its_own_negative(tmp_path):
-    """Groomed AND unresolved AND unclaimed AND unblocked — all load-bearing.
+def test_dispatch_is_the_intersection_of_five_clauses_each_with_its_own_negative(tmp_path):
+    """Groomed AND unresolved AND unclaimed AND unblocked AND contract-ready — all load-bearing.
 
     Asserted as three separate absences against ONE positive control in the same
     store, because a filter that returns the empty set satisfies every negative
@@ -7091,7 +7135,9 @@ def test_dispatch_says_what_it_cannot_see(tmp_path, capsys, monkeypatch):
     assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     scope = payload["dispatch"]
-    assert scope["clauses"] == ["groomed", "unresolved", "unclaimed", "unblocked"], scope
+    assert scope["clauses"] == [
+        "groomed", "unresolved", "unclaimed", "unblocked", "contract-ready"
+    ], scope
     assert "optimistic" in scope["held_scope"].lower(), scope["held_scope"]
     assert "overlay.json" in scope["snooze_scope"], scope["snooze_scope"]
 
@@ -7289,15 +7335,24 @@ def test_dispatch_reports_withheld_blockers_and_advertises_all_clauses(
     store = tmp_path / "s"
     blocker = _groomed_ticket(store, detail="the blocker")
     blocked = _groomed_ticket(store, detail="the blocked ticket")
+    contract = _groomed_ticket(store, detail="the contract is not ready")
+    BACKLOG.update_entry(
+        store, contract["id"], fix_site="ops/backlog.py", groomed_at="2026-08-10"
+    )
     BACKLOG.update_entry(store, blocked["id"], blocked_by=[blocker["id"]])
     monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
 
     assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     scope = payload["dispatch"]
-    assert scope["clauses"] == ["groomed", "unresolved", "unclaimed", "unblocked"]
+    assert scope["clauses"] == [
+        "groomed", "unresolved", "unclaimed", "unblocked", "contract-ready"
+    ]
     assert scope["withheld_blocked"] == [
         {"id": blocked["id"], "waiting_on": [blocker["id"]]}]
+    assert [row["id"] for row in scope["withheld_contract"]] == [contract["id"]]
+    assert any(problem["kind"] == "contract-evidence-missing"
+               for problem in scope["withheld_contract"][0]["problems"])
 
     assert BACKLOG.main(["dispatch", "--store", str(store)]) == 0
     human = capsys.readouterr().out

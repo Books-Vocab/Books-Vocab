@@ -5,7 +5,8 @@
 --------------
 應用與自檢跟著 KG repo 版控；launchd plist、token、state 與 sync tick 是主機 glue，
 留在 butler。服務不 import backlog 實作，而是 shell out 到 clone 同版的 CLI：
-`list --json` 提供完整票面，`dispatch --json` 提供 canonical 可派工 ids 與 blocked metadata。
+`list --json` 提供完整票面，`list --ungroomed --json` 提供待梳理 ids，
+`dispatch --json` 提供 canonical 可派工 ids 與 blocked metadata。
 
 資料從哪來（以及「近即時」到底多近）
 ------------------------------------
@@ -32,7 +33,7 @@ refresh tick。oscar 睡著時看板會凍在最後一次推送——那是對�
 
 「已梳理」只有一個 owner
 ------------------------
-本服務只消費 clone 同版 `backlog.py list/dispatch --json` 的 canonical partition，
+本服務只消費 clone 同版 `backlog.py list --ungroomed/dispatch --json` 的 canonical partition，
 不複製 groom 欄位規則。**本服務任何一頁都不得出現第二套判準。**
 """
 from __future__ import annotations
@@ -61,6 +62,16 @@ try:
     from ops.kg_board.scope import scope_files, scope_status
 except ModuleNotFoundError:  # direct launch via the release checkout
     from scope import scope_files, scope_status
+try:
+    from ops.kg_board.model import (
+        MODEL_FLOW,
+        MODEL_SCHEMA,
+        MODEL_TERMS,
+        classify_decision,
+        scope_audit,
+    )
+except ModuleNotFoundError:  # direct launch via the release checkout
+    from model import MODEL_FLOW, MODEL_SCHEMA, MODEL_TERMS, classify_decision, scope_audit
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -217,10 +228,12 @@ def _registry_fingerprint() -> tuple[
     return (True, stat.st_ino, stat.st_mtime_ns, stat.st_size), None
 
 
-def _run_backlog(tool: Path, subcommand: str) -> tuple[subprocess.CompletedProcess | None, str | None]:
+def _run_backlog(
+    tool: Path, subcommand: str, *arguments: str
+) -> tuple[subprocess.CompletedProcess | None, str | None]:
     try:
         return subprocess.run(
-            [sys.executable, str(tool), subcommand, "--json"],
+            [sys.executable, str(tool), subcommand, *arguments, "--json"],
             cwd=str(CLONE), capture_output=True, text=True, timeout=180,
         ), None
     except (OSError, subprocess.SubprocessError) as exc:
@@ -320,6 +333,9 @@ def _read_entries_locked(force: bool = False) -> dict:
         dispatch_proc = None
         if invocation_error is None:
             dispatch_proc, invocation_error = _run_backlog(tool, "dispatch")
+        ungroomed_proc = None
+        if invocation_error is None:
+            ungroomed_proc, invocation_error = _run_backlog(tool, "list", "--ungroomed")
         if invocation_error is not None:
             payload = {"sha": sha, "entries": [],
                        "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
@@ -328,11 +344,15 @@ def _read_entries_locked(force: bool = False) -> dict:
                        "error": invocation_error}
         else:
             failed = next(
-                (p for p in (list_proc, dispatch_proc) if p is not None and p.returncode != 0),
+                (p for p in (list_proc, dispatch_proc, ungroomed_proc)
+                 if p is not None and p.returncode != 0),
                 None,
             )
             if failed is not None:
-                subcommand = "list" if failed is list_proc else "dispatch"
+                subcommand = (
+                    "list --ungroomed" if failed is ungroomed_proc
+                    else "list" if failed is list_proc else "dispatch"
+                )
                 payload = {"sha": sha, "entries": [],
                            "dispatch_ids": [], "dispatch_meta": {}, "local_held": {},
                            "ungroomed_ids": [],
@@ -359,6 +379,7 @@ def _read_entries_locked(force: bool = False) -> dict:
                 try:
                     list_body = json.loads(list_proc.stdout) if list_proc is not None else None
                     dispatch_body = json.loads(dispatch_proc.stdout)
+                    ungroomed_body = json.loads(ungroomed_proc.stdout)
                     entries = (
                         cached_entries
                         if cached_entries is not None
@@ -372,15 +393,14 @@ def _read_entries_locked(force: bool = False) -> dict:
                         str(row["id"]) for row in dispatch_meta.get("withheld_blocked", [])
                         if isinstance(row, dict) and row.get("id")
                     }
-                    unresolved_ids = {
-                        str(row["id"]) for row in entries
-                        if row.get("status") not in RESOLVED_STATUSES
+                    # backlog.py is the sole groom predicate owner. Query the
+                    # canonical list --ungroomed result directly; subtracting the
+                    # dispatch/blocked remainder incorrectly turns contract debt into
+                    # a second meaning of "待梳理".
+                    ungroomed_ids = {
+                        str(row["id"]) for row in ungroomed_body.get("entries", [])
+                        if isinstance(row, dict) and row.get("id")
                     }
-                    # backlog.py is the sole groom predicate owner. Its list/dispatch
-                    # metadata partitions unresolved into dispatch, held, blocked and
-                    # the remainder (ungroomed), so this service never reimplements
-                    # plan/acceptance/groomed_by rules.
-                    ungroomed_ids = unresolved_ids - dispatch_ids - set(local_held) - blocked_ids
                     payload = {"sha": sha, "entries": entries,
                                "dispatch_ids": sorted(dispatch_ids),
                                "dispatch_meta": dispatch_meta,
@@ -575,9 +595,33 @@ def project(
     dispatch_meta = dispatch_meta or {}
     unresolved = [e for e in entries if e.get("status") not in RESOLVED_STATUSES]
     ready = [e for e in unresolved if e["id"] not in canonical_ungroomed_ids]
+    blocked_ids = {
+        str(row.get("id")) for row in dispatch_meta.get("withheld_blocked", [])
+        if isinstance(row, dict) and row.get("id")
+    }
+    # An explicit empty withheld set is a valid canonical answer: it means the
+    # CLI preflight found no contract debt. Preserve the distinction between
+    # "provided and empty" and "not provided", otherwise a compatibility
+    # fallback can silently invent contract-not-ready rows and mask drift.
+    contract_meta_present = "withheld_contract" in dispatch_meta
+    contract_not_ready_ids = (
+        {
+            str(row.get("id")) for row in dispatch_meta.get("withheld_contract", [])
+            if isinstance(row, dict) and row.get("id")
+        }
+        if contract_meta_present else None
+    )
 
     def decorate(e: dict) -> dict:
         area, area_evidence = classify_area(e)
+        decision = classify_decision(
+            e,
+            held_ids=set(held),
+            dispatch_ids=canonical_dispatch_ids,
+            blocked_ids=blocked_ids,
+            ungroomed_ids=canonical_ungroomed_ids,
+            contract_not_ready_ids=contract_not_ready_ids,
+        )
         return {
             "id": e["id"], "stream": e.get("stream"), "status": e.get("status"),
             "severity": e.get("severity"), "category": e.get("category"),
@@ -593,6 +637,8 @@ def project(
             "ready": e["id"] not in canonical_ungroomed_ids,
             "canonical_dispatch": e["id"] in canonical_dispatch_ids,
             "held": held.get(e["id"]),
+            "decision": decision,
+            "scope_status": scope_status(e.get("scope")),
         }
 
     board = sorted((decorate(e) for e in unresolved), key=lambda row: (
@@ -601,24 +647,27 @@ def project(
     # Canonical eligibility belongs to backlog.py dispatch. This is a read-only
     # projection; mirrored claims are the one additional suppression applied here.
     canonical = [r for r in board if r["canonical_dispatch"]]
-    dispatch = [r for r in canonical if not r["held"]]
-    blocked_ids = {
-        str(row.get("id")) for row in dispatch_meta.get("withheld_blocked", [])
-        if isinstance(row, dict) and row.get("id")
-    }
-    blocked = [r for r in board if r["id"] in blocked_ids]
-    # A partition of unresolved rows, so the segment counts remain auditable.
-    def bucket(r: dict) -> str:
-        if r["held"]:
-            return "held"
-        if not r["ready"]:
-            return "ungroomed"
-        if r["canonical_dispatch"]:
-            return "dispatch"
-        return "blocked"
-    segments = {k: 0 for k in ("dispatch", "held", "blocked", "ungroomed")}
+    dispatch = [r for r in board if r["decision"] == "dispatchable"]
+    blocked = [r for r in board if r["decision"] == "dependency-blocked"]
+    contract_not_ready = [r for r in board if r["decision"] == "contract-not-ready"]
+    # Queued is a lifecycle label, not a mutually exclusive decision bucket:
+    # groomed tickets remain queued while dispatchable, contract-blocked, or
+    # dependency-blocked. Active/held tickets have left the queue.
+    queued = [r for r in board if r["decision"] in {
+        "dispatchable", "dependency-blocked", "contract-not-ready"
+    }]
+    segments = {k: 0 for k in (
+        "dispatch", "held", "blocked", "ungroomed", "contract_not_ready"
+    )}
     for r in board:
-        segments[bucket(r)] += 1
+        key = {
+            "dispatchable": "dispatch",
+            "held": "held",
+            "dependency-blocked": "blocked",
+            "needs-grooming": "ungroomed",
+            "contract-not-ready": "contract_not_ready",
+        }[r["decision"]]
+        segments[key] += 1
     dispatch_ids = {r["id"] for r in dispatch}
     area_names = list(AREA_ORDER)
     area_names.extend(sorted({r["area"] for r in board if r["area"] not in area_names}))
@@ -634,11 +683,15 @@ def project(
             "dispatch": sum(1 for r in rows if r["id"] in dispatch_ids),
             "held": sum(1 for r in rows if r["held"]),
             "ungroomed": sum(1 for r in rows if not r["ready"]),
+            "contract_not_ready": sum(1 for r in rows if r["decision"] == "contract-not-ready"),
+            "queued": sum(1 for r in rows if r in queued),
         }
     return {
         "board": board,
         "dispatch": dispatch,
         "blocked": blocked,
+        "contract_not_ready": contract_not_ready,
+        "queued": queued,
         "dispatch_meta": dispatch_meta,
         "segments": segments,
         "counts": {
@@ -646,7 +699,7 @@ def project(
             "total": len(entries),
             "unresolved": len(unresolved),
             "ready": len(ready),
-            "ready_definition": "KG CLI groomed clause (list/dispatch metadata)",
+            "ready_definition": "KG CLI `list --ungroomed` 的反面；代表已梳理，不代表契約就緒",
             "dispatch": len(dispatch),
             "canonical_dispatch": len(canonical),
             "claims_subtracted": sum(1 for r in canonical if r["held"]),
@@ -660,6 +713,7 @@ def project(
             ),
             "held": sum(1 for r in board if r["held"]),
             "dispatch_definition": "KG CLI dispatch ∧ ¬mirror-claimed; personal snooze not applied",
+            "decision_definition": "互斥分類：held → dependency-blocked → needs-grooming → dispatchable → contract-not-ready；Queued 是未結案且未認領的 groomed lifecycle label，不是另一個互斥桶",
             "by_severity": {s: sum(1 for e in unresolved if e.get("severity") == s)
                             for s in ("high", "med", "low")},
             "by_stream": {s: sum(1 for e in unresolved if e.get("stream") == s)
@@ -681,6 +735,8 @@ def project(
                 "inflight": sum(1 for r in board if r["held"]),
                 "blocked": len(blocked),
                 "ungroomed": segments["ungroomed"],
+                "contract_not_ready": len(contract_not_ready),
+                "queued": len(queued),
             },
             "history": {
                 "total": len(entries),
@@ -1081,6 +1137,8 @@ def board_payload() -> dict:
             "stream": row["stream"],
             "held": row["held"],
             "ready": row["ready"],
+            "decision": row["decision"],
+            "scope_status": row["scope_status"],
         }
 
     return {
@@ -1091,6 +1149,52 @@ def board_payload() -> dict:
         "dispatch_meta": projected["dispatch_meta"],
         "segments": projected["segments"],
         "counts": projected["counts"],
+        "freshness": freshness(),
+    }
+
+
+def model_payload() -> dict:
+    """Return the terminology contract plus its live, auditable projection."""
+    snap = read_entries()
+    entries = snap.get("entries") or []
+    held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
+    projected = project(
+        entries,
+        held,
+        canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
+        canonical_ungroomed_ids=set(snap.get("ungroomed_ids") or []),
+        dispatch_meta=snap.get("dispatch_meta") or {},
+    )
+    decision_ids = {}
+    for row in projected["board"]:
+        decision_ids.setdefault(row["decision"], []).append(row["id"])
+    for ids in decision_ids.values():
+        ids.sort()
+    lifecycle_ids = {
+        "queued": sorted(row["id"] for row in projected["queued"]),
+        "active": sorted(row["id"] for row in projected["board"] if row["held"]),
+    }
+    unresolved_scope_unknown_ids = sorted(
+        row["id"] for row in projected["board"] if row["scope_status"] != "known"
+    )
+    return {
+        "schema": MODEL_SCHEMA,
+        "terms": MODEL_TERMS,
+        "flow": MODEL_FLOW,
+        "source": {
+            "backlog_cli": "list --ungroomed + dispatch --json",
+            "scope_schema": "kg.backlog.scope.v1",
+            "clone_head": snap.get("sha"),
+            "entries_read_at": snap.get("read_at"),
+        },
+        "live": {
+            "counts": projected["counts"],
+            "segments": projected["segments"],
+            "decision_ids": decision_ids,
+            "lifecycle_ids": lifecycle_ids,
+            "scope_audit": scope_audit(entries),
+            "unresolved_scope_unknown_ids": unresolved_scope_unknown_ids,
+        },
         "freshness": freshness(),
     }
 
@@ -1141,6 +1245,11 @@ def history_payload() -> dict:
         if entry.get("status") not in RESOLVED_STATUSES:
             continue
         area, area_evidence = classify_area(entry)
+        raw_scope = entry.get("scope")
+        history_scope = (
+            dict(raw_scope) if isinstance(raw_scope, dict)
+            else str(raw_scope or "")[:400]
+        )
         rows.append({
             "id": entry.get("id"),
             "brief": entry.get("brief") or "",
@@ -1149,7 +1258,7 @@ def history_payload() -> dict:
             "stream": entry.get("stream"),
             "status": entry.get("status"),
             "date": entry.get("date"),
-            "scope": (entry.get("scope") or "")[:400],
+            "scope": history_scope,
             "plan": (entry.get("plan") or "")[:400],
             "fix_site": (entry.get("fix_site") or "")[:200],
             "acceptance": (entry.get("acceptance") or "")[:200],
@@ -1158,6 +1267,8 @@ def history_payload() -> dict:
             "area_evidence": area_evidence,
             "held": None,
             "ready": True,
+            "decision": entry.get("status"),
+            "scope_status": scope_status(raw_scope),
         })
     rows.sort(key=lambda row: (row.get("date") or "", row.get("id") or ""), reverse=True)
     return {
@@ -1243,6 +1354,14 @@ def render_index() -> bytes:
     return rendered.encode("utf-8")
 
 
+def render_model() -> bytes:
+    template = (WEB_DIR / "model.html").read_text(encoding="utf-8")
+    rendered = template.replace(
+        "{{APP_REVISION}}", html.escape(APP_REVISION or "unknown", quote=True)
+    )
+    return rendered.encode("utf-8")
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "kg-board"
 
@@ -1313,6 +1432,15 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send(200, render_index(), "text/html; charset=utf-8")
             return
+        if path == "/model":
+            self._send(200, render_model(), "text/html; charset=utf-8")
+            return
+        if path == "/assets/model.css":
+            self._send(200, (WEB_DIR / "model.css").read_bytes(), "text/css; charset=utf-8")
+            return
+        if path == "/assets/model.js":
+            self._send(200, (WEB_DIR / "model.js").read_bytes(), "text/javascript; charset=utf-8")
+            return
         if path == "/assets/app.css":
             self._send(200, (WEB_DIR / "app.css").read_bytes(), "text/css; charset=utf-8")
             return
@@ -1321,6 +1449,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/board":
             self._json(200, board_payload())
+            return
+        if path == "/api/model":
+            self._json(200, model_payload())
             return
         if path == "/api/scope-matrix":
             self._json(200, scope_matrix_payload())

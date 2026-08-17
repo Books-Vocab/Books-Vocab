@@ -80,7 +80,7 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 
 需要先把多票分區、quota、structured write sites 與 blocked/co-land 關係一次凍結時，使用 `campaign-reserve --request-file <manifest.json> --commit --json`；它在 canonical registry lock 內重讀 primary base、backlog 與 active claims，驗證通過後才原子保存 campaign manifest 與 registry reservation。之後以 `open --next-backlog --campaign <campaign-id> --partition <partition-id>` 從該分區逐票轉移 reservation→active claim；普通 `open --next-backlog` 會排除尚未轉移的 reserved tickets。path/symbol/mode 不明或跨票 collision 預設 fail-closed，除非 request 具名 `blocked_by` 或相同 `co_land_group` 的序列化證據。
 
-`dispatch`（＝`list --dispatch`）的集合是已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋，worst-first。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。它仍有兩個範圍邊界：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
+`dispatch`（＝`list --dispatch`）的集合是已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒，worst-first。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。它仍有兩個範圍邊界：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
 
 **波次結案流程（hunter 全程不碰 store）**：修好後在自己的工作樹跑 `./ops/backlog.py stage <id> --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>'（命令含反引號時用 `--evidence-file <路徑>`）`（無 `--status`，恆為 `fixed`）——寫進 gitignored 的 `<primary>/.cache/backlog_anchor_queue.jsonl`，**不碰 store**（理由是那顆 sha：rebase 前你不知道落地 sha，自己填就是 orphaned `fixed_by`；「不重生 view」那半個舊理由已隨 view 移出版控退場）。`cutover` 在**所有 post-ff refusal 之後**把真正的落地 sha 蓋上去（payload 的 `staged_closures`），波次結束開一條 worktree 跑 `./ops/backlog.py anchor --commit` 一次回填（全有或全無，未蓋 sha 的 row 會被具名保留而不是靜默套用；壞掉的 row 用 `./ops/backlog.py unstage <id> --commit` 取下，這是 all-or-nothing 的逃生口）。`resolve` 拆樹時會把這條分支還沒回填的結案**列出來但不擋**（payload 的 `pending_anchor`）——這是**正常狀態不是警告**（stage→cutover→resolve 本來就在 anchor 之前），列它是因為拆樹後那些 id 只剩 gitignored 檔裡一行；gate、docs lint 與任何讀 store 的入口都看不到它。
 

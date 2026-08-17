@@ -160,16 +160,17 @@ def _unclaimable(
                 "id": entry_id, "kind": "ungroomed",
                 # The flag list is the whole value of this hint, so it has to track
                 # what `validate` actually demands. `--brief`/`--scope` joined that
-                # set on BRIEF_REQUIRED_SINCE; a repair line that omits them teaches
+                # set by separate brief/Scope ratchets; a repair line that omits them teaches
                 # a command whose result is refused, which is worse than no hint —
                 # the agent believes it followed the tool.
                 "repair": f"groom it first: `ops/backlog.py update {entry_id} --plan "
                           f"… --acceptance … --fix-site … --acceptance-cmd … "
                           f"--brief … --scope … "
                           f"--groomed-at <today> --groomed-by <you> --commit` "
-                          f"(--brief/--scope are one plain sentence each, written "
-                          f"for whoever SORTS the board, not for you: what breaks "
-                          f"and who feels it, and how big the change is). "
+                          f"(--scope must be a structured JSON file claim with "
+                          f"files[] and add|modify; --brief remains one plain "
+                          f"sentence for whoever SORTS the board: what breaks "
+                          f"and who feels it). "
                           f"To take it as an INVESTIGATION rather than a fix, pass "
                           f"--allow-ungroomed. "
                           # Two different needs, so two different exits, and the
@@ -185,9 +186,10 @@ def _unclaimable(
                           # toolchain does not (see this function's docstring).
                           f"If you did not need THIS ticket specifically, "
                           f"`ops/backlog.py dispatch` lists the ones that are "
-                          f"already groomed, unresolved, unclaimed and unblocked — "
-                          f"i.e. the ones you can take right now without grooming "
-                          f"anything"})
+                          f"already groomed, unresolved, unclaimed, unblocked, "
+                          f"and contract-ready — i.e. the ones you can take right "
+                          f"now without grooming or repairing the contract "
+                          f"first"})
         else:
             blockers = [ticket for ticket in backlog_tool._blocking_ids(payload)
                         if ticket in unresolved]

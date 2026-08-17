@@ -28,6 +28,7 @@ class QueryDeps:
     blocking_ids: Callable[[dict], list[str]]
     contract_preflight: Callable[..., list[dict]]
     worst_first_key: Callable[[dict], tuple]
+    scope_status_fn: Callable[[object], str] | None = None
 
 
 def iter_entries(store: Path):
@@ -152,10 +153,18 @@ def list_entries(
         hits = [payload for payload in hits
                 if str(payload.get("fixed_elsewhere") or "").strip()]
     if missing_brief:
+        def scope_is_known(payload: dict) -> bool:
+            value = payload.get("scope")
+            if deps.scope_status_fn is not None:
+                return deps.scope_status_fn(value) == "known"
+            return isinstance(value, dict)
+
         hits = [payload for payload in hits
                 if payload.get("status") not in ("fixed", "wont-fix")
-                and any(not str(payload.get(field) or "").strip()
-                        for field in deps.brief_fields)]
+                and (
+                    not str(payload.get("brief") or "").strip()
+                    or ("scope" in deps.brief_fields and not scope_is_known(payload))
+                )]
     if grep:
         try:
             pattern = re.compile(grep, re.IGNORECASE)

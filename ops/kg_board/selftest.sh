@@ -60,6 +60,7 @@ print(value[:9])' "$health_file" 2>&1)
 code=$(curl -fsS "${READ_AUTH[@]}" -o "$page_file" -w '%{http_code}' "$BASE/" 2>/dev/null)
 if [ "$code" = 200 ] \
    && grep -q 'data-tab="blocked"' "$page_file" \
+   && grep -q 'href="/model"' "$page_file" \
    && grep -q '/assets/app.js' "$page_file" \
    && ! grep -q 'kg-csrf' "$page_file" \
    && ! grep -q 'Bearer ' "$page_file"; then
@@ -77,10 +78,10 @@ assert not {"dispatch", "blocked", "deferred", "rank", "pinned", "snoozed"}.inte
 # `/api/board` is deliberately a compact read-only projection.  Grooming
 # internals stay behind the CLI; requiring them here creates a false red when
 # the data plane is healthy and the API contract is correctly redacted.
-required = {"id", "brief", "detail", "severity", "stream", "held", "ready"}
+required = {"id", "brief", "detail", "severity", "stream", "held", "ready", "decision", "scope_status"}
 assert all(set(row) == required for row in d["board"]), "board row 不是 compact v3"
 c = d["counts"]
-assert c["ready_definition"].startswith("KG CLI groomed clause"), c["ready_definition"]
+assert "list --ungroomed" in c["ready_definition"], c["ready_definition"]
 assert c["ready"] == len([r for r in d["board"] if r["ready"]]), "ready 計數與 board 的旗標不一致"
 assert c["dispatch"] == len(d["dispatch_ids"]), "dispatch 計數與 ID 清單長度不一致"
 assert c["decision"]["blocked"] == len(d["blocked_ids"]), "blocked 計數與 ID 清單長度不一致"
@@ -163,6 +164,24 @@ for ticket in d["queued_tickets"]:
 print("%d 棵 active worktree / %d 張 queued ticket / %d 個檔案列" %
       (d["counts"]["active_worktrees"], d["counts"]["queued_tickets"], d["counts"]["files"]))' 2>&1)
 [ $? -eq 0 ] && ok "Scope 矩陣 worktree/collision 契約：$matrix" || bad "Scope 矩陣：$matrix"
+
+# 3d. 術語頁與 live state 分類必須和票面使用同一份模型
+model=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/model" 2>/dev/null | uv run --no-project --python 3.13 python -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["schema"] == "kg.board.model.v1", d.get("schema")
+assert d.get("terms") and d.get("flow", {}).get("main_path"), "model contract 不完整"
+live = d.get("live", {})
+counts = live.get("counts", {})
+decision = counts.get("decision", {})
+assert {"now", "inflight", "blocked", "ungroomed", "contract_not_ready", "queued"} <= set(decision)
+assert sum(live.get("segments", {}).values()) == counts.get("unresolved"), "model segments 不是 unresolved partition"
+assert set(live.get("lifecycle_ids", {})) >= {"queued", "active"}, "model lifecycle ids 不完整"
+audit = live.get("scope_audit", {})
+print("model %s：可派工 %s / 待梳理 %s / 契約未就緒 %s / Scope 未知 %s" %
+      (d["schema"], decision["now"], decision["ungroomed"], decision["contract_not_ready"],
+       audit.get("unresolved_legacy_text", 0) + audit.get("unresolved_missing", 0)))' 2>&1)
+[ $? -eq 0 ] && ok "術語與流程模型一致：$model" || bad "術語與流程模型：$model"
 
 # 4. 使用者寫入面必須不存在；mirror 仍是 bearer-only 內部同步
 [ -s "$TOKEN_FILE" ] && ok "token 檔存在" || bad "token 檔缺失或空：${TOKEN_FILE}（服務會拒絕啟動）"

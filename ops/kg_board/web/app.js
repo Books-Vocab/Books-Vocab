@@ -25,10 +25,9 @@ function setTrust(freshness){
     `tree ${treeStateLabel} · mirror ${treeAgeLabel} · app ${revision.slice(0,9)}`;
 }
 function statusOf(row){
-  if(row.held)return "進行中";
-  if(!row.ready)return "待梳理";
-  if(board.blocked_ids.includes(row.id))return "阻塞";
-  return "可派工";
+  const labels={held:"進行中","needs-grooming":"待梳理","dependency-blocked":"依賴阻塞",dispatchable:"可派工","contract-not-ready":"契約未就緒",queued:"已入列"};
+  const terminal={fixed:"已修復","wont-fix":"不修"};
+  return labels[row.decision]||terminal[row.status]||"未分類";
 }
 function blockedReason(row){
   const blocked=(board.dispatch_meta?.withheld_blocked||[]).find(item=>item?.id===row.id);
@@ -88,13 +87,14 @@ function rows(){
   const source=tab==="now"?board.board.filter(row=>board.dispatch_ids.includes(row.id)):
     tab==="blocked"?board.board.filter(row=>blocked.has(row.id)):
     tab==="inflight"?board.board.filter(row=>row.held):
-    tab==="ungroomed"?board.board.filter(row=>!row.ready):
+    tab==="ungroomed"?board.board.filter(row=>row.decision==="needs-grooming"):
+    tab==="contract"?board.board.filter(row=>row.decision==="contract-not-ready"):
     tab==="history"?(history?.board||[]):board.board;
   const needle=query.trim().toLowerCase();
   return needle?source.filter(row=>`${row.id} ${row.brief} ${row.detail}`.toLowerCase().includes(needle)):source;
 }
 function detailBody(row){
-  return `<div class="meta"><span>${esc(row.stream)}</span><span>${esc(row.held?.branch||"尚未掛入 worktree")}</span><span>${esc(row.area||"未標定")}</span></div>
+  return `<div class="meta"><span>${esc(row.stream)}</span><span>${esc(statusOf(row))}</span><span>${esc(row.held?.branch||"尚未掛入 worktree")}</span><span>${esc(row.area||"未標定")}</span></div>
     ${board.blocked_ids.includes(row.id)?`<p class="blocked-reason"><strong>阻塞原因</strong> ${esc(blockedReason(row))}</p>`:""}
     <p>${esc(row.detail||"沒有更多技術說明")}</p>
     <dl class="detail-grid">
@@ -132,7 +132,8 @@ function renderMetrics(){
   const activeWorktrees=scopeMatrix?.counts?.active_worktrees??decision.inflight;
   document.getElementById("metrics").innerHTML=
     metric("可派工",decision.now)+metric("進行中工作樹",activeWorktrees)+
-    metric("被阻塞",decision.blocked)+metric("未梳理",decision.ungroomed)+
+    metric("依賴阻塞",decision.blocked)+metric("待梳理",decision.ungroomed)+
+    metric("契約未就緒",decision.contract_not_ready||0)+
     metric("歷史完成",board.counts.history.fixed+board.counts.history.wont_fix);
 }
 const TREE_VIEW_RADIUS = 10;
