@@ -75,10 +75,21 @@ def test_backend_ruff_is_pinned_in_project_lock_and_not_external_tool_cache() ->
     assert "ruff==0.16.3" in pyproject["dependency-groups"]["dev"]
     ruff_package = next(package for package in lock["package"] if package["name"] == "ruff")
     assert ruff_package["version"] == "0.16.3"
+    root_package = next(
+        package
+        for package in lock["package"]
+        if package["name"] == "kg" and package["source"].get("editable") == "."
+    )
+    locked_ruff = next(
+        requirement
+        for requirement in root_package["metadata"]["requires-dev"]["dev"]
+        if requirement["name"] == "ruff"
+    )
+    assert locked_ruff["specifier"] == "==0.16.3"
     assert "uv sync --locked" in workflow
-    assert "uv run ruff check src tests" in workflow
-    assert "uv tool run ruff" not in workflow
-    assert "uv run --no-project" not in workflow
+    ruff_step = _step_block(workflow, "Run Ruff")
+    run_lines = [line.strip() for line in ruff_step.splitlines() if line.strip().startswith("run:")]
+    assert run_lines == ["run: uv run ruff check src tests"]
 
 
 def test_backend_quality_artifact_carries_head_and_lock_identity() -> None:
