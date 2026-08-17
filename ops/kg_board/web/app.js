@@ -95,6 +95,16 @@ function firstParentChain(sha,commits,limit=commits.size+1){
   }
   return result;
 }
+function reachableCommitSet(sha,commits,limit=commits.size+1){
+  const result=new Set(),pending=sha?[sha]:[];
+  while(pending.length&&result.size<limit){
+    const current=pending.pop();
+    if(!current||result.has(current))continue;
+    result.add(current);
+    (commits.get(current)?.parents||[]).forEach(parent=>pending.push(parent));
+  }
+  return result;
+}
 function pathToAncestor(start,target,commits,limit=128){
   if(!start)return [];
   const pending=[{sha:start,path:[]}],seen=new Set();
@@ -144,7 +154,7 @@ function firstBranchPoint(mainHead,commits){
 }
 function treeViewport(tree,commits,refs){
   const mainRef=refs.find(ref=>ref.branch==="main"),mainHead=mainRef?.head;
-  const mainline=firstParentChain(mainHead,commits);
+  const mainline=firstParentChain(mainHead,commits),mainReachableSet=reachableCommitSet(mainHead,commits);
   const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(TREE_VIEW_RADIUS,Math.max(0,mainline.length-1))]||mainHead;
   const branchIndex=Math.max(0,mainline.indexOf(branchSha));
   // The useful inspection window starts at the first branch and looks ten
@@ -157,7 +167,7 @@ function treeViewport(tree,commits,refs){
   const branchPaths=new Map();
   const branchTruncations=new Map();
   const branchDetached=new Set();
-  const mainlineSet=new Set(mainline);
+  const mainlineSet=mainReachableSet;
   const ticketRefs=refs.filter(ref=>ref.branch!=="main"&&(ref.tickets||[]).length);
   const addBranch=ref=>{
     const projection=projectBranchPath(ref,mainlineSet,commits);
@@ -340,7 +350,8 @@ function renderTree(){
   renderTreeZoom();
   if(!tree||!tree.commits?.length){
     treeBaseWidth=0;
-    treeFitInitialized=false;
+    // Keep the one-shot fit/manual-zoom decision across a transient empty
+    // mirror; a refresh must not erase an explicit user zoom choice.
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
     renderTreeLegend({refs:[]});
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
@@ -368,11 +379,16 @@ function renderTree(){
       if(to)edges.push(`<path class="edge" d="${edgePath(from,to,x,y)}"/>`);
     });
   });
-  const truncationMarkers=[...viewport.branchTruncations.values()].map(record=>{
-    const pos=positions.get(record.from),row=visibleCommits.get(record.from);
-    if(!pos||!row||(row.parents||[]).some(parentSha=>positions.has(parentSha)))return "";
+  const branchBoundaryByFrom=new Map([...viewport.branchTruncations.values()].map(record=>[record.from,record]));
+  const parentBoundaryMarkers=ordered.map(row=>{
+    const pos=positions.get(row.sha);
+    const missingParents=(row.parents||[]).filter(parentSha=>!positions.has(parentSha));
+    if(!pos||!missingParents.length)return "";
+    const branchBoundary=branchBoundaryByFrom.get(row.sha);
+    const label=branchBoundary?"此分支中間歷史已省略":"此 commit 的 parent 在目前圖面外";
+    const detail=missingParents.length>1?`${label}（${missingParents.length} 個 parent）`:label;
     const markerY=y(pos.row)+Math.round(TREE_ROW_HEIGHT*.48);
-    return `<path class="edge edge-truncated" d="M ${x(pos.lane)} ${y(pos.row)} V ${markerY}"><title>此分支中間歷史已省略</title></path><text class="tree-truncation" x="${x(pos.lane)+7}" y="${markerY+4}" aria-label="此分支中間歷史已省略">⋯</text>`;
+    return `<path class="edge edge-parent-missing${branchBoundary?" edge-truncated":""}" d="M ${x(pos.lane)} ${y(pos.row)} V ${markerY}"><title>${detail}</title></path><circle class="tree-parent-endpoint" cx="${x(pos.lane)}" cy="${markerY}" r="4"><title>${detail}</title></circle><text class="tree-truncation" x="${x(pos.lane)+7}" y="${markerY+4}" aria-label="${detail}">⋯</text>`;
   }).join("");
   const laneGuides=[...branchLanes.entries()].map(([branch,lane])=>`<line class="tree-lane-guide${branch==="main"?" main":""}" x1="${x(lane)}" y1="${TREE_HEADER_HEIGHT-14}" x2="${x(lane)}" y2="${height-18}"/>`).join("");
   const laneHeaders=viewport.refs.map(ref=>{
@@ -388,7 +404,7 @@ function renderTree(){
     const head=ref?" head":"";
     return `<g class="commit${head}${ref?.branch==="main"?" main":""}" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${y(pos.row)})"><title>${esc(shortSha(row.sha)+" · "+row.subject)}</title><circle r="${head?8:6}"></circle></g>`;
   }).join("");
-  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}${truncationMarkers}</g>${nodes}</svg>`;
+  mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}${parentBoundaryMarkers}</g>${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
   const mainlineCount=viewport.mainlineWindow.length;
   document.getElementById("tree-state").textContent=tree.complete?`主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}% · ${viewportLabel}`:`資料不完整 · 主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}%`;
@@ -404,8 +420,9 @@ function renderTree(){
 function renderMobileTree(viewport,commits){
   const mount=document.getElementById("tree-mobile-list");if(!mount)return;
   const refs=viewport.refs||[];const rows=[];const seen=new Set();
-  [...viewport.mainlineWindow,...viewport.branchAnchors.values()].forEach(sha=>{if(sha&&!seen.has(sha)&&commits.has(sha)){seen.add(sha);rows.push(commits.get(sha));}});
-  const branches=refs.map(ref=>{const tickets=(ref.tickets||[]).slice(0,3).map(t=>`<button class="tree-ticket" data-ticket-id="${esc(t.id)}">${esc(t.id)}</button>`).join("");const more=(ref.tickets||[]).length>3?`<span class="tree-ticket-more">+${(ref.tickets||[]).length-3}</span>`:"";return `<span class="tree-mobile-branch"><strong>${esc(compactLabel(ref.branch,30))}</strong><span>${esc(ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown"))}</span>${tickets}${more}</span>`}).join("");
+  const mobileShas=[...viewport.mainlineWindow,...refs.map(ref=>ref.head),...[...viewport.branchPaths.values()].flat(),...viewport.branchAnchors.values(),...viewport.commits.map(row=>row.sha)];
+  mobileShas.forEach(sha=>{if(sha&&!seen.has(sha)&&commits.has(sha)){seen.add(sha);rows.push(commits.get(sha));}});
+  const branches=refs.map(ref=>{const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":treeStateOf(ref);const tickets=(ref.tickets||[]).slice(0,3).map(t=>`<button class="tree-ticket" data-ticket-id="${esc(t.id)}">${esc(t.id)}</button>`).join("");const more=(ref.tickets||[]).length>3?`<span class="tree-ticket-more">+${(ref.tickets||[]).length-3}</span>`:"";return `<span class="tree-mobile-branch${detached?" detached":""}"><strong>${esc(compactLabel(ref.branch,30))}</strong><span>${esc(stateLabel)}</span>${tickets}${more}</span>`}).join("");
   mount.innerHTML=`<div class="tree-mobile-summary"><strong>主線緩衝與所有分支</strong><span>${rows.length} 個 commit · ${refs.length} 條分支</span></div><div class="tree-mobile-branches">${branches}</div><ol class="tree-mobile-commits">${rows.map(row=>`<li><button class="tree-mobile-commit" data-sha="${esc(row.sha)}"><code>${esc(shortSha(row.sha))}</code><span>${esc(row.subject)}</span></button></li>`).join("")}</ol>`;
   mount.querySelectorAll(".tree-mobile-commit").forEach(node=>node.addEventListener("click",()=>commitInspector(commits.get(node.dataset.sha),null)));
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{event.stopPropagation();selectTicket(node.dataset.ticketId)}));
