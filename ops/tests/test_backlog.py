@@ -7599,6 +7599,26 @@ def test_entry_mutations_wait_for_the_supersede_store_lock(tmp_path):
     assert BACKLOG.load_entry(store, entry["id"])["resolution"] == "store lock probe"
 
 
+def test_store_lock_is_reentrant_for_same_thread_entry_writers(tmp_path, monkeypatch):
+    """Anchor can lock several entries without self-deadlocking the store."""
+    acquisitions = []
+    real_exclusive_lock = BACKLOG.exclusive_lock
+
+    def track_acquisition(path, **kwargs):
+        acquisitions.append(Path(path))
+        return real_exclusive_lock(path, **kwargs)
+
+    monkeypatch.setattr(BACKLOG, "exclusive_lock", track_acquisition)
+    store = tmp_path / "s"
+    path = BACKLOG.entry_path(store, "IMP-20260808-abcdef")
+
+    with BACKLOG._store_lock(store):
+        with BACKLOG._entry_lock(path):
+            pass
+
+    assert len(acquisitions) == 1, acquisitions
+
+
 def test_supersede_waits_for_the_claim_ledger_lock(tmp_path, monkeypatch):
     """Claim eligibility and the two-file publish cannot straddle a claim."""
     import threading
