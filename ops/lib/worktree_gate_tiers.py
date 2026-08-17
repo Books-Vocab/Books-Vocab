@@ -19,6 +19,12 @@ GATE_TIERS = ("S0", "S1", "S2", "S3", "S4")
 TIER_RANK = {name: index for index, name in enumerate(GATE_TIERS)}
 DEFAULT_GATE_TIER = "S2"
 MIN_CUTOVER_TIER = "S0"
+EXPENSIVE_OPS_SHELL_GATES = frozenset({
+    "ops-ci-coverage",
+    "ops-shell:ops-ci-coverage",
+    "ops-shell:test_ops_ci_coverage.sh",
+    "ops-shell:test_gate_can_fail.sh",
+})
 
 
 class GateTierError(ValueError):
@@ -85,6 +91,8 @@ def classify_gate_tier(spec: dict[str, Any]) -> str:
         return "S1"
     if name == "backend-pytest":
         return "S1"
+    if name in EXPENSIVE_OPS_SHELL_GATES:
+        return "S2"
     if name.startswith("ops-shell:"):
         return "S1"
     if name in {"ops-pytest-focused", "ops-pytest"} and not _is_whole_ops_suite(spec):

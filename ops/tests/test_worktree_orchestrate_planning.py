@@ -640,6 +640,16 @@ def test_a_changed_test_script_runs_itself():
                                 ops_test_exists=lambda rel: True))
     assert gates["ops-shell:test_gate_can_fail.sh"]["cmd"] == ["ops/tests/test_gate_can_fail.sh"]
 
+
+def test_expensive_ops_control_plane_proofs_are_not_classified_as_smoke():
+    gates = _by_name(plan_gates([
+        "ops/tests/test_ops_ci_coverage.sh",
+        "ops/tests/test_gate_can_fail.sh",
+    ], ops_test_exists=lambda rel: True))
+    assert gates["ops-shell:test_ops_ci_coverage.sh"]["tier"] == "S2"
+    assert gates["ops-shell:test_gate_can_fail.sh"]["tier"] == "S2"
+
+
 def test_deleted_shell_paths_do_not_create_untested_warning():
     deleted = {"ops/removed_shell_fixture.sh", "ops/tests/test_removed_shell_fixture.sh"}
     exists = lambda rel: rel not in deleted

@@ -44,6 +44,23 @@ def test_whole_ops_fallback_is_more_expensive_than_targeted_ops_test() -> None:
     assert tiers.classify_gate_tier(whole) == "S2"
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "ops-ci-coverage",
+        "ops-shell:ops-ci-coverage",
+        "ops-shell:test_ops_ci_coverage.sh",
+        "ops-shell:test_gate_can_fail.sh",
+    ],
+)
+def test_expensive_ops_control_plane_proofs_are_s2(name: str) -> None:
+    assert tiers.classify_gate_tier(_gate(name)) == "S2"
+
+
+def test_ordinary_ops_shell_proof_remains_s1() -> None:
+    assert tiers.classify_gate_tier(_gate("ops-shell:test_docs_lint.sh")) == "S1"
+
+
 def test_select_plan_returns_executed_and_explicitly_deferred_checks() -> None:
     plan = tiers.annotate_plan([
         _gate("static"),
