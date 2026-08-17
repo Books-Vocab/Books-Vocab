@@ -29,5 +29,5 @@
   "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-17",
   "verified_by": "agent:delivery-integrator",
-  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_streaming_command.py ops/tests/test_worktree_orchestrate.py"
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_streaming_command.py ops/tests/test_worktree_orchestrate.py => 465 passed in 615.87s at ea7d954548de9ff5c21dc46ba0f8d1b868cbe669"
 }
