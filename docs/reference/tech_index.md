@@ -7,12 +7,14 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 4c0efb3cc78aa6f2187901762b34aa9b70dbeba6
+verified_against: c10b12fcc9fa234f59b0a291aae8bcf2ddc48a06
 -->
 # Technical Reference Index
 
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。
 新增 router / table / env var / ops 腳本時,**同 PR 內補一行**。
+
+> `kg_reconcile.sh` 的 no-response exemption literal 是 `000／000000`；拿到真實 HTTP status（例如 502）即屬服務鏈證據，不能豁免回滾。
 
 ## Reconciler poison cooldown
 
