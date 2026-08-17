@@ -185,7 +185,7 @@ unit/UI/live-compile 指向 test runner；只修 test runner 時可重用已綠 
 orchestrator 測試不必每次整檔執行：受影響 source 先用
 `ops/test_route.py run --mode focused --route-id <route>`；批次整合才用 `--mode group`。兩者都先
 `pytest --collect-only`，selector 零筆、route 版本不符或檔案不存在會 fail-safe 回退父群；未知 source
-不得回傳空測試綠燈。S0/S1 失敗仍阻擋；非 release-critical 的 S2/S3 可依既有 `--defer-gate GATE=TICKET`
+不得回傳空測試綠燈；功能執行時保留 pytest 的 stdout/stderr，不把它冒充 final JSON。S0/S1 失敗仍阻擋；非 release-critical 的 S2/S3 可依既有 `--defer-gate GATE=TICKET`
 規則登記既有 ticket，不能把 deferred 當 pass。
 
 需要預估或執行長 bundle 時使用 `ops/test_timing.py estimate|run|status|wait`。`run --bundle <manifest> --json`

@@ -40,7 +40,7 @@ verified_against: 75160fdf037c0de2ddbcdaf0277c752aabf5d245
 | 入口／資料 | 用途 |
 |------|------|
 | `ops/lib/worktree_test_routes.py` | `kg.test.route.v1` 的明確 source seam manifest。`orchestrator.planning`、`gate`、`lifecycle`、`claims`、`delivery`、`recovery` 與 `facade` 各自列出 nodeid、fallback file、tier、failure policy、resource class；未知 source、空 selector、版本不符或檔案不存在一律回退至 `orchestrator.fallback`，不得空跑綠燈。 |
-| `ops/test_route.py run --mode focused|group --route-id <id>` | 先 `pytest --collect-only`，收集失敗或零筆時改跑父群 fallback，再執行功能測試；stdout 保持最終 JSON，進度走既有 stderr heartbeat。 |
+| `ops/test_route.py run --mode focused|group --route-id <id>` | 先 `pytest --collect-only`，收集失敗或零筆時改跑父群 fallback，再執行功能測試；功能測試保留 pytest stdout/stderr，進度走既有 stderr heartbeat。 |
 | `ops/lib/test_timing_store.py` / `.cache/test_timing.sqlite3` | gitignored 的 `kg.test.timing.v1` WAL ledger；以 semantic `command_key`、host、runtime、device/cache、resource class 分群，不保存 raw argv、token 或 secret。正常 pass/fail/inconclusive 才進 ETA 樣本；timeout/interrupted/cancelled 不污染 baseline。 |
 | `ops/test_timing.py estimate|run|status|wait` | `estimate` 回傳 p50/p90、上下界、confidence 與 resource wait；`run --bundle <manifest> --json` 執行 `kg.test.bundle.v1`，status 以 atomic JSON 寫入 `.cache/test_runs/`，stderr heartbeat、完成後一次 final JSON。timing 寫入失敗不改功能 verdict。 |
 | `ops/lib/pytest_timing_plugin.py` | 以 `pytest_runtest_logreport` 聚合 setup/call/teardown，按 nodeid 輸出 JSONL；可由 bundle runner ingest，plugin 異常只使 timing evidence 缺失。 |
