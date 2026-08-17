@@ -307,15 +307,18 @@ rc=0
 assert_green docs-lint "ERROR: 0" "$TMP/docs_ok.out" "$rc"
 
 # The ordinary origin anchor must still expose a typed freshness WARN, not be silently
-# treated as green.  STALE_THRESHOLD=0 makes the otherwise valid fixture deterministic.
-WARN_ANCHOR="$(git rev-parse --verify HEAD~40)"
+# treated as green.  Anchor immediately before the last real change to the scoped file;
+# using a fixed HEAD~N made this probe depend on how many unrelated commits a wave had.
+WARN_SCOPE="ops/worktree_orchestrate.py"
+WARN_COMMIT="$(git rev-list --max-count=1 HEAD -- "$WARN_SCOPE")"
+WARN_ANCHOR="$(git rev-parse --verify "${WARN_COMMIT}^")"
 cat >"$DOCS_PROBE" <<DOCEOF
 <!-- doc-meta
 tier: reference
 authority: SoT
 update_trigger: manual
 scope:
-  - ops/worktree_orchestrate.py
+  - $WARN_SCOPE
 verified_against: $WARN_ANCHOR
 -->
 # gate-can-fail warning probe
