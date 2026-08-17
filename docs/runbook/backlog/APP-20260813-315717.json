@@ -13,6 +13,9 @@
   "date": "2026-08-13",
   "detail": "目前主線執行 ./ops/i18n_lint.sh --strict，exit 1，報 9 findings：6 個缺 en.lproj key、3 個 plural rule 缺口。具名來源包括 ReaderPublicationLoader 的 iCloud timeout、PDFReaderView 兩個 loading 字串、TodayReviewPresenter 的到期提示、SettingsView+State 的上次同步、AppSkeleton 的載入進度，以及 NotebookCard/WordRow 的 %d 與 stringsdict 未對接。L10n fallback 會回傳原 key，因此 English/其他語系可能直接看到中文。這與既有 APP-20260809-d5096b 的 duplicate Localizable key/Close-vs-Off 缺陷不同，本票是 missing translation/plural coverage。",
   "fix_site": "ios/BooksAndVocab/Localization; ios/BooksAndVocab/Services; ios/BooksAndVocab/Views; ios/BooksAndVocab/UIComponents; ops/i18n_lint.sh",
+  "fixed_by": [
+    "c04c908df7acbc23e39d72e01351a9c1925919bd"
+  ],
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -24,7 +27,11 @@
   "scope": "6 個 localization key、3 個 plural contract、五語 resource 對齊與 i18n strict regression。",
   "severity": "high",
   "source": "Tickets Factory iOS strict quality audit 2026-08-13",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "manager:integrator",
+  "verified_evidence": "./ops/i18n_lint.sh --strict"
 }
