@@ -65,6 +65,9 @@ def _load_bundle(path: Path) -> dict[str, Any]:
             raise ValueError(f"task {task['id']!r} has an unknown dependency")
         if not isinstance(task.get("resource_class", "default"), str):
             raise ValueError(f"task {task['id']!r} has invalid resource_class")
+        retry = task.get("retry", 0)
+        if not isinstance(retry, int) or isinstance(retry, bool) or retry < 0:
+            raise ValueError(f"task {task['id']!r} has invalid retry count")
     return payload
 
 
@@ -136,53 +139,66 @@ def _ingest_plugin_output(
 def _run_bundle_task(
     task: dict[str, Any], *, root: Path, run_id: str, bundle_id: str,
 ) -> dict[str, Any]:
-    started = time.monotonic()
-    started_at = _iso_now()
-    timing_output = root / ".cache" / "test_runs" / f"{run_id}.{task['id']}.jsonl"
-    command, environment = _task_command(task, timing_output)
-    try:
-        result = run_streamed_command(
-            command, cwd=root, label_key="bundle-task", label=str(task["id"]),
-            progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
-            timeout_seconds=task.get("timeout_s"), env=environment,
-            task_worktree=root,
+    attempt_rows: list[dict[str, Any]] = []
+    max_attempts = 1 + int(task.get("retry", 0))
+    for attempt in range(1, max_attempts + 1):
+        started = time.monotonic()
+        started_at = _iso_now()
+        timing_output = root / ".cache" / "test_runs" / f"{run_id}.{task['id']}.attempt-{attempt}.jsonl"
+        command, environment = _task_command(task, timing_output)
+        try:
+            result = run_streamed_command(
+                command, cwd=root, label_key="bundle-task", label=str(task["id"]),
+                progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
+                timeout_seconds=task.get("timeout_s"), env=environment,
+                task_worktree=root,
+            )
+            status = "timeout" if getattr(result, "timed_out", False) else (
+                "passed" if result.returncode == 0 else "failed"
+            )
+            exit_code = result.returncode
+            error = None
+        except KeyboardInterrupt:
+            raise
+        except (OSError, ValueError, RuntimeError) as exc:
+            status, exit_code, error = "error", None, f"{type(exc).__name__}: {exc}"
+        finished_at = _iso_now()
+        duration_s = time.monotonic() - started
+        recorded = store.record_measurement(
+            run_id=run_id, bundle_id=bundle_id, command_key=task["command_key"],
+            selector=task.get("selector"), suite=task.get("suite", "bundle"),
+            tier=task.get("tier"), host=platform.node(), runtime_version=platform.python_version(),
+            xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
+            head_sha=os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
+            resource_class=task.get("resource_class", "default"), started_at=started_at,
+            finished_at=finished_at, duration_s=duration_s, status=(
+                "pass" if status == "passed" else
+                "fail" if status == "failed" else
+                "inconclusive"
+            ), exit_code=exit_code, cache_status=task.get("cache_status"),
+            timing_source="bundle-runner",
+            duration_status="interrupted" if status == "timeout" else "complete",
         )
-        status = "timeout" if getattr(result, "timed_out", False) else (
-            "passed" if result.returncode == 0 else "failed"
+        plugin_count = _ingest_plugin_output(
+            timing_output, run_id=run_id, bundle_id=bundle_id, task=task,
+            started_at=started_at, finished_at=finished_at,
         )
-        exit_code = result.returncode
-        error = None
-    except KeyboardInterrupt:
-        raise
-    except (OSError, ValueError, RuntimeError) as exc:
-        status, exit_code, error = "error", None, f"{type(exc).__name__}: {exc}"
-    finished_at = _iso_now()
-    duration_s = time.monotonic() - started
-    recorded = store.record_measurement(
-        run_id=run_id, bundle_id=bundle_id, command_key=task["command_key"],
-        selector=task.get("selector"), suite=task.get("suite", "bundle"),
-        tier=task.get("tier"), host=platform.node(), runtime_version=platform.python_version(),
-        xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
-        head_sha=os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
-        resource_class=task.get("resource_class", "default"), started_at=started_at,
-        finished_at=finished_at, duration_s=duration_s, status=(
-            "pass" if status == "passed" else
-            "fail" if status == "failed" else
-            "inconclusive"
-        ), exit_code=exit_code, cache_status=task.get("cache_status"),
-        timing_source="bundle-runner",
-        duration_status="interrupted" if status == "timeout" else "complete",
-    )
-    plugin_count = _ingest_plugin_output(
-        timing_output, run_id=run_id, bundle_id=bundle_id, task=task,
-        started_at=started_at, finished_at=finished_at,
-    )
+        attempt_rows.append({
+            "attempt": attempt, "status": status, "exit_code": exit_code,
+            "duration_s": round(duration_s, 3), "timing_recorded": bool(recorded.get("recorded")),
+            "per_test_measurements": plugin_count, "error": error,
+        })
+        if status == "passed" or attempt == max_attempts:
+            break
+    final = attempt_rows[-1]
     return {
         "id": task["id"], "command_key": task["command_key"],
         "selector": task.get("selector"), "resource_class": task.get("resource_class", "default"),
-        "status": status, "exit_code": exit_code, "duration_s": round(duration_s, 3),
-        "timing_recorded": bool(recorded.get("recorded")),
-        "per_test_measurements": plugin_count, "error": error,
+        "status": final["status"], "exit_code": final["exit_code"], "duration_s": final["duration_s"],
+        "attempts": len(attempt_rows), "attempt_results": attempt_rows,
+        "timing_recorded": any(row["timing_recorded"] for row in attempt_rows),
+        "per_test_measurements": sum(row["per_test_measurements"] for row in attempt_rows),
+        "error": final["error"],
     }
 
 
@@ -215,6 +231,7 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
     pending = set(tasks_by_id)
     futures: dict[concurrent.futures.Future, str] = {}
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(4, len(pending))))
+    cancelled = False
     try:
         while pending or futures:
             for task_id in sorted(list(pending)):
@@ -251,10 +268,16 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                 completed[task_id] = "passed" if row["status"] == "passed" else row["status"]
                 _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
     except KeyboardInterrupt:
+        cancelled = True
         for future in futures:
             future.cancel()
-        payload.update({"status": "cancelled", "finished_at": _iso_now(), "tasks": list(task_rows.values())})
+        for row in task_rows.values():
+            if row["status"] in {"pending", "running"}:
+                row["status"] = "cancelled"
+        payload.update({"status": "cancelled", "verdict": "cancelled", "finished_at": _iso_now(),
+                       "tasks": list(task_rows.values())})
         _atomic_json(status_path, payload)
+        _emit(payload, args.json)
         return 1
     except Exception as exc:
         payload.update({"status": "error", "finished_at": _iso_now(), "error": str(exc), "tasks": list(task_rows.values())})
@@ -262,7 +285,9 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
         _emit(payload, args.json)
         return 2
     finally:
-        executor.shutdown(wait=True, cancel_futures=True)
+        # TaskRegistry owns child-process cleanup.  A cancellation request must
+        # not invent a second kill path; do not wait for already-running tasks.
+        executor.shutdown(wait=not cancelled, cancel_futures=True)
     hard_failures = [row for row in task_rows.values() if row.get("status") in {"failed", "timeout", "error", "blocked"}
                      and tasks_by_id[row["id"]].get("failure_policy", "block") == "block"]
     warnings = [row["id"] for row in task_rows.values() if row.get("status") not in {"passed", "pending", "running"}
