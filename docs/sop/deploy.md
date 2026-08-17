@@ -6,9 +6,11 @@ scope:
   - backend/
   - devops.sh
   - ops/
-verified_against: d7d98039f
+verified_against: c10b12fcc9fa234f59b0a291aae8bcf2ddc48a06
 -->
 # 後端部署指南
+
+> **Reconciler rollback evidence**：`000／000000` 表示沒有任何 HTTP 回應；真實 status（例如 502）是服務鏈證據，必須回滾。
 
 > ⚠️ **生產禁用指令邊界**：本文件所有 ops 動作都受 [`docs/policy/safety.md`](../policy/safety.md) 約束。任何 `docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 的操作一律禁止，走 `ops/devops_kg_safe.sh` wrapper。
 >
