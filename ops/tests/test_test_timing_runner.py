@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 from argparse import Namespace
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -179,6 +182,76 @@ def test_bundle_keyboard_interrupt_marks_pending_and_running_tasks_cancelled(tmp
     assert payload["status"] == "cancelled"
     assert payload["verdict"] == "cancelled"
     assert payload["tasks"][0]["status"] == "cancelled"
+
+
+def test_running_subprocess_cancellation_kills_child_and_excludes_eta(tmp_path, monkeypatch):
+    monkeypatch.setenv("KG_TASK_REGISTRY_PATH", str(tmp_path / "tasks.json"))
+    monkeypatch.setenv("KG_TEST_TIMING_DB", str(tmp_path / "timing.sqlite3"))
+    marker = tmp_path / "cancelled-child-marker"
+    task = {
+        "id": "cancel-running",
+        "command_key": "command.cancel-running",
+        "command": _command(
+            "import time; time.sleep(2); "
+            f"__import__('pathlib').Path({str(marker)!r}).write_text('child-finished')"
+        ),
+        "resource_class": "cancel-lane",
+    }
+    cancel_event = threading.Event()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(
+            test_timing._run_bundle_task,
+            task, root=tmp_path, run_id="run-cancel-running",
+            bundle_id="bundle", cancel_event=cancel_event,
+        )
+        time.sleep(0.15)
+        cancel_event.set()
+        row = future.result(timeout=10)
+    assert row["status"] == "cancelled"
+    assert not marker.exists(), "cancelled child survived and performed its side effect"
+    estimate = test_timing.store.estimate(
+        "command.cancel-running", db_path=tmp_path / "timing.sqlite3"
+    )
+    assert estimate["sample_count"] == 0
+
+
+def test_run_id_claim_is_atomic(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("KG_TASK_REGISTRY_PATH", str(tmp_path / "tasks.json"))
+    manifest = _manifest(tmp_path, [{
+        "id": "once", "command_key": "command.once", "command": _command("pass"),
+    }])
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-once", json=True)
+    assert test_timing.cmd_run_bundle(args) == 0
+    capsys.readouterr()
+    assert test_timing.cmd_run_bundle(args) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "error"
+
+
+def test_resource_lease_serializes_same_class_across_workers(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+    second_entered = threading.Event()
+
+    def holder():
+        with test_timing._resource_lease(tmp_path, "simulator", threading.Event()):
+            entered.set()
+            release.wait(timeout=5)
+
+    def waiter():
+        entered.wait(timeout=5)
+        with test_timing._resource_lease(tmp_path, "simulator", threading.Event()):
+            second_entered.set()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(holder)
+        second = pool.submit(waiter)
+        assert entered.wait(timeout=5)
+        time.sleep(0.15)
+        assert not second_entered.is_set()
+        release.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+    assert second_entered.is_set()
 
 
 def test_bundle_rejects_negative_retry_count(tmp_path, capsys):

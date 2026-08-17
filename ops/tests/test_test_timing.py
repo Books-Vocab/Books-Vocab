@@ -18,7 +18,7 @@ import test_timing  # noqa: E402
 
 
 def _record(db: Path, duration: float, *, status: str = "pass", **kwargs):
-    return store.record_measurement(
+    values = dict(
         db_path=db, run_id="run-1", bundle_id="bundle-1",
         command_key="ops.orchestrator.gate", selector="gate.py::test",
         suite="worktree-orchestrator", tier="S1", host="oscar",
@@ -27,8 +27,10 @@ def _record(db: Path, duration: float, *, status: str = "pass", **kwargs):
         started_at="2026-08-17T00:00:00+00:00",
         finished_at="2026-08-17T00:00:01+00:00", duration_s=duration,
         status=status, exit_code=0 if status == "pass" else 1,
-        cache_status="warm", timing_source="pytest", **kwargs,
+        cache_status="warm", timing_source="pytest",
     )
+    values.update(kwargs)
+    return store.record_measurement(**values)
 
 
 def test_schema_contains_required_fields_and_no_raw_argv(tmp_path):
@@ -37,7 +39,7 @@ def test_schema_contains_required_fields_and_no_raw_argv(tmp_path):
     with store.connection(db) as conn:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(measurements)")}
     assert {
-        "measurement_id", "run_id", "bundle_id", "command_key", "selector", "suite",
+        "measurement_id", "run_id", "bundle_id", "command_key", "measurement_scope", "selector", "suite",
         "tier", "host", "runtime_version", "xcode_or_device", "dataset", "head_sha",
         "resource_class", "started_at", "finished_at", "duration_s", "status",
         "exit_code", "cache_status", "timing_source",
@@ -72,6 +74,20 @@ def test_missing_exact_dimensions_use_low_confidence_same_command_fallback(tmp_p
     assert estimate["confidence"] == "low"
     assert estimate["sample_count"] == 1
     assert "fallback" in estimate["basis"]
+
+
+def test_command_and_per_test_samples_never_mix_in_eta(tmp_path):
+    db = tmp_path / "timing.sqlite3"
+    _record(db, 10.0)
+    _record(db, 0.001, measurement_scope="test")
+    estimate = store.estimate(
+        "ops.orchestrator.gate", db_path=db, selector="gate.py::test",
+        suite="worktree-orchestrator", tier="S1", host="oscar",
+        runtime_version="python-3.13", resource_class="ops-python",
+        cache_status="warm",
+    )
+    assert estimate["estimate_s"] == 10.0
+    assert estimate["sample_count"] == 1
 
 
 def test_bundle_eta_is_unknown_when_any_task_has_no_history(tmp_path):
@@ -146,6 +162,34 @@ def test_prune_initializes_empty_store_and_corrupt_store_is_non_blocking(tmp_pat
     assert store.prune(corrupt)["available"] is False
 
 
+def test_weighted_rollup_survives_multiple_prunes_without_batch_bias(tmp_path):
+    db = tmp_path / "timing.sqlite3"
+    for index in range(1000):
+        _record(db, 10.0, run_id=f"old-{index}")
+    with store.connection(db) as conn:
+        conn.execute("UPDATE measurements SET created_at = '2020-01-01T00:00:00+00:00'")
+    assert store.prune(db)["rollups"] == 1
+
+    for index in range(2):
+        _record(db, 100.0, run_id=f"new-{index}")
+    with store.connection(db) as conn:
+        conn.execute("UPDATE measurements SET created_at = '2020-01-01T00:00:00+00:00'")
+    assert store.prune(db)["rollups"] == 1
+
+    with store.connection(db) as conn:
+        row = conn.execute("SELECT sample_count, weighted_samples_json FROM timing_rollups").fetchone()
+    assert row["sample_count"] == 1002
+    weighted = json.loads(row["weighted_samples_json"])
+    assert sum(float(item[1]) for item in weighted) == pytest.approx(1002.0)
+    estimate = store.estimate(
+        "ops.orchestrator.gate", db_path=db, selector="gate.py::test",
+        suite="worktree-orchestrator", tier="S1", host="oscar",
+        runtime_version="python-3.13", resource_class="ops-python", cache_status="warm",
+    )
+    assert estimate["sample_count"] == 1002
+    assert estimate["estimate_s"] == 10.0
+
+
 def test_bundle_eta_serializes_same_resource_lane(tmp_path):
     db = tmp_path / "timing.sqlite3"
     _record(db, 10.0)
@@ -157,6 +201,25 @@ def test_bundle_eta_serializes_same_resource_lane(tmp_path):
     parallel = store.estimate_bundle(tasks, db_path=db, parallel=True)
     assert sequential["estimate_s"] >= parallel["estimate_s"]
     assert "resource lanes" in parallel["basis"]
+
+
+def test_parallel_eta_lower_bound_uses_slowest_resource_lane(tmp_path):
+    db = tmp_path / "timing.sqlite3"
+    common = dict(
+        db_path=db, run_id="run", bundle_id="bundle", suite="suite", tier="S1", host="oscar",
+        runtime_version="python-3.13", xcode_or_device=None, dataset=None, head_sha="b" * 40,
+        started_at="2026-08-17T00:00:00+00:00", finished_at="2026-08-17T00:00:01+00:00",
+        selector=None, status="pass", exit_code=0, cache_status="warm", timing_source="bundle",
+    )
+    store.record_measurement(command_key="ops.fast", resource_class="lane-fast",
+                             duration_s=1.0, **common)
+    store.record_measurement(command_key="ops.slow", resource_class="lane-slow",
+                             duration_s=10.0, **common)
+    estimate = store.estimate_bundle([
+        {"command_key": "ops.fast", "resource_class": "lane-fast"},
+        {"command_key": "ops.slow", "resource_class": "lane-slow"},
+    ], db_path=db, parallel=True)
+    assert estimate["lower_s"] == 10.0
 
 
 def test_status_and_wait_cli_read_atomic_status(tmp_path, capsys):

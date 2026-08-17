@@ -48,6 +48,10 @@ except ModuleNotFoundError:  # pragma: no cover - package import fallback
 CHILD_LC_CTYPE = "C.UTF-8"
 
 
+class CommandCancelled(RuntimeError):
+    """The caller requested cancellation and the child process group was stopped."""
+
+
 def _child_env(env: dict[str, str] | None) -> dict[str, str]:
     """The child's environment with the locale decision made explicitly.
 
@@ -113,6 +117,7 @@ def run_streamed_command(
     task_campaign: str | None = None,
     task_worktree: Path | str | None = None,
     task_log_path: Path | str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a child with bounded capture and periodic progress on parent stderr.
 
@@ -274,10 +279,18 @@ def run_streamed_command(
             timeout = max(0.001, next_heartbeat - now)
             if deadline is not None:
                 timeout = min(timeout, max(0.001, deadline - now))
+            if cancel_event is not None:
+                # Cancellation is a control signal, not a heartbeat.  Bound the
+                # quiet-child poll so a lock wait cannot keep a cancelled bundle
+                # alive until its next 20-second progress beat.
+                timeout = min(timeout, 0.25)
             try:
                 stream_name, chunk = chunks.get(timeout=timeout)
             except queue.Empty:
                 stream_name, chunk = "", b""
+            if cancel_event is not None and cancel_event.is_set():
+                _terminate_process_group(proc)
+                raise CommandCancelled(f"command cancelled: {label}")
             if chunk is None:
                 open_streams.discard(stream_name)
             elif chunk:

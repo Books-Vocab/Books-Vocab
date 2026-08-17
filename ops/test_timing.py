@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
+import fcntl
+import hashlib
 import json
 import math
 import os
@@ -15,6 +18,7 @@ import platform
 import re
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -22,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from lib import test_timing_store as store
-from lib.streaming_command import run_streamed_command
+from lib.streaming_command import CommandCancelled, run_streamed_command
 
 
 BUNDLE_SCHEMA = "kg.test.bundle.v1"
@@ -46,6 +50,45 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def _claim_json(path: Path, payload: dict[str, Any]) -> None:
+    """Create a status file exactly once; concurrent runners cannot share a run_id."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+@contextlib.contextmanager
+def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Event):
+    """Serialize one resource class across bundle runner processes on this repo."""
+    key = hashlib.sha256(resource_class.encode("utf-8")).hexdigest()[:32]
+    path = root / ".cache" / "test_runs" / "resources" / f"{key}.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    acquired = False
+    try:
+        while not acquired:
+            if cancel_event.is_set():
+                raise CommandCancelled(f"resource lease cancelled: {resource_class}")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+            except BlockingIOError:
+                time.sleep(0.1)
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _load_bundle(path: Path) -> dict[str, Any]:
@@ -131,13 +174,16 @@ def _task_command(task: dict[str, Any], timing_output: Path) -> tuple[list[str],
 
 def _ingest_plugin_output(
     path: Path, *, run_id: str, bundle_id: str, task: dict[str, Any],
-    started_at: str, finished_at: str,
+    started_at: str, finished_at: str, allow_measurements: bool = True,
 ) -> int:
     paths = [path, *sorted(path.parent.glob(path.name + ".*"))]
     count = 0
     seen: set[tuple[str | None, str | None, float]] = set()
     for candidate in paths:
         if not candidate.exists():
+            continue
+        if not allow_measurements:
+            candidate.unlink(missing_ok=True)
             continue
         for line in candidate.read_text(encoding="utf-8").splitlines():
             try:
@@ -158,6 +204,7 @@ def _ingest_plugin_output(
                     duration_s=identity[2], status=str(row["status"]),
                     exit_code=row.get("exit_code"), cache_status=task.get("cache_status"),
                     timing_source="pytest-plugin", duration_status=row.get("duration_status", "complete"),
+                    measurement_scope="test",
                 )
                 count += int(result.get("recorded", False))
             except (KeyError, TypeError, ValueError, json.JSONDecodeError):
@@ -168,6 +215,7 @@ def _ingest_plugin_output(
 
 def _run_bundle_task(
     task: dict[str, Any], *, root: Path, run_id: str, bundle_id: str,
+    cancel_event: threading.Event,
 ) -> dict[str, Any]:
     attempt_rows: list[dict[str, Any]] = []
     max_attempts = 1 + int(task.get("retry", 0))
@@ -177,18 +225,21 @@ def _run_bundle_task(
         timing_output = root / ".cache" / "test_runs" / f"{run_id}.{task['id']}.attempt-{attempt}.jsonl"
         try:
             command, environment = _task_command(task, timing_output)
-            result = run_streamed_command(
-                command, cwd=root, label_key="bundle-task", label=str(task["id"]),
-                progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
-                timeout_seconds=task.get("timeout_s"), env=environment,
-                task_session_id=f"bundle:{run_id}", task_campaign=bundle_id,
-                task_worktree=root,
-            )
+            with _resource_lease(root, task.get("resource_class", "default"), cancel_event):
+                result = run_streamed_command(
+                    command, cwd=root, label_key="bundle-task", label=str(task["id"]),
+                    progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
+                    timeout_seconds=task.get("timeout_s"), env=environment,
+                    task_session_id=f"bundle:{run_id}", task_campaign=bundle_id,
+                    task_worktree=root, cancel_event=cancel_event,
+                )
             status = "timeout" if getattr(result, "timed_out", False) else (
                 "passed" if result.returncode == 0 else "failed"
             )
             exit_code = result.returncode
             error = None
+        except CommandCancelled as exc:
+            status, exit_code, error = "cancelled", None, str(exc)
         except KeyboardInterrupt:
             raise
         except (OSError, ValueError, RuntimeError) as exc:
@@ -207,12 +258,13 @@ def _run_bundle_task(
                 "fail" if status == "failed" else
                 "inconclusive"
             ), exit_code=exit_code, cache_status=task.get("cache_status"),
-            timing_source="bundle-runner",
-            duration_status="interrupted" if status == "timeout" else "complete",
+            timing_source="bundle-runner", measurement_scope="command",
+            duration_status="interrupted" if status in {"timeout", "cancelled"} else "complete",
         )
         plugin_count = _ingest_plugin_output(
             timing_output, run_id=run_id, bundle_id=bundle_id, task=task,
             started_at=started_at, finished_at=finished_at,
+            allow_measurements=status not in {"timeout", "cancelled"},
         )
         attempt_rows.append({
             "attempt": attempt, "status": status, "exit_code": exit_code,
@@ -247,10 +299,6 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
     except ValueError as exc:
         _emit({"schema": BUNDLE_SCHEMA, "status": "error", "run_id": run_id, "error": str(exc)}, args.json)
         return 2
-    if status_path.exists():
-        _emit({"schema": BUNDLE_SCHEMA, "status": "error", "run_id": run_id,
-               "error": "run_id already exists; use a new run_id"}, args.json)
-        return 2
     tasks_by_id = {task["id"]: task for task in bundle["tasks"]}
     task_rows = {
         task_id: {
@@ -265,12 +313,19 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
         "tier": bundle.get("tier"), "status": "running", "started_at": _iso_now(),
         "finished_at": None, "tasks": list(task_rows.values()), "warnings": [],
     }
-    _atomic_json(status_path, payload)
+    try:
+        _claim_json(status_path, payload)
+    except FileExistsError:
+        _emit({"schema": BUNDLE_SCHEMA, "status": "error", "run_id": run_id,
+               "error": "run_id already exists; use a new run_id"}, args.json)
+        return 2
     completed: dict[str, str] = {}
     pending = set(tasks_by_id)
     futures: dict[concurrent.futures.Future, str] = {}
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(4, len(pending))))
+    cancel_event = threading.Event()
     cancelled = False
+    fatal_error: str | None = None
     try:
         while pending or futures:
             for task_id in sorted(list(pending)):
@@ -289,7 +344,8 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                     continue
                 task_rows[task_id]["status"] = "running"
                 futures[executor.submit(
-                    _run_bundle_task, task, root=root, run_id=run_id, bundle_id=payload["bundle_id"]
+                    _run_bundle_task, task, root=root, run_id=run_id, bundle_id=payload["bundle_id"],
+                    cancel_event=cancel_event,
                 )] = task_id
                 pending.remove(task_id)
             _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
@@ -320,8 +376,20 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                 _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
     except KeyboardInterrupt:
         cancelled = True
+        cancel_event.set()
         for future in futures:
             future.cancel()
+    except Exception as exc:
+        fatal_error = str(exc)
+        cancel_event.set()
+        for future in futures:
+            future.cancel()
+    finally:
+        # The cancellation event reaches run_streamed_command, which terminates
+        # the owned process group; waiting here proves no worker remains alive when
+        # the terminal JSON says cancelled/error.
+        executor.shutdown(wait=True, cancel_futures=True)
+    if cancelled:
         for row in task_rows.values():
             if row["status"] in {"pending", "running"}:
                 row["status"] = "cancelled"
@@ -330,15 +398,12 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
         _atomic_json(status_path, payload)
         _emit(payload, args.json)
         return 1
-    except Exception as exc:
-        payload.update({"status": "error", "finished_at": _iso_now(), "error": str(exc), "tasks": list(task_rows.values())})
+    if fatal_error is not None:
+        payload.update({"status": "error", "finished_at": _iso_now(), "error": fatal_error,
+                        "tasks": list(task_rows.values())})
         _atomic_json(status_path, payload)
         _emit(payload, args.json)
         return 2
-    finally:
-        # TaskRegistry owns child-process cleanup.  A cancellation request must
-        # not invent a second kill path; do not wait for already-running tasks.
-        executor.shutdown(wait=not cancelled, cancel_futures=True)
     hard_failures = [row for row in task_rows.values() if row.get("status") in {"failed", "timeout", "error", "blocked"}
                      and tasks_by_id[row["id"]].get("failure_policy", "block") == "block"]
     warnings = [row["id"] for row in task_rows.values() if row.get("status") not in {"passed", "pending", "running"}

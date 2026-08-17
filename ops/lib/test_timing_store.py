@@ -22,6 +22,7 @@ NORMAL_STATUSES = frozenset({"pass", "fail", "inconclusive"})
 EXCLUDED_STATUSES = frozenset({"timeout", "interrupted", "cancelled"})
 DIMENSION_COLUMNS = (
     "command_key",
+    "measurement_scope",
     "selector",
     "suite",
     "tier",
@@ -104,6 +105,7 @@ def initialize(path: str | Path | None = None) -> Path:
                 run_id TEXT NOT NULL,
                 bundle_id TEXT,
                 command_key TEXT NOT NULL,
+                measurement_scope TEXT NOT NULL DEFAULT 'command',
                 selector TEXT,
                 suite TEXT,
                 tier TEXT,
@@ -137,6 +139,7 @@ def initialize(path: str | Path | None = None) -> Path:
                 p50_s REAL NOT NULL,
                 p90_s REAL NOT NULL,
                 durations_json TEXT NOT NULL DEFAULT '[]',
+                weighted_samples_json TEXT NOT NULL DEFAULT '[]',
                 updated_at TEXT NOT NULL
             );
                 """
@@ -145,6 +148,17 @@ def initialize(path: str | Path | None = None) -> Path:
             if "durations_json" not in columns:
                 conn.execute(
                     "ALTER TABLE timing_rollups ADD COLUMN durations_json TEXT NOT NULL DEFAULT '[]'"
+                )
+            if "weighted_samples_json" not in columns:
+                conn.execute(
+                    "ALTER TABLE timing_rollups ADD COLUMN weighted_samples_json TEXT NOT NULL DEFAULT '[]'"
+                )
+            measurement_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(measurements)")
+            }
+            if "measurement_scope" not in measurement_columns:
+                conn.execute(
+                    "ALTER TABLE measurements ADD COLUMN measurement_scope TEXT NOT NULL DEFAULT 'command'"
                 )
     return db
 
@@ -164,6 +178,7 @@ def record_measurement(
     run_id: str,
     bundle_id: str | None,
     command_key: str,
+    measurement_scope: str = "command",
     selector: str | None,
     suite: str | None,
     tier: str | None,
@@ -183,10 +198,16 @@ def record_measurement(
     duration_status: str = "complete",
 ) -> dict[str, Any]:
     """Best-effort write; a ledger error is returned as evidence, not raised."""
+    if measurement_scope not in {"command", "test"}:
+        return {
+            "recorded": False,
+            "sample_eligible": False,
+            "error": f"invalid measurement_scope: {measurement_scope!r}",
+        }
     measurement_id = str(uuid.uuid4())
     eligible = _eligible(status, duration_status, float(duration_s))
     values = (
-        measurement_id, run_id, bundle_id, command_key, selector, suite, tier, host,
+        measurement_id, run_id, bundle_id, command_key, measurement_scope, selector, suite, tier, host,
         runtime_version, xcode_or_device, dataset, head_sha, resource_class,
         started_at, finished_at, float(duration_s), status, exit_code, cache_status,
         timing_source, duration_status, int(eligible), _iso(),
@@ -197,12 +218,12 @@ def record_measurement(
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """INSERT INTO measurements (
-                    measurement_id, run_id, bundle_id, command_key, selector, suite,
+                    measurement_id, run_id, bundle_id, command_key, measurement_scope, selector, suite,
                     tier, host, runtime_version, xcode_or_device, dataset, head_sha,
                     resource_class, started_at, finished_at, duration_s, status,
                     exit_code, cache_status, timing_source, duration_status,
                     sample_eligible, created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 values,
             )
             conn.commit()
@@ -238,32 +259,73 @@ def _percentile(values: list[float], fraction: float) -> float:
     return float(ordered[index])
 
 
-def _bounded_reservoir(values: list[float]) -> list[float]:
-    """Keep a deterministic bounded sample while aggregate counters stay exact."""
-    if len(values) <= ROLLUP_RESERVOIR_SIZE:
-        return list(values)
-    ordered = sorted(float(value) for value in values)
-    last = len(ordered) - 1
-    return [ordered[round(index * last / (ROLLUP_RESERVOIR_SIZE - 1))]
-            for index in range(ROLLUP_RESERVOIR_SIZE)]
+def _weighted_percentile(samples: list[tuple[float, float]], fraction: float) -> float:
+    if not samples:
+        return 0.0
+    ordered = sorted((float(value), float(weight)) for value, weight in samples if weight > 0)
+    total = sum(weight for _value, weight in ordered)
+    if not ordered or total <= 0:
+        return 0.0
+    target = min(total, max(0.0, fraction) * total)
+    cumulative = 0.0
+    for value, weight in ordered:
+        cumulative += weight
+        if cumulative >= target:
+            return value
+    return ordered[-1][0]
 
 
-def _rollup_durations(row: sqlite3.Row) -> list[float]:
-    """Recover an approximate/full sample list from a retained rollup."""
+def _weighted_reservoir(values: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Compress old samples into weighted quantile points without losing sample mass."""
+    cleaned = [
+        (float(value), float(weight))
+        for value, weight in values
+        if math.isfinite(float(value)) and math.isfinite(float(weight)) and float(weight) > 0
+    ]
+    if len(cleaned) <= ROLLUP_RESERVOIR_SIZE:
+        return cleaned
+    total = sum(weight for _value, weight in cleaned)
+    points = min(ROLLUP_RESERVOIR_SIZE, len(cleaned))
+    weight_per_point = total / points
+    ordered = sorted(cleaned)
+    return [
+        (_weighted_percentile(ordered, (index + 0.5) / points), weight_per_point)
+        for index in range(points)
+    ]
+
+
+def _rollup_samples(row: sqlite3.Row) -> list[tuple[float, float]]:
+    """Recover weighted samples, accepting both current and pre-weighted rollups."""
+    try:
+        weighted = json.loads(row["weighted_samples_json"] or "[]")
+        if isinstance(weighted, list) and weighted:
+            samples: list[tuple[float, float]] = []
+            for item in weighted:
+                if isinstance(item, list) and len(item) == 2:
+                    samples.append((float(item[0]), float(item[1])))
+                elif isinstance(item, dict):
+                    samples.append((float(item["duration_s"]), float(item["weight"])))
+            if samples:
+                return _weighted_reservoir(samples)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        pass
     try:
         values = json.loads(row["durations_json"] or "[]")
         if isinstance(values, list) and values:
-            return _bounded_reservoir([float(value) for value in values])
+            return _weighted_reservoir([(float(value), 1.0) for value in values])
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         pass
-    # Rollups written by an older local schema have p50/p90 but no retained list.
-    # They remain useful as conservative p50 samples instead of silently vanishing.
-    return _bounded_reservoir([float(row["p50_s"])] * max(int(row["sample_count"]), 1))
+    # Older rollups have only p50/p90.  Preserve their exact sample mass as one
+    # weighted point rather than expanding thousands of fake equal rows.
+    return [(float(row["p50_s"]), float(max(int(row["sample_count"]), 1)))]
 
 
 def _rollup_matches(row: sqlite3.Row, filters: dict[str, Any]) -> bool:
     try:
         values = json.loads(row["rollup_key"])
+        if len(values) == len(DIMENSION_COLUMNS) - 1:
+            # Rollups created before measurement_scope was added are command-level.
+            values = [values[0], "command", *values[1:]]
         dimensions = dict(zip(DIMENSION_COLUMNS, values, strict=True))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return False
@@ -273,23 +335,23 @@ def _rollup_matches(row: sqlite3.Row, filters: dict[str, Any]) -> bool:
 
 def _rollup_durations_for(
     conn: sqlite3.Connection, filters: dict[str, Any]
-) -> tuple[list[float], int]:
-    durations: list[float] = []
+) -> tuple[list[tuple[float, float]], int]:
+    samples: list[tuple[float, float]] = []
     sample_count = 0
     for row in conn.execute("SELECT * FROM timing_rollups").fetchall():
         if _rollup_matches(row, filters):
-            durations.extend(_rollup_durations(row))
+            samples.extend(_rollup_samples(row))
             sample_count += int(row["sample_count"])
-    return durations, sample_count
+    return _weighted_reservoir(samples), sample_count
 
 
 def _estimate_payload(
-    durations: list[float], *, confidence: str, sample_count: int, basis: str,
+    samples: list[tuple[float, float]], *, confidence: str, sample_count: int, basis: str,
     resource_wait_estimate_s: float = 0.0,
 ) -> dict[str, Any]:
-    p50 = _percentile(durations, 0.50)
-    p90 = _percentile(durations, 0.90)
-    lower = max(0.0, _percentile(durations, 0.10))
+    p50 = _weighted_percentile(samples, 0.50)
+    p90 = _weighted_percentile(samples, 0.90)
+    lower = max(0.0, _weighted_percentile(samples, 0.10))
     upper = max(p90, p50 * 1.25, lower)
     return {
         "schema": SCHEMA,
@@ -309,6 +371,7 @@ def estimate(
     command_key: str,
     *,
     db_path: str | Path | None = None,
+    measurement_scope: str = "command",
     selector: str | None = None,
     suite: str | None = None,
     tier: str | None = None,
@@ -320,8 +383,17 @@ def estimate(
     cache_status: str | None = None,
     resource_wait_estimate_s: float = 0.0,
 ) -> dict[str, Any]:
+    if measurement_scope not in {"command", "test"}:
+        return {
+            "schema": SCHEMA, "available": True, "estimate_s": None,
+            "lower_s": None, "upper_s": None, "confidence": "low",
+            "sample_count": 0, "p50_s": None, "p90_s": None,
+            "resource_wait_estimate_s": resource_wait_estimate_s,
+            "basis": "invalid measurement scope; no estimate",
+        }
     filters = {
-        "command_key": command_key, "selector": selector, "suite": suite,
+        "command_key": command_key, "measurement_scope": measurement_scope,
+        "selector": selector, "suite": suite,
         "tier": tier, "host": host, "runtime_version": runtime_version,
         "xcode_or_device": xcode_or_device, "dataset": dataset,
         "resource_class": resource_class, "cache_status": cache_status,
@@ -334,15 +406,16 @@ def estimate(
                 f"SELECT duration_s FROM measurements WHERE {where} "
                 "ORDER BY finished_at ASC", args,
             ).fetchall()
-            durations = [float(row["duration_s"]) for row in rows]
-            rollup_durations, rollup_count = _rollup_durations_for(conn, filters)
-            durations.extend(rollup_durations)
+            samples = [(float(row["duration_s"]), 1.0) for row in rows]
+            rollup_samples, rollup_count = _rollup_durations_for(conn, filters)
+            samples.extend(rollup_samples)
             sample_count = len(rows) + rollup_count
             basis = "exact command/environment samples"
             fallback = False
-            if not durations:
+            if not samples:
                 fallback_filters = {
                     "command_key": command_key,
+                    "measurement_scope": measurement_scope,
                     "resource_class": resource_class,
                 }
                 fallback_where, fallback_args = _where(fallback_filters)
@@ -350,21 +423,21 @@ def estimate(
                     f"SELECT duration_s FROM measurements WHERE {fallback_where} "
                     "ORDER BY finished_at ASC", fallback_args,
                 ).fetchall()
-                durations = [float(row["duration_s"]) for row in rows]
-                rollup_durations, rollup_count = _rollup_durations_for(conn, fallback_filters)
-                durations.extend(rollup_durations)
+                samples = [(float(row["duration_s"]), 1.0) for row in rows]
+                rollup_samples, rollup_count = _rollup_durations_for(conn, fallback_filters)
+                samples.extend(rollup_samples)
                 sample_count = len(rows) + rollup_count
                 basis = "same command/resource-class fallback"
                 fallback = True
-        if not durations:
+        if not samples:
             return _estimate_payload(
-                [1.0], confidence="low", sample_count=0,
+                [(1.0, 1.0)], confidence="low", sample_count=0,
                 basis="no history; one-second placeholder, measure this command",
                 resource_wait_estimate_s=resource_wait_estimate_s,
             ) | {"estimate_s": None, "lower_s": None, "upper_s": None}
         confidence = "medium" if sample_count >= 3 and not fallback else "low"
         return _estimate_payload(
-            durations, confidence=confidence, sample_count=sample_count, basis=basis,
+            samples, confidence=confidence, sample_count=sample_count, basis=basis,
             resource_wait_estimate_s=resource_wait_estimate_s,
         )
     except (OSError, sqlite3.Error, TimingStoreError) as exc:
@@ -394,6 +467,7 @@ def estimate_bundle(
     estimates = [
         estimate(
             str(task["command_key"]), db_path=db_path,
+            measurement_scope="command",
             selector=task.get("selector"), suite=task.get("suite"), tier=task.get("tier"),
             resource_class=task.get("resource_class"),
             host=task.get("host"), runtime_version=task.get("runtime_version"),
@@ -421,7 +495,7 @@ def estimate_bundle(
         lane_upper = [sum(float(x.get("upper_s") or 0) for x in lane) for lane in lanes.values()]
         lane_lower = [sum(float(x.get("lower_s") or 0) for x in lane) for lane in lanes.values()]
         lane_estimate = [sum(float(x.get("estimate_s") or 0) for x in lane) for lane in lanes.values()]
-        lower, upper, estimate_s = min(lane_lower), max(lane_upper), max(lane_estimate)
+        lower, upper, estimate_s = max(lane_lower), max(lane_upper), max(lane_estimate)
         basis = "parallel resource lanes; same resource class serialized"
     else:
         lower = sum(float(x.get("lower_s") or 0) for x in known)
@@ -464,30 +538,32 @@ def prune(path: str | Path | None = None, *, now: datetime | None = None) -> dic
                 existing = conn.execute(
                     "SELECT * FROM timing_rollups WHERE rollup_key = ?", (key,)
                 ).fetchone()
-                old_durations = _rollup_durations(existing) if existing else []
+                old_samples = _rollup_samples(existing) if existing else []
                 old_count = int(existing["sample_count"]) if existing else 0
-                combined = _bounded_reservoir(old_durations + durations)
+                combined = _weighted_reservoir(old_samples + [(duration, 1.0) for duration in durations])
                 old_sum = float(existing["sum_s"]) if existing else 0.0
                 old_min = float(existing["min_s"]) if existing else min(durations)
                 old_max = float(existing["max_s"]) if existing else max(durations)
                 values = (
                     first["command_key"], first["resource_class"], old_count + len(durations),
                     old_sum + sum(durations), min(old_min, min(durations)), max(old_max, max(durations)),
-                    _percentile(combined, .5), _percentile(combined, .9),
-                    json.dumps(combined, separators=(",", ":")), _iso(), key,
+                    _weighted_percentile(combined, .5), _weighted_percentile(combined, .9),
+                    json.dumps([value for value, _weight in combined], separators=(",", ":")),
+                    json.dumps([[value, weight] for value, weight in combined], separators=(",", ":")),
+                    _iso(), key,
                 )
                 if existing:
                     conn.execute(
                         """UPDATE timing_rollups SET command_key=?, resource_class=?,
                            sample_count=?, sum_s=?, min_s=?, max_s=?, p50_s=?, p90_s=?,
-                           durations_json=?, updated_at=? WHERE rollup_key=?""", values,
+                           durations_json=?, weighted_samples_json=?, updated_at=? WHERE rollup_key=?""", values,
                     )
                 else:
                     conn.execute(
                         """INSERT INTO timing_rollups (
                             rollup_key, command_key, resource_class, sample_count, sum_s,
-                            min_s, max_s, p50_s, p90_s, durations_json, updated_at
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                            min_s, max_s, p50_s, p90_s, durations_json, weighted_samples_json, updated_at
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (key, *values[:-1]),
                     )
                 rollups += 1
