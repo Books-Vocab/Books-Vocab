@@ -314,6 +314,26 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     assert ".tree-legend" in css
 
 
+def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="tree-fit"' in index
+    assert 'id="tree-reset"' in index
+    assert "fitTreeZoom" in js
+    assert "treeFitInitialized" in js
+    assert ".tree-control-button" in css
+
+
+def test_git_tree_browser_keeps_lane_density_readable_at_fit_scale():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "const TREE_LANE_WIDTH = 136" in js
+    assert "const TREE_ROW_HEIGHT = 44" in js
+    assert "const TREE_PADDING_X = 36" in js
+
+
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
@@ -336,7 +356,7 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert ".section-heading{flex-direction:column" in "".join(css.split())
     assert ".metric:last-child{grid-column:1/-1}" in "".join(css.split())
     assert "-webkit-line-clamp:2" in "".join(css.split())
-    assert "--sub:#68635b" in "".join(css.split())
+    assert "--sub:#637181" in "".join(css.split())
     assert ".tree-controls{display:none}" in "".join(css.split())
 
 
