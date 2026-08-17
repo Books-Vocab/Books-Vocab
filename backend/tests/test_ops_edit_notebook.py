@@ -265,6 +265,64 @@ class TestInputHygiene:
         r = _edit(str(tmp_path), "user-create", ".hidden", "--commit", "--json")
         assert r.returncode != 0
 
+
+class TestNotebookDeleteVerify:
+    @pytest.mark.parametrize("cascade", [False, True], ids=["plain", "cascade"])
+    def test_active_notebook_delete_reports_dangling_config(self, tmp_path, cascade):
+        uid = _mk_user(tmp_path)
+        nb_id = _mk_notebook(tmp_path, uid, "ActiveToDelete")
+        if cascade:
+            assert _edit(
+                str(tmp_path), "card-add", uid, "c1", "--meaning", "m",
+                "--notebook", nb_id, "--commit",
+            ).returncode == 0
+        assert _edit(
+            str(tmp_path), "user-config-set", uid, "--active-notebook", nb_id,
+            "--commit",
+        ).returncode == 0
+
+        command = ["notebook-delete", uid, nb_id]
+        if cascade:
+            command.append("--cascade")
+        result = _edit(str(tmp_path), *command, "--commit", "--json")
+
+        assert result.returncode == 1, result.stderr
+        payload = json.loads(result.stdout)
+        verified = payload["verified"]
+        assert verified["ok"] is False
+        assert any(
+            f"vocab_ui.active_notebook_id={nb_id}" in message
+            for message in verified["dangling_config"]
+        )
+        assert "user-config-set" in verified["dangling_config"][0]
+        assert nb_id not in {row["id"] for row in _notebook_rows(tmp_path, uid)}
+        # verify only reports the dangling identity config; it must not reset users.json.
+        users = json.loads((tmp_path / "users.json").read_text())
+        assert users[uid]["config"]["vocab_ui"]["active_notebook_id"] == nb_id
+        if cascade:
+            assert _card_rows(tmp_path, uid) == []
+
+    def test_non_active_delete_stays_green_and_preserves_active_config(self, tmp_path):
+        uid = _mk_user(tmp_path)
+        active_id = _mk_notebook(tmp_path, uid, "KeepActive")
+        delete_id = _mk_notebook(tmp_path, uid, "DeleteMe")
+        assert _edit(
+            str(tmp_path), "user-config-set", uid, "--active-notebook", active_id,
+            "--commit",
+        ).returncode == 0
+
+        result = _edit(
+            str(tmp_path), "notebook-delete", uid, delete_id, "--commit", "--json",
+        )
+
+        assert result.returncode == 0, result.stderr
+        verified = json.loads(result.stdout)["verified"]
+        assert verified["ok"] is True
+        assert verified["dangling_config"] == []
+        users = json.loads((tmp_path / "users.json").read_text())
+        assert users[uid]["config"]["vocab_ui"]["active_notebook_id"] == active_id
+        assert delete_id not in {row["id"] for row in _notebook_rows(tmp_path, uid)}
+
 class TestCardUpdateContentConflict:
     def test_rejects_content_collision_same_notebook(self, tmp_path):
         uid = _mk_user(tmp_path)
