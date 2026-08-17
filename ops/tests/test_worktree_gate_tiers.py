@@ -56,6 +56,55 @@ def test_select_plan_returns_executed_and_explicitly_deferred_checks() -> None:
     assert [item["name"] for item in deferred] == ["ios-build-catalyst"]
 
 
+def test_s2_coalesces_only_an_explicitly_superseded_focused_gate() -> None:
+    plan = tiers.annotate_plan([
+        _gate("coverage"),
+        _gate("ops-pytest-orchestrator-focused"),
+        _gate(
+            "ops-pytest-orchestrator-group",
+            supersedes=["ops-pytest-orchestrator-focused"],
+        ),
+        _gate("backend-pytest"),
+    ])
+    selected, deferred = tiers.select_plan(plan, "S2")
+    assert [item["name"] for item in selected] == [
+        "coverage", "ops-pytest-orchestrator-group", "backend-pytest",
+    ]
+    assert deferred == []
+
+
+def test_s1_keeps_the_focused_gate_until_a_higher_route_is_requested() -> None:
+    plan = tiers.annotate_plan([
+        _gate("coverage"),
+        _gate("ops-pytest-orchestrator-focused"),
+        _gate(
+            "ops-pytest-orchestrator-group",
+            supersedes=["ops-pytest-orchestrator-focused"],
+        ),
+    ])
+    selected, deferred = tiers.select_plan(plan, "S1")
+    assert [item["name"] for item in selected] == [
+        "coverage", "ops-pytest-orchestrator-focused",
+    ]
+    assert [item["name"] for item in deferred] == ["ops-pytest-orchestrator-group"]
+
+
+def test_supersedes_cannot_skip_a_same_or_higher_tier_gate() -> None:
+    plan = tiers.annotate_plan([
+        _gate("coverage"),
+        _gate("ops-pytest-orchestrator-group",
+              supersedes=["ios-test-unit", "ios-build-catalyst"]),
+        _gate("ios-test-unit"),
+        _gate("ios-build-catalyst"),
+    ])
+    selected, deferred = tiers.select_plan(plan, "S3")
+    assert [item["name"] for item in selected] == [
+        "coverage", "ops-pytest-orchestrator-group", "ios-test-unit",
+        "ios-build-catalyst",
+    ]
+    assert deferred == []
+
+
 def test_s4_is_an_explicit_release_profile_and_has_no_deferrable_gate() -> None:
     release = tiers.release_gate_plan()
     assert release

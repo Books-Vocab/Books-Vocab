@@ -120,9 +120,13 @@ def _is_ops_test(p: str) -> bool:
 
 
 def _shell(name: str, category: str, cmd: list[str], level: str,
-           cwd: str | None = None, *, preflight: bool = False) -> dict[str, Any]:
-    return {"name": name, "category": category, "kind": "shell",
-            "cmd": cmd, "level": level, "cwd": cwd, "preflight": preflight}
+           cwd: str | None = None, *, preflight: bool = False,
+           supersedes: tuple[str, ...] = ()) -> dict[str, Any]:
+    result = {"name": name, "category": category, "kind": "shell",
+              "cmd": cmd, "level": level, "cwd": cwd, "preflight": preflight}
+    if supersedes:
+        result["supersedes"] = list(supersedes)
+    return result
 
 
 def _internal(name: str, category: str, level: str, **extra: Any) -> dict[str, Any]:
@@ -510,6 +514,7 @@ def plan_gates(changed_files: list[str],
             ))
             gates.append(_shell(
                 "ops-pytest-orchestrator-group", "ops", group_cmd, "block",
+                supersedes=("ops-pytest-orchestrator-focused",),
             ))
 
     if generic_ops_py:

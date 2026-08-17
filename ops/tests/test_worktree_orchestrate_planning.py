@@ -538,6 +538,7 @@ def test_gate_plan_ops_src_with_matching_test_runs_it():
     assert focused["cmd"][:3] == ["ops/test_route.py", "run", "--mode"]
     assert "--route-id" in focused["cmd"]
     assert group["tier"] == "S2"
+    assert group["supersedes"] == ["ops-pytest-orchestrator-focused"]
     assert "ops/tests/test_worktree_orchestrate.py" not in group["cmd"]
 
 
