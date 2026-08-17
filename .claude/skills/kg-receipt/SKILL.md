@@ -87,8 +87,8 @@ Next:
 Ticket Factory receipt 必須回報可對帳的責任線，而不是只報「groomed」：未解總數、groomed／queued、
 contract-ready、dispatchable、contract-not-ready、dependency-blocked、具名使用者／外部升級、
 duplicate／no-op／wont-fix，以及每個剩餘 blocker 的 owner、證據與下一步。`groom`、`verify`、
-contract evidence 或 preflight 只證明票務契約／問題仍成立，不宣稱產品 code 已修復；產品修復仍由
-Delivery Team 從 `dispatch` 取票後完成。
+contract evidence 或 backlog contract preflight（`./ops/backlog.py validate --baseline-check`）只證明票務契約／問題仍成立，不宣稱產品 code 已修復；產品修復仍由
+Delivery Team 從 `dispatch` 取票後完成。這裡不指 worktree／release preflight。
 
 `contract-not-ready` 是人類／看板語彙，機器對應為 `status=contract-blocked` 或
 `dispatch.withheld_contract`；不要新增 lifecycle status。`dispatchable` 與 `held` 都是衍生分類，前者

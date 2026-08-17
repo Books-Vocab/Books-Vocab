@@ -13,7 +13,7 @@ Integrator thread 派出的 N 個獨立 worktree 之一，完成的是自己的 
 Integrator 統一處理。
 
 ## Context profile
-- 身分是 **Delivery Child**：先讀 `.claude/skills/kg-agent-context/SKILL.md` 與 `docs/reference/agent_context.md` 的 role row，再讀 assigned groomed ticket。
+- 身分是 **Delivery Child**：先讀 `.claude/skills/kg-agent-context/SKILL.md` 與 `docs/reference/agent_context.md` 的 role row，再從 `dispatch` 讀取 assigned contract-ready ticket。
 - 只按 ticket 的 `fix_site`／trigger 載入 ops／production SoT；不預載 Ticket Factory、Integrator、其他 domain 或完整產品地圖。
 - ticket 以外的問題只回報 caller；不可因 context 不足自行執行 production 或擴張 scope。
 
