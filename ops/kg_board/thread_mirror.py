@@ -97,6 +97,10 @@ def normalise_thread_mirror(payload: Any) -> dict[str, Any]:
                if isinstance(raw, dict)
                for row in [_row(raw, index=index, errors=errors)] if row is not None]
     errors.extend("thread record is not an object" for raw in raw_threads if not isinstance(raw, dict))
+    errors.extend(
+        f"thread {row['thread_id']} error: {row['error']}"
+        for row in threads if row.get("error")
+    )
     return {
         "schema": SCHEMA,
         "at": _text(payload.get("at")),
@@ -209,9 +213,11 @@ def collect_thread_mirror(
             raw = dict(thread)
             raw["thread_id"] = thread_id
             rows.append(raw)
+        normalized = normalise_thread_mirror({"complete": True, "threads": rows})
         result = dict(base)
-        result["complete"] = True
-        result["threads"] = normalise_thread_mirror({"complete": True, "threads": rows})["threads"]
+        result["complete"] = normalized["complete"] is True
+        result["error"] = normalized.get("error")
+        result["threads"] = normalized["threads"]
         return result
     except (EOFError, OSError, TimeoutError, ValueError) as exc:
         base["error"] = f"thread mirror collection failed: {type(exc).__name__}: {exc}"

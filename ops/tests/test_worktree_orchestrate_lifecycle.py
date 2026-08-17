@@ -1309,7 +1309,7 @@ def test_adopt_registers_an_out_of_band_worktree(scratch):
     wt = tmp_path / "oob"
     _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
     rc, res = _run_json(["adopt", "--worktree", str(wt), "--intent", "hand-made worktree",
-                         "--state", state, "--json"])
+                         "--codex-thread-id", "thread-adopt", "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK
     assert res["step"] == "adopt"
     assert res["branch"] == "feat/oob"
@@ -1317,6 +1317,7 @@ def test_adopt_registers_an_out_of_band_worktree(scratch):
     mine = [r for r in recs if r["branch"] == "feat/oob"]
     assert len(mine) == 1
     assert mine[0]["status"] == "active"
+    assert mine[0]["codex_thread_id"] == "thread-adopt"
     assert Path(mine[0]["path"]).resolve() == wt.resolve()
 
 @gitmark
