@@ -42,6 +42,7 @@ import gzip
 import html
 import json
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -91,6 +92,8 @@ MAX_BODY_BYTES = 1_000_000
 # this repository). Keep the browser/write surface at the conservative default;
 # only the authenticated machine-to-machine mirror routes get bounded headroom.
 MIRROR_BODY_MAX_BYTES = 16 * 1024 * 1024
+SSE_HEARTBEAT_SECONDS = max(5, int(os.environ.get("KG_BOARD_SSE_HEARTBEAT_SECONDS", "20")))
+SSE_MAX_CLIENTS = max(1, int(os.environ.get("KG_BOARD_SSE_MAX_CLIENTS", "32")))
 QVALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 
 
@@ -144,6 +147,8 @@ AREA_ORDER = tuple(label for label, _ in AREA_RULES) + ("跨域", "未標定")
 _lock = threading.Lock()
 _clone_lock = threading.RLock()
 _state_lock = threading.RLock()
+_sse_lock = threading.RLock()
+_sse_clients: set[queue.Queue] = set()
 _cache: dict = {
     "valid": False,
     "sha": None,
@@ -182,6 +187,49 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
+# ---------------------------------------------------------------- live events
+
+def _sse_frame(event: str, payload: dict) -> bytes:
+    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event}\ndata: {data}\n\n".encode("utf-8")
+
+
+def _register_sse_client() -> queue.Queue | None:
+    with _sse_lock:
+        if len(_sse_clients) >= SSE_MAX_CLIENTS:
+            return None
+        client: queue.Queue = queue.Queue(maxsize=1)
+        _sse_clients.add(client)
+        return client
+
+
+def _unregister_sse_client(client: queue.Queue) -> None:
+    with _sse_lock:
+        _sse_clients.discard(client)
+
+
+def publish_event(kind: str) -> None:
+    """Notify browsers that the next full snapshot should be fetched.
+
+    Events carry no board data. A size-one queue deliberately coalesces bursts:
+    every consumer only needs the latest invalidation, and the browser's existing
+    fetch path remains the single source of truth.
+    """
+    payload = {"kind": kind, "at": datetime.now(TZ).isoformat(timespec="seconds")}
+    with _sse_lock:
+        clients = tuple(_sse_clients)
+    for client in clients:
+        try:
+            client.put_nowait(payload)
+        except queue.Full:
+            try:
+                client.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                client.put_nowait(payload)
+            except queue.Full:
+                pass
 # ---------------------------------------------------------------- data plane
 
 def _git(args: list[str]) -> subprocess.CompletedProcess:
@@ -464,8 +512,12 @@ def _read_entries_locked(force: bool = False) -> dict:
 def refresh_loop() -> None:
     while True:
         try:
+            previous_head = clone_head()
             refresh_clone()
+            current_head = clone_head()
             read_entries()
+            if previous_head and current_head and previous_head != current_head:
+                publish_event("clone")
         except Exception as exc:                      # never let the thread die
             _refresh_state["last_error"] = f"{type(exc).__name__}: {exc}"
             log(f"refresh loop error: {exc}")
@@ -1418,6 +1470,36 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("empty or oversized body")
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
+    def _serve_events(self) -> None:
+        client = _register_sse_client()
+        if client is None:
+            self._json(503, {"error": "too many live event clients"})
+            return
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.close_connection = False
+            self.wfile.write(_sse_frame("ready", {"at": datetime.now(TZ).isoformat(timespec="seconds")}))
+            self.wfile.flush()
+            while True:
+                try:
+                    payload = client.get(timeout=SSE_HEARTBEAT_SECONDS)
+                except queue.Empty:
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    continue
+                self.wfile.write(_sse_frame("snapshot", payload))
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            _unregister_sse_client(client)
+
     # -- routes ----------------------------------------------------------
 
     def do_GET(self):
@@ -1449,6 +1531,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/board":
             self._json(200, board_payload())
+            return
+        if path == "/api/events":
+            self._serve_events()
             return
         if path == "/api/model":
             self._json(200, model_payload())
@@ -1497,6 +1582,7 @@ class Handler(BaseHTTPRequestHandler):
                 return mirror
 
             _update_json(MIRROR_PATH, {}, update_mirror)
+            publish_event(key)
             self._json(200, {"ok": True, "stored": key})
             return
 
