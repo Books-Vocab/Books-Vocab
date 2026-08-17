@@ -155,6 +155,14 @@ def test_route_manifest_has_explicit_selectors_and_negative_control():
     assert ROUTES.resolve_routes(["ops/tests/worktree_orchestrate_support.py"])["fallback"] is False
 
 
+def test_core_gate_inputs_use_the_gate_route_instead_of_fallback():
+    payload = ROUTES.resolve_routes([
+        "ops/lib/worktree_orchestrator_core_gate_inputs.py",
+    ])
+    assert payload["fallback"] is False
+    assert [route["route_id"] for route in payload["routes"]] == ["orchestrator.gate"]
+
+
 def test_facade_change_unions_behavior_routes_and_missing_selector_falls_back():
     facade = ROUTES.resolve_routes(["ops/worktree_orchestrate.py"])
     assert facade["fallback"] is False
