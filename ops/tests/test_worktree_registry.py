@@ -638,6 +638,58 @@ def test_register_list_resolve_roundtrip(tmp_path):
     assert rec["resolved_at"].startswith("2026-07-09T12:00:00")
 
 
+def test_direct_scope_and_codex_thread_owner_roundtrip(tmp_path):
+    state = tmp_path / "reg.json"
+    scope = tmp_path / "scope.json"
+    scope.write_text(json.dumps({
+        "files": [{"path": "ops/board.py", "operation": "modify"}],
+    }), encoding="utf-8")
+    common = ["--state", str(state), "--at", "2026-07-09T12:00:00Z"]
+
+    assert MODULE.main([
+        "register", *common, "--path", str(tmp_path / "direct"),
+        "--branch", "feat/direct", "--intent", "direct assignment", "--base", "main",
+        "--scope-file", str(scope), "--codex-thread-id", "thread-agent-a", "--json",
+    ]) == MODULE.EXIT_OK
+    record = json.loads(state.read_text(encoding="utf-8"))["records"][0]
+    assert record["scope"] == {
+        "schema": "kg.backlog.scope.v1",
+        "files": [{"path": "ops/board.py", "operation": "modify"}],
+    }
+    assert record["codex_thread_id"] == "thread-agent-a"
+
+    replacement = tmp_path / "replacement.json"
+    replacement.write_text(json.dumps({
+        "files": [{"path": "ops/ui.js", "operation": "modify"}],
+    }), encoding="utf-8")
+    assert MODULE.main([
+        "scope", "set", *common, "--path", str(tmp_path / "direct"),
+        "--scope-file", str(replacement), "--json",
+    ]) == MODULE.EXIT_OK
+    record = json.loads(state.read_text(encoding="utf-8"))["records"][0]
+    assert record["scope"]["files"] == [{"path": "ops/ui.js", "operation": "modify"}]
+    assert record["codex_thread_id"] == "thread-agent-a"
+
+
+def test_one_codex_thread_can_bind_multiple_active_worktrees(tmp_path):
+    state = tmp_path / "reg.json"
+    common = ["--state", str(state), "--at", "2026-07-09T12:00:00Z"]
+    for suffix in ("a", "b"):
+        assert MODULE.main([
+            "register", *common, "--path", str(tmp_path / f"wt-{suffix}"),
+            "--branch", f"feat/{suffix}", "--intent", "worker", "--base", "main",
+        ]) == MODULE.EXIT_OK
+
+    for branch in ("feat/a", "feat/b"):
+        assert MODULE.main([
+            "owner", "bind", *common, "--branch", branch,
+            "--codex-thread-id", "thread-shared", "--json",
+        ]) == MODULE.EXIT_OK
+
+    records = json.loads(state.read_text(encoding="utf-8"))["records"]
+    assert {record["codex_thread_id"] for record in records} == {"thread-shared"}
+
+
 def test_hand_back_stamps_the_checked_out_tip(tmp_path):
     repo = tmp_path / "repo"
     _init(repo)

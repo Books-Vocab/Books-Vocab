@@ -338,6 +338,19 @@ def build_parser() -> argparse.ArgumentParser:
              "exception is countable. Does NOT waive the other two refusals (an id "
              "that is not in the store, or one that is already fixed/wont-fix).",
     )
+    direct_scope = op.add_mutually_exclusive_group()
+    direct_scope.add_argument(
+        "--scope", default=None,
+        help="structured Scope JSON for a direct worktree; never inferred from git diff",
+    )
+    direct_scope.add_argument(
+        "--scope-file", default=None, metavar="PATH",
+        help="file containing structured Scope JSON for a direct worktree",
+    )
+    op.add_argument(
+        "--codex-thread-id", default=None,
+        help="stable Codex thread id owner; one thread may own multiple worktrees",
+    )
     delegated_mode = op.add_mutually_exclusive_group()
     delegated_mode.add_argument(
         "--delegated", dest="delegated", action="store_true", default=None,
@@ -372,6 +385,19 @@ def build_parser() -> argparse.ArgumentParser:
              "an INVESTIGATION rather than a fix. Named in a stderr warning so the "
              "exception is countable. Does NOT waive the other two refusals (an id "
              "that is not in the store, or one that is already fixed/wont-fix).",
+    )
+    direct_scope = ad.add_mutually_exclusive_group()
+    direct_scope.add_argument(
+        "--scope", default=None,
+        help="structured Scope JSON for a direct worktree; never inferred from git diff",
+    )
+    direct_scope.add_argument(
+        "--scope-file", default=None, metavar="PATH",
+        help="file containing structured Scope JSON for a direct worktree",
+    )
+    ad.add_argument(
+        "--codex-thread-id", default=None,
+        help="stable Codex thread id owner; one thread may own multiple worktrees",
     )
     delegated_mode = ad.add_mutually_exclusive_group()
     delegated_mode.add_argument(
