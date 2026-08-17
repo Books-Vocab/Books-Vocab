@@ -403,8 +403,12 @@ def test_git_tree_browser_routes_cross_lane_edges_without_shared_horizontal_buse
     assert "H ${x(to.lane)}" not in js
     assert "C ${" in js
     assert "const crossLaneEdges=graphEdges.filter" in js
-    assert "const routeIndexByEdge=new Map" in js
-    assert "routeIndexByEdge.get(edge)" in js
+    assert "const routeRailGroups=new Map" in js
+    assert "const routeRailByEdge=new Map" in js
+    assert "routeRailByEdge.get(edge)" in js
+    assert "const railY=(startY+endY)/2" in js
+    assert "const control1Y=railY" in js
+    assert "const control2Y=railY" in js
     assert "routeGroups" not in js
 
 
