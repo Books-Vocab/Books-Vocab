@@ -33,6 +33,8 @@ _runtime.orchestrator_delivery.__file__ = __file__
 for _delivery_component in _runtime.orchestrator_delivery._COMPONENTS:
     _delivery_component.__file__ = __file__
 _runtime.orchestrator_lifecycle.__file__ = __file__
+for _lifecycle_component in _runtime.orchestrator_lifecycle._COMPONENTS:
+    _lifecycle_component.__file__ = __file__
 _runtime.orchestrator_gate.__file__ = __file__
 _runtime.orchestrator_commands.__file__ = __file__
 _runtime.orchestrator_claims.__file__ = __file__
@@ -60,6 +62,8 @@ _register_component(_runtime.orchestrator_delivery)
 for _delivery_component in _runtime.orchestrator_delivery._COMPONENTS:
     _register_component(_delivery_component)
 _register_component(_runtime.orchestrator_lifecycle)
+for _lifecycle_component in _runtime.orchestrator_lifecycle._COMPONENTS:
+    _register_component(_lifecycle_component)
 _register_component(_runtime.orchestrator_gate)
 _register_component(_runtime.orchestrator_commands)
 _register_component(_runtime.orchestrator_claims)

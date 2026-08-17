@@ -605,8 +605,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 orchestrator_core.bind_runtime(globals())
-orchestrator_delivery.bind_runtime(globals())
 orchestrator_lifecycle.bind_runtime(globals())
+orchestrator_delivery.bind_runtime(globals())
 orchestrator_gate.bind_runtime(globals())
 orchestrator_commands.bind_runtime(globals())
 orchestrator_claims.bind_runtime(globals())
