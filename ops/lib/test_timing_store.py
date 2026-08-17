@@ -312,7 +312,13 @@ def _rollup_samples(row: sqlite3.Row) -> list[tuple[float, float]]:
     try:
         values = json.loads(row["durations_json"] or "[]")
         if isinstance(values, list) and values:
-            return _weighted_reservoir([(float(value), 1.0) for value in values])
+            # Pre-weighted rollups stored representative values, not one row per
+            # original sample.  Restore the aggregate mass before estimating;
+            # treating every representative as weight=1 biases old rollups toward
+            # whichever prune batch happened to contain fewer points.
+            sample_count = max(int(row["sample_count"]), 1)
+            weight = sample_count / len(values)
+            return _weighted_reservoir([(float(value), weight) for value in values])
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         pass
     # Older rollups have only p50/p90.  Preserve their exact sample mass as one
