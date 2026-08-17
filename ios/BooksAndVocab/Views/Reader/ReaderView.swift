@@ -360,6 +360,7 @@ struct ReaderView: View {
 
     @MainActor
     private func loadPublication() async {
+        guard !Task.isCancelled else { return }
         let request = publicationLoadCoordinator.beginRequest()
         switch readerState.runtime.beginLoadAttempt() {
         case .holdSlow:
