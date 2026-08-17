@@ -4,21 +4,61 @@
   "brief": "並行 iOS build/test 的等待者會被新進程插隊，且非 owner cleanup 可能刪掉共享 lock；維護者得到 600 秒 rc=75 或 build.db 損壞，無法判斷是排隊還是編譯失敗。",
   "category": "tool",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-17",
-  "contract_checked_by": "agent:ticket-factory-full-groom",
-  "contract_evidence": "Current-main preflight checked at 10f510bf98cf1ea0bdf53fcaabb3169fb086aa2f: all source/test/doc anchors exist and the existing iOS lock verdict test is green. The new FIFO ticket and owner-guard regression markers are absent, so the stored acceptance detector is intentionally red before implementation. Grooming did not run Xcode, shared DerivedData, or a live lock experiment.",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
   "contract_status": "ready",
   "date": "2026-08-13",
   "detail": "同一工作樹驗證曾連續三次等待共用 build lock 達 600 秒後 rc=75；另一次取得鎖後，共用 DerivedData 的 build.db 回報 disk I/O error，且預編譯 GoogleSignIn PCM 引用不存在 header。現行鎖在每個 holder 結束後可被其他新 waiter 插隊，並未保證已等待者公平取得，且 build/test 使用不同 DerivedData root 仍共享可被並行狀態破壞的 cache。",
   "fix_site": "ops/lib/ios_lock_wait.sh; ops/ios_build.sh; ops/ios_test.sh; ops/ios_release.sh; ops/tests/test_ios_device_lock_verdict.sh; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh; docs/reference/ios_deriveddata_policy.md; docs/sop/ios.md",
-  "groomed_against": "10f510bf98cf1ea0bdf53fcaabb3169fb086aa2f",
-  "groomed_at": "2026-08-17",
-  "groomed_by": "agent:ticket-factory-full-groom",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260813-e360e6",
   "plan": "1. 先用不啟動 Xcode 的 fake shlock/holder/waiter fixture 重現：ops/lib/ios_lock_wait.sh 目前只有 shlock 輪詢，沒有 arrival-order contract；同時以靜態檢查確認 ios_build.sh 與 ios_release.sh 的 cleanup 會無條件 rm 共享 lock，可能刪掉後繼 owner 的 lock。\n2. 在 ops/lib/ios_lock_wait.sh 保留現有 kg_ios_wait_for_shlock 呼叫契約、15 秒 lock-wait heartbeat、stale/dead PID steal、timeout mode 與 rc=75，加入 atomic monotonic FIFO ticket queue：只有 queue head 可競爭 shlock；等待者 timeout/被 signal 時移除自己的 ticket，owner 交接與 stale cleanup 不能跳過活著的前置 waiter。\n3. 將 ios_build.sh、ios_test.sh、ios_release.sh 的 release path 統一成 owner-guarded cleanup（lock file 內容必須仍等於目前 PID 才可移除），並確認 build-for-testing 是共享 DerivedData 的唯一 writer；保留 keyed test cache、completion sentinel、Catalyst/Release 分離根與既有 cache lifecycle，不以刪 cache 掩蓋競態。\n4. 擴充 ops/tests/test_ios_device_lock_verdict.sh 的 fixture 回歸，覆蓋 FIFO 順序、timeout/heartbeat、dead owner、abandoned waiter、owner guard 與 build/test/release 三 caller；將標記接入 ops/test_ops.sh ios-device-lock，必要時補 ops/tests/test_ops_ci_coverage.sh 的可達性。\n5. 依實際 lock/cache 行為同步 docs/reference/ios_deriveddata_policy.md 與 docs/sop/ios.md，明確區分排隊延遲、執行延遲、共享 DerivedData writer 與 simulator execution lock，跑 docs lint。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "集中在 ops/lib/ios_lock_wait.sh 與 ios_build.sh、ios_test.sh、ios_release.sh 的 lock/cache ownership，加 deterministic shell regression、test manifest 與 iOS cache policy 文件；不改產品 Swift。",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/lib/ios_lock_wait.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/ios_build.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/ios_test.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/ios_release.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ios_device_lock_verdict.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/test_ops.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ops_ci_coverage.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/reference/ios_deriveddata_policy.md"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/sop/ios.md"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "med",
   "source": "Vocabulary P11 Phase1b review fix",
   "status": "triaged",

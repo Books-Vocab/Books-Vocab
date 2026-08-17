@@ -5,23 +5,35 @@
   "brief": "UITest review page 的建構介面與測試呼叫方式漂移，讓 review artifact 不能安全建立或覆寫。",
   "category": "tool",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-17",
-  "contract_checked_by": "delivery-child:refactor-backlog-seams-20260816",
-  "contract_evidence": "Integrator adjudication: pre-existing baseline failure reproduced on base d7d98039 and child c6c3f389; not in backlog-seams refactor scope; official gate remains BLOCK.",
-  "contract_status": "blocked",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-17",
   "detail": "官方 ops-pytest 的 test_build_review_root_is_one_run_without_parent_index 與 test_build_review_root_refuses_overwrite 在 child HEAD c6c3f389 與 base d7d98039 同 selector 都失敗。build_review_root 現要求 keyword-only contact_sheet、quick4_sheet，overwrite test 另要求 video，但既有測試呼叫未提供；review page source/test 不在本輪 child diff。",
   "fix_site": "ops/tests/test_uitest_review_page.py; ops/uitest_review_page.py",
-  "groomed_against": "897e596bc0ccda539fe09fcc13cb717daf62630e",
-  "groomed_at": "2026-08-17",
-  "groomed_by": "delivery-child:refactor-backlog-seams-20260816",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260817-fce8cb",
   "plan": "對齊 build_review_root 的公開 contract 與兩個 review artifact 測試：明確決定 required inputs 或相容的 builder defaults，保留 one-run/no-parent-index 與 refuse-overwrite semantics；先寫 failing assertion，再最小修正，跑兩個 exact selectors 與完整 UITest review page contract suite。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "review page builder、兩支契約測試與其 artifact overwrite 行為。",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_uitest_review_page.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/uitest_review_page.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "high",
   "source": "integrator gate BLOCK backlog-seams-wave-20260817",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "IMP"
 }

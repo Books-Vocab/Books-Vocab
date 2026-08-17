@@ -1,0 +1,5649 @@
+{
+  "schema": "kg.ticket_factory.dogfood_scope_matrix.v1",
+  "generated_at": "2026-08-18",
+  "source_head": "d49e4ec942be8ce3d47ce09af365b7e72497f7a8",
+  "source_main_baseline": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "purpose": "未解 Ticket Factory 票與本輪拆出的 contract-repair/investigation/evidence 票之精準檔案佔用矩陣；dispatchable 是 dispatch CLI 的衍生分類。",
+  "original_unresolved_count": 33,
+  "current_unresolved_count": 36,
+  "original_ticket_ids": [
+    "IMP-0029",
+    "IMP-20260805-a01716",
+    "IMP-20260808-60a5b7",
+    "APP-20260809-d5096b",
+    "IMP-20260809-1c4bcf",
+    "IMP-20260809-84e9e4",
+    "IMP-20260809-d68749",
+    "IMP-20260809-dc2a65",
+    "IMP-20260810-528736",
+    "IMP-20260810-bad780",
+    "IMP-20260812-f9e383",
+    "APP-20260813-339c1e",
+    "APP-20260813-508e0d",
+    "APP-20260813-89fe6f",
+    "APP-20260813-905c63",
+    "APP-20260813-92043f",
+    "APP-20260813-d8d0de",
+    "APP-20260813-dc88a5",
+    "APP-20260813-ec040c",
+    "IMP-20260813-4c0ad1",
+    "IMP-20260813-e360e6",
+    "IMP-20260816-71e524",
+    "IMP-20260817-2bd443",
+    "IMP-20260817-4f2653",
+    "IMP-20260817-60fa6f",
+    "IMP-20260817-752494",
+    "IMP-20260817-79808b",
+    "IMP-20260817-7e77ff",
+    "IMP-20260817-9a2678",
+    "IMP-20260817-a0b697",
+    "IMP-20260817-c76bee",
+    "IMP-20260817-fa9ba0",
+    "IMP-20260817-fce8cb"
+  ],
+  "new_split_ticket_ids": [
+    "IMP-20260818-0da852",
+    "IMP-20260818-17bdf8",
+    "IMP-20260818-c48e95"
+  ],
+  "dispatch_snapshot": {
+    "queue": [
+      "APP-20260813-339c1e",
+      "APP-20260813-508e0d",
+      "APP-20260813-89fe6f",
+      "APP-20260813-905c63",
+      "APP-20260813-92043f",
+      "APP-20260813-d8d0de",
+      "APP-20260813-dc88a5",
+      "APP-20260813-ec040c",
+      "IMP-20260817-2bd443",
+      "IMP-20260817-4f2653",
+      "IMP-20260817-60fa6f",
+      "IMP-20260817-752494",
+      "IMP-20260817-9a2678",
+      "IMP-20260817-a0b697",
+      "IMP-20260817-c76bee",
+      "IMP-20260817-fce8cb",
+      "IMP-20260818-c48e95",
+      "IMP-20260813-e360e6",
+      "IMP-20260816-71e524",
+      "IMP-20260817-79808b",
+      "IMP-20260817-7e77ff",
+      "IMP-20260818-0da852",
+      "IMP-20260805-a01716",
+      "IMP-20260812-f9e383",
+      "IMP-20260817-fa9ba0"
+    ],
+    "dependency_blocked": [
+      "APP-20260809-d5096b",
+      "IMP-0029",
+      "IMP-20260809-84e9e4",
+      "IMP-20260809-dc2a65",
+      "IMP-20260813-4c0ad1"
+    ],
+    "contract_not_ready": [
+      "IMP-20260808-60a5b7",
+      "IMP-20260809-1c4bcf",
+      "IMP-20260809-d68749",
+      "IMP-20260810-528736",
+      "IMP-20260810-bad780",
+      "IMP-20260818-17bdf8"
+    ],
+    "blocked_details": [
+      {
+        "id": "APP-20260809-d5096b",
+        "waiting_on": [
+          "IMP-20260818-0da852"
+        ]
+      },
+      {
+        "id": "IMP-0029",
+        "waiting_on": [
+          "IMP-20260812-f9e383"
+        ]
+      },
+      {
+        "id": "IMP-20260809-84e9e4",
+        "waiting_on": [
+          "IMP-20260809-1c4bcf"
+        ]
+      },
+      {
+        "id": "IMP-20260809-dc2a65",
+        "waiting_on": [
+          "IMP-20260809-1c4bcf",
+          "IMP-20260809-84e9e4"
+        ]
+      },
+      {
+        "id": "IMP-20260813-4c0ad1",
+        "waiting_on": [
+          "IMP-20260818-17bdf8"
+        ]
+      }
+    ],
+    "contract_details": [
+      {
+        "id": "IMP-20260808-60a5b7",
+        "problems": [
+          {
+            "kind": "contract-blocked",
+            "reason": "status=contract-blocked is never dispatchable"
+          }
+        ]
+      },
+      {
+        "id": "IMP-20260809-1c4bcf",
+        "problems": [
+          {
+            "kind": "contract-evidence-missing",
+            "reason": "contract_status is not ready"
+          },
+          {
+            "kind": "contract-baseline-not-red",
+            "value": "unknown"
+          }
+        ]
+      },
+      {
+        "id": "IMP-20260809-d68749",
+        "problems": [
+          {
+            "kind": "contract-blocked",
+            "reason": "status=contract-blocked is never dispatchable"
+          }
+        ]
+      },
+      {
+        "id": "IMP-20260810-528736",
+        "problems": [
+          {
+            "kind": "contract-blocked",
+            "reason": "status=contract-blocked is never dispatchable"
+          }
+        ]
+      },
+      {
+        "id": "IMP-20260810-bad780",
+        "problems": [
+          {
+            "kind": "contract-blocked",
+            "reason": "status=contract-blocked is never dispatchable"
+          }
+        ]
+      },
+      {
+        "id": "IMP-20260818-17bdf8",
+        "problems": [
+          {
+            "kind": "contract-blocked",
+            "reason": "status=contract-blocked is never dispatchable"
+          }
+        ]
+      }
+    ]
+  },
+  "preflight_snapshot": {
+    "all_unresolved": 36,
+    "executable": 23,
+    "dependency_blocked": 3,
+    "contract_blocked": 8,
+    "active_overlap": 2,
+    "active_overlap_tickets": [
+      {"id": "IMP-20260812-f9e383", "paths": ["docs/reference/tech_index.md"]},
+      {"id": "IMP-20260816-71e524", "paths": ["docs/reference/tech_index.md"]}
+    ],
+    "note": "The two active-overlap results are caused by this direct control worktree's live Scope; they are not backlog claims. Recheck after hand-back."
+  },
+  "all_store_scope_summary": {
+    "total": 427,
+    "structured": 33,
+    "legacy": 394,
+    "legacy_unresolved": 3,
+    "structured_unresolved": 33
+  },
+  "scope_rules": {
+    "structured": "ledger scope.files[] is authoritative; operations are add/modify.",
+    "legacy": "No prose is treated as known. The three known id-content-drift rows include a proposed matrix from their explicit fix_site only; it is not persisted because the CLI fail-closed guard rejects mutation.",
+    "path_state": "tracked_at_source_head=true means modify; false means an explicit future add path.",
+    "owner": "Derived from existing stream/surface; no new owner schema field was added."
+  },
+  "tickets": [
+    {
+      "id": "IMP-0029",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dependency-blocked",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "arch",
+      "severity": "low",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [
+        "IMP-20260812-f9e383"
+      ],
+      "fix_site": "ios/BooksAndVocab/Models/KGFeatureFlags.swift:20/27/35/44（四個 dead-false 旗標）+ Models/{ReviewSettings,TranslationLanguage,ActiveNotebookStore}.swift + Views/Settings/SettingsCoordinator.swift + Views/Vocabulary/Scenes/{NotebookListCoordinator,NotebookListView}.swift + ios/BooksAndVocabTests/{SettingsCoordinatorReviewClockTests,ActiveNotebookStoreTests,TranslationLanguageDefaultTests,TranslationLanguageTests}.swift + docs/{sop/architecture.md,reference/tech_index.md,reference/product_surface.md,reference/feature_boundary/notebook.md}",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 python -c '\nimport json, glob, io, os, re\ndef R(p): return io.open(p, encoding=\"utf-8\").read()\nes = [json.load(io.open(p, encoding=\"utf-8\")) for p in glob.glob(\"docs/runbook/backlog/*.json\")]\nbyid = {e[\"id\"]: e for e in es}\nch = [e for e in es if e[\"id\"] != \"IMP-0029\" and e.get(\"detail\", \"\").startswith(\"[IMP-0029 子項]\")]\nassert len(ch) == 5, \"M1: expected 5 children, found \" + repr(sorted(e[\"id\"] for e in ch))\nfor e in ch:\n    for f in [\"plan\", \"acceptance\", \"fix_site\", \"cost\", \"groomed_by\", \"groomed_at\"]:\n        assert str(e.get(f, \"\")).strip(), \"M1b: child \" + e[\"id\"] + \" 欄位 \" + f + \" 是空的\"\ntags = []\nfor e in ch:\n    t = re.findall(r\"OK child-[1-5]\", e[\"acceptance\"])\n    assert len(t) == 1, \"M1c: child \" + e[\"id\"] + \" 的 acceptance 無唯一收尾標記: \" + repr(t)\n    tags.append(t[0])\nassert sorted(tags) == [\"OK child-1\", \"OK child-2\", \"OK child-3\", \"OK child-4\", \"OK child-5\"], \"M1e: 五筆子項收尾標記不齊: \" + repr(sorted(tags))\nneed = {\"OK child-1\": \"applyServerPauseState\", \"OK child-2\": \"applyServerModeState\", \"OK child-3\": \"static func applyServer(\", \"OK child-4\": \"syncActiveNotebookFromServer\", \"OK child-5\": \"verified_against\"}\nfor e, tag in zip(ch, tags):\n    assert need[tag] in e[\"acceptance\"], \"M1f: \" + tag + \" 的 acceptance 未咬住關鍵符號 \" + need[tag]\nbad = sorted((e[\"id\"], e[\"status\"]) for e in ch if e[\"status\"] != \"fixed\")\nassert not bad, \"M2: children not fixed: \" + repr(bad)\nFLAGS = [\"serverTranslationLwwEnabled\", \"serverReviewClockLwwEnabled\", \"serverReviewModeLwwEnabled\", \"serverVocabUiLwwEnabled\"]\nOLD = [\"applyServerColdStart\", \"coldStartActiveNotebook\"]\nhf, ho = set(), set()\nfor root, _, fs in os.walk(\"ios\"):\n    for f in fs:\n        if not f.endswith(\".swift\"): continue\n        t = R(os.path.join(root, f))\n        for x in FLAGS:\n            if x in t: hf.add(x)\n        for x in OLD:\n            if x in t: ho.add(x)\nassert not hf, \"M2b: 四個 dead-false 旗標未清除: \" + repr(sorted(hf))\nassert not ho, \"M2c: 舊 cold-start 函式名未改名: \" + repr(sorted(ho))\nassert R(\"docs/sop/architecture.md\").count(\"**真 LWW（IMP-0029 已落地）**\") >= 3, \"M2d: architecture.md 三列未收尾\"\ntests = R(\"ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift\") + R(\"ios/BooksAndVocabTests/ActiveNotebookStoreTests.swift\")\nmiss = [n for n in [\"serverPauseClockIgnoredWhenLocalTimestampIsNewer\", \"serverReviewModeIgnoredWhenLocalTimestampIsNewer\", \"serverTranslationIgnoredWhenLocalTimestampIsNewer\", \"serverActiveNotebookIgnoredWhenLocalTimestampIsNewer\"] if n not in tests]\nassert not miss, \"M2e: 缺拒收回歸測試: \" + repr(miss)\nsc = R(\"ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift\")\nassert \"guard TranslationLanguage.applyServer(source: srcLang, target: tgtLang, serverUpdatedAt: ts) else { return }\" in sc, \"M2f: translation LWW 未接進 coordinator 呼叫點\"\nassert \"cold-start-only\" not in sc, \"M2g: SettingsCoordinator 仍宣稱 cold-start-only 政策\"\nan = R(\"ios/BooksAndVocab/Models/ActiveNotebookStore.swift\")\nassert \"cold-start\" not in an, \"M2h: ActiveNotebookStore 仍留 cold-start 政策敘述\"\ntl = R(\"ios/BooksAndVocab/Models/TranslationLanguage.swift\")\nassert \"server-wins-cold-start\" not in tl, \"M2i: TranslationLanguage 仍寫 server-wins-cold-start\"\nassert \"feature-flagged off\" not in tl, \"M2j: TranslationLanguage 仍寫 feature-flagged off\"\nassert byid[\"IMP-0029\"][\"status\"] == \"fixed\", \"M3: IMP-0029 still \" + byid[\"IMP-0029\"][\"status\"]\nprint(\"OK IMP-0029\")\n'",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Models/KGFeatureFlags.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Models/ReviewSettings.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Models/TranslationLanguage.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Models/ActiveNotebookStore.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/ActiveNotebookStoreTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/TranslationLanguageTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/sop/architecture.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/tech_index.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/product_surface.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/feature_boundary/notebook.md"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Models/KGFeatureFlags.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Models/ReviewSettings.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Models/TranslationLanguage.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Models/ActiveNotebookStore.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/ActiveNotebookStoreTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/architecture.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/tech_index.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/product_surface.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/feature_boundary/notebook.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260805-a01716",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "arch",
+      "severity": "low",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift:399-401（load() 的 catch arm）+ ios/BooksAndVocab/Services/AppAnalytics.swift（Event enum:50、track switch:226 後、SessionMetrics:265/300-308/331/351、SessionMetricsSnapshot:371/391/409）",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "bash -c 'test -f ios/BooksAndVocab/Services/AppAnalytics.swift && grep -qF \"case deckPreviewFailed\" ios/BooksAndVocab/Services/AppAnalytics.swift && grep -qF \"deck_preview_failures=\" ios/BooksAndVocab/Services/AppAnalytics.swift && grep -qF \"deckPreviewFailed\" ios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift && grep -qF \"deckPreviewFailed\" ios/BooksAndVocabTests/ExploreTelemetryTests.swift && ./ops/ios_test.sh --unit --lease --file ExploreTelemetryTests'",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Services/AppAnalytics.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/ExploreTelemetryTests.swift"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Services/AppAnalytics.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/ExploreTelemetryTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260808-60a5b7",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "contract-blocked",
+      "dispatch_class": "contract-not-ready",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "doc",
+      "severity": "low",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "docs/sop/ios.md:App Review evidence/refresh-anchor 段落；.claude/skills/source-command-release/SKILL.md:App Store submit hard stop；必要的回歸測試放入 ops/tests/test_app_review_evidence.py 與 ops/tests/test_app_review_gate.py",
+      "acceptance_mode": "manual",
+      "acceptance_cmd": null,
+      "acceptance_manual": "由 platform-steward 協調擁有 disposable App Review evidence workspace 的 operator；在隔離 workspace 實跑 desired/refresh-anchor 正序與反序，為兩次各留下 gateCheck、rc、changed-file manifest、是否需要 acknowledge-gate-block 的結果與可追溯 evidence path。命令無法表達外部 workspace 產物與人工操作順序，因此使用 acceptance_manual；不做 submit、upload 或 override。",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "docs/sop/ios.md"
+          },
+          {
+            "operation": "modify",
+            "path": ".claude/skills/source-command-release/SKILL.md"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_app_review_evidence.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_app_review_gate.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "docs/sop/ios.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": ".claude/skills/source-command-release/SKILL.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_app_review_evidence.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_app_review_gate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260809-d5096b",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dependency-blocked",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "correctness",
+      "severity": "med",
+      "surface": "vocabulary",
+      "contract_status": "blocked",
+      "contract_baseline": "red",
+      "blocked_by": [
+        "IMP-20260818-0da852"
+      ],
+      "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPhaseView.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewShortcutCatalog.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift; ios/BooksAndVocab/Views/Vocabulary/Scenes/ArchivedVocabSheet.swift; ios/BooksAndVocab/Views/Bookshelf/BookshelfCopy.swift; ios/BooksAndVocab/Views/Settings/TranslationLanguageSettingsView.swift; ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift; ios/BooksAndVocab/Views/Welcome/WelcomeView.swift; ios/BooksAndVocab/Views/Podcast/PodcastSettingsPopover.swift; ios/BooksAndVocab/zh-Hant.lproj/Localizable.strings; ios/BooksAndVocab/zh-Hans.lproj/Localizable.strings; ios/BooksAndVocab/en.lproj/Localizable.strings; ios/BooksAndVocab/ja.lproj/Localizable.strings; ios/BooksAndVocab/ko.lproj/Localizable.strings; ios/BooksAndVocabTests/TranslationLanguageTests.swift; ios/BooksAndVocabTests/LocalizationSemanticKeysTests.swift; ops/i18n_lint.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "bash -c 'set -euo pipefail; ./ops/ios_ops.sh test --unit --file LocalizationSemanticKeysTests; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_i18n_duplicate_keys.py; ./ops/i18n_lint.sh --baseline-check'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPhaseView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewShortcutCatalog.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ArchivedVocabSheet.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Bookshelf/BookshelfCopy.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/TranslationLanguageSettingsView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Welcome/WelcomeView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Podcast/PodcastSettingsPopover.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/zh-Hant.lproj/Localizable.strings"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/zh-Hans.lproj/Localizable.strings"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/en.lproj/Localizable.strings"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/ja.lproj/Localizable.strings"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/ko.lproj/Localizable.strings"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/TranslationLanguageTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/LocalizationSemanticKeysTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/i18n_lint.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/i18n_strings_lint.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_i18n_duplicate_keys.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPhaseView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewShortcutCatalog.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ArchivedVocabSheet.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Bookshelf/BookshelfCopy.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/TranslationLanguageSettingsView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Welcome/WelcomeView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Podcast/PodcastSettingsPopover.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/zh-Hant.lproj/Localizable.strings",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/zh-Hans.lproj/Localizable.strings",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/en.lproj/Localizable.strings",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/ja.lproj/Localizable.strings",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/ko.lproj/Localizable.strings",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/LocalizationSemanticKeysTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/i18n_lint.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/i18n_strings_lint.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/tests/test_i18n_duplicate_keys.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260809-1c4bcf",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "contract-not-ready",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "unknown",
+      "blocked_by": [
+        "IMP-20260809-aa70b0"
+      ],
+      "fix_site": "ops/felix_compute_admin.py；ops/felix_compute_worker.py；ops/lib/compute_capsule.py；ops/lib/compute_admission.py；ops/lib/compute_receipt.py；ops/lib/compute_job_lifecycle.py；ops/tests/test_compute_executor.py；docs/policy/safety.md；docs/reference/host_topology.md",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "bash -c 'set -e; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_executor.py; out=$(./ops/felix_compute_admin.py selftest --json); printf \"%s\\n\" \"$out\" | jq -e \".caller.host_role == \\\"oscar\\\" and .executor.host_role == \\\"felix\\\" and .caller.host_id != .executor.host_id and .transport.kind == \\\"xmachine-ssh\\\" and .runner.verified == true and .sandbox.enforced == true and .malicious_fixture.denied == true and .production.before == \\\"healthy\\\" and .production.after == \\\"healthy\\\" and .receipt.verifier == \\\"oscar-independent\\\" and .receipt.signature_verified == true and .receipt.nonce_verified == true and .receipt.ack_verified == true and .cleanup.state == \\\"acked\\\"\" >/dev/null; ./ops/docs_lint.sh'",
+      "acceptance_manual": null,
+      "scope_status": "proposed_from_explicit_fix_site_id_content_drift",
+      "ledger_scope": "新增 candidate 外的 trusted Felix controller、強隔離 runner、來源膠囊、production-first admission/preemption、簽章收據與 ACK/GC 生命週期，屬大型高風險工具改動。",
+      "scope": {
+        "schema": "kg.backlog.scope.v1",
+        "files": [
+          {
+            "path": "ops/felix_compute_admin.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/felix_compute_worker.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/lib/compute_capsule.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/lib/compute_admission.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/lib/compute_receipt.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/lib/compute_job_lifecycle.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/tests/test_compute_executor.py",
+            "operation": "modify"
+          },
+          {
+            "path": "docs/policy/safety.md",
+            "operation": "modify"
+          },
+          {
+            "path": "docs/reference/host_topology.md",
+            "operation": "modify"
+          }
+        ]
+      },
+      "path_state": [
+        {
+          "path": "ops/felix_compute_admin.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/felix_compute_worker.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/compute_capsule.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/compute_admission.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/compute_receipt.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/compute_job_lifecycle.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_compute_executor.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/policy/safety.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/host_topology.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260809-84e9e4",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dependency-blocked",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "cli",
+      "severity": "med",
+      "surface": null,
+      "contract_status": null,
+      "contract_baseline": null,
+      "blocked_by": [
+        "IMP-20260809-aa70b0",
+        "IMP-20260809-1c4bcf",
+        "IMP-20260808-4bd1ef"
+      ],
+      "fix_site": "ops/compute.py；ops/lib/compute_router.py；ops/lib/xmachine_transport.py；ops/tests/test_compute_cli.py；ops/capability_matrix.py；docs/reference/tech_index.md",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "bash -c 'set -e; uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_cli.py ops/tests/test_streaming_command.py ops/tests/test_capability_matrix.py; out=$(./ops/compute.py selftest --target felix --profile source-identity --json); printf \"%s\\n\" \"$out\" | jq -e \".verified == true and .caller.host_role == \\\"oscar\\\" and .remote.host_role == \\\"felix\\\" and .caller.host_id != .remote.host_id and .transport.kind == \\\"xmachine-ssh\\\" and .source.commit_sha == .remote.source.commit_sha and .source.tree_sha256 == .remote.source.tree_sha256 and .receipt.verifier == \\\"oscar-independent\\\" and .receipt.signature_verified == true and .receipt.nonce_verified == true and .receipt.replay_checked == true and .receipt.ack_verified == true and .runner.verified == true and .production.before == \\\"healthy\\\" and .production.after == \\\"healthy\\\" and .cleanup.state == \\\"acked\\\"\" >/dev/null; ./ops/docs_lint.sh'",
+      "acceptance_manual": null,
+      "scope_status": "proposed_from_explicit_fix_site_id_content_drift",
+      "ledger_scope": "新增一個單一命令列 façade、自動目標選擇、既有跨機動詞 adapter、進度與本地收據儲存，屬中型工具改動。",
+      "scope": {
+        "schema": "kg.backlog.scope.v1",
+        "files": [
+          {
+            "path": "ops/compute.py",
+            "operation": "add"
+          },
+          {
+            "path": "ops/lib/compute_router.py",
+            "operation": "add"
+          },
+          {
+            "path": "ops/lib/xmachine_transport.py",
+            "operation": "add"
+          },
+          {
+            "path": "ops/tests/test_compute_cli.py",
+            "operation": "add"
+          },
+          {
+            "path": "ops/capability_matrix.py",
+            "operation": "modify"
+          },
+          {
+            "path": "docs/reference/tech_index.md",
+            "operation": "modify"
+          }
+        ]
+      },
+      "path_state": [
+        {
+          "path": "ops/compute.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/lib/compute_router.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/lib/xmachine_transport.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/tests/test_compute_cli.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/capability_matrix.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/tech_index.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260809-d68749",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "contract-blocked",
+      "dispatch_class": "contract-not-ready",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "cli",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "unknown",
+      "blocked_by": [],
+      "fix_site": ".claude/skills/kg-agent-context/SKILL.md; docs/sop/review_discipline.md; ops/review_audit.sh; ops/worktree_registry.py",
+      "acceptance_mode": "manual",
+      "acceptance_cmd": null,
+      "acceptance_manual": "由 platform-steward 協調，請 multi_agent_v1 connector/account owner 執行具名 target 的 wait/interrupt 流程；留下每次 request、returned status、timeout、terminal transition 與 target id。connector 行為不在 repo-local command 可觀測範圍，因此使用 acceptance_manual。",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": ".claude/skills/kg-agent-context/SKILL.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/sop/review_discipline.md"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/worktree_registry.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/review_audit.sh"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": ".claude/skills/kg-agent-context/SKILL.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/review_discipline.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/worktree_registry.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/review_audit.sh",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260809-dc2a65",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dependency-blocked",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "arch",
+      "severity": "high",
+      "surface": null,
+      "contract_status": null,
+      "contract_baseline": null,
+      "blocked_by": [
+        "IMP-20260809-aa70b0",
+        "IMP-20260809-1c4bcf",
+        "IMP-20260809-84e9e4",
+        "IMP-20260805-5a3b26",
+        "IMP-20260808-043e16",
+        "IMP-20260808-4bd1ef"
+      ],
+      "fix_site": "ops/worktree_orchestrate.py::_run_gate（remote route hook與validated child result adapter，blocked after IMP-20260805-5a3b26）；ops/lib/compute_receipt.py；ops/tests/test_compute_gate_adapter.py；ops/tests/test_worktree_orchestrate.py；docs/runbook/system.md；docs/sop/release.md；docs/reference/tech_index.md",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_gate_adapter.py ops/tests/test_worktree_orchestrate.py && ./ops/docs_lint.sh",
+      "acceptance_manual": null,
+      "scope_status": "proposed_from_explicit_fix_site_id_content_drift",
+      "ledger_scope": "在既有工作樹把關器增加一個可選的遠端 gate adapter、收據驗證與回歸測試，不改落地主幹規則。",
+      "scope": {
+        "schema": "kg.backlog.scope.v1",
+        "files": [
+          {
+            "path": "ops/worktree_orchestrate.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/lib/compute_receipt.py",
+            "operation": "modify"
+          },
+          {
+            "path": "ops/tests/test_compute_gate_adapter.py",
+            "operation": "add"
+          },
+          {
+            "path": "ops/tests/test_worktree_orchestrate.py",
+            "operation": "modify"
+          },
+          {
+            "path": "docs/runbook/system.md",
+            "operation": "modify"
+          },
+          {
+            "path": "docs/sop/release.md",
+            "operation": "modify"
+          },
+          {
+            "path": "docs/reference/tech_index.md",
+            "operation": "modify"
+          }
+        ]
+      },
+      "path_state": [
+        {
+          "path": "ops/worktree_orchestrate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/compute_receipt.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_compute_gate_adapter.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/tests/test_worktree_orchestrate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/runbook/system.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/release.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/tech_index.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260810-528736",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "contract-blocked",
+      "dispatch_class": "contract-not-ready",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "unknown",
+      "blocked_by": [],
+      "fix_site": ".claude/agents/code-reviewer.md; docs/sop/review_discipline.md; ops/review_audit.sh; ops/worktree_registry.py",
+      "acceptance_mode": "manual",
+      "acceptance_cmd": null,
+      "acceptance_manual": "由 platform-steward 協調，請 multi_agent_v1 connector/account owner 執行 reviewer dispatch capacity、bounded retry/queue 與 follow-up；留下 dispatch response、reviewer id、queue transition、bounded timeout 與 review_audit receipt。外部 thread capacity 無 repo-local command 可表達，因此使用 acceptance_manual。",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": ".claude/agents/code-reviewer.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/sop/review_discipline.md"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/worktree_registry.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/review_audit.sh"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": ".claude/agents/code-reviewer.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/review_discipline.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/worktree_registry.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/review_audit.sh",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260810-bad780",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "contract-blocked",
+      "dispatch_class": "contract-not-ready",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "unknown",
+      "blocked_by": [],
+      "fix_site": ".claude/skills/worktree-flow/SKILL.md; docs/sop/review_discipline.md; ops/review_audit.sh; ops/worktree_registry.py",
+      "acceptance_mode": "manual",
+      "acceptance_cmd": "",
+      "acceptance_manual": "由 platform-steward 協調，請 multi_agent_v1 connector/account owner 證明 handshake、heartbeat、terminal status 與 fail-closed transition；留下 target id、request/status trace 與 timeout evidence。外部 connector 不在 repo-local command 可觀測範圍，因此使用 acceptance_manual。",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": ".claude/skills/worktree-flow/SKILL.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/sop/review_discipline.md"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/worktree_registry.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/review_audit.sh"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": ".claude/skills/worktree-flow/SKILL.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/review_discipline.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/worktree_registry.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/review_audit.sh",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260812-f9e383",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "arch",
+      "severity": "low",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [
+        "IMP-20260812-b7dfce",
+        "IMP-20260812-e2433b",
+        "IMP-20260812-120334",
+        "IMP-20260812-8f46f2"
+      ],
+      "fix_site": "docs/sop/architecture.md; docs/reference/tech_index.md; docs/reference/product_surface.md; docs/reference/feature_boundary/notebook.md",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "test -f docs/sop/architecture.md && test -f docs/reference/tech_index.md && test -f docs/reference/product_surface.md && test -f docs/reference/feature_boundary/notebook.md && ! rg -q 'coldStartActiveNotebook|serverVocabUiLwwEnabled|serverTranslationLwwEnabled|serverReviewClockLwwEnabled|serverReviewModeLwwEnabled' docs/sop/architecture.md docs/reference/tech_index.md docs/reference/product_surface.md docs/reference/feature_boundary/notebook.md && ./ops/docs_lint.sh --registry",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "docs/sop/architecture.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/tech_index.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/product_surface.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/feature_boundary/notebook.md"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "docs/sop/architecture.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/tech_index.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/product_surface.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/feature_boundary/notebook.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-339c1e",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "discover",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Explore/ExploreView.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "test -f ios/BooksAndVocabUITests/ExploreNavigationUITests.swift && ./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Explore/ExploreView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Debug/Scenarios/ExploreViewScenarios.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/ExploreNavigationUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Explore/ExploreView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Debug/Scenarios/ExploreViewScenarios.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/ExploreNavigationUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-508e0d",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "vocabulary",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testReviewCalendarRequiredEvidenceUsesStableSelectors$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Debug/Scenarios/ReviewCalendarScenarios.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_p9_review_calendar_contract.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_p9_review_calendar_evidence.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Debug/Scenarios/ReviewCalendarScenarios.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_p9_review_calendar_contract.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_p9_review_calendar_evidence.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-89fe6f",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "settings",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Settings/SettingsView.swift; ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift; ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift; ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testSettingsFlowAppliesRealPreferenceChanges$' -g '^testSettingsLongContentCounterexampleResolvesProductionSelectors$' -g '^testSettingsResetCounterexampleShowsObservableBoundary$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/SettingsFlowUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/SettingsFlowUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-905c63",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "reader",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "test -f ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift && rg -q 'func testAddLinkLookupEvidenceMatrix' ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift && ./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testAddLinkLookupEvidenceMatrix$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-92043f",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "reader",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Reader/TOCView.swift; ios/BooksAndVocab/Views/Reader/ReaderView.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess$' -g '^testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Reader/TOCView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Reader/ReaderView.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/ReaderFlowUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/ReaderTOCNavigationTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Reader/TOCView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Reader/ReaderView.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/ReaderFlowUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/ReaderTOCNavigationTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-d8d0de",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "reader",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "test -f ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift && rg -q 'func testAddLinkDetailMaterializationEvidenceMatrix' ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift && ./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testAddLinkDetailMaterializationEvidenceMatrix$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-dc88a5",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "correctness",
+      "severity": "high",
+      "surface": "vocabulary",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testOverviewStatsRenderFromSeededReviewHistory$' -g '^testOverviewEmptyForecastCounterexampleIsVisible$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Debug/Scenarios/StatsViewScenarios.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Debug/Scenarios/VocabForecastScenarios.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/OverviewFlowUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Debug/Scenarios/StatsViewScenarios.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Debug/Scenarios/VocabForecastScenarios.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/OverviewFlowUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "APP-20260813-ec040c",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "APP",
+      "owner": "ios-engineer (stream/surface derived)",
+      "category": "ux",
+      "severity": "high",
+      "surface": "settings",
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testSettingsSyncTerminalErrorRetriesToSuccess$'",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncLifecycleFeedback.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocab/Support/Fixtures/Settings/SettingsSyncFixtureTransport.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/SettingsSyncLifecycleUITests.swift"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncLifecycleFeedback.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocab/Support/Fixtures/Settings/SettingsSyncFixtureTransport.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/SettingsSyncLifecycleUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260813-4c0ad1",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "contract-blocked",
+      "dispatch_class": "dependency-blocked",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "unknown",
+      "blocked_by": [
+        "IMP-20260818-17bdf8"
+      ],
+      "fix_site": "ops/ui_graph.py",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ui_graph.py --type SettingsStatusValue --json",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/ui_graph.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/ui_graph.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260813-e360e6",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/lib/ios_lock_wait.sh; ops/ios_build.sh; ops/ios_test.sh; ops/ios_release.sh; ops/tests/test_ios_device_lock_verdict.sh; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh; docs/reference/ios_deriveddata_policy.md; docs/sop/ios.md",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "bash -c 'set -euo pipefail\ngrep -qF \"FIFO ticket queue\" ops/tests/test_ios_device_lock_verdict.sh\ngrep -qF \"owner-guarded cleanup\" ops/tests/test_ios_device_lock_verdict.sh\n./ops/tests/test_ios_device_lock_verdict.sh\n./ops/test_ops.sh ios-device-lock\ndocs_rc=0\ndocs_out=\"$(./ops/docs_lint.sh --files docs/reference/ios_deriveddata_policy.md docs/sop/ios.md 2>&1)\" || docs_rc=$?\nprintf \"%s\\\\n\" \"$docs_out\"\n[[ \"$docs_rc\" -eq 0 || \"$docs_rc\" -eq 3 ]]\ngrep -Eq \"ERROR:[[:space:]]*0\" <<<\"$docs_out\"'",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/lib/ios_lock_wait.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/ios_build.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/ios_test.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/ios_release.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ios_device_lock_verdict.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ops_ci_coverage.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/ios_deriveddata_policy.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/sop/ios.md"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/lib/ios_lock_wait.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/ios_build.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/ios_test.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/ios_release.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ios_device_lock_verdict.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ops_ci_coverage.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/ios_deriveddata_policy.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/ios.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260816-71e524",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": ".claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh; .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh; .claude/skills/ios-simulator-verification/references/evidence-contract.md; docs/sop/ui_flow_evidence.md; docs/reference/tech_index.md",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "bash -c 'set -euo pipefail\ngrep -qF \"lease-exhausted\" .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh\ngrep -qF \"explicit-device\" .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh\n./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh\ndocs_rc=0\ndocs_out=\"$(./ops/docs_lint.sh --files docs/sop/ui_flow_evidence.md docs/reference/tech_index.md 2>&1)\" || docs_rc=$?\nprintf \"%s\\\\n\" \"$docs_out\"\n[[ \"$docs_rc\" -eq 0 || \"$docs_rc\" -eq 3 ]]\ngrep -Eq \"ERROR:[[:space:]]*0\" <<<\"$docs_out\"'",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": ".claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh"
+          },
+          {
+            "operation": "modify",
+            "path": ".claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh"
+          },
+          {
+            "operation": "modify",
+            "path": ".claude/skills/ios-simulator-verification/references/evidence-contract.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/sop/ui_flow_evidence.md"
+          },
+          {
+            "operation": "modify",
+            "path": "docs/reference/tech_index.md"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": ".claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": ".claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": ".claude/skills/ios-simulator-verification/references/evidence-contract.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/sop/ui_flow_evidence.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "docs/reference/tech_index.md",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-2bd443",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_worktree_registry.py; ops/tests/test_worktree_registry_queries.py; ops/tests/test_worktree_handback_outcomes.py; ops/tests/test_worktree_campaign_reservation.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/test_ops.sh worktree-orchestrator",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_worktree_registry.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_worktree_registry_queries.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_worktree_handback_outcomes.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_worktree_campaign_reservation.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ops_ci_coverage.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_worktree_registry_lifecycle.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_worktree_registry_recovery.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_worktree_registry_topology.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_worktree_registry.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_worktree_registry_queries.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_worktree_handback_outcomes.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_worktree_campaign_reservation.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ops_ci_coverage.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_worktree_registry_lifecycle.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/tests/test_worktree_registry_recovery.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/tests/test_worktree_registry_topology.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-4f2653",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_app_review_gate.py; ops/tests/test_app_review_evidence.py; ops/tests/test_asc_reviewer_mirror.py; ops/tests/test_provenance.py; ops/tests/test_reviewer_evidence.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/test_ops.sh app-review",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_app_review_gate.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_app_review_evidence.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_asc_reviewer_mirror.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_provenance.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_reviewer_evidence.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ops_ci_coverage.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_app_review_test_topology.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_app_review_gate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_app_review_evidence.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_asc_reviewer_mirror.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_provenance.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_reviewer_evidence.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ops_ci_coverage.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_app_review_test_topology.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-60fa6f",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_gate_can_fail.sh; ops/lib/streaming_command.py; ops/worktree_orchestrate.py; ops/tests/test_streaming_command.py; ops/tests/test_task_registry.py",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/tests/test_gate_can_fail.sh",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_gate_can_fail.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_streaming_command.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_task_registry.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/lib/streaming_command.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/worktree_orchestrate.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_gate_failure_topology.sh"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_gate_can_fail.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_streaming_command.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_task_registry.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/streaming_command.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/worktree_orchestrate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_gate_failure_topology.sh",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-752494",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_p9_review_calendar_contract.py; ios/BooksAndVocabUITests/BooksAndVocabUITests.swift",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_p9_review_calendar_contract.py::test_malformed_ui_app_args_fail_closed_without_swallowing_decode_errors",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_p9_review_calendar_contract.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ios/BooksAndVocabUITests/BooksAndVocabUITests.swift"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_p9_review_calendar_contract.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ios/BooksAndVocabUITests/BooksAndVocabUITests.swift",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-79808b",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_backlog.py",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/test_ops.sh backlog",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_acceptance.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_contract.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_legacy_view_seams.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_migration.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_mutations.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_query_seam.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_reanchor.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_store.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_verification.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog_wave.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ops_ci_coverage.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_backlog_legacy_collector.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_backlog.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_acceptance.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_contract.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_legacy_view_seams.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_migration.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_mutations.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_query_seam.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_reanchor.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_store.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_verification.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_wave.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ops_ci_coverage.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog_legacy_collector.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-7e77ff",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_ui_world_manifest.py",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo -g FixtureDatasetUITests --list",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ui_world_manifest.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_demo_ios_emitter.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_demo_ios_spec_emitter.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_uitest_evidence_contract.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_uitest_flow_matrix.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_uitest_review_page.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/ui_world_manifest.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/demo/ui_world_seed/shape_history.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/demo/ui_world_seed/apply_curation.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_ui_world_test_topology.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_ui_world_manifest.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_demo_ios_emitter.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_demo_ios_spec_emitter.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_uitest_evidence_contract.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_uitest_flow_matrix.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_uitest_review_page.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/ui_world_manifest.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/demo/ui_world_seed/shape_history.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/demo/ui_world_seed/apply_curation.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ui_world_test_topology.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-9a2678",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/worktree_orchestrate.py; ops/tests/test_worktree_orchestrate.py; ops/ios_test.sh; ops/lib/ios_test_failure_verdict.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py::test_ios_gate_input_map_covers_declared_shell_dependencies",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/worktree_orchestrate.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_worktree_orchestrate.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/ios_test.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/lib/ios_test_failure_verdict.sh"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/worktree_orchestrate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_worktree_orchestrate.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/ios_test.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/ios_test_failure_verdict.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-a0b697",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_ops_group_chain.py; ops/test_ops.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_ops_group_chain.py",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ops_group_chain.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_ops_group_chain.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-c76bee",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/ios_ops.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/ios_ops.sh test --file BooksAndVocabTests.swift --list",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/ios_ops.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/ios_test.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/lib/ios_test_discovery.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/lib/ios_test_cache_root.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/lib/ios_lock_wait.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ios_test_cache_root.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ios_device_lock_verdict.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_ios_selector_routing.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/ios_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/ios_test.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/ios_test_discovery.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/ios_test_cache_root.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/lib/ios_lock_wait.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ios_test_cache_root.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ios_device_lock_verdict.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ios_selector_routing.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-fa9ba0",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "low",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_kg_board_model.py; ops/tests/test_kg_board_git_tree.py; ops/tests/test_kg_board_web.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/test_ops.sh kg-board",
+      "acceptance_manual": "",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_kg_board_model.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_kg_board_git_tree.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_kg_board_web.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/test_ops.sh"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_ops_ci_coverage.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_kg_board_test_topology.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_kg_board_model.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_kg_board_git_tree.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_kg_board_web.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/test_ops.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ops_ci_coverage.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_kg_board_test_topology.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260817-fce8cb",
+      "original_ticket": true,
+      "new_split_ticket": false,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/tests/test_uitest_review_page.py; ops/uitest_review_page.py",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_uitest_review_page.py::test_build_review_root_is_one_run_without_parent_index ops/tests/test_uitest_review_page.py::test_build_review_root_refuses_overwrite",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_uitest_review_page.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/uitest_review_page.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/tests/test_uitest_review_page.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/uitest_review_page.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260818-0da852",
+      "original_ticket": false,
+      "new_split_ticket": true,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/i18n_lint.sh",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "./ops/i18n_lint.sh --baseline-check",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/i18n_lint.sh"
+          },
+          {
+            "operation": "add",
+            "path": "ops/i18n_strings_lint.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_i18n_duplicate_keys.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/i18n_lint.sh",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/i18n_strings_lint.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        },
+        {
+          "path": "ops/tests/test_i18n_duplicate_keys.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260818-17bdf8",
+      "original_ticket": false,
+      "new_split_ticket": true,
+      "status": "contract-blocked",
+      "dispatch_class": "contract-not-ready",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "med",
+      "surface": null,
+      "contract_status": "blocked",
+      "contract_baseline": "unknown",
+      "blocked_by": [],
+      "fix_site": "ops/ui_graph.py",
+      "acceptance_mode": "manual",
+      "acceptance_cmd": null,
+      "acceptance_manual": "由 ops-engineer 在隔離 Xcode IndexStore 環境執行 ./ops/ui_graph.py --type SettingsStatusValue --json；留下 exact HEAD、index identity、command rc、termination reason 與 output path。UI graph 是否能解析 IndexStore 不是 repo-local command 在目前環境可完整表達的事，因此使用 acceptance_manual。",
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/ui_graph.py"
+          },
+          {
+            "operation": "add",
+            "path": "ops/tests/test_ui_graph_contract.py"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/ui_graph.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_ui_graph_contract.py",
+          "tracked_at_source_head": false,
+          "exists_at_source_head": false,
+          "operation": "add"
+        }
+      ]
+    },
+    {
+      "id": "IMP-20260818-c48e95",
+      "original_ticket": false,
+      "new_split_ticket": true,
+      "status": "triaged",
+      "dispatch_class": "dispatchable",
+      "stream": "IMP",
+      "owner": "platform-steward (stream derived)",
+      "category": "tool",
+      "severity": "high",
+      "surface": null,
+      "contract_status": "ready",
+      "contract_baseline": "red",
+      "blocked_by": [],
+      "fix_site": "ops/backlog.py",
+      "acceptance_mode": "command",
+      "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k 'id_drift or supersede'",
+      "acceptance_manual": null,
+      "scope_status": "known",
+      "ledger_scope": null,
+      "scope": {
+        "files": [
+          {
+            "operation": "modify",
+            "path": "ops/backlog.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/tests/test_backlog.py"
+          },
+          {
+            "operation": "modify",
+            "path": "ops/backlog_id_drift_baseline.txt"
+          }
+        ],
+        "schema": "kg.backlog.scope.v1"
+      },
+      "path_state": [
+        {
+          "path": "ops/backlog.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/tests/test_backlog.py",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        },
+        {
+          "path": "ops/backlog_id_drift_baseline.txt",
+          "tracked_at_source_head": true,
+          "exists_at_source_head": true,
+          "operation": "modify"
+        }
+      ]
+    }
+  ],
+  "file_occupancy": [
+    {
+      "path": ".claude/agents/code-reviewer.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260810-528736",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": ".claude/skills/ios-simulator-verification/references/evidence-contract.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260816-71e524",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": ".claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260816-71e524",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": ".claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260816-71e524",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": ".claude/skills/kg-agent-context/SKILL.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-d68749",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": ".claude/skills/source-command-release/SKILL.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260808-60a5b7",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": ".claude/skills/worktree-flow/SKILL.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260810-bad780",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "docs/policy/safety.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "docs/reference/feature_boundary/notebook.md",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260812-f9e383",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "docs/reference/host_topology.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "docs/reference/ios_deriveddata_policy.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "docs/reference/product_surface.md",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260812-f9e383",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "docs/reference/tech_index.md",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260809-84e9e4",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260812-f9e383",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260816-71e524",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "docs/runbook/system.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "docs/sop/architecture.md",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260812-f9e383",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "docs/sop/ios.md",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260808-60a5b7",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "docs/sop/release.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "docs/sop/review_discipline.md",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-d68749",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260810-528736",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260810-bad780",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "docs/sop/ui_flow_evidence.md",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260816-71e524",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Debug/Scenarios/ExploreViewScenarios.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-339c1e",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Debug/Scenarios/ReviewCalendarScenarios.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Debug/Scenarios/StatsViewScenarios.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Debug/Scenarios/VocabForecastScenarios.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/en.lproj/Localizable.strings",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/ja.lproj/Localizable.strings",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/ko.lproj/Localizable.strings",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Models/ActiveNotebookStore.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Models/KGFeatureFlags.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Models/ReviewSettings.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Models/TranslationLanguage.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Services/AppAnalytics.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260805-a01716",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Support/Fixtures/Settings/SettingsSyncFixtureTransport.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-ec040c",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Bookshelf/BookshelfCopy.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Explore/ExploreView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-339c1e",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Explore/SharedDeckDetailView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260805-a01716",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-339c1e",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Podcast/PodcastSettingsPopover.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Reader/ReaderView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-92043f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Reader/TOCView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-92043f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncLifecycleFeedback.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-ec040c",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-ec040c",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/SettingsView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Settings/TranslationLanguageSettingsView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-905c63",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-d8d0de",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-905c63",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-d8d0de",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ArchivedVocabSheet.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-ec040c",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPhaseView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewShortcutCatalog.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/Views/Welcome/WelcomeView.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/zh-Hans.lproj/Localizable.strings",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocab/zh-Hant.lproj/Localizable.strings",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/ActiveNotebookStoreTests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-905c63",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-d8d0de",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/ExploreTelemetryTests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260805-a01716",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/LocalizationSemanticKeysTests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/ReaderTOCNavigationTests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-92043f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-0029",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/BooksAndVocabUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-752494",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/ExploreNavigationUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-339c1e",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-92043f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/OverviewFlowUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/ReaderFlowUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-92043f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/SettingsFlowUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/SettingsSyncLifecycleUITests.swift",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-ec040c",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-905c63",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-d8d0de",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/backlog_id_drift_baseline.txt",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260818-c48e95",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/backlog.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260818-c48e95",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/capability_matrix.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-84e9e4",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/compute.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-84e9e4",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/demo/ui_world_seed/apply_curation.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/demo/ui_world_seed/shape_history.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/felix_compute_admin.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/felix_compute_worker.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/fixtures/ui_worlds/marketing_demo.json",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-339c1e",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-89fe6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-905c63",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-92043f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-d8d0de",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-dc88a5",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "APP-20260813-ec040c",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/i18n_lint.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260818-0da852",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/i18n_strings_lint.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260818-0da852",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/ios_build.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/ios_ops.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/ios_release.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/ios_test.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-9a2678",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/compute_admission.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/compute_capsule.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/compute_job_lifecycle.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/compute_receipt.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/compute_router.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-84e9e4",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/ios_lock_wait.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/ios_test_cache_root.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/ios_test_discovery.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/ios_test_failure_verdict.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-9a2678",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/streaming_command.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/lib/xmachine_transport.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-84e9e4",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/review_audit.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-d68749",
+          "operation": "add",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260810-528736",
+          "operation": "add",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260810-bad780",
+          "operation": "add",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/test_ops.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-a0b697",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-fa9ba0",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_app_review_evidence.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260808-60a5b7",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_app_review_gate.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260808-60a5b7",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_app_review_test_topology.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_asc_reviewer_mirror.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_acceptance.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_contract.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_legacy_collector.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_legacy_view_seams.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_migration.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_mutations.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_query_seam.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_reanchor.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_store.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_verification.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog_wave.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_backlog.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260818-c48e95",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_compute_cli.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-84e9e4",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_compute_executor.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-1c4bcf",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_compute_gate_adapter.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_demo_ios_emitter.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_demo_ios_spec_emitter.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_gate_can_fail.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_gate_failure_topology.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_i18n_duplicate_keys.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260809-d5096b",
+          "operation": "add",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260818-0da852",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ios_device_lock_verdict.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ios_selector_routing.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ios_test_cache_root.sh",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-c76bee",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_kg_board_git_tree.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-fa9ba0",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_kg_board_model.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-fa9ba0",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_kg_board_test_topology.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-fa9ba0",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_kg_board_web.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-fa9ba0",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ops_ci_coverage.sh",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-e360e6",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-79808b",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-fa9ba0",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ops_group_chain.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-a0b697",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_p9_review_calendar_contract.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-752494",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_p9_review_calendar_evidence.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "APP-20260813-508e0d",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_provenance.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_reviewer_evidence.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-4f2653",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_streaming_command.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_task_registry.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ui_graph_contract.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260818-17bdf8",
+          "operation": "add",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ui_world_manifest.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_ui_world_test_topology.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_uitest_evidence_contract.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_uitest_flow_matrix.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_uitest_review_page.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-fce8cb",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_campaign_reservation.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_handback_outcomes.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_orchestrate.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260817-9a2678",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_registry_lifecycle.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_registry_queries.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_registry_recovery.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_registry_topology.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "add",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/tests/test_worktree_registry.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-2bd443",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/ui_graph.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260813-4c0ad1",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260818-17bdf8",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    },
+    {
+      "path": "ops/ui_world_manifest.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-7e77ff",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/uitest_review_page.py",
+      "collision": false,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260817-fce8cb",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/worktree_orchestrate.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-dc2a65",
+          "operation": "modify",
+          "dispatch_class": "dependency-blocked"
+        },
+        {
+          "ticket_id": "IMP-20260817-60fa6f",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        },
+        {
+          "ticket_id": "IMP-20260817-9a2678",
+          "operation": "modify",
+          "dispatch_class": "dispatchable"
+        }
+      ]
+    },
+    {
+      "path": "ops/worktree_registry.py",
+      "collision": true,
+      "consumers": [
+        {
+          "ticket_id": "IMP-20260809-d68749",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260810-528736",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        },
+        {
+          "ticket_id": "IMP-20260810-bad780",
+          "operation": "modify",
+          "dispatch_class": "contract-not-ready"
+        }
+      ]
+    }
+  ],
+  "collision_summary": {
+    "path_count": 167,
+    "collision_path_count": 34,
+    "collision_paths": [
+      "docs/reference/feature_boundary/notebook.md",
+      "docs/reference/product_surface.md",
+      "docs/reference/tech_index.md",
+      "docs/sop/architecture.md",
+      "docs/sop/ios.md",
+      "docs/sop/review_discipline.md",
+      "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift",
+      "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift",
+      "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+      "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift",
+      "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+      "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift",
+      "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+      "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift",
+      "ops/fixtures/ui_worlds/marketing_demo.json",
+      "ops/i18n_lint.sh",
+      "ops/i18n_strings_lint.py",
+      "ops/ios_test.sh",
+      "ops/lib/compute_receipt.py",
+      "ops/lib/ios_lock_wait.sh",
+      "ops/review_audit.sh",
+      "ops/test_ops.sh",
+      "ops/tests/test_app_review_evidence.py",
+      "ops/tests/test_app_review_gate.py",
+      "ops/tests/test_backlog.py",
+      "ops/tests/test_i18n_duplicate_keys.py",
+      "ops/tests/test_ios_device_lock_verdict.sh",
+      "ops/tests/test_ops_ci_coverage.sh",
+      "ops/tests/test_p9_review_calendar_contract.py",
+      "ops/tests/test_uitest_review_page.py",
+      "ops/tests/test_worktree_orchestrate.py",
+      "ops/ui_graph.py",
+      "ops/worktree_orchestrate.py",
+      "ops/worktree_registry.py"
+    ]
+  }
+}

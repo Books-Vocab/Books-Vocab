@@ -1,20 +1,21 @@
 {
   "acceptance": "紅：selector routing contract 不存在、collection 為零未 fail-closed、或 route union 產生重複 nodeid。綠：source seam 能選出非零 selector，known fallback 有明確 contract suite，unknown/zero-selector fail-closed，ios_ops 正規入口回報 exact HEAD/device/dataset/cache/timing，未保存影片。",
-  "acceptance_cmd": "test -f ops/tests/test_ios_selector_routing.py && uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_ios_selector_routing.py && ./ops/ios_ops.sh test --file BooksAndVocabTests.swift --list",
+  "acceptance_cmd": "./ops/ios_ops.sh test --file BooksAndVocabTests.swift --list",
   "acceptance_expect_rc": 0,
+  "acceptance_manual": "",
   "brief": "讓 iOS 小變更只執行受影響 selector 與必要資源，並留下可追溯 timing evidence。",
   "category": "tool",
-  "contract_baseline": "unknown",
-  "contract_checked_at": "2026-08-17",
-  "contract_checked_by": "agent:ticket-factory-plan-20260817",
-  "contract_evidence": "Ticket Factory contract preflight at local main 75160fdf037c0de2ddbcdaf0277c752aabf5d245: blocked until the active orchestrator-test-topology-eta-20260817 worktree is complete and the future topology contract dependency exists; no implementation or acceptance command was executed.",
-  "contract_status": "blocked",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-17",
   "detail": "iOS 日常小變更仍可能把 unit、UI、build cache、Simulator/device、fixture 與 shared lock 成本一起帶入，現有 selector 與 resource evidence 尚未形成可驗證的 source seam route map。這張票以 routing/collection/evidence 為主，不以拆檔為目標，不保存或交付影片，不改產品功能。前置：orchestrator-test-topology-eta-20260817 完成後，先用 timing ledger 重新確認最慢 selector 與資源瓶頸。",
-  "fix_site": "ops/ios_ops.sh; ops/ios_test.sh; ops/lib/ios_test_discovery.sh; ops/lib/ios_test_cache_root.sh; ops/lib/ios_lock_wait.sh; ops/tests/test_ios_selector_routing.py",
-  "groomed_against": "75160fdf037c0de2ddbcdaf0277c752aabf5d245",
-  "groomed_at": "2026-08-17",
-  "groomed_by": "agent:ticket-factory-plan-20260817",
+  "fix_site": "ops/ios_ops.sh",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260817-c76bee",
   "plan": "1. 先從 timing ledger 與 ios_ops commands/quality impact 取得目前 source seam、test target、UI class/selector、device、cache、lock、fixture、runtime/compile evidence 的 live map，不預設哪個 selector 最慢。 2. 建立 source-to-selector/resource route manifest，改 production Swift、UITest helper、shared UI component、test runner/helper 時分別選最小 bundle；known route 找不到直接測試時回退到具名 contract suite，unknown 不得空跑綠。 3. 加 positive/negative、mutation、collect-only 與 zero-selector fail-safe，驗 route union 無重複 nodeid。 4. 所有執行走 ./ops/ios_ops.sh，evidence 綁 exact HEAD、dataset、device、cache 與 timing；full unit/all-targets 留給 S3/S4。",
   "resolution": "",
@@ -42,22 +43,22 @@
         "path": "ops/lib/ios_lock_wait.sh"
       },
       {
-        "operation": "add",
-        "path": "ops/tests/test_ios_selector_routing.py"
-      },
-      {
         "operation": "modify",
         "path": "ops/tests/test_ios_test_cache_root.sh"
       },
       {
         "operation": "modify",
         "path": "ops/tests/test_ios_device_lock_verdict.sh"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_ios_selector_routing.py"
       }
     ],
     "schema": "kg.backlog.scope.v1"
   },
   "severity": "high",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 3 Ticket F iOS Selector 與 Resource Routing",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "IMP"
 }

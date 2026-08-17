@@ -11,24 +11,44 @@
   "brief": "四個同步設定的文件宣告沒有和實際 LWW 行為一致。",
   "category": "arch",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-16",
-  "contract_checked_by": "agent:ticket-factory-full-groom",
-  "contract_evidence": "Current four SoT docs exist, but they still contain legacy cold-start/feature-flag identifiers and the child dependency chain is incomplete. Acceptance command repaired to assert the actual obsolete identifiers plus docs registry lint; no docs were changed during grooming.",
-  "contract_status": "blocked",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "cost": "S",
   "date": "2026-08-12",
   "detail": "[IMP-0029 子項] child-5 docs：同步 architecture、tech_index、product_surface、notebook boundary 四份文件，移除舊 cold-start 宣告並更新 verified_against。",
   "fix_site": "docs/sop/architecture.md; docs/reference/tech_index.md; docs/reference/product_surface.md; docs/reference/feature_boundary/notebook.md",
-  "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
-  "groomed_at": "2026-08-16",
-  "groomed_by": "agent:ticket-factory-full-groom",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260812-f9e383",
   "plan": "待 child-1 至 child-4 完成後同步 docs/sop/architecture.md、docs/reference/tech_index.md、docs/reference/product_surface.md、docs/reference/feature_boundary/notebook.md，移除 cold-start/feature-flagged-off 舊語句，更新 verified_against 至可達 main，並跑 docs impact/lint。",
   "resolution": "Acceptance is baseline-green: registry lint does not prove the four SoT documents removed stale cold-start semantics; update the contract before opening a child.",
   "schema": "kg.backlog.entry.v1",
-  "scope": "四份 SoT 文件與 verified_against 收尾，不改產品程式。",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "docs/sop/architecture.md"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/reference/tech_index.md"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/reference/product_surface.md"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/reference/feature_boundary/notebook.md"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "low",
   "source": "IMP-0029/child-5",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "IMP"
 }

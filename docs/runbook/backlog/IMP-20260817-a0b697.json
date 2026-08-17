@@ -5,23 +5,35 @@
   "brief": "維運測試群組清單與實際派送數量不一致，讓整合把關被錯誤擋住。",
   "category": "tool",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-17",
-  "contract_checked_by": "delivery-child:refactor-backlog-seams-20260816",
-  "contract_evidence": "Integrator adjudication: pre-existing baseline failure reproduced on base d7d98039 and child c6c3f389; not in backlog-seams refactor scope; official gate remains BLOCK.",
-  "contract_status": "blocked",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-17",
   "detail": "官方 ops-pytest 在 backlog-seams-wave-20260817 報 test_case_arms_covers_every_group_in_test_ops 失敗。以 child HEAD c6c3f389 與 base d7d98039 各跑同一 selector 都是 FFFFF 的第 1 項：case_arms 實際 59，測試仍 assert 58。ops/test_ops.sh 的 DEFAULT_TESTS 有 57 項、OPTIONAL_TESTS 有 2 項；uitest-contact-sheet 由 git blame dc59f97d81 引入，child diff 未改相關檔案。",
   "fix_site": "ops/tests/test_ops_group_chain.py; ops/test_ops.sh",
-  "groomed_against": "897e596bc0ccda539fe09fcc13cb717daf62630e",
-  "groomed_at": "2026-08-17",
-  "groomed_by": "delivery-child:refactor-backlog-seams-20260816",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260817-a0b697",
   "plan": "更新 inventory assertion 與註解到現行 59 arms，保留 required group 與 fallback negative checks；先在既有基線重現 RED，再跑 focused group-chain、ops-ci coverage 與 relevant ops suite，確認不把其它 baseline failure 混入。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "一支 dispatcher inventory 測試與其群組清單基線。",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ops_group_chain.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/test_ops.sh"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "high",
   "source": "integrator gate BLOCK backlog-seams-wave-20260817",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "IMP"
 }

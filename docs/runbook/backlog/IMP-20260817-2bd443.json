@@ -1,20 +1,21 @@
 {
   "acceptance": "紅：registry topology contract 尚不存在或 nodeid 對帳失敗。綠：topology contract、各責任群組與 compatibility collector 通過，nodeid union 與原始 collector 完全相等且無重複；source 變更只選必要群組，zero-selector 會 fail-closed，既有 worktree-orchestrator acceptance 仍可執行。",
-  "acceptance_cmd": "test -f ops/tests/test_worktree_registry_topology.py && uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_registry_topology.py && ./ops/test_ops.sh worktree-orchestrator",
+  "acceptance_cmd": "./ops/test_ops.sh worktree-orchestrator",
   "acceptance_expect_rc": 0,
+  "acceptance_manual": "",
   "brief": "把 registry 測試拆成可精準路由的責任群組，讓維護者只付必要的測試成本。",
   "category": "tool",
-  "contract_baseline": "unknown",
-  "contract_checked_at": "2026-08-17",
-  "contract_checked_by": "agent:ticket-factory-plan-20260817",
-  "contract_evidence": "Ticket Factory contract preflight at local main 75160fdf037c0de2ddbcdaf0277c752aabf5d245: blocked until the active orchestrator-test-topology-eta-20260817 worktree is complete and the future topology contract dependency exists; current dispatcher and coverage files also overlap an active worktree; no implementation or acceptance command was executed.",
-  "contract_status": "blocked",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-17",
   "detail": "registry 測試目前把 lifecycle、hand-back seal/digest/tip SHA、claims/ownership、queries 與 repair/recovery 混在大型 collector；任何 registry source 變更都可能啟動不必要的整群測試。這張票只處理測試拓撲與 route，不改 worktree registry lifecycle、status、acceptance 或資料模型。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 local main 重查 scope 與既有 tickets。",
   "fix_site": "ops/tests/test_worktree_registry.py; ops/tests/test_worktree_registry_queries.py; ops/tests/test_worktree_handback_outcomes.py; ops/tests/test_worktree_campaign_reservation.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
-  "groomed_against": "75160fdf037c0de2ddbcdaf0277c752aabf5d245",
-  "groomed_at": "2026-08-17",
-  "groomed_by": "agent:ticket-factory-plan-20260817",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260817-2bd443",
   "plan": "1. 以最新 local main 盤點 legacy collector 與既有 registry seam 的完整 nodeid 集合，先固定原始數量與 ownership。 2. 將 lifecycle、hand-back、claims/reservation、queries、repair/recovery 各自放入單一責任群組，legacy 檔保留明確 compatibility collector，不複製 nodeid。 3. 在 ops/test_ops.sh 與 ops/tests/test_ops_ci_coverage.sh 接上 source-to-group route，為每個新 route 加 positive control、negative control、collection proof 與 zero-selector fail-safe。 4. 以拓撲 contract test 驗證新群組 nodeid union 等於原始 collector、無重複且無遺失，再跑既有 acceptance group。",
   "resolution": "",
@@ -38,6 +39,14 @@
         "path": "ops/tests/test_worktree_campaign_reservation.py"
       },
       {
+        "operation": "modify",
+        "path": "ops/test_ops.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ops_ci_coverage.sh"
+      },
+      {
         "operation": "add",
         "path": "ops/tests/test_worktree_registry_lifecycle.py"
       },
@@ -48,20 +57,12 @@
       {
         "operation": "add",
         "path": "ops/tests/test_worktree_registry_topology.py"
-      },
-      {
-        "operation": "modify",
-        "path": "ops/test_ops.sh"
-      },
-      {
-        "operation": "modify",
-        "path": "ops/tests/test_ops_ci_coverage.sh"
       }
     ],
     "schema": "kg.backlog.scope.v1"
   },
   "severity": "high",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 1 Ticket B",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "IMP"
 }
