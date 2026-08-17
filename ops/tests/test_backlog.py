@@ -7774,6 +7774,26 @@ def test_supersede_refuses_invalid_corrected_date_without_writing(tmp_path, caps
     assert list(store.rglob("*.json")) == [source_path]
 
 
+def test_supersede_refuses_partial_source_without_writing(tmp_path, capsys):
+    store = tmp_path / "s"
+    original = _add(store, detail="source with a required field")
+    source_path = store / f"{original['id']}.json"
+    partial = dict(original)
+    partial.pop("detail")
+    source_path.write_text(BACKLOG._dumps(partial), encoding="utf-8")
+    before = source_path.read_bytes()
+
+    assert BACKLOG.main([
+        "supersede", original["id"], "--store", str(store),
+        "--detail", "corrected partial source", "--commit", "--json",
+    ]) == 64
+    result = json.loads(capsys.readouterr().out)
+    assert result["written"] is False
+    assert "source entry" in result["error"]
+    assert source_path.read_bytes() == before
+    assert list(store.rglob("*.json")) == [source_path]
+
+
 def test_add_accepts_an_explicit_commit_without_changing_the_fast_default(
         tmp_path, capsys):
     explicit_store = tmp_path / "explicit"
