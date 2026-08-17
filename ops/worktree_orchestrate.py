@@ -2994,17 +2994,21 @@ def _required_lock_wait_fields(spec: dict[str, Any]) -> tuple[str, ...]:
 
     ``ios_test.sh`` prints ``lockWaitMs`` before its final
     ``deviceRunLockWaitMs`` line, so either field being absent from the captured
-    tail makes the split measurement unavailable. Build gates only require the
-    process lock field. Other iOS gates do not promise these metrics.
+    tail makes the split measurement unavailable. ``--prepare-cache`` exits after
+    build-for-testing and only promises the process lock field. Other iOS gates do
+    not promise these metrics.
     """
     if spec.get("category") != "ios":
         return ()
     command = [str(arg) for arg in (spec.get("cmd") or [])]
     names = {Path(arg).name for arg in command}
-    if "ios_test.sh" in names or (
+    is_test = "ios_test.sh" in names or (
         command and Path(command[0]).name == "ios_ops.sh" and
         len(command) > 1 and command[1] == "test"
-    ):
+    )
+    if is_test:
+        if "--prepare-cache" in command:
+            return ("lockWaitMs",)
         return tuple(_LOCK_WAIT_PATTERNS)
     if "ios_build.sh" in names or (
         command and Path(command[0]).name == "ios_ops.sh" and
