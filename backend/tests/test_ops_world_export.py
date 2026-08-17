@@ -222,8 +222,8 @@ class TestWorldExport:
         assert r.returncode == 0, r.stderr
         out = json.loads(r.stdout)
         pair_links = [
-            l for l in out["links"]
-            if {l["from"], l["to"]} == {"meticulous", "wince"}
+            link for link in out["links"]
+            if {link["from"], link["to"]} == {"meticulous", "wince"}
         ]
         assert len(pair_links) == 1
         # 確定式：sorted (notebook, from, to, kind) 首條勝出

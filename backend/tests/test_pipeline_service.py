@@ -823,7 +823,7 @@ def test_step_judge_candidates_unchanged():
     # Batched path
     graph_batch = _GraphWithPending(["a", "b", "c"])
     graph_batch.created_links = []
-    orig_add = graph_batch.batch_add_links
+
     def _capture_batch(links):
         graph_batch.created_links.extend(links)
         graph_batch.batch_links_called = True

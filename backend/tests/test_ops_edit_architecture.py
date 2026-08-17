@@ -7,7 +7,6 @@ from pathlib import Path
 import kg.ops_edit_seed_commands as seed_commands
 import kg.ops_edit_support as support
 
-
 ROOT = Path(__file__).resolve().parents[1] / "src" / "kg"
 COMMAND_MODULES = (
     "ops_edit_card_commands.py",

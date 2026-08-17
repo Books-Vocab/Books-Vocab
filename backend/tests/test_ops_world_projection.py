@@ -10,7 +10,6 @@ import pytest
 
 from kg.ops_world_projection import WorldProjectionError, project_user_world
 
-
 _CARD_COLUMNS = ("id", "content", "meaning", "notebook_id", "is_deleted")
 _CARD_ROW = ("c1", "meticulous", "careful", "nb1", 0)
 _LINK = {

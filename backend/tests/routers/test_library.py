@@ -76,8 +76,8 @@ class TestListBooks:
         assert resp.json() == []
 
     def test_list_returns_created_books(self, isolated_api):
-        b1 = _create_book(isolated_api.client, isolated_api.headers, "Book A")
-        b2 = _create_book(isolated_api.client, isolated_api.headers, "Book B")
+        _create_book(isolated_api.client, isolated_api.headers, "Book A")
+        _create_book(isolated_api.client, isolated_api.headers, "Book B")
         resp = isolated_api.client.get("/api/library/books", headers=isolated_api.headers)
         assert resp.status_code == 200
         data = resp.json()
