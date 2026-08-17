@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KG 交付工作台端到端自檢。在 felix 的 KG clone 內跑：ops/kg_board/selftest.sh
+# 交付進度看板端到端自檢。在 felix 的 KG clone 內跑：ops/kg_board/selftest.sh
 #
 # 每一項都問「這件事現在是不是真的」，不問「設定看起來對不對」——一個宣稱自己健康
 # 但其實讀著三天前資料的看板，比一個明說壞掉的看板危險。

@@ -4626,6 +4626,15 @@ def test_two_concurrent_stages_cannot_lose_each_others_row(tmp_path):
                     "'KG_TEST_STAGE_DELAY', '0')))\n" + anchor),
         encoding="utf-8")
     shutil.copy2(BACKLOG_PATH, repo / "ops" / "backlog.py")
+    (repo / "ops" / "kg_board").mkdir()
+    shutil.copy2(
+        BACKLOG_PATH.parent / "kg_board" / "__init__.py",
+        repo / "ops" / "kg_board" / "__init__.py",
+    )
+    shutil.copy2(
+        BACKLOG_PATH.parent / "kg_board" / "scope.py",
+        repo / "ops" / "kg_board" / "scope.py",
+    )
     # The module imports `lib.streaming_command` (the heartbeat runner both readers
     # of `acceptance_cmd` go through), so a copy of the FILE is not a copy of the
     # TOOL. Copied rather than made lazy on purpose: a lazy import would let this
@@ -8820,3 +8829,47 @@ def test_audit_criteria_asks_for_progress_inside_the_twenty_second_contract(tmp_
     assert seen["heartbeat_interval"] <= 20.0, (
         f"heartbeat every {seen['heartbeat_interval']}s breaks the <=20s contract")
     assert seen["timeout_seconds"] == BACKLOG.AUDIT_TIMEOUT_SECONDS
+
+
+def test_scope_json_is_stored_as_file_level_add_modify_claims(tmp_path, capsys):
+    store = tmp_path / "s"
+    entry = _add(store)
+    raw_scope = json.dumps({
+        "files": [
+            {"path": "ops/backlog.py", "operation": "modify"},
+            {"path": "ops/tests/test_backlog.py", "operation": "add"},
+        ]
+    })
+
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--scope", raw_scope, "--commit", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["entry"]["scope"] == {
+        "schema": "kg.backlog.scope.v1",
+        "files": [
+            {"path": "ops/backlog.py", "operation": "modify"},
+            {"path": "ops/tests/test_backlog.py", "operation": "add"},
+        ],
+    }
+
+
+def test_scope_json_rejects_unknown_operation_and_directory_like_paths(tmp_path):
+    entry = _add(tmp_path / "s")
+
+    with pytest.raises(ValueError, match="scope"):
+        BACKLOG.update_entry(
+            tmp_path / "s", entry["id"],
+            scope={"files": [{"path": "ops/", "operation": "modify"}]},
+        )
+    with pytest.raises(ValueError, match="scope"):
+        BACKLOG.update_entry(
+            tmp_path / "s", entry["id"],
+            scope={"files": [{"path": "ops/x.py", "operation": "rename"}]},
+        )
+    with pytest.raises(ValueError, match="scope"):
+        BACKLOG.update_entry(
+            tmp_path / "s", entry["id"],
+            scope='[{"path":"ops/x.py","operation":"modify"}]',
+        )

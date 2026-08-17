@@ -239,6 +239,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
     assert 'class="admin-nav"' in index
+    assert 'id="scope-matrix-wrap"' in index
+    assert '檔案佔用矩陣' in index
     assert 'id="git-tree"' in index and 'id="commit-inspector"' in index
     assert '<details>' not in index  # cards are data-driven and collapsed by default
     assert '<title>交付進度看板 · 唯讀觀測</title>' in index
@@ -263,6 +265,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert all(name in js for name in ("board.dispatch_ids", "board.blocked_ids"))
     assert re.search(r"data\.(?:dispatch|blocked|deferred)(?!_)", js) is None
     assert "/api/git-tree" in js
+    assert "/api/scope-matrix" in js
+    assert "scope_status" in js and "scope-cell-collision" in js
     assert "/api/ticket/" in js
 
 
@@ -472,13 +476,37 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert ".tree-controls{display:none}" in "".join(css.split())
     assert ".tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
     assert ".tree-control-button{min-height:44px}" in "".join(css.split())
-    assert re.search(r"@media\(max-width:860px\)\{[^}]*\.git-tree\{display:none\}", css)
+    assert re.search(r"@media\(max-width:860px\)\{[^}]*\.git-tree\{display:block", css)
     assert ".tree-mobile-list{display:block;border:1pxsolidvar(--border-light);background:var(--surface-alt);padding:10px}" in "".join(css.split())
     assert ".tree-mobile-list.tree-ticket,.tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
     assert "viewport.branchPaths.values()" in js
     assert "refs.map(ref=>ref.head)" in js
     assert 'stateLabel=detached?"未連接":treeStateOf(ref)' in js
     assert ".searchinput{width:100%;min-height:44px" in "".join(css.split())
+
+
+def test_git_tree_mobile_has_edge_to_edge_viewer_with_free_pan_and_zoom():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+    compact_css = "".join(css.split())
+
+    assert 'id="tree-fullscreen"' in index
+    assert 'id="tree-fullscreen-viewer"' in index
+    assert 'id="tree-fullscreen-canvas"' in index
+    assert 'id="tree-fullscreen-close"' in index
+    assert 'id="tree-fullscreen-fit"' in index
+    assert 'id="tree-fullscreen-reset"' in index
+    assert "openTreeFullscreen" in js
+    assert "closeTreeFullscreen" in js
+    assert "requestFullscreen" in js
+    assert "treeFullscreen" in js
+    assert 'addEventListener("pointerdown"' in js
+    assert 'addEventListener("pointermove"' in js
+    assert 'addEventListener("wheel"' in js
+    assert "tree-fullscreen-open" in compact_css
+    assert "touch-action:none" in compact_css
+    assert ".tree-fullscreen-viewer{position:fixed" in compact_css
 
 
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
@@ -512,6 +540,19 @@ def test_git_tree_read_route_returns_versioned_projection(monkeypatch):
 
     assert handler.response_code == 200
     assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.git-tree.v1"
+
+
+def test_scope_matrix_read_route_returns_versioned_projection(monkeypatch):
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    monkeypatch.setattr(server, "scope_matrix_payload", lambda: {
+        "schema": "kg.board.scope-matrix.v1", "tickets": [], "files": [],
+    })
+    handler = _capturing_handler("/api/scope-matrix")
+
+    handler.do_GET()
+
+    assert handler.response_code == 200
+    assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.scope-matrix.v1"
 
 
 def test_ticket_read_route_returns_full_detail_projection(monkeypatch):

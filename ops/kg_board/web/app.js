@@ -1,6 +1,6 @@
 const revision=document.querySelector('meta[name="kg-app-revision"]').content;
 const tabs=[...document.querySelectorAll('[data-tab]')];
-let board=null,history=null,tree=null,tab="now",query="";
+let board=null,history=null,tree=null,scopeMatrix=null,tab="now",query="";
 const esc=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const shortSha=sha=>String(sha||"").slice(0,9);
 const compactLabel=(value,max=32)=>{const text=String(value||"");return text.length>max?`${text.slice(0,max-1)}…`:text};
@@ -34,6 +34,40 @@ function blockedReason(row){
   const blocked=(board.dispatch_meta?.withheld_blocked||[]).find(item=>item?.id===row.id);
   return Array.isArray(blocked?.waiting_on)&&blocked.waiting_on.length?blocked.waiting_on.join("、"):"尚未取得可派工資格";
 }
+function scopeOperationLabel(operation){return operation==="add"?"新增":"修改"}
+function scopeDetail(scope){
+  if(scope&&Array.isArray(scope.files))return `<ul class="scope-detail-list">${scope.files.map(file=>`<li><span class="scope-operation scope-operation-${esc(file.operation)}">${file.operation==="add"?"+":"~"}</span><code>${esc(file.path)}</code></li>`).join("")}</ul>`;
+  if(typeof scope==="string"&&scope.trim())return esc(scope);
+  return "Scope 未知（尚未宣告實際檔案範圍）";
+}
+function renderScopeMatrix(){
+  const mount=document.getElementById("scope-matrix-wrap"),unknownMount=document.getElementById("scope-unknown"),state=document.getElementById("scope-state");
+  if(!mount||!unknownMount||!state)return;
+  if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';return}
+  const tickets=scopeMatrix.tickets||[],files=scopeMatrix.files||[],counts=scopeMatrix.counts||{};
+  state.textContent=`${counts.active||0} active · ${counts.queued||0} queued · ${counts.files||0} 檔案`;
+  if(!tickets.length){mount.innerHTML='<p class="empty">目前沒有 active 或 queued ticket。</p>';unknownMount.innerHTML="";return}
+  const headers=tickets.map(ticket=>{
+    const collision=ticket.collision?.status==="hard";
+    const unknown=ticket.scope_status==="unknown";
+    const flags=[collision?"collision":"",unknown?"Scope 未知":""].filter(Boolean).join(" · ");
+    return `<th scope="col" class="scope-ticket-head scope-ticket-${esc(ticket.state)}${collision?" scope-ticket-collision":""}${unknown?" scope-ticket-unknown":""}"><code>${esc(ticket.id)}</code><strong>${ticket.state==="active"?"ACTIVE":"QUEUED"}</strong>${flags?`<span class="scope-ticket-flag">${esc(flags)}</span>`:""}<span class="scope-ticket-brief">${esc(compactLabel(ticket.brief||"",42))}</span></th>`;
+  }).join("");
+  const body=files.map(file=>{
+    const cells=new Map((file.cells||[]).map(cell=>[cell.ticket_id,cell]));
+    return `<tr><th scope="row" class="scope-file-name"><code title="${esc(file.path)}">${esc(file.path)}</code></th>${tickets.map(ticket=>{
+      const cell=cells.get(ticket.id);
+      if(!cell)return '<td class="scope-empty-cell" aria-label="沒有檔案佔用">·</td>';
+      const collision=cell.collision===true;
+      const symbol=cell.operation==="add"?"+":"~";
+      const label=`${ticket.id} · ${cell.state} · ${scopeOperationLabel(cell.operation)}${collision?" · collision":""}`;
+      return `<td class="scope-cell scope-cell-${esc(cell.state)} scope-operation-${esc(cell.operation)}${collision?" scope-cell-collision":""}" title="${esc(label)}" aria-label="${esc(label)}"><span>${symbol}</span></td>`;
+    }).join("")}</tr>`;
+  }).join("");
+  mount.innerHTML=`<table class="scope-matrix"><thead><tr><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
+  const unknownIds=scopeMatrix.unknown_scope_ids||[];
+  unknownMount.innerHTML=unknownIds.length?`<strong>Scope 未知</strong><span>${unknownIds.map(id=>`<code>${esc(id)}</code>`).join("、")}：尚未宣告實際檔案範圍，因此不計算 collision；這不是「碰撞未知」。</span>`:"";
+}
 function rows(){
   const blocked=new Set(board.blocked_ids);
   const source=tab==="now"?board.board.filter(row=>board.dispatch_ids.includes(row.id)):
@@ -49,7 +83,7 @@ function detailBody(row){
     ${board.blocked_ids.includes(row.id)?`<p class="blocked-reason"><strong>阻塞原因</strong> ${esc(blockedReason(row))}</p>`:""}
     <p>${esc(row.detail||"沒有更多技術說明")}</p>
     <dl class="detail-grid">
-      <dt>Scope</dt><dd>${esc(row.scope||"—")}</dd>
+      <dt>Scope</dt><dd>${scopeDetail(row.scope)}</dd>
       <dt>Plan</dt><dd>${esc(row.plan||"—")}</dd>
       <dt>Fix site</dt><dd><code>${esc(row.fix_site||"—")}</code></dd>
       <dt>Acceptance</dt><dd>${esc(row.acceptance||"—")}</dd>
@@ -96,10 +130,26 @@ const TREE_LANE_WIDTH_STEP = 4;
 const TREE_ROW_HEIGHT = 44;
 const TREE_HEADER_HEIGHT = 66;
 const TREE_PADDING_X = 30;
+const TREE_FULLSCREEN_MIN_SCALE = 0.25;
+const TREE_FULLSCREEN_MAX_SCALE = 4;
+const TREE_FULLSCREEN_ZOOM_FACTOR = 1.18;
 let treeZoom = 100;
 let treeLaneWidth = TREE_LANE_WIDTH;
 let treeBaseWidth = 0;
 let treeFitInitialized = false;
+let treeRenderContext = null;
+const treeFullscreen = {
+  open: false,
+  scale: 1,
+  x: 0,
+  y: 0,
+  pointers: new Map(),
+  drag: null,
+  pinch: null,
+  suppressClick: false,
+  previousFocus: null,
+  nativeFullscreen: false,
+};
 function firstParentChain(sha,commits,limit=commits.size+1){
   const result=[],seen=new Set();let current=sha;
   while(current&&!seen.has(current)&&result.length<limit){
@@ -450,6 +500,20 @@ function bindBranchNode(node,ref,stateOverride){
   if(!ref)return;
   bindTreeHover(node,"branch",{ref,state:stateOverride});
 }
+function bindRenderedTreeNodes(mount,context){
+  if(!mount||!context)return;
+  const {commits,refs,viewport}=context;
+  mount.querySelectorAll(".commit").forEach(node=>{
+    bindCommitNode(node,commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));
+  });
+  mount.querySelectorAll(".lane-header").forEach(node=>{
+    const ref=refs.find(item=>item.branch===node.dataset.branch);
+    bindBranchNode(node,ref,viewport.branchDetached.has(ref?.branch)?"未連接":treeStateOf(ref));
+  });
+  mount.querySelectorAll(".tree-boundary").forEach(node=>{
+    bindTreeHover(node,"boundary",{detail:node.dataset.boundaryDetail||"圖面邊界"});
+  });
+}
 function heldTicketGroups(){
   const groups=new Map();
   (board?.board||[]).filter(row=>row.held).forEach(row=>{
@@ -472,6 +536,154 @@ function renderHeldTickets(){
   </section>`;
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",()=>selectTicket(node.dataset.ticketId)));
 }
+function fullscreenCanvas(){return document.getElementById("tree-fullscreen-canvas")}
+function fullscreenSvg(){return fullscreenCanvas()?.querySelector("svg")||null}
+function clampTreeFullscreenScale(value){return Math.max(TREE_FULLSCREEN_MIN_SCALE,Math.min(TREE_FULLSCREEN_MAX_SCALE,value))}
+function fullscreenCanvasPoint(clientX,clientY){
+  const canvas=fullscreenCanvas(),rect=canvas?.getBoundingClientRect();
+  if(!rect)return {x:0,y:0};
+  return {x:clientX-rect.left,y:clientY-rect.top};
+}
+function fullscreenSvgSize(svg){
+  const width=Number(svg?.getAttribute("width")),height=Number(svg?.getAttribute("height"));
+  if(Number.isFinite(width)&&width>0&&Number.isFinite(height)&&height>0)return {width,height};
+  const viewBox=(svg?.getAttribute("viewBox")||"").trim().split(/\s+/).map(Number);
+  return {width:viewBox[2]||1,height:viewBox[3]||1};
+}
+function applyTreeFullscreenTransform(){
+  const svg=fullscreenSvg();if(!svg)return;
+  svg.style.transform=`translate3d(${Math.round(treeFullscreen.x)}px,${Math.round(treeFullscreen.y)}px,0) scale(${treeFullscreen.scale})`;
+  const output=document.getElementById("tree-fullscreen-zoom");
+  if(output)output.textContent=`${Math.round(treeFullscreen.scale*100)}%`;
+}
+function refreshTreeFullscreen(){
+  if(!treeFullscreen.open)return;
+  const source=document.getElementById("git-tree"),canvas=fullscreenCanvas();
+  if(!source||!canvas)return;
+  canvas.innerHTML=source.innerHTML;
+  const svg=canvas.querySelector("svg");
+  if(!svg){canvas.classList.add("is-empty");return}
+  canvas.classList.remove("is-empty");
+  svg.classList.add("tree-fullscreen-svg");
+  bindRenderedTreeNodes(canvas,treeRenderContext);
+  applyTreeFullscreenTransform();
+}
+function zoomTreeFullscreenAt(nextScale,clientX,clientY){
+  const svg=fullscreenSvg();if(!svg)return;
+  const point=fullscreenCanvasPoint(clientX??window.innerWidth/2,clientY??window.innerHeight/2);
+  const previousScale=treeFullscreen.scale;
+  const scale=clampTreeFullscreenScale(nextScale);
+  const contentX=(point.x-treeFullscreen.x)/previousScale;
+  const contentY=(point.y-treeFullscreen.y)/previousScale;
+  treeFullscreen.scale=scale;
+  treeFullscreen.x=point.x-contentX*scale;
+  treeFullscreen.y=point.y-contentY*scale;
+  applyTreeFullscreenTransform();
+}
+function zoomTreeFullscreen(factor,clientX,clientY){zoomTreeFullscreenAt(treeFullscreen.scale*factor,clientX,clientY)}
+function fitTreeFullscreen(){
+  const canvas=fullscreenCanvas(),svg=fullscreenSvg();if(!canvas||!svg)return false;
+  const {width,height}=fullscreenSvgSize(svg);
+  const scale=clampTreeFullscreenScale(Math.min((canvas.clientWidth-32)/width,(canvas.clientHeight-32)/height));
+  treeFullscreen.scale=scale;
+  treeFullscreen.x=Math.round((canvas.clientWidth-width*scale)/2);
+  treeFullscreen.y=Math.round((canvas.clientHeight-height*scale)/2);
+  applyTreeFullscreenTransform();
+  return true;
+}
+function resetTreeFullscreen(){
+  treeFullscreen.scale=1;treeFullscreen.x=24;treeFullscreen.y=24;applyTreeFullscreenTransform();
+}
+function treePointerDistance(left,right){return Math.hypot(right.x-left.x,right.y-left.y)}
+function treePointerCenter(left,right){return {x:(left.x+right.x)/2,y:(left.y+right.y)/2}}
+function beginTreeFullscreenPinch(){
+  const points=[...treeFullscreen.pointers.values()];if(points.length<2)return;
+  const center=treePointerCenter(points[0],points[1]),point=fullscreenCanvasPoint(center.x,center.y);
+  treeFullscreen.pinch={
+    distance:Math.max(1,treePointerDistance(points[0],points[1])),
+    scale:treeFullscreen.scale,
+    contentX:(point.x-treeFullscreen.x)/treeFullscreen.scale,
+    contentY:(point.y-treeFullscreen.y)/treeFullscreen.scale,
+  };
+  treeFullscreen.drag=null;
+}
+function handleTreeFullscreenPointerDown(event){
+  if(event.pointerType==="mouse"&&event.button!==0)return;
+  const canvas=fullscreenCanvas();if(!canvas)return;
+  canvas.setPointerCapture?.(event.pointerId);
+  treeFullscreen.pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  if(treeFullscreen.pointers.size===1){
+    treeFullscreen.drag={startX:event.clientX,startY:event.clientY,originX:treeFullscreen.x,originY:treeFullscreen.y,moved:false};
+  }else if(treeFullscreen.pointers.size===2){beginTreeFullscreenPinch()}
+  event.preventDefault();
+}
+function handleTreeFullscreenPointerMove(event){
+  const point=treeFullscreen.pointers.get(event.pointerId);if(!point)return;
+  point.x=event.clientX;point.y=event.clientY;
+  if(treeFullscreen.pointers.size>=2&&treeFullscreen.pinch){
+    const points=[...treeFullscreen.pointers.values()],center=treePointerCenter(points[0],points[1]);
+    const distance=Math.max(1,treePointerDistance(points[0],points[1]));
+    const scale=clampTreeFullscreenScale(treeFullscreen.pinch.scale*distance/treeFullscreen.pinch.distance);
+    const canvasPoint=fullscreenCanvasPoint(center.x,center.y);
+    treeFullscreen.scale=scale;
+    treeFullscreen.x=canvasPoint.x-treeFullscreen.pinch.contentX*scale;
+    treeFullscreen.y=canvasPoint.y-treeFullscreen.pinch.contentY*scale;
+    applyTreeFullscreenTransform();event.preventDefault();return;
+  }
+  if(!treeFullscreen.drag)return;
+  const dx=event.clientX-treeFullscreen.drag.startX,dy=event.clientY-treeFullscreen.drag.startY;
+  if(Math.abs(dx)>4||Math.abs(dy)>4)treeFullscreen.drag.moved=true;
+  treeFullscreen.x=treeFullscreen.drag.originX+dx;treeFullscreen.y=treeFullscreen.drag.originY+dy;
+  applyTreeFullscreenTransform();event.preventDefault();
+}
+function finishTreeFullscreenPointer(event){
+  const canvas=fullscreenCanvas();
+  if(canvas?.hasPointerCapture?.(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+  if(treeFullscreen.drag?.moved){
+    treeFullscreen.suppressClick=true;
+    window.setTimeout(()=>{treeFullscreen.suppressClick=false},0);
+  }
+  treeFullscreen.pointers.delete(event.pointerId);
+  treeFullscreen.pinch=null;
+  if(treeFullscreen.pointers.size===1){
+    const remaining=[...treeFullscreen.pointers.values()][0];
+    treeFullscreen.drag={startX:remaining.x,startY:remaining.y,originX:treeFullscreen.x,originY:treeFullscreen.y,moved:false};
+  }else treeFullscreen.drag=null;
+}
+function handleTreeFullscreenWheel(event){
+  event.preventDefault();
+  zoomTreeFullscreen(event.deltaY<0?TREE_FULLSCREEN_ZOOM_FACTOR:1/TREE_FULLSCREEN_ZOOM_FACTOR,event.clientX,event.clientY);
+}
+function handleTreeFullscreenKeydown(event){
+  if(event.key==="Escape"){event.preventDefault();closeTreeFullscreen();return}
+  if(event.key==="+"||event.key==="="){event.preventDefault();zoomTreeFullscreen(TREE_FULLSCREEN_ZOOM_FACTOR);return}
+  if(event.key==="-"){event.preventDefault();zoomTreeFullscreen(1/TREE_FULLSCREEN_ZOOM_FACTOR);return}
+  if(event.key==="0"){event.preventDefault();fitTreeFullscreen()}
+}
+function openTreeFullscreen(){
+  const viewer=document.getElementById("tree-fullscreen-viewer"),source=document.getElementById("git-tree");
+  if(!viewer||!source?.querySelector("svg"))return;
+  treeFullscreen.open=true;treeFullscreen.previousFocus=document.activeElement;
+  treeFullscreen.scale=1;treeFullscreen.x=0;treeFullscreen.y=0;treeFullscreen.pointers.clear();treeFullscreen.drag=null;treeFullscreen.pinch=null;
+  viewer.hidden=false;viewer.setAttribute("aria-hidden","false");document.body.classList.add("tree-fullscreen-open");
+  refreshTreeFullscreen();
+  try{
+    if(typeof viewer.requestFullscreen==="function"){
+      treeFullscreen.nativeFullscreen=true;
+      const request=viewer.requestFullscreen();
+      request?.catch(()=>{treeFullscreen.nativeFullscreen=false});
+    }
+  }catch(_error){treeFullscreen.nativeFullscreen=false}
+  requestAnimationFrame(()=>{fitTreeFullscreen();document.getElementById("tree-fullscreen-close")?.focus()});
+}
+function closeTreeFullscreen(options={}){
+  const viewer=document.getElementById("tree-fullscreen-viewer"),previousFocus=treeFullscreen.previousFocus,native=treeFullscreen.nativeFullscreen;
+  treeFullscreen.open=false;treeFullscreen.nativeFullscreen=false;treeFullscreen.pointers.clear();treeFullscreen.drag=null;treeFullscreen.pinch=null;
+  if(viewer){viewer.hidden=true;viewer.setAttribute("aria-hidden","true")}
+  document.body.classList.remove("tree-fullscreen-open");hideTreeHover();
+  if(native&&document.fullscreenElement===viewer){try{const exit=document.exitFullscreen?.();exit?.catch?.(()=>{})}catch(_error){}}
+  if(options.restoreFocus!==false)previousFocus?.focus?.();
+}
 function renderTree(){
   const mount=document.getElementById("git-tree");
   const mobile=document.getElementById("tree-mobile-list");
@@ -479,17 +691,20 @@ function renderTree(){
   renderTreeZoom();
   if(!tree||!tree.commits?.length){
     treeBaseWidth=0;
+    treeRenderContext=null;
     // Keep the one-shot fit/manual-zoom decision across a transient empty
     // mirror; a refresh must not erase an explicit user zoom choice.
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
     renderTreeLegend({refs:[]});
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
     document.getElementById("tree-state").textContent="資料不足";
+    if(treeFullscreen.open)closeTreeFullscreen({restoreFocus:false});
     return;
   }
   const commits=new Map(tree.commits.map(row=>[row.sha,row]));
   const refs=tree.refs||[];
   const viewport=treeViewport(tree,commits,refs);
+  treeRenderContext={commits,refs,viewport};
   const visibleCommits=new Map(viewport.commits.map(row=>[row.sha,row]));
   const layout=treeLayout(viewport,visibleCommits);
   const {branchLanes,positions,ordered}=layout;
@@ -553,16 +768,8 @@ function renderTree(){
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
   renderTreeLegend(viewport);
   renderMobileTree(viewport,commits);
-  mount.querySelectorAll(".commit").forEach(node=>{
-    bindCommitNode(node,commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));
-  });
-  mount.querySelectorAll(".lane-header").forEach(node=>{
-    const ref=refs.find(item=>item.branch===node.dataset.branch);
-    bindBranchNode(node,ref,viewport.branchDetached.has(ref?.branch)?"未連接":treeStateOf(ref));
-  });
-  mount.querySelectorAll(".tree-boundary").forEach(node=>{
-    bindTreeHover(node,"boundary",{detail:node.dataset.boundaryDetail||"圖面邊界"});
-  });
+  bindRenderedTreeNodes(mount,treeRenderContext);
+  refreshTreeFullscreen();
 }
 function renderMobileTree(viewport,commits){
   const mount=document.getElementById("tree-mobile-list");if(!mount)return;
@@ -591,6 +798,7 @@ function selectTicket(id){
 function render(){
   if(!board)return;
   renderMetrics();
+  renderScopeMatrix();
   tabs.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.tab===tab)));
   const visible=rows();
   document.getElementById("status").textContent=`${visible.length} 張票 · 唯讀`;
@@ -605,10 +813,11 @@ async function loadHistory(){
   history=await response.json();
 }
 async function load(){
-  const [boardResponse,treeResponse]=await Promise.all([fetch("/api/board",{cache:"no-store"}),fetch("/api/git-tree",{cache:"no-store"})]);
+  const [boardResponse,treeResponse,scopeResponse]=await Promise.all([fetch("/api/board",{cache:"no-store"}),fetch("/api/git-tree",{cache:"no-store"}),fetch("/api/scope-matrix",{cache:"no-store"})]);
   if(!boardResponse.ok)throw new Error(`board HTTP ${boardResponse.status}`);
   if(!treeResponse.ok)throw new Error(`git tree HTTP ${treeResponse.status}`);
-  board=await boardResponse.json();tree=await treeResponse.json();setTrust(board.freshness);render();renderTree();
+  if(!scopeResponse.ok)throw new Error(`scope matrix HTTP ${scopeResponse.status}`);
+  board=await boardResponse.json();tree=await treeResponse.json();scopeMatrix=await scopeResponse.json();setTrust(board.freshness);render();renderTree();
   if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom();
 }
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
@@ -630,6 +839,26 @@ if(laneSpacingInput)laneSpacingInput.addEventListener("input",event=>{
 });
 document.getElementById("tree-fit").addEventListener("click",()=>{cancelTreeAutoFit();fitTreeZoom()});
 document.getElementById("tree-reset").addEventListener("click",()=>{cancelTreeAutoFit();treeZoom=100;treeLaneWidth=TREE_LANE_WIDTH;if(tree)renderTree();else renderTreeZoom()});
+document.getElementById("tree-fullscreen").addEventListener("click",openTreeFullscreen);
+document.getElementById("tree-fullscreen-close").addEventListener("click",()=>closeTreeFullscreen());
+document.getElementById("tree-fullscreen-fit").addEventListener("click",fitTreeFullscreen);
+document.getElementById("tree-fullscreen-reset").addEventListener("click",resetTreeFullscreen);
+document.getElementById("tree-fullscreen-zoom-in").addEventListener("click",()=>zoomTreeFullscreen(TREE_FULLSCREEN_ZOOM_FACTOR));
+document.getElementById("tree-fullscreen-zoom-out").addEventListener("click",()=>zoomTreeFullscreen(1/TREE_FULLSCREEN_ZOOM_FACTOR));
+const fullscreenCanvasNode=fullscreenCanvas();
+fullscreenCanvasNode.addEventListener("pointerdown",handleTreeFullscreenPointerDown);
+fullscreenCanvasNode.addEventListener("pointermove",handleTreeFullscreenPointerMove);
+fullscreenCanvasNode.addEventListener("pointerup",finishTreeFullscreenPointer);
+fullscreenCanvasNode.addEventListener("pointercancel",finishTreeFullscreenPointer);
+fullscreenCanvasNode.addEventListener("wheel",handleTreeFullscreenWheel,{passive:false});
+fullscreenCanvasNode.addEventListener("keydown",handleTreeFullscreenKeydown);
+fullscreenCanvasNode.addEventListener("click",event=>{
+  if(!treeFullscreen.suppressClick)return;
+  event.preventDefault();event.stopPropagation();treeFullscreen.suppressClick=false;
+},{capture:true});
+document.addEventListener("fullscreenchange",()=>{
+  if(treeFullscreen.open&&treeFullscreen.nativeFullscreen&&!document.fullscreenElement)closeTreeFullscreen({restoreFocus:false});
+});
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
 renderTreeZoom();
 load().catch(showLoadError);

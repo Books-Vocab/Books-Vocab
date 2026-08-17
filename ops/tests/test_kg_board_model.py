@@ -836,6 +836,72 @@ def test_projection_consumes_canonical_ungroomed_ids_instead_of_reimplementing_g
     assert payload["counts"]["decision"]["ungroomed"] == 1
 
 
+def test_scope_matrix_marks_only_queued_tickets_with_active_file_collisions():
+    scope = lambda *files: {
+        "files": [
+            {"path": path, "operation": operation}
+            for path, operation in files
+        ]
+    }
+    entries = [
+        {**_ticket("ACTIVE"), "scope": scope(("ops/shared.py", "modify"))},
+        {**_ticket("QUEUED-COLLISION"), "scope": scope(("ops/shared.py", "modify"))},
+        {**_ticket("QUEUED-CLEAR"), "scope": scope(("ops/new.py", "add"))},
+        {**_ticket("QUEUED-UNKNOWN"), "scope": "one file, details pending"},
+        {**_ticket("QUEUED-SAME-QUEUE"), "scope": scope(("ops/queued.py", "modify"))},
+    ]
+
+    payload = server.project_scope_matrix(
+        entries,
+        {"ACTIVE": {"branch": "feat/active"}},
+        canonical_dispatch_ids={
+            "QUEUED-COLLISION", "QUEUED-CLEAR", "QUEUED-UNKNOWN", "QUEUED-SAME-QUEUE",
+        },
+    )
+
+    tickets = {row["id"]: row for row in payload["tickets"]}
+    assert tickets["ACTIVE"]["state"] == "active"
+    assert tickets["ACTIVE"]["collision"] is None
+    assert tickets["QUEUED-COLLISION"]["collision"] == {
+        "status": "hard",
+        "with": ["ACTIVE"],
+        "paths": ["ops/shared.py"],
+    }
+    assert tickets["QUEUED-CLEAR"]["collision"] == {
+        "status": "clear", "with": [], "paths": [],
+    }
+    assert tickets["QUEUED-SAME-QUEUE"]["collision"]["status"] == "clear"
+    assert tickets["QUEUED-UNKNOWN"]["scope_status"] == "unknown"
+    assert tickets["QUEUED-UNKNOWN"]["collision"] is None
+    assert payload["unknown_scope_ids"] == ["QUEUED-UNKNOWN"]
+
+    shared = next(row for row in payload["files"] if row["path"] == "ops/shared.py")
+    cells = {cell["ticket_id"]: cell for cell in shared["cells"]}
+    assert cells["ACTIVE"] == {
+        "ticket_id": "ACTIVE", "operation": "modify", "state": "active",
+        "collision": False,
+    }
+    assert cells["QUEUED-COLLISION"]["collision"] is True
+    queued = next(row for row in payload["files"] if row["path"] == "ops/queued.py")
+    assert queued["cells"] == [{
+        "ticket_id": "QUEUED-SAME-QUEUE", "operation": "modify", "state": "queued",
+        "collision": False,
+    }]
+
+
+def test_scope_matrix_does_not_turn_unknown_scope_into_unknown_collision():
+    payload = server.project_scope_matrix(
+        [{**_ticket("QUEUED"), "scope": "not a file list"}],
+        {},
+        canonical_dispatch_ids={"QUEUED"},
+    )
+
+    ticket = payload["tickets"][0]
+    assert ticket["scope_status"] == "unknown"
+    assert ticket["collision"] is None
+    assert payload["files"] == []
+
+
 def test_healthz_requires_token_when_all_reads_require_token(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", True)
     monkeypatch.setattr(server, "TOKEN", "secret")
