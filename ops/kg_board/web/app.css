@@ -16,6 +16,7 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 /* The graph is a topology overview; branch metadata belongs in a stable
    legend instead of floating over commit edges. */
 .tree-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:12px 0 14px}
+.tree-index-label{grid-column:1/-1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:2px 2px 0;color:var(--sub);font-size:11px}.tree-index-label strong{color:var(--ink);font-size:13px}
 .tree-legend-item{display:flex;align-items:flex-start;gap:9px;min-height:58px;padding:9px 10px;border:1px solid var(--border-light);border-radius:6px;background:var(--surface);box-shadow:0 2px 8px rgba(42,37,32,.04)}
 .tree-legend-swatch{flex:0 0 9px;width:9px;height:9px;margin-top:5px;border-radius:50%;background:var(--sub)}
 .tree-legend-copy{min-width:0;flex:1}.tree-legend-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}

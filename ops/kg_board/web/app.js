@@ -216,7 +216,8 @@ function treeStateClass(value){
 function renderTreeLegend(viewport){
   const mount=document.getElementById("tree-legend");
   if(!mount)return;
-  mount.innerHTML=(viewport.refs||[]).map(ref=>{
+  const refs=viewport.refs||[];
+  const items=refs.map(ref=>{
     const state=treeStateOf(ref);
     const tickets=(ref.tickets||[]).map(ticket=>`<button type="button" class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
     return `<article class="tree-legend-item state-${esc(treeStateClass(state))}">
@@ -227,6 +228,7 @@ function renderTreeLegend(viewport){
       </div>
     </article>`;
   }).join("");
+  mount.innerHTML=items?`<div class="tree-index-label"><strong>分支索引</strong><span>狀態與票號</span></div>${items}`:"";
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{
     event.stopPropagation();selectTicket(node.dataset.ticketId);
   }));
