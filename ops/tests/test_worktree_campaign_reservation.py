@@ -250,11 +250,13 @@ def test_campaign_claim_updates_record_and_reservation_in_one_save(tmp_path, mon
         campaign_id="campaign-1", partition_id="p2",
         branch="debug/campaign-child", path=str(tmp_path / "child"),
         intent="campaign child", base="main", base_sha=actual_base,
+        codex_thread_id="thread-campaign",
     )
     assert result["ok"] is True, result
     assert len(saves) == 1
     payload = json.loads(state.read_text())
     assert payload["records"][0]["backlog"] == ["IMP-20260810-cc0003"]
+    assert payload["records"][0]["codex_thread_id"] == "thread-campaign"
     assert payload["campaign_reservations"][0]["partitions"]["p2"]["claimed"]
 
 
@@ -338,6 +340,7 @@ def test_open_campaign_claim_is_scoped_to_its_partition(tmp_path):
             base="main",
             campaign_id="campaign-1",
             partition_id="p2",
+            codex_thread_id="thread-campaign",
         )
     finally:
         store_entry.unlink(missing_ok=True)
@@ -347,6 +350,7 @@ def test_open_campaign_claim_is_scoped_to_its_partition(tmp_path):
     assert selection["remaining"] == 0
     records = json.loads(state.read_text())["records"]
     assert records[0]["backlog"] == wanted
+    assert records[0]["codex_thread_id"] == "thread-campaign"
     reservation = json.loads(state.read_text())["campaign_reservations"][0]
     assert reservation["partitions"]["p2"]["claimed"][wanted[0]]["branch"] == (
         "debug/campaign-child"

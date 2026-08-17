@@ -201,6 +201,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             intent=args.intent, base=base, campaign_id=campaign_id,
             partition_id=partition_id,
             delegated=delegated,
+            codex_thread_id=codex_thread_id,
         )
         if reg_rc == EXIT_OK:
             campaign_claim = {"campaign_id": campaign_id, "partition": partition_id,
@@ -210,6 +211,7 @@ def cmd_open(args: argparse.Namespace) -> int:
         reg_rc, reg_payload, wanted, selection = _claim_next_backlog(
             root=root, state_arg=args.state, path=path, branch=branch,
             intent=args.intent, base=base, delegated=delegated,
+            codex_thread_id=codex_thread_id,
         )
     else:
         if _refuse_unclaimable(root, wanted, args, "open", branch) is not None:
@@ -420,7 +422,7 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     scope_file = getattr(args, "scope_file", None)
     codex_thread_id = getattr(args, "codex_thread_id", None)
     scope_declared = scope_inline is not None or scope_file is not None
-    if scope_declared and wanted:
+    if scope_declared and args.backlog is not None:
         _emit({"schema": SCHEMA, "step": "adopt",
                "error": "direct Scope cannot be combined with a ticket claim"}, args.json,
               "✗ --scope/--scope-file is only for a direct worktree; ticketed Scope comes from tickets")
