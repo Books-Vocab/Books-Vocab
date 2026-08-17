@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from kg.graph.models import LinkKind
+from kg.ops_shared import data_dir
+
 from .ops_edit_shared import EditContext, EditError, assert_safe_uid, emit, user_dir_for
 from .ops_edit_support import (
     _card_store,
@@ -11,8 +14,6 @@ from .ops_edit_support import (
     _resolve_card_in_notebook,
     _resolve_notebook_id,
 )
-from kg.graph.models import LinkKind
-from kg.ops_shared import data_dir
 
 
 def cmd_link_add(args: argparse.Namespace) -> int:

@@ -23,7 +23,6 @@ from conftest import TEST_JWT_SECRET, TEST_PRO_PRODUCT_ID, _swap_settings, make_
 from kg.api import app
 from kg.settings import KGSettings
 
-
 APPLE_APP_STORE_OID = "1.2.840.113635.100.6.11.1"
 
 

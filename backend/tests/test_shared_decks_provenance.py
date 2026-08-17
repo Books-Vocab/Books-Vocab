@@ -14,14 +14,14 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from ops_helpers import run_ops_cli as _cli
-from ops_helpers import run_ops_edit as _edit
 from sqlalchemy import inspect
 
 from kg.api_models.notebook import NotebookResponse
 from kg.cards import CardStore
 from kg.notebook import NotebookStore
 from kg.ops_world_export import _card_entry, _notebook_entry
+from ops_helpers import run_ops_cli as _cli
+from ops_helpers import run_ops_edit as _edit
 
 _NB_BASE_KEYS = {"name", "color", "cover_pattern", "sort_order", "is_default"}
 _CARD_BASE_KEYS = {

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
-import sqlite3
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -12,14 +10,28 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .ops_edit_shared import EditContext, EditError, assert_safe_uid, backup_world, emit, user_dir_for
+from kg.demo_review_synth import CardReviewState, synthesize_many
+from kg.graph.models import LinkKind
+from kg.ops_shared import data_dir
+from kg.review_events import ReviewEventStore
+from kg.user_store import load_users_from
+
+from .ops_edit_shared import (
+    EditContext,
+    EditError,
+    assert_safe_uid,
+    backup_world,
+    emit,
+    user_dir_for,
+    users_file,
+    world_backup_root,
+)
 from .ops_edit_support import (
     _CLONE_TMP_SUFFIX,
     _VALID_REVIEW_STATES,
     _WORLD_BACKUP_ROOT,
     _assert_clean_notebook_name,
     _card_store,
-    _passthrough_normalize,
     _clone_source_files,
     _clone_source_fingerprint,
     _count_active_cards,
@@ -30,6 +42,7 @@ from .ops_edit_support import (
     _list_world_backups,
     _notebook_store,
     _parse_seed_datetime,
+    _passthrough_normalize,
     _read_card_review_states,
     _replace_world_from_snapshot,
     _resolve_card_in_notebook,
@@ -38,14 +51,7 @@ from .ops_edit_support import (
     _sqlite_online_backup,
     _world_members,
 )
-from kg.demo_review_synth import CardReviewState, synthesize_many
-from kg.graph.models import LinkKind
-from kg.review_events import ReviewEventStore
-from kg.ops_shared import data_dir
-from kg.user_store import load_users_from
-from .ops_edit_shared import users_file, world_backup_root
 from .text_utils import normalize_nfc_lower
-
 
 # 擴充 review 形式(計數器直設,`ops_cli world-export` 的無損重放面)的合法鍵。
 _REVIEW_COUNTER_KEYS = frozenset({

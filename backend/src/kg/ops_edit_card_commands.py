@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from kg.ops_shared import data_dir
+
 from .ops_edit_shared import EditContext, EditError
 from .ops_edit_support import (
     _CARD_UPDATABLE_FIELDS,
@@ -22,7 +24,6 @@ from .ops_edit_support import (
     _review_fields,
     _split_multi,
 )
-from kg.ops_shared import data_dir
 
 logger = logging.getLogger(__name__)
 
