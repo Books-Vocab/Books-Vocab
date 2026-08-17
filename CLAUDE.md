@@ -42,7 +42,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 欄由後者推導，**不儲存**。
 
 **認領即工作,不必被任命。** `groom` 是把票放進 queued；任何 session 從 `dispatch`
-(`./ops/backlog.py dispatch`,或等價的 `list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋**,worst-first)
+(`./ops/backlog.py dispatch`,或等價的 `list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒**,worst-first)
 取票，`claim` 使 queued ticket 成為持票 worktree 的 active ticket。直接指派則直接形成 active worktree，
 不必先有 ticket。Ticket Factory 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread；
 Delivery Team child 做完 commit → `./ops/worktree_registry.py hand-back --json` 只是內部交回，Integrator
@@ -55,13 +55,16 @@ Scope 檔案重疊；active worktree 本身是佔用狀態，不是 collision。
 
 **一張票要能被取,得先夠具體——而且要能被排序。** 梳理(groom)= 將票放進 queued，填上 `plan` / `acceptance` /
 `fix_site` + 可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」;**再加
-`brief` / 結構化 `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料另以
-`BRIEF_REQUIRED_SINCE` = 2026-08-09 為界由 `validate` grandfather)——一句白話的「壞了什麼、誰有感」
+`brief` / 結構化 `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料的 `validate`
+分開 grandfather：`brief` 以 `BRIEF_REQUIRED_SINCE` = 2026-08-09、structured Scope 以
+`SCOPE_REQUIRED_SINCE` = 2026-08-18 為界)——一句白話的「壞了什麼、誰有感」
 與一份 `scope.files[]` 檔案清單（每個 path 標 `add` 或 `modify`），讓人與 agent 都能直接判斷檔案佔用。舊文字 Scope 只標為 Scope 未知，不猜碰撞。前四欄讓票**做得動**,這兩欄讓票
 **排得動**:看板只有釘選 / 排序 / 延後三個動作,而它渲染的是 `detail` 前 400 字的技術散文,
 122 筆未解時那個寫入面實質是惰性的。`fix_site` 不能兼任——它是程式錨點,讀者不同。
 未梳理的票留在板上但不進 `dispatch`——沒有修法的票不是工作,是待調查;
-既有欠這兩欄的票用 `list --missing-brief` 數,那是**回填佇列不是 dispatch 佇列**。
+既有欠 `brief` 或 Scope 仍是 legacy 文字／無法機讀的票，用 `list --missing-brief` 數；它是
+**回填佇列不是 dispatch 佇列**，而且不會把 legacy Scope 猜成檔案。主管與 agent 共用的英文／中文術語、
+流程圖與 live 分類在看板的獨立 `/model` 頁（API SoT=`/api/model`, schema=`kg.board.model.v1`）。
 日常寫入走 `./ops/backlog.py groom <id>`（dry-run 預設、`--commit` 原子落地）；`verify` 只回答問題是否仍成立，與是否可 dispatch 正交。角色、狀態與 edge cases 不在本檔重抄，直接讀 `./ops/backlog.py lifecycle --json`。
 
 **結案只有一種意義:那條你自己寫下的判準今天真的綠。** 三條路徑通往 `status=fixed`

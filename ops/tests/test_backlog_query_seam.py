@@ -63,3 +63,31 @@ def test_query_facade_preserves_traversal_sort_and_refusal_contracts(tmp_path):
         QUERY.list_entries(tmp_path, deps=deps, ungroomed=True, status="fixed")
     with pytest.raises(Error, match=r"--status fixed"):
         QUERY.list_entries(tmp_path, deps=deps, missing_brief=True, status="fixed")
+
+
+def test_missing_brief_treats_legacy_scope_as_unknown_scope(tmp_path):
+    entries = [
+        {"id": "STRUCTURED", "date": "2026-08-01", "brief": "brief",
+         "scope": {"files": [{"path": "ops/a.py", "operation": "modify"}]}},
+        {"id": "LEGACY", "date": "2026-08-02", "brief": "brief",
+         "scope": "one script"},
+        {"id": "MISSING", "date": "2026-08-03", "brief": "brief"},
+    ]
+    deps = QUERY.QueryDeps(
+        backlog_error=ValueError,
+        iter_entries_fn=lambda _store: iter(entries),
+        sort_key_fn=QUERY.sort_key,
+        brief_fields=("brief", "scope"),
+        acceptance_green_expected="acceptance_green_expected",
+        date_re=QUERY.re.compile(r"^\d{4}-\d{2}-\d{2}$"),
+        today=lambda: "2026-08-17",
+        days_before=lambda day, days: day,
+        held_tickets=lambda: {},
+        blocking_ids=lambda _payload: [],
+        contract_preflight=lambda *_args, **_kwargs: [],
+        worst_first_key=lambda payload: (payload["id"],),
+        scope_status_fn=lambda value: "known" if isinstance(value, dict) else "unknown",
+    )
+    assert [entry["id"] for entry in QUERY.list_entries(
+        tmp_path, deps=deps, missing_brief=True
+    )] == ["LEGACY", "MISSING"]

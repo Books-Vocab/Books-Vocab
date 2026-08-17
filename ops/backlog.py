@@ -82,7 +82,7 @@ import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
 import backlog_legacy as _backlog_legacy  # noqa: E402
 import backlog_query as _backlog_query  # noqa: E402
-from kg_board.scope import coerce_scope, scope_problems  # noqa: E402
+from kg_board.scope import coerce_scope, scope_problems, scope_status  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
 # nothing outside the standard library, so the sandboxed `uv run --no-project`
@@ -179,11 +179,18 @@ REQUIRED_FIELDS = (
 # different precision. A field serving two readers serves the louder one.
 BRIEF_FIELDS = ("brief", "scope")
 
-# Grooming stamped on or after this date must carry both. Everything groomed
-# before it stays legal — see _check_groom() for why the ratchet is keyed on the
-# date and not on a list of ids, and why this date is NOT "the day the rule
-# landed".
+# Grooming stamped on or after this date must carry a human-facing brief.
+# Everything groomed before it stays legal — see _check_groom() for why the
+# ratchet is keyed on the date and not on a list of ids.
 BRIEF_REQUIRED_SINCE = "2026-08-09"
+
+# Scope was redefined after the brief rule had already grandfathered several
+# grooming waves.  The current store's newest grooming stamp is 2026-08-17;
+# start the stored-data ratchet the following day so validation does not rewrite
+# existing backfill debt as an unrelated gate failure.  New grooming acts are
+# stricter than this grandfather window: _check_groom_write() rejects legacy
+# Scope immediately, regardless of the date supplied by the caller.
+SCOPE_REQUIRED_SINCE = "2026-08-18"
 
 # Fields that only make sense for an app-usage report. An IMP entry carrying a
 # `surface` means someone filed an app problem into the tooling stream.
@@ -993,12 +1000,16 @@ def _check_groom(payload: dict) -> list[dict]:
     # `test_the_cutoff_forgives_every_groom_stamp_already_in_the_shipped_store`
     # asserts the relationship instead of trusting this paragraph.
     #
-    # The debt this leaves is not invisible: `list --missing-brief` counts it.
+    # The debt this leaves is not invisible: `list --missing-brief` counts an
+    # absent brief OR a Scope that is still legacy prose/otherwise unknown.
     if _DATE_RE.match(groomed_at) and groomed_at >= BRIEF_REQUIRED_SINCE:
-        for field in BRIEF_FIELDS:
-            if not str(payload.get(field, "")).strip():
-                problems.append({"kind": f"groom-claim-without-{field}",
-                                 "field": field, "since": BRIEF_REQUIRED_SINCE})
+        if not str(payload.get("brief", "")).strip():
+            problems.append({"kind": "groom-claim-without-brief", "field": "brief",
+                             "since": BRIEF_REQUIRED_SINCE})
+    if _DATE_RE.match(groomed_at) and groomed_at >= SCOPE_REQUIRED_SINCE:
+        if scope_status(payload.get("scope")) != "known":
+            problems.append({"kind": "groom-claim-without-scope", "field": "scope",
+                             "since": SCOPE_REQUIRED_SINCE})
 
     problems.extend(_check_acceptance_cmd(payload))
     return problems
@@ -1007,12 +1018,11 @@ def _check_groom(payload: dict) -> list[dict]:
 def _check_groom_write(changes: dict, updated: dict) -> list[dict]:
     """Plain language is required whenever the badge is STAMPED, date irrelevant.
 
-    The date ratchet in `_check_groom` grandfathers DATA — 133 entries carry a
-    groom stamp and no plain language, and reddening them would make the rule the
-    thing to route around. But it cannot grandfather ACTS: `BRIEF_REQUIRED_SINCE` had to be
-    set past the newest stamp in the store, which left a window where grooming
-    could still be stamped with no `brief` at all, and `--groomed-at <old date>`
-    would extend that window indefinitely.
+    The date ratchets in `_check_groom` grandfather DATA — the shipped store
+    contains groomed entries with a missing brief and legacy Scope, and reddening
+    them would make the rule the thing to route around. But they cannot grandfather
+    ACTS: a new groom write must carry both a human brief and a structured Scope,
+    even if `--groomed-at <old date>` is supplied.
 
     So the two questions are separated by WHERE they are asked. `validate` judges
     stored data and forgives what predates the rule; this runs at the moment
@@ -1035,9 +1045,17 @@ def _check_groom_write(changes: dict, updated: dict) -> list[dict]:
     if not any(changes.get(field) is not None
                for field in ("groomed_at", "groomed_by")):
         return []
-    return [{"kind": f"groom-claim-without-{field}", "field": field, "at": "write"}
-            for field in BRIEF_FIELDS
-            if not str(updated.get(field, "")).strip()]
+    problems = []
+    if not str(updated.get("brief", "")).strip():
+        problems.append({"kind": "groom-claim-without-brief", "field": "brief", "at": "write"})
+    if scope_status(updated.get("scope")) != "known":
+        scope_kind = (
+            "groom-claim-without-scope"
+            if not str(updated.get("scope", "")).strip()
+            else "groom-claim-with-unknown-scope"
+        )
+        problems.append({"kind": scope_kind, "field": "scope", "at": "write"})
+    return problems
 
 
 def _check_acceptance_cmd(payload: dict) -> list[dict]:
@@ -1643,6 +1661,8 @@ def add_entry(
     # entry has no plan, no acceptance and no landing commit, and this check must
     # be SILENT on it, or the repair is a tool nobody can file with.
     problems = validate_entry(payload, entry_id=payload["id"], check_traceability=False)
+    if payload.get("groomed_by") or payload.get("groomed_at"):
+        problems.extend(_check_groom_write(payload, payload))
     if historical and problems:
         # `import` is the ONE caller that represents rows written before these rules
         # existed, and the legacy table really does contain `triaged` rows whose
@@ -1913,6 +1933,12 @@ def _repair_hints(problems: list[dict], entry_id: str) -> list[str]:
             + " ".join(f"--{f} '<一句話>'" for f in missing_prose) + "\n"
             f"  brief = 白話「壞了什麼、誰有感」(禁檔名/行號/縮寫); "
             f"scope = JSON 檔案清單（每個 path 標 add 或 modify）；舊文字只會被看板標成 Scope 未知。"
+        )
+    if any(p["kind"] == "groom-claim-with-unknown-scope" for p in problems):
+        hints.append(
+            "  scope 不能再用說明文字：改成 JSON 檔案清單，格式為 "
+            "files[] JSON（每個 item 有 path 與 operation）；"
+            "每個 path 只能標 add 或 modify。"
         )
     return hints
 
@@ -2248,6 +2274,7 @@ def list_entries(
         blocking_ids=_blocking_ids,
         contract_preflight=contract_preflight,
         worst_first_key=_worst_first_key,
+        scope_status_fn=scope_status,
     )
     return _backlog_query.list_entries(
         store,
@@ -2803,8 +2830,9 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   不會從 `fix_site` 或散文猜檔案。存在理由：矩陣要讓人與 agent 直接看見哪些檔案被 active
   佔用，以及 queued ticket 是否與 active 重疊；`fix_site` 仍是 executor 的程式錨點。
   **蓋或更新 groom 戳記時當場就要求這兩欄**（`_check_groom_write`，與日期無關）；
-  `validate` 對**既有資料**則以 `BRIEF_REQUIRED_SINCE` 為界 grandfather，因為規則
-  落地時 store 內已有 133 筆蓋好戳記卻沒有這兩欄的 entry。缺這兩欄的未結案 entry 用
+  `validate` 對**既有資料**分開 grandfather：`brief` 以 `BRIEF_REQUIRED_SINCE`
+  為界，structured Scope 以 `SCOPE_REQUIRED_SINCE` 為界，因為 Scope 的重新定義晚於
+  brief 規則且 store 內已有 legacy Scope。缺這兩欄的未結案 entry 用
   `ops/backlog.py list --missing-brief` 數（**回填佇列，不是 dispatch 佇列**）
 - **`acceptance` 不再是唯寫欄位**（IMP-20260808-9f3838）。它曾經只被檢查「非空」，
   此後沒有任何一行程式再讀它——那正是本檔註解警告過兩次的「沒人讀的理由欄位」，
@@ -2983,11 +3011,12 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
     if dispatch_flag:
         parser.add_argument(
             "--dispatch", action="store_true",
-            help="WHAT TO TAKE NEXT — the intersection of four clauses: groomed "
+            help="WHAT TO TAKE NEXT — the intersection of five clauses: groomed "
                  "(`groomed_by` set, which `validate` guarantees implies "
                  "plan/acceptance/fix_site) AND unresolved (status is not fixed or "
                  "wont-fix) AND unclaimed (no worktree on this machine holds it) "
-                 "AND unblocked (no unresolved `blocked_by` edge). "
+                 "AND unblocked (no unresolved `blocked_by` edge) AND "
+                 "contract-ready (preflight passed with a red baseline). "
                  "Sorted worst-first, then oldest-first. Two things it CANNOT see, "
                  "both printed with the result: the claim ledger is per-machine, so "
                  "across machines this queue is OPTIMISTIC; and board deferrals live "
@@ -3015,7 +3044,8 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
     )
     parser.add_argument(
         "--missing-brief", dest="missing_brief", action="store_true",
-        help="the BACKFILL queue: unresolved entries with no --brief or no --scope, "
+        help="the BACKFILL queue: unresolved entries with no --brief or no known "
+             "structured --scope, "
              "i.e. the ones the phone board can only show 400 characters of agent "
              "prose for. NOT a dispatch queue — most of these already carry a full "
              "plan and what they need written is a sentence, not a fix. Closed "
@@ -3102,8 +3132,8 @@ def build_parser() -> argparse.ArgumentParser:
     # Grooming is a separate act because a badge you can self-apply while filing
     # costs nothing; saying in one plain sentence what you just noticed costs the
     # filer nothing to be honest about and is the only text the board can show.
-    # From BRIEF_REQUIRED_SINCE a groom stamp needs both anyway, so making the
-    # filer wait for a second command would only delay the writing, not improve it.
+    # A groom stamp needs both fields anyway, so making the filer wait for a
+    # second command would only delay the writing, not improve it.
     p_add.add_argument(
         "--brief",
         help="ONE plain sentence for a human deciding what to work on next: what "
@@ -3111,7 +3141,8 @@ def build_parser() -> argparse.ArgumentParser:
              "acronyms — that is --detail's job. REQUIRED whenever a groom badge "
              "is stamped, at ANY date (`update --groomed-by ...` is refused "
              f"without it); `validate` additionally holds stored grooming dated "
-             f"{BRIEF_REQUIRED_SINCE} or later",
+             f"{BRIEF_REQUIRED_SINCE} or later for brief; "
+             f"{SCOPE_REQUIRED_SINCE} or later for structured Scope",
     )
     p_add.add_argument(
         "--scope",
@@ -3190,7 +3221,8 @@ def build_parser() -> argparse.ArgumentParser:
     # both doors would keep returning *a* list.
     p_dispatch = sub.add_parser(
         "dispatch",
-        help="what to take next: groomed AND unresolved AND unclaimed AND unblocked, worst first "
+        help="what to take next: groomed AND unresolved AND unclaimed AND unblocked "
+             "AND contract-ready, worst first "
              "(identical to `list --dispatch`; accepts every `list` filter)",
     )
     _add_list_filters(p_dispatch, dispatch_flag=False)
@@ -3414,7 +3446,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Work out HOW an unresolved report will be fixed, as one atomic act. "
             "This sets status=triaged plus brief/scope/plan/acceptance/fix_site "
             "and the groom stamp; a committed result can enter `dispatch` if it "
-            "is also unclaimed and unblocked. This is NOT `verify`: verify asks "
+            "is also unclaimed, unblocked, and contract-ready. This is NOT `verify`: verify asks "
             "whether the reported claim is still true and is optional unless the "
             "claim is stale or uncertain. Groom asks whether the ticket is "
             "executable and is required before dispatch. Closed tickets stay "
@@ -3514,7 +3546,8 @@ def build_parser() -> argparse.ArgumentParser:
              "acronyms. REQUIRED whenever this call stamps or refreshes a groom "
              "badge, at ANY date — `--groomed-at 2026-01-01` does not get you out "
              f"of it; `validate` additionally holds stored grooming dated "
-             f"{BRIEF_REQUIRED_SINCE} or later",
+             f"{BRIEF_REQUIRED_SINCE} or later for brief; "
+             f"{SCOPE_REQUIRED_SINCE} or later for structured Scope",
     )
     p_update.add_argument(
         "--scope",
@@ -3813,7 +3846,7 @@ def _lifecycle_contract() -> dict:
     return {
         "schema": "kg.backlog.lifecycle.v1",
         "terminal_statuses": ["fixed", "wont-fix"],
-        "dispatch_requirements": [*DISPATCH_CLAUSES, "contract-ready"],
+        "dispatch_requirements": list(DISPATCH_CLAUSES),
         "contract_statuses": list(CONTRACT_STATUSES),
         "contract_baselines": list(CONTRACT_BASELINES),
         "contract_blocked": {
@@ -4555,7 +4588,7 @@ def _cmd_verify(args, *, _lock_held: bool = False) -> int:
 # reaches into a machine-local path to answer a question it advertises would be
 # right on one machine and silently wrong everywhere else. If it is ever wired in,
 # it goes through an explicit `--overlay PATH`.
-DISPATCH_CLAUSES = ("groomed", "unresolved", "unclaimed", "unblocked")
+DISPATCH_CLAUSES = ("groomed", "unresolved", "unclaimed", "unblocked", "contract-ready")
 DISPATCH_HELD_SCOPE = (
     "claims are derived from THIS machine's worktree ledger (gitignored, "
     "per-machine). Another machine's claims are invisible, so across machines this "
@@ -4592,6 +4625,33 @@ def _withheld_blocked(store: Path, candidates: list[dict], held: dict) -> list[d
                           if blocker in open_ids]
             if waiting_on:
                 withheld.append({"id": payload.get("id"), "waiting_on": waiting_on})
+    return sorted(withheld, key=lambda row: row["id"])
+
+
+def _withheld_contract(
+    store: Path,
+    candidates: list[dict],
+    held: dict,
+    blocked_ids: set[str],
+) -> list[dict]:
+    """Expose the canonical preflight partition beside the dispatch queue.
+
+    The board must not recreate ``contract_preflight`` from a subset of fields.
+    Keep this read-only compiler beside the existing blocked metadata so every
+    consumer can distinguish contract debt from the canonical grooming queue.
+    """
+    repo = owning_repo_for_store(store)
+    withheld = []
+    for payload in candidates:
+        ticket_id = str(payload.get("id") or "")
+        if (not str(payload.get("groomed_by") or "").strip()
+                or payload.get("status") in ("fixed", "wont-fix")
+                or ticket_id in held
+                or ticket_id in blocked_ids):
+            continue
+        problems = contract_preflight(payload, repo=repo)
+        if problems:
+            withheld.append({"id": ticket_id, "problems": problems})
     return sorted(withheld, key=lambda row: row["id"])
 
 
@@ -4691,10 +4751,17 @@ def _cmd_list(args) -> int:
     }
     entries = select_entries(args.store, **selection)
     withheld_blocked = []
+    withheld_contract = []
     if dispatch:
         unfiltered = {**selection, "dispatch": False}
-        withheld_blocked = _withheld_blocked(
-            args.store, select_entries(args.store, **unfiltered), held)
+        candidates = select_entries(args.store, **unfiltered)
+        withheld_blocked = _withheld_blocked(args.store, candidates, held)
+        withheld_contract = _withheld_contract(
+            args.store,
+            candidates,
+            held,
+            {row["id"] for row in withheld_blocked},
+        )
     if getattr(args, "held", False):
         entries = [e for e in entries if e["id"] in held]
     groomed_against_warnings = _groomed_against_warnings(
@@ -4712,7 +4779,8 @@ def _cmd_list(args) -> int:
                           **({"dispatch": {"clauses": list(DISPATCH_CLAUSES),
                                            "held_scope": DISPATCH_HELD_SCOPE,
                                            "snooze_scope": DISPATCH_SNOOZE_SCOPE,
-                                           "withheld_blocked": withheld_blocked}}
+                                           "withheld_blocked": withheld_blocked,
+                                           "withheld_contract": withheld_contract}}
                            if dispatch else {}),
                           "groomed_against_warnings": groomed_against_warnings,
                           "staged_queue": staged_queue,
@@ -4737,6 +4805,9 @@ def _cmd_list(args) -> int:
         for withheld in withheld_blocked:
             waiting_on = ", ".join(withheld["waiting_on"])
             print(f"  withheld (blocked): {withheld['id']} waiting on {waiting_on}")
+        for withheld in withheld_contract:
+            kinds = ", ".join(sorted({str(problem.get("kind")) for problem in withheld["problems"]}))
+            print(f"  withheld (contract): {withheld['id']} {kinds}")
         return 0
     queue_note = (
         f"{staged_queue.get('staged_adds', 0)} staged add(s) pending anchor in "

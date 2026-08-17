@@ -14,6 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from ops.kg_board import server
+from ops.kg_board.model import classify_decision, scope_audit
 
 
 def _ticket(
@@ -31,6 +32,105 @@ def _ticket(
     if groomed:
         row.update(plan="plan", acceptance="acceptance", groomed_by="test")
     return row
+
+
+def _request(command) -> str:
+    return "ungroomed" if "--ungroomed" in command else command[-2]
+
+
+def test_delivery_model_separates_grooming_contract_and_dependency_states():
+    entries = [
+        {**_ticket("GROOM"), "groomed_by": ""},
+        {**_ticket("CONTRACT"), "contract_status": "blocked"},
+        {**_ticket("DEPENDENCY")},
+        {**_ticket("DISPATCH"), "contract_status": "ready", "contract_baseline": "red",
+         "contract_checked_at": "2026-08-17", "contract_checked_by": "test",
+         "contract_evidence": "red"},
+    ]
+    assert classify_decision(entries[0], held_ids=set(), dispatch_ids=set(),
+                             blocked_ids=set(), ungroomed_ids={"GROOM"}) == "needs-grooming"
+    assert classify_decision(entries[1], held_ids=set(), dispatch_ids=set(),
+                             blocked_ids=set(), ungroomed_ids=set()) == "contract-not-ready"
+    assert classify_decision(entries[2], held_ids=set(), dispatch_ids=set(),
+                             blocked_ids={"DEPENDENCY"}, ungroomed_ids=set()) == "dependency-blocked"
+    assert classify_decision(entries[3], held_ids=set(), dispatch_ids={"DISPATCH"},
+                             blocked_ids=set(), ungroomed_ids=set()) == "dispatchable"
+
+
+def test_scope_audit_does_not_treat_legacy_prose_as_file_scope():
+    entries = [
+        {"id": "STRUCTURED", "status": "open", "scope": {"files": [{"path": "ops/a.py", "operation": "modify"}]}},
+        {"id": "LEGACY", "status": "open", "scope": "one script and its test"},
+        {"id": "MISSING", "status": "open"},
+        {"id": "FIXED", "status": "fixed", "scope": "old"},
+    ]
+    assert scope_audit(entries) == {
+        "total": 4,
+        "unresolved": 3,
+        "structured": 1,
+        "legacy_text": 2,
+        "missing": 1,
+        "unresolved_structured": 1,
+        "unresolved_legacy_text": 1,
+        "unresolved_missing": 1,
+    }
+
+
+def test_model_payload_uses_the_same_live_decision_partition(monkeypatch):
+    contract = {
+        **_ticket("DISPATCH"),
+        "contract_status": "ready",
+        "contract_baseline": "red",
+        "contract_checked_at": "2026-08-17",
+        "contract_checked_by": "test",
+        "contract_evidence": "red",
+        "scope": {"files": [{"path": "ops/a.py", "operation": "modify"}]},
+    }
+    entries = [
+        {**_ticket("GROOM"), "groomed_by": ""},
+        {**_ticket("BLOCKED"), "scope": "legacy"},
+        {**_ticket("HELD"), "scope": {"files": [{"path": "ops/h.py", "operation": "modify"}]}},
+        contract,
+        {**_ticket("CONTRACT"), "scope": "legacy"},
+    ]
+    monkeypatch.setattr(server, "read_entries", lambda: {
+        "sha": "abc123", "read_at": "now", "entries": entries,
+        "dispatch_ids": ["DISPATCH"], "ungroomed_ids": ["GROOM"],
+        "local_held": {"HELD": {"branch": "feat/held"}},
+        "dispatch_meta": {
+            "withheld_blocked": [{"id": "BLOCKED", "waiting_on": ["WAIT"]}],
+            "withheld_contract": [{"id": "CONTRACT", "problems": [{"kind": "contract-evidence-missing"}]}],
+        },
+    })
+    monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
+    monkeypatch.setattr(server, "freshness", lambda: {"freshness_state": "current"})
+
+    payload = server.model_payload()
+
+    assert payload["schema"] == "kg.board.model.v1"
+    assert payload["live"]["decision_ids"] == {
+        "needs-grooming": ["GROOM"],
+        "dependency-blocked": ["BLOCKED"],
+        "held": ["HELD"],
+        "dispatchable": ["DISPATCH"],
+        "contract-not-ready": ["CONTRACT"],
+    }
+    assert payload["live"]["lifecycle_ids"]["queued"] == ["BLOCKED", "CONTRACT", "DISPATCH"]
+    assert payload["live"]["counts"]["unresolved"] == 5
+    assert payload["live"]["scope_audit"]["unresolved_legacy_text"] == 2
+
+
+def test_projection_rejects_a_missing_partition_when_cli_explicitly_returns_empty():
+    # An empty withheld_contract list is authoritative. Treating it as falsey
+    # would silently classify the unexplained remainder as contract debt and
+    # hide a CLI/API partition drift.
+    with pytest.raises(ValueError, match="canonical decision partition missing ticket"):
+        server.project(
+            [_ticket("UNEXPLAINED")],
+            canonical_dispatch_ids=set(),
+            canonical_ungroomed_ids=set(),
+            dispatch_meta={"withheld_blocked": [], "withheld_contract": []},
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -77,11 +177,17 @@ def test_read_entries_reads_list_and_canonical_dispatch_from_clone(monkeypatch, 
 
     def fake_run(command, **_kwargs):
         calls.append(tuple(command))
-        subcommand = command[-2]
+        subcommand = _request(command)
         if subcommand == "list":
             body = {
                 "schema": "kg.backlog.list.v1",
                 "entries": [_ticket("A"), _ticket("B"), _ticket("C"), _ticket("D")],
+                "held": {},
+            }
+        elif subcommand == "ungroomed":
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [_ticket("D")],
                 "held": {},
             }
         elif subcommand == "dispatch":
@@ -109,7 +215,9 @@ def test_read_entries_reads_list_and_canonical_dispatch_from_clone(monkeypatch, 
 
     snapshot = server.read_entries(force=True)
 
-    assert [call[-2:] for call in calls] == [("list", "--json"), ("dispatch", "--json")]
+    assert [call[-2:] for call in calls] == [
+        ("list", "--json"), ("dispatch", "--json"), ("--ungroomed", "--json")
+    ]
     assert snapshot["dispatch_ids"] == ["A"]
     assert snapshot["local_held"] == {"C": {"branch": "feat/local", "claimed_at": "now"}}
     assert snapshot["ungroomed_ids"] == ["D"]
@@ -120,13 +228,15 @@ def test_read_entries_refreshes_claim_projection_when_head_is_unchanged(monkeypa
     tool = tmp_path / "ops" / "backlog.py"
     tool.parent.mkdir()
     tool.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
-    calls = {"list": 0, "dispatch": 0}
+    calls = {"list": 0, "dispatch": 0, "ungroomed": 0}
 
     def fake_run(command, **_kwargs):
-        subcommand = command[-2]
+        subcommand = _request(command)
         calls[subcommand] += 1
         if subcommand == "list":
             body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")], "held": {}}
+        elif subcommand == "ungroomed":
+            body = {"schema": "kg.backlog.list.v1", "entries": [], "held": {}}
         elif calls["dispatch"] == 1:
             body = {
                 "schema": "kg.backlog.list.v1",
@@ -171,7 +281,7 @@ def test_read_entries_refreshes_claim_projection_when_head_is_unchanged(monkeypa
         "A": {"branch": "feat/new-claim", "claimed_at": "now"}
     }
     assert after["ungroomed_ids"] == []
-    assert calls == {"list": 1, "dispatch": 2}
+    assert calls == {"list": 1, "dispatch": 2, "ungroomed": 2}
 
 
 def test_read_entries_warm_same_head_and_registry_skips_all_backlog_subprocesses(
@@ -183,7 +293,15 @@ def test_read_entries_warm_same_head_and_registry_skips_all_backlog_subprocesses
     calls: list[str] = []
 
     def fake_run(command, **_kwargs):
-        calls.append(command[-2])
+        calls.append(_request(command))
+        if _request(command) == "ungroomed":
+            body = {
+                "schema": "kg.backlog.list.v1",
+                "entries": [],
+                "held": {},
+                "dispatch": {"withheld_blocked": []},
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(body), "")
         body = {
             "schema": "kg.backlog.list.v1",
             "entries": [_ticket("A")],
@@ -209,7 +327,7 @@ def test_read_entries_warm_same_head_and_registry_skips_all_backlog_subprocesses
     hit = server.read_entries()
 
     assert hit == warm
-    assert calls == ["list", "dispatch"]
+    assert calls == ["list", "dispatch", "ungroomed"]
 
 
 def test_registry_mutation_during_dispatch_is_not_cached_as_new_fingerprint(
@@ -231,10 +349,12 @@ def test_registry_mutation_during_dispatch_is_not_cached_as_new_fingerprint(
 
     def fake_run(command, **_kwargs):
         nonlocal dispatch_calls, list_calls
-        subcommand = command[-2]
+        subcommand = _request(command)
         if subcommand == "list":
             list_calls += 1
             body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")]}
+        elif subcommand == "ungroomed":
+            body = {"schema": "kg.backlog.list.v1", "entries": []}
         else:
             dispatch_calls += 1
             held = {} if dispatch_calls == 1 else {
@@ -351,7 +471,7 @@ def test_registry_fingerprint_error_preserves_warm_snapshot_then_recovers(
     assert "registry fingerprint failed" in stale["error"]
     assert recovered["error"] is None
     assert recovered["registry_fingerprint"] == (True, 2, 30, 140)
-    assert calls == 3
+    assert calls == 5
 
 
 def test_refresh_loop_does_not_force_unchanged_canonical_projection(monkeypatch):
@@ -381,9 +501,11 @@ def test_read_entries_preserves_warm_snapshot_when_dispatch_invocation_fails(
 
     def fake_run(command, **_kwargs):
         nonlocal dispatch_calls
-        subcommand = command[-2]
+        subcommand = _request(command)
         if subcommand == "list":
             body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")]}
+        elif subcommand == "ungroomed":
+            body = {"schema": "kg.backlog.list.v1", "entries": []}
         else:
             dispatch_calls += 1
             if dispatch_calls == 2:
@@ -656,11 +778,13 @@ def test_clone_lock_blocks_refresh_between_list_and_dispatch(monkeypatch, tmp_pa
             self.lock.release()
 
     def fake_run(command, **_kwargs):
-        subcommand = command[-2]
+        subcommand = _request(command)
         if subcommand == "list":
             list_started.set()
             assert release_list.wait(2), "test failed to release list command"
             body = {"schema": "kg.backlog.list.v1", "entries": [_ticket("A")], "held": {}}
+        elif subcommand == "ungroomed":
+            body = {"schema": "kg.backlog.list.v1", "entries": []}
         else:
             body = {
                 "schema": "kg.backlog.list.v1",
