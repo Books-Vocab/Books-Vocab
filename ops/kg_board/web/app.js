@@ -823,13 +823,22 @@ async function loadHistory(){
   if(!response.ok)throw new Error(`history HTTP ${response.status}`);
   history=await response.json();
 }
+let loadInFlight=false;
+let loadQueued=false;
 async function load(){
-  const [boardResponse,treeResponse,scopeResponse]=await Promise.all([fetch("/api/board",{cache:"no-store"}),fetch("/api/git-tree",{cache:"no-store"}),fetch("/api/scope-matrix",{cache:"no-store"})]);
-  if(!boardResponse.ok)throw new Error(`board HTTP ${boardResponse.status}`);
-  if(!treeResponse.ok)throw new Error(`git tree HTTP ${treeResponse.status}`);
-  if(!scopeResponse.ok)throw new Error(`scope matrix HTTP ${scopeResponse.status}`);
-  board=await boardResponse.json();tree=await treeResponse.json();scopeMatrix=await scopeResponse.json();setTrust(board.freshness);render();renderTree();
-  if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom();
+  if(loadInFlight){loadQueued=true;return}
+  loadInFlight=true;
+  try{
+    const [boardResponse,treeResponse,scopeResponse]=await Promise.all([fetch("/api/board",{cache:"no-store"}),fetch("/api/git-tree",{cache:"no-store"}),fetch("/api/scope-matrix",{cache:"no-store"})]);
+    if(!boardResponse.ok)throw new Error(`board HTTP ${boardResponse.status}`);
+    if(!treeResponse.ok)throw new Error(`git tree HTTP ${treeResponse.status}`);
+    if(!scopeResponse.ok)throw new Error(`scope matrix HTTP ${scopeResponse.status}`);
+    board=await boardResponse.json();tree=await treeResponse.json();scopeMatrix=await scopeResponse.json();setTrust(board.freshness);render();renderTree();
+    if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom();
+  }finally{
+    loadInFlight=false;
+    if(loadQueued){loadQueued=false;queueMicrotask(()=>load().catch(showLoadError))}
+  }
 }
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
@@ -871,6 +880,18 @@ document.addEventListener("fullscreenchange",()=>{
   if(treeFullscreen.open&&treeFullscreen.nativeFullscreen&&!document.fullscreenElement)closeTreeFullscreen({restoreFocus:false});
 });
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
+let liveReloadTimer=null;
+let liveEvents=null;
+function scheduleLiveReload(){
+  if(liveReloadTimer!==null)return;
+  liveReloadTimer=setTimeout(()=>{liveReloadTimer=null;load().catch(showLoadError)},150);
+}
+function connectLiveEvents(){
+  if(typeof EventSource==="undefined")return;
+  liveEvents=new EventSource("/api/events");
+  liveEvents.addEventListener("snapshot",scheduleLiveReload);
+}
 renderTreeZoom();
 load().catch(showLoadError);
+connectLiveEvents();
 setInterval(()=>load().catch(showLoadError),30000);
