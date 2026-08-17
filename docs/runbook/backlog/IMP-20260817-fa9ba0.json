@@ -1,0 +1,55 @@
+{
+  "acceptance": "紅：KG Board topology contract 不存在，或 model/git-tree/web/browser route 有重複/遺失 nodeid。綠：各 responsibility route 精準、model 不跑 browser、web 與 mobile/desktop contract 可達、detached/parent/truncation negative controls 維持，./ops/test_ops.sh kg-board 綠。",
+  "acceptance_cmd": "test -f ops/tests/test_kg_board_test_topology.py && uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_kg_board_test_topology.py && ./ops/test_ops.sh kg-board",
+  "acceptance_expect_rc": 0,
+  "brief": "把 KG Board 測試細分成 model、git-tree、web 與 browser route，降低非 web 變更成本。",
+  "category": "tool",
+  "contract_baseline": "unknown",
+  "contract_checked_at": "2026-08-17",
+  "contract_checked_by": "agent:ticket-factory-plan-20260817",
+  "contract_evidence": "Ticket Factory contract preflight at local main 75160fdf037c0de2ddbcdaf0277c752aabf5d245: blocked until the active orchestrator-test-topology-eta-20260817 worktree is complete and the future topology contract dependency exists; no implementation or acceptance command was executed.",
+  "contract_status": "blocked",
+  "date": "2026-08-17",
+  "detail": "KG Board 已有明確 group，但 model/dispatch projection、registry mirror/refresh、git-tree topology、web rendering/responsive、browser/accessibility 與 detached/parent/truncation edge cases 仍可進一步按 responsibility route，造成非 web 變更也可能啟動 browser bundle。此票低於 A-H，且須避開目前 active board worktrees；不改產品排序語義或 board overlay model。前置：orchestrator-test-topology-eta-20260817 完成後，並待現有 board scope worktrees 收斂再重查。",
+  "fix_site": "ops/tests/test_kg_board_model.py; ops/tests/test_kg_board_git_tree.py; ops/tests/test_kg_board_web.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+  "groomed_against": "75160fdf037c0de2ddbcdaf0277c752aabf5d245",
+  "groomed_at": "2026-08-17",
+  "groomed_by": "agent:ticket-factory-plan-20260817",
+  "id": "IMP-20260817-fa9ba0",
+  "plan": "1. 以 collect-only 建立目前 KG Board group 的 nodeid/fixture/resource 基線，分辨 model、registry mirror/refresh、git-tree、web/responsive、browser/accessibility、detached/parent/truncation。 2. 各責任只進單一路由，model source 不啟動 browser bundle，CSS/JS 才跑 node/web contract，git-tree source 只跑 topology tests。 3. 補 positive/negative、mutation、mobile/desktop collection proof 與 zero-selector fail-safe，保留既有 kg-board acceptance command。 4. 待 active board worktrees 收斂後以最新 scope 做 collision recheck。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_kg_board_model.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_kg_board_git_tree.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_kg_board_web.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_kg_board_test_topology.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/test_ops.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ops_ci_coverage.sh"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "low",
+  "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 3 Ticket I KG Board Test Topology",
+  "status": "contract-blocked",
+  "stream": "IMP"
+}

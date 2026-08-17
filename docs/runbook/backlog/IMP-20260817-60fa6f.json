@@ -1,0 +1,59 @@
+{
+  "acceptance": "紅：gate failure topology contract 尚不存在或任一責任群組的 collection/negative control 失敗。綠：所有 failure route 都可精準執行，child/孫行程清理、timeout、summary、heartbeat 與 stdout/stderr 分流契約維持，compatibility collector 可執行且無重複 nodeid。",
+  "acceptance_cmd": "test -f ops/tests/test_gate_failure_topology.sh && ./ops/tests/test_gate_failure_topology.sh && ./ops/tests/test_gate_can_fail.sh",
+  "acceptance_expect_rc": 0,
+  "brief": "把 Gate failure 測試拆成可單獨路由的責任群組，讓失敗診斷不必重跑整支 collector。",
+  "category": "tool",
+  "contract_baseline": "unknown",
+  "contract_checked_at": "2026-08-17",
+  "contract_checked_by": "agent:ticket-factory-plan-20260817",
+  "contract_evidence": "Ticket Factory contract preflight at local main 75160fdf037c0de2ddbcdaf0277c752aabf5d245: blocked until the active orchestrator-test-topology-eta-20260817 worktree is complete and the future topology contract dependency exists; no implementation or acceptance command was executed.",
+  "contract_status": "blocked",
+  "date": "2026-08-17",
+  "detail": "Gate failure 測試目前把 exit code、failure summary、heartbeat/stalled、timeout/cancel/process-group cleanup、resource contention/inconclusive 與 stdout JSON/stderr heartbeat 分流混在同一支 shell collector。這張票只拆測試責任與 route，不改 gate verdict 語義、timeout contract 或 production 行為。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 local main 重查 scope 與既有 tickets。",
+  "fix_site": "ops/tests/test_gate_can_fail.sh; ops/lib/streaming_command.py; ops/worktree_orchestrate.py; ops/tests/test_streaming_command.py; ops/tests/test_task_registry.py",
+  "groomed_against": "75160fdf037c0de2ddbcdaf0277c752aabf5d245",
+  "groomed_at": "2026-08-17",
+  "groomed_by": "agent:ticket-factory-plan-20260817",
+  "id": "IMP-20260817-60fa6f",
+  "plan": "1. 盤點 legacy gate failure collector 的所有 nodeid/案例與現有 runner contract，固定原始數量。 2. 分出 exit code、summary extraction、heartbeat/stalled、timeout/cancel/process-group、contention/inconclusive、stdout/stderr 六個責任群組，保留 compatibility collector 並禁止 nodeid 重複。 3. 每群加入 positive control、negative control、mutation/實際行為驗證、collection proof 與 zero-selector fail-safe。 4. 驗證 timeout 不會變成 pass、孫行程會清理、failure lines 仍可讀、timing plugin 不改 verdict，再接回既有 ops dispatcher。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_gate_can_fail.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_streaming_command.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_task_registry.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/lib/streaming_command.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/worktree_orchestrate.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_failure_topology.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/test_ops.sh"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 1 Ticket D Gate Failure Test Topology",
+  "status": "contract-blocked",
+  "stream": "IMP"
+}
