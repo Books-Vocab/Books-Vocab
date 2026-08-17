@@ -54,6 +54,9 @@ def _register_component(component: types.ModuleType) -> None:
 
 
 _copy_exports(_runtime)
+# Keep machine-law references and legacy introspection resolvable at the stable
+# façade path while the implementation remains owned by the gate seam.
+cmd_cutover = _runtime.cmd_cutover
 _register_component(_runtime.planning)
 _register_component(_runtime.orchestrator_core)
 for _core_component in _runtime.orchestrator_core._COMPONENTS:
