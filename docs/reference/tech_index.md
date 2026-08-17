@@ -277,8 +277,10 @@ hand-back 回報是 agent 協作欄位：提交者必須列出 exact source thre
 
 Gate verification depth is explicit: `--gate-tier S0..S4` selects static smoke, focused
 functional smoke, affected-module regression, cross-module integration, or release/full
-validation. The default daily cutover profile is S2, while `required_cutover_tier` raises
-the floor for cross-root changes; cutover rejects a verdict below that floor. A non-critical
+validation. The default daily cutover profile is S2. `required_cutover_tier` raises the
+floor for cross-root changes only when the impact plan contains a real S3 check; otherwise
+it stays at S2 and leaves the missing cross-module route visible instead of claiming evidence
+that did not run. Cutover rejects a verdict below the computed floor. A non-critical
 S2/S3 failure may be carried only with an existing `--defer-gate GATE=TICKET` ticket whose
 status/severity pass admission; the receipt keeps both the original failure and deferral.
 S4 appends the explicit release profile and never admits deferral. Integration and
