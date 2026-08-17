@@ -368,6 +368,7 @@ def _claim_next_backlog(
             state=str(state_path), at=None, path=str(path), branch=branch,
             intent=intent, base=base, repo_root=str(root), backlog=[ticket],
             exclusive=True, json=True, delegated=delegated,
+            scope=None, scope_file=None, codex_thread_id=None,
         )
         buf = io.StringIO()
         with redirect_stdout(buf):

@@ -148,6 +148,20 @@ def cmd_open(args: argparse.Namespace) -> int:
                "path": str(path)}, args.json, f"✗ worktree path already exists: {path}")
         return EXIT_USAGE
     next_backlog = bool(getattr(args, "next_backlog", False))
+    scope_inline = getattr(args, "scope", None)
+    scope_file = getattr(args, "scope_file", None)
+    codex_thread_id = getattr(args, "codex_thread_id", None)
+    scope_declared = scope_inline is not None or scope_file is not None
+    if scope_declared and (args.backlog is not None or next_backlog):
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "direct Scope cannot be combined with a ticket claim"}, args.json,
+              "✗ --scope/--scope-file is only for a direct worktree; ticketed Scope comes from tickets")
+        return EXIT_USAGE
+    if scope_declared and (getattr(args, "campaign", None) or getattr(args, "partition", None)):
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "direct Scope cannot be combined with a campaign claim"}, args.json,
+              "✗ campaign worktrees derive Scope from their tickets")
+        return EXIT_USAGE
     if next_backlog and args.allow_ungroomed:
         _emit({"schema": SCHEMA, "step": "open",
                "error": "--next-backlog only selects groomed dispatch entries; "
@@ -206,6 +220,9 @@ def cmd_open(args: argparse.Namespace) -> int:
              "--repo-root", str(root), "--branch", branch,
              "--intent", args.intent, "--base", base,
              *_delegated_arg(delegated),
+             *( ["--scope", scope_inline] if scope_inline is not None else
+                ["--scope-file", scope_file] if scope_file is not None else [] ),
+             *( ["--codex-thread-id", codex_thread_id] if codex_thread_id is not None else [] ),
              *claim_argv, "--exclusive", "--json"])
     if reg_rc != EXIT_OK:
         conflicts = (reg_payload or {}).get("conflicts", [])
@@ -327,6 +344,8 @@ def cmd_open(args: argparse.Namespace) -> int:
 
     payload = {"schema": SCHEMA, "step": "open", "branch": branch, "path": str(path),
                "base": base, "intent": args.intent, "backlog": wanted,
+               "scope_declared": scope_declared,
+               "codex_thread_id": codex_thread_id,
                "selection": selection, "campaign": campaign_claim,
                "scratch_dir": str(scratch), "registered": True}
     human = (f"✓ opened worktree [{branch}] (base {base})\n"
@@ -397,6 +416,15 @@ def cmd_adopt(args: argparse.Namespace) -> int:
 
     wanted = list(args.backlog or [])
     delegated = getattr(args, "delegated", None)
+    scope_inline = getattr(args, "scope", None)
+    scope_file = getattr(args, "scope_file", None)
+    codex_thread_id = getattr(args, "codex_thread_id", None)
+    scope_declared = scope_inline is not None or scope_file is not None
+    if scope_declared and wanted:
+        _emit({"schema": SCHEMA, "step": "adopt",
+               "error": "direct Scope cannot be combined with a ticket claim"}, args.json,
+              "✗ --scope/--scope-file is only for a direct worktree; ticketed Scope comes from tickets")
+        return EXIT_USAGE
     if _refuse_unclaimable(Path(primary_root()), wanted, args, "adopt",
                            branch) is not None:
         return EXIT_BLOCK
@@ -404,6 +432,9 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     reg_rc, reg_payload = _registry(
         ["register", "--state", state, "--path", worktree, "--branch", branch,
          "--intent", args.intent, "--base", args.base,
+         *( ["--scope", scope_inline] if scope_inline is not None else
+            ["--scope-file", scope_file] if scope_file is not None else [] ),
+         *( ["--codex-thread-id", codex_thread_id] if codex_thread_id is not None else [] ),
          *_delegated_arg(delegated), *claim_argv, "--json"])
     ok = reg_rc == EXIT_OK
     conflicts = (reg_payload or {}).get("conflicts", [])
@@ -416,7 +447,8 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         for c in conflicts)
     payload = {"schema": SCHEMA, "step": "adopt", "branch": branch, "worktree": worktree,
                "base": args.base, "intent": args.intent, "ledger": state,
-               "backlog": wanted, "conflicts": conflicts, "registered": ok}
+               "backlog": wanted, "scope_declared": scope_declared,
+               "codex_thread_id": codex_thread_id, "conflicts": conflicts, "registered": ok}
     human = (f"{'✓ adopted' if ok else '✗ adopt could NOT register'} worktree "
              f"[{branch}] (base {args.base})\n"
              f"  path: {worktree}\n"

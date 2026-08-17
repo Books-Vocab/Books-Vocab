@@ -34,17 +34,26 @@ Registry state file (per-machine, NEVER committed):
     {"schema": ..., "records": [{path, branch, intent, base, created_at,
                                  status(active|merged|abandoned), resolved_at,
                                  backlog[ticket ids claimed], claimed_at,
-                                 handed_back_at, handed_back_sha, delegated}]}
+                                 handed_back_at, handed_back_sha, delegated,
+                                 scope, scope_updated_at, codex_thread_id,
+                                 codex_thread_bound_at}]}
   Timestamps are taken in the CLI adapter (--at overrides for tests); the IO/pure
   layers read no clock.
 
 Subcommands (register/hand-back/resolve/sweep are the P3 orchestrator API, not just human):
   register   birth: record a new active worktree     (--path --branch --intent --base
-             [--backlog ID...]). --backlog CLAIMS those ticket ids: refused if any is
+             [--backlog ID...] [--scope|--scope-file] [--codex-thread-id]).
+             --scope is an explicit direct-worktree declaration; refused if combined
+             with --backlog because ticketed Scope belongs to the tickets. --backlog CLAIMS those ticket ids: refused if any is
              already held by another ACTIVE record. Omitting the flag leaves an
              existing claim alone; passing it (even empty) replaces it. A claim lives
              exactly as long as the record is active, so resolve/sweep release it and
              there is no separate release verb.
+  scope set set the explicit structured Scope of an active direct worktree
+             (--branch|--path plus --scope|--scope-file).
+  owner bind bind a stable Codex thread id to an active worktree. The same thread id
+             may own multiple worktrees; the id is identity, while its mutable title
+             arrives through the board's thread mirror.
   list       ledger + live classify of each record   (table / --json)
   resolve    death: strike a worktree active record  (--branch|--path --status)
   hand-back  worker hand-back: stamp the active record with the current branch tip
@@ -98,6 +107,7 @@ import worktree_state as ws  # noqa: E402  (ops/lib shared pure module)
 import worktree_campaign as wc  # noqa: E402  (campaign reservation pure layer)
 from lock_wait import exclusive_lock  # noqa: E402
 from lib.exit_codes import EXIT_CLAIMED, EXIT_OK, EXIT_PARTIAL, EXIT_USAGE  # noqa: E402
+from kg_board.scope import normalise_scope  # noqa: E402
 
 SCHEMA = "kg.worktree.registry.v1"
 # A well-formed register that loses a race for a backlog ticket. It needs a code of
@@ -1553,8 +1563,121 @@ def _normalise_tickets(raw: list[str] | None) -> tuple[list[str], list[str]]:
     return ok, bad
 
 
+def _read_scope_argument(args: argparse.Namespace, *, required: bool = False) -> tuple[bool, dict | None, str | None]:
+    """Read the explicit structured Scope supplied by a caller.
+
+    Scope is an operator/agent declaration, not a projection inferred from a
+    diff.  The registry accepts either inline JSON or a JSON file so the same
+    contract works for a short command and for generated hand-off metadata.
+    """
+    inline = getattr(args, "scope", None)
+    scope_file = getattr(args, "scope_file", None)
+    if inline is None and scope_file is None:
+        if required:
+            return False, None, "one of --scope or --scope-file is required"
+        return False, None, None
+    if inline is not None and scope_file is not None:
+        return False, None, "--scope and --scope-file are mutually exclusive"
+    try:
+        value = inline
+        if scope_file is not None:
+            value = json.loads(Path(scope_file).read_text(encoding="utf-8"))
+        return True, normalise_scope(value), None
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        return True, None, f"invalid structured Scope: {exc}"
+
+
+def _scope_refusal(args: argparse.Namespace, reason: str, *, detail: str | None = None) -> int:
+    payload = {"schema": SCHEMA, "action": "refused", "reason": reason}
+    if detail:
+        payload["detail"] = detail
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"✗ {detail or reason}", file=sys.stderr)
+    return EXIT_USAGE
+
+
+def _active_record_selector(
+    records: list[dict[str, Any]], args: argparse.Namespace,
+) -> tuple[dict[str, Any] | None, str | None]:
+    branch = getattr(args, "branch", None)
+    path = getattr(args, "path", None)
+    candidates = [record for record in records if record.get("status") == STATUS_ACTIVE]
+    if branch is not None:
+        candidates = [record for record in candidates if record.get("branch") == branch]
+    if path is not None:
+        wanted = _norm(os.path.abspath(path))
+        candidates = [record for record in candidates
+                      if record.get("path") and _norm(record["path"]) == wanted]
+    if not candidates:
+        return None, "active worktree record not found"
+    if len(candidates) > 1:
+        return None, "selector matched more than one active worktree record"
+    return candidates[0], None
+
+
+def cmd_scope_set(args: argparse.Namespace) -> int:
+    _, now_iso = resolve_now(args.at)
+    provided, scope, error = _read_scope_argument(args, required=True)
+    if error:
+        return _scope_refusal(args, "invalid-scope", detail=error)
+    state_path = _state_path(args)
+    state = load_state(state_path)
+    record, selector_error = _active_record_selector(state["records"], args)
+    if selector_error:
+        return _scope_refusal(args, "worktree-not-found", detail=selector_error)
+    assert record is not None and provided and scope is not None
+    if record.get("backlog"):
+        return _scope_refusal(
+            args, "ticketed-worktree-scope-owned-by-tickets",
+            detail="ticketed worktree 的 Scope 必須由其 tickets 宣告；direct worktree 才能設定 worktree Scope",
+        )
+    record["scope"] = scope
+    record["scope_updated_at"] = now_iso
+    save_state(state_path, state)
+    payload = {"schema": SCHEMA, "action": "scope-updated", "record": record}
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"✓ updated Scope [{record.get('branch')}] ({len(scope['files'])} file(s))")
+    return EXIT_OK
+
+
+def cmd_owner_bind(args: argparse.Namespace) -> int:
+    _, now_iso = resolve_now(args.at)
+    thread_id = str(args.codex_thread_id or "").strip()
+    if not thread_id:
+        return _scope_refusal(args, "invalid-codex-thread-id",
+                              detail="--codex-thread-id must be non-empty")
+    state_path = _state_path(args)
+    state = load_state(state_path)
+    record, selector_error = _active_record_selector(state["records"], args)
+    if selector_error:
+        return _scope_refusal(args, "worktree-not-found", detail=selector_error)
+    assert record is not None
+    record["codex_thread_id"] = thread_id
+    record["codex_thread_bound_at"] = now_iso
+    save_state(state_path, state)
+    payload = {"schema": SCHEMA, "action": "owner-bound", "record": record}
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"✓ bound [{record.get('branch')}] to Codex thread {thread_id}")
+    return EXIT_OK
+
+
 def cmd_register(args: argparse.Namespace) -> int:
     _, now_iso = resolve_now(args.at)
+    scope_provided, direct_scope, scope_error = _read_scope_argument(args)
+    if scope_error:
+        return _scope_refusal(args, "invalid-scope", detail=scope_error)
+    codex_thread_id = getattr(args, "codex_thread_id", None)
+    if codex_thread_id is not None:
+        codex_thread_id = str(codex_thread_id).strip()
+        if not codex_thread_id:
+            return _scope_refusal(args, "invalid-codex-thread-id",
+                                  detail="--codex-thread-id must be non-empty")
     path = os.path.abspath(args.path)
     state_path = _state_path(args)
     state = load_state(state_path)
@@ -1648,6 +1771,11 @@ def cmd_register(args: argparse.Namespace) -> int:
               f"`imp-0001` would silently be a different ticket from `IMP-0001` and "
               f"claim nothing.", file=sys.stderr)
         return EXIT_USAGE
+    if wanted and scope_provided:
+        return _scope_refusal(
+            args, "ticketed-worktree-scope-owned-by-tickets",
+            detail="--scope 只能用於 direct worktree；ticketed worktree 的 Scope 由 tickets 提供",
+        )
     if wanted:
         conflicts = [
             {"branch": r.get("branch"), "path": r.get("path"),
@@ -1713,6 +1841,17 @@ def cmd_register(args: argparse.Namespace) -> int:
         delegated = getattr(args, "delegated", None)
         if delegated is not None:
             rec["delegated"] = bool(delegated)
+        if scope_provided:
+            if rec.get("backlog"):
+                return _scope_refusal(
+                    args, "ticketed-worktree-scope-owned-by-tickets",
+                    detail="ticketed worktree 的 Scope 必須由 tickets 宣告",
+                )
+            rec["scope"] = direct_scope
+            rec["scope_updated_at"] = now_iso
+        if codex_thread_id is not None:
+            rec["codex_thread_id"] = codex_thread_id
+            rec["codex_thread_bound_at"] = now_iso
         for d in displaced:
             d["status"] = "abandoned"
             d["resolved_at"] = now_iso
@@ -1727,6 +1866,12 @@ def cmd_register(args: argparse.Namespace) -> int:
             "backlog": wanted, "claimed_at": now_iso if wanted else None,
             "delegated": bool(getattr(args, "delegated", None)),
         }
+        if scope_provided:
+            rec["scope"] = direct_scope
+            rec["scope_updated_at"] = now_iso
+        if codex_thread_id is not None:
+            rec["codex_thread_id"] = codex_thread_id
+            rec["codex_thread_bound_at"] = now_iso
         records.append(rec)
         verb = "registered"
 
@@ -1745,6 +1890,7 @@ LIST_QUERY_FIELDS = frozenset({
     "branch", "slug", "path", "intent", "base", "status", "backlog",
     "claimed_at", "handed_back_at", "handed_back_sha", "delegated",
     "created_at", "resolved_at", "live_state", "landed", "worktree_present",
+    "scope", "scope_updated_at", "codex_thread_id", "codex_thread_bound_at",
 })
 
 
@@ -2416,6 +2562,19 @@ def build_parser() -> argparse.ArgumentParser:
              "to give it up. A claim lives exactly as long as the record is active, "
              "so `resolve` and `sweep` release it with no extra step.",
     )
+    scope_mode = reg.add_mutually_exclusive_group()
+    scope_mode.add_argument(
+        "--scope", default=None,
+        help="structured Scope JSON with files[path, operation=add|modify]",
+    )
+    scope_mode.add_argument(
+        "--scope-file", default=None, metavar="PATH",
+        help="file containing structured Scope JSON for a direct worktree",
+    )
+    reg.add_argument(
+        "--codex-thread-id", default=None,
+        help="stable Codex thread id that owns this worktree; one thread may own multiple worktrees",
+    )
     reg.add_argument(
         "--exclusive", action="store_true",
         help="new-birth mode: refuse when branch OR path already has an active "
@@ -2434,6 +2593,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reg.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     reg.set_defaults(func=cmd_register)
+
+    scope = sub.add_parser("scope", help="manage explicit worktree Scope declarations")
+    scope_sub = scope.add_subparsers(dest="scope_cmd")
+    scope_set = scope_sub.add_parser("set", help="set Scope for an active direct worktree")
+    add_state(scope_set)
+    selector = scope_set.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--branch", default=None, help="exact active branch selector")
+    selector.add_argument("--path", default=None, help="exact active worktree path selector")
+    scope_value = scope_set.add_mutually_exclusive_group(required=True)
+    scope_value.add_argument("--scope", default=None, help="structured Scope JSON")
+    scope_value.add_argument("--scope-file", default=None, metavar="PATH",
+                             help="file containing structured Scope JSON")
+    scope_set.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
+    scope_set.set_defaults(func=cmd_scope_set)
+
+    owner = sub.add_parser("owner", help="manage stable Codex thread ownership")
+    owner_sub = owner.add_subparsers(dest="owner_cmd")
+    owner_bind = owner_sub.add_parser("bind", help="bind one active worktree to a Codex thread")
+    add_state(owner_bind)
+    owner_selector = owner_bind.add_mutually_exclusive_group(required=True)
+    owner_selector.add_argument("--branch", default=None, help="exact active branch selector")
+    owner_selector.add_argument("--path", default=None, help="exact active worktree path selector")
+    owner_bind.add_argument("--codex-thread-id", required=True,
+                            help="stable Codex thread id; reuse it for multiple worktrees")
+    owner_bind.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
+    owner_bind.set_defaults(func=cmd_owner_bind)
 
     ls = sub.add_parser("list", help="ledger + live classify of each record")
     add_state(ls)
@@ -2513,7 +2698,8 @@ def build_parser() -> argparse.ArgumentParser:
 # were spawned in a loop and the interpreter start-up spread (median 1.26 ms between
 # arrivals) serialized them before the lock ever mattered. A structural assertion
 # catches the same mutation every time, and costs nothing.
-LEDGER_WRITERS = (cmd_register, cmd_hand_back, cmd_resolve, cmd_sweep)
+LEDGER_WRITERS = (cmd_register, cmd_scope_set, cmd_owner_bind,
+                  cmd_hand_back, cmd_resolve, cmd_sweep)
 
 
 def _prepare_register_base(args: argparse.Namespace) -> None:

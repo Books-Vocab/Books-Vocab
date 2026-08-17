@@ -170,6 +170,22 @@ def test_open_parser_exposes_explicit_branch_type_choices():
     type_action = next(action for action in open_parser._actions if "--type" in action.option_strings)
     assert set(type_action.choices) == {"debug", "feat", "research"}
 
+def test_open_and_adopt_parser_expose_direct_scope_and_codex_thread_owner():
+    parser = MODULE.build_parser()
+    subparsers = next(
+        action for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    for name in ("open", "adopt"):
+        option_strings = {
+            option
+            for action in subparsers.choices[name]._actions
+            for option in action.option_strings
+        }
+        assert "--scope" in option_strings
+        assert "--scope-file" in option_strings
+        assert "--codex-thread-id" in option_strings
+
 def test_plan_is_never_empty():
     """An empty plan is how "checked nothing" became indistinguishable from
     "everything passed": aggregate_verdict([]) is pass. Make it unreachable."""

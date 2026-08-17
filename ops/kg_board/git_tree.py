@@ -167,6 +167,8 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             except ValueError as exc:
                 errors.append(f"ref {branch} has invalid scope: {exc}")
                 scope = None
+        codex_thread_id = checked(raw.get("codex_thread_id"),
+                                  f"ref {branch} codex_thread_id")
         refs.append({
             "id": checked(raw.get("id"), f"ref {branch} id") or f"ref-{index}",
             "branch": branch,
@@ -186,6 +188,8 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         })
         if "scope" in raw:
             refs[-1]["scope"] = scope
+        if "codex_thread_id" in raw:
+            refs[-1]["codex_thread_id"] = codex_thread_id
         for key in ("base_sha", "handed_back_sha"):
             if raw.get(key) is not None and _sha(raw.get(key)) is None:
                 errors.append(f"ref {branch} has invalid {key}")
