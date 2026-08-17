@@ -7,12 +7,273 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
+import os
+import platform
+import subprocess
 import sys
+import tempfile
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from lib import test_timing_store as store
+from lib.streaming_command import run_streamed_command
+
+
+BUNDLE_SCHEMA = "kg.test.bundle.v1"
+TERMINAL_STATUSES = {"passed", "failed", "cancelled", "error", "timeout"}
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _load_bundle(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema") != BUNDLE_SCHEMA:
+        raise ValueError(f"bundle must declare {BUNDLE_SCHEMA}")
+    tasks = payload.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        raise ValueError("bundle tasks must be a non-empty list")
+    ids = [task.get("id") for task in tasks if isinstance(task, dict)]
+    if len(ids) != len(tasks) or len(set(ids)) != len(ids) or any(not value for value in ids):
+        raise ValueError("bundle task ids must be unique and non-empty")
+    known = set(ids)
+    for task in tasks:
+        if not isinstance(task.get("command_key"), str) or not task["command_key"]:
+            raise ValueError(f"task {task.get('id')!r} lacks command_key")
+        dependencies = task.get("depends_on", [])
+        if not isinstance(dependencies, list) or any(value not in known for value in dependencies):
+            raise ValueError(f"task {task['id']!r} has an unknown dependency")
+        if not isinstance(task.get("resource_class", "default"), str):
+            raise ValueError(f"task {task['id']!r} has invalid resource_class")
+    return payload
+
+
+def _status_path(root: Path, run_id: str) -> Path:
+    return root / ".cache" / "test_runs" / f"{run_id}.json"
+
+
+def _task_command(task: dict[str, Any], timing_output: Path) -> tuple[list[str], dict[str, str]]:
+    explicit = task.get("command")
+    if explicit is not None:
+        if not isinstance(explicit, list) or not explicit or any(not isinstance(x, str) for x in explicit):
+            raise ValueError(f"task {task['id']!r} command must be a non-empty string list")
+        command = list(explicit)
+    elif task["command_key"] == "pytest.selector":
+        selector = task.get("selector")
+        if not isinstance(selector, str) or not selector:
+            raise ValueError(f"task {task['id']!r} pytest.selector requires selector")
+        command = [
+            "uv", "run", "--no-project", "--python", "3.13", "--with", "pytest",
+            "pytest", "-q", selector,
+        ]
+    else:
+        raise ValueError(
+            f"task {task['id']!r} has no executable mapping for command_key="
+            f"{task['command_key']!r}"
+        )
+    environment = dict(os.environ)
+    if any(Path(value).name == "pytest" for value in command):
+        ops_lib = str(Path(__file__).resolve().parent / "lib")
+        existing = environment.get("PYTHONPATH", "")
+        environment["PYTHONPATH"] = ops_lib + (os.pathsep + existing if existing else "")
+        command.extend([
+            "-p", "pytest_timing_plugin",
+            "--kg-timing-output", str(timing_output),
+            "--kg-timing-command-key", task["command_key"],
+        ])
+    return command, environment
+
+
+def _ingest_plugin_output(
+    path: Path, *, run_id: str, bundle_id: str, task: dict[str, Any],
+    started_at: str, finished_at: str,
+) -> int:
+    if not path.exists():
+        return 0
+    count = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+            result = store.record_measurement(
+                run_id=run_id, bundle_id=bundle_id,
+                command_key=str(row["command_key"]), selector=row.get("selector"),
+                suite=row.get("suite"), tier=task.get("tier"), host=platform.node(),
+                runtime_version=platform.python_version(),
+                xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
+                head_sha=os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
+                resource_class=task.get("resource_class", "default"),
+                started_at=started_at, finished_at=finished_at,
+                duration_s=float(row["duration_s"]), status=str(row["status"]),
+                exit_code=row.get("exit_code"), cache_status=task.get("cache_status"),
+                timing_source="pytest-plugin", duration_status=row.get("duration_status", "complete"),
+            )
+            count += int(result.get("recorded", False))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return count
+
+
+def _run_bundle_task(
+    task: dict[str, Any], *, root: Path, run_id: str, bundle_id: str,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    started_at = _iso_now()
+    timing_output = root / ".cache" / "test_runs" / f"{run_id}.{task['id']}.jsonl"
+    command, environment = _task_command(task, timing_output)
+    try:
+        result = run_streamed_command(
+            command, cwd=root, label_key="bundle-task", label=str(task["id"]),
+            progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
+            timeout_seconds=task.get("timeout_s"), env=environment,
+            task_worktree=root,
+        )
+        status = "timeout" if getattr(result, "timed_out", False) else (
+            "passed" if result.returncode == 0 else "failed"
+        )
+        exit_code = result.returncode
+        error = None
+    except KeyboardInterrupt:
+        raise
+    except (OSError, ValueError, RuntimeError) as exc:
+        status, exit_code, error = "error", None, f"{type(exc).__name__}: {exc}"
+    finished_at = _iso_now()
+    duration_s = time.monotonic() - started
+    recorded = store.record_measurement(
+        run_id=run_id, bundle_id=bundle_id, command_key=task["command_key"],
+        selector=task.get("selector"), suite=task.get("suite", "bundle"),
+        tier=task.get("tier"), host=platform.node(), runtime_version=platform.python_version(),
+        xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
+        head_sha=os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
+        resource_class=task.get("resource_class", "default"), started_at=started_at,
+        finished_at=finished_at, duration_s=duration_s, status=(
+            "pass" if status == "passed" else
+            "fail" if status == "failed" else
+            "inconclusive"
+        ), exit_code=exit_code, cache_status=task.get("cache_status"),
+        timing_source="bundle-runner",
+        duration_status="interrupted" if status == "timeout" else "complete",
+    )
+    plugin_count = _ingest_plugin_output(
+        timing_output, run_id=run_id, bundle_id=bundle_id, task=task,
+        started_at=started_at, finished_at=finished_at,
+    )
+    return {
+        "id": task["id"], "command_key": task["command_key"],
+        "selector": task.get("selector"), "resource_class": task.get("resource_class", "default"),
+        "status": status, "exit_code": exit_code, "duration_s": round(duration_s, 3),
+        "timing_recorded": bool(recorded.get("recorded")),
+        "per_test_measurements": plugin_count, "error": error,
+    }
+
+
+def cmd_run_bundle(args: argparse.Namespace) -> int:
+    root = Path(args.repo).resolve() if args.repo else Path.cwd().resolve()
+    bundle_path = Path(args.bundle).resolve()
+    try:
+        bundle = _load_bundle(bundle_path)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        _emit({"schema": BUNDLE_SCHEMA, "status": "error", "error": str(exc)}, args.json)
+        return 2
+    run_id = args.run_id or f"run-{uuid.uuid4().hex}"
+    status_path = _status_path(root, run_id)
+    tasks_by_id = {task["id"]: task for task in bundle["tasks"]}
+    task_rows = {
+        task_id: {
+            "id": task_id, "command_key": task["command_key"],
+            "selector": task.get("selector"), "resource_class": task.get("resource_class", "default"),
+            "status": "pending",
+        }
+        for task_id, task in tasks_by_id.items()
+    }
+    payload = {
+        "schema": BUNDLE_SCHEMA, "run_id": run_id, "bundle_id": bundle.get("bundle_id", bundle_path.stem),
+        "tier": bundle.get("tier"), "status": "running", "started_at": _iso_now(),
+        "finished_at": None, "tasks": list(task_rows.values()), "warnings": [],
+    }
+    _atomic_json(status_path, payload)
+    completed: dict[str, str] = {}
+    pending = set(tasks_by_id)
+    futures: dict[concurrent.futures.Future, str] = {}
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(4, len(pending))))
+    try:
+        while pending or futures:
+            for task_id in sorted(list(pending)):
+                task = tasks_by_id[task_id]
+                dependencies = task.get("depends_on", [])
+                if any(dep in completed and completed[dep] != "passed" for dep in dependencies):
+                    task_rows[task_id]["status"] = "blocked"
+                    completed[task_id] = "blocked"
+                    pending.remove(task_id)
+                    continue
+                if not all(dep in completed for dep in dependencies):
+                    continue
+                resource = task.get("resource_class", "default")
+                if any(tasks_by_id[running_id].get("resource_class", "default") == resource
+                       for running_id in futures.values()):
+                    continue
+                task_rows[task_id]["status"] = "running"
+                futures[executor.submit(
+                    _run_bundle_task, task, root=root, run_id=run_id, bundle_id=payload["bundle_id"]
+                )] = task_id
+                pending.remove(task_id)
+            _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
+            if not futures:
+                if pending:
+                    raise ValueError("bundle dependency cycle or unsatisfied resource state")
+                break
+            done, _ = concurrent.futures.wait(
+                futures, return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for future in done:
+                task_id = futures.pop(future)
+                row = future.result()
+                task_rows[task_id] = row
+                completed[task_id] = "passed" if row["status"] == "passed" else row["status"]
+                _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
+    except KeyboardInterrupt:
+        for future in futures:
+            future.cancel()
+        payload.update({"status": "cancelled", "finished_at": _iso_now(), "tasks": list(task_rows.values())})
+        _atomic_json(status_path, payload)
+        return 1
+    except Exception as exc:
+        payload.update({"status": "error", "finished_at": _iso_now(), "error": str(exc), "tasks": list(task_rows.values())})
+        _atomic_json(status_path, payload)
+        _emit(payload, args.json)
+        return 2
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+    hard_failures = [row for row in task_rows.values() if row.get("status") in {"failed", "timeout", "error", "blocked"}
+                     and tasks_by_id[row["id"]].get("failure_policy", "block") == "block"]
+    warnings = [row["id"] for row in task_rows.values() if row.get("status") not in {"passed", "pending", "running"}
+                and tasks_by_id[row["id"]].get("failure_policy", "block") != "block"]
+    payload.update({
+        "status": "failed" if hard_failures else "passed", "verdict": "block" if hard_failures else ("warn" if warnings else "pass"),
+        "warnings": warnings, "finished_at": _iso_now(), "tasks": list(task_rows.values()),
+    })
+    _atomic_json(status_path, payload)
+    _emit(payload, args.json)
+    return 1 if hard_failures else 0
 
 
 def _emit(payload: dict, as_json: bool) -> None:
@@ -96,6 +357,13 @@ def build_parser() -> argparse.ArgumentParser:
     estimate.add_argument("--db")
     _add_json(estimate)
     estimate.set_defaults(func=cmd_estimate)
+
+    run = sub.add_parser("run")
+    run.add_argument("--bundle", required=True)
+    run.add_argument("--repo")
+    run.add_argument("--run-id")
+    _add_json(run)
+    run.set_defaults(func=cmd_run_bundle)
 
     for verb, func in (("status", cmd_status), ("wait", cmd_wait)):
         command = sub.add_parser(verb)

@@ -170,6 +170,7 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
 OPS_TEST_ALIASES: dict[str, str] = {
     "ops/lib/test_timing_store.py": "ops/tests/test_test_timing.py",
     "ops/lib/worktree_test_routes.py": "ops/tests/test_orchestrator_seams.py",
+    "ops/lib/pytest_timing_plugin.py": "ops/tests/test_test_timing_runner.py",
     "ops/test_route.py": "ops/tests/test_orchestrator_seams.py",
     "ops/test_timing.py": "ops/tests/test_test_timing.py",
 }

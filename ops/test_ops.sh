@@ -131,6 +131,7 @@ run_one() {
         ops/tests/test_worktree_orchestrate_recovery.py \
         ops/tests/test_orchestrator_seams.py \
         ops/tests/test_test_timing.py \
+        ops/tests/test_test_timing_runner.py \
         ops/tests/test_worktree_registry.py \
         ops/tests/test_worktree_state.py \
         ops/tests/test_task_registry.py \
