@@ -395,6 +395,15 @@ def test_git_tree_browser_keeps_lane_density_readable_at_fit_scale():
     assert "const TREE_PADDING_X = 30" in js
 
 
+def test_git_tree_browser_routes_cross_lane_edges_without_shared_horizontal_buses():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "routeCrossLaneEdge" in js
+    assert "routeIndex" in js
+    assert "H ${x(to.lane)}" not in js
+    assert "C ${" in js
+
+
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")

@@ -317,9 +317,22 @@ function treeLayout(viewport,visibleCommits){
   });
   return {branchLanes,positions,ordered,minRank,maxRank,rowCount:maxRank-minRank+1};
 }
-function edgePath(from,to,x,y){
+function routeCrossLaneEdge(from,to,x,y,routeIndex=0,routeCount=1){
+  const startX=x(from.lane),startY=y(from.row),endX=x(to.lane),endY=y(to.row);
+  const direction=endY>=startY?1:-1;
+  const verticalSpan=Math.abs(endY-startY);
+  const curve=Math.max(10,Math.min(TREE_ROW_HEIGHT*.72,verticalSpan*.36||TREE_ROW_HEIGHT*.36));
+  // Edges converging on the same parent get independent control rails. This
+  // keeps them visually separate without inventing extra commits or lanes.
+  const routeOffset=(routeIndex-(routeCount-1)/2)*Math.min(6,TREE_ROW_HEIGHT*.16);
+  const control1Y=startY+direction*curve+routeOffset;
+  const control2Y=endY-direction*curve+routeOffset;
+  const dx=endX-startX;
+  return `M ${startX} ${startY} C ${startX+dx*.28} ${control1Y} ${endX-dx*.28} ${control2Y} ${endX} ${endY}`;
+}
+function edgePath(from,to,x,y,routeIndex=0,routeCount=1){
   if(from.lane===to.lane)return `M ${x(from.lane)} ${y(from.row)} V ${y(to.row)}`;
-  return `M ${x(from.lane)} ${y(from.row)} V ${y(to.row)} H ${x(to.lane)}`;
+  return routeCrossLaneEdge(from,to,x,y,routeIndex,routeCount);
 }
 function commitInspector(row,ref){
   const files=(row.files||[]).map(file=>`<li><code>${esc(file)}</code></li>`).join("")||"<li>沒有檔案統計</li>";
@@ -479,13 +492,25 @@ function renderTree(){
   const renderedWidth=Math.round(width*treeZoom/100),renderedHeight=Math.round(height*treeZoom/100);
   const x=lane=>TREE_PADDING_X+lane*TREE_LANE_WIDTH;
   const y=row=>TREE_HEADER_HEIGHT+row*TREE_ROW_HEIGHT;
-  const edges=[];
+  const graphEdges=[];
   ordered.forEach(row=>{
     const from=positions.get(row.sha);
     (row.parents||[]).forEach(parentSha=>{
       const to=positions.get(parentSha);
-      if(to)edges.push(`<path class="edge" d="${edgePath(from,to,x,y)}"/>`);
+      if(to)graphEdges.push({from,to});
     });
+  });
+  const routeGroups=new Map();
+  graphEdges.forEach(edge=>{
+    if(edge.from.lane===edge.to.lane)return;
+    const key=`${edge.to.lane}:${edge.to.row}`;
+    if(!routeGroups.has(key))routeGroups.set(key,[]);
+    routeGroups.get(key).push(edge);
+  });
+  const edges=graphEdges.map(edge=>{
+    if(edge.from.lane===edge.to.lane)return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y)}"/>`;
+    const group=routeGroups.get(`${edge.to.lane}:${edge.to.row}`)||[edge];
+    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y,group.indexOf(edge),group.length)}"/>`;
   });
   const branchBoundaryByFrom=new Map([...viewport.branchTruncations.values()].map(record=>[record.from,record]));
   const parentBoundaryMarkers=ordered.map(row=>{
