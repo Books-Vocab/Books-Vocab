@@ -38,7 +38,7 @@ jobs:
       - name: Install uv
         id: setup_uv
         continue-on-error: true
-        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: '0.8.23'
 
