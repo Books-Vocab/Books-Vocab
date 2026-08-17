@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
-import statistics
 import threading
 import time
 import uuid
@@ -17,6 +17,7 @@ from typing import Any, Iterator
 
 SCHEMA = "kg.test.timing.v1"
 RETENTION_DAYS = 90
+ROLLUP_RESERVOIR_SIZE = 256
 NORMAL_STATUSES = frozenset({"pass", "fail", "inconclusive"})
 EXCLUDED_STATUSES = frozenset({"timeout", "interrupted", "cancelled"})
 DIMENSION_COLUMNS = (
@@ -135,10 +136,16 @@ def initialize(path: str | Path | None = None) -> Path:
                 max_s REAL NOT NULL,
                 p50_s REAL NOT NULL,
                 p90_s REAL NOT NULL,
+                durations_json TEXT NOT NULL DEFAULT '[]',
                 updated_at TEXT NOT NULL
             );
                 """
             )
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(timing_rollups)")}
+            if "durations_json" not in columns:
+                conn.execute(
+                    "ALTER TABLE timing_rollups ADD COLUMN durations_json TEXT NOT NULL DEFAULT '[]'"
+                )
     return db
 
 
@@ -146,6 +153,7 @@ def _eligible(status: str, duration_status: str, duration_s: float) -> bool:
     return (
         status in NORMAL_STATUSES
         and duration_status == "complete"
+        and math.isfinite(duration_s)
         and duration_s >= 0
     )
 
@@ -230,6 +238,51 @@ def _percentile(values: list[float], fraction: float) -> float:
     return float(ordered[index])
 
 
+def _bounded_reservoir(values: list[float]) -> list[float]:
+    """Keep a deterministic bounded sample while aggregate counters stay exact."""
+    if len(values) <= ROLLUP_RESERVOIR_SIZE:
+        return list(values)
+    ordered = sorted(float(value) for value in values)
+    last = len(ordered) - 1
+    return [ordered[round(index * last / (ROLLUP_RESERVOIR_SIZE - 1))]
+            for index in range(ROLLUP_RESERVOIR_SIZE)]
+
+
+def _rollup_durations(row: sqlite3.Row) -> list[float]:
+    """Recover an approximate/full sample list from a retained rollup."""
+    try:
+        values = json.loads(row["durations_json"] or "[]")
+        if isinstance(values, list) and values:
+            return _bounded_reservoir([float(value) for value in values])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+    # Rollups written by an older local schema have p50/p90 but no retained list.
+    # They remain useful as conservative p50 samples instead of silently vanishing.
+    return _bounded_reservoir([float(row["p50_s"])] * max(int(row["sample_count"]), 1))
+
+
+def _rollup_matches(row: sqlite3.Row, filters: dict[str, Any]) -> bool:
+    try:
+        values = json.loads(row["rollup_key"])
+        dimensions = dict(zip(DIMENSION_COLUMNS, values, strict=True))
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return all(value is None or dimensions.get(key) == value
+               for key, value in filters.items() if key in DIMENSION_COLUMNS)
+
+
+def _rollup_durations_for(
+    conn: sqlite3.Connection, filters: dict[str, Any]
+) -> tuple[list[float], int]:
+    durations: list[float] = []
+    sample_count = 0
+    for row in conn.execute("SELECT * FROM timing_rollups").fetchall():
+        if _rollup_matches(row, filters):
+            durations.extend(_rollup_durations(row))
+            sample_count += int(row["sample_count"])
+    return durations, sample_count
+
+
 def _estimate_payload(
     durations: list[float], *, confidence: str, sample_count: int, basis: str,
     resource_wait_estimate_s: float = 0.0,
@@ -281,8 +334,13 @@ def estimate(
                 f"SELECT duration_s FROM measurements WHERE {where} "
                 "ORDER BY finished_at ASC", args,
             ).fetchall()
+            durations = [float(row["duration_s"]) for row in rows]
+            rollup_durations, rollup_count = _rollup_durations_for(conn, filters)
+            durations.extend(rollup_durations)
+            sample_count = len(rows) + rollup_count
             basis = "exact command/environment samples"
-            if not rows:
+            fallback = False
+            if not durations:
                 fallback_filters = {
                     "command_key": command_key,
                     "resource_class": resource_class,
@@ -292,17 +350,21 @@ def estimate(
                     f"SELECT duration_s FROM measurements WHERE {fallback_where} "
                     "ORDER BY finished_at ASC", fallback_args,
                 ).fetchall()
+                durations = [float(row["duration_s"]) for row in rows]
+                rollup_durations, rollup_count = _rollup_durations_for(conn, fallback_filters)
+                durations.extend(rollup_durations)
+                sample_count = len(rows) + rollup_count
                 basis = "same command/resource-class fallback"
-            durations = [float(row["duration_s"]) for row in rows]
+                fallback = True
         if not durations:
             return _estimate_payload(
                 [1.0], confidence="low", sample_count=0,
                 basis="no history; one-second placeholder, measure this command",
                 resource_wait_estimate_s=resource_wait_estimate_s,
             ) | {"estimate_s": None, "lower_s": None, "upper_s": None}
-        confidence = "medium" if len(durations) >= 3 else "low"
+        confidence = "medium" if sample_count >= 3 and not fallback else "low"
         return _estimate_payload(
-            durations, confidence=confidence, sample_count=len(durations), basis=basis,
+            durations, confidence=confidence, sample_count=sample_count, basis=basis,
             resource_wait_estimate_s=resource_wait_estimate_s,
         )
     except (OSError, sqlite3.Error, TimingStoreError) as exc:
@@ -332,6 +394,7 @@ def estimate_bundle(
     estimates = [
         estimate(
             str(task["command_key"]), db_path=db_path,
+            selector=task.get("selector"), suite=task.get("suite"), tier=task.get("tier"),
             resource_class=task.get("resource_class"),
             host=task.get("host"), runtime_version=task.get("runtime_version"),
             xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
@@ -339,11 +402,16 @@ def estimate_bundle(
         )
         for task in tasks
     ]
+    unknown_tasks = [str(task.get("id") or index)
+                     for index, (task, item) in enumerate(zip(tasks, estimates))
+                     if item.get("estimate_s") is None]
     known = [item for item in estimates if item.get("estimate_s") is not None]
-    if not known:
+    if unknown_tasks:
         return {
             "schema": SCHEMA, "estimate_s": None, "lower_s": None, "upper_s": None,
-            "confidence": "low", "sample_count": 0, "basis": "no task history",
+            "confidence": "low", "sample_count": sum(int(x.get("sample_count") or 0) for x in known),
+            "basis": "unknown task history; ETA is incomplete",
+            "unknown_tasks": unknown_tasks,
             "tasks": estimates,
         }
     if parallel:
@@ -366,48 +434,67 @@ def estimate_bundle(
         "upper_s": round(upper + startup_cost_s, 2),
         "confidence": "medium" if all(x.get("confidence") == "medium" for x in known) else "low",
         "sample_count": sum(int(x.get("sample_count") or 0) for x in known),
-        "basis": basis, "tasks": estimates,
+        "basis": basis, "tasks": estimates, "unknown_tasks": [],
     }
 
 
-def prune(path: str | Path | None = None, *, now: datetime | None = None) -> dict[str, int]:
+def prune(path: str | Path | None = None, *, now: datetime | None = None) -> dict[str, Any]:
     """Roll old normal samples into coarse aggregates, then remove raw rows."""
     cutoff = (now or _utc_now()) - timedelta(days=RETENTION_DAYS)
     removed = 0
     rollups = 0
-    with connection(path or default_db_path()) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        rows = conn.execute(
-            "SELECT * FROM measurements WHERE created_at < ?", (_iso(cutoff),)
-        ).fetchall()
-        groups: dict[str, list[sqlite3.Row]] = {}
-        for row in rows:
-            if not row["sample_eligible"]:
-                continue
-            key_values = [row[column] for column in DIMENSION_COLUMNS]
-            key = json.dumps(key_values, ensure_ascii=False, separators=(",", ":"))
-            groups.setdefault(key, []).append(row)
-        for key, group in groups.items():
-            durations = [float(row["duration_s"]) for row in group]
-            first = group[0]
-            conn.execute(
-                """INSERT INTO timing_rollups (
-                    rollup_key, command_key, resource_class, sample_count, sum_s,
-                    min_s, max_s, p50_s, p90_s, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(rollup_key) DO UPDATE SET
-                    sample_count=timing_rollups.sample_count + excluded.sample_count,
-                    sum_s=timing_rollups.sum_s + excluded.sum_s,
-                    min_s=min(timing_rollups.min_s, excluded.min_s),
-                    max_s=max(timing_rollups.max_s, excluded.max_s),
-                    p50_s=excluded.p50_s, p90_s=excluded.p90_s,
-                    updated_at=excluded.updated_at""",
-                (key, first["command_key"], first["resource_class"], len(group),
-                 sum(durations), min(durations), max(durations),
-                 _percentile(durations, .5), _percentile(durations, .9), _iso()),
-            )
-            rollups += 1
-        conn.execute("DELETE FROM measurements WHERE created_at < ?", (_iso(cutoff),))
-        removed = len(rows)
-        conn.commit()
-    return {"removed": removed, "rollups": rollups}
+    db = path or default_db_path()
+    try:
+        initialize(db)
+        with connection(db) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                "SELECT * FROM measurements WHERE created_at < ?", (_iso(cutoff),)
+            ).fetchall()
+            groups: dict[str, list[sqlite3.Row]] = {}
+            for row in rows:
+                if not row["sample_eligible"]:
+                    continue
+                key_values = [row[column] for column in DIMENSION_COLUMNS]
+                key = json.dumps(key_values, ensure_ascii=False, separators=(",", ":"))
+                groups.setdefault(key, []).append(row)
+            for key, group in groups.items():
+                durations = [float(row["duration_s"]) for row in group]
+                first = group[0]
+                existing = conn.execute(
+                    "SELECT * FROM timing_rollups WHERE rollup_key = ?", (key,)
+                ).fetchone()
+                old_durations = _rollup_durations(existing) if existing else []
+                old_count = int(existing["sample_count"]) if existing else 0
+                combined = _bounded_reservoir(old_durations + durations)
+                old_sum = float(existing["sum_s"]) if existing else 0.0
+                old_min = float(existing["min_s"]) if existing else min(durations)
+                old_max = float(existing["max_s"]) if existing else max(durations)
+                values = (
+                    first["command_key"], first["resource_class"], old_count + len(durations),
+                    old_sum + sum(durations), min(old_min, min(durations)), max(old_max, max(durations)),
+                    _percentile(combined, .5), _percentile(combined, .9),
+                    json.dumps(combined, separators=(",", ":")), _iso(), key,
+                )
+                if existing:
+                    conn.execute(
+                        """UPDATE timing_rollups SET command_key=?, resource_class=?,
+                           sample_count=?, sum_s=?, min_s=?, max_s=?, p50_s=?, p90_s=?,
+                           durations_json=?, updated_at=? WHERE rollup_key=?""", values,
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO timing_rollups (
+                            rollup_key, command_key, resource_class, sample_count, sum_s,
+                            min_s, max_s, p50_s, p90_s, durations_json, updated_at
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                        (key, *values[:-1]),
+                    )
+                rollups += 1
+            conn.execute("DELETE FROM measurements WHERE created_at < ?", (_iso(cutoff),))
+            removed = len(rows)
+            conn.commit()
+        return {"removed": removed, "rollups": rollups, "available": True}
+    except (OSError, sqlite3.Error, TimingStoreError) as exc:
+        return {"removed": 0, "rollups": 0, "available": False,
+                "error": f"{type(exc).__name__}: {exc}"}
