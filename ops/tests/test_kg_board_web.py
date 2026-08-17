@@ -402,11 +402,16 @@ def test_git_tree_browser_routes_cross_lane_edges_without_shared_horizontal_buse
     assert "routeIndex" in js
     assert "H ${x(to.lane)}" not in js
     assert "C ${" in js
+    assert "const crossLaneEdges=graphEdges.filter" in js
+    assert "const routeIndexByEdge=new Map" in js
+    assert "routeIndexByEdge.get(edge)" in js
+    assert "routeGroups" not in js
 
 
 def test_git_tree_browser_exposes_adjustable_worktree_lane_spacing():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
 
     assert 'id="tree-lane-spacing"' in index
     assert 'id="tree-lane-spacing-value"' in index
@@ -414,6 +419,27 @@ def test_git_tree_browser_exposes_adjustable_worktree_lane_spacing():
     assert "TREE_LANE_WIDTH_MAX" in js
     assert "let treeLaneWidth = TREE_LANE_WIDTH" in js
     assert "tree-lane-spacing" in js
+    assert "const laneSpacingInput=document.getElementById(\"tree-lane-spacing\")" in js
+    assert "if(laneSpacingInput)" in js
+    assert '@media(max-width:1100px)and(min-width:861px)' in "".join(css.split())
+    assert 'grid-template-areas:"zoom-label zoom-input zoom-output"' in css
+
+
+def test_git_tree_browser_exposes_full_worktree_and_commit_hover_details():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert '<title>${esc(ref.branch)} · ${esc(stateLabel)}</title>' in js
+    assert '<title>${esc(shortSha(row.sha)+" · "+row.subject)}</title>' in js
+
+
+def test_ticket_summary_keeps_id_and_brief_in_separate_flex_slots():
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+
+    compact_css = "".join(css.split())
+    assert ".ticket-title{display:flex" in compact_css
+    assert "flex:1 1 auto" in css
+    assert ".ticket-titlecode{flex:00auto" in compact_css
+    assert ".ticket-title>span{min-width:0" in compact_css
 
 
 def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
