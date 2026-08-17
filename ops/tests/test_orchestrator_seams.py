@@ -159,6 +159,7 @@ def test_control_plane_and_kg_board_sources_have_explicit_focused_routes():
     control_plane = ROUTES.resolve_routes([
         "ops/lib/worktree_gate_tiers.py",
         "ops/lib/worktree_test_routes.py",
+        "ops/lib/worktree_orchestrator_commands.py",
     ])
     assert control_plane["fallback"] is False
     assert "orchestrator.facade" in {
@@ -188,11 +189,34 @@ def test_control_plane_and_kg_board_sources_have_explicit_focused_routes():
         "ops/tests/test_kg_board_web.py",
     }
 
+    combined = ROUTES.resolve_routes([
+        "ops/lib/worktree_gate_tiers.py",
+        "ops/lib/worktree_test_routes.py",
+        "ops/lib/worktree_orchestrator_commands.py",
+        "ops/kg_board/__init__.py",
+        "ops/kg_board/git_tree.py",
+        "ops/kg_board/model.py",
+        "ops/kg_board/scope.py",
+        "ops/kg_board/server.py",
+    ])
+    assert combined["fallback"] is False
+    assert {route["route_id"] for route in combined["routes"]} == {
+        "orchestrator.planning",
+        "orchestrator.gate",
+        "orchestrator.lifecycle",
+        "orchestrator.claims",
+        "orchestrator.delivery",
+        "orchestrator.recovery",
+        "orchestrator.facade",
+        "orchestrator.kg-board",
+    }
+
 
 def test_unknown_source_still_fails_safe_alongside_known_routes():
     payload = ROUTES.resolve_routes([
         "ops/lib/worktree_gate_tiers.py",
         "ops/kg_board/model.py",
+        "ops/lib/worktree_orchestrator_commands.py",
         "ops/kg_board_future.py",
     ])
     assert payload["fallback"] is True
