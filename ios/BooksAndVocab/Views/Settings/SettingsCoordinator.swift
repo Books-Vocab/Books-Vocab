@@ -209,31 +209,42 @@ final class SettingsCoordinator: SettingsCoordinating {
         await kgService.healthCheck()
         connectionPulse.toggle()
 
-        if authManager.isLoggedIn {
-            do {
-                let config = try await kgService.fetchUserConfig()
-                guard applyServerTranslationConfig(config.translation),
-                      applyServerReviewClock(config.review_clock),
-                      applyServerReviewMode(config.review_mode),
-                      applyServerAutoLink(config.auto_link)
-                else {
-                    throw SettingsConfigurationPayloadError()
-                }
-                applyServerActiveNotebook(config.vocab_ui, authManager: authManager)
-                configurationIssue = nil
-            } catch {
-                // Keep the local/iCloud value visible, but make the unavailable
-                // server projection explicit instead of presenting a default as
-                // if the live fetch had succeeded.
-                configurationIssue = .init(
-                    surfaces: [.other, .translation],
-                    operation: .fetch,
-                    message: L10n.string("設定同步失敗，已保留目前本機值，請重試。")
-                )
-                AppLog.kg.warning("fetchUserConfig failed: \(error.localizedDescription)")
-            }
-        } else {
+        guard authManager.isLoggedIn,
+              !authManager.isDemoMode,
+              let requestedUserId = authManager.userId
+        else {
             configurationIssue = nil
+            return
+        }
+
+        do {
+            let config = try await kgService.fetchUserConfig()
+            // A request started for account A may finish after the UI has
+            // crossed to account B. Never project that response into B.
+            guard !Task.isCancelled,
+                  authManager.isLoggedIn,
+                  !authManager.isDemoMode,
+                  authManager.userId == requestedUserId
+            else { return }
+            guard applyServerTranslationConfig(config.translation),
+                  applyServerReviewClock(config.review_clock),
+                  applyServerReviewMode(config.review_mode),
+                  applyServerAutoLink(config.auto_link)
+            else {
+                throw SettingsConfigurationPayloadError()
+            }
+            applyServerActiveNotebook(config.vocab_ui, authManager: authManager)
+            configurationIssue = nil
+        } catch {
+            // Keep the local/iCloud value visible, but make the unavailable
+            // server projection explicit instead of presenting a default as
+            // if the live fetch had succeeded.
+            configurationIssue = .init(
+                surfaces: [.other, .translation],
+                operation: .fetch,
+                message: L10n.string("設定同步失敗，已保留目前本機值，請重試。")
+            )
+            AppLog.kg.warning("fetchUserConfig failed: \(error.localizedDescription)")
         }
     }
 
@@ -270,6 +281,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         authManager: any AuthManaging
     ) {
         guard authManager.isLoggedIn,
+              !authManager.isDemoMode,
               authManager.userId != nil,
               let vocabUI,
               let ts = vocabUI.updated_at,

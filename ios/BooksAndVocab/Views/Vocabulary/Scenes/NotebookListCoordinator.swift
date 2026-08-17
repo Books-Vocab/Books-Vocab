@@ -152,10 +152,18 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         kgService: any UserConfigFetching,
         store: ActiveNotebookStore
     ) async {
-        guard authManager.isLoggedIn, let requestedUserId = authManager.userId else { return }
+        guard authManager.isLoggedIn,
+              !authManager.isDemoMode,
+              let requestedUserId = authManager.userId,
+              let requestedToken = authManager.token
+        else { return }
         do {
             let config = try await kgService.fetchUserConfig()
-            guard authManager.isLoggedIn, authManager.userId == requestedUserId else { return }
+            guard Self.acceptsServerResponse(
+                authManager: authManager,
+                requestedUserId: requestedUserId,
+                requestedToken: requestedToken
+            ) else { return }
             guard let vu = config.vocab_ui,
                   let ts = vu.updated_at,
                   !vu.active_notebook_id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -168,16 +176,44 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         }
     }
 
+    /// A response or push belongs to the credential snapshot that started it,
+    /// not merely to a mutable "logged in" bit that may now describe account B.
+    static func acceptsServerResponse(
+        authManager: any AuthManaging,
+        requestedUserId: String,
+        requestedToken: String
+    ) -> Bool {
+        !Task.isCancelled &&
+            authManager.isLoggedIn &&
+            !authManager.isDemoMode &&
+            authManager.userId == requestedUserId &&
+            authManager.token == requestedToken
+    }
+
     /// best-effort push active notebook 到後端（讓 chrome / web 能讀）。失敗不 rollback：
     /// iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑，後續 server sync 收斂。
     /// `id` 與 `updatedAt` 由 caller 在 setActive 後**同步**一起捕捉傳入（非在此讀
     /// snapshot），避免快速連續切換 A→B 時 task-A 讀到 B 的時戳、push 出 (idA, tsB) 不一致對。
-    func pushActiveNotebook(_ id: String, updatedAt: Double?, authManager: any AuthManaging, kgService: any KGServing) async {
-        guard authManager.isLoggedIn else { return }
+    func pushActiveNotebook(
+        _ id: String,
+        updatedAt: Double?,
+        requestedUserId: String,
+        requestedToken: String,
+        authManager: any AuthManaging,
+        kgService: any UserConfigServing
+    ) async {
+        guard Self.acceptsServerResponse(
+            authManager: authManager,
+            requestedUserId: requestedUserId,
+            requestedToken: requestedToken
+        ) else { return }
+        let payload = KGVocabUIConfig(active_notebook_id: id, updated_at: updatedAt)
         do {
-            _ = try await kgService.updateVocabUIConfig(
-                KGVocabUIConfig(active_notebook_id: id, updated_at: updatedAt)
-            )
+            if let concreteService = kgService as? KGService {
+                _ = try await concreteService.updateVocabUIConfig(payload, using: requestedToken)
+            } else {
+                _ = try await kgService.updateVocabUIConfig(payload)
+            }
         } catch {
             AppLog.kg.warning("pushActiveNotebook failed: \(error.localizedDescription)")
         }
@@ -302,5 +338,21 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             return def.remoteId
         }
         return candidates.first?.remoteId
+    }
+}
+
+private extension KGService {
+    /// Use the credential captured by the selection task. The ordinary
+    /// UserConfigServing method intentionally resolves the mutable current
+    /// session, which is unsafe after an account switch.
+    func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig, using token: String) async throws -> KGUserConfig {
+        guard connectivityGate.isConnected else { throw KGError.offline }
+        let config = try await userConfigClient.updateVocabUIConfig(
+            baseURL: baseURL,
+            token: token,
+            vocabUI: vocabUI
+        )
+        AppLog.kg.info("Updated vocab_ui (active notebook) config successfully")
+        return config
     }
 }

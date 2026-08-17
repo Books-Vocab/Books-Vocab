@@ -95,6 +95,13 @@ struct NotebookListContent: View {
     @State private var showFilterSheet = false
     @State private var navigationPath = NavigationPath()
 
+    /// A boolean login flag does not change for an A→B account switch. Include
+    /// identity and demo state so the server projection task restarts at every
+    /// account boundary.
+    private var accountTaskID: String {
+        "\(authManager.isLoggedIn ? "logged-in" : "logged-out"):\(authManager.userId ?? "none"):\(authManager.isDemoMode)"
+    }
+
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
     }
@@ -366,7 +373,7 @@ struct NotebookListContent: View {
             .toastSheet(item: $coordinator.exportURL) { url in
                 PlatformShareView(url: url)
             }
-            .task(id: authManager.isLoggedIn) {
+            .task(id: accountTaskID) {
                 guard catalogTaskPolicy.runsTasks else { return }
                 await coordinator.reconcileNotebooks(
                     authManager: authManager,
@@ -616,8 +623,20 @@ struct NotebookListContent: View {
         // 同步捕捉 setActive 剛寫入的時戳，與 id 一起傳給 best-effort push（避免快速連續
         // 切換時 detached task 讀到後一次切換的時戳，push 出 id/時戳不一致對）。
         let updatedAt = ActiveNotebookStore.shared.snapshot.updatedAt
-        Task {
-            await coordinator.pushActiveNotebook(id, updatedAt: updatedAt, authManager: authManager, kgService: kgService)
+        guard authManager.isLoggedIn,
+              !authManager.isDemoMode,
+              let requestedUserId = authManager.userId,
+              let requestedToken = authManager.token
+        else { return }
+        Task { @MainActor in
+            await coordinator.pushActiveNotebook(
+                id,
+                updatedAt: updatedAt,
+                requestedUserId: requestedUserId,
+                requestedToken: requestedToken,
+                authManager: authManager,
+                kgService: kgService
+            )
         }
     }
 }
