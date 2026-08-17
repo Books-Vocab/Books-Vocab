@@ -790,20 +790,50 @@ def test_cutover_refuses_gate_record_with_forged_changed_scope(scratch):
 
 
 @gitmark
-def test_cutover_refuses_duplicate_gate_result_rows(scratch):
+def test_cutover_refuses_missing_digest_with_forged_scope(scratch):
     tmp_path, repo, _remote = scratch
-    state = str(tmp_path / "duplicate-gates.json")
-    wt = _open_wt(state, slug="duplicate-gate-result")
+    state = str(tmp_path / "legacy-scope-record.json")
+    wt = _open_wt(state, slug="legacy-forged-gate-scope")
     rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK, gate
 
     record_path = MODULE._gate_record_path(state, wt)
-    record = json.loads(record_path.read_text())
-    # Remove the newer canonical-plan guard to exercise the result-row contract
-    # independently, as a legacy record could lack that digest.
+    record = json.loads(record_path.read_text(encoding="utf-8"))
     record.pop("canonical_plan_digest", None)
-    record["plan"].append(json.loads(json.dumps(record["plan"][0])))
-    record["gates"].append(json.loads(json.dumps(record["gates"][0])))
+    record["changed_files"] = []
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "canonical plan digest" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_refuses_duplicate_gate_result_rows(scratch, monkeypatch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "duplicate-gates.json")
+    wt = _open_wt(state, slug="duplicate-gate-result")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_gate",
+        lambda spec, _worktree, **_kwargs: {
+            "name": spec["name"], "category": spec["category"],
+            "level": spec.get("level", "block"), "status": "pass", "rc": 0,
+            "summary": "fixture gate ran",
+        },
+    )
+    rc, gate = _run_json([
+        "gate", "--gate-tier", "S4", "--worktree", wt, "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, gate
+
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text())
+    assert len(record["gates"]) >= 2
+    record["gates"][1]["name"] = record["gates"][0]["name"]
     record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     rc, cut = _run_json(
@@ -816,7 +846,8 @@ def test_cutover_refuses_duplicate_gate_result_rows(scratch):
 
 
 @gitmark
-def test_cutover_revalidates_deferred_ticket_status(scratch, monkeypatch):
+@pytest.mark.parametrize("drop_digest", [False, True])
+def test_cutover_revalidates_deferred_ticket_status(scratch, monkeypatch, drop_digest):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "deferred-ticket.json")
     wt = _open_wt(state, slug="stale-deferred-ticket")
@@ -858,6 +889,8 @@ def test_cutover_revalidates_deferred_ticket_status(scratch, monkeypatch):
         "gate": spec["name"], "ticket_id": "IMP-0001",
         "status": "open", "severity": "med", "tier": spec.get("tier", "S2"),
     }]
+    if drop_digest:
+        record.pop("canonical_plan_digest", None)
     record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     rc, cut = _run_json(
@@ -865,7 +898,10 @@ def test_cutover_revalidates_deferred_ticket_status(scratch, monkeypatch):
     )
     assert rc == MODULE.EXIT_BLOCK
     assert cut["landed"] is False
-    assert "now has status=fixed" in cut["error"]
+    if drop_digest:
+        assert "canonical plan digest" in cut["error"]
+    else:
+        assert "now has status=fixed" in cut["error"]
     assert "notes.txt" not in _local_main_files(repo)
 
 

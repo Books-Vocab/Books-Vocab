@@ -690,7 +690,10 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         )
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
-        if not refuse and (gate_tier == "S4" or rec.get("canonical_plan_digest") is not None):
+        # Every current receipt must be bound to the current scope and plan.  A
+        # missing digest is not a backwards-compatible shortcut: allowing it
+        # would turn a legacy-shaped JSON edit into a landable verdict.
+        if not refuse:
             recorded_digest = rec.get("canonical_plan_digest")
             changed_for_plan = rec.get("changed_files")
             if not isinstance(recorded_digest, str) or not recorded_digest:
