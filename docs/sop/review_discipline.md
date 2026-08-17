@@ -6,7 +6,7 @@ scope:
   - .claude/skills/
   - .claude/agents/
   - docs/sop/
-verified_against: d7d98039f
+verified_against: 2624b88a1ab0e2d9b5aadcdbc71862c721bb7c5e
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 
