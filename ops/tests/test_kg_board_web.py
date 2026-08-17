@@ -344,6 +344,28 @@ def test_git_tree_browser_marks_parents_outside_the_bounded_viewport():
     assert "parentSha" in js
 
 
+def test_git_tree_hover_details_explain_boundaries_and_preserve_unknown_diff_stats():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="tree-hover-card"' in index
+    assert "圖面邊界" in index
+    assert "showTreeHover" in js
+    assert "hideTreeHover" in js
+    assert "data-boundary-detail" in js
+    assert "data-branch" in js
+    assert "tree-mobile-branch-name" in js
+    assert "stateOverride" in js
+    assert 'node.addEventListener("click",show)' in js
+    assert "formatDiffStat" in js
+    assert "Number.isInteger(row?.insertions)" in js
+    assert "row.insertions??0" not in js
+    assert "row.deletions??0" not in js
+    assert ".tree-hover-card" in css
+    assert ".tree-boundary-note" in css
+
+
 def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
