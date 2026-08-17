@@ -6,13 +6,13 @@ scope:
   - ops/
   - backend/
   - docs/runbook/
-verified_against: afda0439c
+verified_against: 2624b88a1ab0e2d9b5aadcdbc71862c721bb7c5e
 -->
 # Safety Policy
 
 ## Non-Negotiable Rules
 1. Production actions must go through project scripts.
-2. Every deployment requires backup first.
+2. Every production data change requires a verified recovery path; the standby deploy path does not perform an inline backup, so scheduled backup health or a documented cold snapshot must be confirmed separately.
 3. Never run destructive Docker cleanup commands on production.
 
 ## Forbidden Commands (Production)
@@ -38,15 +38,22 @@ verified_against: afda0439c
 與誤殺防護（`rm -rf ./build`、`/tmp/foo`、非遞迴單檔、`tar`/`grep -r` 讀取等須放行）皆由 `ops/test_devops.sh` 的 Blocklist 段守住。
 測試可用 `KG_DEVOPS_BASE=/usr/bin/true` 注入 stub base 以驗證放行路徑不觸發遠端。
 
+上述字串 guard 只涵蓋 `run` / `container-run` / `migrate-run`。`ops-cli`、`ops-edit`、
+`ops-edit-batch`、`container-script` 是 argv／script pass-through surface，不套用
+`is_blocked_run`；`ops-cli` 是查詢入口，`ops-edit`／`ops-edit-batch` 依各自工具的 dry-run、
+`--commit`、備份與 verify 契約，`container-script` 則只接受 `.py`／`.sh` 腳本。不能把
+這些 surface 誤讀成已由這個 shell guard 保護。
+
 **邊界聲明（重要）**：此 guard 是「常見誤觸防護網」，**非完備沙箱**。黑名單無法窮舉所有等價毀滅指令。
 以下已知**未涵蓋**、仍依賴人工 review，切勿倚賴 wrapper 攔截：`mv <受保護路徑>`（移走掛載等同銷毀）、
 `cp /dev/null <db>` / `shred` 等覆寫、`rsync -a --delete`、`docker rm -fv <container>`（刪匿名 volume）、
 `git clean -xfd`、以及任何透過未展開 shell 變數（`rm -rf $DATA_DIR`）指向受保護路徑者（wrapper 在 SSH 前比對字面，無法得知變數值）。
 
 ## Required Preflight
-1. Confirm remote path (`~/knowledge_graph_api`).
-2. Confirm domain (`wordnexus.lol`) and internal port (`8000`).
-3. Confirm expected container name (`knowledge-graph-api`).
+1. Confirm standby production checkout (`~/kg-prod/backend`, or `KG_REMOTE_DIR`); `~/knowledge_graph_api` is historical Lightsail rollback only.
+2. Confirm standby data path (`~/kg-data`, or `KG_REMOTE_DATA_DIR`).
+3. Confirm domain (`wordnexus.lol`) and internal port (`8000`).
+4. Confirm expected container name (`knowledge-graph-api`).
 
 ## Rollback Principle
 - If health check fails after deploy, roll back to previous image/tag or previous synced directory snapshot.

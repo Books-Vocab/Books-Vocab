@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/tests/
-verified_against: 4c0efb3cc
+verified_against: 2624b88a1ab0e2d9b5aadcdbc71862c721bb7c5e
 -->
 # KG Backend Testing Strategy
 
@@ -89,7 +89,10 @@ push / pull request 觸發；另有每日 02:17 UTC 的 nightly schedule。文�
    不改寫 repo 內既有的 `backend/.coverage`。
 3. 以 `uv run python -m coverage report --fail-under=85` 執行 coverage threshold，並
    明確拒絕缺少或空白的 `coverage.xml`。
-4. 以 `uv run ruff check src tests` 執行 static quality check。
+4. 以 `uv run ruff check src tests` 執行 static quality check；`backend/pyproject.toml` 與
+   `backend/uv.lock` 將 Ruff **精確固定為 `0.16.3`**，不得依賴 runner 的外部工具快取。
+   `backend/tests/test_backend_quality_workflow_contract.py` 會同時驗證 locked toolchain、
+   Ruff pin、coverage/artifact provenance 與 failure classification。
 
 pytest 的既有 full-suite failure 保持為 `test-failure`，不以 `continue-on-error`
 偽造成功；coverage threshold failure 標為 `coverage-failure`，Ruff failure 標為

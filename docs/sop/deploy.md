@@ -6,7 +6,7 @@ scope:
   - backend/
   - devops.sh
   - ops/
-verified_against: c10b12fcc9fa234f59b0a291aae8bcf2ddc48a06
+verified_against: 2624b88a1ab0e2d9b5aadcdbc71862c721bb7c5e
 -->
 # 後端部署指南
 
@@ -29,20 +29,20 @@ verified_against: c10b12fcc9fa234f59b0a291aae8bcf2ddc48a06
 
 ## 標準部署流程（standby，手動）
 
-> standby 程式碼靠 **git 同步**（非 rsync），部署 = git pull + 重建容器。
+> standby 程式碼靠 **git 同步**（非 rsync），部署 = `git pull --ff-only` + 重建容器。
 
 ```bash
 ssh chenliangyu@100.118.39.104
-cd ~/project/kg/backend
-git pull                                  # 程式碼靠 git 同步
+cd ~/kg-prod/backend
+git pull --ff-only                         # 生產專用 clone；不碰 ~/project/kg dev/resume tree
 git rev-parse --short HEAD > VERSION       # 更新 version 標記（/api/system/info 讀此檔）
-docker compose up -d --build               # 重建+起；restart:always
+docker compose up -d --build --force-recreate  # 重建+起；確保 VERSION bind mount 重新讀取
 curl -s http://localhost:8000/api/system/info   # 驗 version 對上
 ```
 
 - 純 `.py`/`.html` 改動理論可只 `docker compose restart`，但 compose 用 build image，仍建議 `up -d --build`。
 - **migration**：app 啟動自動跑（`migration_version` 暴露於 `/api/system/info`）；如需手動 `docker exec knowledge-graph-api <cmd>`。
-- **.env 改動**：直接編輯 standby `~/project/kg/backend/.env` 後 `docker compose up -d --build`（容器讀新值需重建，不能只 restart）。⚠ `JWT_SECRET` 必須維持 prod 值，否則全用戶被登出。
+- **.env 改動**：直接編輯 standby `~/kg-prod/backend/.env` 後 `docker compose up -d --build --force-recreate`（容器讀新值需重建，不能只 restart）。⚠ `JWT_SECRET` 必須維持 prod 值，否則全用戶被登出。
 
 ### 部署後驗證（standby）
 
