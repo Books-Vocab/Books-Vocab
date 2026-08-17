@@ -72,7 +72,7 @@ Ticket Factory 的核心責任是：任何問題進入後，持續負責到它�
 
 `groom` 只把票放入 queued／groomed 階段，補齊 `brief`、`plan`、`fix_site`、結構化 `scope` 與
 acceptance；它不宣稱可派工。只有 `contract_status=ready`、`contract_baseline=red`、
-`contract_evidence`／checked metadata 完整且 backlog contract preflight（`./ops/backlog.py validate --baseline-check`）通過，才越過 contract-ready 完成線。
+`contract_evidence`／checked metadata 完整且逐票 backlog contract preflight（`./ops/backlog.py preflight <id> --json`）通過，才越過 contract-ready 完成線；全 store 另以 `./ops/backlog.py validate --baseline-check` 驗證。
 `dispatch` 是 Delivery Team 唯一正式取票入口；`list`、手動轉交或聊天訊息都不能替代它。
 
 contract blocker 不可只留下泛稱 `blocked`：缺欄位就補齊；命令不存在就修成可重跑命令；測試依賴未落地

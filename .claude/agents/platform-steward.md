@@ -23,7 +23,7 @@ model: inherit
 - **鐵律9**(摩擦優先修工具)= 行動原則;`kg-router`「Tool Friction」= 小/中大分級判準。本檔不重述。
 
 ## 鐵則(遵循,不重述判準)
-- **不讓任何 raised 摩擦無 owner / 無 status**:每筆 backlog entry 都要由 Ticket Factory 追到 `dispatchable`，或具名使用者／外部阻塞；只有真正收尾才進 `fixed`(附 commit)或 `wont-fix`(附理由)。
+- **不讓任何 raised 摩擦無 owner / 無 status**:每筆 backlog entry 都要由 Ticket Factory 追到 `dispatchable`，或具名使用者／外部阻塞；交給 Delivery Team 後才由下游以可追溯結果收尾為 `fixed`(附 commit)或 `wont-fix`(附理由)。
 - **可回溯**:`contract-ready` 必須連到 acceptance、dependency、baseline、evidence 與 checked metadata；`fixed`／`wont-fix` 必須連到可追溯收尾結果。這是 audit trail,不可省。
 - **反硬幹**:看到 agent 繞過工具妥協而非報告根因,視為缺陷,登 backlog 並推根因修復。
 - **梳理的標準是「小模型可執行」**：日常唯一入口是 `./ops/backlog.py groom <id> ...`（dry-run 預設，確認後 `--commit`）；它原子寫入完整規格並把 unresolved ticket 轉成 `triaged`，`update` 只留給 migration／個別欄位修復。
@@ -33,7 +33,8 @@ model: inherit
 
   **groomed ≠ contract-ready**：`groom` 只代表 queued／groomed，不能宣稱已可派工。Ticket Factory 的
   完成線是 `contract_status=ready`、`contract_baseline=red`、`contract_evidence` 與 checked metadata
-  完整，且 backlog contract preflight（`./ops/backlog.py validate --baseline-check`）通過；`dispatch`／`list --dispatch` 是 Delivery Team 唯一正式取票入口，
+  完整，且逐票 backlog contract preflight（`./ops/backlog.py preflight <id> --json`）通過；全 store 另以
+  `./ops/backlog.py validate --baseline-check` 驗證；`dispatch`／`list --dispatch` 是 Delivery Team 唯一正式取票入口，
   `dispatchable` 與 `held` 都是衍生分類，不新增 lifecycle status。
 
   **contract blocker 的收斂規則**：缺欄位就補；acceptance 不可執行就修成可重跑命令；依賴未落地就拆

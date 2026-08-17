@@ -87,8 +87,7 @@ Next:
 Ticket Factory receipt 必須回報可對帳的責任線，而不是只報「groomed」：未解總數、groomed／queued、
 contract-ready、dispatchable、contract-not-ready、dependency-blocked、具名使用者／外部升級、
 duplicate／no-op／wont-fix，以及每個剩餘 blocker 的 owner、證據與下一步。`groom`、`verify`、
-contract evidence 或 backlog contract preflight（`./ops/backlog.py validate --baseline-check`）只證明票務契約／問題仍成立，不宣稱產品 code 已修復；產品修復仍由
-Delivery Team 從 `dispatch` 取票後完成。這裡不指 worktree／release preflight。
+contract evidence 或逐票 backlog contract preflight（`./ops/backlog.py preflight <id> --json`）只證明票務契約／問題仍成立，不宣稱產品 code 已修復；全 store schema／baseline 則另跑 `./ops/backlog.py validate --baseline-check`。產品修復仍由 Delivery Team 從 `dispatch` 取票後完成。這裡不指 worktree／release preflight。
 
 `contract-not-ready` 是人類／看板語彙，機器對應為 `status=contract-blocked` 或
 `dispatch.withheld_contract`；不要新增 lifecycle status。`dispatchable` 與 `held` 都是衍生分類，前者
@@ -114,7 +113,7 @@ scratch 路徑；`resolve` 後該路徑應不存在。
 - 若背景工作還在跑，receipt 必須標示它不是完成證據。
 - 若執行者是受派子 agent,依賴的 `Agent()` / 耗時 Bash 仍須背景啟動；但它必須把自己的 turn 留在前景,依 CLAUDE.md 鐵律5於同一個 turn 輪詢到結果或 rc,不得以「review in flight」交回並等待協調者再次喚醒。
 - Tooling Debt 不可留空:`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者用 `ops/backlog.py add` 登記；批次 wave worker 加 `--stage`。
-- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 追到 resolved;`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)追到 resolved,其取票入口是 `./ops/backlog.py dispatch --stream APP`(已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒;`list --stream APP` 是**全表**,拿來查重不是拿來取票)。判準見上方 Checklist 的「Stream 分流」。
+- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 把 Ticket Factory 責任收斂到 `dispatchable` 或具名使用者／外部阻塞；`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)在 Delivery Team 從 `./ops/backlog.py dispatch --stream APP` 取票後負責產品修復與結案。Ticket Factory 不因 APP 交給下游就把 `groomed` 當完成，仍須先完成 contract-ready 對帳；`list --stream APP` 是**全表**,拿來查重不是拿來取票。判準見上方 Checklist 的「Stream 分流」。
 - 這條判準只有**一半**是機器守的:`add --stream IMP --surface ...` 會 exit 64 被拒(`ops/tests/test_backlog.py` 釘住);反向——該進 APP 的填成 IMP——沒有任何工具擋得住,所以那一半靠上面的判準自律。
 
 ### `pytest -k` acceptance 的選擇數對帳
