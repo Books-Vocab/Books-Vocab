@@ -6,6 +6,8 @@ import json
 import queue
 import re
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
@@ -292,6 +294,39 @@ def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):
     assert payload["kind"] == "latest"
     assert client.empty()
     assert server._sse_frame("snapshot", payload).startswith(b"event: snapshot\n")
+
+
+def test_publish_event_serializes_client_coalescing(monkeypatch):
+    class TrackingQueue(queue.Queue):
+        active = 0
+        overlap = False
+        tracking_lock = threading.Lock()
+
+        def _track(self, operation):
+            with self.tracking_lock:
+                type(self).active += 1
+                type(self).overlap |= type(self).active > 1
+            time.sleep(0.002)
+            try:
+                return operation()
+            finally:
+                with self.tracking_lock:
+                    type(self).active -= 1
+
+        def put_nowait(self, item):
+            return self._track(lambda: queue.Queue.put_nowait(self, item))
+
+        def get_nowait(self):
+            return self._track(lambda: queue.Queue.get_nowait(self))
+
+    client = TrackingQueue(maxsize=1)
+    client.put_nowait({"kind": "seed"})
+    monkeypatch.setattr(server, "_sse_clients", {client})
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(server.publish_event, (f"event-{index}" for index in range(8))))
+
+    assert not client.overlap
 
 
 def test_events_route_fails_closed_when_client_capacity_is_full(monkeypatch):

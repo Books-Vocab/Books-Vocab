@@ -217,19 +217,18 @@ def publish_event(kind: str) -> None:
     """
     payload = {"kind": kind, "at": datetime.now(TZ).isoformat(timespec="seconds")}
     with _sse_lock:
-        clients = tuple(_sse_clients)
-    for client in clients:
-        try:
-            client.put_nowait(payload)
-        except queue.Full:
-            try:
-                client.get_nowait()
-            except queue.Empty:
-                pass
+        for client in tuple(_sse_clients):
             try:
                 client.put_nowait(payload)
             except queue.Full:
-                pass
+                try:
+                    client.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    client.put_nowait(payload)
+                except queue.Full:
+                    pass
 # ---------------------------------------------------------------- data plane
 
 def _git(args: list[str]) -> subprocess.CompletedProcess:
