@@ -1,0 +1,38 @@
+{
+  "acceptance": "只有在隔離索引環境取得 exact query 的完整 JSON verdict，或落地 toolchain-free regression 後才算綠。",
+  "acceptance_manual": "由 ops-engineer 在隔離 Xcode IndexStore 環境執行 ./ops/ui_graph.py --type SettingsStatusValue --json；留下 exact HEAD、index identity、command rc、termination reason 與 output path。UI graph 是否能解析 IndexStore 不是 repo-local command 在目前環境可完整表達的事，因此使用 acceptance_manual。",
+  "brief": "UI graph 查詢在目前索引環境無法留下可判讀的穩定結果。",
+  "category": "tool",
+  "contract_baseline": "unknown",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Owner ops-engineer; current query probe spawned an isolated xcodebuild and terminated before a verdict. Next: preserve exact index/toolchain evidence or add a toolchain-free contract test before reopening IMP-20260813-4c0ad1.",
+  "contract_status": "blocked",
+  "date": "2026-08-18",
+  "detail": "IMP-20260813-4c0ad1 的 type query 在隔離索引環境啟動 xcodebuild 後 terminated，沒有產生 verdict。這張票先把工具 acceptance 與索引環境證據分離，禁止用空結果或 subprocess PID 假裝通過。",
+  "fix_site": "ops/ui_graph.py",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
+  "id": "IMP-20260818-17bdf8",
+  "plan": "由 ops-engineer 在可重建的 Xcode IndexStore 環境重跑 exact type query，保留 command、source HEAD、index identity、spawn/termination reason 與 JSON output；若工具仍需 xcodebuild，新增 toolchain-free contract test，讓 parent ticket 使用可重跑命令。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/ui_graph.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_ui_graph_contract.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "Ticket Factory dogfood 2026-08-18 UI graph contract investigation",
+  "status": "contract-blocked",
+  "stream": "IMP"
+}

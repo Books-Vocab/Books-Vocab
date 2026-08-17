@@ -1,29 +1,66 @@
 {
   "acceptance": "P9 has an exact-selector leased-Simulator run with machine evidence and visual attestation.",
-  "acceptance_manual": "The final acceptance combines calendar date projection and human visual inspection across empty and boundary states; bounded unit and UI commands will be added by the implementation owner.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testReviewCalendarRequiredEvidenceUsesStableSelectors$'",
+  "acceptance_manual": "",
   "brief": "Review calendar changes with the real date and hides empty-day meaning.",
   "build": "2.0.1+7",
   "category": "ux",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-16",
-  "contract_checked_by": "agent:ticket-factory-full-groom",
-  "contract_evidence": "Full current-main preflight preserves this ticket as manual or operator-only: no local acceptance command can prove the required visual, App Review order, or external evidence. Grooming refreshed the contract and did not run production, upload, simulator, or visual acceptance.",
-  "contract_status": "blocked",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-13",
   "detail": "P9 report row needs a frozen calendar clock, timezone contract, stable empty-day copy, and populated-day comparison. Static audit found Date() and Calendar.current paths without a report-aligned deterministic fixture, so this ticket owns the gap.",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift",
-  "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
-  "groomed_at": "2026-08-16",
-  "groomed_by": "agent:ticket-factory-full-groom",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "APP-20260813-508e0d",
   "plan": "Inject a fixed review clock and timezone through UI World, add empty-day and boundary fixtures, expose stable day selectors, assert date projection and recovery, then collect machine contract and visual attestation for P9.",
   "repro": "Open the review calendar on a deterministic empty day and compare it across a timezone boundary.",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "One review-calendar clock contract, fixture, selector, UI test, and visual evidence.",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/ReviewCalendarScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_p9_review_calendar_contract.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_p9_review_calendar_evidence.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "high",
   "source": "IOS2.0.1+7-UI-review-report/P9",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "APP",
   "surface": "vocabulary"
 }

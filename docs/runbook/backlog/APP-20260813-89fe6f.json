@@ -1,29 +1,62 @@
 {
   "acceptance": "P15 has an exact-selector leased-Simulator run with machine evidence and visual attestation.",
-  "acceptance_manual": "The final acceptance combines interactive SwiftUI hierarchy and destructive-action presentation with human visual inspection; the bounded unit and UI commands will be added by the implementation owner.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testSettingsFlowAppliesRealPreferenceChanges$' -g '^testSettingsLongContentCounterexampleResolvesProductionSelectors$' -g '^testSettingsResetCounterexampleShowsObservableBoundary$'",
+  "acceptance_manual": "",
   "brief": "Settings sections make intent and destructive actions ambiguous in long content.",
   "build": "2.0.1+7",
   "category": "ux",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-16",
-  "contract_checked_by": "agent:ticket-factory-full-groom",
-  "contract_evidence": "Full current-main preflight preserves this ticket as manual or operator-only: no local acceptance command can prove the required visual, App Review order, or external evidence. Grooming refreshed the contract and did not run production, upload, simulator, or visual acceptance.",
-  "contract_status": "blocked",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-13",
   "detail": "P15 report row requires a stable settings information architecture with grouped intent, clear destructive-action boundary, and long-content accessibility coverage. Current static audit found no canonical implementation ticket, so this ticket owns the gap and requires deterministic UI World states plus Simulator evidence.",
-  "fix_site": "ios/BooksAndVocab/Views/Settings",
-  "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
-  "groomed_at": "2026-08-16",
-  "groomed_by": "agent:ticket-factory-full-groom",
+  "fix_site": "ios/BooksAndVocab/Views/Settings/SettingsView.swift; ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift; ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift; ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift; ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "APP-20260813-89fe6f",
   "plan": "Model settings sections around user intent, separate destructive actions from routine controls, inject long-content and reset counterexamples, expose stable accessibility identifiers, assert hierarchy and action-boundary behavior, then collect machine contract and visual attestation for P15.",
   "repro": "Open Settings with long content, inspect section hierarchy, and exercise the destructive action boundary.",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "One settings information-architecture flow, fixture, selector, UI test, and visual evidence.",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsView.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/SettingsFlowUITests.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "high",
   "source": "IOS2.0.1+7-UI-review-report/P15",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "APP",
   "surface": "settings"
 }

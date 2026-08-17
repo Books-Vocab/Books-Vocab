@@ -1,0 +1,43 @@
+{
+  "acceptance": "紅：已知 drift row 不能由 CLI 安全處理，或未知 drift 被錯誤接受。綠：id drift/supersede regression 通過；既有 drift pair 有明確 migration receipt；三張未解票可由正式 CLI 收斂到 exact Scope 或具名 blocked，且 validate --baseline-check 綠。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k 'id_drift or supersede'",
+  "acceptance_expect_rc": 0,
+  "brief": "歷史票號與內容摘要不一致，讓既有 CLI 無法安全補齊契約欄位。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f: exact repair files and a bounded regression command are known; baseline remains red because the migration repair is not implemented. No backlog.py or product code was changed in this dogfood.",
+  "contract_status": "ready",
+  "date": "2026-08-18",
+  "detail": "三張未解 legacy ticket 的 stored id 與 make_entry_id 重新計算值不一致，backlog CLI 以 id-content-drift 拒絕 update、verify 與 groom，導致無法把真實 Scope 與 contract metadata 寫回 ledger。此票只修復可審計的 drift migration/supersede route，不直接改三張母票內容。",
+  "fix_site": "ops/backlog.py",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
+  "id": "IMP-20260818-c48e95",
+  "plan": "1. 以已知 baseline 列出 drift pair 並建立可重跑的 migration/supersede contract。 2. 在不改 lifecycle 語義的前提下，讓既有 drift row 能安全被具名修復或 supersede，保留舊 id 的歷史可追溯性。 3. 補 id drift 與 supersede 的 regression，驗證未知 drift 仍 fail-closed。 4. 重新讓三張未解票完成 exact Scope 與 contract metadata 回填，並由 validate --baseline-check 對帳。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/backlog.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_backlog.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/backlog_id_drift_baseline.txt"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "Ticket Factory dogfood 2026-08-18 legacy ID drift contract repair",
+  "status": "triaged",
+  "stream": "IMP"
+}

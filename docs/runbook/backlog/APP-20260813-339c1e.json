@@ -1,29 +1,54 @@
 {
   "acceptance": "P8 has an exact-selector leased-Simulator run with machine evidence and visual attestation.",
-  "acceptance_manual": "The final acceptance combines asynchronous catalog transitions and human visual inspection; bounded unit and UI commands will be added by the implementation owner.",
+  "acceptance_cmd": "test -f ios/BooksAndVocabUITests/ExploreNavigationUITests.swift && ./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates$'",
+  "acceptance_manual": "",
   "brief": "Explore content gives no deterministic loading, empty, or retry feedback.",
   "build": "2.0.1+7",
   "category": "ux",
   "contract_baseline": "red",
-  "contract_checked_at": "2026-08-16",
-  "contract_checked_by": "agent:ticket-factory-full-groom",
-  "contract_evidence": "Full current-main preflight preserves this ticket as manual or operator-only: no local acceptance command can prove the required visual, App Review order, or external evidence. Grooming refreshed the contract and did not run production, upload, simulator, or visual acceptance.",
-  "contract_status": "blocked",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
+  "contract_evidence": "Static contract preflight at current main bf9606b84d4209ea3884a5f1519323fdd374b33f on 2026-08-18: Scope enumerates only real repo paths or explicit add paths, and the stored acceptance proof is present and bounded. Baseline remains red before implementation or evidence delivery. No acceptance audit, build, UI test, or external action was run.",
+  "contract_status": "ready",
   "date": "2026-08-13",
   "detail": "P8 report row needs explicit loading, empty, error, retry, and populated Explore states. Static audit found only navigation smoke and live-sync coupling, so this ticket owns deterministic UI World catalog injection and Simulator evidence.",
   "fix_site": "ios/BooksAndVocab/Views/Explore/ExploreView.swift",
-  "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
-  "groomed_at": "2026-08-16",
-  "groomed_by": "agent:ticket-factory-full-groom",
+  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "APP-20260813-339c1e",
   "plan": "Model Explore loading state explicitly, inject empty/error/retry/populated catalog fixtures, expose stable identifiers, assert recovery and card hierarchy, then collect machine contract and visual attestation for P8.",
   "repro": "Open Explore with a deterministic empty or failed catalog and inspect loading, retry, and populated recovery.",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "One Explore flow, catalog fixture, selector, UI test, and visual evidence.",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Explore/ExploreView.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/ExploreViewScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/ExploreNavigationUITests.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/fixtures/ui_worlds/marketing_demo.json"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
   "severity": "high",
   "source": "IOS2.0.1+7-UI-review-report/P8",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "APP",
   "surface": "discover"
 }
