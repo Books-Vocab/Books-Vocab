@@ -112,8 +112,10 @@ if HOME= PATH="$tmp/no-uv" bash -c '
   exit 1
 fi
 
-# A provider failure remains structured, and ASC timeout exits 124 without
-# corrupting workflow JSON or silently falling back to a mutation.
+# A provider timeout remains structured, and its runner-enforced rc=124 is
+# preserved without corrupting workflow JSON or silently falling back to a
+# mutation. Keep the budget above task-registry startup so the deadline reaches
+# the live child process rather than expiring before it has a process group.
 printf '9\n' >"$fixture/project-settings.rc"
 KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.02 \
@@ -123,15 +125,25 @@ jq -e '.schema == "kg.ios.workflow.v1" and .version == "unknown"' "$tmp/nonzero.
 grep -q 'source=workflow-project-settings phase=done .* rc=9' "$tmp/nonzero.stderr"
 rm "$fixture/project-settings.rc"
 
-printf '0.2\n' >"$fixture/asc-versions.delay"
+printf '2\n' >"$fixture/asc-versions.delay"
 KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
-KG_IOS_OPS_ASC_TIMEOUT_SECONDS=0.05 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
+KG_IOS_OPS_ASC_TIMEOUT_SECONDS=1 KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
+KG_IOS_OPS_RELEASE_SOURCE_SECRET_FIXTURE="$secret" \
   bash "$ROOT/ops/ios_ops.sh" workflow release --json \
   >"$tmp/timeout.json" 2>"$tmp/timeout.stderr"
 jq -e '.schema == "kg.ios.workflow.v1" and any(.steps[]; .key == "asc-review" and .status == "warn")' "$tmp/timeout.json" >/dev/null
+if ! grep -q 'source=workflow-asc-versions phase=heartbeat .* alive=true' "$tmp/timeout.stderr"; then
+  sed "s/$secret/[REDACTED]/g" "$tmp/timeout.stderr" >&2
+  exit 1
+fi
 if ! grep -q 'source=workflow-asc-versions phase=done .* rc=124' "$tmp/timeout.stderr"; then
   sed "s/$secret/[REDACTED]/g" "$tmp/timeout.stderr" >&2
   exit 1
 fi
+if grep -qF "$secret" "$tmp/timeout.stderr"; then
+  echo "timeout workflow progress leaked raw argv" >&2
+  exit 1
+fi
+rm "$fixture/asc-versions.delay"
 
 echo "ios ops release heartbeat contract: PASS"
