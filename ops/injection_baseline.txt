@@ -1,30 +1,3 @@
-# injection_lint baseline — generated 2026-08-15
-# sunset: 2026-09-14
+# injection_lint baseline — generated 2026-08-17
+# sunset: 2026-09-16
 # After sunset, --baseline-check FAILS even when count hasn't regressed.
-
-ios/BooksAndVocab/Views/Bookshelf/BookshelfPreviews.swift:84: struct BookshelfFixtureLibraryScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Bookshelf/Components/BookCard.swift:208: struct ICloudProgressBadge: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastPlayerAccessSurface.swift:4: struct PodcastPlayerLockedGateView: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastPlayerAccessSurface.swift:45: struct PodcastPlayerPreviewBanner: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastPlayerAccessSurface.swift:75: struct PodcastPlayerSettingsButton: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastPlayerView.swift:5: struct PodcastPlayerView: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastProgressTicker.swift:16: struct PodcastProgressTicker: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastSentenceLevelView.swift:42: struct PodcastSentenceLevelView: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastTranscriptColumn.swift:18: struct PodcastTranscriptColumn: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastTranscriptColumn.swift:193: struct PodcastBubbleCell: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/QuotaBar.swift:51: struct QuotaBarPreviewHarness: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsDebugBackendSection.swift:17: struct SettingsDebugBackendSection: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsOtherSection.swift:20: struct SettingsOtherSection: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsPresenter+Preview.swift:37: struct SettingsFixtureScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift:83: struct CardDocumentHeroBlock: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift:363: struct EditorialCoverComposition: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookHeaderPillLabel.swift:12: struct NotebookHeaderPillLabel: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookReviewActionBar.swift:13: struct NotebookReviewActionBar: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/WordDetailComponents.swift:113: struct ShimmerLine: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/NotebookBindingList.swift:9: struct NotebookBindingList: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift:224: struct KnowledgeGraphPresenterPreviewHarness: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:40: struct ReviewTopBar: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:143: struct ReviewToolbarControls: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:528: struct ShortcutHintChip: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:553: struct ShortcutKeyCap: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPreviewData.swift:33: struct TodayReviewFixtureScene: View missing @ObserveInjection
