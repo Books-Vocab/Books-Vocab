@@ -486,17 +486,31 @@ def plan_gates(changed_files: list[str],
             orchestrator_ops_py,
             exists=(ops_test_exists if ops_test_exists is not None else lambda _rel: False),
         )
-        route_ids = [route["route_id"] for route in route_payload["routes"]]
-        if route_payload["fallback"]:
-            route_ids = ["orchestrator.fallback"]
-        focused_cmd = test_routes.runner_route_args(route_payload, focused=True)
-        group_cmd = test_routes.runner_route_args(route_payload, focused=False)
-        gates.append(_shell(
-            "ops-pytest-orchestrator-focused", "ops", focused_cmd, "block",
-        ))
-        gates.append(_shell(
-            "ops-pytest-orchestrator-group", "ops", group_cmd, "block",
-        ))
+        ops_tests_changed = any(path.startswith("ops/tests/") for path in changed_files)
+        if (route_payload["fallback"] and not ops_tests_changed
+                and ops_tests_dir_exists is not None and not ops_tests_dir_exists()):
+            gates.append(_internal(
+                "ops-pytest-unavailable", "ops", "warn",
+                files=orchestrator_ops_py,
+                note=("ops-pytest was not run: the worktree has no ops/tests directory; "
+                      "this is unavailable test infrastructure, not a change verdict"),
+            ))
+        elif route_payload["fallback"]:
+            # Fallback is deliberately the complete group at S2.  Emitting the
+            # focused name here would mislabel a full-suite fallback as S1.
+            group_cmd = test_routes.runner_route_args(route_payload, focused=False)
+            gates.append(_shell(
+                "ops-pytest-orchestrator-group", "ops", group_cmd, "block",
+            ))
+        else:
+            focused_cmd = test_routes.runner_route_args(route_payload, focused=True)
+            group_cmd = test_routes.runner_route_args(route_payload, focused=False)
+            gates.append(_shell(
+                "ops-pytest-orchestrator-focused", "ops", focused_cmd, "block",
+            ))
+            gates.append(_shell(
+                "ops-pytest-orchestrator-group", "ops", group_cmd, "block",
+            ))
 
     if generic_ops_py:
         exists = ops_test_exists or (lambda rel: False)
@@ -769,7 +783,9 @@ def gate_probe_corpus() -> list[list[str]]:
             ["backend/src/kg/app.py"],
             ["backend/tests/test_x.py"],
             ["ops/worktree_orchestrate.py"],
+            ["ops/lib/test_timing_store.py", "ops/lib/unmapped.py"],
             ["ops/python_scan.py"],
+            ["ops/tests/test_worktree_gate_tiers.py"],
             ["ops/docs_lint.sh"],
             ["design-system/tokens.json"],
             ["ops/i18n_baseline.txt"],
@@ -839,8 +855,15 @@ def gate_probe_coverage() -> dict[str, list[str]]:
     """Compare AST-declared block families with reachable corpus families."""
     declared = block_gate_families_declared()
     reachable: set[str] = set()
+
+    def probe_exists(path: str) -> bool:
+        # Exercise the mixed generic-ops route: one aliased target exists while a
+        # second target is absent, which is the only path that emits the focused
+        # fallback gate.  The missing path is synthetic probe data, not a repo file.
+        return path != "ops/tests/test_unmapped.py"
+
     for files in gate_probe_corpus():
-        for gate in plan_gates(files, ops_test_exists=lambda rel: True, base="main"):
+        for gate in plan_gates(files, ops_test_exists=probe_exists, base="main"):
             if gate.get("level") == "block":
                 reachable.add(str(gate["name"]).split(":", 1)[0])
     derivable_exceptions = set(GATE_PROBE_UNDERIVABLE)

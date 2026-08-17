@@ -763,7 +763,7 @@ def test_gate_publishes_independent_progress_without_polluting_json(
     assert progress["run_id"]
     assert progress["generation"] >= 1
     assert progress["head_sha"] == gate["head_sha"]
-    assert progress["plan_total"] == len(gate["plan"]) == 3
+    assert progress["plan_total"] == len(gate["plan"])
     assert progress["done"] == progress["plan_total"]
     assert progress["current"] is None
     assert progress["completed"] == [

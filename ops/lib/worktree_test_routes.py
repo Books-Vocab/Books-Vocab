@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from copy import deepcopy
 from fnmatch import fnmatch
-from pathlib import Path
 from typing import Any
 
 
@@ -22,6 +21,13 @@ PYTEST_PREFIX = (
     "pytest",
 )
 
+_ORCHESTRATOR_SURFACE_PATTERNS = (
+    "ops/worktree_orchestrate*.py",
+    "ops/lib/worktree_orchestrator_*.py",
+    "ops/test_route.py",
+    "ops/lib/worktree_test_routes.py",
+)
+
 
 def _route(
     route_id: str,
@@ -29,6 +35,7 @@ def _route(
     selector: str,
     nodeids: list[str],
     resource_class: str = "ops-python",
+    gate_tier: str = "S1",
 ) -> dict[str, Any]:
     return {
         "route_id": route_id,
@@ -36,7 +43,7 @@ def _route(
         "pytest_nodeids": nodeids,
         "selectors": [selector],
         "fallback_test_file": selector,
-        "gate_tier": "S1",
+        "gate_tier": gate_tier,
         "failure_policy": "block",
         "resource_class": resource_class,
     }
@@ -148,7 +155,7 @@ _FALLBACK_ROUTE: dict[str, Any] = {
     "route_id": "orchestrator.fallback",
     "source_patterns": ["*"],
     "pytest_nodeids": [],
-    "selectors": [route["selectors"][0] for route in _BEHAVIOR_ROUTES],
+    "selectors": [route["selectors"][0] for route in (*_BEHAVIOR_ROUTES, _FACADE_ROUTE)],
     "fallback_test_file": "ops/tests",
     "gate_tier": "S2",
     "failure_policy": "block",
@@ -177,6 +184,8 @@ def _matches(path: str, pattern: str) -> bool:
 def is_orchestrator_source(path: str) -> bool:
     """Whether a changed path belongs to this route manifest's source surface."""
     return path == _LEGACY_PATH or any(
+        _matches(path, pattern) for pattern in _ORCHESTRATOR_SURFACE_PATTERNS
+    ) or any(
         any(_matches(path, pattern) for pattern in route["source_patterns"])
         for route in _ALL_ROUTES
     )

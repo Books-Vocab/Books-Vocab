@@ -88,6 +88,9 @@ PROOFS=(
   "agent-constitution|expensive|journal|the constitution path is validated by the real docs-lint gate; green requires recorded execution of that gate"
   "official-decks-check|expensive|journal|the fixed official deck set check has its own executable acceptance; green requires the real official deck validator"
   "ops-pytest|expensive|journal|pytest's own non-zero exit"
+  "ops-pytest-focused|expensive|journal|targeted ops pytest route is a real pytest command; green requires recorded gate history"
+  "ops-pytest-orchestrator-focused|expensive|journal|focused orchestrator route is a real pytest command; green requires recorded gate history"
+  "ops-pytest-orchestrator-group|expensive|journal|orchestrator group fallback is a real pytest command; green requires recorded gate history"
 )
 
 proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared

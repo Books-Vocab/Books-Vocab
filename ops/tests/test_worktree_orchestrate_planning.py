@@ -557,9 +557,9 @@ def test_gate_plan_ops_src_default_predicate_is_conservative_fallback():
     # without an injected existence predicate (pure layer: no IO), an ops src
     # change must use the explicit parent-group fallback, never an empty command.
     gates = plan_gates(["ops/worktree_orchestrate.py"])
-    focused = _by_name(gates)["ops-pytest-orchestrator-focused"]
-    assert "orchestrator.fallback" in focused["cmd"]
-    assert "ops-pytest-orchestrator-group" in _names(gates)
+    group = _by_name(gates)["ops-pytest-orchestrator-group"]
+    assert "orchestrator.fallback" in group["cmd"]
+    assert "ops-pytest-orchestrator-focused" not in _names(gates)
 
 def test_gate_plan_ops_src_and_its_test_dedupes_target():
     # the self-referential dogfood shape: tool + its test changed together
