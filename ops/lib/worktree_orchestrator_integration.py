@@ -546,6 +546,12 @@ def _integrate_start(args, spath: Path) -> int:
         _integrate_release_parent_claim(args)
         return EXIT_USAGE
 
+    try:
+        gate_tier = normalize_gate_tier(getattr(args, "gate_tier", None))
+    except GateTierError as exc:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": str(exc)}, args.json, f"✗ integrate refused: {exc}")
+        return EXIT_USAGE
     total = sum(len(p["commits"]) for p in plan)
     if not args.commit:
         action = ("pick only and stop before the gate" if args.no_gate
@@ -553,6 +559,7 @@ def _integrate_start(args, spath: Path) -> int:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
                "slug": args.slug, "trunk": trunk, "branches": list(args.branches),
                "plan": plan, "commits": total, "handoff": handoff,
+               "gate_tier": gate_tier,
                "would_run": [f"open --slug {args.slug}",
                              f"cherry-pick x{total}"] + ([] if args.no_gate else ["gate"])},
               args.json,
@@ -588,6 +595,7 @@ def _integrate_start(args, spath: Path) -> int:
         "schema": INTEGRATE_SCHEMA, "slug": args.slug, "base": args.base,
         "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
         "branches": list(args.branches),
+        "gate_tier": gate_tier,
         "independent": bool(getattr(args, "independent", False)),
         "handoff": handoff,
         "queue": [c for p in plan for c in p["commits"]],
@@ -683,6 +691,24 @@ def _integrate_append(args, spath: Path) -> int:
             "requested_independent": requested_independent,
         }, args.json,
         "integrate --append refused: repeat the original --independent opt-in exactly")
+        return EXIT_USAGE
+    try:
+        requested_tier = normalize_gate_tier(getattr(args, "gate_tier", None))
+        persisted_tier = normalize_gate_tier(st.get("gate_tier"))
+    except GateTierError as exc:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "mode": "refused", "slug": args.slug, "error": str(exc)}, args.json,
+              f"✗ integrate --append refused: {exc}")
+        return EXIT_USAGE
+    if requested_tier != persisted_tier:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+            "mode": "refused", "slug": args.slug,
+            "error": "gate tier must match the persisted integration state",
+            "persisted_gate_tier": persisted_tier,
+            "requested_gate_tier": requested_tier,
+        }, args.json,
+            "✗ integrate --append refused: repeat the original --gate-tier exactly")
         return EXIT_USAGE
     independent_suffix = " --independent" if persisted_independent else ""
     wt = st.get("worktree")
@@ -968,6 +994,7 @@ def _integrate_picked_only(args, spath: Path, st: dict[str, Any]) -> int:
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
         "independent": st.get("independent") is True,
+        "gate_tier": st.get("gate_tier", DEFAULT_GATE_TIER),
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "remaining": st.get("queue", []), "head_sha": _head_sha(wt),
         "gated": False, "verdict": None, "landed": False,
@@ -1019,8 +1046,11 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
               f"✗ integrate refused: {msg}")
         return EXIT_BLOCK
 
-    grc, gpay = _land_step(cmd_gate, state=args.state, json=True, base=args.base,
-                           worktree=wt, receipt_line=False, plan_only=False)
+    gate_tier = normalize_gate_tier(st.get("gate_tier"))
+    grc, gpay = _land_step(
+        cmd_gate, state=args.state, json=True, base=args.base, worktree=wt,
+        gate_tier=gate_tier, receipt_line=False, plan_only=False,
+    )
     verdict = gpay.get("verdict")
     if verdict is None:
         # `gate` REFUSED rather than judged (mid-operation tree, orchestrator
@@ -1092,6 +1122,7 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
         "independent": st.get("independent") is True,
+        "gate_tier": gate_tier,
         "handoff": st.get("handoff", {"checked": st["branches"],
                                         "warnings": [], "problems": []}),
         "source_claim": st.get("source_claim"),
@@ -1174,6 +1205,24 @@ def _integrate_continue(args, spath: Path) -> int:
     st = _integrate_load(args, spath, "continue")
     if isinstance(st, int):
         return st
+    try:
+        requested_tier = normalize_gate_tier(getattr(args, "gate_tier", None))
+        persisted_tier = normalize_gate_tier(st.get("gate_tier"))
+    except GateTierError as exc:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "slug": args.slug, "state_file": str(spath), "error": str(exc)},
+              args.json, f"✗ integrate --continue refused: {exc}")
+        return EXIT_USAGE
+    if requested_tier != persisted_tier:
+        _emit({
+            "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+            "slug": args.slug, "state_file": str(spath),
+            "error": "gate tier must match the persisted integration state",
+            "persisted_gate_tier": persisted_tier,
+            "requested_gate_tier": requested_tier,
+        }, args.json,
+            "✗ integrate --continue refused: repeat the original --gate-tier exactly")
+        return EXIT_USAGE
     persisted_independent = st.get("independent") is True
     requested_independent = bool(getattr(args, "independent", False))
     if persisted_independent != requested_independent:
@@ -1188,6 +1237,8 @@ def _integrate_continue(args, spath: Path) -> int:
             "--independent opt-in exactly")
         return EXIT_USAGE
     independent_suffix = " --independent" if persisted_independent else ""
+    gate_tier_suffix = (f" --gate-tier {persisted_tier}"
+                        if persisted_tier != DEFAULT_GATE_TIER else "")
     wt = st["worktree"]
     if not Path(wt).is_dir():
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
@@ -1267,7 +1318,7 @@ def _integrate_continue(args, spath: Path) -> int:
                    "error": f"`git cherry-pick --continue` failed:\n{out[-800:]}\n"
                             f"  fix it in {wt} (an empty pick wants `git -C {wt} "
                             f"cherry-pick --skip`), then re-run "
-                            f"--continue{independent_suffix}; or "
+                        f"--continue{independent_suffix}{gate_tier_suffix}; or "
                             f"`--abort --commit`",
                    "detail": out[-2000:]}, args.json,
                   f"✗ integrate --continue: cherry-pick --continue failed:\n{out}")
@@ -1315,7 +1366,7 @@ def _integrate_abort(args, spath: Path) -> int:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
                "slug": args.slug, "worktree": wt, "interrupted": op,
                "picked": st["picked"], "remaining": st["queue"],
-               "next_step": teardown}, args.json,
+               "next_step": teardown, "gate_tier": st.get("gate_tier", DEFAULT_GATE_TIER)}, args.json,
               f"# integrate --abort (dry-run)\n"
               f"  would abort the in-flight {op or 'nothing'} in {wt} and forget the "
               f"integration state\n"

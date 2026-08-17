@@ -116,17 +116,28 @@ def cmd_gate(args: argparse.Namespace) -> int:
     no_changed_files = not changed
     # anchor test-existence at the WORKTREE so a test file added in this very diff
     # is seen (the primary checkout may not have it yet)
-    plan = plan_gates(changed,
-                      ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
-                      base=args.base,
-                      ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir(),
-                      path_exists=lambda rel: (Path(worktree) / rel).is_file())
+    full_plan = plan_gates(
+        changed,
+        ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
+        base=args.base,
+        ops_tests_dir_exists=lambda: (Path(worktree) / "ops/tests").is_dir(),
+        path_exists=lambda rel: (Path(worktree) / rel).is_file(),
+    )
+    try:
+        gate_tier = normalize_gate_tier(getattr(args, "gate_tier", None))
+    except GateTierError as exc:
+        _emit({"schema": GATE_SCHEMA, "step": "gate", "error": str(exc),
+               "worktree": worktree}, args.json, f"✗ gate refused: {exc}")
+        return EXIT_USAGE
+    plan, deferred_plan = select_gate_plan(full_plan, gate_tier)
+    required_tier = required_cutover_tier(changed)
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     progress_path = _gate_progress_path(args.state, worktree)
     progress_started = time.monotonic()
     run_id = f"{head[:12]}-{os.getpid()}-{time.monotonic_ns()}"
-    print(f"[worktree][gate] phase=plan gates={len(plan)} progress={progress_path} "
+    print(f"[worktree][gate] phase=plan tier={gate_tier} gates={len(plan)} "
+          f"deferred={len(deferred_plan)} progress={progress_path} "
           f"run_id={run_id}", file=sys.stderr, flush=True)
     completed: list[dict[str, str]] = []
     progress_generation: int | None = None
@@ -206,6 +217,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
                 }
                 result["input"] = current_input
             results.append(result)
+            result["tier"] = spec.get("tier", "S2")
             completed.append({"name": result["name"], "status": result["status"]})
             publish_progress()
             print(f"[worktree][gate] phase=gate gate={result['name']} "
@@ -277,8 +289,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
     record = {"schema": GATE_SCHEMA, "worktree": worktree, "base": args.base,
               "head_sha": head, "orchestrator": orch, "changed_files": changed,
               "no_changed_files": no_changed_files,
+              "gate_tier": gate_tier, "required_tier": required_tier,
               "plan": [{"name": g["name"], "level": g["level"], "category": g["category"],
-                        "cmd": g.get("cmd")} for g in plan],
+                        "tier": g.get("tier", "S2"), "cmd": g.get("cmd")} for g in plan],
+              "deferred_plan": [{"name": g["name"], "level": g["level"],
+                                 "category": g["category"],
+                                 "tier": g.get("tier", "S2"),
+                                 "note": g.get("note")}
+                                for g in deferred_plan],
               "gates": results, "verdict": verdict,
               "gate_reuse": _reuse_summary(results)}
     if not args.plan_only:
@@ -306,7 +324,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     record_ref = (str(_gate_record_path(args.state, worktree))
                   if not args.plan_only else "<not recorded>")
     executed_count = _executed_gate_count(results)
-    receipt_line = (f"gate={verdict} record={record_ref} "
+    receipt_line = (f"gate={verdict} tier={gate_tier} required={required_tier} "
+                    f"deferred={len(deferred_plan)} record={record_ref} "
                     f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} "
                     f"executed={executed_count} {breakdown} "
                     f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
@@ -315,8 +334,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
         print(receipt_line)
         return EXIT_OK if args.plan_only or verdict in ("pass", "warn") else EXIT_BLOCK
 
-    lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
-             f"{len(plan)} gate(s))  orchestrator={_orch_token(record)}"]
+    lines = [f"# gate {verdict.upper()} tier={gate_tier} required={required_tier} "
+             f"({len(changed)} changed file(s), {len(plan)} gate(s), "
+             f"{len(deferred_plan)} deferred)  orchestrator={_orch_token(record)}"]
     if not args.plan_only and no_changed_files:
         lines.append(
             f"  ⚠ no changes in this worktree vs {args.base} — no changed files were "
@@ -342,6 +362,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
         mark = {"pass": "✓", "warn": "⚠", "block": "✗",
                 "inconclusive": "~"}.get(r["status"], "?")
         lines.append(f"  {mark} {r['name']} [{r['status']}] — {r.get('summary','')}")
+    if deferred_plan:
+        lines.append("  ↷ deferred by tier: " + ", ".join(
+            f"{g['name']}[{g.get('tier', 'S2')}]" for g in deferred_plan
+        ))
     if not plan:
         lines.append("  (no impact-based gates selected for these changes)")
     if record.get("history_error"):
@@ -399,12 +423,23 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     gated_head: str | None = None
     warnings: list[str] = []
     gate_reuse: dict[str, Any] = {"reused": [], "rerun": []}
+    gate_tier: str | None = None
+    required_tier: str | None = None
     if not rec_path.exists():
         refuse = "no gate verdict on record — run `gate` first"
     else:
         rec = json.loads(rec_path.read_text())
         verdict = rec.get("verdict")
         gated_head = rec.get("head_sha")
+        try:
+            gate_tier = normalize_gate_tier(rec.get("gate_tier"))
+            required_tier = normalize_gate_tier(
+                rec.get("required_tier") or required_cutover_tier(
+                    rec.get("changed_files") or []
+                )
+            )
+        except GateTierError as exc:
+            refuse = f"gate record has invalid tier metadata: {exc} — re-run `gate`"
         planned_gates = rec.get("plan")
         recorded_gates = rec.get("gates")
         gate_reuse = rec.get("gate_reuse") or (
@@ -413,7 +448,12 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         )
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
-        if rec.get("head_sha") != head:
+        if refuse:
+            pass
+        elif TIER_RANK[gate_tier] < TIER_RANK[required_tier]:
+            refuse = (f"gate tier {gate_tier} is below the required {required_tier} "
+                      "for this change set — re-run gate at the required tier")
+        elif rec.get("head_sha") != head:
             refuse = ("gate verdict is stale (recorded HEAD "
                       f"{str(rec.get('head_sha'))[:8]} != current {head[:8]}) — re-run `gate`")
         elif wt_orch is not None and rec_orch != wt_orch:
@@ -489,7 +529,8 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     if not args.commit:
         payload = {"schema": SCHEMA, "step": "cutover", "mode": "dry-run", "landed": False,
                    "branch": wt_branch, "target": local, "verdict": verdict,
-                   "warnings": warnings, "gate_reuse": gate_reuse}
+                   "warnings": warnings, "gate_reuse": gate_reuse,
+                   "gate_tier": gate_tier, "required_tier": required_tier}
         _emit(payload, args.json,
               f"# cutover (dry-run)\n  would rebase {wt_branch} onto {local}, then "
               f"ff local {local} to it (offline — no push, no deploy){warn_line}\n"
@@ -570,6 +611,7 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed", "landed": True,
                "sha": sha, "trunk_tip": trunk_tip, "target": local, "branch": wt_branch,
                "verdict": verdict, "warnings": warnings, "gate_reuse": gate_reuse,
+               "gate_tier": gate_tier, "required_tier": required_tier,
                "repair": repair,
                "staged_closures": staged_closures}
     repair_line = ""
