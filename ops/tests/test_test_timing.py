@@ -190,6 +190,38 @@ def test_weighted_rollup_survives_multiple_prunes_without_batch_bias(tmp_path):
     assert estimate["estimate_s"] == 10.0
 
 
+def test_legacy_rollup_migration_preserves_representative_weight(tmp_path):
+    db = tmp_path / "timing.sqlite3"
+    store.initialize(db)
+    old_dimensions = [
+        "ops.orchestrator.gate", "gate.py::test", "worktree-orchestrator", "S1",
+        "oscar", "python-3.13", None, None, "ops-python", "warm",
+    ]
+    rollup_key = json.dumps(old_dimensions, ensure_ascii=False, separators=(",", ":"))
+    with store.connection(db) as conn:
+        conn.execute(
+            """INSERT INTO timing_rollups (
+                rollup_key, command_key, resource_class, sample_count, sum_s,
+                min_s, max_s, p50_s, p90_s, durations_json,
+                weighted_samples_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rollup_key, "ops.orchestrator.gate", "ops-python", 1000, 50000.0,
+                10.0, 100.0, 10.0, 100.0, json.dumps([10.0, 100.0]),
+                "[]", "2020-01-01T00:00:00+00:00",
+            ),
+        )
+    estimate = store.estimate(
+        "ops.orchestrator.gate", db_path=db, selector="gate.py::test",
+        suite="worktree-orchestrator", tier="S1", host="oscar",
+        runtime_version="python-3.13", resource_class="ops-python",
+        cache_status="warm",
+    )
+    assert estimate["sample_count"] == 1000
+    assert estimate["estimate_s"] == 10.0
+
+
 def test_bundle_eta_serializes_same_resource_lane(tmp_path):
     db = tmp_path / "timing.sqlite3"
     _record(db, 10.0)

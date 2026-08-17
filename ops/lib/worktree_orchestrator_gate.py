@@ -163,6 +163,45 @@ def _validate_gate_deferrals(
         })
     return admitted, problems
 
+
+def _validate_recorded_deferrals(
+    worktree: str | Path,
+    failures: object,
+    full_plan: list[dict[str, Any]],
+) -> str | None:
+    """Recheck carried tickets at cutover; gate-time admission is not permanent."""
+    if not isinstance(failures, list):
+        return "gate record deferred_failures is malformed — re-run gate"
+    specs = {str(spec.get("name")): spec for spec in full_plan}
+    failure_names: set[str] = set()
+    for item in failures:
+        if not isinstance(item, dict):
+            return "gate record contains a malformed deferred failure — re-run gate"
+        gate_name = str(item.get("gate") or "")
+        ticket_id = str(item.get("ticket_id") or "")
+        if not gate_name or not ticket_id or gate_name in failure_names:
+            return "gate record contains an invalid or duplicate deferred failure — re-run gate"
+        failure_names.add(gate_name)
+        spec = specs.get(gate_name)
+        if spec is None:
+            return f"deferred gate {gate_name!r} is absent from the current plan — re-run gate"
+        ticket, error = _load_deferral_ticket(worktree, ticket_id)
+        if error:
+            return f"deferred ticket is no longer valid: {error}"
+        assert ticket is not None
+        status = str(ticket.get("status") or "")
+        severity = str(ticket.get("severity") or "")
+        if status not in {"open", "triaged", "contract-blocked"}:
+            return (
+                f"deferred ticket {ticket_id} now has status={status}; it must be reopened "
+                "before cutover"
+            )
+        allowed, reason = gate_tiers.deferral_allowed(spec, severity)
+        if not allowed:
+            return f"deferred ticket {ticket_id} is no longer admissible: {reason}"
+    return None
+
+
 def _interrupted_operation(worktree: str | Path) -> str | None:
     """`"rebase"` / `"merge"` / `"cherry-pick"` when one is in flight here, else None.
 
@@ -648,6 +687,11 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                 refuse = "gate record changed_files is malformed — re-run gate"
             else:
                 try:
+                    actual_changed = _changed_vs_base(worktree, args.base)
+                    if actual_changed != changed_for_plan:
+                        raise ValueError(
+                            "gate record changed_files does not match the current worktree"
+                        )
                     current_full_plan = _current_full_gate_plan(
                         worktree, changed_for_plan, gate_tier, args.base,
                     )
@@ -669,6 +713,10 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                                 "S4 gate record is missing release gates: "
                                 + ", ".join(missing_release) + " — re-run gate"
                             )
+                    if not refuse:
+                        refuse = _validate_recorded_deferrals(
+                            worktree, rec.get("deferred_failures"), current_full_plan,
+                        )
         if refuse:
             pass
         elif TIER_RANK[gate_tier] < TIER_RANK[required_tier]:
@@ -702,6 +750,31 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             refuse = (f"gate record is incomplete ({len(recorded_gates)} of "
                       f"{len(planned_gates)} planned gate results) — the preflight "
                       "stopped the run; re-run `gate` before cutover")
+        elif any(not isinstance(gate, dict) for gate in recorded_gates):
+            refuse = "gate record contains a non-object gate result — re-run gate"
+        elif len({str(gate.get("name")) for gate in recorded_gates}) != len(recorded_gates):
+            refuse = "gate record contains duplicate gate results — re-run gate"
+        elif {str(gate.get("name")) for gate in recorded_gates} != {
+                str(gate.get("name")) for gate in planned_gates}:
+            refuse = "gate results do not match the canonical plan — re-run gate"
+        elif any(
+                gate.get("status") == "warn" and gate.get("original_status") == "block"
+                and not any(item.get("gate") == gate.get("name")
+                            for item in rec.get("deferred_failures", [])
+                            if isinstance(item, dict))
+                for gate in recorded_gates
+        ):
+            refuse = "a deferred warning has no current ticket evidence — re-run gate"
+        elif any(
+                item.get("gate") not in {
+                    gate.get("name") for gate in recorded_gates
+                    if gate.get("status") == "warn"
+                    and gate.get("original_status") == "block"
+                }
+                for item in rec.get("deferred_failures", [])
+                if isinstance(item, dict)
+        ):
+            refuse = "a deferred failure has no matching blocked gate result — re-run gate"
         elif verdict not in ("pass", "warn"):
             refuse = f"gate verdict is {verdict!r}, not pass/warn — run `gate` first"
         elif unattributed := [g.get("name") for g in rec.get("gates", [])

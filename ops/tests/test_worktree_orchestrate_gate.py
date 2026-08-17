@@ -678,6 +678,109 @@ def test_cutover_refuses_a_fake_s4_record_without_release_gate_plan(scratch):
     assert "canonical plan" in cut["error"] or "release gates" in cut["error"]
     assert "notes.txt" not in _local_main_files(repo)
 
+
+@gitmark
+def test_cutover_refuses_gate_record_with_forged_changed_scope(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "scope-record.json")
+    wt = _open_wt(state, slug="forged-gate-scope")
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text())
+    record["changed_files"] = []
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "changed_files does not match" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_refuses_duplicate_gate_result_rows(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "duplicate-gates.json")
+    wt = _open_wt(state, slug="duplicate-gate-result")
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text())
+    # Remove the newer canonical-plan guard to exercise the result-row contract
+    # independently, as a legacy record could lack that digest.
+    record.pop("canonical_plan_digest", None)
+    record["plan"].append(json.loads(json.dumps(record["plan"][0])))
+    record["gates"].append(json.loads(json.dumps(record["gates"][0])))
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "duplicate gate results" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_revalidates_deferred_ticket_status(scratch, monkeypatch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "deferred-ticket.json")
+    wt = _open_wt(state, slug="stale-deferred-ticket")
+
+    # Add a real S2-routed ops change, but replace the expensive child gates with
+    # deterministic pass rows; this test targets cutover admission, not execution.
+    (Path(wt) / "ops" / "fixture.py").parent.mkdir(parents=True, exist_ok=True)
+    (Path(wt) / "ops" / "fixture.py").write_text("value = 1\n", encoding="utf-8")
+    # Keep the test directory present but without a matching test file so the
+    # route intentionally selects the whole ops/tests fallback, classified S2.
+    (Path(wt) / "ops" / "tests").mkdir(parents=True, exist_ok=True)
+    ticket_path = Path(wt) / "docs" / "runbook" / "backlog" / "IMP-0001.json"
+    ticket = json.loads(ticket_path.read_text(encoding="utf-8"))
+    ticket["status"] = "fixed"
+    ticket_path.write_text(json.dumps(ticket) + "\n", encoding="utf-8")
+    _git(["add", "ops/fixture.py", str(ticket_path.relative_to(wt))], wt)
+    _git(["commit", "-qm", "fixture: create deferred admission scope"], wt)
+
+    monkeypatch.setattr(
+        MODULE,
+        "_run_gate",
+        lambda spec, _worktree, **_kwargs: {
+            "name": spec["name"], "category": spec["category"],
+            "level": spec.get("level", "block"), "status": "pass", "rc": 0,
+            "summary": "fixture gate ran",
+        },
+    )
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text())
+    full_plan = [*(record.get("plan") or []), *(record.get("deferred_plan") or [])]
+    spec = next(
+        item for item in full_plan
+        if MODULE.gate_tiers.deferral_allowed(item, "med")[0]
+    )
+    record["deferred_failures"] = [{
+        "gate": spec["name"], "ticket_id": "IMP-0001",
+        "status": "open", "severity": "med", "tier": spec.get("tier", "S2"),
+    }]
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "now has status=fixed" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
 @gitmark
 def test_gate_names_the_empty_worktree(scratch):
     """An empty diff is a legal re-gate, but its record must say it verified nothing."""
