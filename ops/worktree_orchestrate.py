@@ -26,6 +26,7 @@ from lib import worktree_orchestrator_runtime as _runtime  # noqa: E402
 # Runtime provenance is intentionally the façade path.  The executable contract is
 # the stable ops/worktree_orchestrate.py surface, including its content fingerprint.
 _runtime.__file__ = __file__
+_runtime.orchestrator_core.__file__ = __file__
 _COMPONENTS: list[types.ModuleType] = [_runtime]
 
 
@@ -42,6 +43,8 @@ def _register_component(component: types.ModuleType) -> None:
 
 
 _copy_exports(_runtime)
+_register_component(_runtime.planning)
+_register_component(_runtime.orchestrator_core)
 
 
 class _FacadeModule(types.ModuleType):
