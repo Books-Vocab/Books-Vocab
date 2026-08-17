@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 33389482924e1fea08512d9885e3e424f8c42ac8
+verified_against: 75160fdf037c0de2ddbcdaf0277c752aabf5d245
 -->
 # Technical Reference Index
 
@@ -34,6 +34,16 @@ verified_against: 33389482924e1fea08512d9885e3e424f8c42ac8
 | `ops/skill_route.py` + `.claude/skills/catalog.json` | `kg.skill_catalog.v1` 的 skill inventory parity、frontmatter/path 對帳、dependency cycle、primary intent overlap、forbidden fixture 與 typed route；`validate --json` 是 route catalog gate，`route --intent <intent> --json` 只輸出一個 primary 加 required dependency，不授予 capability 或 production 權限。 |
 | `ops/context_route.py` + `ops/context_plane.json` | `kg.context_plane.v1` 的 virtual slice loader；`route/render --role <role> [--surface <surface>] [--task <task>] --json` 以 exact/prefix anchor 取最小 section，驗 `docs/registry.yml` owner/source、unit/route budget（含 `defaults.max_unit_tokens` 硬上限）、HEAD/branch/registry/manifest/source SHA-256 provenance；缺 section、ownership 不符或讀取 race 一律 fail-closed，禁止全文 fallback。文件角色別名（如 `docs-steward`）會正規化到 typed role；deep reference 以 task opt-in。 |
 | `ops/capability_matrix.py` | `context.route` 與 `skill.route` 只屬 observer/read-only routing surface；route bundle 的 `authorization.granted=false`，side-effect 授權仍由既有 capability／orchestrator／safe wrapper 契約決定。 |
+
+### Orchestrator focused routes and test timing
+
+| 入口／資料 | 用途 |
+|------|------|
+| `ops/lib/worktree_test_routes.py` | `kg.test.route.v1` 的明確 source seam manifest。`orchestrator.planning`、`gate`、`lifecycle`、`claims`、`delivery`、`recovery` 與 `facade` 各自列出 nodeid、fallback file、tier、failure policy、resource class；未知 source、空 selector、版本不符或檔案不存在一律回退至 `orchestrator.fallback`，不得空跑綠燈。 |
+| `ops/test_route.py run --mode focused|group --route-id <id>` | 先 `pytest --collect-only`，收集失敗或零筆時改跑父群 fallback，再執行功能測試；stdout 保持最終 JSON，進度走既有 stderr heartbeat。 |
+| `ops/lib/test_timing_store.py` / `.cache/test_timing.sqlite3` | gitignored 的 `kg.test.timing.v1` WAL ledger；以 semantic `command_key`、host、runtime、device/cache、resource class 分群，不保存 raw argv、token 或 secret。正常 pass/fail/inconclusive 才進 ETA 樣本；timeout/interrupted/cancelled 不污染 baseline。 |
+| `ops/test_timing.py estimate|run|status|wait` | `estimate` 回傳 p50/p90、上下界、confidence 與 resource wait；`run --bundle <manifest> --json` 執行 `kg.test.bundle.v1`，status 以 atomic JSON 寫入 `.cache/test_runs/`，stderr heartbeat、完成後一次 final JSON。timing 寫入失敗不改功能 verdict。 |
+| `ops/lib/pytest_timing_plugin.py` | 以 `pytest_runtest_logreport` 聚合 setup/call/teardown，按 nodeid 輸出 JSONL；可由 bundle runner ingest，plugin 異常只使 timing evidence 缺失。 |
 
 ## Backend API Routers (`backend/src/kg/routers/`)
 
