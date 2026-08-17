@@ -27,6 +27,11 @@ from lib import worktree_orchestrator_runtime as _runtime  # noqa: E402
 # the stable ops/worktree_orchestrate.py surface, including its content fingerprint.
 _runtime.__file__ = __file__
 _runtime.orchestrator_core.__file__ = __file__
+_runtime.orchestrator_delivery.__file__ = __file__
+_runtime.orchestrator_lifecycle.__file__ = __file__
+_runtime.orchestrator_gate.__file__ = __file__
+_runtime.orchestrator_commands.__file__ = __file__
+_runtime.orchestrator_claims.__file__ = __file__
 _COMPONENTS: list[types.ModuleType] = [_runtime]
 
 
@@ -45,6 +50,11 @@ def _register_component(component: types.ModuleType) -> None:
 _copy_exports(_runtime)
 _register_component(_runtime.planning)
 _register_component(_runtime.orchestrator_core)
+_register_component(_runtime.orchestrator_delivery)
+_register_component(_runtime.orchestrator_lifecycle)
+_register_component(_runtime.orchestrator_gate)
+_register_component(_runtime.orchestrator_commands)
+_register_component(_runtime.orchestrator_claims)
 
 
 class _FacadeModule(types.ModuleType):
