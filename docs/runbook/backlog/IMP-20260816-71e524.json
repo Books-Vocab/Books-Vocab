@@ -1,0 +1,14 @@
+{
+  "brief": "模擬器租借用盡時驗證工作者只看到模糊失敗，無法直接判斷如何繼續。",
+  "category": "tool",
+  "date": "2026-08-16",
+  "detail": "run_ui_evidence.sh default lease path can exit before ios_ops emits JSON; the helper normalizes this as a generic runner failure with missing upstream status instead of naming lease exhaustion and the explicit-device recovery.",
+  "id": "IMP-20260816-71e524",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個驗證輔助腳本與其回歸測試。",
+  "severity": "med",
+  "source": "retire-dictionary-card-model UI evidence closure",
+  "status": "open",
+  "stream": "IMP"
+}

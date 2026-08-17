@@ -1,0 +1,14 @@
+{
+  "brief": "並行 iOS 驗證會長時間飢餓，維護者等待十多分鐘仍無法取得可用結果。",
+  "category": "tool",
+  "date": "2026-08-13",
+  "detail": "同一工作樹驗證曾連續三次等待共用 build lock 達 600 秒後 rc=75；另一次取得鎖後，共用 DerivedData 的 build.db 回報 disk I/O error，且預編譯 GoogleSignIn PCM 引用不存在 header。現行鎖在每個 holder 結束後可被其他新 waiter 插隊，並未保證已等待者公平取得，且 build/test 使用不同 DerivedData root 仍共享可被並行狀態破壞的 cache。",
+  "id": "IMP-20260813-e360e6",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個 iOS 共用鎖與快取協調流程及其回歸測試。",
+  "severity": "med",
+  "source": "Vocabulary P11 Phase1b review fix",
+  "status": "open",
+  "stream": "IMP"
+}
