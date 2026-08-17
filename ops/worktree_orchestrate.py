@@ -27,6 +27,8 @@ from lib import worktree_orchestrator_runtime as _runtime  # noqa: E402
 # the stable ops/worktree_orchestrate.py surface, including its content fingerprint.
 _runtime.__file__ = __file__
 _runtime.orchestrator_core.__file__ = __file__
+for _core_component in _runtime.orchestrator_core._COMPONENTS:
+    _core_component.__file__ = __file__
 _runtime.orchestrator_delivery.__file__ = __file__
 for _delivery_component in _runtime.orchestrator_delivery._COMPONENTS:
     _delivery_component.__file__ = __file__
@@ -52,6 +54,8 @@ def _register_component(component: types.ModuleType) -> None:
 _copy_exports(_runtime)
 _register_component(_runtime.planning)
 _register_component(_runtime.orchestrator_core)
+for _core_component in _runtime.orchestrator_core._COMPONENTS:
+    _register_component(_core_component)
 _register_component(_runtime.orchestrator_delivery)
 for _delivery_component in _runtime.orchestrator_delivery._COMPONENTS:
     _register_component(_delivery_component)
