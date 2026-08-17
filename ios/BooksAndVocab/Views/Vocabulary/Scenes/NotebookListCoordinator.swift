@@ -137,11 +137,30 @@ final class NotebookListCoordinator: NotebookListCoordinating {
     /// Reconcile the server vocab-ui projection with the local active notebook
     /// cursor. The store owns timestamp comparison, so stale responses are no-op.
     func syncActiveNotebookFromServer(authManager: any AuthManaging, kgService: any KGServing) async {
-        guard authManager.isLoggedIn, authManager.userId != nil else { return }
+        await syncActiveNotebookFromServer(
+            authManager: authManager,
+            kgService: kgService,
+            store: ActiveNotebookStore.shared
+        )
+    }
+
+    /// Injectable user-config seam for account-switch regression tests and
+    /// non-singleton local projections. Capture the account before the await so
+    /// a response fetched for account A cannot apply after switching to B.
+    func syncActiveNotebookFromServer(
+        authManager: any AuthManaging,
+        kgService: any UserConfigFetching,
+        store: ActiveNotebookStore
+    ) async {
+        guard authManager.isLoggedIn, let requestedUserId = authManager.userId else { return }
         do {
             let config = try await kgService.fetchUserConfig()
-            guard let vu = config.vocab_ui, let ts = vu.updated_at else { return }
-            _ = ActiveNotebookStore.shared.syncActiveNotebookFromServer(
+            guard authManager.isLoggedIn, authManager.userId == requestedUserId else { return }
+            guard let vu = config.vocab_ui,
+                  let ts = vu.updated_at,
+                  !vu.active_notebook_id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return }
+            _ = store.syncActiveNotebookFromServer(
                 ActiveNotebookState(activeNotebookId: vu.active_notebook_id, updatedAt: ts)
             )
         } catch {
