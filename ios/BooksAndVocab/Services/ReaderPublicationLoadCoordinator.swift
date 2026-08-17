@@ -20,8 +20,23 @@ extension ReaderPublicationLoader: ReaderPublicationLoading {}
 /// but it can no longer publish state into the current Reader view.
 @MainActor
 final class ReaderPublicationLoadCoordinator {
+    struct Request: Sendable {
+        fileprivate let generation: UInt
+
+        fileprivate init(generation: UInt) {
+            self.generation = generation
+        }
+    }
+
     private var generation: UInt = 0
     private var activeGeneration: UInt?
+
+    func beginRequest() -> Request {
+        generation &+= 1
+        let request = Request(generation: generation)
+        activeGeneration = request.generation
+        return request
+    }
 
     func load(
         book: Book,
@@ -31,27 +46,47 @@ final class ReaderPublicationLoadCoordinator {
         onUniqueWords: @escaping @MainActor (Set<String>) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) async {
-        generation &+= 1
-        let requestGeneration = generation
-        activeGeneration = requestGeneration
+        let request = beginRequest()
+        await load(
+            request: request,
+            book: book,
+            loader: loader,
+            onPhase: onPhase,
+            onPublication: onPublication,
+            onUniqueWords: onUniqueWords,
+            onError: onError
+        )
+    }
+
+    func load(
+        request: Request,
+        book: Book,
+        loader: any ReaderPublicationLoading,
+        onPhase: @escaping @MainActor (String) -> Void,
+        onPublication: @escaping @MainActor (Publication) -> Void,
+        onUniqueWords: @escaping @MainActor (Set<String>) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) async {
+        guard isCurrent(request.generation), !Task.isCancelled else { return }
+        defer { finish(request.generation) }
 
         do {
             let result = try await loader.loadPublication(for: book) { [weak self] phase in
-                guard let self, self.isCurrent(requestGeneration), !Task.isCancelled else { return }
+                guard let self, self.isCurrent(request.generation), !Task.isCancelled else { return }
                 onPhase(phase)
             }
 
-            guard isCurrent(requestGeneration), !Task.isCancelled else { return }
+            guard isCurrent(request.generation), !Task.isCancelled else { return }
             onPublication(result.publication)
 
             let uniqueWords = await result.extractUniqueWords()
-            guard isCurrent(requestGeneration), !Task.isCancelled else { return }
+            guard isCurrent(request.generation), !Task.isCancelled else { return }
             onUniqueWords(uniqueWords)
         } catch is CancellationError {
             // Cancellation is an expected lifecycle event (retry/pop). It is
             // never a user-visible publication error.
         } catch {
-            guard isCurrent(requestGeneration), !Task.isCancelled else { return }
+            guard isCurrent(request.generation), !Task.isCancelled else { return }
             onError(error)
         }
     }
@@ -66,6 +101,11 @@ final class ReaderPublicationLoadCoordinator {
 
     private func isCurrent(_ requestGeneration: UInt) -> Bool {
         activeGeneration == requestGeneration
+    }
+
+    private func finish(_ requestGeneration: UInt) {
+        guard activeGeneration == requestGeneration else { return }
+        activeGeneration = nil
     }
 }
 #endif

@@ -8,6 +8,23 @@ import Testing
 @MainActor
 struct ReaderPublicationLoadCoordinatorTests {
     @Test
+    func readerBeginsGenerationBeforeMutatingLoadingState() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Views/Reader/ReaderView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let loadStart = try #require(source.range(of: "private func loadPublication()"))
+        let loadEnd = source.range(of: "\n    }\n}\n#endif", range: loadStart.upperBound..<source.endIndex)?.lowerBound
+            ?? source.endIndex
+        let loadBody = source[loadStart.lowerBound..<loadEnd]
+        let requestOffset = try #require(loadBody.range(of: "let request = publicationLoadCoordinator.beginRequest()"))
+        let attemptOffset = try #require(loadBody.range(of: "readerState.runtime.beginLoadAttempt()"))
+
+        #expect(requestOffset.lowerBound < attemptOffset.lowerBound)
+    }
+
+    @Test
     func retryInvalidatesBeforeSchedulingReplacementTask() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // BooksAndVocabTests
@@ -149,6 +166,35 @@ struct ReaderPublicationLoadCoordinatorTests {
         #expect(errors[0] == TestLoadError.failed.localizedDescription)
     }
 
+    @Test
+    func completedLoadIgnoresLatePhaseUpdate() async {
+        let loader = ControlledReaderPublicationLoader()
+        let coordinator = ReaderPublicationLoadCoordinator()
+        let book = makeBook(title: "completed")
+        var phases: [String] = []
+
+        let task = Task {
+            await coordinator.load(
+                book: book,
+                loader: loader,
+                onPhase: { phases.append($0) },
+                onPublication: { _ in },
+                onUniqueWords: { _ in },
+                onError: { _ in }
+            )
+        }
+        await settle()
+        loader.resolve(
+            title: book.title,
+            result: .success(makeResult(title: book.title, words: ["done"]))
+        )
+        await task.value
+
+        loader.emitPhase(title: book.title, phase: "late")
+
+        #expect(phases.isEmpty)
+    }
+
     private func makeBook(title: String) -> Book {
         Book(title: title, author: "Author", fileName: "(title).epub")
     }
@@ -169,12 +215,13 @@ struct ReaderPublicationLoadCoordinatorTests {
 @MainActor
 private final class ControlledReaderPublicationLoader: ReaderPublicationLoading {
     private var continuations: [String: CheckedContinuation<ReaderPublicationLoadResult, Error>] = [:]
+    private var phaseUpdates: [String: @MainActor (String) -> Void] = [:]
 
     func loadPublication(
         for book: Book,
         updatePhase: @escaping @MainActor (String) -> Void
     ) async throws -> ReaderPublicationLoadResult {
-        updatePhase("phase-(book.title)")
+        phaseUpdates[book.title] = updatePhase
         return try await withCheckedThrowingContinuation { continuation in
             continuations[book.title] = continuation
         }
@@ -183,6 +230,10 @@ private final class ControlledReaderPublicationLoader: ReaderPublicationLoading 
     func resolve(title: String, result: Result<ReaderPublicationLoadResult, Error>) {
         guard let continuation = continuations.removeValue(forKey: title) else { return }
         continuation.resume(with: result)
+    }
+
+    func emitPhase(title: String, phase: String) {
+        phaseUpdates[title]?(phase)
     }
 }
 
