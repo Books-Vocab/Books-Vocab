@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +65,20 @@ def test_backend_quality_workflow_uses_locked_module_form_toolchain() -> None:
     assert "--cov=src/kg" in workflow
     assert '"pytest-cov' in pyproject
     assert '"ruff' in pyproject
+
+
+def test_backend_ruff_is_pinned_in_project_lock_and_not_external_tool_cache() -> None:
+    pyproject = tomllib.loads((ROOT / "backend/pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomllib.loads((ROOT / "backend/uv.lock").read_text(encoding="utf-8"))
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "ruff==0.16.3" in pyproject["dependency-groups"]["dev"]
+    ruff_package = next(package for package in lock["package"] if package["name"] == "ruff")
+    assert ruff_package["version"] == "0.16.3"
+    assert "uv sync --locked" in workflow
+    assert "uv run ruff check src tests" in workflow
+    assert "uv tool run ruff" not in workflow
+    assert "uv run --no-project" not in workflow
 
 
 def test_backend_quality_artifact_carries_head_and_lock_identity() -> None:
