@@ -165,6 +165,15 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
     "ops/shell_scan.sh": "ops/tests/test_script_help.sh",
 }
 
+# Timing and route helpers are one control-plane surface but intentionally have a
+# shared contract test rather than one test file per small helper module.
+OPS_TEST_ALIASES: dict[str, str] = {
+    "ops/lib/test_timing_store.py": "ops/tests/test_test_timing.py",
+    "ops/lib/worktree_test_routes.py": "ops/tests/test_orchestrator_seams.py",
+    "ops/test_route.py": "ops/tests/test_orchestrator_seams.py",
+    "ops/test_timing.py": "ops/tests/test_test_timing.py",
+}
+
 # Test scripts that must NOT be routed as a block gate, each with the reason. A gate
 # that can only ever be red is as harmful as one that can only be green, in the other
 # direction: it blocks everyone and the only visible way past it is to leave the process
@@ -496,8 +505,13 @@ def plan_gates(changed_files: list[str],
             # a changed test file must ALSO prove existence: a DELETED test is in
             # the diff too, and passing a gone path to pytest exits 4 -> false block
             candidate = p if _is_ops_test(p) else f"ops/tests/test_{p.rsplit('/', 1)[-1]}"
-            if exists(candidate):
-                targets.add(candidate)
+            candidates = [candidate]
+            alias = OPS_TEST_ALIASES.get(p)
+            if alias:
+                candidates.append(alias)
+            hit = next((value for value in candidates if exists(value)), None)
+            if hit:
+                targets.add(hit)
             else:
                 fallback = True
         # The whole-suite fallback subsumes every targeted file, but only when the
