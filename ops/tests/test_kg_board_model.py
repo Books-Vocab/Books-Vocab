@@ -859,32 +859,42 @@ def test_scope_matrix_marks_only_queued_tickets_with_active_file_collisions():
         },
     )
 
-    tickets = {row["id"]: row for row in payload["tickets"]}
-    assert tickets["ACTIVE"]["state"] == "active"
-    assert tickets["ACTIVE"]["collision"] is None
-    assert tickets["QUEUED-COLLISION"]["collision"] == {
+    worktrees = {row["id"]: row for row in payload["worktrees"]}
+    assert worktrees["worktree:feat/active"]["kind"] == "ticketed"
+    assert worktrees["worktree:feat/active"]["ticket_ids"] == ["ACTIVE"]
+    queued = {row["id"]: row for row in payload["queued_tickets"]}
+    assert queued["QUEUED-COLLISION"]["collision"] == {
         "status": "hard",
-        "with": ["ACTIVE"],
+        "with_worktrees": ["worktree:feat/active"],
         "paths": ["ops/shared.py"],
     }
-    assert tickets["QUEUED-CLEAR"]["collision"] == {
-        "status": "clear", "with": [], "paths": [],
+    assert queued["QUEUED-CLEAR"]["collision"] == {
+        "status": "clear", "with_worktrees": [], "paths": [],
     }
-    assert tickets["QUEUED-SAME-QUEUE"]["collision"]["status"] == "clear"
-    assert tickets["QUEUED-UNKNOWN"]["scope_status"] == "unknown"
-    assert tickets["QUEUED-UNKNOWN"]["collision"] is None
-    assert payload["unknown_scope_ids"] == ["QUEUED-UNKNOWN"]
+    assert queued["QUEUED-SAME-QUEUE"]["collision"]["status"] == "clear"
+    assert queued["QUEUED-UNKNOWN"]["scope_status"] == "unknown"
+    assert queued["QUEUED-UNKNOWN"]["collision"] is None
+    assert payload["unknown_ticket_ids"] == ["QUEUED-UNKNOWN"]
 
     shared = next(row for row in payload["files"] if row["path"] == "ops/shared.py")
-    cells = {cell["ticket_id"]: cell for cell in shared["cells"]}
-    assert cells["ACTIVE"] == {
-        "ticket_id": "ACTIVE", "operation": "modify", "state": "active",
+    cells = {
+        cell.get("ticket_id") or cell.get("worktree_id"): cell
+        for cell in shared["cells"]
+    }
+    assert cells["worktree:feat/active"] == {
+        "column_type": "worktree",
+        "worktree_id": "worktree:feat/active",
+        "ticket_ids": ["ACTIVE"],
+        "operation": "modify",
+        "operations": ["modify"],
+        "state": "active",
         "collision": False,
     }
     assert cells["QUEUED-COLLISION"]["collision"] is True
     queued = next(row for row in payload["files"] if row["path"] == "ops/queued.py")
     assert queued["cells"] == [{
-        "ticket_id": "QUEUED-SAME-QUEUE", "operation": "modify", "state": "queued",
+        "column_type": "ticket", "ticket_id": "QUEUED-SAME-QUEUE",
+        "operation": "modify", "operations": ["modify"], "state": "queued",
         "collision": False,
     }]
 
@@ -896,10 +906,140 @@ def test_scope_matrix_does_not_turn_unknown_scope_into_unknown_collision():
         canonical_dispatch_ids={"QUEUED"},
     )
 
-    ticket = payload["tickets"][0]
+    ticket = payload["queued_tickets"][0]
     assert ticket["scope_status"] == "unknown"
     assert ticket["collision"] is None
     assert payload["files"] == []
+
+
+def test_scope_matrix_uses_worktrees_as_active_columns_and_groups_related_tickets():
+    scope = lambda *files: {
+        "schema": "kg.backlog.scope.v1",
+        "files": [
+            {"path": path, "operation": operation}
+            for path, operation in files
+        ],
+    }
+    entries = [
+        {**_ticket("ACTIVE-ONE"), "scope": scope(("ops/shared.py", "modify"))},
+        {**_ticket("ACTIVE-TWO"), "scope": scope(("ops/new.py", "add"))},
+        {**_ticket("QUEUED"), "scope": scope(("ops/direct.py", "modify"))},
+    ]
+    refs = [
+        {
+            "branch": "feat/ticketed",
+            "path": "/tmp/ticketed",
+            "host": "oscar",
+            "status": "active",
+            "tickets": ["ACTIVE-ONE", "ACTIVE-TWO"],
+        },
+        {
+            "branch": "feat/direct",
+            "path": "/tmp/direct",
+            "host": "oscar",
+            "status": "active",
+            "tickets": [],
+            "scope": scope(("ops/direct.py", "modify")),
+        },
+    ]
+
+    payload = server.project_scope_matrix(
+        entries,
+        {
+            "ACTIVE-ONE": {"branch": "feat/ticketed"},
+            "ACTIVE-TWO": {"branch": "feat/ticketed"},
+        },
+        canonical_dispatch_ids={"QUEUED"},
+        worktree_refs=refs,
+    )
+
+    worktrees = {row["id"]: row for row in payload["worktrees"]}
+    assert [row["kind"] for row in payload["worktrees"]] == ["ticketed", "direct"]
+    assert worktrees["worktree:feat/ticketed"]["ticket_ids"] == ["ACTIVE-ONE", "ACTIVE-TWO"]
+    assert worktrees["worktree:feat/ticketed"]["scope_status"] == "known"
+    assert worktrees["worktree:feat/direct"]["ticket_ids"] == []
+    assert worktrees["worktree:feat/direct"]["scope_status"] == "known"
+
+    queued = payload["queued_tickets"][0]
+    assert queued["id"] == "QUEUED"
+    assert queued["collision"] == {
+        "status": "hard",
+        "with_worktrees": ["worktree:feat/direct"],
+        "paths": ["ops/direct.py"],
+    }
+    assert payload["active_worktree_ids"] == [
+        "worktree:feat/ticketed", "worktree:feat/direct",
+    ]
+    assert payload["queued_ticket_ids"] == ["QUEUED"]
+
+    shared = next(row for row in payload["files"] if row["path"] == "ops/shared.py")
+    assert shared["cells"] == [{
+        "column_type": "worktree",
+        "worktree_id": "worktree:feat/ticketed",
+        "ticket_ids": ["ACTIVE-ONE"],
+        "operation": "modify",
+        "operations": ["modify"],
+        "state": "active",
+        "collision": False,
+    }]
+
+
+def test_scope_matrix_keeps_direct_worktree_visible_when_its_scope_is_unknown():
+    payload = server.project_scope_matrix(
+        [{**_ticket("QUEUED"), "scope": {"files": [{"path": "ops/x.py", "operation": "modify"}]} }],
+        {},
+        canonical_dispatch_ids={"QUEUED"},
+        worktree_refs=[{
+            "branch": "feat/direct",
+            "path": "/tmp/direct",
+            "status": "active",
+            "tickets": [],
+        }],
+    )
+
+    worktree = payload["worktrees"][0]
+    assert worktree["kind"] == "direct"
+    assert worktree["scope_status"] == "unknown"
+    assert worktree["files"] == []
+    assert payload["unknown_worktree_ids"] == ["worktree:feat/direct"]
+    assert payload["queued_tickets"][0]["collision"] is None
+
+
+def test_scope_matrix_payload_projects_direct_worktree_refs_from_git_tree(monkeypatch, tmp_path):
+    scope = {"files": [{"path": "ops/direct.py", "operation": "modify"}]}
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text(json.dumps({
+        "git_tree": {
+            "complete": True,
+            "refs": [{
+                "branch": "feat/direct",
+                "head": "abcdef0",
+                "status": "active",
+                "tickets": [],
+                "scope": scope,
+            }],
+            "commits": [],
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "read_entries", lambda: {
+        "entries": [{**_ticket("QUEUED"), "scope": scope}],
+        "dispatch_ids": ["QUEUED"],
+        "local_held": {},
+    })
+    monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
+    monkeypatch.setattr(server, "freshness", lambda: {"freshness_state": "current"})
+
+    payload = server.scope_matrix_payload()
+
+    assert payload["schema"] == "kg.board.scope-matrix.v2"
+    assert payload["worktrees"][0]["kind"] == "direct"
+    assert payload["worktrees"][0]["scope_status"] == "known"
+    assert payload["queued_tickets"][0]["collision"] == {
+        "status": "hard",
+        "with_worktrees": ["worktree:feat/direct"],
+        "paths": ["ops/direct.py"],
+    }
 
 
 def test_healthz_requires_token_when_all_reads_require_token(monkeypatch):

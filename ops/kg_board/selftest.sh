@@ -127,6 +127,43 @@ else
   ok "派工扣認領：$disp"
 fi
 
+# 3c. 檔案佔用矩陣以 worktree 為 active 主體，collision 只能出現在 queued ticket。
+matrix=$(curl -fsS "${READ_AUTH[@]}" "$BASE/api/scope-matrix" 2>/dev/null | uv run --no-project --python 3.13 python -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["schema"] == "kg.board.scope-matrix.v2", d.get("schema")
+worktrees = {row["id"] for row in d["worktrees"]}
+queued = {row["id"] for row in d["queued_tickets"]}
+assert {row["id"] for row in d["columns"]} == worktrees | queued
+assert all(row["type"] == "worktree" for row in d["columns"][:len(worktrees)])
+assert all(row["type"] == "ticket" for row in d["columns"][len(worktrees):])
+assert all(row["kind"] in {"ticketed", "direct"} for row in d["worktrees"])
+assert all(isinstance(row["ticket_ids"], list) for row in d["worktrees"])
+unknown_direct = set()
+for worktree in d["worktrees"]:
+    if worktree["kind"] == "direct" and worktree["scope_status"] == "unknown":
+        unknown_direct.add(worktree["id"])
+        assert worktree["files"] == []
+for file_row in d["files"]:
+    for cell in file_row["cells"]:
+        if cell["column_type"] == "worktree":
+            assert cell["worktree_id"] in worktrees
+            assert cell["collision"] is False
+        else:
+            assert cell["column_type"] == "ticket"
+            assert cell["ticket_id"] in queued
+            assert isinstance(cell["collision"], bool)
+for ticket in d["queued_tickets"]:
+    collision = ticket["collision"]
+    assert collision is None or collision["status"] in {"clear", "hard"}
+    if unknown_direct:
+        assert collision is None or collision["status"] == "hard"
+    if collision is not None:
+        assert set(collision["with_worktrees"]).issubset(worktrees)
+print("%d 棵 active worktree / %d 張 queued ticket / %d 個檔案列" %
+      (d["counts"]["active_worktrees"], d["counts"]["queued_tickets"], d["counts"]["files"]))' 2>&1)
+[ $? -eq 0 ] && ok "Scope 矩陣 worktree/collision 契約：$matrix" || bad "Scope 矩陣：$matrix"
+
 # 4. 使用者寫入面必須不存在；mirror 仍是 bearer-only 內部同步
 [ -s "$TOKEN_FILE" ] && ok "token 檔存在" || bad "token 檔缺失或空：${TOKEN_FILE}（服務會拒絕啟動）"
 

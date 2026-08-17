@@ -29,7 +29,7 @@ agent 平行執行 `add`、必要時 `verify`、`groom`，把大量問題送進 
 - **梳理的標準是「小模型可執行」**：日常唯一入口是 `./ops/backlog.py groom <id> ...`（dry-run 預設，確認後 `--commit`）；它原子寫入完整規格並把 unresolved ticket 轉成 `triaged`，`update` 只留給 migration／個別欄位修復。
   `groom` 是把可執行的 ticket 放入交付進度看板的 `queued`，不是認領；`claim` 才是透過 worktree 登記簿把 queued ticket 推導成 `active`。`plan` 必須具體到接手者不需重新探索，連同 `acceptance` 與 `fix_site` 由 `validate` 強制。
   **另必須同時帶 `--brief` 與結構化 `--scope`**；`scope` 是 `{"files":[{"path":"ops/x.py","operation":"modify"}]}` 形式的實際檔案清單，每個檔案只標 `add` 或 `modify`。舊票的文字 Scope 仍可讀，但看板會標為 Scope 未知；這表示檔案變更範圍未知，不是 collision 未知。
-  看板的 collision 只在 queued ticket 與 active ticket 的已知檔案範圍重疊時標示；active 不標 collision，queued 之間共用範圍也不直接互相標 collision。尚未想清楚就不要蓋 groom 戳記，讓票留在 `list --ungroomed` 佇列。
+  看板的 collision 只在 queued ticket 與 active worktree 的已知檔案範圍重疊時標示；active worktree 不標 collision，queued 之間共用範圍也不直接互相標 collision。直接指派 worktree 若 mirror 尚未提供 structured Scope，標為 Scope 未知而不猜碰撞。尚未想清楚就不要蓋 groom 戳記，讓票留在 `list --ungroomed` 佇列。
 
 ## Gate（definition of done，必有當下輸出）
 - backlog 變更後:每筆 entry schema 完整(id/date/source/category/severity/status/detail/resolution),無懸空。**懸空的定義以 `validate` 為準,別照本檔的記憶**:`fixed` 缺 `fixed_by` 會紅;**`triaged`** 缺 next action 會紅(**`in-progress` 已退役**——誰在做改由 `list --held` 從 worktree 認領帳本推導,那是 per-machine 的,空白只代表這台機器上沒人);**`open` 刻意不要求 next action**——它就是「已立單、尚未 triage」的誠實狀態,實測要求它會在上線當天紅 40 筆,而唯一的清法是替沒人 triage 的工作編出 plan。看到 `open` 沒有 next action **不要去補**,那是 triage 佇列不是缺陷。

@@ -504,10 +504,18 @@ def mirror_held_claims() -> dict:
     claims = (_load_json(MIRROR_PATH, {}) or {}).get("claims") or {}
     held: dict[str, dict] = {}
     for rec in claims.get("records") or []:
+        if not isinstance(rec, dict):
+            continue
         for ticket in rec.get("backlog") or []:
-            held[str(ticket)] = {"branch": rec.get("branch"),
-                                 "claimed_at": rec.get("claimed_at"),
-                                 "intent": rec.get("intent")}
+            held[str(ticket)] = {
+                "branch": rec.get("branch"),
+                "path": rec.get("path"),
+                "host": claims.get("host"),
+                "base": rec.get("base"),
+                "claimed_at": rec.get("claimed_at"),
+                "intent": rec.get("intent"),
+                **({"scope": rec["scope"]} if "scope" in rec else {}),
+            }
     for ticket in claims.get("tickets_held") or []:
         held.setdefault(str(ticket), {"branch": None, "claimed_at": None,
                                       "intent": None})
@@ -688,15 +696,18 @@ def project_scope_matrix(
     held: dict | None = None,
     *,
     canonical_dispatch_ids: set[str] | None = None,
+    worktree_refs: list[dict] | None = None,
 ) -> dict:
-    """Project the file-occupancy matrix without inventing a second queue.
+    """Project the file-occupancy matrix with worktrees as active columns.
 
-    ``canonical_dispatch_ids`` is supplied by ``backlog.py dispatch``.  A held
-    ticket is active even though claiming removes it from that queue.  Collision
-    is deliberately calculated only for queued tickets against active file
-    claims; overlap between two active tickets is visible as occupancy, not
-    relabelled as a queue decision.  A legacy/prose Scope has no cells and is
-    reported as ``scope_status=unknown`` rather than as an unknown collision.
+    The board's primary unit is a worktree, not an agent or an individual active
+    ticket. A worktree with one or more held tickets is ``ticketed``; an active
+    worktree with no held tickets is ``direct`` and may carry its own structured
+    Scope. Related tickets in one worktree contribute a union of file claims.
+    Queued tickets remain individual columns because they are the units a user can
+    choose to claim. Collision is emitted only for queued tickets and only against
+    active worktree file claims. Legacy prose Scope stays ``unknown``; it never
+    becomes a guessed file or collision.
     """
     held = {str(ticket_id): value for ticket_id, value in (held or {}).items()}
     canonical_dispatch_ids = {str(ticket_id) for ticket_id in (canonical_dispatch_ids or set())}
@@ -705,111 +716,254 @@ def project_scope_matrix(
         for entry in entries
         if entry.get("id") and entry.get("status") not in RESOLVED_STATUSES
     }
-    active_ids = set(unresolved).intersection(held)
-    queued_ids = (canonical_dispatch_ids.intersection(unresolved)) - active_ids
-    candidate_ids = active_ids | queued_ids
+    by_ticket = unresolved
 
-    def order(ticket_id: str):
-        entry = unresolved[ticket_id]
-        return (
-            0 if ticket_id in active_ids else 1,
-            entry.get("date") or "",
-            ticket_id,
-        )
+    def ticket_sort(ticket_id: str):
+        entry = by_ticket.get(ticket_id) or {}
+        return entry.get("date") or "", ticket_id
 
-    ordered_ids = sorted(candidate_ids, key=order)
-    files_by_ticket: dict[str, dict[str, str]] = {}
-    for ticket_id in ordered_ids:
-        files_by_ticket[ticket_id] = {
-            item["path"]: item["operation"]
-            for item in scope_files(unresolved[ticket_id].get("scope"))
-        }
+    def ref_ticket_ids(ref: dict) -> list[str]:
+        result = []
+        for raw in ref.get("tickets") or ref.get("backlog") or []:
+            ticket_id = raw.get("id") if isinstance(raw, dict) else raw
+            if ticket_id is not None and str(ticket_id).strip():
+                result.append(str(ticket_id).strip())
+        return result
 
+    def worktree_id(branch: str | None) -> str:
+        return f"worktree:{branch or 'unknown'}"
+
+    def merge_scope(sources: list[tuple[str | None, object]]) -> tuple[str, list[dict]]:
+        """Merge file claims while preserving mixed add/modify provenance."""
+        merged: dict[str, dict[str, set[str]]] = {}
+        complete = bool(sources)
+        for source_id, raw_scope in sources:
+            if scope_status(raw_scope) != "known":
+                complete = False
+                continue
+            for item in scope_files(raw_scope):
+                path = item["path"]
+                cell = merged.setdefault(path, {"operations": set(), "ticket_ids": set()})
+                cell["operations"].add(item["operation"])
+                if source_id:
+                    cell["ticket_ids"].add(source_id)
+        files = []
+        for path in sorted(merged):
+            operations = sorted(merged[path]["operations"], key=("add", "modify").index)
+            files.append({
+                "path": path,
+                "operation": "modify" if "modify" in operations else "add",
+                "operations": operations,
+                "ticket_ids": sorted(merged[path]["ticket_ids"], key=ticket_sort),
+            })
+        return ("known" if complete and files else "unknown"), files
+
+    claims_by_branch: dict[str, list[str]] = {}
+    orphan_claims: list[str] = []
+    for ticket_id, raw_claim in held.items():
+        branch = raw_claim.get("branch") if isinstance(raw_claim, dict) else None
+        if branch:
+            claims_by_branch.setdefault(str(branch), []).append(ticket_id)
+        else:
+            orphan_claims.append(ticket_id)
+
+    refs_by_branch: dict[str, dict] = {}
+    for raw_ref in worktree_refs or []:
+        if not isinstance(raw_ref, dict):
+            continue
+        branch = str(raw_ref.get("branch") or "").strip()
+        if not branch or branch == "main" or raw_ref.get("status", "active") != "active":
+            continue
+        refs_by_branch[branch] = raw_ref
+
+    # A claims mirror can be newer than the git-tree mirror. Synthetic refs keep
+    # a newly claimed ticket visible instead of silently dropping its worktree.
+    for branch, ticket_ids in claims_by_branch.items():
+        refs_by_branch.setdefault(branch, {
+            "branch": branch,
+            "path": next((held[t].get("path") for t in ticket_ids
+                           if isinstance(held.get(t), dict) and held[t].get("path")), None),
+            "host": next((held[t].get("host") for t in ticket_ids
+                           if isinstance(held.get(t), dict) and held[t].get("host")), None),
+            "status": "active",
+            "tickets": [],
+        })
+    if orphan_claims:
+        refs_by_branch.setdefault("unknown", {
+            "branch": None, "path": None, "host": None,
+            "status": "active", "tickets": [],
+        })
+        claims_by_branch["unknown"] = orphan_claims
+
+    worktrees: list[dict] = []
+    active_ticket_ids: set[str] = set()
+    for branch, ref in refs_by_branch.items():
+        ref_ids = ref_ticket_ids(ref)
+        claim_ids = claims_by_branch.get(branch, [])
+        ticket_ids = sorted(set(ref_ids + claim_ids), key=ticket_sort)
+        active_ticket_ids.update(ticket_ids)
+        ticket_sources = [(ticket_id, by_ticket.get(ticket_id, {}).get("scope"))
+                          for ticket_id in ticket_ids]
+        if ticket_ids:
+            scope_state, files = merge_scope(ticket_sources)
+            kind = "ticketed"
+        else:
+            # Direct assignments have no ticket Scope to fall back to.  The
+            # producer may provide a structured ref/claim Scope; otherwise the
+            # worktree remains visible with unknown file occupancy.
+            direct_scope = ref.get("scope")
+            if direct_scope is None:
+                for raw_claim in held.values():
+                    if isinstance(raw_claim, dict) and raw_claim.get("branch") == branch:
+                        direct_scope = raw_claim.get("scope")
+                        if direct_scope is not None:
+                            break
+            scope_state, files = merge_scope([(None, direct_scope)] if direct_scope is not None else [])
+            kind = "direct"
+        claim_rows = [held[ticket_id] for ticket_id in ticket_ids if ticket_id in held]
+        worktrees.append({
+            "id": worktree_id(branch),
+            "branch": branch,
+            "path": ref.get("path"),
+            "host": ref.get("host"),
+            "kind": kind,
+            "state": "active",
+            "ref_kind": ref.get("kind"),
+            "live_state": ref.get("live_state"),
+            "worktree_present": ref.get("worktree_present"),
+            "ticket_ids": ticket_ids,
+            "tickets": [
+                {"id": ticket_id, "brief": (by_ticket.get(ticket_id) or {}).get("brief") or "",
+                 "severity": (by_ticket.get(ticket_id) or {}).get("severity")}
+                for ticket_id in ticket_ids
+            ],
+            "scope_status": scope_state,
+            "files": files,
+            "claim": claim_rows[0] if claim_rows else None,
+        })
+    worktrees.sort(key=lambda row: (0 if row["kind"] == "ticketed" else 1,
+                                    row.get("branch") or ""))
+
+    queued_ids = sorted(
+        canonical_dispatch_ids.intersection(unresolved) - active_ticket_ids,
+        key=ticket_sort,
+    )
+    queued_files: dict[str, list[dict]] = {}
     active_by_file: dict[str, set[str]] = {}
-    for ticket_id in sorted(active_ids):
-        for path in files_by_ticket[ticket_id]:
-            active_by_file.setdefault(path, set()).add(ticket_id)
-
-    tickets: list[dict] = []
+    unknown_worktree_ids = []
+    for worktree in worktrees:
+        if worktree["scope_status"] != "known":
+            unknown_worktree_ids.append(worktree["id"])
+        for item in worktree["files"]:
+            active_by_file.setdefault(item["path"], set()).add(worktree["id"])
+    queued_tickets: list[dict] = []
     collision_paths_by_ticket: dict[str, set[str]] = {}
-    for ticket_id in ordered_ids:
-        entry = unresolved[ticket_id]
-        state = "active" if ticket_id in active_ids else "queued"
-        scope_state = scope_status(entry.get("scope"))
-        collisions = None
-        if state == "queued" and scope_state == "known":
+    for ticket_id in queued_ids:
+        entry = by_ticket[ticket_id]
+        scope_state, files = merge_scope([(ticket_id, entry.get("scope"))])
+        queued_files[ticket_id] = files
+        collision = None
+        if scope_state == "known":
             collision_paths = {
-                path for path in files_by_ticket[ticket_id] if active_by_file.get(path)
+                item["path"] for item in files if active_by_file.get(item["path"])
             }
-            collision_ids = sorted({
-                active_id
+            collision_worktrees = sorted({
+                worktree_id_value
                 for path in collision_paths
-                for active_id in active_by_file[path]
+                for worktree_id_value in active_by_file[path]
             })
             collision_paths_by_ticket[ticket_id] = collision_paths
-            collisions = {
-                "status": "hard" if collision_ids else "clear",
-                "with": collision_ids,
-                "paths": sorted(collision_paths),
-            }
-        tickets.append({
+            # An unknown active Scope means we cannot claim the queue item is clear.
+            if collision_worktrees or not unknown_worktree_ids:
+                collision = {
+                    "status": "hard" if collision_worktrees else "clear",
+                    "with_worktrees": collision_worktrees,
+                    "paths": sorted(collision_paths),
+                }
+        queued_tickets.append({
             "id": ticket_id,
             "brief": entry.get("brief") or "",
             "severity": entry.get("severity"),
             "stream": entry.get("stream"),
-            "state": state,
+            "state": "queued",
             "scope_status": scope_state,
-            "files": [
-                {"path": path, "operation": operation}
-                for path, operation in sorted(files_by_ticket[ticket_id].items())
-            ],
-            "collision": collisions,
-            "claim": held.get(ticket_id) if state == "active" else None,
+            "files": files,
+            "collision": collision,
         })
 
+    columns = [
+        {
+            "id": row["id"], "type": "worktree", "kind": row["kind"],
+            "label": row.get("branch") or "未知 worktree", "state": "active",
+        }
+        for row in worktrees
+    ] + [
+        {
+            "id": row["id"], "type": "ticket", "kind": "queued",
+            "label": row["id"], "state": "queued",
+        }
+        for row in queued_tickets
+    ]
     matrix_paths = sorted({
-        path for ticket_files in files_by_ticket.values() for path in ticket_files
+        item["path"]
+        for worktree in worktrees for item in worktree["files"]
+    } | {
+        item["path"]
+        for ticket_files in queued_files.values() for item in ticket_files
     })
     files = []
     for path in matrix_paths:
         cells = []
-        for ticket_id in ordered_ids:
-            operation = files_by_ticket[ticket_id].get(path)
-            if operation is None:
-                continue
-            state = "active" if ticket_id in active_ids else "queued"
-            cells.append({
-                "ticket_id": ticket_id,
-                "operation": operation,
-                "state": state,
-                "collision": (
-                    state == "queued"
-                    and path in collision_paths_by_ticket.get(ticket_id, set())
-                ),
-            })
+        for worktree in worktrees:
+            item = next((item for item in worktree["files"] if item["path"] == path), None)
+            if item is not None:
+                cells.append({
+                    "column_type": "worktree",
+                    "worktree_id": worktree["id"],
+                    "ticket_ids": item["ticket_ids"],
+                    "operation": item["operation"],
+                    "operations": item["operations"],
+                    "state": "active",
+                    "collision": False,
+                })
+        for ticket in queued_tickets:
+            item = next((item for item in queued_files[ticket["id"]]
+                         if item["path"] == path), None)
+            if item is not None:
+                cells.append({
+                    "column_type": "ticket",
+                    "ticket_id": ticket["id"],
+                    "operation": item["operation"],
+                    "operations": item["operations"],
+                    "state": "queued",
+                    "collision": path in collision_paths_by_ticket.get(ticket["id"], set()),
+                })
         files.append({"path": path, "cells": cells})
 
-    unknown_scope_ids = [
-        ticket_id for ticket_id in ordered_ids
-        if scope_status(unresolved[ticket_id].get("scope")) == "unknown"
-    ]
+    unknown_ticket_ids = [row["id"] for row in queued_tickets if row["scope_status"] == "unknown"]
     return {
-        "schema": "kg.board.scope-matrix.v1",
-        "tickets": tickets,
+        "schema": "kg.board.scope-matrix.v2",
+        "columns": columns,
+        "worktrees": worktrees,
+        "queued_tickets": queued_tickets,
         "files": files,
-        "active_ticket_ids": [ticket_id for ticket_id in ordered_ids if ticket_id in active_ids],
-        "queued_ticket_ids": [ticket_id for ticket_id in ordered_ids if ticket_id in queued_ids],
-        "unknown_scope_ids": unknown_scope_ids,
+        "active_worktree_ids": [row["id"] for row in worktrees],
+        "active_ticket_ids": sorted(active_ticket_ids, key=ticket_sort),
+        "queued_ticket_ids": queued_ids,
+        "unknown_worktree_ids": sorted(unknown_worktree_ids),
+        "unknown_ticket_ids": unknown_ticket_ids,
         "counts": {
-            "active": len(active_ids),
-            "queued": len(queued_ids),
+            "active_worktrees": len(worktrees),
+            "ticketed_worktrees": sum(1 for row in worktrees if row["kind"] == "ticketed"),
+            "direct_worktrees": sum(1 for row in worktrees if row["kind"] == "direct"),
+            "active_tickets": len(active_ticket_ids),
+            "queued_tickets": len(queued_tickets),
             "files": len(files),
-            "unknown_scope": len(unknown_scope_ids),
+            "unknown_worktrees": len(unknown_worktree_ids),
+            "unknown_tickets": len(unknown_ticket_ids),
             "queued_collisions": sum(
-                1 for ticket in tickets
-                if ticket["state"] == "queued"
-                and ticket["collision"]
-                and ticket["collision"]["status"] == "hard"
+                1 for ticket in queued_tickets
+                if ticket["collision"] and ticket["collision"]["status"] == "hard"
             ),
         },
     }
@@ -944,10 +1098,21 @@ def board_payload() -> dict:
 def scope_matrix_payload() -> dict:
     snap = read_entries()
     held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
+    mirror = _load_json(MIRROR_PATH, {}) or {}
+    entries = snap.get("entries") or []
+    ticket_annotations = {
+        str(entry.get("id")): {
+            "brief": entry.get("brief") or "",
+            "severity": entry.get("severity"),
+        }
+        for entry in entries if entry.get("id")
+    }
+    tree = project_snapshot(mirror.get("git_tree"), ticket_annotations)
     payload = project_scope_matrix(
-        snap.get("entries") or [],
+        entries,
         held,
         canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
+        worktree_refs=tree.get("refs") or [],
     )
     payload["freshness"] = freshness()
     return payload

@@ -31,20 +31,25 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 | 平面 | 問題 | SoT |
 |---|---|---|
 | **票** | 有什麼事要做、怎麼做、怎麼算做完 | `docs/runbook/backlog/<id>.json`,入口一律 `ops/backlog.py`(機器讀 `list --json` / `show`;生命週期 SoT=`lifecycle --json`) |
-| **認領** | 誰在做哪張票、還活著嗎 | worktree 登記簿,入口 `ops/worktree_registry.py` / `ops/worktree_orchestrate.py`;`backlog.py list` 的 `held` 欄由它推導,**不儲存** |
+| **認領** | 哪個 worktree 正在做什麼、還活著嗎 | worktree 登記簿,入口 `ops/worktree_registry.py` / `ops/worktree_orchestrate.py`;`backlog.py list` 的 `held` 欄由它推導,**不儲存** |
 | **看板** | 現在該先做哪張、哪張延後 | `~/butler/kg-board`(讀 origin/main 的 clone;手機端只做**排序 / 釘選 / 延後**三個動作,不能認領也不能結案) |
 
-**認領即工作,不必被任命。** 任何 session 從 `dispatch`(`./ops/backlog.py dispatch`,或等價的
-`list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋**,worst-first)取票；一個 Ticket Factory
-thread 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread。多個 Delivery Team
-thread 各取不重疊 task batch；每個 thread 的 Integrator 再派 N 個 child worktree，child 做完 commit
-→ `./ops/worktree_registry.py hand-back --json` 只是內部交回，Integrator 以 `integrate --append`
-fan-in，最後 `close-wave --commit --sync` 才是該 team 的 primary＋origin/main 完成。只有使用者明示
-delivery-loop 授權，Integrator 才進 Gate/cutover/sync；其他 child 停在 hand-back。**它有兩個看不見的東西
-且會自己說出來**:認領由**本機**登記簿推導(跨機時這份清單是樂觀的),看板的**延後不套用**
-(snooze 住在 repo 外的 overlay)——所以「未延後」不是它的 clause,要那個判斷去看板。認領是**互斥的**:
-登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
-只有「取」。
+**Worktree 是看板上的 active 主體,不是 agent。** active worktree 有兩種：持票 worktree（持有一張或多張
+相關 ticket，正在修改）與直接指派 worktree（使用者直接交辦、正在修改，可沒有 ticket）。持票 worktree
+可以一次持有多張相關票；看板以 worktree 欄呈現它們的合併檔案範圍，ticket id 只作群組內索引。直接指派 worktree
+若 mirror 尚未提供 structured Scope，會保留在圖上但標為 Scope 未知，不以 commit diff 或 intent 猜預計檔案。
+`worktree_refs` 是工作樹的生命與路徑證據，registry claims 是票的持有證據；`backlog.py list` 的 `held`
+欄由後者推導，**不儲存**。
+
+**認領即工作,不必被任命。** `groom` 是把票放進 queued；任何 session 從 `dispatch`
+(`./ops/backlog.py dispatch`,或等價的 `list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋**,worst-first)
+取票，`claim` 使 queued ticket 成為持票 worktree 的 active ticket。直接指派則直接形成 active worktree，
+不必先有 ticket。Ticket Factory 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread；
+Delivery Team child 做完 commit → `./ops/worktree_registry.py hand-back --json` 只是內部交回，Integrator
+再決定 fan-in 與 delivery-loop。認領由**本機**登記簿推導(跨機時清單樂觀)，看板延後由 repo 外 overlay
+持有；同一張票仍是互斥 claim。**collision 只標在 queued ticket**，且只表示它與 active worktree 的已知
+Scope 檔案重疊；active worktree 本身是佔用狀態，不是 collision。worktree 或 queued ticket 的 Scope
+未知時不猜檔案，也不把它改名成「碰撞未知」。
 
 **Fan-out 淺規則（agent guidance）**：優先把 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這只影響排序／派工，不改 `backlog.py` 的 lifecycle、ticket acceptance、status 或結案語義。
 
