@@ -39,6 +39,17 @@ function scopeDetail(scope){
   if(typeof scope==="string"&&scope.trim())return esc(scope);
   return "Scope 未知（尚未宣告實際檔案範圍）";
 }
+function agentTitle(worktree){
+  const agent=worktree?.agent||{};
+  if(agent.title)return agent.title;
+  if(agent.thread_id)return `未命名 thread · ${agent.role||"agent"} · ${shortSha(agent.thread_id)}`;
+  return "Agent 未綁定";
+}
+function agentStatus(worktree){
+  const agent=worktree?.agent||{};
+  if(agent.thread_id)return `${agent.status||"unknown"} · ${shortSha(agent.thread_id)}`;
+  return "沒有穩定 thread id";
+}
 function renderScopeMatrix(){
   const mount=document.getElementById("scope-matrix-wrap"),unknownMount=document.getElementById("scope-unknown"),state=document.getElementById("scope-state");
   if(!mount||!unknownMount||!state)return;
@@ -50,12 +61,17 @@ function renderScopeMatrix(){
   ];
   state.textContent=`${counts.active_worktrees||0} worktree · ${counts.active_tickets||0} 持票 · ${counts.queued_tickets||0} queued · ${counts.files||0} 檔案`;
   if(!columns.length){mount.innerHTML='<p class="empty">目前沒有 active worktree 或 queued ticket。</p>';unknownMount.innerHTML="";return}
+  const agentHeaders=columns.map(column=>{
+    if(column.type==="ticket")return `<th scope="col" class="scope-agent-cell scope-agent-ticket"><strong>尚未認領</strong><span>queued ticket</span></th>`;
+    const worktree=column.worktree,agent=worktree.agent||{};
+    return `<th scope="col" class="scope-agent-cell scope-agent-worktree scope-agent-${esc(worktree.kind)}" data-thread-id="${esc(agent.thread_id||"")}"><strong title="${esc(agent.title||agentTitle(worktree))}">${esc(agentTitle(worktree))}</strong><span>${esc(agentStatus(worktree))}</span></th>`;
+  }).join("");
   const headers=columns.map(column=>{
     if(column.type==="worktree"){
       const worktree=column.worktree,unknown=worktree.scope_status==="unknown";
       const kindLabel=worktree.kind==="ticketed"?"持票 WORKTREE":"直接指派 WORKTREE";
       const tickets=worktree.ticket_ids?.length?`持有：${worktree.ticket_ids.join("、")}`:"無 ticket · 直接指派";
-      const flags=[unknown?"Scope 未知":"",worktree.path?compactLabel(worktree.path,32):"路徑未知"].filter(Boolean).join(" · ");
+      const flags=[unknown?(worktree.kind==="direct"?"Scope 待宣告":"Scope 未知"):"Scope 已知",worktree.path?compactLabel(worktree.path,32):"路徑未知"].filter(Boolean).join(" · ");
       return `<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-${esc(worktree.kind)}${unknown?" scope-column-scope-unknown":""}"><code title="${esc(worktree.branch||"")}">${esc(compactLabel(worktree.branch||"未知 worktree",24))}</code><strong>${kindLabel}</strong><span class="scope-column-tickets">${esc(compactLabel(tickets,48))}</span>${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}</th>`;
     }
     const ticket=column.ticket,collision=ticket.collision?.status==="hard",unknown=ticket.scope_status==="unknown";
@@ -75,12 +91,12 @@ function renderScopeMatrix(){
       return `<td class="scope-cell scope-cell-${esc(cell.state)} scope-cell-${esc(column.type)}${worktreeKind} scope-operation-${esc(cell.operation)}${collision?" scope-cell-collision":""}" title="${esc(label)}" aria-label="${esc(label)}"><span>${esc(symbol)}</span></td>`;
     }).join("")}</tr>`;
   }).join("");
-  mount.innerHTML=`<table class="scope-matrix"><thead><tr><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
+  mount.innerHTML=`<table class="scope-matrix"><thead><tr class="scope-agent-row"><th scope="col" class="scope-agent-label">Agent / thread</th>${agentHeaders}</tr><tr class="scope-worktree-row"><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
   const unknownWorktrees=scopeMatrix.unknown_worktree_ids||[],unknownTickets=scopeMatrix.unknown_ticket_ids||[];
   const unknownParts=[];
-  if(unknownWorktrees.length)unknownParts.push(`worktree：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
-  if(unknownTickets.length)unknownParts.push(`queued ticket：${unknownTickets.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
-  unknownMount.innerHTML=unknownParts.length?`<strong>Scope 未知</strong><span>${unknownParts.join("；")}：尚未宣告實際檔案變更範圍，因此不把它猜成 collision；這不是「agent 未知」或「碰撞未知」。</span>`:"";
+  if(unknownWorktrees.length)unknownParts.push(`direct worktree（Scope 待宣告）：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
+  if(unknownTickets.length)unknownParts.push(`queued ticket（Scope 未知）：${unknownTickets.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
+  unknownMount.innerHTML=unknownParts.length?`<strong>Scope 狀態</strong><span>${unknownParts.join("；")}：尚未宣告實際檔案變更範圍，因此不把它猜成 collision；這不是「Agent 未知」或「碰撞未知」。</span>`:"";
 }
 function rows(){
   const blocked=new Set(board.blocked_ids);

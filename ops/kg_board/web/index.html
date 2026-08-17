@@ -26,7 +26,7 @@
         </div>
         <span id="scope-state" class="status-chip">讀取中</span>
       </div>
-      <p class="section-note">欄是 active worktree 與 queued ticket，列是實際檔案；worktree 可持有一張或多張相關票，也可以是直接指派、沒有 ticket 的修改。collision 只標在 queued ticket，表示它與 active worktree 的檔案範圍重疊。</p>
+      <p class="section-note">欄是 active worktree 與 queued ticket，最上方橫列顯示其 Agent / Codex thread title；列是實際檔案。worktree 可持有一張或多張相關票，也可以是直接指派、沒有 ticket 的修改。direct worktree 的 Scope 必須由工具明確宣告；collision 只標在 queued ticket，表示它與 active worktree 的檔案範圍重疊。</p>
       <div class="scope-key" aria-label="矩陣圖例">
         <span><i class="scope-key-swatch scope-key-ticketed"></i>持票 worktree：正在修改</span>
         <span><i class="scope-key-swatch scope-key-direct"></i>直接指派 worktree：正在修改</span>
