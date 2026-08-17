@@ -506,11 +506,22 @@ def test_gate_plan_ops_deleted_test_file_falls_back_not_pytest_args():
     assert "ops/tests" in spec["cmd"]
 
 def test_gate_plan_ops_src_with_matching_test_runs_it():
-    exists = {"ops/tests/test_worktree_orchestrate.py"}.__contains__
+    exists = {
+        "ops/tests/test_worktree_orchestrate_planning.py",
+        "ops/tests/test_worktree_orchestrate_gate.py",
+        "ops/tests/test_worktree_orchestrate_lifecycle.py",
+        "ops/tests/test_worktree_orchestrate_claims.py",
+        "ops/tests/test_worktree_orchestrate_delivery.py",
+        "ops/tests/test_worktree_orchestrate_recovery.py",
+        "ops/tests/test_orchestrator_seams.py",
+    }.__contains__
     gates = plan_gates(["ops/worktree_orchestrate.py"], ops_test_exists=exists)
-    spec = _by_name(gates)["ops-pytest"]
-    assert "ops/tests/test_worktree_orchestrate.py" in spec["cmd"]
-    assert "ops/tests" not in spec["cmd"]
+    focused = _by_name(gates)["ops-pytest-orchestrator-focused"]
+    group = _by_name(gates)["ops-pytest-orchestrator-group"]
+    assert focused["cmd"][:3] == ["ops/test_route.py", "run", "--mode"]
+    assert "--route-id" in focused["cmd"]
+    assert group["tier"] == "S2"
+    assert "ops/tests/test_worktree_orchestrate.py" not in group["cmd"]
 
 @pytest.mark.parametrize("changed", [
     ["ops/worktree_orchestrate.py", "ops/tests/test_worktree_orchestrate.py"],
@@ -544,20 +555,30 @@ def test_gate_plan_ops_src_without_test_falls_back_to_whole_ops_tests():
 
 def test_gate_plan_ops_src_default_predicate_is_conservative_fallback():
     # without an injected existence predicate (pure layer: no IO), an ops src
-    # change cannot prove a matching test exists -> whole ops/tests
+    # change must use the explicit parent-group fallback, never an empty command.
     gates = plan_gates(["ops/worktree_orchestrate.py"])
-    spec = _by_name(gates)["ops-pytest"]
-    assert "ops/tests" in spec["cmd"]
+    focused = _by_name(gates)["ops-pytest-orchestrator-focused"]
+    assert "orchestrator.fallback" in focused["cmd"]
+    assert "ops-pytest-orchestrator-group" in _names(gates)
 
 def test_gate_plan_ops_src_and_its_test_dedupes_target():
     # the self-referential dogfood shape: tool + its test changed together
-    exists = {"ops/tests/test_worktree_orchestrate.py"}.__contains__
+    exists = {
+        "ops/tests/test_worktree_orchestrate_planning.py",
+        "ops/tests/test_worktree_orchestrate_gate.py",
+        "ops/tests/test_worktree_orchestrate_lifecycle.py",
+        "ops/tests/test_worktree_orchestrate_claims.py",
+        "ops/tests/test_worktree_orchestrate_delivery.py",
+        "ops/tests/test_worktree_orchestrate_recovery.py",
+        "ops/tests/test_orchestrator_seams.py",
+    }.__contains__
     gates = plan_gates(["ops/worktree_orchestrate.py",
                         "ops/tests/test_worktree_orchestrate.py"],
                        ops_test_exists=exists)
-    spec = _by_name(gates)["ops-pytest"]
-    assert spec["cmd"].count("ops/tests/test_worktree_orchestrate.py") == 1
-    assert "ops/tests" not in spec["cmd"]
+    focused = _by_name(gates)["ops-pytest-orchestrator-focused"]
+    route_ids = focused["cmd"][focused["cmd"].index("--route-id") + 1:]
+    assert len(route_ids) == len(set(route_ids))
+    assert "ops-pytest-orchestrator-group" in _names(gates)
 
 def test_gate_plan_ops_shell_selects_no_ops_pytest():
     """Shell scripts have no pytest counterpart; docs/backend must not leak into the

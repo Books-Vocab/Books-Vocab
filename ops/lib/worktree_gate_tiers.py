@@ -89,6 +89,8 @@ def classify_gate_tier(spec: dict[str, Any]) -> str:
         return "S1"
     if name in {"ops-pytest-focused", "ops-pytest"} and not _is_whole_ops_suite(spec):
         return "S1"
+    if name == "ops-pytest-orchestrator-focused":
+        return "S1"
 
     if name == "ios-build-catalyst":
         return "S3"

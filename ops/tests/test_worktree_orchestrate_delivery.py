@@ -2,6 +2,37 @@
 
 from worktree_orchestrate_support import *  # noqa: F401,F403
 
+
+def test_gate_tiering_and_deferral_flags_are_preserved_by_each_delivery_entrypoint():
+    parser = MODULE.build_parser()
+    gate = parser.parse_args([
+        "gate", "--worktree", "/w", "--gate-tier", "S1",
+        "--defer-gate", "ops-pytest=IMP-20260817-abcdef",
+    ])
+    assert gate.gate_tier == "S1"
+    assert gate.defer_gate == ["ops-pytest=IMP-20260817-abcdef"]
+
+    integrate = parser.parse_args([
+        "integrate", "--slug", "wave", "--branches", "feat/source",
+        "--gate-tier", "S3", "--defer-gate", "ops-pytest=IMP-20260817-fedcba",
+    ])
+    assert integrate.gate_tier == "S3"
+    assert integrate.defer_gate == ["ops-pytest=IMP-20260817-fedcba"]
+
+    close_wave = parser.parse_args([
+        "close-wave", "--slug", "wave", "--branches", "feat/source",
+        "--gate-tier", "S4",
+    ])
+    assert close_wave.gate_tier == "S4"
+    assert close_wave.defer_gate == []
+
+    land = parser.parse_args([
+        "land", "--worktree", "/w", "--gate-tier", "S1",
+        "--defer-gate", "ops-pytest=IMP-20260817-123456",
+    ])
+    assert land.gate_tier == "S1"
+    assert land.defer_gate == ["ops-pytest=IMP-20260817-123456"]
+
 @gitmark
 def test_cutover_stamps_the_landed_sha_onto_this_branchs_staged_closures(scratch):
     """The sha only becomes knowable at the moment of landing.
