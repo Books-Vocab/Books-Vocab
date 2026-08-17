@@ -21,7 +21,7 @@
   "groomed_by": "agent:ticket-factory-full-groom",
   "id": "IMP-0040",
   "plan": "根因已核實：本票原 acceptance 以舊版逐字措辭比對，與目前已落地且語意較完整的 worktree-flow SKILL、system runbook、tech_index 不一致；唯一仍有實際漂移的是 ops/worktree_orchestrate.py module docstring 將所有 mutation 誤寫成 dry-run。保留三份現行文件語意，只修 module docstring 的 mutation taxonomy，使它明列 landing-plane steps 的 dry-run/--commit 邊界，以及 open/adopt/freeze 無 --commit 且呼叫即生效。不得改 parser 或 CLI 行為。完成後以語意穩定的檢查驗證三份 SoT 文件、module docstring 與 docs lint；若 acceptance 仍未通過，禁止宣稱完成。",
-  "resolution": "Contract-blocked after official child preflight: IMP-0040 acceptance used obsolete exact strings that were absent because SKILL/system/tech_index already carried the corrected mutation taxonomy from earlier landed commits. The child was opened only to verify RED, made no source changes, and was safely resolved with --force after preserving HEAD/tree/raw. Acceptance/plan are now rewritten through the official backlog update to assert current SoT semantics plus the sole remaining module-docstring correction; ticket must remain contract-blocked until a fresh preflight sees an executable genuine RED.",
+  "resolution": "2026-08-17 fresh official acceptance passed: SoT grep checks and docs_lint returned ERROR=0 with two typed freshness WARNs; the module docstring correction is present in a838cc2a56e72a9ae69c5bc080b6073cbb96e189, so this entry is confirmed fixed.",
   "schema": "kg.backlog.entry.v1",
   "scope": "四份說明各改一小段文字，完全不動程式行為；改完要跑文件檢查與一支跑得比較久的既有測試。",
   "severity": "low",
