@@ -2,6 +2,28 @@
 
 from worktree_orchestrate_support import *  # noqa: F401,F403
 
+
+@gitmark
+def test_cutover_refuses_required_tier_metadata_drift(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "tier-drift.json")
+    wt = _open_wt(state, slug="tier-drift")
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["required_tier"] = "S3"
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "required tier" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
 @gitmark
 def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     tmp_path, repo, remote = scratch

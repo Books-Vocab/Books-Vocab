@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 import worktree_gate as gate_logic
 from lib import worktree_gate_tiers as gate_tiers
+from lib import worktree_test_routes as test_routes
 
 BACKLOG_STORE_DIR = "docs/runbook/backlog/"
 RESOLVED_STATUSES = ("fixed", "wont-fix")
@@ -468,11 +469,30 @@ def plan_gates(changed_files: list[str],
         gates.append(_shell("ops-python-scan", "ops", ["ops/python_scan.py"], "block"))
 
     ops_py = [p for p in changed_files if p.startswith("ops/") and p.endswith(".py")]
-    if ops_py:
+    orchestrator_ops_py = [p for p in ops_py if test_routes.is_orchestrator_source(p)]
+    generic_ops_py = [p for p in ops_py if p not in orchestrator_ops_py]
+    if orchestrator_ops_py:
+        route_payload = test_routes.resolve_routes(
+            orchestrator_ops_py,
+            exists=(ops_test_exists if ops_test_exists is not None else lambda _rel: False),
+        )
+        route_ids = [route["route_id"] for route in route_payload["routes"]]
+        if route_payload["fallback"]:
+            route_ids = ["orchestrator.fallback"]
+        focused_cmd = test_routes.runner_route_args(route_payload, focused=True)
+        group_cmd = test_routes.runner_route_args(route_payload, focused=False)
+        gates.append(_shell(
+            "ops-pytest-orchestrator-focused", "ops", focused_cmd, "block",
+        ))
+        gates.append(_shell(
+            "ops-pytest-orchestrator-group", "ops", group_cmd, "block",
+        ))
+
+    if generic_ops_py:
         exists = ops_test_exists or (lambda rel: False)
         targets: set[str] = set()
         fallback = False
-        for p in ops_py:
+        for p in generic_ops_py:
             # a changed test file must ALSO prove existence: a DELETED test is in
             # the diff too, and passing a gone path to pytest exits 4 -> false block
             candidate = p if _is_ops_test(p) else f"ops/tests/test_{p.rsplit('/', 1)[-1]}"
@@ -486,12 +506,12 @@ def plan_gates(changed_files: list[str],
         # orchestrator; invoking pytest on their absent directory exits rc=4 and turns
         # unavailable infrastructure into a false BLOCK. The callback is injected by
         # cmd_gate so pure routing tests retain their conservative fallback semantics.
-        ops_tests_changed = any(p.startswith("ops/tests/") for p in changed_files)
+        ops_tests_changed = any(p.startswith("ops/tests/") for p in generic_ops_py)
         if (fallback and not ops_tests_changed and ops_tests_dir_exists is not None
                 and not ops_tests_dir_exists()):
             gates.append(_internal(
                 "ops-pytest-unavailable", "ops", "warn",
-                files=ops_py,
+                files=generic_ops_py,
                 note=("ops-pytest was not run: the worktree has no ops/tests directory; "
                       "this is unavailable test infrastructure, not a change verdict"),
             ))
