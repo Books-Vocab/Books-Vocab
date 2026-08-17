@@ -7757,6 +7757,23 @@ def test_supersede_dry_run_defaults_and_modes_are_non_writing(tmp_path, capsys):
     assert len(list(store.glob("*.json"))) == 1
 
 
+def test_supersede_refuses_invalid_corrected_date_without_writing(tmp_path, capsys):
+    store = tmp_path / "s"
+    original = _add(store, detail="source for date validation")
+    source_path = store / f"{original['id']}.json"
+    before = source_path.read_bytes()
+
+    assert BACKLOG.main([
+        "supersede", original["id"], "--store", str(store),
+        "--date", "2026/08/17", "--detail", "corrected date", "--commit", "--json",
+    ]) == 64
+    result = json.loads(capsys.readouterr().out)
+    assert result["written"] is False
+    assert "date must be YYYY-MM-DD" in result["error"]
+    assert source_path.read_bytes() == before
+    assert list(store.rglob("*.json")) == [source_path]
+
+
 def test_add_accepts_an_explicit_commit_without_changing_the_fast_default(
         tmp_path, capsys):
     explicit_store = tmp_path / "explicit"
