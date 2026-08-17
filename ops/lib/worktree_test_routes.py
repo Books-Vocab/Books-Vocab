@@ -148,6 +148,16 @@ _FACADE_ROUTE = _route(
         "test_legacy_collector_matches_split_behavior_collection",
     ],
 )
+# Gate-tier policy is part of the facade/runtime seam, but its direct policy
+# tests must travel with a focused route as well; otherwise changing the tier
+# classifier can pass facade smoke while its own contract suite is untouched.
+_FACADE_ROUTE["selectors"].append("ops/tests/test_worktree_gate_tiers.py")
+_FACADE_ROUTE["pytest_nodeids"].extend([
+    "ops/tests/test_worktree_gate_tiers.py::"
+    "test_s4_is_an_explicit_release_profile_and_has_no_deferrable_gate",
+    "ops/tests/test_worktree_gate_tiers.py::"
+    "test_only_named_non_high_s2_s3_failures_can_be_deferred",
+])
 
 _ALL_ROUTES: tuple[dict[str, Any], ...] = (*_BEHAVIOR_ROUTES, _FACADE_ROUTE)
 _ROUTES_BY_ID = {route["route_id"]: route for route in _ALL_ROUTES}

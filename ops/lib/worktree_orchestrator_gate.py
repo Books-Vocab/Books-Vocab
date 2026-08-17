@@ -639,7 +639,28 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     if not rec_path.exists():
         refuse = "no gate verdict on record — run `gate` first"
     else:
-        rec = json.loads(rec_path.read_text())
+        try:
+            rec = json.loads(rec_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            payload = {
+                "schema": SCHEMA,
+                "step": "cutover",
+                "error": f"gate record is unreadable: {type(exc).__name__}: {exc} — re-run gate",
+                "worktree": worktree,
+                "landed": False,
+            }
+            _emit(payload, args.json, f"✗ cutover refused: {payload['error']}")
+            return EXIT_BLOCK
+        if not isinstance(rec, dict):
+            payload = {
+                "schema": SCHEMA,
+                "step": "cutover",
+                "error": "gate record must be a JSON object — re-run gate",
+                "worktree": worktree,
+                "landed": False,
+            }
+            _emit(payload, args.json, f"✗ cutover refused: {payload['error']}")
+            return EXIT_BLOCK
         verdict = rec.get("verdict")
         gated_head = rec.get("head_sha")
         planned_gates = rec.get("plan")
@@ -670,18 +691,12 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
         if not refuse and (gate_tier == "S4" or rec.get("canonical_plan_digest") is not None):
-            recorded_full_plan = None
-            if isinstance(planned_gates, list) and isinstance(deferred_planned_gates, list):
-                recorded_full_plan = [*planned_gates, *deferred_planned_gates]
             recorded_digest = rec.get("canonical_plan_digest")
             changed_for_plan = rec.get("changed_files")
             if not isinstance(recorded_digest, str) or not recorded_digest:
                 refuse = "gate record has no canonical plan digest — re-run gate"
-            elif recorded_full_plan is None:
-                if gate_tier == "S4":
-                    refuse = "S4 gate record has no complete plan for identity verification — re-run gate"
-            elif _gate_plan_digest(recorded_full_plan) != recorded_digest:
-                refuse = "gate record plan digest does not match its stored plan — re-run gate"
+            elif not isinstance(planned_gates, list) or not isinstance(deferred_planned_gates, list):
+                refuse = "gate record plan/deferred plan is malformed — re-run gate"
             elif not isinstance(changed_for_plan, list) or any(
                     not isinstance(path, str) for path in changed_for_plan):
                 refuse = "gate record changed_files is malformed — re-run gate"
@@ -696,6 +711,9 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                         worktree, changed_for_plan, gate_tier, args.base,
                     )
                     current_digest = _gate_plan_digest(current_full_plan)
+                    current_selected_plan, current_deferred_plan = select_gate_plan(
+                        current_full_plan, gate_tier,
+                    )
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     refuse = f"could not rebuild canonical gate plan: {type(exc).__name__}: {exc}"
                 else:
@@ -704,15 +722,37 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                             "gate record canonical plan differs from the current orchestrator "
                             "plan — re-run gate"
                         )
+                    elif _gate_plan_digest(planned_gates) != _gate_plan_digest(current_selected_plan):
+                        refuse = "gate record selected plan differs from the current plan — re-run gate"
+                    elif _gate_plan_digest(deferred_planned_gates) != _gate_plan_digest(current_deferred_plan):
+                        refuse = "gate record deferred plan differs from the current plan — re-run gate"
+                    elif {str(spec.get("name")) for spec in planned_gates} != {
+                            str(spec.get("name")) for spec in current_selected_plan
+                    }:
+                        refuse = "gate record selected gates do not match the current plan — re-run gate"
+                    elif {str(spec.get("name")) for spec in deferred_planned_gates} != {
+                            str(spec.get("name")) for spec in current_deferred_plan
+                    }:
+                        refuse = "gate record deferred gates do not match the current plan — re-run gate"
+                    elif gate_tier == "S4" and not isinstance(
+                            rec.get("selected_plan_digest"), str
+                    ):
+                        refuse = "S4 gate record has no selected plan digest — re-run gate"
+                    elif gate_tier == "S4" and current_deferred_plan:
+                        refuse = "S4 gate record has deferred gates — re-run gate"
                     elif gate_tier == "S4":
                         release_names = {spec["name"] for spec in gate_tiers.release_gate_plan()}
-                        actual_names = {str(spec.get("name")) for spec in recorded_full_plan}
+                        actual_names = {str(spec.get("name")) for spec in current_selected_plan}
                         missing_release = sorted(release_names - actual_names)
                         if missing_release:
                             refuse = (
                                 "S4 gate record is missing release gates: "
                                 + ", ".join(missing_release) + " — re-run gate"
                             )
+                    if (not refuse and isinstance(rec.get("selected_plan_digest"), str)
+                            and rec["selected_plan_digest"]
+                            != _gate_plan_digest(planned_gates)):
+                        refuse = "gate record selected plan digest is inconsistent — re-run gate"
                     if not refuse:
                         refuse = _validate_recorded_deferrals(
                             worktree, rec.get("deferred_failures"), current_full_plan,

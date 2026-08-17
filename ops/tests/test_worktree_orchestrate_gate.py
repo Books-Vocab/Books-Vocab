@@ -656,6 +656,25 @@ def test_cutover_refuses_a_malformed_gate_record(scratch):
 
 
 @gitmark
+def test_cutover_refuses_an_unreadable_gate_record(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "corrupt-record.json")
+    wt = _open_wt(state, slug="corrupt-gate-record")
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+
+    record_path = MODULE._gate_record_path(state, wt)
+    record_path.write_text("{not-json\n", encoding="utf-8")
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "gate record is unreadable" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
 def test_cutover_refuses_a_fake_s4_record_without_release_gate_plan(scratch):
     """A tier label cannot turn an S2 record with ordinary gates into S4 evidence."""
     tmp_path, repo, _remote = scratch
@@ -677,6 +696,75 @@ def test_cutover_refuses_a_fake_s4_record_without_release_gate_plan(scratch):
     assert cut["landed"] is False
     assert "canonical plan" in cut["error"] or "release gates" in cut["error"]
     assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_refuses_s4_gates_moved_into_deferred_partition(scratch, monkeypatch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "s4-partition.json")
+    wt = _open_wt(state, slug="s4-partition-record")
+
+    monkeypatch.setattr(
+        MODULE,
+        "_run_gate",
+        lambda spec, _worktree, **_kwargs: {
+            "name": spec["name"], "category": spec["category"],
+            "level": spec.get("level", "block"), "status": "pass", "rc": 0,
+            "summary": "fixture release gate ran",
+        },
+    )
+    rc, gate = _run_json([
+        "gate", "--gate-tier", "S4", "--worktree", wt, "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, gate
+    record_path = MODULE._gate_record_path(state, wt)
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    release = [item for item in record["plan"] if str(item["name"]).startswith("release-")]
+    assert release
+    record["plan"] = [item for item in record["plan"] if item not in release]
+    record["deferred_plan"] = release
+    # Keep the original digests: this models a forged partition rather than a re-run.
+    record_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "plan differs" in cut["error"] or "deferred gates" in cut["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_accepts_s2_receipt_with_interleaved_s3_gate(scratch, monkeypatch):
+    """S2 identity uses the canonical full-plan order, not selected+deferred order."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "ios-s2-record.json")
+    wt = _open_wt(state, slug="ios-s2-interleaved-plan")
+    (Path(wt) / "ios").mkdir(parents=True, exist_ok=True)
+    (Path(wt) / "ios" / "Fixture.swift").write_text("struct Fixture {}\n", encoding="utf-8")
+    _git(["add", "ios/Fixture.swift"], wt)
+    _git(["commit", "-qm", "fixture: add ios scope"], wt)
+
+    monkeypatch.setattr(
+        MODULE,
+        "_run_gate",
+        lambda spec, _worktree, **_kwargs: {
+            "name": spec["name"], "category": spec["category"],
+            "level": spec.get("level", "block"), "status": "pass", "rc": 0,
+            "summary": "fixture gate ran",
+        },
+    )
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, gate
+    assert any(item["name"] == "ios-build-catalyst"
+               for item in gate["deferred_plan"])
+    rc, cut = _run_json(
+        ["cutover", "--worktree", wt, "--state", state, "--commit", "--json"]
+    )
+    assert rc == MODULE.EXIT_OK, cut
+    assert cut["landed"] is True
+    assert "ios/Fixture.swift" in _local_main_files(repo)
 
 
 @gitmark

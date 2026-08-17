@@ -167,6 +167,11 @@ def test_facade_change_unions_behavior_routes_and_missing_selector_falls_back():
         "orchestrator.recovery",
         "orchestrator.facade",
     }
+    facade_route = next(route for route in facade["routes"]
+                        if route["route_id"] == "orchestrator.facade")
+    assert "ops/tests/test_worktree_gate_tiers.py" in facade_route["selectors"]
+    assert any("test_s4_is_an_explicit_release_profile" in nodeid
+               for nodeid in facade_route["pytest_nodeids"])
     missing = ROUTES.resolve_routes(
         ["ops/lib/worktree_orchestrator_gate.py"], exists=lambda _path: False
     )

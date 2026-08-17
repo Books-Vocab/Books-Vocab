@@ -67,11 +67,43 @@ def _claim_json(path: Path, payload: dict[str, Any]) -> None:
             os.close(fd)
 
 
+def _shared_timing_root(root: Path) -> Path:
+    """Resolve linked worktrees to their common repository timing root."""
+    root = root.expanduser().resolve()
+    marker = root / ".git"
+    if not marker.is_file():
+        return root
+    try:
+        line = next(
+            value for value in marker.read_text(encoding="utf-8").splitlines()
+            if value.startswith("gitdir:")
+        )
+        gitdir = Path(line.partition(":")[2].strip()).expanduser()
+        if not gitdir.is_absolute():
+            gitdir = root / gitdir
+        common_git_dir = gitdir.resolve().parent.parent
+        if common_git_dir.name == ".git":
+            return common_git_dir.parent
+    except (OSError, StopIteration, UnicodeError):
+        pass
+    return root
+
+
+def _resource_lock_path(root: Path, resource_class: str) -> Path:
+    key = hashlib.sha256(resource_class.encode("utf-8")).hexdigest()[:32]
+    return (
+        _shared_timing_root(root)
+        / ".cache"
+        / "test_runs"
+        / "resources"
+        / f"{key}.lock"
+    )
+
+
 @contextlib.contextmanager
 def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Event):
-    """Serialize one resource class across bundle runner processes on this repo."""
-    key = hashlib.sha256(resource_class.encode("utf-8")).hexdigest()[:32]
-    path = root / ".cache" / "test_runs" / "resources" / f"{key}.lock"
+    """Serialize one resource class across bundle runner processes/worktrees."""
+    path = _resource_lock_path(root, resource_class)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     acquired = False
