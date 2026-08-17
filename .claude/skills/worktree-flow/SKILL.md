@@ -191,7 +191,10 @@ orchestrator 測試不必每次整檔執行：受影響 source 先用
 需要預估或執行長 bundle 時使用 `ops/test_timing.py estimate|run|status|wait`。`run --bundle <manifest> --json`
 採 `kg.test.bundle.v1`，stderr 保留 heartbeat，status 以 atomic JSON 寫入 `.cache/test_runs/`，完成後輸出一次
 final JSON；可用 `wait` 等 terminal result，不需 agent 持續 token polling。`.cache/test_timing.sqlite3`
-只保存 semantic timing evidence，不保存 raw argv／secret；timing 寫入失敗不改測試或 gate verdict。
+只保存 semantic timing evidence，不保存 raw argv／secret；command-level 與 per-test 以
+`measurement_scope` 分開估算。`run_id` 以原子 status claim 防重複執行，同一 `resource_class` 透過跨程序 lease
+序列化；取消會終止所屬 process group、等待 worker terminal，再標記 interrupted/cancelled，不進 ETA 樣本。
+timing 寫入失敗不改測試或 gate verdict。
 
 **開跑前先擋一道：分支落後本地 main 就直接拒**（EXIT_BLOCK，payload 帶 `behind_commits` / `base_changed_files`，**不寫任何判決紀錄**）。理由：cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被 gate 判過也不會是落地的那棵——判決會綁到一棵不存在的樹（IMP-20260806-945e01：實測 58 commits 落後的分支，main 上多出的 UITest 檔在工作樹裡根本不存在，`--grep` 選三個類靜默只匹配到兩個）。修法是 `catchup --commit`（見下方 c2），然後**重跑 gate**。`--plan-only` 不受此擋（它不跑也不記，是拒絕訊息指定的預覽出口）。impact→gate 對應：
 - `ios/**` → `ios_ops.sh build` **＋** `build --catalyst`（sim 綠 ≠ Catalyst 綠）＋ `quality impact`（swift）＋ `test --unit`；**動到一般 UITest 檔**則另加 `test --ui --file <該 UITest 類> --dataset marketing_demo`（**只跑受影響的 UI 測試類，非全套**——全套當 block 會被 codebase 已知 UI flaky 誤擋每次 iOS cutover）。`LiveDemoAccessUITests` 是 Release＋實機＋live backend 專用契約，cutover gate 只跑 Release iphoneos build-for-testing 編譯 gate 並明示 runtime advisory；不得拿 simulator/fixture 偽裝其 runtime evidence，送審前仍須走 App Review `demo-run`。

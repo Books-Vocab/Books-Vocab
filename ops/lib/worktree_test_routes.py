@@ -107,6 +107,7 @@ _BEHAVIOR_ROUTES: tuple[dict[str, Any], ...] = (
          "ops/lib/worktree_orchestrator_integration.py",
          "ops/lib/worktree_orchestrator_close_wave.py",
          "ops/lib/worktree_orchestrator_delivery_anchor.py",
+         "ops/lib/worktree_orchestrator_delivery_support.py",
          "ops/tests/test_worktree_orchestrate_delivery.py"],
         "ops/tests/test_worktree_orchestrate_delivery.py",
         [
@@ -135,6 +136,8 @@ _FACADE_ROUTE = _route(
     [
         "ops/worktree_orchestrate.py",
         "ops/lib/worktree_orchestrator_runtime.py",
+        "ops/lib/worktree_gate_tiers.py",
+        "ops/tests/worktree_orchestrate_support.py",
         "ops/tests/test_orchestrator_seams.py",
     ],
     "ops/tests/test_orchestrator_seams.py",
@@ -148,7 +151,7 @@ _FACADE_ROUTE = _route(
 
 _ALL_ROUTES: tuple[dict[str, Any], ...] = (*_BEHAVIOR_ROUTES, _FACADE_ROUTE)
 _ROUTES_BY_ID = {route["route_id"]: route for route in _ALL_ROUTES}
-_FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"][:2])
+_FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"][:-1])
 _LEGACY_PATH = "ops/tests/test_worktree_orchestrate.py"
 
 _FALLBACK_ROUTE: dict[str, Any] = {

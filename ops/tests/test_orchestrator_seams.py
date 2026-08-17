@@ -151,6 +151,8 @@ def test_route_manifest_has_explicit_selectors_and_negative_control():
     assert unknown["routes"][0]["gate_tier"] == "S2"
     assert ROUTES.resolve_routes(["ops/lib/worktree_orchestrator_future.py"])["fallback"] is True
     assert ROUTES.resolve_routes(["ops/test_route.py"])["fallback"] is True
+    assert ROUTES.resolve_routes(["ops/lib/worktree_gate_tiers.py"])["fallback"] is False
+    assert ROUTES.resolve_routes(["ops/tests/worktree_orchestrate_support.py"])["fallback"] is False
 
 
 def test_facade_change_unions_behavior_routes_and_missing_selector_falls_back():
