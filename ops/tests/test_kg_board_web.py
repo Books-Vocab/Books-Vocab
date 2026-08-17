@@ -306,7 +306,9 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
 
     assert 'id="tree-legend"' in index
     assert index.index('id="git-tree"') < index.index('id="tree-legend"')
+    assert "圖面下方" in index
     assert "renderTreeLegend" in js
+    assert "tree-index-label" in js
     assert "treeLayout" in js
     assert "edgePath" in js
     assert "TREE_ROW_HEIGHT" in js
