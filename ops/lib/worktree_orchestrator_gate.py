@@ -665,18 +665,40 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         gated_head = rec.get("head_sha")
         planned_gates = rec.get("plan")
         deferred_planned_gates = rec.get("deferred_plan")
-        all_planned_gates = None
-        if isinstance(planned_gates, list) and isinstance(deferred_planned_gates, list):
-            all_planned_gates = [*planned_gates, *deferred_planned_gates]
-        computed_required_tier = required_cutover_tier(
-            rec.get("changed_files") or [], all_planned_gates
+        changed_for_scope = rec.get("changed_files")
+        plan_shape_ok = (
+            isinstance(planned_gates, list)
+            and all(isinstance(spec, dict) for spec in planned_gates)
+            and isinstance(deferred_planned_gates, list)
+            and all(isinstance(spec, dict) for spec in deferred_planned_gates)
         )
+        changed_shape_ok = (
+            isinstance(changed_for_scope, list)
+            and all(isinstance(path, str) for path in changed_for_scope)
+        )
+        all_planned_gates = (
+            [*planned_gates, *deferred_planned_gates]
+            if plan_shape_ok else None
+        )
+        computed_required_tier: str | None = None
+        if not changed_shape_ok:
+            refuse = "gate record changed_files is malformed — re-run gate"
+        elif not plan_shape_ok:
+            refuse = "gate record is malformed (plan/deferred plan) — re-run gate"
+        else:
+            try:
+                computed_required_tier = required_cutover_tier(
+                    changed_for_scope, all_planned_gates
+                )
+            except (AttributeError, TypeError, ValueError) as exc:
+                refuse = f"gate record plan metadata is malformed: {exc} — re-run gate"
         try:
             gate_tier = normalize_gate_tier(rec.get("gate_tier"))
             required_tier = normalize_gate_tier(
                 rec.get("required_tier") or computed_required_tier
             )
-            if (rec.get("required_tier") is not None
+            if (computed_required_tier is not None
+                    and rec.get("required_tier") is not None
                     and required_tier != computed_required_tier):
                 refuse = ("gate record required tier does not match its changed-file scope "
                            f"and available plan ({required_tier} != {computed_required_tier}) "
@@ -688,7 +710,12 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             _reuse_summary(recorded_gates)
             if isinstance(recorded_gates, list) else {"reused": [], "rerun": []}
         )
-        rec_orch = (rec.get("orchestrator") or {}).get("sha256")
+        recorded_orchestrator = rec.get("orchestrator")
+        if not isinstance(recorded_orchestrator, dict):
+            refuse = refuse or "gate record orchestrator is malformed — re-run gate"
+            rec_orch = None
+        else:
+            rec_orch = recorded_orchestrator.get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
         # Every current receipt must be bound to the current scope and plan.  A
         # missing digest is not a backwards-compatible shortcut: allowing it
