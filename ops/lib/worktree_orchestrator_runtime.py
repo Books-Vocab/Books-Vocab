@@ -190,25 +190,25 @@ from lib import worktree_orchestrator_claims as orchestrator_claims  # noqa: E40
 # Keep the legacy runtime namespace stable while the pure planner lives in its own
 # module.  The façade propagates monkeypatches across both namespaces.
 for _planning_name, _planning_value in vars(planning).items():
-    if not _planning_name.startswith("__"):
+    if not _planning_name.startswith("__") and _planning_name != "_COMPONENTS":
         globals()[_planning_name] = _planning_value
 for _core_name, _core_value in vars(orchestrator_core).items():
-    if not _core_name.startswith("__"):
+    if not _core_name.startswith("__") and _core_name != "_COMPONENTS":
         globals()[_core_name] = _core_value
 for _delivery_name, _delivery_value in vars(orchestrator_delivery).items():
-    if not _delivery_name.startswith("__"):
+    if not _delivery_name.startswith("__") and _delivery_name != "_COMPONENTS":
         globals()[_delivery_name] = _delivery_value
 for _lifecycle_name, _lifecycle_value in vars(orchestrator_lifecycle).items():
-    if not _lifecycle_name.startswith("__"):
+    if not _lifecycle_name.startswith("__") and _lifecycle_name != "_COMPONENTS":
         globals()[_lifecycle_name] = _lifecycle_value
 for _gate_name, _gate_value in vars(orchestrator_gate).items():
-    if not _gate_name.startswith("__"):
+    if not _gate_name.startswith("__") and _gate_name != "_COMPONENTS":
         globals()[_gate_name] = _gate_value
 for _commands_name, _commands_value in vars(orchestrator_commands).items():
-    if not _commands_name.startswith("__"):
+    if not _commands_name.startswith("__") and _commands_name != "_COMPONENTS":
         globals()[_commands_name] = _commands_value
 for _claims_name, _claims_value in vars(orchestrator_claims).items():
-    if not _claims_name.startswith("__"):
+    if not _claims_name.startswith("__") and _claims_name != "_COMPONENTS":
         globals()[_claims_name] = _claims_value
 
 SCHEMA = "kg.worktree.orchestrate.v1"
