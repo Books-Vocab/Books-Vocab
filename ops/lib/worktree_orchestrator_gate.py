@@ -696,7 +696,7 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             if not isinstance(recorded_digest, str) or not recorded_digest:
                 refuse = "gate record has no canonical plan digest — re-run gate"
             elif not isinstance(planned_gates, list) or not isinstance(deferred_planned_gates, list):
-                refuse = "gate record plan/deferred plan is malformed — re-run gate"
+                refuse = "gate record is malformed (plan/deferred plan) — re-run gate"
             elif not isinstance(changed_for_plan, list) or any(
                     not isinstance(path, str) for path in changed_for_plan):
                 refuse = "gate record changed_files is malformed — re-run gate"
