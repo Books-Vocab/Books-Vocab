@@ -30,7 +30,7 @@ Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協
 
 這是平行能力 lane，不是上下級階層：
 
-- **Ticket Factory（票務隊）**：一個 thread 依需求大量 `add`、必要時 `verify`、`groom`，產出高品質、可排序、可執行的 dispatch-ready tickets；它不修 code，也不是一票一 thread。
+- **Ticket Factory（票務隊）**：一個 thread 依需求大量 `add`、必要時 `verify`、`groom`，把問題收斂到 contract-ready，再由 `dispatch` 產出可取的工作；`groomed` 不等於 dispatchable。它不修產品 code，也不是一票一 thread。
 - **Delivery Team（交付隊）**：可同時開 A/B/C 多個 thread；每個 thread 從不重疊的 task batch 開始，由該 thread 的 **Integrator** 派出 N 個 child worktree，持續把 child commit fan-in 到一個 integration worktree，最後自己完成整個 delivery-loop。
 
 三種方法固定命名：**ticketed-loop** = `Ticket Factory → dispatch → Delivery Team → primary + origin/main`；**delivery-loop** = 單一 Delivery Team thread 的 `batch → N child worktrees → incremental fan-in → fresh Gate → cutover → resolve → anchor/validate → sync`；**direct-fix** = 使用者明示「直接改、不登記」時，完成修改後停在 hand-back（除非另有整批落地授權）。鎖競爭是正常等待：核心工具以指數退避、stderr heartbeat、非競爭錯誤 fail-closed，team 不需要互相輪詢喊話。

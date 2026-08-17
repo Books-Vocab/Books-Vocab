@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 75160fdf037c0de2ddbcdaf0277c752aabf5d245
+verified_against: bf9606b84d4209ea3884a5f1519323fdd374b33f
 -->
 # Technical Reference Index
 
@@ -450,7 +450,7 @@ iOS build/test gate 若 bounded capture 遺失 producer 應提供的欄位，spl
 | `ops/lib/lock_wait.py` | registry/backlog 的 read-modify-write lock 共用原語；競爭時以指數退避（預設 0.25s 起、20s ceiling）等待，等待／取得進度只寫 stderr，保留 stdout 的 JSON 純度。registry/backlog 對鎖建立／非競爭取得錯誤 fail-closed；唯讀 view 才可對非競爭錯誤 fail-open，競爭本身永遠等待。 |
 | `ops/worktree_orchestrate.py close-wave`（branch-local provenance） | Delivery Team Integrator 的可重入 delivery-loop 入口；同一 `--slug` 續接 integrate／`--append`、fresh Gate、cutover、來源 resolve、backlog anchor、validate、整合樹 resolve；`--sync` 再推 exact primary tip 到 `origin/main`。最終 machine receipt 另帶 `runner_revision` 與 `integration_revision`（各自的 orchestrator content SHA-256）；缺少或不一致時在 cutover 前 fail-closed。其他 team active worktree 可存在，命名衝突停下保留 state；不 deploy。 |
 | `close-wave --independent` / `integrate --independent` | 明示的 no-ticket 獨立波次模式；預設空 expected-ticket set 仍拒絕。`independent=true` 會持久化於 integration state／manifest，registry intent 以 `independent-no-ticket:` 作 provenance marker；只有 non-block Gate 綁定 exact integration HEAD、primary clean、queue empty 且 opt-in 在 resume 時一致，才可繼續 cutover／validate／resolve／sync。 |
-| `Ticket Factory` / `Delivery Team` / `Integrator` | 一個 Ticket Factory thread 批量產出 groomed tickets；多個 Delivery Team thread 各自取得不重疊 batch，由 Integrator 派 N 個 child worktree、incremental fan-in，最後 `close-wave --commit --sync` 完成 primary＋remote。角色視野與未知升級唯一以 `docs/reference/agent_context.md` 為準；詳細 worktree 動詞與停止點唯一以 `.claude/skills/worktree-flow/SKILL.md` 為準；backlog 狀態唯一以 `./ops/backlog.py lifecycle --json` 為準。正常溝通以 registry/state/receipt；不穩定才用內建 thread message，欄位契約以 worktree-flow 為準。 |
+| `Ticket Factory` / `Delivery Team` / `Integrator` | Ticket Factory 持續把 raised 問題收斂到 `contract-ready`／`dispatchable`，或具名使用者／外部阻塞；`groomed` 不等於可派工，`dispatch`／`list --dispatch` 是 Delivery Team 唯一正式取票入口。多個 Delivery Team thread 各自取得不重疊 batch，由 Integrator 派 N 個 child worktree、incremental fan-in，最後 `close-wave --commit --sync` 完成 primary＋remote。`dispatchable`／`held` 是衍生分類，不新增 backlog lifecycle；角色視野與未知升級唯一以 `docs/reference/agent_context.md` 為準，詳細 worktree 動詞與停止點唯一以 `.claude/skills/worktree-flow/SKILL.md` 為準，backlog 狀態唯一以 `./ops/backlog.py lifecycle --json` 為準。 |
 | `integrate --campaign <id> --parent` | Parent-only fan-in：在建立整合 worktree 前，於 registry lock 內對帳 campaign 的每個 partition 恰一個 child receipt（manifest digest、tip、ticket set、typed outcome seal）；缺漏、重複、foreign、stale 或第二 owner fail-closed。成功後自動產生固定 source queue；完成 manifest 保存每票 source/child/parent SHA 與 outcome/acceptance/closure。手動 `--branches` 維持相容，兩種模式互斥。 |
 | `integrate --status --slug <slug>` + `ops/lib/worktree_integration_status.py` | 純唯讀 in-flight integration projector：輸出 picking/conflicted/gate-pending/gate-blocked phase、state/worktree/branch/base/HEAD、picked/skipped/remaining/conflicts、source tips、reservation owner、gate freshness 與恰一個 `next_action`；state/branch/HEAD/source/owner/gate drift 具名回報 rc1，unknown slug、unreadable state/schema 與 mutation flags rc64。查詢不取得 integration lock、不 mkdir、不建立 worktree/verdict，也不隱式 continue/gate/abort。 |
 | `backlog.py acceptance feedback` | `acceptance_cmd_static` 是選填、60 秒內的唯讀 worker feedback；`verify <id> --static-only` 只跑這個子集。`update`、`stage`、`anchor --commit` 結案仍只跑完整 `acceptance_cmd`。 |
