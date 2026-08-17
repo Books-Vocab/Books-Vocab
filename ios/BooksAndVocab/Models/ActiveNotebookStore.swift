@@ -152,6 +152,9 @@ final class ActiveNotebookStore {
     @discardableResult
     func syncActiveNotebookFromServer(_ state: ActiveNotebookState) -> Bool {
         guard let serverUpdatedAt = state.updatedAt else { return false }
+        guard !state.activeNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
         if let localUpdatedAt = snapshot.updatedAt, serverUpdatedAt <= localUpdatedAt {
             return false
         }

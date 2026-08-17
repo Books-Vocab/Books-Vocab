@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -44,6 +45,59 @@ struct ActiveNotebookLWWTests {
 @Suite("ActiveNotebookStore")
 @MainActor
 struct ActiveNotebookStoreTests {
+
+    private final class TestAuth: AuthManaging {
+        var isLoggedIn = true
+        var userId: String? = "account-a"
+        var token: String? = "token-a"
+        var displayName: String?
+        var userEmail: String?
+        var avatarURL: URL?
+        var authError: String?
+        var isAuthenticating = false
+        var isDemoMode = false
+
+        func enterDemoMode(modelContainer: ModelContainer) {}
+        func exitDemoMode(modelContainer: ModelContainer) {}
+        func refreshSessionIfNeeded() {}
+        func login(userId: String, token: String) {}
+        func login(customToken: String) async {}
+        func logout(modelContainer: ModelContainer?, reason: String) {}
+        func loginWithGoogle(modelContainer: ModelContainer?) {}
+        func loginWithApple(modelContainer: ModelContainer?) {}
+    }
+
+    private final class DeferredUserConfigService: UserConfigFetching {
+        let config: KGUserConfig
+        private var startedContinuation: CheckedContinuation<Void, Never>?
+        private var resultContinuation: CheckedContinuation<KGUserConfig, Never>?
+        private var hasStarted = false
+
+        init(config: KGUserConfig) {
+            self.config = config
+        }
+
+        func fetchUserConfig() async throws -> KGUserConfig {
+            hasStarted = true
+            startedContinuation?.resume()
+            startedContinuation = nil
+            return await withCheckedContinuation { continuation in
+                resultContinuation = continuation
+            }
+        }
+
+        func waitUntilStarted() async {
+            if hasStarted { return }
+            await withCheckedContinuation { continuation in
+                startedContinuation = continuation
+            }
+        }
+
+        func resume() {
+            resultContinuation?.resume(returning: config)
+            resultContinuation = nil
+        }
+    }
 
     private func makeDefaults() -> UserDefaults {
         let suite = "ActiveNotebookStoreTests-\(UUID().uuidString)"
@@ -164,6 +218,18 @@ struct ActiveNotebookStoreTests {
         #expect(store.activeNotebookIdIfSet == nil)
     }
 
+    @Test func serverActiveNotebookWithBlankIdentifierIsRejected() {
+        let d = makeDefaults()
+        let store = ActiveNotebookStore(defaults: d, cloud: FakeCloudKVStore())
+
+        let accepted = store.syncActiveNotebookFromServer(
+            ActiveNotebookState(activeNotebookId: " \t\n ", updatedAt: 500)
+        )
+
+        #expect(!accepted)
+        #expect(store.activeNotebookIdIfSet == nil)
+    }
+
     @Test func accountSwitchDoesNotReusePreviousActiveNotebook() {
         let d = makeDefaults()
         let cloud = FakeCloudKVStore()
@@ -182,6 +248,37 @@ struct ActiveNotebookStoreTests {
         #expect(accepted)
         #expect(store.activeNotebookId == "account-b-nb")
         #expect(cloud.string(forKey: "activeNotebookId") == "account-a-nb")
+    }
+
+    @Test func staleUserConfigResponseIsDiscardedAfterAccountSwitch() async {
+        let d = makeDefaults()
+        let store = ActiveNotebookStore(defaults: d, cloud: FakeCloudKVStore())
+        let auth = TestAuth()
+        let service = DeferredUserConfigService(
+            config: KGUserConfig(
+                translation: nil,
+                review_clock: nil,
+                review_mode: nil,
+                vocab_ui: KGVocabUIConfig(active_notebook_id: "account-a-nb", updated_at: 500),
+                auto_link: nil
+            )
+        )
+        let coordinator = NotebookListCoordinator()
+
+        let task = Task { @MainActor in
+            await coordinator.syncActiveNotebookFromServer(
+                authManager: auth,
+                kgService: service,
+                store: store
+            )
+        }
+        await service.waitUntilStarted()
+        auth.userId = "account-b"
+        auth.token = "token-b"
+        service.resume()
+        await task.value
+
+        #expect(store.activeNotebookIdIfSet == nil)
     }
 
     @Test("snapshot 讀本地層")
