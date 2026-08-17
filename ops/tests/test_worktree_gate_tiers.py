@@ -37,8 +37,10 @@ def test_existing_gate_families_map_to_delivery_tiers(name: str, expected: str) 
 
 def test_whole_ops_fallback_is_more_expensive_than_targeted_ops_test() -> None:
     targeted = _gate("ops-pytest", cmd=["pytest", "ops/tests/test_x.py"])
+    focused = _gate("ops-pytest-focused", cmd=["pytest", "ops/tests/test_x.py"])
     whole = _gate("ops-pytest", cmd=["pytest", "ops/tests"])
     assert tiers.classify_gate_tier(targeted) == "S1"
+    assert tiers.classify_gate_tier(focused) == "S1"
     assert tiers.classify_gate_tier(whole) == "S2"
 
 

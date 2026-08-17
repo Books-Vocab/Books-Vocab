@@ -807,6 +807,19 @@ def test_gate_plan_ops_src_without_test_falls_back_to_whole_ops_tests():
     assert "ops/tests/test_capability_matrix.py" not in spec["cmd"]
 
 
+def test_gate_plan_ops_fallback_keeps_existing_changed_tests_as_s1_focus():
+    exists = {"ops/tests/test_worktree_orchestrate.py"}.__contains__
+    gates = _by_name(plan_gates([
+        "ops/lib/worktree_orchestrator_gate.py",
+        "ops/tests/test_worktree_orchestrate.py",
+    ], ops_test_exists=exists))
+    focused = gates["ops-pytest-focused"]
+    whole = gates["ops-pytest"]
+    assert focused["tier"] == "S1"
+    assert "ops/tests/test_worktree_orchestrate.py" in focused["cmd"]
+    assert "ops/tests" in whole["cmd"]
+
+
 def test_gate_plan_ops_src_default_predicate_is_conservative_fallback():
     # without an injected existence predicate (pure layer: no IO), an ops src
     # change cannot prove a matching test exists -> whole ops/tests
