@@ -2601,6 +2601,7 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     "dur_s": r.get("dur_s"),
                     "lock_wait_ms": r.get("lock_wait_ms", 0),
                     "work_dur_s": r.get("work_dur_s", r.get("dur_s")),
+                    "timing_status": r.get("timing_status", "legacy"),
                     # False only for gates that never started (spawn failure). A row
                     # for a check that did not run must not be usable as evidence
                     # about whether that check can pass.
@@ -2988,27 +2989,72 @@ _LOCK_WAIT_PATTERNS = {
 }
 
 
-def _duration_fields(elapsed_s: float, output: str = "") -> dict[str, float | int]:
+def _required_lock_wait_fields(spec: dict[str, Any]) -> tuple[str, ...]:
+    """Return producer timing fields that must survive a gate's bounded output.
+
+    ``ios_test.sh`` prints ``lockWaitMs`` before its final
+    ``deviceRunLockWaitMs`` line, so either field being absent from the captured
+    tail makes the split measurement unavailable. Build gates only require the
+    process lock field. Other iOS gates do not promise these metrics.
+    """
+    if spec.get("category") != "ios":
+        return ()
+    command = [str(arg) for arg in (spec.get("cmd") or [])]
+    names = {Path(arg).name for arg in command}
+    if "ios_test.sh" in names or (
+        command and Path(command[0]).name == "ios_ops.sh" and
+        len(command) > 1 and command[1] == "test"
+    ):
+        return tuple(_LOCK_WAIT_PATTERNS)
+    if "ios_build.sh" in names or (
+        command and Path(command[0]).name == "ios_ops.sh" and
+        len(command) > 1 and command[1] == "build"
+    ):
+        return ("lockWaitMs",)
+    return ()
+
+
+def _duration_fields(
+    elapsed_s: float,
+    output: str = "",
+    *,
+    required_lock_fields: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """Keep runner wall time and known iOS lock time as separate measurements.
 
     ``dur_s`` is the monotonic wall time measured by ``run_streamed_command``. The
     iOS wrappers expose lock waits as ``lockWaitMs`` and
     ``deviceRunLockWaitMs``; use the last value for each field because wrappers may
     print an acquisition line and a final timing line. Non-iOS gates omit both
-    fields, so their work duration remains the full elapsed time.
+    fields, so their work duration remains the full elapsed time.  A producer-backed
+    gate whose required field is absent from the bounded capture is marked
+    ``timing_status=unknown`` rather than silently treating the wait as zero.
     """
     elapsed = max(float(elapsed_s), 0.0)
-    waits_ms = []
-    for pattern in _LOCK_WAIT_PATTERNS.values():
+    observed: dict[str, float] = {}
+    for field, pattern in _LOCK_WAIT_PATTERNS.items():
         matches = pattern.findall(output)
         if matches:
-            waits_ms.append(float(matches[-1]))
-    lock_wait_ms = round(sum(waits_ms), 3)
+            observed[field] = float(matches[-1])
+    missing = [field for field in required_lock_fields if field not in observed]
+    if missing:
+        # A bounded tail can lose a producer's early metric.  ``0`` would falsely
+        # claim that no lock was waited on, and subtracting only the surviving field
+        # would inflate work time; keep wall time but make the split explicitly
+        # unavailable.
+        return {
+            "dur_s": round(elapsed, 6),
+            "lock_wait_ms": None,
+            "work_dur_s": None,
+            "timing_status": "unknown",
+        }
+    lock_wait_ms = round(sum(observed.values()), 3)
     work_dur_s = max(elapsed - lock_wait_ms / 1000.0, 0.0)
     return {
         "dur_s": round(elapsed, 6),
         "lock_wait_ms": lock_wait_ms,
         "work_dur_s": round(work_dur_s, 6),
+        "timing_status": "known" if observed else "not-applicable",
     }
 
 
@@ -3083,6 +3129,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     still reports, it just has nowhere to put the long form.
     """
     name, level = spec["name"], spec["level"]
+    required_lock_fields = _required_lock_wait_fields(spec)
     result = {"name": name, "category": spec["category"], "level": level}
     machine_before = _machine_state(state)
     if spec["kind"] == "internal":
@@ -3140,7 +3187,10 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     try:
         cwd.stat()
     except FileNotFoundError:
-        result.update(_duration_fields(time.monotonic() - started))
+        result.update(_duration_fields(
+            time.monotonic() - started,
+            required_lock_fields=required_lock_fields,
+        ))
         result.update({
             "status": "block" if level == "block" else "warn",
             "rc": 127,
@@ -3155,7 +3205,9 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         returncode, output, dur_s = _run_streamed_command(
             spec["cmd"], cwd=cwd, gate_name=name, capture_limit=GATE_CAPTURE_LIMIT,
         )
-        result.update(_duration_fields(dur_s, output))
+        result.update(_duration_fields(
+            dur_s, output, required_lock_fields=required_lock_fields,
+        ))
     except OSError as exc:
         # The router and the tools it routes to can be different generations
         # (IMP-0045): a branch that deleted a script leaves a stale router still
@@ -3183,7 +3235,10 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # never pass. The next genuine red then arrives carrying "no green ever
         # recorded", steering the reader away from their own bug. rc alone cannot
         # carry this: a tool that RAN and exited 127 is a real red.
-        result.update(_duration_fields(time.monotonic() - started))
+        result.update(_duration_fields(
+            time.monotonic() - started,
+            required_lock_fields=required_lock_fields,
+        ))
         result.update({"status": "block" if level == "block" else "warn", "rc": 127,
                        "executed": False, "summary": summary,
                        "machine_state": _machine_state_record(
