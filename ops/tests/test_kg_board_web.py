@@ -277,6 +277,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'terminal={fixed:"已修復","wont-fix":"不修"}' in js
     assert "scopeMatrix.worktrees" in js and "scopeMatrix.queued_tickets" in js
     assert "scope-column-worktree" in js and "scope-column-ticket" in js
+    assert "scope-agent-row" in js
+    assert "Scope 待宣告" in js
     assert "/api/ticket/" in js
     assert 'new EventSource("/api/events")' in js
     assert 'addEventListener("snapshot"' in js
@@ -777,6 +779,53 @@ def test_mirror_update_publishes_snapshot_invalidation(monkeypatch):
 
     assert mirror.response_code == 200
     assert events == ["claims"]
+
+
+def test_mirror_threads_accepts_complete_title_snapshot(monkeypatch):
+    raw = json.dumps({
+        "schema": "kg.codex.thread-mirror.v1",
+        "complete": True,
+        "threads": [{"thread_id": "thread-a", "title": "改名後", "status": "active"}],
+    }).encode("utf-8")
+    stored = []
+    monkeypatch.setattr(server, "TOKEN", "mirror-secret")
+    monkeypatch.setattr(server, "_update_json", lambda _path, _default, update: stored.append(update({})))
+    mirror = _capturing_handler(
+        "/api/mirror/threads",
+        {
+            "Content-Length": str(len(raw)),
+            "Content-Type": "application/json",
+            "Authorization": "Bearer mirror-secret",
+        },
+    )
+    mirror.rfile = BytesIO(raw)
+
+    mirror.do_POST()
+
+    assert mirror.response_code == 200
+    assert json.loads(mirror.wfile.getvalue()) == {"ok": True, "stored": "threads"}
+    assert stored[0]["threads"]["threads"][0]["title"] == "改名後"
+
+
+def test_mirror_threads_refuses_incomplete_snapshot_without_overwriting(monkeypatch):
+    raw = json.dumps({"complete": False, "error": "app-server unavailable", "threads": []}).encode("utf-8")
+    called = []
+    monkeypatch.setattr(server, "TOKEN", "mirror-secret")
+    monkeypatch.setattr(server, "_update_json", lambda *args: called.append(args))
+    mirror = _capturing_handler(
+        "/api/mirror/threads",
+        {
+            "Content-Length": str(len(raw)),
+            "Content-Type": "application/json",
+            "Authorization": "Bearer mirror-secret",
+        },
+    )
+    mirror.rfile = BytesIO(raw)
+
+    mirror.do_POST()
+
+    assert mirror.response_code == 422
+    assert called == []
 
 
 def test_projection_exposes_decision_counts_and_blocked_rows():

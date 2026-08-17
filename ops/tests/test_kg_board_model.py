@@ -1150,6 +1150,75 @@ def test_scope_matrix_keeps_direct_worktree_visible_when_its_scope_is_unknown():
     assert payload["queued_tickets"][0]["collision"] is None
 
 
+def test_scope_matrix_projects_codex_thread_title_for_each_worktree():
+    thread_id = "thread-agent-a"
+    payload = server.project_scope_matrix(
+        [],
+        {},
+        worktree_refs=[{
+            "branch": "feat/direct",
+            "path": "/tmp/direct",
+            "status": "active",
+            "tickets": [],
+            "codex_thread_id": thread_id,
+        }],
+        thread_mirror={"threads": [{
+            "thread_id": thread_id,
+            "title": "交付看板 Agent",
+            "role": "subagent",
+            "status": "active",
+        }]},
+    )
+
+    assert payload["worktrees"][0]["agent"] == {
+        "thread_id": thread_id,
+        "title": "交付看板 Agent",
+        "role": "subagent",
+        "status": "active",
+    }
+
+
+def test_one_agent_title_is_reused_across_direct_and_ticketed_worktrees():
+    thread_id = "thread-shared"
+    payload = server.project_scope_matrix(
+        [{**_ticket("ACTIVE-TICKET"),
+          "scope": {"files": [{"path": "ops/ticket.py", "operation": "modify"}]} }],
+        {"ACTIVE-TICKET": {"branch": "feat/ticketed"}},
+        worktree_refs=[
+            {"branch": "feat/direct", "path": "/tmp/direct", "status": "active",
+             "tickets": [], "codex_thread_id": thread_id},
+            {"branch": "feat/ticketed", "path": "/tmp/ticketed", "status": "active",
+             "tickets": [{"id": "ACTIVE-TICKET"}], "codex_thread_id": thread_id},
+        ],
+        thread_mirror={"threads": [{"thread_id": thread_id, "title": "同一 Agent",
+                                     "status": "active"}]},
+    )
+
+    assert {row["agent"]["title"] for row in payload["worktrees"]} == {"同一 Agent"}
+    assert {row["kind"] for row in payload["worktrees"]} == {"direct", "ticketed"}
+
+
+def test_scope_matrix_falls_back_to_newer_claim_owner_when_git_tree_ref_is_stale():
+    thread_id = "thread-newer-claim"
+    payload = server.project_scope_matrix(
+        [{**_ticket("ACTIVE-TICKET"),
+          "scope": {"files": [{"path": "ops/ticket.py", "operation": "modify"}]}}],
+        {"ACTIVE-TICKET": {
+            "branch": "feat/ticketed", "codex_thread_id": thread_id,
+        }},
+        worktree_refs=[{
+            "branch": "feat/ticketed", "path": "/tmp/ticketed", "status": "active",
+            "tickets": ["ACTIVE-TICKET"],
+        }],
+        thread_mirror={"threads": [{"thread_id": thread_id, "title": "較新的 Agent",
+                                     "status": "active"}]},
+    )
+
+    assert payload["worktrees"][0]["agent"] == {
+        "thread_id": thread_id, "title": "較新的 Agent", "status": "active",
+    }
+
+
 def test_scope_matrix_payload_projects_direct_worktree_refs_from_git_tree(monkeypatch, tmp_path):
     scope = {"files": [{"path": "ops/direct.py", "operation": "modify"}]}
     mirror = tmp_path / "mirror.json"

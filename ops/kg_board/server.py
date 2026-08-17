@@ -24,7 +24,7 @@ refresh tick。oscar 睡著時看板會凍在最後一次推送——那是對�
   使用者自己的 tailnet 裝置連得到。同機的 `felix-status`(8002) 就是這個模型。
 * 手機頁面的 `/api/priority` 只接受 JSON、嚴格同源 Origin 與程序啟動時產生的
   `X-KG-CSRF`；短期 token 注入同源 HTML，不把長期 bearer 放進瀏覽器。
-* oscar 主機 glue 寫入的 `/api/mirror/*` 仍只接受長期 Bearer token，token 取自
+* oscar 主機 glue 寫入的 `/api/mirror/*`（claims、git-tree、sync-state、threads）仍只接受長期 Bearer token，token 取自
   `~/.secrets/kg-board.token`，不接受頁面 CSRF token。
 * **fail-closed**：token 檔不存在或為空 → 服務**拒絕啟動**。一個沒有認證卻在跑的
   看板，比沒有看板更糟；而「啟動成功但寫入永遠 401」會讓人以為只是設定錯。
@@ -63,6 +63,10 @@ try:
     from ops.kg_board.scope import scope_files, scope_status
 except ModuleNotFoundError:  # direct launch via the release checkout
     from scope import scope_files, scope_status
+try:
+    from ops.kg_board.thread_mirror import normalise_thread_mirror
+except ModuleNotFoundError:  # direct launch via the release checkout
+    from thread_mirror import normalise_thread_mirror
 try:
     from ops.kg_board.model import (
         MODEL_FLOW,
@@ -586,6 +590,8 @@ def mirror_held_claims() -> dict:
                 "claimed_at": rec.get("claimed_at"),
                 "intent": rec.get("intent"),
                 **({"scope": rec["scope"]} if "scope" in rec else {}),
+                **({"codex_thread_id": rec["codex_thread_id"]}
+                   if rec.get("codex_thread_id") else {}),
             }
     for ticket in claims.get("tickets_held") or []:
         held.setdefault(str(ticket), {"branch": None, "claimed_at": None,
@@ -804,6 +810,7 @@ def project_scope_matrix(
     *,
     canonical_dispatch_ids: set[str] | None = None,
     worktree_refs: list[dict] | None = None,
+    thread_mirror: dict | None = None,
 ) -> dict:
     """Project the file-occupancy matrix with worktrees as active columns.
 
@@ -824,6 +831,30 @@ def project_scope_matrix(
         if entry.get("id") and entry.get("status") not in RESOLVED_STATUSES
     }
     by_ticket = unresolved
+
+    normalized_threads = normalise_thread_mirror(thread_mirror or {
+        "complete": True, "threads": [],
+    })
+    threads_by_id = {
+        row["thread_id"]: row
+        for row in normalized_threads.get("threads") or []
+        if row.get("thread_id")
+    }
+
+    def owner_for_ref(ref: dict) -> dict:
+        thread_id = ref.get("codex_thread_id")
+        if not isinstance(thread_id, str) or not thread_id.strip():
+            return {"thread_id": None, "title": None, "status": "unbound"}
+        owner = threads_by_id.get(thread_id.strip()) or {}
+        agent = {"thread_id": thread_id.strip(),
+                 "title": owner.get("title"),
+                 "status": owner.get("status") or "unknown"}
+        for field in ("role", "nickname", "parent_thread_id", "session_id", "source_kind"):
+            if owner.get(field):
+                agent[field] = owner[field]
+        if owner.get("error"):
+            agent["error"] = owner["error"]
+        return agent
 
     def ticket_sort(ticket_id: str):
         entry = by_ticket.get(ticket_id) or {}
@@ -928,6 +959,15 @@ def project_scope_matrix(
             scope_state, files = merge_scope([(None, direct_scope)] if direct_scope is not None else [])
             kind = "direct"
         claim_rows = [held[ticket_id] for ticket_id in ticket_ids if ticket_id in held]
+        owner_ref = ref
+        if not ref.get("codex_thread_id"):
+            owner_claim = next(
+                (claim for claim in claim_rows
+                 if isinstance(claim, dict) and claim.get("codex_thread_id")),
+                None,
+            )
+            if owner_claim is not None:
+                owner_ref = {**ref, "codex_thread_id": owner_claim["codex_thread_id"]}
         worktrees.append({
             "id": worktree_id(branch),
             "branch": branch,
@@ -938,6 +978,7 @@ def project_scope_matrix(
             "ref_kind": ref.get("kind"),
             "live_state": ref.get("live_state"),
             "worktree_present": ref.get("worktree_present"),
+            "agent": owner_for_ref(owner_ref),
             "ticket_ids": ticket_ids,
             "tickets": [
                 {"id": ticket_id, "brief": (by_ticket.get(ticket_id) or {}).get("brief") or "",
@@ -1059,6 +1100,12 @@ def project_scope_matrix(
         "queued_ticket_ids": queued_ids,
         "unknown_worktree_ids": sorted(unknown_worktree_ids),
         "unknown_ticket_ids": unknown_ticket_ids,
+        "thread_mirror": {
+            "schema": normalized_threads.get("schema"),
+            "at": normalized_threads.get("at"),
+            "complete": normalized_threads.get("complete") is True,
+            "error": normalized_threads.get("error"),
+        },
         "counts": {
             "active_worktrees": len(worktrees),
             "ticketed_worktrees": sum(1 for row in worktrees if row["kind"] == "ticketed"),
@@ -1268,6 +1315,7 @@ def scope_matrix_payload() -> dict:
         held,
         canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
         worktree_refs=tree.get("refs") or [],
+        thread_mirror=mirror.get("threads") if isinstance(mirror, dict) else None,
     )
     payload["freshness"] = freshness()
     return payload
@@ -1553,7 +1601,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        mirror_path = path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree")
+        mirror_path = path in (
+            "/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree",
+            "/api/mirror/threads",
+        )
         if mirror_path:
             problem = self._mirror_precondition()
         else:
@@ -1568,12 +1619,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": f"bad body: {exc}"})
             return
 
-        if path in ("/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree"):
+        if path in (
+            "/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree",
+            "/api/mirror/threads",
+        ):
             # Pushed by oscar (`com.kg.sync`). The board cannot read oscar's ledger
             # or its local main — both live on a laptop that sleeps — so oscar
             # reports and this stores verbatim.
             key = ("claims" if path.endswith("claims") else
-                   "sync_state" if path.endswith("sync-state") else "git_tree")
+                   "sync_state" if path.endswith("sync-state") else
+                   "git_tree" if path.endswith("git-tree") else "threads")
+            if key == "threads":
+                body = normalise_thread_mirror(body)
+                if body.get("complete") is not True:
+                    self._json(422, {"error": "thread mirror incomplete",
+                                     "detail": body.get("error")})
+                    return
             def update_mirror(current):
                 mirror = dict(current) if isinstance(current, dict) else {}
                 mirror[key] = body
