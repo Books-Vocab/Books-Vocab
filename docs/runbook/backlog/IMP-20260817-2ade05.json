@@ -12,6 +12,9 @@
   "date": "2026-08-17",
   "detail": "現行 gate 已不再要求 commit review metadata，但 active backlog 與維護註解仍把舊 gate 名稱當成修法目標。清理 active contract，保留 archive 與歷史 receipt 作為 provenance，不讓新 worker 追不存在的入口。",
   "fix_site": "ops/worktree_orchestrate.py; docs/sop/review_discipline.md; docs/registry.yml",
+  "fixed_by": [
+    "f0c440f60009ab70c1b999048d866a781a7b02c7"
+  ],
   "groomed_against": "d7d98039f31019e96854de6592cbc9d7f82ffd8d",
   "groomed_at": "2026-08-17",
   "groomed_by": "agent:delivery-integrator",
@@ -22,6 +25,10 @@
   "scope": "一張 backlog 票與一組 gate 文件、測試的契約清理。",
   "severity": "med",
   "source": "review of the retired commit-metadata gate contract",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest --with pyjwt --with cryptography pytest -q ops/tests/test_worktree_orchestrate.py -k 'gate_plan_does_not_require or integrate_gate_does_not_request' && ./ops/backlog.py validate --baseline-check"
 }
