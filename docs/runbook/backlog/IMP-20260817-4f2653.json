@@ -1,0 +1,63 @@
+{
+  "acceptance": "紅：App Review topology contract 不存在、nodeid 重複/遺失，或 secret/stale/malformed negative control 不會 fail-closed。綠：producer、evaluator、journey、provenance、secret/offline、ASC/reviewer 各有唯一 route，端到端 compatibility 與 app-review group 仍綠，完整 suite 僅 release/S4。",
+  "acceptance_cmd": "test -f ops/tests/test_app_review_test_topology.py && uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_app_review_test_topology.py && ./ops/test_ops.sh app-review",
+  "acceptance_expect_rc": 0,
+  "brief": "把 App Review evidence 測試按 producer、評估與 provenance 責任分流，保留送審硬閘。",
+  "category": "tool",
+  "contract_baseline": "unknown",
+  "contract_checked_at": "2026-08-17",
+  "contract_checked_by": "agent:ticket-factory-plan-20260817",
+  "contract_evidence": "Ticket Factory contract preflight at local main 75160fdf037c0de2ddbcdaf0277c752aabf5d245: blocked until the active orchestrator-test-topology-eta-20260817 worktree is complete and the future topology contract dependency exists; no implementation or acceptance command was executed.",
+  "contract_status": "blocked",
+  "date": "2026-08-17",
+  "detail": "App Review 的 evidence producer、freshness/root binding、gate evaluator、journey/fixture、secret redaction/offline fail-closed 與 ASC/reviewer evidence 雖已有多支測試，尚未形成不重複且可按責任 route 的 topology contract。這張票只處理測試分流與 provenance/secret 覆蓋，不重做既有 evaluator seam 拆分，不改送審政策或外部提交。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 evidence schema 重查。",
+  "fix_site": "ops/tests/test_app_review_gate.py; ops/tests/test_app_review_evidence.py; ops/tests/test_asc_reviewer_mirror.py; ops/tests/test_provenance.py; ops/tests/test_reviewer_evidence.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+  "groomed_against": "75160fdf037c0de2ddbcdaf0277c752aabf5d245",
+  "groomed_at": "2026-08-17",
+  "groomed_by": "agent:ticket-factory-plan-20260817",
+  "id": "IMP-20260817-4f2653",
+  "plan": "1. 以 collect-only 建立現有 App Review test nodeid 與 evidence claim 覆蓋矩陣，標記 producer、freshness/root binding、evaluator、journey/fixture、secret/offline、ASC/reviewer ownership。 2. 將每個 nodeid 放入唯一責任 route，保留端到端 gate 作 compatibility/contract collector，不重複執行。 3. 加 stale/malformed/secret leakage/offline negative controls、positive controls、mutation 與 zero-selector fail-safe。 4. route source 變更時只跑對應 evaluator/producer bundle，完整 suite 留給 release/S4，並維持 app-review group/CI 可達。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_app_review_gate.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_app_review_evidence.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_asc_reviewer_mirror.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_provenance.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_reviewer_evidence.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_app_review_test_topology.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/test_ops.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ops_ci_coverage.sh"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 2 Ticket H App Review Evidence Test Topology",
+  "status": "contract-blocked",
+  "stream": "IMP"
+}
