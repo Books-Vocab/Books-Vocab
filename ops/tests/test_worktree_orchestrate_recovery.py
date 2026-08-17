@@ -1006,11 +1006,28 @@ def test_close_wave_recovery_real_subprocess_wiring(
     }, indent=2) + "\n", encoding="utf-8")
     gate_path = MODULE._gate_record_path(str(state), str(integration))
     gate_path.parent.mkdir(parents=True, exist_ok=True)
+    changed_files = MODULE._changed_vs_base(str(integration), "main")
+    full_plan = MODULE._current_full_gate_plan(
+        str(integration), changed_files, "S2", "main"
+    )
+    selected_plan, deferred_plan = MODULE.select_gate_plan(full_plan, "S2")
     gate_path.write_text(json.dumps({
         "schema": MODULE.GATE_SCHEMA, "step": "gate", "worktree": str(integration),
         "base": "main", "head_sha": integration_tip, "verdict": "pass",
-        "plan": [],
-        "gates": [], "orchestrator": MODULE._orchestrator_identity(str(integration)),
+        "changed_files": changed_files, "no_changed_files": not changed_files,
+        "gate_tier": "S2",
+        "required_tier": MODULE.required_cutover_tier(changed_files, full_plan),
+        "canonical_plan_digest": MODULE._gate_plan_digest(full_plan),
+        "selected_plan_digest": MODULE._gate_plan_digest(selected_plan),
+        "plan": MODULE._gate_plan_projection(selected_plan),
+        "deferred_plan": MODULE._gate_plan_projection(deferred_plan),
+        "deferral_requests": [], "deferred_failures": [],
+        "gates": [{
+            "name": spec["name"], "category": spec.get("category"),
+            "level": spec.get("level", "block"), "status": "pass", "rc": 0,
+            "tier": spec.get("tier", "S2"),
+        } for spec in selected_plan],
+        "orchestrator": MODULE._orchestrator_identity(str(integration)),
     }, indent=2) + "\n", encoding="utf-8")
 
     calls = {phase: 0 for phase in (
