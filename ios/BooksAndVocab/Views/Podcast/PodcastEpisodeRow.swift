@@ -30,12 +30,18 @@ struct PodcastEpisodeRow: View {
         return FileManager.default.fileExists(atPath: path)
     }
 
+    /// Required-auth seam for the user-initiated download path.
+    /// Keep `currentAuthToken()` so expired credentials follow login handling.
+    static func downloadAuthToken(kgService: any AuthTokenProviding) async throws -> String {
+        try await kgService.currentAuthToken()
+    }
+
     /// Kick off (or retry) the offline download. Fetches a fresh auth token so
     /// the manager keeps zero dependency on KGService. `startDownload` clears any
     /// prior `failed[remoteId]` entry, so this doubles as the retry path.
     private func startDownloadTask() {
         Task {
-            guard let token = try? await kgService.currentAuthToken() else { return }
+            guard let token = try? await Self.downloadAuthToken(kgService: kgService) else { return }
             downloadManager.startDownload(episode: episode, authToken: token)
         }
     }
