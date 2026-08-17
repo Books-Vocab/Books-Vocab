@@ -138,10 +138,13 @@ run_one() {
         ops/tests/test_worktree_campaign_reservation.py \
         ops/tests/test_worktree_handback_outcomes.py \
         ops/tests/test_worktree_gate.py \
+        ops/tests/test_worktree_gate_tiers.py \
         ops/tests/test_worktree_loadtest.py \
         ops/tests/test_worktree_parent_integration.py \
         ops/tests/test_worktree_integrate_status.py \
         ops/tests/test_worktree_registry_queries.py &&
+      ./ops/test_route.py --help &&
+      ./ops/test_timing.py --help &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_lock_wait.py &&
       ./ops/tests/test_worktree_registry.sh

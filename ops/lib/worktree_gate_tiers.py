@@ -91,6 +91,8 @@ def classify_gate_tier(spec: dict[str, Any]) -> str:
         return "S1"
     if name == "ops-pytest-orchestrator-focused":
         return "S1"
+    if name == "ops-pytest-orchestrator-group":
+        return "S2"
 
     if name == "ios-build-catalyst":
         return "S3"
