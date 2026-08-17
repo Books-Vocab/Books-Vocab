@@ -7568,6 +7568,71 @@ def test_add_dry_run_returns_the_entry_without_writing_it(tmp_path, capsys):
     assert not (store.exists() and list(store.glob("*.json")))
 
 
+def test_entry_mutations_wait_for_the_supersede_store_lock(tmp_path):
+    """Every writer must share the lock that makes supersede a transaction."""
+    import threading
+
+    store = tmp_path / "s"
+    entry = _add(store)
+    finished = threading.Event()
+    result = {}
+
+    def update_after_lock():
+        try:
+            result["entry"] = BACKLOG.update_entry(
+                store, entry["id"], resolution="store lock probe"
+            )
+        except BaseException as exc:  # surface a worker failure below
+            result["error"] = exc
+        finally:
+            finished.set()
+
+    with BACKLOG._store_lock(store):
+        thread = threading.Thread(target=update_after_lock)
+        thread.start()
+        time.sleep(0.03)
+        assert not finished.is_set(), "update bypassed the supersede store lock"
+    thread.join(timeout=2)
+
+    assert finished.is_set()
+    assert "error" not in result, result.get("error")
+    assert BACKLOG.load_entry(store, entry["id"])["resolution"] == "store lock probe"
+
+
+def test_supersede_waits_for_the_claim_ledger_lock(tmp_path, monkeypatch):
+    """Claim eligibility and the two-file publish cannot straddle a claim."""
+    import threading
+
+    store = tmp_path / "s"
+    entry = _add(store)
+    ledger = tmp_path / "worktree_registry.json"
+    monkeypatch.setattr(BACKLOG, "_claim_ledger_path", lambda: ledger)
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+    finished = threading.Event()
+    result = {}
+
+    def supersede_after_lock():
+        try:
+            result["plan"] = BACKLOG._supersede_transaction(
+                store, entry["id"], detail="claim lock probe", commit=False
+            )
+        except BaseException as exc:  # surface a worker failure below
+            result["error"] = exc
+        finally:
+            finished.set()
+
+    with BACKLOG._claim_lock():
+        thread = threading.Thread(target=supersede_after_lock)
+        thread.start()
+        time.sleep(0.03)
+        assert not finished.is_set(), "supersede bypassed the claim ledger lock"
+    thread.join(timeout=2)
+
+    assert finished.is_set()
+    assert "error" not in result, result.get("error")
+    assert result["plan"]["entry"]["detail"] == "claim lock probe"
+
+
 def test_supersede_refiles_corrected_detail_atomically(tmp_path, capsys):
     store = tmp_path / "s"
     original = _add(
