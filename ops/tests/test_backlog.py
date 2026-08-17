@@ -7565,6 +7565,148 @@ def test_add_dry_run_returns_the_entry_without_writing_it(tmp_path, capsys):
     assert not (store.exists() and list(store.glob("*.json")))
 
 
+def test_supersede_refiles_corrected_detail_atomically(tmp_path, capsys):
+    store = tmp_path / "s"
+    original = _add(store, detail="detail damaged by shell expansion")
+    corrected = "detail restored from a file; `_run_gate` survives"
+    detail_file = tmp_path / "corrected-detail.txt"
+    detail_file.write_text(corrected + "\n", encoding="utf-8")
+
+    assert BACKLOG.main([
+        "supersede", original["id"], "--store", str(store),
+        "--detail-file", str(detail_file), "--commit", "--json",
+    ]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    replacement_id = BACKLOG.make_entry_id(
+        stream=original["stream"], date=original["date"],
+        source=original["source"], detail=corrected,
+    )
+    assert result["replacement_id"] == replacement_id
+    assert result["written"] is True
+    replaced = BACKLOG.load_entry(store, replacement_id)
+    retired = BACKLOG.load_entry(store, original["id"])
+    assert replaced["detail"] == corrected
+    assert replaced["status"] == "open"
+    assert retired["status"] == "wont-fix"
+    assert replacement_id in retired["resolution"]
+    assert retired["detail"] == original["detail"]
+    assert sorted(path.stem for path in store.glob("*.json")) == sorted(
+        [original["id"], replacement_id]
+    )
+
+
+def test_supersede_refuses_claimed_closed_or_referenced_source(
+    tmp_path, capsys, monkeypatch
+):
+    cases = ("claimed", "closed", "fixed_by", "verified")
+    for case in cases:
+        store = tmp_path / case
+        source = _add(store, detail=f"source for {case}")
+        if case == "closed":
+            source["status"] = "wont-fix"
+            source["resolution"] = "declined for a documented reason"
+        elif case == "fixed_by":
+            source["fixed_by"] = ["aaaaaaa"]
+        elif case == "verified":
+            source["verified_at"] = "2026-08-17"
+            source["verified_by"] = "agent:test"
+            source["verified_evidence"] = "pytest -q"
+        if case != "claimed":
+            (store / f"{source['id']}.json").write_text(
+                BACKLOG._dumps(source), encoding="utf-8"
+            )
+        monkeypatch.setattr(
+            BACKLOG, "held_tickets",
+            (lambda entry_id=source["id"]: {
+                entry_id: {"branch": "feat/held", "path": "/tmp/held"}
+            }) if case == "claimed" else (lambda: {}),
+        )
+
+        before = (store / f"{source['id']}.json").read_bytes()
+        assert BACKLOG.main([
+            "supersede", source["id"], "--store", str(store),
+            "--detail", f"corrected {case}", "--commit", "--json",
+        ]) == 64
+        captured = capsys.readouterr()
+        assert source["id"] in captured.err or case in captured.err
+        assert (store / f"{source['id']}.json").read_bytes() == before
+        assert len(list(store.glob("*.json"))) == 1
+
+
+def test_supersede_preserves_original_audit_trail(tmp_path, capsys):
+    store = tmp_path / "s"
+    original = _add(
+        store,
+        detail="original detail remains readable",
+        brief="A filed report needs a correction",
+        scope="one backlog entry and its test",
+        resolution="original filing note",
+    )
+    before = dict(original)
+
+    assert BACKLOG.main([
+        "supersede", original["id"], "--store", str(store),
+        "--source", "corrected source", "--commit", "--json",
+    ]) == 0
+    capsys.readouterr()
+
+    retired = BACKLOG.load_entry(store, original["id"])
+    for field, value in before.items():
+        if field not in {"status", "resolution"}:
+            assert retired[field] == value, field
+    assert retired["status"] == "wont-fix"
+    assert "original filing note" in retired["resolution"]
+    assert "superseded by" in retired["resolution"]
+
+
+def test_supersede_refuses_duplicate_replacement_without_writing(tmp_path, capsys):
+    store = tmp_path / "s"
+    original = _add(store, detail="original")
+    duplicate = _add(store, detail="corrected")
+    before = {
+        path.name: path.read_bytes()
+        for path in store.glob("*.json")
+    }
+
+    assert BACKLOG.main([
+        "supersede", original["id"], "--store", str(store),
+        "--detail", duplicate["detail"], "--commit", "--json",
+    ]) == 64
+    capsys.readouterr()
+    assert {
+        path.name: path.read_bytes()
+        for path in store.glob("*.json")
+    } == before
+
+
+def test_supersede_rolls_back_both_files_when_second_write_fails(
+    tmp_path, capsys, monkeypatch
+):
+    store = tmp_path / "s"
+    original = _add(store, detail="original before a partial write")
+    source_path = store / f"{original['id']}.json"
+    before = source_path.read_bytes()
+    real_write = BACKLOG._write_atomic
+    calls = []
+
+    def fail_once(path, text):
+        calls.append(Path(path))
+        if len(calls) == 2:
+            raise OSError("synthetic source publish failure")
+        return real_write(path, text)
+
+    monkeypatch.setattr(BACKLOG, "_write_atomic", fail_once)
+    assert BACKLOG.main([
+        "supersede", original["id"], "--store", str(store),
+        "--detail", "corrected but not partially committed", "--commit", "--json",
+    ]) == 64
+    capsys.readouterr()
+
+    assert source_path.read_bytes() == before
+    assert len(list(store.glob("*.json"))) == 1
+
+
 def test_add_accepts_an_explicit_commit_without_changing_the_fast_default(
         tmp_path, capsys):
     explicit_store = tmp_path / "explicit"
