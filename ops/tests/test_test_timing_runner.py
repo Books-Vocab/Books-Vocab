@@ -254,6 +254,49 @@ def test_resource_lease_serializes_same_class_across_workers(tmp_path):
     assert second_entered.is_set()
 
 
+def test_resource_lease_is_shared_by_linked_worktrees(tmp_path):
+    common = tmp_path / "repo"
+    (common / ".git" / "worktrees" / "one").mkdir(parents=True)
+    (common / ".git" / "worktrees" / "two").mkdir(parents=True)
+    first_root = tmp_path / "worktree-one"
+    second_root = tmp_path / "worktree-two"
+    first_root.mkdir()
+    second_root.mkdir()
+    (first_root / ".git").write_text(
+        f"gitdir: {common / '.git' / 'worktrees' / 'one'}\n", encoding="utf-8"
+    )
+    (second_root / ".git").write_text(
+        f"gitdir: {common / '.git' / 'worktrees' / 'two'}\n", encoding="utf-8"
+    )
+    assert test_timing._resource_lock_path(first_root, "simulator") == \
+        test_timing._resource_lock_path(second_root, "simulator")
+
+    entered = threading.Event()
+    release = threading.Event()
+    second_entered = threading.Event()
+
+    def holder():
+        with test_timing._resource_lease(first_root, "simulator", threading.Event()):
+            entered.set()
+            release.wait(timeout=5)
+
+    def waiter():
+        entered.wait(timeout=5)
+        with test_timing._resource_lease(second_root, "simulator", threading.Event()):
+            second_entered.set()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(holder)
+        second = pool.submit(waiter)
+        assert entered.wait(timeout=5)
+        time.sleep(0.15)
+        assert not second_entered.is_set()
+        release.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+    assert second_entered.is_set()
+
+
 def test_bundle_rejects_negative_retry_count(tmp_path, capsys):
     manifest = _manifest(tmp_path, [{
         "id": "bad-retry", "command_key": "command.bad", "command": _command("pass"),
