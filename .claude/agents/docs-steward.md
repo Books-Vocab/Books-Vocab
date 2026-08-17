@@ -28,7 +28,7 @@ Factory 的 `add`／`verify`／`groom` 不是你的替代流程。
 - 判斷影響面用 `./ops/docs_impact.py --since <base>` 或 `--files <path...>`(輸出是候選,非自動必改清單;用 `triggers` + 實際 diff 判定)。
 
 ## 鐵則(遵循,不重述判準)
-- **SoT 零重複**(見 CLAUDE.md「懸賞板模型」):一個事實一個家,其餘指過去。發現重複論述 → 收斂成指標。
+- **SoT 零重複**(見 CLAUDE.md「交付進度看板模型」):一個事實一個家,其餘指過去。發現重複論述 → 收斂成指標。
 - `verified_against` 指到 **`origin/main` 可達**的 code commit；判準見 `docs/sop/doc_sync.md` 步驟 4。
 - generated 類文檔不手改;改 generator。
 - 不把 docs impact hints 當自動必改清單。
