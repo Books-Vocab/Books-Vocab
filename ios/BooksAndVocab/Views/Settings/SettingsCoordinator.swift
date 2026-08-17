@@ -219,6 +219,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                 else {
                     throw SettingsConfigurationPayloadError()
                 }
+                applyServerActiveNotebook(config.vocab_ui, authManager: authManager)
                 configurationIssue = nil
             } catch {
                 // Keep the local/iCloud value visible, but make the unavailable
@@ -260,6 +261,24 @@ final class SettingsCoordinator: SettingsCoordinating {
         guard TranslationLanguage.applyServer(source: srcLang, target: tgtLang, serverUpdatedAt: ts) else { return }
         translationSourceLang = srcLang
         translationTargetLang = tgtLang
+    }
+
+    /// Reconcile the server vocab-ui projection only for a concrete KG account.
+    /// Demo/guest sessions must not apply a server cursor to the local account.
+    private func applyServerActiveNotebook(
+        _ vocabUI: KGVocabUIConfig?,
+        authManager: any AuthManaging
+    ) {
+        guard authManager.isLoggedIn,
+              authManager.userId != nil,
+              let vocabUI,
+              let ts = vocabUI.updated_at,
+              !vocabUI.active_notebook_id.isEmpty
+        else { return }
+
+        _ = ActiveNotebookStore.shared.syncActiveNotebookFromServer(
+            ActiveNotebookState(activeNotebookId: vocabUI.active_notebook_id, updatedAt: ts)
+        )
     }
 
     /// Reconcile server pause-clock with local + iCloud KV (mirrors translation).
@@ -616,7 +635,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                     source_lang: source.rawValue,
                     target_lang: target.rawValue,
                     // 單一 group 時戳（設計 A）：source/target 剛由上方 setter 同刻寫入，
-                    // 取兩者較新者作整組 LWW 時戳，push 給後端 vocab/web cold-start 用。
+                    // 取兩者較新者作整組 LWW 時戳，push 給後端 vocab/web sync 用。
                     updated_at: [TranslationLanguage.sourceUpdatedAt, TranslationLanguage.targetUpdatedAt].compactMap { $0 }.max()
                 )
             )

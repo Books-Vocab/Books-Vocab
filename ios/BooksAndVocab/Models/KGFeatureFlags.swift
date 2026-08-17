@@ -25,15 +25,6 @@ enum KGFeatureFlags {
     /// `serverReviewClockLwwEnabled`.
     static var serverReviewModeLwwEnabled: Bool { false }
 
-    /// Whether to send `updated_at` and trust server-returned `updated_at` for
-    /// LWW on the active notebook (`vocab_ui`) cursor. Backend dependency:
-    /// `vocab_ui.updated_at` persisted + returned by `GET /api/user/config`.
-    /// Until on, server is single-direction (server-wins on cold-start) and
-    /// iCloud KV is the authoritative cross-device path for Apple devices —
-    /// mirrors `serverReviewModeLwwEnabled`. (chrome / web read active notebook
-    /// via the backend group.)
-    static var serverVocabUiLwwEnabled: Bool { false }
-
     /// Whether the podcast feature is exposed anywhere in the UI (top-level
     /// section tab / Catalyst sidebar row / paywall marketing copy) **and**
     /// whether its data layer may run at all（`backgroundSync` catalog leg 含

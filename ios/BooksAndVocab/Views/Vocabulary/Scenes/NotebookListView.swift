@@ -375,7 +375,7 @@ struct NotebookListContent: View {
                     modelContext: modelContext,
                     kgService: kgService
                 )
-                await coordinator.coldStartActiveNotebook(
+                await coordinator.syncActiveNotebookFromServer(
                     authManager: authManager,
                     kgService: kgService
                 )

@@ -121,17 +121,67 @@ struct ActiveNotebookStoreTests {
         #expect(cloud.string(forKey: "activeNotebookId") == "nb-9")  // iCloud 不被清
     }
 
-    @Test("applyServerState 只寫本地層，不回寫 iCloud（對齊 applyServerModeState）")
-    func applyServerStateWritesLocalOnly() {
+    @Test("server 較新時套用 non-default active notebook，只寫本地層")
+    func syncActiveNotebookFromServerAcceptsNewerNonDefault() {
         let d = makeDefaults()
         let cloud = FakeCloudKVStore()
         let store = ActiveNotebookStore(defaults: d, cloud: cloud)
-        store.applyServerState(ActiveNotebookState(activeNotebookId: "srv-nb", updatedAt: 500))
-        #expect(store.activeNotebookId == "srv-nb")
+        let accepted = store.syncActiveNotebookFromServer(
+            ActiveNotebookState(activeNotebookId: "srv-non-default", updatedAt: 500)
+        )
+        #expect(accepted)
+        #expect(store.activeNotebookId == "srv-non-default")
         #expect(d.object(forKey: "active_notebook_updated_at") as? Double == 500)
-        // cold-start 不回寫 iCloud KVS：避免新裝置與他裝置未傳播的 genuine local write 競爭。
+        // Server projection 不回寫 iCloud KVS，避免與其他 Apple 裝置的 local write 競爭。
         #expect(cloud.string(forKey: "activeNotebookId") == nil)
         #expect(cloud.double(forKey: "active_notebook_updated_at") == nil)
+    }
+
+    @Test func serverActiveNotebookIgnoredWhenLocalTimestampIsNewer() {
+        let d = makeDefaults()
+        d.set("local-nb", forKey: "activeNotebookId")
+        d.set(300.0, forKey: "active_notebook_updated_at")
+        let store = ActiveNotebookStore(defaults: d, cloud: FakeCloudKVStore())
+
+        let accepted = store.syncActiveNotebookFromServer(
+            ActiveNotebookState(activeNotebookId: "server-nb", updatedAt: 200)
+        )
+
+        #expect(!accepted)
+        #expect(store.activeNotebookId == "local-nb")
+        #expect(store.snapshot.updatedAt == 300)
+    }
+
+    @Test func serverActiveNotebookWithoutTimestampIsRejected() {
+        let d = makeDefaults()
+        let store = ActiveNotebookStore(defaults: d, cloud: FakeCloudKVStore())
+
+        let accepted = store.syncActiveNotebookFromServer(
+            ActiveNotebookState(activeNotebookId: "server-nb", updatedAt: nil)
+        )
+
+        #expect(!accepted)
+        #expect(store.activeNotebookIdIfSet == nil)
+    }
+
+    @Test func accountSwitchDoesNotReusePreviousActiveNotebook() {
+        let d = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let store = ActiveNotebookStore(defaults: d, cloud: cloud)
+        store.setActive("account-a-nb")
+
+        // AuthManager clears the local projection before establishing account B.
+        store.clear()
+        #expect(store.activeNotebookIdIfSet == nil)
+        #expect(store.activeNotebookId == ActiveNotebookStore.defaultNotebookId)
+
+        let accepted = store.syncActiveNotebookFromServer(
+            ActiveNotebookState(activeNotebookId: "account-b-nb", updatedAt: 500)
+        )
+
+        #expect(accepted)
+        #expect(store.activeNotebookId == "account-b-nb")
+        #expect(cloud.string(forKey: "activeNotebookId") == "account-a-nb")
     }
 
     @Test("snapshot 讀本地層")

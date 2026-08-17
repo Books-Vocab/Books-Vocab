@@ -134,29 +134,23 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         reconcileError = nil
     }
 
-    /// active notebook backend cold-start：server 值僅在本機從未寫過
-    /// （`snapshot.updatedAt == nil`）時套用，避免覆蓋本機已有的跨裝置權威值。
-    /// iOS↔iOS 靠 iCloud KVS（store init resolve），此處主要收斂 chrome / web → iOS 方向。
-    func coldStartActiveNotebook(authManager: any AuthManaging, kgService: any KGServing) async {
-        guard authManager.isLoggedIn else { return }
-        guard ActiveNotebookStore.shared.snapshot.updatedAt == nil else { return }
-        _ = KGFeatureFlags.serverVocabUiLwwEnabled  // keep wired for future LWW flip
+    /// Reconcile the server vocab-ui projection with the local active notebook
+    /// cursor. The store owns timestamp comparison, so stale responses are no-op.
+    func syncActiveNotebookFromServer(authManager: any AuthManaging, kgService: any KGServing) async {
+        guard authManager.isLoggedIn, authManager.userId != nil else { return }
         do {
             let config = try await kgService.fetchUserConfig()
-            // 僅在 server 帶真實時戳時套用：updated_at == nil 表示後端從未被任何端
-            // push（B1 default fallback），套了也不算數 — 且會讓本地 snapshot.updatedAt
-            // 維持 nil，下次 .task 又 re-fire fetchUserConfig（idempotent 但浪費）。
             guard let vu = config.vocab_ui, let ts = vu.updated_at else { return }
-            ActiveNotebookStore.shared.applyServerState(
+            _ = ActiveNotebookStore.shared.syncActiveNotebookFromServer(
                 ActiveNotebookState(activeNotebookId: vu.active_notebook_id, updatedAt: ts)
             )
         } catch {
-            AppLog.kg.warning("coldStartActiveNotebook failed: \(error.localizedDescription)")
+            AppLog.kg.warning("syncActiveNotebookFromServer failed: \(error.localizedDescription)")
         }
     }
 
     /// best-effort push active notebook 到後端（讓 chrome / web 能讀）。失敗不 rollback：
-    /// iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑，下次切換 / cold-start 收斂。
+    /// iCloud KVS 已是 Apple 裝置跨裝置權威，backend 為補充橋樑，後續 server sync 收斂。
     /// `id` 與 `updatedAt` 由 caller 在 setActive 後**同步**一起捕捉傳入（非在此讀
     /// snapshot），避免快速連續切換 A→B 時 task-A 讀到 B 的時戳、push 出 (idA, tsB) 不一致對。
     func pushActiveNotebook(_ id: String, updatedAt: Double?, authManager: any AuthManaging, kgService: any KGServing) async {
