@@ -1562,6 +1562,29 @@ def test_shell_gate_separates_known_ios_lock_wait_from_work_duration(
     assert shell["work_dur_s"] == pytest.approx(0.5)
 
 
+def test_ios_gate_marks_missing_lock_metric_unknown_in_bounded_output(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        # ios_test.sh prints lockWaitMs before its final device timing line.  A
+        # bounded tail can therefore retain the latter while dropping the former.
+        lambda *args, **kwargs: (0, "deviceRunLockWaitMs=3000", 12.5),
+    )
+
+    shell = MODULE._run_gate(
+        MODULE._shell("ios-test-unit", "ios", ["ops/ios_ops.sh", "test"], "block"),
+        str(tmp_path),
+    )
+
+    assert shell["status"] == "pass"
+    assert shell["timing_status"] == "unknown"
+    assert shell["lock_wait_ms"] is None
+    assert shell["work_dur_s"] is None
+
+
 def test_duration_fields_use_latest_lock_metrics_without_changing_verdict():
     metrics = MODULE._duration_fields(
         12.5,
@@ -1572,6 +1595,7 @@ def test_duration_fields_use_latest_lock_metrics_without_changing_verdict():
         "dur_s": 12.5,
         "lock_wait_ms": 12000,
         "work_dur_s": pytest.approx(0.5),
+        "timing_status": "known",
     }
 
 
@@ -4824,6 +4848,7 @@ def test_gate_history_records_lock_wait_separately_from_work_duration(tmp_path):
         "dur_s": 12.5,
         "lock_wait_ms": 12000,
         "work_dur_s": 0.5,
+        "timing_status": "known",
     }]
 
     assert MODULE._append_gate_history(
@@ -4834,6 +4859,7 @@ def test_gate_history_records_lock_wait_separately_from_work_duration(tmp_path):
     assert row["dur_s"] == 12.5
     assert row["lock_wait_ms"] == 12000
     assert row["work_dur_s"] == 0.5
+    assert row["timing_status"] == "known"
 
 
 @gitmark

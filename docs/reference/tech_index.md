@@ -409,6 +409,15 @@ receipt：`gate=<verdict> record=… head=<sha8> orch=… gates=N <status 統計
 `--receipt-line` 只切換成靜音模式、只輸出這一行；`--plan-only` 的一般報告不附 receipt，
 但顯式 `--plan-only --receipt-line` 仍輸出 `gate=planned` 哨兵，且不寫入 verdict record。
 
+### Gate timing fields
+
+`worktree_orchestrate.py gate` 與 `history.jsonl` 的 `dur_s` 是 monotonic wall elapsed；
+`lock_wait_ms` 是 producer 提供的最新 `lockWaitMs`／`deviceRunLockWaitMs` 等待值總和，
+`work_dur_s` 則扣除已知等待。`timing_status` 為 `known`、`not-applicable` 或 `unknown`；
+iOS build/test gate 若 bounded capture 遺失 producer 應提供的欄位，split 欄位會是 `null`
+並標成 `unknown`，不把未知等待誤報成零。沒有此欄位的 legacy history row 仍可讀，回補
+語意為 `legacy`；這些觀測欄位不改 gate verdict。
+
 ## Ticket delivery lanes
 
 | 入口 | 機器契約 |
