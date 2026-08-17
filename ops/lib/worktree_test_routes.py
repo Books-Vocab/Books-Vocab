@@ -138,6 +138,7 @@ _FACADE_ROUTE = _route(
         "ops/worktree_orchestrate.py",
         "ops/lib/worktree_orchestrator_runtime.py",
         "ops/lib/worktree_gate_tiers.py",
+        "ops/lib/worktree_test_routes.py",
         "ops/tests/worktree_orchestrate_support.py",
         "ops/tests/test_orchestrator_seams.py",
     ],
@@ -160,7 +161,31 @@ _FACADE_ROUTE["pytest_nodeids"].extend([
     "test_only_named_non_high_s2_s3_failures_can_be_deferred",
 ])
 
-_ALL_ROUTES: tuple[dict[str, Any], ...] = (*_BEHAVIOR_ROUTES, _FACADE_ROUTE)
+_KG_BOARD_ROUTE = _route(
+    "orchestrator.kg-board",
+    ["ops/kg_board/*.py"],
+    "ops/tests/test_kg_board_model.py",
+    [
+        "ops/tests/test_kg_board_model.py::"
+        "test_delivery_model_separates_grooming_contract_and_dependency_states",
+    ],
+    resource_class="kg-board",
+)
+_KG_BOARD_ROUTE["selectors"].extend([
+    "ops/tests/test_kg_board_git_tree.py",
+    "ops/tests/test_kg_board_web.py",
+])
+_KG_BOARD_ROUTE["pytest_nodeids"].extend([
+    "ops/tests/test_kg_board_git_tree.py::"
+    "test_normalize_snapshot_merges_duplicate_commit_metadata_and_keeps_refs",
+    "ops/tests/test_kg_board_web.py::"
+    "test_board_payload_v3_is_single_compact_row_set_with_id_partitions",
+])
+
+_ALL_ROUTES: tuple[dict[str, Any], ...] = (
+    *_BEHAVIOR_ROUTES, _FACADE_ROUTE, _KG_BOARD_ROUTE,
+)
+_DIRECT_ROUTES: tuple[dict[str, Any], ...] = (*_BEHAVIOR_ROUTES, _KG_BOARD_ROUTE)
 _ROUTES_BY_ID = {route["route_id"]: route for route in _ALL_ROUTES}
 _FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"][:-1])
 _LEGACY_PATH = "ops/tests/test_worktree_orchestrate.py"
@@ -169,7 +194,7 @@ _FALLBACK_ROUTE: dict[str, Any] = {
     "route_id": "orchestrator.fallback",
     "source_patterns": ["*"],
     "pytest_nodeids": [],
-    "selectors": [route["selectors"][0] for route in (*_BEHAVIOR_ROUTES, _FACADE_ROUTE)],
+    "selectors": [route["selectors"][0] for route in _ALL_ROUTES],
     "fallback_test_file": "ops/tests",
     "gate_tier": "S2",
     "failure_policy": "block",
@@ -217,7 +242,7 @@ def _known_routes(changed_files: Iterable[str]) -> tuple[list[dict[str, Any]], l
         if path in _FACADE_PATTERNS:
             continue
         matched = [
-            route for route in _BEHAVIOR_ROUTES
+            route for route in _DIRECT_ROUTES
             if any(_matches(path, pattern) for pattern in route["source_patterns"])
         ]
         if path == _LEGACY_PATH:

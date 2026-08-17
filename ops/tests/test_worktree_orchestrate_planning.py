@@ -556,6 +556,40 @@ def test_gate_plan_core_gate_inputs_keeps_the_focused_gate_route():
     assert "orchestrator.fallback" not in group["cmd"]
 
 
+def test_gate_plan_routes_control_plane_and_kg_board_sources_without_ops_suite_fallback():
+    changed = [
+        "ops/lib/worktree_gate_tiers.py",
+        "ops/lib/worktree_test_routes.py",
+        "ops/kg_board/__init__.py",
+        "ops/kg_board/git_tree.py",
+        "ops/kg_board/model.py",
+        "ops/kg_board/scope.py",
+        "ops/kg_board/server.py",
+    ]
+    exists = {
+        "ops/tests/test_orchestrator_seams.py",
+        "ops/tests/test_worktree_gate_tiers.py",
+        "ops/tests/test_worktree_orchestrate_planning.py",
+        "ops/tests/test_worktree_orchestrate_gate.py",
+        "ops/tests/test_worktree_orchestrate_lifecycle.py",
+        "ops/tests/test_worktree_orchestrate_claims.py",
+        "ops/tests/test_worktree_orchestrate_delivery.py",
+        "ops/tests/test_worktree_orchestrate_recovery.py",
+        "ops/tests/test_kg_board_git_tree.py",
+        "ops/tests/test_kg_board_model.py",
+        "ops/tests/test_kg_board_web.py",
+    }.__contains__
+
+    gates = _by_name(plan_gates(changed, ops_test_exists=exists))
+
+    assert "ops-pytest-orchestrator-focused" in gates
+    assert "ops-pytest-orchestrator-group" in gates
+    assert "ops-pytest" not in gates
+    for name in ("ops-pytest-orchestrator-focused", "ops-pytest-orchestrator-group"):
+        assert "orchestrator.fallback" not in gates[name]["cmd"]
+    assert "orchestrator.kg-board" in gates["ops-pytest-orchestrator-focused"]["cmd"]
+
+
 @pytest.mark.parametrize("changed", [
     ["ops/worktree_orchestrate.py", "ops/tests/test_worktree_orchestrate.py"],
     ["backend/src/kg/app.py"],
