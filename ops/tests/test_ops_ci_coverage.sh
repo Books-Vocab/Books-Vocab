@@ -205,6 +205,13 @@ UNGROUPED_TESTS=(
   "ops/tests/test_uitest_manifest_normalize.py|legacy UI-test manifest fixture retained outside DEFAULT_TESTS; promotion or retirement is a separate decision"
 )
 
+# path|reason —— tracked compatibility collectors deliberately not executed by
+# the normal group.  Their historical acceptance commands still need a stable
+# path, but the real test bodies live in the split behavior files above.
+LEGACY_COMPAT_COLLECTORS=(
+  "ops/tests/test_worktree_orchestrate.py|legacy collector re-exports the six split behavior groups for historical -k acceptance commands"
+)
+
 # path|reason —— tracked test files reached only through an optional group.
 # These are deliberately named instead of folded into UNGROUPED_TESTS: the files
 # are runnable, just not part of DEFAULT_TESTS or CI. Promoting the optional
@@ -441,13 +448,19 @@ else
   for f in "${TRACKED[@]}"; do
     reach=0
     for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    compat=0
+    for u in "${LEGACY_COMPAT_COLLECTORS[@]}"; do [[ "${u%%|*}" == "$f" ]] && compat=1; done
     optional_reach=0
     for r in "${OPTIONAL_REACHABLE[@]}"; do [[ "$r" == "$f" ]] && optional_reach=1; done
     exempt=0
     for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
     optional=0
     for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
-    if (( optional == 1 )); then
+    if (( compat == 1 )); then
+      if (( reach == 1 || optional_reach == 1 || optional == 1 || exempt == 1 )); then
+        fail_t "$f is a legacy compatibility collector but is also wired as an executable or other exception path"
+      fi
+    elif (( optional == 1 )); then
       if (( exempt == 1 )); then
         fail_t "$f is named in both UNGROUPED_TESTS and OPTIONAL_ONLY_TESTS — pick one exception table"
       elif (( reach == 1 )); then
@@ -479,6 +492,14 @@ else
     (( found == 1 )) || fail_t "$p is named optional-only but is not a tracked test file — stale entry"
     (( reach == 0 )) || fail_t "$p is named optional-only but is reachable from DEFAULT_TESTS — remove the exception"
     (( optional_reach == 1 )) || fail_t "$p is named optional-only but no OPTIONAL_TESTS group reaches it — connect it from ops/test_ops.sh run_one"
+  done
+  for u in "${LEGACY_COMPAT_COLLECTORS[@]}"; do
+    p="${u%%|*}"; found=0; reach=0; optional_reach=0
+    for f in "${TRACKED[@]}"; do [[ "$f" == "$p" ]] && found=1; done
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$p" ]] && reach=1; done
+    for r in "${OPTIONAL_REACHABLE[@]}"; do [[ "$r" == "$p" ]] && optional_reach=1; done
+    (( found == 1 )) || fail_t "$p is named compatibility-only but is not a tracked test file — stale entry"
+    (( reach == 0 && optional_reach == 0 )) || fail_t "$p is named compatibility-only but is executed by a dispatcher group"
   done
   ok_if_clean "all ${#TRACKED[@]} tracked test file(s) are reachable or named-exempt"
 fi

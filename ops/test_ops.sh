@@ -123,7 +123,13 @@ run_one() {
       ;;
     worktree-orchestrator)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_worktree_orchestrate.py \
+        ops/tests/test_worktree_orchestrate_planning.py \
+        ops/tests/test_worktree_orchestrate_gate.py \
+        ops/tests/test_worktree_orchestrate_lifecycle.py \
+        ops/tests/test_worktree_orchestrate_claims.py \
+        ops/tests/test_worktree_orchestrate_delivery.py \
+        ops/tests/test_worktree_orchestrate_recovery.py \
+        ops/tests/test_orchestrator_seams.py \
         ops/tests/test_worktree_registry.py \
         ops/tests/test_worktree_state.py \
         ops/tests/test_task_registry.py \
