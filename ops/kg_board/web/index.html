@@ -25,14 +25,15 @@
         </div>
         <span id="scope-state" class="status-chip">讀取中</span>
       </div>
-      <p class="section-note">欄是 ticket，列是實際檔案；active 是已 claim 的工作，queued 是 groom 後可取的工作。collision 只標在 queued ticket，表示它與 active 的檔案範圍重疊。</p>
+      <p class="section-note">欄是 active worktree 與 queued ticket，列是實際檔案；worktree 可持有一張或多張相關票，也可以是直接指派、沒有 ticket 的修改。collision 只標在 queued ticket，表示它與 active worktree 的檔案範圍重疊。</p>
       <div class="scope-key" aria-label="矩陣圖例">
-        <span><i class="scope-key-swatch scope-key-active"></i>active：正在修改</span>
-        <span><i class="scope-key-swatch scope-key-queued"></i>queued：可 claim</span>
+        <span><i class="scope-key-swatch scope-key-ticketed"></i>持票 worktree：正在修改</span>
+        <span><i class="scope-key-swatch scope-key-direct"></i>直接指派 worktree：正在修改</span>
+        <span><i class="scope-key-swatch scope-key-queued"></i>queued ticket：可 claim</span>
         <span><i class="scope-key-swatch scope-key-add">+</i>新增檔案</span>
         <span><i class="scope-key-swatch scope-key-modify">~</i>修改檔案</span>
         <span><i class="scope-key-swatch scope-key-collision"></i>queued collision</span>
-        <span><i class="scope-key-swatch scope-key-unknown">?</i>Scope 未知</span>
+        <span><i class="scope-key-swatch scope-key-unknown">?</i>Scope 未知（不是 collision 未知）</span>
       </div>
       <div id="scope-matrix-wrap" class="scope-matrix-wrap" aria-live="polite">
         <p class="empty">檔案矩陣載入中</p>
@@ -77,7 +78,7 @@
       <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
       <div id="tree-mobile-list" class="tree-mobile-list" aria-label="分支與 commit 清單"></div>
       <div id="tree-legend" class="tree-legend" aria-label="分支與工作樹狀態"></div>
-      <div id="tree-held-tickets" class="tree-held-tickets" aria-live="polite"></div>
+      <div id="tree-active-worktrees" class="tree-active-worktrees" aria-live="polite"></div>
       <div id="tree-hover-card" class="tree-hover-card" role="status" aria-live="polite" hidden></div>
       <div id="tree-fullscreen-viewer" class="tree-fullscreen-viewer" hidden aria-hidden="true">
         <div class="tree-fullscreen-shell" role="dialog" aria-modal="true" aria-labelledby="tree-fullscreen-title">

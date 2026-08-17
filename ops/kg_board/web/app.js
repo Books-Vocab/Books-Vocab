@@ -44,29 +44,44 @@ function renderScopeMatrix(){
   const mount=document.getElementById("scope-matrix-wrap"),unknownMount=document.getElementById("scope-unknown"),state=document.getElementById("scope-state");
   if(!mount||!unknownMount||!state)return;
   if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';return}
-  const tickets=scopeMatrix.tickets||[],files=scopeMatrix.files||[],counts=scopeMatrix.counts||{};
-  state.textContent=`${counts.active||0} active · ${counts.queued||0} queued · ${counts.files||0} 檔案`;
-  if(!tickets.length){mount.innerHTML='<p class="empty">目前沒有 active 或 queued ticket。</p>';unknownMount.innerHTML="";return}
-  const headers=tickets.map(ticket=>{
-    const collision=ticket.collision?.status==="hard";
-    const unknown=ticket.scope_status==="unknown";
+  const worktrees=scopeMatrix.worktrees||[],queuedTickets=scopeMatrix.queued_tickets||[],files=scopeMatrix.files||[],counts=scopeMatrix.counts||{};
+  const columns=[
+    ...worktrees.map(worktree=>({type:"worktree",id:worktree.id,worktree})),
+    ...queuedTickets.map(ticket=>({type:"ticket",id:ticket.id,ticket})),
+  ];
+  state.textContent=`${counts.active_worktrees||0} worktree · ${counts.active_tickets||0} 持票 · ${counts.queued_tickets||0} queued · ${counts.files||0} 檔案`;
+  if(!columns.length){mount.innerHTML='<p class="empty">目前沒有 active worktree 或 queued ticket。</p>';unknownMount.innerHTML="";return}
+  const headers=columns.map(column=>{
+    if(column.type==="worktree"){
+      const worktree=column.worktree,unknown=worktree.scope_status==="unknown";
+      const kindLabel=worktree.kind==="ticketed"?"持票 WORKTREE":"直接指派 WORKTREE";
+      const tickets=worktree.ticket_ids?.length?`持有：${worktree.ticket_ids.join("、")}`:"無 ticket · 直接指派";
+      const flags=[unknown?"Scope 未知":"",worktree.path?compactLabel(worktree.path,32):"路徑未知"].filter(Boolean).join(" · ");
+      return `<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-${esc(worktree.kind)}${unknown?" scope-column-scope-unknown":""}"><code title="${esc(worktree.branch||"")}">${esc(compactLabel(worktree.branch||"未知 worktree",24))}</code><strong>${kindLabel}</strong><span class="scope-column-tickets">${esc(compactLabel(tickets,48))}</span>${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}</th>`;
+    }
+    const ticket=column.ticket,collision=ticket.collision?.status==="hard",unknown=ticket.scope_status==="unknown";
     const flags=[collision?"collision":"",unknown?"Scope 未知":""].filter(Boolean).join(" · ");
-    return `<th scope="col" class="scope-ticket-head scope-ticket-${esc(ticket.state)}${collision?" scope-ticket-collision":""}${unknown?" scope-ticket-unknown":""}"><code>${esc(ticket.id)}</code><strong>${ticket.state==="active"?"ACTIVE":"QUEUED"}</strong>${flags?`<span class="scope-ticket-flag">${esc(flags)}</span>`:""}<span class="scope-ticket-brief">${esc(compactLabel(ticket.brief||"",42))}</span></th>`;
+    return `<th scope="col" class="scope-column-head scope-column-ticket${collision?" scope-column-collision":""}${unknown?" scope-column-scope-unknown":""}"><code>${esc(ticket.id)}</code><strong>QUEUED TICKET</strong>${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}<span class="scope-column-brief">${esc(compactLabel(ticket.brief||"",42))}</span></th>`;
   }).join("");
   const body=files.map(file=>{
-    const cells=new Map((file.cells||[]).map(cell=>[cell.ticket_id,cell]));
-    return `<tr><th scope="row" class="scope-file-name"><code title="${esc(file.path)}">${esc(file.path)}</code></th>${tickets.map(ticket=>{
-      const cell=cells.get(ticket.id);
+    const cells=new Map((file.cells||[]).map(cell=>[cell.column_type==="worktree"?cell.worktree_id:cell.ticket_id,cell]));
+    return `<tr><th scope="row" class="scope-file-name"><code title="${esc(file.path)}">${esc(file.path)}</code></th>${columns.map(column=>{
+      const cell=cells.get(column.id);
       if(!cell)return '<td class="scope-empty-cell" aria-label="沒有檔案佔用">·</td>';
       const collision=cell.collision===true;
-      const symbol=cell.operation==="add"?"+":"~";
-      const label=`${ticket.id} · ${cell.state} · ${scopeOperationLabel(cell.operation)}${collision?" · collision":""}`;
-      return `<td class="scope-cell scope-cell-${esc(cell.state)} scope-operation-${esc(cell.operation)}${collision?" scope-cell-collision":""}" title="${esc(label)}" aria-label="${esc(label)}"><span>${symbol}</span></td>`;
+      const operations=Array.isArray(cell.operations)&&cell.operations.length?cell.operations:[cell.operation];
+      const symbol=operations.map(operation=>operation==="add"?"+":"~").join("");
+      const label=`${column.id} · ${cell.state} · ${operations.map(scopeOperationLabel).join(" / ")}${collision?" · collision":""}`;
+      const worktreeKind=column.type==="worktree"?` scope-worktree-${esc(column.worktree.kind)}`:"";
+      return `<td class="scope-cell scope-cell-${esc(cell.state)} scope-cell-${esc(column.type)}${worktreeKind} scope-operation-${esc(cell.operation)}${collision?" scope-cell-collision":""}" title="${esc(label)}" aria-label="${esc(label)}"><span>${esc(symbol)}</span></td>`;
     }).join("")}</tr>`;
   }).join("");
   mount.innerHTML=`<table class="scope-matrix"><thead><tr><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
-  const unknownIds=scopeMatrix.unknown_scope_ids||[];
-  unknownMount.innerHTML=unknownIds.length?`<strong>Scope 未知</strong><span>${unknownIds.map(id=>`<code>${esc(id)}</code>`).join("、")}：尚未宣告實際檔案範圍，因此不計算 collision；這不是「碰撞未知」。</span>`:"";
+  const unknownWorktrees=scopeMatrix.unknown_worktree_ids||[],unknownTickets=scopeMatrix.unknown_ticket_ids||[];
+  const unknownParts=[];
+  if(unknownWorktrees.length)unknownParts.push(`worktree：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
+  if(unknownTickets.length)unknownParts.push(`queued ticket：${unknownTickets.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
+  unknownMount.innerHTML=unknownParts.length?`<strong>Scope 未知</strong><span>${unknownParts.join("；")}：尚未宣告實際檔案變更範圍，因此不把它猜成 collision；這不是「agent 未知」或「碰撞未知」。</span>`:"";
 }
 function rows(){
   const blocked=new Set(board.blocked_ids);
@@ -114,8 +129,9 @@ async function hydrateTicket(details){
 }
 function renderMetrics(){
   const decision=board.counts.decision;
+  const activeWorktrees=scopeMatrix?.counts?.active_worktrees??decision.inflight;
   document.getElementById("metrics").innerHTML=
-    metric("可派工",decision.now)+metric("進行中",decision.inflight)+
+    metric("可派工",decision.now)+metric("進行中工作樹",activeWorktrees)+
     metric("被阻塞",decision.blocked)+metric("未梳理",decision.ungroomed)+
     metric("歷史完成",board.counts.history.fixed+board.counts.history.wont_fix);
 }
@@ -514,24 +530,18 @@ function bindRenderedTreeNodes(mount,context){
     bindTreeHover(node,"boundary",{detail:node.dataset.boundaryDetail||"圖面邊界"});
   });
 }
-function heldTicketGroups(){
-  const groups=new Map();
-  (board?.board||[]).filter(row=>row.held).forEach(row=>{
-    const branch=String(row.held?.branch||"未標定工作樹");
-    if(!groups.has(branch))groups.set(branch,[]);
-    groups.get(branch).push(row);
-  });
-  return [...groups.entries()];
+function activeWorktreeGroups(){
+  return (scopeMatrix?.worktrees||[]).map(worktree=>[String(worktree.branch||"未知 worktree"),worktree]);
 }
-function renderHeldTickets(){
-  const mount=document.getElementById("tree-held-tickets");if(!mount)return;
-  const groups=heldTicketGroups(),total=groups.reduce((count,[,rows])=>count+rows.length,0);
-  if(!total){mount.innerHTML="";return;}
-  mount.innerHTML=`<section class="tree-held-card" aria-labelledby="tree-held-title">
-    <div class="tree-held-heading"><strong id="tree-held-title">目前認領中的票據</strong><span>${total} 張 · ${groups.length} 條工作樹</span></div>
-    <div class="tree-held-groups">${groups.map(([branch,rows])=>`<div class="tree-held-group">
-      <div class="tree-held-branch"><code title="${esc(branch)}">${esc(compactLabel(branch,48))}</code><span>${rows.length} 張</span></div>
-      <div class="tree-held-list">${rows.map(row=>`<button type="button" class="tree-held-ticket" data-ticket-id="${esc(row.id)}"><code>${esc(row.id)}</code><span>${esc(row.brief||"尚未提供白話摘要")}</span></button>`).join("")}</div>
+function renderActiveWorktrees(){
+  const mount=document.getElementById("tree-active-worktrees");if(!mount)return;
+  const groups=activeWorktreeGroups(),total=groups.reduce((count,[,worktree])=>count+(worktree.ticket_ids?.length||0),0);
+  if(!groups.length){mount.innerHTML="";return;}
+  mount.innerHTML=`<section class="tree-active-card" aria-labelledby="tree-active-title">
+    <div class="tree-active-heading"><strong id="tree-active-title">目前進行中的 Worktree</strong><span>${groups.length} 棵 · ${total} 張持票</span></div>
+    <div class="tree-active-groups">${groups.map(([branch,worktree])=>`<div class="tree-active-group">
+      <div class="tree-active-branch"><code title="${esc(branch)}">${esc(compactLabel(branch,48))}</code><span>${worktree.kind==="ticketed"?"持票":"直接指派"} · ${worktree.scope_status==="unknown"?"Scope 未知":"Scope 已知"}</span></div>
+      <div class="tree-active-list">${worktree.tickets?.length?worktree.tickets.map(ticket=>`<button type="button" class="tree-active-ticket" data-ticket-id="${esc(ticket.id)}"><code>${esc(ticket.id)}</code><span>${esc(ticket.brief||"尚未提供白話摘要")}</span></button>`).join(""):`<div class="tree-active-ticket tree-active-direct"><strong>直接指派修改</strong><span>${esc(worktree.path||"工作樹路徑未知")}</span></div>`}</div>
     </div>`).join("")}</div>
   </section>`;
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",()=>selectTicket(node.dataset.ticketId)));
@@ -803,7 +813,7 @@ function render(){
   const visible=rows();
   document.getElementById("status").textContent=`${visible.length} 張票 · 唯讀`;
   document.getElementById("tickets").innerHTML=tab==="history"&&!history?"<p class=\"empty\">歷史資料載入中</p>":visible.length?visible.map(ticket).join(""):"<p class=\"empty\">這個篩選目前沒有票</p>";
-  renderHeldTickets();
+  renderActiveWorktrees();
   document.querySelectorAll("[data-ticket-details]").forEach(details=>details.addEventListener("toggle",()=>hydrateTicket(details)));
 }
 async function loadHistory(){

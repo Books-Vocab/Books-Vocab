@@ -241,6 +241,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'class="admin-nav"' in index
     assert 'id="scope-matrix-wrap"' in index
     assert '檔案佔用矩陣' in index
+    assert "active worktree" in index
+    assert "持票 worktree" in index and "直接指派 worktree" in index
     assert 'id="git-tree"' in index and 'id="commit-inspector"' in index
     assert '<details>' not in index  # cards are data-driven and collapsed by default
     assert '<title>交付進度看板 · 唯讀觀測</title>' in index
@@ -267,6 +269,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert "/api/git-tree" in js
     assert "/api/scope-matrix" in js
     assert "scope_status" in js and "scope-cell-collision" in js
+    assert "scopeMatrix.worktrees" in js and "scopeMatrix.queued_tickets" in js
+    assert "scope-column-worktree" in js and "scope-column-ticket" in js
     assert "/api/ticket/" in js
 
 
@@ -463,10 +467,11 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert 'id="tree-zoom-value"' in index
     assert "tree-mobile-list" in js
     assert "renderMobileTree" in js
-    assert "tree-held-tickets" in index
-    assert "renderHeldTickets" in js
-    assert "heldTicketGroups" in js
-    assert "目前認領中的票據" in js
+    assert "tree-active-worktrees" in index
+    assert "renderActiveWorktrees" in js
+    assert "activeWorktreeGroups" in js
+    assert "目前進行中的 Worktree" in js
+    assert "直接指派修改" in js
     assert "看板資料讀取錯誤" in js
     assert "min-height:44px" in "".join(css.split())
     assert ".section-heading{flex-direction:column" in "".join(css.split())
@@ -545,14 +550,14 @@ def test_git_tree_read_route_returns_versioned_projection(monkeypatch):
 def test_scope_matrix_read_route_returns_versioned_projection(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
     monkeypatch.setattr(server, "scope_matrix_payload", lambda: {
-        "schema": "kg.board.scope-matrix.v1", "tickets": [], "files": [],
+        "schema": "kg.board.scope-matrix.v2", "worktrees": [], "queued_tickets": [], "files": [],
     })
     handler = _capturing_handler("/api/scope-matrix")
 
     handler.do_GET()
 
     assert handler.response_code == 200
-    assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.scope-matrix.v1"
+    assert json.loads(handler.wfile.getvalue())["schema"] == "kg.board.scope-matrix.v2"
 
 
 def test_ticket_read_route_returns_full_detail_projection(monkeypatch):

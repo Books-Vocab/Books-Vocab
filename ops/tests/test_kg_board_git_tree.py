@@ -65,6 +65,35 @@ def test_normalize_snapshot_requires_explicit_complete_true():
     assert normalize_snapshot({"complete": "true", "refs": [], "commits": []})["complete"] is False
 
 
+def test_normalize_snapshot_preserves_structured_direct_worktree_scope_and_rejects_bad_scope():
+    payload = normalize_snapshot({
+        "complete": True,
+        "refs": [
+            {
+                "branch": "feat/direct",
+                "head": "abcdef0",
+                "tickets": [],
+                "scope": {"files": [{"path": "ops/direct.py", "operation": "modify"}]},
+            },
+            {
+                "branch": "feat/bad-direct",
+                "head": "1234567",
+                "tickets": [],
+                "scope": {"files": [{"path": "../outside.py", "operation": "modify"}]},
+            },
+        ],
+        "commits": [],
+    })
+
+    assert payload["complete"] is False
+    assert payload["refs"][0]["scope"] == {
+        "schema": "kg.backlog.scope.v1",
+        "files": [{"path": "ops/direct.py", "operation": "modify"}],
+    }
+    assert payload["refs"][1]["scope"] is None
+    assert "invalid scope" in payload["error"]
+
+
 def test_normalize_snapshot_is_fail_closed_for_string_collections_and_invalid_shas():
     payload = normalize_snapshot({
         "complete": "false",

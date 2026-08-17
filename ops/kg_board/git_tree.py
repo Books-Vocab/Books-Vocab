@@ -4,6 +4,11 @@ from __future__ import annotations
 from typing import Any
 import re
 
+try:
+    from ops.kg_board.scope import normalise_scope
+except ModuleNotFoundError:  # direct launch via the release checkout
+    from scope import normalise_scope
+
 
 SCHEMA = "kg.board.git-tree.v1"
 
@@ -155,6 +160,13 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
         worktree_present = raw.get("worktree_present")
         if worktree_present is not None and not isinstance(worktree_present, bool):
             errors.append(f"ref {branch} worktree_present is not boolean")
+        scope = raw.get("scope") if "scope" in raw else None
+        if isinstance(scope, dict):
+            try:
+                scope = normalise_scope(scope)
+            except ValueError as exc:
+                errors.append(f"ref {branch} has invalid scope: {exc}")
+                scope = None
         refs.append({
             "id": checked(raw.get("id"), f"ref {branch} id") or f"ref-{index}",
             "branch": branch,
@@ -172,6 +184,8 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             "handed_back_sha": _sha(raw.get("handed_back_sha")),
             "tickets": tickets,
         })
+        if "scope" in raw:
+            refs[-1]["scope"] = scope
         for key in ("base_sha", "handed_back_sha"):
             if raw.get(key) is not None and _sha(raw.get(key)) is None:
                 errors.append(f"ref {branch} has invalid {key}")
