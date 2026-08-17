@@ -87,11 +87,13 @@ def test_open_without_a_ticket_still_works_and_claims_nothing(scratch):
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
     rc, payload = _run_json(["open", "--intent", "poke at something", "--slug",
-                             "explore", "--state", state, "--json"])
+                             "explore", "--codex-thread-id", "thread-direct",
+                             "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK
     assert payload["backlog"] == []
     rec = json.loads(Path(state).read_text())["records"][0]
     assert rec["backlog"] == [] and rec["claimed_at"] is None
+    assert rec["codex_thread_id"] == "thread-direct"
 
 @gitmark
 def test_open_next_backlog_claims_the_next_available_ticket_instead_of_racing_on_a_stale_list(
