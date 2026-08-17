@@ -1,7 +1,7 @@
 {
   "schema": "kg.ticket_factory.dogfood_scope_matrix.v1",
   "generated_at": "2026-08-18",
-  "source_head": "d49e4ec942be8ce3d47ce09af365b7e72497f7a8",
+  "source_head": "f891623fd0bd9d290888b8e4e3ff591bbf95266a",
   "source_main_baseline": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "purpose": "未解 Ticket Factory 票與本輪拆出的 contract-repair/investigation/evidence 票之精準檔案佔用矩陣；dispatchable 是 dispatch CLI 的衍生分類。",
   "original_unresolved_count": 33,
