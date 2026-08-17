@@ -19,7 +19,7 @@ version: 1.0.0
 5. 仍無法判定時，依 index 的 `Unknown escalation contract` 交給具名 owner；交回前不宣稱已解決。
 
 各角色的工作動詞與停止點由 role row 指向的既有 authority 負責：Ticket Factory 看 backlog
-lifecycle，Delivery Team Integrator 看 `worktree-flow`，Delivery Child 看 child hand-back，Docs
+lifecycle，Delivery Team Integrator 看 `worktree-flow`，Delivery Child 看 child hand-back（回報 exact source thread ID），Docs
 Steward 以 `docs-steward` typed route 只載入 docs minimum context，只有 `task=handback` 才載入
 child stop／handoff，Review service 看 `review_discipline`。本 skill 只負責載入順序，不重新定義那些契約。
 

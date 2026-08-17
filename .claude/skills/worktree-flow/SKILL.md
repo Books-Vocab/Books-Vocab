@@ -18,7 +18,9 @@ Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協
 
 ## 預設停止點（授權邊界）
 
-**永遠先假設同 repo 有多個 session 同時工作。** child worker 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 branch／worktree／HEAD，然後停止。這個 hand-back 是 Delivery Team 內部交回，不是整個 team 完成；Integrator 可同一 thread 維護一個 integration worktree，孩子陸續回來就用 `integrate --append` fan-in。child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
+**永遠先假設同 repo 有多個 session 同時工作。** child worker 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 exact source thread ID、branch／worktree／HEAD，然後停止。這個 hand-back 是 Delivery Team 內部交回，不是整個 team 完成；Gate BLOCK 必須回到該 source thread，由原 thread 以新 commit／新 hand-back 回交。Integrator 可同一 thread 維護一個 integration worktree，孩子陸續回來就用 `integrate --append` fan-in。child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
+
+任務選擇的淺規則：優先 fan-out bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收工作；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這是排序／派工提示，不是 `backlog.py` lifecycle 或 acceptance/status 契約。
 
 只有擁有整批視野的 Integrator 在當下取得使用者對 develop＋backup 的明示授權，才可越過 child 停止點：① 確認本輪預期 child 已 hand-back；② 以 `close-wave --commit --sync` 進行唯一 fresh Gate、cutover、resolve、anchor、validate 與 origin/main sync。若只有 develop 授權，使用 `close-wave --commit` 停在本地 primary；若沒有授權，整合樹也只准 `integrate ... --commit --no-gate` 後 hand-back。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬任何工具護欄；一旦獲授權仍完整走 fresh Gate，不能拿 targeted test 代替 Gate。
 
@@ -261,6 +263,8 @@ child 只交回 commit＋hand-back，並要求回報分支名與工作樹路徑�
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 受派 child 建樹時帶 `open --delegated`（或對既有樹用 `adopt --delegated`）把這個邊界寫進 ledger；`cutover`／`land` 對仍標記為 delegated 的工作樹會在 gate/verdict 之前以 `refusal=delegated` fail closed。只有整合者明確解除標記後才可落地；省略旗標在 register/adopt 時保留既有標記。
 
+**淺 fan-out scope（agent guidance）**：優先把 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery 或跨面產品變更，先留給 parent 明示決策。這是排序／派工提示，不是 `backlog.py` 的硬 gate，也不改 ticket acceptance、status 或 lifecycle。
+
 **每棵工作樹都有自己的暫存面。** `open` 會建立並回傳
 `<worktree>/.cache/agent-scratch/`（JSON 欄位 `scratch_dir`）；`.cache/` 已被 Git 忽略，
 Gate 與 commit 不會把它當成程式碼。受派者的暫存檔一律寫進自己回傳的 `scratch_dir`，檔名仍要帶
@@ -273,7 +277,7 @@ Gate 與 commit 不會把它當成程式碼。受派者的暫存檔一律寫進�
 ./ops/worktree_registry.py hand-back --json
 ```
 
-它會把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；child 不跑 gate、cutover、sync 或 deploy。具名批次可另以 `--outcomes <outcomes.json>` 傳入逐票 acceptance/outcome 的 **JSON 檔案路徑**（不是 inline JSON）；結果可為 `changed`、`no-op-existing-fix`、`changed-but-not-closable`、`blocked`、`triage-only`，工具會要求 acceptance status/evidence、驗證 ticket set，並對可整合結果產生含 identity/base/tip/digest 的 hand-back seal。普通 child 可附 `--role child` 標示角色，只有同時提供 campaign/partition/manifest 才進入 campaign child receipt 路徑。Integrator 的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記或 seal 就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過缺 seal，不能繞過 tip mismatch 或不合法 seal；正常批次不應使用。
+它會把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；child 不跑 gate、cutover、sync 或 deploy。hand-back 報告還必須帶**提交者所屬的 exact source thread ID**（跨 host 時一併帶 source host ID），讓 Integrator 能把 Gate BLOCK 原路退回；修正必須由原 thread 在自己的工作樹產生新 commit，再以新 SHA／新 hand-back 交回，不能沿用舊 verdict／seal。具名批次可另以 `--outcomes <outcomes.json>` 傳入逐票 acceptance/outcome 的 **JSON 檔案路徑**（不是 inline JSON）；結果可為 `changed`、`no-op-existing-fix`、`changed-but-not-closable`、`blocked`、`triage-only`，工具會要求 acceptance status/evidence、驗證 ticket set，並對可整合結果產生含 identity/base/tip/digest 的 hand-back seal。普通 child 可附 `--role child` 標示角色，只有同時提供 campaign/partition/manifest 才進入 campaign child receipt 路徑。Integrator 的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記或 seal 就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過缺 seal，不能繞過 tip mismatch 或不合法 seal；正常批次不應使用。
 
 Campaign child 若交回的是一輪子整合，必須再以 `--campaign <id> --partition <id> --role child --manifest <completed-manifest.json>` 傳入 completed integration manifest 的 **JSON 檔案路徑**，將其投影成不可變 child receipt；manifest head 必須等於 hand-back tip，且 campaign digest、partition ticket set、typed outcome seal 全部存在。父整合使用 `integrate --campaign <id> --parent`（不可同時給 `--branches`），會在建立 worktree 前以 registry lock 保留唯一 parent owner，對帳所有 expected partitions 後才自動生成 source queue；缺 child、重複 partition/branch/ticket、foreign campaign/source、stale tip、digest 漂移、seal 與 receipt outcome 不一致均 fail-closed，失敗不得留下 parent claim。完成 manifest 保留每票 source/child/parent SHA 與 outcome、acceptance、closure；`--abort --commit` 只釋放 parent reservation，不刪 child receipt。
 
@@ -290,7 +294,7 @@ ops/worktree_orchestrate.py integrate --slug <wave> --append \
 進 `close-wave`。若 Gate 已開始，late child 不可偷偷塞入已驗證結果，應保留為下一輪或在不穩定情況用
 thread message 通知 Integrator／peer，不能改寫既有 state。
 
-**Gate-first review 與批次規模（有界，不追求完美）**：Gate 是預設的機器 review。普通 fan-out 的受派者做到 commit；只有取得 develop 授權、握有整批視野的整合者，才在合併後跑一次 fresh Gate。Gate BLOCK 就退回修正，Gate 通過且 receipt 完整即可落地，不因文字或風格 NIT 無限追加 LLM reviewer。LLM review 只對高風險或複雜 scope 作例外；同一個完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 就停在 adjudication，由 driving agent 決定修、接受或列 follow-up，不自動派第三輪。
+**Gate-first review 與批次規模（有界，不追求完美）**：Gate 是預設的機器 review。普通 fan-out 的受派者做到 commit；只有取得 develop 授權、握有整批視野的整合者，才在合併後跑一次 fresh Gate。Gate BLOCK 必須退回 hand-back 報告中的 exact source thread；由該 thread 修正、產生新 commit／新 hand-back 後再重新整合與 Gate。Gate 通過且 receipt 完整即可落地，不因文字或風格 NIT 無限追加 LLM reviewer。LLM review 只對高風險或複雜 scope 作例外；同一個完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 就停在 adjudication，由 driving agent 決定修、接受或列 follow-up，不自動派第三輪。
 
 若例外情況確實需要同時派 LLM reviewer，批次大小用當下量到的 slot 上限推導，不背魔術數字：令 `S`=可同時存活的 agent slot、`R`=保留給協調/收尾的安全餘裕、`W`=受派者、`L`=同時 reviewer，必須滿足 `W + L ≤ S − R`；若每位受派者各佔一位 reviewer，則 `W ≤ floor((S − R) / 2)`。本機實測 `S=20`，取 `R=2` 時理論上限為 9，實務預設收在 **8**；若不派 LLM reviewer，則不套用除以二，仍按衝突面與整合成本決定批次。撞頂時不得重試或偽造 reviewer evidence；具名記錄「LLM review 未取得」，由整合後 fresh Gate 承擔機器 review，複雜 scope 再由 driving agent 做一次有界裁決。
 

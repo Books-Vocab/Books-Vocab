@@ -33,7 +33,7 @@ thread 的完整閉環。多個 Delivery Team thread 可以並行；它們各自
 ## 票單閉環
 
 先從一個不重疊的 task batch 派出多個 child。每個 child 只需完成：局部驗證 → commit →
-`./ops/worktree_registry.py hand-back --json`；這是 child 的內部里程碑，不是 Delivery Team 完成。
+`./ops/worktree_registry.py hand-back --json`，並在回報中列出 exact source thread ID；這是 child 的內部里程碑，不是 Delivery Team 完成。Gate BLOCK 必須依該 ID 退回原 thread，由原 thread 以新 commit／新 hand-back 回交。
 child 陸續回來時，第一批用 `integrate --commit --no-gate`，晚回的用同一 slug 的 `integrate --append`：
 
 ```bash

@@ -46,6 +46,8 @@ delivery-loop 授權，Integrator 才進 Gate/cutover/sync；其他 child 停在
 登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
 只有「取」。
 
+**Fan-out 淺規則（agent guidance）**：優先把 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這只影響排序／派工，不改 `backlog.py` 的 lifecycle、ticket acceptance、status 或結案語義。
+
 **一張票要能被取,得先夠具體——而且要能被排序。** 梳理(groom)= 填上 `plan` / `acceptance` /
 `fix_site` + 可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」;**再加
 `brief` / `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料另以
@@ -186,7 +188,7 @@ KG repo-local skill 的完整 roster、primary/secondary/context/closure phase�
 
 ## Commit / 落地政策
 
-- **Worktree / feature branch 任務**:child 做完最小充分驗證後直接 commit、`./ops/worktree_registry.py hand-back --json`，保留工作樹並回報 branch/path/HEAD；**預設不跑 gate/cutover**。握有整批視野的 Delivery Team Integrator 若取得當下 delivery-loop 授權，才以 `close-wave --commit --sync` 完整落地 primary＋origin/main；這是 Team 完成，不是 child hand-back。`deploy` / `release` 仍不包含在內。工具護欄不變。
+- **Worktree / feature branch 任務**:child 做完最小充分驗證後直接 commit、`./ops/worktree_registry.py hand-back --json`，保留工作樹並回報 exact source thread ID、branch/path/HEAD；**預設不跑 gate/cutover**。Gate BLOCK 必須退回該 source thread，由原 thread 以新 commit／新 hand-back 回交；完整欄位以 `.claude/skills/worktree-flow/SKILL.md` 為準。握有整批視野的 Delivery Team Integrator 若取得當下 delivery-loop 授權，才以 `close-wave --commit --sync` 完整落地 primary＋origin/main；這是 Team 完成，不是 child hand-back。`deploy` / `release` 仍不包含在內。工具護欄不變。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)

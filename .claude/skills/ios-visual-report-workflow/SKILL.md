@@ -11,7 +11,7 @@ Use this as the integrator workflow for report-driven iOS UI work. The report is
 
 - Work in the existing integration worktree. Do not create a workaround tree for a late test, fixture, or evidence problem.
 - Partition active P3-P15 requirements into exactly four clusters: Reader Runtime (P3-P7), Explore/Overview (P8-P10), Vocabulary/Review Card (P11-P13), Settings/Sync (P14-P15).
-- A cluster hand-back contains the root cause, implementation, unit test, UI World fixture, exact XCTest selector, machine acceptance, run-scoped visual receipt, visual attestation, and current HEAD. Screenshots/video/xcresult are short-lived agent inspection material; the durable hand-back is the compact receipt and its provenance.
+- A cluster hand-back contains the root cause, implementation, unit test, UI World fixture, exact XCTest selector, machine acceptance, run-scoped visual receipt, visual attestation, exact source thread ID, and current HEAD. Screenshots/video/xcresult are short-lived agent inspection material; the durable hand-back is the compact receipt and its provenance. Gate BLOCK returns to that source thread; fixes produce a new commit and hand-back.
 - A selector PASS is not a requirement PASS. A requirement is verified only after fixture coverage, machine contract, counterexample coverage, complete visual attestation, and matrix provenance all pass.
 - Every evidence claim binds the same clean source HEAD, UI World ID/SHA, Simulator UDID, selector, run ID, evidence root, manifest SHA, and reviewer identity.
 - Evidence from a Simulator never proves physical-device, TestFlight, App Store, or production behavior.
