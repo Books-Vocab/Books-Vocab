@@ -257,6 +257,17 @@
       "purpose": "Ticket Factory 最小 context 與升級入口"
     },
     {
+      "id": "agent-context.ticket-factory-contract",
+      "path": "docs/reference/agent_context.md",
+      "registry_id": "reference.agent_context",
+      "start": "## Ticket Factory 的完成線與責任邊界",
+      "end": "## 驗證層級與耗時控制面",
+      "anchor_mode": "prefix",
+      "kind": "authority",
+      "max_tokens": 2400,
+      "purpose": "Ticket Factory contract-ready completion line, blocker convergence and dispatch boundary"
+    },
+    {
       "id": "agent-context.role.review",
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
@@ -457,7 +468,7 @@
     {
       "id": "role.ticket-factory",
       "match": {"roles": ["ticket-factory"]},
-      "units": ["agent-context.role.ticket-factory", "router.hard-stops", "receipt.core"]
+      "units": ["agent-context.role.ticket-factory", "agent-context.ticket-factory-contract", "router.hard-stops", "receipt.core"]
     },
     {
       "id": "role.delivery-integrator",

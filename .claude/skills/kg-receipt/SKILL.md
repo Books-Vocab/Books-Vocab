@@ -82,10 +82,22 @@ Next:
 - <只列真正需要下一輪做的事>
 ```
 
+### Ticket Factory receipt
+
+Ticket Factory receipt 必須回報可對帳的責任線，而不是只報「groomed」：未解總數、groomed／queued、
+contract-ready、dispatchable、contract-not-ready、dependency-blocked、具名使用者／外部升級、
+duplicate／no-op／wont-fix，以及每個剩餘 blocker 的 owner、證據與下一步。`groom`、`verify`、
+contract evidence 或 preflight 只證明票務契約／問題仍成立，不宣稱產品 code 已修復；產品修復仍由
+Delivery Team 從 `dispatch` 取票後完成。
+
+`contract-not-ready` 是人類／看板語彙，機器對應為 `status=contract-blocked` 或
+`dispatch.withheld_contract`；不要新增 lifecycle status。`dispatchable` 與 `held` 都是衍生分類，前者
+來自 dispatch 五條件，後者來自 worktree registry claim。receipt 仍以 `backlog.py lifecycle --json`
+作為 lifecycle SoT，並保留 stream、tooling-debt 與 worktree-flow 的既有邊界。
+
 角色邊界：`child-worker` 的 `hand-back` 只代表自己的 slice 已交回；`Integrator` 的 delivery-loop
 receipt 必須另外列 `wave slug`、預期 child／已 hand-back／已 fan-in 數、整合後 Gate verdict、primary
-landed SHA、`origin/main` sync verdict。`Ticket Factory` 的 receipt 只報產出的 ticket 數與 groom／
-verify evidence，不宣稱任何 code 已修復。若發生不穩定狀態，列出 thread message 的對象、原因、證據與
+landed SHA、`origin/main` sync verdict。`Ticket Factory` 的 receipt 改報上述 contract／dispatch 對帳，仍不宣稱任何 code 已修復。若發生不穩定狀態，列出 thread message 的對象、原因、證據與
 要求的 pause/continue 動作；正常協作不需要把聊天內容當 SoT。
 
 ## Worktree scratch
