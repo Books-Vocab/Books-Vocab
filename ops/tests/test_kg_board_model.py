@@ -490,6 +490,27 @@ def test_refresh_loop_does_not_force_unchanged_canonical_projection(monkeypatch)
     assert calls == [False]
 
 
+def test_refresh_loop_publishes_when_clone_head_changes(monkeypatch):
+    heads = iter(("old-head", "new-head"))
+    events = []
+    calls = []
+    monkeypatch.setattr(server, "clone_head", lambda: next(heads))
+    monkeypatch.setattr(server, "refresh_clone", lambda: None)
+    monkeypatch.setattr(server, "read_entries", lambda force=False: calls.append(force))
+    monkeypatch.setattr(server, "publish_event", events.append)
+    monkeypatch.setattr(
+        server.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(RuntimeError("stop loop")),
+    )
+
+    with pytest.raises(RuntimeError, match="stop loop"):
+        server.refresh_loop()
+
+    assert calls == [False]
+    assert events == ["clone"]
+
+
 @pytest.mark.parametrize("failure_type", (subprocess.TimeoutExpired, OSError))
 def test_read_entries_preserves_warm_snapshot_when_dispatch_invocation_fails(
     monkeypatch, tmp_path, failure_type

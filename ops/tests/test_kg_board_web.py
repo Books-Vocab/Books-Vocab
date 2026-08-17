@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import inspect
 import json
+import queue
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -275,6 +276,33 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert "scopeMatrix.worktrees" in js and "scopeMatrix.queued_tickets" in js
     assert "scope-column-worktree" in js and "scope-column-ticket" in js
     assert "/api/ticket/" in js
+    assert 'new EventSource("/api/events")' in js
+    assert 'addEventListener("snapshot"' in js
+    assert 'setInterval(()=>load().catch(showLoadError),30000)' in js
+
+
+def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):
+    client = queue.Queue(maxsize=1)
+    monkeypatch.setattr(server, "_sse_clients", {client})
+
+    server.publish_event("first")
+    server.publish_event("latest")
+
+    payload = client.get_nowait()
+    assert payload["kind"] == "latest"
+    assert client.empty()
+    assert server._sse_frame("snapshot", payload).startswith(b"event: snapshot\n")
+
+
+def test_events_route_fails_closed_when_client_capacity_is_full(monkeypatch):
+    monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", False)
+    monkeypatch.setattr(server, "_register_sse_client", lambda: None)
+    handler = _capturing_handler("/api/events")
+
+    handler.do_GET()
+
+    assert handler.response_code == 503
+    assert json.loads(handler.wfile.getvalue())["error"] == "too many live event clients"
 
 
 def test_model_page_exposes_one_terminology_and_live_state_contract():
@@ -692,6 +720,28 @@ def test_mirror_git_tree_accepts_large_snapshot_without_widening_browser_writes(
     browser_write.rfile = BytesIO(raw)
     with pytest.raises(ValueError, match="oversized"):
         browser_write._body()
+
+
+def test_mirror_update_publishes_snapshot_invalidation(monkeypatch):
+    raw = json.dumps({"schema": "kg.board.mirror.v1"}).encode("utf-8")
+    events = []
+    monkeypatch.setattr(server, "TOKEN", "mirror-secret")
+    monkeypatch.setattr(server, "_update_json", lambda *args: None)
+    monkeypatch.setattr(server, "publish_event", events.append)
+    mirror = _capturing_handler(
+        "/api/mirror/claims",
+        {
+            "Content-Length": str(len(raw)),
+            "Content-Type": "application/json",
+            "Authorization": "Bearer mirror-secret",
+        },
+    )
+    mirror.rfile = BytesIO(raw)
+
+    mirror.do_POST()
+
+    assert mirror.response_code == 200
+    assert events == ["claims"]
 
 
 def test_projection_exposes_decision_counts_and_blocked_rows():
