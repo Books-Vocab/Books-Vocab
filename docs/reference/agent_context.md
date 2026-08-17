@@ -12,7 +12,7 @@ scope:
   - ops/context_plane.json
   - ops/context_route.py
   - ops/skill_route.py
-verified_against: 5be999ee9
+verified_against: 75160fdf037c0de2ddbcdaf0277c752aabf5d245
 -->
 # KG Agent Context Index
 
@@ -61,6 +61,12 @@ Global kernel 的內容仍以根 `CLAUDE.md` 為準；本索引不重抄其規�
 授權邊界分別以 `ops/backlog.py lifecycle --json` 與 `worktree-flow` 為準。
 
 Fan-out 的淺規則：優先選 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作；新產品行為、策略、open-ended discovery、跨面產品變更需 parent 明示後才列為 fan-out 優先項。這只是 agent 的排序／派工指引，不是 backlog lifecycle、acceptance 或 status 的新契約。
+
+## 驗證層級與耗時控制面
+
+- Child 開發／hand-back：S0 + 受影響 S1；Integrator 批次整合：S0 + 受影響 S2；只有跨模組且存在真實 route 才升 S3；S4 僅用於發布。較低層級的證據不可冒充較高層級。
+- 受影響的 orchestrator source 優先走 `ops/test_route.py` 的明確 route；每次先 collect-only，route 失效必回退父群，未知 source 不得變成零測試綠燈。
+- 長測試 bundle 用 `ops/test_timing.py run --bundle <manifest> --json`，完成後讀 `status`／`wait`；不要自行輪詢 child。`estimate` 只回報區間與 confidence，歷史 ledger 是 gitignored 輔助證據，不改 gate verdict。
 
 ## Authority escalation index
 

@@ -180,6 +180,19 @@ ticket，不把 deferred 當成 pass。這套模型降低日常排隊與等待�
 unit/UI/live-compile 指向 test runner；只修 test runner 時可重用已綠 build，共用 `ios_ops.sh` 或
 共用 helper 變更則兩邊都失效。未具名的新 iOS gate 維持整個 iOS surface 的保守 scope，不猜依賴。
 
+### Focused route 與 timing runner
+
+orchestrator 測試不必每次整檔執行：受影響 source 先用
+`ops/test_route.py run --mode focused --route-id <route>`；批次整合才用 `--mode group`。兩者都先
+`pytest --collect-only`，selector 零筆、route 版本不符或檔案不存在會 fail-safe 回退父群；未知 source
+不得回傳空測試綠燈。S0/S1 失敗仍阻擋；非 release-critical 的 S2/S3 可依既有 `--defer-gate GATE=TICKET`
+規則登記既有 ticket，不能把 deferred 當 pass。
+
+需要預估或執行長 bundle 時使用 `ops/test_timing.py estimate|run|status|wait`。`run --bundle <manifest> --json`
+採 `kg.test.bundle.v1`，stderr 保留 heartbeat，status 以 atomic JSON 寫入 `.cache/test_runs/`，完成後輸出一次
+final JSON；可用 `wait` 等 terminal result，不需 agent 持續 token polling。`.cache/test_timing.sqlite3`
+只保存 semantic timing evidence，不保存 raw argv／secret；timing 寫入失敗不改測試或 gate verdict。
+
 **開跑前先擋一道：分支落後本地 main 就直接拒**（EXIT_BLOCK，payload 帶 `behind_commits` / `base_changed_files`，**不寫任何判決紀錄**）。理由：cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被 gate 判過也不會是落地的那棵——判決會綁到一棵不存在的樹（IMP-20260806-945e01：實測 58 commits 落後的分支，main 上多出的 UITest 檔在工作樹裡根本不存在，`--grep` 選三個類靜默只匹配到兩個）。修法是 `catchup --commit`（見下方 c2），然後**重跑 gate**。`--plan-only` 不受此擋（它不跑也不記，是拒絕訊息指定的預覽出口）。impact→gate 對應：
 - `ios/**` → `ios_ops.sh build` **＋** `build --catalyst`（sim 綠 ≠ Catalyst 綠）＋ `quality impact`（swift）＋ `test --unit`；**動到一般 UITest 檔**則另加 `test --ui --file <該 UITest 類> --dataset marketing_demo`（**只跑受影響的 UI 測試類，非全套**——全套當 block 會被 codebase 已知 UI flaky 誤擋每次 iOS cutover）。`LiveDemoAccessUITests` 是 Release＋實機＋live backend 專用契約，cutover gate 只跑 Release iphoneos build-for-testing 編譯 gate 並明示 runtime advisory；不得拿 simulator/fixture 偽裝其 runtime evidence，送審前仍須走 App Review `demo-run`。
 - design-system / tokens / 生成 CSS / `ios/**/Models|UIComponents/` → `verify_design_system.sh`
