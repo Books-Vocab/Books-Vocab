@@ -11,18 +11,11 @@ import Foundation
 
 enum KGFeatureFlags {
     /// Whether to send `updated_at` and trust server-returned `updated_at` for
-    /// LWW on the pause review clock. Backend dependency: `review_clock.updated_at`
-    /// persisted + returned by `GET /api/user/config`. Until on, server is
-    /// single-direction (server-wins on cold-start) and iCloud KV is the
-    /// authoritative cross-device path — mirrors the adjacent review-mode gate.
-    static var serverReviewClockLwwEnabled: Bool { false }
-
-    /// Whether to send `updated_at` and trust server-returned `updated_at` for
     /// LWW on the review mode + custom SRS params. Backend dependency:
     /// `review_mode.updated_at` persisted + returned by `GET /api/user/config`.
     /// Until on, server is single-direction (server-wins on cold-start) and
-    /// iCloud KV is the authoritative cross-device path — mirrors
-    /// `serverReviewClockLwwEnabled`.
+    /// iCloud KV is the authoritative cross-device path until this mode seam is
+    /// migrated to the server timestamp contract.
     static var serverReviewModeLwwEnabled: Bool { false }
 
     /// Whether the podcast feature is exposed anywhere in the UI (top-level
