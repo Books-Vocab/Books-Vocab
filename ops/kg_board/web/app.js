@@ -327,14 +327,14 @@ function treeLayout(viewport,visibleCommits){
 }
 function routeCrossLaneEdge(from,to,x,y,routeIndex=0,routeCount=1){
   const startX=x(from.lane),startY=y(from.row),endX=x(to.lane),endY=y(to.row);
-  const direction=endY>=startY?1:-1;
-  const verticalSpan=Math.abs(endY-startY);
-  const curve=Math.max(10,Math.min(TREE_ROW_HEIGHT*.72,verticalSpan*.36||TREE_ROW_HEIGHT*.36));
-  // Edges converging on the same parent get independent control rails. This
-  // keeps them visually separate without inventing extra commits or lanes.
-  const routeOffset=(routeIndex-(routeCount-1)/2)*Math.min(6,TREE_ROW_HEIGHT*.16);
-  const control1Y=startY+direction*curve+routeOffset;
-  const control2Y=endY-direction*curve+routeOffset;
+  const railSpacing=Math.min(8,TREE_ROW_HEIGHT*.18);
+  const railOffset=(routeIndex-(routeCount-1)/2)*railSpacing;
+  // Both control points share one private middle rail. Edges in the same row
+  // band receive separate rails; different bands naturally use different
+  // midpoints, so unrelated parents do not inherit the same control path.
+  const railY=(startY+endY)/2+railOffset;
+  const control1Y=railY;
+  const control2Y=railY;
   const dx=endX-startX;
   return `M ${startX} ${startY} C ${startX+dx*.28} ${control1Y} ${endX-dx*.28} ${control2Y} ${endX} ${endY}`;
 }
@@ -509,10 +509,17 @@ function renderTree(){
     });
   });
   const crossLaneEdges=graphEdges.filter(edge=>edge.from.lane!==edge.to.lane);
-  const routeIndexByEdge=new Map(crossLaneEdges.map((edge,index)=>[edge,index]));
+  const routeRailGroups=new Map();
+  crossLaneEdges.forEach(edge=>{
+    const key=`${Math.min(edge.from.row,edge.to.row)}:${Math.max(edge.from.row,edge.to.row)}`;
+    if(!routeRailGroups.has(key))routeRailGroups.set(key,[]);
+    routeRailGroups.get(key).push(edge);
+  });
+  const routeRailByEdge=new Map();
+  routeRailGroups.forEach(group=>group.forEach((edge,index)=>routeRailByEdge.set(edge,{index,count:group.length})));
   const edges=graphEdges.map(edge=>{
-    const routeIndex=routeIndexByEdge.get(edge);
-    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y,routeIndex??0,crossLaneEdges.length)}"/>`;
+    const route=routeRailByEdge.get(edge);
+    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y,route?.index??0,route?.count??1)}"/>`;
   });
   const branchBoundaryByFrom=new Map([...viewport.branchTruncations.values()].map(record=>[record.from,record]));
   const parentBoundaryMarkers=ordered.map(row=>{
