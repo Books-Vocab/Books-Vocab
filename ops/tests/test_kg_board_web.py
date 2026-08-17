@@ -266,6 +266,15 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert "/api/ticket/" in js
 
 
+def test_board_trust_detail_does_not_append_seconds_to_unknown_age():
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'const treeLabels={current:"已追平",stale:"有落差",error:"錯誤",unknown:"未知"};' in js
+    assert "tree ${treeStateLabel}" in js
+    assert 'const treeAgeLabel=freshness.git_tree_age==null?"未知":`${freshness.git_tree_age}s`;' in js
+    assert "mirror ${treeAgeLabel}" in js
+
+
 def test_index_injects_app_revision_without_browser_write_token(monkeypatch):
     monkeypatch.setattr(server, "APP_REVISION", "app-revision")
 

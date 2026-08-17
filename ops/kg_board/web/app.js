@@ -10,10 +10,13 @@ function metric(label,value){return `<div class="metric"><b>${esc(value)}</b><sp
 function setTrust(freshness){
   const state=freshness.freshness_state||"unknown";
   const labels={current:"資料已追平",stale:"資料有落差",error:"資料讀取錯誤",unknown:"新鮮度未知"};
+  const treeLabels={current:"已追平",stale:"有落差",error:"錯誤",unknown:"未知"};
   const treeState=freshness.git_tree_state||"unknown";
+  const treeStateLabel=treeLabels[treeState]||treeState;
+  const treeAgeLabel=freshness.git_tree_age==null?"未知":`${freshness.git_tree_age}s`;
   document.getElementById("trust-state").textContent=labels[state]||labels.unknown;
   document.getElementById("trust-detail").textContent=
-    `tree ${treeState} · mirror ${freshness.git_tree_age??"未知"}s · app ${revision.slice(0,9)}`;
+    `tree ${treeStateLabel} · mirror ${treeAgeLabel} · app ${revision.slice(0,9)}`;
 }
 function statusOf(row){
   if(row.held)return "進行中";
