@@ -56,7 +56,7 @@ model: inherit
 - 跑 `./ops/docs_lint.sh` 確認 backlog 文檔無 ERROR。
 
 ## 收尾
-依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:triage 了哪些、哪些已 contract-ready／dispatchable、哪些派給 Delivery Team、哪些需使用者／外部升級、哪些 resolved(附 commit)、剩餘 owner 與下一步。不得把 groom、verify 或 contract evidence 寫成產品 code 已修復。
+依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:triage 了哪些、哪些已 contract-ready／dispatchable、哪些交給 Delivery Team、哪些需使用者／外部升級、哪些已具名收斂為 duplicate／no-op／wont-fix、剩餘 owner 與下一步；Delivery Team 的 fixed／resolved 由下游 receipt 回報。不得把 groom、verify 或 contract evidence 寫成產品 code 已修復。
 
 ## 交回狀態
 
