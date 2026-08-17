@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KG 交付工作台 — 常駐在 felix 的唯讀工作台 + 一層本機排序覆蓋。
+"""交付進度看板 — 常駐在 felix 的唯讀工作台 + 一層本機排序覆蓋。
 
 版本與主機邊界
 --------------
@@ -57,6 +57,10 @@ try:
     from ops.kg_board.git_tree import project_snapshot
 except ModuleNotFoundError:  # direct launch via the release checkout
     from git_tree import project_snapshot
+try:
+    from ops.kg_board.scope import scope_files, scope_status
+except ModuleNotFoundError:  # direct launch via the release checkout
+    from scope import scope_files, scope_status
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -122,7 +126,7 @@ AREA_RULES = (
     ("OPS / 底層工具", ("ops/", "devops.sh", ".github/workflows/")),
     ("文件 / 流程", ("docs/", ".claude/")),
     ("Lab / Podcast", ("lab/",)),
-    ("KG 看板", ("kg-board",)),
+    ("交付進度看板", ("kg-board",)),
 )
 AREA_ORDER = tuple(label for label, _ in AREA_RULES) + ("跨域", "未標定")
 
@@ -679,6 +683,138 @@ def project(
     }
 
 
+def project_scope_matrix(
+    entries: list[dict],
+    held: dict | None = None,
+    *,
+    canonical_dispatch_ids: set[str] | None = None,
+) -> dict:
+    """Project the file-occupancy matrix without inventing a second queue.
+
+    ``canonical_dispatch_ids`` is supplied by ``backlog.py dispatch``.  A held
+    ticket is active even though claiming removes it from that queue.  Collision
+    is deliberately calculated only for queued tickets against active file
+    claims; overlap between two active tickets is visible as occupancy, not
+    relabelled as a queue decision.  A legacy/prose Scope has no cells and is
+    reported as ``scope_status=unknown`` rather than as an unknown collision.
+    """
+    held = {str(ticket_id): value for ticket_id, value in (held or {}).items()}
+    canonical_dispatch_ids = {str(ticket_id) for ticket_id in (canonical_dispatch_ids or set())}
+    unresolved = {
+        str(entry.get("id")): entry
+        for entry in entries
+        if entry.get("id") and entry.get("status") not in RESOLVED_STATUSES
+    }
+    active_ids = set(unresolved).intersection(held)
+    queued_ids = (canonical_dispatch_ids.intersection(unresolved)) - active_ids
+    candidate_ids = active_ids | queued_ids
+
+    def order(ticket_id: str):
+        entry = unresolved[ticket_id]
+        return (
+            0 if ticket_id in active_ids else 1,
+            entry.get("date") or "",
+            ticket_id,
+        )
+
+    ordered_ids = sorted(candidate_ids, key=order)
+    files_by_ticket: dict[str, dict[str, str]] = {}
+    for ticket_id in ordered_ids:
+        files_by_ticket[ticket_id] = {
+            item["path"]: item["operation"]
+            for item in scope_files(unresolved[ticket_id].get("scope"))
+        }
+
+    active_by_file: dict[str, set[str]] = {}
+    for ticket_id in sorted(active_ids):
+        for path in files_by_ticket[ticket_id]:
+            active_by_file.setdefault(path, set()).add(ticket_id)
+
+    tickets: list[dict] = []
+    collision_paths_by_ticket: dict[str, set[str]] = {}
+    for ticket_id in ordered_ids:
+        entry = unresolved[ticket_id]
+        state = "active" if ticket_id in active_ids else "queued"
+        scope_state = scope_status(entry.get("scope"))
+        collisions = None
+        if state == "queued" and scope_state == "known":
+            collision_paths = {
+                path for path in files_by_ticket[ticket_id] if active_by_file.get(path)
+            }
+            collision_ids = sorted({
+                active_id
+                for path in collision_paths
+                for active_id in active_by_file[path]
+            })
+            collision_paths_by_ticket[ticket_id] = collision_paths
+            collisions = {
+                "status": "hard" if collision_ids else "clear",
+                "with": collision_ids,
+                "paths": sorted(collision_paths),
+            }
+        tickets.append({
+            "id": ticket_id,
+            "brief": entry.get("brief") or "",
+            "severity": entry.get("severity"),
+            "stream": entry.get("stream"),
+            "state": state,
+            "scope_status": scope_state,
+            "files": [
+                {"path": path, "operation": operation}
+                for path, operation in sorted(files_by_ticket[ticket_id].items())
+            ],
+            "collision": collisions,
+            "claim": held.get(ticket_id) if state == "active" else None,
+        })
+
+    matrix_paths = sorted({
+        path for ticket_files in files_by_ticket.values() for path in ticket_files
+    })
+    files = []
+    for path in matrix_paths:
+        cells = []
+        for ticket_id in ordered_ids:
+            operation = files_by_ticket[ticket_id].get(path)
+            if operation is None:
+                continue
+            state = "active" if ticket_id in active_ids else "queued"
+            cells.append({
+                "ticket_id": ticket_id,
+                "operation": operation,
+                "state": state,
+                "collision": (
+                    state == "queued"
+                    and path in collision_paths_by_ticket.get(ticket_id, set())
+                ),
+            })
+        files.append({"path": path, "cells": cells})
+
+    unknown_scope_ids = [
+        ticket_id for ticket_id in ordered_ids
+        if scope_status(unresolved[ticket_id].get("scope")) == "unknown"
+    ]
+    return {
+        "schema": "kg.board.scope-matrix.v1",
+        "tickets": tickets,
+        "files": files,
+        "active_ticket_ids": [ticket_id for ticket_id in ordered_ids if ticket_id in active_ids],
+        "queued_ticket_ids": [ticket_id for ticket_id in ordered_ids if ticket_id in queued_ids],
+        "unknown_scope_ids": unknown_scope_ids,
+        "counts": {
+            "active": len(active_ids),
+            "queued": len(queued_ids),
+            "files": len(files),
+            "unknown_scope": len(unknown_scope_ids),
+            "queued_collisions": sum(
+                1 for ticket in tickets
+                if ticket["state"] == "queued"
+                and ticket["collision"]
+                and ticket["collision"]["status"] == "hard"
+            ),
+        },
+    }
+
+
 def _nonnegative_int(value) -> int | None:
     if isinstance(value, bool):
         return None
@@ -803,6 +939,18 @@ def board_payload() -> dict:
         "counts": projected["counts"],
         "freshness": freshness(),
     }
+
+
+def scope_matrix_payload() -> dict:
+    snap = read_entries()
+    held = merge_held_claims(snap.get("local_held") or {}, mirror_held_claims())
+    payload = project_scope_matrix(
+        snap.get("entries") or [],
+        held,
+        canonical_dispatch_ids=set(snap.get("dispatch_ids") or []),
+    )
+    payload["freshness"] = freshness()
+    return payload
 
 
 def ticket_payload(ticket_id: str) -> dict:
@@ -1008,6 +1156,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/board":
             self._json(200, board_payload())
+            return
+        if path == "/api/scope-matrix":
+            self._json(200, scope_matrix_payload())
             return
         if path == "/api/history":
             self._json(200, history_payload())

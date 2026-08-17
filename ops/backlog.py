@@ -82,6 +82,7 @@ import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
 import backlog_legacy as _backlog_legacy  # noqa: E402
 import backlog_query as _backlog_query  # noqa: E402
+from kg_board.scope import coerce_scope, scope_problems  # noqa: E402
 
 # Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
 # nothing outside the standard library, so the sandboxed `uv run --no-project`
@@ -162,8 +163,9 @@ REQUIRED_FIELDS = (
 #            feels it. Not how to fix it, and no filenames, line numbers or
 #            acronyms — those are `detail`'s job and they are what makes `detail`
 #            unreadable to the person doing the sorting.
-#   scope -> one sentence of SIZE, so a cost can be estimated without opening
-#            anything: what gets touched and roughly how much.
+#   scope -> a structured file claim: `files[]` names each expected path and
+#            marks it `add` or `modify`. Legacy prose stays readable but is not
+#            treated as a known file range by the delivery progress board.
 #
 # Why they cannot be derived from what already exists: the phone board renders
 # the first 400 characters of `detail`, which is technical prose addressed to
@@ -1226,6 +1228,7 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
             if field in payload:
                 problems.append({"kind": "app-field-on-imp-entry", "field": field})
 
+    problems.extend(scope_problems(payload.get("scope")))
     problems.extend(_check_groom(payload))
     # UNCONDITIONAL, and that is the fix for IMP-20260808-f2bcc1. `check_traceability`
     # exists to forgive rules that need a repository; these need none, and riding
@@ -1511,7 +1514,7 @@ def add_entry(
     detail: str,
     resolution: str = "",
     brief: str | None = None,
-    scope: str | None = None,
+    scope: str | dict | None = None,
     surface: str | None = None,
     repro: str | None = None,
     build: str | None = None,
@@ -1536,6 +1539,7 @@ def add_entry(
     `anchor` writes it. Internal importers keep the historical immediate-write
     default.
     """
+    scope = coerce_scope(scope)
     if _gate and status == "fixed":
         # `import --commit` writes with overwrite=True, so a legacy table row can
         # flip a LIVE, groomed entry to `fixed` over a criterion that fails today.
@@ -1908,8 +1912,7 @@ def _repair_hints(problems: list[dict], entry_id: str) -> list[str]:
             "  add to the command you just ran: "
             + " ".join(f"--{f} '<一句話>'" for f in missing_prose) + "\n"
             f"  brief = 白話「壞了什麼、誰有感」(禁檔名/行號/縮寫); "
-            f"scope = 體積感讓人估得出代價。兩句都寫給在看板上排序的人,"
-            f"不是寫給接手的 agent"
+            f"scope = JSON 檔案清單（每個 path 標 add 或 modify）；舊文字只會被看板標成 Scope 未知。"
         )
     return hints
 
@@ -1923,6 +1926,9 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
     unknown-field check, so a preview could print a clean diff and the identical
     command with --commit could exit 64.
     """
+    changes = dict(changes)
+    if "scope" in changes:
+        changes["scope"] = coerce_scope(changes["scope"])
     unknown = [field for field in changes if field not in MUTABLE_FIELDS]
     unknown.extend(field for field in clear_fields if field not in MUTABLE_FIELDS)
     if unknown:
@@ -2791,10 +2797,11 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   這條標準是散文、無法機器驗，但它的**前提可以**：宣告 `groomed_by` 就必須同時有
   `plan`、`acceptance`、`fix_site`，否則 `validate` 直接紅。
   查未梳理的佇列用 `ops/backlog.py list --ungroomed`
-- **`brief` / `scope`（寫給人看的兩欄）**：`brief` = 一句白話「壞了什麼、誰有感」，
-  `scope` = 一句體積感讓人估得出代價，兩者都**不寫檔名行號**（那是 `detail` 與
-  `fix_site` 的工作）。存在理由：手機看板每張卡片渲染的是 `detail` 前 400 字的技術
-  散文，而看板只有釘選／排序／延後三個動作，每個都要在幾秒內答「值不值得先做」。
+- **`brief` / `scope`（寫給不同讀者的兩欄）**：`brief` = 一句白話「壞了什麼、誰有感」；
+  `scope` = `{{"files":[{{"path":"ops/x.py","operation":"modify"}}]}}` 的實際檔案清單，
+  每個檔案明確標 `add` 或 `modify`。舊票的 Scope 文字仍可讀，但看板會標為 Scope 未知，
+  不會從 `fix_site` 或散文猜檔案。存在理由：矩陣要讓人與 agent 直接看見哪些檔案被 active
+  佔用，以及 queued ticket 是否與 active 重疊；`fix_site` 仍是 executor 的程式錨點。
   **蓋或更新 groom 戳記時當場就要求這兩欄**（`_check_groom_write`，與日期無關）；
   `validate` 對**既有資料**則以 `BRIEF_REQUIRED_SINCE` 為界 grandfather，因為規則
   落地時 store 內已有 133 筆蓋好戳記卻沒有這兩欄的 entry。缺這兩欄的未結案 entry 用
@@ -3108,9 +3115,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_add.add_argument(
         "--scope",
-        help="ONE plain sentence of SIZE, so the cost can be judged without opening "
-             "anything (\"one script and its test\"). NOT --fix-site: that is a code "
-             "anchor for whoever executes this",
+        help="JSON file claim: {files:[{path,operation}]} with operation add|modify; "
+             "legacy prose remains readable but appears as Scope unknown on the board. "
+             "NOT --fix-site: that is the executor's code anchor",
     )
     p_add.add_argument("--surface", help="APP only: reader/vocabulary/notebook/...")
     p_add.add_argument("--repro", help="APP only: how to reproduce")
@@ -3422,7 +3429,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_groom.add_argument(
         "--scope", required=True,
-        help="one plain sentence of size/cost; not the code anchor",
+        help="JSON file claim {files:[{path,operation}]} with add|modify; "
+             "not the code anchor (use --scope-file for shell-safe JSON)",
     )
     p_groom.add_argument(
         "--plan", required=True,
@@ -3510,9 +3518,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_update.add_argument(
         "--scope",
-        help="ONE plain sentence of SIZE, so the cost can be judged without opening "
-             "anything. NOT --fix-site: that is a code anchor for the executor. "
-             "Same requirement as --brief: any call that stamps a groom badge needs both",
+        help="JSON file claim {files:[{path,operation}]} with add|modify; legacy prose "
+             "remains readable but is Scope unknown on the board. NOT --fix-site. "
+             "Any call that stamps a groom badge still needs a non-empty Scope",
     )
     for digest_field in DIGEST_FIELDS:
         p_update.add_argument(
