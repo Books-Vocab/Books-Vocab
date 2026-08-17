@@ -20,7 +20,7 @@ Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協
 
 **永遠先假設同 repo 有多個 session 同時工作。** child worker 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 exact source thread ID、branch／worktree／HEAD，然後停止。這個 hand-back 是 Delivery Team 內部交回，不是整個 team 完成；Gate BLOCK 必須回到該 source thread，由原 thread 以新 commit／新 hand-back 回交。Integrator 可同一 thread 維護一個 integration worktree，孩子陸續回來就用 `integrate --append` fan-in。child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
 
-任務選擇的淺規則：優先 fan-out bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收工作；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這是排序／派工提示，不是 `backlog.py` lifecycle 或 acceptance/status 契約。
+任務選擇的淺規則：優先 fan-out bounded bug、refactor、tooling friction、test maintenance、docs 等可獨立驗收工作；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這是排序／派工提示，不是 `backlog.py` lifecycle 或 acceptance/status 契約。
 
 只有擁有整批視野的 Integrator 在當下取得使用者對 develop＋backup 的明示授權，才可越過 child 停止點：① 確認本輪預期 child 已 hand-back；② 以 `close-wave --commit --sync` 進行唯一依 scope/tier 選擇的 fresh Gate、cutover、resolve、anchor、validate 與 origin/main sync。若只有 develop 授權，使用 `close-wave --commit` 停在本地 primary；若沒有授權，整合樹也只准 `integrate ... --commit --no-gate` 後 hand-back。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬 required tier、current HEAD 或 release 護欄；targeted test 只能證明它自己的 tier，不能冒充較高 tier。
 
@@ -310,7 +310,7 @@ child 只交回 commit＋hand-back，並要求回報分支名與工作樹路徑�
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 受派 child 建樹時帶 `open --delegated`（或對既有樹用 `adopt --delegated`）把這個邊界寫進 ledger；`cutover`／`land` 對仍標記為 delegated 的工作樹會在 gate/verdict 之前以 `refusal=delegated` fail closed。只有整合者明確解除標記後才可落地；省略旗標在 register/adopt 時保留既有標記。
 
-**淺 fan-out scope（agent guidance）**：優先把 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery 或跨面產品變更，先留給 parent 明示決策。這是排序／派工提示，不是 `backlog.py` 的硬 gate，也不改 ticket acceptance、status 或 lifecycle。
+**淺 fan-out scope（agent guidance）**：優先把 bounded bug、refactor、tooling friction、test maintenance、docs 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery 或跨面產品變更，先留給 parent 明示決策。這是排序／派工提示，不是 `backlog.py` 的硬 gate，也不改 ticket acceptance、status 或 lifecycle。
 
 **每棵工作樹都有自己的暫存面。** `open` 會建立並回傳
 `<worktree>/.cache/agent-scratch/`（JSON 欄位 `scratch_dir`）；`.cache/` 已被 Git 忽略，

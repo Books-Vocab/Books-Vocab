@@ -446,7 +446,7 @@ iOS build/test gate 若 bounded capture 遺失 producer 應提供的欄位，spl
 
 | 入口 | 機器契約 |
 |---|---|
-| `fan-out scope guidance` | Agent 派工的淺排序原則：優先 bounded bug／refactor／tooling friction／docs／test maintenance；新產品行為、策略、open-ended discovery、跨面產品變更需 parent 明示。這不改 `backlog.py` lifecycle、ticket acceptance 或 status 語義。 |
+| `fan-out scope guidance` | Agent 派工的淺排序原則：優先 bounded bug／refactor／tooling friction／test maintenance／docs；新產品行為、策略、open-ended discovery、跨面產品變更需 parent 明示。這不改 `backlog.py` lifecycle、ticket acceptance 或 status 語義。 |
 | `ops/lib/lock_wait.py` | registry/backlog 的 read-modify-write lock 共用原語；競爭時以指數退避（預設 0.25s 起、20s ceiling）等待，等待／取得進度只寫 stderr，保留 stdout 的 JSON 純度。registry/backlog 對鎖建立／非競爭取得錯誤 fail-closed；唯讀 view 才可對非競爭錯誤 fail-open，競爭本身永遠等待。 |
 | `ops/worktree_orchestrate.py close-wave`（branch-local provenance） | Delivery Team Integrator 的可重入 delivery-loop 入口；同一 `--slug` 續接 integrate／`--append`、fresh Gate、cutover、來源 resolve、backlog anchor、validate、整合樹 resolve；`--sync` 再推 exact primary tip 到 `origin/main`。最終 machine receipt 另帶 `runner_revision` 與 `integration_revision`（各自的 orchestrator content SHA-256）；缺少或不一致時在 cutover 前 fail-closed。其他 team active worktree 可存在，命名衝突停下保留 state；不 deploy。 |
 | `close-wave --independent` / `integrate --independent` | 明示的 no-ticket 獨立波次模式；預設空 expected-ticket set 仍拒絕。`independent=true` 會持久化於 integration state／manifest，registry intent 以 `independent-no-ticket:` 作 provenance marker；只有 non-block Gate 綁定 exact integration HEAD、primary clean、queue empty 且 opt-in 在 resume 時一致，才可繼續 cutover／validate／resolve／sync。 |
