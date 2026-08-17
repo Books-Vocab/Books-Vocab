@@ -13,6 +13,7 @@
   "date": "2026-08-10",
   "detail": "A close-wave command can load an older primary orchestrator before cutover, then complete the post-cutover lifecycle without exposing the runner revision and integration revision in its machine receipt. A new close-wave runner must report both revisions and refuse success when they differ, so a first rollout cannot claim that its newly landed guard ran.",
   "fix_site": "ops/worktree_orchestrate.py; ops/tests/test_worktree_orchestrate.py",
+  "fixed_elsewhere": "Present on baseline c10b12fcc9fa234f59b0a291aae8bcf2ddc48a06; exact acceptance returned 4 passed, 435 deselected.",
   "groomed_against": "d1480653f4d4aaf4bd3b3166840608ae0d3b1beb",
   "groomed_at": "2026-08-16",
   "groomed_by": "agent:ticket-factory-full-groom",
@@ -23,10 +24,10 @@
   "scope": "close-wave receipt provenance、revision mismatch guard 與 focused orchestrator tests。",
   "severity": "high",
   "source": "wave-3 bootstrap false-success audit",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-10",
-  "verified_by": "agent:delivery-team-b",
-  "verified_evidence": "git show a095fde0604b88ac9435846ddc05a161fb2ca9be:ops/worktree_orchestrate.py | ! rg runner_revision"
+  "verdict": "ALREADY-FIXED",
+  "verified_at": "2026-08-17",
+  "verified_by": "agent:delivery-integrator",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_orchestrate.py -k runner_revision"
 }
