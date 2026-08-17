@@ -79,11 +79,13 @@ const TREE_VIEW_RADIUS = 10;
 const TREE_ZOOM_MIN = 70;
 const TREE_ZOOM_MAX = 140;
 const TREE_ZOOM_STEP = 10;
-const TREE_LANE_WIDTH = 168;
-const TREE_ROW_HEIGHT = 56;
+const TREE_LANE_WIDTH = 136;
+const TREE_ROW_HEIGHT = 44;
 const TREE_HEADER_HEIGHT = 66;
-const TREE_PADDING_X = 52;
+const TREE_PADDING_X = 36;
 let treeZoom = 100;
+let treeBaseWidth = 0;
+let treeFitInitialized = false;
 function firstParentChain(sha,commits,limit=commits.size+1){
   const result=[],seen=new Set();let current=sha;
   while(current&&!seen.has(current)&&result.length<limit){
@@ -184,6 +186,15 @@ function renderTreeZoom(){
   const output=document.getElementById("tree-zoom-value");
   if(input){input.value=String(treeZoom);input.min=String(TREE_ZOOM_MIN);input.max=String(TREE_ZOOM_MAX);input.step=String(TREE_ZOOM_STEP);input.setAttribute("aria-valuetext",`${treeZoom}%`)}
   if(output)output.textContent=`${treeZoom}%`;
+}
+function fitTreeZoom(){
+  const mount=document.getElementById("git-tree");
+  if(!treeBaseWidth||!mount?.clientWidth)return false;
+  const available=Math.max(1,mount.clientWidth-24);
+  const candidate=Math.floor((available/treeBaseWidth)*100/TREE_ZOOM_STEP)*TREE_ZOOM_STEP;
+  treeZoom=Math.max(TREE_ZOOM_MIN,Math.min(100,candidate));
+  renderTree();
+  return true;
 }
 function treeStateOf(ref){
   return ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
@@ -287,6 +298,8 @@ function renderTree(){
   const mobile=document.getElementById("tree-mobile-list");
   renderTreeZoom();
   if(!tree||!tree.commits?.length){
+    treeBaseWidth=0;
+    treeFitInitialized=false;
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
     renderTreeLegend({refs:[]});
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
@@ -301,6 +314,7 @@ function renderTree(){
   const {branchLanes,positions,ordered}=layout;
   const maxLane=Math.max(0,...branchLanes.values());
   const width=Math.max(680,TREE_PADDING_X*2+(maxLane+1)*TREE_LANE_WIDTH);
+  treeBaseWidth=width;
   const height=Math.max(260,TREE_HEADER_HEIGHT+(layout.rowCount+1)*TREE_ROW_HEIGHT);
   const renderedWidth=Math.round(width*treeZoom/100),renderedHeight=Math.round(height*treeZoom/100);
   const x=lane=>TREE_PADDING_X+lane*TREE_LANE_WIDTH;
@@ -317,7 +331,7 @@ function renderTree(){
   const laneHeaders=viewport.refs.map(ref=>{
     const lane=branchLanes.get(ref.branch);if(lane===undefined)return "";
     const state=treeStateOf(ref);
-    return `<g class="lane-header state-${esc(treeStateClass(state))}" transform="translate(${x(lane)-58} 12)"><rect width="116" height="38" rx="6"></rect><text x="10" y="16">${esc(compactLabel(ref.branch,18))}</text><text class="lane-state" x="10" y="31">${esc(state)}</text></g>`;
+    return `<g class="lane-header state-${esc(treeStateClass(state))}" transform="translate(${x(lane)-52} 12)"><rect width="104" height="38" rx="6"></rect><text x="9" y="16">${esc(compactLabel(ref.branch,17))}</text><text class="lane-state" x="9" y="31">${esc(state)}</text></g>`;
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
@@ -380,6 +394,7 @@ async function load(){
   if(!boardResponse.ok)throw new Error(`board HTTP ${boardResponse.status}`);
   if(!treeResponse.ok)throw new Error(`git tree HTTP ${treeResponse.status}`);
   board=await boardResponse.json();tree=await treeResponse.json();setTrust(board.freshness);render();renderTree();
+  if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom();
 }
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
@@ -389,6 +404,8 @@ document.getElementById("tree-zoom").addEventListener("input",event=>{
   renderTreeZoom();
   if(tree)renderTree();
 });
+document.getElementById("tree-fit").addEventListener("click",fitTreeZoom);
+document.getElementById("tree-reset").addEventListener("click",()=>{treeZoom=100;if(tree)renderTree();else renderTreeZoom()});
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
 renderTreeZoom();
 load().catch(showLoadError);

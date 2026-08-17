@@ -27,9 +27,14 @@
       </div>
       <p class="section-note">主線與工作分支依 commit 關係排列；分支狀態與票號集中在圖上方，選取節點查看詳細資料。</p>
       <div class="tree-controls" aria-label="樹圖縮放">
-        <label for="tree-zoom">樹圖縮放</label>
+        <div class="tree-control-copy">
+          <label for="tree-zoom">圖面尺度</label>
+          <span>縮放圖面，不改變資料範圍</span>
+        </div>
         <input id="tree-zoom" type="range" min="70" max="140" step="10" value="100" aria-valuetext="100%">
         <output id="tree-zoom-value" for="tree-zoom">100%</output>
+        <button type="button" id="tree-fit" class="tree-control-button">適合視窗</button>
+        <button type="button" id="tree-reset" class="tree-control-button secondary">重設</button>
       </div>
       <div id="tree-alert" class="tree-alert" role="status"></div>
       <div id="tree-legend" class="tree-legend" aria-label="分支與工作樹狀態"></div>

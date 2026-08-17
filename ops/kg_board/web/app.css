@@ -1,4 +1,4 @@
-:root{--bg:#f8f7f4;--surface:#fcfbfa;--surface-alt:#f3f0ea;--border:#dbd6cd;--border-light:#e8e4db;--ink:#2a2520;--sub:#68635b;--accent:#2a2520;--green:#24734e;--warn:#9a641a;--bad:#ae3b31;--radius:3px;--shadow:0 8px 24px rgba(42,37,32,.08)}
+:root{--bg:#f4f6f8;--surface:#fff;--surface-alt:#f7f9fb;--border:#d7dfe7;--border-light:#e6ebf0;--ink:#1f2933;--sub:#637181;--accent:#26333f;--green:#24734e;--warn:#9a641a;--bad:#ae3b31;--radius:6px;--shadow:0 8px 22px rgba(31,41,51,.07)}
 *{box-sizing:border-box;min-width:0}
 html,body{margin:0;max-width:100%;overflow-x:hidden;background:var(--bg);color:var(--ink);font:14px/1.65,"Noto Sans TC",system-ui,-apple-system,sans-serif}
 button,input{font:inherit}button{cursor:pointer}
@@ -39,7 +39,7 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 .ticket-title span{line-height:1.4}
 .ticket-meta{max-width:42%;white-space:normal}
 .tree-alert:empty{display:none}
-.tree-controls{display:grid;grid-template-columns:max-content minmax(140px,1fr) max-content;align-items:center;gap:10px;margin:10px 0 12px;padding:9px 10px;border:1px solid var(--border-light);background:var(--surface-alt)}
+.tree-controls{display:grid;grid-template-columns:minmax(130px,max-content) minmax(140px,1fr) max-content max-content max-content;align-items:center;gap:10px;margin:10px 0 12px;padding:9px 10px;border:1px solid var(--border-light);background:var(--surface-alt)}
 .tree-controls label{color:var(--ink);font-size:12px;font-weight:600}.tree-controls input{width:100%;min-height:44px;accent-color:var(--green)}.tree-controls output{color:var(--sub);font:11px "JetBrains Mono",monospace;white-space:nowrap}
 .blocked-reason{padding:8px 10px;border-left:3px solid var(--warn);background:var(--surface-alt);color:var(--warn)}
 .blocked-chip{max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -102,3 +102,7 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
   .tree-mobile-list .tree-ticket{min-height:44px;min-width:44px}
   .tree-controls{display:none}
 }
+
+.tree-control-copy{display:grid;gap:1px;line-height:1.25}.tree-control-copy span{color:var(--sub);font-size:10px;white-space:nowrap}
+.tree-control-button{min-height:34px;padding:0 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--ink);font-size:11px;white-space:nowrap}.tree-control-button:hover,.tree-control-button:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.12);outline:none}.tree-control-button.secondary{color:var(--sub)}
+.git-tree{background:#f8fafc}.commit circle{r:6px}.commit.head circle{r:8px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
