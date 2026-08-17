@@ -360,6 +360,7 @@ struct ReaderView: View {
 
     @MainActor
     private func loadPublication() async {
+        let request = publicationLoadCoordinator.beginRequest()
         switch readerState.runtime.beginLoadAttempt() {
         case .holdSlow:
             readerState.isWebViewReady = false
@@ -379,6 +380,7 @@ struct ReaderView: View {
             downloadManager: downloadManager
         )
         await publicationLoadCoordinator.load(
+            request: request,
             book: book,
             loader: loader,
             onPhase: { phase in
