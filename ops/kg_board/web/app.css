@@ -105,4 +105,4 @@ main{width:min(100%,1320px);margin:auto;padding:20px}.metrics{display:grid;grid-
 
 .tree-control-copy{display:grid;gap:1px;line-height:1.25}.tree-control-copy span{color:var(--sub);font-size:10px;white-space:nowrap}
 .tree-control-button{min-height:34px;padding:0 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--ink);font-size:11px;white-space:nowrap}.tree-control-button:hover,.tree-control-button:focus-visible{border-color:var(--green);box-shadow:0 0 0 2px rgba(36,115,78,.12);outline:none}.tree-control-button.secondary{color:var(--sub)}
-.git-tree{background:#f8fafc}.commit circle{r:6px}.commit.head circle{r:8px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
+.git-tree{background:#f8fafc}.git-tree:focus-visible{outline:2px solid var(--green);outline-offset:2px}.commit circle{r:6px}.commit.head circle{r:8px}.commit:focus-visible{outline:2px solid var(--green);outline-offset:4px}

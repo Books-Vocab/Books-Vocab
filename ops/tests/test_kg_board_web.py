@@ -312,6 +312,7 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     assert "lane-header" in js
     assert "foreignObject" not in js
     assert ".tree-legend" in css
+    assert ".git-tree:focus-visible" in css
 
 
 def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
