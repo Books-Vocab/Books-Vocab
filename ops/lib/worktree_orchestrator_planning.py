@@ -496,6 +496,18 @@ def plan_gates(changed_files: list[str],
                       "this is unavailable test infrastructure, not a change verdict"),
             ))
         else:
+            if fallback and targets:
+                # Keep the conservative whole-suite fallback for S2, but do not make
+                # hand-back S1 a static-only ceremony when the diff contains concrete
+                # existing tests.  The focused gate is the honest cheap functional
+                # smoke; the whole suite remains the higher-cost regression floor.
+                gates.append(_shell(
+                    "ops-pytest-focused", "ops",
+                    ["uv", "run", "--no-project", "--python", "3.13",
+                     "--with", "pytest", "--with", "pyjwt",
+                     "--with", "cryptography", "pytest", "-q", *sorted(targets)],
+                    "block",
+                ))
             selected = ["ops/tests"] if fallback else sorted(targets)
             gates.append(_shell("ops-pytest", "ops",
                                 ["uv", "run", "--no-project", "--python", "3.13",
