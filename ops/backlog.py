@@ -66,6 +66,7 @@ GIT_REPO = ROOT
 DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
 DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
 _STORE_LOCK_STATE = threading.local()
+_ENTRY_LOCK_STATE = threading.local()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import dispatch_preflight  # noqa: E402
@@ -571,12 +572,36 @@ def _entry_lock(path: Path):
     destination and must serialize with ordinary add/update/verify/anchor writers,
     so the lock order is store then entry.  The sidecars belong in the gitignored
     worktree cache, keyed by the absolute store/path, so they never become backlog
-    data.
+    data.  Same-thread re-entry skips duplicate file descriptors; other threads
+    still wait on the OS-level entry lock.
     """
-    try:
-        with _store_lock(Path(path).parent):
-            with _backlog_store.entry_lock(ROOT, path):
+    path = Path(path)
+    key = path.resolve()
+    held = getattr(_ENTRY_LOCK_STATE, "held", None)
+    if held is None:
+        held = {}
+        _ENTRY_LOCK_STATE.held = held
+    depth = held.get(key, 0)
+    if depth:
+        held[key] = depth + 1
+        try:
+            with _store_lock(path.parent):
                 yield
+        finally:
+            if depth == 1:
+                held.pop(key, None)
+            else:
+                held[key] = depth
+        return
+
+    try:
+        with _store_lock(path.parent):
+            with _backlog_store.entry_lock(ROOT, path):
+                held[key] = 1
+                try:
+                    yield
+                finally:
+                    held.pop(key, None)
     except _backlog_store.EntryLockUnavailable as exc:
         raise BacklogError(f"{exc}; nothing was written") from exc
 
