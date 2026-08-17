@@ -281,6 +281,36 @@ struct ActiveNotebookStoreTests {
         #expect(store.activeNotebookIdIfSet == nil)
     }
 
+    @Test func serverRequestIdentityRejectsAccountOrCredentialChanges() {
+        let auth = TestAuth()
+        #expect(
+            NotebookListCoordinator.acceptsServerResponse(
+                authManager: auth,
+                requestedUserId: "account-a",
+                requestedToken: "token-a"
+            )
+        )
+
+        auth.userId = "account-b"
+        #expect(
+            !NotebookListCoordinator.acceptsServerResponse(
+                authManager: auth,
+                requestedUserId: "account-a",
+                requestedToken: "token-a"
+            )
+        )
+
+        auth.userId = "account-a"
+        auth.token = "token-b"
+        #expect(
+            !NotebookListCoordinator.acceptsServerResponse(
+                authManager: auth,
+                requestedUserId: "account-a",
+                requestedToken: "token-a"
+            )
+        )
+    }
+
     @Test("snapshot 讀本地層")
     func snapshotReadsLocal() {
         let store = ActiveNotebookStore(defaults: makeDefaults(), cloud: FakeCloudKVStore())
