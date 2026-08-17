@@ -540,6 +540,21 @@ def test_gate_plan_ops_src_with_matching_test_runs_it():
     assert group["tier"] == "S2"
     assert "ops/tests/test_worktree_orchestrate.py" not in group["cmd"]
 
+
+def test_gate_plan_core_gate_inputs_keeps_the_focused_gate_route():
+    exists = {"ops/tests/test_worktree_orchestrate_gate.py"}.__contains__
+    gates = _by_name(plan_gates(
+        ["ops/lib/worktree_orchestrator_core_gate_inputs.py"],
+        ops_test_exists=exists,
+    ))
+    focused = gates["ops-pytest-orchestrator-focused"]
+    group = gates["ops-pytest-orchestrator-group"]
+    assert "orchestrator.gate" in focused["cmd"]
+    assert "orchestrator.fallback" not in focused["cmd"]
+    assert "orchestrator.gate" in group["cmd"]
+    assert "orchestrator.fallback" not in group["cmd"]
+
+
 @pytest.mark.parametrize("changed", [
     ["ops/worktree_orchestrate.py", "ops/tests/test_worktree_orchestrate.py"],
     ["backend/src/kg/app.py"],

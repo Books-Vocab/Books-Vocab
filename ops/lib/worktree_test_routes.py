@@ -65,6 +65,7 @@ _BEHAVIOR_ROUTES: tuple[dict[str, Any], ...] = (
     _route(
         "orchestrator.gate",
         ["ops/lib/worktree_orchestrator_gate.py",
+         "ops/lib/worktree_orchestrator_core_gate_inputs.py",
          "ops/lib/worktree_orchestrator_core_gate_execution.py",
          "ops/tests/test_worktree_orchestrate_gate.py"],
         "ops/tests/test_worktree_orchestrate_gate.py",
