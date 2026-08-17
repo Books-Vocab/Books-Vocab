@@ -77,6 +77,132 @@ def _by_name(gates):
     return {g["name"]: g for g in gates}
 
 
+def test_gate_deferral_admission_requires_a_named_low_or_medium_ticket(monkeypatch, tmp_path):
+    """A deferral is a recorded exception, never an unlabelled bypass."""
+    spec = {"name": "ios-test-unit", "level": "block", "category": "ios",
+            "tier": "S2"}
+    monkeypatch.setattr(
+        MODULE.backlog_tool,
+        "load_entry",
+        lambda _store, entry_id: {
+            "id": entry_id, "status": "triaged", "severity": "med",
+        },
+    )
+    admitted, problems = MODULE._validate_gate_deferrals(
+        ["ios-test-unit=IMP-20260817-abcdef"],
+        [spec], [spec], str(tmp_path),
+    )
+    assert problems == []
+    assert admitted == [{
+        "gate": "ios-test-unit",
+        "ticket_id": "IMP-20260817-abcdef",
+        "status": "triaged",
+        "severity": "med",
+        "tier": "S2",
+    }]
+
+
+@pytest.mark.parametrize(
+    ("request_arg", "ticket", "expected_fragment"),
+    [
+        ("ios-test-unit=IMP-20260817-abcdef",
+         {"status": "triaged", "severity": "high"}, "high"),
+        ("ios-build=IMP-20260817-abcdef",
+         {"status": "triaged", "severity": "low"}, "S1"),
+        ("ios-test-unit=IMP-20260817-abcdef",
+         {"status": "fixed", "severity": "low"}, "status=fixed"),
+    ],
+)
+def test_gate_deferral_rejects_major_or_closed_exceptions(
+    monkeypatch, tmp_path, request_arg, ticket, expected_fragment,
+):
+    specs = [
+        {"name": "ios-build", "level": "block", "category": "ios", "tier": "S1"},
+        {"name": "ios-test-unit", "level": "block", "category": "ios", "tier": "S2"},
+    ]
+    monkeypatch.setattr(
+        MODULE.backlog_tool,
+        "load_entry",
+        lambda _store, entry_id: {"id": entry_id, **ticket},
+    )
+    admitted, problems = MODULE._validate_gate_deferrals(
+        [request_arg], specs, specs, str(tmp_path),
+    )
+    assert admitted == []
+    assert len(problems) == 1
+    assert expected_fragment in problems[0]
+
+
+def test_gate_deferral_cannot_target_a_tier_that_was_not_run(monkeypatch, tmp_path):
+    spec = {"name": "ios-build-catalyst", "level": "block", "category": "ios",
+            "tier": "S3"}
+    monkeypatch.setattr(
+        MODULE.backlog_tool,
+        "load_entry",
+        lambda _store, entry_id: {
+            "id": entry_id, "status": "open", "severity": "low",
+        },
+    )
+    admitted, problems = MODULE._validate_gate_deferrals(
+        ["ios-build-catalyst=IMP-20260817-abcdef"], [spec], [], str(tmp_path),
+    )
+    assert admitted == []
+    assert "not selected" in problems[0]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
+def test_gate_records_a_deferred_s2_block_as_warn_and_cutover_can_preview(
+    scratch, monkeypatch,
+):
+    tmp_path, _repo, _remote = scratch
+    state = str(tmp_path / "deferred-gate.json")
+    wt = _open_wt(state, slug="deferred-gate")
+    source = Path(wt) / "ops" / "tests" / "test_deferred_gate.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("# focused fixture\n", encoding="utf-8")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "exercise deferred gate"], wt)
+    spec = {
+        "name": "ops-pytest", "category": "ops", "kind": "shell",
+        "level": "block", "tier": "S2", "cmd": ["false"],
+    }
+    monkeypatch.setattr(MODULE, "plan_gates", lambda *args, **kwargs: [spec])
+    monkeypatch.setattr(
+        MODULE.backlog_tool,
+        "load_entry",
+        lambda _store, entry_id: {
+            "id": entry_id, "status": "triaged", "severity": "low",
+        },
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_run_gate",
+        lambda spec, worktree, *, record_path=None, state=None: {
+            "name": spec["name"], "category": spec["category"],
+            "level": spec["level"], "status": "block", "rc": 1,
+            "summary": "focused failure",
+        },
+    )
+
+    rc, gate = _run_json([
+        "gate", "--worktree", wt, "--state", state, "--gate-tier", "S2",
+        "--defer-gate", "ops-pytest=IMP-20260817-abcdef", "--json",
+    ])
+    assert rc == MODULE.EXIT_OK
+    assert gate["verdict"] == "warn"
+    assert gate["deferred_failures"][0]["ticket_id"] == "IMP-20260817-abcdef"
+    assert gate["gates"][0]["status"] == "warn"
+    assert gate["gates"][0]["original_status"] == "block"
+    assert gate["gates"][0]["deferral"]["disposition"] == "deferred"
+
+    rc, cut = _run_json([
+        "cutover", "--worktree", wt, "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_OK
+    assert cut["mode"] == "dry-run"
+    assert cut["gate_tier"] == "S2"
+
+
 def test_gate_omission_always_plans_official_deck_check():
     """The deck index check is fixed-set, not selected by a changed path."""
     gates = plan_gates(
@@ -10202,6 +10328,30 @@ def test_integrate_is_wired_into_the_parser():
     ])
     assert cw.func is MODULE.cmd_close_wave
     assert cw.sync is True and cw.commit is False
+
+
+def test_gate_tiering_and_deferral_flags_are_preserved_by_each_delivery_entrypoint():
+    parser = MODULE.build_parser()
+    gate = parser.parse_args([
+        "gate", "--worktree", "/w", "--gate-tier", "S1",
+        "--defer-gate", "ops-pytest=IMP-20260817-abcdef",
+    ])
+    assert gate.gate_tier == "S1"
+    assert gate.defer_gate == ["ops-pytest=IMP-20260817-abcdef"]
+
+    integrate = parser.parse_args([
+        "integrate", "--slug", "wave", "--branches", "feat/source",
+        "--gate-tier", "S3", "--defer-gate", "ops-pytest=IMP-20260817-fedcba",
+    ])
+    assert integrate.gate_tier == "S3"
+    assert integrate.defer_gate == ["ops-pytest=IMP-20260817-fedcba"]
+
+    close_wave = parser.parse_args([
+        "close-wave", "--slug", "wave", "--branches", "feat/source",
+        "--gate-tier", "S4",
+    ])
+    assert close_wave.gate_tier == "S4"
+    assert close_wave.defer_gate == []
 
 
 @gitmark

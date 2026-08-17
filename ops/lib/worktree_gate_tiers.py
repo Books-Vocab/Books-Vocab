@@ -123,6 +123,50 @@ def select_plan(plan: list[dict[str, Any]], requested: str) -> tuple[list[dict[s
     return executed, deferred
 
 
+def release_gate_plan() -> list[dict[str, Any]]:
+    """Return the release-only full validation profile.
+
+    S4 is intentionally explicit and expensive.  It is not inferred from an
+    ordinary changed-file plan and it is never a target for deferral.  The commands
+    are the repository's existing release/readiness entry points, not a second test
+    runner hidden inside the orchestrator.
+    """
+    return [
+        {
+            "name": "release-backend-full",
+            "category": "release",
+            "kind": "shell",
+            "level": "block",
+            "tier": "S4",
+            "cmd": ["uv", "run", "--project", "backend", "python", "-m", "pytest", "-q"],
+        },
+        {
+            "name": "release-ops-full",
+            "category": "release",
+            "kind": "shell",
+            "level": "block",
+            "tier": "S4",
+            "cmd": ["./ops/test_ops.sh"],
+        },
+        {
+            "name": "release-ios-all-targets",
+            "category": "release",
+            "kind": "shell",
+            "level": "block",
+            "tier": "S4",
+            "cmd": ["./ops/ios_ops.sh", "test", "--all-targets", "--lease", "--json"],
+        },
+        {
+            "name": "release-ios-readiness",
+            "category": "release",
+            "kind": "shell",
+            "level": "block",
+            "tier": "S4",
+            "cmd": ["./ops/ios_ops.sh", "gate", "release", "--json"],
+        },
+    ]
+
+
 def parse_deferral(value: str) -> tuple[str, str]:
     """Parse the CLI shape ``gate-name=TICKET-ID``."""
     gate_name, separator, ticket_id = str(value).partition("=")
@@ -164,4 +208,3 @@ def required_cutover_tier(changed_files: list[str]) -> str:
     if functional_roots:
         return "S2"
     return "S0"
-

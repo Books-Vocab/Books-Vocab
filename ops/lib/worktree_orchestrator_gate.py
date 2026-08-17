@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from lib import worktree_gate_tiers as gate_tiers
+
 def bind_runtime(namespace: dict[str, object]) -> None:
     """Bind the runtime namespace used by extracted gate commands."""
     for name, value in namespace.items():
@@ -32,6 +34,106 @@ def bind_runtime(namespace: dict[str, object]) -> None:
             globals()[name] = value
     if namespace.get("__file__"):
         globals()["__file__"] = namespace["__file__"]
+
+
+def _deferral_store_candidates(worktree: str | Path) -> list[Path]:
+    """Return the worktree and primary backlog stores, without duplicating a path."""
+    candidates = [
+        Path(worktree) / "docs" / "runbook" / "backlog",
+        Path(primary_root()) / "docs" / "runbook" / "backlog",
+    ]
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
+def _load_deferral_ticket(worktree: str | Path, ticket_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Load one existing ticket from the candidate stores.
+
+    Deferral admission is deliberately fail-closed: a missing or malformed ticket is
+    not a reason to turn a red gate into a warning.  The lookup is read-only and does
+    not invoke backlog lifecycle commands, so this feature does not create a second
+    ticket/status model.
+    """
+    for store in _deferral_store_candidates(worktree):
+        try:
+            payload = backlog_tool.load_entry(store, ticket_id)
+        except backlog_tool.EntryNotFound:
+            continue
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            return None, f"ticket {ticket_id} could not be read from {store}: {exc}"
+        if not isinstance(payload, dict):
+            return None, f"ticket {ticket_id} is not a JSON object"
+        if payload.get("id") != ticket_id:
+            return None, f"ticket {ticket_id} has mismatched payload id {payload.get('id')!r}"
+        return payload, None
+    return None, f"backlog ticket {ticket_id} was not found"
+
+
+def _validate_gate_deferrals(
+    raw_requests: Iterable[str] | None,
+    full_plan: list[dict[str, Any]],
+    selected_plan: list[dict[str, Any]],
+    worktree: str | Path,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Admit explicit ``gate=ticket`` exceptions before any expensive gate runs."""
+    admitted: list[dict[str, Any]] = []
+    problems: list[str] = []
+    requests = list(raw_requests or [])
+    full_by_name = {str(spec.get("name")): spec for spec in full_plan}
+    selected_names = {str(spec.get("name")) for spec in selected_plan}
+    seen_gates: set[str] = set()
+    for raw in requests:
+        try:
+            gate_name, ticket_id = gate_tiers.parse_deferral(raw)
+        except gate_tiers.GateTierError as exc:
+            problems.append(str(exc))
+            continue
+        if gate_name in seen_gates:
+            problems.append(f"gate {gate_name!r} has more than one deferral request")
+            continue
+        seen_gates.add(gate_name)
+        spec = full_by_name.get(gate_name)
+        if spec is None:
+            problems.append(f"deferral names unknown gate {gate_name!r}")
+            continue
+        if gate_name not in selected_names:
+            problems.append(
+                f"gate {gate_name!r} was not selected at this tier; raise --gate-tier "
+                "or remove the deferral"
+            )
+            continue
+        ticket, error = _load_deferral_ticket(worktree, ticket_id)
+        if error:
+            problems.append(error)
+            continue
+        assert ticket is not None
+        status = str(ticket.get("status") or "")
+        severity = str(ticket.get("severity") or "")
+        if status not in {"open", "triaged", "contract-blocked"}:
+            problems.append(
+                f"ticket {ticket_id} status={status} cannot defer a failing gate"
+            )
+            continue
+        allowed, reason = gate_tiers.deferral_allowed(spec, severity)
+        if not allowed:
+            problems.append(
+                f"ticket {ticket_id} cannot defer gate {gate_name!r}: {reason}"
+            )
+            continue
+        admitted.append({
+            "gate": gate_name,
+            "ticket_id": ticket_id,
+            "status": status,
+            "severity": severity,
+            "tier": spec.get("tier", "S2"),
+        })
+    return admitted, problems
 
 def _interrupted_operation(worktree: str | Path) -> str | None:
     """`"rebase"` / `"merge"` / `"cherry-pick"` when one is in flight here, else None.
@@ -129,9 +231,29 @@ def cmd_gate(args: argparse.Namespace) -> int:
         _emit({"schema": GATE_SCHEMA, "step": "gate", "error": str(exc),
                "worktree": worktree}, args.json, f"✗ gate refused: {exc}")
         return EXIT_USAGE
+    if gate_tier == "S4":
+        full_plan = [*full_plan, *gate_tiers.release_gate_plan()]
     plan, deferred_plan = select_gate_plan(full_plan, gate_tier)
+    deferral_requests, deferral_problems = _validate_gate_deferrals(
+        getattr(args, "defer_gate", None), full_plan, plan, worktree,
+    )
+    if deferral_problems:
+        payload = {
+            "schema": GATE_SCHEMA,
+            "step": "gate",
+            "error": "gate deferral admission failed",
+            "problems": deferral_problems,
+            "gate_tier": gate_tier,
+            "worktree": worktree,
+        }
+        _emit(payload, args.json,
+              "✗ gate refused: gate deferral admission failed\n"
+              + "\n".join(f"  - {problem}" for problem in deferral_problems))
+        return EXIT_USAGE
+    deferrals_by_gate = {item["gate"]: item for item in deferral_requests}
     required_tier = required_cutover_tier(changed)
     results: list[dict[str, Any]] = []
+    deferred_failures: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     progress_path = _gate_progress_path(args.state, worktree)
     progress_started = time.monotonic()
@@ -216,6 +338,24 @@ def cmd_gate(args: argparse.Namespace) -> int:
                     "reason": reason,
                 }
                 result["input"] = current_input
+            deferral = deferrals_by_gate.get(result.get("name"))
+            if deferral is not None:
+                original_status = result.get("status")
+                disposition = "deferred" if original_status == "block" else "not-applied"
+                result["deferral"] = {**deferral, "disposition": disposition}
+                if original_status == "block":
+                    result["original_status"] = original_status
+                    result["status"] = "warn"
+                    result["summary"] = (
+                        f"deferred under {deferral['ticket_id']} "
+                        f"(severity={deferral['severity']}); original failure: "
+                        f"{result.get('summary', '')}"
+                    )
+                    deferred_failures.append({
+                        **deferral,
+                        "original_status": original_status,
+                        "summary": result.get("summary", ""),
+                    })
             results.append(result)
             result["tier"] = spec.get("tier", "S2")
             completed.append({"name": result["name"], "status": result["status"]})
@@ -295,8 +435,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
               "deferred_plan": [{"name": g["name"], "level": g["level"],
                                  "category": g["category"],
                                  "tier": g.get("tier", "S2"),
-                                 "note": g.get("note")}
+                                "note": g.get("note")}
                                 for g in deferred_plan],
+              "deferral_requests": deferral_requests,
+              "deferred_failures": deferred_failures,
               "gates": results, "verdict": verdict,
               "gate_reuse": _reuse_summary(results)}
     if not args.plan_only:
@@ -325,7 +467,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   if not args.plan_only else "<not recorded>")
     executed_count = _executed_gate_count(results)
     receipt_line = (f"gate={verdict} tier={gate_tier} required={required_tier} "
-                    f"deferred={len(deferred_plan)} record={record_ref} "
+                    f"deferred={len(deferred_plan)} carried={len(deferred_failures)} "
+                    f"record={record_ref} "
                     f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} "
                     f"executed={executed_count} {breakdown} "
                     f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
@@ -365,6 +508,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
     if deferred_plan:
         lines.append("  ↷ deferred by tier: " + ", ".join(
             f"{g['name']}[{g.get('tier', 'S2')}]" for g in deferred_plan
+        ))
+    if deferred_failures:
+        lines.append("  ↷ carried with backlog tickets: " + ", ".join(
+            f"{item['gate']}→{item['ticket_id']}" for item in deferred_failures
         ))
     if not plan:
         lines.append("  (no impact-based gates selected for these changes)")
@@ -465,6 +612,11 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                       f"with {worktree}/ops/worktree_orchestrate.py")
         elif verdict == "block":
             refuse = "gate verdict is 'block' — fix the blocking gate(s) and re-run `gate`"
+        elif gate_tier == "S4" and verdict != "pass":
+            refuse = ("S4 release gate must be fully green (pass); it cannot land with "
+                      f"verdict {verdict!r} — resolve warnings and re-run `gate`")
+        elif gate_tier == "S4" and rec.get("deferred_failures"):
+            refuse = "S4 release gate has deferred failures — release checks cannot be carried"
         elif not isinstance(planned_gates, list) or not isinstance(recorded_gates, list):
             refuse = ("gate record is malformed (plan/gates must be lists) — "
                       "re-run `gate` before cutover")

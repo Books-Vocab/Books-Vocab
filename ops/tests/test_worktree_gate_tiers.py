@@ -54,6 +54,21 @@ def test_select_plan_returns_executed_and_explicitly_deferred_checks() -> None:
     assert [item["name"] for item in deferred] == ["ios-build-catalyst"]
 
 
+def test_s4_is_an_explicit_release_profile_and_has_no_deferrable_gate() -> None:
+    release = tiers.release_gate_plan()
+    assert release
+    assert {item["tier"] for item in release} == {"S4"}
+    assert {item["name"] for item in release} == {
+        "release-backend-full",
+        "release-ops-full",
+        "release-ios-all-targets",
+        "release-ios-readiness",
+    }
+    for item in release:
+        allowed, _reason = tiers.deferral_allowed(item, "low")
+        assert allowed is False
+
+
 @pytest.mark.parametrize(
     ("gate_tier", "severity", "allowed"),
     [("S0", "low", False), ("S1", "med", False), ("S2", "low", True),

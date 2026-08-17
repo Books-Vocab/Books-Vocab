@@ -441,6 +441,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help=("verification depth: S0 static, S1 focused, S2 affected "
                           "module, S3 cross-module, S4 release; "
                           f"default {DEFAULT_GATE_TIER}"))
+    ga.add_argument("--defer-gate", action="append", default=[], metavar="GATE=TICKET",
+                    help=("explicitly carry a failing S2/S3 gate with an existing "
+                          "low/med backlog ticket; repeatable, e.g. "
+                          "ios-test-unit=IMP-20260817-abcdef"))
     ga.add_argument("--receipt-line", action="store_true",
                     help="print ONLY the paste-ready receipt line (the normal report already ends with it)")
     ga.add_argument("--plan-only", action="store_true",
@@ -510,6 +514,8 @@ def build_parser() -> argparse.ArgumentParser:
     cw.add_argument("--gate-tier", choices=GATE_TIERS, default=DEFAULT_GATE_TIER,
                     help=("daily closure verification depth; use S4 only for an "
                           f"explicit release checkpoint (default {DEFAULT_GATE_TIER})"))
+    cw.add_argument("--defer-gate", action="append", default=[], metavar="GATE=TICKET",
+                    help="carry named non-critical Gate failures with existing tickets")
     cw.set_defaults(func=cmd_close_wave)
 
     ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
@@ -551,6 +557,8 @@ def build_parser() -> argparse.ArgumentParser:
     ig.add_argument("--gate-tier", choices=GATE_TIERS, default=DEFAULT_GATE_TIER,
                     help=("verification depth for the one integration Gate; persisted "
                           f"across --continue (default {DEFAULT_GATE_TIER})"))
+    ig.add_argument("--defer-gate", action="append", default=[], metavar="GATE=TICKET",
+                    help="carry named non-critical Gate failures with existing tickets")
     ig.add_argument("--independent", action="store_true",
                     help="persist the explicit independent no-ticket provenance "
                          "marker; --continue must repeat this opt-in")

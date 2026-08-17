@@ -275,6 +275,16 @@ hand-back 回報是 agent 協作欄位：提交者必須列出 exact source thre
 檔案、指紋與 rerun 理由；未知 scope、legacy record、輸入或定義變動、`block`/`inconclusive` 來源
 一律重跑。這是成本最佳化，不是跳過 fresh-HEAD 安全護欄。
 
+Gate verification depth is explicit: `--gate-tier S0..S4` selects static smoke, focused
+functional smoke, affected-module regression, cross-module integration, or release/full
+validation. The default daily cutover profile is S2, while `required_cutover_tier` raises
+the floor for cross-root changes; cutover rejects a verdict below that floor. A non-critical
+S2/S3 failure may be carried only with an existing `--defer-gate GATE=TICKET` ticket whose
+status/severity pass admission; the receipt keeps both the original failure and deferral.
+S4 appends the explicit release profile and never admits deferral. Integration and
+`close-wave` persist the selected tier/deferrals across resume so a retry cannot silently
+change verification depth.
+
 iOS 可執行 gate 的 input scope 依 command delegate 分離：`ios-build` / Catalyst 雜湊 iOS tree、
 `ios_ops.sh` 共用載入面與 build runner；unit/UI/live-demo compile 改雜湊同一共用面與 test runner。
 因此只修 `ios_test.sh` 時可重用已綠 build，改共用 dispatcher/helper 時兩者仍重跑；未具名的新
