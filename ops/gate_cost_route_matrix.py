@@ -12,6 +12,7 @@ decision for a Manager to adjudicate.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import posixpath
 import re
@@ -134,7 +135,13 @@ def _is_shared_fixture(path: str) -> bool:
 
 def _is_ui_surface(path: str) -> bool:
     lowered = path.lower()
-    return lowered.startswith("ios/") and any(marker in lowered for marker in _UI_MARKERS)
+    if not lowered.startswith("ios/"):
+        return False
+    parts = lowered.split("/")
+    return any(marker in lowered for marker in _UI_MARKERS) or any(
+        part.endswith(("uitest", "uitests", "ui_test", "ui_tests"))
+        for part in parts[1:]
+    )
 
 
 def _minimum_for_files(changed_files: list[str]) -> tuple[str | None, list[str]]:
@@ -147,7 +154,6 @@ def _minimum_for_files(changed_files: list[str]) -> tuple[str | None, list[str]]
         for path in changed_files
         if not _is_neutral(path)
         and not _is_control_plane(path)
-        and not _is_shared_fixture(path)
         and path.split("/", 1)[0] not in _FUNCTIONAL_ROOTS
     ]
     if unknown:
@@ -212,6 +218,14 @@ def _fingerprint_summary(
     }
 
 
+def _canonical_digest(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _validate_fingerprint(
     fingerprint: Mapping[str, Any] | None,
 ) -> tuple[bool, list[str], list[str], str | None, dict[str, Any]]:
@@ -241,15 +255,60 @@ def _validate_fingerprint(
         except GateTierError:
             problems.append("fingerprint-tier-unknown")
 
-    head = fingerprint.get("exact_head") or fingerprint.get("head_sha")
-    if not isinstance(head, str) or not _HEAD_RE.fullmatch(head):
+    exact_head = fingerprint.get("exact_head")
+    head_sha = fingerprint.get("head_sha")
+    if not isinstance(exact_head, str) or not _HEAD_RE.fullmatch(exact_head):
+        problems.append("fingerprint-exact-head-invalid")
+    if not isinstance(head_sha, str) or not _HEAD_RE.fullmatch(head_sha):
         problems.append("fingerprint-head-invalid")
+    elif isinstance(exact_head, str) and exact_head != head_sha:
+        problems.append("fingerprint-head-mismatch")
     digest = fingerprint.get("fingerprint_digest")
     if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
         problems.append("fingerprint-digest-invalid")
+    else:
+        try:
+            body = dict(fingerprint)
+            body.pop("fingerprint_digest", None)
+            if digest != _canonical_digest(body):
+                problems.append("fingerprint-digest-mismatch")
+        except (TypeError, ValueError):
+            problems.append("fingerprint-digest-uncomputable")
+
+    raw_changed_files = fingerprint.get("changed_files")
+    if not isinstance(raw_changed_files, list):
+        problems.append("fingerprint-files-invalid")
+    elif not isinstance(fingerprint.get("changed_file_digest"), str) \
+            or not _SHA256_RE.fullmatch(fingerprint["changed_file_digest"]):
+        problems.append("fingerprint-changed-file-digest-invalid")
+    else:
+        try:
+            if fingerprint["changed_file_digest"] != _canonical_digest(raw_changed_files):
+                problems.append("fingerprint-changed-file-digest-mismatch")
+        except (TypeError, ValueError):
+            problems.append("fingerprint-changed-file-digest-uncomputable")
+
     scope = fingerprint.get("scope")
-    if not isinstance(scope, Mapping) or scope.get("status") == "unknown":
+    if not isinstance(scope, Mapping) or scope.get("schema") != "kg.backlog.scope.v1":
         problems.append("fingerprint-scope-unknown")
+    else:
+        scope_files = scope.get("files")
+        scope_paths: list[str] = []
+        if not isinstance(scope_files, list) or not scope_files:
+            problems.append("fingerprint-scope-files-invalid")
+        else:
+            for item in scope_files:
+                if not isinstance(item, Mapping) or item.get("operation") not in {"add", "modify"}:
+                    problems.append("fingerprint-scope-files-invalid")
+                    continue
+                try:
+                    scope_paths.append(_normalise_path(item.get("path")))
+                except (RouteContractError, TypeError):
+                    problems.append("fingerprint-scope-files-invalid")
+            if len(scope_paths) != len(set(scope_paths)):
+                problems.append("fingerprint-scope-files-invalid")
+            if sorted(scope_paths) != paths:
+                problems.append("fingerprint-scope-files-mismatch")
 
     valid = not problems
     summary = _fingerprint_summary(
