@@ -5,6 +5,8 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${KG_DISK_GUARD_WORKSPACE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+# shellcheck source=lib/userland_compat.sh
+source "$SCRIPT_DIR/lib/userland_compat.sh"
 STATE_FILE="${KG_DISK_GUARD_STATE:-$HOME/Library/Application Support/KG/disk_guard.json}"
 WARN_FREE_GIB="${KG_DISK_GUARD_WARN_FREE_GIB:-20}"
 CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-10}"

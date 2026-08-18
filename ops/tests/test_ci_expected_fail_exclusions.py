@@ -21,15 +21,12 @@ def run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedPr
     )
 
 
-def excluded_groups_from_source() -> list[str]:
+def mac_groups_from_source() -> list[str]:
     text = TABLE.read_text()
-    body = text.split("EXCLUDED_GROUPS=(", 1)[1].split("\n)", 1)[0]
+    body = text.split("MAC_GROUPS=(", 1)[1].split("\n)", 1)[0]
     groups: list[str] = []
     for line in body.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        groups.append(line.split('"', 2)[1].split("|", 1)[0])
+        groups.extend(line.split("#", 1)[0].split())
     return groups
 
 
@@ -40,13 +37,13 @@ def make_runner(tmp_path: Path, rc: int) -> Path:
     return runner
 
 
-def test_print_excluded_groups_lists_every_exclusion() -> None:
-    result = run("./ops/tests/test_ops_ci_coverage.sh", "--print-excluded-groups")
+def test_print_mac_groups_lists_every_non_linux_group() -> None:
+    result = run("./ops/tests/test_ops_ci_coverage.sh", "--print-mac-groups")
     assert result.returncode == 0, result.stderr
     got = [line for line in result.stdout.splitlines() if line]
-    want = excluded_groups_from_source()
+    want = mac_groups_from_source()
     assert got == want
-    assert len(got) >= 9
+    assert len(got) == 6
 
 
 def test_all_exclusions_failing_is_a_green_gate(tmp_path: Path) -> None:
@@ -61,7 +58,7 @@ def test_a_surviving_exclusion_turns_the_gate_red(tmp_path: Path) -> None:
     env = os.environ | {"KG_EXPECTED_FAIL_RUNNER": str(runner)}
     result = run("./ops/ci_expected_fail_exclusions.sh", env=env)
     assert result.returncode == 1
-    assert "gate-can-fail" in result.stderr
+    assert "release" in result.stderr
     assert "ios-ops" in result.stderr
 
 

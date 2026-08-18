@@ -23,7 +23,7 @@ Closes #
 
 - [ ] I checked `docs/registry.yml` and ran the relevant docs impact/lint gate.
 - [ ] I preserved production approval, health checks, and rollback behavior when applicable.
-- [ ] Any follow-up is a separate GitHub Issue, not a new local backlog record.
+- [ ] Any follow-up is a separate GitHub Issue, not a new local tracking record.
 
 ## Notes
 

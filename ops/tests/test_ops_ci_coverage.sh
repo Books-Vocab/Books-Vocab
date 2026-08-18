@@ -73,7 +73,7 @@ if [[ "${1:-}" == "--print-linux-groups" ]]; then
   printf '%s\n' "${LINUX_GROUPS[@]}"
   exit 0
 fi
-if [[ "${1:-}" == "--print-excluded-groups" ]]; then
+if [[ "${1:-}" == "--print-mac-groups" ]]; then
   (( failed == 0 )) || exit 1
   printf '%s\n' "${MAC_GROUPS[@]}"
   exit 0

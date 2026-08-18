@@ -44,6 +44,36 @@ EXIT_OK = 0
 EXIT_BLOCK = 1
 EXIT_USAGE = 64
 
+# Shell scripts outside the naming convention still need a local regression
+# target. This is only a file-to-test map for the local coordinator; GitHub owns
+# the Issue, PR, review, and merge state.
+OPS_SHELL_TEST_ALIASES: dict[str, str] = {
+    "ops/devops_kg_safe.sh": "ops/tests/test_devops_safe_lightsail_guard.sh",
+    "ops/install_lldb_forensics.sh": "ops/tests/test_lldb_crash_forensics.sh",
+    "ops/ios_test.sh": "ops/test_ios_test_discovery.sh",
+    "ops/ios_build.sh": "ops/test_ios_ops.sh",
+    "ops/ios_archive.sh": "ops/test_ios_ops.sh",
+    "ops/lib/ios_ops_catalog.sh": "ops/tests/test_catalog_agent_boundary.sh",
+    "ops/release_bump.sh": "ops/test_release.sh",
+    "ops/review_flip_probe.sh": "ops/tests/test_review_probe.sh",
+    "ops/shell_scan.sh": "ops/tests/test_script_help.sh",
+}
+OPS_SHELL_UNROUTABLE_TESTS = {"ops/test_ops.sh"}
+
+
+def _ops_shell_test_candidates(rel: str) -> list[str]:
+    """Return local regression targets for a changed shell script."""
+    base = rel.rsplit("/", 1)[-1]
+    if rel in OPS_SHELL_UNROUTABLE_TESTS:
+        return []
+    if base.startswith("test_"):
+        return [rel]
+    alias = OPS_SHELL_TEST_ALIASES.get(rel)
+    if not (rel.startswith("ops/") or "/" not in rel):
+        return [alias] if alias else []
+    return [candidate for candidate in
+            (f"ops/tests/test_{base}", f"ops/test_{base}", alias) if candidate]
+
 
 def _git(args: list[str], cwd: Path = ROOT) -> tuple[int, str]:
     try:
