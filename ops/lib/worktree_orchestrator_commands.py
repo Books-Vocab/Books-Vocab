@@ -118,8 +118,10 @@ def cmd_campaign_retire(args: argparse.Namespace) -> int:
     """Manager-only archival, including resolved-only stale reservations.
 
     A reservation with no active children is reconciled only when every terminal
-    child still has a valid typed receipt; active or provenance-drifted children
-    remain fail-closed.
+    child still has a valid typed receipt.  The same Manager-only entry may recover
+    one missing receipt, but only from an explicitly recorded, fully validated
+    completed child manifest; active or provenance-drifted children remain
+    fail-closed.
     """
     if getattr(args, "operator", "manager") != "manager":
         _emit({"schema": SCHEMA, "step": "campaign-retire",
@@ -131,6 +133,7 @@ def cmd_campaign_retire(args: argparse.Namespace) -> int:
         result = wr.retire_campaign(
             wr._state_path(args), campaign_id=args.campaign,
             reason=args.reason, commit=args.commit,
+            recover_missing_receipts=True,
         )
     except (OSError, ValueError, TypeError) as exc:
         _emit({"schema": SCHEMA, "step": "campaign-retire",

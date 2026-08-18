@@ -1495,6 +1495,134 @@ def abort_campaign(
 CAMPAIGN_RETIRE_SCHEMA = "kg.worktree.campaign-retire.v1"
 
 
+def _recovery_scope(reservation: dict[str, Any], ticket_ids: list[str]) -> list[dict[str, Any]]:
+    """Return the persisted write-site projection for one campaign child set."""
+    details = reservation.get("ticket_details")
+    if not isinstance(details, dict):
+        raise ValueError("campaign ticket details are missing")
+    sites: list[dict[str, Any]] = []
+    for ticket_id in ticket_ids:
+        ticket = details.get(ticket_id)
+        if not isinstance(ticket, dict) or not isinstance(ticket.get("write_sites"), list):
+            raise ValueError(f"campaign ticket Scope is missing for {ticket_id}")
+        for site in ticket["write_sites"]:
+            if not isinstance(site, dict):
+                raise ValueError(f"campaign ticket Scope is invalid for {ticket_id}")
+            sites.append(copy.deepcopy(site))
+    return sites
+
+
+def _recovery_scope_key(sites: list[Any]) -> list[bytes]:
+    return sorted(_canonical_json(site) for site in sites)
+
+
+def _recover_missing_child_receipt(
+    record: dict[str, Any], reservation: dict[str, Any], *,
+    manifest_path: Path | None,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Project one exact completed child manifest into a missing receipt.
+
+    This is intentionally narrower than ordinary ``hand-back``.  It is used only
+    after campaign/partition/claim reconciliation has succeeded, and it never
+    guesses a source manifest from a branch, seal, or tip.  The registry record
+    must name the completed manifest explicitly.
+    """
+    problems: list[dict[str, Any]] = []
+    if record.get("handed_back_sha") is None:
+        problems.append({"kind": "child-unhanded", "branch": record.get("branch")})
+    if not isinstance(record.get("handback_seal"), dict):
+        problems.append({"kind": "handback-seal-missing", "branch": record.get("branch")})
+    problems.extend(
+        problem for problem in validate_handback_seal(record, repo=None, require_seal=True)
+        if problem.get("kind") != "handback-outcome-not-integrable"
+    )
+
+    source_value = record.get("completed_manifest")
+    if manifest_path is None or not isinstance(source_value, str) or not source_value.strip():
+        problems.append({"kind": "child-manifest-missing", "branch": record.get("branch")})
+        return None, problems
+    source = manifest_path.expanduser().resolve()
+    if not source.is_file():
+        problems.append({"kind": "child-manifest-missing", "branch": record.get("branch"),
+                         "path": str(source)})
+        return None, problems
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        problems.append({"kind": "child-manifest-invalid", "branch": record.get("branch"),
+                         "path": str(source), "detail": str(exc)})
+        return None, problems
+    if not isinstance(payload, dict):
+        problems.append({"kind": "child-manifest-invalid", "branch": record.get("branch"),
+                         "path": str(source), "detail": "manifest must be an object"})
+        return None, problems
+
+    expected_tickets = sorted(str(ticket) for ticket in (record.get("backlog") or []))
+    expected_branch = str(record.get("branch") or "")
+    expected_path = _norm(str(record.get("path") or ""))
+    expected_base = str(record.get("base_sha") or "")
+    head_values = [
+        payload[key] for key in ("head_sha", "integration_head") if key in payload
+    ]
+    branch_values = [
+        payload[key] for key in ("branches", "consumed_children") if key in payload
+    ]
+    checks = (
+        (payload.get("campaign_id") == reservation.get("campaign_id"), "campaign_id"),
+        (payload.get("partition_id") == record.get("partition_id"), "partition_id"),
+        (payload.get("branch") == expected_branch, "branch"),
+        (_norm(str(payload.get("path") or "")) == expected_path, "path"),
+        (expected_base == str(reservation.get("base") or ""), "record_base_sha"),
+        (payload.get("base_sha") == expected_base, "base_sha"),
+        (sorted(str(ticket) for ticket in (payload.get("ticket_ids") or []))
+         == expected_tickets, "ticket_ids"),
+        (bool(head_values) and all(value == record.get("handed_back_sha")
+                                   for value in head_values), "head_sha"),
+        (bool(branch_values) and all(value == [expected_branch]
+                                     for value in branch_values), "branches"),
+        (payload.get("campaign_manifest_digest") == reservation.get("manifest_digest"),
+         "campaign_manifest_digest"),
+    )
+    problems.extend({"kind": "child-manifest-provenance-drift", "field": field,
+                     "branch": expected_branch}
+                    for ok, field in checks if not ok)
+    try:
+        expected_scope = _recovery_scope(reservation, expected_tickets)
+    except ValueError as exc:
+        problems.append({"kind": "child-manifest-scope-missing", "branch": expected_branch,
+                         "detail": str(exc)})
+        expected_scope = []
+    actual_scope = payload.get("scope")
+    alternate_scope = payload.get("write_sites")
+    if (isinstance(actual_scope, list) and isinstance(alternate_scope, list)
+            and _recovery_scope_key(actual_scope) != _recovery_scope_key(alternate_scope)):
+        problems.append({"kind": "child-manifest-scope-drift", "branch": expected_branch})
+    if actual_scope is None:
+        actual_scope = alternate_scope
+    if not isinstance(actual_scope, list):
+        problems.append({"kind": "child-manifest-scope-missing", "branch": expected_branch})
+    elif (not all(isinstance(site, dict) for site in actual_scope)
+          or _recovery_scope_key(actual_scope) != _recovery_scope_key(expected_scope)):
+        problems.append({"kind": "child-manifest-scope-drift", "branch": expected_branch})
+    if problems:
+        return None, problems
+
+    try:
+        receipt = _child_receipt_from_manifest(
+            record,
+            campaign_id=str(reservation["campaign_id"]),
+            partition_id=str(record["partition_id"]),
+            role="child",
+            manifest_path=source,
+            tip_sha=str(record["handed_back_sha"]),
+            seal=record.get("handback_seal"),
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return None, [{"kind": "child-manifest-incomplete", "branch": expected_branch,
+                       "path": str(source), "detail": str(exc)}]
+    return receipt, []
+
+
 def retire_campaign(
     state_path: Path,
     *,
@@ -1502,6 +1630,7 @@ def retire_campaign(
     reason: str,
     commit: bool = False,
     now_iso: str | None = None,
+    recover_missing_receipts: bool = True,
 ) -> dict[str, Any]:
     """Archive a campaign whose child evidence must be preserved but not landed.
 
@@ -1517,7 +1646,10 @@ def retire_campaign(
     if not reason:
         return {"ok": False, "reason": "campaign retirement reason is required"}
 
-    def child_problems(record: dict[str, Any], reservation: dict[str, Any]) -> list[dict[str, Any]]:
+    def child_problems(
+        record: dict[str, Any], reservation: dict[str, Any], *,
+        require_receipt: bool = True,
+    ) -> list[dict[str, Any]]:
         path_value = record.get("path")
         path = Path(path_value) if isinstance(path_value, str) else None
         if path is None or not path.is_dir():
@@ -1561,19 +1693,15 @@ def retire_campaign(
                              "branch": record.get("branch"),
                              "expected": reservation.get("base"),
                              "actual": record.get("base_sha")})
-        # Retirement is only for a completed child hand-back. An active claim
-        # without both seal and receipt belongs to campaign-abort/recovery, not
-        # this evidence-preserving path.
-        needs_receipt = True
-        if needs_receipt:
-            problems.extend(
-                problem for problem in validate_handback_seal(
-                    record, repo=path, require_seal=True,
-                )
-                # Retirement preserves a typed blocked/inconclusive receipt; the
-                # non-integrable outcome is the disposition, not a seal defect.
-                if problem.get("kind") != "handback-outcome-not-integrable"
+        problems.extend(
+            problem for problem in validate_handback_seal(
+                record, repo=path, require_seal=True,
             )
+            # Retirement preserves a typed blocked/inconclusive receipt; the
+            # non-integrable outcome is the disposition, not a seal defect.
+            if problem.get("kind") != "handback-outcome-not-integrable"
+        )
+        if require_receipt:
             receipt = record.get("child_receipt")
             seal = record.get("handback_seal")
             if not isinstance(receipt, dict):
@@ -1739,6 +1867,7 @@ def retire_campaign(
                 expected_claims[(str(partition_id), ticket_id)] = claim
 
         retirement_children: list[dict[str, Any]]
+        recovered_receipts: list[str] = []
         if resolved_only:
             reservation_keys = {
                 (str(partition_id), str(ticket_id))
@@ -1786,17 +1915,58 @@ def retire_campaign(
                             "reason": "resolved campaign claim/child provenance mismatch",
                             "campaign_id": campaign_id,
                             "partition": key[0], "ticket": key[1]}
-                problems = [
-                    problem for problem in validate_handback_seal(
-                        record, repo=None, require_seal=True,
-                    )
-                    if problem.get("kind") != "handback-outcome-not-integrable"
-                ]
                 receipt = record.get("child_receipt")
                 seal = record.get("handback_seal")
-                if not isinstance(receipt, dict):
-                    problems.append({"kind": "child-receipt-missing",
-                                     "branch": record.get("branch")})
+                record_path = record.get("path")
+                if not isinstance(receipt, dict) or (
+                    isinstance(record_path, str) and Path(record_path).is_dir()
+                ):
+                    problems = child_problems(
+                        record, reservation, require_receipt=False,
+                    )
+                else:
+                    problems = [
+                        problem for problem in validate_handback_seal(
+                            record, repo=None, require_seal=True,
+                        )
+                        if problem.get("kind") != "handback-outcome-not-integrable"
+                    ]
+                if not isinstance(receipt, dict) and recover_missing_receipts:
+                    if "child_receipt" in record:
+                        problems.append({
+                            "kind": "child-receipt-invalid",
+                            "field": "schema",
+                            "branch": record.get("branch"),
+                        })
+                    elif recovered_receipts:
+                        problems.append({
+                            "kind": "child-recovery-cardinality-exceeded",
+                            "branch": record.get("branch"),
+                        })
+                    else:
+                        recovered, recovery_problems = _recover_missing_child_receipt(
+                            record, reservation,
+                            manifest_path=(
+                                Path(str(record["completed_manifest"]))
+                                if isinstance(record.get("completed_manifest"), str)
+                                else None
+                            ),
+                        )
+                        if not recovery_problems and recovered is not None:
+                            record["child_receipt"] = recovered
+                            receipt = recovered
+                            recovered_receipts.append(str(record.get("branch")))
+                        else:
+                            problems.extend(recovery_problems or [{
+                                "kind": "child-receipt-missing",
+                                "branch": record.get("branch"),
+                            }])
+                elif not isinstance(receipt, dict):
+                    problems.append({
+                        "kind": "child-receipt-invalid" if "child_receipt" in record
+                        else "child-receipt-missing",
+                        "branch": record.get("branch"),
+                    })
                 else:
                     expected_tickets = sorted(str(ticket) for ticket in (record.get("backlog") or []))
                     receipt_checks = (
@@ -1899,6 +2069,7 @@ def retire_campaign(
             "reason": reason,
             "resolved_only": resolved_only,
             "resolved_without_landing": True,
+            "recovered_receipts": sorted(recovered_receipts),
             "retired_children": copy.deepcopy(archived["retired_children"]),
             "archive": archived,
         }
@@ -3069,6 +3240,9 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
                 rec, campaign_id=str(campaign_id), partition_id=str(partition_id),
                 role=str(role), manifest_path=Path(manifest_arg), tip_sha=tip_sha,
                 seal=seal,
+            )
+            rec["completed_manifest"] = str(
+                Path(manifest_arg).expanduser().resolve()
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             msg = f"child integration manifest is not a valid receipt source: {exc}"
