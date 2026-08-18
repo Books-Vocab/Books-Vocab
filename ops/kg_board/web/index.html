@@ -61,6 +61,22 @@
         <p class="empty">檔案矩陣載入中</p>
       </div>
       <div id="scope-unknown" class="scope-unknown" role="note"></div>
+      <div id="scope-fullscreen-viewer" class="scope-fullscreen-viewer" hidden aria-hidden="true">
+        <div class="scope-fullscreen-shell" role="dialog" aria-modal="true" aria-labelledby="scope-fullscreen-title">
+          <header class="scope-fullscreen-toolbar">
+            <div class="scope-fullscreen-heading"><strong id="scope-fullscreen-title">檔案佔用矩陣</strong><span id="scope-fullscreen-zoom" aria-live="polite">100%</span></div>
+            <div class="scope-fullscreen-actions" aria-label="全螢幕矩陣操作">
+              <button type="button" id="scope-fullscreen-zoom-out" class="tree-control-button" aria-label="縮小矩陣">−</button>
+              <button type="button" id="scope-fullscreen-zoom-in" class="tree-control-button" aria-label="放大矩陣">＋</button>
+              <button type="button" id="scope-fullscreen-fit" class="tree-control-button">適合視窗</button>
+              <button type="button" id="scope-fullscreen-reset" class="tree-control-button secondary">重設</button>
+              <button type="button" id="scope-fullscreen-close" class="tree-control-button">關閉</button>
+            </div>
+          </header>
+          <p class="scope-fullscreen-hint">矩陣保留 HTML 表格與文字，不轉成圖片；可橫向／縱向捲動，按 Esc 關閉。</p>
+          <div id="scope-fullscreen-canvas" class="scope-fullscreen-canvas" tabindex="0" aria-label="可縮放的檔案佔用矩陣"></div>
+        </div>
+      </div>
     </section>
 
     <section class="tree-panel" aria-labelledby="tree-title">

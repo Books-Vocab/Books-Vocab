@@ -111,6 +111,8 @@ function renderScopeControls(){
   if(density){density.value=String(scopeDensity);density.setAttribute("aria-valuetext",`${scopeDensity}px`);}
   if(densityOutput)densityOutput.textContent=`${scopeDensity}px`;
   if(occupied)occupied.checked=scopeOccupiedOnly;
+  const fullscreenZoom=document.getElementById("scope-fullscreen-zoom");
+  if(fullscreenZoom)fullscreenZoom.textContent=`${scopeZoom}%`;
 }
 function applyScopeGeometry(mount){
   if(!mount)return;
@@ -168,6 +170,7 @@ function renderScopeMatrix(){
   mount.innerHTML=`<table class="scope-matrix"><thead><tr class="scope-agent-row"><th scope="col" class="scope-agent-label">Agent / thread</th>${agentHeaders}</tr><tr class="scope-worktree-row"><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
   bindCopyButtons(mount);
   applyScopeGeometry(mount);
+  refreshScopeFullscreen();
   const unknownWorktrees=scopeMatrix.unknown_worktree_ids||[],unknownTickets=scopeMatrix.unknown_ticket_ids||[];
   const unknownParts=[];
   if(unknownWorktrees.length)unknownParts.push(`direct worktree（Scope 待宣告）：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
@@ -651,6 +654,50 @@ function bindRenderedTreeNodes(mount,context){
 function activeWorktreeGroups(){
   return (scopeMatrix?.worktrees||[]).map(worktree=>[String(worktree.branch||"未知 worktree"),worktree]);
 }
+const scopeFullscreen={open:false,scale:1,previousFocus:null};
+function scopeFullscreenCanvas(){return document.getElementById("scope-fullscreen-canvas")}
+function scopeFullscreenTable(){return scopeFullscreenCanvas()?.querySelector(".scope-matrix")||null}
+function clampScopeFullscreenScale(value){return Math.max(.5,Math.min(2.5,value))}
+function applyScopeFullscreenTransform(){
+  const canvas=scopeFullscreenCanvas(),table=scopeFullscreenTable();if(!canvas||!table)return;
+  table.style.transform=`scale(${scopeFullscreen.scale})`;
+  table.style.transformOrigin="top left";
+  table.style.width=`${100/scopeFullscreen.scale}%`;
+  const output=document.getElementById("scope-fullscreen-zoom");
+  if(output)output.textContent=`${Math.round(scopeFullscreen.scale*100)}%`;
+}
+function refreshScopeFullscreen(){
+  if(!scopeFullscreen.open)return;
+  const source=document.getElementById("scope-matrix-wrap"),canvas=scopeFullscreenCanvas();
+  if(!source||!canvas)return;
+  canvas.innerHTML=source.innerHTML;
+  bindCopyButtons(canvas);
+  applyScopeGeometry(canvas);
+  applyScopeFullscreenTransform();
+}
+function fitScopeFullscreen(){
+  const canvas=scopeFullscreenCanvas(),table=scopeFullscreenTable();if(!canvas||!table)return false;
+  const width=Math.max(1,table.scrollWidth),available=Math.max(1,canvas.clientWidth-24);
+  scopeFullscreen.scale=clampScopeFullscreenScale(Math.min(1,available/width));
+  applyScopeFullscreenTransform();
+  return true;
+}
+function resetScopeFullscreen(){scopeFullscreen.scale=1;applyScopeFullscreenTransform()}
+function openScopeFullscreen(){
+  const viewer=document.getElementById("scope-fullscreen-viewer"),source=document.getElementById("scope-matrix-wrap");
+  if(!viewer||!source?.querySelector(".scope-matrix"))return;
+  scopeFullscreen.open=true;scopeFullscreen.previousFocus=document.activeElement;scopeFullscreen.scale=1;
+  viewer.hidden=false;viewer.setAttribute("aria-hidden","false");document.body.classList.add("scope-fullscreen-open");
+  refreshScopeFullscreen();
+  requestAnimationFrame(()=>{fitScopeFullscreen();document.getElementById("scope-fullscreen-close")?.focus()});
+}
+function closeScopeFullscreen(options={}){
+  const viewer=document.getElementById("scope-fullscreen-viewer"),previousFocus=scopeFullscreen.previousFocus;
+  scopeFullscreen.open=false;scopeFullscreen.scale=1;
+  if(viewer){viewer.hidden=true;viewer.setAttribute("aria-hidden","true")}
+  document.body.classList.remove("scope-fullscreen-open");
+  if(options.restoreFocus!==false)previousFocus?.focus?.();
+}
 function renderActiveWorktrees(){
   const mount=document.getElementById("tree-active-worktrees");if(!mount)return;
   const groups=activeWorktreeGroups(),total=groups.reduce((count,[,worktree])=>count+(worktree.ticket_ids?.length||0),0);
@@ -881,7 +928,7 @@ function renderTree(){
     const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":state;
     const detachedLabel=detached?`<text class="lane-state" x="14" y="31">${esc(stateLabel)}</text>`:"";
     const headerX=lane===0?0:x(lane)-52;
-    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)" tabindex="0" role="button" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}" data-branch="${esc(ref.branch)}"><title>${esc(ref.branch)} · ${esc(stateLabel)}</title><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
+    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)" tabindex="0" role="button" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}" data-branch="${esc(ref.branch)}" data-branch-label="${esc(ref.branch)}"><title>${esc(ref.branch)} · ${esc(stateLabel)}</title><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text class="tree-lane-label" x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
   }).join("");
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
@@ -958,6 +1005,28 @@ async function load(){
 }
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
+const scopeZoomInput=document.getElementById("scope-zoom");
+if(scopeZoomInput)scopeZoomInput.addEventListener("input",event=>{
+  const next=Number(event.target.value);scopeZoom=Math.max(80,Math.min(140,Number.isFinite(next)?next:100));renderScopeControls();
+  if(scopeMatrix)renderScopeMatrix();
+});
+const scopeDensityInput=document.getElementById("scope-density");
+if(scopeDensityInput)scopeDensityInput.addEventListener("input",event=>{
+  const next=Number(event.target.value);scopeDensity=Math.max(28,Math.min(54,Number.isFinite(next)?next:34));renderScopeControls();
+  if(scopeMatrix)renderScopeMatrix();
+});
+const scopeOccupiedInput=document.getElementById("scope-occupied-only");
+if(scopeOccupiedInput)scopeOccupiedInput.addEventListener("change",event=>{scopeOccupiedOnly=event.target.checked;if(scopeMatrix)renderScopeMatrix()});
+document.getElementById("scope-fit")?.addEventListener("click",()=>{scopeZoom=100;renderScopeControls();if(scopeMatrix)renderScopeMatrix()});
+document.getElementById("scope-reset")?.addEventListener("click",()=>{scopeZoom=100;scopeDensity=34;scopeOccupiedOnly=false;renderScopeControls();if(scopeMatrix)renderScopeMatrix()});
+document.getElementById("scope-fullscreen")?.addEventListener("click",openScopeFullscreen);
+document.getElementById("scope-fullscreen-close")?.addEventListener("click",()=>closeScopeFullscreen());
+document.getElementById("scope-fullscreen-fit")?.addEventListener("click",fitScopeFullscreen);
+document.getElementById("scope-fullscreen-reset")?.addEventListener("click",resetScopeFullscreen);
+document.getElementById("scope-fullscreen-zoom-in")?.addEventListener("click",()=>{scopeFullscreen.scale=clampScopeFullscreenScale(scopeFullscreen.scale*1.18);applyScopeFullscreenTransform()});
+document.getElementById("scope-fullscreen-zoom-out")?.addEventListener("click",()=>{scopeFullscreen.scale=clampScopeFullscreenScale(scopeFullscreen.scale/1.18);applyScopeFullscreenTransform()});
+document.getElementById("scope-fullscreen-canvas")?.addEventListener("wheel",event=>{if(!scopeFullscreen.open)return;event.preventDefault();scopeFullscreen.scale=clampScopeFullscreenScale(scopeFullscreen.scale*(event.deltaY<0?1.1:.9));applyScopeFullscreenTransform()},{passive:false});
+document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;if(scopeFullscreen.open)closeScopeFullscreen();else if(treeFullscreen.open)closeTreeFullscreen()});
 document.getElementById("tree-zoom").addEventListener("input",event=>{
   cancelTreeAutoFit();
   const next=Number(event.target.value);
