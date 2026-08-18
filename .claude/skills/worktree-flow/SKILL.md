@@ -1,28 +1,28 @@
 ---
 name: worktree-flow
-description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
+description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory Child 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。五種 identity 中，三種 Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
 user-invocable: true
-version: 2.1.1
+version: 2.2.0
 ---
 
 # worktree-flow
 
-把「使用者需求 → Ticket Factory 產票 → 多個 Delivery Team thread 各自 fan-out → Integrator 合併 → primary＋origin/main」串成可重入的 delivery-loop；單一 child 仍以 `commit + hand-back` 作為自己的停止點。逐步呼叫原語 `ops/worktree_orchestrate.py`（下稱 `orchestrate`）。它只**編排**：P1 `ops/lib/worktree_state.py`（純健康判定）、P2 `ops/worktree_registry.py`（誕生→解決登記簿 + 孤兒哨兵）、與既有 gate 工具。**絕不重造 gate 判斷**。
+把「使用者需求 → Ticket Factory Child 產票 → 多個 Delivery Team thread 各自 fan-out → Integrator 合併 → primary＋origin/main」串成可重入的 delivery-loop；單一 Child 仍以 `commit + hand-back` 作為自己的停止點。逐步呼叫原語 `ops/worktree_orchestrate.py`（下稱 `orchestrate`）。它只**編排**：P1 `ops/lib/worktree_state.py`（純健康判定）、P2 `ops/worktree_registry.py`（誕生→解決登記簿 + 孤兒哨兵）、與既有 gate 工具。**絕不重造 gate 判斷**。
 
 ## Progressive disclosure boundary
 
-角色視野與未知升級的唯一索引是 `docs/reference/agent_context.md`，不是本 skill 的全文。Ticket Factory
-只需讀 lane／ticket 交接語意；Delivery Child 只需讀「預設停止點」與「批次交回狀態」；Integrator
+角色視野與未知升級的唯一索引是 `docs/reference/agent_context.md`，不是本 skill 的全文。Ticket Factory Child
+只需讀 lane／ticket 交接語意；三種 Delivery Child 只需讀「預設停止點」與「批次交回狀態」；Integrator
 讀「批次整合」的 staging 段；Manager 才讀 Gate／cutover／resolve／sync 的落地段。Round 6–8 壓測與歷史量測只有
 明示壓測或工具調查才載入。遇到未知先回到 authority index，不以讀完整 skill 取代 escalation。
 
 ## 預設停止點（授權邊界）
 
-**永遠先假設同 repo 有多個 session 同時工作。** Child 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 exact source thread ID、branch／worktree／HEAD，然後停止。Child 有三種 work mode：`direct-assignment`（開工前明示 structured Scope）、`ticket-factory`（產票／梳理，不持有 delivery ticket，開工前明示 Scope）、`ticket-delivery`（由 ticket／campaign 提供 Scope）。Child hand-back 直接交回 Manager；Integrator 可以讀取並 fan-in，但不重新簽發 child seal。Gate BLOCK 必須回到該 source thread，由原 thread 以新 commit／新 hand-back 回交。Child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
+**永遠先假設同 repo 有多個 session 同時工作。** 任何 session 先確認五種 canonical identity；只有 `Direct-assignment Child`、`Ticket Factory Child`、`Ticket Delivery Child` 進入下列 Child 停止線。Child 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 exact source thread ID、branch／worktree／HEAD，然後停止。三種 Child work mode 分別是 `direct-assignment`（開工前明示 structured Scope）、`ticket-factory`（產票／梳理，不持有 delivery ticket，開工前明示 Scope）、`ticket-delivery`（由 ticket／campaign 提供 Scope）。Child hand-back 直接交回 Manager；Integrator 可以讀取並 fan-in，但不重新簽發 child seal。Gate BLOCK 必須回到該 source thread，由原 thread 以新 commit／新 hand-back 回交。Child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
 
 任務選擇的淺規則：優先 fan-out bounded bug、refactor、tooling friction、test maintenance、docs 等可獨立驗收工作；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這是排序／派工提示，不是 `backlog.py` lifecycle 或 acceptance/status 契約。
 
-Integrator 只准執行 `integrate --commit --no-gate`、`--append`、衝突處理與未落地 staging tree 清理；它產生 fan-in manifest／state，下一步明確指向 Manager，不落地 primary。Manager 才能在取得當下授權後，續接唯一 fresh Gate、`close-wave --commit`、`cutover --commit`、`resolve --via-integration` 與 `sync --commit`。`deploy` 另需 release 意圖。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬 required tier、current HEAD 或 release 護欄；targeted test 只能證明它自己的 tier，不能冒充較高 tier。
+Integrator 只准執行 `integrate --commit --no-gate`、`--append`、衝突保留／具名回報與未落地 staging tree 清理；它產生 fan-in manifest／state，下一步明確指向 Manager，不落地 primary，也不自行修改檔案解衝突。Manager 才能在取得當下授權後，續接唯一 fresh Gate、`close-wave --commit`、`cutover --commit`、`resolve --via-integration` 與 `sync --commit`。`deploy` 另需 release 意圖。Child 的視野止於自己的 task Scope、局部驗證與 hand-back；不追蹤 primary 前進了幾個 commit，也不因 primary 改變而自行 catchup／rebase。若來源已過期，Manager 重新從 live main 建立 admission／staging；Child 只在被退回後以新 commit／新 hand-back 修正自己的 slice。這是協調政策，不放寬 required tier、current HEAD 或 release 護欄；targeted test 只能證明它自己的 tier，不能冒充較高 tier。
 
 `--commit` 只控制各命令的**主要落地動作**，不是「沒帶就整個命令零副作用」的通則；`--json` 也只改輸出。出生／登記簿生命週期動詞沒有 dry-run：orchestrator `open`／`adopt` 與 registry `register`／`hand-back`／`resolve` 呼叫即寫。另有三個必記例外：`gate` 除 `--plan-only` 外會執行檢查並寫 verdict／history／失敗 log；`freeze on|off` 直接建立／刪除鎖，只有 `freeze status` 唯讀；`preflight` 不論 `--commit` 都會 `git fetch --prune`，該旗標只控制 sweep clearance。`open --backlog`／`--next-backlog` 必須在建立 branch/path 前原子取得獨佔認領；`hand-back` 必須立即寫入與當下 branch tip 綁定的交回戳記。呼叫前以子命令 help 為準，不可從有無 `--commit` 推導純讀性。
 
@@ -30,7 +30,7 @@ Integrator 只准執行 `integrate --commit --no-gate`、`--append`、衝突處�
 
 這是平行能力 lane，不是上下級階層：
 
-- **Ticket Factory（票務隊）**：一個 thread 依需求大量 `add`、必要時 `verify`、`groom`，把問題收斂到 contract-ready，再由 `dispatch` 產出可取的工作；`groomed` 不等於 dispatchable。它不修產品 code，也不是一票一 thread。
+- **Ticket Factory Child（票務隊）**：一個 child 依需求大量 `add`、必要時 `verify`、`groom`，把問題收斂到 contract-ready，再由 `dispatch` 產出可取的工作；`groomed` 不等於 dispatchable。它不修產品 code，也不是一票一 thread。
 - **Delivery Team（交付隊）**：可同時開 A/B/C 多個 thread；Integrator 從不重疊的 Scope 矩陣 fan-out N 個 child worktree，持續把 child hand-back fan-in 到 staging tree，完成 staging handoff 後交回 Manager；Manager 再做唯一落地閉環。
 
 三種方法固定命名：**ticketed-loop** = `Ticket Factory → dispatch → Delivery Team → Manager`；**delivery-loop** = `Scope matrix → N child worktrees → typed hand-back → staging fan-in → Manager Gate/cutover/resolve/sync`；**direct-fix** = 使用者明示的 direct-assignment work mode，完成修改後停在 hand-back。鎖競爭是正常等待：核心工具以指數退避、stderr heartbeat、非競爭錯誤 fail-closed，team 不需要互相輪詢喊話。
@@ -88,21 +88,31 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 
 **在做 backlog 上的單就一定要帶 `--backlog`**：它把那幾張單認領給這條 worktree，另一個 active 記錄已持有其一即 **refuse（rc 非 0）**，payload 的 `conflicts` 指名持有者的 branch 與 path。搶輸時**不會留下分支也不會留下目錄**——認領在建任何東西之前發生。認領的壽命 = 記錄 active 的壽命，所以 `resolve` / `sweep` 自動釋放，**沒有另一個 release 動詞**。`worktree_registry.py list` 的 `backlog` / `claimed` 欄回答「誰在做哪張單、拿多久了」。
 
-**c. 逐 phase 實作（phased 模式）**：在 worktree 內做第 N phase 時，**同步派 code review agent 審 N-1 phase**（鐵律 4 逐項 review，鐵律 5 所有 Agent 背景化）。每個 phase 收尾 commit。預設不因「可能稍後要 gate」而在每 phase 主動 rebase；那會讓平行 session 的主幹前進反覆改寫本分支。只有已取得本節授權、準備進 gate，或整合者明示要求追主幹時才執行：
+**c. 逐 phase 實作（phased 模式）**：在 worktree 內做第 N phase 時，**同步派 code review agent 審 N-1 phase**（鐵律 4 逐項 review，鐵律 5 所有 Agent 背景化）。每個 phase 收尾 commit。預設不因「可能稍後要 gate」而在每 phase 主動 rebase；那會讓平行 session 的主幹前進反覆改寫本分支。Child 不因追主幹而執行 catchup；只有 Manager 在自己的落地／staging context 中明示需要時，才可操作 Manager-owned worktree：
 ```
 <path>/ops/worktree_orchestrate.py catchup --worktree <path> --commit
 ```
 
-**c2. trunk 動了 → catchup**（`gate` / `cutover` 拒絕並說「落後本地 main」時做這一步）：
+**c2. hand-back 後 trunk 動了 → Manager fresh admission（Child 不 catchup）**：
+Child 不執行 `catchup`，也不把 primary 的新 commit 當成自己的工作。Manager 收到 hand-back 後，若來源基底已落後或 primary 在組裝期間前進，應先停止舊 integration state，驗證每條來源仍是 exact hand-back tip，再從 current main fresh 建立 staging／integration tree；不得要求 Child 為了整合而 rebase。
+只有 Manager-owned、非 delegated 的工作樹在明示授權下才可使用：
 ```
-<path>/ops/worktree_orchestrate.py catchup --worktree <path> --json          # dry-run：落後幾顆、動了哪些檔
-<path>/ops/worktree_orchestrate.py catchup --worktree <path> --commit --json # rebase 上本地 main
+<path>/ops/worktree_orchestrate.py catchup --worktree <path> --json          # Manager dry-run：確認自身落地樹的差異
+<path>/ops/worktree_orchestrate.py catchup --worktree <path> --commit --json # Manager-owned tree rebase
 ```
 它就是那句「你先 `git rebase main`」變成的命令，差別只有一個而且很要緊：rebase 會在
 那個 generated 的 ledger view 上衝突（實測十條分支一輪 3–6 條中招）——**該檔已於 IMP-20260807-b9526c 移出版控**，所以這個衝突源今天不存在了，
 而那個檔沒有「留哪一邊」的問題——它是 store 的純函數，正解是重跑 generator，所以 `catchup` 曾內建一個
 「衝突集合恰好等於該檔就自動重生」的解析器。**該解析器已隨檔案一起移除**：今天 `catchup` 就是一次乾淨的
-rebase，**任何**衝突都 abort 交你（那是真的決定），也不再有 `regenerated` 這個 payload 欄位。rebase 完 HEAD 就動了：已取得 develop 授權、準備落地者必須立即跑 fresh `gate`；授權前只有**一般且無存活 integration state** 的工作樹可為追主幹執行 catchup，完成後重新 `hand-back` 更新 SHA 並停止。整合樹走批次段的 abort／驗來源／teardown／重建，不能因 catchup 自動跨過停止點或破壞 state。
+rebase，**任何**衝突都 abort 交 Manager 決定（那是真的決定），也不再有 `regenerated` 這個 payload 欄位。Manager-owned tree 的 rebase 完成後必須立即跑 fresh `gate`；Child source branch 不適用這條路徑。整合樹走批次段的 abort／驗來源／teardown／重建，不能因 catchup 自動跨過停止點或破壞 state。
+
+**c2a. Gate BLOCK 的修理分流（Manager adjudication）**：Gate BLOCK 先按失敗歸屬處理，不把所有紅燈都塞回 Child。
+
+- **Child slice defect**：失敗直接引用 hand-back 的 exact `source_thread_id`，退回原 thread；Child 在自己的工作樹產生新 commit、新 typed hand-back，舊 SHA／verdict／seal 全部失效。
+- **整合／檔案衝突或 composition defect**：由 Manager 在自己的 staging／integration tree 解決並重新跑受影響 Gate；不得要求 Child 為了 primary 的變動 catchup，也不得把 Manager 的修補偷偷寫回 Child branch。
+- **baseline、共享資源或工具問題**：先確認不是本輪變更造成；可降低為具名 ticket／defer 的就登記並保留證據，不偽造 PASS。若是 release-blocking，再由 Manager 提升驗證層級或修正工具。
+
+這個判準讓「誰擁有修復」與「哪棵樹可以改」一致：Child 修自己的語意，Manager 修整合與落地。
 
 **c3. 已獲明示授權且多條獨立工作樹要落地 → 用 `land`，不要手動排 gate/cutover**：
 
@@ -198,7 +208,7 @@ final JSON；可用 `wait` 等 terminal result，不需 agent 持續 token polli
 序列化；取消會終止所屬 process group、等待 worker terminal，再標記 interrupted/cancelled，不進 ETA 樣本。
 timing 寫入失敗不改測試或 gate verdict。
 
-**開跑前先擋一道：分支落後本地 main 就直接拒**（EXIT_BLOCK，payload 帶 `behind_commits` / `base_changed_files`，**不寫任何判決紀錄**）。理由：cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被 gate 判過也不會是落地的那棵——判決會綁到一棵不存在的樹（IMP-20260806-945e01：實測 58 commits 落後的分支，main 上多出的 UITest 檔在工作樹裡根本不存在，`--grep` 選三個類靜默只匹配到兩個）。修法是 `catchup --commit`（見下方 c2），然後**重跑 gate**。`--plan-only` 不受此擋（它不跑也不記，是拒絕訊息指定的預覽出口）。impact→gate 對應：
+**開跑前先擋一道：分支落後本地 main 就直接拒**（EXIT_BLOCK，payload 帶 `behind_commits` / `base_changed_files`，**不寫任何判決紀錄**）。理由：cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被 gate 判過也不會是落地的那棵——判決會綁到一棵不存在的樹（IMP-20260806-945e01：實測 58 commits 落後的分支，main 上多出的 UITest 檔在工作樹裡根本不存在，`--grep` 選三個類靜默只匹配到兩個）。對 delegated child hand-back，修法不是 `catchup`：Manager 依 c2 從 current main fresh rebuild admission／staging，再**重跑 gate**；只有 Manager-owned tree 才能在明示授權下 `catchup --commit` 後重跑 gate。`--plan-only` 不受此擋（它不跑也不記，是拒絕訊息指定的預覽出口）。impact→gate 對應：
 - `ios/**` → `ios_ops.sh build` **＋** `build --catalyst`（sim 綠 ≠ Catalyst 綠）＋ `quality impact`（swift）＋ `test --unit`；**動到一般 UITest 檔**則另加 `test --ui --file <該 UITest 類> --dataset marketing_demo`（**只跑受影響的 UI 測試類，非全套**——全套當 block 會被 codebase 已知 UI flaky 誤擋每次 iOS cutover）。`LiveDemoAccessUITests` 是 Release＋實機＋live backend 專用契約，cutover gate 只跑 Release iphoneos build-for-testing 編譯 gate 並明示 runtime advisory；不得拿 simulator/fixture 偽裝其 runtime evidence，送審前仍須走 App Review `demo-run`。
 - design-system / tokens / 生成 CSS / `ios/**/Models|UIComponents/` → `verify_design_system.sh`
 - `docs/**.md` → `docs_lint.sh --files` ＋ conflict-marker 掃描 ＋ `verified_against` 可達性
@@ -248,7 +258,7 @@ orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進
 ```
 它**要求新鮮的非 block verdict**（verdict ∈ {pass, warn}、記錄的 HEAD == 當前 HEAD、**產出該判決的 orchestrator == 工作樹現在這份**、且**本地 `main` 的 tip 已被 worktree HEAD 包含**；stale/缺紀錄/block/換版本/落後 base 都會被拒）→ rebase 上本地 `main` → 在 primary 上 **`git merge --ff-only` 前進本地 main**（受 per-repo 鎖序列化）。**離線、不 push、不部署。** ff 完成後、**同一把鎖內**還會跑一次 post-landing repair（今天只剩 `backlog.py reanchor --commit` 一步；原本其後接的 `render --commit` → `validate --baseline-check` 隨那份 generated view 移出版控而移除）：cutover 的 rebase 在 gate **之後**改寫了分支 sha，ledger entry 的 `fixed_by` 要到落地那一刻才指得到正確的 commit。有改動它就自己 commit 一顆；repair commit 由 fixed subject、parent 與 exact changed paths 識別，不依賴 commit message metadata。**所以本地 main 的 tip 可能不是 payload 的 `sha`**——那顆在 `trunk_tip`；repair 的結果在 `repair`（`ok` / `committed` / `restored` / `steps`），失敗會把 `docs/runbook` 還原回 HEAD 再回報，不留髒 primary。護欄：primary 必須在 `main` 上且 **tracked-clean、無 merge/rebase 進行中**（ff 會更新 primary 工作區）——髒了會被拒，先 commit/撤離。`warn` 會 land 並標 `warnings: [<gate 名>]`。**能做不等於已授權做**：沒有「目前只有本 session」加「直接 gate + cutover」的當下明示，就回到本節頂端的 hand-back 停止點。
 
-**base 包含性這一條 dry-run 也會拒**（帶 `behind_commits` / `base_changed_files`），修法 `catchup --commit`（見 c2）後**必須重跑 gate**。包含性通過時 rebase 是 no-op，所以**落地的 sha == 被 gate 的 sha**；這條等式在鎖內 rebase 之後、ff 之前**再驗一次**（payload `gated_sha` / `rebased_sha`）——包含性檢查在鎖外，別的 session 可能在那之間 cutover 前進了主幹，而 rebase 刻意是對**當下**主幹做的。此時 main 不會前進，工作樹已被 rebase，重跑 gate 即可。
+**base 包含性這一條 dry-run 也會拒**（帶 `behind_commits` / `base_changed_files`）。對 delegated child hand-back，這不是 Child 的 catchup 任務，而是 Manager 的 admission 失敗：Manager 應依 c2 abort／驗來源／teardown／從 current main fresh rebuild，再跑 Gate。只有 Manager-owned tree 在明示授權下才可 catchup；任何 rebase 後都必須重跑 Gate。包含性通過時 rebase 是 no-op，所以**落地的 sha == 被 gate 的 sha**；這條等式在鎖內 rebase 之後、ff 之前**再驗一次**（payload `gated_sha` / `rebased_sha`）——包含性檢查在鎖外，別的 session 可能在那之間 cutover 前進了主幹，而 Manager rebase 刻意是對**當下**主幹做的。
 
 **f. resolve — 清乾淨、登記閉環**：
 ```
@@ -508,7 +518,7 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
 
 同倉多 session 並發是常態，refuse 是**協調事件、不是死路**——refuse 訊息本身就是行動指引（列髒檔、給選項），照它做，不要死等輪詢：
 
-- **cutover 被 primary 髒態擋** → **工具已經替你在共用信箱留言了**（IMP-20260806-42d183）：拒絕當下會 append 一則具名紀錄到 `<primary>/.cache/coordination/broadcast.md`（被擋的分支 + 髒檔清單 + 「gate 判決仍有效、primary 乾淨後重跑 cutover 即可」），payload 的 `broadcast` 欄是它寫到哪。**同一天＋同一分支＋同一組髒檔只會留一次**（重跑 cutover 輪詢不會洗版；髒檔集合變了、或隔天又擋一次，才算新資訊再留一則——**沒有人真的會照紀錄末尾說的去刪它**，所以 key 帶日期，否則同一條分支下週被同一支檔擋住時會一則都不留）。**`land` 的 pre-gate 檢查同樣會留言**（同一支 helper）。留言是 best-effort：寫不進去就**不留、不提**，拒絕理由一字不變——`.cache/` 是 gitignored 的暫存不是 SoT，拿寫檔失敗換掉診斷會比沒有這功能更糟。這則留言是**被動通道**，對方不一定會讀，所以急件仍該主動推：用 session-mgmt MCP `list_sessions` 查同倉 running session → `send_message` 發協調請求（請其 commit 或說明佔用）。是自己的殘留就 commit 或撤到 worktree（見上方「需要 main」路由末條）。gate verdict 綁 worktree HEAD 仍有效——primary 乾淨後**直接重跑 cutover**，不必重跑 gate（髒 primary 不會讓本地 main 前進）。**但若這段期間別的 session cutover 了**（本地 main 前進），cutover 會改以 base 落後為由拒——那時**必須**跑 `catchup --commit`（見 c2）並**重跑 gate**，不能只重跑 cutover。
+- **cutover 被 primary 髒態擋** → **工具已經替你在共用信箱留言了**（IMP-20260806-42d183）：拒絕當下會 append 一則具名紀錄到 `<primary>/.cache/coordination/broadcast.md`（被擋的分支 + 髒檔清單 + 「gate 判決仍有效、primary 乾淨後重跑 cutover 即可」），payload 的 `broadcast` 欄是它寫到哪。**同一天＋同一分支＋同一組髒檔只會留一次**（重跑 cutover 輪詢不會洗版；髒檔集合變了、或隔天又擋一次，才算新資訊再留一則——**沒有人真的會照紀錄末尾說的去刪它**，所以 key 帶日期，否則同一條分支下週被同一支檔擋住時會一則都不留）。**`land` 的 pre-gate 檢查同樣會留言**（同一支 helper）。留言是 best-effort：寫不進去就**不留、不提**，拒絕理由一字不變——`.cache/` 是 gitignored 的暫存不是 SoT，拿寫檔失敗換掉診斷會比沒有這功能更糟。這則留言是**被動通道**，對方不一定會讀，所以急件仍該主動推：用 session-mgmt MCP `list_sessions` 查同倉 running session → `send_message` 發協調請求（請其 commit 或說明佔用）。是自己的殘留就 commit 或撤到 worktree（見上方「需要 main」路由末條）。gate verdict 綁 worktree HEAD 仍有效——primary 乾淨後**直接重跑 cutover**，不必重跑 gate（髒 primary 不會讓本地 main 前進）。**但若這段期間別的 session cutover 了**（本地 main 前進），Manager 必須依 c2 abort 舊 admission／staging、驗來源 hand-back tip、從新 main fresh rebuild；不要要求 Child catchup，也不能只重跑 cutover。
 - **政策**：primary 上工作**早 commit、常 commit**；agent 對 primary 是**過境不常駐**——別讓 uncommitted 改動在 primary 過夜擋別人的 cutover。
 - **協調信箱（被動通道，優先於 send_message）**：`<repo>/.cache/coordination/broadcast.md`（全員）與 `<repo>/.cache/coordination/<slug>.md`（點對點，slug=你的 worktree slug）。`.cache/` gitignored、不進版控。**讀時機**（每個節點順手 `cat`，無檔即略過）：open 後、gate 前、cutover 被 refuse 時、暫停/待命前。**寫**：對其他 session 的非急件協調（排程、讓路、注意事項）寫進對方 `<slug>.md` 或 broadcast，**送出即完成、不等回覆**；急件（要對方立刻停手）才用 `send_message`（每則會跳使用者確認框，host 硬閘、配置免不了——所以批次合併、能少則少）。過期訊息由寫入者自清（附日期，處理完即刪）。
 
@@ -559,7 +569,7 @@ preflight ─▶ 讀地圖 ─▶ research? ──yes──▶ 直接做（不�
           └─ 使用者明示「無其他 session」且授權 gate+cutover？
                                       │yes
                                       ▼
-                ┌─ 單線 ─▶ catchup（需要時） ─▶ fresh Gate
+                ┌─ 單線 Manager-owned ─▶ catchup（需要時） ─▶ fresh Gate
           └─ 批次 ─▶ child 陸續回來：integrate --append（不 Gate）
                           └▶ base 未動：integrate --continue --commit（唯一 fresh Gate）
                           └▶ base 已動：abort／驗來源／teardown／從新 main fresh integrate（唯一 fresh Gate）

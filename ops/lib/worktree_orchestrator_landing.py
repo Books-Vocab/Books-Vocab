@@ -255,12 +255,12 @@ def cmd_land(args) -> int:
         record = delegated_records[0]
         _emit({
             "schema": SCHEMA, "step": "land", "mode": "refused",
-            "error": "delegated worktree cannot land; the integrator owns landing",
+            "error": "delegated worktree cannot land; Manager owns landing admission",
             "refusal": "delegated", "delegated": True, "landed": False,
             "worktree": worktree, "branch": record.get("branch"),
         }, args.json,
         f"✗ land refused: delegated worktree {record.get('branch')} at {worktree}; "
-        "the integrator owns landing")
+        "Manager owns landing admission")
         return EXIT_BLOCK
     primary = primary_root()
     requested_gate_tier = getattr(args, "gate_tier", "S2")

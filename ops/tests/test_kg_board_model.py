@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from ops.kg_board import server
 from ops.kg_board.model import (
+    MODEL_FLOW,
+    MODEL_IDENTITIES,
     MODEL_RESPONSIBILITY_FLOW,
     MODEL_ROLES,
     MODEL_TERMS,
@@ -65,11 +67,28 @@ def test_delivery_model_separates_grooming_contract_and_dependency_states():
 
 
 def test_model_contains_role_and_work_mode_contract():
+    identities = {item["id"]: item for item in MODEL_IDENTITIES}
+    assert set(identities) == {
+        "manager", "integrator", "direct-assignment-child",
+        "ticket-factory-child", "ticket-delivery-child",
+    }
+    assert identities["manager"]["work_mode"] == "none"
+    assert identities["ticket-factory-child"]["role"] == "child"
+    assert identities["ticket-delivery-child"]["work_mode"] == "ticket-delivery"
+
     roles = {item["id"]: item for item in MODEL_ROLES}
-    assert set(roles) == {"manager", "integrator", "child"}
+    assert set(roles) == {
+        "manager", "integrator", "direct-assignment-child",
+        "ticket-factory-child", "ticket-delivery-child",
+    }
     assert "primary" in roles["manager"]["owns"]
+    assert "Gate BLOCK adjudication" in roles["manager"]["can_do"]
     assert "staging" in roles["integrator"]["owns"]
-    assert "hand-back" in roles["child"]["stops_at"]
+    assert "衝突證據整理／回報" in roles["integrator"]["can_do"]
+    assert "衝突處理" not in roles["integrator"]["can_do"]
+    assert "hand-back" in roles["direct-assignment-child"]["stops_at"]
+    assert "dispatchable" in roles["ticket-factory-child"]["stops_at"]
+    assert "ticket Scope" in roles["ticket-delivery-child"]["stops_at"]
 
     modes = {item["id"]: item for item in MODEL_WORK_MODES}
     assert set(modes) == {"direct-assignment", "ticket-factory", "ticket-delivery"}
@@ -77,11 +96,22 @@ def test_model_contains_role_and_work_mode_contract():
     assert "ticket" in modes["ticket-delivery"]["scope_source"]
 
     terms = {item["id"]: item for item in MODEL_TERMS}
-    assert {"manager", "integrator", "child", "staging-handoff", "verification-tiers"} <= set(terms)
+    assert {
+        "manager", "integrator", "child", "staging-handoff", "verification-tiers",
+        "gate-block-routing", "role-identity-gate",
+    } <= set(terms)
     assert "唯一負責" in terms["manager"]["definition"]
     assert "S0" in terms["verification-tiers"]["rule"]
+    assert "source thread" in terms["gate-block-routing"]["rule"]
+    assert "先確認角色" in terms["role-identity-gate"]["definition"]
+    assert [step["id"] for step in MODEL_FLOW["main_path"]][:2] == [
+        "role-identity", "observed",
+    ]
+    assert [step["id"] for step in MODEL_FLOW["main_path"]][-3:] == [
+        "staging", "manager-gate", "resolved"
+    ]
     assert [step["owner"] for step in MODEL_RESPONSIBILITY_FLOW] == [
-        "Integrator／Manager", "Child", "Child → Manager", "Integrator", "Manager", "Manager",
+        "所有 agent", "Integrator／Manager", "三種 Child", "Child → Manager", "Integrator", "Manager", "Manager",
     ]
 
 
@@ -136,6 +166,14 @@ def test_model_payload_uses_the_same_live_decision_partition(monkeypatch):
     payload = server.model_payload()
 
     assert payload["schema"] == "kg.board.model.v1"
+    assert [item["id"] for item in payload["identities"]] == [
+        "manager", "integrator", "direct-assignment-child",
+        "ticket-factory-child", "ticket-delivery-child",
+    ]
+    assert [item["id"] for item in payload["roles"]] == [
+        "manager", "integrator", "direct-assignment-child",
+        "ticket-factory-child", "ticket-delivery-child",
+    ]
     assert payload["live"]["decision_ids"] == {
         "needs-grooming": ["GROOM"],
         "dependency-blocked": ["BLOCKED"],

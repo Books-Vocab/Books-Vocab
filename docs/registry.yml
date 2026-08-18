@@ -648,7 +648,7 @@ documents:
       - .claude/skills/source-command-release/
       - .claude/commands/release.md
       # 交回契約住在 worktree-flow skill 的「預設停止點」與「批次交回狀態」：child worker 只交回
-      # commit + hand-back；Delivery Team Integrator 才能在 delivery-loop 授權後以 close-wave
+      # commit + hand-back；Manager 才能在 delivery-loop 授權後以 close-wave
       # 完成 primary + origin/main。worker agent 只保留角色特有的「受派者無 develop 例外」指標並
       # 連回正本。掛在這裡是因為那條邊界講的正是 release 平面誰能動。
       - .claude/agents/

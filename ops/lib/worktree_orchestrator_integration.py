@@ -42,8 +42,8 @@ INTEGRATE_SCHEMA = "kg.worktree.integrate.v1"
 def _integrate_state_path(state: str | None, slug: str) -> Path:
     """Where an in-flight integration is parked between invocations.
 
-    A conflict SUSPENDS the run — the operator leaves the process to resolve files by
-    hand — so the queue has to survive on disk or `--continue` cannot know what is left
+    A conflict SUSPENDS the run — the Integrator preserves the evidence and the Manager
+    resolves files in the Manager-owned staging tree — so the queue has to survive on disk or `--continue` cannot know what is left
     to pick. Same anchoring as the gate-record cache (beside the ledger, per-machine,
     gitignored): an integration is a local act, and nothing outside this machine has
     any use for its half-finished state.

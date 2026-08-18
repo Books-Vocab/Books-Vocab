@@ -19,11 +19,12 @@ TWO MODES, because the repo has two different workflows that both look like
                       manual catchup/gate/cutover gets 2/10 at N=10; `land` gets
                       10/10 with exactly N gate runs.
 
-  --mode batch        One fan-out batch: N delegates stop at commit, and a single
-                      INTEGRATOR cherry-picks them into one tree, resolves each
-                      conflict once, gates once, cuts over once. This is the path
-                      `.claude/skills/worktree-flow/SKILL.md` "批次交回狀態"
-                      mandates, and it is the one the backlog dogfood uses.
+  --mode batch        One fan-out batch: N delegates stop at commit, an INTEGRATOR
+                      stages their hand-backs and preserves conflict evidence, then
+                      a MANAGER resolves conflicts, runs one Gate, and cuts over
+                      once. This is the path `.claude/skills/worktree-flow/SKILL.md`
+                      "批次交回狀態" mandates, and it is the one the backlog dogfood
+                      uses.
 
 The distinction matters because the first mode's numbers say nothing about the
 second. `land` presumes N landers; a fan-out batch has exactly one by contract.
@@ -226,7 +227,7 @@ def concurrent_lane(clone: Path, i: int, verb: str, conflict: str, report: dict,
 
 
 # ---------------------------------------------------------------------------
-# mode: batch — delegates stop at commit, ONE integrator lands
+# mode: batch — delegates stop at commit; Integrator stages, Manager lands
 # ---------------------------------------------------------------------------
 
 def resolve_keep_both(path: Path) -> bool:
@@ -267,6 +268,20 @@ def resolve_keep_both(path: Path) -> bool:
     return True
 
 
+def typed_child_handback_command(worktree: Path, branch: str,
+                                 outcomes: Path) -> list[str]:
+    """Build the same typed ordinary-child hand-back used by real child lanes."""
+    return [
+        str(worktree / "ops" / "worktree_registry.py"),
+        "hand-back",
+        "--branch", branch,
+        "--path", str(worktree),
+        "--role", "child",
+        "--outcomes", str(outcomes),
+        "--json",
+    ]
+
+
 def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
     orch = clone / "ops" / "worktree_orchestrate.py"
     lanes: list[dict] = []
@@ -285,9 +300,11 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
         wt = Path(payload["path"])
         steps = make_lane_commit(wt, i, conflict)
         sha = run(["git", "rev-parse", "HEAD"], cwd=wt, label="sha")["stdout"].strip()
+        outcomes = wt / ".cache" / "agent-scratch" / "loadtest-handback-outcomes.json"
+        outcomes.parent.mkdir(parents=True, exist_ok=True)
+        outcomes.write_text('{"outcomes": []}\n', encoding="utf-8")
         handback = run(
-            [str(wt / "ops" / "worktree_registry.py"), "hand-back", "--branch",
-             payload["branch"], "--json"],
+            typed_child_handback_command(wt, payload["branch"], outcomes),
             cwd=wt, label="hand-back")
         rec = {"slug": slug, "branch": payload["branch"], "path": str(wt), "sha": sha,
                "handed_back": handback["rc"] == 0,
@@ -301,14 +318,15 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
     lanes.sort(key=lambda r: r["slug"])
     log(f"{len(lanes)}/{n} delegates stopped at commit; opening integration worktree")
 
-    # --- ONE integrator. The harness must drive the same primitive as production.
-    #     `integrate` owns the pick queue, state file, conflict stop/continue, and
-    #     the single integrated-tree gate; this harness only supplies its deliberately
-    #     lossless fixture resolver when the primitive pauses on SHARED.md.
+    # --- Integrator staging. The harness must drive the same primitive as production.
+    #     `integrate --no-gate` owns the pick queue, state file, and conflict
+    #     stop/continue; this harness supplies only its deliberately lossless fixture
+    #     resolver when the primitive pauses on SHARED.md. Manager owns the Gate and
+    #     landing phases below.
     branches = [rec["branch"] for rec in lanes]
     integration = run(
         [str(orch), "integrate", "--slug", "integrate", "--branches", *branches,
-         "--commit", "--json"],
+         "--commit", "--no-gate", "--operator", "integrator", "--json"],
         cwd=clone, label="integrate", timeout=5400)
     integration_payload = as_json(integration) or {}
     integ = Path(integration_payload["worktree"]) if integration_payload.get("worktree") else None
@@ -342,7 +360,8 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
         })
         integration = run(
             [str(integ / "ops" / "worktree_orchestrate.py"), "integrate",
-             "--slug", "integrate", "--continue", "--commit", "--json"],
+             "--slug", "integrate", "--continue", "--commit", "--no-gate",
+             "--operator", "integrator", "--json"],
             cwd=integ, label="integrate-continue", timeout=5400)
         integration_payload = as_json(integration) or {}
 
@@ -378,9 +397,14 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
                      if (integ / "ops" / "loadtest_fixtures"
                          / f"lt_{int(rec['slug'].split('-')[1]):02d}.sh").exists()]
 
-    gate = integration_payload.get("gate") or {}
+    # --- Manager finalization. Staging alone is not delivery completion.
+    gate_step = run([str(integ / "ops" / "worktree_orchestrate.py"), "gate",
+                     "--worktree", str(integ), "--operator", "manager", "--json"],
+                    cwd=integ, label="gate", timeout=5400)
+    gate = as_json(gate_step) or {}
     c = run([str(integ / "ops" / "worktree_orchestrate.py"), "cutover", "--worktree",
-             str(integ), "--commit", "--json"], cwd=integ, label="cutover", timeout=3600)
+             str(integ), "--commit", "--operator", "manager", "--json"],
+            cwd=integ, label="cutover", timeout=3600)
     cut = as_json(c) or {}
 
     # --- teardown: the KNOWN trap. `resolve` judges "did this branch land" by
@@ -393,11 +417,13 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
         # run is what stops the report from quietly becoming "teardown is fine now"
         # if the audit path is ever removed.
         plain = run([str(orch), "resolve", "--worktree", rec["path"], "--commit",
-                     "--json"], cwd=clone, label=f"resolve:{rec['slug']}")
+                     "--operator", "manager", "--json"], cwd=clone,
+                    label=f"resolve:{rec['slug']}")
         vouched = None
         if plain["rc"] != 0:
             vouched = run([str(orch), "resolve", "--worktree", rec["path"],
-                           "--via-integration", "main", "--commit", "--json"],
+                           "--via-integration", "main", "--commit", "--operator",
+                           "manager", "--json"],
                           cwd=clone, label=f"resolve-vouched:{rec['slug']}")
         payload = as_json(vouched or plain) or {}
         matches = [c.get("match") for c in (payload.get("audit") or {}).get("commits", [])]
@@ -408,8 +434,9 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
             "torn_down": (vouched or plain)["rc"] == 0,
             "audit_matches": matches,
             "why": payload.get("error", "")[:160] if (vouched or plain)["rc"] else ""})
-    r = run([str(orch), "resolve", "--worktree", str(integ), "--commit", "--json"],
-            cwd=clone, label="resolve:integrate")
+    r = run([str(orch), "resolve", "--worktree", str(integ), "--commit",
+             "--operator", "manager", "--json"], cwd=clone,
+            label="resolve:integrate")
     teardown.append({"slug": "integrate", "floor_refused": r["rc"] != 0,
                      "vouched_rc": None, "torn_down": r["rc"] == 0,
                      "audit_matches": []})
@@ -440,8 +467,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", choices=("concurrent", "batch"), default="batch",
-                    help="'batch' = one integrator lands N delegates (the fan-out "
-                         "contract, and what the backlog dogfood uses); "
+                    help="'batch' = Integrator stages N delegates and Manager lands "
+                         "the batch (the fan-out contract, and what the backlog dogfood uses); "
                          "'concurrent' = independent sessions each landing their own")
     ap.add_argument("-n", type=int, default=10, help="lanes (default 10)")
     ap.add_argument("--conflict", choices=("shared", "none"), default="shared",

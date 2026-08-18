@@ -44,7 +44,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 **認領即工作,不必被任命。** `groom` 是把票放進 queued；任何 session 從 `dispatch`
 (`./ops/backlog.py dispatch`,或等價的 `list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒**,worst-first)
 取票，`claim` 使 queued ticket 成為持票 worktree 的 active ticket。直接指派則直接形成 active worktree，
-不必先有 ticket。Ticket Factory 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread；
+不必先有 ticket。Ticket Factory Child 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread；
 Delivery Team child 做完 commit → `./ops/worktree_registry.py hand-back --json` 只是內部交回，Integrator
 再決定 fan-in 與 delivery-loop。認領由**本機**登記簿推導(跨機時清單樂觀)，看板延後由 repo 外 overlay
 持有；同一張票仍是互斥 claim。**collision 只標在 queued ticket**，且只表示它與 active worktree 的已知
@@ -138,8 +138,8 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## 對話啟動流程
 
-1. **先做 typed skill routing** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，先跑 `./ops/skill_route.py validate --json`，再跑 `./ops/skill_route.py route --intent <intent> --json`；自然語言只產生候選，不得把所有命中描述的 skill 一起載入。「不確定」先停在 `kg-router` bootstrap，再沿 route 的 required dependency 查 authority。
-2. **判定角色視野** — Manager／Ticket Factory／Delivery Team Integrator／Delivery Child／Docs Steward／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。實際 section 走 `./ops/context_route.py render --role <role> --json`，缺 section 直接 fail-closed。
+1. **先確認 canonical identity** — 任何修改或任務命令前，先從且僅從 `Manager`、`Integrator`、`Direct-assignment Child`、`Ticket Factory Child`、`Ticket Delivery Child` 選一個，唯讀執行 `./ops/context_route.py identify --role <identity> [--work-mode <mode>] --json`；未 `status=confirmed` 前不得改檔、claim、open、adopt、Gate、integrate、cutover、resolve、sync 或 deploy。聊天層的主要 AI 身份、Docs Steward、Review service 都不能代替這五種身份。
+2. **再做 typed skill routing 與角色視野** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，跑 `./ops/skill_route.py validate --json` 與 `route --intent <intent> --json`；再以同一 identity／mode 觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列。不要因冷啟動就預載兄弟角色或全 repo；實際 section 走 `./ops/context_route.py render --role <identity> [--work-mode <mode>] --json`，缺 section 直接 fail-closed。
 3. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 4. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
 5. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
@@ -162,7 +162,7 @@ KG repo-local skill 的完整 roster、primary/secondary/context/closure phase�
 ```bash
 ./ops/skill_route.py validate --json
 ./ops/skill_route.py route --intent <typed-intent> --json
-./ops/context_route.py render --role <role> --skill <selected-skill> --json
+./ops/context_route.py render --role <identity> [--work-mode <mode>] --skill <selected-skill> --json
 ```
 
 路由契約：一個 typed intent 恰有一個 primary；required dependency 依序載入；optional／closure 只有明示 flag 或收尾階段載入；forbidden skill 不得進 bundle。`skill_route.py` 輸出的 route 不是 capability 或 production 授權，實際 side effect 仍由 `capability_matrix.py`、worktree orchestrator 與 production wrapper 決定。

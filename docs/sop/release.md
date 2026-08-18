@@ -33,7 +33,7 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ### `catchup`：trunk 動了之後的那一步
 
-`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕並要你先追上。那一步現在是 `catchup --commit`（原本是叫你自己跑 `git rebase main`）。當初的差別是：rebase 會在那份 **generated** 的 ledger view 上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator，所以 `catchup` 曾內建一個「衝突集合恰好等於該檔就自動重生」的解析器。**該檔已移出版控（IMP-20260807-b9526c），衝突源與那個解析器一併消失**：現在 `catchup` 就是一次乾淨的 rebase，衝突一律 abort 交人——本來就該如此。rebase 完 HEAD 就動了：已取得 develop 授權者必須跑 fresh `gate`；授權前只有一般且無存活 integration state 的工作樹可 catchup，完成後重新 `hand-back` 更新 SHA。整合樹 base 前進時必須走下方 abort／驗來源／teardown／重建路徑。
+`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕，但 delegated Child 不負責追上主幹。Manager 收到 child hand-back 後，若 base 已落後或 primary 在組裝期間前進，應 abort 舊 integration state、驗證 exact hand-back tips、從 current main fresh rebuild admission／staging，再跑 Gate；不得要求 Child catchup。`catchup --commit`（原本是叫你自己跑 `git rebase main`）只屬於 Manager-owned、非 delegated 的落地工作樹。當初的差別是：rebase 會在那份 **generated** 的 ledger view 上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator，所以 `catchup` 曾內建一個「衝突集合恰好等於該檔就自動重生」的解析器。**該檔已移出版控（IMP-20260807-b9526c），衝突源與那個解析器一併消失**：現在 Manager-owned tree 的 `catchup` 就是一次乾淨的 rebase，衝突一律 abort 交 Manager；rebase 完必須跑 fresh `gate`。整合樹 base 前進時仍必須走下方 abort／驗來源／teardown／重建路徑。
 
 ## 版號事實 SoT 表（iOS）
 
@@ -63,18 +63,18 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ### Develop 平面授權預設
 
-Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可並行的 thread，每個 thread 的 Integrator
+Ticket Factory Child 是一個可批量產票的 child thread；Delivery Team 是多個可並行的 thread，每個 thread 的 Integrator
 可派 N 個 child worktree。child 預設完成局部驗證、commit、`hand-back` 即停；Integrator 以
-`integrate --append` 持續 fan-in，取得當下 delivery-loop 授權後才執行 `close-wave --commit --sync`，
-把本輪真正閉環定義為 primary＋origin/main。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
+`integrate --append` 持續 fan-in，完成 staging handoff 後交給 Manager。只有 Manager 取得當下 delivery-loop 授權後，
+才執行 `close-wave --commit --sync`，把本輪真正閉環定義為 primary＋origin/main。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
 
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
 |---|---|---|---|---|
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
 | `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**已取得落地授權後**,多條獨立工作樹的預設序列化路徑（手動序列實測 N=10 只有 2/10 收斂） |
 | `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
-| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`；初始用 `integrate --slug <s> --branches <b...> --commit --no-gate`，晚回 child 用同 slug `integrate --append --branches <b...> --commit`；最後由 Integrator 統一 Gate | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。`--no-gate`／`--append` 只組裝；Gate 開始後不得追加來源，改列下一輪或異常傳訊 |
-| `close-wave` | Delivery Team Integrator 的可重入入口：`close-wave --slug <s> --branches <b...> --commit [--sync]`；同 slug 重跑可續接整合／Gate／cutover／來源 resolve／anchor／validate／remote sync 停點 | 本地 `main` + 來源 branches + backlog anchor queue | `--commit` 前進本地 `main`；`--sync` 推 exact tip 到 `origin/main` | 其他 team active worktree 可存在；只處理明示 branches。`--sync` 是 backup，不 deploy；primary＋remote sequence 由 delivery-loop lock 序列化 |
+| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`；初始用 `integrate --slug <s> --branches <b...> --commit --no-gate`，晚回 child 用同 slug `integrate --append --branches <b...> --commit`；Integrator 只完成 staging handoff，Manager 統一 Gate | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。`--no-gate`／`--append` 只組裝；檔案衝突只保留證據交 Manager，Gate 開始後不得追加來源，改列下一輪或異常傳訊 |
+| `close-wave` | Delivery Team Manager 的可重入 finalizer：`close-wave --slug <s> --branches <b...> --commit [--sync]`；同 slug 重跑可續接 Manager 的整合／Gate／cutover／來源 resolve／anchor／validate／remote sync 停點 | 本地 `main` + 來源 branches + backlog anchor queue | `--commit` 前進本地 `main`；`--sync` 推 exact tip 到 `origin/main` | 其他 team active worktree 可存在；只處理明示 branches。`--sync` 是 backup，不 deploy；primary＋remote sequence 由 delivery-loop lock 序列化 |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
@@ -84,7 +84,7 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 
 - **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
 - gate routing 會對任何變更的 `*.py` 額外排入 repo 級 `ops-python-scan` block（每個 plan 恰一次）；它是 stdlib AST 重複定義檢查，與 targeted `ops-pytest` 分開。重複/乾淨雙向 proof 在 `ops/tests/test_gate_can_fail.sh`，測試檔由 `ops/test_ops.sh` 的 `python-entrypoints` arm 可達。
-- **`cutover` 的新鮮度是兩軸**：HEAD（判決**讀**的碼）與 base（判決落地時**身旁**的碼）。base 落後即拒——cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被判過也不是落地的那棵，而 HEAD 檢查看不到（HEAD 沒動，動的是 base）。`gate` 也會提前拒，省下白跑的 gate。修法：`catchup --commit` → **重跑 gate** → cutover（IMP-20260806-945e01）。
+- **`cutover` 的新鮮度是兩軸**：HEAD（判決**讀**的碼）與 base（判決落地時**身旁**的碼）。base 落後即拒——cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被判過也不是落地的那棵，而 HEAD 檢查看不到（HEAD 沒動，動的是 base）。`gate` 也會提前拒，省下白跑的 gate。delegated Child 的修法是 Manager 從 current main fresh rebuild → **重跑 gate** → cutover；只有 Manager-owned tree 才用 `catchup --commit` → **重跑 gate** → cutover（IMP-20260806-945e01）。
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
 - `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 一樣過 `guard_ios_new_version`（見上「版號事實 SoT 表」的兩條規則），不能繞過；正常 upload 流程不以它取代 `finalize`。
@@ -94,12 +94,12 @@ Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可�
 
 ## develop 平面之前：批次整合
 
-一批工作分散在 N 個工作樹時，develop 平面之前由該 Delivery Team thread 的 Integrator 收斂；這
+一批工作分散在 N 個工作樹時，develop 平面之前由該 Delivery Team thread 的 Integrator 做 fan-in；這
 不是第四個平面，而是 delivery-loop 的組裝階段。受派 child 完成最後一顆 commit 後，必須在自己的
 工作樹執行 `./ops/worktree_registry.py hand-back --json`，回報 exact source thread ID（跨 host 加 source host ID）；Gate BLOCK 必須退回該 source thread，由原 thread 以新 commit／新 hand-back 回交，不能沿用舊 verdict／seal。受派 child 建樹時應帶 `open --delegated`（或 `adopt --delegated`），讓 `cutover`／`land` 在 gate 前以 `refusal=delegated` fail closed；若是具名 ticket batch，可加
 `--outcomes <outcomes.json>` 傳入逐票 acceptance 結果的 JSON 檔案路徑（不是 inline JSON）；Campaign child 另以 `--manifest <completed-manifest.json>` 傳入 completed integration manifest 的 JSON 檔案路徑。工具會驗 ticket set、可整合 outcome 的綠色 evidence
 與 hand-back seal，`integrate` 再驗 seal、tip 與來源 branch 現在的一致性。Integrator 可先用 `--no-gate` 組裝、晚回 child 用 `--append`，但只有在預期 child
-全回來並取得本輪授權後，才跑一次 final Gate，接著 `close-wave --commit --sync` 完成 primary＋
+全回來並取得本輪授權後，Integrator 把 staging handoff 交給 Manager；由 Manager 跑一次 final Gate，接著 `close-wave --commit --sync` 完成 primary＋
 origin/main。多個 Delivery Team 可並行，shared lock 只序列化最後共享 ref side effects。流程正本與
 交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段。
 

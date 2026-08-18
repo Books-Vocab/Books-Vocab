@@ -70,6 +70,7 @@ except ModuleNotFoundError:  # direct launch via the release checkout
 try:
     from ops.kg_board.model import (
         MODEL_FLOW,
+        MODEL_IDENTITIES,
         MODEL_RESPONSIBILITY_FLOW,
         MODEL_ROLES,
         MODEL_SCHEMA,
@@ -80,7 +81,7 @@ try:
     )
 except ModuleNotFoundError:  # direct launch via the release checkout
     from model import (
-        MODEL_FLOW, MODEL_RESPONSIBILITY_FLOW, MODEL_ROLES, MODEL_SCHEMA,
+        MODEL_FLOW, MODEL_IDENTITIES, MODEL_RESPONSIBILITY_FLOW, MODEL_ROLES, MODEL_SCHEMA,
         MODEL_TERMS, MODEL_WORK_MODES, classify_decision, scope_audit,
     )
 
@@ -1328,6 +1329,7 @@ def model_payload() -> dict:
         "schema": MODEL_SCHEMA,
         "terms": MODEL_TERMS,
         "flow": MODEL_FLOW,
+        "identities": MODEL_IDENTITIES,
         "roles": MODEL_ROLES,
         "work_modes": MODEL_WORK_MODES,
         "responsibility_flow": MODEL_RESPONSIBILITY_FLOW,

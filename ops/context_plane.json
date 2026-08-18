@@ -102,6 +102,16 @@
       "purpose": "角色視野與 authority lookup 的執行順序"
     },
     {
+      "id": "agent-context.role-identity",
+      "path": "docs/reference/agent_context.md",
+      "registry_id": "reference.agent_context",
+      "start": "## Role identity gate（所有任務命令前）",
+      "end": "## 載入規則",
+      "kind": "kernel",
+      "max_tokens": 1200,
+      "purpose": "任何任務命令前先確認五種 canonical identity"
+    },
+    {
       "id": "agent-context.loading",
       "path": ".claude/skills/kg-agent-context/SKILL.md",
       "registry_id": "reference.agent_context",
@@ -227,7 +237,7 @@
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
       "start": "| **Manager** (",
-      "end": "| **Ticket Factory** (",
+      "end": "| **Integrator** (",
       "anchor_mode": "prefix",
       "kind": "authority",
       "max_tokens": 1200,
@@ -237,12 +247,12 @@
       "id": "agent-context.role.delivery-child",
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
-      "start": "| **Delivery Child** (",
+      "start": "| **Direct-assignment Child** (",
       "end": "| **Docs Steward** (",
       "anchor_mode": "prefix",
       "kind": "authority",
       "max_tokens": 1200,
-      "purpose": "Delivery Child 最小 context 與升級入口"
+      "purpose": "三種 Child identity 的最小 context 與升級入口"
     },
     {
       "id": "agent-context.role.docs-steward",
@@ -259,8 +269,8 @@
       "id": "agent-context.role.integrator",
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
-      "start": "| **Delivery Team Integrator** (",
-      "end": "| **Delivery Child** (",
+      "start": "| **Integrator** (",
+      "end": "| **Direct-assignment Child** (",
       "anchor_mode": "prefix",
       "kind": "authority",
       "max_tokens": 1200,
@@ -270,23 +280,23 @@
       "id": "agent-context.role.ticket-factory",
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
-      "start": "| **Ticket Factory** (",
-      "end": "| **Delivery Team Integrator** (",
+      "start": "| **Ticket Factory Child** (",
+      "end": "| **Ticket Delivery Child** (",
       "anchor_mode": "prefix",
       "kind": "authority",
       "max_tokens": 1200,
-      "purpose": "Ticket Factory 最小 context 與升級入口"
+      "purpose": "Ticket Factory Child 最小 context 與升級入口"
     },
     {
       "id": "agent-context.ticket-factory-contract",
       "path": "docs/reference/agent_context.md",
       "registry_id": "reference.agent_context",
-      "start": "## Ticket Factory 的完成線與責任邊界",
+      "start": "## Ticket Factory Child 的完成線與責任邊界",
       "end": "## 驗證層級與耗時控制面",
       "anchor_mode": "prefix",
       "kind": "authority",
       "max_tokens": 2400,
-      "purpose": "Ticket Factory contract-ready completion line, blocker convergence and dispatch boundary"
+      "purpose": "Ticket Factory Child contract-ready completion line, blocker convergence and dispatch boundary"
     },
     {
       "id": "agent-context.role.review",
@@ -484,11 +494,11 @@
     {
       "id": "bootstrap",
       "match": {"roles": ["*"]},
-      "units": ["kernel.startup", "kernel.nonnegotiables", "router.bootstrap", "router.routing", "router.hard-stops", "router.output", "agent-context.bootstrap", "agent-context.loading"]
+      "units": ["kernel.startup", "kernel.nonnegotiables", "router.bootstrap", "router.routing", "router.hard-stops", "router.output", "agent-context.bootstrap", "agent-context.role-identity", "agent-context.loading"]
     },
     {
       "id": "role.ticket-factory",
-      "match": {"roles": ["ticket-factory"]},
+      "match": {"roles": ["delivery-child"], "work_modes": ["ticket-factory"]},
       "units": ["agent-context.role.ticket-factory", "agent-context.ticket-factory-contract", "router.hard-stops", "receipt.core"]
     },
     {

@@ -629,13 +629,13 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         record = delegated_records[0]
         payload = {
             "schema": SCHEMA, "step": "cutover", "error": (
-                "delegated worktree cannot cut over; the integrator must run gate/cutover"
+                "delegated worktree cannot cut over; Manager must run gate/cutover"
             ), "refusal": "delegated", "delegated": True, "landed": False,
             "worktree": worktree, "branch": record.get("branch"),
         }
         _emit(payload, args.json,
               f"✗ cutover refused: delegated worktree {record.get('branch')} at {worktree}; "
-              "the integrator owns landing")
+              "Manager owns landing admission")
         return EXIT_BLOCK
 
     orch = _orchestrator_identity(worktree)

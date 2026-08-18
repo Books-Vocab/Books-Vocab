@@ -147,21 +147,21 @@ MODEL_TERMS = (
         "english": "Manager",
         "chinese": "落地主管",
         "definition": "唯一負責把 staging handoff 經 Gate 收斂到 primary 與 origin/main 的角色。",
-        "rule": "只有 Manager 可執行 gated continuation、cutover、resolve --via-integration、sync；deploy 另需 release 意圖。",
+        "rule": "只有 Manager 可執行 gated continuation、current-main admission、cutover、resolve --via-integration、sync，並裁決 Gate BLOCK；deploy 另需 release 意圖。",
     },
     {
         "id": "integrator",
         "english": "Integrator",
         "chinese": "扇出／暫存協調者",
         "definition": "依 Scope 矩陣 fan-out child，將已 hand-back 的來源組裝成 staging tree。",
-        "rule": "只可 integrate --no-gate、append、處理衝突與清理未落地 staging；不改 primary、不重簽 child seal。",
+        "rule": "只可 integrate --no-gate、append、保留／回報衝突證據與清理未落地 staging；不解檔案衝突、不改 primary、不重簽 child seal。",
     },
     {
         "id": "child",
         "english": "Child",
         "chinese": "局部交付者",
-        "definition": "在自己的 worktree Scope 內完成局部實作與最低必要驗證的執行者。",
-        "rule": "只跑 S0＋受影響 S1，commit 後直接以 exact source thread、HEAD、seal typed hand-back 給 Manager。",
+        "definition": "三種 Child identity（Direct-assignment、Ticket Factory、Ticket Delivery）各自在自己的 Scope 內完成局部責任。",
+        "rule": "先確認其中一種 Child identity；只跑該身份允許的 S0＋受影響 S1，完成後依其停止點 typed hand-back，不追蹤 primary。",
     },
     {
         "id": "staging-handoff",
@@ -177,6 +177,68 @@ MODEL_TERMS = (
         "definition": "依變更範圍與發布風險逐級增加成本的驗證模型。",
         "rule": "Child=S0＋受影響 S1；Manager 整合=S0＋受影響 S2；跨模組才升 S3；真正發布才做 S4。",
     },
+    {
+        "id": "gate-block-routing",
+        "english": "Gate BLOCK routing",
+        "chinese": "Gate 阻塞分流",
+        "definition": "Manager 對整合後 Gate 紅燈的歸屬判斷與修復路徑。",
+        "rule": "Child slice defect 依 exact source thread 退回原 thread；整合／檔案衝突由 Manager 在 staging 修復；baseline／工具問題具名登記或 defer，不偽造 PASS。",
+    },
+    {
+        "id": "role-identity-gate",
+        "english": "Role identity gate",
+        "chinese": "角色身份閘門",
+        "definition": "在任何任務命令前先確認角色，且只可屬於五種 canonical identity 之一。",
+        "rule": "Manager、Integrator、Direct-assignment Child、Ticket Factory Child、Ticket Delivery Child；未確認只能做唯讀 identity/context bootstrap。",
+    },
+)
+
+MODEL_IDENTITIES = (
+    {
+        "id": "manager",
+        "english": "Manager",
+        "chinese": "落地主管",
+        "role": "manager",
+        "work_mode": "none",
+        "admission": "先宣告 Manager；確認 primary／current-main／origin/main 視野與當下落地授權。",
+        "boundary": "唯一負責 Gate、current-main admission、檔案衝突修復、cutover、resolve、sync。",
+    },
+    {
+        "id": "integrator",
+        "english": "Integrator",
+        "chinese": "扇出／暫存協調者",
+        "role": "integrator",
+        "work_mode": "none",
+        "admission": "先宣告 Integrator；取得 assigned batch 與 Scope／檔案佔用矩陣。",
+        "boundary": "只做 fan-out、integrate／append staging 與衝突證據回報，不改 primary、不解檔案衝突。",
+    },
+    {
+        "id": "direct-assignment-child",
+        "english": "Direct-assignment Child",
+        "chinese": "直接派工 Child",
+        "role": "child",
+        "work_mode": "direct-assignment",
+        "admission": "開工前必須有 structured Scope 與 exact source thread。",
+        "boundary": "只做自己的 Scope；局部驗證後 commit＋typed hand-back。",
+    },
+    {
+        "id": "ticket-factory-child",
+        "english": "Ticket Factory Child",
+        "chinese": "Ticket Factory Child",
+        "role": "child",
+        "work_mode": "ticket-factory",
+        "admission": "開工前宣告 ticket-factory mode 與 structured Scope；不 claim delivery ticket。",
+        "boundary": "只把問題收斂成可派工 contract，不做產品整合或 primary 落地。",
+    },
+    {
+        "id": "ticket-delivery-child",
+        "english": "Ticket Delivery Child",
+        "chinese": "Ticket Delivery Child",
+        "role": "child",
+        "work_mode": "ticket-delivery",
+        "admission": "開工前由 dispatch／campaign ticket 提供 Scope，不另猜 direct Scope。",
+        "boundary": "只完成 ticket Scope；局部驗證後以 ticket outcomes、exact HEAD、typed seal hand-back。",
+    },
 )
 
 MODEL_ROLES = (
@@ -184,8 +246,8 @@ MODEL_ROLES = (
         "id": "manager",
         "english": "Manager",
         "chinese": "落地主管",
-        "owns": ("primary", "origin/main", "final delivery decision"),
-        "can_do": ("gated continuation", "close-wave --commit", "cutover --commit", "resolve --via-integration", "sync --commit"),
+        "owns": ("primary", "origin/main", "current-main admission", "integration repair", "final delivery decision"),
+        "can_do": ("gated continuation", "Gate BLOCK adjudication", "close-wave --commit", "cutover --commit", "resolve --via-integration", "sync --commit"),
         "stops_at": "primary 與 origin/main 完成收斂；deploy 仍需另外的 release 意圖",
     },
     {
@@ -193,16 +255,32 @@ MODEL_ROLES = (
         "english": "Integrator",
         "chinese": "扇出／暫存協調者",
         "owns": ("Scope／檔案佔用矩陣", "fan-out", "staging"),
-        "can_do": ("integrate --commit --no-gate", "--append", "衝突處理", "未落地 staging tree 清理"),
+        "can_do": ("integrate --commit --no-gate", "--append", "衝突證據整理／回報", "未落地 staging tree 清理"),
         "stops_at": "把 source hand-back 與 staging manifest 交給 Manager；不改 primary main",
     },
     {
-        "id": "child",
-        "english": "Child",
-        "chinese": "局部交付者",
-        "owns": ("宣告的 worktree Scope", "局部實作", "局部驗證"),
+        "id": "direct-assignment-child",
+        "english": "Direct-assignment Child",
+        "chinese": "直接派工 Child",
+        "owns": ("structured Scope", "局部實作", "局部驗證"),
         "can_do": ("S0", "受影響的 S1", "commit", "typed hand-back"),
-        "stops_at": "commit + hand-back：直接把 exact HEAD、source thread、seal 與證據交回 Manager",
+        "stops_at": "commit + hand-back：把 exact HEAD、source thread、seal 與證據交回 Manager；不追蹤 primary、不 catchup",
+    },
+    {
+        "id": "ticket-factory-child",
+        "english": "Ticket Factory Child",
+        "chinese": "票務工廠 Child",
+        "owns": ("factory Scope", "backlog contract", "dispatchable definition"),
+        "can_do": ("add", "verify", "groom", "contract evidence"),
+        "stops_at": "contract-ready／dispatchable 或具名外部阻塞；不做產品整合、不落地 primary",
+    },
+    {
+        "id": "ticket-delivery-child",
+        "english": "Ticket Delivery Child",
+        "chinese": "票務交付 Child",
+        "owns": ("ticket Scope", "局部實作", "局部驗證"),
+        "can_do": ("S0", "受影響的 S1", "ticket outcomes", "typed hand-back"),
+        "stops_at": "ticket Scope 完成後把 exact HEAD、source thread、seal 與 outcomes 交回 Manager；不追蹤 primary、不 catchup",
     },
 )
 
@@ -234,16 +312,18 @@ MODEL_WORK_MODES = (
 )
 
 MODEL_RESPONSIBILITY_FLOW = (
+    {"id": "identity", "owner": "所有 agent", "label": "先確認身份", "detail": "五種 canonical identity 未確認前，只能做唯讀 identity／context bootstrap。"},
     {"id": "scope", "owner": "Integrator／Manager", "label": "定 Scope", "detail": "先看檔案佔用矩陣，決定可否 fan-out。"},
-    {"id": "child", "owner": "Child", "label": "局部實作", "detail": "依三種 work mode 開工；只跑 S0＋受影響 S1。"},
+    {"id": "child", "owner": "三種 Child", "label": "局部實作", "detail": "依 direct-assignment、ticket-factory 或 ticket-delivery identity 開工；只跑 S0＋受影響 S1。"},
     {"id": "handback", "owner": "Child → Manager", "label": "Typed hand-back", "detail": "交回 exact source thread、HEAD、seal、測試與耗時。"},
-    {"id": "staging", "owner": "Integrator", "label": "Fan-in staging", "detail": "可先 integrate／append／處理衝突；保留 source provenance，不重簽 child seal。"},
+    {"id": "staging", "owner": "Integrator", "label": "Fan-in staging", "detail": "可先 integrate／append；遇檔案衝突只保留證據交 Manager，保留 source provenance，不重簽 child seal。"},
     {"id": "gate", "owner": "Manager", "label": "Gate／落地", "detail": "整合後跑受影響 S2；跨模組才升 S3，必要時才做 S4 發布級驗證。"},
     {"id": "sync", "owner": "Manager", "label": "Sync／Release", "detail": "cutover、resolve、sync；deploy 另需 release 意圖。"},
 )
 
 MODEL_FLOW = {
     "main_path": (
+        {"id": "role-identity", "english": "Role identity", "chinese": "先確認角色"},
         {"id": "observed", "english": "Observed", "chinese": "發現問題"},
         {"id": "ticket", "english": "Ticket", "chinese": "建立票"},
         {"id": "groomed", "english": "Groomed", "chinese": "完成梳理"},
@@ -252,7 +332,8 @@ MODEL_FLOW = {
         {"id": "dispatchable", "english": "Dispatchable", "chinese": "可派工"},
         {"id": "active", "english": "Claimed / Active", "chinese": "認領／進行中"},
         {"id": "handoff", "english": "Commit + hand-back", "chinese": "提交並交回"},
-        {"id": "verify", "english": "Verify acceptance", "chinese": "驗收"},
+        {"id": "staging", "english": "Staging handoff", "chinese": "暫存交接"},
+        {"id": "manager-gate", "english": "Manager Gate / cutover", "chinese": "Manager Gate／落地"},
         {"id": "resolved", "english": "Fixed / Wont-fix", "chinese": "已修復／不修"},
     ),
     "branches": (

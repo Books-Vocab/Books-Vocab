@@ -37,3 +37,21 @@ def test_loadtest_lane_commit_is_subject_only(tmp_path: Path) -> None:
     assert steps[-1]["rc"] == 0
     message = _git(repo, "show", "-s", "--format=%B", "HEAD")
     assert message.splitlines() == ["ops: load-test lane 1"]
+
+
+def test_loadtest_handback_uses_typed_ordinary_child_receipt(tmp_path: Path) -> None:
+    worktree = tmp_path / "worktree"
+    outcomes = tmp_path / ".cache" / "handback-outcomes.json"
+    command = MODULE.typed_child_handback_command(
+        worktree, "feat/lt-00", outcomes
+    )
+
+    assert command == [
+        str(worktree / "ops" / "worktree_registry.py"),
+        "hand-back",
+        "--branch", "feat/lt-00",
+        "--path", str(worktree),
+        "--role", "child",
+        "--outcomes", str(outcomes),
+        "--json",
+    ]
