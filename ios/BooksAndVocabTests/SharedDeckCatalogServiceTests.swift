@@ -382,7 +382,7 @@ struct SharedDeckCatalogServiceTests {
 
     // MARK: - Guest-tolerant browse: an expired token must not log the user out
 
-    /// 逛公開牌組目錄**不該讓任何人登出**（backlog APP-20260805-0049ac）。
+    /// 逛公開牌組目錄**不該讓任何人登出**（regression coverage）。
     ///
     /// 這條測試走的是真的 `KGService`（只換掉 auth 兩個縫），不是 `SpyKGService`——
     /// 因為缺陷不在 catalog service 裡，而在它**問誰要 token**：`currentAuthToken()`

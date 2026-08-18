@@ -1,1 +1,0 @@
-"""KG board application package."""

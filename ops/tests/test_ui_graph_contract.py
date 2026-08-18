@@ -11,7 +11,7 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parent.parent
 ROOT = OPS.parent
 CLI = OPS / "ui_graph.py"
-CONTRACT = OPS / "tests" / "fixtures" / "ticket_factory_contracts" / "IMP-20260813-4c0ad1.json"
+CONTRACT = OPS / "tests" / "fixtures" / "evidence_manifests" / "ui-graph-missing-index.json"
 
 _spec = importlib.util.spec_from_file_location("ui_graph", CLI)
 ui_graph = importlib.util.module_from_spec(_spec)
@@ -73,7 +73,7 @@ def test_explicit_build_is_the_only_build_path(monkeypatch, capsys):
 
 def test_contract_manifest_is_verified_and_bounded():
     payload = json.loads(CONTRACT.read_text(encoding="utf-8"))
-    assert payload["ticket_id"] == "IMP-20260813-4c0ad1"
+    assert payload["evidence_id"] == "ui-graph-missing-index"
     assert payload["status"] == "verified"
     assert payload["spawned_processes"] == []
     assert isinstance(payload["verdict"], str) and payload["verdict"]

@@ -1,275 +1,62 @@
-# KG Workspace Agent Guide
+# KG Workspace Guide
 
-> 🖥 **雙機專案（managed_on: both）**：本 repo 兩台都有 clone，正式站 wordnexus.lol + iOS build 在常駐機（ssh chenliangyu@100.118.39.104）。雙機架構/ssh/gh 互通/部署回滾完整指引見 ~/project/AGENTS.md「雙機體系」段與 ~/butler/docs/kg-backend-deployment.md。先 hostname -s 定位。
+KG 是 Knowledge Graph 英語學習產品：`ios/` 是 SwiftUI BooksAndVocab app，`backend/` 是 FastAPI 與官網，`lab/` 是 podcast／評估工具，`ops/` 是測試、部署與安全入口。
 
-## Identity
+## GitHub-native 心智模型
 
-**KG = Knowledge Graph 英語詞彙學習 app** — EPUB/PDF/TXT/MD reader 選詞 → 翻譯 → 詞庫 → 知識圖譜 → today review → podcast。  
-Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官網)+ `lab/`(Podcast monitor / Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`。
+GitHub 是交付控制面；本機工具只補足多 worktree 與本機驗證，不另建一套產品管理系統。
 
-| key | value |
-|-----|-------|
-| project key | `kg` |
-| backend | `backend` |
-| ios | `ios` |
-| remote | `~/knowledge_graph_api` |
-| domain | `wordnexus.lol` |
-| container | `knowledge-graph-api` |
-| port | `8000` |
-| commit prefix | `ios:` / `api:` / `ops:` / `docs:` |
-
-## 交付進度看板模型（營運憲法，always-on）
-
-本工作區的協調物是**一塊板子**,不是一張組織圖。這是 2026-08-08 的取代:先前的
-「執行長→總經理→部門」遞迴委派隱喻已**整份刪除,不留副本**。理由不是文風——那個模型
-要求每個 agent 先回答「我是誰的下一階」才能開始工作,而那個問題**在資料裡沒有答案**,
-只存在於 prompt 的敘述裡。板子相反:票在哪、誰認領了、憑證綠不綠,三件事都是**檔案**,
-任何 session 隨時可讀,不必先被誰任命。
-
-**三個平面,各有唯一的檔案 SoT**
-
-| 平面 | 問題 | SoT |
+| 心智模型 | GitHub / 本機對應 | 真正 owner |
 |---|---|---|
-| **票** | 有什麼事要做、怎麼做、怎麼算做完 | `docs/runbook/backlog/<id>.json`,入口一律 `ops/backlog.py`(機器讀 `list --json` / `show`;生命週期 SoT=`lifecycle --json`) |
-| **認領** | 哪個 worktree 正在做什麼、還活著嗎 | worktree 登記簿,入口 `ops/worktree_registry.py` / `ops/worktree_orchestrate.py`;`backlog.py list` 的 `held` 欄由它推導,**不儲存** |
-| **看板** | 現在該先做哪張、哪張延後 | `~/butler/kg-board`(讀 origin/main 的 clone;手機端只做**排序 / 釘選 / 延後**三個動作,不能認領也不能結案) |
+| 想做什麼、為什麼做、完成判準 | GitHub Issue | GitHub Issues |
+| 優先序、視圖、里程碑 | GitHub Project | GitHub Projects |
+| 一次實作的隔離環境 | branch + local worktree | Git / `ops/worktree_registry.py` |
+| 變更、討論、review、驗證結果 | Pull Request | GitHub PR + review |
+| 自動檢查與 required checks | GitHub Actions | `.github/workflows/` |
+| 合併後的產品主幹 | `main` | GitHub protected branch |
+| 發版、批准、rollback | release／部署 SOP | `ops/release.sh` + `ops/devops_kg_safe.sh` |
 
-**Worktree 是看板上的 active 主體,不是 agent。** active worktree 有兩種：持票 worktree（持有一張或多張
-相關 ticket，正在修改）與直接指派 worktree（使用者直接交辦、正在修改，可沒有 ticket）。持票 worktree
-可以一次持有多張相關票；看板以 worktree 欄呈現它們的合併檔案範圍，ticket id 只作群組內索引。直接指派 worktree
-若 mirror 尚未提供 structured Scope，會保留在圖上但標為 Scope 未知，不以 commit diff 或 intent 猜預計檔案。
-`worktree_refs` 是工作樹的生命與路徑證據，registry claims 是票的持有證據；`backlog.py list` 的 `held`
-欄由後者推導，**不儲存**。
+標準路徑：Issue → branch/worktree → commit → PR → Actions／review → merge → release。Issue、Project、PR 的狀態不在 repo 內複製；本地 registry 不存工作項目生命週期，也不決定合併。
 
-**認領即工作,不必被任命。** `groom` 是把票放進 queued；任何 session 從 `dispatch`
-(`./ops/backlog.py dispatch`,或等價的 `list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒**,worst-first)
-取票，`claim` 使 queued ticket 成為持票 worktree 的 active ticket。直接指派則直接形成 active worktree，
-不必先有 ticket。Ticket Factory Child 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread；
-Delivery Team child 做完 commit → `./ops/worktree_registry.py hand-back --json` 只是內部交回，Integrator
-再決定 fan-in 與 delivery-loop。認領由**本機**登記簿推導(跨機時清單樂觀)，看板延後由 repo 外 overlay
-持有；同一張票仍是互斥 claim。**collision 只標在 queued ticket**，且只表示它與 active worktree 的已知
-Scope 檔案重疊；active worktree 本身是佔用狀態，不是 collision。worktree 或 queued ticket 的 Scope
-未知時不猜檔案，也不把它改名成「碰撞未知」。
+## 本地 coordinator 的窄責任
 
-**Fan-out 淺規則（agent guidance）**：優先把 bounded bug、refactor、tooling friction、docs、test maintenance 等可獨立驗收的工作 fan-out；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這只影響排序／派工，不改 `backlog.py` 的 lifecycle、ticket acceptance、status 或結案語義。
+`ops/worktree_registry.py` 只記錄本機工作樹是否被誰使用、structured Scope、thread identity、branch/path、hand-back 與驗證摘要。`ops/worktree_orchestrate.py` 只負責建立／接管 worktree、檢查 Scope overlap、執行本地 gate、保存 evidence、交回或安全移除工作樹。
 
-**一張票要能被取,得先夠具體——而且要能被排序。** 梳理(groom)= 將票放進 queued，填上 `plan` / `acceptance` /
-`fix_site` + 可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」;**再加
-`brief` / 結構化 `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料的 `validate`
-分開 grandfather：`brief` 以 `BRIEF_REQUIRED_SINCE` = 2026-08-09、structured Scope 以
-`SCOPE_REQUIRED_SINCE` = 2026-08-18 為界)——一句白話的「壞了什麼、誰有感」
-與一份 `scope.files[]` 檔案清單（每個 path 標 `add` 或 `modify`），讓人與 agent 都能直接判斷檔案佔用。舊文字 Scope 只標為 Scope 未知，不猜碰撞。前四欄讓票**做得動**,這兩欄讓票
-**排得動**:看板只有釘選 / 排序 / 延後三個動作,而它渲染的是 `detail` 前 400 字的技術散文,
-122 筆未解時那個寫入面實質是惰性的。`fix_site` 不能兼任——它是程式錨點,讀者不同。
-未梳理的票留在板上但不進 `dispatch`——沒有修法的票不是工作,是待調查;
-既有欠 `brief` 或 Scope 仍是 legacy 文字／無法機讀的票，用 `list --missing-brief` 數；它是
-**回填佇列不是 dispatch 佇列**，而且不會把 legacy Scope 猜成檔案。主管與 agent 共用的英文／中文術語、
-流程圖與 live 分類在看板的獨立 `/model` 頁（API SoT=`/api/model`, schema=`kg.board.model.v1`）。
-日常寫入走 `./ops/backlog.py groom <id>`（dry-run 預設、`--commit` 原子落地）；`verify` 只回答問題是否仍成立，與是否可 dispatch 正交。角色、狀態與 edge cases 不在本檔重抄，直接讀 `./ops/backlog.py lifecycle --json`。
+GitHub 外部 ID 只作 opaque reference；Issue、Project、PR 的生命週期與合併決定都在 GitHub 完成。
 
-**結案只有一種意義:那條你自己寫下的判準今天真的綠。** 三條路徑通往 `status=fixed`
-(`anchor` 波次 / `update --status fixed` / `verify --status fixed`)共用同一道
-`_acceptance_gate`,`--commit` 時實跑 `acceptance_cmd`,rc 不符即拒絕落地。無命令可表達者
-用 `acceptance_manual` **具名申報**——不是漏洞,是可清點的例外。
+## 開發規則
 
-**開 agent 前先問值不值得。** 同時滿足「單檔、約 ≤10 行、純樣板、無語意風險」→ 自己做,
-免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
-Review 結果由 reviewer output / review cycle / delivery receipt 留證；commit message 不承載 review attestation。
+1. 開始前先讀本檔與對應 SoT；涉及陌生 endpoint、schema、env、release 或安全邊界，先查 `docs/registry.yml` 指向的文件。
+2. 實作採 TDD：先紅、最小修復、再綠；每個獨立變更保持可 review、可回滾。
+3. 分支與 worktree 要有明確 Scope；同一檔案不可被兩個 active worktree 同時認領。跨 session 協調以 registry／GitHub PR 為準，不靠聊天紀憶。
+4. PR 必須讓 reviewer 能回答：改了什麼、為何改、如何驗證、是否有安全或文件影響。review 與 required checks 留在 PR；不要把它們重新寫成 repo receipt。
+5. 遇到工具摩擦先修工具或記錄可重現 blocker，不以手工繞路掩蓋流程缺陷。
 
-**預設假設多 session 並行,Manager 是唯一 primary／origin/main 落地責任者。** Child 依三種
-`work_mode` 工作：`direct-assignment`、`ticket-factory`、`ticket-delivery`；開工前由 registry
-驗證 Scope／ticket admission，完成後只 commit + typed hand-back。Integrator 依 Scope 矩陣 fan-out
-並以 `integrate ... --commit --no-gate`／`--append` 做 staging fan-in；integration state 必須記錄
-source hand-back SHA、phase 與下一步 Manager，不重簽 child seal、不落地 primary。Manager 才執行
-受影響的 Gate、`close-wave --commit`、cutover、resolve、anchor/validate、origin/main sync；
-`deploy` / `release` 仍須另外明示 release 意圖。完整術語與責任流程見 KG Board `/model` 頁，機器
-契約與停止點見 `.claude/skills/worktree-flow/SKILL.md`。正常溝通讀 registry/state/receipt；只有衝突、state
-不一致、resource collision 或 primary race 才用內建 thread message，訊息至少帶 canonical contract 的
-team/slug、branch、worktree path、HEAD、state path、具體 blocker 與證據、要求的動作，以及
-pause|continue 判定。完整正本見 `.claude/skills/worktree-flow/SKILL.md`。
-
-**要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
-且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有
-使用者本人能做**(GUI-only、帳號持有人專屬簽署、外部系統人工步驟)→ 定讞當下立刻說,不等收尾
-receipt,說完**繼續平行推進其餘工作**。晚報一分鐘就損失一分鐘可平行的人工時間(2026-07-08:
-ASC API 403 需帳號持有人 GUI 簽協議,開場 10 分鐘定讞卻壓到收尾才報,白損 40 分鐘)。
-
-**worker 名冊**:`.claude/agents/` 目錄本身即名冊(`ls` 是清單,frontmatter `description`
-是職責),**不另立手寫 roster 檔**。`code-reviewer` 是橫切共享服務:任何 session 完成一個
-可交付單位時自行調用它當鐵律4 的 gate,審畢回給調用者。
-
-**全局觀來自檔案,不來自監工**:讀 SoT docs + 讀票 + 讀登記簿,不是盯每個 agent 的 context。
-
-**SoT 零重複鐵則**:一個事實只有一個 owner 文檔(registry 標 `authority: SoT`);CLAUDE.md、
-agent 檔、流程文檔只能用 path / registry id / 鐵律編號**指過去,絕不複述**。
-
-**自我提升迴圈(票是怎麼長出來的)**:摩擦走 andon → receipt 強制表態(規則見 `kg-receipt`
-「Tooling Debt」)→ `ops/backlog.py add` 開票 → 梳理 → 進 `dispatch` → 被取走 → 結案時連
-commit(`fixed_by`)= 可回溯。**兩條 stream、兩個 owner**:`--stream IMP`(工具 / CLI / 文檔 /
-架構摩擦)→ `platform-steward`;`--stream APP`(會出貨給使用者的缺陷,另附 `--surface` /
-`--repro` / `--build`)→ 對應 Line worker(`ios-engineer` / `backend-engineer`)。分流看
-**這缺陷誰碰得到**(使用者 vs 只有 repo 內的人)不看誰發現,可判定判準見 `kg-receipt`
-「Stream 分流」。**選錯 stream 等於選錯 owner**,而沒有 owner 的票就是會被無聲遺忘的那種摩擦。
-無聲妥協(硬幹)違鐵律9;結構 / 架構級的摩擦不自決,升級給使用者。
-
-## ops 資料工具（always-on，不靠 skill 觸發）
-
-凡需要**查詢或修改**用戶資料、單字庫、額度、config、graph、cost，一律用 CLI，**禁止讀 ops/*.py 原始碼後自行拼 SQL 或直接操作檔案**。
-
-```
-# 唯讀查詢
-(cd backend && uv run python ops_cli.py <subcommand> [args])
-
-# 寫入（dry-run 預設，--commit 才落地）
-(cd backend && uv run python ops_edit.py <subcommand> [args])
-```
-
-不確定有哪些子指令 → `(cd backend && uv run python ops_cli.py --help)` / `(cd backend && uv run python ops_edit.py --help)`。生產資料操作仍優先走 `./ops/devops_kg_safe.sh ops-cli|ops-edit ...`;完整子指令表與安全契約在 `devops` skill 內。
-
-## llm_eval 工具（always-on）
-
-LLM prompt 評估 / 語料管理統一入口：
-
-```
-cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
-```
-
-子指令：`eval` / `prompts` / `datasets` / `providers` / `corpus-build` / `gold-queue`。`--help` 查完整用法。**禁止讀 llm_eval/*.py 原始碼後自行拼 API 呼叫**。
-
-## 對話啟動流程
-
-1. **先確認 canonical identity** — 任何修改或任務命令前，先從且僅從 `Manager`、`Integrator`、`Direct-assignment Child`、`Ticket Factory Child`、`Ticket Delivery Child` 選一個，唯讀執行 `./ops/context_route.py identify --role <identity> [--work-mode <mode>] --json`；未 `status=confirmed` 前不得改檔、claim、open、adopt、Gate、integrate、cutover、resolve、sync 或 deploy。聊天層的主要 AI 身份、Docs Steward、Review service 都不能代替這五種身份。
-2. **再做 typed skill routing 與角色視野** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，跑 `./ops/skill_route.py validate --json` 與 `route --intent <intent> --json`；再以同一 identity／mode 觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列。不要因冷啟動就預載兄弟角色或全 repo；實際 section 走 `./ops/context_route.py render --role <identity> [--work-mode <mode>] --json`，缺 section 直接 fail-closed。
-3. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
-4. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
-5. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
-
-## Docs Control Plane 快速用法
-
-目標:讓 agent 一進 repo 就知道文檔怎麼查、怎麼同步、怎麼驗證。
-
-- **先看 registry**:`docs/registry.yml` 是機器可讀控制平面。每個 entry 的 `id/path/kind/authority/triggers/sources/generator` 定義 owner、觸發條件、path hint 與生成器。`sources` 的 `!path` / `!glob` 是排除 broad source 下的已知誤報。
-- **做改動前查 impact**:`./ops/docs_impact.py --since <base>` 或 `./ops/docs_impact.py --files <path...>`。輸出是候選文檔,不是自動更新命令;用 `triggers` + 實際 diff 判斷是否需同步。
-- **日常 PR gate**:`./ops/docs_lint.sh`。預設只驗 registry + changed docs,並印 registry impact hints(warn-only)。只驗控制面用 `./ops/docs_lint.sh --registry`。
-- **全 repo 健康盤點**:`./ops/docs_lint.sh --audit` 或 `--all`;這是 health audit,不是日常 PR gate。
-- **coverage debt**:`./ops/docs_registry_coverage.py` 看哪些 linted docs 尚未進 registry,並分成 `active_unregistered`(應補進控制面)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt);`--strict` 只卡 active-doc 覆蓋 debt,不等同日常 gate。
-- **同步流程權威**:背景 doc-sync agent 讀 `docs/sop/doc_sync.md`;人工維護/狗食流程讀 `docs/sop/docs_dogfood.md`。
-
-## Skill 系統（machine-routed）
-
-KG repo-local skill 的完整 roster、primary/secondary/context/closure phase、dependency、exclusion 與 route fixture 唯一以 `.claude/skills/catalog.json` 為準；不要從本節的自然語言猜 trigger，也不要把多個 keyword 命中解讀成全部載入。
+## 常用入口
 
 ```bash
+./ops/context_route.py identify --role manager --json
+./ops/context_route.py validate --json
 ./ops/skill_route.py validate --json
-./ops/skill_route.py route --intent <typed-intent> --json
-./ops/context_route.py render --role <identity> [--work-mode <mode>] --skill <selected-skill> --json
+./ops/skill_route.py route --intent delivery --json
+./ops/context_route.py render --role manager --intent delivery --json
+./ops/worktree_registry.py list --json
+./ops/worktree_orchestrate.py --help
+./ops/docs_impact.py --files docs/reference/tech_index.md
+./ops/docs_lint.sh
+./ops/test_ops.sh worktree
 ```
 
-路由契約：一個 typed intent 恰有一個 primary；required dependency 依序載入；optional／closure 只有明示 flag 或收尾階段載入；forbidden skill 不得進 bundle。`skill_route.py` 輸出的 route 不是 capability 或 production 授權，實際 side effect 仍由 `capability_matrix.py`、worktree orchestrator 與 production wrapper 決定。
+Python 一律由 `uv` 管理；backend 測試從 `backend/` 執行 `uv run --locked python -m pytest`。iOS build/test 走 `./ops/ios_ops.sh`，不要直接拼底層命令取代既有安全入口。
 
-`kg-router` 是 bootstrap；`kg-agent-context` 是已辨識角色後的 context loader；`kg-receipt` 是 closure；`kg-docs-control-plane`、`worktree-flow`、domain skills 依 catalog route 載入。完整 skill 內容仍由各 `SKILL.md` 保存，context slice 走 `./ops/context_route.py`，不預載整份 sibling skill 或深層 reference。
+## 不可省略的產品與安全邊界
 
-另有 plugin skill 全域可用（`phased`、`review`、`verify`、`run` 等），其 plugin manifest 不屬 repo-local catalog；觸發描述見 runtime system。
+- 真正產品程式碼與測試是主要資產；不要因整理交付工具而刪除它們。
+- 生產操作只走 `ops/devops_kg_safe.sh`、`ops/release.sh` 與其 SOP；批准、health gate、rollback 必須保留。
+- 網域、CloudKit、資料庫、felix 常駐機、App Store／TestFlight 與 backend deployment 的領域流程，以 `docs/reference/host_topology.md`、`docs/sop/deploy.md`、`docs/sop/ios.md`、`docs/sop/backup*.md` 為準。
+- iOS user-facing 字串走既有 i18n lint；UI 修改先讀 `docs/sop/ui-design.md` 與對應 feature boundary。
+- 文件控制面只保留 registry、impact、lint 與必要的 SoT；文件不是交付資料庫。
 
-### 規則
-- repo-local skill 先跑 catalog route；自然語言只提供 intent 候選，不得製造第二個 primary。
-- `kg-receipt` 只在 handoff／收尾載入，不與 domain skill 競爭 primary。
-- 所有 Agent() 一律 `run_in_background: true`；長操作保留 heartbeat。
+## 回報格式
 
-## 鐵律(全域,9 條,不可繞過)
-
-> **執行力標註（2026-08-03 起）**：每條標 `[machine]` / `[prompt]` / `[text-only]`。
-> agent 的偏執程度是照「宣稱的執行力」校準的——九條讀起來一樣硬，就會在其實沒人守的
-> 地方放鬆警戒。`[machine]` = 有工具會回非零擋下；`[prompt]` = 只在 agent/skill 檔的
-> 指示裡，靠自律；`[text-only]` = 只存在於本檔。**標註本身是可稽核的事實，不是評價**；
-> 執行點變了就同步改標註。
-
-
-1. **TDD** `[prompt]` — failing test → 紅 → 最小實作 → 綠。不可跳過。
-2. **驗證先於宣稱** `[machine]`(cutover 要求綁 HEAD 的新鮮非-block verdict:`worktree_orchestrate.py:cmd_cutover`;receipt 層仍是 `[prompt]`) — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
-3. **根因先於修復** `[prompt]` — 遇 bug 必須確認根因才動手。不可看到錯就補 patch。
-4. **逐項 review,不批次** `[prompt]` — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。review 結果由 reviewer output / review cycle / delivery receipt 留證；commit message 不承載 review attestation。適用所有程式碼修改。
-5. **長時操作背景執行且不可靜默** `[machine]`(`ops/lib/streaming_command.py` 的 heartbeat 契約,worktree gate / app_review_evidence / ios_ops 共用;「所有 Agent() 背景化」那半條是 `[prompt]`) — **兩種呼叫者都要背景執行工作,等待方式不同**。協調者把任何 `Agent()` 與耗時 Bash(`ios_ops.sh build`/`test`、backend `pytest`、deploy/rsync、長下載/install)設為 `run_in_background: true`,保持主線不阻塞,由 notification 喚醒收工。受派子 agent 也必須背景啟動並維持 heartbeat；但 notification 只送到協調者,不會喚醒受派者,所以它若交回前需要結果,必須把自己的 turn 留在前景,在**同一個 turn**輪詢到結果或 rc,不得結束 turn 等 notification。輪詢／回報間隔依預估任務時長自訂；20 秒只是一個預設例子,任務明顯較久時可拉長、較短時可縮短,但不得在所選間隔之外無聲等待。耗時 Bash 可照抄形狀:`pid=<pid>; verdict_file=<verdict-file>; poll_interval="${POLL_INTERVAL_SECONDS:-20}"; until [ -f "$verdict_file" ] || ! kill -0 "$pid" 2>/dev/null; do printf 'elapsed=%ss pid=%s alive=true\n' "$SECONDS" "$pid"; sleep "$poll_interval"; done; wait "$pid"; rc=$?`。背景 agent 啟動後立即回報 phase/agent id/status，driving agent 依自訂間隔輪詢並提供可見進度；長 command 啟動後立即回報 phase/PID，每次輪詢必回 elapsed/PID/alive，正常結束時回 phase/duration/exit status。若既有工具沒有 heartbeat，先補工具或用外層監看補足，禁止讓使用者靠猜測判斷是否卡死。
-6. **主動查文檔(Doc Lookup Discipline)** `[text-only]` — 涉及 endpoint / 模組 / env var / DB schema / 既有 feature / ops 工作流,**判斷「這需要查一下」就立即讀對應 reference,不靠記憶**。dispatch 有複雜度的工作時,prompt 必須明示「拿不準就讀 doc,不要省 token」。純樣板修改(typo / rename)不適用。
-7. **生產禁用指令** `[machine]`(`ops/devops_kg_safe.sh:is_blocked_run`;注意 `ops-cli`/`ops-edit`/`container-script` 是 argv pass-through,不經此閘,安全model改由工具內部 dry-run/備份/verify 承擔) — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。
-8. **禁止 iOS raw 中文字串** `[machine]`(CI `ui-quality-gate` + cutover `ui-quality-fast`,兩處皆 `--baseline-check`;baseline 自 2026-08-03 起為 0=零容忍,由 `ops/tests/test_lint_baselines.sh` 釘住不得鬆弛) — `Text("中文")` / `Button("中文")` / `.navigationTitle("中文")` 由 `ops/i18n_lint.sh` 擋。所有 user-facing 字串走 `L10n.string(_:)` / `L10n.format(_:_:)`。豁免用行內 `// i18n-allow: <reason>`(品牌名、人名、ASCII-only 技術 ID)。詳見 `docs/sop/i18n_lint.md`。
-    - **(待 Phase 3.1 後生效)** Static `DateFormatter` / `RelativeDateTimeFormatter` / `NumberFormatter` 走 `LocaleAwareFormatter`。lint 現以 baseline 模式追蹤,strict 模式由 Phase 7.1 Xcode Run Script 啟用。
-9. **工具摩擦優先修工具** `[prompt]` — 當 agent 使用既有工具完成工作流時遇到挫折、不順、輸出不自解、help 失準、入口漂移或會誘導繞路,先第一性原理判斷工具/文件/skill 哪裡壞。小問題可記入 receipt 的 tooling debt 並回到原目標；中大型問題或會導致誤判/繞過工具的問題,立即停下來修工具並驗證,再回到原本任務。
-
-## Commit / 落地政策
-
-- **Worktree / feature branch 任務**:child 先依 `work_mode` 與 structured Scope admission，完成最小充分驗證後直接 commit、`./ops/worktree_registry.py hand-back --json`，保留工作樹並回報 exact source thread ID、branch/path/HEAD/seal；**預設不跑 gate/cutover**。Gate BLOCK 必須退回該 source thread，由原 thread 以新 commit／新 hand-back 回交。Integrator 只做 staging fan-in；Manager 才能以受影響 Gate、`close-wave --commit`、cutover、resolve、sync 完整落地 primary＋origin/main。`deploy` / `release` 仍不包含在內。工具護欄不變。
-- commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
-
-## Scope 規則(觸發式,非 always-on)
-
-- **改 iOS View / UI** → 動手前讀 `docs/sop/ui-design.md`(規範) + `docs/reference/ui/components.md`(現有元件) + `docs/reference/ui/review_checklist.md`(自查 5 項) + `docs/reference/ui/state_matrix.md`(狀態覆蓋);對應 feature scope 另讀 `docs/reference/feature_boundary/<reader|vocabulary|notebook|bookshelf|podcast|settings|discover>.md`。
-- **iOS 驗證** → 統一入口 `./ops/ios_ops.sh build` / `./ops/ios_ops.sh test`(底層 `ios_build.sh`/`ios_test.sh`/`ios_release.sh` 共享 `shlock` 鎖,多 worktree 安全);細節見 `docs/sop/ios.md`。現在 `ios_test.sh` 已有 unit/UI/all-targets scope、heartbeat、log preserve、false-green 防護與 DB lock retry,所以改 iOS code/test 時**主動跑最小足夠測試**:先用 `--file`/`-g`/method 重現與驗證局部;改 UI/navigation/accessibility 時用 `--ui` 精準測;跨 feature / test infra / release / cleanup 收尾才跑 `--all-targets`。`ios_ops.sh build` 仍作為編譯 gate,不以 build 取代相關測試。
-- **改 user/agent-facing 介面**(`backend/ops_*.py`、`backend/*_cli.py`、admin endpoint、CLI subcommand、env var、設定 schema) → **同 PR 內**跑 `./ops/docs_impact.py --surface-scan '<舊命令|舊旗標|舊欄位>'`；掃描範圍的唯一 SoT 是 `docs/registry.yml` 的 `agent_facing_surface`，不要自己用 `rg`（預設會跳過 `.claude/`）。下個 agent 不知道新功能 = 任務沒閉環。Review agent prompt 必須含此項檢查。
-
-## Doc 路由(語意 → 路徑)
-
-不確定該讀哪份時對照本表。標 **(SoT)** 的衝突時權威。
-
-| 我正在做 | 先讀 |
-|---|---|
-| 角色視野 / progressive disclosure / 未知問題升級 | `docs/reference/agent_context.md` **(SoT)** + `.claude/skills/kg-agent-context/SKILL.md` |
-| 查功能是否已實作(避免重造) | `docs/reference/product_surface.md` **(SoT)** |
-| 查 endpoint / DB table / env var / iOS 模組叫什麼 | `docs/reference/tech_index.md` **(SoT)** |
-| 改 `ops_edit`/`ops_cli`/UI World projection(加可斷言欄位 / 疊 scenario 層 / 防雙面 drift) | `docs/reference/ops_state_plane.md` **(SoT)** |
-| 改 iOS Reader 任何檔案 | `docs/reference/feature_boundary/reader.md` |
-| 改 iOS Vocab / Sync / TodayReview / KG | `docs/reference/feature_boundary/vocabulary.md`(scope map) + `docs/reference/sync_lifecycle.md` **(SoT)**(狀態流轉) |
-| 改 iOS Notebook(list / card / cover / edit sheet) | `docs/reference/feature_boundary/notebook.md` |
-| 改 iOS Bookshelf(書架 / 播客 series 列表 / 匯入) | `docs/reference/feature_boundary/bookshelf.md` |
-| 改 iOS Podcast player / 字幕 / progress | `docs/reference/feature_boundary/podcast.md` |
-| 改 podcast 生成 pipeline(`lab/podcast/` / synthesize / subtitle / TTS / upload) | `docs/sop/podcast_pipeline.md` |
-| 改 iOS Settings | `docs/reference/feature_boundary/settings.md` |
-| 改 iOS Explore / 共享牌組(公開牌組目錄 / 預覽 / 複製) | `docs/reference/feature_boundary/discover.md` |
-| 改 CSV / Card schema | `docs/reference/card_format.md` **(SoT)** |
-| 改 sync 狀態流轉(`syncStatus` × `actionType`) | `docs/reference/sync_lifecycle.md` **(SoT)** |
-| 寫 backend test | `docs/reference/testing/backend_strategy.md` |
-| 發版前 smoke(15 分鐘) | `docs/reference/testing/smoke_checklist.md` |
-| 部署 / 用戶查詢 / 額度 / 遠端 / 維護 | 觸發 `devops` skill(內含 SOP) |
-| cost / 帳單 / 月費 / drift / 升降 bundle / 預算 | 觸發 `billing` skill;baseline 數字看 `docs/reference/cost_baseline.md` **(SoT)**;盤點 SOP 看 `docs/sop/cost_review.md` |
-| 502 / Caddy / SSL / DB 直查 / pipeline 鎖 / 用戶資料 | `docs/sop/debug.md` |
-| 部署流程 / env / migration / Sentry env | `docs/sop/deploy.md` |
-| backend 測試 / uv / provider registry / 任務派遣 | `docs/sop/backend.md` |
-| iOS 編譯 SOP / 模組速查 / Sentry iOS | `docs/sop/ios.md` |
-| 上架 App Store / 改文案 metadata / 查審查狀態 / 被拒處理 | `docs/sop/ios.md §發版` + `ops/asc.sh`(查詢/改文案)、`ops/ios_release.sh`(出 build) |
-| 版號發版 / bump / tag / changelog / 發布上生產(api、ios) | `ops/release.sh`(`status`/`changelog`/`bump`/`tag`(原 `publish`,推 origin main=標記非部署)/`release <backend\|ios>`(三平面統一發布,唯一碰生產),單一入口);三平面語意見 `docs/sop/release.md`;`/release` command 為薄路由 |
-| UI 規範 / Motion 契約 / Token 禁令 | `docs/sop/ui-design.md` |
-| iOS↔backend sync / 多帳戶隔離 / 架構脈絡 | `docs/sop/architecture.md` |
-| Claude Code Gateway | `docs/sop/claude-gateway.md` |
-| host / port / container 配置(Caddy 路由) | `docs/reference/host_topology.md` **(SoT)** |
-| 生產禁用指令 / preflight / rollback | `docs/policy/safety.md` **(SoT)** — 已寫進鐵律 7 |
-| ops 流程 / change flow / hard stop | `docs/runbook/system.md` |
-| 逐項 review 落地(派 review agent / PASS 判準 / block 處理) | `docs/sop/review_discipline.md` — 鐵律 4 落地 |
-| 找 iOS UI 死碼 / 孤兒元件(刪元件 / cleanup / 重構前盤點) | `./ops/ui_deadcode.py`(IndexStore-based;default struct,class 可信 gate)— 見 `docs/reference/tech_index.md` |
-| 查 iOS UI 元件依賴 / 改某 view 的 impact / 哪個 catalog surface 吃到它 | `./ops/ui_graph.py --type <Name>` 或 `./ops/ui_graph.py --surface <Catalog Surface>`(type→type 依賴圖;`--json`/`--dot`)— 見 `docs/reference/tech_index.md` |
-| 查 UI 品質機制全景 / 我改的檔該跑哪些 UI gate | 優先 `./ops/ios_ops.sh quality list --json` / `quality impact --files <paths...> --json`(委派 `ops/ui_quality_plane.py`;機器可讀 SoT `ops/ui_quality_plane.yml`:分層機制×entrypoint×gate×verdict)— 見 `docs/reference/tech_index.md` |
-
-## Doc Tier 契約
-
-每份 doc 的 frontmatter 都有 `tier`;活文檔的長期 ownership / trigger / source hint 另以 `docs/registry.yml` 為機器可讀 SoT(`sources` 內 `!path` / `!glob` 表示排除 broad source 下的已知誤報)。改實作前先確認 registry 與 tier:
-
-- **contract / reference / policy** — 活契約或索引。改相關語意 surface 必**同 PR** 更新對應 doc(routers / DB / env / iOS feature scope / CSV schema / host topology / safety),並把 `verified_against` 指到 **`origin/main` 可達**的 code commit（判準見 `docs/sop/doc_sync.md` 步驟 4）。標 **(SoT)** 者衝突時權威。
-- **sop**(`docs/sop/*`) — SOP 流程變了才更新;不是 code-as-doc。
-- **generated** — registry 必須宣告 `generator` **與 `check`**(等值檢查命令,產物 != generator 輸出就 exit 1);產物不手改。缺 `check` 是 `docs_lint.sh --registry` 的 ERROR——`generator` 只宣告「這是產物」,`check` 才讓那個宣告可被機器驗證。
-- **snapshot**(`docs/snapshot/*`) — 機器生成或 dated。讀前看 `verified_against`,**可能已過時**。
-- **policy**(`docs/policy/*`) — 動之前需明確決策,PR 必須說明改動原因。
-- **archive**(`docs/archive/*`) — 凍結歷史 strategy/audit,**不更新、不引用**。需要當前狀態請讀對應 sop / reference。
-- **runbook**(`docs/runbook/*`) — ops change flow / hard stop;由 `devops` skill 引用。
-- **assets**(`docs/assets/*`) — App Store / 行銷素材製作 SOP(promo video / screenshot framing)。不在 `ops/docs_lint.sh` staleness 掃描範圍,但仍須有 `<!-- doc-meta -->` frontmatter。
-- **legal**(`docs/legal/*`) — 對外發布的隱私政策 / EULA。**不**強制 `<!-- doc-meta -->` frontmatter,亦不在 lint 掃描範圍;改動需走法務審閱,不適用 doc-as-code 規則。
-
-## Doc Freshness 自動同步
-
-> **執行方式(預設)**:doc 同步**派 background doc-sync agent**,不佔主線。code task commit 後,`Agent(subagent_type: general-purpose, model: opus, run_in_background: true)` + 極短 prompt:「讀 `docs/sop/doc_sync.md` 與 `docs/registry.yml`,必要時跑 `ops/docs_impact.py --since <base>`。依 registry trigger 同步 git commit `<hash>` 的文檔並 commit。改動摘要:<一兩句>」。agent 自讀 registry、用 impact hints 輔助判斷影響範圍、bump `verified_against` 到 **`origin/main` 可達**的 code commit、跑 docs gate、自行 `docs:` commit。主線不阻塞。純樣板(typo/rename)或 doc-only commit 不必派。
-
-- 修改 backend router / DB schema / env var / ops 腳本 → 同 PR 更新 `docs/reference/tech_index.md`
-- 新增 user-facing feature(iOS / backend / admin / chrome) → 同 PR 在 `docs/reference/product_surface.md` 追加 bullet
-- iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
-- sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
-- `backend/src/kg/llm/providers.py:REGISTRY` 費率變動 / Lightsail bundle 變更 / 新供應商接入 → 同 PR 更新 `docs/reference/cost_baseline.md`(對應段 §2 pricing / §1 月費表 / §5 變更歷史)
-- iOS 前端規模基線**不進版控、也不需要同步**:要當下數字就跑 `ops/gen_ios_baseline.sh`(只印 stdout)。它逐檔記錄行數,進版控時**任何**一行 iOS 改動都會讓 docs gate 轉紅並要求把一個 repo 級產物夾進自己的 commit(IMP-20260808-b63206)
-- **cutover 前**跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR,並檢視 registry impact hints 是否需要同步文件;全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 gate
+回報只需要四件事：成果、當下驗證證據、偏離／未解 blocker、已替使用者做的決定。涉及不可逆生產動作、帳號持有人專屬批准、預算或產品策略時才停下來請示；其餘技術判斷自行完成。

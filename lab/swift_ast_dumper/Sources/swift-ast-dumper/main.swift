@@ -367,7 +367,7 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
         // sub-view overlay (trailing-closure form, e.g. `.overlay(alignment:) { badge }`):
         // a positioned LAYER. Resolve the SwiftUI Alignment (default .center) to an overlay
         // modifier; generate_css turns it into position:relative + an absolute flex layer.
-        // The child's INTERIOR styling is a separate sub-tree (honest backlog), exactly as a
+        // The child's INTERIOR styling is a separate sub-tree, exactly as a
         // stack's own decls don't transpile its children. The bare-color tint form
         // `.overlay(palette.x)` (no closure, no stroke) is a fill, not a layer → honest unparsed.
         if trailing != nil {

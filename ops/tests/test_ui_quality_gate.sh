@@ -267,10 +267,10 @@ section "A named-but-missing injection baseline is a caller error, not a degrade
 #     path. A typo, or a stale export from an earlier session. Degrading *here* is
 #     a silent green: --report always exits 0 and `warn` is excluded from
 #     summary.failed, so the gate returns 0 with injection enforcement switched
-#     off. `ui_quality_gate.sh --tier fast --execute` is a **block**-level cutover
+#     off. `ui_quality_gate.sh --tier fast --execute` is a **block**-level local
 #     gate (ops/worktree_orchestrate.py:428) and a pre-commit hook
 #     (.githooks/pre-commit:43); both inherit the caller's environment, and
-#     cutover is offline so CI cannot cover for it. One stale export would have
+#     local execution is mirrored in CI. One stale export would have
 #     disabled the lint everywhere without a word — and this is the variable the
 #     docs now tell people to reach for. It has to be red.
 #
@@ -314,7 +314,7 @@ fi
 ) &
 WATCH_PID=$!
 
-# The enforcing shape, unscoped: the same fast tier cutover and the pre-commit
+# The enforcing shape, unscoped: the same fast tier local check and the pre-commit
 # hook run. Deliberately not narrowed with --exclude — the failed set is asserted
 # to be *exactly* static.injection below, so the non-zero exit is attributable to
 # this mechanism rather than to some other lint happening to be red.

@@ -20,10 +20,10 @@ RUNNER = ROOT / "ops" / "ops_edit_batch.py"
 def _ops_cli_ready() -> bool:
     """Whether `run_ops_cli` can actually run under this interpreter.
 
-    The cutover gate's ops-pytest fallback runs all of `ops/tests` under
+    The local gate's ops-pytest fallback runs all of `ops/tests` under
     `uv run --no-project`, which has no backend dependencies. Both tests then died
     on a JSONDecodeError parsing empty stdout — a BLOCK gate that could only ever
-    be red, blocking every cutover that reached the fallback while saying nothing
+    be red, blocking every change that reached the fallback while saying nothing
     about the change under test (IMP-20260806-041d07).
 
     The probe deliberately targets `run_ops_cli`, NOT `ops_edit_batch.py`: the

@@ -20,7 +20,7 @@ _DEFAULT_REGISTRY = Path(__file__).resolve().parents[1] / "compute_profiles.yml"
 _SAFE_SIDE_EFFECTS = {"repo-read", "artifact-write"}
 _FORBIDDEN_SIDE_EFFECTS = {
     "production-write", "credential-read", "docker-socket", "production-network",
-    "localhost-production", "deploy", "migration", "ops-edit", "cutover", "sync", "release",
+    "localhost-production", "deploy", "migration", "ops-edit", "release",
 }
 _SAFE_SANDBOX_POLICIES = {"uv-no-project", "repo-readonly"}
 _SHELL_INTERPRETERS = {"sh", "bash", "dash", "zsh", "ksh", "fish", "pwsh", "powershell", "cmd"}

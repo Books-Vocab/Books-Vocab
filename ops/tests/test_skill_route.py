@@ -83,4 +83,4 @@ def test_cold_start_contract_validates_before_route_and_names_docs_steward():
     route_line = startup[route_start:startup.find("\n", route_start)]
     assert "--json" in route_line
     assert startup.index(validate) < route_start
-    assert "Docs Steward" in startup
+    assert "docs_lint.sh" in startup

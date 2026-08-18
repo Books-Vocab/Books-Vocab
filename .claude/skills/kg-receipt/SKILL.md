@@ -1,180 +1,21 @@
 ---
 name: kg-receipt
-description: "KG 任務收尾與交接 receipt。當使用者要求交接、handoff、總結、驗證證據、下一輪接手，或任務完成前需要固定回報格式時觸發。"
-user-invocable: true
-version: 1.2.0
+description: "在 commit／PR 或 worktree hand-back 收尾時，輸出可驗證的最小交接摘要。"
 ---
 
-# KG Receipt
+# Handoff summary
 
-本 skill 固定任務完成時留下可驗證交接。receipt 不是長文檔，不取代 commit message 或 PR body。
+這個 skill 只產生文字摘要，不保存資料、不建立工作項目、不取代 GitHub PR。
 
-## Identity prerequisite
+## Required fields
 
-Delivery receipt 的 `role_profile` 必須先落在五種 canonical identity 之一：`Manager`、`Integrator`、
-`Direct-assignment Child`、`Ticket Factory Child`、`Ticket Delivery Child`。未先以
-`./ops/context_route.py identify --role <identity> [--work-mode <mode>] --json` 取得 confirmed identity，
-不得開始修改、交付或產生 hand-back；Docs Steward／Review service 是內部支援 route，不是 delivery receipt identity。
+- result：做了什麼；
+- branch／worktree／exact HEAD；
+- Issue／PR external ID（若已有）；
+- Scope；
+- commands、exit status、log／artifact path；
+- deviations、blockers、需要下一位做的安全動作。
 
-## Receipt Checklist
+## Rules
 
-收尾前確認：
-
-1. `git status --short` 已看過。
-2. 每個宣稱完成的項目都有當下驗證 command。
-3. 若改 user/agent-facing surface，已跑 docs impact/lint 或明確說明為何不需要。
-4. 若改 git history / branch / worktree，已跑相應 audit。
-5. 若有未跑測試，明確列原因與風險。
-6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → **先查重再立單**:`./ops/backlog.py list --grep '<關鍵字或檔名>'`(不分大小寫 regex,掃 detail/resolution/plan/fix_site,可疊 `--status open` 等)。這一步不是禮貌是機制:170 筆規模下已經發生過「重造一份已梳理的規格」(IMP-20260807-c66d97)。命中就改為在 receipt 裡指名那張既有票,別開第二張。確認沒有才用 `ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 登記(store 一筆一檔;要看全貌用 `list --json` / `show`,別去讀 markdown view——它已不在版控裡)。**能一句話講清楚就順手補 `--brief`(壞了什麼、誰有感)與結構化 `--scope`(實際檔案清單，每個 path 標 `add` 或 `modify`)**——Scope 矩陣會用它判斷檔案佔用與 queued 對 active 的 collision；舊文字 Scope 只會標為 Scope 未知，不猜檔案或碰撞,梳理階段工具當場就會要求(蓋 groom 戳記時擋,見 `platform-steward`),立單時寫比事後回填便宜。**stream 由「這缺陷誰碰得到」決定,不由誰發現、也不由嚴重度決定**(判準見下「Stream 分流」)。撞到摩擦無聲妥協(硬幹)= 違鐵律9。
-   **批次 wave 例外**：受派 worker 不得讓 filing 混進修復 diff；上述 `add` 加 `--stage`，由整合者落地後 `anchor --commit`。一般單線工作才用裸 `add` 立即寫 store。
-
-票的出生到結案、`verify` / `groom` 分工與情境分支以 `./ops/backlog.py lifecycle --json` 為唯一可執行 SoT；receipt 只負責立單與回報，不複製生命週期。
-
-### Stream 分流(可判定,不是「視情況」)
-
-問一個問題:**這個缺陷,誰碰得到?**
-
-- 碰得到的是**使用者**(app 使用者、聽 podcast 的人、讀 App Store 頁面或 EULA 的人)→ `--stream APP`,owner = 對應 Line worker(`ios-engineer` / `backend-engineer`)。
-- 碰得到的只有**在這個 repo 裡工作的人**(agent、維護者)→ `--stream IMP`,owner = `platform-steward`。
-
-問「誰碰得到」而不是「改哪個檔」,因為有些修法根本不改 repo 檔(見下第 4 條)。路徑只是這個問題的**常見答案速查**,不是判準本身:
-
-| 位置 | 通常是 | 但要注意 |
-|---|---|---|
-| `ios/` | `APP` | **例外**:`ios/BooksAndVocab/Debug/Scenarios/`、`Support/UITestFixtureSeed*`、`ios/BooksAndVocabUITests/` 只有 repo 內的人碰得到 → `IMP`(既有 IMP-0064 / -9df883 / -c0e630 就落在這裡;`ops/i18n_lint.sh` 也已排除該路徑) |
-| `backend/src/kg/` | `APP` | **例外**:同目錄下的 `ops_*` 模組(`ops_cli_app.py` / `ops_edit_app.py` 等)只有 repo 內的人經 CLI 碰得到 → `IMP` |
-| `ops/` / `.claude/` / `docs/` / `backend/ops_*.py` / `backend/*_cli.py` | `IMP` | **例外**:`docs/legal/`(今天只有 `eula_plaintext.txt`)是使用者實際同意的法律文字 → `APP`,category `content` |
-| `lab/`(podcast 產線等) | 見下第 3 條 | 沒有常設 owner,不可預設有人在追 |
-
-五條收斂規則,把剩下的模糊關掉:
-
-1. **是誰發現的不影響分流。** 做 ops 任務時撞到的 UI 缺陷仍是 `APP`;用 app 時想到的 CLI 缺陷仍是 `IMP`。
-2. **兩邊都要修 = 兩筆,不混成一筆。** 各自進各自的 stream,`detail` 互相指名。混一筆等於指派給兩個 owner,結果是零個。
-3. **`lab/` 產線缺陷:先看已出貨的產物,再看產線本身。** 已經送到使用者耳裡 / 眼裡的內容(錯字幕、壞音檔)= `APP` / category `content`;只有跑 pipeline 的人會痛 = `IMP`。但 `.claude/agents/` **沒有 `lab/` 的常設 owner**,所以 `APP` 那半要把「本筆無常設 owner,需指派 owner」寫進 **`--detail` 開頭**(不是只寫在 receipt 裡——receipt 用完即逝,而 schema 沒有 owner 欄位,那筆單會靜靜躺在 Line worker 的收件匣裡不帶任何解釋)。照預設寫 `ios-engineer` / `backend-engineer` 會被兩邊依 scope 邊界退回,結果就是一筆沒人追的單。
-4. **修法不改任何 repo 檔的,照「誰碰得到」判,別因為 diff 是空的就往 `IMP` 塞。** App Store 文案錯字的修法是 `./ops/asc.sh set description ...`,EULA 是 `set-eula`——零檔案改動,但看到的是使用者,所以是 `APP` / category `content`。
-5. **填不出 `--surface` 與 `--build` 就還不是 APP 報告。** 去把它們補齊,或承認它其實是 `IMP`。這兩格是 APP entry 唯一能讓 owner 重現問題的東西——**注意 CLI 不強制它們**(不填照樣 exit 0),所以這條純靠自律。
-
-category 名單與欄位定義見 `ops/backlog.py --help`,此處不複述(SoT 零重複)。
-
-## Minimal Format
-
-```text
-Lane:
-- identity=<Manager|Integrator|Direct-assignment Child|Ticket Factory Child|Ticket Delivery Child> team=<Ticket Factory|Delivery Team> work_mode=<direct-assignment|ticket-factory|ticket-delivery|none> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|staging-handoff|primary+sync|other named stop>
-
-Context:
-- role_profile=<Manager|Integrator|Direct-assignment Child|Ticket Factory Child|Ticket Delivery Child>
-- loaded=<actual authority paths or registry ids>
-- intentionally_unloaded=<deep context not needed for this slice, or none>
-
-Result:
-- <完成的高層結果>
-
-Changed:
-- <主要改動，不逐檔流水帳>
-
-Validation:
-- <command> -> <result>
-
-Docs/Skill Sync:
-- <impact/lint result or none>
-
-Tooling Debt:
-- <small friction kept for later, or fixed with regression command>
-
-Risk:
-- <remaining risk or none>
-
-Next:
-- <只列真正需要下一輪做的事>
-```
-
-### Ticket Factory Child receipt
-
-Ticket Factory receipt 必須回報可對帳的責任線，而不是只報「groomed」：未解總數、groomed／queued、
-contract-ready、dispatchable、contract-not-ready、dependency-blocked、具名使用者／外部升級、
-duplicate／no-op／wont-fix，以及每個剩餘 blocker 的 owner、證據與下一步。`groom`、`verify`、
-contract evidence 或逐票 backlog contract preflight（`./ops/backlog.py preflight <id> --json`）只證明票務契約／問題仍成立，不宣稱產品 code 已修復；全 store schema／baseline 則另跑 `./ops/backlog.py validate --baseline-check`。產品修復仍由 Delivery Team 從 `dispatch` 取票後完成。這裡不指 worktree／release preflight。
-
-`contract-not-ready` 是人類／看板語彙，機器對應為 `status=contract-blocked` 或
-`dispatch.withheld_contract`；不要新增 lifecycle status。`dispatchable` 與 `held` 都是衍生分類，前者
-來自 dispatch 五條件，後者來自 worktree registry claim。receipt 仍以 `backlog.py lifecycle --json`
-作為 lifecycle SoT，並保留 stream、tooling-debt 與 worktree-flow 的既有邊界。
-
-角色邊界：三種 Child 的 `hand-back` 只代表自己的 slice 已交回，且必須列 `identity`、`work_mode`、exact
-source thread ID、HEAD、seal 與 S0/S1 證據；這個 source thread ID 也是 Manager 發生 Child slice BLOCK 時的唯一退回路徑。
-`Integrator` 的 receipt 是 staging handoff，必須列
-`wave slug`、來源 branch／child hand-back SHA、預期 child／已 hand-back／已 fan-in 數、staging tree、
-phase、`next_action=manager-gate`，並明確寫「未落地 primary、未 sync、未重簽 child seal」。只有
-`Manager` receipt 才列 Gate verdict、primary landed SHA 與 `origin/main` sync verdict。`Ticket Factory Child`
-的 receipt 改報上述 contract／dispatch 對帳，仍不宣稱任何 code 已修復。若發生不穩定狀態，列出
-thread message 的對象、原因、證據與要求的 pause/continue 動作；正常協作不需要把聊天內容當 SoT。
-
-### Child identity and work mode
-
-- `direct-assignment`：無 delivery ticket；開工前必須在 registry 留下 structured Scope。
-- `ticket-factory`：負責產票／梳理；不持有 delivery ticket；開工前必須有 structured Scope。
-- `ticket-delivery`：由 dispatch／campaign 取得 ticket；Scope 由 ticket 推導，不另宣告 direct Scope。
-
-三種 mode 是 registry admission 與看板心智模型，不改 `backlog.py` lifecycle、status 或 acceptance 語義。
-Child 只跑 S0＋受影響 S1；Manager 整合後才依範圍升 S2，跨模組才升 S3，S4 只用於真正發布。
-
-### Gate BLOCK 回流規則
-
-Gate 是 Manager 對整合後樹的判決，不是 Child hand-back 的附加責任。Manager 收到 BLOCK 後先判斷失敗歸屬：
-
-- Child 自己的功能、測試或 Scope 內語意錯誤 → 依 receipt 的 exact `source_thread_id` 退回原提交者；原 thread 產生新 commit 與新 typed hand-back，舊 SHA、verdict、seal 不再沿用。
-- cherry-pick／檔案衝突、跨 child composition 或 staging 組裝問題 → Manager 在自己的 integrated／staging tree 修復，重新跑受影響驗證；不得把修補偷偷寫回 Child branch。
-- baseline、共享資源或工具問題 → 具名保留證據，能延後就登記 ticket／defer；不可把未知紅燈宣稱成 PASS，也不可要求 Child 為了 primary 前進 catchup。
-
-Child 不負責 current `main`、整合樹或 primary 的 commit 拓撲；Integrator 只提供 fan-in／衝突證據，Manager 才負責 catchup（僅 Manager-owned tree）、current-main admission、衝突、Gate、cutover、resolve 與 sync。
-
-## Worktree scratch
-
-若任務在隔離工作樹中執行，暫存檔寫入 `open` 回傳的 `scratch_dir`；不要使用 session 共用目錄的
-裸檔名（例如 `red.log`、`out.json`、`gate.err`）。不同工作樹即使使用同一個檔名也必須落在不同的
-scratch 路徑；`resolve` 後該路徑應不存在。
-
-## Verification Rules
-
-- 不說「完成」但沒有 command。
-- 不用「應該可以」代替驗證。
-- 不把舊輸出當本輪證據。
-- 若背景工作還在跑，receipt 必須標示它不是完成證據。
-- 若執行者是受派子 agent,依賴的 `Agent()` / 耗時 Bash 仍須背景啟動；但它必須把自己的 turn 留在前景,依 CLAUDE.md 鐵律5於同一個 turn 輪詢到結果或 rc,不得以「review in flight」交回並等待協調者再次喚醒。
-- Tooling Debt 不可留空:`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者用 `ops/backlog.py add` 登記；批次 wave worker 加 `--stage`。
-- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 把 Ticket Factory Child 責任收斂到 `dispatchable` 或具名使用者／外部阻塞；`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)在 Delivery Team 從 `./ops/backlog.py dispatch --stream APP` 取票後負責產品修復與結案。Ticket Factory Child 不因 APP 交給下游就把 `groomed` 當完成，仍須先完成 contract-ready 對帳；`list --stream APP` 是**全表**,拿來查重不是拿來取票。判準見上方 Checklist 的「Stream 分流」。
-- 這條判準只有**一半**是機器守的:`add --stream IMP --surface ...` 會 exit 64 被拒(`ops/tests/test_backlog.py` 釘住);反向——該進 APP 的填成 IMP——沒有任何工具擋得住,所以那一半靠上面的判準自律。
-
-### `pytest -k` acceptance 的選擇數對帳
-
-`pytest -k` 只保證命中的測試會被執行；selector 若因改名而選不到，可能仍然留下
-一條看似完整但實際沒有覆蓋的判準。因此 acceptance command 要先用
-`--collect-only` 對帳選中數，再跑真正測試。期望數來自 acceptance 散文列出的判準，
-並使用大括號終止 shell 變數：
-
-```bash
-bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::"); [ "${N}" -ge EXPECTED ]; uv run … pytest -q -k "EXPR"'
-```
-
-`backlog.py update --acceptance-cmd` 對可辨識的直接 `pytest -k` 命令會印出
-`selected=<N>`；這是寫入時的非阻擋提示，不取代結案時對 acceptance command 的實跑。
-
-## Handoff Prompt Rule
-
-若使用者要交接 prompt，必須包含：
-
-- 目標
-- repo/worktree/branch
-- 已改檔案與 commit hash
-- 已跑驗證命令
-- 已知風險
-- 下一步第一個 command
-
-Fan-out 受派 child worker 在回報「已完成」前，還必須在自己的工作樹執行
-`./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
-與 exact source thread ID（跨 host 加 source host ID）一併回報。Gate BLOCK 必須回到該 source thread；由原 thread 產生新 commit／新 hand-back，不沿用舊 SHA／verdict／seal。受派者只交回 commit 與戳記，沒有 develop 例外，也不因 primary 前進自行 catchup。尚未取得 `worktree-flow` 頂端授權時，
-Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝並保留衝突證據；只有 Manager 才執行最終
-`close-wave --commit`／`cutover`／`resolve`／`sync`（fresh／continue Gate、anchor、validate、origin/main）。`deploy`
-另須 release 意圖。Integrator 若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
-`--allow-unhanded`；它不能放行 hand-back 後已前進的 branch。
+只報當下有輸出的證據。clean tree、舊 log、未執行的命令與推測都不能寫成 pass。若測試 timeout、權限不足、基線失敗或工作樹被他人占用，原樣報告並停止需要該條件的後續動作。

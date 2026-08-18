@@ -578,7 +578,7 @@ grep -q "ios_build.sh --catalyst" <<<"$CAT_ERR" \
 # ── 21. runner help/list/benchmark surface + tech-index anchors ──────────────
 # 這些都是 parse-only 路徑：不得取得 build lock、啟動 xcodebuild，且 help/docs
 # 必須同時描述三個 agent 會實際呼叫的入口。Anchor 斷言刻意放在 regression
-# group 而非只依賴 backlog acceptance，避免 tech_index 重複/漏字時沒有近端訊號。
+# group 而非只依賴 acceptance 文字，避免 tech_index 重複/漏字時沒有近端訊號。
 section "ios_test help/list/benchmark surface and tech-index anchors"
 HELP_OUT="$($IOS_TEST --help 2>&1)" || HELP_OUT=""
 grep -qF -- "--list" <<<"$HELP_OUT" \

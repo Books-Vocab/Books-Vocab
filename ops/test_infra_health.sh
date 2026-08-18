@@ -275,14 +275,14 @@ echo "$js" | py 'import sys,json;d=json.load(sys.stdin);u=[m for m in d["metrics
 
 section "Uptime：StartedAt 是 UTC，本機時區不得改變秒數"
 # 這幾條斷言碰到的字串**由 ops/infra_health.sh 自己產生**：從 REMOTE_BUNDLE 把那一行原封
-# 抽出來 eval（與 backlog acceptance 同一個抽法），不是在測試裡另寫一份等價算式（那只會
+# 抽出來 eval（與 acceptance 同一個抽法），不是在測試裡另寫一份等價算式（那只會
 # 證明測試自己會算術）。抽錯行的話斷言會被一個不相干的字串滿足，故先立 provenance 守衛。
 UPLINE_NO="$(grep -n 'container_uptime_s' "$SCRIPT" | head -1 | cut -d: -f1)"
 UPSNIP="$(sed -n "${UPLINE_NO}p" "$SCRIPT")"
 # 守衛要求同一行**同時**具備「日期解析」與「印出 uptime key」兩個特徵。只認前者的話，
 # 一句同時提到這兩個 token 的註解就能通過守衛（實測過），守衛就只是裝飾——真正擋住誘餌的
 # 會變成下游那幾條值斷言，而那不是守衛存在的理由。
-# 日期解析認 `date -j -f` 與 `date -u -j -f` 兩種寫法：ticket 的 plan 兩種都認可，只綁
+# 日期解析認 `date -j -f` 與 `date -u -j -f` 兩種寫法：輸入計畫兩種都認可，只綁
 # 其中一種會讓「另一個正確實作」變成一條指著錯誤原因的假紅。
 if printf '%s' "$UPSNIP" | grep -qE 'date (-u )?-j -f' \
    && printf '%s' "$UPSNIP" | grep -qF 'printf "container_uptime_s'; then

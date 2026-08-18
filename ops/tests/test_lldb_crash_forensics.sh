@@ -18,7 +18,7 @@
 #      掛滿 2.5 分鐘仍 alive 且 dump 早已落地，本條 entry 記錄過的那顆掛了 65 分鐘。
 #      補上 `-k quit` 後同一個 case 實測 3/3 皆 3–5s、rc=0、dump 完整、零殘留程序。
 #   ② 有界等待 —— ① 是根因，但它押注在「lldb 會照 flag 行事」。真的再掛時本檔必須在
-#      有限時間內**紅**，而不是把 cutover gate 掛死：heartbeat 只證明程序還活著，不證明
+#      有限時間內**紅**，而不是把 CI gate 掛死：heartbeat 只證明程序還活著，不證明
 #      它在前進，所以界線得由這裡自己畫（逾時 → 具名 FAIL + TERM→KILL + 清殘留）。
 set -uo pipefail
 

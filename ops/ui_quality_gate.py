@@ -171,10 +171,11 @@ def injection_args(root: Path) -> tuple[list[str] | object, str | None]:
                            actually scan, and `warn` is
                            excluded from summary["failed"], so the gate returns
                            0 with this lint switched off. This command is a
-                           block-level cutover gate (ops/worktree_orchestrate.py)
+                           block-level local/CI gate (ops/worktree_orchestrate.py)
                            and a pre-commit hook, both of which inherit the
-                           caller's environment, and cutover is offline so CI
-                           cannot cover for it. decide_status forbids exactly
+                           caller's environment, and local execution is mirrored
+                           by CI so the same checks cannot silently diverge.
+                           decide_status forbids exactly
                            this shape one level down; a runner that launders it
                            one level up gains nothing.
 
@@ -213,7 +214,7 @@ def injection_args(root: Path) -> tuple[list[str] | object, str | None]:
             f"{DEFAULT_INJECTION_BASELINE}. Refusing rather than degrading to --report: "
             "--report exits 0 for any tree it can scan, so a stale export would silently "
             "disable this lint "
-            "on a gate that blocks cutover."
+            "on a gate that blocks the change."
         )
     return ["--report"], (
         f"{baseline} missing; running --report only. "

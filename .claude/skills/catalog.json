@@ -15,7 +15,7 @@
     {"name": "kg-router", "path": ".claude/skills/kg-router/SKILL.md", "kind": "bootstrap", "phase": "bootstrap", "priority": 100, "intents": [], "requires": [], "optional": [], "forbidden": [], "closure": []},
     {"name": "podcast", "path": ".claude/skills/podcast/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 80, "intents": ["podcast-pipeline", "podcast-monitor", "podcast-publish"], "requires": [], "optional": ["kg-receipt"], "forbidden": ["devops"], "closure": []},
     {"name": "source-command-release", "path": ".claude/skills/source-command-release/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 85, "intents": ["release-command", "version-release", "app-store-release"], "requires": [], "optional": ["worktree-flow", "devops"], "forbidden": ["podcast"], "closure": []},
-    {"name": "worktree-flow", "path": ".claude/skills/worktree-flow/SKILL.md", "kind": "delivery", "phase": "primary", "priority": 60, "intents": ["delivery-worktree", "delivery-integration", "worktree-open"], "requires": ["kg-agent-context"], "optional": ["kg-receipt"], "forbidden": [], "closure": []}
+    {"name": "worktree-flow", "path": ".claude/skills/worktree-flow/SKILL.md", "kind": "delivery", "phase": "primary", "priority": 60, "intents": ["delivery-worktree", "worktree-open", "worktree-coordination"], "requires": ["kg-agent-context"], "optional": ["kg-receipt"], "forbidden": [], "closure": []}
   ],
   "fixtures": [
     {"id": "cold-docs-audit", "intent": "docs-audit", "primary": "kg-docs-control-plane", "required_secondary": [], "optional_secondary": [], "forbidden": ["worktree-flow"]},
@@ -26,7 +26,7 @@
     {"id": "monthly-token-cost", "intent": "billing", "primary": "billing", "required_secondary": [], "optional_secondary": [], "forbidden": ["data-analysis"]},
     {"id": "user-quota-graph", "intent": "user-data-analysis", "primary": "data-analysis", "required_secondary": [], "optional_secondary": [], "forbidden": ["billing"]},
     {"id": "epub-podcast", "intent": "podcast-pipeline", "primary": "podcast", "required_secondary": [], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
-    {"id": "delivery-child-handback", "intent": "delivery-worktree", "primary": "worktree-flow", "required_secondary": ["kg-agent-context"], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
+    {"id": "worktree-development", "intent": "delivery-worktree", "primary": "worktree-flow", "required_secondary": ["kg-agent-context"], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
     {"id": "read-only-audit-no-worktree", "intent": "read-only-audit", "primary": "kg-docs-control-plane", "required_secondary": [], "optional_secondary": [], "forbidden": ["worktree-flow"]}
   ]
 }

@@ -7,7 +7,7 @@ name: ops-suite
 # ui-quality-gate 空轉兩個月也沒有任何測試發聲——因為偵測斷點的測試本身從來沒跑過。
 #
 # 只跑不需要 Xcode / 模擬器 / 網路的 group（LINUX_GROUPS）。需要 macOS 的 group
-# 由本機 cutover gate 負責；「新增 group 未分類」由 ops/tests/test_ops_ci_coverage.sh 擋。
+# 由 macOS/local gate 負責；「新增 group 未分類」由 ops/tests/test_ops_ci_coverage.sh 擋。
 # 本地等價入口：./ops/test_ops.sh <group...>
 
 on:
@@ -18,7 +18,7 @@ on:
       # 少了這一行，測試改動會觸發 workflow，被測的那支腳本改動卻不會（IMP-0052）。
       - 'devops.sh'
       - 'start.sh'
-      # ops/ 之外的腳本也進 cutover 的 shell gate（IMP-0057）。這些路徑沒有共同前綴，
+      # ops/ 之外的腳本也進 shell gate（IMP-0057）。這些路徑沒有共同前綴，
       # 只能逐條列；由 test_the_workflow_triggers_on_every_routed_script_outside_ops 釘住。
       - 'backend/restart_kg.sh'
       - 'backend/view_logs.sh'

@@ -4,7 +4,7 @@
 # core.hooksPath 是 per-clone 的本地設定（寫在 .git/config），commit 帶不過去：
 # 每個 clone、每台機器、每次重新 clone 都要各跑一次。裝上之後 .githooks/pre-commit
 # 才會在 commit 時執行（design-system 與 UI quality 的本地 best-effort 檢查；
-# CI 與 worktree cutover gate 仍是硬 gate，本 hook 不取代它們）。
+# CI 與 pull request checks 仍是硬 gate，本 hook 不取代它們）。
 #
 # 用法:
 #   ops/install_hooks.sh              # 安裝（等同 --yes）

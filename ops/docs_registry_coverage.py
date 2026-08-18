@@ -6,7 +6,7 @@
 
 Coverage debt is split into:
 - active_unregistered: should usually be added to docs/registry.yml
-- backlog_unregistered: path-based informational debt under docs/archive|plans|specs|snapshot
+    - historical_unregistered: path-based informational debt under docs/archive|plans|specs|snapshot
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 STRICT_TIERS = {"reference", "sop", "policy", "runbook"}
-BACKLOG_PREFIXES = (
+HISTORICAL_PREFIXES = (
     "docs/archive/",
     "docs/plans/",
     "docs/snapshot/",
@@ -63,12 +63,9 @@ def registry_paths(registry: Path) -> set[str]:
 def linted_docs(root: Path) -> list[Path]:
     """Every doc on disk EXCEPT the ones git is told to ignore.
 
-    `rglob` alone counts gitignored artifacts as repo documents. Measured the day
-    `docs/runbook/improvement_backlog.md` left version control (IMP-20260807-b9526c):
-    the file is still produced on demand by `backlog.py render`, so running that one
-    command put a local artifact into ACTIVE_UNREGISTERED and turned `--strict` red —
-    a debt nobody incurred and nobody could pay, since registering a gitignored path
-    would then fail its own path check on any machine that had not rendered it.
+    `rglob` alone counts gitignored artifacts as repo documents. Ignored generated
+    artifacts are excluded so coverage reports only documents that can be reviewed
+    and registered consistently on every checkout.
 
     Ignored-minus, NOT tracked-only. `git ls-files` would have been the shorter fix
     and it is the wrong one: a doc that has been ADDED but not yet committed is
@@ -113,8 +110,8 @@ def doc_tier(path: Path) -> str:
     return "missing"
 
 
-def is_backlog_doc(rel_path: str) -> bool:
-    return rel_path.startswith(BACKLOG_PREFIXES)
+def is_historical_doc(rel_path: str) -> bool:
+    return rel_path.startswith(HISTORICAL_PREFIXES)
 
 
 def build_report(root: Path, registry: Path) -> dict[str, object]:
@@ -122,11 +119,11 @@ def build_report(root: Path, registry: Path) -> dict[str, object]:
     docs = linted_docs(root)
     unregistered: list[dict[str, str]] = []
     active_unregistered: list[dict[str, str]] = []
-    backlog_unregistered: list[dict[str, str]] = []
+    historical_unregistered: list[dict[str, str]] = []
     registered_count = 0
     by_tier: dict[str, list[str]] = defaultdict(list)
     active_by_tier: dict[str, list[str]] = defaultdict(list)
-    backlog_by_tier: dict[str, list[str]] = defaultdict(list)
+    historical_by_tier: dict[str, list[str]] = defaultdict(list)
 
     for path in docs:
         rel = path.relative_to(root).as_posix()
@@ -137,9 +134,9 @@ def build_report(root: Path, registry: Path) -> dict[str, object]:
             item = {"path": rel, "tier": tier}
             unregistered.append(item)
             by_tier[tier].append(rel)
-            if is_backlog_doc(rel):
-                backlog_unregistered.append(item)
-                backlog_by_tier[tier].append(rel)
+            if is_historical_doc(rel):
+                historical_unregistered.append(item)
+                historical_by_tier[tier].append(rel)
             elif tier in STRICT_TIERS or tier == "missing":
                 active_unregistered.append(item)
                 active_by_tier[tier].append(rel)
@@ -153,9 +150,9 @@ def build_report(root: Path, registry: Path) -> dict[str, object]:
         "active_unregistered_count": len(active_unregistered),
         "active_unregistered": active_unregistered,
         "active_unregistered_by_tier": {tier: paths for tier, paths in sorted(active_by_tier.items())},
-        "backlog_unregistered_count": len(backlog_unregistered),
-        "backlog_unregistered": backlog_unregistered,
-        "backlog_unregistered_by_tier": {tier: paths for tier, paths in sorted(backlog_by_tier.items())},
+        "historical_unregistered_count": len(historical_unregistered),
+        "historical_unregistered": historical_unregistered,
+        "historical_unregistered_by_tier": {tier: paths for tier, paths in sorted(historical_by_tier.items())},
         "strict_unregistered": active_unregistered,
     }
 
@@ -167,15 +164,15 @@ def print_human(report: dict[str, object]) -> None:
         f"registered={report['registered_count']} "
         f"unregistered={report['unregistered_count']} "
         f"active_unregistered={report['active_unregistered_count']} "
-        f"backlog_unregistered={report['backlog_unregistered_count']}"
+        f"historical_unregistered={report['historical_unregistered_count']}"
     )
     if report["active_unregistered_count"] == 0:
-        if report["backlog_unregistered_count"] == 0:
+        if report["historical_unregistered_count"] == 0:
             print("docs_registry_coverage: no registry coverage debt for linted docs")
         else:
-            print("docs_registry_coverage: no active registry debt; backlog docs below are informational only")
+            print("docs_registry_coverage: no active registry debt; historical docs below are informational only")
             print(
-                "docs_registry_coverage: backlog classification is path-based "
+                "docs_registry_coverage: historical classification is path-based "
                 "(docs/archive|docs/plans|docs/specs|docs/snapshot)"
             )
     else:
@@ -187,10 +184,10 @@ def print_human(report: dict[str, object]) -> None:
         for path in paths:
             print(f"  {path}")
 
-    backlog_by_tier = report["backlog_unregistered_by_tier"]
-    assert isinstance(backlog_by_tier, dict)
-    for tier, paths in backlog_by_tier.items():
-        print(f"BACKLOG_UNREGISTERED tier={tier} count={len(paths)}")
+    historical_by_tier = report["historical_unregistered_by_tier"]
+    assert isinstance(historical_by_tier, dict)
+    for tier, paths in historical_by_tier.items():
+        print(f"HISTORICAL_UNREGISTERED tier={tier} count={len(paths)}")
         for path in paths:
             print(f"  {path}")
 
@@ -202,12 +199,12 @@ def main() -> int:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Emit machine-readable JSON with full active/backlog breakdown.",
+        help="Emit machine-readable JSON with full active/historical breakdown.",
     )
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Exit nonzero only when active_unregistered docs exist; backlog remains informational.",
+        help="Exit nonzero only when active_unregistered docs exist; historical docs remain informational.",
     )
     args = parser.parse_args()
 

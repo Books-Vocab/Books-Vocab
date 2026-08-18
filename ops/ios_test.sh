@@ -138,7 +138,7 @@ build_ui_test_variant_id() {
 UI_TEST_FLOW_ID=""
 UI_TEST_VARIANT_ID=""
 
-# `generic/platform=iOS` is used by the live-only cutover gate as a compile
+# `generic/platform=iOS` is used by the live-only compile gate as a compile
 # target, never as an install/run destination. Compilability is independent of
 # a developer signing identity, so that one path builds unsigned. Exact-device
 # runs keep normal signing because their products must be installable.

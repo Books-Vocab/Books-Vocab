@@ -163,7 +163,7 @@ echo "$status_body" | grep -q 'head -15' \
 # 是現況的縮影**，而是一個刻意保留的反例：檔內存在「不同值的同名 key」時，錨定的 sed
 # 不得掃到它。這條守的是「日後有人把某個 target-level 覆寫加回來」的誤傷面。
 # 注意它守不住的形狀：覆寫若加回**相同字面值**，錨定 sed 一樣會命中——那要靠 pbxproj
-# 結構 lint（已記 backlog），不是這條。
+# 結構 lint（另有專用測試），不是這條。
 section "bump ios sed stays anchored (never sweeps the file)"
 BUMP="$WORKSPACE/ops/release_bump.sh"
 # 結構：不得殘留無錨點的全域 sed（[^;]* 不綁當前值＝會掃中所有 target）

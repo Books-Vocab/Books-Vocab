@@ -267,7 +267,7 @@ RC3="$(run_lint "$SB3" "$LOG3")"
 assert_rc "generated without check" "$DOCS_LINT_BLOCK_RC" "$RC3" "$LOG3"
 # 訊息刻意與既有的「但缺 generator」不同字串，否則這個 grep 會被舊訊息滿足。
 assert_log_contains "generated without check" \
-  "ERROR registry — generated.probe kind=generated 但缺 check" "$LOG3"
+  "ERROR registry — generated.probe kind=generated 缺少 check" "$LOG3"
 
 # ── 4. stdin canary：check 失敗時後續 entry 仍須被讀到 ─────────────────────
 section "stdin canary — entries after a failing check are still read"

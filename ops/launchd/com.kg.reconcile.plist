@@ -3,7 +3,7 @@
   KG release=deploy 自動 reconciler，跑在正式站常駐機 felix（macOS）。
   週期 poller：每 StartInterval 秒拉起 ops/kg_reconcile.sh --once 跑一輪冪等 tick 即退，
   讓 origin/prod 一前進（release 平面 deploy 推進；含 backend 變更）就自動把 wordnexus.lol
-  收斂到最新版。origin/main 已降為 backup 鏡像，reconciler 不看 main。
+  收斂到 release wrapper 明確推進的 origin/prod；GitHub main 是合併後產品主幹，reconciler 不直接追 main。
 
   生產 checkout 走專用 clone ~/kg-prod（追 origin/prod）：ProgramArguments 指向它、
   KG_RECON_REPO 亦指向它，compose 從 ~/kg-prod/backend build。~/project/kg 是 dev/resume-only，

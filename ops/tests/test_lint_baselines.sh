@@ -32,28 +32,9 @@ keys_of() { grep -vE '^[[:space:]]*(#|$)' "$1" 2>/dev/null | sort -u; }
 
 # Emit today's findings in baseline key form, without touching the real file.
 emit_current_keys() {  # $1 = lint entrypoint (may carry a subcommand), $2 = env var, $3 = out path
-  if [[ "$1" == "backlog.py validate" ]]; then
-    # `validate --baseline` is a writer and now (correctly) refuses to rewrite
-    # the closed-entry watermark while the independent id-content-drift debt is
-    # present.  Read the same four-field closure predicate directly instead of
-    # routing a pair baseline through this key-set probe; no store or baseline
-    # is mutated and the two ratchets remain independent.
-    jq -r '
-      select(.status == "fixed" or .status == "wont-fix")
-      | select(
-          ((.verified_at // "") | tostring | gsub("^[[:space:]]+|[[:space:]]+$"; "")) == ""
-          or ((.verified_by // "") | tostring | gsub("^[[:space:]]+|[[:space:]]+$"; "")) == ""
-          or ((.verdict // "") | tostring | gsub("^[[:space:]]+|[[:space:]]+$"; "")) == ""
-          or ((.verified_evidence // "") | tostring | gsub("^[[:space:]]+|[[:space:]]+$"; "")) == ""
-        )
-      | .id
-    ' "$WORKSPACE"/docs/runbook/backlog/*.json | sort -u >"$3"
-    return $?
-  fi
   # $1 is a literal from SET_LINTS below, deliberately word-split so an
-  # entrypoint that needs a subcommand (`backlog.py validate`) can register here
-  # instead of growing its own bespoke section outside the table — which is
-  # exactly what the coverage check further down exists to prevent.
+  # entrypoint can register here instead of growing a bespoke section outside
+  # the table — exactly what the coverage check further down exists to prevent.
   # shellcheck disable=SC2086
   env "$2=$3" ./ops/$1 --baseline >/dev/null 2>&1 || return 1
 }
@@ -75,49 +56,7 @@ declare -a SET_LINTS=(
   "ui_token_lint.sh|ops/ui_token_baseline.txt|KG_UI_TOKEN_BASELINE"
   "plain_deadzone_lint.sh|ops/plain_deadzone_baseline.txt|KG_DEADZONE_BASELINE"
   "injection_lint.sh|ops/injection_baseline.txt|KG_INJECTION_BASELINE"
-  "backlog.py validate|ops/backlog_closed_unverified_baseline.txt|KG_BACKLOG_BASELINE"
 )
-
-# Pair baselines are not writable lint watermarks.  They carry an exact
-# observed-id -> recomputed-id relation and therefore need a typed extractor;
-# routing them through SET_LINTS would ask `validate --baseline` to rewrite the
-# unrelated closed-without-verification baseline.
-declare -a PAIR_BASELINES=(
-  "backlog.py validate|ops/backlog_id_drift_baseline.txt|id-content-drift"
-)
-
-# Read current typed relations from the JSON validation report.  The report is
-# allowed to return rc=2 because unrelated schema debt is intentionally retained
-# by this phase; malformed JSON, an unexpected schema, or an untyped pair is a
-# probe failure rather than an empty (false-green) relation set.
-emit_current_pairs() {  # $1 = lint entrypoint, $2 = problem kind, $3 = out path
-  [[ "$1" == "backlog.py validate" ]] || return 1
-  local report="$TMP/backlog-validate.json"
-  local report_err="$TMP/backlog-validate.err"
-  local pair_baseline="$TMP/empty-id-drift-baseline.txt"
-  : >"$pair_baseline"
-  local rc=0
-  # The checked-in pair file is an intentional forgiveness input to
-  # `validate --baseline-check`; point this producer at an empty file so the
-  # current report still contains every observed relation for the reverse
-  # subset ratchet below.
-  KG_BACKLOG_ID_DRIFT_BASELINE="$pair_baseline" \
-    ./ops/backlog.py validate --json >"$report" 2>"$report_err" || rc=$?
-  [[ "$rc" -eq 0 || "$rc" -eq 2 ]] || return 1
-  jq -e --arg kind "$2" '
-    (.schema == "kg.backlog.validate.v1")
-    and (.problems | type == "array")
-    and all(.problems[] | select(.kind == $kind);
-      ((.id | type) == "string" and (.expected_id | type) == "string"))
-  ' "$report" >/dev/null || return 1
-  jq -r --arg kind "$2" '
-    .problems[]
-    | select(.kind == $kind)
-    | [.id, .expected_id]
-    | @tsv
-    | gsub("\\t"; " ")
-  ' "$report" | sort -u >"$3"
-}
 
 section "key-set baselines must be a subset of today's findings"
 for spec in "${SET_LINTS[@]}"; do
@@ -128,18 +67,6 @@ for spec in "${SET_LINTS[@]}"; do
     continue
   fi
   assert_subset "${entry%.sh}" "$real" "$cur" "bash ops/$entry --baseline"
-done
-
-section "typed pair baselines must match today's reported relations"
-for spec in "${PAIR_BASELINES[@]}"; do
-  IFS='|' read -r entry real kind <<<"$spec"
-  cur="$TMP/$(basename "$real")"
-  if ! emit_current_pairs "$entry" "$kind" "$cur"; then
-    fail_t "$entry — could not emit current $kind pairs; the typed probe itself is broken"
-    continue
-  fi
-  assert_subset "$kind" "$real" "$cur" \
-    "review and remove stale rows from $real; never regenerate it automatically"
 done
 
 section "the subset check can actually fail (self-test)"
@@ -189,10 +116,6 @@ for f in ops/*_baseline.txt; do
   esac
   covered=0
   for spec in "${SET_LINTS[@]}"; do
-    IFS='|' read -r _ real _ <<<"$spec"
-    [[ "$real" == "$f" ]] && covered=1
-  done
-  for spec in "${PAIR_BASELINES[@]}"; do
     IFS='|' read -r _ real _ <<<"$spec"
     [[ "$real" == "$f" ]] && covered=1
   done

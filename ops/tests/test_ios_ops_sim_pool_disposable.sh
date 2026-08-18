@@ -24,11 +24,11 @@
 #   * A9 pins fail-safe aggregation: a device with several app containers can
 #     yield several ids, and ONE real account among them is still a refusal.
 #   * Section B kills "function written but never wired" — the specific false
-#     green the ticket names. It greps a DIFFERENT function's body, so no
+#     green the regression names. It greps a DIFFERENT function's body, so no
 #     literal in section A can make it tautological. B2 additionally pins the
 #     ORDER: the check must precede `simctl boot`, because booting the device
 #     is already the act that lets a fixture attach to it.
-#   * Section C kills the reader this ticket was originally planned with.
+#   * Section C kills the reader this regression was originally planned with.
 #     MEASURED 2026-08-08 on oscar, before any code was written:
 #       `xcrun simctl spawn 14A23ED5 defaults read com.Max0228.BooksBrowser \
 #          KGUserId`  ->  rc=149, "device is not booted"
@@ -43,7 +43,7 @@
 #
 # HOW THE FUNCTIONS ARE LOADED
 # Extracted with awk and sourced into a subshell, never by sourcing the whole
-# lib — the same loading contract the ticket's acceptance_cmd uses, so the two
+# lib — the same loading contract the regression's acceptance command uses, so the two
 # cannot drift apart, and sourcing the lib's top level here would drag in its
 # side effects.
 #
@@ -123,7 +123,7 @@ expect_allow  "A2 empty KGUserId (fresh sim)"        kg-pool-1 ""
 expect_allow  "A2b test identity"                    kg-pool-3 "kg-test-8f21"
 expect_allow  "A2c bare kg-test prefix"              kg-pool-3 "kg-test"
 
-# Negative control: the real account this ticket was filed for.
+# Negative control: the real account this regression was filed for.
 expect_refuse "A3 the production Apple id on kg-pool-2" kg-pool-2 "000287.04e2f0228"
 
 section "A. anti-fake-fix"

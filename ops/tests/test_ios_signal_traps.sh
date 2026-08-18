@@ -65,7 +65,7 @@
 # draft said NOT REGISTERED and was already false by the time it shipped.
 # What that means for section B: it guards the ios_test.sh wiring and CI now
 # executes it unconditionally, so a future edit reverting that wiring is
-# caught by CI, not only by the cutover gate that routes on this path.
+# caught by CI, not only by the local gate that routes on this path.
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -229,7 +229,7 @@ bash -n "$IOS_TEST" && ok "B4 ios_test.sh syntax" || fail_t "B4 ios_test.sh synt
 # This is deliberately structural: each caller gets its own cleanup function,
 # sources the shared library, installs the traps, and has no resume-after-signal
 # trap shape. Behavioural signal probes remain in the library fixture above and
-# the real deploy seam is documented as a named manual check in the backlog.
+# the real deploy seam is documented as a named manual check in the deployment SOP.
 section "B'. shared deploy caller wiring"
 SIGNAL_LIB="$WORKSPACE/ops/lib/signal_traps.sh"
 [[ -f "$SIGNAL_LIB" ]] && ok "B'1 shared signal library exists" \

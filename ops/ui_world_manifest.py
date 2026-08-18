@@ -1074,7 +1074,7 @@ def _validate_seed_graph_links(
     for index, entry in enumerate(entries):
         graph_links = entry.get("graphLinksByKind")
         if not isinstance(graph_links, Mapping):
-            continue  # 頂層形狀由 _validate_ui_world_entry 擋；link 元素層 schema 驗證是 pre-existing 缺口（backlog IMP-0021），此處只驗 resolve
+            continue  # 頂層形狀由 _validate_ui_world_entry 擋；link 元素層 schema 驗證仍是已知缺口，此處只驗 resolve
         for kind, links in graph_links.items():
             if not isinstance(links, list):
                 continue

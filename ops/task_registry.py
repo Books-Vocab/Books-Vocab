@@ -212,7 +212,6 @@ class TaskRegistry:
         state_path: Path | str | None = None,
         *,
         session_id: str | None = None,
-        campaign: str | None = None,
         worktree: Path | str | None = None,
     ) -> None:
         resolved_worktree = Path(worktree or os.getcwd()).expanduser().resolve()
@@ -223,7 +222,6 @@ class TaskRegistry:
         )
         self.lock_path = self.state_path.with_name(self.state_path.name + ".lock")
         self.session_id = session_id or DEFAULT_SESSION_ID
-        self.campaign = campaign if campaign is not None else os.environ.get("KG_TASK_CAMPAIGN", "")
         self.worktree = resolved_worktree
 
     @staticmethod
@@ -256,7 +254,6 @@ class TaskRegistry:
         record = {
             "task_id": task_id,
             "session_id": self.session_id,
-            "campaign": self.campaign,
             "worktree": str(self.worktree),
             "pid": None,
             "pgid": None,

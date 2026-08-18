@@ -234,4 +234,4 @@ raw: <log> <xcresult>
 
 視覺檢查完成後必須執行 bounded cleanup；它會檢查 PID、xcodebuild、runner 與 known lock，成功、失敗、abandoned 都不會無限期留下。不要以「方便下次看」為理由把 PNG、MP4、HTML、xcresult 複製回 repo；若確實要做報告交付，先用 `--retain` 明確提升，完成 `record-many` 後再按報告政策清理二進位產物。
 
-完成 code／test 修改後，依 worktree-flow 停在：最小充分驗證 → commit → `./ops/worktree_registry.py hand-back --json`，回報 exact source thread ID。Child 不進 Gate／落地；Integrator 只做 `integrate --commit --no-gate`／`--append` staging。只有 Manager 取得明示授權後，才可進行 fresh Gate、`close-wave --commit`、cutover／resolve／sync；deploy／`origin/prod` 仍是另一個明示意圖。回報中把每個 PDF／UI requirement 對應到 source、unit、UI behavior、visual artifact；沒有 live／pixel／physical evidence 就明確標出缺口。任務若要求矩陣結案，必須在最後一次視覺 attestation 後才跑 `record-many`，並保留其 accept/reject output。
+完成 code／test 修改後，停在：最小充分驗證 → commit → `./ops/worktree_registry.py hand-back --json` → GitHub PR。Coordinator 只回報 exact branch、worktree、HEAD、Scope、測試與視覺證據；review、required checks、merge 與 release 由 GitHub 和各自 SOP 控制。每個 UI requirement 都要對應 source、unit、UI behavior、visual artifact；沒有 live／pixel／physical evidence 就明確標出缺口。需要矩陣化的結果必須在最後一次 visual attestation 後產生，並保留 accept／reject output。

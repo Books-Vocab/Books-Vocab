@@ -561,7 +561,7 @@ def test_untracked_specs_refuses_to_report_a_non_git_tree_as_clean(tmp_path, mon
 def test_single_spec_check_reports_index_unchecked_not_untracked_empty(spec_repo, capsys):
     """``check <one spec>`` never enumerates the directory, so it must report
     the index as UNCHECKED rather than as empty — reporting ``untracked: []``
-    there would be the same false-clean this ticket removes."""
+    there would be the same false-clean this regression removes."""
     orphan = _write_spec(spec_repo, "deck-one", tracked=False)
 
     rc = build_official.main(["check", str(orphan), "--json"])

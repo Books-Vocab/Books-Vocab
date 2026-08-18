@@ -42,7 +42,7 @@ from pathlib import Path
 # verdict a function of where the invoker happened to stand: from ops/ the scan
 # found no Views tree at all, and from a directory holding a laxer
 # ops/injection_baseline.txt the gate would have read *that* one and forgiven
-# everything. ops/backlog.py carried the identical line and was ROOT-anchored on
+# everything. ops/injection_lint.py carried the identical line and was ROOT-anchored on
 # 2026-08-07 after the second shape was measured there; ops/inject_codemod.py:27
 # shares this tool's grammar and now uses scan-root-relative skip paths plus the
 # same fail-closed zero-scan contract (IMP-20260808-e03c92).
