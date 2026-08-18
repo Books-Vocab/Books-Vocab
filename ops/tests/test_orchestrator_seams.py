@@ -136,7 +136,7 @@ def test_legacy_collector_matches_split_behavior_collection():
 def test_route_manifest_has_explicit_selectors_and_negative_control():
     manifest = ROUTES.route_manifest()
     assert manifest["schema"] == "kg.test.route.v1"
-    assert len(manifest["routes"]) == 9
+    assert len(manifest["routes"]) == 10
     for route in manifest["routes"]:
         assert route["route_id"]
         assert route["source_patterns"]
@@ -185,7 +185,10 @@ def test_control_plane_and_kg_board_sources_have_explicit_focused_routes():
         if route["route_id"] == "orchestrator.facade"
     )
     assert "ops/tests/test_orchestrator_seams.py" in facade["selectors"]
-    assert "ops/tests/test_worktree_gate_tiers.py" in facade["selectors"]
+    assert "ops/tests/test_worktree_gate_tiers.py" not in facade["selectors"]
+    assert "orchestrator.gate-tiers" in {
+        route["route_id"] for route in control_plane["routes"]
+    }
 
     board = ROUTES.resolve_routes([
         "ops/kg_board/__init__.py",
@@ -223,6 +226,7 @@ def test_control_plane_and_kg_board_sources_have_explicit_focused_routes():
         "orchestrator.delivery",
         "orchestrator.recovery",
         "orchestrator.facade",
+        "orchestrator.gate-tiers",
         "orchestrator.kg-board",
     }
 
@@ -264,9 +268,9 @@ def test_facade_change_unions_behavior_routes_and_missing_selector_falls_back():
     assert {route["route_id"] for route in seam_test["routes"]} == expected_routes
     facade_route = next(route for route in facade["routes"]
                         if route["route_id"] == "orchestrator.facade")
-    assert "ops/tests/test_worktree_gate_tiers.py" in facade_route["selectors"]
-    assert any("test_s4_is_an_explicit_release_profile" in nodeid
-               for nodeid in facade_route["pytest_nodeids"])
+    assert "ops/tests/test_worktree_gate_tiers.py" not in facade_route["selectors"]
+    assert not any("test_s4_is_an_explicit_release_profile" in nodeid
+                   for nodeid in facade_route["pytest_nodeids"])
     missing = ROUTES.resolve_routes(
         ["ops/lib/worktree_orchestrator_gate.py"], exists=lambda _path: False
     )
