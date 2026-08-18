@@ -16,7 +16,7 @@
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260818-0da852",
   "plan": "新增純 parser、重複鍵負控與正控測試，將 parser 接入 ops/i18n_lint.sh baseline-check；先以現有 lint command 建立 red evidence，再由 implementation owner 讓 acceptance dependency 成為可執行檔案。",
-  "resolution": "",
+  "resolution": "DUPLICATE-OF-APP-20260809-d5096b: parent owns the exact i18n parser and duplicate-key test Scope; the split contract-repair row is not independently required.",
   "schema": "kg.backlog.entry.v1",
   "scope": {
     "files": [
@@ -37,6 +37,10 @@
   },
   "severity": "med",
   "source": "Ticket Factory dogfood 2026-08-18 i18n contract repair",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "wont-fix",
+  "stream": "IMP",
+  "verdict": "DUPLICATE-OF-APP-20260809-d5096b",
+  "verified_at": "2026-08-18",
+  "verified_by": "agent:ticket-factory-dispatchable-20260818-r2",
+  "verified_evidence": "Parent APP-20260809-d5096b owns the same i18n parser, duplicate-key regression, and i18n lint wiring Scope; this split contract-repair row is closed as a traceable duplicate."
 }

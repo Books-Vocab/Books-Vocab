@@ -16,7 +16,7 @@
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260818-17bdf8",
   "plan": "由 ops-engineer 在可重建的 Xcode IndexStore 環境重跑 exact type query，保留 command、source HEAD、index identity、spawn/termination reason 與 JSON output；若工具仍需 xcodebuild，新增 toolchain-free contract test，讓 parent ticket 使用可重跑命令。",
-  "resolution": "",
+  "resolution": "DUPLICATE-OF-IMP-20260813-4c0ad1: parent owns the toolchain-free contract test and no-build UI graph acceptance.",
   "schema": "kg.backlog.entry.v1",
   "scope": {
     "files": [
@@ -33,6 +33,10 @@
   },
   "severity": "med",
   "source": "Ticket Factory dogfood 2026-08-18 UI graph contract investigation",
-  "status": "contract-blocked",
-  "stream": "IMP"
+  "status": "wont-fix",
+  "stream": "IMP",
+  "verdict": "DUPLICATE-OF-IMP-20260813-4c0ad1",
+  "verified_at": "2026-08-18",
+  "verified_by": "agent:ticket-factory-dispatchable-20260818-r2",
+  "verified_evidence": "Parent IMP-20260813-4c0ad1 now owns the toolchain-free UI graph contract test and no-build acceptance; this investigation row is closed as a traceable duplicate."
 }
