@@ -527,6 +527,9 @@ function cancelTreeAutoFit(){treeFitInitialized=true}
 function treeStateOf(ref){
   return ref.live_state&&ref.live_state!=="unknown"?ref.live_state:(ref.status||"unknown");
 }
+function treeDisplayState(ref){
+  return treeRenderContext?.viewport?.branchDetached?.has(ref.branch)?"未連接":treeStateOf(ref);
+}
 function treeStateClass(value){
   return String(value||"unknown").toLowerCase().replace(/[^a-z0-9_-]+/g,"-");
 }
@@ -663,7 +666,7 @@ function renderBranchInspector(ref){
   const dirtyFiles=worktree?.dirty_files||ref.dirty_files||[];
   inspector.innerHTML='<span class="eyebrow">BRANCH INSPECTOR</span><dl class="detail-grid">'+
     scopeFieldMarkup("branch",'<code>'+esc(ref.branch)+'</code>'+copyButton(ref.branch,"複製"))+
-    scopeFieldMarkup("state",esc(treeStateOf(ref)))+
+    scopeFieldMarkup("state",esc(treeDisplayState(ref)))+
     scopeFieldMarkup("head",'<code>'+esc(ref.head||"—")+'</code>'+copyButton(ref.head,"複製"))+
     scopeFieldMarkup("base",'<code>'+esc(ref.base||"—")+'</code>')+
     scopeFieldMarkup("base_sha",'<code>'+esc(ref.base_sha||"—")+'</code>'+copyButton(ref.base_sha,"複製"))+

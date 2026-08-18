@@ -145,6 +145,8 @@ def test_graph_selection_is_first_hand_and_uses_one_structured_inspector():
         assert selection_class in CSS
     assert "refreshTreeFullscreen();" in APP
     assert "restoreTreeSelection();" in APP
+    assert "function treeDisplayState(ref)" in APP
+    assert 'scopeFieldMarkup("state",esc(treeDisplayState(ref)))' in APP
 
 
 def test_mobile_keeps_tree_controls_and_places_inspector_after_graph_content():
