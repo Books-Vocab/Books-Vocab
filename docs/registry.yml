@@ -292,6 +292,25 @@ documents:
       - ops/skill_route.py
       - ops/capability_matrix.py
 
+  - id: reference.backlog_store
+    path: docs/reference/backlog_store.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - backlog_store_changed
+      - backlog_command_changed
+      - ticket_claim_routing_changed
+      - gate_input_contract_changed
+    sources:
+      - ops/backlog_store.py
+      - ops/backlog.py
+      - ops/lib/worktree_orchestrator_claims.py
+      - ops/lib/worktree_orchestrator_core_gate_inputs.py
+      - ops/tests/test_backlog_store.py
+      - ops/tests/test_backlog.py
+      - ops/tests/test_worktree_orchestrate_claims.py
+      - ops/tests/test_worktree_orchestrate_gate.py
+
   - id: reference.ops_state_plane
     path: docs/reference/ops_state_plane.md
     kind: reference
