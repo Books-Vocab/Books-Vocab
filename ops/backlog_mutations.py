@@ -29,6 +29,7 @@ class MutationDeps:
     error_type: type[Exception] = ValueError
     entry_path: Callable[[Path, str], Path] | None = None
     entry_lock: Callable[..., Any] | None = None
+    acceptance_lock: Callable[..., Any] | None = None
     held_tickets: Callable[[], dict] | None = None
     main_commit: Callable[[], str | None] | None = None
     git: Callable[..., Any] | None = None
@@ -49,9 +50,27 @@ def _with_entry_lock(deps: MutationDeps, store: Path, entry_id: str):
     return deps.entry_lock(_entry_path(deps, store, entry_id))
 
 
-def cmd_update(args, *, deps: MutationDeps, lock_held: bool = False) -> int:
+def cmd_update(
+    args, *, deps: MutationDeps, lock_held: bool = False,
+    acceptance_only: bool = False, skip_acceptance: bool = False,
+) -> int:
     """Apply one mutation or print the exact dry-run diff."""
     if args.commit and not lock_held:
+        if getattr(args, "status", None) == "fixed" and deps.acceptance_lock is not None:
+            # The acceptance command is allowed to exercise another backlog
+            # writer (for example a campaign selector).  Run it under only the
+            # per-entry lock; the full store lock is acquired for the final
+            # snapshot validation + write after the command returns.
+            with deps.acceptance_lock(_entry_path(deps, args.store, args.id)):
+                preflight_rc = cmd_update(
+                    args, deps=deps, lock_held=True, acceptance_only=True,
+                )
+            if preflight_rc != 0:
+                return preflight_rc
+            with _with_entry_lock(deps, args.store, args.id):
+                return cmd_update(
+                    args, deps=deps, lock_held=True, skip_acceptance=True,
+                )
         with _with_entry_lock(deps, args.store, args.id):
             return cmd_update(args, deps=deps, lock_held=True)
 
@@ -116,7 +135,15 @@ def cmd_update(args, *, deps: MutationDeps, lock_held: bool = False) -> int:
     merged = deps.merged_and_validated(
         before, changes, args.id, clear_fields=clear_fields
     )
-    acceptance = deps.gate_closure(before, changes, args.commit)
+    acceptance = (
+        getattr(args, "_acceptance_result", None)
+        if skip_acceptance
+        else deps.gate_closure(before, changes, args.commit)
+    )
+
+    if acceptance_only:
+        args._acceptance_result = acceptance
+        return 0
 
     if (
         changes.get("status") != "fixed"

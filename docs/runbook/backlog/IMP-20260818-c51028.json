@@ -1,0 +1,47 @@
+{
+  "acceptance": "A fixed closure whose acceptance command performs a nested backlog update completes without deadlock, records acceptance evidence, and writes both entries.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k update_acceptance_can_use_a_backlog_writer_without_store_deadlock",
+  "acceptance_expect_rc": 0,
+  "brief": "Backlog closure acceptance can deadlock when its proof exercises another backlog writer.",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "manager:closure-audit",
+  "contract_evidence": "RED observed: update --commit held backlog store lock while acceptance nested campaign/backlog writer waited; implementation and regression now green.",
+  "contract_status": "ready",
+  "date": "2026-08-18",
+  "detail": "The fixed-ticket acceptance gate currently runs while backlog.py holds the whole-store lock. Any acceptance command that invokes campaign admission or another backlog mutation waits on that same lock until the gate timeout, so a valid closure can stall and never produce a receipt. Run acceptance under only the target entry lock, then reacquire the store lock for final snapshot validation and write; preserve the same behavior for update and verify closure paths.",
+  "fix_site": "ops/backlog_mutations.py; ops/backlog_verification.py; ops/backlog.py; ops/tests/test_backlog.py",
+  "groomed_against": "44d0229d70e58147d9561c9bb2b13e7ad7663d8f",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "manager",
+  "id": "IMP-20260818-c51028",
+  "plan": "1. Add a narrow per-entry acceptance lock seam. 2. Run fixed closure acceptance outside the whole-store lock. 3. Reacquire the normal store and entry locks for the final write. 4. Preserve acceptance evidence in the final JSON payload and cover nested backlog writers.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/backlog_mutations.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/backlog_verification.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/backlog.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_backlog.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "Manager closure acceptance audit 2026-08-18",
+  "status": "triaged",
+  "stream": "IMP"
+}

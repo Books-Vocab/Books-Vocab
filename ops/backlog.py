@@ -616,6 +616,25 @@ def _entry_lock(path: Path):
 
 
 @contextlib.contextmanager
+def _entry_acceptance_lock(path: Path):
+    """Lock one entry while acceptance runs without freezing the whole store.
+
+    A closure criterion is arbitrary shell code and may itself exercise backlog
+    tooling. Holding ``_store_lock`` while running it deadlocks as soon as the
+    criterion takes the normal store lock (campaign admission exposed this exact
+    cycle). The final mutation still re-enters ``_entry_lock`` after acceptance;
+    this narrower lock prevents a competing writer from changing the same entry
+    during the probe without serialising unrelated entries.
+    """
+    path = Path(path)
+    try:
+        with _backlog_store.entry_lock(ROOT, path):
+            yield
+    except _backlog_store.EntryLockUnavailable as exc:
+        raise BacklogError(f"{exc}; nothing was written") from exc
+
+
+@contextlib.contextmanager
 def _store_lock(store: Path):
     """Serialize a multi-entry read-modify-write transaction for one store.
 
@@ -4559,6 +4578,7 @@ def _verification_deps() -> _backlog_verification.VerificationDeps:
         dumps=_dumps,
         error_type=BacklogError,
         entry_lock=_entry_lock,
+        acceptance_lock=_entry_acceptance_lock,
         static_command=lambda verify_args: _cmd_verify_static(verify_args),
     )
 
@@ -5073,6 +5093,7 @@ def _mutation_deps() -> _backlog_mutations.MutationDeps:
         error_type=BacklogError,
         entry_path=entry_path,
         entry_lock=_entry_lock,
+        acceptance_lock=_entry_acceptance_lock,
         held_tickets=held_tickets,
         main_commit=_main_commit,
         git=_git,

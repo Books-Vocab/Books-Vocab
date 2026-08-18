@@ -30,6 +30,7 @@ class VerificationDeps:
     dumps: Callable[[dict], str]
     error_type: type[Exception] = ValueError
     entry_lock: Callable[..., Any] | None = None
+    acceptance_lock: Callable[..., Any] | None = None
     static_command: Callable[[Any], int] | None = None
 
 
@@ -103,7 +104,10 @@ def cmd_verify_static(args, *, deps: VerificationDeps) -> int:
     return 0 if outcome["ok"] else (124 if outcome["rc"] is None else 1)
 
 
-def cmd_verify(args, *, deps: VerificationDeps, lock_held: bool = False) -> int:
+def cmd_verify(
+    args, *, deps: VerificationDeps, lock_held: bool = False,
+    acceptance_only: bool = False, skip_acceptance: bool = False,
+) -> int:
     """Record a full re-verification as one atomic lifecycle act."""
     if args.static_only:
         static_command = deps.static_command or (
@@ -129,6 +133,17 @@ def cmd_verify(args, *, deps: VerificationDeps, lock_held: bool = False) -> int:
         raise SystemExit(2)
 
     if args.commit and not lock_held:
+        if args.status == "fixed" and deps.acceptance_lock is not None:
+            with deps.acceptance_lock(deps.entry_path(args.store, args.id)):
+                preflight_rc = cmd_verify(
+                    args, deps=deps, lock_held=True, acceptance_only=True,
+                )
+            if preflight_rc != 0:
+                return preflight_rc
+            with _with_entry_lock(deps, args.store, args.id):
+                return cmd_verify(
+                    args, deps=deps, lock_held=True, skip_acceptance=True,
+                )
         with _with_entry_lock(deps, args.store, args.id):
             return cmd_verify(args, deps=deps, lock_held=True)
 
@@ -148,7 +163,14 @@ def cmd_verify(args, *, deps: VerificationDeps, lock_held: bool = False) -> int:
     )
     current = deps.load_entry(args.store, args.id)
     merged = deps.merged_and_validated(current, changes, args.id)
-    acceptance = deps.gate_closure(current, changes, args.commit)
+    acceptance = (
+        getattr(args, "_acceptance_result", None)
+        if skip_acceptance
+        else deps.gate_closure(current, changes, args.commit)
+    )
+    if acceptance_only:
+        args._acceptance_result = acceptance
+        return 0
     if not args.commit:
         if args.json:
             print(

@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 26e50044c00716207f497dafe5efcff147148191
+verified_against: 44d0229d70e58147d9561c9bb2b13e7ad7663d8f
 -->
 # Technical Reference Index
 
@@ -419,6 +419,7 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 ## Backlog acceptance contract pointer
 
 `backlog.py` 的 acceptance proof 契約唯一入口是 `./ops/backlog.py update --help` 的 epilog；本索引只保留指標，不重複契約內容。
+`update`／`verify` 在 fixed closure 的 acceptance 執行期間只持有目標 entry lock，完成後才重新取得 store lock 做 snapshot validation／寫入；因此 acceptance 可以安全呼叫另一個 backlog writer，不會自鎖。
 
 `backlog.py validate --baseline-check` 另以 `ops/backlog_id_drift_baseline.txt`
 收斂七筆歷史 identity debt；每列必須是 `<observed-id> <current-expected-id>`
