@@ -41,6 +41,19 @@ Integrator 只准執行 `integrate --commit --no-gate`、`--append`、衝突保�
 
 正常協作的通訊面是 backlog、worktree registry、integration state、Gate receipt 與 lock heartbeat；不要用 thread 訊息同步每個進度。只有不穩定情境（衝突、state 損壞或過期、同一 source/fix-site 競爭、primary race、工具輸出與預期 schema 不符）才由 Integrator 使用內建 `multi_agent_v1__send_input`，直接通知受影響的 peer thread。訊息至少帶 `team/slug`、branch、worktree path、HEAD、state path、具體 blocker 與證據、要求的動作、需 pause 還是可 continue；禁止盲目 busy-loop，通知後繼續不相衝的工作或按 lock 的指數退避等待。
 
+### External agent handshake boundary
+
+`multi_agent_v1` 的 external agent 不是 repo-local subprocess，也不是 `ops/task_registry.py` 的另一種 PID。
+caller 只有在取得 connector 回傳的 opaque `target_id`、initial handshake、bounded heartbeat 與 terminal
+status 後，才能把 target 視為可用；`pending_init`、spawn rejected、heartbeat timeout、`unknown` 或缺
+terminal receipt 一律 fail-closed。不要從本機 PID／PGID、worktree registry active record 或空的 API response
+補出外部 identity／liveness。
+
+需要保存 handshake evidence 時，使用 `external-agent` manifest 的 transition、`fail_closed` 觀測與
+evidence path，並以 `./ops/review_audit.sh --kind external-agent --manifest <path> --json` 做結構 audit。
+這個 audit 只能證明 receipt 形狀與 fail-closed 欄位存在，不能替 connector 產生 handshake、heartbeat 或
+terminal result；child 仍停在自己的 commit + typed hand-back，不因 audit 綠而取得 Gate/cutover 權限。
+
 ## 拓樸：本地 main 為主幹（core mental model）
 
 **本地 `main` 是主幹**，兩個 origin ref 是不同平面的目標。worktree 從**本地 main** 分出、cutover **離線 ff 本地 main**（不碰網路、不部署）。本地 main 因此會**超前 origin** 幾個到幾十個 commit——這是正常的，不是「腐爛」。三平面：

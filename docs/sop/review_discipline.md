@@ -78,6 +78,12 @@ thread limit、follow-up submission timeout、rejected dispatch、pending review
 fail-closed observation。`review_audit.sh --kind review-capacity` 可驗證欄位形狀與 `status=verified`，但不
 把本機 review-cycle、PID 或 machine gate 綠燈升格成 external reviewer evidence。
 
+external-agent manifest 的最小 receipt 是 opaque `target_id` 加上 initial handshake、heartbeat／timeout、
+terminal 或 rejection transition、每步的 `fail_closed` 判斷與 evidence path。`pending_init`、rejected、
+timeout、`unknown` 或缺 terminal status 都不能被 caller 宣稱為可用 agent；`ops/task_registry.py` 的本機
+PID／PGID 絕不是替代證據。`review_audit.sh --kind external-agent` 只驗這些欄位的結構與
+`status=verified`，不執行、不模擬、不猜 connector 行為。
+
 ## Review cycle 的有界收斂
 
 逐項 review 不等於無限重審。對同一個**完整 40/64 位 commit SHA × scope**，用
