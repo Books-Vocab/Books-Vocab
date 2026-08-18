@@ -22,11 +22,13 @@ So: one JSON file per entry, ids derived from content rather than allocated
 from a counter. Two agents in two worktrees write disjoint paths and git merges
 them with no conflict, which is the whole point.
 
-Entries live under `docs/runbook/backlog/` as `.json` and NOT as `.md` on
-purpose: `ops/docs_lint.sh:216` scans every `docs/**/*.md` and demands a
+Entries live in a resolved store as `.json` and NOT as `.md` on purpose:
+`ops/docs_lint.sh:216` scans every `docs/**/*.md` and demands a
 `<!-- doc-meta -->` block with a reachable `verified_against`. Storing 59
 ledger rows as markdown would manufacture 59 doc-meta liabilities. Keeping them
-as `.json` costs nothing and needs no carve-out in the lint tool.
+as `.json` costs nothing and needs no carve-out in the lint tool. The historical
+`docs/runbook/backlog/` path remains the compatibility default;
+`KG_BACKLOG_STORE` selects an independent store outside the code checkout.
 
 JSON rather than YAML because there is no YAML dependency anywhere in `ops/`
 (`docs_impact.py` and `ui_quality_plane.py` both hand-parse), and the
@@ -63,12 +65,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # ROOT because ROOT is also the anchor for file layout and help text, and only
 # this one is a question about git.
 GIT_REPO = ROOT
-DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
-DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import backlog_store as _backlog_store  # noqa: E402
+
+DEFAULT_STORE = _backlog_store.resolve_store(ROOT)
+DEFAULT_VIEW = _backlog_store.default_view(DEFAULT_STORE, ROOT)
 _STORE_LOCK_STATE = threading.local()
 _ENTRY_LOCK_STATE = threading.local()
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import dispatch_preflight  # noqa: E402
 from lib.lock_wait import LockUnavailable, exclusive_lock  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
@@ -77,7 +81,6 @@ import backlog_mutations as _backlog_mutations  # noqa: E402
 import backlog_verification as _backlog_verification  # noqa: E402
 import backlog_reanchor as _backlog_reanchor  # noqa: E402
 import backlog_wave as _backlog_wave  # noqa: E402
-import backlog_store as _backlog_store  # noqa: E402
 import backlog_contract as _backlog_contract  # noqa: E402
 import backlog_view as _backlog_view  # noqa: E402
 import backlog_legacy as _backlog_legacy  # noqa: E402
@@ -2780,16 +2783,16 @@ tier: runbook
 authority: generated
 update_trigger: machine-generated
 scope:
-  - docs/runbook/backlog/
+  - {store_label}
 verified_against: {verified_against}
 -->
 # 改善 Backlog（kaizen ledger）
 
 > ⚠️ **GENERATED — 不要手改這個檔。** 內容由 `ops/backlog.py render` 從
-> `docs/runbook/backlog/*.json` 產生，手改會被下一次 render 覆蓋。
+> `{store_label}/*.json` 產生，手改會被下一次 render 覆蓋。
 > 要改請用 `ops/backlog.py update <id>`；要新增用 `ops/backlog.py add`。
 
-> 自我提升迴圈的登記處。**SoT 是 `docs/runbook/backlog/`**，本檔是它的 render。所有「工具 / CLI / 文檔 / 架構」摩擦（`IMP-*`）與
+> 自我提升迴圈的登記處。**SoT 是 `{store_label}`**，本檔是它的 render。所有「工具 / CLI / 文檔 / 架構」摩擦（`IMP-*`）與
 > 「app 實際使用」問題（`APP-*`）的 open 問題單一登記處。
 > 原則見**鐵律9**（摩擦優先修工具）、分級見 `kg-router`「Tool Friction」、
 > 表態見 `kg-receipt`「Tooling Debt」——本文**不複述**，只負責**持久化、追蹤、收斂**。
@@ -2799,7 +2802,7 @@ verified_against: {verified_against}
 receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 raised 問題
 **進 git、可回溯、有 owner、追到 resolved**。
 
-存成 `docs/runbook/backlog/<id>.json`（一筆一檔）而非單一表格，是因為單一表格
+存成 `{store_label}/<id>.json`（一筆一檔）而非單一表格，是因為單一表格
 在多 agent 並發下必然衝突：每次 append 都打同一段行區，而流水號 id 跨 worktree
 必撞（檔案在 merge 前彼此看不見）。IMP-0017 自己記著已經撞過兩次。
 
@@ -2917,11 +2920,17 @@ def view_entry_ids(text: str) -> set[str]:
 
 def render_view(store: Path, *, verified_against: str) -> str:
     """Render the human-readable view of the store. Deterministic."""
+    view_header = _VIEW_HEADER.replace(
+        "{store_label}",
+        "external-backlog-store"
+        if _backlog_store.is_external_store(store, ROOT)
+        else "docs-runbook-backlog",
+    )
     return _backlog_view.render_view(
         store,
         verified_against=verified_against,
         list_entries=list_entries,
-        view_header=_VIEW_HEADER,
+        view_header=view_header,
         imp_intro=_IMP_INTRO,
         app_intro=_APP_INTRO,
         categories=CATEGORIES,
@@ -2953,6 +2962,26 @@ def _store_help_path() -> str:
         return str(DEFAULT_STORE.relative_to(ROOT))
     except ValueError:
         return str(DEFAULT_STORE)
+
+
+def store_for_repo(repo: Path) -> Path:
+    """Return the store that belongs to ``repo`` under the current configuration.
+
+    The real checkout may select an external store through ``KG_BACKLOG_STORE``.
+    Scratch repositories used by the orchestrator tests still need their own
+    canonical relative store; otherwise one process would accidentally make a
+    fixture claim against the developer's configured ledger.
+    """
+    repo = Path(repo).expanduser().resolve()
+    root = Path(ROOT).expanduser().resolve()
+    if repo == root:
+        return Path(DEFAULT_STORE).expanduser().resolve()
+    return repo / _backlog_store.LEGACY_STORE_RELATIVE
+
+
+def store_descriptor(store: Path, root: Path | None = None) -> dict[str, object]:
+    """Expose store provenance without making callers import a private seam."""
+    return _backlog_store.store_descriptor(store, root or ROOT)
 
 
 def _add_store_arg(parser: argparse.ArgumentParser) -> None:
@@ -3746,7 +3775,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_render = sub.add_parser("render", help="regenerate the human-readable view from the store")
     _add_store_arg(p_render)
-    p_render.add_argument("--out", type=Path, default=DEFAULT_VIEW)
+    p_render.add_argument(
+        "--out", type=Path, default=None,
+        help="rendered view path (default: beside an external store, or the legacy repo view)",
+    )
     p_render.add_argument(
         "--verified-against",
         help="commit sha for doc-meta (default: merge-base with origin/main — NOT HEAD; "
@@ -5285,6 +5317,15 @@ def _cmd_render(args) -> int:
 
 
 def _cmd_render_unlocked(args) -> int:
+    if args.out is None:
+        try:
+            same_as_default = Path(args.store).expanduser().resolve() == Path(DEFAULT_STORE).resolve()
+        except OSError:
+            same_as_default = False
+        if _backlog_store.is_external_store(args.store, ROOT):
+            args.out = _backlog_store.default_view(args.store, ROOT)
+        else:
+            args.out = DEFAULT_VIEW if same_as_default else _backlog_store.default_view(args.store, ROOT)
     verified = args.verified_against or _doc_anchor()
     text = render_view(args.store, verified_against=verified)
 

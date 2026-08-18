@@ -27,6 +27,7 @@ if str(_OPS_DIR) not in sys.path:
 
 import worktree_registry as wr  # noqa: E402
 import backlog as backlog_tool  # noqa: E402
+import backlog_store as backlog_store_config  # noqa: E402
 import worktree_campaign as campaign  # noqa: E402
 import worktree_gate as gate_logic  # noqa: E402
 from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
@@ -46,6 +47,22 @@ BASE_DEFAULT = "main"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 WORKTREE_SCRATCH_REL = Path(".cache") / "agent-scratch"
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+def _backlog_store_for_worktree(worktree: str) -> tuple[Path, bool]:
+    """Resolve the gate's backlog input without confusing a worktree with primary.
+
+    With the legacy store, a worktree has its own tracked
+    ``docs/runbook/backlog`` tree. With an external store, the gate must not list
+    the primary checkout's legacy files as if they were the active data plane.
+    External state is intentionally marked non-reusable until its own content
+    fingerprint is part of the gate contract.
+    """
+    configured = Path(backlog_tool.DEFAULT_STORE).expanduser().resolve()
+    primary = Path(backlog_tool.ROOT).expanduser().resolve()
+    if backlog_store_config.is_external_store(configured, primary):
+        return configured, True
+    return Path(worktree).expanduser().resolve() / BACKLOG_STORE_DIR, False
 
 
 def bind_runtime(namespace: dict[str, object]) -> None:
@@ -211,7 +228,12 @@ def _gate_input_scope(spec: dict[str, Any], worktree: str,
     name = str(spec.get("name", ""))
     kind = "unknown"
     files: list[str] = []
-    if tracked is not None:
+    external_backlog = False
+    if name == "backlog-validate":
+        _store, external_backlog = _backlog_store_for_worktree(worktree)
+    if external_backlog:
+        kind = "external-store"
+    elif tracked is not None:
         if name == "coverage":
             kind = "changed-files"
             files = sorted(changed_files)
@@ -293,7 +315,7 @@ def _gate_input_scope(spec: dict[str, Any], worktree: str,
         if kind not in {"unknown", "history"} else None
     )
     descriptor["reusable"] = bool(
-        kind not in {"unknown", "history", "changed-files"}
+        kind not in {"unknown", "history", "changed-files", "external-store"}
         and descriptor["fingerprint"] is not None and clean
     )
     return descriptor

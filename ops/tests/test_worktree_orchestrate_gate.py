@@ -2,6 +2,34 @@
 
 from worktree_orchestrate_support import *  # noqa: F401,F403
 
+
+@gitmark
+def test_external_backlog_store_is_not_fingerprinted_as_tracked_code(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init", "-q", "-b", "main"], repo)
+    external = tmp_path / "backlog-store"
+    monkeypatch.setattr(MODULE.backlog_tool, "DEFAULT_STORE", external)
+
+    scope = MODULE._gate_input_scope(
+        {
+            "name": "backlog-validate",
+            "category": "data",
+            "kind": "shell",
+            "level": "block",
+            "cmd": ["ops/backlog.py", "validate", "--baseline-check"],
+            "cwd": ".",
+            "files": [],
+        },
+        str(repo),
+        [],
+        ["ops/backlog.py", "docs/runbook/backlog/IMP-0001.json"],
+    )
+
+    assert scope["kind"] == "external-store"
+    assert scope["files"] == []
+    assert scope["reusable"] is False
+
 def test_streamed_gate_runner_heartbeats_to_stderr_and_keeps_stdout_pure(tmp_path):
     stdout = io.StringIO()
     stderr = io.StringIO()
