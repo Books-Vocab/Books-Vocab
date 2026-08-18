@@ -245,13 +245,12 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'class="admin-nav"' in index
     assert 'id="scope-matrix-wrap"' in index
     assert '檔案佔用矩陣' in index
-    assert "active worktree" in index
-    assert "持票 worktree" in index and "直接指派 worktree" in index
+    assert 'id="scope-inspector"' in index
+    assert 'id="branch-index"' in index
     assert 'id="git-tree"' in index and 'id="commit-inspector"' in index
     assert '<details>' not in index  # cards are data-driven and collapsed by default
     assert '<title>交付進度看板 · 唯讀觀測</title>' in index
     assert '<a class="brand" href="/">交付進度看板</a>' in index
-    assert '票面、工作樹與資料新鮮度' in index
     assert [f'data-tab="{tab}"' in index for tab in ("now", "blocked", "inflight", "ungroomed", "contract", "all", "history")] == [True] * 7
     assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理", "契約未就緒"))
     assert "歷史完成" in index
@@ -406,11 +405,10 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert 'id="tree-legend"' in index
-    assert index.index('id="git-tree"') < index.index('id="tree-legend"')
-    assert "圖面下方" in index
-    assert "renderTreeLegend" in js
-    assert "tree-index-label" in js
+    assert 'id="branch-index"' in index
+    assert index.index('id="git-tree"') < index.index('id="branch-index"')
+    assert "renderBranchIndex" in js
+    assert "branch-index-item" in js
     assert "treeLayout" in js
     assert "edgePath" in js
     assert "reachableCommitSet" in js
@@ -423,7 +421,7 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
     assert "edge-truncated" in js
     assert "lane-dot" in js
     assert "compactBranchLabel" in js
-    assert ".tree-legend" in css
+    assert ".branch-index" in css
     assert ".git-tree:focus-visible" in css
     assert ".commitcircle{r:14px}" not in "".join(css.split())
 
@@ -463,7 +461,7 @@ def test_git_tree_hover_details_explain_boundaries_and_preserve_unknown_diff_sta
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
     assert 'id="tree-hover-card"' in index
-    assert "圖面邊界" in index
+    assert "tree-boundary-note" not in index
     assert "showTreeHover" in js
     assert "hideTreeHover" in js
     assert "data-boundary-detail" in js
@@ -476,7 +474,6 @@ def test_git_tree_hover_details_explain_boundaries_and_preserve_unknown_diff_sta
     assert "row.insertions??0" not in js
     assert "row.deletions??0" not in js
     assert ".tree-hover-card" in css
-    assert ".tree-boundary-note" in css
 
 
 def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
@@ -562,17 +559,13 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
 
     assert "交付進度看板" in index
     assert "分支與工作樹" in index
-    assert "主線與工作分支依 commit 關係排列" in index
-    assert "樹圖縮放" in index
+    assert "樹狀圖檢視操作" in index
     assert 'id="tree-zoom"' in index
     assert 'id="tree-zoom-value"' in index
     assert "tree-mobile-list" in js
     assert "renderMobileTree" in js
-    assert "tree-active-worktrees" in index
-    assert "renderActiveWorktrees" in js
-    assert "activeWorktreeGroups" in js
-    assert "目前進行中的 Worktree" in js
-    assert "直接指派修改" in js
+    assert "branch-index" in index
+    assert "renderBranchIndex" in js
     assert "看板資料讀取錯誤" in js
     assert "min-height:44px" in "".join(css.split())
     assert ".section-heading{flex-direction:column" in "".join(css.split())

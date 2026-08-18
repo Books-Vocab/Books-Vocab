@@ -10,31 +10,24 @@
 <body>
   <header class="admin-nav">
     <a class="brand" href="/">交付進度看板</a>
-    <span class="nav-caption">票面、工作樹與資料新鮮度</span>
     <a class="model-link" href="/model">術語與流程</a>
     <span id="trust-state" class="trust-badge">同步確認中</span>
     <span id="trust-detail" class="trust-detail"></span>
   </header>
   <main>
-    <section id="metrics" class="metrics" aria-label="決策指標"></section>
-
     <section class="scope-panel" aria-labelledby="scope-title">
       <div class="section-heading">
         <div>
           <span class="eyebrow">FILE OCCUPANCY</span>
           <h1 id="scope-title">檔案佔用矩陣</h1>
         </div>
-        <span id="scope-state" class="status-chip">讀取中</span>
       </div>
-      <p class="section-note">欄是 active worktree 與 queued ticket，最上方橫列顯示其 Agent / Codex thread title；列是實際檔案。worktree 可持有一張或多張相關票，也可以是直接指派、沒有 ticket 的修改。direct worktree 的 Scope 必須由工具明確宣告；collision 只標在 queued ticket，表示它與 active worktree 的檔案範圍重疊。</p>
       <div class="board-view-actions scope-view-actions" aria-label="矩陣檢視操作">
-        <button type="button" id="scope-fullscreen" class="tree-control-button">全螢幕查看矩陣</button>
-        <span>可調整尺度與列距；只看有佔用的檔案可快速收斂稀疏矩陣。</span>
+        <button type="button" id="scope-fullscreen" class="tree-control-button">全螢幕</button>
       </div>
       <div class="board-controls scope-controls" aria-label="矩陣檢視尺度">
         <div class="tree-control-copy">
           <label for="scope-zoom">矩陣尺度</label>
-          <span>調整欄寬與字級</span>
         </div>
         <input id="scope-zoom" type="range" min="80" max="140" step="10" value="100" aria-valuetext="100%">
         <output id="scope-zoom-value" for="scope-zoom">100%</output>
@@ -48,19 +41,10 @@
         <button type="button" id="scope-fit" class="tree-control-button">適合視窗</button>
         <button type="button" id="scope-reset" class="tree-control-button secondary">重設</button>
       </div>
-      <div class="scope-key" aria-label="矩陣圖例">
-        <span><i class="scope-key-swatch scope-key-ticketed"></i>持票 worktree：正在修改</span>
-        <span><i class="scope-key-swatch scope-key-direct"></i>直接指派 worktree：正在修改</span>
-        <span><i class="scope-key-swatch scope-key-queued"></i>queued ticket：可 claim</span>
-        <span><i class="scope-key-swatch scope-key-add">+</i>新增檔案</span>
-        <span><i class="scope-key-swatch scope-key-modify">~</i>修改檔案</span>
-        <span><i class="scope-key-swatch scope-key-collision"></i>queued collision</span>
-        <span><i class="scope-key-swatch scope-key-unknown">?</i>Scope 未知（不是 collision 未知）</span>
-      </div>
       <div id="scope-matrix-wrap" class="scope-matrix-wrap" aria-live="polite">
         <p class="empty">檔案矩陣載入中</p>
       </div>
-      <div id="scope-unknown" class="scope-unknown" role="note"></div>
+      <aside id="scope-inspector" class="scope-inspector" aria-live="polite" hidden></aside>
       <div id="scope-fullscreen-viewer" class="scope-fullscreen-viewer" hidden aria-hidden="true">
         <div class="scope-fullscreen-shell" role="dialog" aria-modal="true" aria-labelledby="scope-fullscreen-title">
           <header class="scope-fullscreen-toolbar">
@@ -73,7 +57,6 @@
               <button type="button" id="scope-fullscreen-close" class="tree-control-button">關閉</button>
             </div>
           </header>
-          <p class="scope-fullscreen-hint">矩陣保留 HTML 表格與文字，不轉成圖片；可橫向／縱向捲動，按 Esc 關閉。</p>
           <div id="scope-fullscreen-canvas" class="scope-fullscreen-canvas" tabindex="0" aria-label="可縮放的檔案佔用矩陣"></div>
         </div>
       </div>
@@ -85,23 +68,18 @@
           <span class="eyebrow">LIVE WORKFLOW</span>
           <h1 id="tree-title">分支與工作樹</h1>
         </div>
-        <span id="tree-state" class="status-chip">讀取中</span>
       </div>
-      <p class="section-note">主線與工作分支依 commit 關係排列；先看拓撲，分支狀態與票號集中在圖面下方，選取節點查看詳細資料。</p>
       <div class="board-view-actions tree-view-actions" aria-label="樹狀圖檢視操作">
-        <button type="button" id="tree-fullscreen" class="tree-control-button">全螢幕查看樹圖</button>
-        <span>手機可在無邊際模式中捏合／滾輪縮放，單指拖動圖面。</span>
+        <button type="button" id="tree-fullscreen" class="tree-control-button">全螢幕</button>
       </div>
       <div class="board-controls tree-controls" aria-label="樹圖縮放">
         <div class="tree-control-copy">
           <label for="tree-zoom">圖面尺度</label>
-          <span>縮放圖面，不改變資料範圍</span>
         </div>
         <input id="tree-zoom" type="range" min="70" max="140" step="10" value="100" aria-valuetext="100%">
         <output id="tree-zoom-value" for="tree-zoom">100%</output>
         <div class="tree-control-copy">
           <label for="tree-lane-spacing">工作樹間距</label>
-          <span>調整平行 lane 的距離</span>
         </div>
         <input id="tree-lane-spacing" type="range" min="104" max="224" step="4" value="124" aria-valuetext="124px">
         <output id="tree-lane-spacing-value" for="tree-lane-spacing">124px</output>
@@ -109,14 +87,9 @@
         <button type="button" id="tree-reset" class="tree-control-button secondary">重設</button>
       </div>
       <div id="tree-alert" class="tree-alert" role="status"></div>
-      <div class="tree-boundary-note" role="note">
-        <span class="tree-boundary-symbol" aria-hidden="true">⋯</span>
-        <span><strong>圖面邊界</strong>：表示 parent 或被截短的中間歷史不在目前 bounded window，不是額外 commit；移到標記、branch 名稱或 commit 節點查看詳細資料。</span>
-      </div>
       <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
       <div id="tree-mobile-list" class="tree-mobile-list" aria-label="分支與 commit 清單"></div>
-      <div id="tree-legend" class="tree-legend" aria-label="分支與工作樹狀態"></div>
-      <div id="tree-active-worktrees" class="tree-active-worktrees" aria-live="polite"></div>
+      <div id="branch-index" class="branch-index" aria-label="分支與工作樹索引"></div>
       <div id="tree-hover-card" class="tree-hover-card" role="status" aria-live="polite" hidden></div>
       <div id="tree-fullscreen-viewer" class="tree-fullscreen-viewer" hidden aria-hidden="true">
         <div class="tree-fullscreen-shell" role="dialog" aria-modal="true" aria-labelledby="tree-fullscreen-title">
@@ -133,14 +106,10 @@
               <button type="button" id="tree-fullscreen-close" class="tree-control-button">關閉</button>
             </div>
           </header>
-          <p id="tree-fullscreen-hint" class="tree-fullscreen-hint">拖動移動圖面 · 捏合／滾輪縮放 · 按 Esc 關閉</p>
           <div id="tree-fullscreen-canvas" class="tree-fullscreen-canvas" tabindex="0" aria-label="可縮放拖動的 Git 交付樹"></div>
         </div>
       </div>
-      <aside id="commit-inspector" class="commit-inspector" aria-live="polite">
-        <span class="eyebrow">COMMIT INSPECTOR</span>
-        <p>將游標移到 commit 或 branch 節點查看詳細資料；鍵盤可用 Tab 聚焦。</p>
-      </aside>
+      <aside id="commit-inspector" class="commit-inspector" aria-live="polite" hidden></aside>
     </section>
 
     <section class="backlog-panel" aria-labelledby="backlog-title">

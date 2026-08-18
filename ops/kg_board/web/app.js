@@ -13,7 +13,6 @@ function formatDiffStat(row){
   return `+${insertions===null?"—":insertions} / −${deletions===null?"—":deletions}`;
 }
 
-function metric(label,value){return `<div class="metric"><b>${esc(value)}</b><span>${esc(label)}</span></div>`}
 function setTrust(freshness){
   const state=freshness.freshness_state||"unknown";
   const labels={current:"資料已追平",stale:"資料有落差",error:"資料讀取錯誤",unknown:"新鮮度未知"};
@@ -176,6 +175,58 @@ function renderScopeMatrix(){
   if(unknownWorktrees.length)unknownParts.push(`direct worktree（Scope 待宣告）：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
   if(unknownTickets.length)unknownParts.push(`queued ticket（Scope 未知）：${unknownTickets.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
   unknownMount.innerHTML=unknownParts.length?`<strong>Scope 狀態</strong><span>${unknownParts.join("；")}：尚未宣告實際檔案變更範圍，因此不把它猜成 collision；這不是「Agent 未知」或「碰撞未知」。</span>`:"";
+}
+function renderScopeMatrixPrimary(){
+  const mount=document.getElementById("scope-matrix-wrap");
+  if(!mount)return;
+  renderScopeControls();
+  applyScopeGeometry(mount);
+  if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';return}
+  const worktrees=scopeMatrix.worktrees||[];
+  const queuedTickets=scopeMatrix.queued_tickets||[];
+  const allFiles=scopeMatrix.files||[];
+  const files=scopeOccupiedOnly?allFiles.filter(file=>(file.cells||[]).length>0):allFiles;
+  const columns=[
+    ...worktrees.map(worktree=>({type:"worktree",id:worktree.id,worktree})),
+    ...queuedTickets.map(ticket=>({type:"ticket",id:ticket.id,ticket})),
+  ];
+  if(!columns.length){mount.innerHTML='<p class="empty">—</p>';return}
+  const field=(label,value)=>'<div><dt>'+esc(label)+'</dt><dd>'+(value||"—")+'</dd></div>';
+  const headers=columns.map(column=>{
+    if(column.type==="worktree"){
+      const worktree=column.worktree;
+      const agent=worktree.agent||{};
+      const unknown=worktree.scope_status==="unknown";
+      const branch=worktree.branch?'<code>'+esc(worktree.branch)+'</code>'+copyButton(worktree.branch,"複製"):"—";
+      const path=worktree.path?'<code>'+esc(worktree.path)+'</code>'+copyButton(worktree.path,"複製"):"—";
+      const thread=agent.thread_id?'<code>'+esc(agent.thread_id)+'</code>'+copyButton(agent.thread_id,"複製"):"—";
+      const tickets=(worktree.ticket_ids||[]).join(", ");
+      return '<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-'+esc(worktree.kind)+(unknown?" scope-column-scope-unknown":"")+'" data-column-id="'+esc(column.id)+'" data-column-type="worktree"><div class="scope-column-identity"><strong>worktree</strong>'+copyButton(worktree.id,"複製 ID")+'</div><dl class="scope-column-fields">'+field("branch",branch)+field("kind",esc(worktree.kind))+field("path",path)+field("thread",thread)+field("tickets",esc(tickets))+field("state",esc(worktree.state||"active"))+field("scope",unknown?"unknown":"known")+field("dirty",esc(dirtyStateOf(worktree)))+'</dl></th>';
+    }
+    const ticket=column.ticket;
+    const collision=ticket.collision||null;
+    const unknown=ticket.scope_status==="unknown";
+    const collisionValue=collision?collision.status+(collision.with_worktrees?.length?" · "+collision.with_worktrees.join(", "):""):"—";
+    const collisionPaths=collision?.paths?.length?collision.paths.join(", "):"—";
+    return '<th scope="col" class="scope-column-head scope-column-ticket'+(collision?.status==="hard"?" scope-column-collision":"")+(unknown?" scope-column-scope-unknown":"")+'" data-column-id="'+esc(column.id)+'" data-column-type="ticket"><div class="scope-column-identity"><strong>ticket</strong>'+copyButton(ticket.id,"複製 ID")+'</div><dl class="scope-column-fields">'+field("id",'<code>'+esc(ticket.id)+'</code>')+field("type","queued")+field("state",esc(ticket.state||"queued"))+field("scope",unknown?"unknown":"known")+field("collision",esc(collisionValue))+field("paths",esc(collisionPaths))+'</dl></th>';
+  }).join("");
+  const body=files.map(file=>{
+    const cells=new Map((file.cells||[]).map(cell=>[cell.column_type==="worktree"?cell.worktree_id:cell.ticket_id,cell]));
+    return '<tr data-file-path="'+esc(file.path)+'"><th scope="row" class="scope-file-name" data-file-path="'+esc(file.path)+'"><code title="'+esc(file.path)+'">'+esc(file.path)+'</code></th>'+columns.map(column=>{
+      const cell=cells.get(column.id);
+      if(!cell)return '<td class="scope-empty-cell" data-file-path="'+esc(file.path)+'" data-column-id="'+esc(column.id)+'" data-column-type="'+esc(column.type)+'" tabindex="0" role="gridcell" aria-label="'+esc(file.path)+' · '+esc(column.id)+' · empty">·</td>';
+      const collision=cell.collision===true;
+      const operations=Array.isArray(cell.operations)&&cell.operations.length?cell.operations:[cell.operation];
+      const symbol=operations.map(operation=>operation==="add"?"+":"~").join("");
+      const label=column.id+" · "+cell.state+" · "+operations.map(scopeOperationLabel).join(" / ")+(collision?" · collision":"");
+      const worktreeKind=column.type==="worktree"?" scope-worktree-"+esc(column.worktree.kind):"";
+      return '<td class="scope-cell scope-cell-'+esc(cell.state)+' scope-cell-'+esc(column.type)+worktreeKind+' scope-operation-'+esc(cell.operation)+(collision?" scope-cell-collision":"")+'" data-file-path="'+esc(file.path)+'" data-column-id="'+esc(column.id)+'" data-column-type="'+esc(column.type)+'" tabindex="0" role="gridcell" title="'+esc(label)+'" aria-label="'+esc(label)+'"><span>'+esc(symbol)+'</span></td>';
+    }).join("")+'</tr>';
+  }).join("");
+  mount.innerHTML='<table class="scope-matrix" aria-label="檔案佔用矩陣"><thead><tr class="scope-header-row"><th scope="col" class="scope-file-head">path</th>'+headers+'</tr></thead><tbody>'+body+'</tbody></table>';
+  bindCopyButtons(mount);
+  applyScopeGeometry(mount);
+  refreshScopeFullscreen();
 }
 function rows(){
   const blocked=new Set(board.blocked_ids);
@@ -425,6 +476,28 @@ function renderTreeLegend(viewport){
   mount.querySelectorAll(".tree-legend-item").forEach(node=>{
     const ref=refs.find(item=>item.branch===node.dataset.branch);
     bindBranchNode(node,ref,viewport.branchDetached?.has(ref?.branch)?"未連接":treeStateOf(ref));
+  });
+}
+function renderBranchIndex(viewport){
+  const mount=document.getElementById("branch-index");
+  if(!mount)return;
+  const refs=viewport.refs||[];
+  const field=(label,value)=>'<div><dt>'+esc(label)+'</dt><dd>'+(value||"—")+'</dd></div>';
+  const items=refs.map(ref=>{
+    const state=viewport.branchDetached?.has(ref.branch)?"detached":treeStateOf(ref);
+    const tickets=(ref.tickets||[]).map(ticket=>'<button type="button" class="branch-index-ticket tree-ticket" data-ticket-id="'+esc(ticket.id)+'">'+esc(ticket.id)+'</button>').join("");
+    const path=ref.path?'<code>'+esc(ref.path)+'</code>'+copyButton(ref.path,"複製"):"—";
+    return '<article class="branch-index-item state-'+esc(treeStateClass(state))+'" data-branch="'+esc(ref.branch)+'" tabindex="0" role="button"><div class="branch-index-heading"><code>'+esc(ref.branch)+'</code>'+copyButton(ref.branch,"複製")+'</div><dl class="branch-index-fields">'+field("head",'<code>'+esc(ref.head||"—")+'</code>')+field("state",esc(state))+field("worktree",path)+field("host",esc(ref.host||"—"))+field("tickets",tickets)+'</dl></article>';
+  }).join("");
+  mount.innerHTML=items||'<p class="empty">—</p>';
+  bindCopyButtons(mount);
+  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{
+    event.stopPropagation();
+    selectTicket(node.dataset.ticketId);
+  }));
+  mount.querySelectorAll(".branch-index-item").forEach(node=>{
+    const ref=refs.find(item=>item.branch===node.dataset.branch);
+    bindBranchNode(node,ref,viewport.branchDetached?.has(ref?.branch)?"detached":treeStateOf(ref));
   });
 }
 function treeLayout(viewport,visibleCommits){
@@ -875,9 +948,8 @@ function renderTree(){
     // Keep the one-shot fit/manual-zoom decision across a transient empty
     // mirror; a refresh must not erase an explicit user zoom choice.
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
-    renderTreeLegend({refs:[]});
+    renderBranchIndex({refs:[]});
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
-    document.getElementById("tree-state").textContent="資料不足";
     if(treeFullscreen.open)closeTreeFullscreen({restoreFocus:false});
     return;
   }
@@ -938,9 +1010,8 @@ function renderTree(){
   mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}${parentBoundaryMarkers}</g>${nodes}</svg>`;
   const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
   const mainlineCount=viewport.mainlineWindow.length;
-  document.getElementById("tree-state").textContent=tree.complete?`主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}% · ${viewportLabel}`:`資料不完整 · 主線緩衝 ${mainlineCount} · 所有分支 ${viewport.refs.length} · ${treeZoom}%`;
   document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
-  renderTreeLegend(viewport);
+  renderBranchIndex(viewport);
   renderMobileTree(viewport,commits);
   bindRenderedTreeNodes(mount,treeRenderContext);
   refreshTreeFullscreen();
@@ -971,13 +1042,11 @@ function selectTicket(id){
 }
 function render(){
   if(!board)return;
-  renderMetrics();
-  renderScopeMatrix();
+  renderScopeMatrixPrimary();
   tabs.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.tab===tab)));
   const visible=rows();
   document.getElementById("status").textContent=`${visible.length} 張票 · 唯讀`;
   document.getElementById("tickets").innerHTML=tab==="history"&&!history?"<p class=\"empty\">歷史資料載入中</p>":visible.length?visible.map(ticket).join(""):"<p class=\"empty\">這個篩選目前沒有票</p>";
-  renderActiveWorktrees();
   document.querySelectorAll("[data-ticket-details]").forEach(details=>details.addEventListener("toggle",()=>hydrateTicket(details)));
 }
 async function loadHistory(){
@@ -1008,17 +1077,17 @@ document.getElementById("search").addEventListener("input",event=>{query=event.t
 const scopeZoomInput=document.getElementById("scope-zoom");
 if(scopeZoomInput)scopeZoomInput.addEventListener("input",event=>{
   const next=Number(event.target.value);scopeZoom=Math.max(80,Math.min(140,Number.isFinite(next)?next:100));renderScopeControls();
-  if(scopeMatrix)renderScopeMatrix();
+  if(scopeMatrix)renderScopeMatrixPrimary();
 });
 const scopeDensityInput=document.getElementById("scope-density");
 if(scopeDensityInput)scopeDensityInput.addEventListener("input",event=>{
   const next=Number(event.target.value);scopeDensity=Math.max(28,Math.min(54,Number.isFinite(next)?next:34));renderScopeControls();
-  if(scopeMatrix)renderScopeMatrix();
+  if(scopeMatrix)renderScopeMatrixPrimary();
 });
 const scopeOccupiedInput=document.getElementById("scope-occupied-only");
-if(scopeOccupiedInput)scopeOccupiedInput.addEventListener("change",event=>{scopeOccupiedOnly=event.target.checked;if(scopeMatrix)renderScopeMatrix()});
-document.getElementById("scope-fit")?.addEventListener("click",()=>{scopeZoom=100;renderScopeControls();if(scopeMatrix)renderScopeMatrix()});
-document.getElementById("scope-reset")?.addEventListener("click",()=>{scopeZoom=100;scopeDensity=34;scopeOccupiedOnly=false;renderScopeControls();if(scopeMatrix)renderScopeMatrix()});
+if(scopeOccupiedInput)scopeOccupiedInput.addEventListener("change",event=>{scopeOccupiedOnly=event.target.checked;if(scopeMatrix)renderScopeMatrixPrimary()});
+document.getElementById("scope-fit")?.addEventListener("click",()=>{scopeZoom=100;renderScopeControls();if(scopeMatrix)renderScopeMatrixPrimary()});
+document.getElementById("scope-reset")?.addEventListener("click",()=>{scopeZoom=100;scopeDensity=34;scopeOccupiedOnly=false;renderScopeControls();if(scopeMatrix)renderScopeMatrixPrimary()});
 document.getElementById("scope-fullscreen")?.addEventListener("click",openScopeFullscreen);
 document.getElementById("scope-fullscreen-close")?.addEventListener("click",()=>closeScopeFullscreen());
 document.getElementById("scope-fullscreen-fit")?.addEventListener("click",fitScopeFullscreen);

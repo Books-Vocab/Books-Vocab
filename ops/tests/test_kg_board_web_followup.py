@@ -38,3 +38,28 @@ def test_lane_labels_have_full_value_available_without_relying_on_ellipsis():
     assert 'data-branch-label="${esc(ref.branch)}"' in APP
     assert "tree-lane-label" in CSS
     assert "white-space:normal" in CSS
+
+
+def test_primary_surfaces_do_not_render_second_hand_explanations():
+    assert 'class="section-note"' not in INDEX
+    assert 'class="scope-key"' not in INDEX
+    assert 'class="scope-fullscreen-hint"' not in INDEX
+    assert 'class="tree-fullscreen-hint"' not in INDEX
+    assert 'class="tree-boundary-note"' not in INDEX
+    assert "將游標移到 commit 或 branch 節點查看詳細資料" not in INDEX
+    assert 'id="scope-state"' not in INDEX
+    assert 'id="tree-state"' not in INDEX
+
+
+def test_matrix_has_one_structured_header_row_and_a_file_inspector_mount():
+    assert 'class="scope-header-row"' in APP
+    assert "scope-column-fields" in APP
+    assert 'id="scope-inspector"' in INDEX
+
+
+def test_branch_index_is_a_first_hand_structured_surface_not_a_legend():
+    assert 'id="branch-index"' in INDEX
+    assert 'id="tree-legend"' not in INDEX
+    assert "renderBranchIndex" in APP
+    assert "branch-index-item" in APP
+    assert ".branch-index" in CSS
