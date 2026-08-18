@@ -12,6 +12,9 @@
   "date": "2026-08-18",
   "detail": "The live wave exposed three coupled control-plane defects: campaign next-ticket selection ignored reservation-local blocked_by edges; open could not perform a named claim from a campaign partition while preserving campaign_id/partition_id; and teardown of a clean campaign child left a live reservation with no usable closure path. Add atomic campaign claim selection/validation, a provenance-preserving named campaign claim path, and a Manager-only campaign abort lifecycle that refuses active children/parents and archives the aborted reservation. Keep ordinary dispatch and parent receipt semantics unchanged.",
   "fix_site": "ops/worktree_registry.py; ops/lib/worktree_orchestrator_claims.py; ops/lib/worktree_orchestrator_commands.py; ops/lib/worktree_orchestrator_runtime.py; ops/tests/test_worktree_campaign_reservation.py; ops/tests/test_worktree_orchestrate_delivery.py; docs/reference/tech_index.md; docs/runbook/system.md; .claude/skills/worktree-flow/SKILL.md",
+  "fixed_by": [
+    "44d0229d70e58147d9561c9bb2b13e7ad7663d8f"
+  ],
   "groomed_against": "1b02da4bfe91b6218cee5457a9dc1252bb566df2",
   "groomed_at": "2026-08-18",
   "groomed_by": "manager",
@@ -62,6 +65,10 @@
   },
   "severity": "high",
   "source": "Manager live campaign admission audit 2026-08-18",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:campaign-admission",
+  "verified_evidence": "32 campaign/reservation/provenance tests; 171 focused lifecycle tests; py_compile; docs registry lint"
 }
