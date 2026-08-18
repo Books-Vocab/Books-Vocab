@@ -76,8 +76,11 @@ def test_cold_start_contract_validates_before_route_and_names_docs_steward():
     startup = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
     validate = "./ops/skill_route.py validate --json"
-    route = "./ops/skill_route.py route --intent <intent> --json"
+    route = "./ops/skill_route.py route --intent "
     assert validate in startup
     assert route in startup
-    assert startup.index(validate) < startup.index(route)
+    route_start = startup.index(route)
+    route_line = startup[route_start:startup.find("\n", route_start)]
+    assert "--json" in route_line
+    assert startup.index(validate) < route_start
     assert "Docs Steward" in startup
