@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # release.sh — KG 版號發布統一入口（對標 backend/ops_cli.py 的單入口 + 乾淨 subcommand）
 #
-# 收斂原本散在 /release command（prose）+ scripts/ primitives 的發版編排。
+# 統一 backend／iOS 的版本與發布入口；命令實作集中在本檔。
 # 寫入面（bump 改本地檔、publish push）一律 dry-run 預設、--yes 才落地（同 asc.sh set 紀律）。
 # 注意：目前無 tag-triggered CI workflow，tag 為「版本標記」，GitHub Release 須手動建。
 #
-# 三平面 release 平面入口。develop=cutover 進本地 main；backup=orchestrate sync 推 origin/main；
-# release=刻意發布。前後端共用 `release <backend|ios> <ver>`，底下各自機器（backend 推 origin/prod
-# →felix reconciler；ios→ios_release upload TestFlight）。tag 只做「版號標記」（push origin main=備份，
-# 非部署）。
+# GitHub main 是合併後的產品主幹；本入口只處理已合併變更的版本標記、部署與外部發布。
+# 前後端共用 `release <backend|ios> <ver>`，底下各自機器（backend 推 origin/prod
+# →felix reconciler；ios→ios_release upload TestFlight）。tag 只做版號標記，非部署。
 #
 # Usage:
 #   ./ops/release.sh status                      # 各 component 待發版 commit + released gap（本地唯讀）
@@ -222,7 +221,7 @@ ios_refuse_pending_candidate() {
    若 upload 確認未接受，沿用此 candidate 重新執行 ./ops/ios_release.sh --upload，成功後再 finalize。"
 }
 
-# candidate commit 是 upload provenance 的持久錨點：先 commit，再推 origin/main，最後
+# candidate commit 是 upload provenance 的持久錨點：先 commit，再推送 GitHub main，最後
 # 才碰 ASC。只允許 pbxproj 作為 candidate 變更；candidate message 以 tuple 固定 identity。
 ios_commit_candidate() {
   local version="$1" build="$2" file="ios/BooksAndVocab.xcodeproj/project.pbxproj"
@@ -252,7 +251,7 @@ ios_push_candidate() {
   remote_main="$(git -C "$ROOT" ls-remote --heads origin main | awk 'NR==1{print $1}')"
   [[ "$remote_main" == "$IOS_CANDIDATE_SHA" ]] \
     || err "candidate push 回報成功但 origin/main=${remote_main:-<missing>} ≠ ${IOS_CANDIDATE_SHA}；拒絕 upload。"
-  echo "  candidate 已備份至 origin/main=${remote_main}"
+  echo "  candidate 已推送至 GitHub main=${remote_main}"
 }
 
 ios_validate_asc_build_json() {
@@ -523,7 +522,7 @@ cmd_status() {
       if [[ -n "$prod_ref" ]]; then
         ahead_prod="$(git -C "$ROOT" rev-list --count origin/prod..main 2>/dev/null || echo '?')"
         echo "   released：origin/prod=${prod_ref}；main 超前 prod ${ahead_prod} commit（release backend 才推 prod→部署）"
-        # tag 存在 ≠ 該版號上了生產：tag 只推 origin/main（備份），部署看的是 origin/prod。
+        # tag 存在 ≠ 該版號上了生產：tag 是版本標記，部署看的是 origin/prod。
         if [[ -n "$lt" ]]; then
           if git -C "$ROOT" merge-base --is-ancestor "$lt" origin/prod 2>/dev/null; then
             echo "   ${lt} 已在 origin/prod（該版號已上生產）"
@@ -733,9 +732,8 @@ cmd_bump_build() {
   fi
 }
 
-# ---- tag：commit 版號檔 + 打 tag + push origin main（版號標記+備份，非部署；dry-run 預設）----
-# 三平面：tag 是 release 平面的「版號標記」子步驟。它 push origin main = backup（reconciler 不看
-# main），不觸發生產。生產部署由 release <backend|ios> 的 deploy(prod)/upload 完成。（原名 publish）
+# ---- tag：commit 版號檔 + 打 tag + push origin main（版號標記，非部署；dry-run 預設）----
+# tag 不觸發生產；生產部署由 release <backend|ios> 的 deploy／upload 完成。（原名 publish）
 cmd_tag() {
   local c="${1:?用法: release.sh tag <api|ios> <x.y.z> [--yes]}" v="${2:-}"
   tag_prefix "$c" >/dev/null
@@ -795,7 +793,7 @@ cmd_tag() {
       git -C "$ROOT" tag "$tag"
     fi
     git -C "$ROOT" push origin "$branch" "$tag"
-    echo "✓ 已 commit + tag ${tag} + 推送 origin/${branch}（版號標記+備份；生產部署走 release <backend|ios>）。"
+    echo "✓ 已 commit + tag ${tag} + 推送 origin/${branch}（版號標記；生產部署走 release <backend|ios>）。"
   else
     echo "[dry-run] 未送出。確認無誤後加 --yes 才會 commit + 打 tag + 推送 origin："
     echo "  ./ops/release.sh tag $c $v --yes"
@@ -920,7 +918,7 @@ cmd_resubmit() {
   acquire_release_lock
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" == main ]] \
-    || err "resubmit 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
+    || err "resubmit 須在 main 執行（目前 ${branch}）—— feature 必須先經 PR 合併進 main"
   curver="$(current_version ios)"
   valid_semver "$curver" \
     || err "pbxproj 的 MARKETING_VERSION 是 '${curver}'，不是 x.y.z —— 先跑 ./ops/release.sh bump ios <x.y.z> --yes 對齊成三段"
@@ -951,7 +949,7 @@ cmd_resubmit() {
   ios_commit_candidate "$curver" "$newbuild"
   ios_push_candidate
   if ! "$ROOT/ops/ios_release.sh" --upload; then
-    echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推 origin/main，未建立 build tag。" >&2
+    echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推送至 GitHub main，未建立 build tag。" >&2
     echo "  不要重跑 resubmit 產生下一顆 build；確認 upload 結果後跑 finalize，或沿用此 candidate 重試 primitive upload。" >&2
     return 1
   fi
@@ -961,7 +959,7 @@ cmd_resubmit() {
 # ---- release：前後端統一發布入口。dry-run 預設，--yes 才執行 ----
 # backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
 # ios:     bump ios → candidate commit/push → ios_release upload → ASC exact → build tag
-# 須在 primary、on main（release 發布本地主幹；feature 改動先 cutover 進 main）。
+# 須在 primary、on main（release 只發布已經由 PR 合併的主幹）。
 # ---- 部署收斂閘（release backend 的最後一哩）----------------------------------
 # deploy 只保證 origin/prod 前進——那是「我要求什麼」，不是「線上跑什麼」。真正的部署
 # 由 felix reconciler 非同步做，失敗會自動回滾 + poison，而它唯一的聲音是 felix 本機的
@@ -1039,7 +1037,7 @@ cmd_release() {
 
   local branch curver curbuild target_build need_bump
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
-  [[ "$branch" == main ]] || err "release 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
+  [[ "$branch" == main ]] || err "release 須在 main 執行（目前 ${branch}）—— feature 必須先經 PR 合併進 main"
   curver="$(current_version "$comp")"
   # need_bump 用 RAW 相等（與 cmd_tag 的 strict curver==v 檢查一致）：ios 慣用兩段 MARKETING_VERSION
   # (如 2.0)，若用正規化相等判 2.0==2.0.0 會跳過 bump，但 cmd_tag strict 比較 raw 2.0≠2.0.0 反而
@@ -1064,7 +1062,7 @@ cmd_release() {
     echo "       （最長 ${KG_RELEASE_WAIT_SECS}s，逾時非零退出並指向 reconciler log；"
     echo "        range 內無 reconciler 觸發路徑時自動跳過）"
   else
-    echo "    2) candidate commit + push origin/main（先備份 ${v}+${target_build} provenance）"
+    echo "    2) candidate commit + push origin/main（先保存 ${v}+${target_build} provenance）"
     echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
     echo "    4) ASC exact verify → ios/${v}+${target_build} + push origin/main"
     echo "    ios/${v}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
@@ -1084,7 +1082,7 @@ cmd_release() {
     # HEAD，range 歸零，事後再問「這次會不會 rollout」已經沒得問。
     # rollout 判定的兩端都必須是**實際的** origin/prod：起點在 deploy 前讀，終點在
     # deploy 後讀。刻意不用「deploy 前的 local HEAD」當終點——同倉並發是常態，別的
-    # session 的 cutover 可能在 tag 與 deploy 之間 ff 了本地 main，那時 deploy 推出去的
+    # 另一個 session 可能在 tag 與 deploy 之間 fast-forward 本地 main，那時 deploy 推出去的
     # 就不是我們手上那顆，拿舊 sha 去等會等到一個永遠不會出現的版本然後假紅。
     local prod_before prod_after rollout=0
     git -C "$ROOT" fetch --quiet origin prod 2>/dev/null || true
@@ -1124,7 +1122,7 @@ cmd_release() {
     ios_commit_candidate "$v" "$target_build"
     ios_push_candidate
     if ! "$ROOT/ops/ios_release.sh" --upload; then
-      echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推 origin/main，未建立 build tag。" >&2
+      echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推送至 GitHub main，未建立 build tag。" >&2
       echo "  不要重跑 release 產生下一顆 build；確認 upload 結果後跑 finalize，或沿用此 candidate 重試 primitive upload。" >&2
       return 1
     fi

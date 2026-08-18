@@ -32,7 +32,7 @@ verified_against: 10586683d
 |---|---|---|---|---|---|---|
 | KG API | `backend` | `~/kg-prod/backend`（生產 checkout，追 origin/prod，reconciler 從此 build） | `~/knowledge_graph_api` | `wordnexus.lol` | `8000` | `knowledge-graph-api` |
 
-> **兩個 felix checkout（三平面拓樸）**：`~/kg-prod` 是**生產 checkout**（reconciler 盯 origin/prod、compose 從 `~/kg-prod/backend` build，見 §Routing「自動部署常駐」）；`~/project/kg` 是 **dev / resume-only**（人手 `git pull` 追 main，reconciler 絕不碰——同 project name `backend` 若在此跑 compose 會劫持生產容器）。三平面 develop/backup/release 與切換 runbook 見 [`docs/sop/release.md`](../sop/release.md)。
+> **兩個 felix checkout**：`~/kg-prod` 是**生產 checkout**（reconciler 盯 release wrapper 明確推進的 `origin/prod`、compose 從 `~/kg-prod/backend` build，見 §Routing「自動部署常駐」）；`~/project/kg` 是 **dev / resume-only**（人手 `git pull` 追 GitHub `main`，reconciler 絕不碰——同 project name `backend` 若在此跑 compose 會劫持生產容器）。GitHub main、production ref 與 rollback 邊界見 [`docs/sop/release.md`](../sop/release.md)。
 
 ## Routing（primary：Cloudflare Tunnel）
 
@@ -49,7 +49,7 @@ verified_against: 10586683d
 - **CF zone**：`dd3884683faa95a0de686e8830d1d8ae`；NS `damien/gabriella.ns.cloudflare.com`；anycast IP `104.21.85.113` / `172.67.204.212`
 - **ingress**（remotely-managed，存 CF 端，非本地 yaml）：`wordnexus.lol → http://localhost:8000`，fallback `http_status:404`
 - **連接器常駐**：standby `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist`（system daemon，`RunAtLoad` + `KeepAlive`，開機即起免登入）
-- **自動部署常駐**：standby `~/Library/LaunchAgents/com.kg.reconcile.plist`（per-user LaunchAgent，`StartInterval=90` 週期 poller、`RunAtLoad`、**不 KeepAlive**）跑 `ops/kg_reconcile.sh --once`（生產 clone `~/kg-prod`，由 `KG_RECON_REPO` 指定），讓 **`origin/prod`** 一前進（三平面 release 平面，只有 `deploy` 推進；含 backend 變更）就自動收斂生產容器；`origin/main` 已降為 backup 鏡像，reconciler 不看 main。與 `devops.sh` 人工 deploy 共用 `/tmp/kg-deploy.lock`。機制/path-filter/rollback+poison 見 [`docs/sop/deploy.md`](../sop/deploy.md) §reconciler；三平面語意與首次 origin/main→origin/prod 切換 runbook 見 [`docs/sop/release.md`](../sop/release.md)。（由操作者手動 bootstrap 啟用，非預設掛載。）
+- **自動部署常駐**：standby `~/Library/LaunchAgents/com.kg.reconcile.plist`（per-user LaunchAgent，`StartInterval=90` 週期 poller、`RunAtLoad`、**不 KeepAlive**）跑 `ops/kg_reconcile.sh --once`（生產 clone `~/kg-prod`，由 `KG_RECON_REPO` 指定），讓 release wrapper 明確推進的 **`origin/prod`**（含 backend 變更）自動收斂生產容器；GitHub `origin/main` 是合併後產品主幹，reconciler 不直接追 main。與 `devops.sh` 人工 deploy 共用 `/tmp/kg-deploy.lock`。機制/path-filter/rollback+poison 見 [`docs/sop/deploy.md`](../sop/deploy.md) §reconciler；首次 `origin/prod` 啟用 runbook 見 [`docs/sop/release.md`](../sop/release.md)。（由操作者手動 bootstrap 啟用，非預設掛載。）
 - **UI 測試排程（唯一跑在 oscar 的 launchd job）**：`ops/launchd/com.kg.uisweep.plist`（per-user LaunchAgent，`StartCalendarInterval` 每日 03:00 LOCAL、`RunAtLoad=false`、`ProcessType=Background`）跑 `ios_ops.sh test --ui --dataset marketing_demo`。**刻意不放 standby**：felix 沒裝 Xcode，沒有 iOS toolchain，所以 iOS 相關排程與其他兩個 `com.kg.*` job（backup / reconcile 皆在 standby）分居不同機器。**advisory，沒有人吃它的 exit code**；日誌 `~/Library/Logs/kg_uisweep.{out,err}.log`。由操作者手動 bootstrap 啟用，非預設掛載。動機（UI target 無任何日常 gate）與旗標為何不可省見 [`docs/reference/tech_index.md`](tech_index.md)。
 - registrar = **Porkbun**（僅註冊；DNS 託管已移到 CF）
 - 直打 CF 邊緣驗服務本身（排除 DNS 干擾）：`curl --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info`

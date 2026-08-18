@@ -2,7 +2,7 @@
 // Each struct isolates ONE form so the dumper test can assert the resolved IR shape/radius
 // without cross-contamination. Values are the deterministic ones the generator can map to
 // a CSS var or fixed geometry — bare-var shapes (clipShape(shape)) are deliberately absent
-// (they are honest backlog: the shape value is out of component scope).
+// (they are intentionally unsupported: the shape value is out of component scope).
 import SwiftUI
 
 // clipShape(RoundedRectangle(cornerRadius: AppRadius.X)) — already supported; regression anchor.

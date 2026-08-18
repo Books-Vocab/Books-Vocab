@@ -11,7 +11,7 @@
 //                      the SwiftUI Alignment (the layer fills the overlaid view and the
 //                      flex box places the child exactly where SwiftUI's alignment would).
 //
-// Deliberately NOT modeled (honest backlog, asserted as such):
+// Deliberately NOT modeled (unsupported shape, asserted as such):
 //   - the overlay child's INTERIOR styling (its own font/padding/background) — a separate
 //     sub-tree, exactly like stack children are not transpiled by the stack's own decls.
 //   - the bare-color tint form `.overlay(palette.x)` (a fill on a Divider, not a layer).

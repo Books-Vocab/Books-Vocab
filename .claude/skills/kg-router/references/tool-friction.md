@@ -1,32 +1,10 @@
-# Tool Friction
+# Tool friction
 
-只有當 typed task 是 `tool-friction`，或目前使用 typed tool 遇到摩擦時才載入本節；一般冷啟動與
-domain route 不得預載。
+遇到 help 失準、命令輸出不自解、入口漂移、權限誤判或會誘導人工繞路時：
 
-使用 typed tool 遇到摩擦時先判斷嚴重度：
+1. 保存最小重現命令、環境、exit status 與完整輸出；
+2. 判斷是 source bug、工具 bug、文件 bug、權限／外部狀態，還是單純使用錯誤；
+3. 能安全修的工具與 docs 先修，再回到原本的 Issue／PR；
+4. 不能安全自決的成本、策略、生產與帳號動作，建立 GitHub Issue／PR comment 並停在可回滾邊界。
 
-- 小問題：不影響正確性、不會誘導繞路，例如文案可更清楚。記到 receipt 的 `tooling debt`，回到原目標。
-- 中大型問題：help 失準、入口漂移、JSON 不穩、錯誤訊息不可行動、工具讓 agent 想繞過 typed surface。
-  立即停下來修工具／skill／doc，跑對應 regression，再回到原目標。
-- 生產或資料寫入路徑上的摩擦預設視為中大型問題。
-
-非當場修掉者一律立單，但立單前先查重：
-
-```bash
-./ops/backlog.py list --grep '<關鍵字或檔名>'
-```
-
-命中就接手既有票；沒有命中才用 `./ops/backlog.py add`。`list --grep` 掃 detail／resolution／plan／fix_site，
-並與其他旗標取交集，不要把全表 `list` 當 dispatch queue。自由文字含反引號、`$` 或跳脫字元時，改用
-`--<flag>-file <路徑>`，避免 shell 先改寫 argv。能一句話講清楚就補 `--brief` 與結構化 `--scope`（實際檔案清單，每個 path 標 `add` 或 `modify`）。
-
-批次 wave worker 必須用 `add --stage`，讓整合者以 `anchor --commit` 落地；一般單線工作才用裸 `add`。
-
-票的角色邊界、狀態與情境一律讀 `./ops/backlog.py lifecycle --json`；router 不另造流程版本。
-
-- `--stream IMP` → owner `platform-steward`
-- `--stream APP` → owner 對應 Line worker（`ios-engineer`／`backend-engineer`），取票用
-  `./ops/backlog.py dispatch --stream APP`，不要用 `list --stream APP`（後者會吐出已結案與已認領票）。
-
-嚴重度（小／中大）與 stream（誰是 owner）是兩個獨立判定，不可混用；完整分流判準由 `kg-receipt`
-的「Stream 分流」負責。
+工具修正仍走一般 GitHub flow：branch → PR → Actions → review → merge。不要用 receipt、臨時檔或另一個 repo ledger 藏住摩擦。

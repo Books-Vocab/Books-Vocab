@@ -1,19 +1,14 @@
-version: 1
-description: "KG docs control-plane registry. Path globs are impact hints; semantic triggers and validators are the authority."
+version: 2
+description: "KG documentation ownership and impact registry. GitHub owns work items; this file owns document routing only."
 
 agent_facing_surface:
-  # 「改了 user/agent-facing 介面就同步」要掃的路徑集合，唯一 SoT。
-  # CLAUDE.md、review SOP 與 control-plane skill 只指向這裡，不再複述清單。
-  # AGENTS.md 是 CLAUDE.md 的 symlink，刻意不列，避免同一份檔被掃兩次。
-  # docs/runbook/ 只收 system.md；同層 backlog/*.json 是凍結票據，不納入掃描。
   paths:
     - CLAUDE.md
     - .claude/agents/
     - .claude/skills/
-    - .claude/commands/
+    - docs/reference/agent_context.md
     - docs/reference/product_surface.md
     - docs/reference/tech_index.md
-    - docs/reference/agent_context.md
     - docs/sop/
     - docs/policy/
     - docs/runbook/system.md
@@ -28,1075 +23,467 @@ documents:
     kind: contract
     authority: SoT
     triggers:
-      - sync_status_changed
-      - sync_payload_changed
-      - conflict_resolution_changed
+      - sync-behavior-changed
     sources:
-      - ios/BooksAndVocab/Models/VocabularyEntry.swift
-      - ios/BooksAndVocab/Views/Vocabulary/SyncView.swift
-      - ios/BooksAndVocab/Views/Vocabulary/AutoSyncMonitor.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabCoordinator.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
-      - ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift
-      - ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift
-      - ios/BooksAndVocab/Services/AuthManager.swift
-      - ios/BooksAndVocab/Services/BackgroundSyncActor.swift
-      - ios/BooksAndVocab/Services/KGService+Sync.swift
-      - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
-      - ios/BooksAndVocab/Services/KGService+Models.swift
-      - backend/src/kg/api_models/vocab.py
-      - backend/src/kg/routers/vocab.py
-      - backend/src/kg/vocab_intake.py
-      - backend/src/kg/vocab_crud.py
-      - backend/src/kg/vocab_handlers/intake.py
-      - backend/src/kg/vocab_handlers/crud.py
+      - ios/BooksAndVocab/Services/
+      - backend/src/kg/routers/
 
   - id: contract.card_format
     path: docs/reference/card_format.md
     kind: contract
     authority: SoT
     triggers:
-      - card_schema_changed
-      - csv_format_changed
+      - card-schema-changed
     sources:
       - backend/src/kg/
-      - "!backend/src/kg/llm/providers.py"
+      - ios/BooksAndVocab/Models/
 
   - id: contract.host_topology
     path: docs/reference/host_topology.md
     kind: contract
     authority: SoT
     triggers:
-      - host_route_changed
-      - container_port_changed
-      - caddy_route_changed
+      - host-or-domain-changed
     sources:
-      - ops/
-      - "!ops/docs_lint.sh"
-      - "!ops/docs_impact.py"
-      - "!ops/ui_quality_plane.py"
-      - "!ops/ui_quality_plane.yml"
-      - "!ops/tests/test_ui_quality_plane.sh"
-      - "!ops/docs_registry_coverage.py"
-      - "!ops/tests/test_docs_*.sh"
-      - "!ops/test_ops.sh"
-      - "!ops/branch_audit.sh"
-      - "!ops/tests/test_branch_audit.sh"
-      - "!ops/devops_kg_safe.sh"
-      - "!ops/ios_release.sh"
-      - "!ops/i18n_lint.sh"
-      - "!ops/_i18n_*.py"
-      - "!ops/podcast_*.sh"
-      - "!ops/podcast_*.py"
-      - "!ops/ui_token_lint.sh"
-      - "!ops/ui_token_lint.py"
-      - "!ops/test_ui_token_lint.sh"
-      - "!ops/plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_lint.py"
-      - "!ops/test_plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_baseline.txt"
-      - "!ops/gen_web_tokens.py"
-      - "!ops/infra_health.sh"
-      - "!ops/test_infra_health.sh"
-      # UI World/evidence tooling is owned by catalog_scope and ui_flow_evidence,
-      # not by host topology. Keep the broad ops hint from leaking here.
-      - "!ops/ios_test.sh"
-      - "!ops/ios_ui_review_matrix.py"
-      - "!ops/fixtures/ui_worlds/"
-      - "!ops/fixtures/ios_ui_review_matrix.json"
-      - "!ops/ui_world_manifest.py"
-      - "!ops/uitest_*.py"
-      - "!ops/tests/test_ui_world_manifest.py"
-      - "!ops/tests/test_ios_ui_review_matrix.py"
-      - "!ops/tests/test_uitest_*.py"
+      - ops/devops_kg_safe.sh
+      - ops/kg_reconcile.sh
+      - backend/deploy/
 
   - id: policy.safety
     path: docs/policy/safety.md
     kind: policy
     authority: SoT
     triggers:
-      - production_safety_policy_changed
-      - destructive_command_guard_changed
+      - production-safety-changed
     sources:
-      - ops/
-      - "!ops/docs_lint.sh"
-      - "!ops/docs_impact.py"
-      - "!ops/ui_quality_plane.py"
-      - "!ops/ui_quality_plane.yml"
-      - "!ops/tests/test_ui_quality_plane.sh"
-      - "!ops/docs_registry_coverage.py"
-      - "!ops/tests/test_docs_*.sh"
-      - "!ops/test_ops.sh"
-      - "!ops/branch_audit.sh"
-      - "!ops/tests/test_branch_audit.sh"
-      - "!ops/ios_release.sh"
-      - "!ops/i18n_lint.sh"
-      - "!ops/_i18n_*.py"
-      - "!ops/podcast_*.sh"
-      - "!ops/podcast_*.py"
-      - "!ops/ui_token_lint.sh"
-      - "!ops/ui_token_lint.py"
-      - "!ops/test_ui_token_lint.sh"
-      - "!ops/plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_lint.py"
-      - "!ops/test_plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_baseline.txt"
-      - "!ops/gen_web_tokens.py"
-      # UI World/evidence tooling is not a production safety policy surface.
-      - "!ops/ios_test.sh"
-      - "!ops/ios_ui_review_matrix.py"
-      - "!ops/fixtures/ui_worlds/"
-      - "!ops/fixtures/ios_ui_review_matrix.json"
-      - "!ops/ui_world_manifest.py"
-      - "!ops/uitest_*.py"
-      - "!ops/tests/test_ui_world_manifest.py"
-      - "!ops/tests/test_ios_ui_review_matrix.py"
-      - "!ops/tests/test_uitest_*.py"
-      - backend/
-      - "!backend/tests/"
-      - "!backend/src/kg/llm/providers.py"
-      - "!backend/src/kg/routers/*.py"
-      - docs/runbook/
-      - "!docs/runbook/backlog/"
-
-  - id: reference.product_surface
-    path: docs/reference/product_surface.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - user_facing_feature_changed
-      - admin_surface_changed
-      - ios_surface_changed
-    sources:
-      - ios/
-      # UITest fixtures/tests are evidence inputs, not shipped product surface.
-      - "!ios/BooksAndVocabUITests/"
-      - "!ios/BooksAndVocabTests/"
-      - "!ios/BooksAndVocab/Support/UITestFixtureSeed*.swift"
-      - "!ios/BooksAndVocab/Support/Fixtures/"
-      - backend/
-      - "!backend/tests/"
-      - "!backend/src/kg/llm/providers.py"
-      - ops/
-      - "!ops/docs_lint.sh"
-      - "!ops/docs_impact.py"
-      - "!ops/ui_quality_plane.py"
-      - "!ops/ui_quality_plane.yml"
-      - "!ops/tests/test_ui_quality_plane.sh"
-      - "!ops/docs_registry_coverage.py"
-      - "!ops/tests/test_docs_*.sh"
-      - "!ops/test_ops.sh"
-      - "!ops/devops_kg_safe.sh"
-      - "!ops/ios_release.sh"
-      - "!ops/i18n_lint.sh"
-      - "!ops/_i18n_*.py"
-      - "!ops/podcast_*.sh"
-      - "!ops/podcast_*.py"
-      - "!ops/ui_token_lint.sh"
-      - "!ops/ui_token_lint.py"
-      - "!ops/test_ui_token_lint.sh"
-      - "!ops/plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_lint.py"
-      - "!ops/test_plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_baseline.txt"
-      - "!ops/gen_web_tokens.py"
-      # Internal UI evidence helpers are not implemented product features.
-      - "!ops/ios_test.sh"
-      - "!ops/ios_ui_review_matrix.py"
-      - "!ops/fixtures/ui_worlds/"
-      - "!ops/fixtures/ios_ui_review_matrix.json"
-      - "!ops/ui_world_manifest.py"
-      - "!ops/uitest_*.py"
-      - "!ops/tests/test_ui_world_manifest.py"
-      - "!ops/tests/test_ios_ui_review_matrix.py"
-      - "!ops/tests/test_uitest_*.py"
-
-  - id: reference.catalog_scope
-    path: docs/reference/catalog_scope.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - catalog_workbench_changed
-      - catalog_ui_world_injection_changed
-      - ui_world_fixture_changed
-    sources:
-      - ios/BooksAndVocab/Debug/
-      - ios/BooksAndVocab/BooksAndVocabApp.swift
-      - ops/ios_ops.sh
-      - ops/lib/ios_ops_catalog.sh
-      - ops/tests/test_catalog_agent_boundary.py
-      - ops/fixtures/ui_worlds/
-      - ops/fixtures/ui_worlds/marketing_demo.json
-      - ops/ui_world_manifest.py
-      - ops/tests/test_ui_world_manifest.py
-
-  - id: reference.tech_index
-    path: docs/reference/tech_index.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - endpoint_changed
-      - env_var_changed
-      - db_schema_changed
-      - ops_command_changed
-      - delivery_loop_changed
-      - ui_world_fixture_changed
-      - ui_evidence_runner_changed
-      - ui_review_matrix_changed
-      - ui_evidence_contract_changed
-      - ui_review_page_changed
-      - ui_review_attestation_changed
-    sources:
-      - backend/
-      - "!backend/tests/"
-      - ops/backlog.py
-      - ops/lib/lock_wait.py
-      - ops/worktree_orchestrate.py
-      - ops/tests/test_backlog.py
-      - ops/ios_test.sh
-      - ops/ios_ui_review_matrix.py
-      - ops/fixtures/ios_ui_review_matrix.json
-      - ops/fixtures/ui_worlds/marketing_demo.json
-      - ops/ui_world_manifest.py
-      - ops/uitest_evidence_contract.py
-      - ops/uitest_review_page.py
-      - ops/uitest_review_attest.py
-      - ops/tests/test_ios_ui_review_matrix.py
-      - ops/tests/test_ui_world_manifest.py
-      - ops/tests/test_uitest_evidence_contract.py
-      - ops/tests/test_uitest_review_page.py
-      - ops/tests/test_uitest_review_attest.py
-      - ops/
-      - "!ops/tests/test_docs_*.sh"
+      - ops/devops_kg_safe.sh
+      - ops/release.sh
+      - ops/kg_reconcile.sh
 
   - id: reference.agent_context
     path: docs/reference/agent_context.md
     kind: reference
     authority: SoT
     triggers:
-      - agent_context_changed
-      - agent_role_changed
-      - skill_loading_changed
-      - escalation_route_changed
+      - agent-routing-changed
     sources:
       - CLAUDE.md
       - .claude/agents/
       - .claude/skills/
-      - .claude/commands/
-      - docs/sop/review_discipline.md
-      - docs/registry.yml
-      - docs/reference/agent_context.md
-      - ops/context_plane.json
       - ops/context_route.py
-      - ops/skill_route.py
-      - ops/capability_matrix.py
+      - ops/context_plane.json
 
-  - id: reference.backlog_store
-    path: docs/reference/backlog_store.md
+  - id: reference.product_surface
+    path: docs/reference/product_surface.md
     kind: reference
     authority: SoT
     triggers:
-      - backlog_store_changed
-      - backlog_command_changed
-      - ticket_claim_routing_changed
-      - gate_input_contract_changed
+      - product-surface-changed
     sources:
-      - ops/backlog_store.py
-      - ops/backlog.py
-      - ops/lib/worktree_orchestrator_claims.py
-      - ops/lib/worktree_orchestrator_core_gate_inputs.py
-      - ops/tests/test_backlog_store.py
-      - ops/tests/test_backlog.py
-      - ops/tests/test_worktree_orchestrate_claims.py
-      - ops/tests/test_worktree_orchestrate_gate.py
+      - ios/BooksAndVocab/
+      - backend/src/kg/
+      - lab/podcast/
 
-  - id: reference.ops_state_plane
-    path: docs/reference/ops_state_plane.md
+  - id: reference.tech_index
+    path: docs/reference/tech_index.md
     kind: reference
     authority: SoT
     triggers:
-      - ops_command_changed
-      - world_projection_changed
+      - technical-entrypoint-changed
     sources:
-      - backend/ops_edit.py
-      - backend/ops_cli.py
-      - backend/src/kg/ops_edit_shared.py
-      - backend/src/kg/ops_world_projection.py
-      - backend/src/kg/ops_world_expectation.py
-      - backend/src/kg/ops_world_diff.py
-      - backend/src/kg/ops_world_export.py
-      - ops/official_decks/
+      - backend/src/kg/
+      - ios/BooksAndVocab/
+      - ops/
+      - .github/
 
-  - id: sop.doc_sync
-    path: docs/sop/doc_sync.md
-    kind: sop
-    authority: derived
-    triggers:
-      - docs_workflow_changed
-      - registry_changed
-      - docs_gate_changed
-      - docs_impact_changed
-    sources:
-      - CLAUDE.md
-      - .github/PULL_REQUEST_TEMPLATE.md
-      - docs/registry.yml
-      - ops/docs_lint.sh
-      - ops/docs_impact.py
-      - ops/docs_registry_coverage.py
-
-  - id: sop.docs_dogfood
-    path: docs/sop/docs_dogfood.md
-    kind: sop
-    authority: derived
-    triggers:
-      - docs_workflow_changed
-      - docs_gate_changed
-      - docs_impact_changed
-      - dogfood_protocol_changed
-    sources:
-      - CLAUDE.md
-      - docs/registry.yml
-      - docs/sop/doc_sync.md
-      - ops/docs_lint.sh
-      - ops/docs_impact.py
-      - ops/docs_registry_coverage.py
-
-  - id: reference.ios_deriveddata_policy
-    path: docs/reference/ios_deriveddata_policy.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - deriveddata_path_changed
-      - ios_build_cache_changed
-    sources:
-      - ops/ios_build.sh
-      - ops/ios_test.sh
-      - ops/ios_clean_derived_data.sh
-
-  - id: reference.feature_boundary.bookshelf
-    path: docs/reference/feature_boundary/bookshelf.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - bookshelf_surface_changed
-      - book_manifest_changed
-      - book_recovery_changed
-    sources:
-      - ios/BooksAndVocab/Views/Bookshelf/
-      - ios/BooksAndVocab/Models/Book.swift
-      - ios/BooksAndVocab/Models/BookManifest.swift
-      - ios/BooksAndVocab/Models/BookLibraryReconciler.swift
-      - ios/BooksAndVocab/AppOrphanBookRecovery.swift
-      - ios/BooksAndVocab/AppStartupRecovery.swift
-
-  - id: reference.feature_boundary.notebook
-    path: docs/reference/feature_boundary/notebook.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - notebook_surface_changed
-      - notebook_reconcile_changed
-      - notebook_cover_changed
-    sources:
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift
-      - ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift
-      - ios/BooksAndVocab/Models/Notebook*.swift
-      - ios/BooksAndVocab/Services/KGService+Notebook.swift
-
-  - id: reference.feature_boundary.podcast
-    path: docs/reference/feature_boundary/podcast.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - podcast_surface_changed
-      - podcast_playback_changed
-      - podcast_sync_changed
-    sources:
-      - ios/BooksAndVocab/Views/Podcast/
-      - ios/BooksAndVocab/Models/Podcast*.swift
-      - ios/BooksAndVocab/Services/Podcast*.swift
-
-  - id: reference.feature_boundary.reader
-    path: docs/reference/feature_boundary/reader.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - reader_surface_changed
-      - reader_translation_changed
-      - readium_bridge_changed
-    sources:
-      - ios/BooksAndVocab/Views/Reader/
-      - ios/BooksAndVocab/Models/ReaderSettings.swift
-      - ios/BooksAndVocab/Services/ReaderPublicationLoader.swift
-      - ios/BooksAndVocab/Services/Readium*.swift
-
-  - id: reference.feature_boundary.settings
-    path: docs/reference/feature_boundary/settings.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - settings_surface_changed
-      - account_settings_changed
-      - subscription_settings_changed
-    sources:
-      - ios/BooksAndVocab/Views/Settings/
-      - ios/BooksAndVocab/Models/AppLanguage.swift
-      - ios/BooksAndVocab/Models/AppAppearanceMode.swift
-      - ios/BooksAndVocab/Models/ReviewSettings.swift
-      - ios/BooksAndVocab/Models/TranslationLanguage.swift
-      - ios/BooksAndVocab/Services/KGUserConfigClient.swift
-      - ios/BooksAndVocab/Services/SubscriptionManager*.swift
-
-  - id: reference.feature_boundary.vocabulary
-    path: docs/reference/feature_boundary/vocabulary.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - vocabulary_surface_changed
-      - review_flow_changed
-      - graph_surface_changed
-      - vocab_sync_changed
-    sources:
-      - ios/BooksAndVocab/Views/Vocabulary/
-      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift"
-      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListCoordinator.swift"
-      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift"
-      - "!ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift"
-      - "!ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift"
-      - ios/BooksAndVocab/Models/Vocabulary*.swift
-      - ios/BooksAndVocab/Models/Review*.swift
-      - ios/BooksAndVocab/Services/KGService+VocabCRUD.swift
-      - ios/BooksAndVocab/Services/KGService+Sync.swift
-      - ios/BooksAndVocab/Services/KGService+Graph.swift
-      - ios/BooksAndVocab/Services/VocabularyExporter.swift
-
-  - id: reference.feature_boundary.discover
-    path: docs/reference/feature_boundary/discover.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - explore_surface_changed
-      - shared_deck_browse_changed
-      - shared_deck_copy_changed
-      - explore_gate_changed
-    sources:
-      - ios/BooksAndVocab/Views/Explore/
-      - ios/BooksAndVocab/Models/SharedDeck.swift
-      - ios/BooksAndVocab/Services/SharedDeckCatalogService.swift
-      - ios/BooksAndVocab/Services/KGService+Decks.swift
-
-  - id: sop.ui_design
-    path: docs/sop/ui-design.md
-    kind: sop
-    authority: derived
-    triggers:
-      - ui_design_system_changed
-      - motion_contract_changed
-      - catalyst_ui_policy_changed
-      - design_token_policy_changed
-    sources:
-      - ios/BooksAndVocab/Models/AppColors.swift
-      - ios/BooksAndVocab/Models/AppFonts.swift
-      - ios/BooksAndVocab/Models/AppMetrics.swift
-      - ios/BooksAndVocab/Models/AppSkin*.swift
-      - ios/BooksAndVocab/Models/AppTheme.swift
-      - ios/BooksAndVocab/Models/DesignTokens.swift
-      - ios/BooksAndVocab/Platform/
-      - ios/BooksAndVocab/Views/Reader/ReaderContentStyle.swift
-      - design-system/
-      - ops/ui_token_lint.sh
-      - ops/ui_token_lint.py
-      - ops/test_ui_token_lint.sh
-      - ops/gen_web_tokens.py
-
-  - id: sop.figma_token_workflow
-    path: docs/sop/figma-token-workflow.md
-    kind: sop
-    authority: derived
-    triggers:
-      - figma_token_workflow_changed
-      - design_token_sidecar_changed
-      - token_round_trip_changed
-    sources:
-      - docs/sop/figma-token-workflow.md
-      - docs/sop/ui-design.md
-      - design-system/tokens.json
-      - design-system/.tokens-studio/
-      - ops/gen_figma_sets.py
-      - ops/gen_web_tokens.py
-      - ops/token_drift_check.py
-      - ops/verify_design_system.sh
-
-  - id: reference.ui_components
-    path: docs/reference/ui/components.md
+  - id: reference.catalog_scope
+    path: docs/reference/catalog_scope.md
     kind: reference
     authority: derived
     triggers:
-      - ui_component_added
-      - ui_pattern_changed
-      - shared_modifier_changed
+      - catalog-surface-changed
     sources:
-      - ios/BooksAndVocab/UIComponents/
-      - ios/BooksAndVocab/Views/
-      - "!ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift"
-      - "!ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift"
-
-  - id: reference.ui_review_checklist
-    path: docs/reference/ui/review_checklist.md
-    kind: reference
-    authority: derived
-    triggers:
-      - ui_review_policy_changed
-      - ui_quality_gate_changed
-      - ui_design_system_changed
-    sources:
-      - docs/sop/ui-design.md
-      - docs/reference/ui/
-      - CLAUDE.md
-      - ios/BooksAndVocab/Models/AppMetrics.swift
-      - ios/BooksAndVocab/Models/AppTheme.swift
-      - ops/ui_token_lint.sh
-      - ops/ui_token_lint.py
-
-  - id: reference.ui_state_matrix
-    path: docs/reference/ui/state_matrix.md
-    kind: reference
-    authority: derived
-    triggers:
-      - ui_state_changed
-      - loading_empty_error_state_changed
-      - view_flow_changed
-    sources:
-      - ios/BooksAndVocab/UIComponents/
-      - ios/BooksAndVocab/Views/
-      - "!ios/BooksAndVocab/Views/Reader/ReaderVocabularyContext.swift"
-      - "!ios/BooksAndVocab/Views/Podcast/PodcastVocabularyContext.swift"
-
-  - id: reference.testing_backend_strategy
-    path: docs/reference/testing/backend_strategy.md
-    kind: reference
-    authority: derived
-    triggers:
-      - backend_test_strategy_changed
-      - backend_test_matrix_changed
-      - backend_pytest_workflow_changed
-    sources:
-      - .github/workflows/backend-quality.yml
-      - backend/tests/
-      - backend/pytest.ini
-      - backend/pyproject.toml
-      - backend/uv.lock
-      - backend/src/kg/testing/
-
-  - id: reference.testing_smoke_checklist
-    path: docs/reference/testing/smoke_checklist.md
-    kind: reference
-    authority: derived
-    triggers:
-      - release_smoke_flow_changed
-      - core_user_journey_changed
-      - pre_release_checklist_changed
-    sources:
-      - ops/ios_release.sh
-      - ops/ios_build.sh
-      - ops/release.sh
-      - backend/src/kg/routers/
-      - ios/BooksAndVocab/ContentView.swift
-      - ios/BooksAndVocab/Views/Bookshelf/
-      - ios/BooksAndVocab/Views/Reader/
-      - ios/BooksAndVocab/Views/Vocabulary/
-      - ios/BooksAndVocab/Views/Settings/
-      - ios/BooksAndVocab/Views/Podcast/
+      - ops/catalog*
+      - ios/BooksAndVocab/
 
   - id: reference.cost_baseline
     path: docs/reference/cost_baseline.md
     kind: reference
     authority: SoT
     triggers:
-      - provider_pricing_changed
-      - fixed_cost_baseline_changed
-      - budget_threshold_changed
-      - billing_source_changed
+      - provider-or-infrastructure-cost-changed
     sources:
       - backend/src/kg/llm/providers.py
-      - backend/src/kg/admin_cost_summary.py
-      - backend/src/kg/routers/admin.py
-      - backend/src/kg/ops_cli.py
-      - backend/tests/test_provider_pricing.py
-      - backend/tests/test_admin_cost_summary.py
-      - backend/tests/test_ops_cost.py
-      - .claude/skills/billing/
-      - docs/sop/cost_review.md
-
-  - id: sop.cost_review
-    path: docs/sop/cost_review.md
-    kind: sop
-    authority: derived
-    triggers:
-      - cost_review_workflow_changed
-      - billing_reconciliation_changed
-      - cost_alarm_workflow_changed
-    sources:
-      - .claude/skills/billing/
-      - docs/reference/cost_baseline.md
-      - backend/src/kg/llm/providers.py
-      - backend/src/kg/admin_cost_summary.py
-      - backend/src/kg/ops_cli.py
-      - ops/devops_kg_safe.sh
-
-  - id: sop.release
-    path: docs/sop/release.md
-    kind: sop
-    authority: derived
-    triggers:
-      - release_workflow_changed
-      - deploy_trigger_changed
-      - reconciler_ref_changed
-      - delivery_loop_changed
-    sources:
-      - ops/release.sh
-      - ops/worktree_orchestrate.py
       - ops/kg_reconcile.sh
-      - ops/ios_release.sh
-      - ops/launchd/com.kg.reconcile.plist
-      - .claude/skills/worktree-flow/
-      - .claude/skills/source-command-release/
-      - .claude/commands/release.md
-      # 交回契約住在 worktree-flow skill 的「預設停止點」與「批次交回狀態」：child worker 只交回
-      # commit + hand-back；Manager 才能在 delivery-loop 授權後以 close-wave
-      # 完成 primary + origin/main。worker agent 只保留角色特有的「受派者無 develop 例外」指標並
-      # 連回正本。掛在這裡是因為那條邊界講的正是 release 平面誰能動。
-      - .claude/agents/
+
+  - id: reference.ios_deriveddata_policy
+    path: docs/reference/ios_deriveddata_policy.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ios-cache-policy-changed
+    sources:
+      - ops/ios_*.sh
+      - ops/ios_ops.sh
+
+  - id: reference.llm_eval
+    path: docs/reference/llm_eval.md
+    kind: reference
+    authority: derived
+    triggers:
+      - llm-evaluation-changed
+    sources:
+      - lab/llm_eval/
+
+  - id: reference.ops_state_plane
+    path: docs/reference/ops_state_plane.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ops-state-changed
+    sources:
+      - backend/ops_edit.py
+      - backend/ops_cli.py
+      - backend/src/kg/ops_cli_app.py
+      - backend/src/kg/ops_cli_parser.py
+      - backend/src/kg/ops_cli_queries.py
+      - backend/src/kg/ops_cli_dictionary.py
+      - backend/src/kg/ops_edit_app.py
+      - backend/src/kg/ops_edit_commands.py
+      - backend/src/kg/ops_edit_parser.py
+      - backend/src/kg/ops_edit_shared.py
+      - backend/src/kg/ops_world_projection.py
+      - backend/src/kg/ops_world_expectation.py
+      - backend/src/kg/ops_world_export.py
+      - backend/src/kg/ops_world_diff.py
+      - ops/ui_world_manifest.py
+
+  - id: reference.testing_backend_strategy
+    path: docs/reference/testing/backend_strategy.md
+    kind: reference
+    authority: derived
+    triggers:
+      - backend-test-strategy-changed
+    sources:
+      - backend/tests/
+      - backend/src/kg/
+
+  - id: reference.testing_smoke_checklist
+    path: docs/reference/testing/smoke_checklist.md
+    kind: reference
+    authority: derived
+    triggers:
+      - smoke-check-changed
+    sources:
+      - ops/tests/
+      - docs/sop/deploy.md
+
+  - id: reference.ui_components
+    path: docs/reference/ui/components.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui-component-changed
+    sources:
+      - ios/BooksAndVocab/Components/
+
+  - id: reference.ui_review_checklist
+    path: docs/reference/ui/review_checklist.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui-review-changed
+    sources:
+      - docs/sop/ui-design.md
+      - ios/BooksAndVocab/Views/
+
+  - id: reference.ui_state_matrix
+    path: docs/reference/ui/state_matrix.md
+    kind: reference
+    authority: derived
+    triggers:
+      - ui-state-changed
+    sources:
+      - ios/BooksAndVocab/Views/
+      - ios/BooksAndVocab/Tests/
+
+  - id: reference.feature_boundary.bookshelf
+    path: docs/reference/feature_boundary/bookshelf.md
+    kind: reference
+    authority: derived
+    triggers:
+      - bookshelf-changed
+    sources:
+      - ios/BooksAndVocab/Views/Bookshelf/
+
+  - id: reference.feature_boundary.discover
+    path: docs/reference/feature_boundary/discover.md
+    kind: reference
+    authority: derived
+    triggers:
+      - discover-changed
+    sources:
+      - ios/BooksAndVocab/Views/Explore/
+      - backend/src/kg/routers/decks.py
+
+  - id: reference.feature_boundary.notebook
+    path: docs/reference/feature_boundary/notebook.md
+    kind: reference
+    authority: derived
+    triggers:
+      - notebook-changed
+    sources:
+      - ios/BooksAndVocab/Views/Notebook/
+
+  - id: reference.feature_boundary.podcast
+    path: docs/reference/feature_boundary/podcast.md
+    kind: reference
+    authority: derived
+    triggers:
+      - podcast-changed
+    sources:
+      - ios/BooksAndVocab/Views/Podcast/
+      - lab/podcast/
+
+  - id: reference.feature_boundary.reader
+    path: docs/reference/feature_boundary/reader.md
+    kind: reference
+    authority: derived
+    triggers:
+      - reader-changed
+    sources:
+      - ios/BooksAndVocab/Views/Reader/
+
+  - id: reference.feature_boundary.settings
+    path: docs/reference/feature_boundary/settings.md
+    kind: reference
+    authority: derived
+    triggers:
+      - settings-changed
+    sources:
+      - ios/BooksAndVocab/Views/Settings/
+
+  - id: reference.feature_boundary.vocabulary
+    path: docs/reference/feature_boundary/vocabulary.md
+    kind: reference
+    authority: derived
+    triggers:
+      - vocabulary-changed
+    sources:
+      - ios/BooksAndVocab/Views/Vocabulary/
+      - backend/src/kg/routers/vocab.py
 
   - id: runbook.system
     path: docs/runbook/system.md
     kind: runbook
     authority: derived
     triggers:
-      - ops_change_flow_changed
-      - hard_stop_condition_changed
-      - production_entrypoint_changed
-      - delivery_loop_changed
+      - workflow-changed
     sources:
-      # repo-root，不在任何 ops/ glob 底下：少了它，改動生產部署命令本身完全不產生
-      # impact hint，而測它的 ops/test_devops.sh 反而會（IMP-0052 同一形狀的控制面版本）
-      - devops.sh
-      - ops/devops_kg_safe.sh
-      - ops/status_all.sh
-      - ops/branch_audit.sh
-      - ops/test_devops.sh
-      - ops/tests/test_branch_audit.sh
-      # 這份 runbook 有整整一段在描述 worktree 三平面與 gate summary 的形狀，卻沒有列
-      # 產生那個形狀的檔——2026-08-09 改 GATE_FAILURE_MARKERS 與 tail 標題時，
-      # `docs_impact` 結構性提名不到它，三份文檔全靠 review 手抓（IMP-20260808-8b4690）。
-      # 與上面 devops.sh 那條註解同形，只是高一層：那條講 broad glob 漏掉 repo-root，
-      # 這條講的是「文件描述了某支程式的輸出格式，卻沒把那支程式列為 source」。
+      - .github/
+      - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
-      - docs/policy/safety.md
-      - docs/sop/deploy.md
-      - docs/sop/debug.md
-      - CLAUDE.md
-      - .claude/skills/devops/
-      - .claude/skills/worktree-flow/
-
-  - id: sop.review_discipline
-    path: docs/sop/review_discipline.md
-    kind: sop
-    authority: derived
-    triggers:
-      - review_workflow_changed
-      - agent_review_policy_changed
-      - phased_review_gate_changed
-    sources:
-      - CLAUDE.md
-      - .claude/agents/
-      - .claude/skills/phased/
-      - .claude/skills/app-debug/
-      - ops/review_cycle.py
-      - ops/backlog.py
-      - docs/sop/review_discipline.md
+      - ops/release.sh
 
   - id: sop.architecture
     path: docs/sop/architecture.md
     kind: sop
     authority: derived
     triggers:
-      - data_authority_boundary_changed
-      - account_isolation_changed
-      - offline_first_architecture_changed
-      - cross_platform_sync_architecture_changed
+      - architecture-changed
     sources:
-      - ios/BooksAndVocab/AppBootstrap.swift
-      - ios/BooksAndVocab/Services/AuthManager*.swift
-      - ios/BooksAndVocab/Services/CloudPreferencesSync.swift
-      - ios/BooksAndVocab/Services/KGService*.swift
-      - ios/BooksAndVocab/Models/VocabularyEntry.swift
-      - ios/BooksAndVocab/Models/Notebook.swift
-      - ios/BooksAndVocab/Models/Podcast*.swift
-      - backend/src/kg/auth_service.py
-      - backend/src/kg/user_store.py
-      - backend/src/kg/routers/user.py
-      - backend/src/kg/routers/notebook.py
-      - backend/src/kg/routers/podcast.py
-
-  - id: sop.backup
-    path: docs/sop/backup.md
-    kind: sop
-    authority: derived
-    triggers:
-      - backup_strategy_changed
-      - backup_retention_changed
-      - backup_monitoring_changed
-    sources:
-      # L2 備份路徑：實作、正式入口 wrapper 與回歸測試。
-      - devops.sh
-      - ops/devops_kg_safe.sh
-      - ops/test_devops.sh
-      - ops/kg_backup.sh
-      - ops/launchd/com.kg.backup.plist
-      - ops/cron/kg-backup.cron
-      - ops/backup_verify.sh
-      - ops/tests/test_backup_verify.sh
-      - docs/sop/backup_restore.md
-      - docs/reference/cost_baseline.md
-
-  - id: sop.backup_restore
-    path: docs/sop/backup_restore.md
-    kind: sop
-    authority: derived
-    triggers:
-      - restore_workflow_changed
-      - backup_artifact_contract_changed
-      - backup_safety_boundary_changed
-    sources:
-      - devops.sh
-      - ops/devops_kg_safe.sh
-      - ops/test_devops.sh
-      - ops/kg_backup.sh
-      - ops/launchd/com.kg.backup.plist
-      - ops/cron/kg-backup.cron
-      - ops/backup_verify.sh
-      - ops/tests/test_backup_verify.sh
-      - docs/sop/backup.md
-      - docs/runbook/system.md
-
-  - id: sop.i18n_lint
-    path: docs/sop/i18n_lint.md
-    kind: sop
-    authority: derived
-    triggers:
-      - i18n_lint_rule_changed
-      - localization_workflow_changed
-      - localization_key_extraction_changed
-    sources:
-      - ops/i18n_lint.sh
-      - ops/_i18n_extract_keys.py
-      - ops/_i18n_strip_previews.py
-      - ops/i18n_baseline.txt
-      - ios/BooksAndVocab/Localization/L10n.swift
-      - ios/BooksAndVocab/*.lproj/Localizable.strings
-      - ios/BooksAndVocab/*.lproj/Localizable.xcstrings
-
-  - id: sop.i18n_plural_keys
-    path: docs/sop/i18n_plural_keys.md
-    kind: sop
-    authority: derived
-    triggers:
-      - plural_key_contract_changed
-      - stringdict_changed
-      - localization_format_changed
-    sources:
-      - ops/i18n_lint.sh
-      - ops/_i18n_extract_keys.py
-      - ios/BooksAndVocab/Localization/L10n.swift
-      - ios/BooksAndVocab/*.lproj/Localizable.stringsdict
-
-  - id: sop.podcast_pipeline
-    path: docs/sop/podcast_pipeline.md
-    kind: sop
-    authority: derived
-    triggers:
-      - podcast_pipeline_stage_changed
-      - podcast_upload_workflow_changed
-      - podcast_monitor_workflow_changed
-      - podcast_tts_or_subtitle_changed
-    sources:
-      - lab/podcast/
-      - ops/podcast_upload.sh
-      - ops/podcast_ops.py
-      - ops/podcast_cover_publish.py
-      - ops/podcast_preview_backfill.py
-      - .claude/skills/podcast/
-
-  - id: reference.llm_eval
-    path: docs/reference/llm_eval.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - llm_eval_api_changed
-      - prompt_registry_changed
-      - eval_dataset_changed
-      - eval_scoring_changed
-    sources:
-      - lab/llm_eval/
-
-  - id: sop.llm_eval
-    path: docs/sop/llm_eval.md
-    kind: sop
-    authority: derived
-    triggers:
-      - llm_eval_workflow_changed
-      - prompt_change_workflow_changed
-      - eval_run_policy_changed
-    sources:
-      - lab/llm_eval/
-      - docs/reference/llm_eval.md
-      - backend/src/kg/llm/providers.py
+      - ios/BooksAndVocab/
+      - backend/src/kg/
 
   - id: sop.backend
     path: docs/sop/backend.md
     kind: sop
     authority: derived
     triggers:
-      - backend_workflow_changed
-      - backend_test_command_changed
-      - provider_registry_workflow_changed
+      - backend-workflow-changed
     sources:
       - backend/
-      - "!backend/tests/"
-      - ops/
-      - "!ops/docs_lint.sh"
-      - "!ops/docs_impact.py"
-      - "!ops/ui_quality_plane.py"
-      - "!ops/ui_quality_plane.yml"
-      - "!ops/tests/test_ui_quality_plane.sh"
-      - "!ops/docs_registry_coverage.py"
-      - "!ops/tests/test_docs_*.sh"
-      - "!ops/test_ops.sh"
-      - "!ops/branch_audit.sh"
-      - "!ops/tests/test_branch_audit.sh"
-      - "!backend/src/kg/routers/*.py"
-      - "!ops/devops_kg_safe.sh"
-      - "!ops/ios_release.sh"
-      - "!ops/i18n_lint.sh"
-      - "!ops/_i18n_*.py"
-      - "!ops/podcast_*.sh"
-      - "!ops/podcast_*.py"
-      - "!ops/ui_token_lint.sh"
-      - "!ops/ui_token_lint.py"
-      - "!ops/test_ui_token_lint.sh"
-      - "!ops/plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_lint.py"
-      - "!ops/test_plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_baseline.txt"
-      - "!ops/gen_web_tokens.py"
-      # Backend SOP does not own Simulator evidence helpers.
-      - "!ops/ios_test.sh"
-      - "!ops/ios_ui_review_matrix.py"
-      - "!ops/fixtures/ui_worlds/"
-      - "!ops/fixtures/ios_ui_review_matrix.json"
-      - "!ops/ui_world_manifest.py"
-      - "!ops/uitest_*.py"
-      - "!ops/tests/test_ui_world_manifest.py"
-      - "!ops/tests/test_ios_ui_review_matrix.py"
-      - "!ops/tests/test_uitest_*.py"
 
-  - id: sop.ios
-    path: docs/sop/ios.md
+  - id: sop.backup
+    path: docs/sop/backup.md
     kind: sop
     authority: derived
     triggers:
-      - ios_build_workflow_changed
-      - ios_release_workflow_changed
-      - app_store_workflow_changed
+      - backup-changed
     sources:
-      - ops/ios_build.sh
-      - ops/ios_release.sh
-      - ops/release.sh
-      - ops/ios_test.sh
-      - ops/app_review_evidence.py
-      - ops/app_review_gate.py
-      - ops/asc_reviewer_mirror.py
-      - ops/app_review/
-      - ops/lib/ios_ops_catalog.sh
-      - ios/BooksAndVocab/Debug/CatalogScene.swift
-      - ops/lib/ios_ops_release.sh
-      - ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsAccountSection.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsSubscriptionSection.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsPresentation.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsView+State.swift
-      - ios/BooksAndVocab.xcodeproj/
-      - ios/ExportOptions.plist
-      - ios/BooksAndVocab/Products.storekit
+      - ops/backup*.sh
+      - ops/branch_audit.sh
 
-  - id: sop.ui_flow_evidence
-    path: docs/sop/ui_flow_evidence.md
+  - id: sop.backup_restore
+    path: docs/sop/backup_restore.md
     kind: sop
     authority: derived
     triggers:
-      - ui_world_fixture_changed
-      - ui_evidence_runner_changed
-      - ui_review_matrix_changed
-      - ui_evidence_contract_changed
-      - ui_review_page_changed
-      - ui_review_attestation_changed
-      - ui_fixture_seed_changed
-      - perf_mark_convention_changed
+      - restore-changed
     sources:
-      - ios/BooksAndVocabUITests/
-      - ios/BooksAndVocab/Support/UITestFixtureSeed*.swift
-      - ios/BooksAndVocab/Support/UITestFixtureSeed+Vocabulary.swift
-      - ios/BooksAndVocab/Support/UITestFixtureSeed+WorldModels.swift
-      - ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift
-      - ops/ios_test.sh
-      - ops/app_review_evidence.py
-      - ops/asc_reviewer_mirror.py
-      - ops/app_review_gate.py
-      - ops/app_review/
-      - ios/BooksAndVocab/Views/Settings/SettingsAccountSection.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsSubscriptionSection.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsPresentation.swift
-      - ios/BooksAndVocab/Views/Settings/SettingsView+State.swift
-      - ops/fixtures/ui_worlds/marketing_demo.json
-      - ops/ui_world_manifest.py
-      - ops/tests/test_ui_world_manifest.py
-      - ops/tests/test_ios_ui_review_matrix.py
-      - ops/tests/test_uitest_evidence_contract.py
-      - ops/tests/test_uitest_review_attest.py
-      - ops/tests/test_uitest_review_page.py
-      - ops/uitest_review_page.py
-      - ops/ios_ui_review_matrix.py
-      - ops/fixtures/ios_ui_review_matrix.json
-      - ops/uitest_evidence_contract.py
-      - ops/uitest_review_attest.py
-      - ops/uitest_contact_sheet.py
-      - ops/uitest_review_contract.py
-      - ops/uitest_evidence_contract.py
-      - ops/uitest_review_attest.py
-      - ops/fixtures/ios_ui_review_clusters.json
-      - ops/ios_ui_review_clusters.py
-      - ops/ios_ui_run_many.py
-      - ops/ios_ui_review_matrix.py
-      - .claude/skills/ios-simulator-verification/
-      - .claude/skills/ios-visual-report-workflow/
-      - ops/plain_deadzone_lint.sh
-      - .claude/skills/ios-simulator-verification/
-      - .claude/skills/ios-simulator-verification/SKILL.md
-      - .claude/skills/ios-simulator-verification/references/evidence-contract.md
-      - .claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh
-      - .claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh
+      - ops/backup*.sh
+      - docs/sop/backup.md
 
-  - id: sop.deploy
-    path: docs/sop/deploy.md
+  - id: sop.cost_review
+    path: docs/sop/cost_review.md
     kind: sop
     authority: derived
     triggers:
-      - deploy_workflow_changed
-      - migration_workflow_changed
-      - env_surface_changed
+      - cost-review-changed
     sources:
-      - devops.sh
-      - ops/
-      - "!ops/ios_release.sh"
-      - "!ops/docs_lint.sh"
-      - "!ops/docs_impact.py"
-      - "!ops/ui_quality_plane.py"
-      - "!ops/ui_quality_plane.yml"
-      - "!ops/tests/test_ui_quality_plane.sh"
-      - "!ops/docs_registry_coverage.py"
-      - "!ops/tests/test_docs_*.sh"
-      - "!ops/test_ops.sh"
-      - "!ops/branch_audit.sh"
-      - "!ops/tests/test_branch_audit.sh"
-      - "!ops/i18n_lint.sh"
-      - "!ops/_i18n_*.py"
-      - "!ops/podcast_*.sh"
-      - "!ops/podcast_*.py"
-      - "!ops/ui_token_lint.sh"
-      - "!ops/ui_token_lint.py"
-      - "!ops/test_ui_token_lint.sh"
-      - "!ops/plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_lint.py"
-      - "!ops/test_plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_baseline.txt"
-      - "!ops/gen_web_tokens.py"
-      # Deployment SOP does not own Simulator evidence helpers.
-      - "!ops/ios_test.sh"
-      - "!ops/ios_ui_review_matrix.py"
-      - "!ops/fixtures/ui_worlds/"
-      - "!ops/fixtures/ios_ui_review_matrix.json"
-      - "!ops/ui_world_manifest.py"
-      - "!ops/uitest_*.py"
-      - "!ops/tests/test_ui_world_manifest.py"
-      - "!ops/tests/test_ios_ui_review_matrix.py"
-      - "!ops/tests/test_uitest_*.py"
-      - backend/
-      - "!backend/tests/"
-      - "!backend/src/kg/llm/providers.py"
-      - "!backend/src/kg/routers/*.py"
-
-  - id: sop.scaling_readiness
-    path: docs/sop/scaling_readiness.md
-    kind: sop
-    authority: derived
-    triggers:
-      - scaling_invariant_changed
-      - single_worker_state_changed
-    sources:
-      - backend/src/kg/quota_service.py
-      - backend/src/kg/translate_service.py
-      - backend/src/kg/pipeline_log.py
-      - backend/src/kg/worker_guard.py
-      - backend/src/kg/app_lifespan.py
-      - backend/Dockerfile
+      - backend/src/kg/llm/providers.py
+      - docs/reference/cost_baseline.md
 
   - id: sop.debug
     path: docs/sop/debug.md
     kind: sop
     authority: derived
     triggers:
-      - incident_workflow_changed
-      - debug_command_changed
-      - production_observability_changed
+      - debug-workflow-changed
     sources:
-      - ops/
-      - "!ops/ios_release.sh"
-      - "!ops/docs_lint.sh"
-      - "!ops/docs_impact.py"
-      - "!ops/ui_quality_plane.py"
-      - "!ops/ui_quality_plane.yml"
-      - "!ops/tests/test_ui_quality_plane.sh"
-      - "!ops/docs_registry_coverage.py"
-      - "!ops/tests/test_docs_*.sh"
-      - "!ops/test_ops.sh"
-      - "!ops/branch_audit.sh"
-      - "!ops/tests/test_branch_audit.sh"
-      - "!ops/i18n_lint.sh"
-      - "!ops/_i18n_*.py"
-      - "!ops/podcast_*.sh"
-      - "!ops/podcast_*.py"
-      - "!ops/ui_token_lint.sh"
-      - "!ops/ui_token_lint.py"
-      - "!ops/test_ui_token_lint.sh"
-      - "!ops/plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_lint.py"
-      - "!ops/test_plain_deadzone_lint.sh"
-      - "!ops/plain_deadzone_baseline.txt"
-      - "!ops/gen_web_tokens.py"
-      # Debug SOP does not own Simulator evidence helpers.
-      - "!ops/ios_test.sh"
-      - "!ops/ios_ui_review_matrix.py"
-      - "!ops/fixtures/ui_worlds/"
-      - "!ops/fixtures/ios_ui_review_matrix.json"
-      - "!ops/ui_world_manifest.py"
-      - "!ops/uitest_*.py"
-      - "!ops/tests/test_ui_world_manifest.py"
-      - "!ops/tests/test_ios_ui_review_matrix.py"
-      - "!ops/tests/test_uitest_*.py"
-      - docs/runbook/
-      - "!docs/runbook/backlog/"
+      - devops.sh
+      - ops/devops_kg_safe.sh
+      - ops/infra_health.sh
+      - ops/kg_reconcile.sh
+
+  - id: sop.deploy
+    path: docs/sop/deploy.md
+    kind: sop
+    authority: SoT
+    triggers:
+      - deployment-changed
+    sources:
+      - ops/devops_kg_safe.sh
+      - ops/kg_reconcile.sh
+      - backend/deploy/
+
+  - id: sop.doc_sync
+    path: docs/sop/doc_sync.md
+    kind: sop
+    authority: derived
+    triggers:
+      - docs-control-changed
+    sources:
+      - docs/registry.yml
+      - ops/docs_lint.sh
+      - ops/docs_impact.py
+
+  - id: sop.docs_dogfood
+    path: docs/sop/docs_dogfood.md
+    kind: sop
+    authority: derived
+    triggers:
+      - docs-dogfood-changed
+    sources:
+      - docs/
+      - ops/docs_lint.sh
+
+  - id: sop.figma_token_workflow
+    path: docs/sop/figma-token-workflow.md
+    kind: sop
+    authority: derived
+    triggers:
+      - design-token-workflow-changed
+    sources:
+      - design-system/
+      - ops/gen_web_tokens.py
+
+  - id: sop.i18n_lint
+    path: docs/sop/i18n_lint.md
+    kind: sop
+    authority: derived
+    triggers:
+      - i18n-lint-changed
+    sources:
+      - ops/i18n_lint.sh
+      - ops/i18n_*.py
+
+  - id: sop.i18n_plural_keys
+    path: docs/sop/i18n_plural_keys.md
+    kind: sop
+    authority: derived
+    triggers:
+      - i18n-keys-changed
+    sources:
+      - ios/BooksAndVocab/Localization/
+      - ops/i18n_*.py
+
+  - id: sop.ios
+    path: docs/sop/ios.md
+    kind: sop
+    authority: SoT
+    triggers:
+      - ios-build-release-changed
+    sources:
+      - ops/ios_*.sh
+      - ops/ios_ops.sh
+      - ios/
+
+  - id: sop.llm_eval
+    path: docs/sop/llm_eval.md
+    kind: sop
+    authority: derived
+    triggers:
+      - llm-eval-workflow-changed
+    sources:
+      - lab/llm_eval/
+
+  - id: sop.podcast_pipeline
+    path: docs/sop/podcast_pipeline.md
+    kind: sop
+    authority: derived
+    triggers:
+      - podcast-pipeline-changed
+    sources:
+      - lab/podcast/
+      - backend/src/kg/podcast*.py
+
+  - id: sop.release
+    path: docs/sop/release.md
+    kind: sop
+    authority: derived
+    triggers:
+      - release-changed
+    sources:
+      - ops/release.sh
+      - .github/workflows/
+
+  - id: sop.review_discipline
+    path: docs/sop/review_discipline.md
+    kind: sop
+    authority: derived
+    triggers:
+      - review-workflow-changed
+    sources:
+      - .github/
+      - .claude/agents/
+      - .claude/skills/
+
+  - id: sop.scaling_readiness
+    path: docs/sop/scaling_readiness.md
+    kind: sop
+    authority: derived
+    triggers:
+      - scaling-readiness-changed
+    sources:
+      - backend/
+
+  - id: sop.ui_design
+    path: docs/sop/ui-design.md
+    kind: sop
+    authority: SoT
+    triggers:
+      - ui-design-changed
+    sources:
+      - ios/BooksAndVocab/Components/
+      - design-system/
+
+  - id: sop.ui_flow_evidence
+    path: docs/sop/ui_flow_evidence.md
+    kind: sop
+    authority: derived
+    triggers:
+      - ui-evidence-changed
+    sources:
+      - ops/ios_ops.sh
+      - ops/ios_test.sh

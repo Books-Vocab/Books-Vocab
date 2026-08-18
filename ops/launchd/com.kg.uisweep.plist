@@ -3,7 +3,7 @@
   KG UI-test sweep — 每日一次跑完整 UI target，**諮詢性質，不是 block gate**。
 
   為什麼存在（IMP-20260806-3ec803）：UI target 目前沒有任何例行 gate 會跑到。
-  cutover 只在分支動到 UITest 檔案時才路由 UI 測試，而整套 UI suite 因已知 flakiness
+  本地 gate 只在分支動到 UITest 檔案時才路由 UI 測試，而整套 UI suite 因已知 flakiness
   被刻意排除在 block gate 之外 —— 兩者相加的結果是「零例行覆蓋」：
   testBookshelfToReaderNavigation 從 2026-06-09 起紅著，沒有任何東西發聲。
   這支補的是那個洞的第二半（第一半是 ops/ui_fixture_lint.sh，把 fixture id 慣例不符
@@ -22,7 +22,7 @@
   `ios_test.sh` 對 `--ui` 強制要求 `--dataset`/`--dataset-file`（UI World 是唯一
   真相來源），bare `--ui` 在參數解析階段就 exit 1。少了這個旗標，這個 job 會每天
   準時失敗且看起來像有在跑。`marketing_demo` 是 ops/fixtures/ui_worlds/ 目前唯一的
-  dataset，也是 cutover 路由 UI 測試時用的同一個。
+  dataset，也是本地 gate 路由 UI 測試時用的同一個。
 
   ── 排程與併發 ───────────────────────────────────────────────────────────────
   StartCalendarInterval 用 LOCAL 時間；03:00 選在無人操作的時段。筆電當下若睡著，

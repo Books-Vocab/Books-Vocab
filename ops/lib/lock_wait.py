@@ -1,7 +1,7 @@
 """Shared, observable flock acquisition for concurrent KG tools.
 
-The registry and backlog are deliberately local-file coordination planes.  A
-contended lock is therefore normal work, not a command error.  This module
+The worktree registry and process tools use local files only for machine-local
+coordination. A contended lock is therefore normal work, not a command error. This module
 waits without a busy retry loop, backs off exponentially, and reports only a
 small stderr heartbeat so machine-readable stdout remains untouched.
 """

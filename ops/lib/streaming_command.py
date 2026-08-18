@@ -114,7 +114,6 @@ def run_streamed_command(
     env: dict[str, str] | None = None,
     task_registry_path: Path | str | None = None,
     task_session_id: str | None = None,
-    task_campaign: str | None = None,
     task_worktree: Path | str | None = None,
     task_log_path: Path | str | None = None,
     cancel_event: threading.Event | None = None,
@@ -160,7 +159,6 @@ def run_streamed_command(
     registry = TaskRegistry(
         task_registry_path,
         session_id=task_session_id,
-        campaign=task_campaign,
         worktree=task_worktree or cwd,
     )
     task = registry.start(command=command, log_path=task_log_path)

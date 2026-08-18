@@ -11,7 +11,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 ./ops/docs_registry_coverage.py --help >"$tmpdir/help.out"
 grep -q "active_unregistered" "$tmpdir/help.out"
-grep -q "backlog_unregistered" "$tmpdir/help.out"
+grep -q "historical_unregistered" "$tmpdir/help.out"
 grep -q "Exit nonzero only when active_unregistered docs exist" "$tmpdir/help.out"
 
 ./ops/docs_registry_coverage.py >"$tmpdir/coverage.out"
@@ -19,18 +19,18 @@ grep -q "docs_registry_coverage:" "$tmpdir/coverage.out"
 grep -q "registered=" "$tmpdir/coverage.out"
 grep -q "unregistered=" "$tmpdir/coverage.out"
 grep -q "active_unregistered=" "$tmpdir/coverage.out"
-grep -q "backlog_unregistered=" "$tmpdir/coverage.out"
-grep -q "no active registry debt; backlog docs below are informational only" "$tmpdir/coverage.out"
-grep -q "backlog classification is path-based" "$tmpdir/coverage.out"
-grep -q "BACKLOG_UNREGISTERED" "$tmpdir/coverage.out"
+grep -q "historical_unregistered=" "$tmpdir/coverage.out"
+grep -q "no active registry debt; historical docs below are informational only" "$tmpdir/coverage.out"
+grep -q "historical classification is path-based" "$tmpdir/coverage.out"
+grep -q "HISTORICAL_UNREGISTERED" "$tmpdir/coverage.out"
 grep -q "docs/plans/2026-05-23-notebook-editorial-stack.md" "$tmpdir/coverage.out"
 if grep -q "^UNREGISTERED " "$tmpdir/coverage.out"; then
-  echo "coverage human output should not duplicate backlog entries as generic UNREGISTERED rows" >&2
+  echo "coverage human output should not duplicate historical entries as generic UNREGISTERED rows" >&2
   cat "$tmpdir/coverage.out" >&2
   exit 1
 fi
 if grep -q "ACTIVE_UNREGISTERED" "$tmpdir/coverage.out"; then
-  echo "active docs should all be registered; only backlog docs may remain unregistered" >&2
+  echo "active docs should all be registered; only historical docs may remain unregistered" >&2
   cat "$tmpdir/coverage.out" >&2
   exit 1
 fi
@@ -64,8 +64,8 @@ fi
 grep -q '"registered_count"' "$tmpdir/coverage.json"
 grep -q '"unregistered_by_tier"' "$tmpdir/coverage.json"
 grep -q '"active_unregistered_count": 0' "$tmpdir/coverage.json"
-grep -q '"backlog_unregistered_count"' "$tmpdir/coverage.json"
-grep -q '"backlog_unregistered"' "$tmpdir/coverage.json"
+grep -q '"historical_unregistered_count"' "$tmpdir/coverage.json"
+grep -q '"historical_unregistered"' "$tmpdir/coverage.json"
 grep -q '"docs/plans/2026-05-23-notebook-editorial-stack.md"' "$tmpdir/coverage.json"
 if grep -q '"docs/sop/figma-token-workflow.md"' "$tmpdir/coverage.json"; then
   echo "Figma token workflow should be registered in JSON output" >&2
@@ -112,7 +112,7 @@ verified_against: HEAD
 -->
 # Active SOP
 MD
-cat >"$fixture_root/docs/plans/unregistered-backlog.md" <<'MD'
+cat >"$fixture_root/docs/plans/unregistered-historical.md" <<'MD'
 <!-- doc-meta
 tier: reference
 authority: derived
@@ -145,8 +145,8 @@ YAML
 
 ./ops/docs_registry_coverage.py --root "$fixture_root" --registry docs/registry.yml --strict >"$tmpdir/fixture_strict_pass.out"
 grep -q "active_unregistered=0" "$tmpdir/fixture_strict_pass.out"
-grep -q "backlog_unregistered=1" "$tmpdir/fixture_strict_pass.out"
-grep -q "no active registry debt; backlog docs below are informational only" "$tmpdir/fixture_strict_pass.out"
+grep -q "historical_unregistered=1" "$tmpdir/fixture_strict_pass.out"
+grep -q "no active registry debt; historical docs below are informational only" "$tmpdir/fixture_strict_pass.out"
 
 # ── gitignored artifacts are not repo documents ──────────────────────────────
 # A generated file that is produced on demand and gitignored (the ledger view, after

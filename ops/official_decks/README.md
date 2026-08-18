@@ -26,7 +26,7 @@ worse than no tab at all. The three decks deliberately populate three distinct
 it, run `emit <spec> --json` to validate, then `check --json` to prove round-trip
 fidelity over every committed spec. Keep meanings in **繁體中文** — this is
 user-facing官方 content. `check` fails if you skipped the `git add`: what deploys
-is the commit, not your working tree — and no CI or cutover gate will catch that
+is the commit, not your working tree — and no later CI gate will catch that
 for you (see `--check` semantics below).
 
 ## Emitter
@@ -122,9 +122,9 @@ nothing runs it for you.** Two separate limits, worth keeping apart:
    Nothing in CI can know a fourth deck was intended.
 2. *No automation invokes `check`.* No workflow and no ops script calls it. Its
    only automated caller is the `test_cli_check_all_committed_specs` test, and
-   the local cutover gate selects that test file only when the diff touches it
+   the local check selects that test file only when the diff touches it
    — adding `ops/official_decks/<new>.json` alone selects nothing. So **run
-   `check` yourself before committing.** A green CI, and a green cutover gate,
+   `check` yourself before committing.** A green CI, and a green local check,
    are both silent about whether your new deck will ship.
 
 The frame is the **index**, not the commit: `check` proves the spec is staged,

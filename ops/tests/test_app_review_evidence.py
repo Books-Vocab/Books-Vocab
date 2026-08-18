@@ -34,12 +34,12 @@ def sha(data: bytes) -> str:
 def test_anchor_order_evidence_manifest_is_typed_and_does_not_claim_pass() -> None:
     manifest_path = (
         ROOT
-        / "ops/tests/fixtures/ticket_factory_contracts/IMP-20260808-60a5b7.json"
+        / "ops/tests/fixtures/evidence_manifests/app-review-anchor-order.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["schema"] == "kg.app_review.anchor_order_evidence.v1"
-    assert manifest["ticket_id"] == "IMP-20260808-60a5b7"
+    assert manifest["evidence_id"] == "app-review-anchor-order-20260809"
     assert manifest["status"] == "verified"
     assert [step["name"] for step in manifest["steps"]] == [
         "refresh-anchor-before-desired",

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# shell_scan.sh — repo 級的跨檔 shell 掃描器（cutover gate 的 `ops-shell-scan`）。
+# shell_scan.sh — repo 級的跨檔 shell 掃描器（CI/local gate 的 `ops-shell-scan`）。
 #
 # 為什麼要有這支獨立入口（IMP-20260808-3bbfa2）：
 # 下面這道守衛原本長在 ops/tests/test_script_help.sh 裡面。它正確、帶正控、一跑就精準
-# 指出違規的檔名與行號——但**沒有任何 gate 會在可能違反它的 diff 上跑它**。cutover 的
+# 指出違規的檔名與行號——並由 CI/local gate 在可能違反它的變更上執行。PR 的
 # `ops/**.sh` 路由只做三件事：`bash -n`、跑「該腳本自己的同名測試」、解析不到就具名 warn。
 # 跨檔掃描器不屬於任何**單一**腳本，所以它永遠不會被任何 diff 觸發，只有有人整組跑
 # `./ops/test_ops.sh script-help` 時才會執行。2026-08-08 因此讓 `devops.sh:669` 一路

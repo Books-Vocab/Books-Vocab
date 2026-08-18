@@ -32,10 +32,7 @@ DEFAULT_TESTS=(
   reconcile
   branch-audit
   exit-code-contract
-  worktree-orchestrator
-  kg-board
-  backlog
-  review-cycle
+  worktree
   capability-matrix
   context-routing
   ui-deadcode
@@ -48,7 +45,6 @@ DEFAULT_TESTS=(
   injection-lint
   ui-fixture-lint
   ops-ci-coverage
-  gate-can-fail
   ui-quality-plane
   ui-quality-gate
   review-card-golden
@@ -121,61 +117,13 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_exit_code_contract.py
       ;;
-    worktree-orchestrator)
+    worktree)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_worktree_orchestrate_planning.py \
-        ops/tests/test_worktree_orchestrate_gate.py \
-        ops/tests/test_worktree_orchestrate_lifecycle.py \
-        ops/tests/test_worktree_orchestrate_claims.py \
-        ops/tests/test_worktree_orchestrate_delivery.py \
-        ops/tests/test_worktree_orchestrate_recovery.py \
-        ops/tests/test_orchestrator_seams.py \
-        ops/tests/test_test_timing.py \
-        ops/tests/test_test_timing_runner.py \
-        ops/tests/test_worktree_registry_lifecycle.py \
-        ops/tests/test_worktree_registry_recovery.py \
-        ops/tests/test_worktree_registry_topology.py \
-        ops/tests/test_worktree_state.py \
+        ops/tests/test_worktree_registry.py \
+        ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_task_registry.py \
-        ops/tests/test_worktree_campaign_reservation.py \
-        ops/tests/test_worktree_handback_outcomes.py \
-        ops/tests/test_worktree_gate.py \
-        ops/tests/test_worktree_gate_tiers.py \
-        ops/tests/test_worktree_loadtest.py \
-        ops/tests/test_worktree_parent_integration.py \
-        ops/tests/test_worktree_integrate_status.py \
-        ops/tests/test_worktree_registry_queries.py &&
-      ./ops/test_route.py --help &&
-      ./ops/test_timing.py --help &&
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_lock_wait.py &&
-      ./ops/tests/test_worktree_registry.sh
+        ops/tests/test_lock_wait.py
       ;;
-    kg-board)
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_kg_board_model.py \
-        ops/tests/test_kg_board_web.py \
-        ops/tests/test_kg_board_git_tree.py
-      ;;
-    backlog)
-      # Backlog seam tests are stdlib-only on purpose, so they run under the
-      # same --no-project sandbox as the cutover gate uses. Keep this list
-      # explicit: test_ops_ci_coverage.sh proves every tracked test is wired.
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_backlog_legacy_collector.py \
-        ops/tests/test_backlog_migration.py \
-        ops/tests/test_backlog_acceptance.py \
-        ops/tests/test_backlog_contract.py \
-        ops/tests/test_backlog_legacy_view_seams.py \
-        ops/tests/test_backlog_mutations.py \
-        ops/tests/test_backlog_query_seam.py \
-        ops/tests/test_backlog_reanchor.py \
-        ops/tests/test_backlog_store.py \
-        ops/tests/test_backlog_verification.py \
-        ops/tests/test_backlog_wave.py &&
-      ./ops/tests/test_backlog_add_stage.sh
-      ;;
-    review-cycle)       ./ops/tests/test_review_cycle.sh ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \
         ops/tests/test_capability_matrix.py \
@@ -217,22 +165,17 @@ run_one() {
         ops/tests/test_ci_expected_fail_exclusions.py \
         ops/tests/test_ops_group_chain.py
       ;;
-    gate-can-fail)
-      KG_GATE_FAILURE_TOPOLOGY_ALREADY_RUN=1 ./ops/tests/test_gate_can_fail.sh &&
-      ./ops/tests/test_gate_failure_topology.sh
-      ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh &&
       ./ops/tests/test_docs_registry_coverage.sh &&
-      ./ops/tests/test_feature_boundary_loc_lint.sh &&
       ./ops/tests/test_docs_lint.sh &&
       ./ops/tests/test_docs_lint_generated_check.sh &&
       ./ops/tests/test_docs_lint_generated_diff.sh &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_constitution_lint.py
+        ops/tests/test_context_route.py
       ;;
     gen-ios-baseline)
       ./ops/tests/test_gen_ios_baseline.sh
@@ -290,9 +233,7 @@ run_one() {
         ops/tests/test_podcast_cover_publish.py \
         ops/tests/test_podcast_preview_backfill.py
       ;;
-    # ── IMP-20260805-947062 收編的 groups + Catalog agent boundary ──────────
-    # 全部跑在 backlog case 那個 --no-project sandbox 裡：只 import stdlib
-    # ＋ pytest，逐支實測過不需要 --project backend。
+    # ── shared offline ops groups ───────────────────────────────────────────
     streaming-command)
       # 鐵律 5 heartbeat 契約唯一的 [machine] 守衛，先前從不執行。
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \

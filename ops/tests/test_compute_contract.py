@@ -180,7 +180,7 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
 
     for effect in [
         "credential-read", "docker-socket", "production-network", "localhost-production",
-        "deploy", "migration", "ops-edit", "cutover", "sync", "release",
+        "deploy", "migration", "ops-edit", "release",
     ]:
         profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
         profile["side_effects"] = [effect]

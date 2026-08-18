@@ -39,7 +39,6 @@ def test_parallel_registry_writes_preserve_two_lifecycles(tmp_path: Path) -> Non
         registry = TaskRegistry(
             state_path,
             session_id="session-parallel",
-            campaign="wave-2",
             worktree=tmp_path,
         )
         task = registry.start(
@@ -92,7 +91,6 @@ def test_streaming_command_records_start_heartbeat_finish_without_raw_argv(
         heartbeat_interval=0.03,
         task_registry_path=state_path,
         task_session_id="session-streaming",
-        task_campaign="campaign-streaming",
         task_log_path=tmp_path / "stream.log",
     )
 
@@ -101,7 +99,6 @@ def test_streaming_command_records_start_heartbeat_finish_without_raw_argv(
     assert len(records) == 1
     record = records[0]
     assert record["session_id"] == "session-streaming"
-    assert record["campaign"] == "campaign-streaming"
     assert record["worktree"] == str(tmp_path.resolve())
     assert record["pid"] > 0
     assert record["pgid"] > 0
@@ -140,7 +137,6 @@ def test_cleanup_rejects_every_unsafe_shape_without_signalling(
     registry = TaskRegistry(
         state_path,
         session_id="owner-session",
-        campaign="owner-campaign",
         worktree=tmp_path,
     )
     identity = process_start_identity(os.getpid())
@@ -222,7 +218,6 @@ def test_dry_run_stale_cleanup_does_not_signal_or_finish(tmp_path: Path) -> None
     registry = TaskRegistry(
         state_path,
         session_id="owner-session",
-        campaign="owner-campaign",
         worktree=tmp_path,
     )
     child = subprocess.Popen(_sleep_command(5), start_new_session=True)
@@ -266,7 +261,6 @@ def test_stale_owned_cleanup_only_terminates_named_group_and_records_outcome(
     registry = TaskRegistry(
         state_path,
         session_id="owner-session",
-        campaign="owner-campaign",
         worktree=tmp_path,
     )
     owner = subprocess.Popen(_sleep_command(5), start_new_session=True)
@@ -335,7 +329,6 @@ def test_two_parallel_streaming_commands_finish_without_lost_ledger_rows(
             heartbeat_interval=0.04,
             task_registry_path=state_path,
             task_session_id="parallel-session",
-            task_campaign="parallel-campaign",
         )
         return result.returncode
 

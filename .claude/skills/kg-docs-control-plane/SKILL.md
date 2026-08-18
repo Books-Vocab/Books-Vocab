@@ -1,75 +1,34 @@
 ---
 name: kg-docs-control-plane
-description: "KG 文檔控制面。當任務涉及 docs/registry.yml、docs impact、docs lint、verified_against、產品/技術索引同步、skill/doc 閉環，或改到 agent-facing/user-facing surface 時觸發。"
+description: "維護 docs registry、impact、metadata、generated checks 與 agent-facing surface；不保存產品工作狀態。"
 user-invocable: true
-version: 1.0.0
+version: 2.0.0
 ---
 
-# KG Docs Control Plane
+# Documentation control
 
-本 skill 負責判斷文件是否該讀、該同步、該驗證。文檔是 SoT；本 skill 是流程，不複製 SoT 內容。
+## Authority order
 
-## Authority Order
+1. `docs/registry.yml`：文件 ownership、trigger、source hints 與 agent-facing paths。
+2. `docs/reference/*`：產品、技術、schema、host 與 feature boundaries。
+3. `docs/sop/*`：可執行操作流程。
+4. `docs/policy/*`：安全與不可逆邊界。
+5. generated／snapshot／archive／legal：依各自 metadata 與生成契約處理。
 
-1. `docs/registry.yml`：活文檔路由與 trigger SoT。
-2. `docs/reference/*`：契約、產品面、技術索引、feature boundary。
-3. `docs/sop/*`：操作流程，只有流程變更才更新。
-4. `docs/policy/*`：安全政策，改動需明確理由。
-5. generated/snapshot/archive/legal：依 tier 契約處理，不任意手改。
-
-## Standard Flow
-
-1. 改動前或改動後跑 impact：
-
-```bash
-./ops/docs_impact.py --since <base> --explain
-```
-
-若只有明確檔案清單：
+## Standard flow
 
 ```bash
 ./ops/docs_impact.py --files <path...> --explain
-```
-
-2. 判讀 `match_type`：
-
-- `exact`: 優先讀並判斷是否同步。
-- `suppressed-partial`: 檢查 suppressed path 是否合理。
-- `broad`: 只當候選，不自動改 doc。
-
-3. 判讀 trigger，而不是只看 path hint。
-4. 若同步 docs，讓 `verified_against` 指向 **`origin/main` 可達**的 code commit（判準與不變式見 `docs/sop/doc_sync.md` 步驟 4——本地 main 刻意超前 origin，「local main 可達」不夠；`docs_lint` 對此只給帶 `origin-unreachable` token 的 WARN，不是硬閘）；doc-only 流程改動不必硬 bump unrelated reference。
-5. 驗證：
-
-```bash
 ./ops/docs_lint.sh
 ./ops/docs_lint.sh --registry
 ```
 
-`--registry` 會執行每筆 `kind: generated` 的 `check:`；缺少 `check:` 或產物不一致是 ERROR，且所有 lint mode
-都會先驗 registry schema。generated entry 的當前數量與產物狀態屬 live state；需要細節時才載入
-`.claude/skills/kg-docs-control-plane/references/registry-gate.md`。
+Impact 只是候選；依 registry trigger 與實際 diff 決定是否同步。文件更新與 code 同一 PR 交付，`verified_against` 必須是可達且已存在的 commit。generated entry 必須有 generator 與以自身 path 為目標的 check。
 
-全 repo 健康盤點才用：
+## Agent-facing surface
 
-```bash
-./ops/docs_lint.sh --audit
-```
+改 CLI、flag、env、schema、ops script、skill、workflow 或其他 agent-facing surface 時，使用 registry 的 path list 與 `--surface-scan` 證明引用已同步。不要建立第二份人工清單。
 
-## Agent-Facing Surface Sync
+## Output
 
-改到 CLI subcommand、flag、env var、admin endpoint、設定 schema、ops control plane、skill 觸發語時，同一輪跑：
-
-```bash
-./ops/docs_impact.py --surface-scan '<舊命令|舊旗標|舊欄位>'
-```
-
-掃描範圍唯一 SoT 是 `docs/registry.yml` 的 `agent_facing_surface`；不要自己用 `rg`，它預設跳過 `.claude/`。命中舊介面而未同步就標 BLOCK。落點清單已收進控制面，這裡不再複述。
-
-## Output Contract
-
-- `impact command`: 實際跑過的 impact/lint command
-- `candidate docs`: impact 候選與判斷
-- `changed docs`: 實際同步清單，沒有就寫 `none`
-- `validation`: docs gate 結果
-- `debt`: 既有 audit debt 與本輪是否相關
+回報實際 impact command、候選文件、決定同步的文件、docs gate 結果與仍存在的 unrelated audit debt。文件沒有語義影響時明確寫 `changed docs: none`。

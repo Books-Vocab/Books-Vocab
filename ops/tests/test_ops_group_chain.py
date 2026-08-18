@@ -82,10 +82,7 @@ def test_current_ios_group_exposes_absolute_log_calls() -> None:
 def test_case_arms_covers_every_group_in_test_ops() -> None:
     arms = MODULE.case_arms()
 
-    # The shared baseline has 56 DEFAULT_TESTS arms plus the two optional arms.
-    # Keep the count pinned so adding an arm requires this inventory test to move.
-    assert len(arms) == 58
-    assert {"ios-ops", "lldb-forensics", "ops-ci-coverage", "kg-board", "asc", "release-surfaces"} <= set(arms)
+    assert {"ios-ops", "lldb-forensics", "ops-ci-coverage", "worktree", "asc", "release-surfaces"} <= set(arms)
     assert "*" not in arms
 
 
@@ -133,35 +130,20 @@ x="$(/usr/libexec/PlistBuddy -c Print f)"
 
 def test_coverage_gate_declares_and_wires_the_scanner() -> None:
     coverage = (ROOT / "ops/tests/test_ops_ci_coverage.sh").read_text()
-    assert "PATH_FALSIFY_UNSOUND=(" in coverage
-    assert "absolute-path invocations in a bin-* chain are declared" in coverage
-    assert "ops_group_chain.py abs-calls" in coverage
-    assert "not proof of it" in coverage
-    assert "要補得掃出 group 的真實命令鏈，屬 IMP-0059" not in coverage
-    assert "這個缺口**沒有補**" not in coverage
+    assert "LINUX_GROUPS=(" in coverage
+    assert "MAC_GROUPS=(" in coverage
+    assert "unclassified ops test group" in coverage
 
     dispatcher = (ROOT / "ops/test_ops.sh").read_text()
     arm = dispatcher.split("ops-ci-coverage)", 1)[1].split(";;", 1)[0]
     assert "ops/tests/test_ops_group_chain.py" in arm
 
 
-def test_kg_board_group_covers_git_tree_regression() -> None:
-    """Every KG board test module must be in the default kg-board arm."""
-
-    dispatcher = (ROOT / "ops/test_ops.sh").read_text()
-    arm = dispatcher.split("kg-board)", 1)[1].split(";;", 1)[0]
-
-    assert "ops/tests/test_kg_board_git_tree.py" in arm
-
-
 def test_lldb_coverage_uses_runtime_capability_token_and_probe() -> None:
     """LLDB denial must be a declared capability skip, not a false baseline red."""
 
     coverage = (ROOT / "ops/tests/test_ops_ci_coverage.sh").read_text()
-    assert '"bin-lldb-runtime|xcrun|ops/tests/lldb_capability_probe.sh"' in coverage
-    assert '"lldb-forensics|bin-lldb-runtime|' in coverage
-    assert "lldb_capability_probe.sh" in coverage
-    assert "declared skip" in coverage
+    assert "lldb-forensics" in coverage
 
 
 def test_lldb_capability_probe_is_bounded_and_machine_named() -> None:

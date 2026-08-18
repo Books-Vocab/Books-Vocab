@@ -6,9 +6,9 @@
 #   2. release_bump.sh --help → exit 0 + 印出 用法
 #   3. release_changelog.sh --help → exit 0 + 印出 用法
 #   4. podcast_upload.sh --help → exit 0 + 印出 Usage
-#   5. worktree_registry.py --help → exit 0 + 印出 orphan sentinel
-#   6. worktree_orchestrate.py --help → exit 0 + 列出 preflight/gate/cutover 子指令
-#   7. worktree_registry.py sweep --help → exit 0 + 揭示 --exclude-current 旗標
+#   5. worktree_registry.py --help → exit 0 + local ownership description
+#   6. worktree_orchestrate.py --help → exit 0 + 列出 preflight/gate/resolve 子指令
+#   7. worktree_registry.py sweep --help → exit 0 + 揭示 --commit 旗標
 #   8. shell_scan.sh --help → exit 0 + 印出 Usage
 #   9. asc_shipped.py --help → exit 0 + 印出 ASC_APP_ID
 #
@@ -82,19 +82,19 @@ assert_log_contains "podcast_upload help" "Usage:" "$log"
 section "worktree_registry help"
 out=$(run_help "ops/worktree_registry.py"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "worktree_registry help exits 0" 0 "$rc" "$log"
-assert_log_contains "worktree_registry help" "orphan sentinel" "$log"
+assert_log_contains "worktree_registry help" "Local worktree ownership" "$log"
 
-section "worktree_registry sweep --exclude-current surface"
+section "worktree_registry sweep --commit surface"
 log="$TMPDIR/log_sweep_$RANDOM.txt"
 "$WORKTREE/ops/worktree_registry.py" sweep --help >"$log" 2>&1; rc=$?
 assert_rc "worktree_registry sweep help exits 0" 0 "$rc" "$log"
-assert_log_contains "worktree_registry sweep help" "--exclude-current" "$log"
+assert_log_contains "worktree_registry sweep help" "--commit" "$log"
 
 section "worktree_orchestrate help"
 out=$(run_help "ops/worktree_orchestrate.py"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "worktree_orchestrate help exits 0" 0 "$rc" "$log"
 assert_log_contains "worktree_orchestrate help" "preflight" "$log"
-assert_log_contains "worktree_orchestrate help" "cutover" "$log"
+assert_log_contains "worktree_orchestrate help" "resolve" "$log"
 
 section "asc_shipped help"
 out=$(run_help "ops/asc_shipped.py"); rc="${out%%|*}"; log="${out##*|}"
@@ -110,7 +110,7 @@ assert_log_contains "asc_shipped help without site packages" "ASC_APP_ID" "$log"
 
 # ── 跨檔掃描：委派給 ops/shell_scan.sh ──────────────────────────────────────
 # 這段的實作 2026-08-08 搬進 `ops/shell_scan.sh`，因為它**沒有任何 gate 會跑**：
-# cutover 的 ops/**.sh 路由是 per-file 的（bash -n + 該腳本自己的同名測試），而跨檔
+# CI 的 ops/**.sh 路由是 per-file 的（bash -n + 該腳本自己的同名測試），而跨檔
 # 掃描器不屬於任何單一腳本。抽成獨立入口後 gate 用 `ops-shell-scan` 路由它，本檔繼續
 # 用同一份實作——**共用而非複製**：兩份掃描邏輯就是兩份會各自漂移的判準
 # （IMP-20260808-3bbfa2）。正控與非現行內容排除都在那支腳本裡。

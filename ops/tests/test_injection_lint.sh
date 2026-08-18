@@ -6,15 +6,15 @@
 #
 # 為什麼存在（1）：baseline 的 `# sunset:` 原本只在過期時印一行 WARN 到 stderr，
 # 然後照樣 `return 0`。也就是「這批債務的寬限期到了」這個事實**不會改變任何
-# gate 的顏色**。2026-08-03 實測：sunset 已過期 21 天，CI / cutover / 本機
+# gate 的顏色**。2026-08-03 實測：sunset 已過期 21 天，CI / local / 本機
 # 全部照樣綠，沒有任何人知道。
 #
 # 過期必須是紅的，否則 sunset 只是一句沒有後果的註解。
 #
-# 為什麼存在（2、3）：injection_lint 的 baseline 同時餵 cutover 的 block gate 與
+# 為什麼存在（2、3）：injection_lint 的 baseline 同時餵 CI 的 block gate 與
 # pre-commit hook，兩者都繼承呼叫端環境。模組常數對 cwd 解析時有兩種災情形狀：
 # 站在 repo 外 → Views 找不到 → 全部掃不到；站在一個放著寬鬆 baseline 的目錄
-# → 讀到那份、放行一切。第二種在 ops/backlog.py 上實際發生過（2026-08-07 修）。
+# → 讀到那份、放行一切。第二種在 ops/injection_lint.py 上實際發生過（2026-08-07 修）。
 # 而「掃到零個檔案」本身在修前是 exit 0 + `OK — no findings.`。
 
 set -euo pipefail
@@ -209,7 +209,7 @@ done
 
 section "相對的 KG_INJECTION_BASELINE 對 repo root 解析，不對 cwd"
 # 誘餌是一份**會放行的** baseline（今天全部 findings + 未來 sunset），放在 repo 外
-# 一個假的 ops/ 底下。這正是 2026-08-07 在 ops/backlog.py 上量到的 disarm 形狀：
+# 一個假的 ops/ 底下。這正是 2026-08-07 在 ops/injection_lint.py 上量到的 disarm 形狀：
 # 站在放著寬鬆 baseline 的目錄，ratchet 印 0 problems 並赦免每一筆。
 DECOY_DIR="$TMP/decoy"; DECOY_REL="ops/kg_decoy_baseline.txt"
 mkdir -p "$DECOY_DIR/ops"

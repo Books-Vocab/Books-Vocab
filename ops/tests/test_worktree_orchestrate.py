@@ -1,14 +1,36 @@
-"""Compatibility collector for historical acceptance commands.
+from __future__ import annotations
 
-The executable test bodies live in the behavior-group modules.  This module
-re-exports them so old ``pytest .../test_worktree_orchestrate.py -k ...``
-commands keep their node-name contract without making the legacy path part of
-the normal dispatcher.
-"""
+import sys
+from pathlib import Path
 
-from test_worktree_orchestrate_planning import *  # noqa: F401,F403
-from test_worktree_orchestrate_gate import *  # noqa: F401,F403
-from test_worktree_orchestrate_lifecycle import *  # noqa: F401,F403
-from test_worktree_orchestrate_claims import *  # noqa: F401,F403
-from test_worktree_orchestrate_delivery import *  # noqa: F401,F403
-from test_worktree_orchestrate_recovery import *  # noqa: F401,F403
+OPS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(OPS))
+import worktree_orchestrate as coordinator  # noqa: E402
+
+
+def test_intent_type_is_only_branch_naming() -> None:
+    assert coordinator._intent_type("fix crash in reader", None) == "debug"
+    assert coordinator._intent_type("investigate sync drift", None) == "research"
+    assert coordinator._intent_type("add reader filter", None) == "feat"
+    assert coordinator._intent_type("anything", "debug") == "debug"
+
+
+def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
+    plan = coordinator._plan_checks([
+        "backend/src/kg/app.py", "ios/BooksAndVocab/App.swift",
+        "ops/example.sh", "docs/reference/tech_index.md",
+    ])
+    names = {item["name"] for item in plan}
+    assert "backend-tests" in names
+    assert "ios-tests" in names
+    assert "ops-tests" in names
+    assert "docs-lint" in names
+    assert "shell-syntax:ops/example.sh" in names
+
+
+def test_gate_plan_never_mutates_remote_or_integrates_branches() -> None:
+    plan = coordinator._plan_checks(["ops/worktree_orchestrate.py"])
+    commands = [" ".join(item["cmd"]) for item in plan]
+    rendered = " ".join(commands)
+    assert "git merge" not in rendered
+    assert "git push" not in rendered

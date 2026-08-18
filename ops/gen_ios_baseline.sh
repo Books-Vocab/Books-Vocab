@@ -23,7 +23,7 @@ IOS_DIR="$REPO_ROOT/ios/BooksAndVocab"
 # Anchor on the merge-base with origin/main, NOT on HEAD. HEAD orphans itself: the
 # generator bakes the sha into the artifact, and the very next commit (or amend, or
 # rebase) makes that sha unreachable, so docs_lint rejects a file that was correct
-# when written. Same ladder as ops/backlog.py:_doc_anchor, and for the same reasons
+# when written. Use the same reachable-commit rule as the document lint, for the same reasons
 # documented there — degradation is reported, not silent.
 COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short "$(git -C "$REPO_ROOT" merge-base HEAD origin/main 2>/dev/null)" 2>/dev/null \
   || git -C "$REPO_ROOT" rev-parse --short "$(git -C "$REPO_ROOT" merge-base HEAD main 2>/dev/null)" 2>/dev/null \

@@ -31,7 +31,7 @@ Usage: ops/test_ios_ops.sh [--list | --section <name>]
 
 Run the complete iOS ops structure suite, list its named sections, or run one
 independent section. Section mode is intended for focused local feedback; the
-full suite remains the release/cutover evidence.
+full suite remains the release evidence.
 EOF
 }
 
@@ -1799,7 +1799,7 @@ grep -qE 'print_cache_payload prepare "?\$\{?prepare_status' "$WORKSPACE/ops/ios
   || fail_t "prepare payload still hardcodes a literal status"
 
 section "Catalyst compile gate does not require a development signing identity"
-# `ios-build-catalyst` is a BLOCK cutover gate whose stated job is "sim green !=
+# `ios-build-catalyst` is a BLOCK CI gate whose stated job is "sim green !=
 # Catalyst green" — a COMPILE check. Signability is orthogonal to compilability
 # and is proven elsewhere (ops/ios_release.sh archives with Apple Distribution).
 # Demanding a "Mac Development" certificate here made the gate unpassable on a

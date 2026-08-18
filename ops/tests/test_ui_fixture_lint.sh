@@ -105,7 +105,7 @@ if grep -q "withBooksLibrary" "$OUT"; then ok "names the offending id"; else fai
 if grep -q "with_books_library" "$OUT"; then
   ok "suggests the snake_case rawValue (did-you-mean closes the loop)"
 else
-  fail_t "no did-you-mean for the camelCase→snake_case case this ticket is about"; dump; fi
+  fail_t "no did-you-mean for the camelCase→snake_case regression"; dump; fi
 
 section "negative control: a camelCase id in the raw launch argument must be red"
 dir="$(make_scan_dir Bad2 \
@@ -237,7 +237,7 @@ rc="$(run_lint "$TMP/scan_empty")"
 if [[ "$rc" -eq 2 ]]; then ok "scan dir with zero .swift files exits 2"; else
   fail_t "scanning zero files exits $rc — expected 2; the emptiest possible run must not be the greenest"; dump; fi
 
-section "the scheduled sweep this ticket adds is actually runnable"
+section "the scheduled sweep is actually runnable"
 # The plist is the other half of IMP-20260806-3ec803: the lint catches id typos in
 # seconds, the sweep is what makes the UI target run at all. A plist whose command
 # exits 1 on argument parsing would look installed and cover nothing.

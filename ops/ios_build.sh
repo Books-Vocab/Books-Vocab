@@ -53,7 +53,7 @@ done
 # Catalyst is a COMPILE gate ("sim green != Catalyst green"), and compilability
 # is orthogonal to signability: macOS refuses to code-sign without a "Mac
 # Development" identity, which a machine that only ships via Apple Distribution
-# never has. Requiring one here made `ios-build-catalyst` — a BLOCK cutover gate
+# never has. Requiring one here made `ios-build-catalyst` — a BLOCK CI gate
 # — unpassable by construction, the mirror image of an unfailable gate: no
 # signal, and everyone learns to route around the red (IMP-0039). Real signing
 # is proven where it belongs, in ops/ios_release.sh's archive/export.

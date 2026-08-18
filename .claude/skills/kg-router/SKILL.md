@@ -1,65 +1,39 @@
 ---
 name: kg-router
-description: "KG 新對話冷啟動與任務路由。當使用者要求盤點、設計流程、找入口、接手陌生任務、判斷該用哪個 skill/doc/tool，或任務橫跨 docs/ops/iOS/backend/podcast/release 時觸發；角色視野改由 kg-agent-context progressive disclosure。"
-user-invocable: true
-version: 1.1.0
+description: "KG 冷啟動與任務路由：確認 role、Issue／PR 範圍、SoT、skill 與安全邊界。"
 ---
 
-# KG Router
+# KG router
 
-本 skill 是新對話第一層 bootloader。它不做業務實作，只把任務導向正確的 skill、SoT 與 typed tool。
+## Cold start
 
-## Cold Start
+1. 確認 cwd、repo、branch、HEAD 與 dirty state。
+2. 唯讀確認 context role：`./ops/context_route.py identify --role manager --json`（實際 role 依 caller）。
+3. 驗證 skill catalog：`./ops/skill_route.py validate --json`。
+4. 依 typed intent 選一個 primary skill：`./ops/skill_route.py route --intent <intent> --json`。
+5. 用 `./ops/context_route.py render --role <role> --intent <intent> --json` 取得 bounded sources。
+6. 讀 GitHub Issue／PR 與對應 SoT；再決定是否需要 worktree、production 或外部工具。
 
-1. 先確認五種 canonical identity 之一：`manager`、`integrator`、`direct-assignment-child`、`ticket-factory-child`、`ticket-delivery-child`。
-   第一個命令只能是唯讀的 `./ops/context_route.py identify --role <identity> [--work-mode <mode>] --json`；未確認前不執行任務命令。
-2. 身份確認後，把使用者意圖映射為 `.claude/skills/catalog.json` 的 typed intent；再跑
-   `./ops/skill_route.py validate --json`，再跑 `route --intent <intent> --json`。自然語言只提供候選，
-   不得把多個 keyword 命中當成多個 primary。
-3. `kg-router` 只作 bootstrap；依 route 的 `requires` 順序載入，`optional`／`closure` 只有明示需求
-   或收尾階段才載入。`skill_route.py` 的輸出不是 capability 或 production 授權。
-4. 依已確認的 identity／mode 跑 `./ops/context_route.py route/render --role <identity> [--work-mode <mode>] --json`；只讀選中的 role／authority slices，不能 fallback 全文。
-5. 只有要判定 side effect 或 command capability 時才跑 `./ops/capability_matrix.py --json`；功能、endpoint、
-   env、DB、ops、iOS authority 依 `docs/registry.yml` 與 `docs/reference/agent_context.md` 的 index 查最小 SoT。
+## Routing table
 
-## Routing Table
-
-Skill inventory、typed intent、dependency、exclusion 與 fixtures 只看
-`.claude/skills/catalog.json`；不要在此維護第二份 keyword table。常用控制面入口：
-
-| 判定 | typed entrypoint |
+| 問題 | 入口 |
 |---|---|
-| skill primary／dependency | `./ops/skill_route.py route --intent <intent> --json` |
-| role／surface／task context | `./ops/context_route.py render --role <identity> [--work-mode <mode>] [--surface <surface>] [--task <task>] --json` |
-| side effect／capability | `./ops/capability_matrix.py --json --tier <tier>` |
-| docs impact／lint | `kg-docs-control-plane` → `./ops/docs_impact.py`／`./ops/docs_lint.sh` |
-| delivery／worktree | route 選 `worktree-flow` → `ops/worktree_orchestrate.py` |
+| context role／sources | `ops/context_route.py`、`docs/reference/agent_context.md` |
+| skill primary／dependencies | `ops/skill_route.py`、`.claude/skills/catalog.json` |
+| product existence | `docs/reference/product_surface.md` |
+| technical entrypoint | `docs/reference/tech_index.md` |
+| document impact | `ops/docs_impact.py`、`docs/registry.yml` |
+| local worktree | `worktree-flow`、`ops/worktree_orchestrate.py` |
+| production／release | `devops`／`source-command-release` 與 domain SOP |
 
-Domain skill 的深層 CLI、SOP、reference 只在 primary route 已選定且 authority index 指向時再讀；
-不因冷啟動預載整份 domain skill。
+## Hard stops
 
-## Hard Stops
+- Route output 只是導航，不是 GitHub、帳號或 production 授權。
+- 沒有 Issue／PR 目標或 structured Scope 時，不開始跨檔修改。
+- 不讀整個 repo 來代替 targeted authority lookup。
+- 遇到不可逆 production、帳號持有人批准、預算或策略選擇才升級；其餘技術判斷自行完成。
+- 長操作必須可見；失敗、timeout、stale evidence 與 missing permission 都是偏離。
 
-- 不直接讀 DB 或遠端檔案來替代 `ops-cli` / `ops-edit` / safe wrapper。
-- 不用 stale docs 覆蓋 live command output。
-- 不把 docs impact hints 當成自動必改清單；要用語意 trigger 判斷。
-- 不自行升級到 production-capable surface；先明示 side effect 與驗證方式。
-- 不知道自己是哪一種 canonical identity 時停在 `identify`；不可用「我是這個對話的主要 AI」代替角色宣告。
+## Output contract
 
-## Tool Friction
-
-只有 typed task 是 `tool-friction`，或目前確實遇到工具摩擦時，才讀
-`.claude/skills/kg-router/references/tool-friction.md`；一般冷啟動、docs audit 與 domain route 不預載。
-
-## Output Contract
-
-路由完成後，至少回報：
-
-- `intent`: 任務類型與 capability tier
-- `context`: role profile、實際載入的 authority、刻意未載入的深層 context
-- `authority`: 讀過的 SoT doc 或 JSON surface
-- `entrypoint`: 下一步 typed command / skill
-- `validation`: 完成後應跑的 gate
-- `risk`: 是否跨 production / external push / local build / data write
-- `escalation`: 未知問題若未自行解決，具名 owner、證據與下一步
-- `tooling debt`: 小摩擦記錄；若已修工具,列 regression command
+路由完成後回報 role、intent、primary skill、sources、next action 與 capability／permission 仍未授權的事實。若路由缺 source 或 manifest 無效，fail closed。
