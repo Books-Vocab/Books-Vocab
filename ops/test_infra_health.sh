@@ -22,6 +22,11 @@ set -euo pipefail
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$WORKSPACE/ops/infra_health.sh"
 
+command -v zsh >/dev/null 2>&1 || {
+  echo "FATAL: infra_health fixture requires zsh to exercise the macOS remote-shell contract" >&2
+  exit 1
+}
+
 pass=0; fail=0
 ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
@@ -170,7 +175,7 @@ cat >"$CADDY_LAUNCH_STUB" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 [[ "${1:-}" == run ]] || exit 64
-PATH="${KG_CADDY_FAKEBIN}:$PATH" bash -c "${2:-}"
+PATH="${KG_CADDY_FAKEBIN}:$PATH" zsh -c "${2:-}"
 EOF
 cat >"$CADDY_FAKEBIN/launchctl" <<'EOF'
 #!/usr/bin/env bash
