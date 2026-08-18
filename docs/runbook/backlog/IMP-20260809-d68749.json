@@ -6,9 +6,9 @@
   "category": "cli",
   "contract_baseline": "red",
   "contract_checked_at": "2026-08-18",
-  "contract_checked_by": "agent:ticket-factory-dispatchable-20260818-r2",
-  "contract_evidence": "Contract rechecked against f36e9576ab70b7fafdc2b0baa2fc1934b3f83dd9 on 2026-08-18. The connector procedure is now paired with a tracked pending evidence manifest and a rerunnable jq validator. The fixture is explicitly pending/red; no connector action or evidence is claimed.",
-  "contract_status": "ready",
+  "contract_checked_by": "manager:p03-adjudication",
+  "contract_evidence": "Manager adjudication for Wave 1 p03, recorded 2026-08-18.\n\nSource thread: 01a01318-55ba-77b2-9ed2-9d9696607d22\nBranch: feat/wave1-p03-20260818\nHand-back HEAD: 80564860e73747eb11faf1e93649a4337bc6b9c9\nHand-back seal digest: 5b4f56c8bce4bf5b98cb74b5d09c81335b8349751555cec47d456859c24fdfe7\n\nAdjudication: CONTRACT-BLOCKED, not fixed. The child produced three scoped commits and\nhanded back a clean exact HEAD, but all three acceptance contracts still require\nexternal evidence that this repository cannot manufacture:\n\n- IMP-20260809-d68749: no named external target/connector terminal evidence.\n- IMP-20260810-528736: no independent reviewer-capacity/terminal receipt.\n- IMP-20260810-bad780: no external handshake/heartbeat evidence; local repository PIDs\n  are explicitly rejected by the ticket contract.\n\nPending/red fixtures and local opaque or local-PID probes are not acceptance proof.\nNo external connector, account-owner manifest, or independent reviewer receipt was\navailable in the hand-back. The three commits are preserved at the hand-back SHA for\nfuture reactivation when the missing external capability and evidence exist.",
+  "contract_status": "blocked",
   "date": "2026-08-09",
   "detail": "本 session 派出 code-reviewer agent 019fe6c8-431c-73c3-9310-fafabc65b0e4 後，multi_agent_v1 wait_agent 連續三次各等待 30 秒，皆回 status={} 與 timed_out=true；send_input interrupt=true 要求立即收斂後，下一次 wait 仍為空。close_agent 隨後回 previous_status=running，證明不是 agent 已結束而 client 漏讀一次。這使 bounded review 無法區分 pending_init、running、失聯或已完成，driving agent 只能靠時間猜測並手動關閉。等待逾時時至少應回每個 target 的當前狀態；interrupt 應有可觀察的 accepted-to-stopping 狀態或有限期完成語意。",
   "fix_site": ".claude/skills/kg-agent-context/SKILL.md; docs/sop/review_discipline.md; ops/worktree_registry.py",
@@ -46,6 +46,10 @@
   },
   "severity": "med",
   "source": "R6-R8 bounded metadata review dogfood",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "contract-blocked",
+  "stream": "IMP",
+  "verdict": "CONTRACT-BLOCKED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p03-adjudication",
+  "verified_evidence": "manager audit of typed p03 hand-back and exact acceptance contract"
 }
