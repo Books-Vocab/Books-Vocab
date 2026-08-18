@@ -33,6 +33,20 @@ def bind_runtime(namespace: dict[str, object]) -> None:
     if namespace.get("__file__"):
         globals()["__file__"] = namespace["__file__"]
 
+
+def _configured_backlog_store(root: Path) -> Path:
+    """Use the same store resolver as ``backlog.py`` for real-repo claims.
+
+    Orchestrator scratch fixtures intentionally keep their repo-local store so a
+    test cannot accidentally claim against a developer's external ledger. The
+    production checkout, however, must read the configured external data plane
+    rather than reconstructing ``root/docs/runbook/backlog`` locally.
+    """
+    try:
+        return Path(backlog_tool.store_for_repo(root)).expanduser().resolve()
+    except AttributeError:  # legacy extracted test namespace
+        return Path(root).resolve() / BACKLOG_STORE_DIR
+
 def _refuse_unclaimable(root: Path, wanted: list[str], args, step: str,
                         branch: str) -> int | None:
     """The claim gate, shared by `open` and `adopt`. EXIT_BLOCK or None.
@@ -48,7 +62,7 @@ def _refuse_unclaimable(root: Path, wanted: list[str], args, step: str,
     something else has gone wrong.
     """
     state_path = Path(args.state).resolve() if getattr(args, "state", None) else None
-    blockers = _unclaimable(root / BACKLOG_STORE_DIR, wanted, state_path=state_path)
+    blockers = _unclaimable(_configured_backlog_store(root), wanted, state_path=state_path)
     if getattr(args, "allow_ungroomed", False):
         # Downgrades ONLY `ungroomed`. A typo and an already-closed ticket stay
         # refusals: neither has an honest reading in which the agent should proceed.
@@ -335,7 +349,7 @@ def _claim_next_backlog(
     exact outer-lock/direct-call route as valid.
     """
     state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
-    store = root / BACKLOG_STORE_DIR
+    store = _configured_backlog_store(root)
     with wr._ledger_lock(state_path):
         state = wr.load_state(state_path)
         held = _held_from_registry_state(state)
@@ -464,7 +478,7 @@ def _campaign_select_ticket(
         }], []
 
     skipped: list[dict[str, Any]] = []
-    store = root / BACKLOG_STORE_DIR
+    store = _configured_backlog_store(root)
     for ticket in candidates:
         dependency_problems = _campaign_dependency_problems(store, reservation, ticket)
         if dependency_problems:
@@ -491,7 +505,7 @@ def _claim_campaign_backlog(
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
     """Atomically move one eligible reserved ticket into a provenance-stamped child."""
     state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
-    store = root / BACKLOG_STORE_DIR
+    store = _configured_backlog_store(root)
     # Backlog writers use store -> ledger ordering (see backlog._supersede_locks).
     # Hold the store lock across both dependency reads and the registry claim so a
     # blocker cannot be reopened between preflight and the locked claim.

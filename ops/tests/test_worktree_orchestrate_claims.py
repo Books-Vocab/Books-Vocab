@@ -2,6 +2,15 @@
 
 from worktree_orchestrate_support import *  # noqa: F401,F403
 
+
+def test_claim_admission_uses_the_configured_external_backlog_store(tmp_path, monkeypatch):
+    code_repo = tmp_path / "repo"
+    external = tmp_path / "backlog-store"
+    monkeypatch.setattr(MODULE.backlog_tool, "ROOT", code_repo)
+    monkeypatch.setattr(MODULE.backlog_tool, "DEFAULT_STORE", external)
+
+    assert MODULE._configured_backlog_store(code_repo) == external.resolve()
+
 @gitmark
 def test_open_refuses_a_ticket_another_worktree_already_holds(scratch):
     """And refuses with a non-zero code.

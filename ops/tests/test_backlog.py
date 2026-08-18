@@ -4012,6 +4012,70 @@ def test_no_mutation_writes_the_view(tmp_path, monkeypatch):
     assert entry_id in text and "deadbeef" in text
 
 
+def test_external_store_is_the_orchestrator_store_for_the_same_code_repo(tmp_path, monkeypatch):
+    code_repo = tmp_path / "kg"
+    external = tmp_path / "kg-backlog"
+    monkeypatch.setattr(BACKLOG, "ROOT", code_repo)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", external)
+
+    assert BACKLOG.store_for_repo(code_repo) == external.resolve()
+    assert BACKLOG.store_for_repo(tmp_path / "scratch") == (
+        tmp_path / "scratch" / "docs" / "runbook" / "backlog"
+    ).resolve()
+    assert BACKLOG.store_descriptor(external, code_repo)["independent"] is True
+
+
+def test_render_with_external_store_does_not_default_to_a_code_repo_view(tmp_path, monkeypatch):
+    code_repo = tmp_path / "kg"
+    external = tmp_path / "kg-backlog" / "entries"
+    external.mkdir(parents=True)
+    monkeypatch.setattr(BACKLOG, "ROOT", code_repo)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", external)
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "base-anchor")
+
+    assert BACKLOG.main(["render", "--store", str(external), "--commit"]) == 0
+
+    view = external.parent / "improvement_backlog.md"
+    assert view.exists()
+    rendered = view.read_text(encoding="utf-8")
+    assert "external-backlog-store" in rendered
+    assert not (code_repo / "docs" / "runbook" / "improvement_backlog.md").exists()
+
+
+def test_cli_environment_routes_a_new_ticket_without_touching_the_code_store(tmp_path):
+    external = tmp_path / "kg-backlog"
+    env = os.environ.copy()
+    env["KG_BACKLOG_STORE"] = str(external)
+    status_before = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    proc = subprocess.run(
+        [sys.executable, str(BACKLOG_PATH), "add", *_ADD, "--json"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    entry_id = payload["entry"]["id"]
+    assert (external / f"{entry_id}.json").exists()
+    assert not (ROOT / "docs" / "runbook" / "backlog" / f"{entry_id}.json").exists()
+    status_after = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert status_after == status_before
+
+
 def test_render_still_refuses_to_drop_a_row_the_outgoing_view_carried(
         tmp_path, monkeypatch):
     """The entry-loss guard belongs to `render`, and survives the refresh's removal.
