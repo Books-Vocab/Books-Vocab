@@ -12,6 +12,10 @@
   "date": "2026-08-18",
   "detail": "新增 gate cost fingerprint/reuse contract：exact identity 必須同時包含 HEAD/base、changed-file digest、command digest、test-definition digest、fixture digest、toolchain、scope、tier、issued/expires TTL；cross HEAD/base/command drift、stale、missing 或 warn 一律 reuse=false。只能新增 ops/gate_cost_reuse.py、ops/tests/test_gate_cost_reuse.py、ops/tests/test_gate_cost_reuse_integration.py，不改既有 fingerprint、execution-plan 或 central runner。輸出必須分開表達 contract_ready 與 runner_connected；未接線時必須由 manager follow-up，不能把 standalone reuse JSON 當成 runner-connected。",
   "fix_site": "ops/gate_cost_reuse.py",
+  "fixed_by": [
+    "315cafdf74ccdcd699e7275f9e19af552e41fced",
+    "19f1cf67db3d84ef4cc990900f39f967766b211d"
+  ],
   "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
   "groomed_at": "2026-08-18",
   "groomed_by": "platform-steward",
@@ -38,6 +42,10 @@
   },
   "severity": "med",
   "source": "integrator gate-efficiency phase 2 admission r1",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "current main S2 gate pass at a85cd78ae; focused acceptance is rerunnable"
 }
