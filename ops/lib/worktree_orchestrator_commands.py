@@ -151,6 +151,7 @@ def cmd_open(args: argparse.Namespace) -> int:
     scope_inline = getattr(args, "scope", None)
     scope_file = getattr(args, "scope_file", None)
     codex_thread_id = getattr(args, "codex_thread_id", None)
+    work_mode = getattr(args, "work_mode", None)
     scope_declared = scope_inline is not None or scope_file is not None
     if scope_declared and (args.backlog is not None or next_backlog):
         _emit({"schema": SCHEMA, "step": "open",
@@ -184,6 +185,19 @@ def cmd_open(args: argparse.Namespace) -> int:
               "✗ campaign claims require --next-backlog")
         return EXIT_USAGE
 
+    mode_error = validate_work_mode(
+        work_mode,
+        has_scope=scope_declared,
+        has_ticket_claim=bool(args.backlog) or next_backlog,
+        has_campaign=bool(campaign_id),
+    )
+    if mode_error:
+        _emit({"schema": SCHEMA, "step": "open", "error": "invalid-work-mode",
+               "reason": "invalid-work-mode",
+               "detail": mode_error, "work_mode": work_mode}, args.json,
+              f"✗ open refused: {mode_error}")
+        return EXIT_USAGE
+
     wanted = list(args.backlog or [])
     # `--backlog` is forwarded ONLY when it was given. Passing it unconditionally
     # looked harmless and was not: with no ids, the argv is `["--backlog", "--json"]`
@@ -202,6 +216,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             partition_id=partition_id,
             delegated=delegated,
             codex_thread_id=codex_thread_id,
+            work_mode=work_mode,
         )
         if reg_rc == EXIT_OK:
             campaign_claim = {"campaign_id": campaign_id, "partition": partition_id,
@@ -212,6 +227,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             root=root, state_arg=args.state, path=path, branch=branch,
             intent=args.intent, base=base, delegated=delegated,
             codex_thread_id=codex_thread_id,
+            work_mode=work_mode,
         )
     else:
         if _refuse_unclaimable(root, wanted, args, "open", branch) is not None:
@@ -225,6 +241,7 @@ def cmd_open(args: argparse.Namespace) -> int:
              *( ["--scope", scope_inline] if scope_inline is not None else
                 ["--scope-file", scope_file] if scope_file is not None else [] ),
              *( ["--codex-thread-id", codex_thread_id] if codex_thread_id is not None else [] ),
+             *( ["--work-mode", work_mode] if work_mode is not None else [] ),
              *claim_argv, "--exclusive", "--json"])
     if reg_rc != EXIT_OK:
         conflicts = (reg_payload or {}).get("conflicts", [])
@@ -348,6 +365,7 @@ def cmd_open(args: argparse.Namespace) -> int:
                "base": base, "intent": args.intent, "backlog": wanted,
                "scope_declared": scope_declared,
                "codex_thread_id": codex_thread_id,
+               "work_mode": work_mode,
                "selection": selection, "campaign": campaign_claim,
                "scratch_dir": str(scratch), "registered": True}
     human = (f"✓ opened worktree [{branch}] (base {base})\n"
@@ -421,11 +439,24 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     scope_inline = getattr(args, "scope", None)
     scope_file = getattr(args, "scope_file", None)
     codex_thread_id = getattr(args, "codex_thread_id", None)
+    work_mode = getattr(args, "work_mode", None)
     scope_declared = scope_inline is not None or scope_file is not None
     if scope_declared and args.backlog is not None:
         _emit({"schema": SCHEMA, "step": "adopt",
                "error": "direct Scope cannot be combined with a ticket claim"}, args.json,
               "✗ --scope/--scope-file is only for a direct worktree; ticketed Scope comes from tickets")
+        return EXIT_USAGE
+    mode_error = validate_work_mode(
+        work_mode,
+        has_scope=scope_declared,
+        has_ticket_claim=bool(wanted),
+        has_campaign=False,
+    )
+    if mode_error:
+        _emit({"schema": SCHEMA, "step": "adopt", "error": "invalid-work-mode",
+               "reason": "invalid-work-mode",
+               "detail": mode_error, "work_mode": work_mode}, args.json,
+              f"✗ adopt refused: {mode_error}")
         return EXIT_USAGE
     if _refuse_unclaimable(Path(primary_root()), wanted, args, "adopt",
                            branch) is not None:
@@ -437,6 +468,7 @@ def cmd_adopt(args: argparse.Namespace) -> int:
          *( ["--scope", scope_inline] if scope_inline is not None else
             ["--scope-file", scope_file] if scope_file is not None else [] ),
          *( ["--codex-thread-id", codex_thread_id] if codex_thread_id is not None else [] ),
+         *( ["--work-mode", work_mode] if work_mode is not None else [] ),
          *_delegated_arg(delegated), *claim_argv, "--json"])
     ok = reg_rc == EXIT_OK
     conflicts = (reg_payload or {}).get("conflicts", [])
@@ -450,7 +482,8 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     payload = {"schema": SCHEMA, "step": "adopt", "branch": branch, "worktree": worktree,
                "base": args.base, "intent": args.intent, "ledger": state,
                "backlog": wanted, "scope_declared": scope_declared,
-               "codex_thread_id": codex_thread_id, "conflicts": conflicts, "registered": ok}
+               "codex_thread_id": codex_thread_id, "work_mode": work_mode,
+               "conflicts": conflicts, "registered": ok}
     human = (f"{'✓ adopted' if ok else '✗ adopt could NOT register'} worktree "
              f"[{branch}] (base {args.base})\n"
              f"  path: {worktree}\n"
@@ -525,6 +558,15 @@ def cmd_freeze(args: argparse.Namespace) -> int:
 
 def cmd_sync_main(args: argparse.Namespace) -> int:
     """Serialize the complete origin->local primary fast-forward transition."""
+    refusal = operator_refusal(
+        command="sync-main", operator=getattr(args, "operator", "manager"),
+        commit=args.commit, manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "refused",
+               **refusal}, args.json,
+              "✗ sync-main refused: only Manager may move primary main")
+        return EXIT_BLOCK
     primary = primary_root()
     with _main_advance_lock(primary):
         return _cmd_sync_main_locked(args, primary)
@@ -777,6 +819,15 @@ def cmd_sync(args: argparse.Namespace) -> int:
     zero-side-effect backup. Distinct from `sync-main` (origin→local, catch a stale
     checkout up). The reconciler watches origin/prod, not origin/main, so this push
     has no production effect."""
+    refusal = operator_refusal(
+        command="sync", operator=getattr(args, "operator", "manager"),
+        commit=args.commit, manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": SCHEMA, "step": "sync", "verdict": "refused",
+               **refusal}, args.json,
+              "✗ sync refused: only Manager may update origin/main")
+        return EXIT_BLOCK
     dest = _dest_from_upstream(args.upstream, "sync", args.json)
     if dest is None:
         return EXIT_USAGE
@@ -789,6 +840,15 @@ def cmd_deploy(args: argparse.Namespace) -> int:
     production touch. The felix reconciler (watching origin/prod) turns a backend delta
     into a health-gated rollout with its own auto-rollback. Guarded ff push, dry-run
     default; surfaces the backend files in range so a rollout is never a surprise."""
+    refusal = operator_refusal(
+        command="deploy", operator=getattr(args, "operator", "manager"),
+        commit=args.commit, manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "refused",
+               **refusal}, args.json,
+              "✗ deploy refused: only Manager may publish the release plane")
+        return EXIT_BLOCK
     dest = _dest_from_upstream(args.upstream, "deploy", args.json)
     if dest is None:
         return EXIT_USAGE

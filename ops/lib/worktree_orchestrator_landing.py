@@ -232,6 +232,15 @@ def cmd_land(args) -> int:
     that loses a repeated race is the one with the slowest gate — in a mixed batch
     that is the iOS lane, i.e. the one that can least afford to run again.
     """
+    refusal = operator_refusal(
+        command="land", operator=getattr(args, "operator", "manager"),
+        commit=args.commit, manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+               "landed": False, **refusal}, args.json,
+              "✗ land refused: only Manager may land primary main")
+        return EXIT_BLOCK
     blocked = _freeze_guard(args.state, "land", args.json)
     if blocked is not None:
         return blocked

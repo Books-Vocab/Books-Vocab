@@ -226,6 +226,15 @@ def _interrupted_operation(worktree: str | Path) -> str | None:
 def cmd_gate(args: argparse.Namespace) -> int:
     """Impact-based verification: route changed files to the existing gate tools, run
     them, aggregate a verdict, and record it for cutover."""
+    refusal = operator_refusal(
+        command="gate", operator=getattr(args, "operator", "manager"),
+        commit=not getattr(args, "plan_only", False), manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": GATE_SCHEMA, "step": "gate", "error": "operator refused",
+               **refusal}, args.json,
+              "✗ gate refused: only Manager may create a Gate verdict")
+        return EXIT_BLOCK
     worktree = _norm(args.worktree)
     if not Path(worktree).is_dir():
         _emit({"schema": GATE_SCHEMA, "error": "worktree not found", "worktree": worktree},
@@ -597,6 +606,15 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     production, is the separate `deploy` step.) A `warn` verdict LANDS ("landed with
     warnings" — its disposition belongs to the driving agent); `block`, a stale/absent
     verdict, and a verdict containing an `inconclusive` gate all refuse."""
+    refusal = operator_refusal(
+        command="cutover", operator=getattr(args, "operator", "manager"),
+        commit=args.commit, manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": SCHEMA, "step": "cutover", "error": "operator refused",
+               "landed": False, **refusal}, args.json,
+              "✗ cutover refused: only Manager may land primary main")
+        return EXIT_BLOCK
     blocked = _freeze_guard(args.state, "cutover", args.json)
     if blocked is not None:
         return blocked

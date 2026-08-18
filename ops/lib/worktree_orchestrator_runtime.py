@@ -186,6 +186,12 @@ from lib import worktree_orchestrator_lifecycle as orchestrator_lifecycle  # noq
 from lib import worktree_orchestrator_gate as orchestrator_gate  # noqa: E402
 from lib import worktree_orchestrator_commands as orchestrator_commands  # noqa: E402
 from lib import worktree_orchestrator_claims as orchestrator_claims  # noqa: E402
+from worktree_authority import (  # noqa: E402
+    OPERATOR_ROLES,
+    WORK_MODES,
+    operator_refusal,
+    validate_work_mode,
+)
 
 # Keep the legacy runtime namespace stable while the pure planner lives in its own
 # module.  The façade propagates monkeypatches across both namespaces.
@@ -280,6 +286,12 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--base", default=BASE_DEFAULT,
                         help=f"baseline ref (default: {BASE_DEFAULT})")
 
+    def add_operator(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument(
+            "--operator", choices=OPERATOR_ROLES, default="manager",
+            help="landing authority: manager owns main/origin; integrator only stages",
+        )
+
     cr = sub.add_parser(
         "campaign-reserve",
         help="validate or atomically reserve a complete campaign manifest (dry-run default)",
@@ -351,6 +363,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--codex-thread-id", default=None,
         help="stable Codex thread id owner; one thread may own multiple worktrees",
     )
+    op.add_argument(
+        "--work-mode", choices=WORK_MODES, default=None,
+        help="child work mode: direct-assignment, ticket-factory, or ticket-delivery",
+    )
     delegated_mode = op.add_mutually_exclusive_group()
     delegated_mode.add_argument(
         "--delegated", dest="delegated", action="store_true", default=None,
@@ -399,6 +415,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--codex-thread-id", default=None,
         help="stable Codex thread id owner; one thread may own multiple worktrees",
     )
+    ad.add_argument(
+        "--work-mode", choices=WORK_MODES, default=None,
+        help="child work mode: direct-assignment, ticket-factory, or ticket-delivery",
+    )
     delegated_mode = ad.add_mutually_exclusive_group()
     delegated_mode.add_argument(
         "--delegated", dest="delegated", action="store_true", default=None,
@@ -421,6 +441,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="upstream ref to catch local main up to (default: origin/main)")
     sm.add_argument("--commit", action="store_true",
                     help="execute the ff (default: dry-run)")
+    add_operator(sm)
     sm.set_defaults(func=cmd_sync_main)
 
     sy = sub.add_parser("sync", help="backup plane: mirror the local trunk to "
@@ -433,6 +454,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="origin ref to mirror to (default: origin/main)")
     sy.add_argument("--commit", action="store_true",
                     help="execute the push (default: dry-run)")
+    add_operator(sy)
     sy.set_defaults(func=cmd_sync)
 
     dp = sub.add_parser("deploy", help="release plane: advance origin/prod to the local "
@@ -444,6 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="origin ref to publish to (default: origin/prod)")
     dp.add_argument("--commit", action="store_true",
                     help="execute the push (default: dry-run)")
+    add_operator(dp)
     dp.set_defaults(func=cmd_deploy)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
@@ -475,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="print ONLY the paste-ready receipt line (the normal report already ends with it)")
     ga.add_argument("--plan-only", action="store_true",
                     help="print the selected gate plan without running anything")
+    add_operator(ga)
     ga.set_defaults(func=cmd_gate)
 
     co = sub.add_parser("cutover", help="require a fresh gate pass, rebase onto local "
@@ -485,6 +509,7 @@ def build_parser() -> argparse.ArgumentParser:
     co.add_argument("--worktree", required=True, help="worktree path to cut over")
     co.add_argument("--commit", action="store_true",
                     help="land the ff into local main (default: dry-run)")
+    add_operator(co)
     co.set_defaults(func=cmd_cutover)
 
     cu = sub.add_parser("catchup", help="rebase the worktree onto the local trunk "
@@ -518,6 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
                           f"(default {DEFAULT_GATE_TIER})"))
     ln.add_argument("--defer-gate", action="append", default=[], metavar="GATE=TICKET",
                     help="carry named non-critical S2/S3 failures with existing tickets")
+    add_operator(ln)
     ln.set_defaults(func=cmd_land)
 
     cw = sub.add_parser(
@@ -548,6 +574,7 @@ def build_parser() -> argparse.ArgumentParser:
                           f"explicit release checkpoint (default {DEFAULT_GATE_TIER})"))
     cw.add_argument("--defer-gate", action="append", default=[], metavar="GATE=TICKET",
                     help="carry named non-critical Gate failures with existing tickets")
+    add_operator(cw)
     cw.set_defaults(func=cmd_close_wave)
 
     ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
@@ -605,6 +632,7 @@ def build_parser() -> argparse.ArgumentParser:
     ig.add_argument("--commit", action="store_true",
                     help="execute (default: dry-run — which for a fresh integration "
                          "lists every commit that would be picked)")
+    add_operator(ig)
     ig.set_defaults(func=cmd_integrate)
 
     rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "
@@ -627,6 +655,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="override the landed-floor (tear down even if the branch's work "
                          "is NOT yet in base — accepts the loss of unlanded work)")
     rs.add_argument("--commit", action="store_true", help="execute teardown (default: dry-run)")
+    add_operator(rs)
     rs.set_defaults(func=cmd_resolve)
 
     return p
