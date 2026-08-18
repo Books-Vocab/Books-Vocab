@@ -89,6 +89,23 @@ def _is_simulator_resource(resource_class: str) -> bool:
     return "simulator" in str(resource_class).lower()
 
 
+def _best_effort_timing_contract(
+    task: dict[str, Any], *, context: dict[str, Any], head_sha: str | None,
+) -> dict[str, Any] | None:
+    """Build a zero-duration terminal record for an exceptional worker path."""
+    try:
+        return measurement.build_timing_contract(
+            head_sha=context.get("head_sha") or head_sha,
+            changed_files=context.get("changed_files", []),
+            ticket=context.get("ticket"), packet=context.get("packet"),
+            gate_tier=context.get("gate_tier") or task.get("tier"),
+            command=str(task["command_key"]), duration_s=0.0,
+            cache_status=context.get("cache_status", task.get("cache_status")),
+        )
+    except measurement.MeasurementContractError:
+        return None
+
+
 def _timing_contract_records(task_rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {
         "schema": measurement.TIMING_CONTRACT_SCHEMA,
@@ -174,7 +191,10 @@ def _resource_lock_path(root: Path, resource_class: str) -> Path:
 
 
 @contextlib.contextmanager
-def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Event):
+def _resource_lease(
+    root: Path, resource_class: str, cancel_event: threading.Event,
+    wait_state: dict[str, float] | None = None,
+):
     """Serialize one resource class across bundle runner processes/worktrees."""
     path = _resource_lock_path(root, resource_class)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +205,8 @@ def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Eve
     try:
         while not acquired:
             if cancel_event.is_set():
+                if wait_state is not None:
+                    wait_state["wait_s"] = max(0.0, time.monotonic() - wait_started)
                 raise CommandCancelled(f"resource lease cancelled: {resource_class}")
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -192,6 +214,8 @@ def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Eve
                 wait_s = max(0.0, time.monotonic() - wait_started)
             except BlockingIOError:
                 time.sleep(0.1)
+        if wait_state is not None:
+            wait_state["wait_s"] = wait_s
         yield wait_s
     finally:
         if acquired:
@@ -330,6 +354,27 @@ def _run_bundle_task(
     context = dict(measurement_context or {})
     effective_head_sha = context.get("head_sha") or head_sha or os.environ.get("KG_TEST_TIMING_HEAD_SHA")
     resource_class = task.get("resource_class", "default")
+    try:
+        metadata_contract = measurement.build_timing_contract(
+            head_sha=effective_head_sha,
+            changed_files=context.get("changed_files", []),
+            ticket=context.get("ticket"), packet=context.get("packet"),
+            gate_tier=context.get("gate_tier") or task.get("tier"),
+            command=str(task["command_key"]), duration_s=0.0,
+            cache_status=context.get("cache_status", task.get("cache_status")),
+        )
+    except measurement.MeasurementContractError as exc:
+        return {
+            "id": task["id"], "command_key": task["command_key"],
+            "selector": task.get("selector"), "resource_class": resource_class,
+            "status": "error", "exit_code": None, "duration_s": 0.0,
+            "attempts": 0, "attempt_results": [], "timing_recorded": False,
+            "per_test_measurements": 0,
+            "error": f"timing metadata rejected: {type(exc).__name__}",
+            "timing_contract": None,
+        }
+    canonical_gate_tier = metadata_contract["gate_tier"]
+    canonical_cache_status = metadata_contract["cache_status"]
     attempt_rows: list[dict[str, Any]] = []
     max_attempts = 1 + int(task.get("retry", 0))
     for attempt in range(1, max_attempts + 1):
@@ -338,9 +383,10 @@ def _run_bundle_task(
         timing_output = root / ".cache" / "test_runs" / f"{run_id}.{task['id']}.attempt-{attempt}.jsonl"
         command: list[str] = [str(task["command_key"])]
         lease_wait_s = 0.0
+        lease_state = {"wait_s": 0.0}
         try:
             command, environment = _task_command(task, timing_output)
-            with _resource_lease(root, resource_class, cancel_event) as lease_wait_s:
+            with _resource_lease(root, resource_class, cancel_event, lease_state) as lease_wait_s:
                 result = run_streamed_command(
                     command, cwd=root, label_key="bundle-task", label=str(task["id"]),
                     progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
@@ -359,15 +405,16 @@ def _run_bundle_task(
             raise
         except (OSError, ValueError, RuntimeError) as exc:
             status, exit_code, error = "error", None, f"{type(exc).__name__}: {exc}"
+        lease_wait_s = max(lease_wait_s, lease_state["wait_s"])
         finished_at = _iso_now()
         duration_s = time.monotonic() - started
-        cache_status = context.get("cache_status", task.get("cache_status"))
-        gate_tier = context.get("gate_tier") or task.get("tier")
+        cache_status = canonical_cache_status
+        gate_tier = canonical_gate_tier
         contract = measurement.build_timing_contract(
             head_sha=effective_head_sha,
             changed_files=context.get("changed_files", []),
             ticket=context.get("ticket"), packet=context.get("packet"),
-            gate_tier=gate_tier, command=command, duration_s=duration_s,
+            gate_tier=gate_tier, command=str(task["command_key"]), duration_s=duration_s,
             simulator_lease_wait_s=lease_wait_s if _is_simulator_resource(resource_class) else 0.0,
             cache_status=cache_status,
         )
@@ -508,6 +555,11 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                         "status": "error", "exit_code": None, "duration_s": 0.0,
                         "attempts": 0, "attempt_results": [], "timing_recorded": False,
                         "per_test_measurements": 0, "error": f"{type(exc).__name__}: {exc}",
+                        "timing_contract": _best_effort_timing_contract(
+                            tasks_by_id[task_id],
+                            context=_measurement_context(bundle, tasks_by_id[task_id]),
+                            head_sha=bundle_head_sha,
+                        ),
                     }
                 task_rows[task_id] = row
                 completed[task_id] = "passed" if row["status"] == "passed" else row["status"]

@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: bf9606b84d4209ea3884a5f1519323fdd374b33f
+verified_against: 53c19c459827c5eda14f72eb2a48e4c6fcf8e3b4
 -->
 # Technical Reference Index
 
@@ -41,8 +41,9 @@ verified_against: bf9606b84d4209ea3884a5f1519323fdd374b33f
 |------|------|
 | `ops/lib/worktree_test_routes.py` | `kg.test.route.v1` 的明確 source seam manifest。`orchestrator.planning`、`gate`、`lifecycle`、`claims`、`delivery`、`recovery` 與 `facade` 各自列出 nodeid、fallback file、tier、failure policy、resource class；未知 source、空 selector、版本不符或檔案不存在一律回退至 `orchestrator.fallback`，不得空跑綠燈。 |
 | `ops/test_route.py run --mode focused|group --route-id <id>` | 先 `pytest --collect-only`，收集失敗或零筆時改跑父群 fallback，再執行功能測試；功能測試保留 pytest stdout/stderr，進度走既有 stderr heartbeat。 |
+| `ops/lib/gate_cost_measurement.py` | 純函式 `kg.test.impact.v1`／`kg.test.timing.contract.v1` contract：由 changed files 選出最低 acceptance route（S0 `static`、S1 `unit-ops`、S2 `ui-precise`、S3 `full-gate`；S4 只由 release 明示），並驗證 HEAD、ticket/packet、Gate tier、semantic command key、duration、Simulator lease wait 與 cache `hit`/`miss`/`stale`/`unknown`。`minimum_acceptance_tier` 是 focused route 的最低驗收線，`required_cutover_tier` 仍來自既有 Gate tier policy；缺少實際 tier 會標為不合規。raw argv、shell text、token、secret 不進 contract。不讀 filesystem、git、環境或資料庫。 |
 | `ops/lib/test_timing_store.py` / `.cache/test_timing.sqlite3` | gitignored 的 `kg.test.timing.v1` WAL ledger；以 semantic `command_key`、`measurement_scope`(command/test)、host、runtime、device/cache、resource class 分群，不保存 raw argv、token 或 secret。正常 pass/fail/inconclusive 才進 ETA 樣本；timeout/interrupted/cancelled 不污染 baseline；rollup 保留加權樣本。 |
-| `ops/test_timing.py estimate|run|status|wait` | `estimate` 回傳 p50/p90、上下界、confidence 與 resource wait；`run --bundle <manifest> --json` 執行 `kg.test.bundle.v1`，status 以 atomic JSON claim 寫入 `.cache/test_runs/`，同一 resource class 跨 bundle lease 序列化，取消會終止 process group 並等待 terminal，stderr heartbeat、完成後一次 final JSON。timing 寫入失敗不改功能 verdict。 |
+| `ops/test_timing.py estimate|run|status|wait` | `estimate` 回傳 p50/p90、上下界、confidence 與 resource wait；`run --bundle <manifest> --json` 執行 `kg.test.bundle.v1`，status 以 atomic JSON claim 寫入 `.cache/test_runs/`，同一 resource class 跨 bundle lease 序列化並記錄 Simulator lease wait；每個 task 與 top-level `timing_contract.records` 產出 machine-readable contract（含 HEAD、changed files、ticket/packet、tier、command、duration、cache status），取消會終止 process group 並等待 terminal，stderr heartbeat、完成後一次 final JSON。timing 寫入失敗不改功能 verdict。 |
 | `ops/lib/pytest_timing_plugin.py` | 以 `pytest_runtest_logreport` 聚合 setup/call/teardown，按 nodeid 輸出 JSONL；可由 bundle runner ingest，plugin 異常只使 timing evidence 缺失。 |
 
 ## Backend API Routers (`backend/src/kg/routers/`)
