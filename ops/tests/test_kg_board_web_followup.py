@@ -108,9 +108,14 @@ def test_matrix_keeps_agent_identity_dirty_sources_and_live_snapshot_reload():
         assert f'"{field}"' in APP
     assert 'liveEvents.addEventListener("snapshot",scheduleLiveReload)' in APP
     assert 'const LIVE_RELOAD_DELAY_MS=25' in APP
+    assert 'const LIVE_RELOAD_MAX_WAIT_MS=250' in APP
+    assert 'const LIVE_LOAD_DEADLINE_MS=650' in APP
+    assert 'AbortController' in APP
+    assert 'const LIVE_FALLBACK_MAX_DELAY_MS=750' in APP
+    assert 'navigator.locks.request' in APP
     assert 'clearTimeout(liveReloadTimer)' in APP
     assert "function scheduleLiveFallback" in APP
-    assert "if(!loadInFlight)" in APP
+    assert "if(loadInFlight)return;" in APP
     assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in APP
     assert "publish_event" not in APP
     assert "grid-area=" not in CSS
