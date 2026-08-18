@@ -24,7 +24,7 @@
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
   "id": "IMP-20260812-f9e383",
   "plan": "待 child-1 至 child-4 完成後同步 docs/sop/architecture.md、docs/reference/tech_index.md、docs/reference/product_surface.md、docs/reference/feature_boundary/notebook.md，移除 cold-start/feature-flagged-off 舊語句，更新 verified_against 至可達 main，並跑 docs impact/lint。",
-  "resolution": "Acceptance is baseline-green: registry lint does not prove the four SoT documents removed stale cold-start semantics; update the contract before opening a child.",
+  "resolution": "DUPLICATE-OF-IMP-0029: parent owns the same four documentation files and the same LWW documentation closure.",
   "schema": "kg.backlog.entry.v1",
   "scope": {
     "files": [
@@ -49,6 +49,10 @@
   },
   "severity": "low",
   "source": "IMP-0029/child-5",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "wont-fix",
+  "stream": "IMP",
+  "verdict": "DUPLICATE-OF-IMP-0029",
+  "verified_at": "2026-08-18",
+  "verified_by": "agent:ticket-factory-dispatchable-20260818-r2",
+  "verified_evidence": "Parent IMP-0029 owns the same four documentation files and the same LWW documentation closure; this child row is closed as a traceable duplicate."
 }

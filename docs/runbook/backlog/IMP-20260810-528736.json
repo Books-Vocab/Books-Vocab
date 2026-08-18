@@ -1,19 +1,20 @@
 {
-  "acceptance": "GREEN：thread limit、follow-up timeout 與 reviewer terminal receipt 的 integration evidence 可重跑，dispatcher 有 bounded retry 或具名 queue state，review_audit 對缺 receipt 維持 block；fresh machine gate 綠不能單獨收案。",
-  "acceptance_manual": "由 platform-steward 協調，請 multi_agent_v1 connector/account owner 執行 reviewer dispatch capacity、bounded retry/queue 與 follow-up；留下 dispatch response、reviewer id、queue transition、bounded timeout 與 review_audit receipt。外部 thread capacity 無 repo-local command 可表達，因此使用 acceptance_manual。",
+  "acceptance": "GREEN: the named connector/account owner leaves a verified reviewer-capacity manifest with dispatch response, reviewer identity, queue transition, bounded timeout, review receipt, and evidence paths; the machine command validates that manifest. No local fake reviewer result is accepted.",
+  "acceptance_cmd": "test -f ops/tests/fixtures/ticket_factory_contracts/IMP-20260810-528736.json && jq -e '.ticket_id == \"IMP-20260810-528736\" and .status == \"verified\" and (.reviewer_id | type == \"string\" and length > 0) and (.steps | type == \"array\" and length >= 1) and all(.steps[]; ((.dispatch_status | type) == \"string\") and ((.queue_transition | type) == \"string\") and ((.evidence_path | type) == \"string\" and length > 0))' ops/tests/fixtures/ticket_factory_contracts/IMP-20260810-528736.json",
+  "acceptance_manual": "",
   "brief": "reviewer dispatch 遇到 thread limit 後沒有可見的 bounded retry 或排隊結果，交付波次可能缺少 review receipt。",
   "category": "tool",
-  "contract_baseline": "unknown",
+  "contract_baseline": "red",
   "contract_checked_at": "2026-08-18",
-  "contract_checked_by": "agent:ticket-factory-dogfood-20260818",
-  "contract_evidence": "Owner platform-steward; external actor is the multi_agent_v1 connector and reviewer capacity owner. Next: preserve dispatch response, reviewer id, retry or queue transitions, bounded timeout, and review_audit receipt.",
-  "contract_status": "blocked",
+  "contract_checked_by": "agent:ticket-factory-dispatchable-20260818-r2",
+  "contract_evidence": "Contract rechecked against f36e9576ab70b7fafdc2b0baa2fc1934b3f83dd9 on 2026-08-18. The reviewer-capacity procedure is now paired with a tracked pending evidence manifest and a rerunnable jq validator. The fixture is explicitly pending/red; no connector action or evidence is claimed.",
+  "contract_status": "ready",
   "date": "2026-08-10",
   "detail": "While reviewing commit 02b5a07bb0a7acc5e349194ee3bb1314f9d4b6c0, multi_agent_v1__spawn_agent returned agent thread limit reached; sending the follow-up to the existing reviewer produced a submission but no response within the bounded wait. Fresh machine gates and tests passed, but review_audit still reports missing receipts.",
-  "fix_site": ".claude/agents/code-reviewer.md; docs/sop/review_discipline.md; ops/review_audit.sh; ops/worktree_registry.py",
-  "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
+  "fix_site": ".claude/agents/code-reviewer.md; docs/sop/review_discipline.md; ops/worktree_registry.py",
+  "groomed_against": "f36e9576ab70b7fafdc2b0baa2fc1934b3f83dd9",
   "groomed_at": "2026-08-18",
-  "groomed_by": "agent:ticket-factory-dogfood-20260818",
+  "groomed_by": "agent:ticket-factory-dispatchable-20260818-r2",
   "id": "IMP-20260810-528736",
   "plan": "把 spawn capacity exhausted、follow-up accepted、follow-up timed out、reviewer terminal 與 missing receipt 分成可觀測狀態；dispatcher 必須 bounded retry 或明確 queue，不可把 submission 成功當成 reviewer 完成。review_audit 只在 terminal receipt 可驗時放行；connector capacity 不可用時 fail closed。先修 review_discipline 與 code-reviewer contract 的狀態定義，再由可用 connector 補 regression，保留現有 machine gate 結果不變。",
   "resolution": "",
@@ -35,12 +36,16 @@
       {
         "operation": "add",
         "path": "ops/review_audit.sh"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/fixtures/ticket_factory_contracts/IMP-20260810-528736.json"
       }
     ],
     "schema": "kg.backlog.scope.v1"
   },
   "severity": "med",
   "source": "Reviewer dispatch was rejected by the agent thread limit and the existing reviewer follow-up timed out during final Delivery Team closure",
-  "status": "contract-blocked",
+  "status": "triaged",
   "stream": "IMP"
 }
