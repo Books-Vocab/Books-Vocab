@@ -12,6 +12,9 @@
   "date": "2026-08-18",
   "detail": "The fixed-ticket acceptance gate currently runs while backlog.py holds the whole-store lock. Any acceptance command that invokes campaign admission or another backlog mutation waits on that same lock until the gate timeout, so a valid closure can stall and never produce a receipt. Run acceptance under only the target entry lock, then reacquire the store lock for final snapshot validation and write; preserve the same behavior for update and verify closure paths.",
   "fix_site": "ops/backlog_mutations.py; ops/backlog_verification.py; ops/backlog.py; ops/tests/test_backlog.py",
+  "fixed_by": [
+    "90168a000b9d0c19b681698ffd4fade6be91b40d"
+  ],
   "groomed_against": "44d0229d70e58147d9561c9bb2b13e7ad7663d8f",
   "groomed_at": "2026-08-18",
   "groomed_by": "manager",
@@ -42,6 +45,10 @@
   },
   "severity": "high",
   "source": "Manager closure acceptance audit 2026-08-18",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:closure-acceptance",
+  "verified_evidence": "Nested backlog-writer acceptance completed; 35 update/verify tests; py_compile; diff check"
 }
