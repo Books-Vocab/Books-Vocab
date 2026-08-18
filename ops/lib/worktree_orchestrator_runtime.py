@@ -305,6 +305,20 @@ def build_parser() -> argparse.ArgumentParser:
                      help="persist the manifest and registry reservation")
     cr.set_defaults(func=cmd_campaign_reserve)
 
+    ca = sub.add_parser(
+        "campaign-abort",
+        help="Manager-only abort of an unused campaign reservation (dry-run default)",
+    )
+    add_common(ca)
+    ca.add_argument("--campaign", required=True, metavar="ID",
+                    help="campaign reservation to abort")
+    ca.add_argument("--reason", required=True,
+                    help="具名說明為何這個 admission 沒有產生可整合 child")
+    ca.add_argument("--commit", action="store_true",
+                    help="archive and remove the live reservation")
+    add_operator(ca)
+    ca.set_defaults(func=cmd_campaign_abort)
+
     pf = sub.add_parser("preflight", help="fetch + registry sweep --exclude-current "
                         "(clear crash residue; dry-run default)")
     add_common(pf)
@@ -322,16 +336,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--type", choices=("debug", "feat", "research"), default=None,
         help="explicit branch type; overrides the type inferred from --intent",
     )
-    claim_mode = op.add_mutually_exclusive_group()
-    claim_mode.add_argument(
+    op.add_argument(
         "--backlog", nargs="*", default=None, metavar="ID",
         help="backlog ticket ids to CLAIM for this worktree. The claim is taken "
              "before anything is created, so losing the race costs you nothing: "
              "no branch, no directory, and a non-zero exit. Refused when another "
-             "ACTIVE ledger record already holds one of them; the claim is released "
-             "by `resolve`/`sweep`, with no separate release step.",
+             "ACTIVE ledger record already holds one of them; with --campaign this "
+             "must name exactly one ticket and preserves campaign provenance. "
+             "The claim is released by `resolve`/`sweep`, with no separate release step.",
     )
-    claim_mode.add_argument(
+    op.add_argument(
         "--next-backlog", action="store_true",
         help="atomically take dispatch's current worst-first head and claim it for "
              "this worktree. Selection and claim share the registry lock, so two "
@@ -340,9 +354,10 @@ def build_parser() -> argparse.ArgumentParser:
              "unresolved, unclaimed and unblocked entries are eligible.",
     )
     op.add_argument("--campaign", default=None,
-                    help="campaign id whose reserved ticket set supplies --next-backlog")
+                    help="campaign id whose reserved ticket set supplies --next-backlog "
+                         "or the named --backlog claim")
     op.add_argument("--partition", default=None,
-                    help="campaign partition to consume with --campaign --next-backlog")
+                    help="campaign partition to consume with --campaign")
     op.add_argument(
         "--allow-ungroomed", action="store_true",
         help="take a ticket that has no plan/acceptance/fix-site — i.e. claim it as "

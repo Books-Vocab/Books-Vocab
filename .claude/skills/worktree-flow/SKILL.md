@@ -1,8 +1,8 @@
 ---
 name: worktree-flow
-description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory Child 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。五種 identity 中，三種 Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
+description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory Child 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze / campaign-abort）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。五種 identity 中，三種 Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
 user-invocable: true
-version: 2.2.0
+version: 2.3.0
 ---
 
 # worktree-flow
@@ -80,13 +80,15 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 
 直接指派 worktree 若要讓看板顯示檔案佔用，必須在出生時帶 `--scope` 或 `--scope-file`；這兩個參數不可與任何 `--backlog`／campaign claim 同用，ticketed worktree 的 Scope 只由票據提供。`--codex-thread-id` 是穩定 owner join key；同一 thread 可綁多個 direct／ticketed worktree，thread 改名只更新看板的顯示 title，不改 claims 或 worktree identity。既有樹可用 `./ops/worktree_registry.py scope set ...` 宣告 Scope、`owner bind ...` 綁定 thread。
 
-需要先把多票分區、quota、structured write sites 與 blocked/co-land 關係一次凍結時，使用 `campaign-reserve --request-file <manifest.json> --commit --json`；它在 canonical registry lock 內重讀 primary base、backlog 與 active claims，驗證通過後才原子保存 campaign manifest 與 registry reservation。之後以 `open --next-backlog --campaign <campaign-id> --partition <partition-id>` 從該分區逐票轉移 reservation→active claim；普通 `open --next-backlog` 會排除尚未轉移的 reserved tickets。path/symbol/mode 不明或跨票 collision 預設 fail-closed，除非 request 具名 `blocked_by` 或相同 `co_land_group` 的序列化證據。
+需要先把多票分區、quota、structured write sites 與 blocked/co-land 關係一次凍結時，使用 `campaign-reserve --request-file <manifest.json> --commit --json`；它在 canonical registry lock 內重讀 primary base、backlog 與 active claims，驗證通過後才原子保存 campaign manifest 與 registry reservation。之後以 `open --next-backlog --campaign <campaign-id> --partition <partition-id>` 從該分區逐票轉移 reservation→active claim；selector 會在 claim 前重新尊重 manifest 的 reservation-local `blocked_by`，被前置票擋住的候選會留在 reservation 中，直到前置票已結案。若 coordinator 已明確知道要取哪一張，也可使用 `open --backlog <one-ticket> --campaign <campaign-id> --partition <partition-id>`；這條路徑必須驗證 ticket 屬於該 partition，並把 campaign provenance 寫進 active record，不得跨 partition 或繞過 dependency。普通 `open --next-backlog` 會排除尚未轉移的 reserved tickets。path/symbol/mode 不明或跨票 collision 預設 fail-closed，除非 request 具名 `blocked_by` 或相同 `co_land_group` 的序列化證據。
+
+一個沒有產生 child hand-back 的 stale admission 只能由 Manager 執行 `campaign-abort --campaign <id> --reason <具名原因> --commit` 收尾；有 active child、active parent 或既有 hand-back receipt 時，abort fail-closed。abort 會把 reservation 移出 live admission 集合並保存 archive，不能用刪檔或手改 registry 取代。
 
 `dispatch`（＝`list --dispatch`）的集合是已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒，worst-first。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。它仍有兩個範圍邊界：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
 
 **波次結案流程（hunter 全程不碰 store）**：修好後在自己的工作樹跑 `./ops/backlog.py stage <id> --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>'（命令含反引號時用 `--evidence-file <路徑>`）`（無 `--status`，恆為 `fixed`）——寫進 gitignored 的 `<primary>/.cache/backlog_anchor_queue.jsonl`，**不碰 store**（理由是那顆 sha：rebase 前你不知道落地 sha，自己填就是 orphaned `fixed_by`；「不重生 view」那半個舊理由已隨 view 移出版控退場）。`cutover` 在**所有 post-ff refusal 之後**把真正的落地 sha 蓋上去（payload 的 `staged_closures`），波次結束開一條 worktree 跑 `./ops/backlog.py anchor --commit` 一次回填（全有或全無，未蓋 sha 的 row 會被具名保留而不是靜默套用；壞掉的 row 用 `./ops/backlog.py unstage <id> --commit` 取下，這是 all-or-nothing 的逃生口）。`resolve` 拆樹時會把這條分支還沒回填的結案**列出來但不擋**（payload 的 `pending_anchor`）——這是**正常狀態不是警告**（stage→cutover→resolve 本來就在 anchor 之前），列它是因為拆樹後那些 id 只剩 gitignored 檔裡一行；gate、docs lint 與任何讀 store 的入口都看不到它。
 
-**在做 backlog 上的單就一定要帶 `--backlog`**：它把那幾張單認領給這條 worktree，另一個 active 記錄已持有其一即 **refuse（rc 非 0）**，payload 的 `conflicts` 指名持有者的 branch 與 path。搶輸時**不會留下分支也不會留下目錄**——認領在建任何東西之前發生。認領的壽命 = 記錄 active 的壽命，所以 `resolve` / `sweep` 自動釋放，**沒有另一個 release 動詞**。`worktree_registry.py list` 的 `backlog` / `claimed` 欄回答「誰在做哪張單、拿多久了」。
+**在做 backlog 上的單就一定要帶 `--backlog`**：它把那幾張單認領給這條 worktree，另一個 active 記錄已持有其一即 **refuse（rc 非 0）**，payload 的 `conflicts` 指名持有者的 branch 與 path。搶輸時**不會留下分支也不會留下目錄**——認領在建任何東西之前發生。普通 ticket claim 的壽命 = 記錄 active 的壽命，所以 `resolve` / `sweep` 自動釋放，**普通 claim 沒有另一個 release 動詞**；campaign reservation 的 admission abort 是不同層級，僅限 Manager 且受 child/parent/receipt 證據護欄。`worktree_registry.py list` 的 `backlog` / `claimed` 欄回答「誰在做哪張單、拿多久了」。
 
 **c. 逐 phase 實作（phased 模式）**：在 worktree 內做第 N phase 時，**同步派 code review agent 審 N-1 phase**（鐵律 4 逐項 review，鐵律 5 所有 Agent 背景化）。每個 phase 收尾 commit。預設不因「可能稍後要 gate」而在每 phase 主動 rebase；那會讓平行 session 的主幹前進反覆改寫本分支。Child 不因追主幹而執行 catchup；只有 Manager 在自己的落地／staging context 中明示需要時，才可操作 Manager-owned worktree：
 ```

@@ -222,10 +222,11 @@ def validate_manifest(
             if not str(entry.get("groomed_by") or "").strip():
                 problems.append(_problem("ungroomed-ticket", "reserved ticket has no groom stamp",
                                          ticket=ticket_id))
-            # The backlog entry's blocked_by is the executable prerequisite
-            # contract.  The request's blocked_by is a campaign declaration
-            # used only to prove an intentional cross-partition overlap; it
-            # must not turn an otherwise unblocked backlog row into a refusal.
+            # The backlog entry's blocked_by is checked during admission.  The
+            # request's blocked_by is then copied into the reservation and is an
+            # executable reservation-local prerequisite at claim time, so a
+            # coordinator cannot dispatch a later ticket ahead of its declared
+            # campaign predecessor.
             for blocker in entry.get("blocked_by") or []:
                 blocker_entry = entries.get(str(blocker))
                 if blocker_entry is not None and blocker_entry.get("status") not in {"fixed", "wont-fix"}:
@@ -373,13 +374,20 @@ def reservation_summary(reservation: dict[str, Any]) -> dict[str, Any]:
             "remaining": len(ticket_ids) - len(claimed),
             "ticket_ids": ticket_ids,
         }
+    ticket_ids = reservation.get("ticket_ids")
+    if ticket_ids is None:
+        ticket_ids = sorted({
+            ticket_id
+            for partition in partitions.values()
+            for ticket_id in partition["ticket_ids"]
+        })
     return {
         "campaign_id": reservation.get("campaign_id"),
         "coordinator": reservation.get("coordinator"),
         "base": reservation.get("base"),
         "manifest_path": reservation.get("manifest_path"),
         "partitions": partitions,
-        "ticket_ids": list(reservation.get("ticket_ids") or []),
+        "ticket_ids": list(ticket_ids or []),
         "tickets": copy.deepcopy(reservation.get("ticket_details") or {}),
     }
 

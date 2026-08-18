@@ -278,6 +278,257 @@ def test_campaign_claim_base_reader_cannot_be_bypassed_by_cached_sha(tmp_path):
     assert payload["campaign_reservations"][0]["partitions"]["p2"]["claimed"] == {}
 
 
+def test_named_campaign_claim_preserves_provenance_and_partition_scope(tmp_path):
+    state = tmp_path / "registry.json"
+    actual_base = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=ROOT, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    request = manifest(base=actual_base)
+    assert reserve(state, request, current_base=actual_base)["ok"] is True
+
+    result = REGISTRY.claim_campaign_ticket(
+        state,
+        campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001",
+        branch="debug/named-campaign-child", path=str(tmp_path / "child"),
+        intent="named campaign child", base="main", base_sha=actual_base,
+        codex_thread_id="thread-named",
+    )
+    assert result["ok"] is True, result
+    record = result["record"]
+    assert record["backlog"] == ["IMP-20260810-aa0001"]
+    assert record["campaign_id"] == "campaign-1"
+    assert record["partition_id"] == "p1"
+
+    wrong_partition = REGISTRY.claim_campaign_ticket(
+        state,
+        campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-cc0003",
+        branch="debug/wrong-partition", path=str(tmp_path / "wrong"),
+        intent="wrong partition", base="main", base_sha=actual_base,
+    )
+    assert wrong_partition["ok"] is False, wrong_partition
+    assert wrong_partition["reason"] == "ticket is not reserved in campaign partition"
+
+
+def test_ordinary_register_cannot_claim_live_campaign_ticket(tmp_path, capsys):
+    state = tmp_path / "registry.json"
+    actual_base = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=ROOT, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    request = manifest(base=actual_base)
+    assert reserve(state, request, current_base=actual_base)["ok"] is True
+
+    rc = REGISTRY.main([
+        "register", "--state", str(state), "--path", str(tmp_path / "ordinary"),
+        "--repo-root", str(ROOT), "--branch", "debug/ordinary-claim",
+        "--intent", "ordinary claim", "--base", "main", "--backlog",
+        "IMP-20260810-cc0003", "--exclusive", "--work-mode", "ticket-delivery",
+        "--json",
+    ])
+    assert rc == REGISTRY.EXIT_CLAIMED
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reason"] == "backlog ticket reserved by campaign"
+    assert payload["conflicts"][0]["campaign_id"] == "campaign-1"
+    assert json.loads(state.read_text())["records"] == []
+
+    child_path = tmp_path / "campaign-child"
+    claimed = REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p2",
+        ticket_id="IMP-20260810-cc0003", branch="debug/campaign-child",
+        path=str(child_path), intent="campaign child", base="main",
+        base_sha=actual_base, work_mode="ticket-delivery",
+    )
+    assert claimed["ok"] is True, claimed
+    rc = REGISTRY.main([
+        "register", "--state", str(state), "--path", str(child_path),
+        "--repo-root", str(ROOT), "--branch", "debug/campaign-child",
+        "--intent", "campaign re-register", "--base", "main", "--backlog",
+        "IMP-20260810-aa0001", "--work-mode", "ticket-delivery",
+        "--json",
+    ])
+    assert rc == REGISTRY.EXIT_CLAIMED
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reason"] == "backlog ticket reserved by campaign"
+
+
+def test_ordinary_register_guard_derives_legacy_partition_ticket_ids(tmp_path, capsys):
+    state = tmp_path / "registry.json"
+    actual_base = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=ROOT, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    request = manifest(base=actual_base)
+    assert reserve(state, request, current_base=actual_base)["ok"] is True
+    payload = json.loads(state.read_text())
+    payload["campaign_reservations"][0].pop("ticket_ids")
+    REGISTRY.save_state(state, payload)
+
+    rc = REGISTRY.main([
+        "register", "--state", str(state), "--path", str(tmp_path / "ordinary"),
+        "--repo-root", str(ROOT), "--branch", "debug/ordinary-legacy-claim",
+        "--intent", "ordinary legacy claim", "--base", "main", "--backlog",
+        "IMP-20260810-cc0003", "--exclusive", "--work-mode", "ticket-delivery",
+        "--json",
+    ])
+    assert rc == REGISTRY.EXIT_CLAIMED
+    result = json.loads(capsys.readouterr().out)
+    assert result["reason"] == "backlog ticket reserved by campaign"
+
+
+def test_campaign_abort_archives_and_releases_unclosed_reservation(tmp_path):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    assert reserve(state, request)["ok"] is True
+
+    result = REGISTRY.abort_campaign(
+        state, campaign_id="campaign-1", reason="stale empty admission", commit=True,
+        now_iso="2026-08-10T01:00:00+00:00",
+    )
+    assert result["ok"] is True, result
+    payload = json.loads(state.read_text())
+    assert payload["campaign_reservations"] == []
+    assert payload["campaign_archives"][0]["status"] == "aborted"
+    assert payload["campaign_archives"][0]["abort_reason"] == "stale empty admission"
+    archive_path = Path(payload["campaign_archives"][0]["manifest_archive_path"])
+    assert not (state.parent / "worktree_campaigns" / "campaign-1.json").exists()
+    assert archive_path.exists()
+    assert json.loads(archive_path.read_text())["campaign_id"] == "campaign-1"
+    assert reserve(state, request)["ok"] is True
+
+
+@pytest.mark.parametrize("malformed_key", [
+    "campaign_reservations", "records", "parent_reservations", "campaign_archives",
+])
+def test_campaign_abort_refuses_malformed_optional_state(tmp_path, malformed_key):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    assert reserve(state, request)["ok"] is True
+    payload = json.loads(state.read_text())
+    payload[malformed_key] = "corrupt"
+    REGISTRY.save_state(state, payload)
+    before = state.read_bytes()
+
+    result = REGISTRY.abort_campaign(
+        state, campaign_id="campaign-1", reason="malformed state", commit=True,
+    )
+    assert result["ok"] is False, result
+    assert result["reason"] == "malformed registry state"
+    assert state.read_bytes() == before
+
+
+def test_campaign_abort_refuses_malformed_nested_reservation(tmp_path):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    assert reserve(state, request)["ok"] is True
+    payload = json.loads(state.read_text())
+    payload["campaign_reservations"][0]["partitions"] = []
+    REGISTRY.save_state(state, payload)
+    before = state.read_bytes()
+
+    result = REGISTRY.abort_campaign(
+        state, campaign_id="campaign-1", reason="nested malformed state", commit=True,
+    )
+    assert result["ok"] is False, result
+    assert result["reason"] == "malformed campaign reservation"
+    assert state.read_bytes() == before
+
+
+@pytest.mark.parametrize("owner_shape", ["active-child", "active-parent"])
+def test_campaign_abort_refuses_live_child_or_parent(tmp_path, owner_shape):
+    state = tmp_path / "registry.json"
+    request = manifest()
+    assert reserve(state, request)["ok"] is True
+    if owner_shape == "active-child":
+        result = REGISTRY.claim_campaign_ticket(
+            state,
+            campaign_id="campaign-1", partition_id="p2",
+            ticket_id="IMP-20260810-cc0003",
+            branch="debug/live-campaign-child", path=str(tmp_path / "child"),
+            intent="live campaign child", base="main", base_sha=BASE,
+        )
+        assert result["ok"] is True, result
+    else:
+        payload = json.loads(state.read_text())
+        payload["parent_reservations"] = [{
+            "campaign_id": "campaign-1", "status": "active",
+            "owner": {"branch": "feat/parent", "slug": "parent"},
+        }]
+        REGISTRY.save_state(state, payload)
+
+    before = state.read_bytes()
+    result = REGISTRY.abort_campaign(
+        state, campaign_id="campaign-1", reason="must refuse live owner", commit=True,
+    )
+    assert result["ok"] is False, result
+    assert result["reason"] in {"active campaign child exists", "active campaign parent exists"}
+    assert state.read_bytes() == before
+
+
+def test_campaign_selector_skips_reservation_local_blocker(tmp_path):
+    state = tmp_path / "registry.json"
+    actual_base = subprocess.run(
+        ["git", "rev-parse", "main"], cwd=ROOT, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    child_id = "IMP-20260818-ca0001"
+    parent_id = "IMP-20260818-cb0002"
+    child = ticket(child_id, "p1", "ops/tests/campaign_child.py",
+                   blocked_by=[parent_id])
+    parent = ticket(parent_id, "p1", "ops/tests/campaign_parent.py")
+    request = manifest(
+        base=actual_base, tickets=[child, parent], quotas={"p1": 2},
+    )
+    assert reserve(
+        state, request, current_base=actual_base,
+        entries=[{**child, "blocked_by": []}, parent],
+    )["ok"] is True
+
+    store = ROOT / "docs" / "runbook" / "backlog"
+    fixtures = {}
+    try:
+        for item in (child, parent):
+            entry_id = item["id"]
+            path = store / f"{entry_id}.json"
+            fixtures[path] = path.read_bytes() if path.exists() else None
+            path.write_text(json.dumps({
+                "schema": "kg.backlog.entry.v1", "id": entry_id,
+                "stream": "IMP", "date": "2026-08-18", "source": "test",
+                "category": "tool", "severity": "med", "status": "triaged",
+                "detail": "campaign selector fixture", "resolution": "",
+                "brief": "A campaign selector fixture needs a deterministic claim.",
+                "scope": "One campaign selector test fixture.",
+                "plan": "Run the campaign selector regression.",
+                "acceptance": "The fixture contract is readable.",
+                "acceptance_cmd": "test -f ops/tests/test_worktree_campaign_reservation.py",
+                "acceptance_expect_rc": 0,
+                "fix_site": "ops/tests/test_worktree_campaign_reservation.py",
+                "groomed_at": "2026-08-18", "groomed_by": "test",
+                "contract_status": "ready", "contract_baseline": "red",
+                "contract_checked_at": "2026-08-18",
+                "contract_checked_by": "test",
+                "contract_evidence": "fixture contract",
+                "blocked_by": item.get("blocked_by", []),
+            }), encoding="utf-8")
+        rc, payload, wanted, selection = ORCHESTRATE._claim_next_campaign_backlog(
+            root=ROOT, state_arg=str(state), path=tmp_path / "child",
+            branch="debug/campaign-dependency-child", intent="campaign child",
+            base="main", campaign_id="campaign-1", partition_id="p1",
+            codex_thread_id="thread-dependency",
+        )
+    finally:
+        for path, original in fixtures.items():
+            if original is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(original)
+    assert rc == REGISTRY.EXIT_OK, payload
+    assert wanted == [parent_id], (wanted, selection, payload)
+    assert selection["ticket"] == parent_id
+
+
 def test_second_campaign_cannot_reserve_same_ticket_and_race_has_one_winner(tmp_path):
     state = tmp_path / "registry.json"
     first = manifest(campaign_id="campaign-a", tickets=[
