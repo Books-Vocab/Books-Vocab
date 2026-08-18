@@ -236,7 +236,7 @@ guard_build_number() {
 
 # ---- lock acquire（shlock spin-wait，對齊 ios_build.sh）----
 CALLER="${WORKTREE_BRANCH:-$(git -C "$ROOT" branch --show-current 2>/dev/null || echo 'unknown')}"
-cleanup() { rm -f "$LOCK_FILE"; }
+cleanup() { kg_ios_release_shlock_if_owner "$LOCK_FILE" "$$"; }
 START_TOTAL_MS="$(now_ms)"
 echo "[release] caller=$CALLER waiting for lock..."
 if ! kg_ios_wait_for_shlock "[release]" archive "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"; then
