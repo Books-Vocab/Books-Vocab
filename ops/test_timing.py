@@ -16,6 +16,7 @@ import math
 import os
 import platform
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -25,9 +26,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lib import gate_cost_measurement as measurement
 from lib import test_timing_store as store
 from lib.streaming_command import CommandCancelled, run_streamed_command
-
 
 BUNDLE_SCHEMA = "kg.test.bundle.v1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -36,6 +37,78 @@ _FAILURE_POLICIES = frozenset({"block", "warn"})
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _git_head_sha(root: Path) -> str | None:
+    """Resolve the measured worktree HEAD without making it part of the command."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True, capture_output=True, text=True, timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def _measurement_value(
+    bundle: dict[str, Any], task: dict[str, Any], key: str,
+    *, aliases: tuple[str, ...] = (), default: Any = None,
+) -> Any:
+    """Read task-over-bundle measurement metadata, accepting one nested block."""
+    sources: list[dict[str, Any]] = [task]
+    task_measurement = task.get("measurement")
+    if isinstance(task_measurement, dict):
+        sources.append(task_measurement)
+    sources.append(bundle)
+    bundle_measurement = bundle.get("measurement")
+    if isinstance(bundle_measurement, dict):
+        sources.append(bundle_measurement)
+    for source in sources:
+        for candidate in (key, *aliases):
+            if candidate in source:
+                return source[candidate]
+    return default
+
+
+def _measurement_context(bundle: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "changed_files": _measurement_value(bundle, task, "changed_files", default=[]),
+        "ticket": _measurement_value(bundle, task, "ticket", aliases=("ticket_id",)),
+        "packet": _measurement_value(bundle, task, "packet", aliases=("packet_id",)),
+        "gate_tier": _measurement_value(
+            bundle, task, "gate_tier", aliases=("tier",), default=bundle.get("tier"),
+        ),
+        "cache_status": _measurement_value(bundle, task, "cache_status"),
+        "head_sha": _measurement_value(bundle, task, "head_sha"),
+    }
+
+
+def _is_simulator_resource(resource_class: str) -> bool:
+    return "simulator" in str(resource_class).lower()
+
+
+def _timing_contract_records(task_rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "schema": measurement.TIMING_CONTRACT_SCHEMA,
+        "version": measurement.CONTRACT_VERSION,
+        "records": [
+            row["timing_contract"]
+            for row in sorted(task_rows.values(), key=lambda item: str(item.get("id", "")))
+            if isinstance(row.get("timing_contract"), dict)
+        ],
+    }
+
+
+def _status_payload(
+    payload: dict[str, Any], task_rows: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        **payload,
+        "tasks": list(task_rows.values()),
+        "timing_contract": _timing_contract_records(task_rows),
+    }
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -107,6 +180,8 @@ def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Eve
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     acquired = False
+    wait_started = time.monotonic()
+    wait_s = 0.0
     try:
         while not acquired:
             if cancel_event.is_set():
@@ -114,9 +189,10 @@ def _resource_lease(root: Path, resource_class: str, cancel_event: threading.Eve
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 acquired = True
+                wait_s = max(0.0, time.monotonic() - wait_started)
             except BlockingIOError:
                 time.sleep(0.1)
-        yield
+        yield wait_s
     finally:
         if acquired:
             fcntl.flock(fd, fcntl.LOCK_UN)
@@ -207,6 +283,7 @@ def _task_command(task: dict[str, Any], timing_output: Path) -> tuple[list[str],
 def _ingest_plugin_output(
     path: Path, *, run_id: str, bundle_id: str, task: dict[str, Any],
     started_at: str, finished_at: str, allow_measurements: bool = True,
+    head_sha: str | None = None,
 ) -> int:
     paths = [path, *sorted(path.parent.glob(path.name + ".*"))]
     count = 0
@@ -230,7 +307,7 @@ def _ingest_plugin_output(
                     suite=row.get("suite"), tier=task.get("tier"), host=platform.node(),
                     runtime_version=platform.python_version(),
                     xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
-                    head_sha=os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
+                    head_sha=head_sha or os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
                     resource_class=task.get("resource_class", "default"),
                     started_at=started_at, finished_at=finished_at,
                     duration_s=identity[2], status=str(row["status"]),
@@ -247,17 +324,23 @@ def _ingest_plugin_output(
 
 def _run_bundle_task(
     task: dict[str, Any], *, root: Path, run_id: str, bundle_id: str,
-    cancel_event: threading.Event,
+    cancel_event: threading.Event, measurement_context: dict[str, Any] | None = None,
+    head_sha: str | None = None,
 ) -> dict[str, Any]:
+    context = dict(measurement_context or {})
+    effective_head_sha = context.get("head_sha") or head_sha or os.environ.get("KG_TEST_TIMING_HEAD_SHA")
+    resource_class = task.get("resource_class", "default")
     attempt_rows: list[dict[str, Any]] = []
     max_attempts = 1 + int(task.get("retry", 0))
     for attempt in range(1, max_attempts + 1):
         started = time.monotonic()
         started_at = _iso_now()
         timing_output = root / ".cache" / "test_runs" / f"{run_id}.{task['id']}.attempt-{attempt}.jsonl"
+        command: list[str] = [str(task["command_key"])]
+        lease_wait_s = 0.0
         try:
             command, environment = _task_command(task, timing_output)
-            with _resource_lease(root, task.get("resource_class", "default"), cancel_event):
+            with _resource_lease(root, resource_class, cancel_event) as lease_wait_s:
                 result = run_streamed_command(
                     command, cwd=root, label_key="bundle-task", label=str(task["id"]),
                     progress_prefix="[test-timing]", heartbeat_interval=float(task.get("heartbeat_interval_s", 20.0)),
@@ -278,42 +361,57 @@ def _run_bundle_task(
             status, exit_code, error = "error", None, f"{type(exc).__name__}: {exc}"
         finished_at = _iso_now()
         duration_s = time.monotonic() - started
+        cache_status = context.get("cache_status", task.get("cache_status"))
+        gate_tier = context.get("gate_tier") or task.get("tier")
+        contract = measurement.build_timing_contract(
+            head_sha=effective_head_sha,
+            changed_files=context.get("changed_files", []),
+            ticket=context.get("ticket"), packet=context.get("packet"),
+            gate_tier=gate_tier, command=command, duration_s=duration_s,
+            simulator_lease_wait_s=lease_wait_s if _is_simulator_resource(resource_class) else 0.0,
+            cache_status=cache_status,
+        )
         recorded = store.record_measurement(
             run_id=run_id, bundle_id=bundle_id, command_key=task["command_key"],
             selector=task.get("selector"), suite=task.get("suite", "bundle"),
-            tier=task.get("tier"), host=platform.node(), runtime_version=platform.python_version(),
+            tier=gate_tier, host=platform.node(), runtime_version=platform.python_version(),
             xcode_or_device=task.get("xcode_or_device"), dataset=task.get("dataset"),
-            head_sha=os.environ.get("KG_TEST_TIMING_HEAD_SHA"),
-            resource_class=task.get("resource_class", "default"), started_at=started_at,
+            head_sha=effective_head_sha,
+            resource_class=resource_class, started_at=started_at,
             finished_at=finished_at, duration_s=duration_s, status=(
                 "pass" if status == "passed" else
                 "fail" if status == "failed" else
                 "inconclusive"
-            ), exit_code=exit_code, cache_status=task.get("cache_status"),
+            ), exit_code=exit_code, cache_status=cache_status,
             timing_source="bundle-runner", measurement_scope="command",
             duration_status="interrupted" if status in {"timeout", "cancelled"} else "complete",
         )
+        ingest_task = {
+            **task, "tier": gate_tier, "cache_status": cache_status,
+        }
         plugin_count = _ingest_plugin_output(
-            timing_output, run_id=run_id, bundle_id=bundle_id, task=task,
+            timing_output, run_id=run_id, bundle_id=bundle_id, task=ingest_task,
             started_at=started_at, finished_at=finished_at,
             allow_measurements=status not in {"timeout", "cancelled"},
+            head_sha=effective_head_sha,
         )
         attempt_rows.append({
             "attempt": attempt, "status": status, "exit_code": exit_code,
             "duration_s": round(duration_s, 3), "timing_recorded": bool(recorded.get("recorded")),
             "per_test_measurements": plugin_count, "error": error,
+            "timing_contract": contract,
         })
         if status == "passed" or attempt == max_attempts:
             break
     final = attempt_rows[-1]
     return {
         "id": task["id"], "command_key": task["command_key"],
-        "selector": task.get("selector"), "resource_class": task.get("resource_class", "default"),
+        "selector": task.get("selector"), "resource_class": resource_class,
         "status": final["status"], "exit_code": final["exit_code"], "duration_s": final["duration_s"],
         "attempts": len(attempt_rows), "attempt_results": attempt_rows,
         "timing_recorded": any(row["timing_recorded"] for row in attempt_rows),
         "per_test_measurements": sum(row["per_test_measurements"] for row in attempt_rows),
-        "error": final["error"],
+        "error": final["error"], "timing_contract": final["timing_contract"],
     }
 
 
@@ -325,6 +423,11 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         _emit({"schema": BUNDLE_SCHEMA, "status": "error", "error": str(exc)}, args.json)
         return 2
+    bundle_head_sha = (
+        _measurement_value(bundle, {}, "head_sha")
+        or os.environ.get("KG_TEST_TIMING_HEAD_SHA")
+        or _git_head_sha(root)
+    )
     run_id = args.run_id or f"run-{uuid.uuid4().hex}"
     try:
         status_path = _status_path(root, run_id)
@@ -342,8 +445,10 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
     }
     payload = {
         "schema": BUNDLE_SCHEMA, "run_id": run_id, "bundle_id": bundle.get("bundle_id", bundle_path.stem),
-        "tier": bundle.get("tier"), "status": "running", "started_at": _iso_now(),
-        "finished_at": None, "tasks": list(task_rows.values()), "warnings": [],
+        "tier": bundle.get("gate_tier", bundle.get("tier")), "head_sha": bundle_head_sha,
+        "status": "running", "started_at": _iso_now(), "finished_at": None,
+        "tasks": list(task_rows.values()), "warnings": [],
+        "timing_contract": _timing_contract_records(task_rows),
     }
     try:
         _claim_json(status_path, payload)
@@ -377,10 +482,11 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                 task_rows[task_id]["status"] = "running"
                 futures[executor.submit(
                     _run_bundle_task, task, root=root, run_id=run_id, bundle_id=payload["bundle_id"],
-                    cancel_event=cancel_event,
+                    cancel_event=cancel_event, measurement_context=_measurement_context(bundle, task),
+                    head_sha=bundle_head_sha,
                 )] = task_id
                 pending.remove(task_id)
-            _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
+            _atomic_json(status_path, _status_payload(payload, task_rows))
             if not futures:
                 if pending:
                     raise ValueError("bundle dependency cycle or unsatisfied resource state")
@@ -405,7 +511,7 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                     }
                 task_rows[task_id] = row
                 completed[task_id] = "passed" if row["status"] == "passed" else row["status"]
-                _atomic_json(status_path, {**payload, "tasks": list(task_rows.values())})
+                _atomic_json(status_path, _status_payload(payload, task_rows))
     except KeyboardInterrupt:
         cancelled = True
         cancel_event.set()
@@ -427,12 +533,14 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
                 row["status"] = "cancelled"
         payload.update({"status": "cancelled", "verdict": "cancelled", "finished_at": _iso_now(),
                        "tasks": list(task_rows.values())})
+        payload = _status_payload(payload, task_rows)
         _atomic_json(status_path, payload)
         _emit(payload, args.json)
         return 1
     if fatal_error is not None:
         payload.update({"status": "error", "finished_at": _iso_now(), "error": fatal_error,
                         "tasks": list(task_rows.values())})
+        payload = _status_payload(payload, task_rows)
         _atomic_json(status_path, payload)
         _emit(payload, args.json)
         return 2
@@ -444,6 +552,7 @@ def cmd_run_bundle(args: argparse.Namespace) -> int:
         "status": "failed" if hard_failures else "passed", "verdict": "block" if hard_failures else ("warn" if warnings else "pass"),
         "warnings": warnings, "finished_at": _iso_now(), "tasks": list(task_rows.values()),
     })
+    payload = _status_payload(payload, task_rows)
     _atomic_json(status_path, payload)
     _emit(payload, args.json)
     return 1 if hard_failures else 0
