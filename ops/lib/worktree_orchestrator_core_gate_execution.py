@@ -83,6 +83,17 @@ CONTENTION_SENSITIVE_GATES = frozenset({
 })
 
 
+def _gate_log_path(record_path: Path, gate_name: str) -> Path:
+    """Return the per-gate failure log path owned by the execution seam.
+
+    The input seam describes what a gate depends on; execution owns the captured
+    output produced by that gate. Keeping this filename policy with execution makes
+    the responsibility boundary explicit while preserving the runtime facade name.
+    """
+    slug = re.sub(r"[^A-Za-z0-9._-]", "_", gate_name)
+    return record_path.parent / f"{record_path.stem}.{slug}.log"
+
+
 def _gate_failure_lines(output: str) -> list[str]:
     """The lines of a failed gate's output that name what failed."""
     hits = [ln.rstrip() for ln in output.splitlines()
