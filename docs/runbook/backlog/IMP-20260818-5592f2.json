@@ -12,6 +12,10 @@
   "date": "2026-08-18",
   "detail": "新增 gate cost selector routing contract：由 changed-file/fingerprint 組合輸入，明確映射 S0/S1/S2/S3/S4，任何 unknown input 一律 fail-closed；只能新增 ops/gate_cost_route_matrix.py、ops/gate_cost_route_adapter.py、ops/tests/test_gate_cost_route_matrix.py、ops/tests/test_gate_cost_route_matrix_integration.py，不改 ops/test_ops.sh、既有 runner 或既有 planner。adapter 必須提供穩定 machine-readable contract 供既有 planner/Manager gate 消費；integration contract test 必須區分 standalone JSON 與 central runner connected。未接線時必須輸出 contract_ready=true、runner_connected=false、wiring_follow_up={owner:manager,next_step:<具名下一步>,files:[ops/test_ops.sh]}，不得把 standalone JSON 宣稱為 connected。",
   "fix_site": "ops/gate_cost_route_adapter.py",
+  "fixed_by": [
+    "f6ec7a40c23ee9311f605631a7f456c0a3b5bb76",
+    "e626cf4c9d67c51fd910f7d5327c03965f8537d9"
+  ],
   "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
   "groomed_at": "2026-08-18",
   "groomed_by": "platform-steward",
@@ -42,6 +46,10 @@
   },
   "severity": "med",
   "source": "integrator gate-efficiency phase 2 admission r1",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "current main a4ac07fb2d60d142ff03ab649bee271962f52f67: ./ops/backlog.py acceptance rerun passed for the stored route-matrix commands; independent P1 reviewer 01a01549-cb6d-7f12-911d-d1403e6e5b2e PASS at source tip e5fe10c70a066106f7e1e8170233b4c2fd73b5c8; Manager S2 gate a4ac07fb warn only because named baseline IMP-20260818-cd7195, with no P1-specific failure."
 }
