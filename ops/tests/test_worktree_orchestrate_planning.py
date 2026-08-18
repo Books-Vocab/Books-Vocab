@@ -580,6 +580,7 @@ def test_gate_plan_routes_control_plane_and_kg_board_sources_without_ops_suite_f
         "ops/tests/test_kg_board_git_tree.py",
         "ops/tests/test_kg_board_model.py",
         "ops/tests/test_kg_board_web.py",
+        "ops/tests/test_worktree_gate_tiers_route.py",
     }.__contains__
 
     gates = _by_name(plan_gates(changed, ops_test_exists=exists))
