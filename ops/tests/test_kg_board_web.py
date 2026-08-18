@@ -395,6 +395,25 @@ await advance(200);
 if (loads[0].abortedAt !== 400) throw new Error(`fallback request exceeded its 200ms budget: ${loads[0].abortedAt}`);
 const nextFallbackAt = [...timers.values()].map(timer => timer.at).sort((left, right) => left - right)[0];
 if (nextFallbackAt !== 800) throw new Error(`fallback backoff did not advance to 400ms: ${nextFallbackAt}`);
+now = 0;
+timers.clear();
+loads.length = 0;
+const activeFallback = live.createLiveRefreshController({
+  load: delayedLoad,
+  onError: error => errors.push(error.name),
+  now: () => now,
+  setTimeout: setTimeoutFake,
+  clearTimeout: clearTimeoutFake,
+  enqueue: callback => Promise.resolve().then(callback),
+  random: () => 0,
+  locks: null,
+});
+activeFallback.loadInitial().catch(() => {});
+activeFallback.scheduleLiveFallback();
+await advance(200);
+if (loads.length !== 2 || loads[0].abortedAt !== 200 || loads[1].deadlineAt !== 400) {
+  throw new Error(`fallback did not replace an in-flight load: ${JSON.stringify(loads)}`);
+}
 process.stdout.write(JSON.stringify({loads, limits: live.limits, errors}));
 '''
     result = subprocess.run(
@@ -405,7 +424,7 @@ process.stdout.write(JSON.stringify({loads, limits: live.limits, errors}));
     )
     assert result.returncode == 0, result.stderr or result.stdout
     payload = json.loads(result.stdout)
-    assert payload["loads"][0]["abortedAt"] == 400
+    assert payload["loads"][0]["abortedAt"] == 200
     assert payload["limits"]["eventBudgetMs"] == 900
 
 

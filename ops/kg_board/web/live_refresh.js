@@ -87,7 +87,6 @@
 
     async function runLiveFallbackLoad(){
       const request=async()=>{
-        if(active)return Promise.resolve();
         try{await requestLoad(now()+LIMITS.fallbackRequestBudgetMs)}catch(error){onError(error)}
       };
       if(locks?.request){
