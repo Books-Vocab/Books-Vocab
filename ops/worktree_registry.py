@@ -139,6 +139,8 @@ GREEN_ACCEPTANCE_STATUSES = {
     "green", "pass", "passed", "ok", "confirmed-fixed", "confirmed_fixed",
 }
 REVIEW_MANIFEST_FIELD = "review_manifest"
+REVIEW_MANIFEST_KIND_FIELD = "review_manifest_kind"
+REVIEW_MANIFEST_KINDS = {"wait-interrupt", "review-capacity", "external-agent"}
 REVIEW_AUDIT_OK = 0
 
 
@@ -195,7 +197,7 @@ def _load_hand_back_outcomes(path: Path) -> list[dict[str, Any]]:
 
 
 def _review_manifest_problems(
-    value: Any, *, worktree: Path, ticket_id: str,
+    value: Any, *, worktree: Path, ticket_id: str, kind: str | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Audit an optional local external-review manifest without trusting local PIDs.
 
@@ -206,6 +208,9 @@ def _review_manifest_problems(
     if not isinstance(value, str) or not value.strip():
         return ([{"kind": "review-manifest-reference-invalid", "ticket_id": ticket_id}], None)
     reference = value.strip()
+    if kind is not None and kind not in REVIEW_MANIFEST_KINDS:
+        return ([{"kind": "review-manifest-kind-invalid", "ticket_id": ticket_id,
+                  "value": kind}], None)
     manifest = Path(reference)
     if manifest.is_absolute():
         return ([{"kind": "review-manifest-reference-not-relative", "ticket_id": ticket_id}], None)
@@ -221,9 +226,12 @@ def _review_manifest_problems(
     audit = worktree / "ops" / "review_audit.sh"
     if not audit.is_file() or not os.access(audit, os.X_OK):
         return ([{"kind": "review-audit-missing-or-not-executable", "ticket_id": ticket_id}], None)
+    audit_args = [str(audit), "--manifest", str(resolved_manifest), "--json"]
+    if kind is not None:
+        audit_args[1:1] = ["--kind", kind]
     try:
         proc = subprocess.run(
-            [str(audit), "--manifest", str(resolved_manifest), "--json"],
+            audit_args,
             cwd=str(worktree), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True,
         )
@@ -311,9 +319,21 @@ def _outcome_problems(
             problems.append({"kind": "no-op-provenance-missing", "ticket_id": ticket_id})
 
         review_manifest = item.get(REVIEW_MANIFEST_FIELD)
+        review_manifest_kind = item.get(REVIEW_MANIFEST_KIND_FIELD)
+        canonical_kind: str | None = None
+        if review_manifest_kind is not None:
+            if not isinstance(review_manifest_kind, str) or not review_manifest_kind.strip():
+                problems.append({"kind": "review-manifest-kind-invalid", "ticket_id": ticket_id})
+            else:
+                canonical_kind = review_manifest_kind.strip()
+                canonical[REVIEW_MANIFEST_KIND_FIELD] = canonical_kind
+                if review_manifest is None:
+                    problems.append({"kind": "review-manifest-kind-without-reference",
+                                     "ticket_id": ticket_id})
         if review_manifest is not None:
             manifest_problems, canonical_reference = _review_manifest_problems(
                 review_manifest, worktree=worktree, ticket_id=ticket_id,
+                kind=canonical_kind,
             )
             problems.extend(manifest_problems)
             if canonical_reference is not None:

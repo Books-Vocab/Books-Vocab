@@ -17,6 +17,14 @@ row，再讀 caller 指定的 commit SHA × scope 與 `docs/sop/review_disciplin
 
 **等待契約**:調用你時仍須 `run_in_background: true`。協調者由 notification 收結果；若調用者是受派子 agent 且交回前需要 verdict,它必須把自己的 turn 留在前景,於同一個 turn 輪詢到你的結果,不得交回「review in flight」後等待被喚醒。等待形狀見 CLAUDE.md 鐵律5。
 
+**External dispatch capacity contract**: connector 的 `dispatch_status`、opaque `reviewer_id`、
+`queue_transition`、bounded timeout 與 terminal review receipt 必須分開記錄。`accepted` 只代表 connector
+收到了 submission，不代表 reviewer 已啟動、完成或產出 receipt；thread-limit、拒絕、follow-up timeout、
+pending 或 reviewer 狀態不明都維持 fail-closed。不要用 repo-local `ops/task_registry.py` 的 PID／PGID
+補出 reviewer identity 或 completion。可重跑的 manifest 結構檢查使用
+`./ops/review_audit.sh --kind review-capacity --manifest <path> --json`；沒有 named connector evidence 時，
+caller 必須保留 blocked／changed-but-not-closable，而不是回報 PASS。
+
 **標準 checklist(內建;caller 只需給 commit hash + scope + 本次特別關注點,免逐項重寫 brief)**:
 
 開審**先讀** `docs/sop/review_discipline.md`「Prompt 必含元素」§3(審查重點,含雙態語意/測試品質/風格契合/驗證證據)、§4(下游 surface 同步 grep)、§5(輸出格式)、§6(限制),照其執行,不待 caller 重列——清單內容以該 SOP 為 SoT,本檔不複述。

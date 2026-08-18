@@ -67,9 +67,16 @@ task-registry 欄位或不完整 step 一律 BLOCK。`verified` 是 evidence man
 替外部 connector 宣稱成功；沒有 named connector/account-owner evidence 時，ticket 應保持 blocked 或
 `changed-but-not-closable`。
 
-typed child hand-back 若要綁定 repo 內的 manifest，可在 outcome 使用 `review_manifest` 相對路徑；
+typed child hand-back 若要綁定 repo 內的 manifest，可在 outcome 使用 `review_manifest` 相對路徑，並以
+`review_manifest_kind` 明示 `wait-interrupt`、`review-capacity` 或 `external-agent`；
 `worktree_registry.py` 會重新執行相同 audit 並把 reference 納入 seal。fixture 的
 `evidence_path` 仍是外部 evidence reference，不要求 repo 能讀取或解釋其內容。
+
+review-capacity manifest 另要把 dispatch response、opaque `reviewer_id`、queue transition、bounded
+timeout 與 terminal review receipt 分欄記錄。`accepted`／submission success 不是 reviewer completion；
+thread limit、follow-up submission timeout、rejected dispatch、pending reviewer 或 missing receipt 都是
+fail-closed observation。`review_audit.sh --kind review-capacity` 可驗證欄位形狀與 `status=verified`，但不
+把本機 review-cycle、PID 或 machine gate 綠燈升格成 external reviewer evidence。
 
 ## Review cycle 的有界收斂
 
