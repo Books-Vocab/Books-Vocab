@@ -11,6 +11,12 @@
   "date": "2026-08-18",
   "detail": "The gate-tier policy currently travels through the broad orchestrator.facade route, so a tier-only change inherits unrelated facade selectors. Add an explicit orchestrator.gate-tiers route with a focused selector while keeping unknown and legacy sources fail-closed.",
   "fix_site": "ops/lib/worktree_test_routes.py; ops/tests/test_worktree_gate_tiers_route.py; ops/tests/test_orchestrator_seams.py",
+  "fixed_by": [
+    "889b9af69f5f62fe94b310e4c34de8effc07c391",
+    "19f24ce27a6dee2541241ea228bfeb55fc7d4b43",
+    "772587234d860023ac9482df3cb1b0ce34c291c8",
+    "82dd02a3d2d60aaf50606771e7de0311dc6c097b"
+  ],
   "groomed_against": "b2b5e5f122842eb105c812fbf04a606beaaf76a2",
   "groomed_at": "2026-08-18",
   "groomed_by": "manager-gate-route",
@@ -37,6 +43,10 @@
   },
   "severity": "low",
   "source": "Manager gate-granularity wave",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-19",
+  "verified_by": "manager",
+  "verified_evidence": "PYTHONDONTWRITEBYTECODE=1 uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_orchestrator_seams.py ops/tests/test_worktree_gate_tiers_route.py -> 29 passed in 2.94s; fresh S2 gate 8/8 pass at 82dd02a3d2d60aaf50606771e7de0311dc6c097b"
 }
