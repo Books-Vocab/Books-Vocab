@@ -1,0 +1,50 @@
+{
+  "acceptance": "Red: the fresh coverage contract reports one or more of the four scoped frontend source surfaces as uncovered. Green: the coverage contract reports all four scoped frontend source surfaces as reachable or explicitly named-exempt, with no generic fallback and no product behavior regression.",
+  "acceptance_cmd": "./ops/tests/test_ops_ci_coverage.sh",
+  "acceptance_expect_rc": 0,
+  "blocked_by": [
+    "IMP-20260818-2167f4"
+  ],
+  "brief": "看板前端變更後沒有覆蓋訊號，維護者無法確認畫面程式仍被自動驗證。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "manager:dashboard-s2-gate",
+  "contract_evidence": "Shared coverage baseline remains owned by IMP-20260818-2167f4; this dashboard follow-up is withheld until that broader baseline is resolved or the owner explicitly partitions the two acceptance paths. The four frontend source files remain its only Scope.",
+  "contract_status": "blocked",
+  "date": "2026-08-18",
+  "detail": "Fresh dashboard S2 Gate at bcde73066 returned rc=0 with advisory coverage WARN for four changed frontend files: ops/kg_board/web/app.css, ops/kg_board/web/app.js, ops/kg_board/web/index.html, and ops/kg_board/web/live_refresh.js. Dashboard behavior and KG Board targeted tests passed; this is a test-coverage routing debt, not a product failure. The existing IMP-20260818-2167f4 covers seven ungrouped test files; this ticket is intentionally limited to the four frontend source surfaces and remains withheld until the shared coverage baseline is green or the owner explicitly partitions the acceptance.",
+  "fix_site": "ops/tests/test_ops_ci_coverage.sh; ops/kg_board/web/app.css; ops/kg_board/web/app.js; ops/kg_board/web/index.html; ops/kg_board/web/live_refresh.js",
+  "groomed_against": "bcde73066c02b58af0c811caaceab5f073a62912",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "manager:dashboard-followup",
+  "id": "IMP-20260818-8ca87c",
+  "plan": "Extend the coverage dispatcher or its named KG Board route so changes to the four frontend source surfaces receive a real reachable test/coverage proof or an explicit named exemption; add a regression that preserves fail-closed behavior for an unknown frontend surface. Do not hide the files in a broad allowlist and do not widen into unrelated dashboard behavior.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/kg_board/web/app.css"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/kg_board/web/app.js"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/kg_board/web/index.html"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/kg_board/web/live_refresh.js"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "low",
+  "source": "Manager dashboard S2 Gate at bcde73066",
+  "status": "contract-blocked",
+  "stream": "IMP"
+}
