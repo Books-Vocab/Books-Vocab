@@ -114,6 +114,33 @@ def cmd_campaign_abort(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_campaign_retire(args: argparse.Namespace) -> int:
+    """Manager-only archival of a clean campaign whose work was not landed."""
+    if getattr(args, "operator", "manager") != "manager":
+        _emit({"schema": SCHEMA, "step": "campaign-retire",
+               "error": "operator refused", "operator": args.operator,
+               "reason": "only Manager may retire a campaign"}, args.json,
+              "✗ campaign-retire refused: only Manager may retire a campaign")
+        return EXIT_BLOCK
+    try:
+        result = wr.retire_campaign(
+            wr._state_path(args), campaign_id=args.campaign,
+            reason=args.reason, commit=args.commit,
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        _emit({"schema": SCHEMA, "step": "campaign-retire",
+               "error": "campaign retirement failed", "detail": str(exc)}, args.json,
+              f"✗ campaign-retire failed: {exc}")
+        return EXIT_BLOCK
+    if not result.get("ok"):
+        _emit({"schema": SCHEMA, "step": "campaign-retire", **result}, args.json,
+              f"✗ campaign-retire refused: {result.get('reason', result)}")
+        return EXIT_BLOCK
+    _emit({"schema": SCHEMA, "step": "campaign-retire", **result}, args.json,
+          f"✓ campaign-retire {result['mode']}: {args.campaign} — {args.reason}")
+    return EXIT_OK
+
+
 def cmd_preflight(args: argparse.Namespace) -> int:
     """fetch origin + registry sweep --exclude-current (clear crash residue)."""
     frc, fout = _fetch()

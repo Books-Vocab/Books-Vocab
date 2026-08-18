@@ -82,6 +82,30 @@ def test_campaign_open_supports_named_claims_and_campaign_abort_parser():
     assert aborted.commit is True
 
 
+def test_campaign_retire_parser_is_manager_only():
+    parser = MODULE.build_parser()
+    retired = parser.parse_args([
+        "campaign-retire", "--campaign", "campaign-1",
+        "--reason", "rebuild from fresh main", "--operator", "manager", "--commit",
+    ])
+    assert retired.campaign == "campaign-1"
+    assert retired.reason == "rebuild from fresh main"
+    assert retired.operator == "manager"
+    assert retired.commit is True
+
+
+def test_campaign_retire_cli_refuses_integrator(tmp_path, capsys):
+    parser = MODULE.build_parser()
+    args = parser.parse_args([
+        "campaign-retire", "--state", str(tmp_path / "registry.json"),
+        "--campaign", "campaign-1", "--reason", "rebuild", "--operator",
+        "integrator", "--json",
+    ])
+    assert MODULE.cmd_campaign_retire(args) == MODULE.EXIT_BLOCK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "operator refused"
+
+
 def test_manager_only_authority_refuses_integrator_mutations():
     assert MODULE.operator_refusal(
         command="cutover", operator="integrator", commit=True, manager_only=True,
