@@ -302,7 +302,8 @@ run_one() {
         ops/tests/test_app_review_evaluators.py \
         ops/tests/test_asc_reviewer_mirror.py \
         ops/tests/test_provenance.py \
-        ops/tests/test_reviewer_evidence.py
+        ops/tests/test_reviewer_evidence.py \
+        ops/tests/test_app_review_test_topology.py
       ;;
     demo-data)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \

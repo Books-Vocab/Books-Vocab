@@ -535,6 +535,35 @@ else
   done
 fi
 
+# IMP-20260817-4f2653: App Review evidence routes are an explicit default
+# compatibility surface.  Keep the topology contract and every route file
+# reachable without turning the legacy fast group into a wildcard collector.
+section "app-review evidence routes stay in the default dispatcher"
+APP_REVIEW_TOPOLOGY_TESTS=(
+  ops/tests/test_app_review_evidence.py
+  ops/tests/test_app_review_evaluators.py
+  ops/tests/test_app_review_gate.py
+  ops/tests/test_asc_reviewer_mirror.py
+  ops/tests/test_provenance.py
+  ops/tests/test_reviewer_evidence.py
+  ops/tests/test_app_review_test_topology.py
+)
+if (( ${#REACHABLE[@]} == 0 )); then
+  fail_t "app-review topology probe parsed no reachable paths"
+else
+  for f in "${APP_REVIEW_TOPOLOGY_TESTS[@]}"; do
+    reach=0; exempt=0; optional=0
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
+    for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
+    if (( reach == 1 && exempt == 0 && optional == 0 )); then
+      ok "$f is reached by a DEFAULT_TESTS group"
+    else
+      fail_t "$f must be reached by app-review and not named as an exemption"
+    fi
+  done
+fi
+
 # ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
 # 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是所有 tracked `*.sh`
 #（worktree_orchestrate.py:plan_gates）；workflow 的
