@@ -14,6 +14,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -698,6 +699,319 @@ def test_campaign_retire_resolved_only_refuses_missing_receipt_without_mutation(
     assert result["reason"] == "resolved campaign child provenance invalid"
     assert state.read_bytes() == state_before
     assert manifest_path.read_bytes() == manifest_before
+
+
+def test_campaign_retire_existing_receipt_does_not_require_manifest_pointer(tmp_path):
+    state, _ = _ready_resolved_only_retirement_fixture(tmp_path)
+    payload = json.loads(state.read_text())
+    payload["records"][0]["completed_manifest"] = str(
+        tmp_path / "already-archived-child-manifest.json"
+    )
+    REGISTRY.save_state(state, payload)
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="preserve existing receipt", commit=True,
+    )
+
+    assert result["ok"] is True, result
+    assert result["recovered_receipts"] == []
+
+
+def _ready_resolved_only_recovery_fixture(tmp_path, *, remove_repo=False):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(
+        base=base,
+        tickets=[ticket("IMP-20260810-aa0001", "p1", "ops/a.py")],
+        quotas={"p1": 1},
+    )
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    record = payload["records"][0]
+    reservation = payload["campaign_reservations"][0]
+    outcomes = [{
+        "ticket_id": "IMP-20260810-aa0001",
+        "outcome": "changed-but-not-closable",
+        "acceptance_status": "inconclusive",
+        "evidence": "child stopped before closure",
+    }]
+    record["handed_back_sha"] = base
+    record["handed_back_at"] = "2026-08-10T00:01:00+00:00"
+    record["handback_outcomes"] = outcomes
+    record["handback_seal"] = REGISTRY._seal_with_digest(
+        REGISTRY._seal_body(
+            record, base_sha=base, tip_sha=base,
+            outcomes=outcomes, handed_back_at=record["handed_back_at"],
+        )
+    )
+    record["status"] = "merged"
+    record["resolved_at"] = "2026-08-10T00:02:00+00:00"
+    completed_manifest = tmp_path / "completed-child.json"
+    completed_manifest.write_text(json.dumps({
+        "schema": "kg.worktree.child-manifest.v1",
+        "campaign_id": request["campaign_id"],
+        "campaign_manifest_digest": reservation["manifest_digest"],
+        "partition_id": "p1",
+        "ticket_ids": ["IMP-20260810-aa0001"],
+        "branch": record["branch"],
+        "path": str(repo),
+        "base_sha": base,
+        "head_sha": base,
+        "branches": [record["branch"]],
+        "scope": [{"path": "ops/a.py", "mode": "write"}],
+        "outcomes": outcomes,
+    }, sort_keys=True), encoding="utf-8")
+    record["completed_manifest"] = str(completed_manifest)
+    REGISTRY.save_state(state, payload)
+    if remove_repo:
+        shutil.rmtree(repo)
+    return state, completed_manifest
+
+
+def test_campaign_retire_recovers_one_missing_receipt_from_exact_completed_manifest(tmp_path):
+    state, completed_manifest = _ready_resolved_only_recovery_fixture(tmp_path)
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="recover legacy receipt", commit=True,
+        now_iso="2026-08-10T00:03:00+00:00",
+    )
+
+    assert result["ok"] is True, json.dumps(result, indent=2, default=str)
+    assert result["recovered_receipts"] == ["feat/p1"]
+    receipt = result["retired_children"][0]["child_receipt"]
+    assert receipt["schema"] == CAMPAIGN.CHILD_RECEIPT_SCHEMA
+    assert receipt["manifest_head_sha"] == json.loads(
+        completed_manifest.read_text(encoding="utf-8")
+    )["head_sha"]
+    assert receipt["completed_manifest"] == str(completed_manifest.resolve())
+    archived = json.loads(state.read_text())["campaign_archives"][0]
+    assert archived["retired_children"][0]["child_receipt"] == receipt
+
+
+def test_campaign_retire_recovery_refuses_scope_drift_without_mutation(tmp_path):
+    state, completed_manifest = _ready_resolved_only_recovery_fixture(tmp_path)
+    manifest_before = completed_manifest.read_bytes()
+    state_before = state.read_bytes()
+    payload = json.loads(manifest_before)
+    payload["scope"] = [{"path": "ops/other.py", "mode": "write"}]
+    completed_manifest.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="scope drift probe", commit=True,
+    )
+
+    assert result["ok"] is False
+    assert any(problem["kind"] == "child-manifest-scope-drift"
+               for problem in result["problems"]), result
+    assert state.read_bytes() == state_before
+    assert completed_manifest.read_bytes() != manifest_before
+    assert not list((tmp_path / "worktree_campaigns" / "archive").glob("*"))
+
+
+def test_campaign_retire_recovery_dry_run_is_reentrant_without_duplicate_receipts(tmp_path):
+    state, _ = _ready_resolved_only_recovery_fixture(tmp_path)
+    state_before = state.read_bytes()
+
+    first = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="idempotent recovery", commit=False,
+    )
+    second = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="idempotent recovery", commit=False,
+    )
+
+    assert first["ok"] is True, first
+    assert second["ok"] is True, second
+    assert first["recovered_receipts"] == second["recovered_receipts"] == ["feat/p1"]
+    assert first["retired_children"] == second["retired_children"]
+    assert state.read_bytes() == state_before
+
+
+def _mark_missing_recovery_child(
+    record, reservation, *, ticket_id, partition_id, base, repo, manifest_path,
+    scope,
+):
+    handed_back_at = "2026-08-10T00:01:00+00:00"
+    outcomes = [{
+        "ticket_id": ticket_id,
+        "outcome": "changed-but-not-closable",
+        "acceptance_status": "inconclusive",
+        "evidence": "child stopped before closure",
+    }]
+    record["handed_back_sha"] = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    record["handed_back_at"] = handed_back_at
+    record["handback_outcomes"] = outcomes
+    record["handback_seal"] = REGISTRY._seal_with_digest(
+        REGISTRY._seal_body(
+            record, base_sha=base, tip_sha=record["handed_back_sha"],
+            outcomes=outcomes, handed_back_at=handed_back_at,
+        )
+    )
+    record["status"] = "merged"
+    record["resolved_at"] = "2026-08-10T00:02:00+00:00"
+    manifest_path.write_text(json.dumps({
+        "schema": "kg.worktree.child-manifest.v1",
+        "campaign_id": reservation["campaign_id"],
+        "campaign_manifest_digest": reservation["manifest_digest"],
+        "partition_id": partition_id,
+        "ticket_ids": [ticket_id],
+        "branch": record["branch"],
+        "path": str(repo),
+        "base_sha": base,
+        "head_sha": record["handed_back_sha"],
+        "branches": [record["branch"]],
+        "scope": scope,
+        "outcomes": outcomes,
+    }, sort_keys=True), encoding="utf-8")
+    record["completed_manifest"] = str(manifest_path)
+
+
+def _ready_two_missing_recovery_fixture(tmp_path):
+    state = tmp_path / "registry.json"
+    repo_one, base = _retirement_child(tmp_path)
+    repo_two = tmp_path / "retirement-child-two"
+    subprocess.run(["git", "clone", "-q", str(repo_one), str(repo_two)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo_two), "checkout", "-qb", "feat/p2", base],
+        check=True,
+    )
+    request = manifest(
+        base=base,
+        tickets=[
+            ticket("IMP-20260810-aa0001", "p1", "ops/a.py"),
+            ticket("IMP-20260810-bb0002", "p2", "ops/b.py"),
+        ],
+        quotas={"p1": 1, "p2": 1},
+    )
+    assert reserve(state, request, current_base=base)["ok"] is True
+    for ticket_id, partition_id, branch, repo in [
+        ("IMP-20260810-aa0001", "p1", "feat/p1", repo_one),
+        ("IMP-20260810-bb0002", "p2", "feat/p2", repo_two),
+    ]:
+        assert REGISTRY.claim_campaign_ticket(
+            state, campaign_id="campaign-1", partition_id=partition_id,
+            ticket_id=ticket_id, branch=branch, path=str(repo),
+            intent="campaign child", base="main", base_sha=base,
+        )["ok"] is True
+    payload = json.loads(state.read_text())
+    reservation = payload["campaign_reservations"][0]
+    scope_by_ticket = {
+        "IMP-20260810-aa0001": [{"path": "ops/a.py", "mode": "write"}],
+        "IMP-20260810-bb0002": [{"path": "ops/b.py", "mode": "write"}],
+    }
+    manifest_paths = []
+    for record in payload["records"]:
+        ticket_id = record["backlog"][0]
+        manifest_path = tmp_path / f"completed-{record['partition_id']}.json"
+        _mark_missing_recovery_child(
+            record, reservation, ticket_id=ticket_id,
+            partition_id=record["partition_id"], base=base,
+            repo=Path(record["path"]), manifest_path=manifest_path,
+            scope=scope_by_ticket[ticket_id],
+        )
+        manifest_paths.append(manifest_path)
+    REGISTRY.save_state(state, payload)
+    return state, manifest_paths
+
+
+def test_campaign_retire_recovers_at_most_one_missing_receipt_without_mutation(tmp_path):
+    state, manifest_paths = _ready_two_missing_recovery_fixture(tmp_path)
+    state_before = state.read_bytes()
+    manifests_before = [path.read_bytes() for path in manifest_paths]
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="single recovery bound", commit=True,
+    )
+
+    assert result["ok"] is False, result
+    assert any(
+        problem["kind"] == "child-recovery-cardinality-exceeded"
+        for problem in result["problems"]
+    ), result
+    assert state.read_bytes() == state_before
+    assert [path.read_bytes() for path in manifest_paths] == manifests_before
+
+
+@pytest.mark.parametrize("drift", ["dirty", "tip"])
+def test_campaign_retire_recovery_refuses_terminal_physical_drift(tmp_path, drift):
+    state, completed_manifest = _ready_resolved_only_recovery_fixture(
+        tmp_path, remove_repo=False,
+    )
+    repo = tmp_path / "retirement-child"
+    if drift == "dirty":
+        (repo / "dirty.txt").write_text("do not discard\n", encoding="utf-8")
+    else:
+        (repo / "drift.txt").write_text("advanced\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "add", "drift.txt"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "-qm", "drift after hand-back"],
+            check=True,
+        )
+    state_before = state.read_bytes()
+    manifest_before = completed_manifest.read_bytes()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="terminal physical drift", commit=True,
+    )
+
+    assert result["ok"] is False, result
+    expected_kind = "child-worktree-dirty" if drift == "dirty" else "child-tip-drift"
+    assert any(problem["kind"] == expected_kind for problem in result["problems"]), result
+    assert state.read_bytes() == state_before
+    assert completed_manifest.read_bytes() == manifest_before
+
+
+def test_hand_back_persists_completed_manifest_pointer_for_recovery(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(
+        base=base,
+        tickets=[ticket("IMP-20260810-aa0001", "p1", "ops/a.py")],
+        quotas={"p1": 1},
+    )
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    reservation = json.loads(state.read_text())["campaign_reservations"][0]
+    completed_manifest = tmp_path / "completed-child.json"
+    completed_manifest.write_text(json.dumps({
+        "schema": "kg.worktree.child-manifest.v1",
+        "campaign_id": "campaign-1",
+        "campaign_manifest_digest": reservation["manifest_digest"],
+        "partition_id": "p1",
+        "ticket_ids": ["IMP-20260810-aa0001"],
+        "branch": "feat/p1",
+        "path": str(repo),
+        "base_sha": base,
+        "head_sha": base,
+        "branches": ["feat/p1"],
+    }), encoding="utf-8")
+    outcomes = tmp_path / "outcomes.json"
+    outcomes.write_text(json.dumps([{
+        "ticket_id": "IMP-20260810-aa0001",
+        "outcome": "changed-but-not-closable",
+        "acceptance_status": "inconclusive",
+        "evidence": "bounded child evidence",
+    }]), encoding="utf-8")
+    args = SimpleNamespace(
+        state=str(state), at="2026-08-10T00:03:00+00:00", path=str(repo),
+        branch="feat/p1", outcomes=str(outcomes), campaign="campaign-1",
+        partition="p1", role="child", manifest=str(completed_manifest), json=True,
+    )
+
+    assert REGISTRY.cmd_hand_back(args) == REGISTRY.EXIT_OK
+    record = json.loads(state.read_text())["records"][0]
+    assert record["completed_manifest"] == str(completed_manifest.resolve())
 
 
 def test_campaign_retire_archives_receipts_and_releases_unlanded_children(tmp_path):

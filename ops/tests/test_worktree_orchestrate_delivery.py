@@ -106,6 +106,35 @@ def test_campaign_retire_cli_refuses_integrator(tmp_path, capsys):
     assert payload["error"] == "operator refused"
 
 
+def test_campaign_retire_handler_enables_exact_receipt_recovery(monkeypatch, tmp_path, capsys):
+    parser = MODULE.build_parser()
+    args = parser.parse_args([
+        "campaign-retire", "--state", str(tmp_path / "registry.json"),
+        "--campaign", "campaign-1", "--reason", "recover legacy receipt", "--json",
+    ])
+    observed = {}
+
+    def fake_retire(state_path, **kwargs):
+        observed["state_path"] = state_path
+        observed.update(kwargs)
+        return {
+            "ok": True,
+            "mode": "dry-run",
+            "campaign_id": "campaign-1",
+            "reason": "recover legacy receipt",
+            "resolved_only": True,
+            "resolved_without_landing": True,
+            "recovered_receipts": ["feat/child"],
+            "retired_children": [],
+            "archive": {},
+        }
+
+    monkeypatch.setattr(MODULE.wr, "retire_campaign", fake_retire)
+    assert MODULE.cmd_campaign_retire(args) == MODULE.EXIT_OK
+    assert observed["recover_missing_receipts"] is True
+    assert json.loads(capsys.readouterr().out)["recovered_receipts"] == ["feat/child"]
+
+
 def test_manager_only_authority_refuses_integrator_mutations():
     assert MODULE.operator_refusal(
         command="cutover", operator="integrator", commit=True, manager_only=True,
