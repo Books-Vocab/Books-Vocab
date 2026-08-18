@@ -43,7 +43,7 @@ jobs:
         # jq→ui-quality-plane/branch-audit、sqlite3→backup-verify、
         # python3→infra-health、ssh→證偽器自我檢驗。清單與
         # ops/tests/test_ops_ci_coverage.sh 開頭那段註解是同一份，改一邊要改兩邊。
-        run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3 python3 openssh-client
+        run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3 python3 openssh-client zsh
       - name: Assert every group is classified
         run: ./ops/tests/test_ops_ci_coverage.sh
       - name: Run platform-independent ops groups
