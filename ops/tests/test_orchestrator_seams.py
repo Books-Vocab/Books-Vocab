@@ -136,7 +136,7 @@ def test_legacy_collector_matches_split_behavior_collection():
 def test_route_manifest_has_explicit_selectors_and_negative_control():
     manifest = ROUTES.route_manifest()
     assert manifest["schema"] == "kg.test.route.v1"
-    assert len(manifest["routes"]) == 8
+    assert len(manifest["routes"]) == 9
     for route in manifest["routes"]:
         assert route["route_id"]
         assert route["source_patterns"]
@@ -153,6 +153,21 @@ def test_route_manifest_has_explicit_selectors_and_negative_control():
     assert ROUTES.resolve_routes(["ops/test_route.py"])["fallback"] is True
     assert ROUTES.resolve_routes(["ops/lib/worktree_gate_tiers.py"])["fallback"] is False
     assert ROUTES.resolve_routes(["ops/tests/worktree_orchestrate_support.py"])["fallback"] is False
+
+
+def test_campaign_and_registry_sources_have_an_explicit_core_route():
+    payload = ROUTES.resolve_routes([
+        "ops/lib/worktree_campaign.py",
+        "ops/worktree_registry.py",
+        "ops/tests/test_worktree_campaign_reservation.py",
+    ])
+    assert payload["fallback"] is False
+    route_ids = {route["route_id"] for route in payload["routes"]}
+    assert route_ids == {"orchestrator.campaign-registry"}
+    route = payload["routes"][0]
+    assert "ops/tests/test_worktree_campaign_reservation.py" in route["selectors"]
+    assert "ops/tests/test_worktree_registry.py" not in route["selectors"]
+    assert "ops/tests/test_worktree_registry_lifecycle.py" in route["selectors"]
 
 
 def test_control_plane_and_kg_board_sources_have_explicit_focused_routes():
