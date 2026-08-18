@@ -92,6 +92,16 @@ async function copyValue(value,button){
   window.setTimeout(()=>{if(button.isConnected){button.textContent=original;button.dataset.copyState="";}},1200);
   return copied;
 }
+function bindCopyButtons(root=document){
+  root.querySelectorAll(".copy-button").forEach(button=>{
+    if(button.dataset.copyBound==="true")return;
+    button.dataset.copyBound="true";
+    button.addEventListener("click",event=>{
+      event.stopPropagation();
+      copyValue(button.dataset.copyValue,button);
+    });
+  });
+}
 function renderScopeControls(){
   const zoom=document.getElementById("scope-zoom"),zoomOutput=document.getElementById("scope-zoom-value");
   const density=document.getElementById("scope-density"),densityOutput=document.getElementById("scope-density-value");
@@ -156,6 +166,7 @@ function renderScopeMatrix(){
     }).join("")}</tr>`;
   }).join("");
   mount.innerHTML=`<table class="scope-matrix"><thead><tr class="scope-agent-row"><th scope="col" class="scope-agent-label">Agent / thread</th>${agentHeaders}</tr><tr class="scope-worktree-row"><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
+  bindCopyButtons(mount);
   applyScopeGeometry(mount);
   const unknownWorktrees=scopeMatrix.unknown_worktree_ids||[],unknownTickets=scopeMatrix.unknown_ticket_ids||[];
   const unknownParts=[];
@@ -473,18 +484,13 @@ function treeLayout(viewport,visibleCommits){
   });
   return {branchLanes,positions,ordered,minRank,maxRank,rowCount:maxRank-minRank+1};
 }
-function routeCrossLaneEdge(from,to,x,y,routeIndex=0,routeCount=1){
+function routeCrossLaneEdge(from,to,x,y){
   const startX=x(from.lane),startY=y(from.row),endX=x(to.lane),endY=y(to.row);
-  const railSpacing=Math.min(8,TREE_ROW_HEIGHT*.18);
-  const railOffset=(routeIndex-(routeCount-1)/2)*railSpacing;
-  // Both control points share one private middle rail. Edges in the same row
-  // band receive separate rails; different bands naturally use different
-  // midpoints, so unrelated parents do not inherit the same control path.
-  const railY=(startY+endY)/2+railOffset;
-  const control1Y=railY;
-  const control2Y=railY;
-  const dx=endX-startX;
-  return `M ${startX} ${startY} C ${startX+dx*.28} ${control1Y} ${endX-dx*.28} ${control2Y} ${endX} ${endY}`;
+  // Draw from the parent endpoint outward to the child lane, then turn up at
+  // that lane. The visible fork therefore reaches the lane edge before it
+  // rises to the branch commit; there is no midpoint rail or curve to read as
+  // a separate lane.
+  return `M ${endX} ${endY} H ${startX} V ${startY}`;
 }
 function edgePath(from,to,x,y,routeIndex=0,routeCount=1){
   if(from.lane===to.lane)return `M ${x(from.lane)} ${y(from.row)} V ${y(to.row)}`;
@@ -505,19 +511,22 @@ function commitInspector(row,ref){
     </dl>
     <ul class="file-list">${files}</ul>`;
 }
-function commitHoverMarkup(row,ref){
+function commitHoverMarkup(row,ref,meta={}){
   const files=row.files||[];
   const fileMarkup=files.length?`<ul class="hover-files">${files.map(file=>`<li><code>${esc(file)}</code></li>`).join("")}</ul>`:`<p class="hover-muted">來源未提供檔案清單。</p>`;
+  const hiddenParentCount=Number.isInteger(meta.hiddenParentCount)?meta.hiddenParentCount:0;
+  const hiddenParentMarkup=hiddenParentCount?`<dt>折疊歷史</dt><dd>merge 側枝 ${hiddenParentCount} 條在 bounded window 外；不是額外 commit。</dd>`:"";
   return `<span class="eyebrow">COMMIT DETAIL</span>
-    <h3>${esc(shortSha(row.sha))} · ${esc(row.subject)}</h3>
+    <h3>${esc(shortSha(row.sha))} · ${esc(row.subject)} ${copyButton(row.subject,"複製 commit 名稱")}</h3>
     <p class="hover-subject">${esc(row.subject)}</p>
     <dl class="detail-grid">
-      <dt>完整 SHA</dt><dd><code>${esc(row.sha)}</code></dd>
+      <dt>完整 SHA</dt><dd><code>${esc(row.sha)}</code>${copyButton(row.sha,"複製 SHA")}</dd>
       <dt>Author</dt><dd>${esc(row.author||"—")}</dd>
       <dt>Committed</dt><dd>${esc(row.committed_at||"—")}</dd>
       <dt>Parent</dt><dd><code>${esc((row.parents||[]).map(shortSha).join(", ")||"root")}</code></dd>
       <dt>Branch</dt><dd><code>${esc((row.refs||[]).join(", ")||ref?.branch||"—")}</code></dd>
       <dt>Diff stat</dt><dd>${esc(formatDiffStat(row))}</dd>
+      ${hiddenParentMarkup}
       <dt>Files</dt><dd>${files.length}</dd>
     </dl>${fileMarkup}`;
 }
@@ -525,10 +534,10 @@ function branchHoverMarkup(ref,stateOverride){
   const tickets=ref.tickets||[];
   const ticketMarkup=tickets.length?`<ul class="hover-files">${tickets.map(ticket=>`<li><code>${esc(ticket.id)}</code>${ticket.brief?` · ${esc(ticket.brief)}`:""}</li>`).join("")}</ul>`:`<p class="hover-muted">目前沒有掛載票據。</p>`;
   return `<span class="eyebrow">BRANCH / WORKTREE</span>
-    <h3>${esc(ref.branch)}</h3>
+    <h3>${esc(ref.branch)} ${copyButton(ref.branch,"複製 worktree 名稱")}</h3>
     <dl class="detail-grid">
       <dt>State</dt><dd>${esc(stateOverride||treeStateOf(ref))}</dd>
-      <dt>Worktree</dt><dd><code>${esc(ref.path||"未提供")}</code></dd>
+      <dt>Worktree</dt><dd><code>${esc(ref.path||"未提供")}</code>${ref.path?copyButton(ref.path,"複製路徑"):""}</dd>
       <dt>Host</dt><dd>${esc(ref.host||"未提供")}</dd>
       <dt>Base</dt><dd><code>${esc(ref.base||"—")}${ref.base_sha?` · ${esc(shortSha(ref.base_sha))}`:""}</code></dd>
       <dt>Head</dt><dd><code>${esc(ref.head||"—")}</code></dd>
@@ -543,7 +552,7 @@ function boundaryHoverMarkup(detail){
     <p>目前圖面是 bounded view；這個標記代表 parent 或中間歷史留在視窗外，並非資料遺失。</p>`;
 }
 function treeHoverMarkup(kind,data){
-  if(kind==="commit")return commitHoverMarkup(data.row,data.ref);
+  if(kind==="commit")return commitHoverMarkup(data.row,data.ref,data);
   if(kind==="branch")return branchHoverMarkup(data.ref,data.state);
   return boundaryHoverMarkup(data.detail);
 }
@@ -563,12 +572,37 @@ function positionTreeHover(node){
 function showTreeHover(kind,data,node){
   const card=document.getElementById("tree-hover-card");
   if(!card)return;
+  bindTreeHoverCard();
+  clearTreeHoverHide();
   card.innerHTML=treeHoverMarkup(kind,data);
   card.dataset.kind=kind;
   card.hidden=false;
+  bindCopyButtons(card);
   requestAnimationFrame(()=>positionTreeHover(node));
 }
+function clearTreeHoverHide(){
+  if(treeHoverHideTimer!==null){window.clearTimeout(treeHoverHideTimer);treeHoverHideTimer=null;}
+}
+function scheduleTreeHoverHide(){
+  clearTreeHoverHide();
+  treeHoverHideTimer=window.setTimeout(()=>{
+    treeHoverHideTimer=null;
+    const card=document.getElementById("tree-hover-card");
+    if(card?.matches(":hover")||card?.contains(document.activeElement))return;
+    hideTreeHover();
+  },180);
+}
+function bindTreeHoverCard(){
+  const card=document.getElementById("tree-hover-card");
+  if(!card||card.dataset.hoverBound==="true")return;
+  card.dataset.hoverBound="true";
+  card.addEventListener("mouseenter",clearTreeHoverHide);
+  card.addEventListener("mouseleave",scheduleTreeHoverHide);
+  card.addEventListener("focusin",clearTreeHoverHide);
+  card.addEventListener("focusout",scheduleTreeHoverHide);
+}
 function hideTreeHover(){
+  clearTreeHoverHide();
   const card=document.getElementById("tree-hover-card");
   if(!card)return;
   card.hidden=true;
@@ -578,17 +612,17 @@ function hideTreeHover(){
 function bindTreeHover(node,kind,data){
   const show=()=>showTreeHover(kind,data,node);
   node.addEventListener("mouseenter",show);
-  node.addEventListener("mouseleave",hideTreeHover);
+  node.addEventListener("mouseleave",scheduleTreeHoverHide);
   node.addEventListener("focus",show);
-  node.addEventListener("blur",hideTreeHover);
+  node.addEventListener("blur",scheduleTreeHoverHide);
   node.addEventListener("click",show);
   node.addEventListener("keydown",event=>{
     if(event.key==="Enter"||event.key===" "){event.preventDefault();show()}
   });
 }
-function bindCommitNode(node,row,ref){
+function bindCommitNode(node,row,ref,meta={}){
   if(!row)return;
-  bindTreeHover(node,"commit",{row,ref});
+  bindTreeHover(node,"commit",{row,ref,...meta});
   const inspect=()=>commitInspector(row,ref);
   node.addEventListener("mouseenter",inspect);
   node.addEventListener("focus",inspect);
@@ -600,9 +634,11 @@ function bindBranchNode(node,ref,stateOverride){
 }
 function bindRenderedTreeNodes(mount,context){
   if(!mount||!context)return;
-  const {commits,refs,viewport}=context;
+  const {commits,refs,viewport,positions}=context;
   mount.querySelectorAll(".commit").forEach(node=>{
-    bindCommitNode(node,commits.get(node.dataset.sha),refs.find(ref=>ref.branch===node.dataset.ref));
+    const row=commits.get(node.dataset.sha);
+    const hiddenParentCount=(row?.parents||[]).slice(1).filter(parentSha=>!positions?.has(parentSha)).length;
+    bindCommitNode(node,row,refs.find(ref=>ref.branch===node.dataset.ref),{hiddenParentCount});
   });
   mount.querySelectorAll(".lane-header").forEach(node=>{
     const ref=refs.find(item=>item.branch===node.dataset.branch);
@@ -644,7 +680,12 @@ function fullscreenSvgSize(svg){
 }
 function applyTreeFullscreenTransform(){
   const svg=fullscreenSvg();if(!svg)return;
-  svg.style.transform=`translate3d(${Math.round(treeFullscreen.x)}px,${Math.round(treeFullscreen.y)}px,0) scale(${treeFullscreen.scale})`;
+  const {width,height}=fullscreenSvgSize(svg);
+  svg.style.width=`${Math.max(1,Math.round(width*treeFullscreen.scale))}px`;
+  svg.style.height=`${Math.max(1,Math.round(height*treeFullscreen.scale))}px`;
+  svg.style.left=`${Math.round(treeFullscreen.x)}px`;
+  svg.style.top=`${Math.round(treeFullscreen.y)}px`;
+  svg.style.transform="none";
   const output=document.getElementById("tree-fullscreen-zoom");
   if(output)output.textContent=`${Math.round(treeFullscreen.scale*100)}%`;
 }
@@ -796,10 +837,11 @@ function renderTree(){
   const commits=new Map(tree.commits.map(row=>[row.sha,row]));
   const refs=tree.refs||[];
   const viewport=treeViewport(tree,commits,refs);
-  treeRenderContext={commits,refs,viewport};
+  treeRenderContext={commits,refs,viewport,positions:null};
   const visibleCommits=new Map(viewport.commits.map(row=>[row.sha,row]));
   const layout=treeLayout(viewport,visibleCommits);
   const {branchLanes,positions,ordered}=layout;
+  treeRenderContext.positions=positions;
   const maxLane=Math.max(0,...branchLanes.values());
   const width=Math.max(680,TREE_PADDING_X*2+(maxLane+1)*treeLaneWidth);
   treeBaseWidth=width;
@@ -815,27 +857,20 @@ function renderTree(){
       if(to)graphEdges.push({from,to});
     });
   });
-  const crossLaneEdges=graphEdges.filter(edge=>edge.from.lane!==edge.to.lane);
-  const routeRailGroups=new Map();
-  crossLaneEdges.forEach(edge=>{
-    const key=`${Math.min(edge.from.row,edge.to.row)}:${Math.max(edge.from.row,edge.to.row)}`;
-    if(!routeRailGroups.has(key))routeRailGroups.set(key,[]);
-    routeRailGroups.get(key).push(edge);
-  });
-  const routeRailByEdge=new Map();
-  routeRailGroups.forEach(group=>group.forEach((edge,index)=>routeRailByEdge.set(edge,{index,count:group.length})));
   const edges=graphEdges.map(edge=>{
-    const route=routeRailByEdge.get(edge);
-    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y,route?.index??0,route?.count??1)}"/>`;
+    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y)}"/>`;
   });
   const branchBoundaryByFrom=new Map([...viewport.branchTruncations.values()].map(record=>[record.from,record]));
-  const parentBoundaryMarkers=ordered.map(row=>{
-    const pos=positions.get(row.sha);
-    const missingParents=(row.parents||[]).filter(parentSha=>!positions.has(parentSha));
-    if(!pos||!missingParents.length)return "";
-    const branchBoundary=branchBoundaryByFrom.get(row.sha);
-    const label=branchBoundary?"此分支中間歷史已省略":"此 commit 的 parent 在目前圖面外";
-    const detail=missingParents.length>1?`${label}（${missingParents.length} 個 parent）`:label;
+  const boundaryByLane=new Map();
+  ordered.forEach(row=>{
+    const pos=positions.get(row.sha),firstParent=row.parents?.[0];
+    if(!pos||!firstParent||positions.has(firstParent))return;
+    const previous=boundaryByLane.get(pos.lane);
+    if(!previous||pos.row>previous.pos.row)boundaryByLane.set(pos.lane,{row,pos,branchBoundary:branchBoundaryByFrom.get(row.sha)});
+  });
+  const parentBoundaryMarkers=[...boundaryByLane.values()].sort((left,right)=>left.pos.row-right.pos.row||left.pos.lane-right.pos.lane).map(({row,pos,branchBoundary})=>{
+    const label=branchBoundary?"此分支中間歷史已省略":"主線歷史在 bounded window 結束";
+    const detail=`${label}；first parent 不在目前圖面外`;
     const markerY=y(pos.row)+Math.round(TREE_ROW_HEIGHT*.48);
     return `<g class="tree-boundary" tabindex="0" role="img" aria-label="${esc(detail)}" data-boundary-detail="${esc(detail)}"><path class="edge edge-parent-missing${branchBoundary?" edge-truncated":""}" d="M ${x(pos.lane)} ${y(pos.row)} V ${markerY}"><title>${detail}</title></path><circle class="tree-parent-endpoint" cx="${x(pos.lane)}" cy="${markerY}" r="4"><title>${detail}</title></circle><text class="tree-truncation" x="${x(pos.lane)+7}" y="${markerY+4}" aria-hidden="true">⋯</text></g>`;
   }).join("");

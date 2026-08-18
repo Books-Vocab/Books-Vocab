@@ -428,10 +428,12 @@ def test_git_tree_browser_separates_branch_labels_and_uses_ranked_orthogonal_lay
 def test_git_tree_browser_marks_parents_outside_the_bounded_viewport():
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert "parent-missing" in js
+    assert "firstParent" in js
+    assert "positions.has(firstParent)" in js
     assert "tree-parent-endpoint" in js
-    assert "此 commit 的 parent 在目前圖面外" in js
-    assert "parentSha" in js
+    assert "merge 側枝" in js
+    assert "hiddenParentCount" in js
+    assert "parentSha" not in js[js.index("const parentBoundaryMarkers"):js.index("const laneGuides")]
 
 
 def test_board_reactive_worktree_status_and_copyable_hover_contract():
@@ -507,16 +509,12 @@ def test_git_tree_browser_routes_cross_lane_edges_without_shared_horizontal_buse
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
     assert "routeCrossLaneEdge" in js
-    assert "routeIndex" in js
-    assert "H ${x(to.lane)}" not in js
-    assert "C ${" in js
-    assert "const crossLaneEdges=graphEdges.filter" in js
-    assert "const routeRailGroups=new Map" in js
-    assert "const routeRailByEdge=new Map" in js
-    assert "routeRailByEdge.get(edge)" in js
-    assert "const railY=(startY+endY)/2" in js
-    assert "const control1Y=railY" in js
-    assert "const control2Y=railY" in js
+    assert "return `M ${endX} ${endY} H ${startX} V ${startY}`" in js
+    assert "V ${startY}" in js
+    assert "H ${startX}" in js
+    assert " C ${" not in js
+    assert "routeRailGroups" not in js
+    assert "routeRailByEdge" not in js
     assert "routeGroups" not in js
 
 
