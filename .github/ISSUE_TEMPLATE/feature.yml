@@ -26,7 +26,7 @@ body:
     id: scope
     attributes:
       label: Suggested scope
-      description: Name affected surfaces or constraints; do not prescribe an internal backlog lifecycle.
+      description: Name affected surfaces or constraints; do not prescribe a local tracking lifecycle.
     validations:
       required: true
   - type: textarea

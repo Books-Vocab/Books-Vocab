@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """Validate and expand the four-cluster iOS UI review orchestration manifest."""
 
 from __future__ import annotations

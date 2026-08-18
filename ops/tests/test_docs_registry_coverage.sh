@@ -121,7 +121,7 @@ scope:
   - docs/
 verified_against: HEAD
 -->
-# Backlog Plan
+# Historical plan
 MD
 
 if ./ops/docs_registry_coverage.py --root "$fixture_root" --registry docs/registry.yml --strict >"$tmpdir/fixture_strict_fail.out" 2>&1; then

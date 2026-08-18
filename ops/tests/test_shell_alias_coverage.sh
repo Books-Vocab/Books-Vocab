@@ -184,7 +184,7 @@ grep -q "KG_MARKER_NEVER_PRESENT" s.sh'
   chk $? "A13 test_ops.sh DEFAULT_TESTS 註冊 alias-coverage"
   grep -qF './ops/tests/test_shell_alias_coverage.sh --self-test' "$ROOT/ops/test_ops.sh"
   chk $? "A14 test_ops.sh 以 ./ 呼叫本器械並帶 --self-test"
-  awk '/^LINUX_GROUPS=\(/,/^\)$/' "$ROOT/ops/tests/test_ops_ci_coverage.sh" | grep -qx '  alias-coverage'
+  awk '/^LINUX_GROUPS=\(/,/^\)$/' "$ROOT/ops/tests/test_ops_ci_coverage.sh" | grep -Eq '(^|[[:space:]])alias-coverage([[:space:]]|$)'
   chk $? "A15 alias-coverage 已歸類為 CI-runnable"
   grep -qF 'alias-coverage' "$ROOT/docs/reference/tech_index.md"
   chk $? "A16 tech_index 收錄 alias-coverage group"

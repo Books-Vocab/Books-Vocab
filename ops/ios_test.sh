@@ -378,6 +378,8 @@ source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"
 source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
 # shellcheck source=lib/signal_traps.sh
 source "$SCRIPT_DIR/lib/signal_traps.sh"
+# shellcheck source=lib/project_python.sh
+source "$SCRIPT_DIR/lib/project_python.sh"
 # shellcheck source=lib/fixture_dataset_env.sh
 source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"
 # shellcheck source=lib/ios_xctestrun_cache.sh

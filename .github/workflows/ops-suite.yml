@@ -8,12 +8,10 @@ on:
   push:
     paths: &ops_paths
       - 'ops/**'
-      # repo-root 腳本。`devops.sh` 是生產部署命令，`ops/test_devops.sh` 測的就是它——
-      # 少了這一行，測試改動會觸發 workflow，被測的那支腳本改動卻不會（IMP-0052）。
+      # Include repo-root scripts whose behavior is covered by the ops regression suite.
       - 'devops.sh'
       - 'start.sh'
-      # ops/ 之外的腳本也進 shell gate（IMP-0057）。這些路徑沒有共同前綴，
-      # 只能逐條列；由 test_the_workflow_triggers_on_every_routed_script_outside_ops 釘住。
+      # These paths have no shared prefix, so keep them explicit and test the list.
       - 'backend/restart_kg.sh'
       - 'backend/view_logs.sh'
       - 'lab/podcast/start.sh'
