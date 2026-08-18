@@ -4,12 +4,16 @@
   const LIMITS={
     reloadDelayMs:25,
     reloadMaxWaitMs:250,
-    eventBudgetMs:900,
-    loadDeadlineMs:650,
-    fallbackBaseDelayMs:200,
-    fallbackMaxDelayMs:700,
-    fallbackJitterMs:50,
-    fallbackRequestBudgetMs:200,
+    // The board payloads are intentionally rich: on the live felix instance
+    // the three parallel snapshots take several seconds and can be multiple
+    // megabytes. Keep the timeout as a hung-request guard, not a sub-second
+    // latency target.
+    eventBudgetMs:15000,
+    loadDeadlineMs:15000,
+    fallbackBaseDelayMs:1000,
+    fallbackMaxDelayMs:5000,
+    fallbackJitterMs:250,
+    fallbackRequestBudgetMs:15000,
   };
 
   function createLiveRefreshController(options){
@@ -22,7 +26,7 @@
     const enqueue=options.enqueue||((callback)=>queueMicrotask(callback));
     const locks=options.locks===undefined?root.navigator?.locks:options.locks;
     let active=null;
-    let pendingDeadlineAt=null;
+    let pendingRequest=false;
     let reloadTimer=null;
     let reloadMaxTimer=null;
     let reloadDeadlineAt=null;
@@ -36,7 +40,7 @@
     }
 
     function startLoad(deadlineAt){
-      const state={controller:new AbortController(),superseded:false,timer:null,promise:null};
+      const state={controller:new AbortController(),timer:null,promise:null};
       active=state;
       const budget=deadlineAt===null?LIMITS.loadDeadlineMs:Math.max(1,deadlineAt-now());
       state.timer=setTimer(()=>state.controller.abort(),budget);
@@ -44,27 +48,20 @@
         signal:state.controller.signal,
         deadlineAt,
         budget,
-      })).catch(error=>{
-        if(state.superseded&&error?.name==="AbortError")return;
-        throw error;
-      }).finally(()=>{
+      })).finally(()=>{
         clearTimer(state.timer);
         if(active!==state)return;
         active=null;
-        const nextDeadlineAt=pendingDeadlineAt;
-        pendingDeadlineAt=null;
-        if(nextDeadlineAt!==null)enqueue(()=>report(requestLoad(nextDeadlineAt)));
+        const shouldReload=pendingRequest;
+        pendingRequest=false;
+        if(shouldReload)enqueue(()=>report(requestLoad()));
       });
       return state.promise;
     }
 
     function requestLoad(deadlineAt=null){
       if(active){
-        if(deadlineAt!==null){
-          pendingDeadlineAt=deadlineAt;
-          active.superseded=true;
-          active.controller.abort();
-        }
+        if(deadlineAt!==null)pendingRequest=true;
         return active.promise;
       }
       return startLoad(deadlineAt);

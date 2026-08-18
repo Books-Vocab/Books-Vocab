@@ -290,14 +290,14 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'const LIMITS={' in live
     assert 'reloadDelayMs:25' in live
     assert 'reloadMaxWaitMs:250' in live
-    assert 'eventBudgetMs:900' in live
-    assert 'loadDeadlineMs:650' in live
-    assert 'fallbackRequestBudgetMs:200' in live
-    assert 'fallbackBaseDelayMs:200' in live
-    assert 'fallbackMaxDelayMs:700' in live
-    assert 'fallbackJitterMs:50' in live
+    assert 'eventBudgetMs:15000' in live
+    assert 'loadDeadlineMs:15000' in live
+    assert 'fallbackRequestBudgetMs:15000' in live
+    assert 'fallbackBaseDelayMs:1000' in live
+    assert 'fallbackMaxDelayMs:5000' in live
+    assert 'fallbackJitterMs:250' in live
     assert 'AbortController' in live
-    assert 'pendingDeadlineAt' in live
+    assert 'pendingRequest' in live
     assert 'locks.request' in live
     assert 'Math.random()' not in js
     assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in js
@@ -305,7 +305,7 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert bootstrap.index("connectLiveEvents();") < bootstrap.index("liveRefresh.loadInitial().catch(showLoadError);")
 
 
-def test_live_refresh_controller_enforces_one_budget_across_superseded_loads():
+def test_live_refresh_controller_queues_refresh_without_cancelling_slow_loads():
     script = r'''
 import {createRequire} from "node:module";
 const require = createRequire(import.meta.url);
@@ -361,17 +361,19 @@ const controller = live.createLiveRefreshController({
 controller.loadInitial().catch(() => {});
 controller.scheduleLiveReload();
 await advance(25);
-if (loads.length !== 2) throw new Error(`expected one superseded load, got ${loads.length}`);
-if (loads[0].abortedAt !== 25) throw new Error(`old load was not cancelled at event flush: ${loads[0].abortedAt}`);
-if (loads[1].startedAt !== 25 || loads[1].deadlineAt !== 900 || loads[1].budget !== 875) {
-  throw new Error(`live deadline was not carried across reload: ${JSON.stringify(loads)}`);
+if (loads.length !== 1 || loads[0].abortedAt !== null) {
+  throw new Error(`live refresh cancelled the slow initial load: ${JSON.stringify(loads)}`);
 }
-await advance(874);
-if (loads[1].abortedAt !== null) throw new Error("live request expired before its event deadline");
-await advance(1);
-if (loads[1].abortedAt !== 900) throw new Error(`live request exceeded its event deadline: ${loads[1].abortedAt}`);
-if (live.limits.fallbackMaxDelayMs + live.limits.fallbackJitterMs + live.limits.fallbackRequestBudgetMs >= 1000) {
-  throw new Error("fallback wait plus request budget is not strictly subsecond");
+    if (loads[0].startedAt !== 25 || loads[0].deadlineAt !== null || loads[0].budget !== 15000) {
+      throw new Error(`initial load did not receive the long-payload budget: ${JSON.stringify(loads)}`);
+    }
+    await advance(14974);
+    if (loads[0].abortedAt !== null) throw new Error("initial request expired before its long-payload deadline");
+    await advance(1);
+    if (loads[0].abortedAt !== 15000) throw new Error(`initial load exceeded its deadline: ${loads[0].abortedAt}`);
+    await settle();
+    if (loads.length !== 2 || loads[1].startedAt !== 15000 || loads[1].deadlineAt !== null || loads[1].budget !== 15000) {
+  throw new Error(`queued live refresh did not start with a fresh budget: ${JSON.stringify(loads)}`);
 }
 now = 0;
 timers.clear();
@@ -387,14 +389,10 @@ const fallback = live.createLiveRefreshController({
   locks: null,
 });
 fallback.scheduleLiveFallback();
-await advance(200);
-if (loads.length !== 1 || loads[0].startedAt !== 200 || loads[0].deadlineAt !== 400 || loads[0].budget !== 200) {
-  throw new Error(`fallback did not reserve the remaining request budget: ${JSON.stringify(loads)}`);
+await advance(1000);
+if (loads.length !== 1 || loads[0].abortedAt !== null) {
+  throw new Error(`fallback cancelled the active slow load: ${JSON.stringify(loads)}`);
 }
-await advance(200);
-if (loads[0].abortedAt !== 400) throw new Error(`fallback request exceeded its 200ms budget: ${loads[0].abortedAt}`);
-const nextFallbackAt = [...timers.values()].map(timer => timer.at).sort((left, right) => left - right)[0];
-if (nextFallbackAt !== 800) throw new Error(`fallback backoff did not advance to 400ms: ${nextFallbackAt}`);
 now = 0;
 timers.clear();
 loads.length = 0;
@@ -410,9 +408,9 @@ const activeFallback = live.createLiveRefreshController({
 });
 activeFallback.loadInitial().catch(() => {});
 activeFallback.scheduleLiveFallback();
-await advance(200);
-if (loads.length !== 2 || loads[0].abortedAt !== 200 || loads[1].deadlineAt !== 400) {
-  throw new Error(`fallback did not replace an in-flight load: ${JSON.stringify(loads)}`);
+await advance(1000);
+if (loads.length !== 1 || loads[0].abortedAt !== null) {
+  throw new Error(`fallback replaced an in-flight load: ${JSON.stringify(loads)}`);
 }
 process.stdout.write(JSON.stringify({loads, limits: live.limits, errors}));
 '''
@@ -424,8 +422,8 @@ process.stdout.write(JSON.stringify({loads, limits: live.limits, errors}));
     )
     assert result.returncode == 0, result.stderr or result.stdout
     payload = json.loads(result.stdout)
-    assert payload["loads"][0]["abortedAt"] == 200
-    assert payload["limits"]["eventBudgetMs"] == 900
+    assert payload["loads"][0]["abortedAt"] is None
+    assert payload["limits"]["eventBudgetMs"] == 15000
 
 
 def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):

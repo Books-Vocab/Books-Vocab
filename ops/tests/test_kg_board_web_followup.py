@@ -109,9 +109,9 @@ def test_matrix_keeps_agent_identity_dirty_sources_and_live_snapshot_reload():
         assert f'"{field}"' in APP
     assert 'liveEvents.addEventListener("snapshot",()=>liveRefresh.scheduleLiveReload())' in APP
     for marker in (
-        'reloadDelayMs:25', 'reloadMaxWaitMs:250', 'eventBudgetMs:900',
-        'loadDeadlineMs:650', 'fallbackRequestBudgetMs:200',
-        'fallbackMaxDelayMs:700', 'pendingDeadlineAt', 'AbortController',
+        'reloadDelayMs:25', 'reloadMaxWaitMs:250', 'eventBudgetMs:15000',
+        'loadDeadlineMs:15000', 'fallbackRequestBudgetMs:15000',
+        'fallbackMaxDelayMs:5000', 'pendingRequest', 'AbortController',
         'locks.request',
     ):
         assert marker in LIVE
