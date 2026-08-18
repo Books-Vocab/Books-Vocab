@@ -422,19 +422,6 @@ def _executed_gate_count(results: list[dict[str, Any]]) -> int:
     )
 
 
-def _gate_log_path(record_path: Path, gate_name: str) -> Path:
-    """Where a FAILED gate's captured output is kept — beside its verdict record.
-
-    One file per (worktree, gate), named off the record so the pair is obvious on
-    disk and `resolve` can strike both with one glob. Gate names carry `:` and `/`
-    (`ops-shell:test_devops.sh`, `data-plane:ops/tests/test_lint_baselines.sh`), so
-    anything outside a conservative set folds to `_`: this is a filename, not an
-    identifier, and the record next to it holds the exact name.
-    """
-    slug = re.sub(r"[^A-Za-z0-9._-]", "_", gate_name)
-    return record_path.parent / f"{record_path.stem}.{slug}.log"
-
-
 # Lines worth lifting out of a failed gate's output. Deliberately broad: these gates
 # are a zoo — shell harnesses printing `✗`, pytest, TAP producers, bash's own
 # `error:` — and a marker set narrow enough to look tidy is one that goes silent for
