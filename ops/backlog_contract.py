@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Callable, Iterable
 
+from kg_board.scope import scope_problems
+
 
 def site_paths(fix_site: str) -> list[str]:
     """Extract conservative repository-relative anchors from ``fix_site``."""
@@ -43,6 +45,32 @@ def command_paths(command: str) -> list[str]:
     return paths
 
 
+def _scope_operations(payload: dict) -> dict[str, str]:
+    """Return declared path operations, or no exemptions for malformed scope."""
+    scope = payload.get("scope")
+    if scope_problems(scope):
+        return {}
+    if not isinstance(scope, dict):
+        return {}
+    files = scope.get("files")
+    if not isinstance(files, list):
+        return {}
+    operations: dict[str, str] = {}
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        operation = item.get("operation")
+        if isinstance(path, str) and isinstance(operation, str):
+            normalized = path.strip().removeprefix("./")
+            if normalized:
+                if normalized in operations:
+                    operations[normalized] = ""
+                else:
+                    operations[normalized] = operation.strip()
+    return operations
+
+
 def preflight(
     payload: dict,
     *,
@@ -65,6 +93,7 @@ def preflight(
         return []
 
     problems: list[dict] = []
+    scope_operations = _scope_operations(payload)
     if payload.get("contract_status") != "ready":
         problems.append({"kind": "contract-evidence-missing",
                          "reason": "contract_status is not ready"})
@@ -83,7 +112,10 @@ def preflight(
         problems.append({"kind": "fix-site-missing"})
     else:
         for rel in site_paths(fix_site):
-            if any(ch in rel for ch in "{}[]*$") or not (root / rel).exists():
+            normalized = rel.removeprefix("./")
+            if any(ch in rel for ch in "{}[]*$") \
+                    or (not (root / normalized).exists()
+                        and scope_operations.get(normalized) != "add"):
                 problems.append({"kind": "fix-site-missing", "path": rel})
 
     command = str(payload.get("acceptance_cmd") or "").strip()
@@ -92,7 +124,10 @@ def preflight(
                          "reason": "acceptance_cmd is empty"})
     else:
         for rel in command_paths(command):
-            if any(ch in rel for ch in "{}[]*$") or not (root / rel).exists():
+            normalized = rel.removeprefix("./")
+            if any(ch in rel for ch in "{}[]*$") \
+                    or (not (root / normalized).exists()
+                        and scope_operations.get(normalized) != "add"):
                 problems.append({"kind": "acceptance-dependency-missing", "path": rel})
     return problems
 
