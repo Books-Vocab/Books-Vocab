@@ -1,7 +1,6 @@
 {
-  "acceptance": "RED: the current seam-size test remains blocked at 451 lines. GREEN: a responsibility-preserving seam refactor or evidence-backed contract correction makes the targeted seam test pass, with no cosmetic line deletion and the full orchestrator seam tests green.",
+  "acceptance": "RED: the current seam-size test remains blocked at 451 lines. GREEN: a responsibility-preserving seam refactor makes the targeted seam test pass, with no cosmetic line deletion and the full orchestrator seam tests green.",
   "acceptance_cmd": "test \"$(wc -l < ops/lib/worktree_orchestrator_core_gate_inputs.py)\" -le 450 && PYTHONDONTWRITEBYTECODE=1 uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_orchestrator_seams.py",
-  "acceptance_expect_rc": 0,
   "brief": "The core Gate input seam is one line over its structural size budget and blocks unrelated delivery work.",
   "category": "tool",
   "contract_baseline": "red",
@@ -11,12 +10,12 @@
   "contract_status": "ready",
   "date": "2026-08-18",
   "detail": "Current main has an unchanged 451-line ops/lib/worktree_orchestrator_core_gate_inputs.py while ops/tests/test_orchestrator_seams.py enforces a 450-line ceiling. The overflow is an existing explanatory comment line from the seam-split commit, not a P1 selector-routing change. The correct follow-up is to decide whether to extract a coherent responsibility or revise the structural contract with evidence; do not delete comments only to make the count green.",
-  "fix_site": "ops/lib/worktree_orchestrator_core_gate_inputs.py; ops/tests/test_orchestrator_seams.py",
-  "groomed_against": "9bf23b2be85664f8986af6ef1b58a7bd187cc5b5",
+  "fix_site": "ops/lib/worktree_orchestrator_core_gate_inputs.py; ops/lib/worktree_orchestrator_core_gate_execution.py; ops/tests/test_orchestrator_seams.py",
+  "groomed_against": "b2b5e5f122842eb105c812fbf04a606beaaf76a2",
   "groomed_at": "2026-08-18",
-  "groomed_by": "manager-baseline-audit",
+  "groomed_by": "manager-baseline-refactor",
   "id": "IMP-20260818-cd7195",
-  "plan": "Reproduce the seam-size failure on fresh main, inspect responsibility boundaries and history, then either extract a coherent responsibility into a properly scoped module or revise the threshold test with an explicit rationale and regression coverage. Do not remove comments solely to satisfy the line count. Re-run the targeted seam test, the orchestrator seam suite, and docs impact/lint if the agent-facing contract changes.",
+  "plan": "Reproduce the seam-size failure on fresh main, inspect responsibility boundaries and history, then move the failure-log path policy into the execution seam while preserving the runtime facade name. Re-run the targeted seam test, the orchestrator seam suite, and docs impact/lint if the agent-facing contract changes.",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": {
@@ -24,6 +23,10 @@
       {
         "operation": "modify",
         "path": "ops/lib/worktree_orchestrator_core_gate_inputs.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/lib/worktree_orchestrator_core_gate_execution.py"
       },
       {
         "operation": "modify",
