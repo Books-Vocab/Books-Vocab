@@ -88,6 +88,7 @@ Exit codes: 0 ok | 1 partial failure (sweep --commit) | 64 usage error |
 from __future__ import annotations
 
 import argparse
+import copy
 import fcntl
 import hashlib
 import json
@@ -972,6 +973,102 @@ def _campaign_state(state: dict[str, Any]) -> list[dict[str, Any]]:
     return reservations
 
 
+def _validated_state_dict_list(state: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """Read an optional registry projection fail-closed when its shape drifts."""
+    value = state.get(key, [])
+    if value is None:
+        return []
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise ValueError(f"malformed {key} in registry state")
+    return value
+
+
+def _campaign_reservation_ticket_ids(reservation: dict[str, Any]) -> list[str]:
+    """Validate a reservation projection and return its canonical ticket set."""
+    campaign_id = reservation.get("campaign_id")
+    if not isinstance(campaign_id, str) or not campaign_id:
+        raise ValueError("malformed campaign reservation: campaign_id is required")
+    partitions = reservation.get("partitions")
+    if not isinstance(partitions, dict):
+        raise ValueError(
+            f"malformed campaign reservation {campaign_id}: partitions is invalid"
+        )
+    partition_ticket_ids: list[str] = []
+    for partition_id, raw in partitions.items():
+        if not isinstance(partition_id, str) or not isinstance(raw, dict):
+            raise ValueError(
+                f"malformed campaign reservation {campaign_id}: partition is invalid"
+            )
+        tickets = raw.get("ticket_ids")
+        if not isinstance(tickets, list) or any(
+            not isinstance(ticket, str) or not ticket for ticket in tickets
+        ) or len(set(tickets)) != len(tickets):
+            raise ValueError(
+                f"malformed campaign reservation {campaign_id}: "
+                f"partition {partition_id} ticket_ids is invalid"
+            )
+        if not isinstance(raw.get("claimed", {}), dict):
+            raise ValueError(
+                f"malformed campaign reservation {campaign_id}: "
+                f"partition {partition_id} claimed is invalid"
+            )
+        partition_ticket_ids.extend(tickets)
+    if len(set(partition_ticket_ids)) != len(partition_ticket_ids):
+        raise ValueError(
+            f"malformed campaign reservation {campaign_id}: duplicate partition ticket"
+        )
+    ticket_ids = reservation.get("ticket_ids")
+    if ticket_ids is None:
+        ticket_ids = sorted(partition_ticket_ids)
+    elif (
+        not isinstance(ticket_ids, list)
+        or any(not isinstance(ticket, str) or not ticket for ticket in ticket_ids)
+        or len(set(ticket_ids)) != len(ticket_ids)
+        or set(ticket_ids) != set(partition_ticket_ids)
+    ):
+        raise ValueError(
+            f"malformed campaign reservation {campaign_id}: ticket_ids is invalid"
+        )
+    details = reservation.get("ticket_details")
+    if details is not None and (
+        not isinstance(details, dict)
+        or any(not isinstance(detail, dict) for detail in details.values())
+    ):
+        raise ValueError(
+            f"malformed campaign reservation {campaign_id}: ticket_details is invalid"
+        )
+    return list(ticket_ids)
+
+
+def _campaign_ticket_owners(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Project every live reserved ticket to its campaign owner."""
+    owners: dict[str, dict[str, Any]] = {}
+    for reservation in _validated_state_dict_list(state, "campaign_reservations"):
+        campaign_id = reservation["campaign_id"]
+        ticket_ids = _campaign_reservation_ticket_ids(reservation)
+        for ticket in ticket_ids:
+            owners[ticket] = {
+                "campaign_id": campaign_id,
+                "manifest_path": reservation.get("manifest_path"),
+            }
+    return owners
+
+
+def _campaign_manifest_archive_path(
+    state_path: Path, campaign_id: str, manifest_bytes: bytes,
+) -> Path:
+    """Choose a recoverable, collision-free archive path for one live manifest."""
+    live = wc.campaign_manifest_path(state_path, campaign_id)
+    digest = hashlib.sha256(manifest_bytes).hexdigest()[:12]
+    archive_dir = live.parent / "archive"
+    candidate = archive_dir / f"{campaign_id}-{digest}.json"
+    suffix = 1
+    while candidate.exists():
+        candidate = archive_dir / f"{campaign_id}-{digest}-{suffix}.json"
+        suffix += 1
+    return candidate
+
+
 def _restore_bytes(path: Path, original: bytes | None) -> None:
     if original is None:
         path.unlink(missing_ok=True)
@@ -1102,6 +1199,7 @@ def claim_campaign_ticket(
     *,
     campaign_id: str,
     partition_id: str,
+    ticket_id: str | None = None,
     branch: str,
     path: str,
     intent: str,
@@ -1152,10 +1250,20 @@ def claim_campaign_ticket(
                     "campaign_id": campaign_id, "partition": partition_id}
         ticket_ids = list(partition.get("ticket_ids") or [])
         claimed = partition.setdefault("claimed", {})
-        ticket = next((item for item in ticket_ids if item not in claimed), None)
+        if ticket_id is not None and ticket_id not in ticket_ids:
+            return {"ok": False, "reason": "ticket is not reserved in campaign partition",
+                    "campaign_id": campaign_id, "partition": partition_id,
+                    "ticket": ticket_id}
+        ticket = ticket_id if ticket_id is not None else next(
+            (item for item in ticket_ids if item not in claimed), None,
+        )
         if ticket is None:
             return {"ok": False, "reason": "campaign partition has no remaining reservation",
                     "campaign_id": campaign_id, "partition": partition_id}
+        if ticket in claimed:
+            return {"ok": False, "reason": "campaign ticket is already claimed",
+                    "campaign_id": campaign_id, "partition": partition_id,
+                    "ticket": ticket}
         matches = [
             record for record in state.get("records") or []
             if record.get("status") == STATUS_ACTIVE
@@ -1234,6 +1342,152 @@ def release_campaign_claim(
             return {"ok": True, "campaign_id": campaign_id, "partition": partition_id,
                     "ticket": ticket_id, "released": True}
         return {"ok": False, "reason": "campaign not found"}
+
+
+def abort_campaign(
+    state_path: Path,
+    *,
+    campaign_id: str,
+    reason: str,
+    commit: bool = False,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Abort one unused campaign reservation without erasing child history.
+
+    A reservation is live admission state, not a worktree record.  It may only be
+    removed when no active child or parent owns it, and terminal child records may
+    not already carry a hand-back receipt.  The latter keeps a completed child
+    receipt from being detached from its campaign by an operator cleanup.
+    """
+    state_path = Path(state_path).resolve()
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    reason = str(reason).strip()
+    if not reason:
+        return {"ok": False, "reason": "campaign abort reason is required"}
+    with _ledger_lock(state_path):
+        try:
+            state = load_state(state_path)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "reason": "malformed registry state",
+                    "detail": str(exc), "campaign_id": campaign_id}
+        try:
+            reservations = _validated_state_dict_list(state, "campaign_reservations")
+            records = _validated_state_dict_list(state, "records")
+            parent_reservations = _validated_state_dict_list(state, "parent_reservations")
+            campaign_archives = _validated_state_dict_list(state, "campaign_archives")
+        except ValueError as exc:
+            return {"ok": False, "reason": "malformed registry state", "detail": str(exc),
+                    "campaign_id": campaign_id}
+        reservation = next(
+            (item for item in reservations
+             if isinstance(item, dict) and item.get("campaign_id") == campaign_id),
+            None,
+        )
+        if reservation is None:
+            return {"ok": False, "reason": "campaign not found",
+                    "campaign_id": campaign_id}
+        try:
+            reserved_tickets = set(_campaign_reservation_ticket_ids(reservation))
+        except ValueError as exc:
+            return {"ok": False, "reason": "malformed campaign reservation",
+                    "detail": str(exc), "campaign_id": campaign_id}
+        active_children = [
+            record for record in records
+            if record.get("status") == STATUS_ACTIVE
+            and record.get("campaign_id") == campaign_id
+        ]
+        if active_children:
+            return {"ok": False, "reason": "active campaign child exists",
+                    "campaign_id": campaign_id,
+                    "branches": sorted(str(item.get("branch")) for item in active_children)}
+        foreign_reserved_claims = [
+            record for record in records
+            if record.get("status") == STATUS_ACTIVE
+            and record.get("campaign_id") != campaign_id
+            and reserved_tickets.intersection(str(ticket) for ticket in (record.get("backlog") or []))
+        ]
+        if foreign_reserved_claims:
+            return {
+                "ok": False,
+                "reason": "reserved ticket held by foreign active claim",
+                "campaign_id": campaign_id,
+                "branches": sorted(str(item.get("branch")) for item in foreign_reserved_claims),
+            }
+        active_parents = [
+            parent for parent in parent_reservations
+            if parent.get("status") == STATUS_ACTIVE
+            and parent.get("campaign_id") == campaign_id
+        ]
+        if active_parents or reservation.get("parent_owner"):
+            return {"ok": False, "reason": "active campaign parent exists",
+                    "campaign_id": campaign_id,
+                    "owners": copy.deepcopy(active_parents),
+                    "projection": copy.deepcopy(reservation.get("parent_owner")),
+            }
+        closed_children = [
+            record for record in records
+            if record.get("campaign_id") == campaign_id
+            and record.get("status") in RESOLVE_STATUS
+            and (record.get("handed_back_sha") or record.get("child_receipt"))
+        ]
+        if closed_children:
+            return {"ok": False, "reason": "campaign has child closure",
+                    "campaign_id": campaign_id,
+                    "branches": sorted(str(item.get("branch")) for item in closed_children)}
+        manifest_path = wc.campaign_manifest_path(state_path, campaign_id)
+        if not manifest_path.exists():
+            return {"ok": False, "reason": "campaign manifest missing",
+                    "campaign_id": campaign_id, "manifest_path": str(manifest_path)}
+        try:
+            manifest_before = manifest_path.read_bytes()
+        except OSError as exc:
+            return {"ok": False, "reason": "campaign manifest unreadable",
+                    "campaign_id": campaign_id, "manifest_path": str(manifest_path),
+                    "detail": str(exc)}
+        manifest_archive_path = _campaign_manifest_archive_path(
+            state_path, campaign_id, manifest_before,
+        )
+        archived = copy.deepcopy(reservation)
+        archived.update({
+            "status": "aborted",
+            "aborted_at": timestamp,
+            "abort_reason": reason,
+            "manifest_archive_path": str(manifest_archive_path),
+        })
+        result = {
+            "ok": True,
+            "mode": "committed" if commit else "dry-run",
+            "campaign_id": campaign_id,
+            "reason": reason,
+            "reservation": wc.reservation_summary(reservation),
+            "archive": archived,
+        }
+        if not commit:
+            return result
+        state_before = state_path.read_bytes() if state_path.exists() else None
+        archive_dir = manifest_archive_path.parent
+        archive_dir_existed = archive_dir.exists()
+        try:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            os.replace(manifest_path, manifest_archive_path)
+            state["campaign_reservations"] = [
+                item for item in reservations if item is not reservation
+            ]
+            campaign_archives.append(archived)
+            state["campaign_archives"] = campaign_archives
+            save_state(state_path, state)
+        except Exception:
+            _restore_bytes(state_path, state_before)
+            if manifest_archive_path.exists():
+                manifest_archive_path.unlink()
+            _restore_bytes(manifest_path, manifest_before)
+            if not archive_dir_existed:
+                try:
+                    archive_dir.rmdir()
+                except OSError:
+                    pass
+            raise
+        return result
 
 
 @contextmanager
@@ -1784,10 +2038,49 @@ def cmd_register(args: argparse.Namespace) -> int:
     wanted, malformed = _normalise_tickets(args.backlog)
     if malformed:
         print(f"✗ not backlog ids: {', '.join(malformed)} — expected <STREAM>-<rest> "
-              f"with an UPPERCASE stream (IMP / APP). Ids are compared exactly, so "
-              f"`imp-0001` would silently be a different ticket from `IMP-0001` and "
-              f"claim nothing.", file=sys.stderr)
+               f"with an UPPERCASE stream (IMP / APP). Ids are compared exactly, so "
+               f"`imp-0001` would silently be a different ticket from `IMP-0001` and "
+               f"claim nothing.", file=sys.stderr)
         return EXIT_USAGE
+    if wanted:
+        try:
+            reserved_owners = _campaign_ticket_owners(state)
+        except ValueError as exc:
+            return _scope_refusal(
+                args, "malformed-campaign-reservation", detail=str(exc),
+            )
+        reservation_conflicts = []
+        for ticket in wanted:
+            owner = reserved_owners.get(ticket)
+            if owner is None:
+                continue
+            owned_by_matching_campaign = any(
+                record.get("campaign_id") == owner["campaign_id"]
+                and ticket in (record.get("backlog") or [])
+                for record in matches
+            )
+            if not owned_by_matching_campaign:
+                reservation_conflicts.append({
+                    "ticket": ticket,
+                    **owner,
+                })
+        if reservation_conflicts:
+            payload = {
+                "schema": SCHEMA, "action": "refused",
+                "reason": "backlog ticket reserved by campaign",
+                "branch": args.branch, "wanted": wanted,
+                "conflicts": reservation_conflicts,
+            }
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                for conflict in reservation_conflicts:
+                    print(
+                        f"✗ {conflict['ticket']} is reserved by campaign "
+                        f"[{conflict['campaign_id']}]",
+                        file=sys.stderr,
+                    )
+            return EXIT_CLAIMED
     work_mode = getattr(args, "work_mode", None)
     existing_ticket_claim = any(r.get("backlog") for r in matches)
     existing_scope = any(r.get("scope") for r in matches)

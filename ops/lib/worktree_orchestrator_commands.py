@@ -58,13 +58,17 @@ def cmd_campaign_reserve(args: argparse.Namespace) -> int:
             rc, output = _git(["rev-parse", args.base_ref], cwd=root)
             return output.strip() if rc == EXIT_OK else ""
 
-        result = wr.reserve_campaign(
-            wr._state_path(args), request,
-            current_base=current_base.strip(),
-            backlog_reader=lambda: list(backlog_tool._iter_entries(store)),
-            base_reader=read_locked_base,
-            commit=args.commit,
-        )
+        # Backlog writers use store -> ledger ordering.  Keep the store lock
+        # across the snapshot and registry reservation so admission cannot
+        # publish a ticket set from a moving backlog.
+        with backlog_tool._store_lock(store):
+            result = wr.reserve_campaign(
+                wr._state_path(args), request,
+                current_base=current_base.strip(),
+                backlog_reader=lambda: list(backlog_tool._iter_entries(store)),
+                base_reader=read_locked_base,
+                commit=args.commit,
+            )
     except (OSError, ValueError, TypeError) as exc:
         _emit({"schema": SCHEMA, "step": "campaign-reserve",
                "error": "campaign reservation failed", "detail": str(exc)}, args.json,
@@ -81,6 +85,33 @@ def cmd_campaign_reserve(args: argparse.Namespace) -> int:
             for problem in result.get("conflicts") or [])
     _emit(payload, args.json, human)
     return EXIT_OK if result.get("ok") else EXIT_BLOCK
+
+
+def cmd_campaign_abort(args: argparse.Namespace) -> int:
+    """Manager-only cleanup for a campaign that never produced child closure."""
+    if getattr(args, "operator", "manager") != "manager":
+        _emit({"schema": SCHEMA, "step": "campaign-abort",
+               "error": "operator refused", "operator": args.operator,
+               "reason": "only Manager may abort campaign admission"}, args.json,
+              "✗ campaign-abort refused: only Manager may abort campaign admission")
+        return EXIT_BLOCK
+    try:
+        result = wr.abort_campaign(
+            wr._state_path(args), campaign_id=args.campaign,
+            reason=args.reason, commit=args.commit,
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        _emit({"schema": SCHEMA, "step": "campaign-abort",
+               "error": "campaign abort failed", "detail": str(exc)}, args.json,
+              f"✗ campaign-abort failed: {exc}")
+        return EXIT_BLOCK
+    if not result.get("ok"):
+        _emit({"schema": SCHEMA, "step": "campaign-abort", **result}, args.json,
+              f"✗ campaign-abort refused: {result.get('reason', result)}")
+        return EXIT_BLOCK
+    _emit({"schema": SCHEMA, "step": "campaign-abort", **result}, args.json,
+          f"✓ campaign-abort {result['mode']}: {args.campaign} — {args.reason}")
+    return EXIT_OK
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
@@ -179,16 +210,27 @@ def cmd_open(args: argparse.Namespace) -> int:
               args.json,
               "✗ --campaign and --partition must be supplied together")
         return EXIT_USAGE
-    if campaign_id and not next_backlog:
+    if next_backlog and args.backlog is not None:
         _emit({"schema": SCHEMA, "step": "open",
-               "error": "campaign claims require --next-backlog"}, args.json,
-              "✗ campaign claims require --next-backlog")
+               "error": "--backlog and --next-backlog are mutually exclusive"}, args.json,
+              "✗ --backlog and --next-backlog are mutually exclusive")
+        return EXIT_USAGE
+    if campaign_id and not next_backlog and args.backlog is None:
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "campaign claims require --backlog or --next-backlog"}, args.json,
+              "✗ campaign claims require --backlog or --next-backlog")
+        return EXIT_USAGE
+    if campaign_id and args.backlog is not None and len(args.backlog) != 1:
+        _emit({"schema": SCHEMA, "step": "open",
+               "error": "campaign named claims require exactly one ticket"}, args.json,
+              "✗ campaign named claims require exactly one ticket")
         return EXIT_USAGE
 
     mode_error = validate_work_mode(
         work_mode,
         has_scope=scope_declared,
-        has_ticket_claim=bool(args.backlog) or next_backlog,
+        has_ticket_claim=bool(args.backlog) or next_backlog
+                         or (bool(campaign_id) and args.backlog is not None),
         has_campaign=bool(campaign_id),
     )
     if mode_error:
@@ -210,14 +252,19 @@ def cmd_open(args: argparse.Namespace) -> int:
     selection = None
     campaign_claim = None
     if campaign_id:
-        reg_rc, reg_payload, wanted, selection = _claim_next_campaign_backlog(
-            root=root, state_arg=args.state, path=path, branch=branch,
-            intent=args.intent, base=base, campaign_id=campaign_id,
-            partition_id=partition_id,
-            delegated=delegated,
-            codex_thread_id=codex_thread_id,
-            work_mode=work_mode,
-        )
+        claim_fn = (_claim_named_campaign_backlog
+                    if args.backlog is not None
+                    else _claim_next_campaign_backlog)
+        claim_kwargs = {
+            "root": root, "state_arg": args.state, "path": path,
+            "branch": branch, "intent": args.intent, "base": base,
+            "campaign_id": campaign_id, "partition_id": partition_id,
+            "delegated": delegated, "codex_thread_id": codex_thread_id,
+            "work_mode": work_mode,
+        }
+        if args.backlog is not None:
+            claim_kwargs["ticket_id"] = args.backlog[0]
+        reg_rc, reg_payload, wanted, selection = claim_fn(**claim_kwargs)
         if reg_rc == EXIT_OK:
             campaign_claim = {"campaign_id": campaign_id, "partition": partition_id,
                               "ticket": wanted[0], "branch": branch,
@@ -249,7 +296,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             f"{','.join(c.get('backlog') or [])} by [{c.get('branch')}] at {c.get('path')}"
             for c in conflicts) or (reg_payload or {}).get("reason", "register refused")
         error = ((reg_payload or {}).get("reason")
-                 if next_backlog else "claim refused")
+                 if (next_backlog or campaign_id) else "claim refused")
         preflight_problems = (reg_payload or {}).get("problems", [])
         details = ""
         if preflight_problems:

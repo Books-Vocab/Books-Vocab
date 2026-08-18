@@ -387,63 +387,199 @@ def _claim_next_backlog(
         }
 
 
+def _campaign_dependency_problems(
+    store: Path, reservation: dict[str, Any], ticket_id: str,
+) -> list[dict[str, Any]]:
+    """Compile reservation-local dependency edges against the live backlog store."""
+    details = reservation.get("ticket_details") or {}
+    ticket = details.get(ticket_id) if isinstance(details, dict) else None
+    blockers = list((ticket or {}).get("blocked_by") or [])
+    unresolved: list[str] = []
+    missing: list[str] = []
+    for blocker in blockers:
+        blocker_path = store / f"{blocker}.json"
+        try:
+            status = json.loads(blocker_path.read_text(encoding="utf-8")).get("status")
+        except (OSError, ValueError, AttributeError):
+            missing.append(str(blocker))
+            continue
+        if status not in RESOLVED_STATUSES:
+            unresolved.append(str(blocker))
+    problems: list[dict[str, Any]] = []
+    if missing:
+        problems.append({
+            "id": ticket_id, "kind": "campaign-blocker-not-in-store",
+            "blockers": sorted(missing),
+            "repair": "restore or explicitly retire the reservation dependency before claiming this ticket",
+        })
+    if unresolved:
+        problems.append({
+            "id": ticket_id, "kind": "blocked-by-unresolved",
+            "blockers": sorted(unresolved),
+            "repair": "finish or explicitly re-plan the reservation-local blocker(s) first: "
+                      + ", ".join(sorted(unresolved)),
+        })
+    return problems
+
+
+def _campaign_select_ticket(
+    *, root: Path, state_path: Path, campaign_id: str, partition_id: str,
+    requested_ticket: str | None = None,
+) -> tuple[str | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Select a reservation ticket, honoring manifest dependencies before claim."""
+    state = wr.load_state(state_path)
+    reservation = next(
+        (item for item in state.get("campaign_reservations") or []
+         if item.get("campaign_id") == campaign_id),
+        None,
+    )
+    partition = ((reservation or {}).get("partitions") or {}).get(partition_id)
+    if not isinstance(reservation, dict) or not isinstance(partition, dict):
+        return None, [{
+            "kind": "campaign-partition-not-found",
+            "message": "campaign or partition does not exist",
+            "campaign": campaign_id, "partition": partition_id,
+        }], []
+    ticket_ids = [str(item) for item in partition.get("ticket_ids") or []]
+    claimed = partition.get("claimed") or {}
+    if requested_ticket is not None:
+        if requested_ticket not in ticket_ids:
+            return None, [{
+                "id": requested_ticket,
+                "kind": "ticket-not-in-campaign-partition",
+                "repair": f"choose one of the reserved tickets in partition {partition_id}",
+            }], []
+        if requested_ticket in claimed:
+            return None, [{
+                "id": requested_ticket, "kind": "campaign-ticket-already-claimed",
+                "repair": "use the existing child receipt or release its active claim before retrying",
+            }], []
+        candidates = [requested_ticket]
+    else:
+        candidates = [ticket for ticket in ticket_ids if ticket not in claimed]
+    if not candidates:
+        return None, [{
+            "kind": "campaign-partition-no-remaining-ticket",
+            "campaign": campaign_id, "partition": partition_id,
+        }], []
+
+    skipped: list[dict[str, Any]] = []
+    store = root / BACKLOG_STORE_DIR
+    for ticket in candidates:
+        dependency_problems = _campaign_dependency_problems(store, reservation, ticket)
+        if dependency_problems:
+            if requested_ticket is not None:
+                return None, dependency_problems, skipped
+            skipped.append({"ticket": ticket, "problems": dependency_problems})
+            continue
+        blockers = _unclaimable(store, [ticket], state_path=state_path)
+        if blockers:
+            return None, blockers, skipped
+        return ticket, [], skipped
+    return None, [
+        problem
+        for item in skipped
+        for problem in item["problems"]
+    ], skipped
+
+
+def _claim_campaign_backlog(
+    *, root: Path, state_arg: str | None, path: Path, branch: str,
+    intent: str, base: str, campaign_id: str, partition_id: str,
+    requested_ticket: str | None = None, delegated: bool | None = None,
+    codex_thread_id: str | None = None, work_mode: str | None = None,
+) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
+    """Atomically move one eligible reserved ticket into a provenance-stamped child."""
+    state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
+    store = root / BACKLOG_STORE_DIR
+    # Backlog writers use store -> ledger ordering (see backlog._supersede_locks).
+    # Hold the store lock across both dependency reads and the registry claim so a
+    # blocker cannot be reopened between preflight and the locked claim.
+    with backlog_tool._store_lock(store):
+        selected, selection_problems, skipped = _campaign_select_ticket(
+            root=root, state_path=state_path, campaign_id=campaign_id,
+            partition_id=partition_id, requested_ticket=requested_ticket,
+        )
+        selection = {"mode": "campaign-partition", "campaign": campaign_id,
+                     "partition": partition_id}
+        if skipped:
+            selection["skipped_blocked"] = skipped
+        if selected is None:
+            return EXIT_BLOCK, {
+                "ok": False, "reason": "dispatch preflight refused",
+                "problems": selection_problems,
+            }, [], selection
+
+        def read_locked_base() -> str:
+            locked_selected, problems, _ = _campaign_select_ticket(
+                root=root, state_path=state_path, campaign_id=campaign_id,
+                partition_id=partition_id, requested_ticket=selected,
+            )
+            if locked_selected != selected or problems:
+                raise _CampaignPreflightRefusal(problems or [{
+                    "id": selected, "kind": "campaign-selection-drift",
+                    "repair": "recompute campaign admission from the current registry state",
+                }])
+            rc, output = _git(["rev-parse", base], cwd=root)
+            return output.strip() if rc == EXIT_OK else ""
+
+        try:
+            result = wr.claim_campaign_ticket(
+                state_path,
+                campaign_id=campaign_id,
+                partition_id=partition_id,
+                ticket_id=selected,
+                branch=branch,
+                path=str(path),
+                intent=intent,
+                base=base,
+                base_reader=read_locked_base,
+                delegated=delegated,
+                codex_thread_id=codex_thread_id,
+                work_mode=work_mode,
+            )
+        except _CampaignPreflightRefusal as exc:
+            return EXIT_BLOCK, {
+                "ok": False, "reason": "dispatch preflight refused", "problems": exc.problems,
+            }, [], selection
+        if not result.get("ok"):
+            return EXIT_BLOCK, result, [], selection
+        reservation = result["reservation"]
+        selection.update({
+            "quota": (reservation.get("partitions") or {}).get(partition_id, {}).get("quota"),
+            "used": (reservation.get("partitions") or {}).get(partition_id, {}).get("used"),
+            "remaining": (reservation.get("partitions") or {}).get(partition_id, {}).get("remaining"),
+            "base": reservation.get("base"), "ticket": result["ticket"],
+        })
+        return EXIT_OK, result, [result["ticket"]], selection
+
+
 def _claim_next_campaign_backlog(
     *, root: Path, state_arg: str | None, path: Path, branch: str,
     intent: str, base: str, campaign_id: str, partition_id: str,
     delegated: bool | None = None, codex_thread_id: str | None = None,
     work_mode: str | None = None,
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
-    """Atomically move one reserved ticket in one campaign partition to a child."""
-    state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
+    """Select the first eligible reservation ticket in one campaign partition."""
+    return _claim_campaign_backlog(
+        root=root, state_arg=state_arg, path=path, branch=branch,
+        intent=intent, base=base, campaign_id=campaign_id,
+        partition_id=partition_id, delegated=delegated,
+        codex_thread_id=codex_thread_id, work_mode=work_mode,
+    )
 
-    def read_locked_base() -> str:
-        state = wr.load_state(state_path)
-        reservation = next(
-            (item for item in state.get("campaign_reservations") or []
-             if item.get("campaign_id") == campaign_id),
-            None,
-        )
-        partition = ((reservation or {}).get("partitions") or {}).get(partition_id)
-        ticket_ids = list((partition or {}).get("ticket_ids") or [])
-        claimed = (partition or {}).get("claimed") or {}
-        ticket = next((item for item in ticket_ids if item not in claimed), None)
-        if ticket is not None:
-            blockers = _unclaimable(
-                root / BACKLOG_STORE_DIR, [str(ticket)], state_path=state_path,
-            )
-            if blockers:
-                raise _CampaignPreflightRefusal(blockers)
-        rc, output = _git(["rev-parse", base], cwd=root)
-        return output.strip() if rc == EXIT_OK else ""
 
-    try:
-        result = wr.claim_campaign_ticket(
-            state_path,
-            campaign_id=campaign_id,
-            partition_id=partition_id,
-            branch=branch,
-            path=str(path),
-            intent=intent,
-            base=base,
-            base_reader=read_locked_base,
-            delegated=delegated,
-            codex_thread_id=codex_thread_id,
-            work_mode=work_mode,
-        )
-    except _CampaignPreflightRefusal as exc:
-        return EXIT_BLOCK, {
-            "ok": False, "reason": "dispatch preflight refused", "problems": exc.problems,
-        }, [], {"mode": "campaign-partition", "campaign": campaign_id,
-                "partition": partition_id}
-    selection = {"mode": "campaign-partition", "campaign": campaign_id,
-                 "partition": partition_id}
-    if not result.get("ok"):
-        return EXIT_BLOCK, result, [], selection
-    reservation = result["reservation"]
-    selection.update({
-        "quota": (reservation.get("partitions") or {}).get(partition_id, {}).get("quota"),
-        "used": (reservation.get("partitions") or {}).get(partition_id, {}).get("used"),
-        "remaining": (reservation.get("partitions") or {}).get(partition_id, {}).get("remaining"),
-        "base": reservation.get("base"), "ticket": result["ticket"],
-    })
-    return EXIT_OK, result, [result["ticket"]], selection
+def _claim_named_campaign_backlog(
+    *, root: Path, state_arg: str | None, path: Path, branch: str,
+    intent: str, base: str, campaign_id: str, partition_id: str,
+    ticket_id: str, delegated: bool | None = None,
+    codex_thread_id: str | None = None, work_mode: str | None = None,
+) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
+    """Claim one explicitly named ticket while retaining campaign provenance."""
+    return _claim_campaign_backlog(
+        root=root, state_arg=state_arg, path=path, branch=branch,
+        intent=intent, base=base, campaign_id=campaign_id,
+        partition_id=partition_id, requested_ticket=ticket_id,
+        delegated=delegated, codex_thread_id=codex_thread_id,
+        work_mode=work_mode,
+    )

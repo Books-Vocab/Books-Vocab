@@ -54,6 +54,34 @@ def test_operator_contract_is_explicit_on_delivery_commands():
         assert parsed.operator == "manager", command
 
 
+def test_campaign_open_supports_named_claims_and_campaign_abort_parser():
+    parser = MODULE.build_parser()
+    named = parser.parse_args([
+        "open", "--intent", "campaign child", "--slug", "named-child",
+        "--backlog", "IMP-20260818-b8ed3f", "--campaign", "campaign-1",
+        "--partition", "p1", "--work-mode", "ticket-delivery",
+    ])
+    assert named.backlog == ["IMP-20260818-b8ed3f"]
+    assert named.next_backlog is False
+    assert named.campaign == "campaign-1"
+    assert named.partition == "p1"
+
+    next_ticket = parser.parse_args([
+        "open", "--intent", "campaign child", "--slug", "next-child",
+        "--next-backlog", "--campaign", "campaign-1", "--partition", "p1",
+    ])
+    assert next_ticket.next_backlog is True
+    assert next_ticket.backlog is None
+
+    aborted = parser.parse_args([
+        "campaign-abort", "--campaign", "campaign-1",
+        "--reason", "stale admission", "--operator", "manager", "--commit",
+    ])
+    assert aborted.campaign == "campaign-1"
+    assert aborted.reason == "stale admission"
+    assert aborted.commit is True
+
+
 def test_manager_only_authority_refuses_integrator_mutations():
     assert MODULE.operator_refusal(
         command="cutover", operator="integrator", commit=True, manager_only=True,
