@@ -12,6 +12,9 @@
   "date": "2026-08-18",
   "detail": "新增 machine-readable gate timing ledger contract：schema/CLI/validator/summarizer 必須是 kg.gate.timing-ledger.v1，支援 10-20 waves，並記錄 packet、full_gate、precise_gate、reuse_verdict 各自的 duration、rc、verdict、fingerprint、HEAD/base、lease_wait；不得偽造歷史數據，不改既有 runner。輸出必須明確區分 contract 與 runner consumed；未接線時必須由 manager follow-up，不能把 standalone ledger 當成 runner consumed。只能新增 ops/gate_cost_timing_ledger.py、ops/tests/test_gate_cost_timing_ledger.py、ops/tests/test_gate_cost_timing_ledger_integration.py。",
   "fix_site": "ops/gate_cost_timing_ledger.py",
+  "fixed_by": [
+    "f03d161a54aca748731d56d57d5396c56213fa22"
+  ],
   "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
   "groomed_at": "2026-08-18",
   "groomed_by": "platform-steward",
@@ -38,6 +41,10 @@
   },
   "severity": "med",
   "source": "integrator gate-efficiency phase 2 admission r1",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "current main S2 gate pass at a85cd78ae; independent reviewer PASS and focused acceptance are rerunnable"
 }

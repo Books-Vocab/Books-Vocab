@@ -12,6 +12,9 @@
   "date": "2026-08-18",
   "detail": "新增 long-gate contract：每個長閘門工作必須有 heartbeat、independent lane、resource_key；same-fingerprint 不重跑，different-fingerprint 可並行，stale 一律 fail-closed；release/full gate 永不 coalesce、defer 或 degrade，也不降低 release/full gate 強度。只能新增 ops/gate_cost_long_gate.py、ops/tests/test_gate_cost_long_gate.py、ops/tests/test_gate_cost_long_gate_integration.py，不改 central runner。輸出必須分開表達 contract_ready 與 runner_connected；未接線時必須由 manager follow-up，不能把 standalone long-gate contract 當成已接入 runner。",
   "fix_site": "ops/gate_cost_long_gate.py",
+  "fixed_by": [
+    "5e4fd6e5d917cf2377e7593d6374006aed1db6c6"
+  ],
   "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
   "groomed_at": "2026-08-18",
   "groomed_by": "platform-steward",
@@ -38,6 +41,10 @@
   },
   "severity": "med",
   "source": "integrator gate-efficiency phase 2 admission r1",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "current main S2 gate pass at a85cd78ae; independent reviewer PASS and focused acceptance are rerunnable"
 }
