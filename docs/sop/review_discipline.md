@@ -31,7 +31,7 @@ GitHub PR 是變更的唯一 review surface。Local review output 可以輔助�
 
 ## Required checks
 
-`.github/workflows/` 是 CI 入口。變更 code、測試、ops、文件或 workflow 時，按 diff 選擇最小充分檢查；高風險 surface 由 branch rules 要求額外 check。若 check 不適用，要在 PR 說明原因，不要刪除或繞過 check。
+`.github/workflows/pr-gate.yml` 是每個 PR 都會執行的穩定基線（`pr-gate / gate`）；其餘 `.github/workflows/` 依變更面提供 backend、UI、design-system、LLM 與 ops checks。高風險 surface 由 branch rules 要求額外 check。若 check 不適用，要在 PR 說明原因，不要刪除或繞過 check。
 
 ## Blocker policy
 

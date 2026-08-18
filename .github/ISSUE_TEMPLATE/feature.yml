@@ -1,0 +1,43 @@
+name: Feature or improvement
+description: Propose a product outcome or bounded engineering improvement
+title: "[Proposal] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a desired outcome, not for a proposed local tracking system. GitHub Issue/Project owns priority and acceptance; the eventual PR owns implementation evidence.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What is missing, costly, or confusing today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should a user or operator be able to do or understand?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Suggested scope
+      description: Name affected surfaces or constraints; do not prescribe an internal backlog lifecycle.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know the outcome is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and dependencies
+      description: Include data migration, release, safety, or external approval concerns.
