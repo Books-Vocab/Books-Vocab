@@ -4,7 +4,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ops.kg_board.git_tree import SCHEMA, normalize_snapshot, project_snapshot
+from ops.kg_board.git_tree import (
+    SCHEMA,
+    normalize_snapshot,
+    normalize_worktree_status,
+    project_snapshot,
+)
 from ops.kg_board import server
 
 
@@ -108,6 +113,65 @@ def test_normalize_snapshot_preserves_codex_thread_owner_id():
 
     assert payload["complete"] is True
     assert payload["refs"][0]["codex_thread_id"] == "thread-agent-a"
+
+
+def test_normalize_worktree_status_is_fail_closed_but_keeps_named_dirty_records():
+    payload = normalize_worktree_status({
+        "schema": "kg.board.worktree-status.v1",
+        "at": "2026-08-18T10:00:00+08:00",
+        "host": "oscar",
+        "complete": True,
+        "records": [{
+            "branch": "feat/reader",
+            "path": "/tmp/reader",
+            "present": True,
+            "dirty": True,
+            "dirty_files": ["ios/Reader.swift"],
+            "dirty_file_count": 1,
+        }],
+    })
+
+    assert payload == {
+        "schema": "kg.board.worktree-status.v1",
+        "at": "2026-08-18T10:00:00+08:00",
+        "host": "oscar",
+        "complete": True,
+        "error": None,
+        "records": [{
+            "branch": "feat/reader",
+            "path": "/tmp/reader",
+            "present": True,
+            "dirty": True,
+            "dirty_files": ["ios/Reader.swift"],
+            "dirty_file_count": 1,
+            "error": None,
+        }],
+    }
+
+
+def test_project_snapshot_projects_worktree_dirty_status_without_claiming_clean_on_unknown():
+    projected = project_snapshot(
+        {
+            "complete": True,
+            "refs": [{"branch": "feat/reader", "head": "abcdef0"}],
+            "commits": [{"sha": "abcdef0", "parents": []}],
+        },
+        worktree_status={
+            "complete": True,
+            "records": [{
+                "branch": "feat/reader",
+                "path": "/tmp/reader",
+                "present": True,
+                "dirty": True,
+                "dirty_files": ["ios/Reader.swift"],
+                "dirty_file_count": 1,
+            }],
+        },
+    )
+
+    assert projected["refs"][0]["dirty"] is True
+    assert projected["refs"][0]["dirty_files"] == ["ios/Reader.swift"]
+    assert projected["refs"][0]["dirty_file_count"] == 1
 
 
 def test_normalize_snapshot_is_fail_closed_for_string_collections_and_invalid_shas():

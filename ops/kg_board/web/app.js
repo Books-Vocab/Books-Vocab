@@ -1,6 +1,7 @@
 const revision=document.querySelector('meta[name="kg-app-revision"]').content;
 const tabs=[...document.querySelectorAll('[data-tab]')];
 let board=null,history=null,tree=null,scopeMatrix=null,tab="now",query="";
+let scopeZoom=100,scopeDensity=34,scopeOccupiedOnly=false,treeHoverHideTimer=null;
 const esc=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const shortSha=sha=>String(sha||"").slice(0,9);
 const compactLabel=(value,max=32)=>{const text=String(value||"");return text.length>max?`${text.slice(0,max-1)}…`:text};
@@ -20,9 +21,12 @@ function setTrust(freshness){
   const treeState=freshness.git_tree_state||"unknown";
   const treeStateLabel=treeLabels[treeState]||treeState;
   const treeAgeLabel=freshness.git_tree_age==null?"未知":`${freshness.git_tree_age}s`;
+  const dirtyState=freshness.worktree_status_state||"unknown";
+  const dirtyStateLabel=treeLabels[dirtyState]||dirtyState;
+  const dirtyAgeLabel=freshness.worktree_status_age==null?"未知":`${freshness.worktree_status_age}s`;
   document.getElementById("trust-state").textContent=labels[state]||labels.unknown;
   document.getElementById("trust-detail").textContent=
-    `tree ${treeStateLabel} · mirror ${treeAgeLabel} · app ${revision.slice(0,9)}`;
+    `tree ${treeStateLabel} · dirty ${dirtyStateLabel} ${dirtyAgeLabel} · mirror ${treeAgeLabel} · app ${revision.slice(0,9)}`;
 }
 function statusOf(row){
   const labels={held:"進行中","needs-grooming":"待梳理","dependency-blocked":"依賴阻塞",dispatchable:"可派工","contract-not-ready":"契約未就緒",queued:"已入列"};
@@ -50,29 +54,89 @@ function agentStatus(worktree){
   if(agent.thread_id)return `${agent.status||"unknown"} · ${shortSha(agent.thread_id)}`;
   return "沒有穩定 thread id";
 }
+function dirtyStateOf(worktree){
+  if(worktree?.dirty===true)return "dirty";
+  if(worktree?.dirty===false)return "clean";
+  return "unknown";
+}
+function dirtyLabelOf(worktree){
+  const state=dirtyStateOf(worktree);
+  if(state==="dirty"){
+    const count=Number.isInteger(worktree?.dirty_file_count)?worktree.dirty_file_count:
+      Array.isArray(worktree?.dirty_files)?worktree.dirty_files.length:null;
+    return count===null?"DIRTY":`DIRTY · ${count} 檔`;
+  }
+  if(state==="clean")return "CLEAN";
+  return "DIRTY 未知";
+}
+function dirtyBadge(worktree){
+  return `<span class="dirty-badge dirty-${esc(dirtyStateOf(worktree))}" title="${esc(Array.isArray(worktree?.dirty_files)&&worktree.dirty_files.length?worktree.dirty_files.join("\n"):dirtyLabelOf(worktree))}">${esc(dirtyLabelOf(worktree))}</span>`;
+}
+function copyButton(value,label="複製"){
+  const text=String(value||"");
+  if(!text)return "";
+  return `<button type="button" class="copy-button" data-copy-value="${esc(text)}" data-copy-kind="value">${esc(label)}</button>`;
+}
+async function copyValue(value,button){
+  const text=String(value||"");if(!text||!button)return false;
+  let copied=false;
+  try{
+    if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);copied=true;}
+  }catch(_error){copied=false;}
+  if(!copied){
+    const input=document.createElement("textarea");input.value=text;input.setAttribute("readonly","");input.style.position="fixed";input.style.opacity="0";document.body.appendChild(input);input.select();
+    try{copied=document.execCommand("copy");}catch(_error){copied=false;}input.remove();
+  }
+  const original=button.dataset.copyLabel||button.textContent;
+  button.dataset.copyLabel=original;button.textContent=copied?"已複製":"複製失敗";button.dataset.copyState=copied?"copied":"failed";
+  window.setTimeout(()=>{if(button.isConnected){button.textContent=original;button.dataset.copyState="";}},1200);
+  return copied;
+}
+function renderScopeControls(){
+  const zoom=document.getElementById("scope-zoom"),zoomOutput=document.getElementById("scope-zoom-value");
+  const density=document.getElementById("scope-density"),densityOutput=document.getElementById("scope-density-value");
+  const occupied=document.getElementById("scope-occupied-only");
+  if(zoom){zoom.value=String(scopeZoom);zoom.setAttribute("aria-valuetext",`${scopeZoom}%`);}
+  if(zoomOutput)zoomOutput.textContent=`${scopeZoom}%`;
+  if(density){density.value=String(scopeDensity);density.setAttribute("aria-valuetext",`${scopeDensity}px`);}
+  if(densityOutput)densityOutput.textContent=`${scopeDensity}px`;
+  if(occupied)occupied.checked=scopeOccupiedOnly;
+}
+function applyScopeGeometry(mount){
+  if(!mount)return;
+  mount.style.setProperty("--scope-scale",String(scopeZoom/100));
+  mount.style.setProperty("--scope-font-size",`${Math.max(9,Math.round(11*scopeZoom/100))}px`);
+  mount.style.setProperty("--scope-column-width",`${Math.round(210*scopeZoom/100)}px`);
+  mount.style.setProperty("--scope-file-width",`${Math.round(320*scopeZoom/100)}px`);
+  mount.style.setProperty("--scope-head-height",`${Math.round(118*scopeZoom/100)}px`);
+  mount.style.setProperty("--scope-agent-height",`${Math.round(48*scopeZoom/100)}px`);
+  mount.style.setProperty("--scope-row-height",`${scopeDensity}px`);
+}
 function renderScopeMatrix(){
   const mount=document.getElementById("scope-matrix-wrap"),unknownMount=document.getElementById("scope-unknown"),state=document.getElementById("scope-state");
   if(!mount||!unknownMount||!state)return;
+  renderScopeControls();
+  applyScopeGeometry(mount);
   if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';return}
-  const worktrees=scopeMatrix.worktrees||[],queuedTickets=scopeMatrix.queued_tickets||[],files=scopeMatrix.files||[],counts=scopeMatrix.counts||{};
+  const worktrees=scopeMatrix.worktrees||[],queuedTickets=scopeMatrix.queued_tickets||[],allFiles=scopeMatrix.files||[],files=scopeOccupiedOnly?allFiles.filter(file=>(file.cells||[]).length>0):allFiles,counts=scopeMatrix.counts||{};
   const columns=[
     ...worktrees.map(worktree=>({type:"worktree",id:worktree.id,worktree})),
     ...queuedTickets.map(ticket=>({type:"ticket",id:ticket.id,ticket})),
   ];
-  state.textContent=`${counts.active_worktrees||0} worktree · ${counts.active_tickets||0} 持票 · ${counts.queued_tickets||0} queued · ${counts.files||0} 檔案`;
+  state.textContent=`${counts.active_worktrees||0} worktree · ${counts.active_tickets||0} 持票 · ${counts.queued_tickets||0} queued · ${files.length}/${counts.files||0} 檔案`;
   if(!columns.length){mount.innerHTML='<p class="empty">目前沒有 active worktree 或 queued ticket。</p>';unknownMount.innerHTML="";return}
   const agentHeaders=columns.map(column=>{
     if(column.type==="ticket")return `<th scope="col" class="scope-agent-cell scope-agent-ticket"><strong>尚未認領</strong><span>queued ticket</span></th>`;
     const worktree=column.worktree,agent=worktree.agent||{};
-    return `<th scope="col" class="scope-agent-cell scope-agent-worktree scope-agent-${esc(worktree.kind)}" data-thread-id="${esc(agent.thread_id||"")}"><strong title="${esc(agent.title||agentTitle(worktree))}">${esc(agentTitle(worktree))}</strong><span>${esc(agentStatus(worktree))}</span></th>`;
+    return `<th scope="col" class="scope-agent-cell scope-agent-worktree scope-agent-${esc(worktree.kind)}" data-thread-id="${esc(agent.thread_id||"")}"><strong title="${esc(agent.title||agentTitle(worktree))}">${esc(agentTitle(worktree))}</strong><span>${esc(agentStatus(worktree))}</span>${dirtyBadge(worktree)}</th>`;
   }).join("");
   const headers=columns.map(column=>{
     if(column.type==="worktree"){
       const worktree=column.worktree,unknown=worktree.scope_status==="unknown";
       const kindLabel=worktree.kind==="ticketed"?"持票 WORKTREE":"直接指派 WORKTREE";
       const tickets=worktree.ticket_ids?.length?`持有：${worktree.ticket_ids.join("、")}`:"無 ticket · 直接指派";
-      const flags=[unknown?(worktree.kind==="direct"?"Scope 待宣告":"Scope 未知"):"Scope 已知",worktree.path?compactLabel(worktree.path,32):"路徑未知"].filter(Boolean).join(" · ");
-      return `<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-${esc(worktree.kind)}${unknown?" scope-column-scope-unknown":""}"><code title="${esc(worktree.branch||"")}">${esc(compactLabel(worktree.branch||"未知 worktree",24))}</code><strong>${kindLabel}</strong><span class="scope-column-tickets">${esc(compactLabel(tickets,48))}</span>${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}</th>`;
+      const flags=[unknown?(worktree.kind==="direct"?"Scope 待宣告":"Scope 未知"):"Scope 已知",dirtyLabelOf(worktree),worktree.path?compactLabel(worktree.path,32):"路徑未知"].filter(Boolean).join(" · ");
+      return `<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-${esc(worktree.kind)}${unknown?" scope-column-scope-unknown":""}"><div class="scope-column-name"><code title="${esc(worktree.branch||"")}">${esc(compactLabel(worktree.branch||"未知 worktree",32))}</code>${copyButton(worktree.branch,"複製名稱")}</div><strong>${kindLabel}</strong><span class="scope-column-tickets">${esc(compactLabel(tickets,48))}</span>${worktree.path?`<span class="scope-column-path"><code title="${esc(worktree.path)}">${esc(compactLabel(worktree.path,36))}</code>${copyButton(worktree.path,"複製路徑")}</span>`:""}${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}</th>`;
     }
     const ticket=column.ticket,collision=ticket.collision?.status==="hard",unknown=ticket.scope_status==="unknown";
     const flags=[collision?"collision":"",unknown?"Scope 未知":""].filter(Boolean).join(" · ");
@@ -92,6 +156,7 @@ function renderScopeMatrix(){
     }).join("")}</tr>`;
   }).join("");
   mount.innerHTML=`<table class="scope-matrix"><thead><tr class="scope-agent-row"><th scope="col" class="scope-agent-label">Agent / thread</th>${agentHeaders}</tr><tr class="scope-worktree-row"><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
+  applyScopeGeometry(mount);
   const unknownWorktrees=scopeMatrix.unknown_worktree_ids||[],unknownTickets=scopeMatrix.unknown_ticket_ids||[];
   const unknownParts=[];
   if(unknownWorktrees.length)unknownParts.push(`direct worktree（Scope 待宣告）：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);

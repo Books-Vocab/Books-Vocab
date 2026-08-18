@@ -11,6 +11,7 @@ except ModuleNotFoundError:  # direct launch via the release checkout
 
 
 SCHEMA = "kg.board.git-tree.v1"
+WORKTREE_STATUS_SCHEMA = "kg.board.worktree-status.v1"
 
 
 def _text(value: Any) -> str | None:
@@ -29,6 +30,95 @@ def _sha(value: Any) -> str | None:
 
 def _items(value: Any) -> list[Any]:
     return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def normalize_worktree_status(payload: Any) -> dict[str, Any]:
+    """Normalize the fast, out-of-band dirty-status mirror.
+
+    Dirty state is produced on the machine that owns the worktrees and is sent
+    separately from the comparatively expensive commit DAG.  ``None`` means
+    unknown; it is never coerced to clean.
+    """
+    if not isinstance(payload, dict):
+        return {
+            "schema": WORKTREE_STATUS_SCHEMA,
+            "at": None,
+            "host": None,
+            "complete": False,
+            "error": "worktree status mirror is not an object",
+            "records": [],
+        }
+
+    errors: list[str] = []
+    raw_error = payload.get("error")
+    if raw_error is not None and not isinstance(raw_error, str):
+        errors.append("payload error is not a string")
+    elif isinstance(raw_error, str) and raw_error.strip():
+        errors.append(raw_error.strip())
+    raw_records = payload.get("records")
+    if raw_records is not None and not isinstance(raw_records, (list, tuple)):
+        errors.append("records is not a list")
+
+    records: list[dict[str, Any]] = []
+    seen_branches: set[str] = set()
+    for raw in _items(raw_records):
+        if not isinstance(raw, dict):
+            errors.append("worktree status record is not an object")
+            continue
+        branch = _text(raw.get("branch"))
+        if not branch:
+            errors.append("worktree status record has no branch")
+            continue
+        if branch in seen_branches:
+            errors.append(f"worktree status branch {branch} is duplicated")
+            continue
+        seen_branches.add(branch)
+
+        present = raw.get("present")
+        if present is not None and not isinstance(present, bool):
+            errors.append(f"worktree status {branch} present is not boolean")
+            present = None
+        dirty = raw.get("dirty")
+        if dirty is not None and not isinstance(dirty, bool):
+            errors.append(f"worktree status {branch} dirty is not boolean")
+            dirty = None
+
+        raw_files = raw.get("dirty_files")
+        if raw_files is not None and not isinstance(raw_files, (list, tuple)):
+            errors.append(f"worktree status {branch} dirty_files is not a list")
+        dirty_files = [path for path in _items(raw_files)
+                       if isinstance(path, str) and path]
+        if any(not isinstance(path, str) for path in _items(raw_files)):
+            errors.append(f"worktree status {branch} dirty_files contains a non-string path")
+
+        file_count = raw.get("dirty_file_count")
+        if file_count is not None and (
+            not isinstance(file_count, int) or isinstance(file_count, bool) or file_count < 0
+        ):
+            errors.append(f"worktree status {branch} dirty_file_count is not a non-negative integer")
+            file_count = None
+        if file_count is None and dirty is True:
+            file_count = len(dirty_files)
+
+        record = {
+            "branch": branch,
+            "path": _text(raw.get("path")),
+            "present": present,
+            "dirty": dirty,
+            "dirty_files": sorted(set(dirty_files)),
+            "dirty_file_count": file_count,
+            "error": _text(raw.get("error")),
+        }
+        records.append(record)
+
+    return {
+        "schema": WORKTREE_STATUS_SCHEMA,
+        "at": _text(payload.get("at")),
+        "host": _text(payload.get("host")),
+        "complete": payload.get("complete") is True and not errors,
+        "error": "; ".join(errors) or None,
+        "records": sorted(records, key=lambda row: row["branch"]),
+    }
 
 
 def normalize_snapshot(payload: Any) -> dict[str, Any]:
@@ -167,6 +257,25 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             except ValueError as exc:
                 errors.append(f"ref {branch} has invalid scope: {exc}")
                 scope = None
+        raw_dirty = raw.get("dirty")
+        if raw_dirty is not None and not isinstance(raw_dirty, bool):
+            errors.append(f"ref {branch} dirty is not boolean")
+            raw_dirty = None
+        raw_dirty_files = raw.get("dirty_files")
+        if raw_dirty_files is not None and not isinstance(raw_dirty_files, (list, tuple)):
+            errors.append(f"ref {branch} dirty_files is not a list")
+        dirty_files = [path for path in _items(raw_dirty_files)
+                       if isinstance(path, str) and path]
+        if any(not isinstance(path, str) for path in _items(raw_dirty_files)):
+            errors.append(f"ref {branch} dirty_files contains a non-string path")
+        raw_dirty_count = raw.get("dirty_file_count")
+        if raw_dirty_count is not None and (
+            not isinstance(raw_dirty_count, int)
+            or isinstance(raw_dirty_count, bool)
+            or raw_dirty_count < 0
+        ):
+            errors.append(f"ref {branch} dirty_file_count is not a non-negative integer")
+            raw_dirty_count = None
         codex_thread_id = checked(raw.get("codex_thread_id"),
                                   f"ref {branch} codex_thread_id")
         refs.append({
@@ -190,6 +299,12 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
             refs[-1]["scope"] = scope
         if "codex_thread_id" in raw:
             refs[-1]["codex_thread_id"] = codex_thread_id
+        if any(key in raw for key in ("dirty", "dirty_files", "dirty_file_count")):
+            refs[-1].update({
+                "dirty": raw_dirty,
+                "dirty_files": sorted(set(dirty_files)),
+                "dirty_file_count": raw_dirty_count,
+            })
         for key in ("base_sha", "handed_back_sha"):
             if raw.get(key) is not None and _sha(raw.get(key)) is None:
                 errors.append(f"ref {branch} has invalid {key}")
@@ -205,10 +320,21 @@ def normalize_snapshot(payload: Any) -> dict[str, Any]:
     }
 
 
-def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+def project_snapshot(
+    payload: Any,
+    tickets: dict[str, dict[str, Any]] | None = None,
+    worktree_status: Any = None,
+) -> dict[str, Any]:
     """Project normalized refs and commits for a read-only graph renderer."""
     snapshot = normalize_snapshot(payload)
     tickets = tickets or {}
+    status_snapshot = (
+        normalize_worktree_status(worktree_status)
+        if worktree_status is not None else None
+    )
+    status_by_branch = {
+        row["branch"]: row for row in (status_snapshot or {}).get("records", [])
+    }
     commits = {row["sha"]: dict(row) for row in snapshot["commits"]}
     refs = []
     referenced: dict[str, list[str]] = {}
@@ -222,6 +348,14 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
             enriched["severity"] = enriched.get("severity") or source.get("severity")
             ref_tickets.append(enriched)
         row["tickets"] = ref_tickets
+        status = status_by_branch.get(row["branch"])
+        if status is not None:
+            row.update({
+                "dirty": status["dirty"],
+                "dirty_files": status["dirty_files"],
+                "dirty_file_count": status["dirty_file_count"],
+                "dirty_status_error": status["error"],
+            })
         refs.append(row)
         if row["head"] in commits:
             referenced.setdefault(row["head"], []).append(row["branch"])
@@ -259,7 +393,7 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
     for row in commits.values():
         row.setdefault("refs", [])
 
-    return {
+    result = {
         "schema": SCHEMA,
         "at": snapshot["at"],
         "host": snapshot["host"],
@@ -273,3 +407,12 @@ def project_snapshot(payload: Any, tickets: dict[str, dict[str, Any]] | None = N
         "refs": refs,
         "commits": sorted(commits.values(), key=lambda row: row["sha"]),
     }
+    if status_snapshot is not None:
+        result["worktree_status"] = {
+            "schema": status_snapshot["schema"],
+            "at": status_snapshot["at"],
+            "host": status_snapshot["host"],
+            "complete": status_snapshot["complete"],
+            "error": status_snapshot["error"],
+        }
+    return result

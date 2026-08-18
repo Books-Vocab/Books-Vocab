@@ -434,6 +434,24 @@ def test_git_tree_browser_marks_parents_outside_the_bounded_viewport():
     assert "parentSha" in js
 
 
+def test_board_reactive_worktree_status_and_copyable_hover_contract():
+    index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+    css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+    backend = (server.RELEASE_DIR / "server.py").read_text(encoding="utf-8")
+
+    assert "/api/mirror/worktree-status" in backend
+    assert "registry" in backend and "publish_event" in backend
+    assert "dirty" in js and "dirty_file_count" in js
+    assert "navigator.clipboard" in js
+    assert "data-copy-value" in js
+    assert "scheduleTreeHoverHide" in js
+    assert "pointer-events:auto" in "".join(css.split())
+    assert 'id="scope-fullscreen"' in index
+    assert 'id="scope-zoom"' in index
+    assert 'id="scope-density"' in index
+
+
 def test_git_tree_hover_details_explain_boundaries_and_preserve_unknown_diff_stats():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
@@ -594,6 +612,8 @@ def test_git_tree_mobile_has_edge_to_edge_viewer_with_free_pan_and_zoom():
     assert "tree-fullscreen-open" in compact_css
     assert "touch-action:none" in compact_css
     assert ".tree-fullscreen-viewer{position:fixed" in compact_css
+    assert "style.width" in js
+    assert "scale(${treeFullscreen.scale})" not in js
 
 
 def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
