@@ -1,0 +1,42 @@
+{
+  "acceptance": "AddLink coordinator unit tests pass and code changes remain within the three-file Scope.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift",
+  "brief": "AddLink lookup behavior can be delivered in one code and unit-test owner without changing the shared fixture.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded code slice; shared AddLink UI evidence is separate.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded code slice extracted from parent APP-20260813-905c63. Owner may modify only AddLinkSheet, AddLinkCoordinator, and AddLinkCoordinatorTests; the shared UI evidence test has a separate owner and marketing_demo.json remains serialized.",
+  "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-a0e680",
+  "plan": "Use TDD on AddLink lookup and coordinator behavior; do not touch the UI evidence test or marketing_demo.json.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCoordinator.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabTests/AddLinkCoordinatorTests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-905c63 AddLink code owner",
+  "status": "triaged",
+  "stream": "APP"
+}

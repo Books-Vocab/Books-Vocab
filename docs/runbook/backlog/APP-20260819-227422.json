@@ -1,0 +1,34 @@
+{
+  "acceptance": "The exact AddLink evidence selector is collected and its focused UI test passes; only the one declared test file changes.",
+  "acceptance_cmd": "test -f ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift && ./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testAddLinkDetailMaterializationEvidenceMatrix$'",
+  "brief": "AddLink evidence coverage can be delivered without concurrently editing the AddLink implementation files.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded evidence slice; AddLink implementation is separate.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded evidence slice extracted from parent APP-20260813-d8d0de. Owner may modify only VocabularyLibraryFlowUITests; AddLinkSheet and AddLinkCoordinator remain with the single code owner and marketing_demo.json remains serialized.",
+  "fix_site": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-227422",
+  "plan": "Use TDD on the exact AddLink materialization evidence selector; do not touch AddLink implementation files or marketing_demo.json.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/VocabularyLibraryFlowUITests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-d8d0de AddLink evidence owner",
+  "status": "triaged",
+  "stream": "APP"
+}

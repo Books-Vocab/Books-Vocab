@@ -1,0 +1,54 @@
+{
+  "acceptance": "RED then GREEN: focused reservation and delivery lifecycle tests prove resolved-only stale campaign cleanup archives the reservation and preserves receipts, while active children, invalid seals, manifest digest drift, and save failures remain fail-closed with no mutation.",
+  "acceptance_cmd": "PYTHONDONTWRITEBYTECODE=1 uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_campaign_reservation.py ops/tests/test_worktree_orchestrate_delivery.py",
+  "acceptance_expect_rc": 0,
+  "brief": "Campaign cleanup cannot release an already resolved reservation, leaving later work blocked by an obsolete base.",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "manager",
+  "contract_evidence": "Manager contract review against current main 7633cbcfff739c30707519c916233e4e71828a16: brief, structured four-file Scope, plan, tracked fix site, and executable acceptance command are present; acceptance is intentionally red pending implementation; no implementation or production action was run.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "campaign-retire currently rejects a reservation when all child worktrees have already been resolved, even when archived hand-backs and landing evidence are complete. Implement a bounded Manager-only reconciliation path that archives the stale reservation and preserves every receipt, while refusing any active child, invalid seal, manifest digest drift, or unresolved provenance. This is distinct from selector projection ticket IMP-20260819-1df6a3.",
+  "fix_site": "ops/worktree_registry.py",
+  "fixed_by": [
+    "7107f6329717429611d8e705d5b9c1ca8d268ea9"
+  ],
+  "groomed_against": "7633cbcfff739c30707519c916233e4e71828a16",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "manager",
+  "id": "IMP-20260819-d90a0d",
+  "plan": "1. Add a pure reconciliation contract for resolved-only campaign reservations. 2. Make campaign-retire or an explicit recovery primitive archive the reservation only after all child records are resolved and receipts are valid. 3. Preserve refusal for active, dirty, missing, stale, or mismatched provenance. 4. Add focused lifecycle tests for resolved-only cleanup, active-child refusal, digest mismatch refusal, and atomic no-mutation failure.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/worktree_registry.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/lib/worktree_orchestrator_commands.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_campaign_reservation.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_orchestrate_delivery.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "Manager campaign stale-reservation reconciliation",
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-19",
+  "verified_by": "manager",
+  "verified_evidence": "PYTHONDONTWRITEBYTECODE=1 uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_campaign_reservation.py ops/tests/test_worktree_orchestrate_delivery.py"
+}

@@ -1,0 +1,50 @@
+{
+  "acceptance": "Settings sync exact-selector UI test passes and all changed files remain within Scope.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testSettingsSyncTerminalErrorRetriesToSuccess$'",
+  "brief": "Settings sync lifecycle feedback can be delivered without concurrently editing the settings coordinator or shared fixture.",
+  "category": "correctness",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded slice; coordinator/fixture intentionally excluded.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded sync slice extracted from parent APP-20260813-ec040c. Owner may modify only sync lifecycle, fixture transport, and sync UI test files listed in Scope; SettingsCoordinator, tech_index, and marketing_demo.json remain single-writer owners.",
+  "fix_site": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-903e25",
+  "plan": "Use TDD on terminal sync error retry and lifecycle feedback; do not touch SettingsCoordinator, tech_index, or marketing_demo.json.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncProgressPanel.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncCoordinator.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsSyncLifecycleFeedback.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Support/Fixtures/Settings/SettingsSyncFixtureTransport.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/SettingsSyncLifecycleUITests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-ec040c Settings sync owner",
+  "status": "triaged",
+  "stream": "APP"
+}

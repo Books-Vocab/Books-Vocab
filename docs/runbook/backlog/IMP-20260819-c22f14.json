@@ -1,0 +1,54 @@
+{
+  "acceptance": "RED then GREEN: the Manager-only official recovery entry produces exactly one kg.worktree.child-receipt.v1 for a resolved legacy child with child_receipt missing only when persisted campaign manifest, manifest digest/base, complete partition/ticket set, exact branch/path/tip, typed hand-back seal, and verifiable completed child manifest all match. Tests cover r3 campaign-retire=child-receipt-missing and r4 campaign claim/child mismatch. Every named negative refuses with no mutation: missing manifest, missing receipt source, incomplete child manifest, base drift, tip drift, manifest digest drift, Scope drift, branch drift, path drift, handback-seal-time-mismatch, invalid seal, active child, dirty worktree, unhanded child, and claim/child mismatch. A hand-back seal or tip alone never creates a receipt; campaign-retire remains fail-closed; missing receipt is never reported fixed or pass. Repeating the same valid request is idempotent with no duplicate receipt, while changed evidence refuses with no mutation.",
+  "acceptance_cmd": "PYTHONDONTWRITEBYTECODE=1 uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_campaign_reservation.py ops/tests/test_worktree_orchestrate_delivery.py",
+  "acceptance_expect_rc": 0,
+  "brief": "歷史工作樹的交回憑證遺失時，管理者無法安全重建可稽核的子工作證據。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:ticket-factory-child:legacy-provenance-recovery",
+  "contract_evidence": "Static contract preflight against current main 7107f6329717429611d8e705d5b9c1ca8d268ea9: exact four-file Scope, existing Manager-only entry, bounded acceptance command, and named positive/negative/no-mutation/idempotency contract are known. Baseline is red because this recovery behavior and its new regression coverage are not present on current main. Fixed IMP-20260809-bd9172 and IMP-20260819-d90a0d are historical and non-reusable; IMP-20260819-1df6a3 remains a separate non-reusable admission-projection lane.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "legacy campaign child-receipt/provenance recovery；owner=platform-steward；parent=none；sequence=independent recovery lane, but serialize integration with IMP-20260819-1df6a3 because the two test files are shared；dependency=persisted campaign manifest, manifest digest/base, complete partition/ticket set, exact branch/path/tip, typed hand-back seal, and verifiable completed child manifest. Current evidence: r3 campaign-retire=child-receipt-missing；r4=campaign claim/child mismatch；additional evidence=handback-seal-time-mismatch and manifest-digest-invalid. Some hand-back seal/tip exists while registry child_receipt is missing; never infer or synthesize a receipt from a hand-back seal. This is a new bounded recovery contract, distinct from fixed IMP-20260809-bd9172 and fixed IMP-20260819-d90a0d, and distinct from non-reusable admission-projection ticket IMP-20260819-1df6a3；do not modify or reuse those ticket semantics. Reuse the existing Manager-only official campaign-retire/recovery entry；no new user-facing or agent-facing CLI surface is planned, so docs/reference/tech_index.md is intentionally outside this Scope. If implementation requires a new CLI surface, stop and require a separate docs contract update rather than guessing.",
+  "fix_site": "ops/worktree_registry.py",
+  "fixed_by": [
+    "202119f69a4be584f6bacf80b11a12a7bb8579c5"
+  ],
+  "groomed_against": "3aa9a5c072a33d451a59c347833eb5721220e410",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:ticket-factory-child:legacy-provenance-recovery",
+  "id": "IMP-20260819-c22f14",
+  "plan": "1. Add RED coverage for a Manager-only, atomic, re-entrant legacy provenance recovery/audit path at the existing official campaign-retire/recovery entry; keep campaign-retire fail-closed. 2. Permit kg.worktree.child-receipt.v1 production only when persisted campaign manifest, manifest digest/base, partition/ticket set, exact branch/path/tip, typed hand-back seal, and a completed child manifest all match exactly. 3. Exercise r3 child-receipt-missing as the recoverable resolved-child case and preserve explicit r4 campaign claim/child mismatch refusal. 4. Name and refuse every missing or drifting source: missing manifest, missing receipt source, incomplete child manifest, base drift, tip drift, digest drift, Scope drift, branch drift, path drift, seal-time drift, invalid seal, active, dirty, or not-handedback state; no mutation on every refusal and never infer a receipt from a seal/tip. 5. Make success atomic and reruns idempotent: identical valid evidence reuses the same receipt without duplication; changed evidence refuses without mutation. 6. Add focused tests for the positive path, each named negative path, atomic no-mutation snapshots, and repeated invocation. 7. Do not add a parser or docs surface; if a new CLI becomes unavoidable, stop and split the docs/reference/tech_index.md contract work before implementation. Shared test files must not be parallel-written with IMP-20260819-1df6a3.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/worktree_registry.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/lib/worktree_orchestrator_commands.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_campaign_reservation.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_orchestrate_delivery.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "r3/r4 campaign provenance audit 2026-08-19",
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-19",
+  "verified_by": "manager",
+  "verified_evidence": "PYTHONDONTWRITEBYTECODE=1 uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_campaign_reservation.py ops/tests/test_worktree_orchestrate_delivery.py"
+}

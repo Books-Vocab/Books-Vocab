@@ -1,0 +1,46 @@
+{
+  "acceptance": "Settings exact-selector UI tests pass and all changes stay within the four-file Scope.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testSettingsFlowAppliesRealPreferenceChanges$' -g '^testSettingsLongContentCounterexampleResolvesProductionSelectors$' -g '^testSettingsResetCounterexampleShowsObservableBoundary$'",
+  "brief": "Settings view behavior can be delivered without concurrently editing the shared settings coordinator or fixture.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded slice; coordinator/fixture intentionally excluded.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded view test slice extracted from parent APP-20260813-89fe6f. Owner may modify only SettingsView, SettingsPreferencesSection, SettingsReviewSection, and SettingsFlowUITests; SettingsCoordinator, tech_index, and marketing_demo.json remain single-writer owners.",
+  "fix_site": "ios/BooksAndVocab/Views/Settings/SettingsView.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-0a37e2",
+  "plan": "Use TDD on Settings view selectors and preference behavior; do not touch SettingsCoordinator, tech_index, or marketing_demo.json.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsView.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/SettingsFlowUITests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-89fe6f Settings UI owner",
+  "status": "triaged",
+  "stream": "APP"
+}

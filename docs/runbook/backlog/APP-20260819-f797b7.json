@@ -1,0 +1,54 @@
+{
+  "acceptance": "Overview exact-selector UI tests pass and all changed files are within Scope.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testOverviewStatsRenderFromSeededReviewHistory$' -g '^testOverviewEmptyForecastCounterexampleIsVisible$'",
+  "brief": "Overview statistics behavior can be delivered without changing the shared marketing fixture.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded slice; shared fixture intentionally excluded.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded code test slice extracted from parent APP-20260813-dc88a5. Owner may modify only Overview code, scenarios, and UI evidence files listed in Scope; marketing_demo.json remains with the unique fixture owner.",
+  "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-f797b7",
+  "plan": "Use TDD on Overview stats and empty forecast counterexample behavior; do not touch marketing_demo.json or UI World topology.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Presentation/StatsPresentation.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/StatsViewScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/VocabForecastScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/OverviewFlowUITests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-dc88a5 Overview code test owner",
+  "status": "triaged",
+  "stream": "APP"
+}

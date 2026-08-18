@@ -1,0 +1,47 @@
+{
+  "acceptance": "所有新增 contract tests 先對目前 existing-sites-unknown 情境失敗，修復後驗證：r3 active record 加 persisted manifest 可通過下一 campaign overlap validation；真正 legacy unknown 仍拒絕；manifest digest、base 或 ticket Scope drift 仍拒絕；沒有 shared-path collision 被放行。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_campaign_reservation.py ops/tests/test_worktree_registry_topology.py",
+  "acceptance_expect_rc": 0,
+  "brief": "新的 campaign 在已有 active worktree 存在時能可靠判斷檔案佔用，避免合法分片被未知 Scope 錯誤阻擋或被猜測放行。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "integrator-admission-audit",
+  "contract_evidence": "RED: existing-sites-unknown is reproducible with r3 active records; implementation must add canonical projection and preserve fail-closed legacy behavior.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "campaign admission 現在遇到 r3 active ticketed records 時報 existing-sites-unknown，因 live registry projection 沒有從 persisted campaign manifest 帶出 ticket_details/write_sites。修復只處理可由 campaign_id 與 manifest_digest 追溯的 campaign record：補出 structured projection，且 base/digest 漂移、缺 manifest 或 legacy/ordinary active record 必須 fail-closed。不得猜測 free-text Scope，也不得放寬 shared-path collision。",
+  "fix_site": "ops/lib/worktree_campaign.py 的 existing reservation projection/overlap validation",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "IMP-20260819-1df6a3",
+  "plan": "1. 以 campaign_id、partition_id、manifest_digest 對應持久化 manifest，將 ticket_details/write_sites 形成 admission validation 的 canonical projection。\n2. 對可追溯且 base/digest 一致的 active record 允許下一 campaign 做精確 overlap 計算；對 manifest 缺失、digest/base drift 或 legacy active record 保持 explicit unknown/block。\n3. 以 RED→GREEN 補 campaign reservation、registry topology/claim contract tests，並更新 tech_index 的 tooling contract；不修改 primary、runner 或既有 ticket 語意。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/lib/worktree_campaign.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_campaign_reservation.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_registry_topology.py"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/reference/tech_index.md"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "integrator admission review 2026-08-19",
+  "status": "triaged",
+  "stream": "IMP"
+}

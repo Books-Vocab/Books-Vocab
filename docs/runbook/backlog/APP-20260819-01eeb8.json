@@ -1,0 +1,51 @@
+{
+  "acceptance": "Reader exact-selector UI tests and Reader TOC unit test pass; all changed files are within the five-file slice.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess$' -g '^testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable$'",
+  "brief": "Reader table of contents behavior can be delivered without changing the shared marketing fixture.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded slice; shared fixture intentionally excluded.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded code test slice extracted from parent APP-20260813-92043f. Owner may modify only the declared Reader view, helper, UI test, and unit test files; marketing_demo.json remains with the unique UI World fixture owner. Parent closure must consume this receipt.",
+  "fix_site": "ios/BooksAndVocab/Views/Reader/TOCView.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-01eeb8",
+  "plan": "Use TDD on Reader TOC navigation and retry behavior; do not touch marketing_demo.json or UI World topology. Return exact test evidence and typed hand-back.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Reader/TOCView.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Reader/ReaderView.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/ReaderFlowUITests.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/Helpers/ReaderTOCEvidence.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabTests/ReaderTOCNavigationTests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-92043f Reader code test owner",
+  "status": "triaged",
+  "stream": "APP",
+  "surface": "reader"
+}

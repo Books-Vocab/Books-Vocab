@@ -1,0 +1,58 @@
+{
+  "acceptance": "Review Calendar exact-selector UI and bounded ops evidence tests pass; all changed files are within Scope.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testReviewCalendarRequiredEvidenceUsesStableSelectors$'",
+  "brief": "Review calendar behavior can be delivered without changing the shared marketing fixture.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded slice; shared fixture intentionally excluded.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded code test slice extracted from parent APP-20260813-508e0d. Owner may modify only Review Calendar code, scenarios, tests, and UI evidence files listed in Scope; marketing_demo.json remains with the unique fixture owner.",
+  "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-99942f",
+  "plan": "Use TDD on Review Calendar selectors and evidence contracts; do not touch marketing_demo.json or UI World topology.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/ReviewCalendarScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_p9_review_calendar_contract.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_p9_review_calendar_evidence.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-508e0d Review Calendar code test owner",
+  "status": "triaged",
+  "stream": "APP"
+}

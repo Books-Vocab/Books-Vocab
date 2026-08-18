@@ -1,0 +1,38 @@
+{
+  "acceptance": "A valid recorded non-critical BLOCK can be adjudicated without rerunning unrelated gates; missing ticket, high severity, head drift, stale record, or scope drift remains fail-closed.",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate_gate.py",
+  "brief": "Managers must rerun a full Gate after recording a valid non-critical failure.",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "manager",
+  "contract_evidence": "cutover dry-run rc=2 gate verdict block; integrate continue with late defer rc=64 persisted defer mismatch; fresh recovery rerun required",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "When a Manager has a fresh Gate record with an unrelated non-critical BLOCK and a valid recovery ticket is later registered, the lifecycle has no Manager-only adjudication command; cutover refuses the existing BLOCK and integrate continue reruns the entire Gate. Add an auditable adjudication entry that binds the original gate record, ticket, scope, reason and operator without editing the verdict.",
+  "fix_site": "ops/lib/worktree_orchestrator_gate.py",
+  "groomed_against": "202119f69a4be584f6bacf80b11a12a7bb8579c5",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "manager",
+  "id": "IMP-20260819-00140e",
+  "plan": "Add a Manager-only gate adjudication operation that accepts only a fresh current-head gate record, named existing medium-or-lower recovery ticket, unchanged plan/changed files, and explicit reason; persist a new non-blocking adjudication record while preserving raw BLOCK.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/lib/worktree_orchestrator_gate.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_worktree_orchestrate_gate.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "Manager Calendar Gate adjudication refusal",
+  "status": "triaged",
+  "stream": "IMP"
+}

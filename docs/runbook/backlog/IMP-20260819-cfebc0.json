@@ -1,0 +1,46 @@
+{
+  "acceptance": "Evidence runner regression passes for lease-exhausted and explicit-device recovery, docs lint covers only the declared SOP, and no tech_index path is changed.",
+  "acceptance_cmd": "./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh",
+  "brief": "Simulator evidence recovery can be delivered without changing the shared technical index writer.",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh non-tech-index slice; tech_index writer is explicitly deferred.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded non-tech-index slice extracted from parent IMP-20260816-71e524. Owner may modify only the evidence runner scripts, evidence contract reference, and UI flow evidence SOP; docs/reference/tech_index.md remains a serialized single-writer follow-up after IMP-0029.",
+  "fix_site": ".claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "IMP-20260819-cfebc0",
+  "plan": "Use TDD on lease-exhausted and explicit-device recovery behavior; do not touch docs/reference/tech_index.md. Return exact shell regression and docs evidence.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": ".claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh"
+      },
+      {
+        "operation": "modify",
+        "path": ".claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh"
+      },
+      {
+        "operation": "modify",
+        "path": ".claude/skills/ios-simulator-verification/references/evidence-contract.md"
+      },
+      {
+        "operation": "modify",
+        "path": "docs/sop/ui_flow_evidence.md"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from IMP-20260816-71e524 simulator non-tech-index lane",
+  "status": "triaged",
+  "stream": "IMP"
+}

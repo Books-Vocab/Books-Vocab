@@ -1,0 +1,38 @@
+{
+  "acceptance": "A stale cache containing an old worktree path is rejected and a current-worktree cache remains reusable; the targeted cache lifecycle tests pass.",
+  "acceptance_cmd": "./ops/tests/test_ios_xctestrun_cache.sh",
+  "brief": "iOS test cache can reuse an old worktree path and hide valid test assets.",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "manager",
+  "contract_evidence": "Gate 412e61197327dd4f ios-test-unit rc=1; xctestrun embeds old absolute worktree path",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "The iOS unit Gate reused a cached xctestrun/DerivedData graph whose absolute paths point to integrator-20260819-fan-in-calendar-b2d898f7 instead of the current staging worktree, producing broad fixture and materialization failures. Make cache identity/path validation fail closed and rebuild on worktree drift.",
+  "fix_site": "ops/lib/ios_xctestrun_cache.sh",
+  "groomed_against": "202119f69a4be584f6bacf80b11a12a7bb8579c5",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "manager",
+  "id": "IMP-20260819-fc9c35",
+  "plan": "Add current-worktree identity and absolute-path validation to xctestrun cache reuse; invalidate stale cache on drift; add regression coverage for old staging path reuse.",
+  "resolution": "Classified as medium tooling severity: this is a stale xctestrun/DerivedData cache invalidation problem with no evidence of Calendar product regression; it may be used only as a named non-critical Gate deferral while the recovery lane repairs cache identity.",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/lib/ios_xctestrun_cache.sh"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_ios_xctestrun_cache.sh"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "Calendar S2 Gate 412e61197327dd4f",
+  "status": "triaged",
+  "stream": "IMP"
+}

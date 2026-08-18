@@ -1,0 +1,47 @@
+{
+  "acceptance": "Explore exact-selector UI acceptance passes and all changed files are within the four-file slice.",
+  "acceptance_cmd": "test -f ios/BooksAndVocabUITests/ExploreNavigationUITests.swift && ./ops/ios_ops.sh test --ui --dataset marketing_demo --lease -g '^testExploreEvidenceMatrixCoversRequiredAndCounterexampleStates$'",
+  "brief": "Explore navigation and evidence behavior can be delivered without changing the shared marketing fixture.",
+  "category": "ux",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:integrator-20260819",
+  "contract_evidence": "Fresh bounded slice; shared fixture intentionally excluded.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "Bounded code test slice extracted from parent APP-20260813-339c1e. Owner may modify only the declared Explore view, presentation, scenario, and UI test files; marketing_demo.json and UI World topology remain with IMP-20260817-7e77ff fixture owner. Parent closure must consume this receipt.",
+  "fix_site": "ios/BooksAndVocab/Views/Explore/ExploreView.swift",
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator-20260819",
+  "id": "APP-20260819-0adf1c",
+  "plan": "Use TDD on Explore view presentation and its exact UI selector test; do not touch marketing_demo.json or UI World manifest. Return changed-but-closable only when exact selector acceptance is green.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Explore/ExploreView.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Views/Explore/SharedDeckPresentation.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Debug/Scenarios/ExploreViewScenarios.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabUITests/ExploreNavigationUITests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "split from APP-20260813-339c1e Explore code test owner",
+  "status": "triaged",
+  "stream": "APP",
+  "surface": "discover"
+}

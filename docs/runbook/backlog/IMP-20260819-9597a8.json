@@ -1,0 +1,38 @@
+{
+  "acceptance": "RED then GREEN: the targeted unit test must prove applyServerModeState merges the server mode and rejects a newer local value; the exact SettingsCoordinatorReviewClockTests command must pass.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --unit --file SettingsCoordinatorReviewClockTests",
+  "brief": "複習模式的伺服器更新需要可驗證的時間合併，避免本機較新選擇被覆蓋。",
+  "category": "arch",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:ticket-factory-child",
+  "contract_evidence": "current-main=0f9c0c2b16f90b4eb6da4241310b028e0b9af551; exact SettingsCoordinatorReviewClockTests acceptance was bounded at 135s before acquiring the shared build lock; holder pid=73736 remained alive; no PASS/no-op claim. Static contract has the exact Scope, fix site, acceptance, and command; baseline intentionally red. Dependency is explicitly recorded in detail/plan as blocked_by the completed pause-clock ticket.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "[IMP-0029 replacement/refill] review-mode slice; parent=IMP-0029; resource_key=settings-lww-review-mode; sequence=after pause-clock slice (IMP-20260819-5bf13b), before translation; dependency=blocked_by=pause-clock slice (IMP-20260819-5bf13b); shared-writer rule=serial after pause-clock and never parallel-write ReviewSettings.swift or SettingsCoordinatorReviewClockTests.swift; follow-up=SettingsCoordinator/docs writer remains a separate unique writer and is not in this Scope.",
+  "fix_site": "ios/BooksAndVocab/Models/ReviewSettings.swift",
+  "groomed_against": "870f04f9adcd20177de14ab782031cc084c94763",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:integrator",
+  "id": "IMP-20260819-9597a8",
+  "plan": "parent=IMP-0029; resource_key=settings-lww-review-mode; sequence=after pause-clock IMP-20260819-5bf13b, before translation; dependency=IMP-20260819-5bf13b. Work only in the declared two-file Scope and never parallel-write the shared files with pause-clock.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Models/ReviewSettings.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "low",
+  "source": "IMP-0029 replacement/refill wave 2026-08-19 review-mode slice",
+  "status": "triaged",
+  "stream": "IMP"
+}
