@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -627,6 +628,76 @@ def _ready_retirement_fixture(tmp_path):
     REGISTRY.save_state(state, payload)
     manifest_path = state.parent / "worktree_campaigns" / "campaign-1.json"
     return state, repo, manifest_path
+
+
+def _ready_resolved_only_retirement_fixture(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(
+        base=base,
+        tickets=[ticket("IMP-20260810-aa0001", "p1", "ops/a.py")],
+        quotas={"p1": 1},
+    )
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    _attach_retirement_receipt(
+        payload["records"][0], payload["campaign_reservations"][0], base,
+    )
+    payload["records"][0]["status"] = "merged"
+    payload["records"][0]["resolved_at"] = "2026-08-10T00:02:00+00:00"
+    REGISTRY.save_state(state, payload)
+    manifest_path = state.parent / "worktree_campaigns" / "campaign-1.json"
+    shutil.rmtree(repo)
+    return state, manifest_path
+
+
+def test_campaign_retire_reconciles_resolved_only_receipts_without_worktree(tmp_path):
+    state, manifest_path = _ready_resolved_only_retirement_fixture(tmp_path)
+
+    dry_run = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="archive resolved-only admission",
+        commit=False, now_iso="2026-08-10T01:00:00+00:00",
+    )
+    assert dry_run["ok"] is True, dry_run
+    assert dry_run["resolved_only"] is True
+    assert json.loads(state.read_text())["campaign_reservations"]
+    assert manifest_path.exists()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="archive resolved-only admission",
+        commit=True, now_iso="2026-08-10T01:00:00+00:00",
+    )
+    assert result["ok"] is True, result
+    assert result["resolved_only"] is True
+    after = json.loads(state.read_text())
+    assert after["campaign_reservations"] == []
+    assert after["records"][0]["status"] == "merged"
+    assert after["campaign_archives"][0]["resolved_without_landing"] is True
+    assert after["campaign_archives"][0]["retired_children"][0]["child_receipt"]
+    assert not manifest_path.exists()
+
+
+def test_campaign_retire_resolved_only_refuses_missing_receipt_without_mutation(tmp_path):
+    state, manifest_path = _ready_resolved_only_retirement_fixture(tmp_path)
+    payload = json.loads(state.read_text())
+    payload["records"][0]["child_receipt"] = None
+    REGISTRY.save_state(state, payload)
+    state_before = state.read_bytes()
+    manifest_before = manifest_path.read_bytes()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="must preserve receipt",
+        commit=True,
+    )
+    assert result["ok"] is False, result
+    assert result["reason"] == "resolved campaign child provenance invalid"
+    assert state.read_bytes() == state_before
+    assert manifest_path.read_bytes() == manifest_before
 
 
 def test_campaign_retire_archives_receipts_and_releases_unlanded_children(tmp_path):

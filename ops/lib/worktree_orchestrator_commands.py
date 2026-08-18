@@ -115,7 +115,12 @@ def cmd_campaign_abort(args: argparse.Namespace) -> int:
 
 
 def cmd_campaign_retire(args: argparse.Namespace) -> int:
-    """Manager-only archival of a clean campaign whose work was not landed."""
+    """Manager-only archival, including resolved-only stale reservations.
+
+    A reservation with no active children is reconciled only when every terminal
+    child still has a valid typed receipt; active or provenance-drifted children
+    remain fail-closed.
+    """
     if getattr(args, "operator", "manager") != "manager":
         _emit({"schema": SCHEMA, "step": "campaign-retire",
                "error": "operator refused", "operator": args.operator,
