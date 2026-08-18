@@ -24,6 +24,8 @@ PYTEST_PREFIX = (
 _ORCHESTRATOR_SURFACE_PATTERNS = (
     "ops/worktree_orchestrate*.py",
     "ops/lib/worktree_orchestrator_*.py",
+    "ops/lib/worktree_campaign.py",
+    "ops/worktree_registry.py",
     "ops/test_route.py",
     "ops/lib/worktree_test_routes.py",
 )
@@ -183,10 +185,40 @@ _KG_BOARD_ROUTE["pytest_nodeids"].extend([
     "test_board_payload_v3_is_single_compact_row_set_with_id_partitions",
 ])
 
-_ALL_ROUTES: tuple[dict[str, Any], ...] = (
-    *_BEHAVIOR_ROUTES, _FACADE_ROUTE, _KG_BOARD_ROUTE,
+_CAMPAIGN_REGISTRY_ROUTE = _route(
+    "orchestrator.campaign-registry",
+    [
+        "ops/lib/worktree_campaign.py",
+        "ops/worktree_registry.py",
+        "ops/tests/test_worktree_campaign_reservation.py",
+        "ops/tests/test_worktree_handback_outcomes.py",
+        "ops/tests/test_worktree_parent_integration.py",
+        "ops/tests/test_worktree_registry.py",
+        "ops/tests/test_worktree_registry_*.py",
+    ],
+    "ops/tests/test_worktree_campaign_reservation.py",
+    [
+        "ops/tests/test_worktree_campaign_reservation.py::"
+        "test_campaign_retire_archives_receipts_and_releases_unlanded_children",
+        "ops/tests/test_worktree_registry_lifecycle.py::"
+        "test_work_mode_contract_is_explicit_and_legacy_records_remain_readable",
+    ],
 )
-_DIRECT_ROUTES: tuple[dict[str, Any], ...] = (*_BEHAVIOR_ROUTES, _KG_BOARD_ROUTE)
+_CAMPAIGN_REGISTRY_ROUTE["selectors"].extend([
+    "ops/tests/test_worktree_handback_outcomes.py",
+    "ops/tests/test_worktree_parent_integration.py",
+    "ops/tests/test_worktree_registry_lifecycle.py",
+    "ops/tests/test_worktree_registry_recovery.py",
+    "ops/tests/test_worktree_registry_queries.py",
+    "ops/tests/test_worktree_registry_topology.py",
+])
+
+_ALL_ROUTES: tuple[dict[str, Any], ...] = (
+    *_BEHAVIOR_ROUTES, _FACADE_ROUTE, _KG_BOARD_ROUTE, _CAMPAIGN_REGISTRY_ROUTE,
+)
+_DIRECT_ROUTES: tuple[dict[str, Any], ...] = (
+    *_BEHAVIOR_ROUTES, _KG_BOARD_ROUTE, _CAMPAIGN_REGISTRY_ROUTE,
+)
 _ROUTES_BY_ID = {route["route_id"]: route for route in _ALL_ROUTES}
 _FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"])
 _LEGACY_PATH = "ops/tests/test_worktree_orchestrate.py"
