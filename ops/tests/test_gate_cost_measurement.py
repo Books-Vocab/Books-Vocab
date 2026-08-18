@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 import pytest
@@ -8,7 +10,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ops"))
 
-from lib import gate_cost_measurement as measurement  # noqa: E402
+import test_timing
+from lib import gate_cost_measurement as measurement
 
 
 def test_timing_contract_records_execution_identity_and_cost() -> None:
@@ -97,3 +100,42 @@ def test_timing_contract_rejects_invalid_cost_and_cache_values() -> None:
             simulator_lease_wait_s=0,
             cache_status="maybe",
         )
+
+
+def test_bundle_status_contains_one_timing_contract_per_task(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("KG_TEST_TIMING_DB", str(tmp_path / "timing.sqlite3"))
+    manifest = tmp_path / "bundle.json"
+    manifest.write_text(json.dumps({
+        "schema": "kg.test.bundle.v1",
+        "bundle_id": "gate-cost-test",
+        "head_sha": "b" * 40,
+        "changed_files": ["ops/test_timing.py"],
+        "ticket": "IMP-20260818-timing",
+        "packet": "packet-7",
+        "gate_tier": "S1",
+        "tasks": [{
+            "id": "timed-task",
+            "command_key": "ops.gate-cost.test",
+            "command": [sys.executable, "-c", "pass"],
+            "resource_class": "simulator",
+            "cache_status": "miss",
+        }],
+    }))
+
+    args = Namespace(bundle=str(manifest), repo=str(tmp_path), run_id="run-contract", json=True)
+    assert test_timing.cmd_run_bundle(args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    row = payload["tasks"][0]
+    contract = row["timing_contract"]
+
+    assert contract["schema"] == "kg.test.timing.contract.v1"
+    assert contract["head_sha"] == "b" * 40
+    assert contract["changed_files"] == ["ops/test_timing.py"]
+    assert contract["ticket"] == "IMP-20260818-timing"
+    assert contract["packet"] == "packet-7"
+    assert contract["gate_tier"] == "S1"
+    assert contract["command"] == [sys.executable, "-c", "pass"]
+    assert contract["duration_s"] >= 0
+    assert contract["simulator_lease_wait_s"] >= 0
+    assert contract["cache_status"] == "miss"
+    assert payload["timing_contract"]["records"] == [contract]
