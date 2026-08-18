@@ -126,6 +126,100 @@ def test_validator_requires_declared_write_site_collision_to_be_safe():
     assert any(problem["kind"] == "write-site-collision" for problem in problems)
 
 
+def _persisted_campaign_with_active_projection(tmp_path: Path):
+    existing = manifest(
+        campaign_id="existing-campaign",
+        tickets=[ticket("IMP-20260810-aa0001", "p1", "ops/existing.py")],
+        quotas={"p1": 1},
+    )
+    manifest_path = tmp_path / "worktree_campaigns" / "existing-campaign.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_bytes(CAMPAIGN.json_bytes(CAMPAIGN.canonical_manifest(existing)))
+    reservation = CAMPAIGN.reservation_record(existing, str(manifest_path), "now")
+    reservation["partitions"]["p1"]["claimed"] = {
+        "IMP-20260810-aa0001": {
+            "branch": "feat/existing-campaign",
+            "path": str(tmp_path / "existing"),
+        }
+    }
+    active_record_projection = {
+        "campaign_id": "active:feat/existing-campaign",
+        "ticket_ids": ["IMP-20260810-aa0001"],
+    }
+    requested = manifest(
+        campaign_id="next-campaign",
+        tickets=[ticket("IMP-20260810-bb0002", "p1", "ops/next.py")],
+        quotas={"p1": 1},
+    )
+    return requested, reservation, active_record_projection
+
+
+def test_validator_projects_structured_sites_for_active_campaign_record(tmp_path):
+    requested, reservation, active_record = _persisted_campaign_with_active_projection(tmp_path)
+
+    problems = CAMPAIGN.validate_manifest(
+        requested,
+        current_base=BASE,
+        backlog_entries=requested["tickets"],
+        existing_reservations=[reservation, active_record],
+    )
+
+    assert problems == [], problems
+
+
+def test_validator_rejects_ordinary_active_record_without_campaign_provenance():
+    requested = manifest(
+        campaign_id="next-campaign",
+        tickets=[ticket("IMP-20260810-bb0002", "p1", "ops/next.py")],
+        quotas={"p1": 1},
+    )
+    ordinary_active_record = {
+        "branch": "feat/ordinary-active",
+        "backlog": ["IMP-20260810-aa0001"],
+        "scope": None,
+    }
+
+    problems = CAMPAIGN.validate_manifest(
+        requested,
+        current_base=BASE,
+        backlog_entries=requested["tickets"],
+        existing_reservations=[ordinary_active_record],
+    )
+
+    assert any(problem["kind"] == "existing-active-provenance-unknown"
+               for problem in problems), problems
+
+
+@pytest.mark.parametrize(
+    ("mutation", "problem_kind"),
+    [
+        (lambda reservation, path: reservation.update(manifest_path=str(path / "missing.json")),
+         "existing-manifest-missing"),
+        (lambda reservation, path: reservation.update(manifest_digest="0" * 64),
+         "existing-manifest-digest-drift"),
+        (lambda reservation, path: reservation.update(base="b" * 40),
+         "existing-manifest-base-drift"),
+        (lambda reservation, path: reservation["ticket_details"]["IMP-20260810-aa0001"].update(
+            write_sites=[{"path": "ops/drifted.py", "mode": "write"}]
+        ), "existing-manifest-scope-drift"),
+    ],
+)
+def test_validator_fails_closed_on_active_campaign_projection_drift(
+    tmp_path, mutation, problem_kind,
+):
+    requested, reservation, active_record = _persisted_campaign_with_active_projection(tmp_path)
+    mutation(reservation, tmp_path)
+
+    problems = CAMPAIGN.validate_manifest(
+        requested,
+        current_base=BASE,
+        backlog_entries=requested["tickets"],
+        existing_reservations=[reservation, active_record],
+    )
+
+    assert any(problem["kind"] == problem_kind for problem in problems), problems
+
+
 def test_validator_allows_ordered_dependency_and_same_co_land_group_overlap():
     first = ticket("IMP-20260810-aa0001", "p1", "ops/shared.py",
                    symbol="one", co_land_group="g1")
