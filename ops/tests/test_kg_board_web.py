@@ -6,6 +6,7 @@ import json
 import queue
 import re
 import sys
+import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -241,6 +242,7 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+    live = (server.WEB_DIR / "live_refresh.js").read_text(encoding="utf-8")
 
     assert 'class="admin-nav"' in index
     assert 'id="scope-matrix-wrap"' in index
@@ -282,21 +284,129 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert "/api/ticket/" in js
     assert 'new EventSource("/api/events")' in js
     assert 'addEventListener("snapshot"' in js
-    assert 'const LIVE_RELOAD_DELAY_MS=25' in js
-    assert 'const LIVE_RELOAD_MAX_WAIT_MS=250' in js
-    assert 'const LIVE_LOAD_DEADLINE_MS=650' in js
-    assert 'let liveReloadMaxTimer=null' in js
-    assert 'AbortController' in js
-    assert 'clearTimeout(liveReloadTimer)' in js
-    assert "function scheduleLiveFallback" in js
-    assert 'const LIVE_FALLBACK_BASE_DELAY_MS=250' in js
-    assert 'const LIVE_FALLBACK_MAX_DELAY_MS=750' in js
-    assert '2 ** Math.min(liveFallbackAttempts,2)' in js
-    assert 'navigator.locks.request' in js
-    assert "Math.random()" in js
+    assert '<script src="/assets/live_refresh.js" defer></script>' in index
+    assert index.index('/assets/live_refresh.js') < index.index('/assets/app.js')
+    assert 'liveEvents.addEventListener("snapshot",()=>liveRefresh.scheduleLiveReload())' in js
+    assert 'const LIMITS={' in live
+    assert 'reloadDelayMs:25' in live
+    assert 'reloadMaxWaitMs:250' in live
+    assert 'eventBudgetMs:900' in live
+    assert 'loadDeadlineMs:650' in live
+    assert 'fallbackRequestBudgetMs:200' in live
+    assert 'fallbackBaseDelayMs:200' in live
+    assert 'fallbackMaxDelayMs:700' in live
+    assert 'fallbackJitterMs:50' in live
+    assert 'AbortController' in live
+    assert 'pendingDeadlineAt' in live
+    assert 'locks.request' in live
+    assert 'Math.random()' not in js
     assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in js
     bootstrap = js[js.rindex("renderTreeZoom();"):]
-    assert bootstrap.index("connectLiveEvents();") < bootstrap.index("load().catch(showLoadError);")
+    assert bootstrap.index("connectLiveEvents();") < bootstrap.index("liveRefresh.loadInitial().catch(showLoadError);")
+
+
+def test_live_refresh_controller_enforces_one_budget_across_superseded_loads():
+    script = r'''
+import {createRequire} from "node:module";
+const require = createRequire(import.meta.url);
+const live = require(process.argv[1]);
+let now = 0;
+let nextTimer = 1;
+const timers = new Map();
+const loads = [];
+const errors = [];
+const setTimeoutFake = (callback, delay) => {
+  const id = nextTimer++;
+  timers.set(id, {at: now + delay, callback});
+  return id;
+};
+const clearTimeoutFake = id => timers.delete(id);
+const settle = async () => { for (let index = 0; index < 8; index += 1) await Promise.resolve(); };
+const advance = async duration => {
+  const target = now + duration;
+  while (true) {
+    const due = [...timers.entries()]
+      .filter(([, timer]) => timer.at <= target)
+      .sort((left, right) => left[1].at - right[1].at)[0];
+    if (!due) break;
+    timers.delete(due[0]);
+    now = due[1].at;
+    due[1].callback();
+    await settle();
+  }
+  now = target;
+  await settle();
+};
+const delayedLoad = ({signal, deadlineAt, budget}) => new Promise((resolve, reject) => {
+  const row = {startedAt: now, deadlineAt, budget, abortedAt: null};
+  loads.push(row);
+  const abort = () => {
+    if (row.abortedAt !== null) return;
+    row.abortedAt = now;
+    resolve();
+  };
+  signal.addEventListener("abort", abort, {once: true});
+  if (signal.aborted) abort();
+});
+const controller = live.createLiveRefreshController({
+  load: delayedLoad,
+  onError: error => errors.push(error.name),
+  now: () => now,
+  setTimeout: setTimeoutFake,
+  clearTimeout: clearTimeoutFake,
+  enqueue: callback => Promise.resolve().then(callback),
+  random: () => 0,
+  locks: null,
+});
+controller.loadInitial().catch(() => {});
+controller.scheduleLiveReload();
+await advance(25);
+if (loads.length !== 2) throw new Error(`expected one superseded load, got ${loads.length}`);
+if (loads[0].abortedAt !== 25) throw new Error(`old load was not cancelled at event flush: ${loads[0].abortedAt}`);
+if (loads[1].startedAt !== 25 || loads[1].deadlineAt !== 900 || loads[1].budget !== 875) {
+  throw new Error(`live deadline was not carried across reload: ${JSON.stringify(loads)}`);
+}
+await advance(874);
+if (loads[1].abortedAt !== null) throw new Error("live request expired before its event deadline");
+await advance(1);
+if (loads[1].abortedAt !== 900) throw new Error(`live request exceeded its event deadline: ${loads[1].abortedAt}`);
+if (live.limits.fallbackMaxDelayMs + live.limits.fallbackJitterMs + live.limits.fallbackRequestBudgetMs >= 1000) {
+  throw new Error("fallback wait plus request budget is not strictly subsecond");
+}
+now = 0;
+timers.clear();
+loads.length = 0;
+const fallback = live.createLiveRefreshController({
+  load: delayedLoad,
+  onError: error => errors.push(error.name),
+  now: () => now,
+  setTimeout: setTimeoutFake,
+  clearTimeout: clearTimeoutFake,
+  enqueue: callback => Promise.resolve().then(callback),
+  random: () => 0,
+  locks: null,
+});
+fallback.scheduleLiveFallback();
+await advance(200);
+if (loads.length !== 1 || loads[0].startedAt !== 200 || loads[0].deadlineAt !== 400 || loads[0].budget !== 200) {
+  throw new Error(`fallback did not reserve the remaining request budget: ${JSON.stringify(loads)}`);
+}
+await advance(200);
+if (loads[0].abortedAt !== 400) throw new Error(`fallback request exceeded its 200ms budget: ${loads[0].abortedAt}`);
+const nextFallbackAt = [...timers.values()].map(timer => timer.at).sort((left, right) => left - right)[0];
+if (nextFallbackAt !== 800) throw new Error(`fallback backoff did not advance to 400ms: ${nextFallbackAt}`);
+process.stdout.write(JSON.stringify({loads, limits: live.limits, errors}));
+'''
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script, str(server.WEB_DIR / "live_refresh.js")],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["loads"][0]["abortedAt"] == 400
+    assert payload["limits"]["eventBudgetMs"] == 900
 
 
 def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):
@@ -729,6 +839,7 @@ def test_asset_routes_serve_index_css_and_javascript(monkeypatch):
         ("/", "text/html; charset=utf-8", b"admin-nav"),
         ("/model", "text/html; charset=utf-8", b"COMMUNICATION CONTRACT"),
         ("/assets/app.css", "text/css; charset=utf-8", b"min-height"),
+        ("/assets/live_refresh.js", "text/javascript; charset=utf-8", b"createLiveRefreshController"),
         ("/assets/app.js", "text/javascript; charset=utf-8", b"/api/git-tree"),
         ("/assets/model.css", "text/css; charset=utf-8", b"flow-node"),
         ("/assets/model.js", "text/javascript; charset=utf-8", b"/api/model"),

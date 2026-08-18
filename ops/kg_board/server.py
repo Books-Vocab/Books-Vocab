@@ -280,20 +280,25 @@ def live_event_watch_loop(stop_event: threading.Event | None = None) -> None:
     bridge for host glue that atomically replaces ``mirror.json`` without
     reaching the HTTP endpoint; it never reads or mutates the source data.
     """
+    global _live_event_seen_fingerprint
     previous = _live_source_fingerprint()
     while stop_event is None or not stop_event.is_set():
         try:
             current = _live_source_fingerprint()
             if current != previous:
                 with _live_event_seen_lock:
-                    if current != _live_event_seen_fingerprint:
+                    # Re-read after acquiring the lock. The first stat is only
+                    # a wake-up hint; an atomic replace can otherwise leave a
+                    # transient fingerprint that races a direct mirror POST.
+                    observed = _live_source_fingerprint()
+                    if observed != previous and observed != _live_event_seen_fingerprint:
                         # Mark and publish under the same lock as direct mirror
                         # POSTs so the SSE sequence follows the source update
                         # serialization rather than whichever thread happens
                         # to reach publish_event first.
-                        _mark_live_source_event_seen()
+                        _live_event_seen_fingerprint = observed
                         publish_event("mirror")
-                previous = current
+                    previous = observed
         except Exception as exc:  # pragma: no cover - daemon must stay alive
             log(f"live event watcher error: {exc}")
         if stop_event is None:
@@ -1690,6 +1695,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/assets/app.css":
             self._send(200, (WEB_DIR / "app.css").read_bytes(), "text/css; charset=utf-8")
+            return
+        if path == "/assets/live_refresh.js":
+            self._send(200, (WEB_DIR / "live_refresh.js").read_bytes(), "text/javascript; charset=utf-8")
             return
         if path == "/assets/app.js":
             self._send(200, (WEB_DIR / "app.js").read_bytes(), "text/javascript; charset=utf-8")

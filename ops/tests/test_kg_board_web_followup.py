@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1] / "kg_board" / "web"
 APP = (ROOT / "app.js").read_text()
+LIVE = (ROOT / "live_refresh.js").read_text()
 CSS = (ROOT / "app.css").read_text()
 INDEX = (ROOT / "index.html").read_text()
 
@@ -106,16 +107,17 @@ def test_matrix_inspector_is_structured_and_not_an_empty_instruction_panel():
 def test_matrix_keeps_agent_identity_dirty_sources_and_live_snapshot_reload():
     for field in ("agent_title", "agent_status", "host", "thread", "dirty_file_count", "dirty_files"):
         assert f'"{field}"' in APP
-    assert 'liveEvents.addEventListener("snapshot",scheduleLiveReload)' in APP
-    assert 'const LIVE_RELOAD_DELAY_MS=25' in APP
-    assert 'const LIVE_RELOAD_MAX_WAIT_MS=250' in APP
-    assert 'const LIVE_LOAD_DEADLINE_MS=650' in APP
-    assert 'AbortController' in APP
-    assert 'const LIVE_FALLBACK_MAX_DELAY_MS=750' in APP
-    assert 'navigator.locks.request' in APP
-    assert 'clearTimeout(liveReloadTimer)' in APP
-    assert "function scheduleLiveFallback" in APP
-    assert "if(loadInFlight)return;" in APP
+    assert 'liveEvents.addEventListener("snapshot",()=>liveRefresh.scheduleLiveReload())' in APP
+    for marker in (
+        'reloadDelayMs:25', 'reloadMaxWaitMs:250', 'eventBudgetMs:900',
+        'loadDeadlineMs:650', 'fallbackRequestBudgetMs:200',
+        'fallbackMaxDelayMs:700', 'pendingDeadlineAt', 'AbortController',
+        'locks.request',
+    ):
+        assert marker in LIVE
+    assert 'clearTimer(reloadTimer)' in LIVE
+    assert "function scheduleLiveFallback" in LIVE
+    assert "if(active)return Promise.resolve();" in LIVE
     assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in APP
     assert "publish_event" not in APP
     assert "grid-area=" not in CSS
