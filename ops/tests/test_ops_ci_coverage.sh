@@ -209,6 +209,7 @@ UNGROUPED_TESTS=(
 # the normal group.  Their historical acceptance commands still need a stable
 # path, but the real test bodies live in the split behavior files above.
 LEGACY_COMPAT_COLLECTORS=(
+  "ops/tests/test_backlog.py|historical backlog source retained for direct acceptance; the named legacy collector owns normal execution"
   "ops/tests/test_worktree_orchestrate.py|legacy collector re-exports the six split behavior groups for historical -k acceptance commands"
   "ops/tests/test_worktree_registry.py|legacy collector re-exports the focused registry lifecycle and recovery groups for historical acceptance commands"
 )
@@ -585,6 +586,39 @@ else
       ok "$f is reached by a DEFAULT_TESTS group"
     else
       fail_t "$f must be reached by the gate-failure/worktree routes and not exempted"
+    fi
+  done
+fi
+
+# IMP-20260817-79808b: the named backlog collector owns the historical
+# nodeids; every seam and the topology contract must remain reachable from the
+# same explicit backlog dispatcher route.
+section "backlog legacy collector paths stay reachable"
+BACKLOG_TOPOLOGY_TESTS=(
+  ops/tests/test_backlog_legacy_collector.py
+  ops/tests/test_backlog_migration.py
+  ops/tests/test_backlog_acceptance.py
+  ops/tests/test_backlog_contract.py
+  ops/tests/test_backlog_legacy_view_seams.py
+  ops/tests/test_backlog_mutations.py
+  ops/tests/test_backlog_query_seam.py
+  ops/tests/test_backlog_reanchor.py
+  ops/tests/test_backlog_store.py
+  ops/tests/test_backlog_verification.py
+  ops/tests/test_backlog_wave.py
+)
+if (( ${#REACHABLE[@]} == 0 )); then
+  fail_t "backlog legacy collector probe parsed no reachable paths"
+else
+  for f in "${BACKLOG_TOPOLOGY_TESTS[@]}"; do
+    reach=0; exempt=0; optional=0
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
+    for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
+    if (( reach == 1 && exempt == 0 && optional == 0 )); then
+      ok "$f is reached by the backlog default route"
+    else
+      fail_t "$f must be reached by backlog and not exempted"
     fi
   done
 fi
