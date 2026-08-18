@@ -14,6 +14,8 @@ verified_against: 31147266d83c354d73e90f92a4f6a6da8a2ad16c
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。
 新增 router / table / env var / ops 腳本時,**同 PR 內補一行**。
 
+`KG_BACKLOG_STORE` 與 `ops/backlog_store.py` 是 backlog ticket data-plane resolver：可用 repo root 相對或絕對 external store；未設定時維持 `docs/runbook/backlog/` 相容模式。activation、migration、validate 與 Git/Gate 邊界以 `docs/reference/backlog_store.md` 為 SoT。現階段 `campaign-reserve` 尚未接同一 resolver，因此 external-store campaign dispatch 維持停用；Gate 將 external backlog 標成 `external-store` 且 `reusable=false`。
+
 > `kg_reconcile.sh` 的 no-response exemption literal 是 `000／000000`；拿到真實 HTTP status（例如 502）即屬服務鏈證據，不能豁免回滾。
 
 ## Reconciler poison cooldown
