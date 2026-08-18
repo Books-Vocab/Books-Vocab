@@ -166,7 +166,7 @@ _clone_lock = threading.RLock()
 _state_lock = threading.RLock()
 _sse_lock = threading.RLock()
 _sse_clients: set[queue.Queue] = set()
-_live_event_seen_lock = threading.Lock()
+_live_event_seen_lock = threading.RLock()
 _live_event_seen_fingerprint = None
 _live_event_sequence = 0
 _cache: dict = {
@@ -1764,8 +1764,12 @@ class Handler(BaseHTTPRequestHandler):
                 mirror[f"{key}_received_at"] = datetime.now(TZ).isoformat(timespec="seconds")
                 return mirror
 
-            _update_json(MIRROR_PATH, {}, update_mirror)
-            _mark_live_source_event_seen()
+            # Keep the mirror write and the watcher acknowledgement in one
+            # critical section. Otherwise the file watcher can observe the new
+            # inode between these two operations and publish a duplicate event.
+            with _live_event_seen_lock:
+                _update_json(MIRROR_PATH, {}, update_mirror)
+                _mark_live_source_event_seen()
             publish_event(key)
             self._json(200, {"ok": True, "stored": key})
             return
@@ -1799,7 +1803,12 @@ def main() -> int:
 
     host, _, port = BIND.rpartition(":")
     threading.Thread(target=refresh_loop, daemon=True).start()
-    threading.Thread(target=live_event_watch_loop, daemon=True).start()
+    live_stop_event = threading.Event()
+    threading.Thread(
+        target=live_event_watch_loop,
+        args=(live_stop_event,),
+        daemon=True,
+    ).start()
     server = ThreadingHTTPServer((host or "127.0.0.1", int(port)), Handler)
     log(f"kg-board listening on {BIND}; clone={CLONE} refresh={REFRESH_SECONDS}s "
         f"live_event_poll={LIVE_EVENT_POLL_SECONDS}s "
@@ -1808,6 +1817,9 @@ def main() -> int:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        live_stop_event.set()
+        server.server_close()
     return 0
 
 
