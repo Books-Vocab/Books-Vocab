@@ -30,6 +30,12 @@ require_cmd() {
 }
 require_cmd sqlite3
 require_cmd tar
+require_cmd uv
+
+UV_BIN="${UV_BIN:-}"
+if [[ -z "$UV_BIN" ]]; then
+  UV_BIN="$(command -v uv)"
+fi
 
 # ── 建一份「健康」mock backup tarball 到指定目錄 ────────────────────────────
 # 用法：build_backup <out_dir> <stamp> [opt:root=<name>|skip_users_json|corrupt_cards|skip_pipeline_table|skip_judge_table|empty_logs|skip_cards]
@@ -95,8 +101,12 @@ build_backup() {
   echo "$tarball"
 }
 
-# 建立只應在 member policy 階段被拒絕的 archive。-P 保留絕對/父層路徑，-s
-# 讓 bsdtar 能在不經過檔案系統解析的情況下加入逃逸 member。
+# 建立只應在 member policy 階段被拒絕的 archive。
+#
+# 不用 tar 的 vendor-specific append/transform flags 造 fixture：BSD tar 與 GNU tar
+# 對 -P/-s/-r 的組合語義不同，會讓「測 archive policy」變成「測 runner 的 tar 方言」。
+# Python 標準庫只負責寫出精確的 tar member metadata；受測的 backup_verify.sh 仍用
+# 真實 tar 列舉、解析、解壓，安全邊界沒有被 fixture 繞過。
 build_policy_archive() {
   local out_dir="$1" stamp="$2" policy="$3"
   local stage="$TMPDIR/policy_stage_$RANDOM"
@@ -107,43 +117,69 @@ build_policy_archive() {
   mkdir -p "$out_dir" "$root"
   POLICY_SENTINEL=""
 
-  case "$policy" in
-    sibling)
-      mkdir -p "$stage/sibling"
-      printf 'SIBLING\n' > "$stage/sibling/payload"
-      tar -P -cf "$plain" -C "$stage" "$root_name" sibling
-      ;;
-    parent)
-      printf 'ESCAPE\n' > "$stage/payload"
-      tar -P -cf "$plain" -C "$stage" "$root_name"
-      tar -P -rf "$plain" -C "$stage" -s "#^payload\$#${root_name}/../outside#" payload
-      ;;
-    absolute)
-      printf 'ESCAPE\n' > "$stage/payload"
-      tar -P -cf "$plain" -C "$stage" "$root_name"
-      tar -P -rf "$plain" -C "$stage" -s "#^payload\$#/tmp/kg_backup_verify_escape_$RANDOM#" payload
-      ;;
-    external-symlink)
-      mkdir -p "$outside"
-      POLICY_SENTINEL="$outside/sentinel"
-      printf 'KEEP\n' > "$POLICY_SENTINEL"
-      ln -s "$outside" "$root/escape"
-      printf 'PAYLOAD\n' > "$stage/payload"
-      tar -P -cf "$plain" -C "$stage" "$root_name"
-      tar -P -rf "$plain" -C "$stage" -s "#^payload\$#${root_name}/escape/payload#" payload
-      ;;
-    external-hardlink)
-      mkdir -p "$stage/sibling"
-      POLICY_SENTINEL="$stage/sibling/sentinel"
-      printf 'KEEP\n' > "$POLICY_SENTINEL"
-      ln "$POLICY_SENTINEL" "$root/external_hard"
-      tar -P -cf "$plain" -C "$stage" "$root_name" sibling
-      ;;
-    *)
-      echo "unknown policy fixture: $policy" >&2
-      return 1
-      ;;
-  esac
+  if [[ "$policy" == external-symlink ]]; then
+    mkdir -p "$outside"
+    POLICY_SENTINEL="$outside/sentinel"
+    printf 'KEEP\n' > "$POLICY_SENTINEL"
+  elif [[ "$policy" == external-hardlink ]]; then
+    mkdir -p "$stage/sibling"
+    POLICY_SENTINEL="$stage/sibling/sentinel"
+    printf 'KEEP\n' > "$POLICY_SENTINEL"
+  fi
+
+  "$UV_BIN" run --quiet --no-project --python 3.13 python - 2>/dev/null \
+    "$plain" "$stage" "$root_name" "$policy" "$outside" <<'PY'
+import io
+import os
+import sys
+import tarfile
+
+plain, stage, root_name, policy, outside = sys.argv[1:]
+root = os.path.join(stage, root_name)
+
+def member(name, kind=tarfile.REGTYPE, data=b"", linkname=""):
+    info = tarfile.TarInfo(name)
+    info.type = kind
+    info.mode = 0o755 if kind == tarfile.DIRTYPE else 0o644
+    if kind == tarfile.REGTYPE:
+        info.size = len(data)
+    if linkname:
+        info.linkname = linkname
+    return info, io.BytesIO(data)
+
+with tarfile.open(plain, "w", format=tarfile.PAX_FORMAT) as archive:
+    archive.add(root, arcname=root_name, recursive=False)
+
+    if policy == "sibling":
+        sibling = os.path.join(stage, "sibling")
+        os.makedirs(sibling, exist_ok=True)
+        with open(os.path.join(sibling, "payload"), "wb") as handle:
+            handle.write(b"SIBLING\n")
+        archive.add(sibling, arcname="sibling", recursive=True)
+    elif policy == "parent":
+        info, payload = member(f"{root_name}/../outside", data=b"ESCAPE\n")
+        archive.addfile(info, payload)
+    elif policy == "absolute":
+        info, payload = member("/tmp/kg_backup_verify_escape", data=b"ESCAPE\n")
+        archive.addfile(info, payload)
+    elif policy == "external-symlink":
+        info, payload = member(
+            f"{root_name}/escape", kind=tarfile.SYMTYPE,
+            linkname=os.path.abspath(outside),
+        )
+        archive.addfile(info, payload)
+    elif policy == "external-hardlink":
+        # The target is deliberately outside the sole archive root.  The target
+        # need not be archived: backup_verify must reject the link before any
+        # extraction, and a missing external target is itself unsafe.
+        info, payload = member(
+            f"{root_name}/external_hard", kind=tarfile.LNKTYPE,
+            linkname="../sibling/sentinel",
+        )
+        archive.addfile(info, payload)
+    else:
+        raise SystemExit(f"unknown policy fixture: {policy}")
+PY
 
   local tarball="$out_dir/data_${stamp}_${policy}.tar.gz"
   gzip -c "$plain" > "$tarball"

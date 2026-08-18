@@ -36,10 +36,9 @@
 #     descriptors, never a mock, because the whole defect is that the real
 #     condition behaves differently from a simulated one.
 #   * F4/F6 prove the process was KILLED BY the signal rather than calling
-#     `exit 128+N`. Producer of that string: the harness's own bash, printing a
-#     job-status line derived from the kernel wait status when it reaps a
-#     WIFSIGNALED child. Measured: present for a real re-raise, ABSENT for an
-#     `exit 143` victim — so it discriminates, which plain rc=143 cannot.
+#     `exit 128+N`. The portable helper records Python's child return contract,
+#     which is negative only for a WIFSIGNALED child; a fake `exit 143` victim
+#     therefore remains distinguishable even on non-interactive Linux bash.
 #
 # COUNTING CLEANUPS — why an exact sentinel and not `wc -l`:
 # When a bash builtin's write FAILS, the bytes stay in bash's stdio buffer and
@@ -70,6 +69,10 @@ set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
 LIB="$WORKSPACE/ops/lib/signal_traps.sh"
+UV_BIN="${UV_BIN:-}"
+if [[ -z "$UV_BIN" ]]; then
+  UV_BIN="$(command -v uv)"
+fi
 
 pass=0; fail=0
 ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
@@ -131,7 +134,39 @@ echo RESUMED
 exit 0
 EOF
 
-# run_victim <victim-file> <signal|""> <sleep-seconds> [stderr-mode]
+# Bash's non-interactive `wait` prints a human job-status line on macOS but not
+# on the Ubuntu runner.  F4/F6 need the kernel wait result, not a shell's
+# localized presentation of it, so these two cases use Python's portable
+# subprocess return contract (`returncode < 0` means WIFSIGNALED) through uv.
+cat >"$TMP/wait_for_victim.py" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+import time
+
+victim, out_path, err_path, status_path, signal_name, delay = sys.argv[1:]
+with open(out_path, "wb") as out_file, open(err_path, "wb") as err_file:
+    child = subprocess.Popen(
+        ["bash", victim],
+        env=os.environ.copy(),
+        stdout=out_file,
+        stderr=err_file,
+    )
+    if signal_name:
+        time.sleep(float(delay))
+        os.kill(child.pid, getattr(signal, "SIG" + signal_name))
+    returncode = child.wait()
+
+with open(status_path, "w", encoding="ascii") as status_file:
+    status_file.write(f"pid={child.pid}\nrc={returncode}\n")
+    if returncode < 0:
+        status_file.write(f"signaled={signal.Signals(-returncode).name}\n")
+    else:
+        status_file.write("signaled=\n")
+PY
+
+# run_victim <victim-file> <signal|""> <sleep-seconds> [stderr-mode] [wait-mode]
 # stderr-mode: split (default) | closed | deadpipe
 #   split    — fd 2 to its own file, so RUN_ERR proves the diagnostic went to
 #              STDERR and RUN_OUT proves it did not pollute stdout (ios_test.sh
@@ -146,32 +181,46 @@ EOF
 # bash defers a trapped signal until the foreground child (here `sleep`)
 # returns, so each signal case costs ≈SLEEP seconds; 2s is enough.
 run_victim() {
-  local victim="$1" sig="$2" slp="$3" mode="${4:-split}"
-  local tag marker out err wmsg pid rc=0
+  local victim="$1" sig="$2" slp="$3" mode="${4:-split}" wait_mode="${5:-bash}"
+  local tag marker out err wmsg pid rc=0 raw_rc
   tag="$(date +%s)-$$-${RANDOM}"
   marker="$TMP/marker.$tag"; out="$TMP/out.$tag"
   err="$TMP/err.$tag";       wmsg="$TMP/wait.$tag"
   : >"$marker"; : >"$out"; : >"$err"; : >"$wmsg"
 
-  case "$mode" in
-    split)    MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>"$err" & ;;
-    closed)   MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>&-     & ;;
-    deadpipe) MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2> >(exit 0) & ;;
-    *) echo "FATAL: run_victim bad stderr-mode '$mode'" >&2; exit 1 ;;
-  esac
-  pid=$!
-  if [[ -n "$sig" ]]; then
-    sleep 0.3
-    kill -s "$sig" "$pid" 2>/dev/null || true
+  if [[ "$wait_mode" == python ]]; then
+    [[ "$mode" == split ]] || { echo "FATAL: portable wait mode requires split stderr" >&2; exit 1; }
+    MARKER="$marker" SLEEP="$slp" \
+      "$UV_BIN" run --quiet --no-project --python 3.13 python \
+      "$TMP/wait_for_victim.py" "$victim" "$out" "$err" "$wmsg" "$sig" 0.3 2>/dev/null
+    [[ -s "$wmsg" ]] || { echo "FATAL: portable wait helper produced no status" >&2; exit 1; }
+    raw_rc="$(sed -n 's/^rc=//p' "$wmsg")"
+    if [[ "$raw_rc" == -* ]]; then
+      RUN_RC=$((128 + ${raw_rc#-}))
+    else
+      RUN_RC="$raw_rc"
+    fi
+    RUN_PID="$(sed -n 's/^pid=//p' "$wmsg")"
+  else
+    case "$mode" in
+      split)    MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>"$err" & ;;
+      closed)   MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>&-     & ;;
+      deadpipe) MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2> >(exit 0) & ;;
+      *) echo "FATAL: run_victim bad stderr-mode '$mode'" >&2; exit 1 ;;
+    esac
+    pid=$!
+    if [[ -n "$sig" ]]; then
+      sleep 0.3
+      kill -s "$sig" "$pid" 2>/dev/null || true
+    fi
+    # `wait` on a job killed by a signal prints a useful human job-status line
+    # on macOS.  Keep capturing it for the normal matrix; the portable F4/F6
+    # cases above assert the kernel status directly because Ubuntu omits it.
+    { LC_ALL=C wait "$pid" || rc=$?; } 2>"$wmsg"
+    RUN_RC="$rc"
+    RUN_PID="$pid"
   fi
-  # `wait` on a job killed by a signal makes bash print "Terminated: 15" /
-  # "Hangup: 1" — a job-status line derived from the kernel wait status. Capture
-  # it (F4/F6 assert on it) instead of discarding it. LC_ALL=C so a localised
-  # bash cannot silently change the wording.
-  { LC_ALL=C wait "$pid" || rc=$?; } 2>"$wmsg"
 
-  RUN_RC="$rc"
-  RUN_PID="$pid"
   # Exact sentinel, not `wc -l` — see "COUNTING CLEANUPS" in the header.
   RUN_CLEANUPS="$(grep -c '^cleaned$' "$marker" || true)"
   RUN_OUT="$(cat "$out")"
@@ -290,25 +339,25 @@ expect_run "E4 SIGHUP, stderr = pipe with no reader" 129 1 no
 
 # ── F. the diagnostic and the re-raise are real, not decorative ───────────────
 section "F. diagnostic and re-raise"
-run_victim "$TMP/victim_lib.sh" TERM 2
+run_victim "$TMP/victim_lib.sh" TERM 2 split python
 [[ "$RUN_ERR" == *"aborted by SIGTERM pid=$RUN_PID"* ]] \
   && ok "F1 handler announced SIGTERM on stderr, in the signalled process" \
   || fail_t "F1 no 'aborted by SIGTERM pid=$RUN_PID' on stderr (got: ${RUN_ERR:-<empty>})"
 [[ "$RUN_OUT" != *"aborted by"* ]] \
   && ok "F2 the diagnostic stayed off stdout" \
   || fail_t "F2 the diagnostic leaked onto stdout (breaks --json)"
-[[ "$RUN_WAITMSG" == *[Tt]erminated* ]] \
+[[ "$RUN_WAITMSG" == *[Tt]erminated* || "$RUN_WAITMSG" == *"signaled=SIGTERM"* ]] \
   && ok "F4 process was KILLED BY SIGTERM, not exit 143" \
   || fail_t "F4 no kernel signal-death evidence; an 'exit 143' fake would look identical in rc alone"
 
-run_victim "$TMP/victim_lib.sh" HUP 2
+run_victim "$TMP/victim_lib.sh" HUP 2 split python
 # This — not A3 — is what pins `trap "kg_on_signal HUP" HUP` in the lib. Delete
 # that trap and bash's implicit EXIT-on-fatal-signal still yields 129/cleanup×1,
 # but it is silent, so this assertion goes red.
 [[ "$RUN_ERR" == *"aborted by SIGHUP pid=$RUN_PID"* ]] \
   && ok "F3 explicit HUP handler ran (its diagnostic is the only producer)" \
   || fail_t "F3 no 'aborted by SIGHUP pid=$RUN_PID' on stderr (got: ${RUN_ERR:-<empty>})"
-[[ "$RUN_WAITMSG" == *[Hh]angup* ]] \
+[[ "$RUN_WAITMSG" == *[Hh]angup* || "$RUN_WAITMSG" == *"signaled=SIGHUP"* ]] \
   && ok "F6 process was KILLED BY SIGHUP, not exit 129" \
   || fail_t "F6 no kernel signal-death evidence for SIGHUP"
 

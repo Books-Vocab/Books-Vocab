@@ -73,6 +73,15 @@ cat >"$FAKEBIN/date" <<'EOF'
 if [[ "$#" -eq 1 && "$1" == "+%s" ]]; then
   printf '%s\n' "${KG_TEST_FAKE_NOW:?fake date 被呼叫但 KG_TEST_FAKE_NOW 未設}"; exit 0
 fi
+if [[ "${1:-}" == -j && "${2:-}" == -f && "$#" -ge 5 ]]; then
+  # The production bundle uses BSD date because the real remote host is macOS.
+  # On Linux, translate only this test seam to GNU date; on macOS, execute the
+  # real BSD parser so the test still exercises the production syntax.
+  if /bin/date "$@" >/dev/null 2>&1; then
+    exec /bin/date "$@"
+  fi
+  exec /bin/date -u -d "$4" "$5"
+fi
 exec /bin/date "$@"
 EOF
 chmod +x "$FAKEBIN/date"
@@ -161,7 +170,7 @@ cat >"$CADDY_LAUNCH_STUB" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 [[ "${1:-}" == run ]] || exit 64
-PATH="${KG_CADDY_FAKEBIN}:$PATH" zsh -c "${2:-}"
+PATH="${KG_CADDY_FAKEBIN}:$PATH" bash -c "${2:-}"
 EOF
 cat >"$CADDY_FAKEBIN/launchctl" <<'EOF'
 #!/usr/bin/env bash
@@ -362,12 +371,57 @@ section "REMOTE_BUNDLE 真執行：五個 key 的值端到端到得了 getm"
 # 所以這裡改用真執行：KG_BASE 這個 seam 吃的就是 `run "<bundle>"`,換一支真的把 bundle
 # 跑起來的 base stub,對 fixture 生產 repo 端到端驗**值**而不是驗字串出現過。
 EXECBASE="$(mktemp)"
+EXECBIN="$(mktemp -d)"
 cat >"$EXECBASE" <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = "run" ] || exit 64
-bash -c "$2"
+PATH="${KG_EXEC_FAKEBIN}:$PATH" bash -c "$2"
 EOF
 chmod +x "$EXECBASE"
+
+# The real remote bundle is intentionally macOS-native.  Its true-execution
+# test must still run on the Linux Actions runner, so stub only the host
+# primitives that do not exist there; the bundle's own shell, awk, git, path
+# handling, allowlist keys, and consumer parsing remain real.
+cat >"$EXECBIN/sysctl" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *"hw.memsize"*) printf '17179869184\n' ;;
+  *"vm.swapusage"*) printf 'total = 4096.00M  used = 512.00M  free = 3584.00M\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+cat >"$EXECBIN/vm_stat" <<'EOF'
+#!/usr/bin/env bash
+printf 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\n'
+printf 'Pages free:                             100.\n'
+printf 'Pages inactive:                         200.\n'
+printf 'Pages speculative:                       50.\n'
+EOF
+cat >"$EXECBIN/docker" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+  inspect)
+    template="${3:-}"
+    if [[ "$template" == *StartedAt* ]]; then
+      printf '2026-08-06T03:40:51.123456789Z\n'
+    else
+      printf 'container_health\thealthy\ncontainer_status\trunning\ncontainer_restarts\t0\n'
+    fi
+    ;;
+  stats) printf 'cpu_pct\t4.2\nmem_pct\t38.0\n' ;;
+  logs) : ;;
+  *) exit 1 ;;
+esac
+EOF
+cat >"$EXECBIN/date" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == -j && "${2:-}" == -f && "$#" -ge 5 ]]; then
+  exec /bin/date -u -d "$4" "$5"
+fi
+exec /bin/date "$@"
+EOF
+chmod +x "$EXECBIN/sysctl" "$EXECBIN/vm_stat" "$EXECBIN/docker" "$EXECBIN/date"
 
 FIXPROD="$(mktemp -d)"
 mkdir -p "$FIXPROD/backend" "$FIXPROD/backups"
@@ -379,13 +433,13 @@ printf 'poison deadbee 2000\npoison cafe123 1000\ntick 3000\n' > "$FIXPROD/backu
   && echo x > f && git add -A && git commit -qm base \
   && git update-ref refs/remotes/origin/prod HEAD ) >/dev/null 2>&1
 FIXSHA="$(git -C "$FIXPROD" rev-parse --short HEAD)"
-trap 'rm -f "$STUB" "$EXECBASE"; rm -rf "$FAKEBIN" "$FIXPROD"' EXIT
+trap 'rm -f "$STUB" "$EXECBASE"; rm -rf "$FAKEBIN" "$FIXPROD" "$EXECBIN"' EXIT
 
 exec_health() {  # 真跑 bundle（本機探針失敗無妨，漂移組只吃 fixture repo）
   # KG_DATA_DIR / KG_CONTAINER 也要釘：真執行會跑 `du -sm $KG_DATA_DIR` 與
   # `docker logs $KG_CONTAINER`，不釘的話在 **felix 上兩者都是生產**，測試耗時會變成
   # 生產資料量的函數（唯讀，無安全問題，但成本不該綁在生產上）。
-  KG_BASE="$EXECBASE" KG_PROD_REPO="$FIXPROD" \
+  KG_BASE="$EXECBASE" KG_EXEC_FAKEBIN="$EXECBIN" KG_PROD_REPO="$FIXPROD" \
   KG_DATA_DIR="$FIXPROD/backups" KG_CONTAINER="kg-test-no-such-container" \
   KG_HEALTH_CERT_ENDDATE="$FUTURE_CERT" KG_HEALTH_HTTP_CODE=200 \
     bash "$SCRIPT" --json 2>/dev/null
