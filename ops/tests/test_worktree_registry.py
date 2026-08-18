@@ -1,4 +1,9 @@
-"""Integration tests for ops/worktree_registry.py against real scratch git repos.
+"""Compatibility collector for ops/worktree_registry.py integration tests.
+
+The normal dispatcher owns the focused lifecycle, recovery, and topology
+groups.  This historical source remains executable so old selectors keep
+working; ``test_worktree_registry_topology.py`` proves its node-id union stays
+equal to the focused groups without duplicate ownership.
 
 Two things get exercised end-to-end (no synthetic facts — the pure verdicts live in
 P1 ops/lib/worktree_state.py and are unit-tested there):

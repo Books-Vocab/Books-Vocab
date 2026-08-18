@@ -210,6 +210,7 @@ UNGROUPED_TESTS=(
 # path, but the real test bodies live in the split behavior files above.
 LEGACY_COMPAT_COLLECTORS=(
   "ops/tests/test_worktree_orchestrate.py|legacy collector re-exports the six split behavior groups for historical -k acceptance commands"
+  "ops/tests/test_worktree_registry.py|legacy collector re-exports the focused registry lifecycle and recovery groups for historical acceptance commands"
 )
 
 # path|reason —— tracked test files reached only through an optional group.
@@ -513,6 +514,9 @@ WORKTREE_ORCHESTRATOR_REGRESSION_TESTS=(
   ops/tests/test_task_registry.py
   ops/tests/test_worktree_campaign_reservation.py
   ops/tests/test_worktree_handback_outcomes.py
+  ops/tests/test_worktree_registry_lifecycle.py
+  ops/tests/test_worktree_registry_recovery.py
+  ops/tests/test_worktree_registry_topology.py
   ops/tests/test_worktree_parent_integration.py
 )
 if (( ${#REACHABLE[@]} == 0 )); then
