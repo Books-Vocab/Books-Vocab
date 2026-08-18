@@ -295,4 +295,23 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(cloud.string(forKey: "review_settings_mode") == "relaxed")
         #expect(cloud.double(forKey: "review_settings_mode_updated_at") == 100)
     }
+
+    @Test func restoringUnwrittenPauseClockClearsStaleCloudPayload() {
+        let defaults = UserDefaults(suiteName: "test.settings-review-clock-restore-empty.\(UUID().uuidString)")!
+        let cloud = FakeCloudKVStore()
+        cloud.set(1.0, forKey: "review_settings_progress_paused")
+        cloud.set(1_600_000_000.0, forKey: "review_settings_progress_paused_at")
+        cloud.set(100.0, forKey: "review_settings_progress_updated_at")
+
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        store.restorePauseState(PauseClockState(isPaused: false, pausedAt: nil, updatedAt: nil))
+
+        let rebuilt = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+
+        #expect(!rebuilt.settings.isProgressPaused)
+        #expect(rebuilt.settings.progressPausedAt == nil)
+        #expect(cloud.double(forKey: "review_settings_progress_paused") == 0)
+        #expect(cloud.double(forKey: "review_settings_progress_paused_at") == 0)
+        #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 0)
+    }
 }

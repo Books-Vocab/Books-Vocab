@@ -492,6 +492,8 @@ final class ReviewSettingsStore {
         } else {
             // 先前從未寫過:清本地時戳;KVS 無 removeObject,寫 0 讓他裝置真寫(ts>0)勝出。
             defaults.removeObject(forKey: Keys.progressUpdatedAt)
+            cloud.set(0.0, forKey: Keys.isProgressPaused)
+            cloud.set(0.0, forKey: Keys.progressPausedAt)
             cloud.set(0.0, forKey: Keys.progressUpdatedAt)
         }
     }
