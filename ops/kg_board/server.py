@@ -24,7 +24,7 @@ refresh tick。oscar 睡著時看板會凍在最後一次推送——那是對�
   使用者自己的 tailnet 裝置連得到。同機的 `felix-status`(8002) 就是這個模型。
 * 手機頁面的 `/api/priority` 只接受 JSON、嚴格同源 Origin 與程序啟動時產生的
   `X-KG-CSRF`；短期 token 注入同源 HTML，不把長期 bearer 放進瀏覽器。
-* oscar 主機 glue 寫入的 `/api/mirror/*`（claims、git-tree、sync-state、threads）仍只接受長期 Bearer token，token 取自
+* oscar 主機 glue 寫入的 `/api/mirror/*`（claims、git-tree、worktree-status、sync-state、threads）仍只接受長期 Bearer token，token 取自
   `~/.secrets/kg-board.token`，不接受頁面 CSRF token。
 * **fail-closed**：token 檔不存在或為空 → 服務**拒絕啟動**。一個沒有認證卻在跑的
   看板，比沒有看板更糟；而「啟動成功但寫入永遠 401」會讓人以為只是設定錯。
@@ -56,9 +56,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 try:
-    from ops.kg_board.git_tree import project_snapshot
+    from ops.kg_board.git_tree import normalize_worktree_status, project_snapshot
 except ModuleNotFoundError:  # direct launch via the release checkout
-    from git_tree import project_snapshot
+    from git_tree import normalize_worktree_status, project_snapshot
 try:
     from ops.kg_board.scope import scope_files, scope_status
 except ModuleNotFoundError:  # direct launch via the release checkout
@@ -513,14 +513,22 @@ def _read_entries_locked(force: bool = False) -> dict:
 
 
 def refresh_loop() -> None:
+    previous_registry = None
     while True:
         try:
             previous_head = clone_head()
             refresh_clone()
             current_head = clone_head()
-            read_entries()
+            snapshot = read_entries()
+            current_registry = (
+                snapshot.get("registry_fingerprint")
+                if isinstance(snapshot, dict) else None
+            )
             if previous_head and current_head and previous_head != current_head:
                 publish_event("clone")
+            if previous_registry is not None and current_registry != previous_registry:
+                publish_event("registry")
+            previous_registry = current_registry
         except Exception as exc:                      # never let the thread die
             _refresh_state["last_error"] = f"{type(exc).__name__}: {exc}"
             log(f"refresh loop error: {exc}")
@@ -978,6 +986,10 @@ def project_scope_matrix(
             "ref_kind": ref.get("kind"),
             "live_state": ref.get("live_state"),
             "worktree_present": ref.get("worktree_present"),
+            "dirty": ref.get("dirty"),
+            "dirty_files": ref.get("dirty_files") or [],
+            "dirty_file_count": ref.get("dirty_file_count"),
+            "dirty_status_error": ref.get("dirty_status_error"),
             "agent": owner_for_ref(owner_ref),
             "ticket_ids": ticket_ids,
             "tickets": [
@@ -1155,9 +1167,37 @@ def git_tree_freshness(mirror: dict | None = None) -> dict:
     }
 
 
+def worktree_status_freshness(mirror: dict | None = None) -> dict:
+    mirror = mirror if isinstance(mirror, dict) else _load_json(MIRROR_PATH, {})
+    status = mirror.get("worktree_status") if isinstance(mirror, dict) else None
+    if not isinstance(status, dict):
+        return {"state": "unknown", "error": "worktree status mirror is missing", "age": None}
+    normalized = normalize_worktree_status(status)
+    if normalized["complete"] is not True:
+        return {
+            "state": "error",
+            "error": normalized["error"] or "worktree status is incomplete",
+            "age": None,
+        }
+    source = normalized.get("at")
+    if not source:
+        return {"state": "unknown", "error": "worktree status timestamp is missing", "age": None}
+    try:
+        age = max(0, int((datetime.now(TZ) - datetime.fromisoformat(source)).total_seconds()))
+    except (TypeError, ValueError):
+        return {"state": "unknown", "error": "worktree status timestamp is invalid", "age": None}
+    threshold = max(10, REFRESH_SECONDS * 3)
+    return {
+        "state": "stale" if age > threshold else "current",
+        "error": None,
+        "age": age,
+    }
+
+
 def freshness() -> dict:
     mirror = _load_json(MIRROR_PATH, {})
     tree_freshness = git_tree_freshness(mirror)
+    status_freshness = worktree_status_freshness(mirror)
     with _lock:
         snap = dict(_cache)
     lag = None
@@ -1210,6 +1250,9 @@ def freshness() -> dict:
         "git_tree_state": tree_freshness["state"],
         "git_tree_error": tree_freshness["error"],
         "git_tree_age": tree_freshness["age"],
+        "worktree_status_state": status_freshness["state"],
+        "worktree_status_error": status_freshness["error"],
+        "worktree_status_age": status_freshness["age"],
         "now": datetime.now(TZ).isoformat(timespec="seconds"),
     }
 
@@ -1309,7 +1352,9 @@ def scope_matrix_payload() -> dict:
         }
         for entry in entries if entry.get("id")
     }
-    tree = project_snapshot(mirror.get("git_tree"), ticket_annotations)
+    tree = project_snapshot(
+        mirror.get("git_tree"), ticket_annotations, mirror.get("worktree_status")
+    )
     payload = project_scope_matrix(
         entries,
         held,
@@ -1389,7 +1434,9 @@ def git_tree_payload() -> dict:
         }
         for entry in entries if entry.get("id")
     }
-    payload = project_snapshot(mirror.get("git_tree"), tickets)
+    payload = project_snapshot(
+        mirror.get("git_tree"), tickets, mirror.get("worktree_status")
+    )
     payload["freshness"] = freshness()
     return payload
 
@@ -1603,7 +1650,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         mirror_path = path in (
             "/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree",
-            "/api/mirror/threads",
+            "/api/mirror/worktree-status", "/api/mirror/threads",
         )
         if mirror_path:
             problem = self._mirror_precondition()
@@ -1621,14 +1668,23 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in (
             "/api/mirror/claims", "/api/mirror/sync-state", "/api/mirror/git-tree",
-            "/api/mirror/threads",
+            "/api/mirror/worktree-status", "/api/mirror/threads",
         ):
             # Pushed by oscar (`com.kg.sync`). The board cannot read oscar's ledger
             # or its local main — both live on a laptop that sleeps — so oscar
             # reports and this stores verbatim.
             key = ("claims" if path.endswith("claims") else
                    "sync_state" if path.endswith("sync-state") else
-                   "git_tree" if path.endswith("git-tree") else "threads")
+                   "git_tree" if path.endswith("git-tree") else
+                   "worktree_status" if path.endswith("worktree-status") else "threads")
+            if key == "worktree_status":
+                body = normalize_worktree_status(body)
+                if body.get("complete") is not True:
+                    self._json(422, {
+                        "error": "worktree status mirror incomplete",
+                        "detail": body.get("error"),
+                    })
+                    return
             if key == "threads":
                 body = normalise_thread_mirror(body)
                 if body.get("complete") is not True:

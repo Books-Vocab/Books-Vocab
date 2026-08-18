@@ -27,6 +27,27 @@
         <span id="scope-state" class="status-chip">讀取中</span>
       </div>
       <p class="section-note">欄是 active worktree 與 queued ticket，最上方橫列顯示其 Agent / Codex thread title；列是實際檔案。worktree 可持有一張或多張相關票，也可以是直接指派、沒有 ticket 的修改。direct worktree 的 Scope 必須由工具明確宣告；collision 只標在 queued ticket，表示它與 active worktree 的檔案範圍重疊。</p>
+      <div class="board-view-actions scope-view-actions" aria-label="矩陣檢視操作">
+        <button type="button" id="scope-fullscreen" class="tree-control-button">全螢幕查看矩陣</button>
+        <span>可調整尺度與列距；只看有佔用的檔案可快速收斂稀疏矩陣。</span>
+      </div>
+      <div class="board-controls scope-controls" aria-label="矩陣檢視尺度">
+        <div class="tree-control-copy">
+          <label for="scope-zoom">矩陣尺度</label>
+          <span>調整欄寬與字級</span>
+        </div>
+        <input id="scope-zoom" type="range" min="80" max="140" step="10" value="100" aria-valuetext="100%">
+        <output id="scope-zoom-value" for="scope-zoom">100%</output>
+        <div class="tree-control-copy">
+          <label for="scope-density">列距</label>
+          <span>縮短空白列的垂直佔用</span>
+        </div>
+        <input id="scope-density" type="range" min="28" max="54" step="2" value="34" aria-valuetext="34px">
+        <output id="scope-density-value" for="scope-density">34px</output>
+        <label class="scope-occupied-toggle"><input id="scope-occupied-only" type="checkbox">只看有佔用檔案</label>
+        <button type="button" id="scope-fit" class="tree-control-button">適合視窗</button>
+        <button type="button" id="scope-reset" class="tree-control-button secondary">重設</button>
+      </div>
       <div class="scope-key" aria-label="矩陣圖例">
         <span><i class="scope-key-swatch scope-key-ticketed"></i>持票 worktree：正在修改</span>
         <span><i class="scope-key-swatch scope-key-direct"></i>直接指派 worktree：正在修改</span>
@@ -51,11 +72,11 @@
         <span id="tree-state" class="status-chip">讀取中</span>
       </div>
       <p class="section-note">主線與工作分支依 commit 關係排列；先看拓撲，分支狀態與票號集中在圖面下方，選取節點查看詳細資料。</p>
-      <div class="tree-view-actions" aria-label="樹狀圖檢視操作">
+      <div class="board-view-actions tree-view-actions" aria-label="樹狀圖檢視操作">
         <button type="button" id="tree-fullscreen" class="tree-control-button">全螢幕查看樹圖</button>
         <span>手機可在無邊際模式中捏合／滾輪縮放，單指拖動圖面。</span>
       </div>
-      <div class="tree-controls" aria-label="樹圖縮放">
+      <div class="board-controls tree-controls" aria-label="樹圖縮放">
         <div class="tree-control-copy">
           <label for="tree-zoom">圖面尺度</label>
           <span>縮放圖面，不改變資料範圍</span>
@@ -88,15 +109,15 @@
               <strong id="tree-fullscreen-title">分支與工作樹</strong>
               <span id="tree-fullscreen-zoom" aria-live="polite">100%</span>
             </div>
-            <div class="tree-fullscreen-actions" aria-label="全螢幕樹圖操作">
-              <button type="button" id="tree-fullscreen-zoom-out" class="tree-control-button" aria-label="縮小樹圖">−</button>
-              <button type="button" id="tree-fullscreen-zoom-in" class="tree-control-button" aria-label="放大樹圖">＋</button>
+            <div class="tree-fullscreen-actions" aria-label="全螢幕檢視操作">
+              <button type="button" id="tree-fullscreen-zoom-out" class="tree-control-button" aria-label="縮小檢視">−</button>
+              <button type="button" id="tree-fullscreen-zoom-in" class="tree-control-button" aria-label="放大檢視">＋</button>
               <button type="button" id="tree-fullscreen-fit" class="tree-control-button">適合視窗</button>
               <button type="button" id="tree-fullscreen-reset" class="tree-control-button secondary">重設</button>
               <button type="button" id="tree-fullscreen-close" class="tree-control-button">關閉</button>
             </div>
           </header>
-          <p class="tree-fullscreen-hint">拖動移動圖面 · 捏合／滾輪縮放 · 按 Esc 關閉</p>
+          <p id="tree-fullscreen-hint" class="tree-fullscreen-hint">拖動移動圖面 · 捏合／滾輪縮放 · 按 Esc 關閉</p>
           <div id="tree-fullscreen-canvas" class="tree-fullscreen-canvas" tabindex="0" aria-label="可縮放拖動的 Git 交付樹"></div>
         </div>
       </div>

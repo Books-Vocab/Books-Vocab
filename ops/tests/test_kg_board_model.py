@@ -1256,6 +1256,40 @@ def test_scope_matrix_payload_projects_direct_worktree_refs_from_git_tree(monkey
     }
 
 
+def test_scope_matrix_payload_surfaces_live_worktree_dirty_status(monkeypatch, tmp_path):
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text(json.dumps({
+        "git_tree": {
+            "complete": True,
+            "refs": [{
+                "branch": "feat/direct", "head": "abcdef0", "status": "active",
+                "tickets": [],
+            }],
+            "commits": [],
+        },
+        "worktree_status": {
+            "schema": "kg.board.worktree-status.v1",
+            "complete": True,
+            "records": [{
+                "branch": "feat/direct", "path": "/tmp/direct", "present": True,
+                "dirty": True, "dirty_files": ["ops/direct.py"],
+                "dirty_file_count": 1,
+            }],
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "read_entries", lambda: {
+        "entries": [], "dispatch_ids": [], "local_held": {},
+    })
+    monkeypatch.setattr(server, "mirror_held_claims", lambda: {})
+    monkeypatch.setattr(server, "freshness", lambda: {"freshness_state": "current"})
+
+    payload = server.scope_matrix_payload()
+
+    assert payload["worktrees"][0]["dirty"] is True
+    assert payload["worktrees"][0]["dirty_file_count"] == 1
+
+
 def test_healthz_requires_token_when_all_reads_require_token(monkeypatch):
     monkeypatch.setattr(server, "REQUIRE_TOKEN_FOR_READS", True)
     monkeypatch.setattr(server, "TOKEN", "secret")
