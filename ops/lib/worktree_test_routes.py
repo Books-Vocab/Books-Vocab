@@ -134,13 +134,43 @@ _BEHAVIOR_ROUTES: tuple[dict[str, Any], ...] = (
     ),
 )
 
+_GATE_TIERS_ROUTE = _route(
+    "orchestrator.gate-tiers",
+    [
+        "ops/lib/worktree_gate_tiers.py",
+        "ops/tests/test_worktree_gate_tiers.py",
+        "ops/tests/test_worktree_gate_tiers_route.py",
+    ],
+    "ops/tests/test_worktree_gate_tiers.py",
+    [
+        (
+            "ops/tests/test_worktree_gate_tiers.py::"
+            "test_s4_is_an_explicit_release_profile_and_has_no_deferrable_gate"
+        ),
+        (
+            "ops/tests/test_worktree_gate_tiers.py::"
+            "test_only_named_non_high_s2_s3_failures_can_be_deferred"
+        ),
+    ],
+)
+_GATE_TIERS_ROUTE["selectors"].append("ops/tests/test_worktree_gate_tiers_route.py")
+_GATE_TIERS_ROUTE["pytest_nodeids"].extend([
+    (
+        "ops/tests/test_worktree_gate_tiers_route.py::"
+        "test_gate_tiers_source_uses_an_explicit_route_not_the_facade"
+    ),
+    (
+        "ops/tests/test_worktree_gate_tiers_route.py::"
+        "test_unknown_and_legacy_route_ids_keep_the_complete_fallback"
+    ),
+])
+
 _FACADE_ROUTE = _route(
     "orchestrator.facade",
     [
         "ops/worktree_orchestrate.py",
         "ops/lib/worktree_orchestrator_runtime.py",
         "ops/lib/worktree_orchestrator_commands.py",
-        "ops/lib/worktree_gate_tiers.py",
         "ops/lib/worktree_test_routes.py",
         "ops/tests/worktree_orchestrate_support.py",
         "ops/tests/test_orchestrator_seams.py",
@@ -153,16 +183,6 @@ _FACADE_ROUTE = _route(
         "test_legacy_collector_matches_split_behavior_collection",
     ],
 )
-# Gate-tier policy is part of the facade/runtime seam, but its direct policy
-# tests must travel with a focused route as well; otherwise changing the tier
-# classifier can pass facade smoke while its own contract suite is untouched.
-_FACADE_ROUTE["selectors"].append("ops/tests/test_worktree_gate_tiers.py")
-_FACADE_ROUTE["pytest_nodeids"].extend([
-    "ops/tests/test_worktree_gate_tiers.py::"
-    "test_s4_is_an_explicit_release_profile_and_has_no_deferrable_gate",
-    "ops/tests/test_worktree_gate_tiers.py::"
-    "test_only_named_non_high_s2_s3_failures_can_be_deferred",
-])
 
 _KG_BOARD_ROUTE = _route(
     "orchestrator.kg-board",
@@ -214,10 +234,11 @@ _CAMPAIGN_REGISTRY_ROUTE["selectors"].extend([
 ])
 
 _ALL_ROUTES: tuple[dict[str, Any], ...] = (
-    *_BEHAVIOR_ROUTES, _FACADE_ROUTE, _KG_BOARD_ROUTE, _CAMPAIGN_REGISTRY_ROUTE,
+    *_BEHAVIOR_ROUTES, _GATE_TIERS_ROUTE, _FACADE_ROUTE,
+    _KG_BOARD_ROUTE, _CAMPAIGN_REGISTRY_ROUTE,
 )
 _DIRECT_ROUTES: tuple[dict[str, Any], ...] = (
-    *_BEHAVIOR_ROUTES, _KG_BOARD_ROUTE, _CAMPAIGN_REGISTRY_ROUTE,
+    *_BEHAVIOR_ROUTES, _GATE_TIERS_ROUTE, _KG_BOARD_ROUTE, _CAMPAIGN_REGISTRY_ROUTE,
 )
 _ROUTES_BY_ID = {route["route_id"]: route for route in _ALL_ROUTES}
 _FACADE_PATTERNS = set(_FACADE_ROUTE["source_patterns"])
