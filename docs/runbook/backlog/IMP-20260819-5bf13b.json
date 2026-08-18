@@ -1,0 +1,46 @@
+{
+  "acceptance": "RED then GREEN: the targeted unit test must prove applyServerPauseState accepts a newer server value and rejects a newer local value; the exact SettingsCoordinatorReviewClockTests command must pass.",
+  "acceptance_cmd": "./ops/ios_ops.sh test --unit --file SettingsCoordinatorReviewClockTests",
+  "acceptance_expect_rc": 0,
+  "brief": "複習時鐘的伺服器更新需要可驗證的最新值合併，避免本機較新設定被覆蓋。",
+  "category": "arch",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-19",
+  "contract_checked_by": "agent:ticket-factory-child",
+  "contract_evidence": "current-main=0f9c0c2b16f90b4eb6da4241310b028e0b9af551; exact acceptance command was bounded at 135s before acquiring the shared build lock; holder pid=73736 remained alive; no PASS/no-op claim. Static contract has the exact Scope, fix site, acceptance, and command; baseline intentionally red.",
+  "contract_status": "ready",
+  "date": "2026-08-19",
+  "detail": "[IMP-0029 replacement/refill] pause-clock slice; parent=IMP-0029; resource_key=settings-lww-pause-clock; sequence=after none, before review-mode; dependency=none; shared-writer rule=do not parallel-write ReviewSettings.swift or SettingsCoordinatorReviewClockTests.swift with review-mode; follow-up=SettingsCoordinator/docs writer remains a separate unique writer and is not in this Scope.",
+  "fix_site": "ios/BooksAndVocab/Models/ReviewSettings.swift",
+  "fixed_by": [
+    "870f04f9adcd20177de14ab782031cc084c94763"
+  ],
+  "groomed_against": "0f9c0c2b16f90b4eb6da4241310b028e0b9af551",
+  "groomed_at": "2026-08-19",
+  "groomed_by": "agent:ticket-factory-child",
+  "id": "IMP-20260819-5bf13b",
+  "plan": "parent=IMP-0029; resource_key=settings-lww-pause-clock; sequence=after none, before review-mode; dependency=none. Work only in the declared two-file Scope. Add or refine ReviewSettings.applyServerPauseState so a newer server timestamp is accepted and a newer local timestamp is rejected; add the targeted assertions to SettingsCoordinatorReviewClockTests. Do not parallel-write the shared files with the review-mode slice. Keep the separate SettingsCoordinator/docs writer as a named follow-up.",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocab/Models/ReviewSettings.swift"
+      },
+      {
+        "operation": "modify",
+        "path": "ios/BooksAndVocabTests/SettingsCoordinatorReviewClockTests.swift"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "low",
+  "source": "IMP-0029 replacement/refill wave 2026-08-19 pause-clock slice",
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-19",
+  "verified_by": "manager",
+  "verified_evidence": "./ops/ios_ops.sh test --unit --file SettingsCoordinatorReviewClockTests"
+}
