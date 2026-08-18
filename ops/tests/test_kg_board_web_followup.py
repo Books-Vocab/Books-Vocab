@@ -117,7 +117,8 @@ def test_matrix_keeps_agent_identity_dirty_sources_and_live_snapshot_reload():
         assert marker in LIVE
     assert 'clearTimer(reloadTimer)' in LIVE
     assert "function scheduleLiveFallback" in LIVE
-    assert "if(active)return Promise.resolve();" in LIVE
+    assert "if(active)return Promise.resolve();" not in LIVE
+    assert "try{await requestLoad(now()+LIMITS.fallbackRequestBudgetMs)}catch(error){onError(error)}" in LIVE
     assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in APP
     assert "publish_event" not in APP
     assert "grid-area=" not in CSS
