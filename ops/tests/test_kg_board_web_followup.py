@@ -108,7 +108,10 @@ def test_matrix_keeps_agent_identity_dirty_sources_and_live_snapshot_reload():
         assert f'"{field}"' in APP
     assert 'liveEvents.addEventListener("snapshot",scheduleLiveReload)' in APP
     assert 'const LIVE_RELOAD_DELAY_MS=25' in APP
-    assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' in APP
+    assert 'clearTimeout(liveReloadTimer)' in APP
+    assert "function scheduleLiveFallback" in APP
+    assert "if(!loadInFlight)" in APP
+    assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in APP
     assert "publish_event" not in APP
     assert "grid-area=" not in CSS
 
@@ -152,6 +155,8 @@ def test_graph_selection_is_first_hand_and_uses_one_structured_inspector():
 
 def test_mobile_keeps_tree_controls_and_places_inspector_after_graph_content():
     compact_css = "".join(CSS.split())
+    assert INDEX.index('id="git-tree"') < INDEX.index('id="branch-index"') < INDEX.index('id="commit-inspector"')
     assert ".tree-workspace{grid-template-columns:1fr}" in compact_css
-    assert ".tree-workspace.commit-inspector{grid-column:1;grid-row:3}" in compact_css
+    assert ".tree-workspace.branch-index{grid-column:1/-1;grid-row:2}" in compact_css
+    assert ".tree-workspace.commit-inspector{grid-column:1;grid-row:4}" in compact_css
     assert "@media(max-width:860px){.tree-controls{display:grid" in compact_css

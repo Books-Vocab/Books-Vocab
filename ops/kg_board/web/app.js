@@ -1263,17 +1263,32 @@ let liveReloadTimer=null;
 let liveEvents=null;
 let liveStreamConnected=false;
 function scheduleLiveReload(){
-  if(liveReloadTimer!==null)return;
+  if(liveReloadTimer!==null)clearTimeout(liveReloadTimer);
   liveReloadTimer=setTimeout(()=>{liveReloadTimer=null;load().catch(showLoadError)},LIVE_RELOAD_DELAY_MS);
+}
+let liveFallbackTimer=null;
+function clearLiveFallbackTimer(){
+  if(liveFallbackTimer===null)return;
+  clearTimeout(liveFallbackTimer);liveFallbackTimer=null;
+}
+function scheduleLiveFallback(){
+  if(liveFallbackTimer!==null)return;
+  const delay=700+Math.floor(Math.random()*200);
+  liveFallbackTimer=setTimeout(async()=>{
+    liveFallbackTimer=null;
+    if(liveStreamConnected){return}
+    if(!loadInFlight){try{await load()}catch(error){showLoadError(error)}}
+    scheduleLiveFallback();
+  },delay);
 }
 function connectLiveEvents(){
   if(typeof EventSource==="undefined")return;
   liveEvents=new EventSource("/api/events");
-  liveEvents.addEventListener("open",()=>{liveStreamConnected=true});
-  liveEvents.addEventListener("error",()=>{liveStreamConnected=false});
+  liveEvents.addEventListener("open",()=>{liveStreamConnected=true;clearLiveFallbackTimer();scheduleLiveReload()});
+  liveEvents.addEventListener("error",()=>{liveStreamConnected=false;scheduleLiveFallback()});
   liveEvents.addEventListener("snapshot",scheduleLiveReload);
 }
 renderTreeZoom();
-load().catch(showLoadError);
 connectLiveEvents();
-setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750);
+load().catch(showLoadError);
+scheduleLiveFallback();

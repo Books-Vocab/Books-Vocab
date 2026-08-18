@@ -283,7 +283,12 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'new EventSource("/api/events")' in js
     assert 'addEventListener("snapshot"' in js
     assert 'const LIVE_RELOAD_DELAY_MS=25' in js
-    assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' in js
+    assert 'clearTimeout(liveReloadTimer)' in js
+    assert "function scheduleLiveFallback" in js
+    assert "Math.random()" in js
+    assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in js
+    bootstrap = js[js.index("renderTreeZoom();"):]
+    assert bootstrap.index("connectLiveEvents();") < bootstrap.index("load().catch(showLoadError);")
 
 
 def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):
@@ -338,6 +343,51 @@ def test_live_event_watcher_publishes_external_mirror_replace(monkeypatch, tmp_p
     worker.join(timeout=0.5)
 
     assert events == ["mirror"]
+    assert not worker.is_alive()
+
+
+def test_mirror_post_marks_source_before_watcher_can_republish(monkeypatch, tmp_path):
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text("old", encoding="utf-8")
+    events = []
+    stop_event = threading.Event()
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "_live_event_seen_fingerprint", None)
+    monkeypatch.setattr(server, "LIVE_EVENT_POLL_SECONDS", 0.005)
+    monkeypatch.setattr(server, "TOKEN", "mirror-secret")
+    monkeypatch.setattr(server, "publish_event", events.append)
+
+    watcher = threading.Thread(
+        target=server.live_event_watch_loop,
+        args=(stop_event,),
+        daemon=True,
+    )
+    watcher.start()
+    time.sleep(0.03)
+
+    def delayed_update(_path, _default, _update):
+        mirror.write_text("new", encoding="utf-8")
+        time.sleep(0.04)
+
+    monkeypatch.setattr(server, "_update_json", delayed_update)
+    raw = json.dumps({"schema": "kg.board.mirror.v1"}).encode("utf-8")
+    handler = _capturing_handler(
+        "/api/mirror/claims",
+        {
+            "Content-Length": str(len(raw)),
+            "Content-Type": "application/json",
+            "Authorization": "Bearer mirror-secret",
+        },
+    )
+    handler.rfile = BytesIO(raw)
+    handler.do_POST()
+
+    stop_event.set()
+    watcher.join(timeout=0.5)
+
+    assert handler.response_code == 200
+    assert events == ["claims"]
+    assert not watcher.is_alive()
 
 
 def test_publish_event_serializes_client_coalescing(monkeypatch):
