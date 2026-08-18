@@ -12,6 +12,9 @@
   "date": "2026-08-18",
   "detail": "Admission guard for backlog preflight: a fix_site or acceptance dependency path that is missing may be legal when the path is explicitly declared in structured Scope with operation=add, so an add-only ticket can be reserved and dispatched before implementation; a missing path not declared in structured Scope must remain fail-closed. Preserve status, contract fields, and JSON classification semantics, and allow no operation other than add. Scope is limited to modifying ops/backlog_contract.py and ops/tests/test_backlog_contract.py; this guard does not reopen or alter P1-P4.",
   "fix_site": "ops/backlog_contract.py",
+  "fixed_by": [
+    "31147266d83c354d73e90f92a4f6a6da8a2ad16c"
+  ],
   "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
   "groomed_at": "2026-08-18",
   "groomed_by": "platform-steward",
@@ -34,6 +37,10 @@
   },
   "severity": "high",
   "source": "integrator gate-efficiency admission preflight tooling friction",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "current main a99f8eb724f83ed9644c6094b6f07fdaae07a961: stored backlog contract acceptance rerun; prior independent cross-review PASS covered malformed Scope fail-closed, add-only exemption, wildcard, duplicate, modify-missing, schema/path/operation guards; code landed at 31147266d."
 }
