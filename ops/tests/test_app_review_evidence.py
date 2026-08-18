@@ -31,6 +31,28 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def test_anchor_order_evidence_manifest_is_typed_and_does_not_claim_pass() -> None:
+    manifest_path = (
+        ROOT
+        / "ops/tests/fixtures/ticket_factory_contracts/IMP-20260808-60a5b7.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["schema"] == "kg.app_review.anchor_order_evidence.v1"
+    assert manifest["ticket_id"] == "IMP-20260808-60a5b7"
+    assert manifest["status"] == "verified"
+    assert [step["name"] for step in manifest["steps"]] == [
+        "refresh-anchor-before-desired",
+        "desired-before-refresh-anchor",
+    ]
+    assert len(manifest["steps"]) == 2
+    assert all(step["gateCheck"] is False for step in manifest["steps"])
+    assert all(step["acknowledgement"] is False for step in manifest["steps"])
+    assert all(isinstance(step["rc"], int) for step in manifest["steps"])
+    assert all(isinstance(step["changed_files"], list) for step in manifest["steps"])
+    assert all(step["evidence_path"] for step in manifest["steps"])
+
+
 def test_producer_runner_reports_progress_on_stderr_and_preserves_json_stdout(tmp_path: Path):
     stdout = io.StringIO()
     stderr = io.StringIO()
