@@ -162,7 +162,7 @@ run_one() {
       # same --no-project sandbox as the cutover gate uses. Keep this list
       # explicit: test_ops_ci_coverage.sh proves every tracked test is wired.
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_backlog.py \
+        ops/tests/test_backlog_legacy_collector.py \
         ops/tests/test_backlog_migration.py \
         ops/tests/test_backlog_acceptance.py \
         ops/tests/test_backlog_contract.py \
