@@ -217,7 +217,10 @@ run_one() {
         ops/tests/test_ci_expected_fail_exclusions.py \
         ops/tests/test_ops_group_chain.py
       ;;
-    gate-can-fail)      ./ops/tests/test_gate_can_fail.sh ;;
+    gate-can-fail)
+      KG_GATE_FAILURE_TOPOLOGY_ALREADY_RUN=1 ./ops/tests/test_gate_can_fail.sh &&
+      ./ops/tests/test_gate_failure_topology.sh
+      ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;

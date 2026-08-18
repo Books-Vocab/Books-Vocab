@@ -662,6 +662,15 @@ done
 [[ -z "$extra" ]] || fail_t "executed a proof for something not declared cheap:$extra"
 [[ -z "$missing" && -z "$attempted_but_failed" && -z "$extra" ]] && ok "declared-cheap set matches executed set"
 
+section "gate failure test topology"
+if [[ "${KG_GATE_FAILURE_TOPOLOGY_ALREADY_RUN:-0}" == "1" ]]; then
+  note "topology delegated to the explicit gate-can-fail dispatcher route"
+elif ./ops/tests/test_gate_failure_topology.sh; then
+  ok "failure routes are uniquely collected, executed, and compatibility-safe"
+else
+  fail_t "failure route topology is missing, duplicated, or not executable"
+fi
+
 echo ""
 echo "gate-can-fail: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]
