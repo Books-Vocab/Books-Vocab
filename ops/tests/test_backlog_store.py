@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OPS = ROOT / "ops"
@@ -38,3 +37,37 @@ def test_store_seam_writes_atomically_and_preserves_mode(tmp_path):
     assert target.read_text(encoding="utf-8") == '{"new": true}\n'
     assert target.stat().st_mode & 0o777 == 0o644
     assert not list(tmp_path.glob(".*tmp*"))
+
+
+def test_store_resolver_accepts_an_external_path_without_reinterpreting_it(tmp_path):
+    root = tmp_path / "kg"
+    external = tmp_path / "kg-backlog"
+
+    resolved = STORE.resolve_store(root, {STORE.STORE_ENV: str(external)})
+
+    assert resolved == external.resolve()
+    assert STORE.store_descriptor(resolved, root) == {
+        "schema": "kg.backlog.store.v1",
+        "path": str(external.resolve()),
+        "mode": "external",
+        "independent": True,
+        "code_repo": str(root.resolve()),
+    }
+
+
+def test_store_resolver_preserves_legacy_default_until_external_store_is_selected(tmp_path):
+    root = tmp_path / "kg"
+
+    resolved = STORE.resolve_store(root, {})
+
+    assert resolved == (root / "docs" / "runbook" / "backlog").resolve()
+    assert STORE.store_descriptor(resolved, root)["mode"] == "repo-legacy"
+
+
+def test_external_store_uses_a_view_next_to_the_store_not_inside_the_code_repo(tmp_path):
+    root = tmp_path / "kg"
+    external = tmp_path / "kg-backlog" / "entries"
+
+    assert STORE.default_view(external, root) == (
+        tmp_path / "kg-backlog" / "improvement_backlog.md"
+    )

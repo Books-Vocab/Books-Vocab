@@ -14,10 +14,76 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Iterator
 
 from lib.lock_wait import LockUnavailable, exclusive_lock
+
+# The ticket data plane may live outside the code repository.  Keep the resolver
+# here, beside the low-level store primitives, so the CLI and the orchestrator
+# cannot each invent a different interpretation of the same environment setting.
+STORE_ENV = "KG_BACKLOG_STORE"
+LEGACY_STORE_RELATIVE = Path("docs") / "runbook" / "backlog"
+LEGACY_VIEW_RELATIVE = Path("docs") / "runbook" / "improvement_backlog.md"
+
+
+def resolve_store(root: Path, environ: Mapping[str, str] | None = None) -> Path:
+    """Resolve the active ticket store without making it a code-tree default.
+
+    The compatibility default deliberately remains the historical in-repository
+    store until an operator selects an external path.  Once ``KG_BACKLOG_STORE``
+    is set, both ``backlog.py`` and the worktree orchestrator use this exact
+    absolute path; ticket mutations then cannot create a code-repository commit.
+    Relative overrides are interpreted from the checkout root, matching the other
+    KG path overrides, while ``~`` is expanded before resolution.
+    """
+    root = Path(root).expanduser().resolve()
+    values = os.environ if environ is None else environ
+    raw = str(values.get(STORE_ENV) or "").strip()
+    candidate = Path(raw).expanduser() if raw else root / LEGACY_STORE_RELATIVE
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    return candidate.resolve()
+
+
+def is_external_store(store: Path, root: Path) -> bool:
+    """Whether ``store`` is outside the code checkout containing ``root``."""
+    try:
+        Path(store).expanduser().resolve().relative_to(Path(root).expanduser().resolve())
+    except ValueError:
+        return True
+    return False
+
+
+def store_descriptor(store: Path, root: Path) -> dict[str, object]:
+    """Return stable provenance for the active backlog data plane."""
+    store = Path(store).expanduser().resolve()
+    root = Path(root).expanduser().resolve()
+    if is_external_store(store, root):
+        mode = "external"
+    else:
+        try:
+            relative = store.relative_to(root)
+        except ValueError:  # defensive: is_external_store already checked it
+            mode = "external"
+        else:
+            mode = "repo-legacy" if relative == LEGACY_STORE_RELATIVE else "repo-custom"
+    return {
+        "schema": "kg.backlog.store.v1",
+        "path": str(store),
+        "mode": mode,
+        "independent": mode == "external",
+        "code_repo": str(root),
+    }
+
+
+def default_view(store: Path, root: Path) -> Path:
+    """Place the generated convenience view beside, not inside, an external store."""
+    store = Path(store).expanduser().resolve()
+    root = Path(root).expanduser().resolve()
+    if is_external_store(store, root):
+        return store.parent / "improvement_backlog.md"
+    return root / LEGACY_VIEW_RELATIVE
 
 
 class EntryLockUnavailable(RuntimeError):
