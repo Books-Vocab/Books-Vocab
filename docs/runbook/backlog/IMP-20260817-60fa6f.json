@@ -13,6 +13,9 @@
   "date": "2026-08-17",
   "detail": "Gate failure 測試目前把 exit code、failure summary、heartbeat/stalled、timeout/cancel/process-group cleanup、resource contention/inconclusive 與 stdout JSON/stderr heartbeat 分流混在同一支 shell collector。這張票只拆測試責任與 route，不改 gate verdict 語義、timeout contract 或 production 行為。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 local main 重查 scope 與既有 tickets。",
   "fix_site": "ops/tests/test_gate_can_fail.sh; ops/lib/streaming_command.py; ops/worktree_orchestrate.py; ops/tests/test_streaming_command.py; ops/tests/test_task_registry.py",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -55,6 +58,10 @@
   },
   "severity": "high",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 1 Ticket D Gate Failure Test Topology",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "commit ffd2333b21bc8f403a7b5867092c0013fabf399e; direct exact acceptance rc0; topology 6 routes/29 nodeids and gate-can-fail 38 passed; review .cache/agent-scratch/review-IMP-20260817-60fa6f-ffd2333b.md"
 }

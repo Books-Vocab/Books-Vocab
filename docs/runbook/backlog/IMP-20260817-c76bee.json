@@ -13,6 +13,9 @@
   "date": "2026-08-17",
   "detail": "iOS 日常小變更仍可能把 unit、UI、build cache、Simulator/device、fixture 與 shared lock 成本一起帶入，現有 selector 與 resource evidence 尚未形成可驗證的 source seam route map。這張票以 routing/collection/evidence 為主，不以拆檔為目標，不保存或交付影片，不改產品功能。前置：orchestrator-test-topology-eta-20260817 完成後，先用 timing ledger 重新確認最慢 selector 與資源瓶頸。",
   "fix_site": "ops/ios_ops.sh",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -59,6 +62,10 @@
   },
   "severity": "high",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 3 Ticket F iOS Selector 與 Resource Routing",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "ALREADY-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "no-op evidence .cache/agent-scratch/noop-IMP-20260817-c76bee.md; exact iOS list matched 63 tests rc0 and unknown-file probe failed closed rc1; fix already present at d4d6efd99f603145502c8e295baf0f41a473efe9"
 }

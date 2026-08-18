@@ -11,6 +11,9 @@
   "date": "2026-08-13",
   "detail": "同一工作樹驗證曾連續三次等待共用 build lock 達 600 秒後 rc=75；另一次取得鎖後，共用 DerivedData 的 build.db 回報 disk I/O error，且預編譯 GoogleSignIn PCM 引用不存在 header。現行鎖在每個 holder 結束後可被其他新 waiter 插隊，並未保證已等待者公平取得，且 build/test 使用不同 DerivedData root 仍共享可被並行狀態破壞的 cache。",
   "fix_site": "ops/lib/ios_lock_wait.sh; ops/ios_build.sh; ops/ios_test.sh; ops/ios_release.sh; ops/tests/test_ios_device_lock_verdict.sh; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh; docs/reference/ios_deriveddata_policy.md; docs/sop/ios.md",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -61,6 +64,10 @@
   },
   "severity": "med",
   "source": "Vocabulary P11 Phase1b review fix",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "commit db1d15a72d903e4f0217a513b2f0979e7716bced; exact lock/docs acceptance rc0; review .cache/agent-scratch/review-IMP-20260813-e360e6-db1d15a72.md"
 }

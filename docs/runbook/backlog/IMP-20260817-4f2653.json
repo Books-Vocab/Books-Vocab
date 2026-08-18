@@ -13,6 +13,9 @@
   "date": "2026-08-17",
   "detail": "App Review 的 evidence producer、freshness/root binding、gate evaluator、journey/fixture、secret redaction/offline fail-closed 與 ASC/reviewer evidence 雖已有多支測試，尚未形成不重複且可按責任 route 的 topology contract。這張票只處理測試分流與 provenance/secret 覆蓋，不重做既有 evaluator seam 拆分，不改送審政策或外部提交。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 evidence schema 重查。",
   "fix_site": "ops/tests/test_app_review_gate.py; ops/tests/test_app_review_evidence.py; ops/tests/test_asc_reviewer_mirror.py; ops/tests/test_provenance.py; ops/tests/test_reviewer_evidence.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -59,6 +62,10 @@
   },
   "severity": "high",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 2 Ticket H App Review Evidence Test Topology",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "commit 88514ce1154e75267a2caa2313ddba7ada41043c; exact App Review acceptance 98 passed rc0; review .cache/agent-scratch/review-IMP-20260817-4f2653-88514ce1.md"
 }

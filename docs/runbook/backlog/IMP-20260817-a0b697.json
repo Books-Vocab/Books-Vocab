@@ -12,6 +12,9 @@
   "date": "2026-08-17",
   "detail": "官方 ops-pytest 在 backlog-seams-wave-20260817 報 test_case_arms_covers_every_group_in_test_ops 失敗。以 child HEAD c6c3f389 與 base d7d98039 各跑同一 selector 都是 FFFFF 的第 1 項：case_arms 實際 59，測試仍 assert 58。ops/test_ops.sh 的 DEFAULT_TESTS 有 57 項、OPTIONAL_TESTS 有 2 項；uitest-contact-sheet 由 git blame dc59f97d81 引入，child diff 未改相關檔案。",
   "fix_site": "ops/tests/test_ops_group_chain.py; ops/test_ops.sh",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -34,6 +37,10 @@
   },
   "severity": "high",
   "source": "integrator gate BLOCK backlog-seams-wave-20260817",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "ALREADY-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "no-op evidence .cache/agent-scratch/noop-IMP-20260817-a0b697.md; exact group-chain suite 11 passed rc0; provenance 74d671e0185ce0f586cc2d28caa7b8127fbec73c"
 }

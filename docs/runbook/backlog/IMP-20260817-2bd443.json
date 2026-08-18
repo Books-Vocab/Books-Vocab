@@ -13,6 +13,9 @@
   "date": "2026-08-17",
   "detail": "registry 測試目前把 lifecycle、hand-back seal/digest/tip SHA、claims/ownership、queries 與 repair/recovery 混在大型 collector；任何 registry source 變更都可能啟動不必要的整群測試。這張票只處理測試拓撲與 route，不改 worktree registry lifecycle、status、acceptance 或資料模型。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 local main 重查 scope 與既有 tickets。",
   "fix_site": "ops/tests/test_worktree_registry.py; ops/tests/test_worktree_registry_queries.py; ops/tests/test_worktree_handback_outcomes.py; ops/tests/test_worktree_campaign_reservation.py; ops/test_ops.sh; ops/tests/test_ops_ci_coverage.sh",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -63,6 +66,10 @@
   },
   "severity": "high",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 1 Ticket B",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "commit 70011037e10cf8e61ed7686c65337a69938e10a8; exact worktree-orchestrator acceptance rc0; review .cache/agent-scratch/review-IMP-20260817-2bd443-70011037e.md"
 }
