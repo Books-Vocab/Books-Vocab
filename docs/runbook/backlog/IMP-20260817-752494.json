@@ -12,6 +12,9 @@
   "date": "2026-08-17",
   "detail": "官方 ops-pytest 的 test_malformed_ui_app_args_fail_closed_without_swallowing_decode_errors 在 child HEAD c6c3f389 與 base d7d98039 同 selector 都失敗。測試要求 iOS source 含 testMalformedInheritedLaunchArgumentsFailClosed，但目前 source 缺少該 contract；本輪 child diff 沒有 iOS/P9 source 或 test 變更。",
   "fix_site": "ops/tests/test_p9_review_calendar_contract.py; ios/BooksAndVocabUITests/BooksAndVocabUITests.swift",
+  "fixed_by": [
+    "bcd948f0e5424bce88368c02cdf2dde2afaa44b3"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -34,6 +37,10 @@
   },
   "severity": "high",
   "source": "integrator gate BLOCK backlog-seams-wave-20260817",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest --with pyjwt --with cryptography pytest -q -p no:cacheprovider ops/tests/test_p9_review_calendar_contract.py::test_malformed_ui_app_args_fail_closed_without_swallowing_decode_errors"
 }

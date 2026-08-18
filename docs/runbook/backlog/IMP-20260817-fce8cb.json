@@ -12,6 +12,9 @@
   "date": "2026-08-17",
   "detail": "官方 ops-pytest 的 test_build_review_root_is_one_run_without_parent_index 與 test_build_review_root_refuses_overwrite 在 child HEAD c6c3f389 與 base d7d98039 同 selector 都失敗。build_review_root 現要求 keyword-only contact_sheet、quick4_sheet，overwrite test 另要求 video，但既有測試呼叫未提供；review page source/test 不在本輪 child diff。",
   "fix_site": "ops/tests/test_uitest_review_page.py; ops/uitest_review_page.py",
+  "fixed_by": [
+    "5be999ee9801dd1808d9517050689f24b1c4d510"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -34,6 +37,10 @@
   },
   "severity": "high",
   "source": "integrator gate BLOCK backlog-seams-wave-20260817",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_uitest_review_page.py::test_build_review_root_is_one_run_without_parent_index ops/tests/test_uitest_review_page.py::test_build_review_root_refuses_overwrite"
 }
