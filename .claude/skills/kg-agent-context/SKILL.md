@@ -23,6 +23,11 @@ primary／current-main，Integrator 看 `worktree-flow` staging，三種 Child �
 Docs Steward／Review service 只作內部支援 route，不加入 identity gate；Child 不追蹤主幹前進、不 catchup，Integrator 只交 staging handoff 與衝突證據。
 本 skill 只負責載入順序，不重新定義那些契約。
 
+外部 connector 的 reviewer／agent 狀態只接受 API 回傳的 opaque identity、status、timeout 與 terminal evidence；不要讀
+`ops/task_registry.py` 或本機 PID 推測外部 target。需要 wait／interrupt、review capacity 或 handshake／heartbeat
+receipt 時，載入 `docs/sop/review_discipline.md` 的 external control-plane contract；repo-local audit 只能驗 receipt
+形狀，不能冒充 connector 行為證明。
+
 ## Loading discipline
 
 `worktree-flow`、`kg-receipt`、`docs/sop/review_discipline.md`、`policy.safety` 各自仍是 authority；

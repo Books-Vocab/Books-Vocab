@@ -138,6 +138,8 @@ INTEGRABLE_HAND_BACK_OUTCOMES = {"changed", "no-op-existing-fix"}
 GREEN_ACCEPTANCE_STATUSES = {
     "green", "pass", "passed", "ok", "confirmed-fixed", "confirmed_fixed",
 }
+REVIEW_MANIFEST_FIELD = "review_manifest"
+REVIEW_AUDIT_OK = 0
 
 
 # ============================================================================
@@ -190,6 +192,49 @@ def _load_hand_back_outcomes(path: Path) -> list[dict[str, Any]]:
     if not all(isinstance(item, dict) for item in payload):
         raise ValueError("every hand-back outcome must be an object")
     return payload
+
+
+def _review_manifest_problems(
+    value: Any, *, worktree: Path, ticket_id: str,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Audit an optional local external-review manifest without trusting local PIDs.
+
+    The external connector remains the authority for identity/status evidence. The
+    registry only binds a repo-relative manifest reference to the hand-back seal and
+    reruns the structural audit; it never reads task_registry state.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return ([{"kind": "review-manifest-reference-invalid", "ticket_id": ticket_id}], None)
+    reference = value.strip()
+    manifest = Path(reference)
+    if manifest.is_absolute():
+        return ([{"kind": "review-manifest-reference-not-relative", "ticket_id": ticket_id}], None)
+    try:
+        resolved_worktree = worktree.resolve()
+        resolved_manifest = (worktree / manifest).resolve()
+        resolved_manifest.relative_to(resolved_worktree)
+    except (OSError, ValueError):
+        return ([{"kind": "review-manifest-reference-outside-worktree", "ticket_id": ticket_id}], None)
+    if not resolved_manifest.is_file():
+        return ([{"kind": "review-manifest-missing", "ticket_id": ticket_id,
+                  "path": reference}], None)
+    audit = worktree / "ops" / "review_audit.sh"
+    if not audit.is_file() or not os.access(audit, os.X_OK):
+        return ([{"kind": "review-audit-missing-or-not-executable", "ticket_id": ticket_id}], None)
+    try:
+        proc = subprocess.run(
+            [str(audit), "--manifest", str(resolved_manifest), "--json"],
+            cwd=str(worktree), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, UnicodeError) as exc:
+        return ([{"kind": "review-manifest-audit-unavailable", "ticket_id": ticket_id,
+                  "path": reference, "detail": str(exc)}], None)
+    if proc.returncode != REVIEW_AUDIT_OK:
+        detail = (proc.stdout.strip() or proc.stderr.strip())[-1000:]
+        return ([{"kind": "review-manifest-audit-failed", "ticket_id": ticket_id,
+                  "path": reference, "returncode": proc.returncode, "detail": detail}], None)
+    return ([], reference)
 
 
 def _outcome_problems(
@@ -264,6 +309,15 @@ def _outcome_problems(
                                          "ticket_id": ticket_id})
         elif outcome == "no-op-existing-fix":
             problems.append({"kind": "no-op-provenance-missing", "ticket_id": ticket_id})
+
+        review_manifest = item.get(REVIEW_MANIFEST_FIELD)
+        if review_manifest is not None:
+            manifest_problems, canonical_reference = _review_manifest_problems(
+                review_manifest, worktree=worktree, ticket_id=ticket_id,
+            )
+            problems.extend(manifest_problems)
+            if canonical_reference is not None:
+                canonical[REVIEW_MANIFEST_FIELD] = canonical_reference
         normalised.append(canonical)
 
     expected = set(claimed)

@@ -43,6 +43,34 @@ Gate 是另一個獨立層：它驗證當下 worktree 的程式、測試、accep
 backlog grooming 仍須以 `backlog.py validate --baseline-check` 證明資料正確，不能
 用 review 名義取代 acceptance。
 
+## External connector receipt boundary
+
+外部 reviewer／agent connector 是另一個 control plane。repo 內的 `ops/task_registry.py` 只登記本機
+subprocess，不能用 PID、PGID 或本機 active record 推測 `multi_agent_v1` 的 target 狀態；外部 evidence
+必須保留 connector 回傳的 opaque target／reviewer identity、request 或 dispatch response、returned status、
+queue／terminal transition、caller-side timeout，以及 evidence path。
+
+wait／interrupt 的狀態機至少要能區分 `pending_init`、`running`、`stopping`、`completed`、`interrupted` 與
+`unknown`。wait 逾時仍要回每個 target 的最後觀測 status／時間；interrupt 必須回
+`accepted-to-stopping` 或 bounded terminal result。空物件、缺 identity、只拿到 submission accepted、或
+無法確認 terminal 狀態，都維持 fail-closed，不可寫成 PASS。
+
+對應 manifest 可先由 repo-local audit 驗證結構，但它不驗 connector 是否真的做過該動作：
+
+```bash
+./ops/review_audit.sh --manifest <external-receipt.json> --json
+```
+
+`review_audit.sh` 只接受 `status=verified` 且含 opaque identity、必要 steps 與 evidence path 的
+`wait-interrupt`、`review-capacity` 或 `external-agent` manifest；缺檔、pending、unknown、local PID／
+task-registry 欄位或不完整 step 一律 BLOCK。`verified` 是 evidence manifest 的結構狀態，不是 repo
+替外部 connector 宣稱成功；沒有 named connector/account-owner evidence 時，ticket 應保持 blocked 或
+`changed-but-not-closable`。
+
+typed child hand-back 若要綁定 repo 內的 manifest，可在 outcome 使用 `review_manifest` 相對路徑；
+`worktree_registry.py` 會重新執行相同 audit 並把 reference 納入 seal。fixture 的
+`evidence_path` 仍是外部 evidence reference，不要求 repo 能讀取或解釋其內容。
+
 ## Review cycle 的有界收斂
 
 逐項 review 不等於無限重審。對同一個**完整 40/64 位 commit SHA × scope**，用
