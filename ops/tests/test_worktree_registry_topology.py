@@ -92,3 +92,9 @@ def test_collection_probe_rejects_a_real_zero_selector(tmp_path):
     empty.write_text("VALUE = 1\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="zero-selector"):
         _collect(empty)
+
+
+def test_campaign_active_projection_regressions_are_collected():
+    nodes = _collect("ops/tests/test_worktree_campaign_reservation.py")
+
+    assert any("active_campaign_projection" in node for node in nodes), sorted(nodes)
