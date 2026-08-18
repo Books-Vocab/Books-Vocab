@@ -35,6 +35,7 @@ Registry state file (per-machine, NEVER committed):
                                  status(active|merged|abandoned), resolved_at,
                                  backlog[ticket ids claimed], claimed_at,
                                  handed_back_at, handed_back_sha, delegated,
+                                 work_mode(direct-assignment|ticket-factory|ticket-delivery),
                                  scope, scope_updated_at, codex_thread_id,
                                  codex_thread_bound_at}]}
   Timestamps are taken in the CLI adapter (--at overrides for tests); the IO/pure
@@ -42,7 +43,7 @@ Registry state file (per-machine, NEVER committed):
 
 Subcommands (register/hand-back/resolve/sweep are the P3 orchestrator API, not just human):
   register   birth: record a new active worktree     (--path --branch --intent --base
-             [--backlog ID...] [--scope|--scope-file] [--codex-thread-id]).
+             [--backlog ID...] [--scope|--scope-file] [--work-mode MODE] [--codex-thread-id]).
              --scope is an explicit direct-worktree declaration; refused if combined
              with --backlog because ticketed Scope belongs to the tickets. --backlog CLAIMS those ticket ids: refused if any is
              already held by another ACTIVE record. Omitting the flag leaves an
@@ -105,6 +106,7 @@ sys.path.insert(0, str(OPS_DIR))
 sys.path.insert(0, str(OPS_DIR / "lib"))
 import worktree_state as ws  # noqa: E402  (ops/lib shared pure module)
 import worktree_campaign as wc  # noqa: E402  (campaign reservation pure layer)
+from worktree_authority import WORK_MODES, validate_work_mode  # noqa: E402
 from lock_wait import exclusive_lock  # noqa: E402
 from lib.exit_codes import EXIT_CLAIMED, EXIT_OK, EXIT_PARTIAL, EXIT_USAGE  # noqa: E402
 from kg_board.scope import normalise_scope  # noqa: E402
@@ -1110,6 +1112,7 @@ def claim_campaign_ticket(
     now_iso: str | None = None,
     delegated: bool | None = None,
     codex_thread_id: str | None = None,
+    work_mode: str | None = None,
 ) -> dict[str, Any]:
     """Atomically transfer one campaign reservation into an active record."""
     state_path = Path(state_path).resolve()
@@ -1118,6 +1121,11 @@ def claim_campaign_ticket(
     owner = str(codex_thread_id).strip() if codex_thread_id is not None else None
     if codex_thread_id is not None and not owner:
         return {"ok": False, "reason": "invalid-codex-thread-id"}
+    mode_error = validate_work_mode(
+        work_mode, has_scope=False, has_ticket_claim=True, has_campaign=True,
+    )
+    if mode_error:
+        return {"ok": False, "reason": "invalid-work-mode", "detail": mode_error}
     with _ledger_lock(state_path):
         state = load_state(state_path)
         reservation = next(
@@ -1173,6 +1181,8 @@ def claim_campaign_ticket(
             "partition_id": partition_id,
             "role": "child",
         }
+        if work_mode is not None:
+            record["work_mode"] = work_mode
         if owner is not None:
             record["codex_thread_id"] = owner
             record["codex_thread_bound_at"] = timestamp
@@ -1778,6 +1788,17 @@ def cmd_register(args: argparse.Namespace) -> int:
               f"`imp-0001` would silently be a different ticket from `IMP-0001` and "
               f"claim nothing.", file=sys.stderr)
         return EXIT_USAGE
+    work_mode = getattr(args, "work_mode", None)
+    existing_ticket_claim = any(r.get("backlog") for r in matches)
+    existing_scope = any(r.get("scope") for r in matches)
+    mode_error = validate_work_mode(
+        work_mode,
+        has_scope=scope_provided or existing_scope,
+        has_ticket_claim=(bool(wanted) if args.backlog is not None else existing_ticket_claim),
+        has_campaign=any(r.get("campaign_id") for r in matches),
+    )
+    if mode_error:
+        return _scope_refusal(args, "invalid-work-mode", detail=mode_error)
     # Scope ownership is a locked-upsert invariant, not merely a parser rule:
     # an existing direct record must not retain Scope while gaining a ticket,
     # and an explicit empty --backlog still counts as a ticket-mode argument.
@@ -1868,6 +1889,8 @@ def cmd_register(args: argparse.Namespace) -> int:
         delegated = getattr(args, "delegated", None)
         if delegated is not None:
             rec["delegated"] = bool(delegated)
+        if work_mode is not None:
+            rec["work_mode"] = work_mode
         if scope_provided:
             if rec.get("backlog"):
                 return _scope_refusal(
@@ -1893,6 +1916,8 @@ def cmd_register(args: argparse.Namespace) -> int:
             "backlog": wanted, "claimed_at": now_iso if wanted else None,
             "delegated": bool(getattr(args, "delegated", None)),
         }
+        if work_mode is not None:
+            rec["work_mode"] = work_mode
         if scope_provided:
             rec["scope"] = direct_scope
             rec["scope_updated_at"] = now_iso
@@ -1918,6 +1943,7 @@ LIST_QUERY_FIELDS = frozenset({
     "claimed_at", "handed_back_at", "handed_back_sha", "delegated",
     "created_at", "resolved_at", "live_state", "landed", "worktree_present",
     "scope", "scope_updated_at", "codex_thread_id", "codex_thread_bound_at",
+    "work_mode",
 })
 
 
@@ -2601,6 +2627,10 @@ def build_parser() -> argparse.ArgumentParser:
     reg.add_argument(
         "--codex-thread-id", default=None,
         help="stable Codex thread id that owns this worktree; one thread may own multiple worktrees",
+    )
+    reg.add_argument(
+        "--work-mode", choices=WORK_MODES, default=None,
+        help="explicit child work mode; omitted records remain legacy-compatible",
     )
     reg.add_argument(
         "--exclusive", action="store_true",

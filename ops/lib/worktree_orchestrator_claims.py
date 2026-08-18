@@ -319,7 +319,7 @@ class _CampaignPreflightRefusal(RuntimeError):
 def _claim_next_backlog(
     *, root: Path, state_arg: str | None, path: Path, branch: str,
     intent: str, base: str, delegated: bool | None = None,
-    codex_thread_id: str | None = None,
+    codex_thread_id: str | None = None, work_mode: str | None = None,
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
     """Atomically select dispatch's head and register its worktree claim.
 
@@ -370,6 +370,7 @@ def _claim_next_backlog(
             intent=intent, base=base, repo_root=str(root), backlog=[ticket],
             exclusive=True, json=True, delegated=delegated,
             scope=None, scope_file=None, codex_thread_id=codex_thread_id,
+            work_mode=work_mode,
         )
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -390,6 +391,7 @@ def _claim_next_campaign_backlog(
     *, root: Path, state_arg: str | None, path: Path, branch: str,
     intent: str, base: str, campaign_id: str, partition_id: str,
     delegated: bool | None = None, codex_thread_id: str | None = None,
+    work_mode: str | None = None,
 ) -> tuple[int, dict[str, Any], list[str], dict[str, Any]]:
     """Atomically move one reserved ticket in one campaign partition to a child."""
     state_path = Path(state_arg).resolve() if state_arg else wr.default_state_path()
@@ -426,6 +428,7 @@ def _claim_next_campaign_backlog(
             base_reader=read_locked_base,
             delegated=delegated,
             codex_thread_id=codex_thread_id,
+            work_mode=work_mode,
         )
     except _CampaignPreflightRefusal as exc:
         return EXIT_BLOCK, {

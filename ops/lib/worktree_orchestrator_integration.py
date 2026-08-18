@@ -297,6 +297,24 @@ def cmd_integrate(args) -> int:
         _emit(payload, args.json, summary)
         return rc
 
+    staging_operation = bool(
+        getattr(args, "no_gate", False)
+        or getattr(args, "append", False)
+        or getattr(args, "abort", False)
+    )
+    refusal = operator_refusal(
+        command="integrate", operator=getattr(args, "operator", "manager"),
+        commit=args.commit,
+        manager_only=not staging_operation,
+        integrator_staging=staging_operation,
+    )
+    if refusal:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
+               "mode": "refused", **refusal}, args.json,
+              "✗ integrate refused: Integrator may only stage with --no-gate/--append/--abort; "
+              "Manager must continue through Gate")
+        return EXIT_BLOCK
+
     blocked = _freeze_guard(args.state, "integrate", args.json)
     if blocked is not None:
         return blocked
@@ -595,6 +613,12 @@ def _integrate_start(args, spath: Path) -> int:
     st = {
         "schema": INTEGRATE_SCHEMA, "slug": args.slug, "base": args.base,
         "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
+        "phase": "staging", "next_action": "manager-gate",
+        "authority": {
+            "staging_operator": getattr(args, "operator", "manager"),
+            "next_operator": "manager",
+            "source_handback_sha": dict(handoff.get("source_refs") or {}),
+        },
         "branches": list(args.branches),
         "gate_tier": gate_tier,
         "defer_gates": list(getattr(args, "defer_gate", []) or []),
@@ -998,6 +1022,13 @@ def _integrate_picked_only(args, spath: Path, st: dict[str, Any]) -> int:
     keeping the gate independently re-runnable and bound to the final HEAD.
     """
     st["gate_pending"] = True
+    st["phase"] = "staging"
+    st["next_action"] = "manager-gate"
+    authority = st.setdefault("authority", {})
+    authority["next_operator"] = "manager"
+    authority["source_handback_sha"] = dict(
+        (st.get("handoff") or {}).get("source_refs") or {}
+    )
     _integrate_save(spath, st)
     wt = st["worktree"]
     independent_suffix = " --independent" if st.get("independent") is True else ""
@@ -1019,7 +1050,9 @@ def _integrate_picked_only(args, spath: Path, st: dict[str, Any]) -> int:
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "remaining": st.get("queue", []), "head_sha": _head_sha(wt),
         "gated": False, "verdict": None, "landed": False,
-        "state_cleared": False, "gate_pending": True, "next_step": next_step,
+        "state_cleared": False, "gate_pending": True, "phase": "staging",
+        "next_action": "manager-gate", "next_operator": "manager",
+        "next_step": next_step,
     }
     _emit(payload, args.json,
           f"✓ integrate {st['slug']}: picked {len(st['picked'])} commit(s), "
@@ -1134,6 +1167,9 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
                   for g in (gpay.get("gates") or [])
                   if g.get("status") in ("block", "warn", "inconclusive")],
     }
+    st["phase"] = "gated"
+    st["next_action"] = "manager-cutover"
+    st.setdefault("authority", {})["next_operator"] = "manager"
     if integration_revision is not None:
         st["integration_revision"] = integration_revision
     _integrate_save(spath, st)
@@ -1165,6 +1201,7 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         **({"integration_revision": integration_revision}
            if integration_revision is not None else {}),
         "verdict": verdict, "landed": False, "next_step": next_step,
+        "phase": "gated", "next_action": "manager-cutover",
         "state_cleared": verdict in ("pass", "warn"),
     }
     # The queue is drained and the gate has spoken, so there is nothing left to

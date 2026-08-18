@@ -33,6 +33,39 @@ def test_gate_tiering_and_deferral_flags_are_preserved_by_each_delivery_entrypoi
     assert land.gate_tier == "S1"
     assert land.defer_gate == ["ops-pytest=IMP-20260817-123456"]
 
+
+def test_operator_contract_is_explicit_on_delivery_commands():
+    parser = MODULE.build_parser()
+    integrate = parser.parse_args([
+        "integrate", "--slug", "wave", "--branches", "feat/source",
+        "--operator", "integrator", "--commit", "--no-gate",
+    ])
+    assert integrate.operator == "integrator"
+    assert integrate.no_gate is True
+
+    for command, argv in {
+        "close-wave": ["close-wave", "--slug", "wave", "--operator", "manager"],
+        "cutover": ["cutover", "--worktree", "/w", "--operator", "manager"],
+        "land": ["land", "--worktree", "/w", "--operator", "manager"],
+        "sync": ["sync", "--operator", "manager"],
+        "deploy": ["deploy", "--operator", "manager"],
+    }.items():
+        parsed = parser.parse_args(argv)
+        assert parsed.operator == "manager", command
+
+
+def test_manager_only_authority_refuses_integrator_mutations():
+    assert MODULE.operator_refusal(
+        command="cutover", operator="integrator", commit=True, manager_only=True,
+    )["refusal"] == "manager-only"
+    assert MODULE.operator_refusal(
+        command="close-wave", operator="integrator", commit=True, manager_only=True,
+    )["required_operator"] == "manager"
+    assert MODULE.operator_refusal(
+        command="integrate", operator="integrator", commit=True,
+        integrator_staging=True,
+    ) is None
+
 @gitmark
 def test_cutover_stamps_the_landed_sha_onto_this_branchs_staged_closures(scratch):
     """The sha only becomes knowable at the moment of landing.
@@ -1687,6 +1720,40 @@ def test_integrate_continue_no_gate_stops_before_the_gate(scratch):
     saved = json.loads(MODULE._integrate_state_path(state, "batch").read_text())
     assert saved["queue"] == []
     assert saved["gate_pending"] is True
+    assert saved["phase"] == "staging"
+    assert saved["next_action"] == "manager-gate"
+    assert saved["authority"]["next_operator"] == "manager"
+    assert picked["phase"] == "staging"
+    assert picked["next_operator"] == "manager"
+
+
+@gitmark
+def test_non_manager_mutations_are_refused_before_primary_or_gate_work(scratch):
+    tmp_path, _repo, _remote = scratch
+    state = str(tmp_path / "operator.json")
+    rc, opened = _run_json([
+        "open", "--intent", "operator guard", "--slug", "operator-guard",
+        "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_OK, opened
+    wt = opened["path"]
+    for argv in (
+        ["cutover", "--worktree", wt, "--state", state, "--operator", "integrator", "--commit", "--json"],
+        ["land", "--worktree", wt, "--state", state, "--operator", "integrator", "--commit", "--json"],
+        ["sync", "--state", state, "--operator", "integrator", "--commit", "--json"],
+        ["deploy", "--state", state, "--operator", "integrator", "--commit", "--json"],
+        ["close-wave", "--slug", "operator-guard-wave", "--state", state, "--operator", "integrator", "--commit", "--json"],
+        ["resolve", "--worktree", wt, "--state", state, "--operator", "integrator",
+         "--via-integration", "main", "--commit", "--json"],
+    ):
+        rc, payload = _run_json(argv)
+        assert rc == MODULE.EXIT_BLOCK, (argv, payload)
+        assert payload["refusal"] == "manager-only", (argv, payload)
+    assert not MODULE._gate_record_path(state, wt).exists()
+    MODULE.main([
+        "resolve", "--worktree", wt, "--state", state,
+        "--force", "--commit", "--json",
+    ])
 
 @gitmark
 def test_integrate_continue_no_gate_then_gate_runs_alone_on_the_final_tree(scratch):

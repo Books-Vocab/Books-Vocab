@@ -126,6 +126,32 @@ def test_delegated_worktree_is_marked_and_cutover_refuses_before_gate(scratch):
                 "--force", "--commit", "--json",
             ])
 
+
+def test_open_work_mode_requires_scope_or_ticket_claim(scratch):
+    tmp_path, _repo, _remote = scratch
+    state = str(tmp_path / "work-mode.json")
+    rc, refusal = _run_json([
+        "open", "--intent", "direct child", "--slug", "mode-direct",
+        "--work-mode", "direct-assignment", "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_USAGE
+    assert refusal["reason"] == "invalid-work-mode"
+
+    scope = json.dumps({"files": [{"path": "notes.txt", "operation": "add"}]})
+    rc, opened = _run_json([
+        "open", "--intent", "direct child", "--slug", "mode-direct-ok",
+        "--work-mode", "direct-assignment", "--scope", scope,
+        "--state", state, "--json",
+    ])
+    assert rc == MODULE.EXIT_OK
+    record = next(r for r in json.loads(Path(state).read_text())["records"]
+                  if r["branch"] == opened["branch"])
+    assert record["work_mode"] == "direct-assignment"
+    MODULE.main([
+        "resolve", "--worktree", opened["path"], "--state", state,
+        "--force", "--commit", "--json",
+    ])
+
 @gitmark
 def test_two_open_worktrees_get_distinct_scratch_dirs_and_resolve_removes_them(scratch):
     tmp_path, repo, _remote = scratch

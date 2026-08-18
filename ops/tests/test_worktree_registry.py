@@ -55,6 +55,30 @@ def test_usage_errors_return_contract_code_for_root_and_subparser_typos():
         assert MODULE.main(argv) == MODULE.EXIT_USAGE
 
 
+def test_work_mode_contract_is_explicit_and_legacy_records_remain_readable():
+    assert MODULE.WORK_MODES == (
+        "direct-assignment", "ticket-factory", "ticket-delivery"
+    )
+    assert MODULE.validate_work_mode(
+        "direct-assignment", has_scope=True, has_ticket_claim=False,
+    ) is None
+    assert "structured Scope" in MODULE.validate_work_mode(
+        "direct-assignment", has_scope=False, has_ticket_claim=False,
+    )
+    assert "delivery tickets" in MODULE.validate_work_mode(
+        "ticket-factory", has_scope=True, has_ticket_claim=True,
+    )
+    assert MODULE.validate_work_mode(
+        "ticket-delivery", has_scope=False, has_ticket_claim=True,
+    ) is None
+    assert "requires a backlog" in MODULE.validate_work_mode(
+        "ticket-delivery", has_scope=False, has_ticket_claim=False,
+    )
+    assert MODULE.validate_work_mode(
+        None, has_scope=False, has_ticket_claim=False,
+    ) is None
+
+
 # far-future 'now' so nothing is ever flagged LIVE by accident; belt-and-suspenders
 # with --live-window 0 in sweep invocations.
 FUTURE_AT = "2999-01-01T00:00:00Z"

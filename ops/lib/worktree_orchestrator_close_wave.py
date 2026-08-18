@@ -123,6 +123,15 @@ def _delivery_sync_close_wave(
 
 def cmd_close_wave(args: argparse.Namespace) -> int:
     """Run one end-to-end Delivery Team closure under the shared finalization lock."""
+    refusal = operator_refusal(
+        command="close-wave", operator=getattr(args, "operator", "manager"),
+        commit=args.commit, manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": DELIVERY_SCHEMA, "step": "close-wave",
+               "mode": "refused", **refusal}, args.json,
+              "✗ close-wave refused: only Manager may close the primary wave")
+        return EXIT_BLOCK
     if not getattr(args, "commit", False):
         return _cmd_close_wave_impl(args)
     with _delivery_loop_lock(primary_root()):

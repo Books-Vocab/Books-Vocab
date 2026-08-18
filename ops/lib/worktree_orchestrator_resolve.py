@@ -326,6 +326,18 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     (local + remote) + drop the gate-record cache."""
     worktree = _norm(args.worktree)
 
+    refusal = operator_refusal(
+        command="resolve --via-integration",
+        operator=getattr(args, "operator", "manager"),
+        commit=args.commit and bool(getattr(args, "via_integration", None)),
+        manager_only=True,
+    )
+    if refusal:
+        _emit({"schema": SCHEMA, "step": "resolve", "error": "operator refused",
+               "worktree": worktree, **refusal}, args.json,
+              "✗ resolve --via-integration refused: only Manager may resolve landed sources")
+        return EXIT_BLOCK
+
     def _refuse(code: str, reason: str, **extra: Any) -> int:
         _emit({"schema": SCHEMA, "step": "resolve", "error": "refused",
                "reason_code": code, "reason": reason, "branch": extra.pop("branch", None),
