@@ -15,6 +15,9 @@
   "date": "2026-08-13",
   "detail": "Running ops/ui_graph.py --type SettingsStatusValue --json emitted an isolated build and launched ios_build/xcodebuild before producing the dependency result; the read-only query must not acquire the iOS build lock or start Xcode.",
   "fix_site": "ops/ui_graph.py",
+  "fixed_by": [
+    "0809d8d95c21958538aaff728467caf7ba02c090"
+  ],
   "groomed_against": "f36e9576ab70b7fafdc2b0baa2fc1934b3f83dd9",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dispatchable-20260818-r2",
@@ -41,6 +44,10 @@
   },
   "severity": "med",
   "source": "P15 child static verification",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager",
+  "verified_evidence": "test -f ops/tests/fixtures/ticket_factory_contracts/IMP-20260813-4c0ad1.json && jq -e . ops/tests/fixtures/ticket_factory_contracts/IMP-20260813-4c0ad1.json"
 }
