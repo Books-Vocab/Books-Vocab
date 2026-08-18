@@ -13,6 +13,9 @@
   "date": "2026-08-17",
   "detail": "ops/tests/test_backlog.py 仍是大型 legacy collector，雖然 store/query/mutation/verification/reanchor/wave/acceptance 等 seam files 已存在，責任是否重複與哪些 nodeid 仍唯一覆蓋尚未完成機械對帳。這張票只整理測試拓撲，嚴禁改 backlog.py lifecycle、status、acceptance、資料模型、歷史 receipt 或既有 acceptance command 語義。前置：orchestrator-test-topology-eta-20260817 完成後，以最新 local main 重查 scope 與既有 tickets。",
   "fix_site": "ops/tests/test_backlog.py",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -83,6 +86,10 @@
   },
   "severity": "med",
   "source": "使用者附件：後續測試拓撲與 Gate 效率改善計劃，Wave 2 Ticket E Backlog Legacy Collector Audit",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "commit d4d6efd99f603145502c8e295baf0f41a473efe9; exact backlog acceptance 453 passed rc0; coverage deviation retained in current S2 Gate; review .cache/agent-scratch/review-IMP-20260817-79808b-d4d6efd9.md"
 }

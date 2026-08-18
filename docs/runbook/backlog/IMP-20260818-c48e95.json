@@ -12,6 +12,9 @@
   "date": "2026-08-18",
   "detail": "三張未解 legacy ticket 的 stored id 與 make_entry_id 重新計算值不一致，backlog CLI 以 id-content-drift 拒絕 update、verify 與 groom，導致無法把真實 Scope 與 contract metadata 寫回 ledger。此票只修復可審計的 drift migration/supersede route，不直接改三張母票內容。",
   "fix_site": "ops/backlog.py",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -38,6 +41,10 @@
   },
   "severity": "high",
   "source": "Ticket Factory dogfood 2026-08-18 legacy ID drift contract repair",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "ALREADY-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "no-op evidence .cache/agent-scratch/noop-IMP-20260818-c48e95.md; exact selector 19 passed/360 deselected rc0; validate baseline problems=[]; provenance b494518904d6d6bda414fd1af846608645f6a2ac"
 }

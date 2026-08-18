@@ -12,6 +12,9 @@
   "date": "2026-08-17",
   "detail": "官方 ops-pytest 的 test_ios_gate_input_map_covers_declared_shell_dependencies 在 child HEAD c6c3f389 與 base d7d98039 同 selector 都失敗。declared_files(ops/ios_test.sh) 多出 ops/lib/ios_test_failure_verdict.sh；child 本輪只加入 ASC pytest runtime extras pyjwt/cryptography，沒有改 iOS input-map 邏輯或這些 fix sites。",
   "fix_site": "ops/worktree_orchestrate.py; ops/tests/test_worktree_orchestrate.py; ops/ios_test.sh; ops/lib/ios_test_failure_verdict.sh",
+  "fixed_by": [
+    "32b299b2e28342d3f3b68a265e770ec224a86b20"
+  ],
   "groomed_against": "bf9606b84d4209ea3884a5f1519323fdd374b33f",
   "groomed_at": "2026-08-18",
   "groomed_by": "agent:ticket-factory-dogfood-20260818",
@@ -42,6 +45,10 @@
   },
   "severity": "high",
   "source": "integrator gate BLOCK backlog-seams-wave-20260817",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "ALREADY-FIXED",
+  "verified_at": "2026-08-18",
+  "verified_by": "manager:p02-close-wave",
+  "verified_evidence": "no-op evidence .cache/agent-scratch/noop-IMP-20260817-9a2678.md; exact selector 1 passed rc0; existing iOS failure-helper fingerprint fix already reachable; provenance caf1247e69296a55c1f60faade108557d3572139"
 }
