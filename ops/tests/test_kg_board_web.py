@@ -283,11 +283,19 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'new EventSource("/api/events")' in js
     assert 'addEventListener("snapshot"' in js
     assert 'const LIVE_RELOAD_DELAY_MS=25' in js
+    assert 'const LIVE_RELOAD_MAX_WAIT_MS=250' in js
+    assert 'const LIVE_LOAD_DEADLINE_MS=650' in js
+    assert 'let liveReloadMaxTimer=null' in js
+    assert 'AbortController' in js
     assert 'clearTimeout(liveReloadTimer)' in js
     assert "function scheduleLiveFallback" in js
+    assert 'const LIVE_FALLBACK_BASE_DELAY_MS=250' in js
+    assert 'const LIVE_FALLBACK_MAX_DELAY_MS=750' in js
+    assert '2 ** Math.min(liveFallbackAttempts,2)' in js
+    assert 'navigator.locks.request' in js
     assert "Math.random()" in js
     assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' not in js
-    bootstrap = js[js.index("renderTreeZoom();"):]
+    bootstrap = js[js.rindex("renderTreeZoom();"):]
     assert bootstrap.index("connectLiveEvents();") < bootstrap.index("load().catch(showLoadError);")
 
 

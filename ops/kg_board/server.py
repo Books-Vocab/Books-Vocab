@@ -286,9 +286,13 @@ def live_event_watch_loop(stop_event: threading.Event | None = None) -> None:
             current = _live_source_fingerprint()
             if current != previous:
                 with _live_event_seen_lock:
-                    already_published = current == _live_event_seen_fingerprint
-                if not already_published:
-                    publish_event("mirror")
+                    if current != _live_event_seen_fingerprint:
+                        # Mark and publish under the same lock as direct mirror
+                        # POSTs so the SSE sequence follows the source update
+                        # serialization rather than whichever thread happens
+                        # to reach publish_event first.
+                        _mark_live_source_event_seen()
+                        publish_event("mirror")
                 previous = current
         except Exception as exc:  # pragma: no cover - daemon must stay alive
             log(f"live event watcher error: {exc}")
@@ -1770,7 +1774,10 @@ class Handler(BaseHTTPRequestHandler):
             with _live_event_seen_lock:
                 _update_json(MIRROR_PATH, {}, update_mirror)
                 _mark_live_source_event_seen()
-            publish_event(key)
+                # Keep the invalidation sequence aligned with source writes.
+                # A concurrent POST or watcher must not publish a later write
+                # before this write has received its SSE sequence number.
+                publish_event(key)
             self._json(200, {"ok": True, "stored": key})
             return
 
