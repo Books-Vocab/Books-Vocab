@@ -1636,8 +1636,14 @@ def retire_campaign(
             if record.get("status") == STATUS_ACTIVE
             and record.get("campaign_id") == campaign_id
         ]
-        if not active_children:
-            return {"ok": False, "reason": "campaign has no active child to retire",
+        campaign_records = [
+            record for record in records
+            if record.get("campaign_id") == campaign_id
+        ]
+        resolved_only = not active_children
+        if resolved_only and not campaign_records:
+            return {"ok": False,
+                    "reason": "resolved campaign child provenance missing",
                     "campaign_id": campaign_id}
 
         partitions = reservation.get("partitions")
@@ -1732,41 +1738,136 @@ def retire_campaign(
                             "ticket": ticket_id}
                 expected_claims[(str(partition_id), ticket_id)] = claim
 
-        active_claims: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        for record in active_children:
-            backlog = record.get("backlog")
-            if not isinstance(backlog, list) or len(backlog) != 1 \
-                    or not isinstance(backlog[0], str):
-                return {"ok": False, "reason": "active campaign child claim is not singular",
-                        "campaign_id": campaign_id, "branch": record.get("branch")}
-            key = (str(record.get("partition_id") or ""), backlog[0])
-            active_claims.setdefault(key, []).append(record)
-        if set(active_claims) != set(expected_claims):
-            return {"ok": False, "reason": "campaign claim/child mismatch",
-                    "campaign_id": campaign_id,
-                    "missing": sorted(set(expected_claims) - set(active_claims)),
-                    "extra": sorted(set(active_claims) - set(expected_claims))}
-        for key, children in active_claims.items():
-            if len(children) != 1:
-                return {"ok": False, "reason": "campaign claim has duplicate active children",
-                        "campaign_id": campaign_id, "partition": key[0], "ticket": key[1]}
-            record = children[0]
-            claim = expected_claims[key]
-            if claim.get("branch") != record.get("branch") \
-                    or _norm(str(claim.get("path") or "")) != _norm(str(record.get("path") or "")):
-                return {"ok": False, "reason": "campaign claim/child provenance mismatch",
-                        "campaign_id": campaign_id, "partition": key[0], "ticket": key[1]}
-        for record in active_children:
-            problems = child_problems(record, reservation)
-            if problems:
-                first = problems[0]
-                if first.get("kind") == "child-worktree-dirty":
-                    return {"ok": False, "reason": "active campaign child worktree dirty",
+        retirement_children: list[dict[str, Any]]
+        if resolved_only:
+            reservation_keys = {
+                (str(partition_id), str(ticket_id))
+                for partition_id, partition in partitions.items()
+                for ticket_id in (partition.get("ticket_ids") or [])
+            }
+            if set(expected_claims) != reservation_keys:
+                return {"ok": False, "reason": "resolved campaign claim incomplete",
+                        "campaign_id": campaign_id,
+                        "missing": sorted(reservation_keys - set(expected_claims)),
+                        "extra": sorted(set(expected_claims) - reservation_keys)}
+            resolved_claims: dict[tuple[str, str], list[dict[str, Any]]] = {}
+            for record in campaign_records:
+                if record.get("status") not in RESOLVE_STATUS:
+                    return {"ok": False,
+                            "reason": "resolved campaign child provenance unresolved",
+                            "campaign_id": campaign_id,
+                            "branch": record.get("branch"),
+                            "status": record.get("status")}
+                backlog = record.get("backlog")
+                if not isinstance(backlog, list) or len(backlog) != 1 \
+                        or not isinstance(backlog[0], str):
+                    return {"ok": False,
+                            "reason": "resolved campaign child claim is not singular",
+                            "campaign_id": campaign_id,
+                            "branch": record.get("branch")}
+                key = (str(record.get("partition_id") or ""), backlog[0])
+                resolved_claims.setdefault(key, []).append(record)
+            if set(resolved_claims) != set(expected_claims):
+                return {"ok": False, "reason": "campaign claim/child mismatch",
+                        "campaign_id": campaign_id,
+                        "missing": sorted(set(expected_claims) - set(resolved_claims)),
+                        "extra": sorted(set(resolved_claims) - set(expected_claims))}
+            for key, children in resolved_claims.items():
+                if len(children) != 1:
+                    return {"ok": False,
+                            "reason": "resolved campaign claim has duplicate children",
+                            "campaign_id": campaign_id,
+                            "partition": key[0], "ticket": key[1]}
+                record = children[0]
+                claim = expected_claims[key]
+                if claim.get("branch") != record.get("branch") \
+                        or _norm(str(claim.get("path") or "")) != _norm(str(record.get("path") or "")):
+                    return {"ok": False,
+                            "reason": "resolved campaign claim/child provenance mismatch",
+                            "campaign_id": campaign_id,
+                            "partition": key[0], "ticket": key[1]}
+                problems = [
+                    problem for problem in validate_handback_seal(
+                        record, repo=None, require_seal=True,
+                    )
+                    if problem.get("kind") != "handback-outcome-not-integrable"
+                ]
+                receipt = record.get("child_receipt")
+                seal = record.get("handback_seal")
+                if not isinstance(receipt, dict):
+                    problems.append({"kind": "child-receipt-missing",
+                                     "branch": record.get("branch")})
+                else:
+                    expected_tickets = sorted(str(ticket) for ticket in (record.get("backlog") or []))
+                    receipt_checks = (
+                        (receipt.get("schema") == wc.CHILD_RECEIPT_SCHEMA, "schema"),
+                        (receipt.get("role") == "child", "role"),
+                        (receipt.get("campaign_id") == reservation.get("campaign_id"), "campaign_id"),
+                        (receipt.get("partition_id") == record.get("partition_id"), "partition_id"),
+                        (receipt.get("branch") == record.get("branch"), "branch"),
+                        (receipt.get("manifest_head_sha") == record.get("handed_back_sha"),
+                         "manifest_head_sha"),
+                        (receipt.get("campaign_manifest_digest") == reservation.get("manifest_digest"),
+                         "campaign_manifest_digest"),
+                        (receipt.get("ticket_ids") == expected_tickets, "ticket_ids"),
+                        (isinstance(receipt.get("source_branches"), list)
+                         and receipt.get("source_branches") == [record.get("branch")],
+                         "source_branches"),
+                        (isinstance(seal, dict)
+                         and receipt.get("outcome_seal_digest") == seal.get("digest"),
+                         "outcome_seal_digest"),
+                        (isinstance(seal, dict)
+                         and receipt.get("outcomes") == seal.get("outcomes"), "outcomes"),
+                    )
+                    problems.extend(
+                        {"kind": "child-receipt-invalid", "field": field,
+                         "branch": record.get("branch")}
+                        for ok, field in receipt_checks if not ok
+                    )
+                if problems:
+                    return {"ok": False,
+                            "reason": "resolved campaign child provenance invalid",
+                            "campaign_id": campaign_id,
+                            "branch": record.get("branch"),
+                            "problems": problems}
+            retirement_children = campaign_records
+        else:
+            active_claims: dict[tuple[str, str], list[dict[str, Any]]] = {}
+            for record in active_children:
+                backlog = record.get("backlog")
+                if not isinstance(backlog, list) or len(backlog) != 1 \
+                        or not isinstance(backlog[0], str):
+                    return {"ok": False, "reason": "active campaign child claim is not singular",
+                            "campaign_id": campaign_id, "branch": record.get("branch")}
+                key = (str(record.get("partition_id") or ""), backlog[0])
+                active_claims.setdefault(key, []).append(record)
+            if set(active_claims) != set(expected_claims):
+                return {"ok": False, "reason": "campaign claim/child mismatch",
+                        "campaign_id": campaign_id,
+                        "missing": sorted(set(expected_claims) - set(active_claims)),
+                        "extra": sorted(set(active_claims) - set(expected_claims))}
+            for key, children in active_claims.items():
+                if len(children) != 1:
+                    return {"ok": False, "reason": "campaign claim has duplicate active children",
+                            "campaign_id": campaign_id, "partition": key[0], "ticket": key[1]}
+                record = children[0]
+                claim = expected_claims[key]
+                if claim.get("branch") != record.get("branch") \
+                        or _norm(str(claim.get("path") or "")) != _norm(str(record.get("path") or "")):
+                    return {"ok": False, "reason": "campaign claim/child provenance mismatch",
+                            "campaign_id": campaign_id, "partition": key[0], "ticket": key[1]}
+            for record in active_children:
+                problems = child_problems(record, reservation)
+                if problems:
+                    first = problems[0]
+                    if first.get("kind") == "child-worktree-dirty":
+                        return {"ok": False, "reason": "active campaign child worktree dirty",
+                                "campaign_id": campaign_id, "branch": record.get("branch"),
+                                "problems": problems}
+                    return {"ok": False, "reason": "active campaign child provenance invalid",
                             "campaign_id": campaign_id, "branch": record.get("branch"),
                             "problems": problems}
-                return {"ok": False, "reason": "active campaign child provenance invalid",
-                        "campaign_id": campaign_id, "branch": record.get("branch"),
-                        "problems": problems}
+            retirement_children = active_children
 
         manifest_archive_path = _campaign_manifest_archive_path(
             state_path, campaign_id, manifest_before,
@@ -1788,7 +1889,7 @@ def retire_campaign(
                     "handed_back_sha": record.get("handed_back_sha"),
                     "child_receipt": copy.deepcopy(record.get("child_receipt")),
                 }
-                for record in active_children
+                for record in retirement_children
             ],
         })
         result = {
@@ -1796,6 +1897,7 @@ def retire_campaign(
             "mode": "committed" if commit else "dry-run",
             "campaign_id": campaign_id,
             "reason": reason,
+            "resolved_only": resolved_only,
             "resolved_without_landing": True,
             "retired_children": copy.deepcopy(archived["retired_children"]),
             "archive": archived,
@@ -1806,16 +1908,17 @@ def retire_campaign(
         archive_dir = manifest_archive_path.parent
         archive_dir_existed = archive_dir.exists()
         try:
-            for record in active_children:
-                record["status"] = "abandoned"
-                record["resolved_at"] = timestamp
-                record["campaign_retirement"] = {
-                    "schema": CAMPAIGN_RETIRE_SCHEMA,
-                    "campaign_id": campaign_id,
-                    "reason": reason,
-                    "retired_at": timestamp,
-                    "resolved_without_landing": True,
-                }
+            if not resolved_only:
+                for record in retirement_children:
+                    record["status"] = "abandoned"
+                    record["resolved_at"] = timestamp
+                    record["campaign_retirement"] = {
+                        "schema": CAMPAIGN_RETIRE_SCHEMA,
+                        "campaign_id": campaign_id,
+                        "reason": reason,
+                        "retired_at": timestamp,
+                        "resolved_without_landing": True,
+                    }
             archive_dir.mkdir(parents=True, exist_ok=True)
             os.replace(manifest_path, manifest_archive_path)
             state["campaign_reservations"] = [
