@@ -22,29 +22,28 @@
           <h1 id="scope-title">檔案佔用矩陣</h1>
         </div>
       </div>
-      <div class="board-view-actions scope-view-actions" aria-label="矩陣檢視操作">
-        <button type="button" id="scope-fullscreen" class="tree-control-button">全螢幕</button>
-      </div>
-      <div class="board-controls scope-controls" aria-label="矩陣檢視尺度">
-        <div class="tree-control-copy">
-          <label for="scope-zoom">矩陣尺度</label>
+      <div class="board-toolbar scope-toolbar" aria-label="矩陣檢視操作">
+        <div class="board-view-actions scope-view-actions">
+          <button type="button" id="scope-fullscreen" class="tree-control-button">全螢幕</button>
         </div>
-        <input id="scope-zoom" type="range" min="80" max="140" step="10" value="100" aria-valuetext="100%">
-        <output id="scope-zoom-value" for="scope-zoom">100%</output>
-        <div class="tree-control-copy">
-          <label for="scope-density">列距</label>
-          <span>縮短空白列的垂直佔用</span>
+        <div class="board-controls scope-controls" aria-label="矩陣檢視設定">
+          <div class="tree-control-copy"><label for="scope-zoom">矩陣尺度</label></div>
+          <input id="scope-zoom" type="range" min="80" max="140" step="10" value="100" aria-valuetext="100%">
+          <output id="scope-zoom-value" for="scope-zoom">100%</output>
+          <div class="tree-control-copy"><label for="scope-density">列距</label></div>
+          <input id="scope-density" type="range" min="28" max="54" step="2" value="34" aria-valuetext="34px">
+          <output id="scope-density-value" for="scope-density">34px</output>
+          <label class="scope-occupied-toggle"><input id="scope-occupied-only" type="checkbox">只看有佔用檔案</label>
+          <button type="button" id="scope-fit" class="tree-control-button">適合視窗</button>
+          <button type="button" id="scope-reset" class="tree-control-button secondary">重設</button>
         </div>
-        <input id="scope-density" type="range" min="28" max="54" step="2" value="34" aria-valuetext="34px">
-        <output id="scope-density-value" for="scope-density">34px</output>
-        <label class="scope-occupied-toggle"><input id="scope-occupied-only" type="checkbox">只看有佔用檔案</label>
-        <button type="button" id="scope-fit" class="tree-control-button">適合視窗</button>
-        <button type="button" id="scope-reset" class="tree-control-button secondary">重設</button>
       </div>
-      <div id="scope-matrix-wrap" class="scope-matrix-wrap" aria-live="polite">
-        <p class="empty">檔案矩陣載入中</p>
+      <div class="scope-workspace">
+        <div id="scope-matrix-wrap" class="scope-matrix-wrap" aria-live="polite">
+          <p class="empty">檔案矩陣載入中</p>
+        </div>
+        <aside id="scope-inspector" class="scope-inspector" aria-live="polite" hidden></aside>
       </div>
-      <aside id="scope-inspector" class="scope-inspector" aria-live="polite" hidden></aside>
       <div id="scope-fullscreen-viewer" class="scope-fullscreen-viewer" hidden aria-hidden="true">
         <div class="scope-fullscreen-shell" role="dialog" aria-modal="true" aria-labelledby="scope-fullscreen-title">
           <header class="scope-fullscreen-toolbar">
@@ -69,28 +68,28 @@
           <h1 id="tree-title">分支與工作樹</h1>
         </div>
       </div>
-      <div class="board-view-actions tree-view-actions" aria-label="樹狀圖檢視操作">
-        <button type="button" id="tree-fullscreen" class="tree-control-button">全螢幕</button>
-      </div>
-      <div class="board-controls tree-controls" aria-label="樹圖縮放">
-        <div class="tree-control-copy">
-          <label for="tree-zoom">圖面尺度</label>
+      <div class="board-toolbar tree-toolbar" aria-label="樹狀圖檢視操作">
+        <div class="board-view-actions tree-view-actions">
+          <button type="button" id="tree-fullscreen" class="tree-control-button">全螢幕</button>
         </div>
-        <input id="tree-zoom" type="range" min="70" max="140" step="10" value="100" aria-valuetext="100%">
-        <output id="tree-zoom-value" for="tree-zoom">100%</output>
-        <div class="tree-control-copy">
-          <label for="tree-lane-spacing">工作樹間距</label>
+        <div class="board-controls tree-controls" aria-label="樹圖設定">
+          <div class="tree-control-copy"><label for="tree-zoom">圖面尺度</label></div>
+          <input id="tree-zoom" type="range" min="70" max="140" step="10" value="100" aria-valuetext="100%">
+          <output id="tree-zoom-value" for="tree-zoom">100%</output>
+          <div class="tree-control-copy"><label for="tree-lane-spacing">工作樹間距</label></div>
+          <input id="tree-lane-spacing" type="range" min="104" max="224" step="4" value="124" aria-valuetext="124px">
+          <output id="tree-lane-spacing-value" for="tree-lane-spacing">124px</output>
+          <button type="button" id="tree-fit" class="tree-control-button">適合視窗</button>
+          <button type="button" id="tree-reset" class="tree-control-button secondary">重設</button>
         </div>
-        <input id="tree-lane-spacing" type="range" min="104" max="224" step="4" value="124" aria-valuetext="124px">
-        <output id="tree-lane-spacing-value" for="tree-lane-spacing">124px</output>
-        <button type="button" id="tree-fit" class="tree-control-button">適合視窗</button>
-        <button type="button" id="tree-reset" class="tree-control-button secondary">重設</button>
       </div>
       <div id="tree-alert" class="tree-alert" role="status"></div>
-      <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
-      <div id="tree-mobile-list" class="tree-mobile-list" aria-label="分支與 commit 清單"></div>
+      <div class="tree-workspace">
+        <div id="git-tree" class="git-tree" tabindex="0" aria-label="Git commit graph"></div>
+        <div id="tree-mobile-list" class="tree-mobile-list" aria-label="分支與 commit 清單"></div>
+        <aside id="commit-inspector" class="commit-inspector" aria-live="polite" hidden></aside>
+      </div>
       <div id="branch-index" class="branch-index" aria-label="分支與工作樹索引"></div>
-      <div id="tree-hover-card" class="tree-hover-card" role="status" aria-live="polite" hidden></div>
       <div id="tree-fullscreen-viewer" class="tree-fullscreen-viewer" hidden aria-hidden="true">
         <div class="tree-fullscreen-shell" role="dialog" aria-modal="true" aria-labelledby="tree-fullscreen-title">
           <header class="tree-fullscreen-toolbar">
@@ -109,7 +108,6 @@
           <div id="tree-fullscreen-canvas" class="tree-fullscreen-canvas" tabindex="0" aria-label="可縮放拖動的 Git 交付樹"></div>
         </div>
       </div>
-      <aside id="commit-inspector" class="commit-inspector" aria-live="polite" hidden></aside>
     </section>
 
     <section class="backlog-panel" aria-labelledby="backlog-title">
