@@ -6,7 +6,7 @@
 # 東西（合成語料 + PATH 前置的 GNU shim），在 macOS 上就能證明修法真的成立。
 #
 # 三章，每章都先立正控（先證明探針會響，才有資格相信它的沉默）：
-#   A. SIGPIPE：`grep -r … | head -N` 在 pipefail 下傳出 141。用合成語料現場證明這件事
+#   A. SIGPIPE：`grep -r … | head -N` 在 pipefail 下傳出非零。用合成語料現場證明這件事
 #      在本機是真的，並證明 `sed -n '1p'` 不會。
 #   B. lint：ops/ 底下不得再出現 `grep -r` 接 head 的管線。
 #   C. GNU userland shim：用假的 GNU stat/date 前置 PATH，重跑 ops/tests/test_ios_cache_evict.sh，
@@ -32,8 +32,8 @@ for i in $(seq 1 20); do
   seq 1 10000 | awk '{printf "func testAlpha%06d() {}\n", $1}' > "$corpus/f$i.swift"
 done
 rc=0; grep -rhoE 'func test[A-Za-z0-9_]+' "$corpus" 2>/dev/null | head -1 >/dev/null || rc=$?
-[[ "$rc" -eq 141 ]] && ok "head -1 傳出 141（語料夠大，探針有效）" \
-  || fail_t "head -1 rc=${rc}（期望 141）— 探針壞了，B 章守的是空氣"
+[[ "$rc" -ne 0 ]] && ok "head -1 在 pipefail 下傳出非零 rc=${rc}（語料夠大，探針有效）" \
+  || fail_t "head -1 rc=0（期望上游因 early-close 非零）— 探針壞了，B 章守的是空氣"
 rc=0; grep -rhoE 'func test[A-Za-z0-9_]+' "$corpus" 2>/dev/null | sed -n '1p' >/dev/null || rc=$?
 [[ "$rc" -eq 0 ]] && ok "sed -n 1p rc=0（讀完整個 stream，是正確替代）" \
   || fail_t "sed -n 1p rc=${rc}（期望 0）"
@@ -153,7 +153,7 @@ while IFS= read -r f; do
     lineno="${srcline%%:*}"; body="${srcline#*:}"
     [[ "$f" == "$ANCHOR" ]] && anchor_lines=$((anchor_lines+1))
     if is_bad_line "$body"; then
-      fail_t "${f#"$WORKTREE"/}:$lineno: grep -r 管線接 head — GNU grep 吃 SIGPIPE、pipefail 傳出 141"
+      fail_t "${f#"$WORKTREE"/}:$lineno: grep -r 管線接 head — 上游可能因 early-close 非零、破壞 pipefail"
       bad=1
     fi
     # 預篩只認裸字 `grep`，判定一律交給 is_bad_line。預篩若也寫成 'grep -r'，就會把

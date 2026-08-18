@@ -5,8 +5,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-WORKTREE="$(find "$ROOT/.claude/worktrees" -mindepth 1 -maxdepth 1 -type d -print -quit)"
-[[ -n "$WORKTREE" ]] || { echo "FAIL: no linked worktree fixture available" >&2; exit 1; }
+FIXTURE_ROOT="$(mktemp -d -t kg_ios_cache_worktree_XXXXXX)"
+WORKTREE="$FIXTURE_ROOT/worktree"
+cleanup() {
+  git -C "$ROOT" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+  rm -rf "$FIXTURE_ROOT"
+}
+trap cleanup EXIT
+
+# CI checks out a clean repository and must not depend on a developer's old
+# .claude/worktrees directory.  Create a disposable linked worktree through
+# Git's own administration so the assertion exercises the real common-dir
+# topology without touching any active worktree.
+git -C "$ROOT" worktree add --detach "$WORKTREE" HEAD >/dev/null
 
 source "$ROOT/ops/lib/ios_test_cache_root.sh"
 main_root="$(kg_ios_test_cache_root "$ROOT")"
