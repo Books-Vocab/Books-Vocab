@@ -1,0 +1,39 @@
+{
+  "acceptance": "RED→GREEN：acceptance command 必須 exit 0，並以 machine-readable contract tests 證明：當 fix_site 與 acceptance dependency 的 missing path 各自被 structured Scope 宣告且 operation=add 時，preflight 將其視為合法待實作且不阻擋 dispatch；同樣的 missing path 若未宣告在 structured Scope，仍 fail-closed；任何 operation 非 add 都不可取得放行；status、contract fields 與 JSON classification 保持不變。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog_contract.py",
+  "acceptance_expect_rc": 0,
+  "brief": "讓維護者能預先宣告要新增的修復檔案而不被錯誤擋下，同時保留對未宣告路徑的封鎖。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "platform-steward",
+  "contract_evidence": "admission_guard=true; declared_missing_paths_with_operation_add=allowed_pending_implementation; undeclared_missing_paths=fail-closed; non_add_operations=fail-closed; status_contract_fields_json_classification=preserved; base/groomed_against=518e0155ddc4ecb6133eb3f655899f3399718f75; scope=modify-only; acceptance command recorded",
+  "contract_status": "ready",
+  "date": "2026-08-18",
+  "detail": "Admission guard for backlog preflight: a fix_site or acceptance dependency path that is missing may be legal when the path is explicitly declared in structured Scope with operation=add, so an add-only ticket can be reserved and dispatched before implementation; a missing path not declared in structured Scope must remain fail-closed. Preserve status, contract fields, and JSON classification semantics, and allow no operation other than add. Scope is limited to modifying ops/backlog_contract.py and ops/tests/test_backlog_contract.py; this guard does not reopen or alter P1-P4.",
+  "fix_site": "ops/backlog_contract.py",
+  "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "platform-steward",
+  "id": "IMP-20260818-fbf8a4",
+  "plan": "調整 backlog contract preflight 的 dependency rule：只有當 missing fix_site 或 acceptance path 由 structured Scope 明確列為 operation=add 時，才分類為合法待實作並不阻擋 dispatch；對未宣告路徑及任何非 add operation 維持 fail-closed；保留 status、contract fields 與 JSON classification 的既有語意；以 test_backlog_contract.py 覆蓋 declared add、undeclared missing、非 add operation 與欄位不變性，所有變更只在本票 modify Scope。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "modify",
+        "path": "ops/backlog_contract.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_backlog_contract.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "high",
+  "source": "integrator gate-efficiency admission preflight tooling friction",
+  "status": "triaged",
+  "stream": "IMP"
+}

@@ -1,0 +1,47 @@
+{
+  "acceptance": "RED→GREEN：指定的兩個新增測試檔在實作前形成 contract baseline red；GREEN 時 acceptance command 必須 exit 0，並證明 changed-file/fingerprint→S0/S1/S2/S3/S4、unknown fail-closed、stable adapter output 與既有 planner/Manager consumer shape。結果必須是 machine-readable 並包含 contract_ready、runner_connected、wiring_follow_up；contract_ready 必須為 true，runner_connected 在沒有實際既有 central-runner 接線證據時必須為 false；false 時 wiring_follow_up 必須是含 owner=manager、next_step、files 且 files 包含 ops/test_ops.sh 的物件；standalone JSON 不得暗示 runner_connected=true。不得修改 ops/test_ops.sh 或既有 runner。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_gate_cost_route_matrix.py ops/tests/test_gate_cost_route_matrix_integration.py",
+  "acceptance_expect_rc": 0,
+  "brief": "讓維護者能依變更內容穩定選擇正確的檢查層級，避免未知變更被錯誤放行或繞路。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "platform-steward",
+  "contract_evidence": "contract_ready=true; runner_connected=false; wiring_follow_up={owner:manager,next_step:connect adapter through the existing planner and Manager gate after this ticket lands,files:[ops/test_ops.sh]}; base/groomed_against=518e0155ddc4ecb6133eb3f655899f3399718f75; add-only Scope; acceptance command recorded",
+  "contract_status": "ready",
+  "date": "2026-08-18",
+  "detail": "新增 gate cost selector routing contract：由 changed-file/fingerprint 組合輸入，明確映射 S0/S1/S2/S3/S4，任何 unknown input 一律 fail-closed；只能新增 ops/gate_cost_route_matrix.py、ops/gate_cost_route_adapter.py、ops/tests/test_gate_cost_route_matrix.py、ops/tests/test_gate_cost_route_matrix_integration.py，不改 ops/test_ops.sh、既有 runner 或既有 planner。adapter 必須提供穩定 machine-readable contract 供既有 planner/Manager gate 消費；integration contract test 必須區分 standalone JSON 與 central runner connected。未接線時必須輸出 contract_ready=true、runner_connected=false、wiring_follow_up={owner:manager,next_step:<具名下一步>,files:[ops/test_ops.sh]}，不得把 standalone JSON 宣稱為 connected。",
+  "fix_site": "ops/gate_cost_route_adapter.py",
+  "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "platform-steward",
+  "id": "IMP-20260818-5592f2",
+  "plan": "在新增的 route matrix 中定義 changed-file/fingerprint 到 S0/S1/S2/S3/S4 的明確規則並對 unknown fail-closed；以 adapter 固定輸出 machine-readable routing contract；用 unit test 覆蓋每個 tier 與 unknown，用 integration contract test 驗證 standalone 與 runner-connected 的邊界及既有 planner/Manager gate 消費形狀；所有實作與測試只落在本票 add-only Scope，central runner wiring 留給 Manager。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "add",
+        "path": "ops/gate_cost_route_matrix.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/gate_cost_route_adapter.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_cost_route_matrix.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_cost_route_matrix_integration.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "integrator gate-efficiency phase 2 admission r1",
+  "status": "triaged",
+  "stream": "IMP"
+}

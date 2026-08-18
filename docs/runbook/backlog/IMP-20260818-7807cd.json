@@ -1,0 +1,43 @@
+{
+  "acceptance": "RED→GREEN：指定的兩個新增測試檔在實作前形成 contract baseline red；GREEN 時 acceptance command 必須 exit 0，並證明 kg.gate.timing-ledger.v1 的 schema/CLI/validator/summarizer 可表達 10-20 waves，且 packet、full_gate、precise_gate、reuse_verdict 各自保留 duration、rc、verdict、fingerprint、HEAD/base、lease_wait，不偽造歷史數據。結果必須是 machine-readable 並包含 contract_ready、runner_connected、wiring_follow_up；contract_ready 必須為 true，沒有實際既有 runner 消費證據時 runner_connected 必須為 false；false 時 wiring_follow_up 必須是含 owner=manager、next_step、files 的物件；必須明確區分 contract 與 runner consumed，且不得修改既有 runner。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_gate_cost_timing_ledger.py ops/tests/test_gate_cost_timing_ledger_integration.py",
+  "acceptance_expect_rc": 0,
+  "brief": "讓維護者能用一致的時間帳本比較多輪閘門成本，找出等待與重跑浪費。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "platform-steward",
+  "contract_evidence": "contract_ready=true; runner_connected=false; wiring_follow_up={owner:manager,next_step:connect timing ledger consumption through the existing central runner after this ticket lands,files:[central-runner]}; base/groomed_against=518e0155ddc4ecb6133eb3f655899f3399718f75; add-only Scope; acceptance command recorded",
+  "contract_status": "ready",
+  "date": "2026-08-18",
+  "detail": "新增 machine-readable gate timing ledger contract：schema/CLI/validator/summarizer 必須是 kg.gate.timing-ledger.v1，支援 10-20 waves，並記錄 packet、full_gate、precise_gate、reuse_verdict 各自的 duration、rc、verdict、fingerprint、HEAD/base、lease_wait；不得偽造歷史數據，不改既有 runner。輸出必須明確區分 contract 與 runner consumed；未接線時必須由 manager follow-up，不能把 standalone ledger 當成 runner consumed。只能新增 ops/gate_cost_timing_ledger.py、ops/tests/test_gate_cost_timing_ledger.py、ops/tests/test_gate_cost_timing_ledger_integration.py。",
+  "fix_site": "ops/gate_cost_timing_ledger.py",
+  "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "platform-steward",
+  "id": "IMP-20260818-7807cd",
+  "plan": "在新增 timing ledger module 定義 kg.gate.timing-ledger.v1 schema、CLI、validator、summarizer；以明確資料結構支援 10-20 waves 及 packet/full_gate/precise_gate/reuse_verdict 的 duration、rc、verdict、fingerprint、HEAD/base、lease_wait；拒絕或標記任何未提供的歷史數據而不補造；unit test 驗證 schema 與摘要，integration contract test 驗證 contract 與 runner consumed 的分界及 machine-readable wiring fields；所有實作與測試只落在本票 add-only Scope，runner 接線留給 Manager。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "add",
+        "path": "ops/gate_cost_timing_ledger.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_cost_timing_ledger.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_cost_timing_ledger_integration.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "integrator gate-efficiency phase 2 admission r1",
+  "status": "triaged",
+  "stream": "IMP"
+}
