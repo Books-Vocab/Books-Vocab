@@ -1,0 +1,43 @@
+{
+  "acceptance": "RED→GREEN：指定的兩個新增測試檔在實作前形成 contract baseline red；GREEN 時 acceptance command 必須 exit 0，並證明 long-gate contract 具備 heartbeat、independent lane、resource_key，same-fingerprint 不重跑、different-fingerprint 可並行、stale fail-closed，且 release/full gate 永不 coalesce、defer 或 degrade。結果必須是 machine-readable 並包含 contract_ready、runner_connected、wiring_follow_up；contract_ready 必須為 true，沒有實際既有 runner 接線證據時 runner_connected 必須為 false；false 時 wiring_follow_up 必須是含 owner=manager、next_step、files 的物件；standalone contract 不得暗示 runner_connected=true，不得修改 central runner 或降低 release/full gate。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_gate_cost_long_gate.py ops/tests/test_gate_cost_long_gate_integration.py",
+  "acceptance_expect_rc": 0,
+  "brief": "讓維護者能在長時間閘門等待時保持可觀測與安全並行，避免降低發布檢查強度。",
+  "category": "tool",
+  "contract_baseline": "red",
+  "contract_checked_at": "2026-08-18",
+  "contract_checked_by": "platform-steward",
+  "contract_evidence": "contract_ready=true; runner_connected=false; wiring_follow_up={owner:manager,next_step:connect long-gate policy through the existing central runner after this ticket lands,files:[central-runner]}; base/groomed_against=518e0155ddc4ecb6133eb3f655899f3399718f75; add-only Scope; acceptance command recorded",
+  "contract_status": "ready",
+  "date": "2026-08-18",
+  "detail": "新增 long-gate contract：每個長閘門工作必須有 heartbeat、independent lane、resource_key；same-fingerprint 不重跑，different-fingerprint 可並行，stale 一律 fail-closed；release/full gate 永不 coalesce、defer 或 degrade，也不降低 release/full gate 強度。只能新增 ops/gate_cost_long_gate.py、ops/tests/test_gate_cost_long_gate.py、ops/tests/test_gate_cost_long_gate_integration.py，不改 central runner。輸出必須分開表達 contract_ready 與 runner_connected；未接線時必須由 manager follow-up，不能把 standalone long-gate contract 當成已接入 runner。",
+  "fix_site": "ops/gate_cost_long_gate.py",
+  "groomed_against": "518e0155ddc4ecb6133eb3f655899f3399718f75",
+  "groomed_at": "2026-08-18",
+  "groomed_by": "platform-steward",
+  "id": "IMP-20260818-be8483",
+  "plan": "在新增 long-gate module 定義 heartbeat、independent lane、resource_key 與 fingerprint reuse/coalescing policy；以 unit test 覆蓋 same-fingerprint 不重跑、different-fingerprint 可並行、stale fail-closed，並明確鎖定 release/full gate 永不 coalesce/defer/degrade；integration contract test 驗證 machine-readable contract_ready、runner_connected、wiring_follow_up 及未接線邊界；所有實作與測試只落在本票 add-only Scope，central runner 接線留給 Manager，且不得降低既有 release/full gate。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": {
+    "files": [
+      {
+        "operation": "add",
+        "path": "ops/gate_cost_long_gate.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_cost_long_gate.py"
+      },
+      {
+        "operation": "add",
+        "path": "ops/tests/test_gate_cost_long_gate_integration.py"
+      }
+    ],
+    "schema": "kg.backlog.scope.v1"
+  },
+  "severity": "med",
+  "source": "integrator gate-efficiency phase 2 admission r1",
+  "status": "triaged",
+  "stream": "IMP"
+}
