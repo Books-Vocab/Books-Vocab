@@ -255,7 +255,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert all(label in index for label in ("現在", "進行中", "阻塞", "未梳理", "契約未就緒"))
     assert "歷史完成" in index
     assert "<details data-ticket-details" in js and "loadHistory" in js
-    assert "commitInspector" in js
+    assert "renderCommitInspector" in js
+    assert "renderTreeInspector" in js
 
     compact_css = "".join(css.split())
     assert "html,body{margin:0;max-width:100%;overflow-x:hidden" in compact_css
@@ -276,8 +277,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert 'terminal={fixed:"已修復","wont-fix":"不修"}' in js
     assert "scopeMatrix.worktrees" in js and "scopeMatrix.queued_tickets" in js
     assert "scope-column-worktree" in js and "scope-column-ticket" in js
-    assert "scope-agent-row" in js
-    assert "Scope 待宣告" in js
+    assert "scope-header-row" in js
+    assert 'unknown?"unknown":"known"' in js
     assert "/api/ticket/" in js
     assert 'new EventSource("/api/events")' in js
     assert 'addEventListener("snapshot"' in js
@@ -432,12 +433,16 @@ def test_git_tree_browser_marks_parents_outside_the_bounded_viewport():
     assert "firstParent" in js
     assert "positions.has(firstParent)" in js
     assert "tree-parent-endpoint" in js
-    assert "merge 側枝" in js
-    assert "hiddenParentCount" in js
+    assert "boundaryKind" in js
+    assert "boundaryId" in js
+    assert "data-boundary-parent" in js
+    assert "missing_parent" in js
+    assert "snapshotIncomplete=tree.complete!==true" in js
+    assert "if(detached&&!snapshotIncomplete)branchDetached.add(ref.branch)" in js
     assert "parentSha" not in js[js.index("const parentBoundaryMarkers"):js.index("const laneGuides")]
 
 
-def test_board_reactive_worktree_status_and_copyable_hover_contract():
+def test_board_reactive_worktree_status_and_copyable_selection_contract():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
@@ -448,32 +453,37 @@ def test_board_reactive_worktree_status_and_copyable_hover_contract():
     assert "dirty" in js and "dirty_file_count" in js
     assert "navigator.clipboard" in js
     assert "data-copy-value" in js
-    assert "scheduleTreeHoverHide" in js
-    assert "pointer-events:auto" in "".join(css.split())
+    assert "scheduleLiveReload" in js
+    assert "setTreeSelection" in js
+    assert "tree-selected" in "".join(css.split())
     assert 'id="scope-fullscreen"' in index
     assert 'id="scope-zoom"' in index
     assert 'id="scope-density"' in index
 
 
-def test_git_tree_hover_details_explain_boundaries_and_preserve_unknown_diff_stats():
+def test_git_tree_inspector_preserves_source_fields_without_hover_prose():
     index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
     css = (server.WEB_DIR / "app.css").read_text(encoding="utf-8")
     js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert 'id="tree-hover-card"' in index
+    assert 'id="tree-hover-card"' not in index
     assert "tree-boundary-note" not in index
-    assert "showTreeHover" in js
-    assert "hideTreeHover" in js
-    assert "data-boundary-detail" in js
+    assert "showTreeHover" not in js
+    assert "hideTreeHover" not in js
+    assert "data-boundary-detail" not in js
+    assert "data-boundary-id" in js
+    assert "renderBoundaryInspector" in js
+    assert "renderCommitInspector" in js
     assert "data-branch" in js
     assert "tree-mobile-branch-name" in js
-    assert "stateOverride" in js
-    assert 'node.addEventListener("click",show)' in js
+    assert "function renderBranchInspector(ref)" in js
+    assert "#git-tree .tree-boundary[data-boundary-id=" in js
+    assert "setTreeSelection" in js
     assert "formatDiffStat" in js
     assert "Number.isInteger(row?.insertions)" in js
     assert "row.insertions??0" not in js
     assert "row.deletions??0" not in js
-    assert ".tree-hover-card" in css
+    assert ".tree-hover-card" not in css
 
 
 def test_git_tree_browser_has_fit_and_reset_controls_without_overriding_manual_zoom():
@@ -572,12 +582,13 @@ def test_board_mobile_surface_has_a_compact_tree_and_touch_safe_ia():
     assert ".metric:last-child{grid-column:1/-1}" in "".join(css.split())
     assert "-webkit-line-clamp:2" in "".join(css.split())
     assert "--sub:#637181" in "".join(css.split())
-    assert ".tree-controls{display:none}" in "".join(css.split())
-    assert ".tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
+    assert re.search(r"@media\(max-width:860px\)\{[^}]*\.tree-controls\{display:grid", css)
+    assert 'id="tree-hover-card"' not in index
+    assert 'id="tree-legend"' not in index
     assert ".tree-control-button{min-height:44px}" in "".join(css.split())
     assert re.search(r"@media\(max-width:860px\)\{[^}]*\.git-tree\{display:block", css)
     assert ".tree-mobile-list{display:block;border:1pxsolidvar(--border-light);background:var(--surface-alt);padding:10px}" in "".join(css.split())
-    assert ".tree-mobile-list.tree-ticket,.tree-legend.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
+    assert ".tree-mobile-list.tree-ticket{min-height:44px;min-width:44px}" in "".join(css.split())
     assert "viewport.branchPaths.values()" in js
     assert "refs.map(ref=>ref.head)" in js
     assert 'stateLabel=detached?"未連接":treeStateOf(ref)' in js

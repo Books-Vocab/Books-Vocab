@@ -1,7 +1,9 @@
 const revision=document.querySelector('meta[name="kg-app-revision"]').content;
 const tabs=[...document.querySelectorAll('[data-tab]')];
 let board=null,history=null,tree=null,scopeMatrix=null,tab="now",query="";
-let scopeZoom=100,scopeDensity=34,scopeOccupiedOnly=false,treeHoverHideTimer=null;
+let scopeZoom=100,scopeDensity=34,scopeOccupiedOnly=false;
+let scopeSelection={kind:null,filePath:null,columnId:null};
+let treeSelection={kind:null,branch:null,sha:null,boundaryId:null,boundaryKind:null,parent:null};
 const esc=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const shortSha=sha=>String(sha||"").slice(0,9);
 const compactLabel=(value,max=32)=>{const text=String(value||"");return text.length>max?`${text.slice(0,max-1)}…`:text};
@@ -42,34 +44,10 @@ function scopeDetail(scope){
   if(typeof scope==="string"&&scope.trim())return esc(scope);
   return "Scope 未知（尚未宣告實際檔案範圍）";
 }
-function agentTitle(worktree){
-  const agent=worktree?.agent||{};
-  if(agent.title)return agent.title;
-  if(agent.thread_id)return `未命名 thread · ${agent.role||"agent"} · ${shortSha(agent.thread_id)}`;
-  return "Agent 未綁定";
-}
-function agentStatus(worktree){
-  const agent=worktree?.agent||{};
-  if(agent.thread_id)return `${agent.status||"unknown"} · ${shortSha(agent.thread_id)}`;
-  return "沒有穩定 thread id";
-}
 function dirtyStateOf(worktree){
   if(worktree?.dirty===true)return "dirty";
   if(worktree?.dirty===false)return "clean";
   return "unknown";
-}
-function dirtyLabelOf(worktree){
-  const state=dirtyStateOf(worktree);
-  if(state==="dirty"){
-    const count=Number.isInteger(worktree?.dirty_file_count)?worktree.dirty_file_count:
-      Array.isArray(worktree?.dirty_files)?worktree.dirty_files.length:null;
-    return count===null?"DIRTY":`DIRTY · ${count} 檔`;
-  }
-  if(state==="clean")return "CLEAN";
-  return "DIRTY 未知";
-}
-function dirtyBadge(worktree){
-  return `<span class="dirty-badge dirty-${esc(dirtyStateOf(worktree))}" title="${esc(Array.isArray(worktree?.dirty_files)&&worktree.dirty_files.length?worktree.dirty_files.join("\n"):dirtyLabelOf(worktree))}">${esc(dirtyLabelOf(worktree))}</span>`;
 }
 function copyButton(value,label="複製"){
   const text=String(value||"");
@@ -116,72 +94,174 @@ function renderScopeControls(){
 function applyScopeGeometry(mount){
   if(!mount)return;
   mount.style.setProperty("--scope-scale",String(scopeZoom/100));
-  mount.style.setProperty("--scope-font-size",`${Math.max(9,Math.round(11*scopeZoom/100))}px`);
-  mount.style.setProperty("--scope-column-width",`${Math.round(210*scopeZoom/100)}px`);
-  mount.style.setProperty("--scope-file-width",`${Math.round(320*scopeZoom/100)}px`);
-  mount.style.setProperty("--scope-head-height",`${Math.round(118*scopeZoom/100)}px`);
-  mount.style.setProperty("--scope-agent-height",`${Math.round(48*scopeZoom/100)}px`);
+  mount.style.setProperty("--scope-font-size","11px");
+  mount.style.setProperty("--scope-column-width","190px");
+  mount.style.setProperty("--scope-file-width","220px");
+  mount.style.setProperty("--scope-head-height","128px");
   mount.style.setProperty("--scope-row-height",`${scopeDensity}px`);
 }
-function renderScopeMatrix(){
-  const mount=document.getElementById("scope-matrix-wrap"),unknownMount=document.getElementById("scope-unknown"),state=document.getElementById("scope-state");
-  if(!mount||!unknownMount||!state)return;
-  renderScopeControls();
-  applyScopeGeometry(mount);
-  if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';return}
-  const worktrees=scopeMatrix.worktrees||[],queuedTickets=scopeMatrix.queued_tickets||[],allFiles=scopeMatrix.files||[],files=scopeOccupiedOnly?allFiles.filter(file=>(file.cells||[]).length>0):allFiles,counts=scopeMatrix.counts||{};
-  const columns=[
-    ...worktrees.map(worktree=>({type:"worktree",id:worktree.id,worktree})),
-    ...queuedTickets.map(ticket=>({type:"ticket",id:ticket.id,ticket})),
+function scopeColumns(){
+  if(!scopeMatrix)return [];
+  return [
+    ...(scopeMatrix.worktrees||[]).map(worktree=>({type:"worktree",id:worktree.id,worktree})),
+    ...(scopeMatrix.queued_tickets||[]).map(ticket=>({type:"ticket",id:ticket.id,ticket})),
   ];
-  state.textContent=`${counts.active_worktrees||0} worktree · ${counts.active_tickets||0} 持票 · ${counts.queued_tickets||0} queued · ${files.length}/${counts.files||0} 檔案`;
-  if(!columns.length){mount.innerHTML='<p class="empty">目前沒有 active worktree 或 queued ticket。</p>';unknownMount.innerHTML="";return}
-  const agentHeaders=columns.map(column=>{
-    if(column.type==="ticket")return `<th scope="col" class="scope-agent-cell scope-agent-ticket"><strong>尚未認領</strong><span>queued ticket</span></th>`;
-    const worktree=column.worktree,agent=worktree.agent||{};
-    return `<th scope="col" class="scope-agent-cell scope-agent-worktree scope-agent-${esc(worktree.kind)}" data-thread-id="${esc(agent.thread_id||"")}"><strong title="${esc(agent.title||agentTitle(worktree))}">${esc(agentTitle(worktree))}</strong><span>${esc(agentStatus(worktree))}</span>${dirtyBadge(worktree)}</th>`;
-  }).join("");
-  const headers=columns.map(column=>{
-    if(column.type==="worktree"){
-      const worktree=column.worktree,unknown=worktree.scope_status==="unknown";
-      const kindLabel=worktree.kind==="ticketed"?"持票 WORKTREE":"直接指派 WORKTREE";
-      const tickets=worktree.ticket_ids?.length?`持有：${worktree.ticket_ids.join("、")}`:"無 ticket · 直接指派";
-      const flags=[unknown?(worktree.kind==="direct"?"Scope 待宣告":"Scope 未知"):"Scope 已知",dirtyLabelOf(worktree),worktree.path?compactLabel(worktree.path,32):"路徑未知"].filter(Boolean).join(" · ");
-      return `<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-${esc(worktree.kind)}${unknown?" scope-column-scope-unknown":""}"><div class="scope-column-name"><code title="${esc(worktree.branch||"")}">${esc(compactLabel(worktree.branch||"未知 worktree",32))}</code>${copyButton(worktree.branch,"複製名稱")}</div><strong>${kindLabel}</strong><span class="scope-column-tickets">${esc(compactLabel(tickets,48))}</span>${worktree.path?`<span class="scope-column-path"><code title="${esc(worktree.path)}">${esc(compactLabel(worktree.path,36))}</code>${copyButton(worktree.path,"複製路徑")}</span>`:""}${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}</th>`;
+}
+function scopeColumnById(columnId){
+  return scopeColumns().find(column=>column.id===columnId)||null;
+}
+function scopeCellById(filePath,columnId){
+  const file=(scopeMatrix?.files||[]).find(row=>row.path===filePath);
+  if(!file)return null;
+  return (file.cells||[]).find(cell=>(cell.column_type==="worktree"?cell.worktree_id:cell.ticket_id)===columnId)||null;
+}
+function scopeFieldMarkup(label,value){
+  return '<dt>'+esc(label)+'</dt><dd>'+(value||"—")+'</dd>';
+}
+function scopeSourceListMarkup(values){
+  const items=(Array.isArray(values)?values:[]).filter(value=>value!==null&&value!==undefined&&String(value)!=="");
+  return items.length?items.map(value=>'<code>'+esc(value)+'</code>').join("<br>"):"—";
+}
+function scopeSourceMarkup(column){
+  if(!column)return "";
+  if(column.type==="worktree"){
+    const worktree=column.worktree||{},agent=worktree.agent||{};
+    return scopeFieldMarkup("branch",'<code>'+esc(worktree.branch||"—")+'</code>'+copyButton(worktree.branch,"複製"))+
+      scopeFieldMarkup("agent_title",'<code>'+esc(agent.title||"—")+'</code>'+copyButton(agent.title,"複製"))+
+      scopeFieldMarkup("agent_status",esc(agent.status||"unknown"))+
+      scopeFieldMarkup("worktree",'<code>'+esc(worktree.path||"—")+'</code>'+copyButton(worktree.path,"複製"))+
+      scopeFieldMarkup("host",esc(worktree.host||"—"))+
+      scopeFieldMarkup("thread",'<code>'+esc(agent.thread_id||"—")+'</code>'+copyButton(agent.thread_id,"複製"))+
+      scopeFieldMarkup("kind",esc(worktree.kind||"—"))+
+      scopeFieldMarkup("tickets",esc((worktree.ticket_ids||[]).join(", ")))+
+      scopeFieldMarkup("state",esc(worktree.state||"active"))+
+      scopeFieldMarkup("scope",esc(worktree.scope_status||"unknown"))+
+      scopeFieldMarkup("dirty",esc(dirtyStateOf(worktree)))+
+      scopeFieldMarkup("dirty_file_count",esc(Number.isInteger(worktree.dirty_file_count)?worktree.dirty_file_count:"—"))+
+      scopeFieldMarkup("dirty_files",scopeSourceListMarkup(worktree.dirty_files));
+  }
+  const ticket=column.ticket||{},collision=ticket.collision||null;
+  return scopeFieldMarkup("id",'<code>'+esc(ticket.id||column.id)+'</code>'+copyButton(ticket.id||column.id,"複製"))+
+    scopeFieldMarkup("type","queued")+
+    scopeFieldMarkup("state",esc(ticket.state||"queued"))+
+    scopeFieldMarkup("scope",esc(ticket.scope_status||"unknown"))+
+    scopeFieldMarkup("collision",esc(collision?collision.status:"—"))+
+    scopeFieldMarkup("with_worktrees",esc((collision?.with_worktrees||[]).join(", ")))+
+    scopeFieldMarkup("paths",esc((collision?.paths||[]).join(", ")));
+}
+function renderScopeInspector(){
+  const inspector=document.getElementById("scope-inspector");
+  if(!inspector)return;
+  const selection=scopeSelection;
+  if(!selection.kind){
+    inspector.hidden=true;
+    inspector.innerHTML="";
+    return;
+  }
+  const fields=[];
+  if(selection.filePath){
+    fields.push(scopeFieldMarkup("file_path",'<code>'+esc(selection.filePath)+'</code>'+copyButton(selection.filePath,"複製")));
+  }
+  if(selection.columnId){
+    const column=scopeColumnById(selection.columnId);
+    fields.push(scopeFieldMarkup("column_id",'<code>'+esc(selection.columnId)+'</code>'+copyButton(selection.columnId,"複製")));
+    fields.push(scopeFieldMarkup("column_type",esc(column?.type||"unknown")));
+    fields.push(scopeSourceMarkup(column));
+    if(selection.kind==="cell"){
+      const cell=scopeCellById(selection.filePath,selection.columnId);
+      fields.push(scopeFieldMarkup("operation",esc((cell?.operations||[cell?.operation]).filter(Boolean).join(", "))));
+      fields.push(scopeFieldMarkup("state",esc(cell?.state||"empty")));
+      fields.push(scopeFieldMarkup("collision",esc(cell?.collision===true?"true":"false")));
     }
-    const ticket=column.ticket,collision=ticket.collision?.status==="hard",unknown=ticket.scope_status==="unknown";
-    const flags=[collision?"collision":"",unknown?"Scope 未知":""].filter(Boolean).join(" · ");
-    return `<th scope="col" class="scope-column-head scope-column-ticket${collision?" scope-column-collision":""}${unknown?" scope-column-scope-unknown":""}"><code>${esc(ticket.id)}</code><strong>QUEUED TICKET</strong>${flags?`<span class="scope-column-flag">${esc(flags)}</span>`:""}<span class="scope-column-brief">${esc(compactLabel(ticket.brief||"",42))}</span></th>`;
-  }).join("");
-  const body=files.map(file=>{
-    const cells=new Map((file.cells||[]).map(cell=>[cell.column_type==="worktree"?cell.worktree_id:cell.ticket_id,cell]));
-    return `<tr><th scope="row" class="scope-file-name"><code title="${esc(file.path)}">${esc(file.path)}</code></th>${columns.map(column=>{
-      const cell=cells.get(column.id);
-      if(!cell)return '<td class="scope-empty-cell" aria-label="沒有檔案佔用">·</td>';
-      const collision=cell.collision===true;
-      const operations=Array.isArray(cell.operations)&&cell.operations.length?cell.operations:[cell.operation];
-      const symbol=operations.map(operation=>operation==="add"?"+":"~").join("");
-      const label=`${column.id} · ${cell.state} · ${operations.map(scopeOperationLabel).join(" / ")}${collision?" · collision":""}`;
-      const worktreeKind=column.type==="worktree"?` scope-worktree-${esc(column.worktree.kind)}`:"";
-      return `<td class="scope-cell scope-cell-${esc(cell.state)} scope-cell-${esc(column.type)}${worktreeKind} scope-operation-${esc(cell.operation)}${collision?" scope-cell-collision":""}" title="${esc(label)}" aria-label="${esc(label)}"><span>${esc(symbol)}</span></td>`;
-    }).join("")}</tr>`;
-  }).join("");
-  mount.innerHTML=`<table class="scope-matrix"><thead><tr class="scope-agent-row"><th scope="col" class="scope-agent-label">Agent / thread</th>${agentHeaders}</tr><tr class="scope-worktree-row"><th scope="col" class="scope-file-head">實際檔案</th>${headers}</tr></thead><tbody>${body}</tbody></table>`;
-  bindCopyButtons(mount);
-  applyScopeGeometry(mount);
-  refreshScopeFullscreen();
-  const unknownWorktrees=scopeMatrix.unknown_worktree_ids||[],unknownTickets=scopeMatrix.unknown_ticket_ids||[];
-  const unknownParts=[];
-  if(unknownWorktrees.length)unknownParts.push(`direct worktree（Scope 待宣告）：${unknownWorktrees.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
-  if(unknownTickets.length)unknownParts.push(`queued ticket（Scope 未知）：${unknownTickets.map(id=>`<code>${esc(id)}</code>`).join("、")}`);
-  unknownMount.innerHTML=unknownParts.length?`<strong>Scope 狀態</strong><span>${unknownParts.join("；")}：尚未宣告實際檔案變更範圍，因此不把它猜成 collision；這不是「Agent 未知」或「碰撞未知」。</span>`:"";
+  }
+  inspector.innerHTML='<span class="eyebrow">MATRIX INSPECTOR</span><dl class="detail-grid">'+fields.join("")+'</dl>';
+  inspector.hidden=false;
+  bindCopyButtons(inspector);
+}
+function applyScopeSelection(mount){
+  if(!mount)return;
+  mount.querySelectorAll(".scope-row-selected,.scope-file-selected,.scope-column-selected,.scope-cell-selected").forEach(node=>{
+    node.classList.remove("scope-row-selected","scope-file-selected","scope-column-selected","scope-cell-selected");
+  });
+  if(scopeSelection.filePath){
+    mount.querySelectorAll('[data-file-path="'+CSS.escape(scopeSelection.filePath)+'"]').forEach(node=>{
+      if(node.matches("tr"))node.classList.add("scope-row-selected");
+      if(node.matches(".scope-file-name"))node.classList.add("scope-file-selected");
+    });
+  }
+  if(scopeSelection.columnId){
+    mount.querySelectorAll('[data-column-id="'+CSS.escape(scopeSelection.columnId)+'"]').forEach(node=>node.classList.add("scope-column-selected"));
+  }
+  if(scopeSelection.kind==="cell"&&scopeSelection.filePath&&scopeSelection.columnId){
+    const cell=mount.querySelector('[data-file-path="'+CSS.escape(scopeSelection.filePath)+'"][data-column-id="'+CSS.escape(scopeSelection.columnId)+'"]');
+    cell?.classList.add("scope-cell-selected");
+  }
+}
+function setScopeSelection(next,mount=document.getElementById("scope-matrix-wrap")){
+  scopeSelection={
+    kind:next?.kind||null,
+    filePath:next?.filePath||null,
+    columnId:next?.columnId||null,
+  };
+  new Set([mount,document.getElementById("scope-matrix-wrap"),scopeFullscreenCanvas?.()]).forEach(target=>applyScopeSelection(target));
+  renderScopeInspector();
+}
+function scopeSelectionFromNode(node){
+  if(node.matches(".scope-file-name"))return {kind:"file",filePath:node.dataset.filePath};
+  if(node.matches(".scope-column-head"))return {kind:"column",columnId:node.dataset.columnId};
+  if(node.matches(".scope-cell,.scope-empty-cell"))return {kind:"cell",filePath:node.dataset.filePath,columnId:node.dataset.columnId};
+  return null;
+}
+function bindScopeSelection(mount){
+  if(!mount)return;
+  mount.querySelectorAll(".scope-file-name,.scope-column-head,.scope-cell,.scope-empty-cell").forEach(node=>{
+    if(node.dataset.selectionBound==="true")return;
+    node.dataset.selectionBound="true";
+    const select=event=>{
+      if(event.target.closest(".copy-button"))return;
+      const next=scopeSelectionFromNode(node);
+      if(next)setScopeSelection(next,mount);
+    };
+    node.addEventListener("click",select);
+    node.addEventListener("keydown",event=>{
+      if(event.key!=="Enter"&&event.key!==" ")return;
+      event.preventDefault();
+      select(event);
+    });
+  });
+}
+function restoreScopeSelection(mount){
+  if(!scopeSelection.kind){
+    renderScopeInspector();
+    return;
+  }
+  const fileExists=!scopeSelection.filePath||(scopeMatrix?.files||[]).some(file=>file.path===scopeSelection.filePath);
+  const columnExists=!scopeSelection.columnId||!!scopeColumnById(scopeSelection.columnId);
+  const cellExists=scopeSelection.kind!=="cell"||!!scopeCellById(scopeSelection.filePath,scopeSelection.columnId);
+  if(!fileExists||!columnExists||!cellExists){
+    scopeSelection={kind:null,filePath:null,columnId:null};
+  }
+  new Set([mount,document.getElementById("scope-matrix-wrap"),scopeFullscreenCanvas?.()]).forEach(target=>applyScopeSelection(target));
+  renderScopeInspector();
+}
+function fitScopeMatrix(){
+  const wrap=document.getElementById("scope-matrix-wrap"),table=wrap?.querySelector(".scope-matrix");
+  if(!wrap||!table||!wrap.clientWidth)return false;
+  const available=Math.max(1,wrap.clientWidth-24);
+  const currentScale=Math.max(.01,scopeZoom/100);
+  const baseWidth=Math.max(1,table.scrollWidth/currentScale);
+  const candidate=Math.floor((available/baseWidth)*100/10)*10;
+  scopeZoom=Math.max(80,Math.min(140,candidate));
+  renderScopeControls();
+  renderScopeMatrixPrimary();
+  return true;
 }
 function renderScopeMatrixPrimary(){
   const mount=document.getElementById("scope-matrix-wrap");
   if(!mount)return;
   renderScopeControls();
   applyScopeGeometry(mount);
-  if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';return}
+  if(!scopeMatrix){mount.innerHTML='<p class="empty">檔案矩陣載入中</p>';scopeSelection={kind:null,filePath:null,columnId:null};refreshScopeFullscreen();renderScopeInspector();return}
   const worktrees=scopeMatrix.worktrees||[];
   const queuedTickets=scopeMatrix.queued_tickets||[];
   const allFiles=scopeMatrix.files||[];
@@ -190,7 +270,7 @@ function renderScopeMatrixPrimary(){
     ...worktrees.map(worktree=>({type:"worktree",id:worktree.id,worktree})),
     ...queuedTickets.map(ticket=>({type:"ticket",id:ticket.id,ticket})),
   ];
-  if(!columns.length){mount.innerHTML='<p class="empty">—</p>';return}
+  if(!columns.length){mount.innerHTML='<p class="empty">—</p>';scopeSelection={kind:null,filePath:null,columnId:null};refreshScopeFullscreen();renderScopeInspector();return}
   const field=(label,value)=>'<div><dt>'+esc(label)+'</dt><dd>'+(value||"—")+'</dd></div>';
   const headers=columns.map(column=>{
     if(column.type==="worktree"){
@@ -198,21 +278,21 @@ function renderScopeMatrixPrimary(){
       const agent=worktree.agent||{};
       const unknown=worktree.scope_status==="unknown";
       const branch=worktree.branch?'<code>'+esc(worktree.branch)+'</code>'+copyButton(worktree.branch,"複製"):"—";
-      const path=worktree.path?'<code>'+esc(worktree.path)+'</code>'+copyButton(worktree.path,"複製"):"—";
       const thread=agent.thread_id?'<code>'+esc(agent.thread_id)+'</code>'+copyButton(agent.thread_id,"複製"):"—";
-      const tickets=(worktree.ticket_ids||[]).join(", ");
-      return '<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-'+esc(worktree.kind)+(unknown?" scope-column-scope-unknown":"")+'" data-column-id="'+esc(column.id)+'" data-column-type="worktree"><div class="scope-column-identity"><strong>worktree</strong>'+copyButton(worktree.id,"複製 ID")+'</div><dl class="scope-column-fields">'+field("branch",branch)+field("kind",esc(worktree.kind))+field("path",path)+field("thread",thread)+field("tickets",esc(tickets))+field("state",esc(worktree.state||"active"))+field("scope",unknown?"unknown":"known")+field("dirty",esc(dirtyStateOf(worktree)))+'</dl></th>';
+      const title=agent.title?'<code>'+esc(agent.title)+'</code>'+copyButton(agent.title,"複製"):"—";
+      const dirtyCount=Number.isInteger(worktree.dirty_file_count)?String(worktree.dirty_file_count):"—";
+      return '<th scope="col" class="scope-column-head scope-column-worktree scope-worktree-'+esc(worktree.kind)+(unknown?" scope-column-scope-unknown":"")+'" data-column-id="'+esc(column.id)+'" data-column-type="worktree" tabindex="0"><div class="scope-column-identity"><strong>worktree</strong>'+copyButton(worktree.id,"複製 ID")+'</div><dl class="scope-column-fields">'+field("branch",branch)+field("agent_title",title)+field("agent_status",esc(agent.status||"unknown"))+field("kind",esc(worktree.kind))+field("thread",thread)+field("state",esc(worktree.state||"active"))+field("scope",unknown?"unknown":"known")+field("dirty",esc(dirtyStateOf(worktree)))+field("dirty_file_count",esc(dirtyCount))+'</dl></th>';
     }
     const ticket=column.ticket;
     const collision=ticket.collision||null;
     const unknown=ticket.scope_status==="unknown";
     const collisionValue=collision?collision.status+(collision.with_worktrees?.length?" · "+collision.with_worktrees.join(", "):""):"—";
     const collisionPaths=collision?.paths?.length?collision.paths.join(", "):"—";
-    return '<th scope="col" class="scope-column-head scope-column-ticket'+(collision?.status==="hard"?" scope-column-collision":"")+(unknown?" scope-column-scope-unknown":"")+'" data-column-id="'+esc(column.id)+'" data-column-type="ticket"><div class="scope-column-identity"><strong>ticket</strong>'+copyButton(ticket.id,"複製 ID")+'</div><dl class="scope-column-fields">'+field("id",'<code>'+esc(ticket.id)+'</code>')+field("type","queued")+field("state",esc(ticket.state||"queued"))+field("scope",unknown?"unknown":"known")+field("collision",esc(collisionValue))+field("paths",esc(collisionPaths))+'</dl></th>';
+    return '<th scope="col" class="scope-column-head scope-column-ticket'+(collision?.status==="hard"?" scope-column-collision":"")+(unknown?" scope-column-scope-unknown":"")+'" data-column-id="'+esc(column.id)+'" data-column-type="ticket" tabindex="0"><div class="scope-column-identity"><strong>ticket</strong>'+copyButton(ticket.id,"複製 ID")+'</div><dl class="scope-column-fields">'+field("id",'<code>'+esc(ticket.id)+'</code>')+field("type","queued")+field("state",esc(ticket.state||"queued"))+field("scope",unknown?"unknown":"known")+field("collision",esc(collisionValue))+field("paths",esc(collisionPaths))+'</dl></th>';
   }).join("");
   const body=files.map(file=>{
     const cells=new Map((file.cells||[]).map(cell=>[cell.column_type==="worktree"?cell.worktree_id:cell.ticket_id,cell]));
-    return '<tr data-file-path="'+esc(file.path)+'"><th scope="row" class="scope-file-name" data-file-path="'+esc(file.path)+'"><code title="'+esc(file.path)+'">'+esc(file.path)+'</code></th>'+columns.map(column=>{
+    return '<tr data-file-path="'+esc(file.path)+'"><th scope="row" class="scope-file-name" data-file-path="'+esc(file.path)+'" tabindex="0"><code title="'+esc(file.path)+'">'+esc(file.path)+'</code>'+copyButton(file.path,"複製")+'</th>'+columns.map(column=>{
       const cell=cells.get(column.id);
       if(!cell)return '<td class="scope-empty-cell" data-file-path="'+esc(file.path)+'" data-column-id="'+esc(column.id)+'" data-column-type="'+esc(column.type)+'" tabindex="0" role="gridcell" aria-label="'+esc(file.path)+' · '+esc(column.id)+' · empty">·</td>';
       const collision=cell.collision===true;
@@ -223,10 +303,12 @@ function renderScopeMatrixPrimary(){
       return '<td class="scope-cell scope-cell-'+esc(cell.state)+' scope-cell-'+esc(column.type)+worktreeKind+' scope-operation-'+esc(cell.operation)+(collision?" scope-cell-collision":"")+'" data-file-path="'+esc(file.path)+'" data-column-id="'+esc(column.id)+'" data-column-type="'+esc(column.type)+'" tabindex="0" role="gridcell" title="'+esc(label)+'" aria-label="'+esc(label)+'"><span>'+esc(symbol)+'</span></td>';
     }).join("")+'</tr>';
   }).join("");
-  mount.innerHTML='<table class="scope-matrix" aria-label="檔案佔用矩陣"><thead><tr class="scope-header-row"><th scope="col" class="scope-file-head">path</th>'+headers+'</tr></thead><tbody>'+body+'</tbody></table>';
+  mount.innerHTML='<table class="scope-matrix" aria-label="檔案佔用矩陣"><thead><tr class="scope-header-row"><th scope="col" class="scope-file-head" tabindex="0">path</th>'+headers+'</tr></thead><tbody>'+body+'</tbody></table>';
   bindCopyButtons(mount);
   applyScopeGeometry(mount);
   refreshScopeFullscreen();
+  bindScopeSelection(mount);
+  restoreScopeSelection(mount);
 }
 function rows(){
   const blocked=new Set(board.blocked_ids);
@@ -272,15 +354,6 @@ async function hydrateTicket(details){
     if(!payload.ticket)throw new Error(payload.error||"ticket not found");
     body.innerHTML=detailBody(payload.ticket);details.dataset.loaded="true";
   }catch(error){body.innerHTML=`<p class="empty">詳細資料載入失敗：${esc(error.message)}</p>`;details.dataset.loaded="error";}
-}
-function renderMetrics(){
-  const decision=board.counts.decision;
-  const activeWorktrees=scopeMatrix?.counts?.active_worktrees??decision.inflight;
-  document.getElementById("metrics").innerHTML=
-    metric("可派工",decision.now)+metric("進行中工作樹",activeWorktrees)+
-    metric("依賴阻塞",decision.blocked)+metric("待梳理",decision.ungroomed)+
-    metric("契約未就緒",decision.contract_not_ready||0)+
-    metric("歷史完成",board.counts.history.fixed+board.counts.history.wont_fix);
 }
 const TREE_VIEW_RADIUS = 10;
 const TREE_ZOOM_MIN = 70;
@@ -380,6 +453,7 @@ function firstBranchPoint(mainHead,commits){
 }
 function treeViewport(tree,commits,refs){
   const mainRef=refs.find(ref=>ref.branch==="main"),mainHead=mainRef?.head;
+  const snapshotIncomplete=tree.complete!==true;
   const mainline=firstParentChain(mainHead,commits),mainReachableSet=reachableCommitSet(mainHead,commits);
   const branchSha=firstBranchPoint(mainHead,commits)||mainline[Math.min(TREE_VIEW_RADIUS,Math.max(0,mainline.length-1))]||mainHead;
   const branchIndex=Math.max(0,mainline.indexOf(branchSha));
@@ -399,7 +473,10 @@ function treeViewport(tree,commits,refs){
     const projection=projectBranchPath(ref,mainlineSet,commits);
     const {path,anchor,truncated,detached}=projection;
     visibleBranches.add(ref.branch);branchAnchors.set(ref.branch,anchor);branchPaths.set(ref.branch,path);
-    if(detached)branchDetached.add(ref.branch);
+    // A missing parent/ref in a bounded or incomplete mirror is not proof that
+    // the branch is detached. Keep the source status and let the boundary
+    // marker plus Inspector carry the incomplete-topology evidence.
+    if(detached&&!snapshotIncomplete)branchDetached.add(ref.branch);
     if(truncated&&path.at(-1))branchTruncations.set(ref.branch,{from:path.at(-1),to:anchor});
     if(anchor&&commits.has(anchor))visible.add(anchor);
     path.forEach(sha=>visible.add(sha));
@@ -453,41 +530,19 @@ function treeStateOf(ref){
 function treeStateClass(value){
   return String(value||"unknown").toLowerCase().replace(/[^a-z0-9_-]+/g,"-");
 }
-function renderTreeLegend(viewport){
-  const mount=document.getElementById("tree-legend");
-  if(!mount)return;
-  const refs=viewport.refs||[];
-  const items=refs.map(ref=>{
-    const state=treeStateOf(ref);
-    const displayState=viewport.branchDetached?.has(ref.branch)?"未連接":state;
-    const tickets=(ref.tickets||[]).map(ticket=>`<button type="button" class="tree-ticket" data-ticket-id="${esc(ticket.id)}">${esc(ticket.id)}</button>`).join("");
-    return `<article class="tree-legend-item state-${esc(treeStateClass(state))}" data-branch="${esc(ref.branch)}">
-      <span class="tree-legend-swatch" aria-hidden="true"></span>
-      <div class="tree-legend-copy">
-        <div class="tree-legend-heading"><strong title="${esc(ref.branch)}">${esc(compactLabel(ref.branch,34))}</strong><span>${esc(displayState)}</span></div>
-        ${tickets?`<div class="tree-legend-tickets" aria-label="${esc(ref.branch)} 的票據">${tickets}</div>`:""}
-      </div>
-    </article>`;
-  }).join("");
-  mount.innerHTML=items?`<div class="tree-index-label"><strong>分支索引</strong><span>狀態與票號</span></div>${items}`:"";
-  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{
-    event.stopPropagation();selectTicket(node.dataset.ticketId);
-  }));
-  mount.querySelectorAll(".tree-legend-item").forEach(node=>{
-    const ref=refs.find(item=>item.branch===node.dataset.branch);
-    bindBranchNode(node,ref,viewport.branchDetached?.has(ref?.branch)?"未連接":treeStateOf(ref));
-  });
-}
 function renderBranchIndex(viewport){
   const mount=document.getElementById("branch-index");
   if(!mount)return;
   const refs=viewport.refs||[];
   const field=(label,value)=>'<div><dt>'+esc(label)+'</dt><dd>'+(value||"—")+'</dd></div>';
   const items=refs.map(ref=>{
-    const state=viewport.branchDetached?.has(ref.branch)?"detached":treeStateOf(ref);
+    const detached=viewport.branchDetached?.has(ref.branch),state=detached?"未連接":treeStateOf(ref),stateClass=detached?"detached":treeStateClass(treeStateOf(ref));
+    const worktree=treeWorktreeForBranch(ref.branch),agent=worktree?.agent||{};
     const tickets=(ref.tickets||[]).map(ticket=>'<button type="button" class="branch-index-ticket tree-ticket" data-ticket-id="'+esc(ticket.id)+'">'+esc(ticket.id)+'</button>').join("");
-    const path=ref.path?'<code>'+esc(ref.path)+'</code>'+copyButton(ref.path,"複製"):"—";
-    return '<article class="branch-index-item state-'+esc(treeStateClass(state))+'" data-branch="'+esc(ref.branch)+'" tabindex="0" role="button"><div class="branch-index-heading"><code>'+esc(ref.branch)+'</code>'+copyButton(ref.branch,"複製")+'</div><dl class="branch-index-fields">'+field("head",'<code>'+esc(ref.head||"—")+'</code>')+field("state",esc(state))+field("worktree",path)+field("host",esc(ref.host||"—"))+field("tickets",tickets)+'</dl></article>';
+    const path=worktree?.path||ref.path;
+    const pathMarkup=path?'<code>'+esc(path)+'</code>'+copyButton(path,"複製"):"—";
+    const branchButton='<button type="button" class="branch-index-select" data-branch="'+esc(ref.branch)+'" aria-label="選取分支 '+esc(ref.branch)+'"><code>'+esc(ref.branch)+'</code></button>';
+    return '<article class="branch-index-item state-'+esc(stateClass)+'" data-branch="'+esc(ref.branch)+'"><div class="branch-index-heading">'+branchButton+copyButton(ref.branch,"複製")+'</div><dl class="branch-index-fields">'+field("head",'<code>'+esc(ref.head||"—")+'</code>')+field("state",esc(state))+field("agent_title",'<code>'+esc(agent.title||"—")+'</code>')+field("agent_status",esc(agent.status||"unknown"))+field("thread",'<code>'+esc(agent.thread_id||"—")+'</code>'+copyButton(agent.thread_id,"複製"))+field("worktree",pathMarkup)+field("host",esc(worktree?.host||ref.host||"—"))+field("tickets",tickets)+'</dl></article>';
   }).join("");
   mount.innerHTML=items||'<p class="empty">—</p>';
   bindCopyButtons(mount);
@@ -495,9 +550,9 @@ function renderBranchIndex(viewport){
     event.stopPropagation();
     selectTicket(node.dataset.ticketId);
   }));
-  mount.querySelectorAll(".branch-index-item").forEach(node=>{
+  mount.querySelectorAll(".branch-index-select").forEach(node=>{
     const ref=refs.find(item=>item.branch===node.dataset.branch);
-    bindBranchNode(node,ref,viewport.branchDetached?.has(ref?.branch)?"detached":treeStateOf(ref));
+    bindBranchNode(node,ref);
   });
 }
 function treeLayout(viewport,visibleCommits){
@@ -562,171 +617,223 @@ function treeLayout(viewport,visibleCommits){
 }
 function routeCrossLaneEdge(from,to,x,y){
   const startX=x(from.lane),startY=y(from.row),endX=x(to.lane),endY=y(to.row);
-  // Draw from the parent endpoint outward to the child lane, then turn up at
-  // that lane. The visible fork therefore reaches the lane edge before it
-  // rises to the branch commit; there is no midpoint rail or curve to read as
-  // a separate lane.
   return `M ${endX} ${endY} H ${startX} V ${startY}`;
 }
-function edgePath(from,to,x,y,routeIndex=0,routeCount=1){
+function edgePath(from,to,x,y){
   if(from.lane===to.lane)return `M ${x(from.lane)} ${y(from.row)} V ${y(to.row)}`;
-  return routeCrossLaneEdge(from,to,x,y,routeIndex,routeCount);
+  return routeCrossLaneEdge(from,to,x,y);
 }
-function commitInspector(row,ref){
-  const files=(row.files||[]).map(file=>`<li><code>${esc(file)}</code></li>`).join("")||"<li>沒有檔案統計</li>";
-  document.getElementById("commit-inspector").innerHTML=`
-    <span class="eyebrow">COMMIT INSPECTOR</span>
-    <h3>${esc(shortSha(row.sha))} · ${esc(row.subject)}</h3>
-    <p>${esc(row.sha)}</p>
-    <dl class="detail-grid">
-      <dt>Author</dt><dd>${esc(row.author||"—")}</dd>
-      <dt>Committed</dt><dd>${esc(row.committed_at||"—")}</dd>
-      <dt>Parent</dt><dd><code>${esc((row.parents||[]).map(shortSha).join(", ")||"root")}</code></dd>
-      <dt>Branch</dt><dd><code>${esc((row.refs||[]).join(", ")||ref?.branch||"—")}</code></dd>
-      <dt>Diff stat</dt><dd>${esc(formatDiffStat(row))}</dd>
-    </dl>
-    <ul class="file-list">${files}</ul>`;
+function treeRefsForCommit(row,ref){
+  const names=new Set(Array.isArray(row?.refs)?row.refs:[]);
+  if(ref?.branch)names.add(ref.branch);
+  return [...names];
 }
-function commitHoverMarkup(row,ref,meta={}){
-  const files=row.files||[];
-  const fileMarkup=files.length?`<ul class="hover-files">${files.map(file=>`<li><code>${esc(file)}</code></li>`).join("")}</ul>`:`<p class="hover-muted">來源未提供檔案清單。</p>`;
-  const hiddenParentCount=Number.isInteger(meta.hiddenParentCount)?meta.hiddenParentCount:0;
-  const hiddenParentMarkup=hiddenParentCount?`<dt>折疊歷史</dt><dd>merge 側枝 ${hiddenParentCount} 條在 bounded window 外；不是額外 commit。</dd>`:"";
-  return `<span class="eyebrow">COMMIT DETAIL</span>
-    <h3>${esc(shortSha(row.sha))} · ${esc(row.subject)} ${copyButton(row.subject,"複製 commit 名稱")}</h3>
-    <p class="hover-subject">${esc(row.subject)}</p>
-    <dl class="detail-grid">
-      <dt>完整 SHA</dt><dd><code>${esc(row.sha)}</code>${copyButton(row.sha,"複製 SHA")}</dd>
-      <dt>Author</dt><dd>${esc(row.author||"—")}</dd>
-      <dt>Committed</dt><dd>${esc(row.committed_at||"—")}</dd>
-      <dt>Parent</dt><dd><code>${esc((row.parents||[]).map(shortSha).join(", ")||"root")}</code></dd>
-      <dt>Branch</dt><dd><code>${esc((row.refs||[]).join(", ")||ref?.branch||"—")}</code></dd>
-      <dt>Diff stat</dt><dd>${esc(formatDiffStat(row))}</dd>
-      ${hiddenParentMarkup}
-      <dt>Files</dt><dd>${files.length}</dd>
-    </dl>${fileMarkup}`;
+function treeWorktreeForBranch(branch){
+  return (scopeMatrix?.worktrees||[]).find(worktree=>worktree.branch===branch)||null;
 }
-function branchHoverMarkup(ref,stateOverride){
-  const tickets=ref.tickets||[];
-  const ticketMarkup=tickets.length?`<ul class="hover-files">${tickets.map(ticket=>`<li><code>${esc(ticket.id)}</code>${ticket.brief?` · ${esc(ticket.brief)}`:""}</li>`).join("")}</ul>`:`<p class="hover-muted">目前沒有掛載票據。</p>`;
-  return `<span class="eyebrow">BRANCH / WORKTREE</span>
-    <h3>${esc(ref.branch)} ${copyButton(ref.branch,"複製 worktree 名稱")}</h3>
-    <dl class="detail-grid">
-      <dt>State</dt><dd>${esc(stateOverride||treeStateOf(ref))}</dd>
-      <dt>Worktree</dt><dd><code>${esc(ref.path||"未提供")}</code>${ref.path?copyButton(ref.path,"複製路徑"):""}</dd>
-      <dt>Host</dt><dd>${esc(ref.host||"未提供")}</dd>
-      <dt>Base</dt><dd><code>${esc(ref.base||"—")}${ref.base_sha?` · ${esc(shortSha(ref.base_sha))}`:""}</code></dd>
-      <dt>Head</dt><dd><code>${esc(ref.head||"—")}</code></dd>
-      <dt>Owner</dt><dd><code>${esc(ref.integration_owner||"—")}</code></dd>
-      <dt>Tickets</dt><dd>${tickets.length}</dd>
-    </dl>${ticketMarkup}`;
+function renderCommitInspector(row,ref,branchOverride){
+  const inspector=document.getElementById("commit-inspector");
+  if(!inspector||!row)return;
+  const branches=treeRefsForCommit(row,ref);
+  const refs=branches.length?branches.map(branch=>"<code>"+esc(branch)+"</code>").join("<br>"):"—";
+  const paths=branches.map(branch=>treeWorktreeForBranch(branch)?.path||treeRenderContext?.refs.find(item=>item.branch===branch)?.path).filter(Boolean);
+  const worktrees=paths.length?paths.map(path=>"<code>"+esc(path)+"</code>").join("<br>"):"—";
+  const parents=Array.isArray(row.parents)&&row.parents.length?scopeSourceListMarkup(row.parents):"root";
+  inspector.innerHTML='<span class="eyebrow">COMMIT INSPECTOR</span><dl class="detail-grid">'+
+    scopeFieldMarkup("sha",'<code>'+esc(row.sha)+'</code>'+copyButton(row.sha,"複製"))+
+    scopeFieldMarkup("subject",'<span>'+esc(row.subject||"—")+'</span>'+copyButton(row.subject,"複製"))+
+    scopeFieldMarkup("author",esc(row.author||"—"))+
+    scopeFieldMarkup("committer",esc(row.committer||"—"))+
+    scopeFieldMarkup("authored_at",esc(row.authored_at||"—"))+
+    scopeFieldMarkup("committed_at",esc(row.committed_at||"—"))+
+    scopeFieldMarkup("parents",parents)+
+    scopeFieldMarkup("refs",refs)+
+    scopeFieldMarkup("branch",esc(branches.join(", ")||"—"))+
+    scopeFieldMarkup("worktree",worktrees)+
+    scopeFieldMarkup("diff_stat",esc(formatDiffStat(row)))+
+    scopeFieldMarkup("files",scopeSourceListMarkup(row.files))+
+    '</dl>';
+  inspector.hidden=false;
+  bindCopyButtons(inspector);
 }
-function boundaryHoverMarkup(detail){
-  return `<span class="eyebrow">GRAPH BOUNDARY</span>
-    <h3>⋯ 不是 commit</h3>
-    <p class="hover-subject">${esc(detail)}</p>
-    <p>目前圖面是 bounded view；這個標記代表 parent 或中間歷史留在視窗外，並非資料遺失。</p>`;
+function renderBranchInspector(ref){
+  const inspector=document.getElementById("commit-inspector");
+  if(!inspector||!ref)return;
+  const worktree=treeWorktreeForBranch(ref.branch),agent=worktree?.agent||{};
+  const dirtyFiles=worktree?.dirty_files||ref.dirty_files||[];
+  inspector.innerHTML='<span class="eyebrow">BRANCH INSPECTOR</span><dl class="detail-grid">'+
+    scopeFieldMarkup("branch",'<code>'+esc(ref.branch)+'</code>'+copyButton(ref.branch,"複製"))+
+    scopeFieldMarkup("state",esc(treeStateOf(ref)))+
+    scopeFieldMarkup("head",'<code>'+esc(ref.head||"—")+'</code>'+copyButton(ref.head,"複製"))+
+    scopeFieldMarkup("base",'<code>'+esc(ref.base||"—")+'</code>')+
+    scopeFieldMarkup("base_sha",'<code>'+esc(ref.base_sha||"—")+'</code>'+copyButton(ref.base_sha,"複製"))+
+    scopeFieldMarkup("worktree",'<code>'+esc(worktree?.path||ref.path||"—")+'</code>'+copyButton(worktree?.path||ref.path,"複製"))+
+    scopeFieldMarkup("host",esc(worktree?.host||ref.host||"—"))+
+    scopeFieldMarkup("thread",'<code>'+esc(agent.thread_id||"—")+'</code>'+copyButton(agent.thread_id,"複製"))+
+    scopeFieldMarkup("agent_title",'<code>'+esc(agent.title||"—")+'</code>'+copyButton(agent.title,"複製"))+
+    scopeFieldMarkup("agent_status",esc(agent.status||"unknown"))+
+    scopeFieldMarkup("integration_owner",esc(ref.integration_owner||"—"))+
+    scopeFieldMarkup("worktree_present",esc(typeof (worktree?.worktree_present??ref.worktree_present)==="boolean"?String(worktree?.worktree_present??ref.worktree_present):"—"))+
+    scopeFieldMarkup("dirty",esc(dirtyStateOf(worktree||ref)))+
+    scopeFieldMarkup("dirty_file_count",esc(Number.isInteger(worktree?.dirty_file_count)?worktree.dirty_file_count:(Number.isInteger(ref.dirty_file_count)?ref.dirty_file_count:"—")))+
+    scopeFieldMarkup("dirty_files",scopeSourceListMarkup(dirtyFiles))+
+    scopeFieldMarkup("tickets",esc((ref.tickets||[]).map(ticket=>ticket.id).join(", ")||"—"))+
+    '</dl>';
+  inspector.hidden=false;
+  bindCopyButtons(inspector);
 }
-function treeHoverMarkup(kind,data){
-  if(kind==="commit")return commitHoverMarkup(data.row,data.ref,data);
-  if(kind==="branch")return branchHoverMarkup(data.ref,data.state);
-  return boundaryHoverMarkup(data.detail);
+function renderBoundaryInspector(data){
+  const inspector=document.getElementById("commit-inspector");
+  if(!inspector)return;
+  inspector.innerHTML='<span class="eyebrow">GRAPH BOUNDARY INSPECTOR</span><dl class="detail-grid">'+
+    scopeFieldMarkup("boundary_id",'<code>'+esc(data.boundaryId||"—")+'</code>'+copyButton(data.boundaryId,"複製"))+
+    scopeFieldMarkup("kind",esc(data.boundaryKind||data.kind||"—"))+
+    scopeFieldMarkup("branch",esc(data.branch||"—"))+
+    scopeFieldMarkup("at_commit",'<code>'+esc(data.sha||"—")+'</code>'+copyButton(data.sha,"複製"))+
+    scopeFieldMarkup("missing_parent",'<code>'+esc(data.parent||"—")+'</code>'+copyButton(data.parent,"複製"))+
+    scopeFieldMarkup("parent_in_graph","false")+
+    scopeFieldMarkup("truncated",esc(data.boundaryKind==="branch_truncation"?"true":"false"))+
+    '</dl>';
+  inspector.hidden=false;
+  bindCopyButtons(inspector);
 }
-function positionTreeHover(node){
-  const card=document.getElementById("tree-hover-card");
-  if(!card||card.hidden)return;
-  const anchor=node.getBoundingClientRect(),box=card.getBoundingClientRect(),gap=12,padding=12;
-  let left=anchor.right+gap;
-  if(left+box.width>window.innerWidth-padding)left=anchor.left-box.width-gap;
-  left=Math.max(padding,Math.min(left,window.innerWidth-box.width-padding));
-  let top=anchor.top;
-  if(top+box.height>window.innerHeight-padding)top=window.innerHeight-box.height-padding;
-  top=Math.max(padding,top);
-  card.style.left=`${Math.round(left)}px`;
-  card.style.top=`${Math.round(top)}px`;
+function renderTreeInspector(){
+  const inspector=document.getElementById("commit-inspector");
+  if(!inspector)return;
+  if(!treeSelection.kind){
+    inspector.hidden=true;
+    inspector.innerHTML="";
+    return;
+  }
+  if(treeSelection.kind==="commit"){
+    const row=treeRenderContext?.commits.get(treeSelection.sha);
+    const ref=treeRenderContext?.refs.find(item=>item.branch===treeSelection.branch);
+    if(row){renderCommitInspector(row,ref,treeSelection.branch);return}
+  }else if(treeSelection.kind==="branch"){
+    const ref=treeRenderContext?.refs.find(item=>item.branch===treeSelection.branch);
+    if(ref){renderBranchInspector(ref);return}
+  }else if(treeSelection.kind==="boundary"){
+    renderBoundaryInspector(treeSelection);
+    return;
+  }
+  treeSelection={kind:null,branch:null,sha:null,boundaryId:null,boundaryKind:null,parent:null};
+  inspector.hidden=true;
+  inspector.innerHTML="";
 }
-function showTreeHover(kind,data,node){
-  const card=document.getElementById("tree-hover-card");
-  if(!card)return;
-  bindTreeHoverCard();
-  clearTreeHoverHide();
-  card.innerHTML=treeHoverMarkup(kind,data);
-  card.dataset.kind=kind;
-  card.hidden=false;
-  bindCopyButtons(card);
-  requestAnimationFrame(()=>positionTreeHover(node));
+function applyTreeSelection(){
+  const root=document;
+  root.querySelectorAll(".tree-selected,.tree-related,.tree-edge-selected,.tree-branch-selected,.tree-boundary-selected").forEach(node=>{
+    node.classList.remove("tree-selected","tree-related","tree-edge-selected","tree-branch-selected","tree-boundary-selected");
+  });
+  if(!treeSelection.kind){
+    renderTreeInspector();
+    return;
+  }
+  if(treeSelection.kind==="branch"){
+    const branch=treeSelection.branch;
+    root.querySelectorAll('[data-branch="'+CSS.escape(branch)+'"]').forEach(node=>node.classList.add("tree-branch-selected"));
+    root.querySelectorAll(".tree-lane-guide").forEach(node=>{
+      if(node.dataset.branch===branch)node.classList.add("tree-branch-selected");
+    });
+    const branchShas=new Set(treeRenderContext?.viewport.branchPaths.get(branch)||[]);
+    const ref=treeRenderContext?.refs.find(item=>item.branch===branch);
+    if(ref)branchShas.add(ref.head);
+    root.querySelectorAll(".commit,.tree-mobile-commit").forEach(node=>{
+      const branches=(node.dataset.branches||"").split(" ").filter(Boolean);
+      if(branches.includes(branch))node.classList.add("tree-related");
+    });
+    root.querySelectorAll(".edge[data-from-sha][data-to-sha]").forEach(node=>{
+      if(branchShas.has(node.dataset.fromSha)||branchShas.has(node.dataset.toSha))node.classList.add("tree-edge-selected");
+    });
+  }else if(treeSelection.kind==="commit"){
+    const sha=treeSelection.sha;
+    const row=treeRenderContext?.commits.get(sha);
+    const parentSet=new Set(row?.parents||[]);
+    root.querySelectorAll('.commit[data-sha="'+CSS.escape(sha)+'"],.tree-mobile-commit[data-sha="'+CSS.escape(sha)+'"]').forEach(node=>node.classList.add("tree-selected"));
+    parentSet.forEach(parent=>{
+      root.querySelectorAll('.commit[data-sha="'+CSS.escape(parent)+'"],.tree-mobile-commit[data-sha="'+CSS.escape(parent)+'"]').forEach(node=>node.classList.add("tree-related"));
+    });
+    root.querySelectorAll(".edge[data-from-sha][data-to-sha]").forEach(node=>{
+      if(node.dataset.fromSha===sha||parentSet.has(node.dataset.toSha))node.classList.add("tree-edge-selected");
+    });
+  }else if(treeSelection.kind==="boundary"){
+    root.querySelectorAll('.tree-boundary[data-boundary-id="'+CSS.escape(treeSelection.boundaryId||"")+'"]').forEach(node=>node.classList.add("tree-boundary-selected","tree-selected"));
+  }
+  renderTreeInspector();
 }
-function clearTreeHoverHide(){
-  if(treeHoverHideTimer!==null){window.clearTimeout(treeHoverHideTimer);treeHoverHideTimer=null;}
+function setTreeSelection(next){
+  treeSelection={
+    kind:next?.kind||null,
+    branch:next?.branch||null,
+    sha:next?.sha||null,
+    boundaryId:next?.boundaryId||null,
+    boundaryKind:next?.boundaryKind||null,
+    parent:next?.parent||null,
+  };
+  applyTreeSelection();
 }
-function scheduleTreeHoverHide(){
-  clearTreeHoverHide();
-  treeHoverHideTimer=window.setTimeout(()=>{
-    treeHoverHideTimer=null;
-    const card=document.getElementById("tree-hover-card");
-    if(card?.matches(":hover")||card?.contains(document.activeElement))return;
-    hideTreeHover();
-  },180);
+function selectBoundary(node){
+  setTreeSelection({
+    kind:"boundary",
+    boundaryId:node.dataset.boundaryId,
+    branch:node.dataset.boundaryBranch,
+    sha:node.dataset.boundarySha,
+    parent:node.dataset.boundaryParent,
+    boundaryKind:node.dataset.boundaryKind,
+  });
 }
-function bindTreeHoverCard(){
-  const card=document.getElementById("tree-hover-card");
-  if(!card||card.dataset.hoverBound==="true")return;
-  card.dataset.hoverBound="true";
-  card.addEventListener("mouseenter",clearTreeHoverHide);
-  card.addEventListener("mouseleave",scheduleTreeHoverHide);
-  card.addEventListener("focusin",clearTreeHoverHide);
-  card.addEventListener("focusout",scheduleTreeHoverHide);
-}
-function hideTreeHover(){
-  clearTreeHoverHide();
-  const card=document.getElementById("tree-hover-card");
-  if(!card)return;
-  card.hidden=true;
-  card.innerHTML="";
-  card.removeAttribute("data-kind");
-}
-function bindTreeHover(node,kind,data){
-  const show=()=>showTreeHover(kind,data,node);
-  node.addEventListener("mouseenter",show);
-  node.addEventListener("mouseleave",scheduleTreeHoverHide);
-  node.addEventListener("focus",show);
-  node.addEventListener("blur",scheduleTreeHoverHide);
-  node.addEventListener("click",show);
+function bindTreeSelection(node,choose){
+  if(!node||node.dataset.selectionBound==="true")return;
+  node.dataset.selectionBound="true";
+  node.addEventListener("click",event=>{
+    if(event.target.closest(".copy-button,.tree-ticket"))return;
+    choose(event);
+  });
   node.addEventListener("keydown",event=>{
-    if(event.key==="Enter"||event.key===" "){event.preventDefault();show()}
+    if(event.key!=="Enter"&&event.key!==" ")return;
+    event.preventDefault();
+    choose(event);
   });
 }
 function bindCommitNode(node,row,ref,meta={}){
   if(!row)return;
-  bindTreeHover(node,"commit",{row,ref,...meta});
-  const inspect=()=>commitInspector(row,ref);
-  node.addEventListener("mouseenter",inspect);
-  node.addEventListener("focus",inspect);
-  node.addEventListener("click",inspect);
+  const branch=ref?.branch||node.dataset.ref||(node.dataset.branches||"").split(" ")[0]||null;
+  bindTreeSelection(node,()=>setTreeSelection({kind:"commit",sha:row.sha,branch}));
 }
-function bindBranchNode(node,ref,stateOverride){
+function bindBranchNode(node,ref){
   if(!ref)return;
-  bindTreeHover(node,"branch",{ref,state:stateOverride});
+  bindTreeSelection(node,()=>setTreeSelection({kind:"branch",branch:ref.branch}));
 }
 function bindRenderedTreeNodes(mount,context){
   if(!mount||!context)return;
-  const {commits,refs,viewport,positions}=context;
+  const {commits,refs}=context;
   mount.querySelectorAll(".commit").forEach(node=>{
     const row=commits.get(node.dataset.sha);
-    const hiddenParentCount=(row?.parents||[]).slice(1).filter(parentSha=>!positions?.has(parentSha)).length;
-    bindCommitNode(node,row,refs.find(ref=>ref.branch===node.dataset.ref),{hiddenParentCount});
+    bindCommitNode(node,row,refs.find(ref=>ref.branch===node.dataset.ref));
   });
   mount.querySelectorAll(".lane-header").forEach(node=>{
     const ref=refs.find(item=>item.branch===node.dataset.branch);
-    bindBranchNode(node,ref,viewport.branchDetached.has(ref?.branch)?"未連接":treeStateOf(ref));
+    bindBranchNode(node,ref);
   });
   mount.querySelectorAll(".tree-boundary").forEach(node=>{
-    bindTreeHover(node,"boundary",{detail:node.dataset.boundaryDetail||"圖面邊界"});
+    bindTreeSelection(node,()=>selectBoundary(node));
   });
 }
-function activeWorktreeGroups(){
-  return (scopeMatrix?.worktrees||[]).map(worktree=>[String(worktree.branch||"未知 worktree"),worktree]);
+function restoreTreeSelection(){
+  if(!treeSelection.kind){
+    renderTreeInspector();
+    return;
+  }
+  const context=treeRenderContext;
+  const valid=treeSelection.kind==="branch"
+    ?!!context?.refs.some(ref=>ref.branch===treeSelection.branch)
+    :treeSelection.kind==="commit"
+      ?!!context?.commits.has(treeSelection.sha)
+    :!!document.querySelector('#git-tree .tree-boundary[data-boundary-id="'+CSS.escape(treeSelection.boundaryId||"")+'"]');
+  if(!valid)treeSelection={kind:null,branch:null,sha:null,boundaryId:null,boundaryKind:null,parent:null};
+  applyTreeSelection();
 }
+
 const scopeFullscreen={open:false,scale:1,previousFocus:null};
 function scopeFullscreenCanvas(){return document.getElementById("scope-fullscreen-canvas")}
 function scopeFullscreenTable(){return scopeFullscreenCanvas()?.querySelector(".scope-matrix")||null}
@@ -744,8 +851,14 @@ function refreshScopeFullscreen(){
   const source=document.getElementById("scope-matrix-wrap"),canvas=scopeFullscreenCanvas();
   if(!source||!canvas)return;
   canvas.innerHTML=source.innerHTML;
+  canvas.querySelectorAll("[data-selection-bound],[data-copy-bound]").forEach(node=>{
+    delete node.dataset.selectionBound;
+    delete node.dataset.copyBound;
+  });
   bindCopyButtons(canvas);
   applyScopeGeometry(canvas);
+  bindScopeSelection(canvas);
+  restoreScopeSelection(canvas);
   applyScopeFullscreenTransform();
 }
 function fitScopeFullscreen(){
@@ -770,19 +883,6 @@ function closeScopeFullscreen(options={}){
   if(viewer){viewer.hidden=true;viewer.setAttribute("aria-hidden","true")}
   document.body.classList.remove("scope-fullscreen-open");
   if(options.restoreFocus!==false)previousFocus?.focus?.();
-}
-function renderActiveWorktrees(){
-  const mount=document.getElementById("tree-active-worktrees");if(!mount)return;
-  const groups=activeWorktreeGroups(),total=groups.reduce((count,[,worktree])=>count+(worktree.ticket_ids?.length||0),0);
-  if(!groups.length){mount.innerHTML="";return;}
-  mount.innerHTML=`<section class="tree-active-card" aria-labelledby="tree-active-title">
-    <div class="tree-active-heading"><strong id="tree-active-title">目前進行中的 Worktree</strong><span>${groups.length} 棵 · ${total} 張持票</span></div>
-    <div class="tree-active-groups">${groups.map(([branch,worktree])=>`<div class="tree-active-group">
-      <div class="tree-active-branch"><code title="${esc(branch)}">${esc(compactLabel(branch,48))}</code><span>${worktree.kind==="ticketed"?"持票":"直接指派"} · ${worktree.scope_status==="unknown"?"Scope 未知":"Scope 已知"}</span></div>
-      <div class="tree-active-list">${worktree.tickets?.length?worktree.tickets.map(ticket=>`<button type="button" class="tree-active-ticket" data-ticket-id="${esc(ticket.id)}"><code>${esc(ticket.id)}</code><span>${esc(ticket.brief||"尚未提供白話摘要")}</span></button>`).join(""):`<div class="tree-active-ticket tree-active-direct"><strong>直接指派修改</strong><span>${esc(worktree.path||"工作樹路徑未知")}</span></div>`}</div>
-    </div>`).join("")}</div>
-  </section>`;
-  mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",()=>selectTicket(node.dataset.ticketId)));
 }
 function fullscreenCanvas(){return document.getElementById("tree-fullscreen-canvas")}
 function fullscreenSvg(){return fullscreenCanvas()?.querySelector("svg")||null}
@@ -814,6 +914,10 @@ function refreshTreeFullscreen(){
   const source=document.getElementById("git-tree"),canvas=fullscreenCanvas();
   if(!source||!canvas)return;
   canvas.innerHTML=source.innerHTML;
+  canvas.querySelectorAll("[data-selection-bound],[data-copy-bound]").forEach(node=>{
+    delete node.dataset.selectionBound;
+    delete node.dataset.copyBound;
+  });
   const svg=canvas.querySelector("svg");
   if(!svg){canvas.classList.add("is-empty");return}
   canvas.classList.remove("is-empty");
@@ -933,23 +1037,24 @@ function closeTreeFullscreen(options={}){
   const viewer=document.getElementById("tree-fullscreen-viewer"),previousFocus=treeFullscreen.previousFocus,native=treeFullscreen.nativeFullscreen;
   treeFullscreen.open=false;treeFullscreen.nativeFullscreen=false;treeFullscreen.pointers.clear();treeFullscreen.drag=null;treeFullscreen.pinch=null;
   if(viewer){viewer.hidden=true;viewer.setAttribute("aria-hidden","true")}
-  document.body.classList.remove("tree-fullscreen-open");hideTreeHover();
+  document.body.classList.remove("tree-fullscreen-open");
   if(native&&document.fullscreenElement===viewer){try{const exit=document.exitFullscreen?.();exit?.catch?.(()=>{})}catch(_error){}}
   if(options.restoreFocus!==false)previousFocus?.focus?.();
 }
 function renderTree(){
   const mount=document.getElementById("git-tree");
   const mobile=document.getElementById("tree-mobile-list");
-  hideTreeHover();
   renderTreeZoom();
   if(!tree||!tree.commits?.length){
     treeBaseWidth=0;
     treeRenderContext=null;
+    treeSelection={kind:null,branch:null,sha:null,boundaryId:null,boundaryKind:null,parent:null};
     // Keep the one-shot fit/manual-zoom decision across a transient empty
     // mirror; a refresh must not erase an explicit user zoom choice.
     mount.innerHTML='<p class="empty">目前沒有完整 Git tree mirror。</p>';
     renderBranchIndex({refs:[]});
     if(mobile)mobile.innerHTML='<p class="empty">目前沒有可顯示的分支資料。</p>';
+    renderTreeInspector();
     if(treeFullscreen.open)closeTreeFullscreen({restoreFocus:false});
     return;
   }
@@ -973,11 +1078,11 @@ function renderTree(){
     const from=positions.get(row.sha);
     (row.parents||[]).forEach(parentSha=>{
       const to=positions.get(parentSha);
-      if(to)graphEdges.push({from,to});
+      if(to)graphEdges.push({from,to,fromSha:row.sha,toSha:parentSha});
     });
   });
   const edges=graphEdges.map(edge=>{
-    return `<path class="edge" d="${edgePath(edge.from,edge.to,x,y)}"/>`;
+    return `<path class="edge" data-from-sha="${esc(edge.fromSha)}" data-to-sha="${esc(edge.toSha)}" d="${edgePath(edge.from,edge.to,x,y)}"/>`;
   });
   const branchBoundaryByFrom=new Map([...viewport.branchTruncations.values()].map(record=>[record.from,record]));
   const boundaryByLane=new Map();
@@ -988,43 +1093,59 @@ function renderTree(){
     if(!previous||pos.row>previous.pos.row)boundaryByLane.set(pos.lane,{row,pos,branchBoundary:branchBoundaryByFrom.get(row.sha)});
   });
   const parentBoundaryMarkers=[...boundaryByLane.values()].sort((left,right)=>left.pos.row-right.pos.row||left.pos.lane-right.pos.lane).map(({row,pos,branchBoundary})=>{
-    const label=branchBoundary?"此分支中間歷史已省略":"主線歷史在 bounded window 結束";
-    const detail=`${label}；first parent 不在目前圖面外`;
+    const branch=branchBoundary
+      ? [...viewport.branchTruncations.entries()].find(([,record])=>record.from===row.sha)?.[0]
+      : [...branchLanes.entries()].find(([,lane])=>lane===pos.lane)?.[0]||"main";
+    const boundaryKind=branchBoundary?"branch_truncation":"parent_outside_window";
+    const boundaryId=`boundary:${branch}:${row.sha}:${row.parents[0]}`;
     const markerY=y(pos.row)+Math.round(TREE_ROW_HEIGHT*.48);
-    return `<g class="tree-boundary" tabindex="0" role="img" aria-label="${esc(detail)}" data-boundary-detail="${esc(detail)}"><path class="edge edge-parent-missing${branchBoundary?" edge-truncated":""}" d="M ${x(pos.lane)} ${y(pos.row)} V ${markerY}"><title>${detail}</title></path><circle class="tree-parent-endpoint" cx="${x(pos.lane)}" cy="${markerY}" r="4"><title>${detail}</title></circle><text class="tree-truncation" x="${x(pos.lane)+7}" y="${markerY+4}" aria-hidden="true">⋯</text></g>`;
+    return `<g class="tree-boundary" tabindex="0" role="button" aria-label="圖面邊界" data-boundary-id="${esc(boundaryId)}" data-boundary-kind="${esc(boundaryKind)}" data-boundary-branch="${esc(branch)}" data-boundary-sha="${esc(row.sha)}" data-boundary-parent="${esc(row.parents[0])}"><path class="edge edge-parent-missing${branchBoundary?" edge-truncated":""}" d="M ${x(pos.lane)} ${y(pos.row)} V ${markerY}"><title>boundary</title></path><circle class="tree-parent-endpoint" cx="${x(pos.lane)}" cy="${markerY}" r="4"><title>boundary</title></circle><text class="tree-truncation" x="${x(pos.lane)+7}" y="${markerY+4}" aria-hidden="true">⋯</text></g>`;
   }).join("");
-  const laneGuides=[...branchLanes.entries()].map(([branch,lane])=>`<line class="tree-lane-guide${branch==="main"?" main":""}" x1="${x(lane)}" y1="${TREE_HEADER_HEIGHT-14}" x2="${x(lane)}" y2="${height-18}"/>`).join("");
+  const laneGuides=[...branchLanes.entries()].map(([branch,lane])=>`<line class="tree-lane-guide${branch==="main"?" main":""}" data-branch="${esc(branch)}" x1="${x(lane)}" y1="${TREE_HEADER_HEIGHT-14}" x2="${x(lane)}" y2="${height-18}"/>`).join("");
   const laneHeaders=viewport.refs.map(ref=>{
     const lane=branchLanes.get(ref.branch);if(lane===undefined)return "";
     const state=treeStateOf(ref);
     const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":state;
     const detachedLabel=detached?`<text class="lane-state" x="14" y="31">${esc(stateLabel)}</text>`:"";
     const headerX=lane===0?0:x(lane)-52;
-    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)" tabindex="0" role="button" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}" data-branch="${esc(ref.branch)}" data-branch-label="${esc(ref.branch)}"><title>${esc(ref.branch)} · ${esc(stateLabel)}</title><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text class="tree-lane-label" x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
+    return `<g class="lane-header state-${esc(treeStateClass(state))}${detached?" detached":""}" transform="translate(${headerX} 12)" tabindex="0" role="button" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}" data-branch="${esc(ref.branch)}" data-branch-label="${esc(ref.branch)}" data-state="${esc(stateLabel)}"><title>${esc(ref.branch)} · ${esc(stateLabel)}</title><circle class="lane-dot" cx="5" cy="12" r="3"></circle><text class="tree-lane-label" x="14" y="16">${esc(compactBranchLabel(ref.branch))}</text>${detachedLabel}</g>`;
   }).join("");
+  const commitBranches=new Map();
+  const addCommitBranch=(sha,branch)=>{
+    if(!sha||!branch)return;
+    if(!commitBranches.has(sha))commitBranches.set(sha,new Set());
+    commitBranches.get(sha).add(branch);
+  };
+  viewport.mainlineWindow.forEach(sha=>addCommitBranch(sha,"main"));
+  viewport.branchPaths.forEach((path,branch)=>path.forEach(sha=>addCommitBranch(sha,branch)));
+  viewport.refs.forEach(ref=>addCommitBranch(ref.head,ref.branch));
+  visibleCommits.forEach(row=>(row.refs||[]).forEach(branch=>addCommitBranch(row.sha,branch)));
   const nodes=ordered.map(row=>{
     const pos=positions.get(row.sha);const ref=viewport.refs.find(item=>item.head===row.sha);
     const head=ref?" head":"";
-    return `<g class="commit${head}${ref?.branch==="main"?" main":""}" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" transform="translate(${x(pos.lane)} ${y(pos.row)})"><title>${esc(shortSha(row.sha)+" · "+row.subject)}</title><circle r="${head?8:6}"></circle></g>`;
+    const branches=[...(commitBranches.get(row.sha)||[])];
+    return `<g class="commit${head}${ref?.branch==="main"?" main":""}" tabindex="0" role="button" aria-label="${esc(shortSha(row.sha)+" "+row.subject)}" data-sha="${esc(row.sha)}" data-ref="${esc(ref?.branch||"")}" data-branches="${esc(branches.join(" "))}" transform="translate(${x(pos.lane)} ${y(pos.row)})"><title>${esc(shortSha(row.sha)+" · "+row.subject)}</title><circle r="${head?8:6}"></circle></g>`;
   }).join("");
   mount.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${renderedWidth}" height="${renderedHeight}" data-zoom="${treeZoom}" role="group" aria-label="主線第一個分支附近與所有工作分支的 Git 交付樹"><g class="lane-guides">${laneGuides}</g><g class="lane-headers">${laneHeaders}</g><g class="edges">${edges.join("")}${parentBoundaryMarkers}</g>${nodes}</svg>`;
-  const viewportLabel=viewport.branchSha?`第一個分支 ${shortSha(viewport.branchSha)}`:"主線前段";
-  const mainlineCount=viewport.mainlineWindow.length;
-  document.getElementById("tree-alert").textContent=tree.complete?"":`mirror 不完整：${tree.error||"存在缺失 parent/ref"}`;
+  // Incomplete parent/ref state is represented by the boundary marker and its
+  // structured Inspector fields; the global freshness badge remains the single
+  // provenance indicator for the snapshot.
+  document.getElementById("tree-alert").textContent="";
   renderBranchIndex(viewport);
-  renderMobileTree(viewport,commits);
+  renderMobileTree(viewport,commits,commitBranches);
   bindRenderedTreeNodes(mount,treeRenderContext);
   refreshTreeFullscreen();
+  restoreTreeSelection();
 }
-function renderMobileTree(viewport,commits){
+function renderMobileTree(viewport,commits,commitBranches=new Map()){
   const mount=document.getElementById("tree-mobile-list");if(!mount)return;
   const refs=viewport.refs||[];const rows=[];const seen=new Set();
   const mobileShas=[...viewport.mainlineWindow,...refs.map(ref=>ref.head),...[...viewport.branchPaths.values()].flat(),...viewport.branchAnchors.values(),...viewport.commits.map(row=>row.sha)];
   mobileShas.forEach(sha=>{if(sha&&!seen.has(sha)&&commits.has(sha)){seen.add(sha);rows.push(commits.get(sha));}});
-  const branches=refs.map(ref=>{const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":treeStateOf(ref);const tickets=(ref.tickets||[]).slice(0,3).map(t=>`<button class="tree-ticket" data-ticket-id="${esc(t.id)}">${esc(t.id)}</button>`).join("");const more=(ref.tickets||[]).length>3?`<span class="tree-ticket-more">+${(ref.tickets||[]).length-3}</span>`:"";return `<span class="tree-mobile-branch${detached?" detached":""}"><strong class="tree-mobile-branch-name" tabindex="0" role="button" data-branch="${esc(ref.branch)}" data-state="${esc(stateLabel)}" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}">${esc(compactLabel(ref.branch,30))}</strong><span>${esc(stateLabel)}</span>${tickets}${more}</span>`}).join("");
-  mount.innerHTML=`<div class="tree-mobile-summary"><strong>主線緩衝與所有分支</strong><span>${rows.length} 個 commit · ${refs.length} 條分支</span></div><div class="tree-mobile-branches">${branches}</div><ol class="tree-mobile-commits">${rows.map(row=>`<li><button class="tree-mobile-commit" data-sha="${esc(row.sha)}"><code>${esc(shortSha(row.sha))}</code><span>${esc(row.subject)}</span></button></li>`).join("")}</ol>`;
+  const branches=refs.map(ref=>{const detached=viewport.branchDetached.has(ref.branch),stateLabel=detached?"未連接":treeStateOf(ref);const tickets=(ref.tickets||[]).slice(0,3).map(t=>`<button type="button" class="tree-ticket" data-ticket-id="${esc(t.id)}">${esc(t.id)}</button>`).join("");const more=(ref.tickets||[]).length>3?`<span class="tree-ticket-more">+${(ref.tickets||[]).length-3}</span>`:"";return `<div class="tree-mobile-branch${detached?" detached":""}"><button type="button" class="tree-mobile-branch-name" data-branch="${esc(ref.branch)}" data-state="${esc(stateLabel)}" aria-label="分支 ${esc(ref.branch)}，工作樹 ${esc(ref.path||"未提供")}"><code>${esc(compactLabel(ref.branch,30))}</code></button><span>${esc(stateLabel)}</span>${tickets}${more}</div>`}).join("");
+  mount.innerHTML=`<div class="tree-mobile-branches">${branches}</div><ol class="tree-mobile-commits">${rows.map(row=>`<li><button type="button" class="tree-mobile-commit" data-sha="${esc(row.sha)}" data-branches="${esc([...(commitBranches.get(row.sha)||[])].join(" "))}"><code>${esc(shortSha(row.sha))}</code><span>${esc(row.subject)}</span></button></li>`).join("")}</ol>`;
   mount.querySelectorAll(".tree-mobile-commit").forEach(node=>bindCommitNode(node,commits.get(node.dataset.sha),null));
-  mount.querySelectorAll(".tree-mobile-branch-name").forEach(node=>bindBranchNode(node,refs.find(ref=>ref.branch===node.dataset.branch),node.dataset.state));
+  mount.querySelectorAll(".tree-mobile-branch-name").forEach(node=>bindBranchNode(node,refs.find(ref=>ref.branch===node.dataset.branch)));
   mount.querySelectorAll("[data-ticket-id]").forEach(node=>node.addEventListener("click",event=>{event.stopPropagation();selectTicket(node.dataset.ticketId)}));
 }
 function selectTicket(id){
@@ -1086,7 +1207,7 @@ if(scopeDensityInput)scopeDensityInput.addEventListener("input",event=>{
 });
 const scopeOccupiedInput=document.getElementById("scope-occupied-only");
 if(scopeOccupiedInput)scopeOccupiedInput.addEventListener("change",event=>{scopeOccupiedOnly=event.target.checked;if(scopeMatrix)renderScopeMatrixPrimary()});
-document.getElementById("scope-fit")?.addEventListener("click",()=>{scopeZoom=100;renderScopeControls();if(scopeMatrix)renderScopeMatrixPrimary()});
+document.getElementById("scope-fit")?.addEventListener("click",()=>{fitScopeMatrix()});
 document.getElementById("scope-reset")?.addEventListener("click",()=>{scopeZoom=100;scopeDensity=34;scopeOccupiedOnly=false;renderScopeControls();if(scopeMatrix)renderScopeMatrixPrimary()});
 document.getElementById("scope-fullscreen")?.addEventListener("click",openScopeFullscreen);
 document.getElementById("scope-fullscreen-close")?.addEventListener("click",()=>closeScopeFullscreen());
