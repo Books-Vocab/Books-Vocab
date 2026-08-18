@@ -5755,6 +5755,33 @@ def test_update_runs_the_acceptance_and_says_so_in_the_payload(tmp_path, capsys)
     assert BACKLOG.load_entry(store, entry["id"])["status"] == "fixed"
 
 
+def test_update_acceptance_can_use_a_backlog_writer_without_store_deadlock(
+    tmp_path, capsys
+):
+    """Closure acceptance may exercise another backlog writer safely.
+
+    The outer update owns the per-entry lock, but its acceptance subprocess must
+    not inherit the whole-store lock.  A nested update is the smallest real
+    writer probe: it would block forever under the old lock scope.
+    """
+    store = tmp_path / "s"
+    nested = _add(store, detail="nested acceptance writer")
+    outer = _groomed(
+        store,
+        detail="outer closure with a nested writer",
+        cmd=(f"{shlex.quote(str(BACKLOG_PATH))} update {nested['id']} "
+             f"--store {shlex.quote(str(store))} --severity low --commit --json"),
+    )
+
+    assert BACKLOG.main([
+        "update", outer["id"], "--store", str(store), "--status", "fixed",
+        "--fixed-by", "aaaaaaa11", "--commit", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["acceptance"]["ok"] is True
+    assert BACKLOG.load_entry(store, nested["id"])["severity"] == "low"
+
+
 def test_a_dry_run_update_does_not_run_acceptance_commands(tmp_path, capsys):
     """Same contract as `anchor`'s dry run, for the same reason: the real store's
     acceptance strings include `rm`, container restarts and network calls."""
