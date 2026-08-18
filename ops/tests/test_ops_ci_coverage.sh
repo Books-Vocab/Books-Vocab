@@ -564,6 +564,31 @@ else
   done
 fi
 
+# IMP-20260817-60fa6f: the legacy gate-failure shell collector owns the
+# compatibility invocation; its topology child owns the precise Python routes.
+section "gate-failure topology paths stay reachable"
+GATE_FAILURE_TOPOLOGY_TESTS=(
+  ops/tests/test_gate_can_fail.sh
+  ops/tests/test_gate_failure_topology.sh
+  ops/tests/test_streaming_command.py
+  ops/tests/test_task_registry.py
+)
+if (( ${#REACHABLE[@]} == 0 )); then
+  fail_t "gate-failure topology probe parsed no reachable paths"
+else
+  for f in "${GATE_FAILURE_TOPOLOGY_TESTS[@]}"; do
+    reach=0; exempt=0; optional=0
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
+    for u in "${OPTIONAL_ONLY_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && optional=1; done
+    if (( reach == 1 && exempt == 0 && optional == 0 )); then
+      ok "$f is reached by a DEFAULT_TESTS group"
+    else
+      fail_t "$f must be reached by the gate-failure/worktree routes and not exempted"
+    fi
+  done
+fi
+
 # ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
 # 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是所有 tracked `*.sh`
 #（worktree_orchestrate.py:plan_gates）；workflow 的
