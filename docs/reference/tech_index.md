@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 701144168f385ac60de9b6e7490f577bcc02e998
+verified_against: 31147266d83c354d73e90f92a4f6a6da8a2ad16c
 -->
 # Technical Reference Index
 
@@ -404,7 +404,10 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 
 `backlog.py preflight <id> --json` 是 claim 前的唯讀派工編譯器；輸出穩定的
 `kg.dispatch.preflight.v1` 分類、問題與修復提示。只有明示 `--probe-acceptance`
-才會執行 bounded acceptance，且不寫入票、queue 或 registry。
+才會執行 bounded acceptance，且不寫入票、queue 或 registry。對結構化
+`scope.files[]`，只有 Scope validator 零問題且路徑被精確宣告為
+`operation=add` 時，缺失的 `fix_site`／acceptance dependency 才視為待實作而不阻擋；
+未宣告、`modify`、malformed 或非 literal 路徑仍 fail-closed。
 
 ## Backlog add grooming note
 
