@@ -1,13 +1,7 @@
 name: ops-suite
 
-# ops/test_ops.sh 的 CI 執行面。
-#
-# 這是「讓其他修復保持修好」的那個 workflow。在它存在之前，ops 測試套件**沒有任何
-# 自動執行點**：`ops/tests/test_ui_quality_gate.sh` 紅了數週而沒有人接到通知，
-# ui-quality-gate 空轉兩個月也沒有任何測試發聲——因為偵測斷點的測試本身從來沒跑過。
-#
-# 只跑不需要 Xcode / 模擬器 / 網路的 group（LINUX_GROUPS）。需要 macOS 的 group
-# 由 macOS/local gate 負責；「新增 group 未分類」由 ops/tests/test_ops_ci_coverage.sh 擋。
+# Linux 可執行的 ops regression suite。GitHub PR 以 pr-gate 作為所有變更的穩定
+# 入口；本 workflow 只在 ops／相關腳本變更時擴大執行完整分類的 Linux groups。
 # 本地等價入口：./ops/test_ops.sh <group...>
 
 on:
@@ -56,6 +50,5 @@ jobs:
         run: ./ops/tests/test_ops_ci_coverage.sh
       - name: Run platform-independent ops groups
         run: ./ops/test_ops.sh $(./ops/tests/test_ops_ci_coverage.sh --print-linux-groups)
-      - name: Falsify the exclusions (expected-fail)
-        # 每條 EXCLUDED_GROUPS 在 ubuntu 上都該死；竟然活著 = 這條排除是假的。
+      - name: Verify platform exclusions
         run: ./ops/ci_expected_fail_exclusions.sh

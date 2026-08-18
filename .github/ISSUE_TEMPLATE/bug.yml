@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible product or engineering defect
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a defect that can be reproduced or narrowed down. The issue is the source of truth for impact and acceptance; implementation belongs in the linked pull request.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - iOS
+        - Backend/API
+        - Website
+        - Operations/release
+        - Documentation/tooling
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who is affected and what is the observable failure?
+      placeholder: A user or operator cannot ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Give the smallest reliable steps, command, fixture, or request.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+      placeholder: Expected ...; actual ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: State the observable condition that makes this issue fixed.
+      placeholder: The relevant test, check, or user flow is green when ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Commit, app version, OS, device, or deployment identifier

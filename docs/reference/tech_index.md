@@ -23,7 +23,8 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 | Podcast／LLM lab | `lab/podcast/`、`lab/llm_eval/` | 各自 README／`uv run` entrypoint |
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
-| CI | `.github/workflows/` | GitHub Actions required checks |
+| GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |
+| CI | `.github/workflows/pr-gate.yml`、`.github/workflows/` | GitHub Actions checks |
 
 ## Backend routes and data
 
