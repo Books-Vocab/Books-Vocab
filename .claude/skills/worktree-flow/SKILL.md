@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。child worker 預設 commit＋hand-back；Delivery Team 的 Integrator 在取得當下 develop＋backup 授權後，以 close-wave --commit --sync 完成 primary＋origin/main 閉環。三平面：cutover=develop、sync=backup、deploy=release。"
+description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
 user-invocable: true
 version: 2.1.1
 ---
@@ -12,17 +12,17 @@ version: 2.1.1
 ## Progressive disclosure boundary
 
 角色視野與未知升級的唯一索引是 `docs/reference/agent_context.md`，不是本 skill 的全文。Ticket Factory
-只需讀 lane／ticket 交接語意；Delivery Child 只需讀「預設停止點」與「批次交回狀態」；Delivery Team
-Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協調」。Round 6–8 壓測與歷史量測只有
+只需讀 lane／ticket 交接語意；Delivery Child 只需讀「預設停止點」與「批次交回狀態」；Integrator
+讀「批次整合」的 staging 段；Manager 才讀 Gate／cutover／resolve／sync 的落地段。Round 6–8 壓測與歷史量測只有
 明示壓測或工具調查才載入。遇到未知先回到 authority index，不以讀完整 skill 取代 escalation。
 
 ## 預設停止點（授權邊界）
 
-**永遠先假設同 repo 有多個 session 同時工作。** child worker 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 exact source thread ID、branch／worktree／HEAD，然後停止。這個 hand-back 是 Delivery Team 內部交回，不是整個 team 完成；Gate BLOCK 必須回到該 source thread，由原 thread 以新 commit／新 hand-back 回交。Integrator 可同一 thread 維護一個 integration worktree，孩子陸續回來就用 `integrate --append` fan-in。child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
+**永遠先假設同 repo 有多個 session 同時工作。** Child 正常做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 exact source thread ID、branch／worktree／HEAD，然後停止。Child 有三種 work mode：`direct-assignment`（開工前明示 structured Scope）、`ticket-factory`（產票／梳理，不持有 delivery ticket，開工前明示 Scope）、`ticket-delivery`（由 ticket／campaign 提供 Scope）。Child hand-back 直接交回 Manager；Integrator 可以讀取並 fan-in，但不重新簽發 child seal。Gate BLOCK 必須回到該 source thread，由原 thread 以新 commit／新 hand-back 回交。Child 不自行跑 `gate`、`cutover`、`resolve` 或 `sync`。
 
 任務選擇的淺規則：優先 fan-out bounded bug、refactor、tooling friction、test maintenance、docs 等可獨立驗收工作；新產品行為、策略、open-ended discovery、跨面產品變更先由 parent 明示。這是排序／派工提示，不是 `backlog.py` lifecycle 或 acceptance/status 契約。
 
-只有擁有整批視野的 Integrator 在當下取得使用者對 develop＋backup 的明示授權，才可越過 child 停止點：① 確認本輪預期 child 已 hand-back；② 以 `close-wave --commit --sync` 進行唯一依 scope/tier 選擇的 fresh Gate、cutover、resolve、anchor、validate 與 origin/main sync。若只有 develop 授權，使用 `close-wave --commit` 停在本地 primary；若沒有授權，整合樹也只准 `integrate ... --commit --no-gate` 後 hand-back。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬 required tier、current HEAD 或 release 護欄；targeted test 只能證明它自己的 tier，不能冒充較高 tier。
+Integrator 只准執行 `integrate --commit --no-gate`、`--append`、衝突處理與未落地 staging tree 清理；它產生 fan-in manifest／state，下一步明確指向 Manager，不落地 primary。Manager 才能在取得當下授權後，續接唯一 fresh Gate、`close-wave --commit`、`cutover --commit`、`resolve --via-integration` 與 `sync --commit`。`deploy` 另需 release 意圖。一般工作樹的 branch-local `catchup` 完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup。這是協調政策，不放寬 required tier、current HEAD 或 release 護欄；targeted test 只能證明它自己的 tier，不能冒充較高 tier。
 
 `--commit` 只控制各命令的**主要落地動作**，不是「沒帶就整個命令零副作用」的通則；`--json` 也只改輸出。出生／登記簿生命週期動詞沒有 dry-run：orchestrator `open`／`adopt` 與 registry `register`／`hand-back`／`resolve` 呼叫即寫。另有三個必記例外：`gate` 除 `--plan-only` 外會執行檢查並寫 verdict／history／失敗 log；`freeze on|off` 直接建立／刪除鎖，只有 `freeze status` 唯讀；`preflight` 不論 `--commit` 都會 `git fetch --prune`，該旗標只控制 sweep clearance。`open --backlog`／`--next-backlog` 必須在建立 branch/path 前原子取得獨佔認領；`hand-back` 必須立即寫入與當下 branch tip 綁定的交回戳記。呼叫前以子命令 help 為準，不可從有無 `--commit` 推導純讀性。
 
@@ -31,11 +31,11 @@ Integrator 才按當下 wave 讀「批次整合」／`close-wave`／「並發協
 這是平行能力 lane，不是上下級階層：
 
 - **Ticket Factory（票務隊）**：一個 thread 依需求大量 `add`、必要時 `verify`、`groom`，把問題收斂到 contract-ready，再由 `dispatch` 產出可取的工作；`groomed` 不等於 dispatchable。它不修產品 code，也不是一票一 thread。
-- **Delivery Team（交付隊）**：可同時開 A/B/C 多個 thread；每個 thread 從不重疊的 task batch 開始，由該 thread 的 **Integrator** 派出 N 個 child worktree，持續把 child commit fan-in 到一個 integration worktree，最後自己完成整個 delivery-loop。
+- **Delivery Team（交付隊）**：可同時開 A/B/C 多個 thread；Integrator 從不重疊的 Scope 矩陣 fan-out N 個 child worktree，持續把 child hand-back fan-in 到 staging tree，完成 staging handoff 後交回 Manager；Manager 再做唯一落地閉環。
 
-三種方法固定命名：**ticketed-loop** = `Ticket Factory → dispatch → Delivery Team → primary + origin/main`；**delivery-loop** = 單一 Delivery Team thread 的 `batch → N child worktrees → incremental fan-in → fresh Gate → cutover → resolve → anchor/validate → sync`；**direct-fix** = 使用者明示「直接改、不登記」時，完成修改後停在 hand-back（除非另有整批落地授權）。鎖競爭是正常等待：核心工具以指數退避、stderr heartbeat、非競爭錯誤 fail-closed，team 不需要互相輪詢喊話。
+三種方法固定命名：**ticketed-loop** = `Ticket Factory → dispatch → Delivery Team → Manager`；**delivery-loop** = `Scope matrix → N child worktrees → typed hand-back → staging fan-in → Manager Gate/cutover/resolve/sync`；**direct-fix** = 使用者明示的 direct-assignment work mode，完成修改後停在 hand-back。鎖競爭是正常等待：核心工具以指數退避、stderr heartbeat、非競爭錯誤 fail-closed，team 不需要互相輪詢喊話。
 
-`close-wave` 是每個 Delivery Team Integrator 的可重入入口：它把批次組裝、唯一 fresh Gate、cutover、來源／整合樹 resolve、anchor、validate 串成一條可恢復流程；同一 `--slug` 重跑即可續接。`--commit` 完成本地 primary 閉環，`--sync` 明確完成 origin/main backup；不 deploy。其他 team 的 active worktree 可以存在，但本輪只處理明示的 source branches，最後整段 primary＋remote 臨界區由 delivery-loop lock 序列化。
+`integrate` 是 Integrator 的可重入 staging 入口：它把已 hand-back 的來源組裝成 integration tree，保留 source hand-back SHA、phase、下一步與 authority，然後停在 Manager。`close-wave`／`cutover`／`resolve`／`sync` 是 Manager 的落地入口；同一 state 可由 Manager 續接，但 Integrator 不可用它越權。其他 team 的 active worktree 可以存在，但本輪只處理明示的 source branches，最後 primary＋remote 臨界區由 Manager 的 delivery-loop lock 序列化。
 
 ### 正常不用聊天；異常才傳訊
 
@@ -157,7 +157,7 @@ Gate 不是每次都跑全 repo。`--gate-tier S0|S1|S2|S3|S4` 選擇驗證深�
 | **S3** | 跨模組接線仍然正確嗎？ | backend↔iOS、sync、pipeline、跨平台整合 |
 | **S4** | 現在能不能正式交付？ | release full backend/ops/iOS targets 與 release readiness |
 
-日常預設是 child 開發／hand-back 跑 S0+S1；Integrator 批次 cutover 跑 S0 加
+日常預設是 child 開發／hand-back 跑 S0+S1；Manager 整合／cutover 跑 S0 加
 變更所需的 S2；只有跨兩個以上功能根目錄且計畫內有真實 S3 檢查才升 S3；真正 release checkpoint 才明示
 S4。視覺 evidence 是 S1～S4 的附加證據，不是單獨的下一層。若只跑較低層，仍可
 hand-back，但不能拿它宣稱已完成較高層 cutover。
@@ -294,19 +294,20 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 
 ## 批次整合（每個 Delivery Team thread：N 個工作樹 → 一次完整閉環）
 
-單線 develop 流程（open→gate→cutover→resolve）是為**一條 child 分支**寫的；真正的 team 單位是
-一個 Delivery Team thread，不是一張 ticket。Integrator 從一個不重疊的 task batch 出發，fan-out N 個
-child worktree，孩子回來就可用 `integrate --append` 追加到同一 integration round；等預期 child 都回來後，
-由 Integrator 以 `close-wave --commit --sync` 完成唯一 fresh Gate、primary cutover 與 remote sync。
-不要讓 child 各自 gate+cutover，也不要把 hand-back 誤當整個 team 的完成。
+單線 develop 流程（open→Gate→cutover→resolve）是 Manager 的落地流程；真正的 team 單位是
+一個 Delivery Team thread，不是一張 ticket。Integrator 從不重疊的 Scope 矩陣出發，fan-out N 個
+child worktree，孩子回來就用 `integrate --append` 追加到 staging round；等預期 child 都回來後，
+Integrator 以 `integrate --commit --no-gate` 完成 staging handoff，交回 Manager。Manager 才跑唯一
+fresh Gate、primary cutover、resolve 與 sync。不要讓 child 各自 gate+cutover，也不要把 Integrator
+staging handoff 或 child hand-back 誤當 primary 已完成。
 
 ### 批次交回狀態（本段是契約正本）
 
 **所有 session 的預設上行交回狀態都是「在自己的工作樹裡 commit 完」，不是「已經進 main」；批次受派者更無例外。**
-`gate`／`cutover` 屬於**取得使用者 develop 授權的 Delivery Team Integrator**——握有整批視野的那個
-thread；`sync` 屬於取得 backup 授權的同一個 delivery-loop 收尾。task brief 的「邊界」一欄要寫明
-child 只交回 commit＋hand-back，並要求回報分支名與工作樹路徑。單一受派者、單一工作樹、非批次任務
-仍停在 commit + hand-back；只有 Team Integrator 才能把整輪送進 primary＋origin/main。
+`gate`／`cutover`／`resolve --via-integration`／`sync` 屬於**Manager**；Integrator 只交回 staging
+handoff，不取代 child receipt，也不重簽 child seal。task brief 的「邊界」一欄要寫明 child 只交回
+commit＋hand-back，並要求回報分支名、工作樹路徑與 exact source thread ID。單一受派者、單一工作樹、
+非批次任務仍停在 commit + hand-back；只有 Manager 才能把整輪送進 primary＋origin/main。
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 受派 child 建樹時帶 `open --delegated`（或對既有樹用 `adopt --delegated`）把這個邊界寫進 ledger；`cutover`／`land` 對仍標記為 delegated 的工作樹會在 gate/verdict 之前以 `refusal=delegated` fail closed。只有整合者明確解除標記後才可落地；省略旗標在 register/adopt 時保留既有標記。
 
@@ -341,7 +342,7 @@ ops/worktree_orchestrate.py integrate --slug <wave> --append \
 進 `close-wave`。若 Gate 已開始，late child 不可偷偷塞入已驗證結果，應保留為下一輪或在不穩定情況用
 thread message 通知 Integrator／peer，不能改寫既有 state。
 
-**Gate-first review 與批次規模（有界，不追求完美）**：Gate 是預設的機器 review。普通 fan-out 的受派者做到 commit；只有取得 develop 授權、握有整批視野的整合者，才在合併後跑一次 fresh Gate。Gate BLOCK 必須退回 hand-back 報告中的 exact source thread；由該 thread 修正、產生新 commit／新 hand-back 後再重新整合與 Gate。Gate 通過且 receipt 完整即可落地，不因文字或風格 NIT 無限追加 LLM reviewer。LLM review 只對高風險或複雜 scope 作例外；同一個完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 就停在 adjudication，由 driving agent 決定修、接受或列 follow-up，不自動派第三輪。
+**Gate-first review 與批次規模（有界，不追求完美）**：Gate 是預設的機器 review。普通 fan-out 的受派者做到 commit；Integrator 只完成 staging handoff，只有 Manager 在取得 delivery-loop 授權後，才在合併後跑一次 fresh Gate。Gate BLOCK 必須退回 hand-back 報告中的 exact source thread；由該 thread 修正、產生新 commit／新 hand-back 後再重新整合與 Gate。Gate 通過且 receipt 完整即可落地，不因文字或風格 NIT 無限追加 LLM reviewer。LLM review 只對高風險或複雜 scope 作例外；同一個完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 就停在 adjudication，由 driving agent 決定修、接受或列 follow-up，不自動派第三輪。
 
 若例外情況確實需要同時派 LLM reviewer，批次大小用當下量到的 slot 上限推導，不背魔術數字：令 `S`=可同時存活的 agent slot、`R`=保留給協調/收尾的安全餘裕、`W`=受派者、`L`=同時 reviewer，必須滿足 `W + L ≤ S − R`；若每位受派者各佔一位 reviewer，則 `W ≤ floor((S − R) / 2)`。本機實測 `S=20`，取 `R=2` 時理論上限為 9，實務預設收在 **8**；若不派 LLM reviewer，則不套用除以二，仍按衝突面與整合成本決定批次。撞頂時不得重試或偽造 reviewer evidence；具名記錄「LLM review 未取得」，由整合後 fresh Gate 承擔機器 review，複雜 scope 再由 driving agent 做一次有界裁決。
 
@@ -399,7 +400,7 @@ ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --comm
 ```
 ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --commit --json
 ```
-   只跑一次綁定最終 HEAD 的 Gate。`--no-gate` 不產生 verdict、不構成放行，也不能被「機器不忙」之類環境判斷取代；授權邊界是唯一差別。Integrator 的 team-level 完成命令是 `close-wave --commit --sync`，不是 child 的 hand-back。
+   只跑一次綁定最終 HEAD 的 Gate。`--no-gate` 不產生 verdict、不構成放行，也不能被「機器不忙」之類環境判斷取代；授權邊界是唯一差別。Integrator 在此只完成 staging handoff；Manager 的 team-level 完成命令是 `close-wave --commit`，之後由 Manager 執行 cutover／resolve／sync，不是 child 的 hand-back。
 
    **integration state 不可跨 rebase。** `--no-gate` 保存的 `picked[].new_sha` 綁定當下組裝結果；對該整合樹跑 `catchup` 會改寫 commit，state 不會跟著重錨。若本地 main 在純組裝後前進，不得 `catchup → --continue`：先 `integrate --abort --commit` 釋放來源保留，確認每條來源 branch 的 hand-back tip 仍匹配，再對舊整合樹做 `resolve --force` 的 dry-run 與明示 teardown（此時唯一工作是可由來源重建的 picks），最後從新 main 以同一來源重建。已取得 develop 授權者可讓 fresh `integrate --branches ... --commit` 在重建後直接跑唯一 Gate；未授權者仍用 `--no-gate`、hand-back、STOP。
    ### 衝突：rerere 可能先動手，而且不出聲
@@ -455,11 +456,11 @@ git rerere diff
 
 若該波次是沒有 backlog ticket 的獨立工具路徑，必須在 `close-wave` 與其底層 `integrate` 明示 `--independent`；未帶旗標時空 expected-ticket set 仍以具名拒絕收尾。獨立模式會把 `independent=true` 寫入 integration state／completed manifest，並在 registry 的 integration `intent` 留下 `independent-no-ticket:` marker；只有 Gate verdict 為 pass/warn 且 HEAD 精確相等、primary tracked-clean、integration queue 已清空，才允許空集合通過 cutover／validate／resolve／sync。恢復同一 slug 也必須重複原 opt-in，所有 provenance 會留在 phase receipt。
 
-未取得授權時仍只能 `integrate --commit --no-gate`／`--append` 純組裝；不要把 `close-wave` 當成 child worker 的收尾命令。若正常 lock 競爭，等待工具 heartbeat／指數退避；若 state、primary 或 peer 不穩定，才用 thread message 做具名異常協調。
+未取得授權時仍只能 `integrate --commit --no-gate`／`--append` 純組裝；不要把 `close-wave` 當成 child worker 或 Integrator 的收尾命令。只有 Manager 可執行落地閉環。若正常 lock 競爭，等待工具 heartbeat／指數退避；若 state、primary 或 peer 不穩定，才用 thread message 做具名異常協調。
 
 ### 多輪同步、一次原子落地
 
-多個 Delivery Team 可在不同 slug 的 integration tree 平行組裝；child 回來就由各自 Integrator 用 `integrate --append` 收進自己的 round，不互相傳進度。每個 team 的 final `close-wave --commit --sync` 會在 shared delivery-loop lock 內序列化 primary／origin/main 的最後 side effects；所以 Team B 不需要盯 Team A，也不應在 lock 競爭時重開 agent。所有存活 integration state 都必須維持自己的 fork base；若在 finalizer 開始前 main 已前進，abort、驗來源 hand-back tip、teardown、從新 main 重建；不要對有 state 的整合樹 catchup。整合後依序 resolve source、anchor/validate、resolve integration tree；`--via-integration REF` 只接受已是 base 祖先的 REF。
+多個 Delivery Team 可在不同 slug 的 integration tree 平行組裝；child 回來就由各自 Integrator 用 `integrate --append` 收進自己的 round，不互相傳進度。每個 round 由 Integrator handoff 給 Manager；Manager 的 final `close-wave --commit`／`--sync` 會在 shared delivery-loop lock 內序列化 primary／origin/main 的最後 side effects；所以 Team B 不需要盯 Team A，也不應在 lock 競爭時重開 agent。所有存活 integration state 都必須維持自己的 fork base；若在 Manager finalizer 開始前 main 已前進，abort、驗來源 hand-back tip、teardown、從新 main 重建；不要對有 state 的整合樹 catchup。整合後依序 resolve source、anchor/validate、resolve integration tree；`--via-integration REF` 只接受已是 base 祖先的 REF。
 
 ### Round 6–8 三 session 壓力測試契約（2026-08-09）
 
@@ -467,9 +468,9 @@ git rerere diff
 
 **啟動前建立共同基準。** 三個 session 必須記下同一顆本地 `main` SHA `M`，並在各自的批次 receipt 寫明 `session_id`、15 個 ticket id、integration branch。先用 `backlog.py validate --baseline-check` 驗 store，再對三份 ticket 集合做程式化對帳：id 不得重疊，`fix_site` 的檔案／行域不得交疊；有重疊就調整分配或排成具名前置，不靠三個 session 自己避讓。`open --next-backlog` 的 registry lock 只保證單票認領互斥，不替跨 session 的 fix-site 分區背書。
 
-**三層拓撲，不讓 child 競爭 primary。** 每個 Delivery Team thread 在自己的 integration tree 收攏 15 張單；child 只做到 commit＋hand-back，不各自 gate／cutover。平行 Delivery Team 可各自用 `integrate ... --commit --no-gate` 組裝，晚回 child 用 `integrate --append`，各自保留自己的 state 與 receipt。每個 Team 的 Integrator 在自己的 final `close-wave --commit --sync` 內跑唯一 Gate、一次 cutover、來源 resolve、anchor/validate，再由 shared lock 序列化 primary／origin/main side effects；不需要等別的 Team 全部停止。
+**三層拓撲，不讓 child 競爭 primary。** 每個 Delivery Team thread 在自己的 integration tree 收攏 15 張單；child 只做到 commit＋hand-back，不各自 gate／cutover。平行 Delivery Team 可各自用 `integrate ... --commit --no-gate` 組裝，晚回 child 用 `integrate --append`，各自保留自己的 state 與 receipt，然後把 staging handoff 交回 Manager。每個 Manager 在自己的 final `close-wave --commit` 內跑唯一 Gate、一次 cutover、來源 resolve、anchor/validate，再以 `--sync` 序列化 primary／origin/main side effects；不需要等別的 Team 全部停止。
 
-**Gate 用輸入變更決定，不用 commit 數量決定。** child／round integration 的 fresh 與 `--continue` 在未授權時一律加 `--no-gate`，只排空純 pick／衝突整理並保留 in-flight state；晚回 child 在 Gate 前用 `--append`，Gate 後留下一輪。取得本 Team delivery-loop 授權後，Integrator 用同一 state 跑一次 fresh Gate；base 已前進則依 abort／驗來源／teardown 規則從新 main 重建。Gate BLOCK 後只修該 Team integration tree，依 input fingerprint 只重跑失效或未知 scope 的 gate；成功 gate 可重用，未知依賴、輸入集合變動、orchestrator 不同代或 `inconclusive` 一律重跑。純 metadata 只跑 acceptance、`backlog.py validate --baseline-check` 與必要 acceptance evidence，不為此重跑不受影響的全量 Gate。
+**Gate 用輸入變更決定，不用 commit 數量決定。** child／round integration 的 fresh 與 `--continue` 在未授權時一律加 `--no-gate`，只排空純 pick／衝突整理並保留 in-flight state；晚回 child 在 Manager Gate 前用 `--append`，Gate 後留下一輪。取得本 Team delivery-loop 授權後，Manager 用同一 state 跑一次 fresh Gate；base 已前進則依 abort／驗來源／teardown 規則從新 main 重建。Gate BLOCK 後只修該 Team integration tree，依 input fingerprint 只重跑失效或未知 scope 的 gate；成功 gate 可重用，未知依賴、輸入集合變動、orchestrator 不同代或 `inconclusive` 一律重跑。純 metadata 只跑 acceptance、`backlog.py validate --baseline-check` 與必要 acceptance evidence，不為此重跑不受影響的全量 Gate。
 
 **Review 是有界的機器輔助，不是完美競賽。** 普通單一修補不自動配一對 LLM reviewer；高風險或複雜 scope 才例外派。沿用 `review_cycle.py` 的完整 `commit SHA × scope` 最多兩輪：第二輪仍 BLOCK 就進 driving-agent adjudication，選 `fix`、`accept` 或 `defer` 並具名；NIT 與 tooling debt 不得把 45 張單重新打開成無限迴圈。Gate 本身是獨立 review 層，fresh Gate 非 BLOCK 且 receipt／acceptance 齊全就是可交付的 80 分。
 

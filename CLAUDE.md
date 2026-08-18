@@ -76,12 +76,14 @@ Scope 檔案重疊；active worktree 本身是佔用狀態，不是 collision。
 免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
 Review 結果由 reviewer output / review cycle / delivery receipt 留證；commit message 不承載 review attestation。
 
-**預設假設多 session 並行,落地權在取得使用者明示授權的 Delivery Team Integrator,不在各票。** child
-無例外只做到自己的 commit + hand-back；Integrator 未授權前可用 `integrate ... --commit --no-gate`
-與 `--append` 純組裝，整合 state 禁止 catchup，main 前進時須 abort/驗來源/teardown/重建。取得本
-Team delivery-loop 授權後，Integrator 執行 `close-wave --commit --sync`：唯一 fresh Gate、cutover、
-resolve、anchor/validate、origin/main sync；其他 Delivery Team 可並行，最後共享 ref 由 lock 序列化。
-`deploy` / `release` 仍須另外明示 release 意圖。正常溝通讀 registry/state/receipt；只有衝突、state
+**預設假設多 session 並行,Manager 是唯一 primary／origin/main 落地責任者。** Child 依三種
+`work_mode` 工作：`direct-assignment`、`ticket-factory`、`ticket-delivery`；開工前由 registry
+驗證 Scope／ticket admission，完成後只 commit + typed hand-back。Integrator 依 Scope 矩陣 fan-out
+並以 `integrate ... --commit --no-gate`／`--append` 做 staging fan-in；integration state 必須記錄
+source hand-back SHA、phase 與下一步 Manager，不重簽 child seal、不落地 primary。Manager 才執行
+受影響的 Gate、`close-wave --commit`、cutover、resolve、anchor/validate、origin/main sync；
+`deploy` / `release` 仍須另外明示 release 意圖。完整術語與責任流程見 KG Board `/model` 頁，機器
+契約與停止點見 `.claude/skills/worktree-flow/SKILL.md`。正常溝通讀 registry/state/receipt；只有衝突、state
 不一致、resource collision 或 primary race 才用內建 thread message，訊息至少帶 canonical contract 的
 team/slug、branch、worktree path、HEAD、state path、具體 blocker 與證據、要求的動作，以及
 pause|continue 判定。完整正本見 `.claude/skills/worktree-flow/SKILL.md`。
@@ -137,7 +139,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 ## 對話啟動流程
 
 1. **先做 typed skill routing** — 把使用者意圖歸入 `.claude/skills/catalog.json` 的 typed intent，先跑 `./ops/skill_route.py validate --json`，再跑 `./ops/skill_route.py route --intent <intent> --json`；自然語言只產生候選，不得把所有命中描述的 skill 一起載入。「不確定」先停在 `kg-router` bootstrap，再沿 route 的 required dependency 查 authority。
-2. **判定角色視野** — Ticket Factory／Delivery Team Integrator／Delivery Child／Docs Steward／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。實際 section 走 `./ops/context_route.py render --role <role> --json`，缺 section 直接 fail-closed。
+2. **判定角色視野** — Manager／Ticket Factory／Delivery Team Integrator／Delivery Child／Docs Steward／Review service 先觸發 `kg-agent-context`，讀 `docs/reference/agent_context.md` 對應列；不要因冷啟動就預載兄弟角色或全 repo。實際 section 走 `./ops/context_route.py render --role <role> --json`，缺 section 直接 fail-closed。
 3. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 4. **載入文檔控制面** — `docs/registry.yml` 是活文檔 SoT;先用下方「Docs Control Plane 快速用法」判斷該讀 / 該同步 / 該驗什麼。
 5. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
@@ -196,7 +198,7 @@ KG repo-local skill 的完整 roster、primary/secondary/context/closure phase�
 
 ## Commit / 落地政策
 
-- **Worktree / feature branch 任務**:child 做完最小充分驗證後直接 commit、`./ops/worktree_registry.py hand-back --json`，保留工作樹並回報 exact source thread ID、branch/path/HEAD；**預設不跑 gate/cutover**。Gate BLOCK 必須退回該 source thread，由原 thread 以新 commit／新 hand-back 回交；完整欄位以 `.claude/skills/worktree-flow/SKILL.md` 為準。握有整批視野的 Delivery Team Integrator 若取得當下 delivery-loop 授權，才以 `close-wave --commit --sync` 完整落地 primary＋origin/main；這是 Team 完成，不是 child hand-back。`deploy` / `release` 仍不包含在內。工具護欄不變。
+- **Worktree / feature branch 任務**:child 先依 `work_mode` 與 structured Scope admission，完成最小充分驗證後直接 commit、`./ops/worktree_registry.py hand-back --json`，保留工作樹並回報 exact source thread ID、branch/path/HEAD/seal；**預設不跑 gate/cutover**。Gate BLOCK 必須退回該 source thread，由原 thread 以新 commit／新 hand-back 回交。Integrator 只做 staging fan-in；Manager 才能以受影響 Gate、`close-wave --commit`、cutover、resolve、sync 完整落地 primary＋origin/main。`deploy` / `release` 仍不包含在內。工具護欄不變。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)

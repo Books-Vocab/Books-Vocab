@@ -162,6 +162,16 @@
       "purpose": "worktree-flow 的資訊邊界與歷史載入規則"
     },
     {
+      "id": "worktree.manager",
+      "path": ".claude/skills/worktree-flow/SKILL.md",
+      "registry_id": "sop.release",
+      "start": "## 批次整合（每個 Delivery Team thread：N 個工作樹 → 一次完整閉環）",
+      "end": "## 並發協調（多 session 常態）",
+      "kind": "skill",
+      "max_tokens": 5000,
+      "purpose": "Manager 的 Gate、cutover、resolve、sync 落地權限與 staging handoff"
+    },
+    {
       "id": "worktree.child-stop",
       "path": ".claude/skills/worktree-flow/SKILL.md",
       "registry_id": "sop.release",
@@ -190,7 +200,7 @@
       "end": "## 並發協調（多 session 常態）",
       "kind": "skill",
       "max_tokens": 6500,
-      "purpose": "Integrator fan-in、close-wave、sync 與並發邊界"
+      "purpose": "Integrator staging fan-in 與 Manager close-wave、sync 的並發邊界"
     },
     {
       "id": "worktree.review",
@@ -211,6 +221,17 @@
       "kind": "skill",
       "max_tokens": 1300,
       "purpose": "收尾 receipt 的必填證據"
+    },
+    {
+      "id": "agent-context.role.manager",
+      "path": "docs/reference/agent_context.md",
+      "registry_id": "reference.agent_context",
+      "start": "| **Manager** (",
+      "end": "| **Ticket Factory** (",
+      "anchor_mode": "prefix",
+      "kind": "authority",
+      "max_tokens": 1200,
+      "purpose": "Manager primary／origin-main 落地責任與 staging handoff"
     },
     {
       "id": "agent-context.role.delivery-child",
@@ -469,6 +490,20 @@
       "id": "role.ticket-factory",
       "match": {"roles": ["ticket-factory"]},
       "units": ["agent-context.role.ticket-factory", "agent-context.ticket-factory-contract", "router.hard-stops", "receipt.core"]
+    },
+    {
+      "id": "role.delivery-manager",
+      "match": {
+        "roles": [
+          "delivery-manager"
+        ]
+      },
+      "units": [
+        "agent-context.role.manager",
+        "worktree.boundary",
+        "worktree.manager",
+        "sop.release.model"
+      ]
     },
     {
       "id": "role.delivery-integrator",

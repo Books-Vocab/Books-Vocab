@@ -26,6 +26,8 @@ from docs_impact import parse_registry
 SCHEMA = "kg.context_plane.v1"
 MANIFEST_NAME = "context_plane.json"
 ROLE_ALIASES = {
+    "Manager": "delivery-manager",
+    "manager": "delivery-manager",
     "Ticket Factory": "ticket-factory",
     "platform-steward": "ticket-factory",
     "Delivery Team Integrator": "delivery-integrator",
@@ -40,7 +42,7 @@ ROLE_ALIASES = {
     "review-service": "review-service",
     "code-reviewer": "review-service",
 }
-KNOWN_ROLES = {"ticket-factory", "delivery-integrator", "delivery-child", "docs-steward", "review-service"}
+KNOWN_ROLES = {"delivery-manager", "ticket-factory", "delivery-integrator", "delivery-child", "docs-steward", "review-service"}
 KNOWN_SURFACES = {"docs", "backend", "ios", "release"}
 KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence", "tool-friction", "docs-registry"}
 KNOWN_SKILLS = {

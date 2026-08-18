@@ -50,9 +50,10 @@ Global kernel 的內容仍以根 `CLAUDE.md` 為準；本索引不重抄其規�
 
 | role | minimum context | do not preload | escalation start |
 |---|---|---|---|
+| **Manager** (`manager`) | `kg-agent-context`、`worktree-flow` 的 Manager 落地段、assigned staging handoff／Gate receipt、`docs/sop/release.md` | Ticket Factory 的 triage 細節、child domain implementation、未納入本輪的 worktree | 先重查 current `main`／`origin/main`、integration state、source hand-back SHA 與 Scope；Manager 是唯一 primary／origin/main 落地責任者，可執行 gated continuation、`close-wave --commit`、`cutover --commit`、`resolve --via-integration`、`sync --commit`；`deploy` 仍需另外的 release 意圖；Gate BLOCK 依 exact source thread ID 原路退回 child |
 | **Ticket Factory** (`platform-steward`) | `kg-agent-context`、`kg-router`、`kg-receipt` 的立單／stream／contract 規則、`./ops/backlog.py lifecycle --json`、需求本身 | Delivery Team fan-in、Gate/cutover、domain implementation、完整產品技術地圖 | `docs/registry.yml` 的 trigger → 產品／技術 SoT；Ticket Factory 持續負責 raised → `dispatchable`，或立即具名的使用者／外部阻塞；若修法需要 code／merge，保留 ticket id、fix_site、groom／contract evidence，交由 `delivery-coordinator` 從 `./ops/backlog.py dispatch` 取得，不自行修產品 code |
-| **Delivery Team Integrator** (`delivery-coordinator`) | `kg-agent-context`、assigned batch、backlog lifecycle、`worktree-flow` 的停止點／批次整合／`close-wave`／並發段、`docs/sop/release.md` | Ticket Factory 的 triage 細節、未被 batch 指向的 domain 文件、Catalog 與其他 team 的內部狀態 | 先查 assigned ticket 的 `fix_site` 與 registry trigger；日常依 Gate tier 只跑所需深度，跨功能根目錄且已有真實 S3 route 才升 S3；若尚無 S3 route 不虛構高層證據，留在 S2 並暴露缺口；非重大 S2/S3 BLOCK 可用具名既有 ticket 帶過，重大或 S0/S1/S4 BLOCK 退回；Gate BLOCK 時依 hand-back 的 exact source thread ID 退回原提交者；只在 state／collision／primary race 等不穩定狀況傳 thread message |
-| **Delivery Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、由 `dispatch` 取得的 contract-ready ticket、自己的 agent contract、`worktree-flow` 的 child stop／hand-back、最小 domain SoT | Ticket Factory 流程、Integrator 批次收尾、其他 domain、全量 Gate／release 文件 | 開發／hand-back 以 S0+受影響 S1 為最低證據，不自行升級全量 Gate；hand-back 必須附 exact source thread ID（跨 host 加 source host ID）；Gate BLOCK 後由原 thread 修正並以新 commit／新 hand-back 回交；依 assigned path／trigger 查 registry，再向 Integrator 回報跨界或不可判定問題 |
+| **Delivery Team Integrator** (`delivery-coordinator`) | `kg-agent-context`、assigned batch、backlog lifecycle、Scope／檔案佔用矩陣、`worktree-flow` 的 staging／並發段 | Ticket Factory 的 triage 細節、未被 batch 指向的 domain 文件、Manager 的 primary／release context | 先對帳 child hand-back、source tip、Scope 與 integration state；只做 fan-out、`integrate --commit --no-gate`、`--append`、衝突處理與 staging tree 清理；產生 fan-in manifest 後直接交回 Manager，不跑 Gate/cutover/sync、不重簽 child seal；primary race 或 Gate BLOCK 交由 Manager 依 exact source thread ID 處理 |
+| **Delivery Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、自己的 structured Scope 或由 `dispatch` 取得的 contract-ready ticket、agent contract、`worktree-flow` child stop／hand-back、最小 domain SoT | Ticket Factory 流程、Integrator staging 收尾、Manager primary／release context、全量 Gate | 開工前明示 `work_mode`：`direct-assignment`／`ticket-factory` 必須有 structured Scope，`ticket-delivery` 由 ticket 推導 Scope；開發／hand-back 以 S0+受影響 S1 為最低證據；hand-back 必須附 exact source thread ID（跨 host 加 source host ID）、exact HEAD 與 seal；Gate BLOCK 後由原 thread 修正並以新 commit／新 hand-back 回交；Child 不跑 Gate/cutover/resolve/sync/deploy |
 | **Docs Steward** (`docs-steward`) | `kg-agent-context`、assigned docs ticket、`kg-docs-control-plane`、`docs/registry.yml`、最小受影響 SoT | `worktree-flow` child stop／hand-back、domain implementation、全量 release 文件；只有明示 handback task 才載入 worktree slices | 依 registry trigger／impact 查 SoT；只有實際 hand-back 才載入 child stop／handoff slice，跨界時交回 Integrator |
 | **Review service** (`code-reviewer`) | `kg-agent-context`、指定 commit SHA × scope、`docs/sop/review_discipline.md` | 業務全景、未被 scope 觸及的 domain 文件、任何 code modification | 只把 block／nit／tooling debt 回給 caller；不自行修 code 或改寫 scope |
 
@@ -84,15 +85,16 @@ Ticket Factory 不修產品 code、不做整合、不做 cutover；它負責把�
 票交給 Delivery Team。分析 agent 可以 fan-out，但只回傳結構化提案，不直接寫 backlog；所有 ledger write
 由單一控制點依當下證據序列化完成。fan-out 優先順序固定為 bounded bug、重構、工具摩擦、測試維護、文件修復；開放式產品行為、策略與 open-ended discovery 不自行臆測，先升級決策。
 
-角色不是階層命令，而是資訊邊界。Integrator 是 Delivery Team thread 的主 agent；child 的停止點
-永遠是自己的 `commit + hand-back`。完整動詞與授權邊界分別以 `ops/backlog.py lifecycle --json`、
-`dispatch` 與 `worktree-flow` 為準。
+角色不是階層命令，而是資訊與落地邊界。Integrator 是 Delivery Team 的 fan-out／staging 協調者；
+Manager 是唯一把 staging 送進 primary／origin/main 的角色；Child 的停止點永遠是自己的
+`commit + typed hand-back`。完整動詞與授權邊界分別以 `ops/backlog.py lifecycle --json`、`dispatch`、
+registry admission 與 `worktree-flow` 為準。
 
 Fan-out 的淺規則：優先選 bounded bug、refactor、tooling friction、test maintenance、docs 等可獨立驗收的工作；新產品行為、策略、open-ended discovery、跨面產品變更需 parent 明示後才列為 fan-out 優先項。這只是 agent 的排序／派工指引，不是 backlog lifecycle、acceptance 或 status 的新契約。
 
 ## 驗證層級與耗時控制面
 
-- Child 開發／hand-back：S0 + 受影響 S1；Integrator 批次整合：S0 + 受影響 S2；只有跨模組且存在真實 route 才升 S3；S4 僅用於發布。較低層級的證據不可冒充較高層級。
+- Child 開發／hand-back：S0 + 受影響 S1；Integrator staging：S0 + 受影響的快速檢查，不跑 Manager Gate；Manager 整合／cutover：S0 + 受影響 S2；只有跨模組且存在真實 route 才升 S3；S4 僅用於發布。較低層級的證據不可冒充較高層級。
 - 受影響的 orchestrator source 優先走 `ops/test_route.py` 的明確 route；每次先 collect-only，route 失效必回退父群，未知 source 不得變成零測試綠燈。
 - 長測試 bundle 用 `ops/test_timing.py run --bundle <manifest> --json`，完成後讀 `status`／`wait`；不要自行輪詢 child。`estimate` 只回報區間與 confidence，歷史 ledger 是 gitignored 輔助證據，不改 gate verdict。
 
@@ -131,7 +133,9 @@ flag、skill 或 role contract，使用 registry 唯一清單做 `./ops/docs_imp
   Team；不替 Integrator 做整合決策。
 - **Delivery Child**：跨 bounded context、fix-site 重疊、ticket 與 SoT 衝突 → 暫停越界動作，向
   Integrator 回報證據與選項。
-- **Delivery Team Integrator**：source／state／primary race、衝突或工具 schema 不一致 → 用內建
+- **Manager**：source／state／primary race、Gate BLOCK、cutover、resolve 或 sync 的落地決策 → 讀 staging handoff、
+  registry 與 exact source thread ID；需要 child 修正時原路退回，不把 Integrator staging handoff 當 child receipt。
+- **Delivery Team Integrator**：source／state／primary race、衝突或工具 schema 不一致（但尚未落地 primary）→ 用內建
   thread message 通知受影響 peer；訊息至少帶 canonical contract 的 `team/slug`、`branch`、
   `worktree path`、`HEAD`、`state path`、具體 blocker 與證據、要求的動作，以及
   `pause|continue` 判定；若是 child Gate BLOCK，另依 hand-back receipt 的 exact source thread ID
