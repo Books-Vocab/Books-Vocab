@@ -1391,11 +1391,8 @@ ub_out="$(bash "$fx_ub/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || ub_rc=$
   || fail_t "3.0.0 build tag blocked an unrelated 2.0.1 release: $ub_out"
 
 # ── 部署收斂閘：release backend 的第四步 ─────────────────────────────────────
-# 這段是**行為**測試（真的執行函式），與本檔其餘 grep 式結構測試並存。放進同一個檔案
-# 是刻意的：gate 對 shell 腳本的測試解析是「ops/tests/test_<base> 優先於 ops/test_<base>，
-# 取第一個存在者」（worktree_orchestrate.py `_ops_shell_test_candidates`）。另開一份
-# ops/tests/test_release.sh 會把本檔整份從 gate 上擠下去——140 個 case 靜默失效，而
-# 輸出看起來一樣綠。一個腳本一個測試檔。
+# 這段是**行為**測試（真的執行函式），與本檔其餘結構測試並存；所有 case 都在同一個
+# release regression entrypoint 執行，避免只驗文字而漏掉實際行為。
 #
 # 被測的是 d156c6c28 加的收斂閘：deploy 只保證 origin/prod 前進，真正的部署由 felix
 # reconciler 非同步做且失敗會自動回滾，所以「什麼時候可以說成功」必須被釘住。
