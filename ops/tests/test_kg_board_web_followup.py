@@ -107,7 +107,8 @@ def test_matrix_keeps_agent_identity_dirty_sources_and_live_snapshot_reload():
     for field in ("agent_title", "agent_status", "host", "thread", "dirty_file_count", "dirty_files"):
         assert f'"{field}"' in APP
     assert 'liveEvents.addEventListener("snapshot",scheduleLiveReload)' in APP
-    assert 'setInterval(()=>load().catch(showLoadError),30000)' in APP
+    assert 'const LIVE_RELOAD_DELAY_MS=25' in APP
+    assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' in APP
     assert "publish_event" not in APP
     assert "grid-area=" not in CSS
 

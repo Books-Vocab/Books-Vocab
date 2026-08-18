@@ -282,7 +282,8 @@ def test_active_page_is_admin_readonly_tree_and_collapsed_card_ia():
     assert "/api/ticket/" in js
     assert 'new EventSource("/api/events")' in js
     assert 'addEventListener("snapshot"' in js
-    assert 'setInterval(()=>load().catch(showLoadError),30000)' in js
+    assert 'const LIVE_RELOAD_DELAY_MS=25' in js
+    assert 'setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750)' in js
 
 
 def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):
@@ -296,6 +297,47 @@ def test_sse_frame_and_publish_event_keep_only_latest_snapshot(monkeypatch):
     assert payload["kind"] == "latest"
     assert client.empty()
     assert server._sse_frame("snapshot", payload).startswith(b"event: snapshot\n")
+
+
+def test_live_stream_has_a_measurable_subsecond_budget(monkeypatch):
+    client = queue.Queue(maxsize=1)
+    monkeypatch.setattr(server, "_sse_clients", {client})
+
+    started = time.monotonic()
+    server.publish_event("claims")
+    payload = client.get(timeout=0.25)
+    delivery_seconds = time.monotonic() - started
+
+    assert delivery_seconds < 1.0
+    assert "." in payload["at"].split("+")[0]
+    assert server.LIVE_EVENT_POLL_SECONDS <= 0.5
+
+
+def test_live_event_watcher_publishes_external_mirror_replace(monkeypatch, tmp_path):
+    mirror = tmp_path / "mirror.json"
+    mirror.write_text("old", encoding="utf-8")
+    events = []
+    stop_event = threading.Event()
+    monkeypatch.setattr(server, "MIRROR_PATH", mirror)
+    monkeypatch.setattr(server, "_live_event_seen_fingerprint", None)
+    monkeypatch.setattr(server, "LIVE_EVENT_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(server, "publish_event", events.append)
+
+    worker = threading.Thread(
+        target=server.live_event_watch_loop,
+        args=(stop_event,),
+        daemon=True,
+    )
+    worker.start()
+    time.sleep(0.02)
+    mirror.write_text("new-content", encoding="utf-8")
+    deadline = time.monotonic() + 0.5
+    while not events and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stop_event.set()
+    worker.join(timeout=0.5)
+
+    assert events == ["mirror"]
 
 
 def test_publish_event_serializes_client_coalescing(monkeypatch):

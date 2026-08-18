@@ -1258,18 +1258,22 @@ document.addEventListener("fullscreenchange",()=>{
   if(treeFullscreen.open&&treeFullscreen.nativeFullscreen&&!document.fullscreenElement)closeTreeFullscreen({restoreFocus:false});
 });
 const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
+const LIVE_RELOAD_DELAY_MS=25;
 let liveReloadTimer=null;
 let liveEvents=null;
+let liveStreamConnected=false;
 function scheduleLiveReload(){
   if(liveReloadTimer!==null)return;
-  liveReloadTimer=setTimeout(()=>{liveReloadTimer=null;load().catch(showLoadError)},150);
+  liveReloadTimer=setTimeout(()=>{liveReloadTimer=null;load().catch(showLoadError)},LIVE_RELOAD_DELAY_MS);
 }
 function connectLiveEvents(){
   if(typeof EventSource==="undefined")return;
   liveEvents=new EventSource("/api/events");
+  liveEvents.addEventListener("open",()=>{liveStreamConnected=true});
+  liveEvents.addEventListener("error",()=>{liveStreamConnected=false});
   liveEvents.addEventListener("snapshot",scheduleLiveReload);
 }
 renderTreeZoom();
 load().catch(showLoadError);
 connectLiveEvents();
-setInterval(()=>load().catch(showLoadError),30000);
+setInterval(()=>{if(!liveStreamConnected)load().catch(showLoadError)},750);
