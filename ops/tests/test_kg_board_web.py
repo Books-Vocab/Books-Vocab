@@ -354,7 +354,7 @@ def test_model_page_exposes_one_terminology_and_live_state_contract():
     assert "needs-grooming" in js and "contract-not-ready" in js
     assert "依賴阻塞" in js and "Scope audit" in js
     assert ".flow-node" in css and ".terms-table" in css
-    assert "roles" in html and "work-modes" in html
+    assert "roles" in html and "work-modes" in html and "identities" in html
     assert "renderRoles" in js and "renderWorkModes" in js
     assert ".role-card" in css and ".work-mode-card" in css
 

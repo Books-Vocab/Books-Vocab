@@ -142,7 +142,7 @@ def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     """Run the Delivery Team's complete, resumable batch closure.
 
     Workers still stop at commit + hand-back. This verb belongs to the Delivery
-    Team master/integrator and continues through primary cutover. With --sync it
+    Manager and continues through primary cutover. With --sync it
     also mirrors the landed primary tip to origin/main. Other teams' worktrees
     are allowed to remain active: every teardown target is still an explicit
     source branch or this round's integration branch, and the finalization lock

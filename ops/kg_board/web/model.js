@@ -18,7 +18,9 @@ function renderLive(payload){
 }
 function renderRoles(payload){
   const roles=payload.roles||[];
+  const identities=payload.identities||[];
   document.getElementById("roles").innerHTML=roles.map(role=>`<article class="role-card role-${esc(role.id)}"><span class="eyebrow">${esc(role.english)}</span><h3>${esc(role.chinese)}</h3><p><strong>負責：</strong>${esc((role.owns||[]).join("、"))}</p><p><strong>可以：</strong>${esc((role.can_do||[]).join("、"))}</p><p class="role-stop"><strong>停止點：</strong>${esc(role.stops_at)}</p></article>`).join("");
+  document.getElementById("identities").innerHTML=identities.map(identity=>`<article class="identity-card identity-${esc(identity.id)}"><span class="eyebrow">${esc(identity.english)}</span><h3>${esc(identity.chinese)}</h3><p><strong>開工條件：</strong>${esc(identity.admission)}</p><p class="identity-boundary"><strong>責任邊界：</strong>${esc(identity.boundary)}</p></article>`).join("");
   document.getElementById("responsibility-flow").innerHTML=(payload.responsibility_flow||[]).map((item,index)=>`<div class="responsibility-step"><span class="step-no">${index+1}</span><div><strong>${esc(item.label)}</strong><small>${esc(item.owner)}</small><p>${esc(item.detail)}</p></div></div>`).join("");
 }
 function renderWorkModes(payload){

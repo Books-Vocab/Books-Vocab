@@ -19,6 +19,33 @@ verified_against: bf9606b84d4209ea3884a5f1519323fdd374b33f
 這是角色視野與未知問題升級的唯一索引。它只回答「此角色現在該知道什麼、下一步去哪裡查」；
 各 domain 的內容仍由 `docs/registry.yml` 指向的 SoT 負責，不在這裡複製。
 
+## Role identity gate（所有任務命令前）
+
+任何 agent 在修改檔案或執行任務命令前，必須先確認以下五種且僅五種 canonical identity：
+`Manager`、`Integrator`、`Direct-assignment Child`、`Ticket Factory Child`、`Ticket Delivery Child`。
+其中三種 Child 的差別是工作責任，不是聊天層身份；`work_mode` 分別是
+`direct-assignment`、`ticket-factory`、`ticket-delivery`。Docs Steward／Review service 是內部支援工具路徑，
+不是第六種交付身份，也不能取得 primary 落地權。
+
+角色未確認時，唯一允許的操作是唯讀角色／context 判定：
+`./ops/context_route.py identify --role <identity> [--work-mode <mode>] --json`，再用同一組 identity／mode
+執行 `route`／`render`。在這之前不得修改檔案、claim ticket、open/adopt worktree、跑 Gate、整合、
+cutover、resolve、sync、deploy 或其他任務命令。`identify` 的 `status=confirmed` 只證明身份宣告完整，
+不授予 primary、staging 或 production 權限；真正權限仍由 worktree registry、operator contract 與
+Manager 明示授權決定。
+
+| canonical identity | work mode | 開工前必備 | 停止／落地邊界 |
+|---|---|---|---|
+| **Manager** | `none` | current primary、origin/main、integration state 視野 | 唯一負責 current-main admission、Gate、檔案衝突修復、cutover、resolve、sync；deploy 另需 release 意圖 |
+| **Integrator** | `none` | assigned batch、Scope／檔案佔用矩陣 | 只 fan-out、staging fan-in、保留衝突證據，交 staging handoff 給 Manager |
+| **Direct-assignment Child** | `direct-assignment` | exact source thread、structured Scope | 只做自己的 Scope；局部驗證後 commit＋typed hand-back |
+| **Ticket Factory Child** | `ticket-factory` | factory 任務、structured Scope | 只把問題收斂成可派工 contract，不做產品整合或 primary 落地 |
+| **Ticket Delivery Child** | `ticket-delivery` | dispatch／campaign ticket 與 ticket Scope | 只完成 ticket Scope；局部驗證後以 outcomes、exact HEAD、typed seal hand-back |
+
+確認後的第一性邊界固定如下：Manager 唯一看守 primary／current-main／origin/main；Integrator 只做
+fan-out 與 staging fan-in；三種 Child 只做自己的 Scope、局部驗證、commit 與 typed hand-back。任何 agent
+遇到角色、Scope、權限或責任不確定，先停在這道 gate，不猜、不改、不把聊天層的「主要 AI」身份當成交付角色。
+
 ## 載入規則
 
 每個 session 依序處理：
@@ -50,21 +77,22 @@ Global kernel 的內容仍以根 `CLAUDE.md` 為準；本索引不重抄其規�
 
 | role | minimum context | do not preload | escalation start |
 |---|---|---|---|
-| **Manager** (`manager`) | `kg-agent-context`、`worktree-flow` 的 Manager 落地段、assigned staging handoff／Gate receipt、`docs/sop/release.md` | Ticket Factory 的 triage 細節、child domain implementation、未納入本輪的 worktree | 先重查 current `main`／`origin/main`、integration state、source hand-back SHA 與 Scope；Manager 是唯一 primary／origin/main 落地責任者，可執行 gated continuation、`close-wave --commit`、`cutover --commit`、`resolve --via-integration`、`sync --commit`；`deploy` 仍需另外的 release 意圖；Gate BLOCK 依 exact source thread ID 原路退回 child |
-| **Ticket Factory** (`platform-steward`) | `kg-agent-context`、`kg-router`、`kg-receipt` 的立單／stream／contract 規則、`./ops/backlog.py lifecycle --json`、需求本身 | Delivery Team fan-in、Gate/cutover、domain implementation、完整產品技術地圖 | `docs/registry.yml` 的 trigger → 產品／技術 SoT；Ticket Factory 持續負責 raised → `dispatchable`，或立即具名的使用者／外部阻塞；若修法需要 code／merge，保留 ticket id、fix_site、groom／contract evidence，交由 `delivery-coordinator` 從 `./ops/backlog.py dispatch` 取得，不自行修產品 code |
-| **Delivery Team Integrator** (`delivery-coordinator`) | `kg-agent-context`、assigned batch、backlog lifecycle、Scope／檔案佔用矩陣、`worktree-flow` 的 staging／並發段 | Ticket Factory 的 triage 細節、未被 batch 指向的 domain 文件、Manager 的 primary／release context | 先對帳 child hand-back、source tip、Scope 與 integration state；只做 fan-out、`integrate --commit --no-gate`、`--append`、衝突處理與 staging tree 清理；產生 fan-in manifest 後直接交回 Manager，不跑 Gate/cutover/sync、不重簽 child seal；primary race 或 Gate BLOCK 交由 Manager 依 exact source thread ID 處理 |
-| **Delivery Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、自己的 structured Scope 或由 `dispatch` 取得的 contract-ready ticket、agent contract、`worktree-flow` child stop／hand-back、最小 domain SoT | Ticket Factory 流程、Integrator staging 收尾、Manager primary／release context、全量 Gate | 開工前明示 `work_mode`：`direct-assignment`／`ticket-factory` 必須有 structured Scope，`ticket-delivery` 由 ticket 推導 Scope；開發／hand-back 以 S0+受影響 S1 為最低證據；hand-back 必須附 exact source thread ID（跨 host 加 source host ID）、exact HEAD 與 seal；Gate BLOCK 後由原 thread 修正並以新 commit／新 hand-back 回交；Child 不跑 Gate/cutover/resolve/sync/deploy |
-| **Docs Steward** (`docs-steward`) | `kg-agent-context`、assigned docs ticket、`kg-docs-control-plane`、`docs/registry.yml`、最小受影響 SoT | `worktree-flow` child stop／hand-back、domain implementation、全量 release 文件；只有明示 handback task 才載入 worktree slices | 依 registry trigger／impact 查 SoT；只有實際 hand-back 才載入 child stop／handoff slice，跨界時交回 Integrator |
+| **Manager** (`manager`) | `kg-agent-context`、`worktree-flow` 的 Manager 落地段、assigned staging handoff／Gate receipt、`docs/sop/release.md` | Ticket Factory Child 的 triage 細節、child domain implementation、未納入本輪的 worktree | 先重查 current `main`／`origin/main`、integration state、source hand-back SHA 與 Scope；Manager 是唯一 primary／origin/main 落地責任者，也是 current-main admission、檔案衝突與 Gate BLOCK 歸屬的裁決者；可執行 gated continuation、`close-wave --commit`、`cutover --commit`、`resolve --via-integration`、`sync --commit`；`deploy` 仍需另外的 release 意圖；Child slice defect 依 exact source thread ID 原路退回，整合／衝突問題由 Manager-owned staging 修復 |
+| **Integrator** (`delivery-coordinator`) | `kg-agent-context`、assigned batch、backlog lifecycle、Scope／檔案佔用矩陣、`worktree-flow` staging／並發段 | Ticket Factory triage、未被 batch 指向的 domain 文件、Manager primary／release context | 先對帳 child hand-back、source tip、Scope 與 integration state；只做 fan-out、`integrate --commit --no-gate`、`--append`、衝突證據整理與 staging tree 清理；不得自行解檔案衝突、catchup、看守 primary、跑 Gate/cutover/sync；直接交 staging handoff 給 Manager |
+| **Direct-assignment Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、structured Scope、agent contract、`worktree-flow` child stop／hand-back、最小 domain SoT | Ticket Factory contract、Integrator staging、Manager primary／release context、全量 Gate、primary commit 拓撲 | 僅能在自己的 Scope 內實作；S0＋受影響 S1 後 commit＋typed hand-back；不追蹤 primary、不 catchup、不跑 Gate/cutover/resolve/sync/deploy |
+| **Ticket Factory Child** (`platform-steward`) | `kg-agent-context`、`kg-router`、`kg-receipt` 的立單／stream／contract 規則、`./ops/backlog.py lifecycle --json`、factory Scope | Delivery Team fan-in、Gate/cutover、domain implementation、完整產品技術地圖 | 持續把問題收斂到 contract-ready／dispatchable 或具名外部阻塞；不修產品 code、不 claim delivery ticket、不落地 primary |
+| **Ticket Delivery Child** (`backend-engineer`、`ios-engineer`、`ops-engineer`) | `kg-agent-context`、dispatch／campaign ticket、ticket Scope、agent contract、`worktree-flow` child stop／hand-back、最小 domain SoT | Ticket Factory triage、Integrator staging、Manager primary／release context、全量 Gate、primary commit 拓撲 | 只完成 ticket Scope；S0＋受影響 S1 後附 exact source thread ID、HEAD、seal hand-back；不追蹤 primary、不 catchup、不跑 Gate/cutover/resolve/sync/deploy |
+| **Docs Steward** (`docs-steward`) | 已確認 canonical identity 的 caller 所指定的 docs slice、`kg-docs-control-plane`、`docs/registry.yml`、最小受影響 SoT | 自行選擇交付身份、worktree／primary 落地權、domain implementation、全量 release 文件 | 先由 caller 完成五種 identity gate；再依 registry trigger／impact 查 SoT。Docs Steward 只是支援路徑，沿用 caller 的身份與權限，不產生獨立交付 receipt；跨界時把證據交回 caller |
 | **Review service** (`code-reviewer`) | `kg-agent-context`、指定 commit SHA × scope、`docs/sop/review_discipline.md` | 業務全景、未被 scope 觸及的 domain 文件、任何 code modification | 只把 block／nit／tooling debt 回給 caller；不自行修 code 或改寫 scope |
 
-## Ticket Factory 的完成線與責任邊界
+## Ticket Factory Child 的完成線與責任邊界
 
-Ticket Factory 的核心責任是：任何問題進入後，持續負責到它成為可派工工作，或被明確判定為真正需要
-使用者／外部權限的事項。`groomed` 不是完成線；`contract-ready` 才是 Ticket Factory 的完成線。
+Ticket Factory Child 的核心責任是：任何問題進入後，持續負責到它成為可派工工作，或被明確判定為真正需要
+使用者／外部權限的事項。`groomed` 不是完成線；`contract-ready` 才是 Ticket Factory Child 的完成線。
 
-| 狀態／看板語彙 | Ticket Factory 的意義 | 機器對應與責任歸屬 |
+| 狀態／看板語彙 | Ticket Factory Child 的意義 | 機器對應與責任歸屬 |
 |---|---|---|
-| `open` | 問題已記錄，但尚未形成工作 | backlog entry；仍由 Ticket Factory triage |
+| `open` | 問題已記錄，但尚未形成工作 | backlog entry；仍由 Ticket Factory Child triage |
 | `triaged`／`queued` | 修法方向已寫清楚，但仍可能未通過契約檢查 | lifecycle `status=triaged`；groomed 不等於 contract-ready |
 | `contract-not-ready` | 驗收、依賴、證據或 baseline 尚未補完整 | 人類語彙；機器對應為既有 lifecycle `status=contract-blocked` 或 `dispatch.withheld_contract`，不得新增另一個 status，也不得派出 |
 | `dispatchable` | 可直接交給 Delivery Team，五條 dispatch 條件都成立 | 衍生分類，不新增 lifecycle status；唯一正式入口是 `dispatch`／`list --dispatch` |
@@ -81,14 +109,14 @@ contract blocker 不可只留下泛稱 `blocked`：缺欄位就補齊；命令�
 問題定義；duplicate、no-op、已修或不再成立就依 lifecycle 具名收斂為 `wont-fix`。真正需要使用者決策、
 GUI-only 或外部權限時，立即具名升級對象、阻塞原因、證據與下一步，票保持 `contract-blocked`，不得偽造 ready。
 
-Ticket Factory 不修產品 code、不做整合、不做 cutover；它負責把工作定義到能被修，並把 contract-ready
+Ticket Factory Child 不修產品 code、不做整合、不做 cutover；它負責把工作定義到能被修，並把 contract-ready
 票交給 Delivery Team。分析 agent 可以 fan-out，但只回傳結構化提案，不直接寫 backlog；所有 ledger write
 由單一控制點依當下證據序列化完成。fan-out 優先順序固定為 bounded bug、重構、工具摩擦、測試維護、文件修復；開放式產品行為、策略與 open-ended discovery 不自行臆測，先升級決策。
 
-角色不是階層命令，而是資訊與落地邊界。Integrator 是 Delivery Team 的 fan-out／staging 協調者；
-Manager 是唯一把 staging 送進 primary／origin/main 的角色；Child 的停止點永遠是自己的
-`commit + typed hand-back`。完整動詞與授權邊界分別以 `ops/backlog.py lifecycle --json`、`dispatch`、
-registry admission 與 `worktree-flow` 為準。
+角色不是階層命令，而是資訊與落地邊界。Integrator 是 Delivery Team 的 fan-out／staging 協調者，遇到檔案衝突只保留證據並交 Manager；
+Manager 是唯一把 staging 送進 primary／origin/main、處理 current-main admission 與整合修復的角色；Child 的停止點永遠是自己的
+`commit + typed hand-back`，不把 primary 的 commit 拓撲當成自己的工作。完整動詞與授權邊界分別以 `ops/backlog.py lifecycle --json`、`dispatch`、
+ registry admission 與 `worktree-flow` 為準。
 
 Fan-out 的淺規則：優先選 bounded bug、refactor、tooling friction、test maintenance、docs 等可獨立驗收的工作；新產品行為、策略、open-ended discovery、跨面產品變更需 parent 明示後才列為 fan-out 優先項。這只是 agent 的排序／派工指引，不是 backlog lifecycle、acceptance 或 status 的新契約。
 
@@ -129,16 +157,16 @@ flag、skill 或 role contract，使用 registry 唯一清單做 `./ops/docs_imp
 
 ### 必須交給 owner
 
-- **Ticket Factory**：修法需要 code／merge／release 判斷 → 只補 ticket 的可執行描述，交由 Delivery
+- **Ticket Factory Child**：修法需要 code／merge／release 判斷 → 只補 ticket 的可執行描述，交由 Delivery
   Team；不替 Integrator 做整合決策。
-- **Delivery Child**：跨 bounded context、fix-site 重疊、ticket 與 SoT 衝突 → 暫停越界動作，向
+- **Direct-assignment／Ticket Delivery Child**：跨 bounded context、fix-site 重疊、ticket 與 SoT 衝突 → 暫停越界動作，向
   Integrator 回報證據與選項。
 - **Manager**：source／state／primary race、Gate BLOCK、cutover、resolve 或 sync 的落地決策 → 讀 staging handoff、
-  registry 與 exact source thread ID；需要 child 修正時原路退回，不把 Integrator staging handoff 當 child receipt。
-- **Delivery Team Integrator**：source／state／primary race、衝突或工具 schema 不一致（但尚未落地 primary）→ 用內建
+  registry 與 exact source thread ID；Child slice defect 原路退回，整合／檔案衝突由 Manager 在 staging 修復，不把 Integrator staging handoff 當 child receipt。
+- **Integrator**：source／state／工具 schema 不一致或衝突證據（但尚未落地 primary）→ 用內建
   thread message 通知受影響 peer；訊息至少帶 canonical contract 的 `team/slug`、`branch`、
   `worktree path`、`HEAD`、`state path`、具體 blocker 與證據、要求的動作，以及
-  `pause|continue` 判定；若是 child Gate BLOCK，另依 hand-back receipt 的 exact source thread ID
+  `pause|continue` 判定；不得自行解檔案衝突或要求 Child catchup；若是 child Gate BLOCK，另依 hand-back receipt 的 exact source thread ID
   回到原提交者。正常進度仍讀 registry／state／receipt，不聊天同步。
 - **所有角色**：真正的使用者策略、預算、不可逆 production／GUI-only 動作或安全紅線 → 升級使用者，
   不用文件假裝替使用者做取捨。

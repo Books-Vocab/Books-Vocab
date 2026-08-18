@@ -2,8 +2,8 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""Worktree orchestrator (P3): the primitive CLI that carries an intent from a fresh
-session all the way to cutover into `main`, without re-implementing any gate.
+"""Worktree orchestrator (P3): the primitive CLI that carries an intent through
+role-bounded delivery phases toward cutover into `main`, without re-implementing any gate.
 
 It is the thin conductor above two existing layers:
   * P1 ops/lib/worktree_state.py  — pure worktree/branch health verdicts.
@@ -66,12 +66,12 @@ Exit codes use the shared contract: 0=pass, 1=tool error, 2=block, 3=warn,
              staled everyone else, and the recovery raced identically);
              through `land` the same ten landed 10 of 10 in 10 gate runs.
              Advisory: it only guarantees one pass if every lander uses it.
-  integrate  the BATCH verb: fork one integration worktree off the local trunk,
-             cherry-pick N branches into it in order, stop by NAME on a conflict
-             (`--continue` after resolving, `--abort` to discard), and run the
-             EXISTING `gate` ONCE on the merged result (or `--no-gate` to hand back
-             after picking so a later `--continue --commit` runs only that gate). It
-             answers the one question
+  integrate  the BATCH staging verb: fork one integration worktree off the local
+             trunk, cherry-pick N branches into it in order, stop by NAME on a
+             conflict (`--continue` after Manager resolves, `--abort` to discard),
+             and, for an Integrator, use `--no-gate` to hand the staged tree to the
+             Manager. A Manager may continue into the existing `gate` ONCE on the
+             merged result. It answers the one question
              per-branch gates structurally cannot: are these N pieces of work green
              TOGETHER. Measured 2026-08-06 on an eleven-branch batch — review of the
              integrated tree found five blocking defects, each green under its own
@@ -80,7 +80,7 @@ Exit codes use the shared contract: 0=pass, 1=tool error, 2=block, 3=warn,
              that rule keeps living in exactly one place). cherry-pick rather than
              merge, so a branch cannot smuggle in commits nobody named. dry-run
              default.
-  close-wave  the Delivery Team Integrator verb: resume one named batch through
+  close-wave  the Manager verb: resume one named batch through
               integrate/append -> one fresh gate -> cutover -> source/integration
               resolve -> backlog anchor -> validate; with --sync it mirrors the
               exact landed primary tip to origin/main. Other teams may stay active;
@@ -370,7 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
     delegated_mode = op.add_mutually_exclusive_group()
     delegated_mode.add_argument(
         "--delegated", dest="delegated", action="store_true", default=None,
-        help="mark this worktree as delegated; landing belongs to the integrator",
+        help="mark this worktree as delegated; Manager admission owns landing",
     )
     delegated_mode.add_argument(
         "--not-delegated", dest="delegated", action="store_false",
@@ -422,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     delegated_mode = ad.add_mutually_exclusive_group()
     delegated_mode.add_argument(
         "--delegated", dest="delegated", action="store_true", default=None,
-        help="mark this worktree as delegated; landing belongs to the integrator",
+        help="mark this worktree as delegated; Manager admission owns landing",
     )
     delegated_mode.add_argument(
         "--not-delegated", dest="delegated", action="store_false",
@@ -548,7 +548,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     cw = sub.add_parser(
         "close-wave",
-        help="Delivery Team Integrator closure: integrate/append -> one fresh Gate "
+        help="Manager closure: integrate/append -> one fresh Gate "
              "-> cutover -> resolve -> anchor -> validate -> optional origin/main "
              "sync (dry-run default)",
     )

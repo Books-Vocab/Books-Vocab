@@ -2,12 +2,19 @@
 name: kg-receipt
 description: "KG 任務收尾與交接 receipt。當使用者要求交接、handoff、總結、驗證證據、下一輪接手，或任務完成前需要固定回報格式時觸發。"
 user-invocable: true
-version: 1.0.0
+version: 1.2.0
 ---
 
 # KG Receipt
 
 本 skill 固定任務完成時留下可驗證交接。receipt 不是長文檔，不取代 commit message 或 PR body。
+
+## Identity prerequisite
+
+Delivery receipt 的 `role_profile` 必須先落在五種 canonical identity 之一：`Manager`、`Integrator`、
+`Direct-assignment Child`、`Ticket Factory Child`、`Ticket Delivery Child`。未先以
+`./ops/context_route.py identify --role <identity> [--work-mode <mode>] --json` 取得 confirmed identity，
+不得開始修改、交付或產生 hand-back；Docs Steward／Review service 是內部支援 route，不是 delivery receipt identity。
 
 ## Receipt Checklist
 
@@ -53,10 +60,10 @@ category 名單與欄位定義見 `ops/backlog.py --help`,此處不複述(SoT �
 
 ```text
 Lane:
-- team=<Ticket Factory|Delivery Team> role=<factory|Integrator|Manager|child-worker> work_mode=<direct-assignment|ticket-factory|ticket-delivery|none> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|staging-handoff|primary+sync|other named stop>
+- identity=<Manager|Integrator|Direct-assignment Child|Ticket Factory Child|Ticket Delivery Child> team=<Ticket Factory|Delivery Team> work_mode=<direct-assignment|ticket-factory|ticket-delivery|none> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|staging-handoff|primary+sync|other named stop>
 
 Context:
-- role_profile=<Ticket Factory|Delivery Team Integrator|Delivery Child|Review service>
+- role_profile=<Manager|Integrator|Direct-assignment Child|Ticket Factory Child|Ticket Delivery Child>
 - loaded=<actual authority paths or registry ids>
 - intentionally_unloaded=<deep context not needed for this slice, or none>
 
@@ -82,7 +89,7 @@ Next:
 - <只列真正需要下一輪做的事>
 ```
 
-### Ticket Factory receipt
+### Ticket Factory Child receipt
 
 Ticket Factory receipt 必須回報可對帳的責任線，而不是只報「groomed」：未解總數、groomed／queued、
 contract-ready、dispatchable、contract-not-ready、dependency-blocked、具名使用者／外部升級、
@@ -94,15 +101,16 @@ contract evidence 或逐票 backlog contract preflight（`./ops/backlog.py prefl
 來自 dispatch 五條件，後者來自 worktree registry claim。receipt 仍以 `backlog.py lifecycle --json`
 作為 lifecycle SoT，並保留 stream、tooling-debt 與 worktree-flow 的既有邊界。
 
-角色邊界：`child-worker` 的 `hand-back` 只代表自己的 slice 已交回，且必須列 `work_mode`、exact
-source thread ID、HEAD、seal 與 S0/S1 證據；`Integrator` 的 receipt 是 staging handoff，必須列
+角色邊界：三種 Child 的 `hand-back` 只代表自己的 slice 已交回，且必須列 `identity`、`work_mode`、exact
+source thread ID、HEAD、seal 與 S0/S1 證據；這個 source thread ID 也是 Manager 發生 Child slice BLOCK 時的唯一退回路徑。
+`Integrator` 的 receipt 是 staging handoff，必須列
 `wave slug`、來源 branch／child hand-back SHA、預期 child／已 hand-back／已 fan-in 數、staging tree、
 phase、`next_action=manager-gate`，並明確寫「未落地 primary、未 sync、未重簽 child seal」。只有
-`Manager` receipt 才列 Gate verdict、primary landed SHA 與 `origin/main` sync verdict。`Ticket Factory`
+`Manager` receipt 才列 Gate verdict、primary landed SHA 與 `origin/main` sync verdict。`Ticket Factory Child`
 的 receipt 改報上述 contract／dispatch 對帳，仍不宣稱任何 code 已修復。若發生不穩定狀態，列出
 thread message 的對象、原因、證據與要求的 pause/continue 動作；正常協作不需要把聊天內容當 SoT。
 
-### Child work mode
+### Child identity and work mode
 
 - `direct-assignment`：無 delivery ticket；開工前必須在 registry 留下 structured Scope。
 - `ticket-factory`：負責產票／梳理；不持有 delivery ticket；開工前必須有 structured Scope。
@@ -110,6 +118,16 @@ thread message 的對象、原因、證據與要求的 pause/continue 動作；�
 
 三種 mode 是 registry admission 與看板心智模型，不改 `backlog.py` lifecycle、status 或 acceptance 語義。
 Child 只跑 S0＋受影響 S1；Manager 整合後才依範圍升 S2，跨模組才升 S3，S4 只用於真正發布。
+
+### Gate BLOCK 回流規則
+
+Gate 是 Manager 對整合後樹的判決，不是 Child hand-back 的附加責任。Manager 收到 BLOCK 後先判斷失敗歸屬：
+
+- Child 自己的功能、測試或 Scope 內語意錯誤 → 依 receipt 的 exact `source_thread_id` 退回原提交者；原 thread 產生新 commit 與新 typed hand-back，舊 SHA、verdict、seal 不再沿用。
+- cherry-pick／檔案衝突、跨 child composition 或 staging 組裝問題 → Manager 在自己的 integrated／staging tree 修復，重新跑受影響驗證；不得把修補偷偷寫回 Child branch。
+- baseline、共享資源或工具問題 → 具名保留證據，能延後就登記 ticket／defer；不可把未知紅燈宣稱成 PASS，也不可要求 Child 為了 primary 前進 catchup。
+
+Child 不負責 current `main`、整合樹或 primary 的 commit 拓撲；Integrator 只提供 fan-in／衝突證據，Manager 才負責 catchup（僅 Manager-owned tree）、current-main admission、衝突、Gate、cutover、resolve 與 sync。
 
 ## Worktree scratch
 
@@ -125,7 +143,7 @@ scratch 路徑；`resolve` 後該路徑應不存在。
 - 若背景工作還在跑，receipt 必須標示它不是完成證據。
 - 若執行者是受派子 agent,依賴的 `Agent()` / 耗時 Bash 仍須背景啟動；但它必須把自己的 turn 留在前景,依 CLAUDE.md 鐵律5於同一個 turn 輪詢到結果或 rc,不得以「review in flight」交回並等待協調者再次喚醒。
 - Tooling Debt 不可留空:`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者用 `ops/backlog.py add` 登記；批次 wave worker 加 `--stage`。
-- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 把 Ticket Factory 責任收斂到 `dispatchable` 或具名使用者／外部阻塞；`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)在 Delivery Team 從 `./ops/backlog.py dispatch --stream APP` 取票後負責產品修復與結案。Ticket Factory 不因 APP 交給下游就把 `groomed` 當完成，仍須先完成 contract-ready 對帳；`list --stream APP` 是**全表**,拿來查重不是拿來取票。判準見上方 Checklist 的「Stream 分流」。
+- **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 把 Ticket Factory Child 責任收斂到 `dispatchable` 或具名使用者／外部阻塞；`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)在 Delivery Team 從 `./ops/backlog.py dispatch --stream APP` 取票後負責產品修復與結案。Ticket Factory Child 不因 APP 交給下游就把 `groomed` 當完成，仍須先完成 contract-ready 對帳；`list --stream APP` 是**全表**,拿來查重不是拿來取票。判準見上方 Checklist 的「Stream 分流」。
 - 這條判準只有**一半**是機器守的:`add --stream IMP --surface ...` 會 exit 64 被拒(`ops/tests/test_backlog.py` 釘住);反向——該進 APP 的填成 IMP——沒有任何工具擋得住,所以那一半靠上面的判準自律。
 
 ### `pytest -k` acceptance 的選擇數對帳
@@ -155,8 +173,8 @@ bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::
 
 Fan-out 受派 child worker 在回報「已完成」前，還必須在自己的工作樹執行
 `./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
-與 exact source thread ID（跨 host 加 source host ID）一併回報。Gate BLOCK 必須回到該 source thread；由原 thread 產生新 commit／新 hand-back，不沿用舊 SHA／verdict／seal。受派者只交回 commit 與戳記，沒有 develop 例外。尚未取得 `worktree-flow` 頂端授權時，
-Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝；只有 Manager 才執行最終
+與 exact source thread ID（跨 host 加 source host ID）一併回報。Gate BLOCK 必須回到該 source thread；由原 thread 產生新 commit／新 hand-back，不沿用舊 SHA／verdict／seal。受派者只交回 commit 與戳記，沒有 develop 例外，也不因 primary 前進自行 catchup。尚未取得 `worktree-flow` 頂端授權時，
+Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝並保留衝突證據；只有 Manager 才執行最終
 `close-wave --commit`／`cutover`／`resolve`／`sync`（fresh／continue Gate、anchor、validate、origin/main）。`deploy`
 另須 release 意圖。Integrator 若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
 `--allow-unhanded`；它不能放行 hand-back 後已前進的 branch。

@@ -28,10 +28,19 @@ MANIFEST_NAME = "context_plane.json"
 ROLE_ALIASES = {
     "Manager": "delivery-manager",
     "manager": "delivery-manager",
+    "Integrator": "delivery-integrator",
+    "integrator": "delivery-integrator",
     "Ticket Factory": "ticket-factory",
+    "Ticket Factory Child": "ticket-factory",
+    "ticket-factory-child": "ticket-factory",
     "platform-steward": "ticket-factory",
     "Delivery Team Integrator": "delivery-integrator",
     "delivery-coordinator": "delivery-integrator",
+    "Direct Assignment Child": "delivery-child",
+    "Direct-assignment Child": "delivery-child",
+    "direct-assignment-child": "delivery-child",
+    "Ticket Delivery Child": "delivery-child",
+    "ticket-delivery-child": "delivery-child",
     "Delivery Child": "delivery-child",
     "backend-engineer": "delivery-child",
     "ios-engineer": "delivery-child",
@@ -43,6 +52,8 @@ ROLE_ALIASES = {
     "code-reviewer": "review-service",
 }
 KNOWN_ROLES = {"delivery-manager", "ticket-factory", "delivery-integrator", "delivery-child", "docs-steward", "review-service"}
+CHILD_WORK_MODES = {"direct-assignment", "ticket-factory", "ticket-delivery"}
+NON_CHILD_WORK_MODE = "none"
 KNOWN_SURFACES = {"docs", "backend", "ios", "release"}
 KNOWN_TASKS = {"review", "handback", "backend-routing", "feature-existence", "tool-friction", "docs-registry"}
 KNOWN_SKILLS = {
@@ -50,10 +61,108 @@ KNOWN_SKILLS = {
     "ios-visual-report-workflow", "kg-agent-context", "kg-docs-control-plane", "kg-receipt",
     "kg-router", "podcast", "source-command-release", "worktree-flow",
 }
+CANONICAL_IDENTITIES = (
+    "manager",
+    "integrator",
+    "direct-assignment-child",
+    "ticket-factory-child",
+    "ticket-delivery-child",
+)
+IDENTITY_ALIAS_MODES = {
+    "Direct Assignment Child": "direct-assignment",
+    "Direct-assignment Child": "direct-assignment",
+    "direct-assignment-child": "direct-assignment",
+    "Ticket Factory Child": "ticket-factory",
+    "ticket-factory-child": "ticket-factory",
+    "Ticket Delivery Child": "ticket-delivery",
+    "ticket-delivery-child": "ticket-delivery",
+}
 
 
 class ContextPlaneError(ValueError):
     """A fail-closed manifest or route error."""
+
+
+def canonical_identity(role: str, work_mode: str | None = None) -> str | None:
+    """Resolve one of the five delivery identities, or None for support routes."""
+    direct = role if role in CANONICAL_IDENTITIES else None
+    alias_mode = IDENTITY_ALIAS_MODES.get(role)
+    canonical = ROLE_ALIASES.get(role, role)
+    if direct == "manager" or canonical == "delivery-manager":
+        expected = "none"
+        identity = "manager"
+    elif direct == "integrator" or canonical == "delivery-integrator":
+        expected = "none"
+        identity = "integrator"
+    elif direct is not None:
+        expected = {"direct-assignment-child": "direct-assignment",
+                    "ticket-factory-child": "ticket-factory",
+                    "ticket-delivery-child": "ticket-delivery"}[direct]
+        identity = direct
+    elif canonical == "ticket-factory":
+        expected = "ticket-factory"
+        identity = "ticket-factory-child"
+    elif canonical == "delivery-child":
+        expected = alias_mode or work_mode
+        if expected is None:
+            raise ContextPlaneError(
+                "Child identity 必須先宣告 work mode: "
+                "direct-assignment、ticket-factory 或 ticket-delivery"
+            )
+        identity = f"{expected}-child"
+        if identity not in CANONICAL_IDENTITIES:
+            raise ContextPlaneError(f"Child identity 的 work mode 無效: {expected!r}")
+    else:
+        return None
+    supplied = work_mode
+    if supplied is not None and supplied != expected:
+        raise ContextPlaneError(
+            f"身份 {identity} 的 work mode 必須是 {expected!r}，收到 {supplied!r}"
+        )
+    return identity
+
+
+def normalize_role_identity(role: str, work_mode: str | None = None) -> tuple[str, str, str]:
+    """Return canonical route role, delivery role, and declared work mode.
+
+    Role declaration is a bootstrap gate, not an authorization mechanism.  The
+    latter remains false until the explicit delivery operator contract is used.
+    Legacy role names remain compatibility aliases; ``ticket-factory-child`` is
+    the canonical identity for the ticket-factory work mode.
+    """
+    requested = role
+    identity = canonical_identity(role, work_mode)
+    canonical = ROLE_ALIASES.get(role, role)
+    inferred_mode = IDENTITY_ALIAS_MODES.get(role)
+    if identity == "ticket-factory-child":
+        inferred_mode = "ticket-factory"
+    if canonical == "ticket-factory":
+        canonical = "delivery-child"
+    if identity == "manager":
+        canonical = "delivery-manager"
+    elif identity == "integrator":
+        canonical = "delivery-integrator"
+    elif identity in {"direct-assignment-child", "ticket-factory-child", "ticket-delivery-child"}:
+        canonical = "delivery-child"
+    if canonical not in KNOWN_ROLES - {"ticket-factory"}:
+        raise ContextPlaneError(f"找不到可用 role: {requested or '-'}")
+    mode = inferred_mode or work_mode
+    if canonical == "delivery-child":
+        if mode is None:
+            raise ContextPlaneError(
+                "Child identity 必須先宣告 work mode: "
+                "direct-assignment、ticket-factory 或 ticket-delivery"
+            )
+        if mode not in CHILD_WORK_MODES:
+            raise ContextPlaneError(f"Child identity 的 work mode 無效: {mode!r}")
+        return canonical, "child", mode
+    if mode not in (None, NON_CHILD_WORK_MODE):
+        raise ContextPlaneError(f"{canonical} 不可使用 Child work mode: {mode!r}")
+    if canonical == "delivery-manager":
+        return canonical, "manager", NON_CHILD_WORK_MODE
+    if canonical == "delivery-integrator":
+        return canonical, "integrator", NON_CHILD_WORK_MODE
+    return canonical, "service", NON_CHILD_WORK_MODE
 
 
 @dataclass(frozen=True)
@@ -181,10 +290,15 @@ def validate_manifest(payload: dict[str, Any], root: Path) -> None:
             raise ContextPlaneError(f"{context}.match.roles 必須是非空陣列")
         if not all(isinstance(role, str) and (role == "*" or role in KNOWN_ROLES) for role in match["roles"]):
             raise ContextPlaneError(f"{context}.match.roles 含未知 role")
-        unknown_match = sorted(set(match) - {"roles", "surfaces", "tasks", "skills"})
+        unknown_match = sorted(set(match) - {"roles", "work_modes", "surfaces", "tasks", "skills"})
         if unknown_match:
             raise ContextPlaneError(f"{context}.match 未知欄位: {', '.join(unknown_match)}")
-        for field, allowed in (("surfaces", KNOWN_SURFACES), ("tasks", KNOWN_TASKS), ("skills", KNOWN_SKILLS)):
+        for field, allowed in (
+            ("work_modes", CHILD_WORK_MODES),
+            ("surfaces", KNOWN_SURFACES),
+            ("tasks", KNOWN_TASKS),
+            ("skills", KNOWN_SKILLS),
+        ):
             if field in match and (not isinstance(match[field], list) or not set(match[field]) <= allowed):
                 raise ContextPlaneError(f"{context}.match.{field} 含未知值")
         route_units = _require(route, "units", context)
@@ -261,9 +375,14 @@ def _units(payload: dict[str, Any]) -> dict[str, Unit]:
     }
 
 
-def _matches(match: dict[str, Any], role: str, surface: str | None, task: str | None, skill: str | None) -> bool:
+def _matches(
+    match: dict[str, Any], role: str, work_mode: str,
+    surface: str | None, task: str | None, skill: str | None,
+) -> bool:
     roles = match.get("roles", [])
     if role not in roles and "*" not in roles:
+        return False
+    if "work_modes" in match and work_mode not in match["work_modes"]:
         return False
     if "surfaces" in match and (surface is None or surface not in match["surfaces"]):
         return False
@@ -322,10 +441,10 @@ def resolve_route(
     skill: str | None = None,
     root: Path | None = None,
     capability_tier: str = "observer",
+    work_mode: str | None = None,
 ) -> dict[str, Any]:
-    role = ROLE_ALIASES.get(role, role)
-    if role not in KNOWN_ROLES:
-        raise ContextPlaneError(f"找不到可用 role: {role or '-'}")
+    identity = canonical_identity(role, work_mode)
+    role, delivery_role, work_mode = normalize_role_identity(role, work_mode)
     if surface is not None and surface not in KNOWN_SURFACES:
         raise ContextPlaneError(f"找不到可用 surface: {surface}")
     if task is not None and task not in KNOWN_TASKS:
@@ -336,7 +455,7 @@ def resolve_route(
     selected_routes: list[dict[str, Any]] = []
     selected_ids: list[str] = []
     for route in payload["routes"]:
-        if not _matches(route["match"], role, surface, task, skill):
+        if not _matches(route["match"], role, work_mode, surface, task, skill):
             continue
         selected_routes.append(route)
         for unit_id in route["units"]:
@@ -397,10 +516,21 @@ def resolve_route(
     return {
         "schema": SCHEMA,
         "role": role,
+        "deliveryRole": delivery_role,
+        "workMode": work_mode,
         "surface": surface,
         "task": task,
         "skill": skill,
         "roleAttestation": {"value": role, "source": "explicit-cli", "status": "untrusted-input"},
+        "roleIdentity": {
+            "schema": "kg.agent.role-identity.v1",
+            "identity": identity or f"support:{delivery_role}",
+            "role": delivery_role,
+            "workMode": work_mode,
+            "status": "confirmed" if identity else "support-only",
+            "source": "explicit-cli",
+            "authorizationGranted": False,
+        },
         "authorization": {"capabilityTier": capability_tier, "granted": False},
         "provenance": before,
         "routes": [route["id"] for route in selected_routes],
@@ -458,6 +588,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     route.add_argument("--surface")
     route.add_argument("--task")
     route.add_argument("--skill")
+    route.add_argument("--work-mode", choices=sorted(CHILD_WORK_MODES | {NON_CHILD_WORK_MODE}))
     route.add_argument("--tier", choices=["observer", "operator", "editor", "production-capable"], default="observer")
     route.add_argument("--json", action="store_true")
     route.add_argument("--root", type=Path)
@@ -466,9 +597,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     render.add_argument("--surface")
     render.add_argument("--task")
     render.add_argument("--skill")
+    render.add_argument("--work-mode", choices=sorted(CHILD_WORK_MODES | {NON_CHILD_WORK_MODE}))
     render.add_argument("--tier", choices=["observer", "operator", "editor", "production-capable"], default="observer")
     render.add_argument("--json", action="store_true")
     render.add_argument("--root", type=Path)
+    identify = subparsers.add_parser(
+        "identify", help="declare the delivery role before any task command; read-only"
+    )
+    identify.add_argument("--role", "--identity", dest="role", required=True)
+    identify.add_argument("--work-mode", choices=sorted(CHILD_WORK_MODES | {NON_CHILD_WORK_MODE}))
+    identify.add_argument("--json", action="store_true")
+    identify.add_argument("--root", type=Path)
     return parser.parse_args(argv)
 
 
@@ -495,6 +634,39 @@ def main(argv: list[str] | None = None) -> int:
                 for route in payload["routes"]:
                     print(f"[context][route-definition] {route['id']} units={','.join(route['units'])}")
             return 0
+        if args.command == "identify":
+            identity = canonical_identity(args.role, args.work_mode)
+            if identity is None:
+                raise ContextPlaneError(
+                    "identify 只接受五種交付身份：manager、integrator、"
+                    "direct-assignment-child、ticket-factory-child、ticket-delivery-child"
+                )
+            role, delivery_role, work_mode = normalize_role_identity(args.role, args.work_mode)
+            result = {
+                "schema": "kg.agent.role-identity.v1",
+                "identity": identity,
+                "role": role,
+                "deliveryRole": delivery_role,
+                "workMode": work_mode,
+                "status": "confirmed",
+                "source": "explicit-cli",
+                "authorizationGranted": False,
+                "authorization": {"capabilityTier": "observer", "granted": False},
+                "roleIdentity": {
+                    "schema": "kg.agent.role-identity.v1",
+                    "identity": identity,
+                    "role": delivery_role,
+                    "workMode": work_mode,
+                    "status": "confirmed",
+                    "source": "explicit-cli",
+                    "authorizationGranted": False,
+                },
+                "next": "context_route route/render with the same role and work mode",
+            }
+            print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else (
+                f"role identity: confirmed role={delivery_role} work_mode={work_mode}\n"
+            ))
+            return 0
         resolved = resolve_route(
             payload,
             args.role,
@@ -503,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
             args.skill,
             getattr(args, "root", None),
             args.tier,
+            getattr(args, "work_mode", None),
         )
         if args.command == "route":
             if args.json:

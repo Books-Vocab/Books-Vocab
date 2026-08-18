@@ -144,12 +144,12 @@ Update the existing report directory only after the matrix receipt is valid. Kee
 
 ## Phase 4 — convergence and hand-back
 
-The integrator owns convergence, not just code collection:
+The Manager owns convergence, not just code collection; the Integrator only prepares the staging handoff:
 
 1. Read registry hand-back seals and source tips. Integrate each returned child into the one canonical tree in bounded batches; late children are appended before the one final Gate. Never cherry-pick a commit already proven by ancestry, patch-id, or identical tree.
 2. A dirty child is first tested and reviewed in its own path, then committed and handed back. Do not reset, clean, or delete it while ownership is unresolved.
-3. Run one fresh Gate on the final exact HEAD using that tree's own orchestrator. A non-block Gate is required; warnings and environment deviations remain visible.
-4. Cut over to local `main`, sync `origin/main` only when backup authorization exists, and resolve every source/integration tree through `worktree_orchestrate.py`. Do not use manual directory deletion or force-reset.
+3. Hand the staging tree to Manager. Manager runs one fresh Gate on the final exact HEAD using that tree's own orchestrator. A non-block Gate is required; warnings and environment deviations remain visible.
+4. Manager cuts over to local `main`, syncs `origin/main` only when backup authorization exists, and resolves every source/integration tree through `worktree_orchestrate.py`. Do not use manual directory deletion or force-reset.
 5. Final audit must prove: one clean canonical tree, source/test/docs present, fresh exact-HEAD evidence, review receipt state, registry closure, `main == origin/main == ls-remote`, and zero scoped worktree/branch residue.
 
 ## Output contract

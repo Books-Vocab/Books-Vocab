@@ -2642,7 +2642,7 @@ def build_parser() -> argparse.ArgumentParser:
     delegated_mode = reg.add_mutually_exclusive_group()
     delegated_mode.add_argument(
         "--delegated", dest="delegated", action="store_true", default=None,
-        help="mark this worktree as delegated; landing belongs to the integrator",
+        help="mark this worktree as delegated; Manager admission owns landing",
     )
     delegated_mode.add_argument(
         "--not-delegated", dest="delegated", action="store_false",
