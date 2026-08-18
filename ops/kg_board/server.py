@@ -105,6 +105,12 @@ MAX_BODY_BYTES = 1_000_000
 MIRROR_BODY_MAX_BYTES = 16 * 1024 * 1024
 SSE_HEARTBEAT_SECONDS = max(5, int(os.environ.get("KG_BOARD_SSE_HEARTBEAT_SECONDS", "20")))
 SSE_MAX_CLIENTS = max(1, int(os.environ.get("KG_BOARD_SSE_MAX_CLIENTS", "32")))
+try:
+    LIVE_EVENT_POLL_SECONDS = min(
+        0.5, max(0.05, float(os.environ.get("KG_BOARD_LIVE_EVENT_POLL_SECONDS", "0.1")))
+    )
+except (TypeError, ValueError):
+    LIVE_EVENT_POLL_SECONDS = 0.1
 QVALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 
 
@@ -160,6 +166,9 @@ _clone_lock = threading.RLock()
 _state_lock = threading.RLock()
 _sse_lock = threading.RLock()
 _sse_clients: set[queue.Queue] = set()
+_live_event_seen_lock = threading.Lock()
+_live_event_seen_fingerprint = None
+_live_event_sequence = 0
 _cache: dict = {
     "valid": False,
     "sha": None,
@@ -226,8 +235,14 @@ def publish_event(kind: str) -> None:
     every consumer only needs the latest invalidation, and the browser's existing
     fetch path remains the single source of truth.
     """
-    payload = {"kind": kind, "at": datetime.now(TZ).isoformat(timespec="seconds")}
+    global _live_event_sequence
     with _sse_lock:
+        _live_event_sequence += 1
+        payload = {
+            "kind": kind,
+            "seq": _live_event_sequence,
+            "at": datetime.now(TZ).isoformat(timespec="milliseconds"),
+        }
         for client in tuple(_sse_clients):
             try:
                 client.put_nowait(payload)
@@ -240,6 +255,47 @@ def publish_event(kind: str) -> None:
                     client.put_nowait(payload)
                 except queue.Full:
                     pass
+
+
+def _live_source_fingerprint():
+    try:
+        stat = MIRROR_PATH.stat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return ("error",)
+    return (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+
+
+def _mark_live_source_event_seen() -> None:
+    global _live_event_seen_fingerprint
+    with _live_event_seen_lock:
+        _live_event_seen_fingerprint = _live_source_fingerprint()
+
+
+def live_event_watch_loop(stop_event: threading.Event | None = None) -> None:
+    """Catch mirror writes made outside this process within the live budget.
+
+    Normal mirror POSTs publish directly. The mtime watcher is a defensive
+    bridge for host glue that atomically replaces ``mirror.json`` without
+    reaching the HTTP endpoint; it never reads or mutates the source data.
+    """
+    previous = _live_source_fingerprint()
+    while stop_event is None or not stop_event.is_set():
+        try:
+            current = _live_source_fingerprint()
+            if current != previous:
+                with _live_event_seen_lock:
+                    already_published = current == _live_event_seen_fingerprint
+                if not already_published:
+                    publish_event("mirror")
+                previous = current
+        except Exception as exc:  # pragma: no cover - daemon must stay alive
+            log(f"live event watcher error: {exc}")
+        if stop_event is None:
+            time.sleep(LIVE_EVENT_POLL_SECONDS)
+        else:
+            stop_event.wait(LIVE_EVENT_POLL_SECONDS)
 # ---------------------------------------------------------------- data plane
 
 def _git(args: list[str]) -> subprocess.CompletedProcess:
@@ -1709,6 +1765,7 @@ class Handler(BaseHTTPRequestHandler):
                 return mirror
 
             _update_json(MIRROR_PATH, {}, update_mirror)
+            _mark_live_source_event_seen()
             publish_event(key)
             self._json(200, {"ok": True, "stored": key})
             return
@@ -1742,8 +1799,10 @@ def main() -> int:
 
     host, _, port = BIND.rpartition(":")
     threading.Thread(target=refresh_loop, daemon=True).start()
+    threading.Thread(target=live_event_watch_loop, daemon=True).start()
     server = ThreadingHTTPServer((host or "127.0.0.1", int(port)), Handler)
     log(f"kg-board listening on {BIND}; clone={CLONE} refresh={REFRESH_SECONDS}s "
+        f"live_event_poll={LIVE_EVENT_POLL_SECONDS}s "
         f"reads_need_token={REQUIRE_TOKEN_FOR_READS}")
     try:
         server.serve_forever()
