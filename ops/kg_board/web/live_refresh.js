@@ -86,9 +86,9 @@
     }
 
     async function runLiveFallbackLoad(){
-      const request=()=>{
+      const request=async()=>{
         if(active)return Promise.resolve();
-        return report(requestLoad(now()+LIMITS.fallbackRequestBudgetMs));
+        try{await requestLoad(now()+LIMITS.fallbackRequestBudgetMs)}catch(error){onError(error)}
       };
       if(locks?.request){
         await locks.request("kg-board-live-fallback",{ifAvailable:true},async lock=>{
